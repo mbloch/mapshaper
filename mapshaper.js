@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.34';
+var VERSION = '0.4.35';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -13347,103 +13347,104 @@ GeoJSON.convertPointCoordsToSquareCoords = function(p, side) {
 
 
 
+var SVG = {};
+
+SVG.propertyTypes = {
+  class: 'classname',
+  opacity: 'number',
+  r: 'number',
+  dx: 'number',
+  dy: 'number',
+  fill: 'color',
+  stroke: 'color',
+  'stroke-width': 'number'
+};
+
+SVG.canvasEquivalents = {
+  'stroke-width': 'strokeWidth'
+};
+
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor'.split(',');
+SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
+
+SVG.propertiesBySymbolType = {
+  polygon: SVG.commonProperties.concat('fill'),
+  polyline: SVG.commonProperties,
+  point: SVG.commonProperties.concat(['fill', 'r']),
+  label: SVG.commonProperties.concat(['fill', 'dx', 'dy', 'font-family', 'font-size', 'text-anchor'])
+};
+
+SVG.findPropertiesBySymbolType = function(fields, type) {
+  var svgNames = SVG.propertiesBySymbolType[type] || [];
+  return fields.filter(function(name) {
+    return svgNames.indexOf(name) > -1;
+  });
+};
+
+
+
 
 api.svgStyle = function(lyr, dataset, opts) {
-  var keys = Object.keys(opts),
-      svgFields = internal.getStyleFields(keys, internal.svgStyles, internal.invalidSvgTypes[lyr.geometry_type]);
-
-  svgFields.forEach(function(f) {
-    var val = opts[f];
-    var literal = null;
-    var records, func;
-    var type = internal.svgStyleTypes[f];
-    if (!lyr.data) {
-      internal.initDataTable(lyr);
+  if (!lyr.data) {
+    internal.initDataTable(lyr);
+  }
+  Object.keys(opts).forEach(function(optName) {
+    var svgName = optName.replace('_', '-'); // undo cli parser name conversion
+    var strVal, literalVal, func;
+    if (!internal.isSupportedSvgProperty(svgName)) return;
+    strVal = opts[optName].trim();
+    literalVal = internal.parseSvgValue(svgName, strVal, lyr.data.getFields());
+    if (literalVal === null) {
+      // if value was not parsed as a literal, assume it is a JS expression
+      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.defs});
     }
-    if (type == 'number' && internal.isSvgNumber(val)) {
-      literal = Number(val);
-    } else if (type == 'color' && internal.isSvgColor(val, lyr.data.getFields())) {
-      literal = val;
-    } else if (type == 'classname' && internal.isSvgClassName(val, lyr.data.getFields())) {
-      literal = val;
-    }
-    if (literal === null) {
-      func = internal.compileValueExpression(val, lyr, dataset.arcs, {context: internal.defs});
-    }
-    records = lyr.data.getRecords();
-    records.forEach(function(rec, i) {
-      rec[f] = func ? func(i) : literal;
+    lyr.data.getRecords().forEach(function(rec, i) {
+      rec[svgName] = func ? func(i) : literalVal;
     });
   });
 };
 
-internal.isSvgClassName = function(str, fields) {
-  str = str.trim();
-  return (!fields || fields.indexOf(str) == -1) && /^( ?[_a-z][-_a-z0-9]*\b)+$/i.test(str);
+internal.isSupportedSvgProperty = function(name) {
+  return SVG.supportedProperties.indexOf(name) > -1 || name == 'label-text';
+};
+
+// returns parsed value or null if @strVal is not recognized as a valid literal value
+internal.parseSvgValue = function(name, strVal, fields) {
+  var type = SVG.propertyTypes[name];
+  var val;
+  if (fields.indexOf(strVal) > -1) {
+    val = null; // field names are valid expressions
+  } else if (type == 'number') {
+    // TODO: handle values with units, like "13px"
+    val = internal.isSvgNumber(strVal) ? Number(strVal) : null;
+  } else if (type == 'color') {
+    val = internal.isSvgColor(strVal) ? strVal : null;
+  } else if (type == 'classname') {
+    val = internal.isSvgClassName(val) ? strVal : null;
+  } else {
+    // unknown type -- assume string is an expression if JS syntax chars are found
+    // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
+    val = /[\?\:\[\(\+]/.test(strVal) ? null : strVal; //
+  }
+  return val;
+};
+
+internal.isSvgClassName = function(str) {
+  return /^( ?[_a-z][-_a-z0-9]*\b)+$/i.test(str);
 };
 
 internal.isSvgNumber = function(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+$/.test(o);
 };
 
-internal.isSvgColor = function(str, fields) {
-  str = str.trim();
-  return (!fields || fields.indexOf(str) == -1) && /^[a-z]+$/i.test(str) ||
+internal.isSvgColor = function(str) {
+  return /^[a-z]+$/i.test(str) ||
     /^#[0-9a-f]+$/i.test(str) || /^rgba?\([0-9,. ]+\)$/.test(str);
 };
 
-internal.getStyleFields = function(fields, index, blacklist) {
-  return fields.reduce(function(memo, f) {
-    if (f in index) {
-      if (!blacklist || blacklist.indexOf(f) == -1) {
-        memo.push(f);
-      }
-    }
-    return memo;
-  }, []);
-};
-
-internal.getSvgStyleFields = function(lyr) {
-  var fields = lyr.data ? lyr.data.getFields() : [];
-  return internal.getStyleFields(fields, internal.svgStyles, internal.invalidSvgTypes[lyr.geometry_type]);
-};
-
-// check if layer should be displayed with styles
-internal.layerHasSvgDisplayStyle = function(lyr) {
-  var fields = internal.getSvgStyleFields(lyr);
-  if (lyr.geometry_type == 'point') {
-    return fields.indexOf('r') > -1; // require 'r' field for point symbols
-  }
-  return utils.difference(fields, ['opacity', 'class']).length > 0;
-};
-
-internal.invalidSvgTypes = {
-  polygon: ['r'],
-  polyline: ['r', 'fill']
-};
-
-internal.svgStyles = {
-  'class': 'class',
-  opacity: 'opacity',
-  r: 'radius',
-  fill: 'fillColor',
-  stroke: 'strokeColor',
-  stroke_width: 'strokeWidth'
-};
-
-internal.svgStyleTypes = {
-  class: 'classname',
-  opacity: 'number',
-  r: 'number',
-  fill: 'color',
-  stroke: 'color',
-  stroke_width: 'number'
-};
 
 
 
-
-var SVG = {};
 
 SVG.importGeoJSONFeatures = function(features) {
   return features.map(function(obj, i) {
@@ -13451,7 +13452,7 @@ SVG.importGeoJSONFeatures = function(features) {
     var geomType = geom && geom.type;
     var svgObj = null;
     if (geomType && geom.coordinates) {
-      svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties);
     }
     if (!svgObj) {
       return {tag: 'g'}; // empty element
@@ -13479,6 +13480,8 @@ SVG.stringify = function(obj) {
     svg += '>\n';
     svg += obj.children.map(SVG.stringify).join('\n');
     svg += '\n</' + obj.tag + '>';
+  } else if (obj.value) {
+    svg += '>' + obj.value + '</' + obj.tag + '>';
   } else {
     svg += '/>';
   }
@@ -13512,13 +13515,13 @@ SVG.stringifyProperties = function(o) {
 
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
-  var properties = svgObj.properties;
-  var invalidStyles = internal.invalidSvgTypes[GeoJSON.translateGeoJSONType(geomType)];
-  var fields = internal.getStyleFields(Object.keys(rec), internal.svgStyles, invalidStyles);
-  var k;
+  var symbolType = GeoJSON.translateGeoJSONType(geomType);
+  if (symbolType == 'point' && ('label-text' in rec)) {
+    symbolType = 'label';
+  }
+  var fields = SVG.findPropertiesBySymbolType(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
-    k = fields[i];
-    SVG.setAttribute(svgObj, k.replace('_', '-'), rec[k]);
+    SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
   }
 };
 
@@ -13539,10 +13542,10 @@ SVG.setAttribute = function(obj, k, v) {
   }
 };
 
-SVG.importMultiGeometry = function(coords, importer) {
+SVG.importMultiGeometry = function(coords, rec, importer) {
   var children = [];
   for (var i=0; i<coords.length; i++) {
-    children.push(importer(coords[i]));
+    children.push(importer(coords[i], rec));
   }
   return children.length > 0 ? {tag: 'g', children: children} : null;
 };
@@ -13571,7 +13574,22 @@ SVG.importLineString = function(coords) {
   };
 };
 
-SVG.importPoint = function(p) {
+SVG.importLabel = function(p, rec) {
+  var properties = {
+    x: p[0],
+    y: -p[1]
+  };
+  return {
+    tag: 'text',
+    value: rec['label-text'] || '',
+    properties: properties
+  };
+};
+
+SVG.importPoint = function(p, rec) {
+  if (rec && ('label-text' in rec)) {
+    return SVG.importLabel(p, rec);
+  }
   return {
     tag: 'circle',
     properties: {
@@ -13595,8 +13613,8 @@ SVG.geojsonImporters = {
   Point: SVG.importPoint,
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
-  MultiPoint: function(coords) {
-    return SVG.importMultiGeometry(coords, SVG.importPoint);
+  MultiPoint: function(coords, rec) {
+    return SVG.importMultiGeometry(coords, rec, SVG.importPoint);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);
@@ -13625,7 +13643,7 @@ internal.exportSVG = function(dataset, opts) {
 
   b = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
-    return internal.exportLayerAsSVG(lyr, dataset, opts);
+    return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
   }).join('\n');
   svg = utils.format(template, b.width(), b.height(), 0, 0, b.width(), b.height(), svg);
   return [{
@@ -13680,15 +13698,15 @@ internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
   return geojson;
 };
 
-internal.exportLayerAsSVG = function(lyr, dataset, opts) {
+internal.exportLayerForSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
   var geojson = internal.exportGeoJSONForSVG(lyr, dataset, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var symbols = SVG.importGeoJSONFeatures(features);
   var layerObj = {
     tag: 'g',
-    children: symbols,
-    properties: {id: lyr.name}
+    properties: {id: lyr.name},
+    children: symbols
   };
 
   // add default display properties to line layers
@@ -13699,7 +13717,14 @@ internal.exportLayerAsSVG = function(lyr, dataset, opts) {
     layerObj.properties['stroke-width'] = 1;
   }
 
-  return SVG.stringify(layerObj);
+  // add default text properties to label layers
+  if (lyr.data && lyr.data.fieldExists('label-text')) {
+    layerObj.properties['font-family'] = 'sans-serif';
+    layerObj.properties['font-size'] = '12';
+    layerObj.properties['text-anchor'] = 'middle';
+  }
+
+  return layerObj;
 };
 
 
@@ -15730,6 +15755,8 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
     destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.endpoints) {
+    destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
     destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
   } else {
@@ -15818,15 +15845,46 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
     return coords.length > 0 ? coords : null;
   });
 
+  function addPoint(p) {
+    var key = p.x + '~' + p.y;
+    if (key in index === false) {
+      index[key] = true;
+      coords.push([p.x, p.y]);
+    }
+  }
+
   function nextPart(ids) {
     var iter = arcs.getShapeIter(ids);
-    var key;
     while (iter.hasNext()) {
-      key = iter.x + '~' + iter.y;
-      if (key in index === false) {
-        index[key] = true;
-        coords.push([iter.x, iter.y]);
-      }
+      addPoint(iter);
+    }
+  }
+};
+
+internal.pointsFromEndpoints = function(lyr, arcs) {
+  var coords, index;
+  if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
+    stop("Expected a polygon or polyline layer");
+  }
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    index = {}; // TODO: use more efficient index
+    (shp || []).forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+
+  function addPoint(p) {
+    var key = p.x + '~' + p.y;
+    if (key in index === false) {
+      index[key] = true;
+      coords.push([p.x, p.y]);
+    }
+  }
+
+  function nextPart(ids) {
+    for (var i=0; i<ids.length; i++) {
+      addPoint(arcs.getVertex(ids[i], 0));
+      addPoint(arcs.getVertex(ids[i], -1));
     }
   }
 };
@@ -18915,6 +18973,10 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
+    .option("endpoints", {
+      describe: "capture unique endpoints of polygons and polylines",
+      type: "flag"
+    })
     //.option("intersections", {
     //  describe: "capture line segment intersections of polygons and polylines",
     //  type: "flag"
@@ -19126,12 +19188,12 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("svg-style")
-    .describe("set SVG style using JS expressions or literal values")
+    .describe("set SVG properties using JS expressions or literal values")
     .option("class", {
-      describe: 'name of CSS class or classes (space sep.)'
+      describe: 'name of CSS class or classes (space-separated)'
     })
     .option("fill", {
-      describe: 'fill color, examples: #eee pink rgba(0, 0, 0, 0.2)'
+      describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
     })
     .option("stroke", {
       describe: 'stroke color'
@@ -19140,27 +19202,29 @@ internal.getOptionParser = function() {
       describe: 'stroke width'
     })
     .option("opacity", {
-      describe: 'opacity, example: 0.5'
+      describe: 'opacity; example: 0.5'
     })
     .option("r", {
-      describe: 'radius of circle symbols',
+      describe: 'symbol radius (set this to export points as circles)',
     })
-    /*
-    .option("label", {
-      describe: 'label text'
+    .option("label-text", {
+      describe: 'label text (set this to export points as labels)'
     })
     .option("text-anchor", {
-      describe: 'start|middle|end (default is middle)'
+      describe: 'label alignment; one of: start, end, middle (default)'
     })
     .option("dx", {
-      type: "number",
-      describe: 'x offset'
+      describe: 'x offset of label (default is 0)'
     })
     .option("dy", {
-      type: "number",
-      describe: 'y offset'
+      describe: 'y offset of label (default is baseline-aligned)'
     })
-    */
+    .option("font-family", {
+      describe: 'font family of label text (default is sans-serif)'
+    })
+    .option("font-size", {
+      describe: 'size of label text (default is 12)'
+    })
     .option("target", targetOpt);
 
   parser.command("target")

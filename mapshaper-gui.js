@@ -3543,15 +3543,21 @@ function MapExtent(_position) {
 
   // stop zooming before rounding errors become too obvious
   function maxScale() {
-    var minPixelScale = 1e-14,
-        fullPixelScale = _contentBounds.width() / _position.width();
-    return fullPixelScale / minPixelScale;
+    var minPixelScale = 1e-16;
+    var xmax = maxAbs(_contentBounds.xmin, _contentBounds.xmax, _contentBounds.centerX());
+    var ymax = maxAbs(_contentBounds.ymin, _contentBounds.ymax, _contentBounds.centerY());
+    var xscale = _contentBounds.width() / _position.width() / xmax / minPixelScale;
+    var yscale = _contentBounds.height() / _position.height() / ymax / minPixelScale;
+    return Math.min(xscale, yscale);
+  }
+
+  function maxAbs() {
+    return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
   }
 
   function limitScale(scale) {
     return Math.min(scale, maxScale());
   }
-
 
   function calcBounds(cx, cy, scale) {
     var w = _contentBounds.width() / scale,
@@ -4403,25 +4409,32 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
 };
 
 internal.getSvgDisplayStyle = function(lyr) {
-  var records = lyr.data.getRecords(),
-      fields = internal.getSvgStyleFields(lyr),
-      index = internal.svgStyles;
+  var styleIndex = {
+        opacity: 'opacity',
+        r: 'radius',
+        fill: 'fillColor',
+        stroke: 'strokeColor',
+        'stroke-width': 'strokeWidth'
+      },
+      // array of field names of relevant svg display properties
+      fields = internal.getSvgStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+      records = lyr.data.getRecords();
   var styler = function(style, i) {
-    var f, key, val, rec;
+    var rec = records[i];
+    var fname, val;
     for (var j=0; j<fields.length; j++) {
-      f = fields[j];
-      key = index[f];
-      rec = records[i];
-      val = rec && rec[f];
+      fname = fields[j];
+      val = rec && rec[fname];
       if (val == 'none') {
-        val = 'transparent'; // canvas equivalent
+        val = 'transparent'; // canvas equivalent of CSS 'none'
       }
-      style[key] = val;
+      // convert svg property name to mapshaper style equivalent
+      style[styleIndex[fname]] = val;
     }
 
     // TODO: make sure canvas rendering matches svg output
     if (('strokeWidth' in style) && !style.strokeColor) {
-      style.strokeColor = 'black';
+      style.strokeColor = 'transparent';
     } else if (!('strokeWidth' in style) && style.strokeColor) {
       style.strokeWidth = 1;
     }
@@ -4433,6 +4446,19 @@ internal.getSvgDisplayStyle = function(lyr) {
   return {styler: styler, type: 'styled'};
 };
 
+// check if layer should be displayed with styles
+internal.layerHasSvgDisplayStyle = function(lyr) {
+  var fields = internal.getSvgStyleFields(lyr);
+  if (lyr.geometry_type == 'point') {
+    return fields.indexOf('r') > -1; // require 'r' field for point symbols
+  }
+  return utils.difference(fields, ['opacity', 'class']).length > 0;
+};
+
+internal.getSvgStyleFields = function(lyr) {
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  return internal.svg.findPropertiesBySymbolType(fields, lyr.geometry_type);
+};
 
 
 
@@ -4682,6 +4708,8 @@ function Console(model) {
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
 
+  window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
+
   gui.onClick(content, function(e) {
     var targ = El(e.target);
     if (gui.getInputElement() || targ.hasClass('console-message')) {
@@ -4706,6 +4734,7 @@ function Console(model) {
 
   function saveHistory(history) {
     try {
+      history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
       localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
     } catch(e) {}
   }
