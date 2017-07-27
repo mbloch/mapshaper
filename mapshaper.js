@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.35';
+var VERSION = '0.4.36';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -13353,8 +13353,8 @@ SVG.propertyTypes = {
   class: 'classname',
   opacity: 'number',
   r: 'number',
-  dx: 'number',
-  dy: 'number',
+  dx: 'measure',
+  dy: 'measure',
   fill: 'color',
   stroke: 'color',
   'stroke-width': 'number'
@@ -13364,18 +13364,20 @@ SVG.canvasEquivalents = {
   'stroke-width': 'strokeWidth'
 };
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
-SVG.propertiesBySymbolType = {
-  polygon: SVG.commonProperties.concat('fill'),
+SVG.propertiesBySymbolGeom = {
+  polygon: SVG.commonProperties.concat(['fill']),
   polyline: SVG.commonProperties,
-  point: SVG.commonProperties.concat(['fill', 'r']),
-  label: SVG.commonProperties.concat(['fill', 'dx', 'dy', 'font-family', 'font-size', 'text-anchor'])
+  point: SVG.commonProperties.concat(['fill']) // 'r' is applied elsewhere (importPoint())
 };
 
-SVG.findPropertiesBySymbolType = function(fields, type) {
-  var svgNames = SVG.propertiesBySymbolType[type] || [];
+SVG.findPropertiesBySymbolGeom = function(fields, type) {
+  var svgNames = SVG.propertiesBySymbolGeom[type] || [];
+  if (type == 'point' && fields.indexOf('label-text') > -1) { // kludge for label properties
+    svgNames.push('font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style');
+  }
   return fields.filter(function(name) {
     return svgNames.indexOf(name) > -1;
   });
@@ -13420,7 +13422,9 @@ internal.parseSvgValue = function(name, strVal, fields) {
   } else if (type == 'color') {
     val = internal.isSvgColor(strVal) ? strVal : null;
   } else if (type == 'classname') {
-    val = internal.isSvgClassName(val) ? strVal : null;
+    val = internal.isSvgClassName(strVal) ? strVal : null;
+  } else if (type == 'measure') { // SVG/CSS length (e.g. 12px, 1em, 4)
+    val = internal.isSvgMeasure(strVal) ? strVal : null;
   } else {
     // unknown type -- assume string is an expression if JS syntax chars are found
     // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
@@ -13435,6 +13439,10 @@ internal.isSvgClassName = function(str) {
 
 internal.isSvgNumber = function(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+$/.test(o);
+};
+
+internal.isSvgMeasure = function(o) {
+  return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+[a-z]*$/.test(o);
 };
 
 internal.isSvgColor = function(str) {
@@ -13513,13 +13521,9 @@ SVG.stringifyProperties = function(o) {
   }, '');
 };
 
-
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var symbolType = GeoJSON.translateGeoJSONType(geomType);
-  if (symbolType == 'point' && ('label-text' in rec)) {
-    symbolType = 'label';
-  }
-  var fields = SVG.findPropertiesBySymbolType(Object.keys(rec), symbolType);
+  var fields = SVG.findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
     SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
   }
@@ -13527,9 +13531,8 @@ SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
 
 SVG.setAttribute = function(obj, k, v) {
   var children, child;
-  if ((k == 'r' || k == 'class') && obj.children) {
-    // 'r' is a geometry attribute and can't be applied to a 'g' container
-    // 'class' may refer to a CSS class with a value for 'r'
+  if ((k == 'class') && obj.children) {
+    // 'class' may refer to a CSS class with a value for 'r' which is applied to the <circle> child
     children = obj.children;
     for (var i=0; i<children.length; i++) {
       child = children[i];
@@ -13542,10 +13545,15 @@ SVG.setAttribute = function(obj, k, v) {
   }
 };
 
-SVG.importMultiGeometry = function(coords, rec, importer) {
-  var children = [];
+SVG.importMultiPoint = function(coords, rec) {
+  var children = [], p;
   for (var i=0; i<coords.length; i++) {
-    children.push(importer(coords[i], rec));
+    p = SVG.importPoint(coords[i], rec);
+    if (p.children) {
+      children = children.concat(p.children);
+    } else {
+      children.push(p);
+    }
   }
   return children.length > 0 ? {tag: 'g', children: children} : null;
 };
@@ -13579,6 +13587,8 @@ SVG.importLabel = function(p, rec) {
     x: p[0],
     y: -p[1]
   };
+  if (rec.dx) properties.dx = rec.dx;
+  if (rec.dy) properties.dy = rec.dy;
   return {
     tag: 'text',
     value: rec['label-text'] || '',
@@ -13586,17 +13596,27 @@ SVG.importLabel = function(p, rec) {
   };
 };
 
-SVG.importPoint = function(p, rec) {
-  if (rec && ('label-text' in rec)) {
-    return SVG.importLabel(p, rec);
-  }
-  return {
+SVG.importPoint = function(coords, d) {
+  var rec = d || {};
+  var isLabel = 'label-text' in rec;
+  var children = [];
+  var p;
+  if (rec.r || !isLabel) { // if not a label, create a circle even without a radius
+    p = {
     tag: 'circle',
     properties: {
-      cx: p[0],
-      cy: -p[1]
+      cx: coords[0],
+      cy: -coords[1]
+    }};
+    if (rec.r) {
+      p.properties.r = rec.r;
     }
-  };
+    children.push(p);
+  }
+  if (isLabel) {
+    children.push(SVG.importLabel(coords, rec));
+  }
+  return children.length > 1 ? {tag: 'g', children: children} : children[0];
 };
 
 SVG.importPolygon = function(coords) {
@@ -13614,7 +13634,7 @@ SVG.geojsonImporters = {
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
   MultiPoint: function(coords, rec) {
-    return SVG.importMultiGeometry(coords, rec, SVG.importPoint);
+    return SVG.importMultiPoint(coords, rec);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);
@@ -19219,11 +19239,17 @@ internal.getOptionParser = function() {
     .option("dy", {
       describe: 'y offset of label (default is baseline-aligned)'
     })
-    .option("font-family", {
-      describe: 'font family of label text (default is sans-serif)'
-    })
     .option("font-size", {
       describe: 'size of label text (default is 12)'
+    })
+    .option("font-family", {
+      describe: 'CSS font family of label (default is sans-serif)'
+    })
+    .option("font-weight", {
+      describe: 'CSS font weight property of label (e.g. bold, 700)'
+    })
+    .option("font-style", {
+      describe: 'CSS font style property of label (e.g. italic)'
     })
     .option("target", targetOpt);
 
