@@ -1,6 +1,10 @@
+v0.4.36
+* Setting both r= and label-text= options of -svg-style creates labels with anchor points.
+* Added font-weight= and font-style= options to -svg-style command.
+
 v0.4.35
-* Add SVG label output, with new options to -svg-style command.
-* Add string-fields= option as an more convenient alternative to field-types= in the -i and -join commands.
+* Added SVG label output, with new options to -svg-style command.
+* Added string-fields= option as an more convenient alternative to field-types= in the -i and -join commands.
 
 v0.4.34
 * Fixed an incompatibility with Node versions < 3.0.
