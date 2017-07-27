@@ -19,15 +19,17 @@ SVG.canvasEquivalents = {
 SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
-SVG.propertiesBySymbolType = {
-  polygon: SVG.commonProperties.concat('fill'),
+SVG.propertiesBySymbolGeom = {
+  polygon: SVG.commonProperties.concat(['fill']),
   polyline: SVG.commonProperties,
-  point: SVG.commonProperties.concat(['fill', 'r']),
-  label: SVG.commonProperties.concat(['fill', 'font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style']) // dx, dy applied separately
+  point: SVG.commonProperties.concat(['fill']) // 'r' is applied elsewhere (importPoint())
 };
 
-SVG.findPropertiesBySymbolType = function(fields, type) {
-  var svgNames = SVG.propertiesBySymbolType[type] || [];
+SVG.findPropertiesBySymbolGeom = function(fields, type) {
+  var svgNames = SVG.propertiesBySymbolGeom[type] || [];
+  if (type == 'point' && fields.indexOf('label-text') > -1) { // kludge for label properties
+    svgNames.push('font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style');
+  }
   return fields.filter(function(name) {
     return svgNames.indexOf(name) > -1;
   });

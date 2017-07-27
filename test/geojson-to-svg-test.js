@@ -32,7 +32,8 @@ describe('geojson-to-svg.js', function () {
           properties: {cx: 1, cy: 2}
         }]
       }];
-      assert.deepEqual(SVG.importGeoJSONFeatures([geo], {r: 2}), target);
+      var output = SVG.importGeoJSONFeatures([geo]);
+      assert.deepEqual(output, target);
     })
 
     it('single point feature', function() {
@@ -107,7 +108,37 @@ describe('geojson-to-svg.js', function () {
       }];
       var output = SVG.importGeoJSONFeatures([geo]);
       assert.deepEqual(output, target);
+    });
 
+
+    it('label with anchor point and label text', function() {
+      var geo = {
+        type: "Feature",
+        properties: {
+          'label-text': 'Milwaukee',
+          'text-anchor': 'start',
+          dx: 5,
+          r: 2
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [0, -1]
+        }
+      };
+      var target = [{
+        tag: 'g',
+        children: [{
+          tag: 'circle',
+          properties: {cx: 0, cy: 1, r: 2}
+        },{
+          tag: 'text',
+          value: 'Milwaukee',
+          properties: {x: 0, y: 1, dx: 5}
+        }],
+        properties: {'text-anchor': 'start'}
+      }];
+      var output = SVG.importGeoJSONFeatures([geo]);
+      assert.deepEqual(output, target);
     });
 
     it('feature collection with ids', function() {

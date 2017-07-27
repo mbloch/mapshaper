@@ -68,13 +68,9 @@ SVG.stringifyProperties = function(o) {
   }, '');
 };
 
-
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var symbolType = GeoJSON.translateGeoJSONType(geomType);
-  if (symbolType == 'point' && ('label-text' in rec)) {
-    symbolType = 'label';
-  }
-  var fields = SVG.findPropertiesBySymbolType(Object.keys(rec), symbolType);
+  var fields = SVG.findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
     SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
   }
@@ -82,9 +78,8 @@ SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
 
 SVG.setAttribute = function(obj, k, v) {
   var children, child;
-  if ((k == 'r' || k == 'class') && obj.children) {
-    // 'r' is a geometry attribute and can't be applied to a 'g' container
-    // 'class' may refer to a CSS class with a value for 'r'
+  if ((k == 'class') && obj.children) {
+    // 'class' may refer to a CSS class with a value for 'r' which is applied to the <circle> child
     children = obj.children;
     for (var i=0; i<children.length; i++) {
       child = children[i];
@@ -97,10 +92,15 @@ SVG.setAttribute = function(obj, k, v) {
   }
 };
 
-SVG.importMultiGeometry = function(coords, rec, importer) {
-  var children = [];
+SVG.importMultiPoint = function(coords, rec) {
+  var children = [], p;
   for (var i=0; i<coords.length; i++) {
-    children.push(importer(coords[i], rec));
+    p = SVG.importPoint(coords[i], rec);
+    if (p.children) {
+      children = children.concat(p.children);
+    } else {
+      children.push(p);
+    }
   }
   return children.length > 0 ? {tag: 'g', children: children} : null;
 };
@@ -136,7 +136,6 @@ SVG.importLabel = function(p, rec) {
   };
   if (rec.dx) properties.dx = rec.dx;
   if (rec.dy) properties.dy = rec.dy;
-
   return {
     tag: 'text',
     value: rec['label-text'] || '',
@@ -144,17 +143,27 @@ SVG.importLabel = function(p, rec) {
   };
 };
 
-SVG.importPoint = function(p, rec) {
-  if (rec && ('label-text' in rec)) {
-    return SVG.importLabel(p, rec);
-  }
-  return {
+SVG.importPoint = function(coords, d) {
+  var rec = d || {};
+  var isLabel = 'label-text' in rec;
+  var children = [];
+  var p;
+  if (rec.r || !isLabel) { // if not a label, create a circle even without a radius
+    p = {
     tag: 'circle',
     properties: {
-      cx: p[0],
-      cy: -p[1]
+      cx: coords[0],
+      cy: -coords[1]
+    }};
+    if (rec.r) {
+      p.properties.r = rec.r;
     }
-  };
+    children.push(p);
+  }
+  if (isLabel) {
+    children.push(SVG.importLabel(coords, rec));
+  }
+  return children.length > 1 ? {tag: 'g', children: children} : children[0];
 };
 
 SVG.importPolygon = function(coords) {
@@ -172,7 +181,7 @@ SVG.geojsonImporters = {
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
   MultiPoint: function(coords, rec) {
-    return SVG.importMultiGeometry(coords, rec, SVG.importPoint);
+    return SVG.importMultiPoint(coords, rec);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);
