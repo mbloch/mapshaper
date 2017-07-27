@@ -13357,6 +13357,7 @@ SVG.propertyTypes = {
   dy: 'measure',
   fill: 'color',
   stroke: 'color',
+  'line-height': 'measure',
   'stroke-width': 'number'
 };
 
@@ -13364,7 +13365,7 @@ SVG.canvasEquivalents = {
   'stroke-width': 'strokeWidth'
 };
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
 SVG.propertiesBySymbolGeom = {
@@ -13481,15 +13482,20 @@ SVG.importGeoJSONFeatures = function(features) {
 
 SVG.stringify = function(obj) {
   var svg = '<' + obj.tag;
+  // w.s. is significant in text elements
+  var joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
   if (obj.properties) {
     svg += SVG.stringifyProperties(obj.properties);
   }
-  if (obj.children) {
-    svg += '>\n';
-    svg += obj.children.map(SVG.stringify).join('\n');
-    svg += '\n</' + obj.tag + '>';
-  } else if (obj.value) {
-    svg += '>' + obj.value + '</' + obj.tag + '>';
+  if (obj.children || obj.value) {
+    svg += '>' + joinStr;
+    if (obj.value) {
+      svg += obj.value;
+    }
+    if (obj.children) {
+      svg += obj.children.map(SVG.stringify).join(joinStr);
+    }
+    svg += joinStr + '</' + obj.tag + '>';
   } else {
     svg += '/>';
   }
@@ -13549,7 +13555,7 @@ SVG.importMultiPoint = function(coords, rec) {
   var children = [], p;
   for (var i=0; i<coords.length; i++) {
     p = SVG.importPoint(coords[i], rec);
-    if (p.children) {
+    if (p.tag == 'g' && p.children) {
       children = children.concat(p.children);
     } else {
       children.push(p);
@@ -13583,17 +13589,38 @@ SVG.importLineString = function(coords) {
 };
 
 SVG.importLabel = function(p, rec) {
+  var line = rec['label-text'] || '';
+  var morelines, obj;
   var properties = {
     x: p[0],
     y: -p[1]
   };
   if (rec.dx) properties.dx = rec.dx;
   if (rec.dy) properties.dy = rec.dy;
-  return {
+  if (line.indexOf('\n') > -1) {
+    morelines = line.split('\n');
+    line = morelines.shift();
+  }
+  obj = {
     tag: 'text',
-    value: rec['label-text'] || '',
+    value: line,
     properties: properties
   };
+  if (morelines) {
+    // multiline label
+    obj.children = [];
+    morelines.forEach(function(line) {
+      obj.children.push({
+        tag: 'tspan',
+        value: line,
+        properties: {
+          x: p[0],
+          dy: rec['line-height'] || '1.1em'
+        }
+      });
+    });
+  }
+  return obj;
 };
 
 SVG.importPoint = function(coords, d) {
@@ -19251,7 +19278,10 @@ internal.getOptionParser = function() {
     .option("font-style", {
       describe: 'CSS font style property of label (e.g. italic)'
     })
-    .option("target", targetOpt);
+     .option("line-height", {
+      describe: 'line spacing of multi-line labels (default is 1.1em)'
+    })
+   .option("target", targetOpt);
 
   parser.command("target")
     .describe("set active layer")
