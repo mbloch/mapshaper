@@ -9,6 +9,7 @@ SVG.propertyTypes = {
   dy: 'measure',
   fill: 'color',
   stroke: 'color',
+  'line-height': 'measure',
   'stroke-width': 'number'
 };
 
@@ -16,7 +17,7 @@ SVG.canvasEquivalents = {
   'stroke-width': 'strokeWidth'
 };
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
 SVG.propertiesBySymbolGeom = {

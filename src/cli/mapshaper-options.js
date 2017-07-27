@@ -753,7 +753,10 @@ internal.getOptionParser = function() {
     .option("font-style", {
       describe: 'CSS font style property of label (e.g. italic)'
     })
-    .option("target", targetOpt);
+     .option("line-height", {
+      describe: 'line spacing of multi-line labels (default is 1.1em)'
+    })
+   .option("target", targetOpt);
 
   parser.command("target")
     .describe("set active layer")

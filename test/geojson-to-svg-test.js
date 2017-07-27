@@ -80,6 +80,43 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(output, target);
     })
 
+    it('multiline label', function() {
+      var geo = {
+        type: "Feature",
+        properties: {'label-text': 'New\nYork\nCity', 'line-height': '1.3em'},
+        geometry: {
+          type: "MultiPoint",
+          coordinates: [[0, -1]]
+        }
+      };
+      var target = [{
+        tag: 'g',
+        children: [{
+          tag: 'text',
+          value: 'New',
+          properties: {x: 0, y: 1},
+          children: [{
+            tag: 'tspan',
+            value: 'York',
+            properties: {
+              x: 0,
+              dy: '1.3em',
+            }
+          }, {
+            tag: 'tspan',
+            value: 'City',
+            properties: {
+              x: 0,
+              dy: '1.3em',
+            }
+          }]
+        }]
+      }];
+      var output = SVG.importGeoJSONFeatures([geo]);
+      assert.deepEqual(output, target);
+    })
+
+
     it('label with dx, dy and font style properties', function() {
       var geo = {
         type: "Feature",
