@@ -1,3 +1,7 @@
+v0.4.38
+* Added -svg-style letter-spacing= option.
+* Started attaching SVG symbol classes to top-level symbol element (this only affects multipoint symbols).
+
 v0.4.37
 * Added support for multiline labels. Lines are separated by newline characters (`'\n'`) in the label text.
 * Added -svg-style line-height= option to control the line height of multiline labels.
