@@ -285,6 +285,10 @@ div.error-box > div {
 	display: none;
 }
 
+#import-options .info-box {
+	margin-top: 18px;
+}
+
 .option-menu .advanced-options {
 	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
@@ -319,7 +323,7 @@ div.error-box > div {
 .info-box {
 	word-wrap: break-word;
 	text-align: left;
-	margin-top: 15px;
+	margin-top: 12px;
 	background-color: #fff;
 	padding: 11px 15px 9px 15px;
 	vertical-align: top;
