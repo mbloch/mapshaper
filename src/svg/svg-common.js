@@ -10,6 +10,7 @@ SVG.propertyTypes = {
   fill: 'color',
   stroke: 'color',
   'line-height': 'measure',
+  'letter-spacing': 'measure',
   'stroke-width': 'number'
 };
 
@@ -17,7 +18,7 @@ SVG.canvasEquivalents = {
   'stroke-width': 'strokeWidth'
 };
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
 SVG.propertiesBySymbolGeom = {
@@ -29,7 +30,7 @@ SVG.propertiesBySymbolGeom = {
 SVG.findPropertiesBySymbolGeom = function(fields, type) {
   var svgNames = SVG.propertiesBySymbolGeom[type] || [];
   if (type == 'point' && fields.indexOf('label-text') > -1) { // kludge for label properties
-    svgNames.push('font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style');
+    svgNames.push('font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style', 'letter-spacing');
   }
   return fields.filter(function(name) {
     return svgNames.indexOf(name) > -1;

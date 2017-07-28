@@ -736,22 +736,25 @@ internal.getOptionParser = function() {
       describe: 'label alignment; one of: start, end, middle (default)'
     })
     .option("dx", {
-      describe: 'x offset of label (default is 0)'
+      describe: 'x offset of labels (default is 0)'
     })
     .option("dy", {
-      describe: 'y offset of label (default is baseline-aligned)'
+      describe: 'y offset of labels (default is baseline-aligned)'
     })
     .option("font-size", {
       describe: 'size of label text (default is 12)'
     })
     .option("font-family", {
-      describe: 'CSS font family of label (default is sans-serif)'
+      describe: 'CSS font family of labels (default is sans-serif)'
     })
     .option("font-weight", {
-      describe: 'CSS font weight property of label (e.g. bold, 700)'
+      describe: 'CSS font weight property of labels (e.g. bold, 700)'
     })
     .option("font-style", {
-      describe: 'CSS font style property of label (e.g. italic)'
+      describe: 'CSS font style property of labels (e.g. italic)'
+    })
+     .option("letter-spacing", {
+      describe: 'CSS letter-spacing property of labels'
     })
      .option("line-height", {
       describe: 'line spacing of multi-line labels (default is 1.1em)'
