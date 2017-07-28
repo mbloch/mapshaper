@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.37';
+var VERSION = '0.4.38';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -13358,6 +13358,7 @@ SVG.propertyTypes = {
   fill: 'color',
   stroke: 'color',
   'line-height': 'measure',
+  'letter-spacing': 'measure',
   'stroke-width': 'number'
 };
 
@@ -13365,22 +13366,21 @@ SVG.canvasEquivalents = {
   'stroke-width': 'strokeWidth'
 };
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
-SVG.propertiesBySymbolGeom = {
-  polygon: SVG.commonProperties.concat(['fill']),
-  polyline: SVG.commonProperties,
-  point: SVG.commonProperties.concat(['fill']) // 'r' is applied elsewhere (importPoint())
+SVG.propertiesBySymbolType = {
+  polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),
+  polyline: utils.arrayToIndex(SVG.commonProperties),
+  point: utils.arrayToIndex(SVG.commonProperties.concat('fill', 'r')),
+  label: utils.arrayToIndex(SVG.commonProperties.concat(
+    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing'.split(',')))
 };
 
 SVG.findPropertiesBySymbolGeom = function(fields, type) {
-  var svgNames = SVG.propertiesBySymbolGeom[type] || [];
-  if (type == 'point' && fields.indexOf('label-text') > -1) { // kludge for label properties
-    svgNames.push('font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style');
-  }
+  var index = SVG.propertiesBySymbolType[type] || {};
   return fields.filter(function(name) {
-    return svgNames.indexOf(name) > -1;
+    return name in index;
   });
 };
 
@@ -13529,6 +13529,9 @@ SVG.stringifyProperties = function(o) {
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var symbolType = GeoJSON.translateGeoJSONType(geomType);
+  if (symbolType == 'point' && ('label-text' in rec)) {
+    symbolType = 'label';
+  }
   var fields = SVG.findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
     SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
@@ -13536,15 +13539,8 @@ SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
 };
 
 SVG.setAttribute = function(obj, k, v) {
-  var children, child;
-  if ((k == 'class') && obj.children) {
-    // 'class' may refer to a CSS class with a value for 'r' which is applied to the <circle> child
-    children = obj.children;
-    for (var i=0; i<children.length; i++) {
-      child = children[i];
-      if (!child.properties) child.properties = {};
-      child.properties[k] = v;
-    }
+  if (k == 'r') {
+    // assigned by importPoint()
   } else {
     if (!obj.properties) obj.properties = {};
     obj.properties[k] = v;
@@ -19261,22 +19257,25 @@ internal.getOptionParser = function() {
       describe: 'label alignment; one of: start, end, middle (default)'
     })
     .option("dx", {
-      describe: 'x offset of label (default is 0)'
+      describe: 'x offset of labels (default is 0)'
     })
     .option("dy", {
-      describe: 'y offset of label (default is baseline-aligned)'
+      describe: 'y offset of labels (default is baseline-aligned)'
     })
     .option("font-size", {
       describe: 'size of label text (default is 12)'
     })
     .option("font-family", {
-      describe: 'CSS font family of label (default is sans-serif)'
+      describe: 'CSS font family of labels (default is sans-serif)'
     })
     .option("font-weight", {
-      describe: 'CSS font weight property of label (e.g. bold, 700)'
+      describe: 'CSS font weight property of labels (e.g. bold, 700)'
     })
     .option("font-style", {
-      describe: 'CSS font style property of label (e.g. italic)'
+      describe: 'CSS font style property of labels (e.g. italic)'
+    })
+     .option("letter-spacing", {
+      describe: 'CSS letter-spacing property of labels'
     })
      .option("line-height", {
       describe: 'line spacing of multi-line labels (default is 1.1em)'
