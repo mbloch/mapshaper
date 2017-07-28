@@ -1,3 +1,6 @@
+v0.4.39
+* Added support for EPSG codes in the -proj command (using Proj.4 syntax, for example:  -proj +init=epsg:2784). Supported definitions: epsg, esri, nad83, nad27.
+
 v0.4.38
 * Added -svg-style letter-spacing= option.
 * Started attaching SVG symbol classes to top-level symbol element (this only affects multipoint symbols).

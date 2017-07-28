@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.4.38",
+	"version": "0.4.39",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -23,7 +23,7 @@
 	},
 	"scripts": {
 		"test": "mocha --check-leaks -R dot",
-		"pretest": "./build all",
+		"pretest": "./build",
 		"prepublish": "npm test",
 		"postpublish": "./release"
 	},
@@ -35,7 +35,7 @@
 		"rbush": "~1.4.2",
 		"rw": "~1.3.2",
 		"d3-dsv": "~1.0.3",
-		"mproj": "0.0.11"
+		"mproj": "0.0.13"
 	},
 	"devDependencies": {
 		"shell-quote": "~1.4.1",

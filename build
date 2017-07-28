@@ -2,7 +2,6 @@
 
 var version = require('./package.json').version;
 var follow = process.argv.indexOf('-f') > -1;
-var buildAll = process.argv.indexOf('all') > -1;
 var requiredModules = [
     'mproj',
     'buffer',
@@ -22,14 +21,13 @@ require("catty")({follow: follow})
   .prepend("var VERSION = '" + version + "';")
   .cat("src/mapshaper.js", onCat);
 
-if (buildAll) {
-  require('browserify')()
-    .require(requiredModules)
-    .bundle(function(err, buf) {
-      if (err) throw err;
-      write('./www/modules.js', buf);
-    });
-}
+
+require('browserify')()
+  .require(requiredModules)
+  .bundle(function(err, buf) {
+    if (err) throw err;
+    write('./www/modules.js', buf);
+  });
 
 
 function onCat(err, js) {

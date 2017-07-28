@@ -208,18 +208,27 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
-      targets.forEach(function(targ) {
-        var srcInfo, destInfo;
-        if (opts.from) {
-          srcInfo = internal.getProjectionInfo(opts.from, catalog);
-          if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
-          internal.setDatasetProjection(targ.dataset, srcInfo);
+      internal.initProjLibrary(opts, function() {
+        var err = null;
+        try {
+          targets.forEach(function(targ) {
+            var srcInfo, destInfo;
+            if (opts.from) {
+              srcInfo = internal.getProjectionInfo(opts.from, catalog);
+              if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
+              internal.setDatasetProjection(targ.dataset, srcInfo);
+            }
+            if (opts.match || opts.projection) {
+              destInfo = internal.getProjectionInfo(opts.match || opts.projection, catalog);
+              api.proj(targ.dataset, destInfo, opts);
+            }
+          });
+        } catch(e) {
+          err = e;
         }
-        if (opts.match || opts.projection) {
-          destInfo = internal.getProjectionInfo(opts.match || opts.projection, catalog);
-          api.proj(targ.dataset, destInfo, opts);
-        }
+        done(err);
       });
+      return; // async command
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);

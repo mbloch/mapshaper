@@ -36,11 +36,43 @@ function ImportFileProxy(model) {
       layers: dataset.layers.map(internal.copyLayer)
     }, dataset);
   };
+}
 
-  /*
-  api.importDataTable = function(src, opts) {
-    var dataset = find(src);
-    return dataset.layers[0].data;
-  };
-  */
+// load Proj.4 CRS definition files dynamically
+//
+internal.initProjLibrary = function(opts, done) {
+  var mproj = require('mproj');
+  var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.projection || ''].join(' '));
+  // skip loaded libs
+  libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
+  loadProjLibs(libs, done);
+};
+
+function loadProjLibs(libs, done) {
+  var mproj = require('mproj');
+  var i = 0;
+  next();
+
+  function next() {
+    var libName = libs[i];
+    var content, req;
+    if (!libName) return done();
+    req = new XMLHttpRequest();
+    req.addEventListener('load', function(e) {
+      if (req.status == 200) {
+        content = req.response;
+      }
+    });
+    req.addEventListener('loadend', function() {
+      if (content) {
+        mproj.internal.mproj_insert_libcache(libName, content);
+      }
+      // TODO: consider stopping with an error message if no content was loaded
+      // (currently, a less specific error will occur when mapshaper tries to use the library)
+      next();
+    });
+    req.open('GET', 'assets/' + libName);
+    req.send();
+    i++;
+  }
 }

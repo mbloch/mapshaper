@@ -8,6 +8,15 @@ internal.projectionIndex = {
   albersusa: AlbersNYT
 };
 
+// This stub is replaced when loaded in GUI, which may need to load some files
+internal.initProjLibrary = function(opts, done) {done();};
+
+// Find Proj.4 definition file names in strings like "+init=epsg:3000"
+// (Used by GUI, defined here for testing)
+internal.findProjLibs = function(str) {
+  return utils.uniq(str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/g) || []);
+};
+
 internal.getProjInfo = function(dataset) {
   var P, info;
   try {

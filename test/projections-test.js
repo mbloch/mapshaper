@@ -36,6 +36,17 @@ function almostEqual(a, b, e) {
 }
 
 describe('mapshaper-projections.js', function() {
+
+  describe('findProjLibs()', function() {
+    it ('tests', function() {
+      assert.deepEqual(api.internal.findProjLibs('+init=epsg:4300 +init=esri:10099'), ['epsg', 'esri']);
+      assert.deepEqual(api.internal.findProjLibs('+proj=merc'), []);
+      assert.deepEqual(api.internal.findProjLibs('+init=epsg:4300 +init=dummy:10099 +init=epsg:1000'), ['epsg']);
+    });
+  });
+
+
+
   describe('roundtrip tests', function () {
     roundtrip('albersusa', [-96, 40]);
     roundtrip('+proj=robin', [10, 0]);

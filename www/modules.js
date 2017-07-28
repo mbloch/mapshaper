@@ -10279,42 +10279,58 @@ function find_units(id) {
 
 
 
-var cache = {};
+var initcache = {};
 
 function pj_search_initcache(key) {
-  return cache[key.toLowerCase()] || null;
+  return initcache[key.toLowerCase()] || null;
 }
 
 function pj_insert_initcache(key, defn) {
-  cache[key.toLowerCase()] = defn;
+  initcache[key.toLowerCase()] = defn;
 }
 
 
 // Replacement functions for Proj.4 pj_open_lib() (see pj_open_lib.c)
 // and get_opt() (see pj_init.c)
 
+var libcache = {};
+
+// add a definition library without reading from a file (for use by web app)
+function mproj_insert_libcache(libId, contents) {
+  libcache[libId] = contents;
+}
+
+function mproj_search_libcache(libId) {
+  return libcache[libId] || null;
+}
+
 // Return opts from a section of a config file,
 //   or null if not found or unable to read file
 function pj_read_init_opts(initStr) {
   var parts = initStr.split(':'),
-      file = parts[0],
-      id = parts[1],
-      path, o;
-  if (!id) {
+      libId = parts[0],
+      crsId = parts[1],
+      libStr, libPath, path, o;
+  if (!crsId) {
     error(-3);
   }
-  try {
-    path = require('path');
-    // assumes compiled library is in the dist/ directory
-    o = pj_read_opts(path.join(path.dirname(__filename), '../nad', file), id);
-  } catch(e) {}
-  return o || null;
+  libStr = mproj_search_libcache(libId);
+  if (!libStr) {
+    try {
+      // path to library assumes mproj script is in the dist/ directory
+      // read error is handled elsewhere
+      path = require('path');
+      libPath = path.join(path.dirname(__filename), '../nad', libId);
+      libStr = require('fs').readFileSync(libPath, 'utf8');
+      libcache[libId] = libStr;
+    } catch(e) {}
+  }
+  return libStr ? pj_find_opts(libStr, crsId) : null;
 }
 
-// Read projections params from a file and return in a standard format
-function pj_read_opts(path, id) {
-  var contents = require('fs').readFileSync(path, 'utf8'),
-      opts = '', comment = '',
+// Find params in contents of an init file
+function pj_find_opts(contents, id) {
+  var opts = '', comment = '',
       idx, idx2;
   // get requested parameters
   idx = contents.indexOf('<' + id + '>');
@@ -10458,16 +10474,16 @@ function get_defaults(params, name) {
 }
 
 function get_init(params, initStr) {
-  var defn = pj_search_initcache(initStr),
-      parts, opts;
-  if (defn) return defn;
-  opts = pj_read_init_opts(initStr);
-  if (!opts) {
+  var defn = pj_search_initcache(initStr);
+  if (!defn) {
+    defn = pj_read_init_opts(initStr);
+    pj_insert_initcache(initStr, defn);
+  }
+  if (!defn) {
     error(-2);
   }
-  pj_insert_initcache(initStr, defn);
   // merge init params
-  get_opt(params, opts.opts);
+  get_opt(params, defn.opts);
 }
 
 // Merge params from a proj4 string
@@ -20904,7 +20920,9 @@ api.internal = {
   wkt_from_proj4: wkt_from_proj4,
   wkt_make_projcs: wkt_make_projcs,
   wkt_get_geogcs_name: wkt_get_geogcs_name,
-  wkt_stringify: wkt_stringify
+  wkt_stringify: wkt_stringify,
+  mproj_insert_libcache: mproj_insert_libcache,
+  mproj_search_libcache: mproj_search_libcache
 };
 
 if (typeof define == 'function' && define.amd) {
