@@ -47,13 +47,13 @@ describe('geojson-to-svg.js', function () {
       };
       var target = [{
         tag: 'g',
-        properties: {opacity: "0.5"},
+        properties: {opacity: "0.5", 'class': "dot pinkdot"}, // class attached container, not glyph
         children: [{
           tag: 'circle',
-          properties: {cx: 0, cy: 1, r: 2, 'class': "dot pinkdot"} // class attached to glyph, not container
+          properties: {cx: 0, cy: 1, r: 2}
         }, {
           tag: 'circle',
-          properties: {cx: 1, cy: 2, r: 2, 'class': "dot pinkdot"}
+          properties: {cx: 1, cy: 2, r: 2}
         }]
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {r: 2}), target);

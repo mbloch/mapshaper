@@ -75,6 +75,9 @@ SVG.stringifyProperties = function(o) {
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var symbolType = GeoJSON.translateGeoJSONType(geomType);
+  if (symbolType == 'point' && ('label-text' in rec)) {
+    symbolType = 'label';
+  }
   var fields = SVG.findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
     SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
@@ -82,15 +85,8 @@ SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
 };
 
 SVG.setAttribute = function(obj, k, v) {
-  var children, child;
-  if ((k == 'class') && obj.children) {
-    // 'class' may refer to a CSS class with a value for 'r' which is applied to the <circle> child
-    children = obj.children;
-    for (var i=0; i<children.length; i++) {
-      child = children[i];
-      if (!child.properties) child.properties = {};
-      child.properties[k] = v;
-    }
+  if (k == 'r') {
+    // assigned by importPoint()
   } else {
     if (!obj.properties) obj.properties = {};
     obj.properties[k] = v;
