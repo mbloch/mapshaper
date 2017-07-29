@@ -1,4 +1,4 @@
-/* @requires mapshaper-feature-proxy */
+/* @requires mapshaper-feature-proxy, mapshaper-expression-utils */
 
 // Compiled expression returns a value
 internal.compileValueExpression = function(exp, lyr, arcs, opts) {
@@ -105,6 +105,7 @@ internal.nullifyUnsetProperties = function(vars, obj) {
 
 internal.getExpressionContext = function(lyr, mixins) {
   var env = internal.getBaseContext();
+  utils.extend(env, internal.expressionUtils); // mix in utils
   if (lyr.data) {
     // default to null values when a data field is missing
     internal.nullifyUnsetProperties(lyr.data.getFields(), env);
