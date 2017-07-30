@@ -55,6 +55,8 @@ function ShpReader(src) {
     if (!shape && recordOffs + 12 <= fileSize) {
       // Very rarely, in-the-wild .shp files may contain junk bytes between
       // records; it may be possible to scan past the junk to find the next record.
+      // TODO: Probably better to use the .shx file to index records, rather
+      // than trying to read consecutive records from the .shp file.
       shape = huntForNextShape(recordOffs + 4, i);
     }
     if (shape) {
@@ -134,7 +136,7 @@ function ShpReader(src) {
   function huntForNextShape(start, id) {
     var offset = start,
         shape = null,
-        bin, recordId, recordType;
+        bin, recordId, recordType, count;
     while (offset + 12 <= fileSize) {
       bin = file.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
@@ -146,7 +148,9 @@ function ShpReader(src) {
       }
       offset += 4; // try next integer position
     }
-    skippedBytes += shape ? offset - start : fileSize - start;
+    count = shape ? offset - start : fileSize - start;
+    debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
+    skippedBytes += count;
     return shape;
   }
 }
