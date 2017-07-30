@@ -35,7 +35,7 @@ internal.formatSamples = function(str) {
 // European").
 internal.looksLikeWin1252 = function(samples) {
   var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–', // common extended
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±', // common extended
       str = internal.decodeSamples('win1252', samples),
       asciiScore = internal.getCharScore(str, ascii),
       totalScore = internal.getCharScore(str, extended + ascii);

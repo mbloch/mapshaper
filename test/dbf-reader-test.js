@@ -132,6 +132,10 @@ describe('dbf-reader.js', function () {
 
   describe('#importRecords(), detect encoding', function () {
 
+    it('Fix: latin1 not detected because of ± character', function() {
+      assert.equal(importRecords("dbf/ne_10m_time_zones.dbf")[66].time_zone, "UTC±00:00");
+    })
+
     it("latin1", function() {
       assert.equal(importRecords("dbf/latin1.dbf")[0].NAME, "Peçeña México");
     })
