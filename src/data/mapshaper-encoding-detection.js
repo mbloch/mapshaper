@@ -35,7 +35,7 @@ internal.formatSamples = function(str) {
 // European").
 internal.looksLikeWin1252 = function(samples) {
   var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±', // common extended
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘', // common extended
       str = internal.decodeSamples('win1252', samples),
       asciiScore = internal.getCharScore(str, ascii),
       totalScore = internal.getCharScore(str, extended + ascii);
@@ -43,8 +43,9 @@ internal.looksLikeWin1252 = function(samples) {
 };
 
 // Reject string if it contains the "replacement character" after decoding to UTF-8
-// (But remove the byte sequence for the utf-8-encoded replacement char before decoding)
 internal.looksLikeUtf8 = function(samples) {
+  // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
+  // in case the file is in utf-8, but contains some previously corrupted text.
   // samples = samples.map(internal.replaceUtf8ReplacementChar);
   var str = internal.decodeSamples('utf8', samples);
   return str.indexOf('\ufffd') == -1;
