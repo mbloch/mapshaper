@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.39';
+var VERSION = '0.4.40';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -5834,7 +5834,7 @@ internal.formatSamples = function(str) {
 // European").
 internal.looksLikeWin1252 = function(samples) {
   var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–', // common extended
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘', // common extended
       str = internal.decodeSamples('win1252', samples),
       asciiScore = internal.getCharScore(str, ascii),
       totalScore = internal.getCharScore(str, extended + ascii);
@@ -5842,8 +5842,9 @@ internal.looksLikeWin1252 = function(samples) {
 };
 
 // Reject string if it contains the "replacement character" after decoding to UTF-8
-// (But remove the byte sequence for the utf-8-encoded replacement char before decoding)
 internal.looksLikeUtf8 = function(samples) {
+  // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
+  // in case the file is in utf-8, but contains some previously corrupted text.
   // samples = samples.map(internal.replaceUtf8ReplacementChar);
   var str = internal.decodeSamples('utf8', samples);
   return str.indexOf('\ufffd') == -1;
@@ -7285,6 +7286,19 @@ internal.initFeatureProxy = function(lyr, arcs) {
 
 
 
+internal.expressionUtils = {
+  round: function(val, dig) {
+    var k = 1;
+    dig = dig | 0;
+    while(dig-- > 0) k *= 10;
+    return Math.round(val * k) / k;
+  },
+  sprintf: utils.format
+};
+
+
+
+
 // Compiled expression returns a value
 internal.compileValueExpression = function(exp, lyr, arcs, opts) {
   opts = opts || {};
@@ -7390,6 +7404,7 @@ internal.nullifyUnsetProperties = function(vars, obj) {
 
 internal.getExpressionContext = function(lyr, mixins) {
   var env = internal.getBaseContext();
+  utils.extend(env, internal.expressionUtils); // mix in utils
   if (lyr.data) {
     // default to null values when a data field is missing
     internal.nullifyUnsetProperties(lyr.data.getFields(), env);
@@ -12658,6 +12673,8 @@ function ShpReader(src) {
     if (!shape && recordOffs + 12 <= fileSize) {
       // Very rarely, in-the-wild .shp files may contain junk bytes between
       // records; it may be possible to scan past the junk to find the next record.
+      // TODO: Probably better to use the .shx file to index records, rather
+      // than trying to read consecutive records from the .shp file.
       shape = huntForNextShape(recordOffs + 4, i);
     }
     if (shape) {
@@ -12737,7 +12754,7 @@ function ShpReader(src) {
   function huntForNextShape(start, id) {
     var offset = start,
         shape = null,
-        bin, recordId, recordType;
+        bin, recordId, recordType, count;
     while (offset + 12 <= fileSize) {
       bin = file.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
@@ -12749,7 +12766,9 @@ function ShpReader(src) {
       }
       offset += 4; // try next integer position
     }
-    skippedBytes += shape ? offset - start : fileSize - start;
+    count = shape ? offset - start : fileSize - start;
+    debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
+    skippedBytes += count;
     return shape;
   }
 }
@@ -19794,12 +19813,13 @@ api.applyCommands = function(commands, input, done) {
     message("Warning: applyCommands() was called with deprecated input format");
     return internal.applyCommandsOld(commands, input, done);
   }
-  // add options to -i -o -join commands to bypass file i/o
+  // add options to -i -o -join -clip -erase commands to bypass file i/o
+  // TODO: find a less kludgy solution
   commands = commands.map(function(cmd) {
-    // copy options so passed-in commands are unchanged
-    if ((cmd.name == 'i' || cmd.name == 'join') && input) {
+    var name = cmd.name;
+    if ((name == 'i' || name == 'join' || name == 'erase' || name == 'clip') && input) {
       cmd.options.input = input;
-    } else if (cmd.name == 'o') {
+    } else if (name == 'o') {
       cmd.options.output = output;
     }
     return cmd;

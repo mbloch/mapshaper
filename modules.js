@@ -9678,7 +9678,7 @@ var ctx = {
 var pj_err_list = [
   "no arguments in initialization list",  /*  -1 */
   "no options found in 'init' file",    /*  -2 */
-  "no colon in init= string",     /*  -3 */
+  "invalid init= string",   /*  -3 */ // Proj.4 text: "no colon in init= string",
   "projection not named",       /*  -4 */
   "unknown projection id",      /*  -5 */
   "effective eccentricity = 1",      /*  -6 */
@@ -10074,11 +10074,14 @@ function pj_datum_set(P) {
     }
   }
 
-  if (nadgrids = pj_param(P.params, "snadgrids")) {
+  nadgrids = pj_param(P.params, "snadgrids");
+  if (nadgrids && nadgrids != '@null') {
     fatal("+nadgrids is not implemented");
-  } else if (catalog = pj_param(P.params, "scatalog")) {
+  }
+  if (catalog = pj_param(P.params, "scatalog")) {
     fatal("+catalog is not implemented");
-  } else if (towgs84 = pj_param(P.params, "stowgs84")) {
+  }
+  if (towgs84 = pj_param(P.params, "stowgs84")) {
     towgs84.split(',').forEach(function(s, i) {
       params[i] = pj_atof(s) || 0;
     });
@@ -10311,7 +10314,7 @@ function pj_read_init_opts(initStr) {
       libId = parts[0],
       crsId = parts[1],
       libStr, libPath, path, o;
-  if (!crsId) {
+  if (!crsId || !libId) {
     error(-3);
   }
   libStr = mproj_search_libcache(libId);
@@ -10323,7 +10326,9 @@ function pj_read_init_opts(initStr) {
       libPath = path.join(path.dirname(__filename), '../nad', libId);
       libStr = require('fs').readFileSync(libPath, 'utf8');
       libcache[libId] = libStr;
-    } catch(e) {}
+    } catch(e) {
+      fatal('unable to read from \'init\' file named ' + libId); // not in Proj.4
+    }
   }
   return libStr ? pj_find_opts(libStr, crsId) : null;
 }
