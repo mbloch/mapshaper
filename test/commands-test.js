@@ -118,8 +118,51 @@ describe('mapshaper-commands.js', function () {
     });
   });
 
-
   describe('applyCommands() (v0.4 API)', function () {
+
+    it('works with -clip command', function(done) {
+
+      var poly = {
+        "type": "Feature",
+        "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+        [
+        [-114.345703125, 39.4369879],
+        [-116.4534998, 37.18979823791],
+        [-118.4534998, 38.17698709],
+        [-115.345703125, 43.576878],
+        [-106.611328125, 43.4529188935547],
+        [-105.092834092, 46.20938402],
+        [-106.66859, 39.4389646],
+        [-103.6117867, 36.436756],
+        [-114.34579879, 39.4361929]
+        ] ]
+        }
+      };
+
+      var clip_poly = {
+        "type": "Feature",
+        "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+        [
+        [-114.345703125, 39.4361929993141],
+        [-114.345703125, 43.4529188935547],
+        [-106.611328125, 43.4529188935547],
+        [-106.611328125, 39.4361929993141],
+        [-114.345703125, 39.4361929993141]
+        ] ]
+        }
+      };
+
+      api.applyCommands('-i poly.json -clip clip_poly.json -o',
+        {'poly.json': poly, 'clip_poly.json': clip_poly}, function(err, output) {
+        assert(!!output && !err);
+        done();
+      })
+    });
+
 
     it('missing file', function(done) {
       api.applyCommands('-i data.csv', {}, function(err, output) {

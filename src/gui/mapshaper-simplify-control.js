@@ -160,7 +160,14 @@ var SimplifyControl = function(model) {
     if (_value != val) {
       _value = val;
       control.dispatchEvent('change', {value:val});
+      updateSliderDisplay();
     }
+  }
+
+  function updateSliderDisplay() {
+    // TODO: display resolution and vertex count
+    // var dataset = model.getActiveLayer().dataset;
+    // var interval = dataset.arcs.getRetainedInterval();
   }
 
   control.reset = function() {

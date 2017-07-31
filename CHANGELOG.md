@@ -1,5 +1,9 @@
+v0.4.40
+* Added sprintf() and round(num, digits) utility functions to -each command context.
+* Fixed bug that prevented using applyCommands() with -clip or -erase commands.
+
 v0.4.39
-* Added support for EPSG codes in the -proj command (using Proj.4 syntax, for example:  -proj +init=epsg:2784). Supported definitions: epsg, esri, nad83, nad27.
+* [web] Added support for EPSG codes using the -proj command in the browser console (using Proj.4 syntax, like:  -proj +init=epsg:2784). Supported init files: epsg, esri, nad83, nad27.
 
 v0.4.38
 * Added -svg-style letter-spacing= option.
