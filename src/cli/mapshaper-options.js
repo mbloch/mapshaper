@@ -197,6 +197,10 @@ internal.getOptionParser = function() {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     })
+    .option("rfc7946", {
+      describe: "(GeoJSON) partial support for the RFC7946 spec",
+      type: "flag"
+    })
     .option("combine-layers", {
       describe: "(GeoJSON) output layers as a single file",
       type: "flag"

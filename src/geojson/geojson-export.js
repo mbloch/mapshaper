@@ -52,7 +52,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
   return (shapes || properties || []).reduce(function(memo, o, i) {
     var shape = shapes ? shapes[i] : null,
         exporter = GeoJSON.exporters[lyr.geometry_type],
-        obj = shape ? exporter(shape, dataset.arcs) : null;
+        obj = shape ? exporter(shape, dataset.arcs, opts) : null;
     if (asFeatures) {
       obj = {
         type: 'Feature',
@@ -83,6 +83,20 @@ internal.exportGeoJSONCollection = function(lyr, dataset, opts) {
   return internal.exportLayersAsGeoJSON([lyr], dataset, opts || {});
 };
 
+internal.getRFC7946Warnings = function(dataset) {
+  var P = internal.getDatasetProjection(dataset);
+  var str;
+  if (!P || !P.is_latlong) {
+    str = 'RFC 7946 warning: dataset does not contain lat-long coordinates.';
+  }
+  return str;
+};
+
+internal.printAnyRFC7946Warnings = function(dataset) {
+  var str = internal.getRFC7946Warnings(dataset);
+  if (str) message(str);
+};
+
 internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
   var geojson = {};
   var useFeatures = internal.useFeatureCollection(layers, opts);
@@ -96,7 +110,15 @@ internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
     collname = 'geometries';
   }
 
-  internal.exportCRS(dataset, geojson);
+  if (!opts.rfc7946) {
+    // partial support for crs property (eliminated in RFC 7946)
+    internal.exportCRS(dataset, geojson);
+  }
+
+  if (opts.rfc7946) {
+    internal.printAnyRFC7946Warnings(dataset);
+  }
+
   if (opts.bbox) {
     bounds = internal.getDatasetBounds(dataset);
     if (bounds.hasBounds()) {
@@ -154,6 +176,7 @@ GeoJSON.exportPointGeom = function(points, arcs) {
   }
   return geom;
 };
+
 GeoJSON.exportLineGeom = function(ids, arcs) {
   var obj = internal.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
@@ -169,12 +192,14 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
   };
 };
 
-GeoJSON.exportPolygonGeom = function(ids, arcs) {
+GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = internal.exportPathData(ids, arcs, "polygon");
+  var reverseOrder = !!opts.rfc7946;
   if (obj.pointCount === 0) return null;
   var groups = internal.groupPolygonRings(obj.pathData);
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
+      if (reverseOrder) path.points.reverse();
       return path.points;
     });
   });

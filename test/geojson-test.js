@@ -166,6 +166,40 @@ describe('mapshaper-geojson.js', function () {
 
   describe('exportGeoJSON()', function () {
 
+    describe('-o rfc7946 option', function () {
+
+      it('A warning is generated for non-lat-long datasets', function() {
+        var input = {
+          type: 'Point',
+          coordinates: [100, 100]
+        },
+        dataset = api.internal.importGeoJSON(input, {});
+        assert(/RFC 7946 warning/.test(api.internal.getRFC7946Warnings(dataset)));
+      })
+
+      it('Use CCW winding order for rings and CW for holes', function (done) {
+        var input = {
+          type:"GeometryCollection",
+          geometries:[{
+            type: "Polygon",
+            coordinates: [[[100.0, 0.0], [100.0, 10.0], [110.0, 10.0], [110.0, 0.0], [100.0, 0.0]],
+              [[101.0, 1.0], [109.0, 1.0], [109.0, 9.0], [101.0, 9.0], [101.0, 1.0]]
+            ]
+        }]};
+
+        var target = [[[100.0, 0.0], [110.0, 0.0], [110.0, 10.0], [100.0, 10.0], [100.0, 0.0]],
+              [[101.0, 1.0],  [101.0, 9.0], [109.0, 9.0], [109.0, 1.0], [101.0, 1.0]]
+            ];
+
+        api.applyCommands('-i input.json -o output.json rfc7946', {'input.json': input}, function(err, output) {
+          var json = JSON.parse(output['output.json']);
+          assert.deepEqual(json.geometries[0].coordinates, target);
+          done();
+        });
+
+      })
+    })
+
     describe('-o combine-layers option', function () {
       it('combines datasets derived from same input file', function(done) {
         var a = {
