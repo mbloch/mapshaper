@@ -85,9 +85,10 @@ internal.exportFileContent = function(dataset, opts) {
   }
   internal.assignUniqueLayerNames(dataset.layers);
 
-  // apply coordinate precision, except for svg precision, which is applied
-  // during export, after rescaling
-  if (opts.precision && outFmt != 'svg') {
+  // apply coordinate precision, except:
+  //   svg precision is applied by the SVG exporter, after rescaling
+  //   GeoJSON precision is applied by the exporter, to handle default precision
+  if (opts.precision && outFmt != 'svg' && outFmt != 'geojson') {
     dataset = internal.copyDatasetForExport(dataset);
     internal.setCoordinatePrecision(dataset, opts.precision);
   }

@@ -10,6 +10,14 @@ internal.exportGeoJSON = function(dataset, opts) {
   opts = opts || {};
   var extension = opts.extension || "json";
   var layerGroups;
+
+  // Apply coordinate precision, if relevant
+  if (opts.precision || opts.rfc7946) {
+    dataset = internal.copyDatasetForExport(dataset);
+    // using 6 decimals as default RFC 7946 precision
+    internal.setCoordinatePrecision(dataset, opts.precision || 0.000001);
+  }
+
   if (opts.file) {
     // Override default output extension if output filename is given
     extension = utils.getFileExtension(opts.file);

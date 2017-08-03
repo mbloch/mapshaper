@@ -168,6 +168,16 @@ describe('mapshaper-geojson.js', function () {
 
     describe('-o rfc7946 option', function () {
 
+      it('Default coordinate precision is 6 decimals', function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[4.000000000000001, 3.999999999999], [0.123456789,-9.87654321]]
+        };
+        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {rfc7946: true})[0].content.toString();
+        var coords = output.match(/"coordinates.*\]\]/)[0];
+        assert.equal(coords, '"coordinates":[[4,4],[0.123457,-9.876543]]');
+      });
+
       it('A warning is generated for non-lat-long datasets', function() {
         var input = {
           type: 'Point',
