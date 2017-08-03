@@ -22,13 +22,28 @@ The project wiki has an [introduction](https://github.com/mbloch/mapshaper/wiki/
 
 For a detailed reference, see the [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference).
 
-### Interactive tool
 
-The web UI works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari. If you encounter out-of-memory errors using Chrome, try Firefox, which can handle Shapefiles larger than 1GB.
+
+### Interactive web interface
+
+The web UI works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari.
 
 The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
 
 All processing is done in the browser, so your data stays private, even when using the public website.
+
+### Large file support
+
+**Web interface**
+
+Firefox is able to load Shapefiles and GeoJSON files larger than 1GB. Chrome has improved in recent versions, but is still prone to out-of-memory errors when importing files larger than several hundred megabytes.
+
+**Command line interface**
+
+When working with very large files, Node may crash with the message "JavaScript heap out of memory." You can work around this problem by granting Node more memory. The following example (Mac or Linux) allocates 8GB of memory:
+```bash
+$ node  --max-old-space-size=8192 `which mapshaper` <mapshaper commands>
+```
 
 ### Installation
 
