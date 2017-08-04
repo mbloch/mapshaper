@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.40';
+var VERSION = '0.4.41';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -3528,14 +3528,15 @@ internal.copyLayerShapes = function(lyr) {
     return copy;
 };
 
-internal.getDatasetBounds = function(data) {
+internal.getDatasetBounds = function(dataset) {
   var bounds = new Bounds();
-  data.layers.forEach(function(lyr) {
-    var lyrbb = internal.getLayerBounds(lyr, data.arcs);
+  dataset.layers.forEach(function(lyr) {
+    var lyrbb = internal.getLayerBounds(lyr, dataset.arcs);
     if (lyrbb) bounds.mergeBounds(lyrbb);
   });
   return bounds;
 };
+
 
 internal.datasetHasPaths = function(dataset) {
   return utils.some(dataset.layers, function(lyr) {
@@ -11406,7 +11407,20 @@ internal.checkLayersCanMerge = function(layers) {
 internal.exportGeoJSON = function(dataset, opts) {
   opts = opts || {};
   var extension = opts.extension || "json";
-  var layerGroups;
+  var layerGroups, warn;
+
+  // Apply coordinate precision, if relevant
+  if (opts.precision || opts.rfc7946) {
+    dataset = internal.copyDatasetForExport(dataset);
+    // using 6 decimals as default RFC 7946 precision
+    internal.setCoordinatePrecision(dataset, opts.precision || 0.000001);
+  }
+
+  if (opts.rfc7946) {
+    warn = internal.getRFC7946Warnings(dataset);
+    if (warn) message(warn);
+  }
+
   if (opts.file) {
     // Override default output extension if output filename is given
     extension = utils.getFileExtension(opts.file);
@@ -11421,8 +11435,9 @@ internal.exportGeoJSON = function(dataset, opts) {
   return layerGroups.map(function(layers) {
     // Use common part of layer names if multiple layers are being merged
     var name = internal.mergeLayerNames(layers) || 'output';
+    var d = utils.defaults({layers: layers}, dataset);
     return {
-      content: internal.exportLayersAsGeoJSON(layers, dataset, opts, 'buffer'),
+      content: internal.exportDatasetAsGeoJSON(d, opts, 'buffer'),
       filename: name + '.' + extension
     };
   });
@@ -11449,7 +11464,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
   return (shapes || properties || []).reduce(function(memo, o, i) {
     var shape = shapes ? shapes[i] : null,
         exporter = GeoJSON.exporters[lyr.geometry_type],
-        obj = shape ? exporter(shape, dataset.arcs) : null;
+        obj = shape ? exporter(shape, dataset.arcs, opts) : null;
     if (asFeatures) {
       obj = {
         type: 'Feature',
@@ -11475,15 +11490,56 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
   }, []);
 };
 
-// TODO: remove
-internal.exportGeoJSONCollection = function(lyr, dataset, opts) {
-  return internal.exportLayersAsGeoJSON([lyr], dataset, opts || {});
+
+internal.getRFC7946Warnings = function(dataset) {
+  var P = internal.getDatasetProjection(dataset);
+  var str;
+  if (!P || !P.is_latlong) {
+    str = 'RFC 7946 warning: non-WGS84 coordinates.';
+    if (P) str += ' Use "-proj wgs84" to convert.';
+  }
+  return str;
 };
 
-internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
+internal.getDatasetBbox = function(dataset, rfc7946) {
+  var P = internal.getDatasetProjection(dataset),
+      wrapped = rfc7946 && P && P.is_latlong,
+      westBounds = new Bounds(),
+      eastBounds = new Bounds(),
+      mergedBounds, gutter, margins, bbox;
+
+  dataset.layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      internal.traversePaths(lyr.shapes, null, function(o) {
+        var bounds = dataset.arcs.getSimpleShapeBounds(o.arcs);
+        (bounds.centerX() < 0 ? westBounds : eastBounds).mergeBounds(bounds);
+      });
+    } else if (internal.layerHasPoints(lyr)) {
+      internal.forEachPoint(lyr.shapes, function(p) {
+        (p[0] < 0 ? westBounds : eastBounds).mergePoint(p[0], p[1]);
+      });
+    }
+  });
+  mergedBounds = (new Bounds()).mergeBounds(eastBounds).mergeBounds(westBounds);
+  if (mergedBounds.hasBounds()) {
+    bbox = mergedBounds.toArray();
+  }
+  if (wrapped && eastBounds.hasBounds() && westBounds.hasBounds()) {
+    gutter = eastBounds.xmin - westBounds.xmax;
+    margins = 360 + westBounds.xmin - eastBounds.xmax;
+    if (gutter > 0 && gutter > margins) {
+      bbox[0] = eastBounds.xmin;
+      bbox[2] = westBounds.xmax;
+    }
+  }
+  return bbox || null;
+};
+
+internal.exportDatasetAsGeoJSON = function(dataset, opts, ofmt) {
   var geojson = {};
+  var layers = dataset.layers;
   var useFeatures = internal.useFeatureCollection(layers, opts);
-  var parts, collection, bounds, collname;
+  var parts, collection, bbox, collname;
 
   if (useFeatures) {
     geojson.type = 'FeatureCollection';
@@ -11493,11 +11549,15 @@ internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
     collname = 'geometries';
   }
 
-  internal.exportCRS(dataset, geojson);
+  if (!opts.rfc7946) {
+    // partial support for crs property (eliminated in RFC 7946)
+    internal.exportCRS(dataset, geojson);
+  }
+
   if (opts.bbox) {
-    bounds = internal.getDatasetBounds(dataset);
-    if (bounds.hasBounds()) {
-      geojson.bbox = bounds.toArray();
+    bbox = internal.getDatasetBbox(dataset, opts.rfc7946);
+    if (bbox) {
+      geojson.bbox = bbox;
     }
   }
 
@@ -11551,6 +11611,7 @@ GeoJSON.exportPointGeom = function(points, arcs) {
   }
   return geom;
 };
+
 GeoJSON.exportLineGeom = function(ids, arcs) {
   var obj = internal.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
@@ -11566,12 +11627,14 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
   };
 };
 
-GeoJSON.exportPolygonGeom = function(ids, arcs) {
+GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = internal.exportPathData(ids, arcs, "polygon");
+  var reverseOrder = !!opts.rfc7946;
   if (obj.pointCount === 0) return null;
   var groups = internal.groupPolygonRings(obj.pathData);
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
+      if (reverseOrder) path.points.reverse();
       return path.points;
     });
   });
@@ -13760,7 +13823,8 @@ internal.padViewportBoundsForSVG = function(bounds, width, marginPx) {
 };
 
 internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
-  var geojson = internal.exportGeoJSONCollection(lyr, dataset, opts);
+  var d = utils.defaults({layers: [lyr]}, dataset);
+  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   if (opts.point_symbol == 'square' && geojson.features) {
     geojson.features.forEach(function(feat) {
       GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
@@ -14003,9 +14067,10 @@ internal.exportFileContent = function(dataset, opts) {
   }
   internal.assignUniqueLayerNames(dataset.layers);
 
-  // apply coordinate precision, except for svg precision, which is applied
-  // during export, after rescaling
-  if (opts.precision && outFmt != 'svg') {
+  // apply coordinate precision, except:
+  //   svg precision is applied by the SVG exporter, after rescaling
+  //   GeoJSON precision is applied by the exporter, to handle default precision
+  if (opts.precision && outFmt != 'svg' && outFmt != 'geojson') {
     dataset = internal.copyDatasetForExport(dataset);
     internal.setCoordinatePrecision(dataset, opts.precision);
   }
@@ -18754,6 +18819,10 @@ internal.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
+    })
+    .option("rfc7946", {
+      describe: "(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)",
+      type: "flag"
     })
     .option("combine-layers", {
       describe: "(GeoJSON) output layers as a single file",

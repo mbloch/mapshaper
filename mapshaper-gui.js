@@ -1955,12 +1955,13 @@ function ImportControl(model, opts) {
         reader = new FileReader(),
         useBinary = internal.isBinaryFile(name) || internal.guessInputFileType(name) == 'json';
 
-    // no callback on error -- but result may be empty (e.g. empty string)
-    // TODO: detect this condition
-    reader.onload = function() {
-      var content = reader.result;
-      readFileContent(name, content);
-    };
+    reader.addEventListener('loadend', function(e) {
+      if (!reader.result) {
+        handleImportError("Web browser was unable to load the file.", name);
+      } else {
+        readFileContent(name, reader.result);
+      }
+    });
     if (useBinary) {
       reader.readAsArrayBuffer(file);
     } else {
