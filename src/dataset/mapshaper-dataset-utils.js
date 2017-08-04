@@ -89,14 +89,15 @@ internal.copyLayerShapes = function(lyr) {
     return copy;
 };
 
-internal.getDatasetBounds = function(data) {
+internal.getDatasetBounds = function(dataset) {
   var bounds = new Bounds();
-  data.layers.forEach(function(lyr) {
-    var lyrbb = internal.getLayerBounds(lyr, data.arcs);
+  dataset.layers.forEach(function(lyr) {
+    var lyrbb = internal.getLayerBounds(lyr, dataset.arcs);
     if (lyrbb) bounds.mergeBounds(lyrbb);
   });
   return bounds;
 };
+
 
 internal.datasetHasPaths = function(dataset) {
   return utils.some(dataset.layers, function(lyr) {

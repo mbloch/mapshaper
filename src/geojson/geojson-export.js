@@ -9,13 +9,18 @@ mapshaper-merge-layers
 internal.exportGeoJSON = function(dataset, opts) {
   opts = opts || {};
   var extension = opts.extension || "json";
-  var layerGroups;
+  var layerGroups, warn;
 
   // Apply coordinate precision, if relevant
   if (opts.precision || opts.rfc7946) {
     dataset = internal.copyDatasetForExport(dataset);
     // using 6 decimals as default RFC 7946 precision
     internal.setCoordinatePrecision(dataset, opts.precision || 0.000001);
+  }
+
+  if (opts.rfc7946) {
+    warn = internal.getRFC7946Warnings(dataset);
+    if (warn) message(warn);
   }
 
   if (opts.file) {
@@ -32,8 +37,9 @@ internal.exportGeoJSON = function(dataset, opts) {
   return layerGroups.map(function(layers) {
     // Use common part of layer names if multiple layers are being merged
     var name = internal.mergeLayerNames(layers) || 'output';
+    var d = utils.defaults({layers: layers}, dataset);
     return {
-      content: internal.exportLayersAsGeoJSON(layers, dataset, opts, 'buffer'),
+      content: internal.exportDatasetAsGeoJSON(d, opts, 'buffer'),
       filename: name + '.' + extension
     };
   });
@@ -86,29 +92,56 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
   }, []);
 };
 
-// TODO: remove
-internal.exportGeoJSONCollection = function(lyr, dataset, opts) {
-  return internal.exportLayersAsGeoJSON([lyr], dataset, opts || {});
-};
 
 internal.getRFC7946Warnings = function(dataset) {
   var P = internal.getDatasetProjection(dataset);
   var str;
   if (!P || !P.is_latlong) {
-    str = 'RFC 7946 warning: dataset does not contain lat-long coordinates.';
+    str = 'RFC 7946 warning: non-WGS84 coordinates.';
+    if (P) str += ' Use "-proj wgs84" to convert.';
   }
   return str;
 };
 
-internal.printAnyRFC7946Warnings = function(dataset) {
-  var str = internal.getRFC7946Warnings(dataset);
-  if (str) message(str);
+internal.getDatasetBbox = function(dataset, rfc7946) {
+  var P = internal.getDatasetProjection(dataset),
+      wrapped = rfc7946 && P && P.is_latlong,
+      westBounds = new Bounds(),
+      eastBounds = new Bounds(),
+      mergedBounds, gutter, margins, bbox;
+
+  dataset.layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      internal.traversePaths(lyr.shapes, null, function(o) {
+        var bounds = dataset.arcs.getSimpleShapeBounds(o.arcs);
+        (bounds.centerX() < 0 ? westBounds : eastBounds).mergeBounds(bounds);
+      });
+    } else if (internal.layerHasPoints(lyr)) {
+      internal.forEachPoint(lyr.shapes, function(p) {
+        (p[0] < 0 ? westBounds : eastBounds).mergePoint(p[0], p[1]);
+      });
+    }
+  });
+  mergedBounds = (new Bounds()).mergeBounds(eastBounds).mergeBounds(westBounds);
+  if (mergedBounds.hasBounds()) {
+    bbox = mergedBounds.toArray();
+  }
+  if (wrapped && eastBounds.hasBounds() && westBounds.hasBounds()) {
+    gutter = eastBounds.xmin - westBounds.xmax;
+    margins = 360 + westBounds.xmin - eastBounds.xmax;
+    if (gutter > 0 && gutter > margins) {
+      bbox[0] = eastBounds.xmin;
+      bbox[2] = westBounds.xmax;
+    }
+  }
+  return bbox || null;
 };
 
-internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
+internal.exportDatasetAsGeoJSON = function(dataset, opts, ofmt) {
   var geojson = {};
+  var layers = dataset.layers;
   var useFeatures = internal.useFeatureCollection(layers, opts);
-  var parts, collection, bounds, collname;
+  var parts, collection, bbox, collname;
 
   if (useFeatures) {
     geojson.type = 'FeatureCollection';
@@ -123,14 +156,10 @@ internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
     internal.exportCRS(dataset, geojson);
   }
 
-  if (opts.rfc7946) {
-    internal.printAnyRFC7946Warnings(dataset);
-  }
-
   if (opts.bbox) {
-    bounds = internal.getDatasetBounds(dataset);
-    if (bounds.hasBounds()) {
-      geojson.bbox = bounds.toArray();
+    bbox = internal.getDatasetBbox(dataset, opts.rfc7946);
+    if (bbox) {
+      geojson.bbox = bbox;
     }
   }
 

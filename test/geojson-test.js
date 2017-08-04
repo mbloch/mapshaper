@@ -9,6 +9,76 @@ function fixPath(p) {
 }
 
 describe('mapshaper-geojson.js', function () {
+
+  describe('getDatasetBbox()', function() {
+
+    describe('RFC 7946 bbox', function() {
+      function getBbox(geojson) {
+        var d = api.internal.importGeoJSON(geojson, {});
+        return api.internal.getDatasetBbox(d, true);
+      }
+
+      it('wrapped bbox 1', function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[-170, 0], [170, 0]]
+        }
+        assert.deepEqual(getBbox(input), [170, 0, -170, 0]);
+      })
+
+      it('wrapped bbox2', function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[-180, 0], [180, 1], [10, -1]]
+        }
+        assert.deepEqual(getBbox(input), [10, -1, -180, 1]);
+      })
+
+      it('wrapped bbox 3 (lines)', function() {
+        var input = {
+          type: 'MultiLineString',
+          coordinates: [[[-180, 0], [-170, 1]], [[170, -1], [175, -2]]]
+        }
+        assert.deepEqual(getBbox(input), [170, -2, -170, 1]);
+      })
+
+      it('non-wrapped points: Western Hemisphere', function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[-170, 0], [-180, 1], [-90, -1]]
+        }
+        assert.deepEqual(getBbox(input), [-180, -1, -90, 1]);
+      })
+
+      it('non-wrapped points: Eastern Hemisphere', function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[170, 0], [180, 1], [90, -1]]
+        }
+        assert.deepEqual(getBbox(input), [90, -1, 180, 1]);
+      })
+
+      it('non-wrapped points 3', function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[100, 0], [0, 1], [-100, -1]]
+        }
+        assert.deepEqual(getBbox(input), [-100, -1, 100, 1]);
+      })
+
+      it('null bbox', function() {
+        var input = {
+          type: 'GeometryCollection',
+          geometries: []
+        }
+        assert.strictEqual(getBbox(input), null);
+      })
+
+    });
+
+  });
+
+
   describe('importGeoJSON', function () {
     it('Import FeatureCollection with polygon geometries', function () {
       var data = api.importFile(fixPath('test_data/two_states.json'))
@@ -158,7 +228,7 @@ describe('mapshaper-geojson.js', function () {
         }
       };
       var dataset = api.internal.importGeoJSON(src, {});
-      var output = api.internal.exportGeoJSONCollection(dataset.layers[0], dataset);
+      var output = api.internal.exportDatasetAsGeoJSON(dataset, {});
       assert.deepEqual(output.features[0], target);
     })
   })
@@ -324,7 +394,7 @@ describe('mapshaper-geojson.js', function () {
         {type: 'Feature', geometry: null, properties: {foo: 'a'}}
       ]};
 
-      assert.deepEqual(api.internal.exportGeoJSONCollection(lyr, dataset), target);
+      assert.deepEqual(api.internal.exportDatasetAsGeoJSON(dataset, {}), target);
     })
 
     it('collapsed polygon exported as null geometry', function () {
@@ -343,7 +413,7 @@ describe('mapshaper-geojson.js', function () {
         {type: 'Feature', properties: {ID: 1}, geometry: null}
       ]};
 
-      assert.deepEqual(api.internal.exportGeoJSONCollection(lyr, dataset), target);
+      assert.deepEqual(api.internal.exportDatasetAsGeoJSON(dataset, {}), target);
     })
 
     it('use cut_table option', function () {
@@ -419,7 +489,7 @@ describe('mapshaper-geojson.js', function () {
         bbox: [0, 1, 2, 4]
       };
 
-      var result = api.internal.exportGeoJSONCollection(lyr, dataset, {bbox: true});
+      var result = api.internal.exportDatasetAsGeoJSON(dataset, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -445,7 +515,7 @@ describe('mapshaper-geojson.js', function () {
         ]
         , bbox: [-1, 0, 2, 3]
       };
-      var result = api.internal.exportGeoJSONCollection(lyr, dataset, {bbox: true});
+      var result = api.internal.exportDatasetAsGeoJSON(dataset, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -468,7 +538,7 @@ describe('mapshaper-geojson.js', function () {
           }
         }]
       };
-      var result = api.internal.exportGeoJSONCollection(lyr, dataset, {id_field: 'FID'});
+      var result = api.internal.exportDatasetAsGeoJSON(dataset, {id_field: 'FID'});
       assert.deepEqual(result, target);
     })
 
@@ -719,5 +789,5 @@ function geoJSONRoundTrip(fname) {
 function importExport(obj, noTopo) {
   var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
   var geom = api.internal.importFileContent(json, 'json', {no_topology: noTopo});
-  return api.internal.exportGeoJSONCollection(geom.layers[0], geom);
+  return api.internal.exportDatasetAsGeoJSON(geom, {});
 }

@@ -198,7 +198,7 @@ internal.getOptionParser = function() {
       type: "number"
     })
     .option("rfc7946", {
-      describe: "(GeoJSON) partial support for the RFC7946 spec",
+      describe: "(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)",
       type: "flag"
     })
     .option("combine-layers", {

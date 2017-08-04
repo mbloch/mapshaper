@@ -69,7 +69,8 @@ internal.padViewportBoundsForSVG = function(bounds, width, marginPx) {
 };
 
 internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
-  var geojson = internal.exportGeoJSONCollection(lyr, dataset, opts);
+  var d = utils.defaults({layers: [lyr]}, dataset);
+  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   if (opts.point_symbol == 'square' && geojson.features) {
     geojson.features.forEach(function(feat) {
       GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);

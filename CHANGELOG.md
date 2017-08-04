@@ -1,3 +1,6 @@
+v0.4.41
+* Added -o rfc7946 option, for generating RFC 7946-compliant GeoJSON: default 6-decimal precision, CCW outer-ring winding order, antimeridian-spanning bbox, warns if CRS is not WGS84.
+
 v0.4.40
 * Added sprintf() and round(num, digits) utility functions to -each command context.
 * Fixed bug that prevented using applyCommands() with -clip or -erase commands.
