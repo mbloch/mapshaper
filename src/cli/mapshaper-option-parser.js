@@ -255,7 +255,7 @@ function CommandParser() {
       cmd.help = help;
       if (detailView) {
         w = cmd.options.reduce(function(w, opt) {
-          if (cmd.describe) {
+          if (opt.describe) {
             w = Math.max(formatOption(opt, cmd), w);
           }
           return w;
