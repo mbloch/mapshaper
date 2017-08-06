@@ -231,12 +231,12 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 
 GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = internal.exportPathData(ids, arcs, "polygon");
-  var reverseOrder = !!opts.rfc7946;
   if (obj.pointCount === 0) return null;
-  var groups = internal.groupPolygonRings(obj.pathData);
+  var groups = internal.groupPolygonRings(obj.pathData, opts.invert_y);
+  var reverse = opts.rfc7946 && !opts.invert_y;
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
-      if (reverseOrder) path.points.reverse();
+      if (reverse) path.points.reverse();
       return path.points;
     });
   });

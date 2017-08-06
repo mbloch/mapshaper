@@ -1,4 +1,4 @@
-/* @require mapshaper-arcs, mapshaper-dissolve2 */
+/* @require mapshaper-arcs, mapshaper-arcs */
 
 internal.roundPoints = function(lyr, round) {
   internal.forEachPoint(lyr.shapes, function(p) {

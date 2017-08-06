@@ -4,7 +4,7 @@ var api = require('../'),
 
 describe('mapshaper-svg.js', function () {
 
-  describe('exportLayerForSVG()', function () {
+  describe('exportDatasetForSVG()', function () {
     it('export label properties', function () {
       var lyr = {
         name: 'labels',
@@ -53,7 +53,7 @@ describe('mapshaper-svg.js', function () {
           value: 'OKLA.',
           properties: {
             x: 1,
-            y: -1,
+            y: 1,
             dx: -5,
             dy: -6,
             'font-size': '13',

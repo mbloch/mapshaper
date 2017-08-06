@@ -119,7 +119,7 @@ SVG.importMultiPath = function(coords, importer) {
 };
 
 SVG.mapVertex = function(p) {
-  return p[0] + ' ' + -p[1];
+  return p[0] + ' ' + p[1];
 };
 
 SVG.importLineString = function(coords) {
@@ -135,7 +135,7 @@ SVG.importLabel = function(p, rec) {
   var morelines, obj;
   var properties = {
     x: p[0],
-    y: -p[1]
+    y: p[1]
   };
   if (rec.dx) properties.dx = rec.dx;
   if (rec.dy) properties.dy = rec.dy;
@@ -175,7 +175,7 @@ SVG.importPoint = function(coords, d) {
     tag: 'circle',
     properties: {
       cx: coords[0],
-      cy: -coords[1]
+      cy: coords[1]
     }};
     if (rec.r) {
       p.properties.r = rec.r;

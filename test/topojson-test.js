@@ -67,8 +67,6 @@ describe('topojson-export.js and topojson-import.js', function () {
     })
   });
 
-
-
   describe('exportProperties', function () {
     it('use id_field option', function () {
       var geometries = [{type: null}, {type: null}],
@@ -202,6 +200,39 @@ describe('topojson-export.js and topojson-import.js', function () {
   })
 
   describe('TopoJSON export', function () {
+
+    describe('-o width= option', function () {
+
+      it('apply width and margin to points', function () {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[1, 1], [2, 2]]
+        }
+        var dataset = api.internal.importGeoJSON(input, {});
+        var opts = {
+          width: 800, margin: 2, bbox: true,
+          no_quantization: true,
+          precision: 0.001 // remove rounding errors
+        };
+        var output = api.internal.exportTopoJSON(dataset, opts);
+        var outputObj = JSON.parse(output[0].content);
+        var target = {
+          type: 'Topology',
+          bbox: [2, 2, 798, 798],
+          arcs: [],
+          objects: {
+            layer1: {
+              type: 'GeometryCollection',
+              geometries: [{
+                type: 'MultiPoint',
+                coordinates: [[2, 798], [798, 2]]
+              }]
+            }
+          }
+        }
+        assert.deepEqual(outputObj, target);
+      })
+    })
 
     it('default file extension is .json', function(done) {
       api.applyCommands('-i test/test_data/two_states.shp -o format=topojson', {}, function(err, output) {

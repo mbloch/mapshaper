@@ -20,7 +20,7 @@ describe('geojson-to-svg.js', function () {
     it('single point geometry', function() {
       var geo = {
         type: "MultiPoint",
-        coordinates: [[0, -1], [1, -2]]
+        coordinates: [[0, 1], [1, 2]]
       };
       var target = [{
         tag: 'g',
@@ -42,7 +42,7 @@ describe('geojson-to-svg.js', function () {
         properties: {r: 2, opacity: 0.5, 'class': "dot pinkdot"},
         geometry: {
           type: "MultiPoint",
-          coordinates: [[0, -1], [1, -2]]
+          coordinates: [[0, 1], [1, 2]]
         }
       };
       var target = [{
@@ -65,7 +65,7 @@ describe('geojson-to-svg.js', function () {
         properties: {'label-text': 'TBD'},
         geometry: {
           type: "MultiPoint",
-          coordinates: [[0, -1]]
+          coordinates: [[0, 1]]
         }
       };
       var target = [{
@@ -86,7 +86,7 @@ describe('geojson-to-svg.js', function () {
         properties: {'label-text': 'New\nYork\nCity', 'line-height': '1.3em'},
         geometry: {
           type: "MultiPoint",
-          coordinates: [[0, -1]]
+          coordinates: [[0, 1]]
         }
       };
       var target = [{
@@ -131,7 +131,7 @@ describe('geojson-to-svg.js', function () {
         },
         geometry: {
           type: "MultiPoint",
-          coordinates: [[0, -1]]
+          coordinates: [[0, 1]]
         }
       };
       var target = [{
@@ -159,7 +159,7 @@ describe('geojson-to-svg.js', function () {
         },
         geometry: {
           type: "Point",
-          coordinates: [0, -1]
+          coordinates: [0, 1]
         }
       };
       var target = [{
@@ -202,7 +202,7 @@ describe('geojson-to-svg.js', function () {
           },
           geometry: {
             type: 'LineString',
-            coordinates: [[1, -2], [0, -2]]
+            coordinates: [[1, 2], [0, 2]]
           }
         }]
       };
@@ -213,7 +213,7 @@ describe('geojson-to-svg.js', function () {
           properties: {cx: 0, cy: 0, r: 4}
         }, {
           tag: 'circle',
-          properties: {cx: 1, cy: -1, r: 4}
+          properties: {cx: 1, cy: 1, r: 4}
         }],
         properties: {id: 'a', stroke: 'black', 'stroke-width': 2}
       }, {
@@ -251,7 +251,7 @@ describe('geojson-to-svg.js', function () {
       };
       var target = [{
         tag: 'path',
-        properties: {d: 'M 0 0 1 0 1 -1 0 0 Z', fill: '#eee'}
+        properties: {d: 'M 0 0 1 0 1 1 0 0 Z', fill: '#eee'}
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures([geo]), target);
     })
@@ -292,14 +292,14 @@ describe('geojson-to-svg.js', function () {
         }, {
           tag: 'circle',
           properties: {
-            cx: -1,
+            cx: 1,
             cy: 0
           }
         }]
       };
       var target = '<g id="0">\n' +
         '<circle cx="0" cy="1"/>\n' +
-        '<circle cx="-1" cy="0"/>\n' +
+        '<circle cx="1" cy="0"/>\n' +
         '</g>';
       assert.equal(SVG.stringify(obj), target);
     })

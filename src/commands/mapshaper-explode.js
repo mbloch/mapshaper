@@ -42,9 +42,9 @@ internal.explodeShape = function(shp) {
   });
 };
 
-internal.explodePolygon = function(shape, arcs) {
+internal.explodePolygon = function(shape, arcs, reverseWinding) {
   var paths = internal.getPathMetadata(shape, arcs, "polygon");
-  var groups = internal.groupPolygonRings(paths);
+  var groups = internal.groupPolygonRings(paths, reverseWinding);
   return groups.map(function(group) {
     return group.map(function(ring) {
       return ring.ids;

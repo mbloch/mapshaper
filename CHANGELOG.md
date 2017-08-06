@@ -1,3 +1,6 @@
+v0.4.42
+* Added support for exporting TopoJSON in pixel coordinates using the -o width= and -o margin= options.
+
 v0.4.41
 * Added -o rfc7946 option, for generating RFC 7946-compliant GeoJSON: default 6-decimal precision, CCW outer-ring winding order, antimeridian-spanning bbox, warns if CRS is not WGS84.
 

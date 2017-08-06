@@ -120,8 +120,8 @@ internal.getOptionParser = function() {
     .describe("output edited content")
     .validate(validateOutputOpts)
     .option('_', {
-      label: "<file|directory|->",
-      describe: "(optional) name of output file or directory, or - for stdout"
+      label: "<file|directory>",
+      describe: "(optional) name of output file or directory, - for stdout"
     })
     .option("format", {
       describe: "options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg"
@@ -206,11 +206,11 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("width", {
-      describe: "(SVG) width of the SVG viewport (default is 800)",
+      describe: "(SVG/TopoJSON) pixel width of output (SVG default is 800)",
       type: "number"
     })
     .option("margin", {
-      describe: "(SVG) margin between data and viewport bounds (default is 1)",
+      describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)",
       type: "number"
     })
     .option("point-symbol", {

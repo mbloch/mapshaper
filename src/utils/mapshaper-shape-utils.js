@@ -279,14 +279,15 @@ internal.filterEmptyArcs = function(shape, coords) {
 //   identify holes and their enclosures -- could be confused by strange
 //   geometry.
 //
-internal.groupPolygonRings = function(paths) {
+internal.groupPolygonRings = function(paths, reverseWinding) {
   var pos = [],
-      neg = [];
+      neg = [],
+      sign = reverseWinding ? -1 : 1;
   if (paths) {
     paths.forEach(function(path) {
-      if (path.area > 0) {
+      if (path.area * sign > 0) {
         pos.push(path);
-      } else if (path.area < 0) {
+      } else if (path.area * sign < 0) {
         neg.push(path);
       } else {
         // verbose("Zero-area ring, skipping");
@@ -300,12 +301,14 @@ internal.groupPolygonRings = function(paths) {
 
   neg.forEach(function(hole) {
     var containerId = -1,
-        containerArea = 0;
+        containerArea = 0,
+        holeArea = hole.area * -sign;
     for (var i=0, n=pos.length; i<n; i++) {
       var part = pos[i],
-          contained = part.bounds.contains(hole.bounds) && part.area > -hole.area;
-      if (contained && (containerArea === 0 || part.area < containerArea)) {
-        containerArea = part.area;
+          partArea = part.area * sign,
+          contained = part.bounds.contains(hole.bounds) && partArea > holeArea;
+      if (contained && (containerArea === 0 || partArea < containerArea)) {
+        containerArea = partArea;
         containerId = i;
       }
     }

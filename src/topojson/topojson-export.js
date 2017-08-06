@@ -7,6 +7,7 @@ mapshaper-explode
 mapshaper-stringify
 mapshaper-dataset-utils
 mapshaper-segment-geom
+mapshaper-pixel-transform
 */
 
 internal.exportTopoJSON = function(dataset, opts) {
@@ -14,23 +15,31 @@ internal.exportTopoJSON = function(dataset, opts) {
       needCopy = !opts.final || internal.datasetHasPaths(dataset) && dataset.arcs.getRetainedInterval() > 0,
       stringify = JSON.stringify;
 
+  if (needCopy) {
+    dataset = internal.copyDatasetForExport(dataset);
+  }
+
   if (opts.prettify) {
     stringify = internal.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
 
+  if (opts.width > 0) {
+    opts = utils.defaults({invert_y: true}, opts);
+    internal.transformDatasetToPixels(dataset, opts);
+  }
+
+  if (opts.precision) {
+    internal.setCoordinatePrecision(dataset, opts.precision);
+  }
+
   if (opts.singles) {
     return internal.splitDataset(dataset).map(function(dataset) {
-      if (needCopy) dataset = internal.copyDatasetForExport(dataset);
       return {
         content: stringify(TopoJSON.exportTopology(dataset, opts)),
         filename: (dataset.layers[0].name || 'output') + extension
       };
     });
   } else {
-    if (needCopy) {
-      // TODO: redundant if precision was applied in mapshaper-export.js
-      dataset = internal.copyDatasetForExport(dataset);
-    }
     return [{
       filename: opts.file || utils.getOutputFileBase(dataset) + extension,
       content: stringify(TopoJSON.exportTopology(dataset, opts))
@@ -184,16 +193,19 @@ TopoJSON.exportProperties = function(geometries, table, opts) {
   });
 };
 
-// Export a mapshaper layer as a GeometryCollection
+// Export a mapshaper layer as a TopoJSON GeometryCollection
 TopoJSON.exportLayer = function(lyr, arcs, opts) {
   var n = internal.getFeatureCount(lyr),
-      geometries = [];
-  // initialize to null geometries
+      geometries = [],
+      exporter = TopoJSON.exporters[lyr.geometry_type] || null,
+      shp;
   for (var i=0; i<n; i++) {
-    geometries[i] = {type: null};
-  }
-  if (internal.layerHasGeometry(lyr)) {
-    TopoJSON.exportGeometries(geometries, lyr.shapes, arcs, lyr.geometry_type);
+    shp = exporter && lyr.shapes[i];
+    if (shp) {
+      geometries[i] = exporter(shp, arcs, opts);
+    } else {
+      geometries[i] = {type: null};
+    }
   }
   if (lyr.data) {
     TopoJSON.exportProperties(geometries, lyr.data, opts);
@@ -204,24 +216,13 @@ TopoJSON.exportLayer = function(lyr, arcs, opts) {
   };
 };
 
-TopoJSON.exportGeometries = function(geometries, shapes, coords, type) {
-  var exporter = TopoJSON.exporters[type];
-  if (exporter && shapes) {
-    shapes.forEach(function(shape, i) {
-      if (shape && shape.length > 0) {
-        geometries[i] = exporter(shape, coords);
-      }
-    });
-  }
-};
-
-TopoJSON.exportPolygonGeom = function(shape, coords) {
+TopoJSON.exportPolygonGeom = function(shape, coords, opts) {
   var geom = {};
   shape = internal.filterEmptyArcs(shape, coords);
   if (!shape || shape.length === 0) {
     geom.type = null;
   } else if (shape.length > 1) {
-    geom.arcs = internal.explodePolygon(shape, coords);
+    geom.arcs = internal.explodePolygon(shape, coords, opts.invert_y);
     if (geom.arcs.length == 1) {
       geom.arcs = geom.arcs[0];
       geom.type = "Polygon";

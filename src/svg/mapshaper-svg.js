@@ -5,6 +5,7 @@ geojson-points
 geojson-to-svg
 mapshaper-svg-style
 svg-common
+mapshaper-pixel-transform
 */
 
 //
@@ -20,7 +21,8 @@ internal.exportSVG = function(dataset, opts) {
   } else {
     dataset = internal.copyDataset(dataset); // Modify a copy of the dataset
   }
-
+  // invert_y setting for screen coordinates and geojson polygon generation
+  utils.extend(opts, {invert_y: true});
   b = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
     return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
@@ -33,56 +35,22 @@ internal.exportSVG = function(dataset, opts) {
 };
 
 internal.transformCoordsForSVG = function(dataset, opts) {
-  var width = opts.width > 0 ? opts.width : 800;
-  var margin = opts.margin >= 0 ? opts.margin : 1;
-  var bounds = internal.getDatasetBounds(dataset);
+  var bounds = internal.transformDatasetToPixels(dataset, opts);
   var precision = opts.precision || 0.0001;
-  var height, bounds2, fwd;
-
-  if (opts.svg_scale > 0) {
-    // alternative to using a fixed width (e.g. when generating multiple files
-    // at a consistent geographic scale)
-    width = bounds.width() / opts.svg_scale;
-    margin = 0;
-  }
-  internal.padViewportBoundsForSVG(bounds, width, margin);
-  height = Math.ceil(width * bounds.height() / bounds.width());
-  bounds2 = new Bounds(0, -height, width, 0);
-  fwd = bounds.getTransform(bounds2);
-  internal.transformPoints(dataset, function(x, y) {
-    return fwd.transform(x, y);
-  });
-
   internal.setCoordinatePrecision(dataset, precision);
-  return bounds2;
-};
-
-// pad bounds to accomodate stroke width and circle radius
-internal.padViewportBoundsForSVG = function(bounds, width, marginPx) {
-  var bw = bounds.width() || bounds.height() || 1; // handle 0 width bbox
-  var marg;
-  if (marginPx >= 0 === false) {
-    marginPx = 1;
-  }
-  marg = bw / (width - marginPx * 2) * marginPx;
-  bounds.padBounds(marg, marg, marg, marg);
-};
-
-internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
-  var d = utils.defaults({layers: [lyr]}, dataset);
-  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
-  if (opts.point_symbol == 'square' && geojson.features) {
-    geojson.features.forEach(function(feat) {
-      GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
-    });
-  }
-  return geojson;
+  return bounds;
 };
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
-  var geojson = internal.exportGeoJSONForSVG(lyr, dataset, opts);
+  var d = utils.defaults({layers: [lyr]}, dataset);
+  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+  if (opts.point_symbol == 'square' && geojson.type == 'FeatureCollection') {
+    features.forEach(function(feat) {
+      GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
+    });
+  }
   var symbols = SVG.importGeoJSONFeatures(features);
   var layerObj = {
     tag: 'g',
