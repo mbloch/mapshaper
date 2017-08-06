@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.41';
+var VERSION = '0.4.42';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -3238,14 +3238,15 @@ internal.filterEmptyArcs = function(shape, coords) {
 //   identify holes and their enclosures -- could be confused by strange
 //   geometry.
 //
-internal.groupPolygonRings = function(paths) {
+internal.groupPolygonRings = function(paths, reverseWinding) {
   var pos = [],
-      neg = [];
+      neg = [],
+      sign = reverseWinding ? -1 : 1;
   if (paths) {
     paths.forEach(function(path) {
-      if (path.area > 0) {
+      if (path.area * sign > 0) {
         pos.push(path);
-      } else if (path.area < 0) {
+      } else if (path.area * sign < 0) {
         neg.push(path);
       } else {
         // verbose("Zero-area ring, skipping");
@@ -3259,12 +3260,14 @@ internal.groupPolygonRings = function(paths) {
 
   neg.forEach(function(hole) {
     var containerId = -1,
-        containerArea = 0;
+        containerArea = 0,
+        holeArea = hole.area * -sign;
     for (var i=0, n=pos.length; i<n; i++) {
       var part = pos[i],
-          contained = part.bounds.contains(hole.bounds) && part.area > -hole.area;
-      if (contained && (containerArea === 0 || part.area < containerArea)) {
-        containerArea = part.area;
+          partArea = part.area * sign,
+          contained = part.bounds.contains(hole.bounds) && partArea > holeArea;
+      if (contained && (containerArea === 0 || partArea < containerArea)) {
+        containerArea = partArea;
         containerId = i;
       }
     }
@@ -11629,12 +11632,12 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 
 GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = internal.exportPathData(ids, arcs, "polygon");
-  var reverseOrder = !!opts.rfc7946;
   if (obj.pointCount === 0) return null;
-  var groups = internal.groupPolygonRings(obj.pathData);
+  var groups = internal.groupPolygonRings(obj.pathData, opts.invert_y);
+  var reverse = opts.rfc7946 && !opts.invert_y;
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
-      if (reverseOrder) path.points.reverse();
+      if (reverse) path.points.reverse();
       return path.points;
     });
   });
@@ -12081,9 +12084,9 @@ internal.explodeShape = function(shp) {
   });
 };
 
-internal.explodePolygon = function(shape, arcs) {
+internal.explodePolygon = function(shape, arcs, reverseWinding) {
   var paths = internal.getPathMetadata(shape, arcs, "polygon");
-  var groups = internal.groupPolygonRings(paths);
+  var groups = internal.groupPolygonRings(paths, reverseWinding);
   return groups.map(function(group) {
     return group.map(function(ring) {
       return ring.ids;
@@ -12113,28 +12116,74 @@ internal.cloneProperties = function(obj) {
 
 
 
+internal.transformDatasetToPixels = function(dataset, opts) {
+  var width = opts.width > 0 ? opts.width : 800,
+      margin = opts.margin >= 0 ? opts.margin : 1, // default 1px margin
+      bounds = internal.getDatasetBounds(dataset),
+      height, bounds2, fwd;
+
+  if (opts.svg_scale > 0) {
+    // alternative to using a fixed width (e.g. when generating multiple files
+    // at a consistent geographic scale)
+    width = bounds.width() / opts.svg_scale;
+    margin = 0;
+  }
+  internal.applyMarginInPixels(bounds, width, margin);
+  height = Math.ceil(width * bounds.height() / bounds.width());
+  bounds2 = new Bounds(0, 0, width, height);
+  fwd = bounds.getTransform(bounds2, opts.invert_y);
+  internal.transformPoints(dataset, function(x, y) {
+    return fwd.transform(x, y);
+  });
+  return bounds2;
+};
+
+
+// Pad geographic bounds prior to conversion to pixels
+internal.applyMarginInPixels = function(bounds, width, marginPx) {
+  var bw = bounds.width() || bounds.height() || 1; // handle 0 width bbox
+  var marg;
+  if (marginPx >= 0 === false) {
+    marginPx = 1;
+  }
+  marg = bw / (width - marginPx * 2) * marginPx;
+  bounds.padBounds(marg, marg, marg, marg);
+};
+
+
+
+
+
 internal.exportTopoJSON = function(dataset, opts) {
   var extension = '.' + (opts.extension || 'json'),
       needCopy = !opts.final || internal.datasetHasPaths(dataset) && dataset.arcs.getRetainedInterval() > 0,
       stringify = JSON.stringify;
 
+  if (needCopy) {
+    dataset = internal.copyDatasetForExport(dataset);
+  }
+
   if (opts.prettify) {
     stringify = internal.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
 
+  if (opts.width > 0) {
+    opts = utils.defaults({invert_y: true}, opts);
+    internal.transformDatasetToPixels(dataset, opts);
+  }
+
+  if (opts.precision) {
+    internal.setCoordinatePrecision(dataset, opts.precision);
+  }
+
   if (opts.singles) {
     return internal.splitDataset(dataset).map(function(dataset) {
-      if (needCopy) dataset = internal.copyDatasetForExport(dataset);
       return {
         content: stringify(TopoJSON.exportTopology(dataset, opts)),
         filename: (dataset.layers[0].name || 'output') + extension
       };
     });
   } else {
-    if (needCopy) {
-      // TODO: redundant if precision was applied in mapshaper-export.js
-      dataset = internal.copyDatasetForExport(dataset);
-    }
     return [{
       filename: opts.file || utils.getOutputFileBase(dataset) + extension,
       content: stringify(TopoJSON.exportTopology(dataset, opts))
@@ -12288,16 +12337,19 @@ TopoJSON.exportProperties = function(geometries, table, opts) {
   });
 };
 
-// Export a mapshaper layer as a GeometryCollection
+// Export a mapshaper layer as a TopoJSON GeometryCollection
 TopoJSON.exportLayer = function(lyr, arcs, opts) {
   var n = internal.getFeatureCount(lyr),
-      geometries = [];
-  // initialize to null geometries
+      geometries = [],
+      exporter = TopoJSON.exporters[lyr.geometry_type] || null,
+      shp;
   for (var i=0; i<n; i++) {
-    geometries[i] = {type: null};
-  }
-  if (internal.layerHasGeometry(lyr)) {
-    TopoJSON.exportGeometries(geometries, lyr.shapes, arcs, lyr.geometry_type);
+    shp = exporter && lyr.shapes[i];
+    if (shp) {
+      geometries[i] = exporter(shp, arcs, opts);
+    } else {
+      geometries[i] = {type: null};
+    }
   }
   if (lyr.data) {
     TopoJSON.exportProperties(geometries, lyr.data, opts);
@@ -12308,24 +12360,13 @@ TopoJSON.exportLayer = function(lyr, arcs, opts) {
   };
 };
 
-TopoJSON.exportGeometries = function(geometries, shapes, coords, type) {
-  var exporter = TopoJSON.exporters[type];
-  if (exporter && shapes) {
-    shapes.forEach(function(shape, i) {
-      if (shape && shape.length > 0) {
-        geometries[i] = exporter(shape, coords);
-      }
-    });
-  }
-};
-
-TopoJSON.exportPolygonGeom = function(shape, coords) {
+TopoJSON.exportPolygonGeom = function(shape, coords, opts) {
   var geom = {};
   shape = internal.filterEmptyArcs(shape, coords);
   if (!shape || shape.length === 0) {
     geom.type = null;
   } else if (shape.length > 1) {
-    geom.arcs = internal.explodePolygon(shape, coords);
+    geom.arcs = internal.explodePolygon(shape, coords, opts.invert_y);
     if (geom.arcs.length == 1) {
       geom.arcs = geom.arcs[0];
       geom.type = "Polygon";
@@ -13664,7 +13705,7 @@ SVG.importMultiPath = function(coords, importer) {
 };
 
 SVG.mapVertex = function(p) {
-  return p[0] + ' ' + -p[1];
+  return p[0] + ' ' + p[1];
 };
 
 SVG.importLineString = function(coords) {
@@ -13680,7 +13721,7 @@ SVG.importLabel = function(p, rec) {
   var morelines, obj;
   var properties = {
     x: p[0],
-    y: -p[1]
+    y: p[1]
   };
   if (rec.dx) properties.dx = rec.dx;
   if (rec.dy) properties.dy = rec.dy;
@@ -13720,7 +13761,7 @@ SVG.importPoint = function(coords, d) {
     tag: 'circle',
     properties: {
       cx: coords[0],
-      cy: -coords[1]
+      cy: coords[1]
     }};
     if (rec.r) {
       p.properties.r = rec.r;
@@ -13774,7 +13815,8 @@ internal.exportSVG = function(dataset, opts) {
   } else {
     dataset = internal.copyDataset(dataset); // Modify a copy of the dataset
   }
-
+  // invert_y setting for screen coordinates and geojson polygon generation
+  utils.extend(opts, {invert_y: true});
   b = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
     return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
@@ -13787,56 +13829,22 @@ internal.exportSVG = function(dataset, opts) {
 };
 
 internal.transformCoordsForSVG = function(dataset, opts) {
-  var width = opts.width > 0 ? opts.width : 800;
-  var margin = opts.margin >= 0 ? opts.margin : 1;
-  var bounds = internal.getDatasetBounds(dataset);
+  var bounds = internal.transformDatasetToPixels(dataset, opts);
   var precision = opts.precision || 0.0001;
-  var height, bounds2, fwd;
-
-  if (opts.svg_scale > 0) {
-    // alternative to using a fixed width (e.g. when generating multiple files
-    // at a consistent geographic scale)
-    width = bounds.width() / opts.svg_scale;
-    margin = 0;
-  }
-  internal.padViewportBoundsForSVG(bounds, width, margin);
-  height = Math.ceil(width * bounds.height() / bounds.width());
-  bounds2 = new Bounds(0, -height, width, 0);
-  fwd = bounds.getTransform(bounds2);
-  internal.transformPoints(dataset, function(x, y) {
-    return fwd.transform(x, y);
-  });
-
   internal.setCoordinatePrecision(dataset, precision);
-  return bounds2;
-};
-
-// pad bounds to accomodate stroke width and circle radius
-internal.padViewportBoundsForSVG = function(bounds, width, marginPx) {
-  var bw = bounds.width() || bounds.height() || 1; // handle 0 width bbox
-  var marg;
-  if (marginPx >= 0 === false) {
-    marginPx = 1;
-  }
-  marg = bw / (width - marginPx * 2) * marginPx;
-  bounds.padBounds(marg, marg, marg, marg);
-};
-
-internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
-  var d = utils.defaults({layers: [lyr]}, dataset);
-  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
-  if (opts.point_symbol == 'square' && geojson.features) {
-    geojson.features.forEach(function(feat) {
-      GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
-    });
-  }
-  return geojson;
+  return bounds;
 };
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
-  var geojson = internal.exportGeoJSONForSVG(lyr, dataset, opts);
+  var d = utils.defaults({layers: [lyr]}, dataset);
+  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+  if (opts.point_symbol == 'square' && geojson.type == 'FeatureCollection') {
+    features.forEach(function(feat) {
+      GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
+    });
+  }
   var symbols = SVG.importGeoJSONFeatures(features);
   var layerObj = {
     tag: 'g',
@@ -14070,7 +14078,8 @@ internal.exportFileContent = function(dataset, opts) {
   // apply coordinate precision, except:
   //   svg precision is applied by the SVG exporter, after rescaling
   //   GeoJSON precision is applied by the exporter, to handle default precision
-  if (opts.precision && outFmt != 'svg' && outFmt != 'geojson') {
+  //   TopoJSON precision is applied to avoid redudant copying
+  if (opts.precision && outFmt != 'svg' && outFmt != 'geojson' && outFmt != 'topojson') {
     dataset = internal.copyDatasetForExport(dataset);
     internal.setCoordinatePrecision(dataset, opts.precision);
   }
@@ -18121,7 +18130,7 @@ function CommandParser() {
       cmd.help = help;
       if (detailView) {
         w = cmd.options.reduce(function(w, opt) {
-          if (cmd.describe) {
+          if (opt.describe) {
             w = Math.max(formatOption(opt, cmd), w);
           }
           return w;
@@ -18743,8 +18752,8 @@ internal.getOptionParser = function() {
     .describe("output edited content")
     .validate(validateOutputOpts)
     .option('_', {
-      label: "<file|directory|->",
-      describe: "(optional) name of output file or directory, or - for stdout"
+      label: "<file|directory>",
+      describe: "(optional) name of output file or directory, - for stdout"
     })
     .option("format", {
       describe: "options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg"
@@ -18829,11 +18838,11 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("width", {
-      describe: "(SVG) width of the SVG viewport (default is 800)",
+      describe: "(SVG/TopoJSON) pixel width of output (SVG default is 800)",
       type: "number"
     })
     .option("margin", {
-      describe: "(SVG) margin between data and viewport bounds (default is 1)",
+      describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)",
       type: "number"
     })
     .option("point-symbol", {
