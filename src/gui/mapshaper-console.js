@@ -359,9 +359,9 @@ function Console(model) {
           postArcCount = postArcs ? postArcs.size() : 0,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
-      // restore default logging options, in case -quiet or -verbose command was run
-      internal.QUIET = false;
-      internal.VERBOSE = false;
+      // restore default logging options, in case they were changed by the command
+      internal.setStateVar('QUIET', false);
+      internal.setStateVar('VERBOSE', false);
 
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
@@ -402,7 +402,7 @@ function Console(model) {
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    if (internal.LOGGING && !internal.QUIET) {
+    if (internal.LOGGING && !internal.getStateVar('QUIET')) {
       toLog(msg, 'console-message');
     }
   }

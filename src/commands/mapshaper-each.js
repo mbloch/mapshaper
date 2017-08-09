@@ -14,7 +14,7 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   if (opts && opts.where) {
     filter = internal.compileValueExpression(opts.where, lyr, arcs);
   }
-  compiled = internal.compileFeatureExpression(exp, lyr, arcs, {context: internal.defs});
+  compiled = internal.compileFeatureExpression(exp, lyr, arcs, {context: internal.getStateVar('defs')});
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {
     if (!filter || filter(i)) {

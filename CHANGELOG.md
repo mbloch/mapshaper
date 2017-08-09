@@ -1,3 +1,6 @@
+v0.4.43
+* Restore prohibition against overwriting input files unless the "-o force" option is present.
+
 v0.4.42
 * Added support for exporting TopoJSON in pixel coordinates using the -o width= and -o margin= options.
 

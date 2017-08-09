@@ -60,9 +60,8 @@ function HitControl(ext, mouse) {
       gui.selectElement(readout.node());
       // don't save bbox point when inspector is active
       // clear bbox point if already present
-      bboxPoint = bboxPoint || active ? null : getPointerCoords(e);
+      bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);
     }
-
   });
 
   // DISABLING: This causes problems when hovering over the info panel
@@ -76,7 +75,7 @@ function HitControl(ext, mouse) {
   mouse.on('hover', function(e) {
     var p;
     if (!target) return;
-    p = getPointerCoords(e);
+    p = ext.translatePixelCoords(e.x, e.y);
     if (target.geographic) {
       // update coordinate readout if displaying geographic shapes
       displayCoords(p);
@@ -87,10 +86,6 @@ function HitControl(ext, mouse) {
       hover(test(p[0], p[1]));
     }
   });
-
-  function getPointerCoords(e) {
-    return ext.getTransform().invert().transform(e.x, e.y);
-  }
 
   function displayCoords(p) {
     var decimals = getCoordPrecision(ext.getBounds());

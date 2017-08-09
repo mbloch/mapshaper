@@ -1,4 +1,4 @@
-/* @require mapshaper-arcs, mapshaper-arcs */
+/* @require mapshaper-dataset-utils */
 
 internal.transformDatasetToPixels = function(dataset, opts) {
   var width = opts.width > 0 ? opts.width : 800,

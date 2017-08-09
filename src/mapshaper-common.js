@@ -4,14 +4,51 @@ var api = {};
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
-  DEBUG: false,
-  QUIET: false,
-  VERBOSE: false,
-  T: T,
-  defs: {}
+  context: createContext()
 };
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
+
+internal.getStateVar = function(key) {
+  return internal.context[key];
+};
+
+internal.setStateVar = function(key, val) {
+  internal.context[key] = val;
+};
+
+function createContext() {
+  return {
+    DEBUG: false,
+    QUIET: false,
+    VERBOSE: false,
+    defs: {},
+    input_files: []
+  };
+}
+
+// Install a new set of context variables, clear them when an async callback is called.
+// @cb callback function to wrap
+// returns wrapped callback function
+function createAsyncContext(cb) {
+  internal.context = createContext();
+  return function() {
+    cb.apply(null, utils.toArray(arguments));
+    // clear context after cb(), so output/errors can be handled in current context
+    internal.context = createContext();
+  };
+}
+
+// Save the current context, restore it when an async callback is called
+// @cb callback function to wrap
+// returns wrapped callback function
+function preserveContext(cb) {
+  var ctx = internal.context;
+  return function() {
+    internal.context = ctx;
+    cb.apply(null, utils.toArray(arguments));
+  };
+}
 
 function error() {
   internal.error.apply(null, utils.toArray(arguments));
@@ -19,7 +56,7 @@ function error() {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  internal.stop.apply(null, messageArgs(arguments));
+  internal.stop.apply(null, utils.toArray(arguments));
 }
 
 function APIError(msg) {
@@ -30,8 +67,9 @@ function APIError(msg) {
 
 function messageArgs(args) {
   var arr = utils.toArray(args);
-  if (internal.CURR_CMD) {
-    arr.unshift('[' + internal.CURR_CMD + ']');
+  var cmd = internal.getStateVar('current_command');
+  if (cmd) {
+    arr.unshift('[' + cmd + ']');
   }
   return arr;
 }
@@ -41,17 +79,16 @@ function message() {
 }
 
 function verbose() {
-  if (internal.VERBOSE) {
+  if (internal.getStateVar('VERBOSE')) {
     internal.logArgs(arguments);
   }
 }
 
 function debug() {
-  if (internal.DEBUG) {
+  if (internal.getStateVar('DEBUG')) {
     internal.logArgs(arguments);
   }
 }
-var trace = debug; // TODO: rename debug() calls
 
 function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
@@ -72,8 +109,8 @@ api.printError = function(err) {
     if (!/Error/.test(msg)) {
       msg = "Error: " + msg;
     }
-    console.error(msg);
-    message("Run mapshaper -h to view help");
+    console.error(messageArgs([msg]).join(' '));
+    internal.message("Run mapshaper -h to view help");
   } else {
     throw err;
   }
@@ -115,7 +152,7 @@ internal.formatStringsAsGrid = function(arr) {
 };
 
 internal.logArgs = function(args) {
-  if (internal.LOGGING && !internal.QUIET && utils.isArrayLike(args)) {
+  if (internal.LOGGING && !internal.getStateVar('QUIET') && utils.isArrayLike(args)) {
     (console.error || console.log).call(console, internal.formatLogArgs(args));
   }
 };

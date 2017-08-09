@@ -94,6 +94,10 @@ function MapExtent(_position) {
     }
   };
 
+  this.translatePixelCoords = function(x, y) {
+    return this.getTransform().invert().transform(x, y);
+  };
+
   // stop zooming before rounding errors become too obvious
   function maxScale() {
     var minPixelScale = 1e-16;

@@ -37,13 +37,14 @@ function BufferReader(src) {
   this.close = function() {};
 }
 
-
 function FileReader(path, opts) {
   var fs = require('fs'),
       fileLen = fs.statSync(path).size,
       DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
       DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
       fd, cacheOffs, cache, binArr;
+
+  internal.getStateVar('input_files').push(path); // bit of a kludge
 
   this.expandBuffer = function() {
     DEFAULT_BUFFER_LEN *= 2;

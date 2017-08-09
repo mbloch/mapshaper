@@ -128,7 +128,7 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt)
     .option("force", {
-      // obsolete option, triggers warning
+      describe: "allow overwriting input files",
       type: "flag"
     })
     .option("dry-run", {

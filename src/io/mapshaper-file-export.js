@@ -11,6 +11,7 @@ internal.writeFiles = function(exports, opts, cb) {
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
     var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
+    var inputFiles = internal.getStateVar('input_files');
     exports.forEach(function(obj, i) {
       var path = paths[i];
       if (obj.content instanceof ArrayBuffer) {
@@ -20,6 +21,9 @@ internal.writeFiles = function(exports, opts, cb) {
       if (opts.output) {
         opts.output.push({filename: path, content: obj.content});
       } else {
+        if (!opts.force && inputFiles.indexOf(path) > -1) {
+          stop('Need to use the "-o force" option to overwrite input files.');
+        }
         cli.writeFile(path, obj.content);
         message("Wrote " + path);
       }
@@ -30,9 +34,6 @@ internal.writeFiles = function(exports, opts, cb) {
 
 internal.getOutputPaths = function(files, opts) {
   var odir = opts.directory;
-  if (opts.force) {
-    message("The force option is obsolete, files are now overwritten by default");
-  }
   if (odir) {
     files = files.map(function(file) {
       return require('path').join(odir, file);

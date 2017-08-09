@@ -108,6 +108,7 @@ internal.testCommands = function(argv, done) {
 //
 internal.runParsedCommands = function(commands, catalog, done) {
   if (!catalog) {
+    done = createAsyncContext(done); // use new context when creating new catalog
     catalog = new Catalog();
   } else if (catalog instanceof Catalog === false) {
     error("Changed in v0.4: runParsedCommands() takes a Catalog object");
@@ -210,11 +211,11 @@ internal.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'projections') {
       internal.printProjections();
     } else if (cmd.name == 'verbose') {
-      internal.VERBOSE = true;
+      internal.setStateVar('VERBOSE', true);
     } else if (cmd.name == 'quiet') {
-      internal.QUIET = true;
+      internal.setStateVar('QUIET', true);
     } else if (cmd.name == 'debug') {
-      internal.DEBUG = true;
+      internal.setStateVar('DEBUG', true);
     } else {
       return true;
     }

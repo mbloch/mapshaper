@@ -12,7 +12,7 @@ api.svgStyle = function(lyr, dataset, opts) {
     literalVal = internal.parseSvgValue(svgName, strVal, lyr.data.getFields());
     if (literalVal === null) {
       // if value was not parsed as a literal, assume it is a JS expression
-      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.defs});
+      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
     }
     lyr.data.getRecords().forEach(function(rec, i) {
       rec[svgName] = func ? func(i) : literalVal;

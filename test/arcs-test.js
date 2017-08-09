@@ -3,8 +3,7 @@ var api = require('..'),
   assert = require('assert'),
   ArcCollection = api.internal.ArcCollection,
   ArcIter = api.internal.ArcIter,
-  Utils = api.utils,
-  trace = Utils.trace;
+  utils = api.utils;
 
 //      b --- d
 //     / \   /
@@ -149,20 +148,20 @@ describe('mapshaper-arcs.js', function () {
       var thresholds = [[Infinity, Infinity, Infinity], [Infinity, Infinity], [Infinity, Infinity, Infinity]];
       var arcs = new ArcCollection(arcs1).setThresholds(thresholds);
       var removable = arcs.getRemovableThresholds();
-      assert.deepEqual([], Utils.toArray(removable));
+      assert.deepEqual([], utils.toArray(removable));
 
       var removable2 = arcs.getRemovableThresholds(2);
-      assert.deepEqual([], Utils.toArray(removable2));
+      assert.deepEqual([], utils.toArray(removable2));
     });
 
     it('#getRemovableThresholds(), three removable points', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, Infinity, 7, Infinity]];
       var arcs = new ArcCollection(arcs2).setThresholds(thresholds);
       var removable = arcs.getRemovableThresholds();
-      assert.deepEqual([5, 4, 7], Utils.toArray(removable));
+      assert.deepEqual([5, 4, 7], utils.toArray(removable));
 
       var removable2 = arcs.getRemovableThresholds(2);
-      assert.deepEqual([7], Utils.toArray(removable2));
+      assert.deepEqual([7], utils.toArray(removable2));
     });
 
     it('#getThresholdByPct(), nothing to remove', function() {

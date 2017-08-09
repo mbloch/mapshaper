@@ -1,8 +1,6 @@
 var assert = require('assert'),
     api = require("../"),
-    utils = api.utils,
-    trace = api.internal.trace;
-
+    utils = api.utils;
 
 function buildPathTopology(nn, xx, yy) {
   var obj = api.internal.buildPathTopology(nn, xx, yy);

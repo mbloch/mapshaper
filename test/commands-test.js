@@ -71,6 +71,21 @@ describe('mapshaper-commands.js', function () {
     })
   })
 
+  describe('context tests', function () {
+    it('context vars are reset after commands run', function (done) {
+      var cmd = '-i test/test_data/three_points.geojson -verbose';
+      api.runCommands(cmd, function(err) {
+        setTimeout(function() {
+          assert.strictEqual(api.internal.getStateVar('VERBOSE'), false);
+          assert.deepEqual(api.internal.getStateVar('input_files'), []);
+          done();
+        },1);
+        assert.strictEqual(api.internal.getStateVar('VERBOSE'), true);
+        assert.deepEqual(api.internal.getStateVar('input_files'), ['test/test_data/three_points.geojson']);
+      });
+    })
+  })
+
   describe('layer naming tests', function() {
 
     it('Fix: name= option of second dataset ignored', function(done) {

@@ -88,7 +88,7 @@ internal.exportFileContent = function(dataset, opts) {
   // apply coordinate precision, except:
   //   svg precision is applied by the SVG exporter, after rescaling
   //   GeoJSON precision is applied by the exporter, to handle default precision
-  //   TopoJSON precision is applied to avoid redudant copying
+  //   TopoJSON precision is applied to avoid redundant copying
   if (opts.precision && outFmt != 'svg' && outFmt != 'geojson' && outFmt != 'topojson') {
     dataset = internal.copyDatasetForExport(dataset);
     internal.setCoordinatePrecision(dataset, opts.precision);

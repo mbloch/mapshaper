@@ -7,7 +7,7 @@ api.colorizer = function(opts) {
   if (internal.isReservedName(opts.name)) {
     stop('"' + opts.name + '" is a reserved name');
   }
-  internal.defs[opts.name] = internal.getColorizerFunction(opts);
+  internal.getStateVar('defs')[opts.name] = internal.getColorizerFunction(opts);
 };
 
 internal.isReservedName = function(name) {

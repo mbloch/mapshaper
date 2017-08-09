@@ -54,7 +54,7 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset,
       targetLayers,
       arcs;
-  internal.CURR_CMD = name;
+  internal.setStateVar('current_command', name);
 
   try { // catch errors from synchronous functions
 
@@ -305,7 +305,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
   function done(err) {
     T.stop('-' + name);
-    internal.CURR_CMD = null;
     cb(err, err ? null : catalog);
   }
 };

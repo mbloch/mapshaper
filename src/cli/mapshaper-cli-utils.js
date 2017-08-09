@@ -26,8 +26,11 @@ cli.readFile = function(fname, encoding, cache) {
   if (cache && (fname in cache)) {
     content = cache[fname];
     delete cache[fname];
+  } else if (fname == '/dev/stdin') {
+    content = require('rw').readFileSync(fname);
   } else {
-    content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
+    internal.getStateVar('input_files').push(fname);
+    content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
     content = internal.decodeString(content, encoding);
@@ -39,7 +42,7 @@ cli.readFile = function(fname, encoding, cache) {
 cli.writeFile = function(path, content, cb) {
   var fs = require('rw');
   if (cb) {
-    fs.writeFile(path, content, cb);
+    fs.writeFile(path, content, preserveContext(cb));
   } else {
     fs.writeFileSync(path, content);
   }
