@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.42';
+var VERSION = '0.4.43';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1562,14 +1562,51 @@ var api = {};
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
-  DEBUG: false,
-  QUIET: false,
-  VERBOSE: false,
-  T: T,
-  defs: {}
+  context: createContext()
 };
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
+
+internal.getStateVar = function(key) {
+  return internal.context[key];
+};
+
+internal.setStateVar = function(key, val) {
+  internal.context[key] = val;
+};
+
+function createContext() {
+  return {
+    DEBUG: false,
+    QUIET: false,
+    VERBOSE: false,
+    defs: {},
+    input_files: []
+  };
+}
+
+// Install a new set of context variables, clear them when an async callback is called.
+// @cb callback function to wrap
+// returns wrapped callback function
+function createAsyncContext(cb) {
+  internal.context = createContext();
+  return function() {
+    cb.apply(null, utils.toArray(arguments));
+    // clear context after cb(), so output/errors can be handled in current context
+    internal.context = createContext();
+  };
+}
+
+// Save the current context, restore it when an async callback is called
+// @cb callback function to wrap
+// returns wrapped callback function
+function preserveContext(cb) {
+  var ctx = internal.context;
+  return function() {
+    internal.context = ctx;
+    cb.apply(null, utils.toArray(arguments));
+  };
+}
 
 function error() {
   internal.error.apply(null, utils.toArray(arguments));
@@ -1577,7 +1614,7 @@ function error() {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  internal.stop.apply(null, messageArgs(arguments));
+  internal.stop.apply(null, utils.toArray(arguments));
 }
 
 function APIError(msg) {
@@ -1588,8 +1625,9 @@ function APIError(msg) {
 
 function messageArgs(args) {
   var arr = utils.toArray(args);
-  if (internal.CURR_CMD) {
-    arr.unshift('[' + internal.CURR_CMD + ']');
+  var cmd = internal.getStateVar('current_command');
+  if (cmd) {
+    arr.unshift('[' + cmd + ']');
   }
   return arr;
 }
@@ -1599,17 +1637,16 @@ function message() {
 }
 
 function verbose() {
-  if (internal.VERBOSE) {
+  if (internal.getStateVar('VERBOSE')) {
     internal.logArgs(arguments);
   }
 }
 
 function debug() {
-  if (internal.DEBUG) {
+  if (internal.getStateVar('DEBUG')) {
     internal.logArgs(arguments);
   }
 }
-var trace = debug; // TODO: rename debug() calls
 
 function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
@@ -1630,8 +1667,8 @@ api.printError = function(err) {
     if (!/Error/.test(msg)) {
       msg = "Error: " + msg;
     }
-    console.error(msg);
-    message("Run mapshaper -h to view help");
+    console.error(messageArgs([msg]).join(' '));
+    internal.message("Run mapshaper -h to view help");
   } else {
     throw err;
   }
@@ -1673,7 +1710,7 @@ internal.formatStringsAsGrid = function(arr) {
 };
 
 internal.logArgs = function(args) {
-  if (internal.LOGGING && !internal.QUIET && utils.isArrayLike(args)) {
+  if (internal.LOGGING && !internal.getStateVar('QUIET') && utils.isArrayLike(args)) {
     (console.error || console.log).call(console, internal.formatLogArgs(args));
   }
 };
@@ -9658,7 +9695,7 @@ api.colorizer = function(opts) {
   if (internal.isReservedName(opts.name)) {
     stop('"' + opts.name + '" is a reserved name');
   }
-  internal.defs[opts.name] = internal.getColorizerFunction(opts);
+  internal.getStateVar('defs')[opts.name] = internal.getColorizerFunction(opts);
 };
 
 internal.isReservedName = function(name) {
@@ -9975,13 +10012,14 @@ function BufferReader(src) {
   this.close = function() {};
 }
 
-
 function FileReader(path, opts) {
   var fs = require('fs'),
       fileLen = fs.statSync(path).size,
       DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
       DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
       fd, cacheOffs, cache, binArr;
+
+  internal.getStateVar('input_files').push(path); // bit of a kludge
 
   this.expandBuffer = function() {
     DEFAULT_BUFFER_LEN *= 2;
@@ -13531,7 +13569,7 @@ api.svgStyle = function(lyr, dataset, opts) {
     literalVal = internal.parseSvgValue(svgName, strVal, lyr.data.getFields());
     if (literalVal === null) {
       // if value was not parsed as a literal, assume it is a JS expression
-      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.defs});
+      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
     }
     lyr.data.getRecords().forEach(function(rec, i) {
       rec[svgName] = func ? func(i) : literalVal;
@@ -14078,7 +14116,7 @@ internal.exportFileContent = function(dataset, opts) {
   // apply coordinate precision, except:
   //   svg precision is applied by the SVG exporter, after rescaling
   //   GeoJSON precision is applied by the exporter, to handle default precision
-  //   TopoJSON precision is applied to avoid redudant copying
+  //   TopoJSON precision is applied to avoid redundant copying
   if (opts.precision && outFmt != 'svg' && outFmt != 'geojson' && outFmt != 'topojson') {
     dataset = internal.copyDatasetForExport(dataset);
     internal.setCoordinatePrecision(dataset, opts.precision);
@@ -14283,7 +14321,7 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   if (opts && opts.where) {
     filter = internal.compileValueExpression(opts.where, lyr, arcs);
   }
-  compiled = internal.compileFeatureExpression(exp, lyr, arcs, {context: internal.defs});
+  compiled = internal.compileFeatureExpression(exp, lyr, arcs, {context: internal.getStateVar('defs')});
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {
     if (!filter || filter(i)) {
@@ -14611,6 +14649,7 @@ internal.writeFiles = function(exports, opts, cb) {
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
     var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
+    var inputFiles = internal.getStateVar('input_files');
     exports.forEach(function(obj, i) {
       var path = paths[i];
       if (obj.content instanceof ArrayBuffer) {
@@ -14620,6 +14659,9 @@ internal.writeFiles = function(exports, opts, cb) {
       if (opts.output) {
         opts.output.push({filename: path, content: obj.content});
       } else {
+        if (!opts.force && inputFiles.indexOf(path) > -1) {
+          stop('Need to use the "-o force" option to overwrite input files.');
+        }
         cli.writeFile(path, obj.content);
         message("Wrote " + path);
       }
@@ -14630,9 +14672,6 @@ internal.writeFiles = function(exports, opts, cb) {
 
 internal.getOutputPaths = function(files, opts) {
   var odir = opts.directory;
-  if (opts.force) {
-    message("The force option is obsolete, files are now overwritten by default");
-  }
   if (odir) {
     files = files.map(function(file) {
       return require('path').join(odir, file);
@@ -17546,7 +17585,7 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset,
       targetLayers,
       arcs;
-  internal.CURR_CMD = name;
+  internal.setStateVar('current_command', name);
 
   try { // catch errors from synchronous functions
 
@@ -17797,7 +17836,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
   function done(err) {
     T.stop('-' + name);
-    internal.CURR_CMD = null;
     cb(err, err ? null : catalog);
   }
 };
@@ -18760,7 +18798,7 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt)
     .option("force", {
-      // obsolete option, triggers warning
+      describe: "allow overwriting input files",
       type: "flag"
     })
     .option("dry-run", {
@@ -19962,6 +20000,7 @@ internal.testCommands = function(argv, done) {
 //
 internal.runParsedCommands = function(commands, catalog, done) {
   if (!catalog) {
+    done = createAsyncContext(done); // use new context when creating new catalog
     catalog = new Catalog();
   } else if (catalog instanceof Catalog === false) {
     error("Changed in v0.4: runParsedCommands() takes a Catalog object");
@@ -20064,11 +20103,11 @@ internal.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'projections') {
       internal.printProjections();
     } else if (cmd.name == 'verbose') {
-      internal.VERBOSE = true;
+      internal.setStateVar('VERBOSE', true);
     } else if (cmd.name == 'quiet') {
-      internal.QUIET = true;
+      internal.setStateVar('QUIET', true);
     } else if (cmd.name == 'debug') {
-      internal.DEBUG = true;
+      internal.setStateVar('DEBUG', true);
     } else {
       return true;
     }
@@ -20102,8 +20141,11 @@ cli.readFile = function(fname, encoding, cache) {
   if (cache && (fname in cache)) {
     content = cache[fname];
     delete cache[fname];
+  } else if (fname == '/dev/stdin') {
+    content = require('rw').readFileSync(fname);
   } else {
-    content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
+    internal.getStateVar('input_files').push(fname);
+    content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
     content = internal.decodeString(content, encoding);
@@ -20115,7 +20157,7 @@ cli.readFile = function(fname, encoding, cache) {
 cli.writeFile = function(path, content, cb) {
   var fs = require('rw');
   if (cb) {
-    fs.writeFile(path, content, cb);
+    fs.writeFile(path, content, preserveContext(cb));
   } else {
     fs.writeFileSync(path, content);
   }

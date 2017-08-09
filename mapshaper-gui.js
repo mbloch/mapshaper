@@ -2980,7 +2980,7 @@ function getLineScale(ext) {
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.25);
   } else if (mapScale > 100) {
-    if (!internal.VERBOSE) // thin lines for debugging
+    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
       s *= Math.pow(mapScale - 99, 0.10);
   }
   return s;
@@ -3580,6 +3580,10 @@ function MapExtent(_position) {
     }
   };
 
+  this.translatePixelCoords = function(x, y) {
+    return this.getTransform().invert().transform(x, y);
+  };
+
   // stop zooming before rounding errors become too obvious
   function maxScale() {
     var minPixelScale = 1e-16;
@@ -3692,9 +3696,8 @@ function HitControl(ext, mouse) {
       gui.selectElement(readout.node());
       // don't save bbox point when inspector is active
       // clear bbox point if already present
-      bboxPoint = bboxPoint || active ? null : getPointerCoords(e);
+      bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);
     }
-
   });
 
   // DISABLING: This causes problems when hovering over the info panel
@@ -3708,7 +3711,7 @@ function HitControl(ext, mouse) {
   mouse.on('hover', function(e) {
     var p;
     if (!target) return;
-    p = getPointerCoords(e);
+    p = ext.translatePixelCoords(e.x, e.y);
     if (target.geographic) {
       // update coordinate readout if displaying geographic shapes
       displayCoords(p);
@@ -3719,10 +3722,6 @@ function HitControl(ext, mouse) {
       hover(test(p[0], p[1]));
     }
   });
-
-  function getPointerCoords(e) {
-    return ext.getTransform().invert().transform(e.x, e.y);
-  }
 
   function displayCoords(p) {
     var decimals = getCoordPrecision(ext.getBounds());
@@ -5080,9 +5079,9 @@ function Console(model) {
           postArcCount = postArcs ? postArcs.size() : 0,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
-      // restore default logging options, in case -quiet or -verbose command was run
-      internal.QUIET = false;
-      internal.VERBOSE = false;
+      // restore default logging options, in case they were changed by the command
+      internal.setStateVar('QUIET', false);
+      internal.setStateVar('VERBOSE', false);
 
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
@@ -5123,7 +5122,7 @@ function Console(model) {
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    if (internal.LOGGING && !internal.QUIET) {
+    if (internal.LOGGING && !internal.getStateVar('QUIET')) {
       toLog(msg, 'console-message');
     }
   }
