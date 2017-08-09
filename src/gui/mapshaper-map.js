@@ -136,6 +136,7 @@ function MshpMap(model) {
   function initMap() {
     var position = new ElementPosition(_layers);
     var mouse = new MouseArea(_layers.node(), position);
+    // var mouse = new MouseArea(_root.node(), position);
     var ext = new MapExtent(position);
     var nav = new MapNav(_root, ext, mouse);
     var inspector = new InspectionControl(model, new HitControl(ext, mouse));

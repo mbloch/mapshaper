@@ -64,28 +64,35 @@ function HitControl(ext, mouse) {
     }
   });
 
-  // DISABLING: This causes problems when hovering over the info panel
-  // Deselect hover shape when pointer leaves hover area
-  //mouse.on('leave', function(e) {
-  // hover(-1);
-  //});
-
   mouse.on('leave', clearCoords);
 
   mouse.on('hover', function(e) {
-    var p;
     if (!target) return;
-    p = ext.translatePixelCoords(e.x, e.y);
-    if (target.geographic) {
+    var isOver = isOverMap(e);
+    var p = ext.translatePixelCoords(e.x, e.y);
+    if (target.geographic && isOver) {
       // update coordinate readout if displaying geographic shapes
       displayCoords(p);
     } else {
       clearCoords();
     }
-    if (active && test && e.hover) {
-      hover(test(p[0], p[1]));
+    if (active && test) {
+      if (!isOver) {
+        // mouse is off of map viewport -- clear any current hit
+        hover([]);
+      } else if (e.hover) {
+        // mouse is hovering directly over map area -- update hit detection
+        hover(test(p[0], p[1]));
+      } else {
+        // mouse is over map viewport but not directly over map (e.g. hovering
+        // over popup) -- don't update hit detection
+      }
     }
   });
+
+  function isOverMap(e) {
+    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
+  }
 
   function displayCoords(p) {
     var decimals = getCoordPrecision(ext.getBounds());
