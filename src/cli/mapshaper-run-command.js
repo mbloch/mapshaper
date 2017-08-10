@@ -94,7 +94,7 @@ api.runCommand = function(cmd, catalog, cb) {
             opts.target, internal.getFormattedLayerList(catalog)));
       }
       if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
-        throw new APIError("Missing a -i command");
+        throw new UserError("Missing a -i command");
       }
     }
 

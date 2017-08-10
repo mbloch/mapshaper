@@ -41,7 +41,7 @@ describe('mapshaper-target.js', function () {
   it('error if no layer is matched', function(done) {
     var cmd = "-i test/test_data/three_points.shp -target states";
     api.runCommands(cmd, function(err) {
-      assert.equal(err.name, 'APIError');
+      assert.equal(err.name, 'UserError');
       done();
     })
   })
@@ -49,7 +49,7 @@ describe('mapshaper-target.js', function () {
   it('error if multiple layers are matched', function(done) {
     var cmd = "-i test/test_data/three_points.shp -i test/test_data/three_points.shp -target three_points";
     api.runCommands(cmd, function(err) {
-      assert.equal(err.name, 'APIError');
+      assert.equal(err.name, 'UserError');
       done();
     })
   })

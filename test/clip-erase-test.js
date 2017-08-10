@@ -57,7 +57,7 @@ describe('mapshaper-clip-erase.js', function () {
       });
     })
 
-    it('Throws APIError on invalid bbox', function(done) {
+    it('Throws UserError on invalid bbox', function(done) {
       var input = {
         type: 'GeometryCollection',
         geometries: [{
@@ -66,7 +66,7 @@ describe('mapshaper-clip-erase.js', function () {
         }]
       }
       api.applyCommands('-clip bbox=1,0,1,2', input, function(err, data) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       });
     })

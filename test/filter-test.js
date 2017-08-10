@@ -23,7 +23,7 @@ describe('mapshaper-filter.js', function () {
 
     it ('empty expression throws an error', function(done) {
       api.applyCommands('-filter ""', JSON.stringify(geojson), function(err) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       });
     })

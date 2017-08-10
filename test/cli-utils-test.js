@@ -18,7 +18,7 @@ describe('mapshaper-cli-lib.js', function () {
       assert.throws(function() {
         cli.expandInputFiles(['missing/dir/*.shp']);
       }, function(e) {
-        return e.name == 'APIError';
+        return e.name == 'UserError';
       });
     });
 
@@ -26,7 +26,7 @@ describe('mapshaper-cli-lib.js', function () {
       assert.throws(function() {
         cli.expandInputFiles(['test/*.shp']);
       }, function(e) {
-        return e.name == 'APIError';
+        return e.name == 'UserError';
       });
     });
 

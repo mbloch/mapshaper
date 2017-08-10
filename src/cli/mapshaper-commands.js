@@ -33,7 +33,7 @@ api.applyCommands = function(commands, input, done) {
   }
   if (type == 'text' || type == 'json') {
     // old api: input is the content of a CSV or JSON file
-    // return done(new APIError('applyCommands() has changed, see v0.4 docs'));
+    // return done(new UserError('applyCommands() has changed, see v0.4 docs'));
     message("Warning: applyCommands() was called with deprecated input format");
     return internal.applyCommandsOld(commands, input, done);
   }
@@ -123,7 +123,7 @@ internal.runParsedCommands = function(commands, catalog, cb) {
   }
 
   if (commands.length === 0) {
-    return done(new APIError("No commands to run"));
+    return done(new UserError("No commands to run"));
   }
   commands = internal.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {

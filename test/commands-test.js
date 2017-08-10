@@ -181,7 +181,7 @@ describe('mapshaper-commands.js', function () {
 
     it('missing file', function(done) {
       api.applyCommands('-i data.csv', {}, function(err, output) {
-        assert(err.name, 'APIError');
+        assert(err.name, 'UserError');
         done();
       })
     });
@@ -215,7 +215,7 @@ describe('mapshaper-commands.js', function () {
         'data2.json': '{'
       };
       api.applyCommands('-i data.csv data2.json -o', input, function(err, output) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         assert.equal(output, null);
         done();
       })
@@ -439,7 +439,7 @@ describe('mapshaper-commands.js', function () {
 
     it('invalid dataset gives error', function(done) {
       api.applyCommands('', {}, function(err, output) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       })
     })
@@ -450,7 +450,7 @@ describe('mapshaper-commands.js', function () {
     it('Error: empty command string', function(done) {
       mapshaper.runCommands("", function(err) {
         assert(!!err);
-        assert.equal(err.name, 'APIError')
+        assert.equal(err.name, 'UserError')
         done();
       });
     })
@@ -464,7 +464,7 @@ describe('mapshaper-commands.js', function () {
 
     it('Error: no dataset, no -i command', function(done) {
       mapshaper.runCommands("-info", function(err) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       });
     });
@@ -477,21 +477,21 @@ describe('mapshaper-commands.js', function () {
 
     it('Error: -i missing a file', function(done) {
       mapshaper.runCommands("-i oops.shp", function(err) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       });
     });
 
     it('Error: unknown command', function(done) {
       mapshaper.runCommands("-i " + states_shp + " -amplify", function(err) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       });
     });
 
     it('Error: -join missing a file', function(done) {
       mapshaper.runCommands("-i " + states_shp + " -join oops.json", function(err) {
-        assert.equal(err.name, 'APIError');
+        assert.equal(err.name, 'UserError');
         done();
       });
     });

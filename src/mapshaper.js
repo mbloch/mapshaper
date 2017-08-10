@@ -33,7 +33,7 @@ utils.extend(api.internal, {
   topojson: TopoJSON,
   geojson: GeoJSON,
   svg: SVG,
-  APIError: APIError
+  UserError: UserError
 });
 
 if (typeof define === "function" && define.amd) {

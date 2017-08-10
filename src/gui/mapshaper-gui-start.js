@@ -5,5 +5,5 @@ var cli = api.cli;
 var geom = api.geom;
 var internal = api.internal;
 var Bounds = api.internal.Bounds;
-var APIError = api.internal.APIError;
+var UserError = api.internal.UserError;
 var message = api.internal.message;

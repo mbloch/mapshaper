@@ -59,9 +59,9 @@ function stop() {
   internal.stop.apply(null, utils.toArray(arguments));
 }
 
-function APIError(msg) {
+function UserError(msg) {
   var err = new Error(msg);
-  err.name = 'APIError';
+  err.name = 'UserError';
   return err;
 }
 
@@ -102,9 +102,9 @@ api.enableLogging = function() {
 api.printError = function(err) {
   var msg;
   if (utils.isString(err)) {
-    err = new APIError(err);
+    err = new UserError(err);
   }
-  if (internal.LOGGING && err.name == 'APIError') {
+  if (internal.LOGGING && err.name == 'UserError') {
     msg = err.message;
     if (!/Error/.test(msg)) {
       msg = "Error: " + msg;
@@ -123,7 +123,7 @@ internal.error = function() {
 };
 
 internal.stop = function() {
-  throw new APIError(internal.formatLogArgs(arguments));
+  throw new UserError(internal.formatLogArgs(arguments));
 };
 
 internal.message = function() {

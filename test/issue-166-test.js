@@ -36,7 +36,7 @@ describe('Issue #166: .prj lost after combine-files', function () {
     var path = 'test/test_data/issues/166/';
     var i = '-i ' + path + 'a_utm.shp ' + path + 'd_geo.shp combine-files';
     api.applyCommands(i + ' -merge-layers -o out.shp', {}, function(err, output) {
-      assert.equal(err.name, 'APIError');
+      assert.equal(err.name, 'UserError');
       done();
     });
   });
