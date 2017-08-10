@@ -54,7 +54,6 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset,
       targetLayers,
       arcs;
-  internal.setStateVar('current_command', name);
 
   try { // catch errors from synchronous functions
 
@@ -94,7 +93,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
+      if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
         throw new APIError("Missing a -i command");
       }
     }
@@ -157,9 +156,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
-
-    } else if (name == 'help') {
-      internal.getOptionParser().printHelp(opts.command);
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();

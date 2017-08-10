@@ -112,6 +112,7 @@ api.printError = function(err) {
     console.error(messageArgs([msg]).join(' '));
     internal.message("Run mapshaper -h to view help");
   } else {
+    // not a user error or logging is disabled -- throw it
     throw err;
   }
 };

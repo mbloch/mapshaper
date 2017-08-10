@@ -104,11 +104,11 @@ internal.testCommands = function(argv, done) {
 // Execute a sequence of commands
 // @commands Array of parsed commands
 // @catalog: Optional Catalog object containing previously imported data
-// @done: function(<error>, <catalog>)
+// @cb: function(<error>, <catalog>)
 //
-internal.runParsedCommands = function(commands, catalog, done) {
+internal.runParsedCommands = function(commands, catalog, cb) {
   if (!catalog) {
-    done = createAsyncContext(done); // use new context when creating new catalog
+    cb = createAsyncContext(cb); // use new context when creating new catalog
     catalog = new Catalog();
   } else if (catalog instanceof Catalog === false) {
     error("Changed in v0.4: runParsedCommands() takes a Catalog object");
@@ -130,10 +130,17 @@ internal.runParsedCommands = function(commands, catalog, done) {
     return done(null);
   }
   commands = internal.divideImportCommand(commands);
+  utils.reduceAsync(commands, catalog, nextCommand, done);
 
-  utils.reduceAsync(commands, catalog, function(catalog, cmd, nextCmd) {
-    api.runCommand(cmd, catalog, nextCmd);
-  }, done);
+  function nextCommand(catalog, cmd, next) {
+    internal.setStateVar('current_command', cmd.name); // for log msgs
+    api.runCommand(cmd, catalog, next);
+  }
+
+  function done(err, catalog) {
+    cb(err, catalog);
+    internal.setStateVar('current_command', null);
+  }
 };
 
 // If an initial import command indicates that several input files should be
@@ -216,6 +223,8 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.setStateVar('QUIET', true);
     } else if (cmd.name == 'debug') {
       internal.setStateVar('DEBUG', true);
+    } else if (cmd.name == 'help') {
+      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }
