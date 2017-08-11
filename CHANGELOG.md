@@ -1,3 +1,6 @@
+v0.4.44
+* -dissolve2 now removes polygon rings that are improperly nested inside other rings.
+
 v0.4.43
 * Restore prohibition against overwriting input files unless the "-o force" option is present.
 
