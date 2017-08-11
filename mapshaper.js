@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.43';
+var VERSION = '0.4.44';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1617,9 +1617,9 @@ function stop() {
   internal.stop.apply(null, utils.toArray(arguments));
 }
 
-function APIError(msg) {
+function UserError(msg) {
   var err = new Error(msg);
-  err.name = 'APIError';
+  err.name = 'UserError';
   return err;
 }
 
@@ -1660,9 +1660,9 @@ api.enableLogging = function() {
 api.printError = function(err) {
   var msg;
   if (utils.isString(err)) {
-    err = new APIError(err);
+    err = new UserError(err);
   }
-  if (internal.LOGGING && err.name == 'APIError') {
+  if (internal.LOGGING && err.name == 'UserError') {
     msg = err.message;
     if (!/Error/.test(msg)) {
       msg = "Error: " + msg;
@@ -1670,6 +1670,7 @@ api.printError = function(err) {
     console.error(messageArgs([msg]).join(' '));
     internal.message("Run mapshaper -h to view help");
   } else {
+    // not a user error or logging is disabled -- throw it
     throw err;
   }
 };
@@ -1680,7 +1681,7 @@ internal.error = function() {
 };
 
 internal.stop = function() {
-  throw new APIError(internal.formatLogArgs(arguments));
+  throw new UserError(internal.formatLogArgs(arguments));
 };
 
 internal.message = function() {
@@ -3199,10 +3200,16 @@ internal.editPaths = function(paths, cb) {
   }
 };
 
-internal.forEachPathSegment = function(shape, arcs, cb) {
-  internal.forEachArcId(shape, function(arcId) {
-    arcs.forEachArcSegment(arcId, cb);
-  });
+internal.forEachSegmentInShape = function(shape, arcs, cb) {
+  for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
+    internal.forEachSegmentInPath(shape[i], arcs, cb);
+  }
+};
+
+internal.forEachSegmentInPath = function(ids, arcs, cb) {
+  for (var i=0, n=ids.length; i<n; i++) {
+    arcs.forEachArcSegment(ids[i], cb);
+  }
 };
 
 internal.traversePaths = function traversePaths(shapes, cbArc, cbPart, cbShape) {
@@ -4008,7 +4015,7 @@ geom.testPointInRing = function(x, y, ids, arcs) {
   */
   var isIn = false,
       isOn = false;
-  internal.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
+  internal.forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
     var result = geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result == 1) {
       isIn = !isIn;
@@ -4315,8 +4322,10 @@ function PolygonIndex(shape, arcs, opts) {
   }
 
   function getBucketCount(segCount) {
-    // default is 100 segs per bucket (average)
-    var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 100;
+    // default is this many segs per bucket (average)
+    // var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 200;
+    // using more segs/bucket for more complex shapes, based on trial and error
+    var buckets = Math.pow(segCount, 0.75) / 10;
     return Math.ceil(buckets);
   }
 
@@ -4331,12 +4340,12 @@ function PolygonIndex(shape, arcs, opts) {
         a, b, i, j, xmin, xmax;
 
     // get array of segments as [s0p0, s0p1, s1p0, s1p1, ...], sorted by xmin coordinate
-    internal.forEachPathSegment(shape, arcs, function() {
+    internal.forEachSegmentInShape(shape, arcs, function() {
       segCount++;
     });
     segments = new Uint32Array(segCount * 2);
     i = 0;
-    internal.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
+    internal.forEachSegmentInShape(shape, arcs, function(a, b, xx, yy) {
       segments[i++] = a;
       segments[i++] = b;
     });
@@ -4390,7 +4399,6 @@ function PolygonIndex(shape, arcs, opts) {
 
 function PathIndex(shapes, arcs) {
   var _index;
-  // var totalArea = arcs.getBounds().area();
   var totalArea = internal.getPathBounds(shapes, arcs).area();
   init(shapes);
 
@@ -4409,15 +4417,11 @@ function PathIndex(shapes, arcs) {
 
     function addPath(ids, shpId) {
       var bounds = arcs.getSimpleShapeBounds(ids);
-      var bbox = bounds.toArray();
+      var bbox = rbushBounds(bounds.toArray());
       bbox.ids = ids;
       bbox.bounds = bounds;
       bbox.id = shpId;
       boxes.push(bbox);
-      // TODO: Better test for whether or not to index a path
-      if (bounds.area() > totalArea * 0.02) {
-        bbox.index = new PolygonIndex([ids], arcs);
-      }
     }
   }
 
@@ -4434,6 +4438,25 @@ function PathIndex(shapes, arcs) {
 
   this.pointIsEnclosed = function(p) {
     return testPointInRings(p, findPointHitRings(p));
+  };
+
+  // return id or -1
+  this.findSmallestEnclosingPolygon = function(ring, shpId) {
+    var bounds = arcs.getSimpleShapeBounds(ring);
+    var p = getTestPoint(ring[0]);
+    var candidates = findPointHitRings(p);
+    var smallest, candidate, isEnclosed, hitId;
+    for (var i=0; i<candidates.length; i++) {
+      candidate = candidates[i];
+      if (candidate.id != shpId && candidate.bounds.contains(bounds)) {
+        if (!smallest || candidate.bounds.area() < smallest.bounds.area()) {
+          smallest = candidate;
+        }
+      }
+    }
+
+    hitId = smallest && testPointInRing(p, smallest) ? smallest.id : -1;
+    return hitId;
   };
 
   this.arcIsEnclosed = function(arcId) {
@@ -4456,7 +4479,7 @@ function PathIndex(shapes, arcs) {
   // @pathIds Array of arc ids comprising a closed path
   this.findEnclosedPaths = function(pathIds) {
     var pathBounds = arcs.getSimpleShapeBounds(pathIds),
-        cands = _index.search(pathBounds.toArray()),
+        cands = _index.search(rbushBounds(pathBounds.toArray())),
         paths = [],
         index;
 
@@ -4465,8 +4488,8 @@ function PathIndex(shapes, arcs) {
     }
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);
-      var isEnclosed = index ?
-        index.pointInPolygon(p[0], p[1]) : pathContainsPoint(pathIds, pathBounds, p);
+      var isEnclosed = pathBounds.containsPoint(p[0], p[1]) && (index ?
+        index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
         paths.push(cand.ids);
       }
@@ -4485,13 +4508,23 @@ function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
+  function testPointInRing(p, cand) {
+    if (!cand.bounds.containsPoint(p[0], p[1])) return false;
+    if (!cand.index && cand.bounds.area() > totalArea * 0.01) {
+      // index larger polygons (because they are slower to test via pointInRing()
+      //    and they are more likely to be involved in repeated hit tests).
+      cand.index = new PolygonIndex([cand.ids], arcs);
+    }
+    return cand.index ?
+        cand.index.pointInPolygon(p[0], p[1]) :
+        geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+  }
+
   function testPointInRings(p, cands) {
     var isOn = false,
         isIn = false;
     cands.forEach(function(cand) {
-      var inRing = cand.index ?
-        cand.index.pointInPolygon(p[0], p[1]) :
-        pathContainsPoint(cand.ids, cand.bounds, p);
+      var inRing = testPointInRing(p, cand);
       if (inRing == -1) {
         isOn = true;
       } else if (inRing == 1) {
@@ -4499,6 +4532,15 @@ function PathIndex(shapes, arcs) {
       }
     });
     return isOn || isIn;
+  }
+
+  function rbushBounds(arr) {
+    return {
+      minX: arr[0],
+      minY: arr[1],
+      maxX: arr[2],
+      maxY: arr[3]
+    };
   }
 
   function findPointHitShapes(p) {
@@ -4521,7 +4563,7 @@ function PathIndex(shapes, arcs) {
   function findPointHitRings(p) {
     var x = p[0],
         y = p[1];
-    return _index.search([x, y, x, y]);
+    return _index.search(rbushBounds([x, y, x, y]));
   }
 
   function getTestPoint(arcId) {
@@ -4530,12 +4572,6 @@ function PathIndex(shapes, arcs) {
     var p0 = arcs.getVertex(arcId, 0),
         p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
-  }
-
-  function pathContainsPoint(pathIds, pathBounds, p) {
-    if (pathBounds.containsPoint(p[0], p[1]) === false) return 0;
-    // A contains B iff some point on B is inside A
-    return geom.testPointInRing(p[0], p[1], pathIds, arcs);
   }
 
   function xorArrays(a, b) {
@@ -7140,7 +7176,7 @@ internal.findRayShapeIntersections = function(x, y, shp, arcs) {
 // Return array of y-intersections between vertical ray and a polygon ring
 internal.findRayRingIntersections = function(x, y, path, arcs) {
   var yints = [];
-  internal.forEachPathSegment(path, arcs, function(a, b, xx, yy) {
+  internal.forEachSegmentInPath(path, arcs, function(a, b, xx, yy) {
     var result = geom.getRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result > -Infinity) {
       yints.push(result);
@@ -8275,6 +8311,37 @@ internal.printDissolveMessage = function(pre, post) {
 
 
 
+// Delete rings that are nested directly inside an enclosing ring with the same winding direction
+// Does not remove unenclosed CCW rings (currently this causes problems when
+//   rounding coordinates for SVG and TopoJSON output)
+// Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
+//
+internal.fixNestingErrors = function(rings, arcs) {
+  var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
+  // convert rings to shapes for PathIndex
+  var shapes = rings.map(function(ids) {return [ids];});
+  var index = new PathIndex(shapes, arcs);
+  return rings.filter(ringIsValid);
+
+  function ringIsValid(ids, i) {
+    var containerId = index.findSmallestEnclosingPolygon(ids, i);
+    var ringIsCW, containerIsCW;
+    var valid = true;
+    if (containerId > -1) {
+      ringIsCW = ringData[i].area > 0;
+      containerIsCW = ringData[containerId].area > 0;
+      if (containerIsCW == ringIsCW) {
+        // reject rings with same chirality as their containing ring
+        valid = false;
+      }
+    }
+    return valid;
+  }
+};
+
+
+
+
 internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
   var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
@@ -8323,8 +8390,13 @@ internal.getPolygonDissolver = function(nodes, spherical) {
     ccw = flatten(ccw);
     ccw.forEach(internal.reversePath);
 
+
     var shp2 = internal.appendHolestoRings(cw, ccw);
     var dissolved = dissolve(shp2);
+    if (dissolved.length > 1) {
+      dissolved = internal.fixNestingErrors(dissolved, nodes.arcs);
+    }
+
     return dissolved.length > 0 ? dissolved : null;
   };
 };
@@ -17585,7 +17657,6 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset,
       targetLayers,
       arcs;
-  internal.setStateVar('current_command', name);
 
   try { // catch errors from synchronous functions
 
@@ -17625,8 +17696,8 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
-        throw new APIError("Missing a -i command");
+      if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
+        throw new UserError("Missing a -i command");
       }
     }
 
@@ -17688,9 +17759,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
-
-    } else if (name == 'help') {
-      internal.getOptionParser().printHelp(opts.command);
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
@@ -19925,7 +19993,7 @@ api.applyCommands = function(commands, input, done) {
   }
   if (type == 'text' || type == 'json') {
     // old api: input is the content of a CSV or JSON file
-    // return done(new APIError('applyCommands() has changed, see v0.4 docs'));
+    // return done(new UserError('applyCommands() has changed, see v0.4 docs'));
     message("Warning: applyCommands() was called with deprecated input format");
     return internal.applyCommandsOld(commands, input, done);
   }
@@ -19996,11 +20064,11 @@ internal.testCommands = function(argv, done) {
 // Execute a sequence of commands
 // @commands Array of parsed commands
 // @catalog: Optional Catalog object containing previously imported data
-// @done: function(<error>, <catalog>)
+// @cb: function(<error>, <catalog>)
 //
-internal.runParsedCommands = function(commands, catalog, done) {
+internal.runParsedCommands = function(commands, catalog, cb) {
   if (!catalog) {
-    done = createAsyncContext(done); // use new context when creating new catalog
+    cb = createAsyncContext(cb); // use new context when creating new catalog
     catalog = new Catalog();
   } else if (catalog instanceof Catalog === false) {
     error("Changed in v0.4: runParsedCommands() takes a Catalog object");
@@ -20015,17 +20083,24 @@ internal.runParsedCommands = function(commands, catalog, done) {
   }
 
   if (commands.length === 0) {
-    return done(new APIError("No commands to run"));
+    return done(new UserError("No commands to run"));
   }
   commands = internal.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
     return done(null);
   }
   commands = internal.divideImportCommand(commands);
+  utils.reduceAsync(commands, catalog, nextCommand, done);
 
-  utils.reduceAsync(commands, catalog, function(catalog, cmd, nextCmd) {
-    api.runCommand(cmd, catalog, nextCmd);
-  }, done);
+  function nextCommand(catalog, cmd, next) {
+    internal.setStateVar('current_command', cmd.name); // for log msgs
+    api.runCommand(cmd, catalog, next);
+  }
+
+  function done(err, catalog) {
+    cb(err, catalog);
+    internal.setStateVar('current_command', null);
+  }
 };
 
 // If an initial import command indicates that several input files should be
@@ -20108,6 +20183,8 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.setStateVar('QUIET', true);
     } else if (cmd.name == 'debug') {
       internal.setStateVar('DEBUG', true);
+    } else if (cmd.name == 'help') {
+      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }
@@ -20263,7 +20340,7 @@ utils.extend(api.internal, {
   topojson: TopoJSON,
   geojson: GeoJSON,
   svg: SVG,
-  APIError: APIError
+  UserError: UserError
 });
 
 if (typeof define === "function" && define.amd) {

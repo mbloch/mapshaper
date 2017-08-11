@@ -6,7 +6,7 @@ var cli = api.cli;
 var geom = api.geom;
 var internal = api.internal;
 var Bounds = api.internal.Bounds;
-var APIError = api.internal.APIError;
+var UserError = api.internal.UserError;
 var message = api.internal.message;
 
 
@@ -5107,7 +5107,7 @@ function Console(model) {
   function onError(err) {
     if (utils.isString(err)) {
       stop(err);
-    } else if (err.name == 'APIError') {
+    } else if (err.name == 'UserError') {
       // stop() has already been called, don't need to log
     } else if (err.name) {
       // log stack trace to browser console
@@ -5120,7 +5120,7 @@ function Console(model) {
   function consoleStop() {
     var msg = gui.formatMessageArgs(arguments);
     warning(msg);
-    throw new APIError(msg);
+    throw new UserError(msg);
   }
 
   function warning() {
