@@ -56,8 +56,10 @@ function PolygonIndex(shape, arcs, opts) {
   }
 
   function getBucketCount(segCount) {
-    // default is 100 segs per bucket (average)
-    var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 100;
+    // default is this many segs per bucket (average)
+    // var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 200;
+    // using more segs/bucket for more complex shapes, based on trial and error
+    var buckets = Math.pow(segCount, 0.75) / 10;
     return Math.ceil(buckets);
   }
 
@@ -72,12 +74,12 @@ function PolygonIndex(shape, arcs, opts) {
         a, b, i, j, xmin, xmax;
 
     // get array of segments as [s0p0, s0p1, s1p0, s1p1, ...], sorted by xmin coordinate
-    internal.forEachPathSegment(shape, arcs, function() {
+    internal.forEachSegmentInShape(shape, arcs, function() {
       segCount++;
     });
     segments = new Uint32Array(segCount * 2);
     i = 0;
-    internal.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
+    internal.forEachSegmentInShape(shape, arcs, function(a, b, xx, yy) {
       segments[i++] = a;
       segments[i++] = b;
     });

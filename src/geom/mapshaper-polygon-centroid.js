@@ -224,7 +224,7 @@ internal.findRayShapeIntersections = function(x, y, shp, arcs) {
 // Return array of y-intersections between vertical ray and a polygon ring
 internal.findRayRingIntersections = function(x, y, path, arcs) {
   var yints = [];
-  internal.forEachPathSegment(path, arcs, function(a, b, xx, yy) {
+  internal.forEachSegmentInPath(path, arcs, function(a, b, xx, yy) {
     var result = geom.getRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result > -Infinity) {
       yints.push(result);

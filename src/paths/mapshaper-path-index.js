@@ -7,7 +7,6 @@ mapshaper-polygon-index
 
 function PathIndex(shapes, arcs) {
   var _index;
-  // var totalArea = arcs.getBounds().area();
   var totalArea = internal.getPathBounds(shapes, arcs).area();
   init(shapes);
 
@@ -26,15 +25,11 @@ function PathIndex(shapes, arcs) {
 
     function addPath(ids, shpId) {
       var bounds = arcs.getSimpleShapeBounds(ids);
-      var bbox = bounds.toArray();
+      var bbox = rbushBounds(bounds.toArray());
       bbox.ids = ids;
       bbox.bounds = bounds;
       bbox.id = shpId;
       boxes.push(bbox);
-      // TODO: Better test for whether or not to index a path
-      if (bounds.area() > totalArea * 0.02) {
-        bbox.index = new PolygonIndex([ids], arcs);
-      }
     }
   }
 
@@ -51,6 +46,25 @@ function PathIndex(shapes, arcs) {
 
   this.pointIsEnclosed = function(p) {
     return testPointInRings(p, findPointHitRings(p));
+  };
+
+  // return id or -1
+  this.findSmallestEnclosingPolygon = function(ring, shpId) {
+    var bounds = arcs.getSimpleShapeBounds(ring);
+    var p = getTestPoint(ring[0]);
+    var candidates = findPointHitRings(p);
+    var smallest, candidate, isEnclosed, hitId;
+    for (var i=0; i<candidates.length; i++) {
+      candidate = candidates[i];
+      if (candidate.id != shpId && candidate.bounds.contains(bounds)) {
+        if (!smallest || candidate.bounds.area() < smallest.bounds.area()) {
+          smallest = candidate;
+        }
+      }
+    }
+
+    hitId = smallest && testPointInRing(p, smallest) ? smallest.id : -1;
+    return hitId;
   };
 
   this.arcIsEnclosed = function(arcId) {
@@ -73,7 +87,7 @@ function PathIndex(shapes, arcs) {
   // @pathIds Array of arc ids comprising a closed path
   this.findEnclosedPaths = function(pathIds) {
     var pathBounds = arcs.getSimpleShapeBounds(pathIds),
-        cands = _index.search(pathBounds.toArray()),
+        cands = _index.search(rbushBounds(pathBounds.toArray())),
         paths = [],
         index;
 
@@ -82,8 +96,8 @@ function PathIndex(shapes, arcs) {
     }
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);
-      var isEnclosed = index ?
-        index.pointInPolygon(p[0], p[1]) : pathContainsPoint(pathIds, pathBounds, p);
+      var isEnclosed = pathBounds.containsPoint(p[0], p[1]) && (index ?
+        index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
         paths.push(cand.ids);
       }
@@ -102,13 +116,23 @@ function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
+  function testPointInRing(p, cand) {
+    if (!cand.bounds.containsPoint(p[0], p[1])) return false;
+    if (!cand.index && cand.bounds.area() > totalArea * 0.01) {
+      // index larger polygons (because they are slower to test via pointInRing()
+      //    and they are more likely to be involved in repeated hit tests).
+      cand.index = new PolygonIndex([cand.ids], arcs);
+    }
+    return cand.index ?
+        cand.index.pointInPolygon(p[0], p[1]) :
+        geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+  }
+
   function testPointInRings(p, cands) {
     var isOn = false,
         isIn = false;
     cands.forEach(function(cand) {
-      var inRing = cand.index ?
-        cand.index.pointInPolygon(p[0], p[1]) :
-        pathContainsPoint(cand.ids, cand.bounds, p);
+      var inRing = testPointInRing(p, cand);
       if (inRing == -1) {
         isOn = true;
       } else if (inRing == 1) {
@@ -116,6 +140,15 @@ function PathIndex(shapes, arcs) {
       }
     });
     return isOn || isIn;
+  }
+
+  function rbushBounds(arr) {
+    return {
+      minX: arr[0],
+      minY: arr[1],
+      maxX: arr[2],
+      maxY: arr[3]
+    };
   }
 
   function findPointHitShapes(p) {
@@ -138,7 +171,7 @@ function PathIndex(shapes, arcs) {
   function findPointHitRings(p) {
     var x = p[0],
         y = p[1];
-    return _index.search([x, y, x, y]);
+    return _index.search(rbushBounds([x, y, x, y]));
   }
 
   function getTestPoint(arcId) {
@@ -147,12 +180,6 @@ function PathIndex(shapes, arcs) {
     var p0 = arcs.getVertex(arcId, 0),
         p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
-  }
-
-  function pathContainsPoint(pathIds, pathBounds, p) {
-    if (pathBounds.containsPoint(p[0], p[1]) === false) return 0;
-    // A contains B iff some point on B is inside A
-    return geom.testPointInRing(p[0], p[1], pathIds, arcs);
   }
 
   function xorArrays(a, b) {

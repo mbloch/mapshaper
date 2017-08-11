@@ -136,7 +136,7 @@ geom.testPointInRing = function(x, y, ids, arcs) {
   */
   var isIn = false,
       isOn = false;
-  internal.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
+  internal.forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
     var result = geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result == 1) {
       isIn = !isIn;

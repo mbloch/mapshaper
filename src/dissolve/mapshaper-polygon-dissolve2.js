@@ -3,6 +3,7 @@ mapshaper-pathfinder
 mapshaper-polygon-holes
 mapshaper-dissolve
 mapshaper-data-aggregation
+mapshaper-ring-nesting
 */
 
 internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
@@ -53,8 +54,13 @@ internal.getPolygonDissolver = function(nodes, spherical) {
     ccw = flatten(ccw);
     ccw.forEach(internal.reversePath);
 
+
     var shp2 = internal.appendHolestoRings(cw, ccw);
     var dissolved = dissolve(shp2);
+    if (dissolved.length > 1) {
+      dissolved = internal.fixNestingErrors(dissolved, nodes.arcs);
+    }
+
     return dissolved.length > 0 ? dissolved : null;
   };
 };

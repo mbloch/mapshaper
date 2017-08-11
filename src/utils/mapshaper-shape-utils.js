@@ -203,10 +203,16 @@ internal.editPaths = function(paths, cb) {
   }
 };
 
-internal.forEachPathSegment = function(shape, arcs, cb) {
-  internal.forEachArcId(shape, function(arcId) {
-    arcs.forEachArcSegment(arcId, cb);
-  });
+internal.forEachSegmentInShape = function(shape, arcs, cb) {
+  for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
+    internal.forEachSegmentInPath(shape[i], arcs, cb);
+  }
+};
+
+internal.forEachSegmentInPath = function(ids, arcs, cb) {
+  for (var i=0, n=ids.length; i<n; i++) {
+    arcs.forEachArcSegment(ids[i], cb);
+  }
 };
 
 internal.traversePaths = function traversePaths(shapes, cbArc, cbPart, cbShape) {
