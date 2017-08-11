@@ -62,6 +62,30 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
 
     })
 
+
+    it('Smallest enclosing ring is found in atypical case', function(done) {
+      // Large polygon with an L-shaped hole and a small polygon; small polygon is outside hole, but its bbox is inside hole bbox
+      // outcome: small polygon should be removed
+      var poly = {
+        type: 'MultiPolygon',
+        coordinates: [
+          [[[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]], [[1, 1], [2, 1], [2, 4], [5, 4], [5, 5], [1, 5], [1, 1]]],
+          [[[3, 2], [3, 3], [4, 3], [4, 2], [3, 2]]]]
+      };
+
+      var target = {
+        type: 'Polygon',
+        coordinates:  [[[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]], [[1, 1], [2, 1], [2, 4], [5, 4], [5, 5], [1, 5], [1, 1]]]
+      };
+
+      api.applyCommands('-i input.json -dissolve2 -o out.json', {'input.json': poly}, function(err, output) {
+        output = JSON.parse(output['out.json']).geometries[0];
+        assert.deepEqual(output, target);
+        done();
+      })
+
+    })
+
   })
 
 

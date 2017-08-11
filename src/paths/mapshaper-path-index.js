@@ -53,18 +53,17 @@ function PathIndex(shapes, arcs) {
     var bounds = arcs.getSimpleShapeBounds(ring);
     var p = getTestPoint(ring[0]);
     var candidates = findPointHitRings(p);
-    var smallest, candidate, isEnclosed, hitId;
-    for (var i=0; i<candidates.length; i++) {
-      candidate = candidates[i];
-      if (candidate.id != shpId && candidate.bounds.contains(bounds)) {
-        if (!smallest || candidate.bounds.area() < smallest.bounds.area()) {
-          smallest = candidate;
-        }
+    var smallest;
+    candidates.forEach(function(cand) {
+      if (cand.bounds.contains(bounds) &&
+          shpId != cand.id &&
+          !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
+          testPointInRing(p, cand)) {
+        smallest = cand;
       }
-    }
+    });
 
-    hitId = smallest && testPointInRing(p, smallest) ? smallest.id : -1;
-    return hitId;
+    return smallest ? smallest.id : -1;
   };
 
   this.arcIsEnclosed = function(arcId) {
