@@ -48,13 +48,17 @@ function PathIndex(shapes, arcs) {
     return testPointInRings(p, findPointHitRings(p));
   };
 
-  // Return id or -1
+  // Finds the polygon containing the smallest ring that entirely contains @ring
+  // Assumes ring boundaries do not cross.
+  // Unhandled edge case:
+  //   two rings share at least one segment but are not congruent.
+  // @ring: array of arc ids
+  // Returns id of enclosing polygon or -1 if none found
   this.findSmallestEnclosingPolygon = function(ring) {
     var bounds = arcs.getSimpleShapeBounds(ring);
-    var p = getTestPoint(ring[0]);
-    var candidates = findPointHitRings(p);
+    var p = getTestPoint(ring);
     var smallest;
-    candidates.forEach(function(cand) {
+    findPointHitRings(p).forEach(function(cand) {
       if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
           !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
           !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
@@ -67,7 +71,7 @@ function PathIndex(shapes, arcs) {
   };
 
   this.arcIsEnclosed = function(arcId) {
-    return this.pointIsEnclosed(getTestPoint(arcId));
+    return this.pointIsEnclosed(getTestPoint([arcId]));
   };
 
   // Test if a polygon ring is contained within an indexed ring
@@ -77,9 +81,7 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    var arcId = pathIds[0];
-    var p = getTestPoint(arcId);
-    return this.pointIsEnclosed(p);
+    return this.pointIsEnclosed(getTestPoint(pathIds));
   };
 
   // return array of paths that are contained within a path, or null if none
@@ -94,7 +96,7 @@ function PathIndex(shapes, arcs) {
       index = new PolygonIndex([pathIds], arcs);
     }
     cands.forEach(function(cand) {
-      var p = getTestPoint(cand.ids[0]);
+      var p = getTestPoint(cand.ids);
       var isEnclosed = pathBounds.containsPoint(p[0], p[1]) && (index ?
         index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
@@ -173,10 +175,16 @@ function PathIndex(shapes, arcs) {
     return _index.search(rbushBounds([x, y, x, y]));
   }
 
-  function getTestPoint(arcId) {
-    // test point halfway along first segment because ring might still be
-    // enclosed if a segment endpoint touches an indexed ring.
-    var p0 = arcs.getVertex(arcId, 0),
+  // Find a point on a ring to use for point-in-polygon testing
+  function getTestPoint(ring) {
+    // Use the point halfway along first segment rather than an endpoint
+    // (because ring might still be enclosed if a segment endpoint touches an indexed ring.)
+    // The returned point should work for point-in-polygon testing if two rings do not
+    // share any common segments (which should be true for topological datasets)
+    // TODO: consider alternative of finding an internal point of @ring (slower but
+    //   potentially more reliable).
+    var arcId = ring[0],
+        p0 = arcs.getVertex(arcId, 0),
         p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
