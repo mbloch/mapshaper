@@ -131,7 +131,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
-      //outputLayers = internal.applyCommand(api.dissolve2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);

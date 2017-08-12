@@ -48,15 +48,15 @@ function PathIndex(shapes, arcs) {
     return testPointInRings(p, findPointHitRings(p));
   };
 
-  // return id or -1
-  this.findSmallestEnclosingPolygon = function(ring, shpId) {
+  // Return id or -1
+  this.findSmallestEnclosingPolygon = function(ring) {
     var bounds = arcs.getSimpleShapeBounds(ring);
     var p = getTestPoint(ring[0]);
     var candidates = findPointHitRings(p);
     var smallest;
     candidates.forEach(function(cand) {
-      if (cand.bounds.contains(bounds) &&
-          shpId != cand.id &&
+      if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
+          !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
           !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
           testPointInRing(p, cand)) {
         smallest = cand;

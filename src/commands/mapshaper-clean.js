@@ -4,6 +4,15 @@ api.clean2 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
   var nodes = internal.addIntersectionCuts(dataset, opts);
   var out = internal.buildPolygonMosaic(nodes);
+  layers = layers.concat({
+    geometry_type: 'polygon',
+    name: 'mosaic',
+    shapes: out.mosaic
+  } , {
+    geometry_type: 'polygon',
+    name: 'enclosure',
+    shapes: out.enclosures
+  });
   if (out.collisions) {
     layers = layers.concat(getDebugLayers(out.collisions, nodes.arcs));
   }

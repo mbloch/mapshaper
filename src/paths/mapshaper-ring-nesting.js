@@ -13,7 +13,7 @@ internal.fixNestingErrors = function(rings, arcs) {
   return rings.filter(ringIsValid);
 
   function ringIsValid(ids, i) {
-    var containerId = index.findSmallestEnclosingPolygon(ids, i);
+    var containerId = index.findSmallestEnclosingPolygon(ids);
     var ringIsCW, containerIsCW;
     var valid = true;
     if (containerId > -1) {
