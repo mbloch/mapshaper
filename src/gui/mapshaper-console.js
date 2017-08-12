@@ -315,10 +315,8 @@ function Console(model) {
     // remove newlines
     // TODO: remove other whitespace at beginning + end of lines
     var cmd = str.replace(/\\?\n/g, '').trim();
-    var cliCmd;
     toLog(CURSOR + str);
     toCommandLine('');
-    line.hide(); // hide cursor while command is being run
     if (cmd) {
       if (cmd == 'clear') {
         clear();
@@ -330,19 +328,13 @@ function Console(model) {
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
       } else {
-        cliCmd = cmd;
+        line.hide(); // hide cursor while command is being run
+        runMapshaperCommands(cmd, function() {
+          line.show();
+          input.node().focus();
+        });
       }
       toHistory(str);
-    }
-    if (cliCmd) {
-      runMapshaperCommands(cliCmd, done);
-    } else {
-      done();
-    }
-
-    function done() {
-      line.show();
-      input.node().focus();
     }
   }
 
