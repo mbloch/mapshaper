@@ -6,7 +6,8 @@ function Console(model) {
   var el = El('#console').hide();
   var content = El('#console-buffer');
   var log = El('div').id('console-log').appendTo(content);
-  var line = El('div').id('command-line').appendTo(content).text(CURSOR);
+  var line = El('div').id('command-line').appendTo(content);
+  var cursor = El('span').appendTo(line).text(CURSOR);
   var input = El('span').appendTo(line)
     .addClass('input-field')
     .attr('spellcheck', false)
@@ -311,12 +312,13 @@ function Console(model) {
   }
 
   function submit(str) {
-    var cmd;
-    toCommandLine('');
-    toLog(CURSOR + str);
     // remove newlines
     // TODO: remove other whitespace at beginning + end of lines
-    cmd = str.replace(/\\?\n/g, '').trim();
+    var cmd = str.replace(/\\?\n/g, '').trim();
+    var cliCmd;
+    toLog(CURSOR + str);
+    toCommandLine('');
+    line.hide(); // hide cursor while command is being run
     if (cmd) {
       if (cmd == 'clear') {
         clear();
@@ -327,27 +329,41 @@ function Console(model) {
           internal.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
-      } else if (cmd) {
-        runMapshaperCommands(cmd);
+      } else {
+        cliCmd = cmd;
       }
       toHistory(str);
     }
+    if (cliCmd) {
+      runMapshaperCommands(cliCmd, done);
+    } else {
+      done();
+    }
+
+    function done() {
+      line.show();
+      input.node().focus();
+    }
   }
 
-  function runMapshaperCommands(str) {
+
+  function runMapshaperCommands(str, done) {
     var commands;
     try {
       commands = internal.parseConsoleCommands(str);
       commands = internal.runAndRemoveInfoCommands(commands);
     } catch (e) {
-      return onError(e);
+      onError(e);
+      commands = [];
     }
     if (commands.length > 0) {
-      applyParsedCommands(commands);
+      applyParsedCommands(commands, done);
+    } else {
+      done();
     }
   }
 
-  function applyParsedCommands(commands) {
+  function applyParsedCommands(commands, done) {
     var active = model.getActiveLayer(),
         prevArcs = active.dataset.arcs,
         prevArcCount = prevArcs ? prevArcs.size() : 0;
@@ -373,6 +389,7 @@ function Console(model) {
       // commands may have partially succeeded and changes may have occured to
       // the data.
       if (err) onError(err);
+      done();
     });
   }
 
