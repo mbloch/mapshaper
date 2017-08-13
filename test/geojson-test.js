@@ -236,6 +236,51 @@ describe('mapshaper-geojson.js', function () {
 
   describe('exportGeoJSON()', function () {
 
+    describe('-o geojson-type= option', function() {
+
+      it('geojson-type=Feature, no attributes', function() {
+        var input = {type: 'Point', coordinates: [0, 0]};
+        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {geojson_type: 'Feature'})[0].content;
+        assert.deepEqual(JSON.parse(output), {
+          type: 'Feature',
+          properties: null,
+          geometry: {
+            type: 'Point',
+            coordinates: [0, 0]
+          }
+        });
+      });
+
+      it('geojson-type=FeatureCollection, no attributes', function() {
+        var input = {type: 'Point', coordinates: [0, 0]};
+        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {geojson_type: 'FeatureCollection'})[0].content;
+        assert.deepEqual(JSON.parse(output), {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: null,
+            geometry: {
+              type: 'Point',
+              coordinates: [0, 0]
+            }
+          }]
+        });
+      });
+
+      it('geojson-type=GeometryCollection (data has attributes)', function() {
+        var input = {type: 'Feature', properties: {name: 'foo'}, geometry: {type: 'Point', coordinates: [0, 0]}};
+        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {geojson_type: 'GeometryCollection'})[0].content;
+        assert.deepEqual(JSON.parse(output), {
+          type: 'GeometryCollection',
+          geometries: [ {
+            type: 'Point',
+            coordinates: [0, 0]
+          }]
+        });
+      });
+
+    });
+
     describe('-o rfc7946 option', function () {
 
       it('Default coordinate precision is 6 decimals', function() {

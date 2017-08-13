@@ -1,3 +1,6 @@
+v0.4.46
+* Added -o geometry-type= option, which overrides the default GeoJSON output type with one of: Feature, FeatureCollection, GeometryCollection.
+
 v0.4.45
 * Added -o svg-scale= option, for scaling SVG output using geographical units per pixel.
 

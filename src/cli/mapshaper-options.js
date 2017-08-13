@@ -205,6 +205,9 @@ internal.getOptionParser = function() {
       describe: "(GeoJSON) output layers as a single file",
       type: "flag"
     })
+    .option("geojson-type", {
+      describe: "(GeoJSON) FeatureCollection, GeometryCollection or Feature"
+    })
     .option("width", {
       describe: "(SVG/TopoJSON) pixel width of output (SVG default is 800)",
       type: "number"
