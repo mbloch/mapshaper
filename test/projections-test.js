@@ -2,6 +2,7 @@
 var assert = require('assert');
 var api = require("..");
 var mproj = require("mproj");
+var util = require('./helpers.js');
 
 function roundtrip(proj, xy) {
   it (proj, function() {
@@ -12,8 +13,8 @@ function roundtrip(proj, xy) {
     var xy2 = fwd(xy[0], xy[1]);
     var xy3 = inv(xy2[0], xy2[1]);
     var e = 1e-7;
-    almostEqual(xy[0], xy3[0], e);
-    almostEqual(xy[1], xy3[1], e);
+    util.almostEqual(xy[0], xy3[0], e);
+    util.almostEqual(xy[1], xy3[1], e);
   });
 
 }
@@ -26,14 +27,6 @@ function invalid(proj) {
   })
 }
 
-function almostEqual(a, b, e) {
-  e = e || 1e-10;
-  if (Math.abs(a - b) < e) {
-    assert(true);
-  } else {
-    assert.equal(a, b)
-  }
-}
 
 describe('mapshaper-projections.js', function() {
 

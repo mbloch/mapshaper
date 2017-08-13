@@ -1,5 +1,14 @@
 var api = require('..');
+var assert = require('assert');
 
+module.exports.almostEqual = function(a, b, eps) {
+  eps = eps || 1e-10;
+  if (Math.abs(a - b) < eps) {
+    assert(true);
+  } else {
+    assert.equal(a, b)
+  }
+};
 
 function toBuf(str) {
   return new Buffer(str, 'utf8');

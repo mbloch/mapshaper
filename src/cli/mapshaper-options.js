@@ -213,12 +213,12 @@ internal.getOptionParser = function() {
       describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)",
       type: "number"
     })
+    .option("svg-scale", {
+      describe: "(SVG) spatial units per pixel (alternative to width option)",
+      type: "number"
+    })
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
-    })
-    .option("svg-scale", {
-      // describe: "(SVG) data units (e.g. meters) per pixel"
-      type: "number"
     })
     .option("delimiter", {
       describe: "(CSV) field delimiter"

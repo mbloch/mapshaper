@@ -13,7 +13,7 @@ mapshaper-pixel-transform
 internal.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
-  var b, svg;
+  var size, svg;
 
   // TODO: consider moving this logic to mapshaper-export.js
   if (opts.final) {
@@ -23,11 +23,11 @@ internal.exportSVG = function(dataset, opts) {
   }
   // invert_y setting for screen coordinates and geojson polygon generation
   utils.extend(opts, {invert_y: true});
-  b = internal.transformCoordsForSVG(dataset, opts);
+  size = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
     return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
   }).join('\n');
-  svg = utils.format(template, b.width(), b.height(), 0, 0, b.width(), b.height(), svg);
+  svg = utils.format(template, size[0], size[1], 0, 0, size[0], size[1], svg);
   return [{
     content: svg,
     filename: opts.file || utils.getOutputFileBase(dataset) + '.svg'
@@ -35,10 +35,10 @@ internal.exportSVG = function(dataset, opts) {
 };
 
 internal.transformCoordsForSVG = function(dataset, opts) {
-  var bounds = internal.transformDatasetToPixels(dataset, opts);
+  var size = internal.transformDatasetToPixels(dataset, opts);
   var precision = opts.precision || 0.0001;
   internal.setCoordinatePrecision(dataset, precision);
-  return bounds;
+  return size;
 };
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
