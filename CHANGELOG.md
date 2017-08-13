@@ -1,3 +1,6 @@
+v0.4.45
+* Added -o svg-scale= option, for scaling SVG output using geographical units per pixel.
+
 v0.4.44
 * -dissolve2 now removes polygon rings that are improperly nested inside other rings.
 
