@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.45';
+var VERSION = '0.4.46';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -11714,7 +11714,9 @@ internal.exportDatasetAsGeoJSON = function(dataset, opts, ofmt) {
     return memo.length > 0 ? memo.concat(items) : items;
   }, []);
 
-  if (ofmt) {
+  if (opts.geojson_type == 'Feature' && collection.length == 1) {
+    return collection[0];
+  } else if (ofmt) {
     return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
   } else {
     geojson[collname] = collection;
@@ -11820,6 +11822,15 @@ internal.exportCRS = function(dataset, jsonObj) {
 };
 
 internal.useFeatureCollection = function(layers, opts) {
+  var type = opts.geojson_type || '';
+  if (type == 'Feature' || type == 'FeatureCollection') {
+    return true;
+  } else if (type == 'GeometryCollection') {
+    return false;
+  } else if (type) {
+    stop("Unsupported GeoJSON type:", opts.geojson_type);
+  }
+  // default is true iff layers contain attributes
   return utils.some(layers, function(lyr) {
     var fields = lyr.data ? lyr.data.getFields() : [];
     var haveData = internal.useFeatureProperties(fields, opts);
@@ -18972,6 +18983,9 @@ internal.getOptionParser = function() {
     .option("combine-layers", {
       describe: "(GeoJSON) output layers as a single file",
       type: "flag"
+    })
+    .option("geojson-type", {
+      describe: "(GeoJSON) FeatureCollection, GeometryCollection or Feature"
     })
     .option("width", {
       describe: "(SVG/TopoJSON) pixel width of output (SVG default is 800)",
