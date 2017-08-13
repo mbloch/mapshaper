@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.44';
+var VERSION = '0.4.45';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -4440,27 +4440,30 @@ function PathIndex(shapes, arcs) {
     return testPointInRings(p, findPointHitRings(p));
   };
 
-  // return id or -1
-  this.findSmallestEnclosingPolygon = function(ring, shpId) {
+  // Finds the polygon containing the smallest ring that entirely contains @ring
+  // Assumes ring boundaries do not cross.
+  // Unhandled edge case:
+  //   two rings share at least one segment but are not congruent.
+  // @ring: array of arc ids
+  // Returns id of enclosing polygon or -1 if none found
+  this.findSmallestEnclosingPolygon = function(ring) {
     var bounds = arcs.getSimpleShapeBounds(ring);
-    var p = getTestPoint(ring[0]);
-    var candidates = findPointHitRings(p);
-    var smallest, candidate, isEnclosed, hitId;
-    for (var i=0; i<candidates.length; i++) {
-      candidate = candidates[i];
-      if (candidate.id != shpId && candidate.bounds.contains(bounds)) {
-        if (!smallest || candidate.bounds.area() < smallest.bounds.area()) {
-          smallest = candidate;
-        }
+    var p = getTestPoint(ring);
+    var smallest;
+    findPointHitRings(p).forEach(function(cand) {
+      if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
+          !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
+          !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
+          testPointInRing(p, cand)) {
+        smallest = cand;
       }
-    }
+    });
 
-    hitId = smallest && testPointInRing(p, smallest) ? smallest.id : -1;
-    return hitId;
+    return smallest ? smallest.id : -1;
   };
 
   this.arcIsEnclosed = function(arcId) {
-    return this.pointIsEnclosed(getTestPoint(arcId));
+    return this.pointIsEnclosed(getTestPoint([arcId]));
   };
 
   // Test if a polygon ring is contained within an indexed ring
@@ -4470,9 +4473,7 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    var arcId = pathIds[0];
-    var p = getTestPoint(arcId);
-    return this.pointIsEnclosed(p);
+    return this.pointIsEnclosed(getTestPoint(pathIds));
   };
 
   // return array of paths that are contained within a path, or null if none
@@ -4487,7 +4488,7 @@ function PathIndex(shapes, arcs) {
       index = new PolygonIndex([pathIds], arcs);
     }
     cands.forEach(function(cand) {
-      var p = getTestPoint(cand.ids[0]);
+      var p = getTestPoint(cand.ids);
       var isEnclosed = pathBounds.containsPoint(p[0], p[1]) && (index ?
         index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
@@ -4566,10 +4567,16 @@ function PathIndex(shapes, arcs) {
     return _index.search(rbushBounds([x, y, x, y]));
   }
 
-  function getTestPoint(arcId) {
-    // test point halfway along first segment because ring might still be
-    // enclosed if a segment endpoint touches an indexed ring.
-    var p0 = arcs.getVertex(arcId, 0),
+  // Find a point on a ring to use for point-in-polygon testing
+  function getTestPoint(ring) {
+    // Use the point halfway along first segment rather than an endpoint
+    // (because ring might still be enclosed if a segment endpoint touches an indexed ring.)
+    // The returned point should work for point-in-polygon testing if two rings do not
+    // share any common segments (which should be true for topological datasets)
+    // TODO: consider alternative of finding an internal point of @ring (slower but
+    //   potentially more reliable).
+    var arcId = ring[0],
+        p0 = arcs.getVertex(arcId, 0),
         p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
@@ -8324,7 +8331,7 @@ internal.fixNestingErrors = function(rings, arcs) {
   return rings.filter(ringIsValid);
 
   function ringIsValid(ids, i) {
-    var containerId = index.findSmallestEnclosingPolygon(ids, i);
+    var containerId = index.findSmallestEnclosingPolygon(ids);
     var ringIsCW, containerIsCW;
     var valid = true;
     if (containerId > -1) {
@@ -8436,14 +8443,29 @@ internal.buildPolygonMosaic = function(nodes) {
   var flags = new Uint8Array(arcs.size());
   var findPath = internal.getPathFinder(nodes, useRoute);
   var deadArcs = [];
-  var rings = [], ring;
-  var retn = {};
+  var reverseRings = [];
+  var enclosures = [];
+  var mosaic = [], ring, index;
+  var retn = {mosaic: mosaic, enclosures: enclosures};
 
   for (var i=0, n=flags.length; i<n; i++) {
     tryPath(i);
     tryPath(~i);
   }
-  retn.rings = rings;
+
+  // add holes to mosaic polygons
+  // TODO: skip this step if layer contains no holes (how to tell?)
+  index = new PathIndex(mosaic, arcs);
+  reverseRings.forEach(function(ring) {
+    var id = index.findSmallestEnclosingPolygon(ring);
+    if (id > -1) {
+      mosaic[id].push(ring);
+    } else {
+      internal.reversePath(ring);
+      enclosures.push([ring]);
+    }
+  });
+
   if (deadArcs.length > 0) retn.collisions = deadArcs;
   return retn;
 
@@ -8452,7 +8474,11 @@ internal.buildPolygonMosaic = function(nodes) {
     if (!routeIsOpen(arcId)) return;
     ring = findPath(arcId);
     if (ring) {
-      rings.push(ring);
+      if (geom.getPlanarPathArea(ring, arcs) > 0) {
+        mosaic.push([ring]);
+      } else {
+        reverseRings.push(ring);
+      }
     } else {
       deadArcs.push(arcId);
       debug("Dead-end arc:", arcId);
@@ -8479,6 +8505,15 @@ api.clean2 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
   var nodes = internal.addIntersectionCuts(dataset, opts);
   var out = internal.buildPolygonMosaic(nodes);
+  layers = layers.concat({
+    geometry_type: 'polygon',
+    name: 'mosaic',
+    shapes: out.mosaic
+  } , {
+    geometry_type: 'polygon',
+    name: 'enclosure',
+    shapes: out.enclosures
+  });
   if (out.collisions) {
     layers = layers.concat(getDebugLayers(out.collisions, nodes.arcs));
   }
@@ -12227,37 +12262,33 @@ internal.cloneProperties = function(obj) {
 
 
 internal.transformDatasetToPixels = function(dataset, opts) {
-  var width = opts.width > 0 ? opts.width : 800,
-      margin = opts.margin >= 0 ? opts.margin : 1, // default 1px margin
+  var margin = opts.margin >= 0 ? opts.margin : 1, // default 1px margin
       bounds = internal.getDatasetBounds(dataset),
-      height, bounds2, fwd;
+      width, height, bounds2, fwd;
 
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
-    width = bounds.width() / opts.svg_scale;
-    margin = 0;
+    width = bounds.width() / opts.svg_scale + margin * 2;
+  } else {
+    width = opts.width > 0 ? opts.width : 800;
   }
   internal.applyMarginInPixels(bounds, width, margin);
-  height = Math.ceil(width * bounds.height() / bounds.width());
+  height = width * bounds.height() / bounds.width();
   bounds2 = new Bounds(0, 0, width, height);
   fwd = bounds.getTransform(bounds2, opts.invert_y);
   internal.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
-  return bounds2;
+  return [width, Math.round(height) || 1];
 };
 
 
 // Pad geographic bounds prior to conversion to pixels
-internal.applyMarginInPixels = function(bounds, width, marginPx) {
-  var bw = bounds.width() || bounds.height() || 1; // handle 0 width bbox
-  var marg;
-  if (marginPx >= 0 === false) {
-    marginPx = 1;
-  }
-  marg = bw / (width - marginPx * 2) * marginPx;
-  bounds.padBounds(marg, marg, marg, marg);
+internal.applyMarginInPixels = function(bounds, widthPx, marginPx) {
+  var widthGeo = bounds.width() || bounds.height() || 1; // avoid 0 width bbox
+  var pad = widthGeo * marginPx / (widthPx - marginPx * 2);
+  bounds.padBounds(pad, pad, pad, pad);
 };
 
 
@@ -13917,7 +13948,7 @@ SVG.geojsonImporters = {
 internal.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
-  var b, svg;
+  var size, svg;
 
   // TODO: consider moving this logic to mapshaper-export.js
   if (opts.final) {
@@ -13927,11 +13958,11 @@ internal.exportSVG = function(dataset, opts) {
   }
   // invert_y setting for screen coordinates and geojson polygon generation
   utils.extend(opts, {invert_y: true});
-  b = internal.transformCoordsForSVG(dataset, opts);
+  size = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
     return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
   }).join('\n');
-  svg = utils.format(template, b.width(), b.height(), 0, 0, b.width(), b.height(), svg);
+  svg = utils.format(template, size[0], size[1], 0, 0, size[0], size[1], svg);
   return [{
     content: svg,
     filename: opts.file || utils.getOutputFileBase(dataset) + '.svg'
@@ -13939,10 +13970,10 @@ internal.exportSVG = function(dataset, opts) {
 };
 
 internal.transformCoordsForSVG = function(dataset, opts) {
-  var bounds = internal.transformDatasetToPixels(dataset, opts);
+  var size = internal.transformDatasetToPixels(dataset, opts);
   var precision = opts.precision || 0.0001;
   internal.setCoordinatePrecision(dataset, precision);
-  return bounds;
+  return size;
 };
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
@@ -17734,7 +17765,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
-      //outputLayers = internal.applyCommand(api.dissolve2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
@@ -18951,12 +18981,12 @@ internal.getOptionParser = function() {
       describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)",
       type: "number"
     })
+    .option("svg-scale", {
+      describe: "(SVG) source units per pixel (alternative to width= option)",
+      type: "number"
+    })
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
-    })
-    .option("svg-scale", {
-      // describe: "(SVG) data units (e.g. meters) per pixel"
-      type: "number"
     })
     .option("delimiter", {
       describe: "(CSV) field delimiter"
