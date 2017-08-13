@@ -214,7 +214,7 @@ internal.getOptionParser = function() {
       type: "number"
     })
     .option("svg-scale", {
-      describe: "(SVG) spatial units per pixel (alternative to width option)",
+      describe: "(SVG) source units per pixel (alternative to width= option)",
       type: "number"
     })
     .option("point-symbol", {
