@@ -1,8 +1,12 @@
 /* @requires mapshaper-dataset-utils svg-common */
 
 api.svgStyle = function(lyr, dataset, opts) {
+  var filter;
   if (!lyr.data) {
     internal.initDataTable(lyr);
+  }
+  if (opts.where) {
+    filter = internal.compileValueExpression(opts.where, lyr, dataset.arcs);
   }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
@@ -15,7 +19,12 @@ api.svgStyle = function(lyr, dataset, opts) {
       func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
     }
     lyr.data.getRecords().forEach(function(rec, i) {
-      rec[svgName] = func ? func(i) : literalVal;
+      if (filter && !filter(i)) {
+        // make sure field exists if record is excluded by filter
+        if (svgName in rec === false) rec[svgName] = undefined;
+      } else {
+        rec[svgName] = func ? func(i) : literalVal;
+      }
     });
   });
 };

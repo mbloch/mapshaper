@@ -56,6 +56,9 @@ internal.getOptionParser = function() {
       bboxOpt = {
         type: "bbox",
         describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
+      },
+      whereOpt = {
+        describe: "use a JS expression to select a subset of features"
       };
 
   var parser = new CommandParser();
@@ -298,9 +301,7 @@ internal.getOptionParser = function() {
     .option("expression", {
       describe: "JS expression to apply to each target feature"
     })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
+    .option("where", whereOpt)
     .option("target", targetOpt);
 
   parser.command("erase")
@@ -718,6 +719,7 @@ internal.getOptionParser = function() {
 
   parser.command("svg-style")
     .describe("set SVG properties using JS expressions or literal values")
+    .option("where", whereOpt)
     .option("class", {
       describe: 'name of CSS class or classes (space-separated)'
     })
@@ -816,9 +818,7 @@ internal.getOptionParser = function() {
       type: 'numbers',
       describe: "center of rotation/scaling (default is center of selected shapes)"
     })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
+    .option("where", whereOpt)
     .option("target", targetOpt);
 
 
@@ -922,9 +922,7 @@ internal.getOptionParser = function() {
     .option("expression", {
       describe: "functions: sum() average() median() max() min() count()"
     })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
+    .option("where", whereOpt)
     .option("target", targetOpt);
 
   parser.command('encodings')
