@@ -1,3 +1,6 @@
+v0.4.47
+* Added -svg-style where= option, for applying svg attributes to a subset of features
+
 v0.4.46
 * Added -o geometry-type= option, which overrides the default GeoJSON output type with one of: Feature, FeatureCollection, GeometryCollection.
 
