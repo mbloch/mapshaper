@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.46';
+var VERSION = '0.4.47';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -13672,8 +13672,12 @@ SVG.findPropertiesBySymbolGeom = function(fields, type) {
 
 
 api.svgStyle = function(lyr, dataset, opts) {
+  var filter;
   if (!lyr.data) {
     internal.initDataTable(lyr);
+  }
+  if (opts.where) {
+    filter = internal.compileValueExpression(opts.where, lyr, dataset.arcs);
   }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
@@ -13686,7 +13690,12 @@ api.svgStyle = function(lyr, dataset, opts) {
       func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
     }
     lyr.data.getRecords().forEach(function(rec, i) {
-      rec[svgName] = func ? func(i) : literalVal;
+      if (filter && !filter(i)) {
+        // make sure field exists if record is excluded by filter
+        if (svgName in rec === false) rec[svgName] = undefined;
+      } else {
+        rec[svgName] = func ? func(i) : literalVal;
+      }
     });
   });
 };
@@ -18835,6 +18844,9 @@ internal.getOptionParser = function() {
       bboxOpt = {
         type: "bbox",
         describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
+      },
+      whereOpt = {
+        describe: "use a JS expression to select a subset of features"
       };
 
   var parser = new CommandParser();
@@ -19077,9 +19089,7 @@ internal.getOptionParser = function() {
     .option("expression", {
       describe: "JS expression to apply to each target feature"
     })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
+    .option("where", whereOpt)
     .option("target", targetOpt);
 
   parser.command("erase")
@@ -19497,6 +19507,7 @@ internal.getOptionParser = function() {
 
   parser.command("svg-style")
     .describe("set SVG properties using JS expressions or literal values")
+    .option("where", whereOpt)
     .option("class", {
       describe: 'name of CSS class or classes (space-separated)'
     })
@@ -19595,9 +19606,7 @@ internal.getOptionParser = function() {
       type: 'numbers',
       describe: "center of rotation/scaling (default is center of selected shapes)"
     })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
+    .option("where", whereOpt)
     .option("target", targetOpt);
 
 
@@ -19701,9 +19710,7 @@ internal.getOptionParser = function() {
     .option("expression", {
       describe: "functions: sum() average() median() max() min() count()"
     })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
+    .option("where", whereOpt)
     .option("target", targetOpt);
 
   parser.command('encodings')
