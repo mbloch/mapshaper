@@ -143,7 +143,7 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 
       if (candId == ~nextId) {
         // TODO: handle or prevent this error condition
-        message("Pathfinder warning: dead-end path");
+        debug("Pathfinder warning: dead-end path");
         return null;
       }
     } while (candId != startId);

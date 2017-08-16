@@ -7,7 +7,6 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
 
-
   describe('Issue #206', function() {
 
     it('Fully contained polygon is dissolved', function(done) {

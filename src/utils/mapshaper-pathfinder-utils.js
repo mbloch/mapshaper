@@ -1,5 +1,13 @@
 /* @requires mapshaper-nodes mapshaper-geom */
 
+
+internal.findAcyclicArcs = function(nodes) {
+  var arcs = [];
+
+
+};
+
+
 // Return id of rightmost connected arc in relation to @arcId
 // Return @arcId if no arcs can be found
 internal.getRightmostArc = function(arcId, nodes, filter) {

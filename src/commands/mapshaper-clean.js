@@ -13,17 +13,17 @@ api.clean2 = function(layers, dataset, opts) {
     name: 'enclosure',
     shapes: out.enclosures
   });
-  if (out.collisions) {
-    layers = layers.concat(getDebugLayers(out.collisions, nodes.arcs));
+  if (out.lostArcs.length > 0) {
+    layers = layers.concat(getDebugLayers(out.lostArcs, nodes.arcs));
   }
   return layers;
 
-  function getDebugLayers(collisions, arcs) {
+  function getDebugLayers(lostArcs, arcs) {
     var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
     var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
     var arcData = [];
     var pointData = [];
-    collisions.forEach(function(arcId) {
+    lostArcs.forEach(function(arcId) {
       var first = arcs.getVertex(arcId, 0);
       var last = arcs.getVertex(arcId, -1);
       arcData.push({ARCID: arcId});
