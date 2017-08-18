@@ -216,8 +216,7 @@ internal.getOptionParser = function() {
       type: "number"
     })
     .option("margin", {
-      describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)",
-      type: "number"
+      describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)"
     })
     .option("svg-scale", {
       describe: "(SVG) source units per pixel (alternative to width= option)",
@@ -565,24 +564,6 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command('shape')
-    // .describe("create a geometric shape")
-    .option('type', {
-
-    })
-    .option("bbox", {
-      describe: "bounding box of shape",
-      type: "bounds"
-    })
-    .option("offset", {
-      describe: "space around the bounding box or contents",
-      type: "number"
-    })
-    .option("source", {
-      describe: "name of layer to surround"
-    })
-    .option("name", nameOpt);
-
   parser.command('simplify')
     .default('percentage')
     .validate(validateSimplifyOpts)
@@ -898,6 +879,39 @@ internal.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("rectangle")
+    .describe("create a rectangular polygon")
+    .option('type', {
+
+    })
+    .option("bbox", {
+      describe: "rectangle coordinates (xmin,ymin,xmax,ymax)",
+      type: "bbox"
+    })
+    .option("offset", {
+      describe: "space around bbox or source layer",
+      type: "number"
+    })
+    .option("source", {
+      describe: "name of layer to enclose"
+    })
+    .option("name", nameOpt);
+
+  parser.command("shape")
+    .describe("create a polyline or polygon from coordinates")
+    .option("coordinates", {
+      describe: "list of vertices as x,y,x,y...",
+      type: "numbers"
+    })
+    .option("offsets", {
+      describe: "list of vertices as offsets from coordinates list",
+      type: "numbers"
+    })
+    .option("closed", {
+      describe: "close an open path to create a polygon",
+      type: "flag"
+    })
+    .option("name", nameOpt);
 
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")

@@ -223,8 +223,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.setStateVar('QUIET', true);
     } else if (cmd.name == 'debug') {
       internal.setStateVar('DEBUG', true);
-    } else if (cmd.name == 'help') {
-      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }
