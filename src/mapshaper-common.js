@@ -68,7 +68,7 @@ function UserError(msg) {
 function messageArgs(args) {
   var arr = utils.toArray(args);
   var cmd = internal.getStateVar('current_command');
-  if (cmd) {
+  if (cmd && cmd != 'help' && cmd != 'info') {
     arr.unshift('[' + cmd + ']');
   }
   return arr;
