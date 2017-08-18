@@ -36,4 +36,17 @@ describe('mapshaper-pixel-transform.js', function () {
     var size = test(opts, points, target, [270, 145]);
   })
 
+  describe('parseMarginOption()', function () {
+    var parse = api.internal.parseMarginOption;
+    it('tests', function () {
+      assert.deepEqual(parse(''), [1,1,1,1]);
+      assert.deepEqual(parse(), [1,1,1,1]);
+      assert.deepEqual(parse(null), [1,1,1,1]);
+      assert.deepEqual(parse('0'), [0,0,0,0]);
+      assert.deepEqual(parse('3, 1'), [3,1,3,1]);
+      assert.deepEqual(parse('3 1 2'), [3,1,2,2]);
+      assert.deepEqual(parse('0,12,9,0'), [0,12,9,0]);
+    })
+  })
+
 })
