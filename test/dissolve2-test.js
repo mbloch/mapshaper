@@ -7,7 +7,6 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
 
-
   describe('Issue #206', function() {
 
     it('Fully contained polygon is dissolved', function(done) {
@@ -237,7 +236,8 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
 
     it('dissolve a shape into itself', function () {
       var shapes = [[[1, 2, ~1, ~0]]];
-      var target = [[[2],[~0]]];
+      // var target = [[[2],[~0]]];
+      var target = [[[~0],[2]]]; // new dissolve function put this hole first
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
   })
@@ -287,12 +287,19 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
         [[2, 3], [2, 2]],
         [[2, 2], [3, 1]],
         [[3, 1], [1, 1], [2, 2]]];
-    var nodes = new NodeCollection(coords);
 
     // TODO: removal is a consequence of blocking shared boundaries of
     //   adjacent polygons -- need to reconsider this?
     it('stem of hourglass is removed', function () {
+      var nodes = new NodeCollection(coords);
       var shapes = [[[0, 1, 2, 3, ~1]]];
+      var target = [[[0], [2, 3]]];
+      assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
+    })
+
+    it('stem of hourglass is removed 2', function () {
+      var nodes = new NodeCollection(coords);
+      var shapes = [[[1, 2, 3, ~1, 0]]]; // shape starts at stem
       var target = [[[0], [2, 3]]];
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
@@ -323,14 +330,14 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
     it ('should skip spike - test 2', function() {
       var nodes = new NodeCollection(coords);
       var shapes = [[[1, ~1, 2, 0]]];
-      var target = [[[2, 0]]];
+      var target = [[[0, 2]]];
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
 
     it ('should skip spike - test 3', function() {
       var nodes = new NodeCollection(coords);
       var shapes = [[[~1, 2, 0, 1]]];
-      var target = [[[2, 0]]];
+      var target = [[[0, 2]]];
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
   })

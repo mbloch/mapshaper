@@ -11,21 +11,24 @@ function NodeCollection(arcs, filter) {
       nn = arcData.nn,
       xx = arcData.xx,
       yy = arcData.yy,
-      chains;
+      nodeData;
 
   // Accessor function for arcs
   Object.defineProperty(this, 'arcs', {value: arcs});
 
-  this.toArray = function() {
-    var nodes = internal.findNodeTopology(arcs, filter),
-        flags = new Uint8Array(nodes.xx.length),
+  var toArray = this.toArray = function() {
+    var chains = getNodeChains(),
+        flags = new Uint8Array(chains.length),
         arr = [];
-    utils.forEach(nodes.chains, function(next, i) {
-      if (flags[i] == 1) return;
-      arr.push([nodes.xx[i], nodes.yy[i]]);
-      while (flags[next] != 1) {
-        flags[next] = 1;
-        next = nodes.chains[next];
+    utils.forEach(chains, function(nextIdx, thisIdx) {
+      var node;
+      if (flags[thisIdx] == 1) return;
+      node = {coordinates: [nodeData.xx[thisIdx], nodeData.yy[thisIdx]], arcs: []};
+      arr.push(node);
+      while (flags[thisIdx] != 1) {
+        node.arcs.push(chainToArcId(thisIdx));
+        flags[thisIdx] = 1;
+        thisIdx = chains[thisIdx];
       }
     });
     return arr;
@@ -35,36 +38,39 @@ function NodeCollection(arcs, filter) {
     return this.toArray().length;
   };
 
-  this.debugNode = function(arcId) {
-    var ids = [arcId];
-    this.forEachConnectedArc(arcId, function(id) {
-      ids.push(id);
-    });
-
-    message("node ids:",  ids);
-    ids.forEach(printArc);
-
-    function printArc(id) {
-      var str = id + ": ";
-      var len = arcs.getArcLength(id);
-      if (len > 0) {
-        var p1 = arcs.getVertex(id, -1);
-        str += utils.format("[%f, %f]", p1.x, p1.y);
-        if (len > 1) {
-          var p2 = arcs.getVertex(id, -2);
-          str += utils.format(", [%f, %f]", p2.x, p2.y);
-          if (len > 2) {
-            var p3 = arcs.getVertex(id, 0);
-            str += utils.format(", [%f, %f]", p3.x, p3.y);
-          }
-          str += " len: " + distance2D(p1.x, p1.y, p2.x, p2.y);
-        }
-      } else {
-        str = "[]";
-      }
-      message(str);
-    }
+  this.detachArc = function(arcId) {
+    unlinkDirectedArc(arcId);
+    unlinkDirectedArc(~arcId);
   };
+
+  this.detachAcyclicArcs = function() {
+    var chains = getNodeChains(),
+        count = 0,
+        fwd, rev;
+    for (var i=0, n=chains.length; i<n; i+= 2) {
+      fwd = i == chains[i];
+      rev = i + 1 == chains[i + 1];
+      // detach arcs that are connected at one end but not both
+      if (fwd && !rev || !fwd && rev) {
+        this.detachArc(chainToArcId(i));
+        count++;
+      }
+    }
+    if (count > 0) {
+      // removing one acyclic arc could expose another -- need another pass
+      count += this.detachAcyclicArcs();
+    }
+    return count;
+  };
+
+  function unlinkDirectedArc(arcId) {
+    var chainId = arcToChainId(arcId),
+        chains = getNodeChains(),
+        nextId = chains[chainId],
+        prevId = prevChainId(chainId);
+    chains[chainId] = chainId;
+    chains[prevId] = nextId;
+  }
 
   this.forEachConnectedArc = function(arcId, cb) {
     var nextId = nextConnectedArc(arcId),
@@ -102,14 +108,22 @@ function NodeCollection(arcs, filter) {
     return match;
   };
 
+  function chainToArcId(chainId) {
+    var absId = chainId >> 1;
+    return chainId & 1 == 1 ? absId : ~absId;
+  }
+
+  function arcToChainId(arcId) {
+    var fw = arcId >= 0;
+    return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
+  }
+
   function getNodeChains() {
-    var nodeData;
-    if (!chains) {
+    if (!nodeData) {
       nodeData = internal.findNodeTopology(arcs, filter);
-      chains = nodeData.chains;
-      if (nn.length * 2 != chains.length) error("[NodeCollection] count error");
+      if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
     }
-    return chains;
+    return nodeData.chains;
   }
 
   function testArcMatch(a, b) {
@@ -139,21 +153,26 @@ function NodeCollection(arcs, filter) {
 
   // return arcId of next arc in the chain, pointed towards the shared vertex
   function nextConnectedArc(arcId) {
-    var fw = arcId >= 0,
-        absId = fw ? arcId : ~arcId,
-        nodeId = fw ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
-        chains = getNodeChains(),
-        chainedId = chains[nodeId],
-        nextAbsId = chainedId >> 1,
-        nextArcId = chainedId & 1 == 1 ? nextAbsId : ~nextAbsId;
-
-    if (chainedId < 0 || chainedId >= chains.length) error("out-of-range chain id");
-    if (absId >= nn.length) error("out-of-range arc id");
-    if (chains.length <= nodeId) error("out-of-bounds node id");
-    return nextArcId;
+    var chainId = arcToChainId(arcId),
+        chains =  getNodeChains(),
+        nextChainId = chains[chainId];
+    if (!(nextChainId >= 0 && nextChainId < chains.length)) error("out-of-range chain id");
+    return chainToArcId(nextChainId);
   }
 
-  // expose for testing
+  function prevChainId(chainId) {
+    var chains = getNodeChains(),
+        prevId = chainId,
+        nextId = chains[chainId];
+    while (nextId != chainId) {
+      prevId = nextId;
+      nextId = chains[nextId];
+      if (nextId == prevId) error("Node indexing error");
+    }
+    return prevId;
+  }
+
+  // expose functions for testing
   this.internal = {
     testArcMatch: testArcMatch,
     testVertexMatch: testVertexMatch

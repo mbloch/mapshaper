@@ -6,6 +6,7 @@
 // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
 //
 internal.fixNestingErrors = function(rings, arcs) {
+  if (rings.length <= 1) return rings;
   var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
   // convert rings to shapes for PathIndex
   var shapes = rings.map(function(ids) {return [ids];});

@@ -7,7 +7,8 @@ describe('mapshaper-nodes.js', function () {
 
   describe('NodeCollection#toArray()', function () {
     it('test 1', function () {
-
+      // Fig. 1
+      //
       //      b --- d
       //     / \   /
       //    /   \ /
@@ -17,11 +18,193 @@ describe('mapshaper-nodes.js', function () {
       //   0,   1,  2
 
       var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
-      var nodes = new NodeCollection(new ArcCollection(arcs)).toArray();
+      var nodes = new NodeCollection(new ArcCollection(arcs));
 
-      assert.deepEqual(nodes, [[3, 1], [2, 3]]);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0, 1, 2]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0, ~1, ~2]
+      }]);
     })
   })
+
+  describe('#detachArc()', function() {
+    it ('test 1', function() {
+      // Same as Fig. 1 above
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+      var nodes = new NodeCollection(new ArcCollection(arcs));
+      nodes.detachArc(0);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0]
+      }, {
+        coordinates: [2, 3],
+        arcs: [~1, ~2]
+      }, {
+        coordinates: [3, 1],
+        arcs: [1, 2]
+      }]);
+
+      // remove same arc (in opposite direction) -- same expected output
+      nodes.detachArc(~0);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0]
+      }, {
+        coordinates: [2, 3],
+        arcs: [~1, ~2]
+      }, {
+        coordinates: [3, 1],
+        arcs: [1, 2]
+      }]);
+
+      // remove another arc
+      nodes.detachArc(~2);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0]
+      }, {
+        coordinates: [2, 3],
+        arcs: [~1]
+      }, {
+        coordinates: [3, 1],
+        arcs: [1]
+       }, {
+        coordinates: [2, 3],
+        arcs: [~2]
+      }, {
+        coordinates: [3, 1],
+        arcs: [2]
+     }]);
+    });
+
+    it ('test 2', function() {
+      // same as Fig. 1
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+      var nodes = new NodeCollection(new ArcCollection(arcs));
+      nodes.detachArc(~1);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0, 2]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0, ~2]
+      }, {
+        coordinates: [2, 3],
+        arcs: [~1]
+      }, {
+        coordinates: [3, 1],
+        arcs: [1]
+      }]);
+    });
+
+    it ('test 3 - spike', function () {
+      // Fig. 1
+      //
+      //      b     d
+      //     / \   /
+      //    /   \ /
+      //   a --- c
+      //
+      //   cab, bc, cd
+      //   0,   1,  2
+
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[3, 1], [4, 3]]];
+      var nodes = new NodeCollection(new ArcCollection(arcs));
+
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0, 1, ~2]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0, ~1]
+      }, {
+        coordinates: [4, 3],
+        arcs: [2]
+      }]);
+
+      nodes.detachArc(2);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0, 1]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0, ~1]
+      }, {
+        coordinates: [3, 1],
+        arcs: [~2]
+      }, {
+        coordinates: [4, 3],
+        arcs: [2]
+      }]);
+    });
+  });
+
+  describe('#detachAcyclicArcs()', function () {
+
+    it ('test 3 - spike', function () {
+      // Fig. 1
+      //
+      //      b     d
+      //     / \   / \
+      //    /   \ /   \
+      //   a --- c     e
+      //
+      //   cab, bc, cd, de
+      //   0,   1,  2,  3
+
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[3, 1], [4, 3]], [[4, 3], [5, 1]]];
+      var nodes = new NodeCollection(new ArcCollection(arcs));
+
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0, 1, ~2]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0, ~1]
+      }, {
+        coordinates: [4, 3],
+        arcs: [2, ~3]
+      }, {
+        coordinates: [5, 1],
+        arcs: [3]
+      }]);
+
+      var count = nodes.detachAcyclicArcs();
+      assert.equal(count, 2);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [3, 1],
+        arcs: [~0, 1]
+      }, {
+        coordinates: [2, 3],
+        arcs: [0, ~1]
+      }, {
+        coordinates: [3, 1],
+        arcs: [~2]
+      }, {
+        coordinates: [4, 3],
+        arcs: [2]
+      }, {
+        coordinates: [4, 3],
+        arcs: [~3]
+      }, {
+        coordinates: [5, 1],
+        arcs: [3]
+      }]);
+    });
+  });
+
 
   /*
   describe('NodeCollection#getNextArc()', function () {

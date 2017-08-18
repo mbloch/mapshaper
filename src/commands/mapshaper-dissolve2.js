@@ -7,7 +7,9 @@ api.dissolve2 = function(src, dataset, opts) {
   var nodes;
   var layers2 = layers.map(function(lyr) {
     internal.requirePolygonLayer(lyr);
-    if (!nodes) nodes = internal.addIntersectionCuts(dataset, opts);
+    if (!nodes) {
+      nodes = internal.addIntersectionCuts(dataset, opts);
+    }
     return internal.dissolvePolygonLayer(lyr, nodes, opts);
   });
   return multiple ? layers2 : layers2[0];
