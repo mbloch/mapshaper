@@ -10,9 +10,9 @@ describe('mapshaper-export.js', function () {
         type: 'Polygon',
         coordinates: [[[1, 0], [0, 1], [1, 2], [2, 1], [1, 0]]]
       };
-      api.applyCommands('-i box.json -shape source=box -o target=box,shape merged.svg -o format=geojson target=shape -o format=geojson target=box', {'box.json': box}, function(e, output) {
+      api.applyCommands('-i box.json -rectangle source=box -o target=box,rectangle merged.svg -o format=geojson target=rectangle -o format=geojson target=box', {'box.json': box}, function(e, output) {
         var box = JSON.parse(output['box.json']).geometries[0];
-        var shape = JSON.parse(output['shape.json']).geometries[0];
+        var shape = JSON.parse(output['rectangle.json']).geometries[0];
         assert(output['merged.svg'].length > 0);
         assert.deepEqual(box.coordinates, [[[1, 0], [0, 1], [1, 2], [2, 1], [1, 0]]]);
         assert.deepEqual(shape.coordinates, [[[0,0],[0,2],[2,2],[2,0],[0,0]]])
