@@ -17,8 +17,7 @@ internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var shapes2 = groups.map(internal.getPolygonDissolver(nodes));
-  // var shapes2 = groups.map(internal.getPolygonDissolver2(nodes));
+  var shapes2 = groups.map(internal.getPolygonDissolver2(nodes));
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
@@ -50,7 +49,6 @@ internal.getPolygonDissolver = function(nodes, spherical) {
         ccw = [];
 
     divide(shp, cw, ccw);
-
     cw = flatten(cw);
     ccw.forEach(internal.reversePath);
     ccw = flatten(ccw);
@@ -68,21 +66,20 @@ internal.getPolygonDissolver = function(nodes, spherical) {
 };
 
 internal.getPolygonDissolver2 = function(nodes) {
+  nodes.detachAcyclicArcs(); // remove spikes, which interfere with building mosaic
   var arcs = nodes.arcs;
   var mosaic = internal.findMosaicRings(nodes).cw;
   // index of mosaic tiles: each tile can be used once as ring and once as hole
-  // (set to 1 when used)
   var ringFlags = new Uint8Array(mosaic.length);
   var holeFlags = new Uint8Array(mosaic.length);
-  // arc ids mapped to mosaic tile ids (set to -2 when used)
+  // arc ids mapped to mosaic tile ids
   var fwdArcIndex = new Int32Array(arcs.size());
   var revArcIndex = new Int32Array(arcs.size());
   var divide = internal.getHoleDivider(nodes);
   var dissolve = internal.getRingIntersector(nodes, 'dissolve');
+  // console.log("mosaic:", mosaic);
 
   initMosaicIndexes(mosaic, fwdArcIndex, revArcIndex);
-    //console.log("mosaic:", mosaic);
-    //console.log("fwd, rev:", fwdArcIndex, revArcIndex)
 
   function initMosaicIndexes(mosaic, fwd, rev) {
     utils.initializeArray(fwd, -1);
@@ -163,7 +160,6 @@ internal.getPolygonDissolver2 = function(nodes) {
     return memo;
   }
 
-
   function holeTileIsUsable(tile) {
     // tile is unusable if it contains an arc that is also used by a
     // ring of the current shape (an edge condition caused by atypical topology)
@@ -181,7 +177,6 @@ internal.getPolygonDissolver2 = function(nodes) {
     });
   }
 
-
   function getArcValue(arcId) {
     var absId = absArcId(arcId);
     var index = absId == arcId ? fwdArcIndex : revArcIndex;
@@ -193,8 +188,6 @@ internal.getPolygonDissolver2 = function(nodes) {
     var index = absId == arcId ? fwdArcIndex : revArcIndex;
     index[absId] = val;
   }
-
-
 
   return function(polygon, shpId) {
     if (!polygon) return null;
@@ -208,24 +201,22 @@ internal.getPolygonDissolver2 = function(nodes) {
     holeTileIds = holesToTileIds(ccw);
     dissolvedRings = dissolve(ringTileIds.map(useRingTile));
 
-    console.log("cw:", cw);
-    console.log("ringTiles:", ringTileIds);
-    console.log("dissolved rings:", dissolvedRings);
+    debug("cw:", cw);
+    debug("ringTiles:", ringTileIds);
+    debug("dissolved rings:", dissolvedRings);
 
     if (ccw.length > 0) {
       dissolvedHoles = dissolveHoles(holeTileIds, dissolvedRings);
       dissolvedPolygon = internal.appendHolestoRings(dissolvedRings, dissolvedHoles);
-      console.log("ccw rings:", ccw);
-      console.log("dissolved holes:", dissolvedHoles);
+      debug("ccw rings:", ccw);
+      debug("dissolved holes:", dissolvedHoles);
     } else {
       dissolvedPolygon = dissolvedRings;
     }
-    console.log("dissolved:", dissolvedPolygon);
 
     if (dissolvedPolygon.length > 1) {
       dissolvedPolygon = internal.fixNestingErrors(dissolvedPolygon, arcs);
     }
-    console.log("fixed:", dissolvedPolygon);
 
     return dissolvedPolygon.length > 0 ? dissolvedPolygon : null;
   };
