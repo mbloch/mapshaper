@@ -106,16 +106,13 @@ internal.initFeatureProxy = function(lyr, arcs) {
       }, get: function() {
         return lyr.shapes[_id] || null;
       }});
-
-    addGetters(ctx, {
-      x: function() {
-        xy();
-        return _xy ? _xy[0] : null;
-      },
-      y: function() {
-        xy();
-        return _xy ? _xy[1] : null;
-      }
+    Object.defineProperty(ctx, 'x', {
+      get: function() { xy(); return _xy ? _xy[0] : null;},
+      set: function(val) { xy(); if (_xy) _xy[0] = Number(val);}
+    });
+    Object.defineProperty(ctx, 'y', {
+      get: function() { xy(); return _xy ? _xy[1] : null;},
+      set: function(val) { xy(); if (_xy) _xy[1] = Number(val);}
     });
   }
 
@@ -124,7 +121,6 @@ internal.initFeatureProxy = function(lyr, arcs) {
     if (!_xy) {
       _xy = shape && shape[0] || null;
     }
-    return _xy;
   }
 
   function centroid() {

@@ -161,6 +161,16 @@ describe('mapshaper-each-calc.js', function () {
         assert.deepEqual(lyr.data.getRecords(), [{x: 0, y: 1}, {x: 2, y: 3}, {x: null, y: null}]);
       })
 
+      it ('x and y setters are implemented', function() {
+        var lyr = {
+          geometry_type: 'point',
+          shapes: [[[0, 1]], [[2, 3], [3, 4]], null]
+        };
+        // first point of multipoint is set; null shapes are ignored (for now)
+        api.evaluateEachFeature(lyr, null, "$.x = 0, $.y = 0");
+        assert.deepEqual(lyr.shapes, [[[0, 0]], [[0, 0], [3, 4]], null]);
+      })
+
       it ('point coords are exposed', function() {
         var lyr = {
           geometry_type: 'point',
