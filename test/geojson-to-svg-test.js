@@ -258,6 +258,32 @@ describe('geojson-to-svg.js', function () {
 
   })
 
+  describe('SVG.importLabel()', function () {
+    it('recognizes several newline markers', function () {
+      var str = 'line one\nline two\\nline three<br>line four';
+      var obj = SVG.importLabel([1, 2], {'label-text': str})
+      var target = {
+        tag: 'text',
+        value: 'line one',
+        properties: {x: 1, y: 2},
+        children: [{
+          tag: 'tspan',
+          value: 'line two',
+          properties: {x: 1, dy: '1.1em'}
+        }, {
+          tag: 'tspan',
+          value: 'line three',
+          properties: {x: 1, dy: '1.1em'}
+        }, {
+          tag: 'tspan',
+          value: 'line four',
+          properties: {x: 1, dy: '1.1em'}
+        }]
+      }
+      assert.deepEqual(obj, target);
+    })
+  })
+
   describe('stringify()', function () {
     it('g element, no children', function () {
       var obj = {tag: 'g'};

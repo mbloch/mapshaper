@@ -1,6 +1,5 @@
 /* @requires geojson-common, svg-common, mapshaper-svg-style */
 
-
 SVG.importGeoJSONFeatures = function(features) {
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
@@ -133,14 +132,18 @@ SVG.importLineString = function(coords) {
 SVG.importLabel = function(p, rec) {
   var line = rec['label-text'] || '';
   var morelines, obj;
+  // Accepting \n (two chars) as an alternative to the newline character
+  // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
+  // Also accepting <br>
+  var newline = /\n|\\n|<br>/i;
   var properties = {
     x: p[0],
     y: p[1]
   };
   if (rec.dx) properties.dx = rec.dx;
   if (rec.dy) properties.dy = rec.dy;
-  if (line.indexOf('\n') > -1) {
-    morelines = line.split('\n');
+  if (newline.test(line)) {
+    morelines = line.split(newline);
     line = morelines.shift();
   }
   obj = {
@@ -152,14 +155,16 @@ SVG.importLabel = function(p, rec) {
     // multiline label
     obj.children = [];
     morelines.forEach(function(line) {
-      obj.children.push({
+      var tspan = {
         tag: 'tspan',
         value: line,
         properties: {
           x: p[0],
           dy: rec['line-height'] || '1.1em'
         }
-      });
+      };
+      if (rec.dx) tspan.properties.dx = rec.dx;
+      obj.children.push(tspan);
     });
   }
   return obj;
