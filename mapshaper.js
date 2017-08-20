@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.47';
+var VERSION = '0.4.48';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -848,7 +848,7 @@ Utils.sortArrayIndex = function(ids, arr, asc) {
   ids.sort(function(i, j) {
     // added i, j comparison to guarantee that sort is stable
     var cmp = compare(arr[i], arr[j]);
-    return cmp > 0 || cmp === 0 && i < j ? 1 : -1;
+    return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
   });
 };
 
@@ -1626,7 +1626,7 @@ function UserError(msg) {
 function messageArgs(args) {
   var arr = utils.toArray(args);
   var cmd = internal.getStateVar('current_command');
-  if (cmd) {
+  if (cmd && cmd != 'help' && cmd != 'info') {
     arr.unshift('[' + cmd + ']');
   }
   return arr;
@@ -1756,6 +1756,10 @@ internal.requireDataFields = function(table, fields) {
     stop("Table is missing one or more fields:\n",
         missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
   }
+};
+
+internal.requirePolylineLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polyline') stop(msg || "Expected a polyline layer");
 };
 
 internal.requirePolygonLayer = function(lyr, msg) {
@@ -3696,21 +3700,27 @@ function NodeCollection(arcs, filter) {
       nn = arcData.nn,
       xx = arcData.xx,
       yy = arcData.yy,
-      chains;
+      nodeData;
 
   // Accessor function for arcs
   Object.defineProperty(this, 'arcs', {value: arcs});
 
-  this.toArray = function() {
-    var nodes = internal.findNodeTopology(arcs, filter),
-        flags = new Uint8Array(nodes.xx.length),
+  var toArray = this.toArray = function() {
+    var chains = getNodeChains(),
+        flags = new Uint8Array(chains.length),
         arr = [];
-    utils.forEach(nodes.chains, function(next, i) {
-      if (flags[i] == 1) return;
-      arr.push([nodes.xx[i], nodes.yy[i]]);
-      while (flags[next] != 1) {
-        flags[next] = 1;
-        next = nodes.chains[next];
+    utils.forEach(chains, function(nextIdx, thisIdx) {
+      var node, x, y;
+      if (flags[thisIdx] == 1) return;
+      x = nodeData.xx[thisIdx];
+      y = nodeData.yy[thisIdx];
+      if (isNaN(x) || isNaN(y)) return; // endpoints of filtered-out arcs
+      node = {coordinates: [x, y], arcs: []};
+      arr.push(node);
+      while (flags[thisIdx] != 1) {
+        node.arcs.push(chainToArcId(thisIdx));
+        flags[thisIdx] = 1;
+        thisIdx = chains[thisIdx];
       }
     });
     return arr;
@@ -3720,36 +3730,41 @@ function NodeCollection(arcs, filter) {
     return this.toArray().length;
   };
 
-  this.debugNode = function(arcId) {
-    var ids = [arcId];
-    this.forEachConnectedArc(arcId, function(id) {
-      ids.push(id);
-    });
-
-    message("node ids:",  ids);
-    ids.forEach(printArc);
-
-    function printArc(id) {
-      var str = id + ": ";
-      var len = arcs.getArcLength(id);
-      if (len > 0) {
-        var p1 = arcs.getVertex(id, -1);
-        str += utils.format("[%f, %f]", p1.x, p1.y);
-        if (len > 1) {
-          var p2 = arcs.getVertex(id, -2);
-          str += utils.format(", [%f, %f]", p2.x, p2.y);
-          if (len > 2) {
-            var p3 = arcs.getVertex(id, 0);
-            str += utils.format(", [%f, %f]", p3.x, p3.y);
-          }
-          str += " len: " + distance2D(p1.x, p1.y, p2.x, p2.y);
-        }
-      } else {
-        str = "[]";
-      }
-      message(str);
-    }
+  this.detachArc = function(arcId) {
+    unlinkDirectedArc(arcId);
+    unlinkDirectedArc(~arcId);
   };
+
+  this.detachAcyclicArcs = function() {
+    var chains = getNodeChains(),
+        count = 0,
+        fwd, rev;
+    for (var i=0, n=chains.length; i<n; i+= 2) {
+      fwd = i == chains[i];
+      rev = i + 1 == chains[i + 1];
+      // detach arcs that are connected at one end but not both
+      if (fwd && !rev || !fwd && rev) {
+        this.detachArc(chainToArcId(i));
+        count++;
+      }
+    }
+    if (count > 0) {
+      // removing one acyclic arc could expose another -- need another pass
+      count += this.detachAcyclicArcs();
+    }
+    return count;
+  };
+
+  function unlinkDirectedArc(arcId) {
+    var chainId = arcToChainId(arcId),
+        chains = getNodeChains(),
+        nextId = chains[chainId],
+        prevId = prevChainId(chainId);
+    nodeData.xx[chainId] = NaN;
+    nodeData.yy[chainId] = NaN;
+    chains[chainId] = chainId;
+    chains[prevId] = nextId;
+  }
 
   this.forEachConnectedArc = function(arcId, cb) {
     var nextId = nextConnectedArc(arcId),
@@ -3787,14 +3802,22 @@ function NodeCollection(arcs, filter) {
     return match;
   };
 
+  function chainToArcId(chainId) {
+    var absId = chainId >> 1;
+    return chainId & 1 == 1 ? absId : ~absId;
+  }
+
+  function arcToChainId(arcId) {
+    var fw = arcId >= 0;
+    return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
+  }
+
   function getNodeChains() {
-    var nodeData;
-    if (!chains) {
+    if (!nodeData) {
       nodeData = internal.findNodeTopology(arcs, filter);
-      chains = nodeData.chains;
-      if (nn.length * 2 != chains.length) error("[NodeCollection] count error");
+      if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
     }
-    return chains;
+    return nodeData.chains;
   }
 
   function testArcMatch(a, b) {
@@ -3824,21 +3847,26 @@ function NodeCollection(arcs, filter) {
 
   // return arcId of next arc in the chain, pointed towards the shared vertex
   function nextConnectedArc(arcId) {
-    var fw = arcId >= 0,
-        absId = fw ? arcId : ~arcId,
-        nodeId = fw ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
-        chains = getNodeChains(),
-        chainedId = chains[nodeId],
-        nextAbsId = chainedId >> 1,
-        nextArcId = chainedId & 1 == 1 ? nextAbsId : ~nextAbsId;
-
-    if (chainedId < 0 || chainedId >= chains.length) error("out-of-range chain id");
-    if (absId >= nn.length) error("out-of-range arc id");
-    if (chains.length <= nodeId) error("out-of-bounds node id");
-    return nextArcId;
+    var chainId = arcToChainId(arcId),
+        chains =  getNodeChains(),
+        nextChainId = chains[chainId];
+    if (!(nextChainId >= 0 && nextChainId < chains.length)) error("out-of-range chain id");
+    return chainToArcId(nextChainId);
   }
 
-  // expose for testing
+  function prevChainId(chainId) {
+    var chains = getNodeChains(),
+        prevId = chainId,
+        nextId = chains[chainId];
+    while (nextId != chainId) {
+      prevId = nextId;
+      nextId = chains[nextId];
+      if (nextId == prevId) error("Node indexing error");
+    }
+    return prevId;
+  }
+
+  // expose functions for testing
   this.internal = {
     testArcMatch: testArcMatch,
     testVertexMatch: testVertexMatch
@@ -3852,18 +3880,23 @@ internal.findNodeTopology = function(arcs, filter) {
       ids2 = new Int32Array(n);
 
   arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
-    if (filter && !filter(arcId)) {
-      return;
-    }
     var start = i,
         end = i + n - 1,
         start2 = arcId * 2,
-        end2 = start2 + 1;
-    xx2[start2] = xx[start];
-    yy2[start2] = yy[start];
+        end2 = start2 + 1,
+        ax = xx[start],
+        ay = yy[start],
+        bx = xx[end],
+        by = yy[end];
+    if (filter && !filter(arcId)) {
+      ax = ay = bx = by = NaN;
+    }
+
+    xx2[start2] = ax;
+    yy2[start2] = ay;
     ids2[start2] = arcId;
-    xx2[end2] = xx[end];
-    yy2[end2] = yy[end];
+    xx2[end2] = bx;
+    yy2[end2] = by;
     ids2[end2] = arcId;
   });
 
@@ -5515,6 +5548,14 @@ internal.updateArcIds = function(shapes, map, nodes) {
 
 
 
+
+internal.findAcyclicArcs = function(nodes) {
+  var arcs = [];
+
+
+};
+
+
 // Return id of rightmost connected arc in relation to @arcId
 // Return @arcId if no arcs can be found
 internal.getRightmostArc = function(arcId, nodes, filter) {
@@ -5754,7 +5795,7 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 
       if (candId == ~nextId) {
         // TODO: handle or prevent this error condition
-        message("Pathfinder warning: dead-end path");
+        debug("Pathfinder warning: dead-end path");
         return null;
       }
     } while (candId != startId);
@@ -7313,16 +7354,13 @@ internal.initFeatureProxy = function(lyr, arcs) {
       }, get: function() {
         return lyr.shapes[_id] || null;
       }});
-
-    addGetters(ctx, {
-      x: function() {
-        xy();
-        return _xy ? _xy[0] : null;
-      },
-      y: function() {
-        xy();
-        return _xy ? _xy[1] : null;
-      }
+    Object.defineProperty(ctx, 'x', {
+      get: function() { xy(); return _xy ? _xy[0] : null;},
+      set: function(val) { xy(); if (_xy) _xy[0] = Number(val);}
+    });
+    Object.defineProperty(ctx, 'y', {
+      get: function() { xy(); return _xy ? _xy[1] : null;},
+      set: function(val) { xy(); if (_xy) _xy[1] = Number(val);}
     });
   }
 
@@ -7331,7 +7369,6 @@ internal.initFeatureProxy = function(lyr, arcs) {
     if (!_xy) {
       _xy = shape && shape[0] || null;
     }
-    return _xy;
   }
 
   function centroid() {
@@ -8324,6 +8361,7 @@ internal.printDissolveMessage = function(pre, post) {
 // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
 //
 internal.fixNestingErrors = function(rings, arcs) {
+  if (rings.length <= 1) return rings;
   var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
   // convert rings to shapes for PathIndex
   var shapes = rings.map(function(ids) {return [ids];});
@@ -8360,7 +8398,7 @@ internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var shapes2 = groups.map(internal.getPolygonDissolver(nodes));
+  var shapes2 = groups.map(internal.getPolygonDissolver2(nodes));
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
@@ -8397,14 +8435,171 @@ internal.getPolygonDissolver = function(nodes, spherical) {
     ccw = flatten(ccw);
     ccw.forEach(internal.reversePath);
 
-
     var shp2 = internal.appendHolestoRings(cw, ccw);
     var dissolved = dissolve(shp2);
+
     if (dissolved.length > 1) {
       dissolved = internal.fixNestingErrors(dissolved, nodes.arcs);
     }
 
     return dissolved.length > 0 ? dissolved : null;
+  };
+};
+
+internal.getPolygonDissolver2 = function(nodes) {
+  nodes.detachAcyclicArcs(); // remove spikes, which interfere with building mosaic
+  var arcs = nodes.arcs;
+  var mosaic = internal.findMosaicRings(nodes).cw;
+  // index of mosaic tiles: each tile can be used once as ring and once as hole
+  var ringFlags = new Uint8Array(mosaic.length);
+  var holeFlags = new Uint8Array(mosaic.length);
+  // arc ids mapped to mosaic tile ids
+  var fwdArcIndex = new Int32Array(arcs.size());
+  var revArcIndex = new Int32Array(arcs.size());
+  var divide = internal.getHoleDivider(nodes);
+  var dissolve = internal.getRingIntersector(nodes, 'dissolve');
+  // console.log("mosaic:", mosaic);
+
+  initMosaicIndexes(mosaic, fwdArcIndex, revArcIndex);
+
+  function initMosaicIndexes(mosaic, fwd, rev) {
+    utils.initializeArray(fwd, -1);
+    utils.initializeArray(rev, -1);
+    mosaic.forEach(function(ring, ringId) {
+      var absId;
+      for (var i=0; i<ring.length; i++) {
+        absId = absArcId(ring[i]);
+        (absId == ring[i] ? fwd : rev)[absId] = ringId;
+      }
+    });
+  }
+
+  function dissolveHoles(tileIds, dissolvedRings) {
+    var tiles, dissolvedHoles;
+    markArcs(dissolvedRings, -2);
+    tiles = tileIds.reduce(reduceHoleTile, []);
+    markArcs(dissolvedRings, -3);
+    dissolvedHoles = dissolve(tiles);
+    dissolvedHoles.forEach(internal.reversePath);
+    return dissolvedHoles;
+  }
+
+  function reduceRingToTileId(memo, ring) {
+    var tileId;
+    for (var i=0; i<ring.length; i++) {
+      tileId = reserveTile(ring[i], false);
+      if (tileId > -1) memo.push(tileId);
+    }
+    return memo;
+  }
+
+  function reduceHoleToTileId(memo, hole) {
+    var tileId;
+    for (var i=0; i<hole.length; i++) {
+      tileId = reserveTile(~hole[i], true);
+      if (tileId > -1) memo.push(tileId);
+    }
+    return memo;
+  }
+
+  function ringsToTileIds(rings) {
+    return rings.reduce(reduceRingToTileId, []);
+  }
+
+  function holesToTileIds(holes) {
+    return holes.reduce(reduceHoleToTileId, []);
+  }
+
+  function reserveTile(arcId, isHole) {
+    var tileId = getArcValue(arcId);
+    var flags = isHole ? holeFlags : ringFlags;
+    var retn = -1;
+    if (tileId < 0) {
+      // no tile for this arc
+    } else if (isHole && ringFlags[tileId] == 1) {
+      // tile is reserved by a ring -- can't use it
+    } else if (flags[tileId] === 0) {
+      flags[tileId] = 1; // reserve the tile
+      retn = tileId;
+    }
+    return retn;
+  }
+
+  function useRingTile(tileId) {
+    ringFlags[tileId] = 2; // use tile
+    return mosaic[tileId];
+  }
+
+  function reduceHoleTile(memo, tileId) {
+    var tile = mosaic[tileId];
+    if (holeTileIsUsable(tile)) {
+      holeFlags[tileId] = 2; // use tile
+      memo.push(tile);
+    } else {
+      holeFlags[tileId] = 0; // release tile
+    }
+    return memo;
+  }
+
+  function holeTileIsUsable(tile) {
+    // tile is unusable if it contains an arc that is also used by a
+    // ring of the current shape (an edge condition caused by atypical topology)
+    for (var i=0; i<tile.length; i++) {
+      if (getArcValue(~tile[i]) == -2) return false;
+    }
+    return true;
+  }
+
+  function markArcs(rings, value) {
+    rings.forEach(function(ring) {
+      for (var i=0; i<ring.length; i++) {
+        setArcValue(ring[i], value);
+      }
+    });
+  }
+
+  function getArcValue(arcId) {
+    var absId = absArcId(arcId);
+    var index = absId == arcId ? fwdArcIndex : revArcIndex;
+    return index[absId];
+  }
+
+  function setArcValue(arcId, val) {
+    var absId = absArcId(arcId);
+    var index = absId == arcId ? fwdArcIndex : revArcIndex;
+    index[absId] = val;
+  }
+
+  return function(polygon, shpId) {
+    if (!polygon) return null;
+    var cw = [],
+        ccw = [],
+        ringTileIds, holeTileIds, dissolvedRings, dissolvedHoles, dissolvedPolygon;
+
+    divide(polygon, cw, ccw);
+
+    ringTileIds = ringsToTileIds(cw);
+    holeTileIds = holesToTileIds(ccw);
+    dissolvedRings = dissolve(ringTileIds.map(useRingTile));
+
+    debug("cw:", cw);
+    debug("ringTiles:", ringTileIds);
+    debug("dissolved rings:", dissolvedRings);
+
+    if (ccw.length > 0) {
+      dissolvedHoles = dissolveHoles(holeTileIds, dissolvedRings);
+      dissolvedPolygon = internal.appendHolestoRings(dissolvedRings, dissolvedHoles);
+      debug("ccw rings:", ccw);
+      debug("dissolved holes:", dissolvedHoles);
+    } else {
+      dissolvedPolygon = dissolvedRings;
+    }
+
+    if (dissolvedPolygon.length > 1) {
+      dissolvedPolygon = internal.fixNestingErrors(dissolvedPolygon, arcs);
+    }
+
+    return dissolvedPolygon.length > 0 ? dissolvedPolygon : null;
   };
 };
 
@@ -8427,7 +8622,9 @@ api.dissolve2 = function(src, dataset, opts) {
   var nodes;
   var layers2 = layers.map(function(lyr) {
     internal.requirePolygonLayer(lyr);
-    if (!nodes) nodes = internal.addIntersectionCuts(dataset, opts);
+    if (!nodes) {
+      nodes = internal.addIntersectionCuts(dataset, opts);
+    }
     return internal.dissolvePolygonLayer(lyr, nodes, opts);
   });
   return multiple ? layers2 : layers2[0];
@@ -8437,52 +8634,43 @@ api.dissolve2 = function(src, dataset, opts) {
 
 
 
-internal.buildPolygonMosaic = function(nodes) {
-  // Assumes that insertClippingPoints() has been run
-  var arcs = nodes.arcs;
+internal.findMosaicRings = function(nodes) {
+  var arcs = nodes.arcs,
+      cw = [],
+      ccw = [],
+      lostArcs = [];
+
   var flags = new Uint8Array(arcs.size());
   var findPath = internal.getPathFinder(nodes, useRoute);
-  var deadArcs = [];
-  var reverseRings = [];
-  var enclosures = [];
-  var mosaic = [], ring, index;
-  var retn = {mosaic: mosaic, enclosures: enclosures};
 
   for (var i=0, n=flags.length; i<n; i++) {
     tryPath(i);
     tryPath(~i);
   }
 
-  // add holes to mosaic polygons
-  // TODO: skip this step if layer contains no holes (how to tell?)
-  index = new PathIndex(mosaic, arcs);
-  reverseRings.forEach(function(ring) {
-    var id = index.findSmallestEnclosingPolygon(ring);
-    if (id > -1) {
-      mosaic[id].push(ring);
-    } else {
-      internal.reversePath(ring);
-      enclosures.push([ring]);
-    }
-  });
-
-  if (deadArcs.length > 0) retn.collisions = deadArcs;
-  return retn;
+  return {
+    cw: cw,
+    ccw: ccw,
+    lostArcs: lostArcs
+  };
 
   function tryPath(arcId) {
     var ring;
     if (!routeIsOpen(arcId)) return;
     ring = findPath(arcId);
-    if (ring) {
-      if (geom.getPlanarPathArea(ring, arcs) > 0) {
-        mosaic.push([ring]);
-      } else {
-        reverseRings.push(ring);
-      }
-    } else {
-      deadArcs.push(arcId);
+    if (!ring) {
+      // arc is unused, but can not be extended to a complete ring
+      lostArcs.push(arcId);
       debug("Dead-end arc:", arcId);
+    } else if (geom.getPlanarPathArea(ring, arcs) > 0) {
+      cw.push(ring);
+    } else {
+      ccw.push(ring);
     }
+  }
+
+  function useRoute(arcId) {
+    return routeIsOpen(arcId, true);
   }
 
   function routeIsOpen(arcId, closeRoute) {
@@ -8492,10 +8680,29 @@ internal.buildPolygonMosaic = function(nodes) {
     if (closeRoute && isOpen) flags[absId] |= bit;
     return isOpen;
   }
+};
 
-  function useRoute(arcId) {
-    return routeIsOpen(arcId, true);
-  }
+
+internal.buildPolygonMosaic = function(nodes) {
+  // Assumes that insertClippingPoints() has been run
+  var data = internal.findMosaicRings(nodes);
+  var mosaic = data.cw.map(function(ring) {return [ring];});
+  var index = new PathIndex(mosaic, nodes.arcs);
+  var enclosures = [];
+
+  // add holes to mosaic polygons
+  // TODO: skip this step if layer contains no holes (how to tell?)
+  data.ccw.forEach(function(ring) {
+    var id = index.findSmallestEnclosingPolygon(ring);
+    if (id > -1) {
+      mosaic[id].push(ring);
+    } else {
+      internal.reversePath(ring);
+      enclosures.push([ring]);
+    }
+  });
+
+  return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
 };
 
 
@@ -8514,17 +8721,17 @@ api.clean2 = function(layers, dataset, opts) {
     name: 'enclosure',
     shapes: out.enclosures
   });
-  if (out.collisions) {
-    layers = layers.concat(getDebugLayers(out.collisions, nodes.arcs));
+  if (out.lostArcs.length > 0) {
+    layers = layers.concat(getDebugLayers(out.lostArcs, nodes.arcs));
   }
   return layers;
 
-  function getDebugLayers(collisions, arcs) {
+  function getDebugLayers(lostArcs, arcs) {
     var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
     var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
     var arcData = [];
     var pointData = [];
-    collisions.forEach(function(arcId) {
+    lostArcs.forEach(function(arcId) {
       var first = arcs.getVertex(arcId, 0);
       var last = arcs.getVertex(arcId, -1);
       arcData.push({ARCID: arcId});
@@ -10079,6 +10286,13 @@ GeoJSON.translateGeoJSONType = function(type) {
   return GeoJSON.typeLookup[type] || null;
 };
 
+GeoJSON.pathIsRing = function(coords) {
+  var first = coords[0],
+      last = coords[coords.length - 1];
+  // TODO: consider detecting collapsed rings
+  return coords.length >= 4 && first[0] == last[0] && first[1] == last[1];
+};
+
 
 
 
@@ -10442,13 +10656,19 @@ function initHashChains(xx, yy) {
       hash = getXYHash(m),
       hashTable = new Int32Array(m),
       chainIds = new Int32Array(n), // Array to be filled with chain data
-      key, j;
+      key, j, i, x, y;
 
-  for (var i=0; i<n; i++) {
-    key = hash(xx[i], yy[i]);
-    j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
-    hashTable[key] = i + 1;
-    chainIds[i] = j < 0 ? i : j; // first item in a chain points to self
+  for (i=0; i<n; i++) {
+    x = xx[i];
+    y = yy[i];
+    if (x != x || y != y) {
+      j = -1; // NaN coord: no hash entry, one-link chain
+    } else {
+      key = hash(x, y);
+      j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
+      hashTable[key] = i + 1;
+    }
+    chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
   }
   return chainIds;
 }
@@ -12273,18 +12493,18 @@ internal.cloneProperties = function(obj) {
 
 
 internal.transformDatasetToPixels = function(dataset, opts) {
-  var margin = opts.margin >= 0 ? opts.margin : 1, // default 1px margin
+  var margins = internal.parseMarginOption(opts.margin),
       bounds = internal.getDatasetBounds(dataset),
       width, height, bounds2, fwd;
 
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
-    width = bounds.width() / opts.svg_scale + margin * 2;
+    width = bounds.width() / opts.svg_scale + margins[0] + margins[2];
   } else {
     width = opts.width > 0 ? opts.width : 800;
   }
-  internal.applyMarginInPixels(bounds, width, margin);
+  internal.applyMarginInPixels(bounds, width, margins);
   height = width * bounds.height() / bounds.width();
   bounds2 = new Bounds(0, 0, width, height);
   fwd = bounds.getTransform(bounds2, opts.invert_y);
@@ -12294,14 +12514,25 @@ internal.transformDatasetToPixels = function(dataset, opts) {
   return [width, Math.round(height) || 1];
 };
 
-
-// Pad geographic bounds prior to conversion to pixels
-internal.applyMarginInPixels = function(bounds, widthPx, marginPx) {
-  var widthGeo = bounds.width() || bounds.height() || 1; // avoid 0 width bbox
-  var pad = widthGeo * marginPx / (widthPx - marginPx * 2);
-  bounds.padBounds(pad, pad, pad, pad);
+internal.parseMarginOption = function(opt) {
+  var str = utils.isNumber(opt) ? String(opt) : opt || '';
+  var margins = str.trim().split(/[, ] */);
+  if (margins.length == 1) margins.push(margins[0]);
+  if (margins.length == 2) margins.push(margins[0], margins[1]);
+  if (margins.length == 3) margins.push(margins[2]);
+  return margins.map(function(str) {
+    var px = parseFloat(str);
+    return isNaN(px) ? 1 : px; // 1 is default
+  });
 };
 
+// Pad geographic bounds prior to conversion to pixels
+internal.applyMarginInPixels = function(bounds, widthPx, margins) {
+  var widthGeo = bounds.width() || bounds.height() || 1; // avoid 0 width bbox
+  var k = widthGeo * 1 / (widthPx - margins[0] - margins[2]);
+  // var pad = widthGeo * marginPx / (widthPx - marginPx * 2);
+  bounds.padBounds(margins[0] * k, margins[1] * k, margins[2] * k, margins[3] * k);
+};
 
 
 
@@ -13747,7 +13978,6 @@ internal.isSvgColor = function(str) {
 
 
 
-
 SVG.importGeoJSONFeatures = function(features) {
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
@@ -13880,14 +14110,18 @@ SVG.importLineString = function(coords) {
 SVG.importLabel = function(p, rec) {
   var line = rec['label-text'] || '';
   var morelines, obj;
+  // Accepting \n (two chars) as an alternative to the newline character
+  // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
+  // Also accepting <br>
+  var newline = /\n|\\n|<br>/i;
   var properties = {
     x: p[0],
     y: p[1]
   };
   if (rec.dx) properties.dx = rec.dx;
   if (rec.dy) properties.dy = rec.dy;
-  if (line.indexOf('\n') > -1) {
-    morelines = line.split('\n');
+  if (newline.test(line)) {
+    morelines = line.split(newline);
     line = morelines.shift();
   }
   obj = {
@@ -13899,14 +14133,16 @@ SVG.importLabel = function(p, rec) {
     // multiline label
     obj.children = [];
     morelines.forEach(function(line) {
-      obj.children.push({
+      var tspan = {
         tag: 'tspan',
         value: line,
         properties: {
           x: p[0],
           dy: rec['line-height'] || '1.1em'
         }
-      });
+      };
+      if (rec.dx) tspan.properties.dx = rec.dx;
+      obj.children.push(tspan);
     });
   }
   return obj;
@@ -13917,7 +14153,9 @@ SVG.importPoint = function(coords, d) {
   var isLabel = 'label-text' in rec;
   var children = [];
   var p;
-  if (rec.r || !isLabel) { // if not a label, create a circle even without a radius
+  // if not a label, create a circle even without a radius
+  // (radius can be set via CSS)
+  if (rec.r || !isLabel) {
     p = {
     tag: 'circle',
     properties: {
@@ -16510,6 +16748,34 @@ internal.projectAndDensifyArcs = function(arcs, proj) {
 
 
 
+api.polygons = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolylineLayer);
+  internal.addIntersectionCuts(dataset, opts);
+  return layers.map(function(lyr) {
+    if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+    return internal.createPolygonLayer(lyr, dataset, opts);
+  });
+};
+
+internal.createPolygonLayer = function(lyr, dataset, opts) {
+  var arcCounts = new Uint8Array(dataset.arcs.size());
+  var arcFilter = function(absId) {return arcCounts[absId] > 0;};
+  var data, nodes;
+  internal.countArcsInShapes(lyr.shapes, arcCounts);
+  // console.log(arcCounts)
+  nodes = new NodeCollection(dataset.arcs, arcFilter);
+  nodes.detachAcyclicArcs();
+  data = internal.buildPolygonMosaic(nodes);
+  return {
+    geometry_type: 'polygon',
+    name: lyr.name,
+    shapes: data.mosaic
+  };
+};
+
+
+
+
 api.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
   var name = 'layer';
@@ -16528,7 +16794,43 @@ api.renameLayers = function(layers, names) {
 
 
 
-api.shape = function(source, opts) {
+api.shape = function(opts) {
+  var coords = opts.coordinates;
+  var offsets = opts.offsets || [];
+  var coordinates = [];
+  var geojson, dataset, type, i, x, y;
+
+  if (!coords || coords.length >= 2 === false) {
+    stop('Missing list of coordinates');
+  }
+  for (i=0; i<coords.length; i+= 2) {
+    x = coords[i];
+    y = coords[i + 1];
+    coordinates.push([x, y]);
+  }
+  for (i=0; i<offsets.length; i+=2) {
+    x += offsets[i];
+    y += offsets[i + 1];
+    coordinates.push([x, y]);
+  }
+  if (GeoJSON.pathIsRing(coordinates)) {
+    type = 'Polygon';
+  } else if (opts.closed && coordinates.length >= 3) {
+    type = 'Polygon';
+    coordinates.push(coordinates[0]);
+  } else {
+    type = 'LineString';
+  }
+  geojson = {
+    type: type,
+    coordinates: type == 'Polygon' ? [coordinates] : coordinates
+  };
+  dataset = internal.importGeoJSON(geojson, {});
+  dataset.layers[0].name = opts.name || 'shape';
+  return dataset;
+};
+
+api.rectangle = function(source, opts) {
   var bounds, coords;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
@@ -16536,14 +16838,14 @@ api.shape = function(source, opts) {
     bounds = new Bounds(opts.bbox);
   }
   if (!bounds || !bounds.hasBounds()) {
-    stop('Missing shape extent');
+    stop('Missing rectangle extent');
   }
   if (opts.offset > 0) {
     bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
-  dataset.layers[0].name = opts.name || 'shape';
+  dataset.layers[0].name = opts.name || 'rectangle';
   return dataset;
 };
 
@@ -17747,7 +18049,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
+      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle')) {
         throw new UserError("Missing a -i command");
       }
     }
@@ -17810,6 +18112,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
 
+    } else if (name == 'help') {
+      internal.getOptionParser().printHelp(opts.command);
+
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
       targetDataset = api.importFiles(cmd.options);
@@ -17856,6 +18161,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'points') {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
+    } else if (name == 'polygons') {
+      outputLayers = api.polygons(targetLayers, targetDataset, opts);
+
     } else if (name == 'proj') {
       internal.initProjLibrary(opts, function() {
         var err = null;
@@ -17879,6 +18187,9 @@ api.runCommand = function(cmd, catalog, cb) {
       });
       return; // async command
 
+    } else if (name == 'rectangle') {
+      catalog.addDataset(api.rectangle(source, opts));
+
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
 
@@ -17886,7 +18197,7 @@ api.runCommand = function(cmd, catalog, cb) {
       api.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'shape') {
-      catalog.addDataset(api.shape(source, opts));
+      catalog.addDataset(api.shape(opts));
 
     } else if (name == 'simplify') {
       api.simplify(targetDataset, opts);
@@ -19004,8 +19315,7 @@ internal.getOptionParser = function() {
       type: "number"
     })
     .option("margin", {
-      describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)",
-      type: "number"
+      describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)"
     })
     .option("svg-scale", {
       describe: "(SVG) source units per pixel (alternative to width= option)",
@@ -19353,24 +19663,6 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command('shape')
-    // .describe("create a geometric shape")
-    .option('type', {
-
-    })
-    .option("bbox", {
-      describe: "bounding box of shape",
-      type: "bounds"
-    })
-    .option("offset", {
-      describe: "space around the bounding box or contents",
-      type: "number"
-    })
-    .option("source", {
-      describe: "name of layer to surround"
-    })
-    .option("name", nameOpt);
-
   parser.command('simplify')
     .default('percentage')
     .validate(validateSimplifyOpts)
@@ -19686,6 +19978,43 @@ internal.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("polygons")
+    .describe("convert polylines to polygons")
+    .option("target", targetOpt);
+
+  parser.command("rectangle")
+    .describe("create a rectangular polygon")
+    .option('type', {
+
+    })
+    .option("bbox", {
+      describe: "rectangle coordinates (xmin,ymin,xmax,ymax)",
+      type: "bbox"
+    })
+    .option("offset", {
+      describe: "space around bbox or source layer",
+      type: "number"
+    })
+    .option("source", {
+      describe: "name of layer to enclose"
+    })
+    .option("name", nameOpt);
+
+  parser.command("shape")
+    .describe("create a polyline or polygon from coordinates")
+    .option("coordinates", {
+      describe: "list of vertices as x,y,x,y...",
+      type: "numbers"
+    })
+    .option("offsets", {
+      describe: "list of vertices as offsets from coordinates list",
+      type: "numbers"
+    })
+    .option("closed", {
+      describe: "close an open path to create a polygon",
+      type: "flag"
+    })
+    .option("name", nameOpt);
 
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")
@@ -20234,8 +20563,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.setStateVar('QUIET', true);
     } else if (cmd.name == 'debug') {
       internal.setStateVar('DEBUG', true);
-    } else if (cmd.name == 'help') {
-      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }
