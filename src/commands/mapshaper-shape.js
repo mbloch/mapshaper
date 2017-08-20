@@ -44,7 +44,7 @@ api.rectangle = function(source, opts) {
     bounds = new Bounds(opts.bbox);
   }
   if (!bounds || !bounds.hasBounds()) {
-    stop('Missing shape extent');
+    stop('Missing rectangle extent');
   }
   if (opts.offset > 0) {
     bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);

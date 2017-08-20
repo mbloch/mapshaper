@@ -879,6 +879,10 @@ internal.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("polygons")
+    .describe("convert polylines to polygons")
+    .option("target", targetOpt);
+
   parser.command("rectangle")
     .describe("create a rectangular polygon")
     .option('type', {

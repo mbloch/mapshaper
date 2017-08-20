@@ -27,6 +27,7 @@ mapshaper-merge-layers
 mapshaper-points
 mapshaper-point-grid
 mapshaper-proj
+mapshaper-polygons
 mapshaper-rename-layers
 mapshaper-shape
 mapshaper-simplify
@@ -204,6 +205,9 @@ api.runCommand = function(cmd, catalog, cb) {
       }
     } else if (name == 'points') {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
+
+    } else if (name == 'polygons') {
+      outputLayers = api.polygons(targetLayers, targetDataset, opts);
 
     } else if (name == 'proj') {
       internal.initProjLibrary(opts, function() {

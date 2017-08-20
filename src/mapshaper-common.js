@@ -200,6 +200,10 @@ internal.requireDataFields = function(table, fields) {
   }
 };
 
+internal.requirePolylineLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polyline') stop(msg || "Expected a polyline layer");
+};
+
 internal.requirePolygonLayer = function(lyr, msg) {
   if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
 };
