@@ -5,7 +5,7 @@ var api = require('../'),
 
 describe('mapshaper-nodes.js', function () {
 
-  describe('NodeCollection#toArray()', function () {
+  describe('NodeCollection()', function () {
     it('test 1', function () {
       // Fig. 1
       //
@@ -28,6 +28,27 @@ describe('mapshaper-nodes.js', function () {
         arcs: [0, ~1, ~2]
       }]);
     })
+
+    it('filter function excludes nodes', function() {
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+      var filter = function(id) {return id != 0;}; // exclude arc 0
+      var nodes = new NodeCollection(new ArcCollection(arcs), filter);
+      assert.deepEqual(nodes.getConnectedArcs(0), []);
+      assert.deepEqual(nodes.getConnectedArcs(1), [2]);
+      assert.deepEqual(nodes.getConnectedArcs(2), [1]);
+      assert.deepEqual(nodes.getConnectedArcs(~0), []);
+      assert.deepEqual(nodes.getConnectedArcs(~1), [~2]);
+      assert.deepEqual(nodes.getConnectedArcs(~2), [~1]);
+      assert.deepEqual(nodes.toArray(), [{
+        coordinates: [2, 3],
+        arcs: [~1, ~2]
+      }, {
+        coordinates: [3, 1],
+        arcs: [1, 2]
+      }]);
+
+    })
+
   })
 
   describe('#detachArc()', function() {
@@ -37,12 +58,6 @@ describe('mapshaper-nodes.js', function () {
       var nodes = new NodeCollection(new ArcCollection(arcs));
       nodes.detachArc(0);
       assert.deepEqual(nodes.toArray(), [{
-        coordinates: [3, 1],
-        arcs: [~0]
-      }, {
-        coordinates: [2, 3],
-        arcs: [0]
-      }, {
         coordinates: [2, 3],
         arcs: [~1, ~2]
       }, {
@@ -53,12 +68,6 @@ describe('mapshaper-nodes.js', function () {
       // remove same arc (in opposite direction) -- same expected output
       nodes.detachArc(~0);
       assert.deepEqual(nodes.toArray(), [{
-        coordinates: [3, 1],
-        arcs: [~0]
-      }, {
-        coordinates: [2, 3],
-        arcs: [0]
-      }, {
         coordinates: [2, 3],
         arcs: [~1, ~2]
       }, {
@@ -69,23 +78,11 @@ describe('mapshaper-nodes.js', function () {
       // remove another arc
       nodes.detachArc(~2);
       assert.deepEqual(nodes.toArray(), [{
-        coordinates: [3, 1],
-        arcs: [~0]
-      }, {
-        coordinates: [2, 3],
-        arcs: [0]
-      }, {
         coordinates: [2, 3],
         arcs: [~1]
       }, {
         coordinates: [3, 1],
         arcs: [1]
-       }, {
-        coordinates: [2, 3],
-        arcs: [~2]
-      }, {
-        coordinates: [3, 1],
-        arcs: [2]
      }]);
     });
 
@@ -100,12 +97,6 @@ describe('mapshaper-nodes.js', function () {
       }, {
         coordinates: [2, 3],
         arcs: [0, ~2]
-      }, {
-        coordinates: [2, 3],
-        arcs: [~1]
-      }, {
-        coordinates: [3, 1],
-        arcs: [1]
       }]);
     });
 
@@ -133,20 +124,19 @@ describe('mapshaper-nodes.js', function () {
         coordinates: [4, 3],
         arcs: [2]
       }]);
-
+      assert.deepEqual(nodes.getConnectedArcs(2), []);
+      assert.deepEqual(nodes.getConnectedArcs(~2), [~0, 1]);
+      assert.deepEqual(nodes.getConnectedArcs(1), [~2, ~0]);
       nodes.detachArc(2);
+      assert.deepEqual(nodes.getConnectedArcs(2), []);
+      assert.deepEqual(nodes.getConnectedArcs(~2), []);
+      assert.deepEqual(nodes.getConnectedArcs(1), [~0]);
       assert.deepEqual(nodes.toArray(), [{
         coordinates: [3, 1],
         arcs: [~0, 1]
       }, {
         coordinates: [2, 3],
         arcs: [0, ~1]
-      }, {
-        coordinates: [3, 1],
-        arcs: [~2]
-      }, {
-        coordinates: [4, 3],
-        arcs: [2]
       }]);
     });
   });
@@ -180,27 +170,18 @@ describe('mapshaper-nodes.js', function () {
         coordinates: [5, 1],
         arcs: [3]
       }]);
-
+      assert.deepEqual(nodes.getConnectedArcs(1), [~2, ~0])
+      assert.deepEqual(nodes.getConnectedArcs(2), [~3])
       var count = nodes.detachAcyclicArcs();
       assert.equal(count, 2);
+      assert.deepEqual(nodes.getConnectedArcs(1), [~0])
+      assert.deepEqual(nodes.getConnectedArcs(2), [])
       assert.deepEqual(nodes.toArray(), [{
         coordinates: [3, 1],
         arcs: [~0, 1]
       }, {
         coordinates: [2, 3],
         arcs: [0, ~1]
-      }, {
-        coordinates: [3, 1],
-        arcs: [~2]
-      }, {
-        coordinates: [4, 3],
-        arcs: [2]
-      }, {
-        coordinates: [4, 3],
-        arcs: [~3]
-      }, {
-        coordinates: [5, 1],
-        arcs: [3]
       }]);
     });
   });

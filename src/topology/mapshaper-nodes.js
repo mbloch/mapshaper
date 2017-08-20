@@ -21,9 +21,12 @@ function NodeCollection(arcs, filter) {
         flags = new Uint8Array(chains.length),
         arr = [];
     utils.forEach(chains, function(nextIdx, thisIdx) {
-      var node;
+      var node, x, y;
       if (flags[thisIdx] == 1) return;
-      node = {coordinates: [nodeData.xx[thisIdx], nodeData.yy[thisIdx]], arcs: []};
+      x = nodeData.xx[thisIdx];
+      y = nodeData.yy[thisIdx];
+      if (isNaN(x) || isNaN(y)) return; // endpoints of filtered-out arcs
+      node = {coordinates: [x, y], arcs: []};
       arr.push(node);
       while (flags[thisIdx] != 1) {
         node.arcs.push(chainToArcId(thisIdx));
@@ -68,6 +71,8 @@ function NodeCollection(arcs, filter) {
         chains = getNodeChains(),
         nextId = chains[chainId],
         prevId = prevChainId(chainId);
+    nodeData.xx[chainId] = NaN;
+    nodeData.yy[chainId] = NaN;
     chains[chainId] = chainId;
     chains[prevId] = nextId;
   }
@@ -186,18 +191,23 @@ internal.findNodeTopology = function(arcs, filter) {
       ids2 = new Int32Array(n);
 
   arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
-    if (filter && !filter(arcId)) {
-      return;
-    }
     var start = i,
         end = i + n - 1,
         start2 = arcId * 2,
-        end2 = start2 + 1;
-    xx2[start2] = xx[start];
-    yy2[start2] = yy[start];
+        end2 = start2 + 1,
+        ax = xx[start],
+        ay = yy[start],
+        bx = xx[end],
+        by = yy[end];
+    if (filter && !filter(arcId)) {
+      ax = ay = bx = by = NaN;
+    }
+
+    xx2[start2] = ax;
+    yy2[start2] = ay;
     ids2[start2] = arcId;
-    xx2[end2] = xx[end];
-    yy2[end2] = yy[end];
+    xx2[end2] = bx;
+    yy2[end2] = by;
     ids2[end2] = arcId;
   });
 

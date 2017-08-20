@@ -7,13 +7,19 @@ function initHashChains(xx, yy) {
       hash = getXYHash(m),
       hashTable = new Int32Array(m),
       chainIds = new Int32Array(n), // Array to be filled with chain data
-      key, j;
+      key, j, i, x, y;
 
-  for (var i=0; i<n; i++) {
-    key = hash(xx[i], yy[i]);
-    j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
-    hashTable[key] = i + 1;
-    chainIds[i] = j < 0 ? i : j; // first item in a chain points to self
+  for (i=0; i<n; i++) {
+    x = xx[i];
+    y = yy[i];
+    if (x != x || y != y) {
+      j = -1; // NaN coord: no hash entry, one-link chain
+    } else {
+      key = hash(x, y);
+      j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
+      hashTable[key] = i + 1;
+    }
+    chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
   }
   return chainIds;
 }
