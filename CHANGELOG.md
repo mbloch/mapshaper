@@ -1,3 +1,12 @@
+v0.4.48
+* Added experimental -polygons command, for convering a polyline layer containing rings to a polygon layer.
+* Made -dissolve2 more robust (less likely to drop rings when input contains overlapping shapes).
+* In JS expressions, this.x and this.y can now be used to set x,y coordinates of point features (previously they were read-only).
+* -svg-style layer-text= recognizes <br>, \n and '\n' (newline char) as line delimiters.
+* -o margin= option now accepts a comma-separated list of margin widths, as an alternative to a single value. List order is xmin,ymin,xmax,ymax (same as bbox= option).
+* Added -shape command, for creating polygons and polylines from lists of coordinates.
+* Added -rectangle command, for creating rectangular polygons.
+
 v0.4.47
 * Added -svg-style where= option, for applying svg attributes to a subset of features
 

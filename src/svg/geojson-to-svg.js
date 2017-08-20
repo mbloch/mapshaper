@@ -175,7 +175,9 @@ SVG.importPoint = function(coords, d) {
   var isLabel = 'label-text' in rec;
   var children = [];
   var p;
-  if (rec.r || !isLabel) { // if not a label, create a circle even without a radius
+  // if not a label, create a circle even without a radius
+  // (radius can be set via CSS)
+  if (rec.r || !isLabel) {
     p = {
     tag: 'circle',
     properties: {
