@@ -128,9 +128,13 @@ function HitControl(ext, mouse) {
   }
 
   function getCoordPrecision(bounds) {
-    var shortSide = Math.min(Math.abs(bounds.xmax), Math.abs(bounds.ymax)),
-        decimals = Math.ceil(Math.log(Math.max(shortSide, 1)) / Math.LN10);
-    return Math.max(0, 7 - decimals);
+    var range = Math.min(bounds.width(), bounds.height()) + 1e-8;
+    var digits = 0;
+    while (range < 2000) {
+      range *= 10;
+      digits++;
+    }
+    return digits;
   }
 
   function polygonTest(x, y) {
