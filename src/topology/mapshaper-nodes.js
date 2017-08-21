@@ -21,12 +21,11 @@ function NodeCollection(arcs, filter) {
         flags = new Uint8Array(chains.length),
         arr = [];
     utils.forEach(chains, function(nextIdx, thisIdx) {
-      var node, x, y;
+      var node, x, y, p;
       if (flags[thisIdx] == 1) return;
-      x = nodeData.xx[thisIdx];
-      y = nodeData.yy[thisIdx];
-      if (isNaN(x) || isNaN(y)) return; // endpoints of filtered-out arcs
-      node = {coordinates: [x, y], arcs: []};
+      p = getEndpoint(thisIdx);
+      if (!p) return; // endpoints of an excluded arc
+      node = {coordinates: p, arcs: []};
       arr.push(node);
       while (flags[thisIdx] != 1) {
         node.arcs.push(chainToArcId(thisIdx));
@@ -41,9 +40,19 @@ function NodeCollection(arcs, filter) {
     return this.toArray().length;
   };
 
-  this.detachArc = function(arcId) {
-    unlinkDirectedArc(arcId);
-    unlinkDirectedArc(~arcId);
+  this.findDanglingEndpoints = function() {
+    var chains = getNodeChains(),
+        arr = [], p;
+    for (var i=0, n=chains.length; i<n; i++) {
+      if (chains[i] != i) continue; // endpoint attaches to a node
+      p = getEndpoint(i);
+      if (!p) continue; // endpoint belongs to an excluded arc
+      arr.push({
+        point: p,
+        arc: chainToArcId(i)
+      });
+    }
+    return arr;
   };
 
   this.detachAcyclicArcs = function() {
@@ -53,8 +62,8 @@ function NodeCollection(arcs, filter) {
     for (var i=0, n=chains.length; i<n; i+= 2) {
       fwd = i == chains[i];
       rev = i + 1 == chains[i + 1];
-      // detach arcs that are connected at one end but not both
-      if (fwd && !rev || !fwd && rev) {
+      // detach arcs that are disconnected at one end or the other
+      if ((fwd || rev) && !linkIsDetached(i)) {
         this.detachArc(chainToArcId(i));
         count++;
       }
@@ -66,16 +75,12 @@ function NodeCollection(arcs, filter) {
     return count;
   };
 
-  function unlinkDirectedArc(arcId) {
-    var chainId = arcToChainId(arcId),
-        chains = getNodeChains(),
-        nextId = chains[chainId],
-        prevId = prevChainId(chainId);
-    nodeData.xx[chainId] = NaN;
-    nodeData.yy[chainId] = NaN;
-    chains[chainId] = chainId;
-    chains[prevId] = nextId;
-  }
+
+  this.detachArc = function(arcId) {
+    unlinkDirectedArc(arcId);
+    unlinkDirectedArc(~arcId);
+  };
+
 
   this.forEachConnectedArc = function(arcId, cb) {
     var nextId = nextConnectedArc(arcId),
@@ -112,6 +117,26 @@ function NodeCollection(arcs, filter) {
     }
     return match;
   };
+
+  // returns null if link has been removed from node collection
+  function getEndpoint(chainId) {
+    return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
+  }
+
+  function linkIsDetached(chainId) {
+    return isNaN(nodeData.xx[chainId]);
+  }
+
+  function unlinkDirectedArc(arcId) {
+    var chainId = arcToChainId(arcId),
+        chains = getNodeChains(),
+        nextId = chains[chainId],
+        prevId = prevChainId(chainId);
+    nodeData.xx[chainId] = NaN;
+    nodeData.yy[chainId] = NaN;
+    chains[chainId] = chainId;
+    chains[prevId] = nextId;
+  }
 
   function chainToArcId(chainId) {
     var absId = chainId >> 1;

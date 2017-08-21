@@ -101,7 +101,7 @@ describe('mapshaper-nodes.js', function () {
     });
 
     it ('test 3 - spike', function () {
-      // Fig. 1
+      // Fig. 2
       //
       //      b     d
       //     / \   /
@@ -144,19 +144,19 @@ describe('mapshaper-nodes.js', function () {
   describe('#detachAcyclicArcs()', function () {
 
     it ('test 3 - spike', function () {
-      // Fig. 1
+      // Fig. 3
       //
-      //      b     d
+      //      b     d --- f
       //     / \   / \
       //    /   \ /   \
       //   a --- c     e
       //
-      //   cab, bc, cd, de
-      //   0,   1,  2,  3
+      //   cab, bc, cd, de, fe
+      //   0,   1,  2,  3,  4
 
-      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[3, 1], [4, 3]], [[4, 3], [5, 1]]];
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]],
+        [[3, 1], [4, 3]], [[4, 3], [5, 1]], [[6, 3], [4, 3]]];
       var nodes = new NodeCollection(new ArcCollection(arcs));
-
       assert.deepEqual(nodes.toArray(), [{
         coordinates: [3, 1],
         arcs: [~0, 1, ~2]
@@ -165,15 +165,18 @@ describe('mapshaper-nodes.js', function () {
         arcs: [0, ~1]
       }, {
         coordinates: [4, 3],
-        arcs: [2, ~3]
+        arcs: [2, ~3, 4]
       }, {
         coordinates: [5, 1],
         arcs: [3]
+      }, {
+        coordinates: [6, 3],
+        arcs: [~4]
       }]);
       assert.deepEqual(nodes.getConnectedArcs(1), [~2, ~0])
-      assert.deepEqual(nodes.getConnectedArcs(2), [~3])
+      assert.deepEqual(nodes.getConnectedArcs(2), [~3, 4])
       var count = nodes.detachAcyclicArcs();
-      assert.equal(count, 2);
+      assert.equal(count, 3);
       assert.deepEqual(nodes.getConnectedArcs(1), [~0])
       assert.deepEqual(nodes.getConnectedArcs(2), [])
       assert.deepEqual(nodes.toArray(), [{
@@ -186,11 +189,43 @@ describe('mapshaper-nodes.js', function () {
     });
   });
 
+  describe('#findDanglingEndpoints()', function () {
+    it('Fig. 3', function () {
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]],
+        [[3, 1], [4, 3]], [[4, 3], [5, 1]], [[6, 3], [4, 3]]];
+      var nodes = new NodeCollection(new ArcCollection(arcs));
+      var target = [{
+          point: [5, 1],
+          arc: 3
+        }, {
+          point: [6, 3],
+          arc: ~4
+        }];
+      var count;
+      assert.deepEqual(nodes.findDanglingEndpoints(), target);
+      count = nodes.detachAcyclicArcs();
+      assert.equal(count, 3);
+      assert.deepEqual(nodes.findDanglingEndpoints(), []);
+      nodes.detachArc(~1);
+      assert.deepEqual(nodes.findDanglingEndpoints(), [{
+          arc: ~0,
+          point: [3, 1]
+        }, {
+          arc: 0,
+          point: [2, 3]
+        }]);
+      count = nodes.detachAcyclicArcs();
+      assert.equal(count, 1);
+      assert.deepEqual(nodes.findDanglingEndpoints(), []);
+    })
+  })
+
 
   /*
   describe('NodeCollection#getNextArc()', function () {
     it('test 1', function () {
-
+      // Fig. 4
+      //
       //      b --- d
       //     / \   /
       //    /   \ /
@@ -212,7 +247,8 @@ describe('mapshaper-nodes.js', function () {
   })
   */
 
-  describe('Fig. 2', function() {
+  describe('test 2', function() {
+    // Fig. 5
     //
     //  g ----- h
     //  |       |
@@ -257,7 +293,6 @@ describe('mapshaper-nodes.js', function () {
       assert.equal(nodes.findMatchingArc(7), 2);
       assert.equal(nodes.findMatchingArc(2), 2);
     });
-
 
   });
 
