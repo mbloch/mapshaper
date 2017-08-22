@@ -359,6 +359,7 @@ function ArcCollection() {
     };
   };
 
+  // @nth: index of vertex. ~(idx) starts from the opposite endpoint
   this.indexOfVertex = function(arcId, nth) {
     var absId = arcId < 0 ? ~arcId : arcId,
         len = _nn[absId];

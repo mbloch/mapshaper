@@ -881,6 +881,10 @@ internal.getOptionParser = function() {
 
   parser.command("polygons")
     .describe("convert polylines to polygons")
+    .option("gap-tolerance", {
+      describe: "specify gap tolerance in source units",
+      type: "number"
+    })
     .option("target", targetOpt);
 
   parser.command("rectangle")

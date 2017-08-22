@@ -17,7 +17,7 @@ internal.importDelimTable = function(str, delim, opts) {
   var records = require("d3-dsv").dsvFormat(delim).parse(str);
   var table;
   if (records.length === 0) {
-    stop("Unable to read any records");
+    stop("Unable to read any data records");
   }
   delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts);

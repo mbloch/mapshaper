@@ -1,4 +1,4 @@
-/* @requires mapshaper-dissolve2, mapshaper-polygon-mosaic */
+/* @requires mapshaper-dissolve2, mapshaper-polygon-mosaic, mapshaper-gaps */
 
 api.polygons = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolylineLayer);
@@ -10,12 +10,8 @@ api.polygons = function(layers, dataset, opts) {
 };
 
 internal.createPolygonLayer = function(lyr, dataset, opts) {
-  var arcCounts = new Uint8Array(dataset.arcs.size());
-  var arcFilter = function(absId) {return arcCounts[absId] > 0;};
-  var data, nodes;
-  internal.countArcsInShapes(lyr.shapes, arcCounts);
-  // console.log(arcCounts)
-  nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var nodes = internal.closeGaps(lyr, dataset, opts);
+  var data;
   nodes.detachAcyclicArcs();
   data = internal.buildPolygonMosaic(nodes);
   return {

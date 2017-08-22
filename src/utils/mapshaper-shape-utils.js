@@ -24,6 +24,28 @@ internal.getAvgSegment2 = function(arcs) {
   return [dx / count || 0, dy / count || 0];
 };
 
+internal.getDirectedArcPresenceTest = function(shapes, n) {
+  var flags = new Uint8Array(n);
+  internal.forEachArcId(shapes, function(id) {
+    var absId = absArcId(id);
+    if (absId < n === false) error('index error');
+    flags[absId] |= id < 0 ? 2 : 1;
+  });
+  return function(arcId) {
+    var absId = absArcId(arcId);
+    return arcId < 0 ? (flags[absId] & 2) == 2 : (flags[absId] & 1) == 1;
+  };
+};
+
+internal.getArcPresenceTest = function(shapes, n) {
+  var counts = new Uint8Array(n);
+  internal.countArcsInShapes(shapes, counts);
+  return function(id) {
+    if (id < 0) id = ~id;
+    return counts[id] > 0;
+  };
+};
+
 
 // Return average magnitudes of dx, dy (with simplification)
 /*
