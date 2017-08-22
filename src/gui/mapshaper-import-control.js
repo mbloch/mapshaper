@@ -290,7 +290,7 @@ function ImportControl(model, opts) {
         importDataset = dataset;
         importCount++;
         readNext();
-     } catch(e) {
+      } catch(e) {
         handleImportError(e, path);
       }
     }, delay);
@@ -299,7 +299,7 @@ function ImportControl(model, opts) {
   function handleImportError(e, path) {
     var msg = utils.isString(e) ? e : e.message;
     if (path) {
-      msg = "Error importing " + path + ":\n" + msg;
+      msg = "Error importing <i>" + path + "</i><br>" + msg;
     }
     clearFiles();
     gui.alert(msg);
