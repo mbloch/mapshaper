@@ -1,12 +1,26 @@
 var api = require('..');
 var assert = require('assert');
 
-module.exports.almostEqual = function(a, b, eps) {
+module.exports.coordinatesAlmostEqual = coordinatesAlmostEqual;
+module.exports.almostEqual = almostEqual;
+module.exports.Reader = Reader;
+
+function almostEqual(a, b, eps) {
   eps = eps || 1e-10;
   if (Math.abs(a - b) < eps) {
     assert(true);
   } else {
     assert.equal(a, b)
+  }
+};
+
+function coordinatesAlmostEqual(a, b, eps) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    for (var i=0, n=Math.max(a.length, b.length); i<n; i++) {
+      coordinatesAlmostEqual(a[i], b[i], eps);
+    }
+  } else {
+    almostEqual(a, b, eps);
   }
 };
 
@@ -32,4 +46,3 @@ function Reader(str, chunkLen) {
 
 Reader.prototype.findString = api.internal.FileReader.prototype.findString;
 
-module.exports.Reader = Reader;

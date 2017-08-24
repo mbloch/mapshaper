@@ -37,6 +37,17 @@ function coordBuffersEqual(a, b) {
 
 describe("mapshaper-geom.js", function() {
 
+  describe('findClosestPointOnSeg()', function () {
+    it('test 1', function () {
+      assert.deepEqual(geom.findClosestPointOnSeg(0, 0, 0, 2, 2, 0), [1, 1]);
+      assert.deepEqual(geom.findClosestPointOnSeg(0, 0, 0, -2, -2, 0), [-1, -1]);
+      assert.deepEqual(geom.findClosestPointOnSeg(3, 0, 0, 2, 2, 0), [2, 0]);
+      assert.deepEqual(geom.findClosestPointOnSeg(-2, 0, 0, 2, 2, 0), [0, 2]);
+      assert.deepEqual(geom.findClosestPointOnSeg(0, 0, 0, 2, 0, 2), [0, 2]); // 0 len
+      assert.deepEqual(geom.findClosestPointOnSeg(2, 0, 0, 2, 2, 0), [2, 0]); // coincident pt
+    })
+  })
+
   describe('pointSegDistSq()', function () {
     it('Perpendicular dist. to vertical line', function () {
       assert.equal(geom.pointSegDistSq(0, 0, 2, -1, 2, 3), 4);

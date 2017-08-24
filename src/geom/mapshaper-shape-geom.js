@@ -83,26 +83,41 @@ geom.testPointInPolygon = function(x, y, shp, arcs) {
 
 
 geom.getPointToPathDistance = function(px, py, ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  if (!iter.hasNext()) return Infinity;
-  var ax = iter.x,
-      ay = iter.y,
-      paSq = distanceSq(px, py, ax, ay),
-      pPathSq = paSq,
-      pbSq, abSq,
-      bx, by;
+  return geom.getPointToPathInfo(px, py, ids, arcs).distance;
+};
 
+geom.getPointToPathInfo = function(px, py, ids, arcs) {
+  var iter = arcs.getShapeIter(ids);
+  var pPathSq = Infinity;
+  var ax, ay, bx, by, axmin, aymin, bxmin, bymin,
+      paSq, pbSq, abSq, pabSq;
+  if (iter.hasNext()) {
+    ax = axmin = bxmin = iter.x;
+    ay = aymin = bymin = iter.y;
+    paSq = distanceSq(px, py, ax, ay);
+  }
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
     pbSq = distanceSq(px, py, bx, by);
     abSq = distanceSq(ax, ay, bx, by);
-    pPathSq = Math.min(pPathSq, apexDistSq(paSq, pbSq, abSq));
+    pabSq = apexDistSq(paSq, pbSq, abSq);
+    if (pabSq < pPathSq) {
+      pPathSq = pabSq;
+      axmin = ax;
+      aymin = ay;
+      bxmin = bx;
+      bymin = by;
+    }
     ax = bx;
     ay = by;
     paSq = pbSq;
   }
-  return Math.sqrt(pPathSq);
+  if (pPathSq == Infinity) return {distance: Infinity};
+  return {
+    segment: [[axmin, aymin], [bxmin, bymin]],
+    distance: Math.sqrt(pPathSq)
+  };
 };
 
 geom.getYIntercept = function(x, ax, ay, bx, by) {

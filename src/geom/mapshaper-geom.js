@@ -310,6 +310,7 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return apexDistSq(ab2, ac2, bc2);
 }
 
+
 internal.calcArcBounds = function(xx, yy, start, len) {
   var i = start | 0,
       n = isNaN(len) ? xx.length - i : len + i,

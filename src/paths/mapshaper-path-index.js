@@ -44,6 +44,12 @@ function PathIndex(shapes, arcs) {
     return shpId;
   };
 
+  this.findPointEnclosureCandidates = function(p, buffer) {
+    var b = buffer > 0 ? buffer : 0;
+    var boxes = _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
+    return utils.pluck(boxes, 'id');
+  };
+
   this.pointIsEnclosed = function(p) {
     return testPointInRings(p, findPointHitRings(p));
   };
