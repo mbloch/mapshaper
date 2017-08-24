@@ -277,6 +277,8 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 // Given point B and segment AC, return the squared distance from B to the
 // nearest point on AC
 // Receive the squared length of segments AB, BC, AC
+// TODO: analyze rounding error. Returns 0 for these coordinates:
+//    P: [2, 3 - 1e-8]  AB: [[1, 3], [3, 3]]
 //
 function apexDistSq(ab2, bc2, ac2) {
   var dist2;

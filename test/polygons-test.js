@@ -48,5 +48,23 @@ describe('mapshaper-polygons.js', function () {
 
   });
 
+  it ('test 3: partially overlapping lines, gap', function(done) {
+    var input = {
+      type: 'MultiLineString',
+      coordinates: [
+        [[1, 1], [1, 3], [3, 3]],
+        [[1, 2], [1, 1], [2, 1], [2, 3 - 1e-6]]
+      ]
+    };
+    var target = {
+      type: 'Polygon',
+      coordinates: [[[1, 1], [1, 2], [1, 3], [2, 3], [2, 1], [1, 1]]]
+    }
+    api.applyCommands('in.json -polygons gap-tolerance=1e-5 -o out.json', {'in.json': input}, function(err, out) {
+      var poly = JSON.parse(out['out.json']).geometries[0];
+      helpers.coordinatesAlmostEqual(poly.coordinates, target.coordinates, 1e-12);
+      done();
+    })
+  })
 
 });

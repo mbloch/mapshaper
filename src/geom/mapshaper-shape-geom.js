@@ -103,6 +103,7 @@ geom.getPointToPathInfo = function(px, py, ids, arcs) {
     abSq = distanceSq(ax, ay, bx, by);
     pabSq = apexDistSq(paSq, pbSq, abSq);
     if (pabSq < pPathSq) {
+
       pPathSq = pabSq;
       axmin = ax;
       aymin = ay;

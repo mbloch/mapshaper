@@ -32,6 +32,7 @@ internal.patchGaps = function(dangles, arcs, arcFilter, patchLen) {
       extensions.push(internal.getArcExtension(nearestHit, dangle.arc, arcs));
     }
   });
+
   // TODO: consider alternative: append small patch arcs to paths instead of shifting endpoints
   return internal.insertArcExtensions(arcs, extensions);
 };
