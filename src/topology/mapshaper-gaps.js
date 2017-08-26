@@ -2,48 +2,65 @@
 /* @requires mapshaper-nodes, mapshaper-shape-geom, mapshaper-segment-geom */
 
 internal.closeGaps = function(lyr, dataset, opts) {
-  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs.size());
-  var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var maxGapLen = opts.gap_tolerance > 0 ? opts.gap_tolerance : 0;
+  var arcs = dataset.arcs;
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs.size());
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var dangles = internal.findPotentialUndershoots(nodes, maxGapLen);
-  var patchedArcs;
   if (dangles.length === 0) return nodes;
-  patchedArcs = internal.patchGaps(dangles, nodes.arcs, arcFilter, maxGapLen);
-  dataset.arcs = patchedArcs; // TODO: make sure this never causes problems
+  var arcShapes = internal.arcsToShapes(arcs, arcFilter);
+  var index = new PathIndex(arcShapes, arcs);
+  var extensions = dangles.reduce(function(memo, dangle) {
+    var candidates = index.findPointEnclosureCandidates(dangle.point, maxGapLen);
+    var nearestHit = internal.findUndershootTarget(dangle, candidates, arcs, maxGapLen);
+    if (nearestHit) {
+      memo.push(internal.getArcExtension(nearestHit, dangle.arc, arcs));
+    }
+    return memo;
+  }, []);
+
+  // TODO: consider alternative: append small patch arcs to paths instead of shifting endpoints
+  dataset.arcs = internal.insertArcExtensions(arcs, extensions);
   return internal.addIntersectionCuts(dataset, {});
 };
 
-internal.patchGaps = function(dangles, arcs, arcFilter, patchLen) {
-  var arcShapes = internal.arcsToShapes(arcs, arcFilter);
-  var index = new PathIndex(arcShapes, arcs);
-  var extensions = [];
-  dangles.forEach(function(dangle) {
-    var absId = absArcId(dangle.arc);
-    var cands = index.findPointEnclosureCandidates(dangle.point, patchLen);
-    cands = cands.filter(function(candId) {return candId != absId;});
-    var nearestHit = cands.reduce(function(memo, candId) {
-      var hit = geom.getPointToPathInfo(dangle.point[0], dangle.point[1], [candId], arcs);
-      if (hit && hit.distance <= patchLen && (!memo || hit.distance < memo.distance)) {
-        memo = hit;
-      }
-      return memo;
-    }, null);
-    if (nearestHit) {
-      extensions.push(internal.getArcExtension(nearestHit, dangle.arc, arcs));
+// Return information about an arc that @endpoint can connect with to close a gap
+// @candidates: array of ids of possible target arcs
+internal.findUndershootTarget = function(endpoint, candidates, arcs, maxGapLen) {
+  var absId = absArcId(endpoint.arc);
+  var target = null;
+  candidates.forEach(function(candId) {
+    var hit;
+    if (candId == absId) return; // ignore self-intersections
+    hit = geom.getPointToPathInfo(endpoint.point[0], endpoint.point[1], [candId], arcs);
+    if (hit && hit.distance <= maxGapLen && (!target || hit.distance < target.distance)) {
+      target = hit;
     }
   });
+  return target;
+};
 
-  // TODO: consider alternative: append small patch arcs to paths instead of shifting endpoints
-  return internal.insertArcExtensions(arcs, extensions);
+
+// Create a polyline shape for each arc in an ArcCollection
+internal.arcsToShapes = function(arcs, filter) {
+  var shapes = [];
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    shapes.push(filter(i) ? [[i]] : null);
+  }
+  return shapes;
+};
+
+// Find unconnected (dangling) arcs that don't look like overshoots
+internal.findPotentialUndershoots = function(nodes, maxLen) {
+  return nodes.findDanglingEndpoints().filter(function(o) {
+    return geom.calcPathLen([o.arc], nodes.arcs) > maxLen;
+  });
 };
 
 internal.insertArcExtensions = function(arcs, extensions) {
   var data = arcs.getVertexData();
   extensions.forEach(function(obj) {
-    var arcId = obj.arc,
-        absId = absArcId(arcId),
-        fwd = arcId >= 0,
-        i = arcs.indexOfVertex(arcId, -1);
+    var i = arcs.indexOfVertex(obj.arc, -1);
     data.xx[i] = obj.point[0];
     data.yy[i] = obj.point[1];
   });
@@ -61,6 +78,7 @@ internal.pointIsEndpoint = function(p, a, b) {
   return p[0] == a[0] && p[1] == a[1] || p[0] == b[0] && p[1] == b[1];
 };
 
+// move point <b> a bit farther away from <a>
 internal.addTinyOvershoot = function(a, b) {
   var dist = distance2D(a[0], a[1], b[0], b[1]);
   var k = (dist + 1e-6) / dist;
@@ -68,8 +86,7 @@ internal.addTinyOvershoot = function(a, b) {
 };
 
 internal.getArcExtension = function(hit, arcId, arcs) {
-  var k = 1.01,
-      v0 = arcs.getVertex(arcId, -1),
+  var v0 = arcs.getVertex(arcId, -1),
       endPtOld = [v0.x, v0.y],
       v1 = arcs.getVertex(arcId, -2),
       p1 = [v1.x, v1.y],
@@ -91,18 +108,4 @@ internal.getArcExtension = function(hit, arcId, arcs) {
     arc: arcId,
     point: endPtNew
   };
-};
-
-internal.arcsToShapes = function(arcs, filter) {
-  var shapes = [];
-  for (var i=0, n=arcs.size(); i<n; i++) {
-    shapes.push(filter(i) ? [[i]] : null);
-  }
-  return shapes;
-};
-
-internal.findPotentialUndershoots = function(nodes, maxLen) {
-  return nodes.findDanglingEndpoints().filter(function(o) {
-    return geom.calcPathLen([o.arc], nodes.arcs) > maxLen;
-  });
 };

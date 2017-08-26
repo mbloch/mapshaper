@@ -1,3 +1,7 @@
+v0.4.49
+* Added -polygons gap-tolerance= option, for fixing undershoots.
+
+
 v0.4.48
 * Added -shape command, for creating polygons and polylines from lists of coordinates.
 * Added -rectangle command, for creating rectangular polygons.

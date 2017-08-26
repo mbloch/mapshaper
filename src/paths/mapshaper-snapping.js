@@ -21,7 +21,6 @@ internal.snapCoords = function(arcs, threshold) {
     snapDist = threshold;
     message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
-
   var snapCount = internal.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
   message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
