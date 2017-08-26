@@ -1168,11 +1168,13 @@ function AlertControl() {
 
   gui.alert = function(str) {
     var infoBox;
-    if (el) return;
-    el = El('div').appendTo('body').addClass('error-wrapper');
-    infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
-    El('p').addClass('error-message').appendTo(infoBox).html(str);
-    El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
+    if (!el) {
+      el = El('div').appendTo('body').addClass('error-wrapper');
+      infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+      El('p').addClass('error-message').appendTo(infoBox);
+      El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
+    }
+    el.findChild('.error-message').html(str);
     gui.enterMode('alert');
   };
 }
@@ -2043,7 +2045,7 @@ function ImportControl(model, opts) {
         importDataset = dataset;
         importCount++;
         readNext();
-     } catch(e) {
+      } catch(e) {
         handleImportError(e, path);
       }
     }, delay);
@@ -2052,7 +2054,7 @@ function ImportControl(model, opts) {
   function handleImportError(e, path) {
     var msg = utils.isString(e) ? e : e.message;
     if (path) {
-      msg = "Error importing " + path + ":\n" + msg;
+      msg = "Error importing <i>" + path + "</i><br>" + msg;
     }
     clearFiles();
     gui.alert(msg);
@@ -3764,9 +3766,13 @@ function HitControl(ext, mouse) {
   }
 
   function getCoordPrecision(bounds) {
-    var shortSide = Math.min(Math.abs(bounds.xmax), Math.abs(bounds.ymax)),
-        decimals = Math.ceil(Math.log(Math.max(shortSide, 1)) / Math.LN10);
-    return Math.max(0, 7 - decimals);
+    var range = Math.min(bounds.width(), bounds.height()) + 1e-8;
+    var digits = 0;
+    while (range < 2000) {
+      range *= 10;
+      digits++;
+    }
+    return digits;
   }
 
   function polygonTest(x, y) {

@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.48';
+var VERSION = '0.4.49';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -2050,6 +2050,8 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 // Given point B and segment AC, return the squared distance from B to the
 // nearest point on AC
 // Receive the squared length of segments AB, BC, AC
+// TODO: analyze rounding error. Returns 0 for these coordinates:
+//    P: [2, 3 - 1e-8]  AB: [[1, 3], [3, 3]]
 //
 function apexDistSq(ab2, bc2, ac2) {
   var dist2;
@@ -2082,6 +2084,7 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
       bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
   return apexDistSq(ab2, ac2, bc2);
 }
+
 
 internal.calcArcBounds = function(xx, yy, start, len) {
   var i = start | 0,
@@ -2657,6 +2660,7 @@ function ArcCollection() {
     };
   };
 
+  // @nth: index of vertex. ~(idx) starts from the opposite endpoint
   this.indexOfVertex = function(arcId, nth) {
     var absId = arcId < 0 ? ~arcId : arcId,
         len = _nn[absId];
@@ -3023,6 +3027,28 @@ internal.getAvgSegment2 = function(arcs) {
     dy += Math.abs(yy[i] - yy[j]);
   });
   return [dx / count || 0, dy / count || 0];
+};
+
+internal.getDirectedArcPresenceTest = function(shapes, n) {
+  var flags = new Uint8Array(n);
+  internal.forEachArcId(shapes, function(id) {
+    var absId = absArcId(id);
+    if (absId < n === false) error('index error');
+    flags[absId] |= id < 0 ? 2 : 1;
+  });
+  return function(arcId) {
+    var absId = absArcId(arcId);
+    return arcId < 0 ? (flags[absId] & 2) == 2 : (flags[absId] & 1) == 1;
+  };
+};
+
+internal.getArcPresenceTest = function(shapes, n) {
+  var counts = new Uint8Array(n);
+  internal.countArcsInShapes(shapes, counts);
+  return function(id) {
+    if (id < 0) id = ~id;
+    return counts[id] > 0;
+  };
 };
 
 
@@ -3710,12 +3736,11 @@ function NodeCollection(arcs, filter) {
         flags = new Uint8Array(chains.length),
         arr = [];
     utils.forEach(chains, function(nextIdx, thisIdx) {
-      var node, x, y;
+      var node, x, y, p;
       if (flags[thisIdx] == 1) return;
-      x = nodeData.xx[thisIdx];
-      y = nodeData.yy[thisIdx];
-      if (isNaN(x) || isNaN(y)) return; // endpoints of filtered-out arcs
-      node = {coordinates: [x, y], arcs: []};
+      p = getEndpoint(thisIdx);
+      if (!p) return; // endpoints of an excluded arc
+      node = {coordinates: p, arcs: []};
       arr.push(node);
       while (flags[thisIdx] != 1) {
         node.arcs.push(chainToArcId(thisIdx));
@@ -3730,9 +3755,19 @@ function NodeCollection(arcs, filter) {
     return this.toArray().length;
   };
 
-  this.detachArc = function(arcId) {
-    unlinkDirectedArc(arcId);
-    unlinkDirectedArc(~arcId);
+  this.findDanglingEndpoints = function() {
+    var chains = getNodeChains(),
+        arr = [], p;
+    for (var i=0, n=chains.length; i<n; i++) {
+      if (chains[i] != i) continue; // endpoint attaches to a node
+      p = getEndpoint(i);
+      if (!p) continue; // endpoint belongs to an excluded arc
+      arr.push({
+        point: p,
+        arc: chainToArcId(i)
+      });
+    }
+    return arr;
   };
 
   this.detachAcyclicArcs = function() {
@@ -3742,8 +3777,8 @@ function NodeCollection(arcs, filter) {
     for (var i=0, n=chains.length; i<n; i+= 2) {
       fwd = i == chains[i];
       rev = i + 1 == chains[i + 1];
-      // detach arcs that are connected at one end but not both
-      if (fwd && !rev || !fwd && rev) {
+      // detach arcs that are disconnected at one end or the other
+      if ((fwd || rev) && !linkIsDetached(i)) {
         this.detachArc(chainToArcId(i));
         count++;
       }
@@ -3755,16 +3790,12 @@ function NodeCollection(arcs, filter) {
     return count;
   };
 
-  function unlinkDirectedArc(arcId) {
-    var chainId = arcToChainId(arcId),
-        chains = getNodeChains(),
-        nextId = chains[chainId],
-        prevId = prevChainId(chainId);
-    nodeData.xx[chainId] = NaN;
-    nodeData.yy[chainId] = NaN;
-    chains[chainId] = chainId;
-    chains[prevId] = nextId;
-  }
+
+  this.detachArc = function(arcId) {
+    unlinkDirectedArc(arcId);
+    unlinkDirectedArc(~arcId);
+  };
+
 
   this.forEachConnectedArc = function(arcId, cb) {
     var nextId = nextConnectedArc(arcId),
@@ -3801,6 +3832,26 @@ function NodeCollection(arcs, filter) {
     }
     return match;
   };
+
+  // returns null if link has been removed from node collection
+  function getEndpoint(chainId) {
+    return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
+  }
+
+  function linkIsDetached(chainId) {
+    return isNaN(nodeData.xx[chainId]);
+  }
+
+  function unlinkDirectedArc(arcId) {
+    var chainId = arcToChainId(arcId),
+        chains = getNodeChains(),
+        nextId = chains[chainId],
+        prevId = prevChainId(chainId);
+    nodeData.xx[chainId] = NaN;
+    nodeData.yy[chainId] = NaN;
+    chains[chainId] = chainId;
+    chains[prevId] = nextId;
+  }
 
   function chainToArcId(chainId) {
     var absId = chainId >> 1;
@@ -3995,26 +4046,42 @@ geom.testPointInPolygon = function(x, y, shp, arcs) {
 
 
 geom.getPointToPathDistance = function(px, py, ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  if (!iter.hasNext()) return Infinity;
-  var ax = iter.x,
-      ay = iter.y,
-      paSq = distanceSq(px, py, ax, ay),
-      pPathSq = paSq,
-      pbSq, abSq,
-      bx, by;
+  return geom.getPointToPathInfo(px, py, ids, arcs).distance;
+};
 
+geom.getPointToPathInfo = function(px, py, ids, arcs) {
+  var iter = arcs.getShapeIter(ids);
+  var pPathSq = Infinity;
+  var ax, ay, bx, by, axmin, aymin, bxmin, bymin,
+      paSq, pbSq, abSq, pabSq;
+  if (iter.hasNext()) {
+    ax = axmin = bxmin = iter.x;
+    ay = aymin = bymin = iter.y;
+    paSq = distanceSq(px, py, ax, ay);
+  }
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
     pbSq = distanceSq(px, py, bx, by);
     abSq = distanceSq(ax, ay, bx, by);
-    pPathSq = Math.min(pPathSq, apexDistSq(paSq, pbSq, abSq));
+    pabSq = apexDistSq(paSq, pbSq, abSq);
+    if (pabSq < pPathSq) {
+
+      pPathSq = pabSq;
+      axmin = ax;
+      aymin = ay;
+      bxmin = bx;
+      bymin = by;
+    }
     ax = bx;
     ay = by;
     paSq = pbSq;
   }
-  return Math.sqrt(pPathSq);
+  if (pPathSq == Infinity) return {distance: Infinity};
+  return {
+    segment: [[axmin, aymin], [bxmin, bymin]],
+    distance: Math.sqrt(pPathSq)
+  };
 };
 
 geom.getYIntercept = function(x, ax, ay, bx, by) {
@@ -4469,6 +4536,12 @@ function PathIndex(shapes, arcs) {
     return shpId;
   };
 
+  this.findPointEnclosureCandidates = function(p, buffer) {
+    var b = buffer > 0 ? buffer : 0;
+    var boxes = _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
+    return utils.pluck(boxes, 'id');
+  };
+
   this.pointIsEnclosed = function(p) {
     return testPointInRings(p, findPointHitRings(p));
   };
@@ -4767,6 +4840,28 @@ geom.clampToCloseRange = function(a, b, c) {
   }
   return a;
 };
+
+// Used by mapshaper-gaps.js
+// TODO: make more robust, make sure result is compatible with segmentIntersection()
+// (rounding errors currently must be handled downstream)
+geom.findClosestPointOnSeg = function(px, py, ax, ay, bx, by) {
+  var dx = bx - ax,
+      dy = by - ay,
+      dotp = (px - ax) * dx + (py - ay) * dy,
+      abSq = dx * dx + dy * dy,
+      k = abSq === 0 ? -1 : dotp / abSq,
+      eps = 0.1, // 1e-6, // snap to endpoint
+      p;
+  if (k <= eps) {
+    p = [ax, ay];
+  } else if (k >= 1 - eps) {
+    p = [bx, by];
+  } else {
+    p = [ax + k * dx, ay + k * dy];
+  }
+  return p;
+};
+
 
 // Determinant of matrix
 //  | a  b |
@@ -10994,7 +11089,6 @@ internal.snapCoords = function(arcs, threshold) {
     snapDist = threshold;
     message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
-
   var snapCount = internal.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
   message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
@@ -15515,7 +15609,7 @@ internal.importDelimTable = function(str, delim, opts) {
   var records = require("d3-dsv").dsvFormat(delim).parse(str);
   var table;
   if (records.length === 0) {
-    stop("Unable to read any records");
+    stop("Unable to read any data records");
   }
   delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts);
@@ -16748,8 +16842,126 @@ internal.projectAndDensifyArcs = function(arcs, proj) {
 
 
 
+
+internal.closeGaps = function(lyr, dataset, opts) {
+  var maxGapLen = opts.gap_tolerance > 0 ? opts.gap_tolerance : 0;
+  var arcs = dataset.arcs;
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs.size());
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var dangles = internal.findPotentialUndershoots(nodes, maxGapLen);
+  if (dangles.length === 0) return nodes;
+  var arcShapes = internal.arcsToShapes(arcs, arcFilter);
+  var index = new PathIndex(arcShapes, arcs);
+  var extensions = dangles.reduce(function(memo, dangle) {
+    var candidates = index.findPointEnclosureCandidates(dangle.point, maxGapLen);
+    var nearestHit = internal.findUndershootTarget(dangle, candidates, arcs, maxGapLen);
+    if (nearestHit) {
+      memo.push(internal.getArcExtension(nearestHit, dangle.arc, arcs));
+    }
+    return memo;
+  }, []);
+
+  // TODO: consider alternative: append small patch arcs to paths instead of shifting endpoints
+  dataset.arcs = internal.insertArcExtensions(arcs, extensions);
+  return internal.addIntersectionCuts(dataset, {});
+};
+
+// Return information about an arc that @endpoint can connect with to close a gap
+// @candidates: array of ids of possible target arcs
+internal.findUndershootTarget = function(endpoint, candidates, arcs, maxGapLen) {
+  var absId = absArcId(endpoint.arc);
+  var target = null;
+  candidates.forEach(function(candId) {
+    var hit;
+    if (candId == absId) return; // ignore self-intersections
+    hit = geom.getPointToPathInfo(endpoint.point[0], endpoint.point[1], [candId], arcs);
+    if (hit && hit.distance <= maxGapLen && (!target || hit.distance < target.distance)) {
+      target = hit;
+    }
+  });
+  return target;
+};
+
+
+// Create a polyline shape for each arc in an ArcCollection
+internal.arcsToShapes = function(arcs, filter) {
+  var shapes = [];
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    shapes.push(filter(i) ? [[i]] : null);
+  }
+  return shapes;
+};
+
+// Find unconnected (dangling) arcs that don't look like overshoots
+internal.findPotentialUndershoots = function(nodes, maxLen) {
+  return nodes.findDanglingEndpoints().filter(function(o) {
+    return geom.calcPathLen([o.arc], nodes.arcs) > maxLen;
+  });
+};
+
+internal.insertArcExtensions = function(arcs, extensions) {
+  var data = arcs.getVertexData();
+  extensions.forEach(function(obj) {
+    var i = arcs.indexOfVertex(obj.arc, -1);
+    data.xx[i] = obj.point[0];
+    data.yy[i] = obj.point[1];
+  });
+
+  // re-index arc bounds
+  arcs.updateVertexData(data.nn, data.xx, data.yy, data.zz);
+  return arcs;
+};
+
+internal.chooseCloserPoint = function(p, a, b) {
+  return distance2D(p[0], p[1], a[0], a[1]) < distance2D(p[0], p[1], b[0], b[1]) ? a : b;
+};
+
+internal.pointIsEndpoint = function(p, a, b) {
+  return p[0] == a[0] && p[1] == a[1] || p[0] == b[0] && p[1] == b[1];
+};
+
+// move point <b> a bit farther away from <a>
+internal.addTinyOvershoot = function(a, b) {
+  var dist = distance2D(a[0], a[1], b[0], b[1]);
+  var k = (dist + 1e-6) / dist;
+  return [a[0] + k * (b[0] - a[0]), a[1] + k * (b[1] - a[1])];
+};
+
+internal.getArcExtension = function(hit, arcId, arcs) {
+  var v0 = arcs.getVertex(arcId, -1),
+      endPtOld = [v0.x, v0.y],
+      v1 = arcs.getVertex(arcId, -2),
+      p1 = [v1.x, v1.y],
+      s1 = hit.segment[0],
+      s2 = hit.segment[1],
+      endPtNew = geom.findClosestPointOnSeg(endPtOld[0], endPtOld[1], s1[0], s1[1], s2[0], s2[1]);
+  if (!internal.pointIsEndpoint(endPtNew, s1, s2)) {
+    // add small overshoot if new endpoint is not a vertex, to make sure intersection
+    // is correctly detected later
+    endPtNew = internal.addTinyOvershoot(p1, endPtNew);
+    // handle floating point rounding errors by snapping to a segment endpoint
+    if (!geom.segmentIntersection(p1[0], p1[1], endPtNew[0], endPtNew[1], s1[0], s1[1], s2[0], s2[1])) {
+      endPtNew = internal.chooseCloserPoint(p1, s1, s2);
+    }
+    // TODO: test edge cases; moving the endpoint of a dangling arc could create
+    //   invalid geometry, e.g. duplicate points
+  }
+  return {
+    arc: arcId,
+    point: endPtNew
+  };
+};
+
+
+
+
 api.polygons = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolylineLayer);
+  // use larger-than-default snapping in addIntersectionCuts()
+  // (kludge, snaps together some almost-identical pairs of lines in ne_10m_land_ocean_seams.shp)
+  // if (opts.gap_tolerance) {
+    //opts = utils.defaults({snap_interval: opts.gap_tolerance * 0.1}, opts);
+  // }
   internal.addIntersectionCuts(dataset, opts);
   return layers.map(function(lyr) {
     if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
@@ -16758,12 +16970,8 @@ api.polygons = function(layers, dataset, opts) {
 };
 
 internal.createPolygonLayer = function(lyr, dataset, opts) {
-  var arcCounts = new Uint8Array(dataset.arcs.size());
-  var arcFilter = function(absId) {return arcCounts[absId] > 0;};
-  var data, nodes;
-  internal.countArcsInShapes(lyr.shapes, arcCounts);
-  // console.log(arcCounts)
-  nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var nodes = internal.closeGaps(lyr, dataset, opts);
+  var data;
   nodes.detachAcyclicArcs();
   data = internal.buildPolygonMosaic(nodes);
   return {
@@ -17944,13 +18152,14 @@ api.sortFeatures = function(lyr, arcs, opts) {
 
 internal.target = function(catalog, opts) {
   var type = (opts.type || '').toLowerCase().replace('linestring', 'polyline');
-  var targets = catalog.findCommandTargets(opts.target || '*', type);
+  var pattern = opts.target || '*';
+  var targets = catalog.findCommandTargets(pattern, type);
   var target = targets[0];
   if (type && 'polygon,polyline,point'.split(',').indexOf(type) == -1) {
     stop("Invalid layer type:", opts.type);
   }
   if (!target || target.layers.length === 0) {
-    stop("Target not found (" + pattern + ")");
+    stop("No layers were matched (pattern: " + pattern + (type ? ' type: ' + type : '') + ")");
   } else if (targets.length > 1 || target.layers.length > 1) {
     stop("Matched more than one layer");
   }
@@ -19980,6 +20189,10 @@ internal.getOptionParser = function() {
 
   parser.command("polygons")
     .describe("convert polylines to polygons")
+    .option("gap-tolerance", {
+      describe: "specify gap tolerance in source units",
+      type: "number"
+    })
     .option("target", targetOpt);
 
   parser.command("rectangle")
