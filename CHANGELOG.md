@@ -1,5 +1,5 @@
 v0.4.49
-* Added -polygons gap-tolerance= option, for fixing undershoots.
+* Added -polygons gap-tolerance= option, for closing "undershoots" (tiny gaps between two polylines).
 
 
 v0.4.48
