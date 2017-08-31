@@ -37,9 +37,10 @@ api.shape = function(opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var bounds, coords;
+  var bounds, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
+    sourceInfo = source.dataset.info;
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
   }
@@ -52,6 +53,9 @@ api.rectangle = function(source, opts) {
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
+  if (sourceInfo) {
+    internal.setDatasetProjection(dataset, sourceInfo);
+  }
   return dataset;
 };
 

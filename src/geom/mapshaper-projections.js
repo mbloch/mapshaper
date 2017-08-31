@@ -79,6 +79,8 @@ internal.getProjection = function(str) {
 
 internal.setDatasetProjection = function(dataset, info) {
   dataset.info = dataset.info || {};
+  // Assumes that proj4 object is never mutated.
+  // TODO: assign a copy of crs (if present)
   dataset.info.crs = info.crs;
   dataset.info.prj = info.prj;
 };
