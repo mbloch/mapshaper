@@ -253,21 +253,27 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   }
   return function(i) {
     var destRec = destRecords[i],
-        val = destRec ? destRec[destKey] : null;
-    return destRec && val in index ? index[val] : null;
+        val = destRec ? destRec[destKey] : null,
+        retn = null;
+    if (destRec && val in index) {
+      retn = index[val];
+      if (!Array.isArray(retn)) retn = [retn];
+    }
+    return retn;
   };
 };
-
 
 internal.createTableIndex = function(records, f) {
   var index = {}, rec, key;
   for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];
     key = rec[f];
-    if (key in index) {
+    if (key in index === false) {
+      index[key] = i;
+    } else if (Array.isArray(index[key])) {
       index[key].push(i);
     } else {
-      index[key] = [i];
+      index[key] = [index[key], i];
     }
   }
   return index;
