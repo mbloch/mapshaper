@@ -25,33 +25,47 @@ function PathIndex(shapes, arcs) {
 
     function addPath(ids, shpId) {
       var bounds = arcs.getSimpleShapeBounds(ids);
-      var bbox = rbushBounds(bounds.toArray());
-      bbox.ids = ids;
-      bbox.bounds = bounds;
-      bbox.id = shpId;
-      boxes.push(bbox);
+      var item = rbushBounds(bounds.toArray());
+      item.ids = ids;
+      item.bounds = bounds;
+      item.id = shpId;
+      boxes.push(item);
     }
   }
 
+  // Returns shape ids of all polygons that intersect point p
+  // (p is inside a ring or on the boundary)
+  this.findEnclosingShapes = function(p) {
+    var ids = [];
+    var groups = groupItemsByShapeId(findPointHitCandidates(p));
+    groups.forEach(function(group) {
+      if (testPointInRings(p, group)) {
+        ids.push(group[0].id);
+      }
+    });
+    return ids;
+  };
+
+  // Returns shape id of a polygon that intersects p or -1
+  // (If multiple intersections, returns on of the polygons)
   this.findEnclosingShape = function(p) {
     var shpId = -1;
-    var shapes = findPointHitShapes(p);
-    shapes.forEach(function(paths) {
-      if (testPointInRings(p, paths)) {
-        shpId = paths[0].id;
+    var groups = groupItemsByShapeId(findPointHitCandidates(p));
+    groups.forEach(function(group) {
+      if (testPointInRings(p, group)) {
+        shpId = group[0].id;
       }
     });
     return shpId;
   };
 
   this.findPointEnclosureCandidates = function(p, buffer) {
-    var b = buffer > 0 ? buffer : 0;
-    var boxes = _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
-    return utils.pluck(boxes, 'id');
+    var items = findPointHitCandidates(p, buffer);
+    return utils.pluck(items, 'id');
   };
 
   this.pointIsEnclosed = function(p) {
-    return testPointInRings(p, findPointHitRings(p));
+    return testPointInRings(p, findPointHitCandidates(p));
   };
 
   // Finds the polygon containing the smallest ring that entirely contains @ring
@@ -64,7 +78,7 @@ function PathIndex(shapes, arcs) {
     var bounds = arcs.getSimpleShapeBounds(ring);
     var p = getTestPoint(ring);
     var smallest;
-    findPointHitRings(p).forEach(function(cand) {
+    findPointHitCandidates(p).forEach(function(cand) {
       if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
           !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
           !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
@@ -135,6 +149,7 @@ function PathIndex(shapes, arcs) {
         geom.testPointInRing(p[0], p[1], cand.ids, arcs);
   }
 
+  //
   function testPointInRings(p, cands) {
     var isOn = false,
         isIn = false;
@@ -158,27 +173,26 @@ function PathIndex(shapes, arcs) {
     };
   }
 
-  function findPointHitShapes(p) {
-    var rings = findPointHitRings(p),
-        shapes = [],
-        shape, bbox;
-    if (rings.length > 0) {
-      rings.sort(function(a, b) {return a.id - b.id;});
-      for (var i=0; i<rings.length; i++) {
-        bbox = rings[i];
-        if (i === 0 || bbox.id != rings[i-1].id) {
-          shapes.push(shape=[]);
+  function groupItemsByShapeId(items) {
+    var groups = [],
+        group, item;
+    if (items.length > 0) {
+      items.sort(function(a, b) {return a.id - b.id;});
+      for (var i=0; i<items.length; i++) {
+        item = items[i];
+        if (i === 0 || item.id != items[i-1].id) {
+          groups.push(group=[]);
         }
-        shape.push(bbox);
+        group.push(item);
       }
     }
-    return shapes;
+    return groups;
   }
 
-  function findPointHitRings(p) {
-    var x = p[0],
-        y = p[1];
-    return _index.search(rbushBounds([x, y, x, y]));
+  function findPointHitCandidates(p, buffer) {
+    var b = buffer > 0 ? buffer : 0;
+    var x = p[0], y = p[1];
+    return _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
   }
 
   // Find a point on a ring to use for point-in-polygon testing

@@ -4,6 +4,74 @@ var api = require('../'),
     DataTable = api.internal.DataTable;
 
 describe('mapshaper-spatial-join.js', function () {
+  describe('Bug fix: need to handle congruent / overlapping polygons', function () {
+
+    it('join point to two congruent polygons', function(done) {
+      var polygons = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Polygon',
+          coordinates: [[[0,0], [0,1], [1,1], [1,0], [0,0]]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[0,0], [0,1], [1,1], [1,0], [0,0]]]
+        }]
+      };
+      var point = {
+        type: 'Feature',
+        properties: {a: 'foo'},
+        geometry: {
+          type: "Point", coordinates: [0.5, 0.5]
+        }
+      };
+
+      api.applyCommands('-i point.json -i polygons.json -join point -o output.json',
+          {'polygons.json': polygons, 'point.json': point}, function(err, o) {
+          var out = JSON.parse(o['output.json']);
+          assert.deepEqual(out.features[0].properties, {a: 'foo'});
+          assert.deepEqual(out.features[1].properties, {a: 'foo'});
+           done();
+        });
+    });
+
+
+    it('join two congruent polygons to point', function(done) {
+      var polygons = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {foo: 2},
+            geometry: {
+            type: 'Polygon',
+            coordinates: [[[0,0], [0,1], [1,1], [1,0], [0,0]]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {foo: 3},
+            geometry: {
+            type: 'Polygon',
+            coordinates: [[[0,0], [0,1], [1,1], [1,0], [0,0]]]
+          }
+        }]
+      };
+      var point = {
+        type: 'Feature',
+        properties: {id: "bar"},
+        geometry: {
+          type: "Point", coordinates: [0.5, 0.5]
+        }
+      };
+
+      api.applyCommands('-i polygons.json -i point.json -join polygons calc="foo = sum(foo)" -o output.json',
+          {'polygons.json': polygons, 'point.json': point}, function(err, o) {
+          var out = JSON.parse(o['output.json']);
+          assert.deepEqual(out.features[0].properties, {id: 'bar', foo: 5});
+          done();
+        });
+    });
+
+  })
+
 
   describe('point-to-point join', function() {
     it('simple one-point join', function(done) {
@@ -44,6 +112,7 @@ describe('mapshaper-spatial-join.js', function () {
       api.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
       assert.deepEqual(target.layers[0].data.getRecords(), [{foo: 'a'}] )
     })
+
 
     it('join several points to polygon', function () {
       var arcs = [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]];
