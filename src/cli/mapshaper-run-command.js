@@ -94,7 +94,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle')) {
+      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'polygon-grid')) {
         throw new UserError("Missing a -i command");
       }
     }
@@ -203,6 +203,10 @@ api.runCommand = function(cmd, catalog, cb) {
       if (!targetDataset) {
         catalog.addDataset({layers: outputLayers});
       }
+
+    } else if (name == 'polygon-grid') {
+      catalog.addDataset(api.polygonGrid(targetDataset, opts));
+
     } else if (name == 'points') {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 

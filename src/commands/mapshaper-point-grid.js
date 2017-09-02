@@ -1,4 +1,4 @@
-/* @requires mapshaper-dataset-utils */
+/* @requires mapshaper-dataset-utils, geojson-import */
 
 api.pointGrid = function(dataset, opts) {
   var bbox, gridLyr;
@@ -9,13 +9,66 @@ api.pointGrid = function(dataset, opts) {
   } else {
     bbox = [-180, -90, 180, 90];
   }
-  return internal.createPointGrid(bbox, opts);
+  return internal.createPointGridLayer(internal.createPointGrid(bbox, opts), opts);
+};
+
+api.polygonGrid = function(dataset, opts) {
+  var bbox, gridLyr;
+  if (opts.bbox) {
+    bbox = opts.bbox;
+  } else if (dataset) {
+    bbox = internal.getDatasetBounds(dataset).toArray();
+  } else {
+    bbox = [-180, -90, 180, 90];
+  }
+  return internal.createPolygonGridDataset(internal.createPointGrid(bbox, opts), opts);
+};
+
+internal.createPointGridLayer = function(rows, opts) {
+  var points = [], lyr;
+  rows.forEach(function(row, rowId) {
+    for (var i=0; i<row.length; i++) {
+      points.push([row[i]]);
+    }
+  });
+  lyr = {
+    geometry_type: 'point',
+    shapes: points
+  };
+  if (opts.name) lyr.name = opts.name;
+  return lyr;
+};
+
+internal.createPolygonGridDataset = function(rows, opts) {
+  var rings = [], rowArr;
+  var col, row, tl, br, ring;
+  for (row = 0; row < rows.length - 1; row++) {
+    rowArr = rows[row];
+    for (col = 0; col < rowArr.length - 1; col++) {
+      bl = rows[row][col];
+      tr = rows[row + 1][col + 1];
+      ring = [[bl[0], bl[1]], [bl[0], tr[1]], [tr[0], tr[1]], [tr[0], bl[1]], [bl[0], bl[1]]];
+      rings.push(ring);
+    }
+  }
+  var geojson = {
+    type: "GeometryCollection",
+    geometries: rings.map(function(ring){
+      return {
+        type: 'Polygon',
+        coordinates: [ring]
+      };
+    })
+  };
+  var dataset = internal.importGeoJSON(geojson, {});
+  if (opts.name) dataset.layers[0].name = opts.name;
+  return dataset;
 };
 
 internal.createPointGrid = function(bbox, opts) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
-      points = [],
+      rowsArr = [], rowArr,
       cols, rows, dx, dy, x0, y0, x, y;
 
   if (opts.interval > 0) {
@@ -41,14 +94,12 @@ internal.createPointGrid = function(bbox, opts) {
   y = y0;
   while (y <= bbox[3]) {
     x = x0;
+    rowsArr.push(rowArr = []);
     while (x <= bbox[2]) {
-      points.push([[x, y]]);
+      rowArr.push([x, y]);
       x += dx;
     }
     y += dy;
   }
-  return {
-    geometry_type: 'point',
-    shapes: points
-  };
+  return rowsArr;
 };
