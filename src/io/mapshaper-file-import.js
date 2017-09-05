@@ -43,8 +43,11 @@ api.importFile = function(path, opts) {
     // let ShpReader read the file (supports larger files)
     content = null;
   } else if (apparentType == 'json' && !cached) {
-    // postpone reading of JSON files, to support incremental parsing of GeoJSON
+    // postpone reading of JSON files, to support incremental parsing
     content = null;
+  } else if (apparentType == 'text' && !cached && !encoding) {
+    content = cli.readFile(path); // read from buffer, to support larger files
+    // content = null // read incrementally from file, to support largest files
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
   } else { // assuming text file

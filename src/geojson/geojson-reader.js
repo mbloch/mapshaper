@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-file-reader */
+/* @requires mapshaper-encodings, mapshaper-file-reader */
 
 internal.GeoJSONReader = GeoJSONReader;
 
@@ -62,7 +62,10 @@ function GeoJSONReader(reader) {
       } else if (c == RBRACE) {
         level--;
         if (level === 0) {
-          retn = {text: buf.toString('utf8', startPos, i + 1), offset: offs + i + 1};
+          retn = {
+            text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
+            offset: offs + i + 1
+          };
           break;
         } else if (level == -1) {
           break; // error -- "}" encountered before "{"

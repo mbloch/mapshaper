@@ -8,7 +8,6 @@ function toString(buf) {
   return buf.toString('utf8');
 }
 
-
 describe('test Reader', function () {
   it('chunk len greater than buf len', function() {
     var str = "foo bar";
@@ -43,7 +42,6 @@ describe('mapshaper-file-reader.js', function () {
 
 
   describe('FileReader', function () {
-
 
     it('file cache larger than file', function () {
       var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 0x1000, bufferSize: 2});

@@ -1,29 +1,44 @@
-/* @requires mapshaper-data-table, mapshaper-data-utils */
+/* @requires mapshaper-data-table, mapshaper-data-utils, mapshaper-delim-reader */
+
 
 // Convert a string containing delimited text data into a dataset object
 internal.importDelim = function(str, opts) {
-  var delim = internal.guessDelimiter(str);
-  return {
-    layers: [{
-      data: internal.importDelimTable(str, delim, opts)
-    }],
-    info: {
-      input_delimiter: delim
-    }
-  };
+  return internal.importDelim2({content: str}, opts);
 };
 
-internal.importDelimTable = function(str, delim, opts) {
-  var records = require("d3-dsv").dsvFormat(delim).parse(str);
-  var table;
+internal.importDelim2 = function(data, opts) {
+  // TODO: remove duplication with importJSON()
+  var content = data.content,
+      reader, records, delimiter, table;
+
+  if (!content) {
+    reader = new FileReader(data.filename);
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
+    // Web API may import as ArrayBuffer, to support larger files
+    reader = new BufferReader(content);
+    content = null;
+  } else if (!utils.isString(content)) {
+    error("Unexpected object type");
+  }
+
+  if (reader) {
+    delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
+    records = internal.readDelimRecords(reader, delimiter);
+  } else {
+    delimiter = internal.guessDelimiter(content);
+    records = require("d3-dsv").dsvFormat(delimiter).parse(content);
+    delete records.columns; // added by d3-dsv
+  }
   if (records.length === 0) {
     stop("Unable to read any data records");
   }
-  delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts);
   table = new DataTable(records);
   internal.deleteFields(table, internal.isInvalidFieldName);
- return table;
+  return {
+    layers: [{data: table}],
+    info: {input_delimiter: delimiter}
+  };
 };
 
 internal.supportedDelimiters = ['|', '\t', ',', ';'];

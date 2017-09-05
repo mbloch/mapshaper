@@ -76,9 +76,7 @@ describe('mapshaper-delim-import.js', function() {
    it('ignore whitespace column names', function() {
       stringifyEqual(importRecords(' ,  ,foo, \na,b,c,d\n'), [{foo: 'c'}]);
     })
-
   })
-
 
   describe('infer export delimiter from filename, if possible', function () {
     it('.tsv implies tab-delimited text', function (done) {
@@ -322,37 +320,35 @@ describe('mapshaper-delim-import.js', function() {
       stringifyEqual(dataset.layers[0].data.getRecords(), [{a: 1, b: 'boo ya'}]);
       assert.equal(dataset.info.input_delimiter, '\t')
     })
-  })
 
-  describe('importDelimTable()', function () {
-    it('test 1', function () {
+    it('comma delim', function () {
       var str = 'a,b\n"1","2"';
-      var data = api.internal.importDelimTable(str, ',');
-      stringifyEqual(data.getRecords(), [{a: 1, b: 2}]);
+      var data = api.internal.importDelim(str);
+      stringifyEqual(data.layers[0].data.getRecords(), [{a: 1, b: 2}]);
     })
 
     it('parse csv with quoted field including comma', function () {
       var str = 'a,b\n1,"foo, bar"'
-      var data = api.internal.importDelimTable(str, ',');
-      stringifyEqual(data.getRecords(), [{a: 1, b: 'foo, bar'}]);
+      var data = api.internal.importDelim(str);
+      stringifyEqual(data.layers[0].data.getRecords(), [{a: 1, b: 'foo, bar'}]);
     })
 
     it('import tab-delim, quoted string', function () {
       var str = 'a\tb\n1\t"boo ya"'
-      var data = api.internal.importDelimTable(str, '\t');
-      stringifyEqual(data.getRecords(), [{a: 1, b: 'boo ya'}]);
+      var data = api.internal.importDelim(str);
+      stringifyEqual(data.layers[0].data.getRecords(), [{a: 1, b: 'boo ya'}]);
     })
 
     it('import pipe-delim, trailing newline', function () {
       var str = 'a|b\n1|"boo"\n'
-      var data = api.internal.importDelimTable(str, '|');
-      stringifyEqual(data.getRecords(), [{a: 1, b: 'boo'}]);
+      var data = api.internal.importDelim(str);
+      stringifyEqual(data.layers[0].data.getRecords(), [{a: 1, b: 'boo'}]);
     })
 
     it('import single column of values w/ mixed return types', function () {
       var str = 'a\n1\r\n0\r30'
-      var data = api.internal.importDelimTable(str, ',');
-      stringifyEqual(data.getRecords(), [{a: 1}, {a: 0}, {a: 30}]);
+      var data = api.internal.importDelim(str);
+      stringifyEqual(data.layers[0].data.getRecords(), [{a: 1}, {a: 0}, {a: 30}]);
     })
 
   })

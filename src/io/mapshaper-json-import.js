@@ -36,7 +36,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 };
 
 internal.importJSONFile = function(reader, opts) {
-  var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
+  var str = internal.readFirstChars(reader, 1000);
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
@@ -66,7 +66,8 @@ internal.importJSON = function(data, opts) {
   } else if (content instanceof ArrayBuffer) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if (content.byteLength < 1e7) {
-      content = new Buffer(content).toString();
+      // content = new Buffer(content).toString();
+      content = internal.bufferToString(new Buffer(content));
     } else {
       reader = new BufferReader(content);
       content = null;

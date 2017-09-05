@@ -23,7 +23,7 @@ internal.importContent = function(obj, opts) {
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
-    dataset = internal.importDelim(data.content, opts);
+    dataset = internal.importDelim2(data, opts);
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;

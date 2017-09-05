@@ -33,7 +33,7 @@ cli.readFile = function(fname, encoding, cache) {
     content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
-    content = internal.decodeString(content, encoding);
+    content = internal.trimBOM(internal.decodeString(content, encoding));
   }
   return content;
 };

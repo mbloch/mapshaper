@@ -1,7 +1,11 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-encodings */
 
 internal.FileReader = FileReader;
 internal.BufferReader = BufferReader;
+
+internal.readFirstChars = function(reader, n) {
+  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
+};
 
 // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
 function BufferReader(src) {
@@ -16,7 +20,7 @@ function BufferReader(src) {
   };
 
   this.toString = function(enc) {
-    return buffer().toString(enc);
+    return internal.bufferToString(buffer(), enc);
   };
 
   this.readSync = function(start, length) {

@@ -64,42 +64,36 @@ Dbf.readStringBytes = function(bin, size, buf) {
   return count;
 };
 
-Dbf.getAsciiStringReader = function() {
-  var buf = new Uint8Array(256); // new Buffer(256);
-  return function readAsciiString(bin, size) {
-    var str = '',
-        n = Dbf.readStringBytes(bin, size, buf);
-    for (var i=0; i<n; i++) {
-      str += String.fromCharCode(buf[i]);
-    }
-    return str;
-  };
-};
 
-Dbf.getEncodedStringReader = function(encoding) {
-  var buf = new Buffer(256),
-      isUtf8 = internal.standardizeEncodingName(encoding) == 'utf8';
-  return function readEncodedString(bin, size) {
-    var i = Dbf.readStringBytes(bin, size, buf),
-        str;
-    if (i === 0) {
-      str = '';
-    } else if (isUtf8) {
-      str = buf.toString('utf8', 0, i);
-    } else {
-      str = internal.decodeString(buf.slice(0, i), encoding); // slice references same memory
-    }
-    return str;
-  };
-};
+Dbf.getStringReader = function(arg) {
+  var encoding = arg || 'ascii';
+  var slug = internal.standardizeEncodingName(encoding);
+  var buf = new Buffer(256);
+  var inNode = typeof module == 'object';
 
-Dbf.getStringReader = function(encoding) {
-  if (!encoding || encoding === 'ascii') {
-    return Dbf.getAsciiStringReader();
-    // return Dbf.readAsciiString;
-  } else {
-    return Dbf.getEncodedStringReader(encoding);
+  // optimization -- use (fast) native Node conversion if available
+  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
+    return function(bin, size) {
+      var n = Dbf.readStringBytes(bin, size, buf);
+      return buf.toString(slug, 0, n);
+    };
   }
+
+  return function readEncodedString(bin, size) {
+    var n = Dbf.readStringBytes(bin, size, buf),
+        str = '', i, c;
+    // optimization: fall back to text decoder only if string contains non-ascii bytes
+    // (data files of any encoding typically contain mostly ascii fields)
+    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
+    for (i=0; i<n; i++) {
+      c = buf[i];
+      if (c > 127) {
+        return internal.bufferToString(buf, encoding, 0, n);
+      }
+      str += String.fromCharCode(c);
+    }
+    return str;
+  };
 };
 
 Dbf.bufferContainsHighBit = function(buf, n) {
@@ -110,7 +104,7 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 };
 
 Dbf.getNumberReader = function() {
-  var read = Dbf.getAsciiStringReader();
+  var read = Dbf.getStringReader('ascii');
   return function readNumber(bin, size) {
     var str = read(bin, size);
     var val;

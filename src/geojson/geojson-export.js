@@ -84,7 +84,9 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
       // number of JS objects in memory (so larger files can be exported)
       obj = stringify(obj);
       if (ofmt == 'buffer') {
-        obj = new Buffer(obj, 'utf8');
+        obj = internal.encodeString(obj, 'utf8');
+        // obj = internal.stringToBuffer(obj);
+        // obj = new Buffer(obj, 'utf8');
       }
     }
     memo.push(obj);

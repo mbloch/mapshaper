@@ -1,6 +1,30 @@
-/* @requires dbf-reader */
+/* @requires dbf-reader, mapshaper-encodings */
 
 Dbf.MAX_STRING_LEN = 254;
+
+function BufferPool() {
+  var n = 5000,
+      pool, i;
+  newPool();
+
+  function newPool() {
+    pool = new Uint8Array(n);
+    i = 0;
+  }
+
+  return {
+    reserve: function(bytes) {
+      if (i + bytes > n) newPool();
+      i += bytes;
+      return pool.subarray(i - bytes, i);
+    },
+    putBack: function(bytes) {
+      i -= bytes;
+    }
+  };
+}
+
+Dbf.bufferPool = new BufferPool();
 
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
@@ -152,18 +176,22 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var size = 0;
-  var values = arr.map(function(rec) {
+  var buffers = arr.map(function(rec) {
     var buf = formatter(rec[name]);
-    size = Math.max(size, buf.byteLength);
+    size = Math.max(size, buf.length);
     return buf;
   });
   info.size = size;
   info.write = function(i, bin) {
-    var buf = values[i],
-        bytes = Math.min(size, buf.byteLength),
-        idx = bin.position();
-    bin.writeBuffer(buf, bytes, 0);
-    bin.position(idx + size);
+    var buf = buffers[i],
+        n = Math.min(size, buf.length),
+        dest = bin._bytes,
+        pos = bin.position(),
+        j;
+    for (j=0; j<n; j++) {
+      dest[j + pos] = buf[j];
+    }
+    bin.position(pos + size);
   };
 };
 
@@ -256,35 +284,46 @@ Dbf.getNumericFieldInfo = function(arr, name) {
 // Return function to convert a JS str to an ArrayBuffer containing encoded str.
 Dbf.getStringWriter = function(encoding) {
   if (encoding === 'ascii') {
-    return Dbf.getStringWriterAscii();
+    return Dbf.encodeValueAsAscii;
   } else {
     return Dbf.getStringWriterEncoded(encoding);
   }
 };
 
-// TODO: handle non-ascii chars. Option: switch to
-// utf8 encoding if non-ascii chars are found.
-Dbf.getStringWriterAscii = function() {
-  return function(val) {
-    var str = String(val),
-        n = Math.min(str.length, Dbf.MAX_STRING_LEN),
-        dest = new ArrayBuffer(n),
-        view = new Uint8ClampedArray(dest);
-    for (var i=0; i<n; i++) {
-      view[i] = str.charCodeAt(i);
+// return an array buffer or null if value contains non-ascii chars
+Dbf.encodeValueAsAscii = function(val, strict) {
+  var str = String(val),
+      n = Math.min(str.length, Dbf.MAX_STRING_LEN),
+      view = Dbf.bufferPool.reserve(n),
+      i, c;
+  for (i=0; i<n; i++) {
+    c = str.charCodeAt(i);
+    if (c > 127) {
+      if (strict) {
+        view = null;
+        i = 0; // return all bytes to pool
+        break;
+      }
+      c = '?'.charCodeAt(0);
     }
-    return dest;
-  };
+    view[i] = c;
+  }
+  Dbf.bufferPool.putBack(n-i);
+  return view ? view.subarray(0, i) : null;
 };
 
 Dbf.getStringWriterEncoded = function(encoding) {
-  var iconv = require('iconv-lite');
   return function(val) {
-    var buf = iconv.encode(val, encoding);
-    if (buf.length >= Dbf.MAX_STRING_LEN) {
-      buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+    // optimization -- large majority of strings in real-world datasets are
+    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
+    var buf = Dbf.encodeValueAsAscii(val, true);
+    if (buf === null) {
+      buf = internal.encodeString(String(val), encoding);
+      if (buf.length >= Dbf.MAX_STRING_LEN) {
+        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      }
     }
-    return BinArray.toArrayBuffer(buf);
+    return buf;
   };
 };
 
