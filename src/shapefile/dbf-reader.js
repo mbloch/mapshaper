@@ -52,7 +52,11 @@ Dbf.readStringBytes = function(bin, size, buf) {
   var count = 0, c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
-    if (c === 0) break; // C string-terminator (observed in-the-wild)
+    // treating 0 as C-style string terminator (observed in-the-wild)
+    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
+    //   characters than the NULL character (ascii 0). The following code
+    //   should be changed to support non-ascii-compatible encodings
+    if (c === 0) break;
     if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
       buf[count++] = c;
     }

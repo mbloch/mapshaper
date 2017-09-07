@@ -21,6 +21,13 @@ internal.importDelim2 = function(data, opts) {
     error("Unexpected object type");
   }
 
+  if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
+    // Currently, incremental reading assumes ascii-compatible data.
+    // Incompatible encodings must be parsed as strings.
+    content = reader.toString(opts.encoding);
+    reader = null;
+  }
+
   if (reader) {
     delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
     records = internal.readDelimRecords(reader, delimiter);

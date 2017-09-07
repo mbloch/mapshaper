@@ -22,9 +22,19 @@ internal.encodingIsUtf8 = function(enc) {
   return !enc || /^utf-?8$/i.test(String(enc));
 };
 
+// Identify the most common encodings that are supersets of ascii at the
+// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
+// (this allows identifying line breaks and other ascii patterns in buffers)
+internal.encodingIsAsciiCompat = function(enc) {
+  enc = internal.standardizeEncodingName(enc);
+  // gb.* selects the Guo Biao encodings
+  // big5 in not compatible -- second byte starts at 0x40
+  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
+};
+
 // Ex. convert UTF-8 to utf8
 internal.standardizeEncodingName = function(enc) {
-  return enc.toLowerCase().replace(/[_-]/g, '');
+  return (enc || '').toLowerCase().replace(/[_-]/g, '');
 };
 
 // Similar to Buffer#toString(); tries to speed up utf8 conversion in

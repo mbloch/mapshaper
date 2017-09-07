@@ -45,7 +45,7 @@ api.importFile = function(path, opts) {
   } else if (apparentType == 'json' && !cached) {
     // postpone reading of JSON files, to support incremental parsing
     content = null;
-  } else if (apparentType == 'text' && !cached && !encoding) {
+  } else if (apparentType == 'text' && !cached) {
     content = cli.readFile(path); // read from buffer, to support larger files
     // content = null // read incrementally from file, to support largest files
   } else if (isBinary) {

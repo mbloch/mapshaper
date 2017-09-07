@@ -1,6 +1,8 @@
+v0.4.50 (unreleased)
+* Added support for reading CSV files larger than 250MB.
+
 v0.4.49
 * Added -polygons gap-tolerance= option, for closing "undershoots" (tiny gaps between two polylines).
-
 
 v0.4.48
 * Added -shape command, for creating polygons and polylines from lists of coordinates.
