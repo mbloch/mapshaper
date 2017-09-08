@@ -1,4 +1,5 @@
 var api = require('../'),
+    internal = api.internal,
     deepStrictEqual = require('deep-eql'),
     utils = api.utils,
     assert = require('assert');
@@ -12,6 +13,26 @@ function fixPath(p) {
 }
 
 describe('mapshaper-delim-import.js', function() {
+
+  describe('csv decoding with -i', function () {
+
+    it('latin-1', function (done) {
+      var buf = internal.encodeString('chars,chars2\r\n»¼ü©Å÷,è绿', 'latin1');
+      api.applyCommands('-i chars.csv encoding=latin1 -o out.tsv', {'chars.csv': buf}, function(err, output) {
+        assert.equal(output['out.tsv'], 'chars\tchars2\n»¼ü©Å÷\tè?');
+        done();
+      })
+    })
+
+    it('big5', function (done) {
+      var buf = internal.encodeString('a|b\r\n長生殿|彈詞', 'big5');
+      api.applyCommands('-i chars.csv encoding=big5 -o delimiter=; out.csv', {'chars.csv': buf}, function(err, output) {
+        assert.equal(output['out.csv'], 'a;b\n長生殿;彈詞');
+        done();
+      })
+    })
+  })
+
 
   function importRecords(str, opts) {
       var dataset = api.internal.importDelim(str, opts);

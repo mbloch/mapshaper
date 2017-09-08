@@ -8,7 +8,7 @@ internal.exportDelim = function(dataset, opts) {
     if (lyr.data){
       arr.push({
         // TODO: consider supporting encoding= option
-        content: internal.exportDelimTable(lyr, delim),
+        content: internal.exportDelimTable(lyr, delim, opts.encoding),
         filename: (lyr.name || 'output') + '.' + ext
       });
     }
@@ -23,7 +23,7 @@ internal.exportDelimTable = function(lyr, delim) {
 };
 */
 
-internal.exportDelimTable = function(lyr, delim) {
+internal.exportDelimTable = function(lyr, delim, encoding) {
   var dsv = require("d3-dsv").dsvFormat(delim);
   var fields = lyr.data.getFields();
   var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
@@ -41,6 +41,12 @@ internal.exportDelimTable = function(lyr, delim) {
       str += '\n' + dsv.formatRows(tmp);
       tmp = [];
     }
+  }
+  // exporting utf8 as a string, temporarily, until tests are rewritten
+  // (it will be encoded as utf-8 when written to a file)
+  //
+  if (!internal.encodingIsUtf8(encoding)) {
+    return internal.encodeString(str, encoding);
   }
   return str;
 };

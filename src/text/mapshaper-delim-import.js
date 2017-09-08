@@ -30,7 +30,7 @@ internal.importDelim2 = function(data, opts) {
 
   if (reader) {
     delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords(reader, delimiter);
+    records = internal.readDelimRecords(reader, delimiter, opts.encoding);
   } else {
     delimiter = internal.guessDelimiter(content);
     records = require("d3-dsv").dsvFormat(delimiter).parse(content);

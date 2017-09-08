@@ -1,7 +1,38 @@
 var api = require('../'),
+    internal = api.internal,
     assert = require('assert');
 
 describe('mapshaper-delim-export.js', function() {
+
+  describe('csv export with encoding=', function () {
+    it('latin-1', function (done) {
+      var buf = new Buffer('foo,bar\nétranger,外国人');
+      api.applyCommands('-i input.csv -o output.csv encoding=latin1', {'input.csv': buf}, function(err, output) {
+        var csv = output['output.csv'];
+        var str = internal.decodeString(csv, 'latin1');
+        assert.equal(str, 'foo,bar\nétranger,???')
+        done();
+      });
+    })
+    it('ascii', function (done) {
+      var buf = new Buffer('foo,bar\nétranger,外国人');
+      api.applyCommands('-i input.csv -o output.csv encoding=ascii', {'input.csv': buf}, function(err, output) {
+        var csv = output['output.csv'];
+        var str = internal.decodeString(csv, 'ascii');
+        assert.equal(str, 'foo,bar\n?tranger,???')
+        done();
+      });
+    })
+    it('utf-16be', function (done) {
+      var buf = new Buffer('foo,bar\nétranger,外国人');
+      api.applyCommands('-i input.csv -o output.csv encoding=utf-16be', {'input.csv': buf}, function(err, output) {
+        var csv = output['output.csv'];
+        var str = internal.decodeString(csv, 'utf-16be');
+        assert.equal(str, 'foo,bar\nétranger,外国人')
+        done();
+      });
+    })
+  })
 
   describe('exportDelimTable()', function() {
     it('objects are exported as JSON', function() {

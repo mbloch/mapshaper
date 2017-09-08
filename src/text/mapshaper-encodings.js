@@ -65,6 +65,7 @@ internal.encodeString = (function() {
   var iconv = require('iconv-lite');
   var toUtf8 = internal.getNativeEncoder('utf8');
   return function(str, enc) {
+    // TODO: faster ascii encoding?
     var buf;
     if (internal.encodingIsUtf8(enc)) {
       buf = toUtf8(str);
@@ -74,20 +75,6 @@ internal.encodeString = (function() {
     return buf;
   };
 }());
-
-internal.encodeString = function(str, enc) {
-  var buf;
-  if (internal.encodingIsUtf8(enc)) {
-    if (typeof TextEncoder != 'undefined') {
-      buf = new Buffer(new TextEncoder('utf8').encode(str).buffer);
-    } else {
-      buf = new Buffer(str, 'utf8');
-    }
-  } else {
-    buf = require('iconv-lite').encode(str, enc);
-  }
-  return buf;
-};
 
 internal.getNativeDecoder = function(enc) {
   var decoder = null;
