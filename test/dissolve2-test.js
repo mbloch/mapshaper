@@ -7,6 +7,19 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
 
+  it('Fix: dissolving preserves simplification', function(done) {
+    var input = {
+      type: 'Polygon',
+      coordinates: [[[0,0], [0,1], [0.1, 1.1], [0, 1.2], [0, 2], [2,2], [2, 0], [0, 0]]]
+    };
+    api.applyCommands('-i in.json -simplify planar interval=0.5 -dissolve2 -o out.json', {'in.json': input}, function(err, output) {
+      var json = JSON.parse(output['out.json']);
+      assert.deepEqual(json.geometries[0].coordinates, [[[0,0], [0, 2], [2,2], [2, 0], [0, 0]]])
+      done();
+    })
+  })
+
+
   describe('Issue #206', function() {
 
     it('Fully contained polygon is dissolved', function(done) {

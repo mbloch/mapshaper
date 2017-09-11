@@ -19,20 +19,25 @@ mapshaper-polygon-repair
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
-  var snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
-  var snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
-  var dupeCount = arcs.dedupCoords();
+  var snapDist, snapCount, dupeCount, map, nodes;
+
+  // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
+  // used to reset simplification)
+  arcs.flatten();
+  snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
+  snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
+  dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
     // Detect topology again if coordinates have changed
     api.buildTopology(dataset);
   }
 
   // cut arcs at points where segments intersect
-  var map = internal.divideArcs(arcs);
+  map = internal.divideArcs(arcs);
 
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
-  var nodes = new NodeCollection(arcs);
+  nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
     if (internal.layerHasPaths(lyr)) {
       internal.updateArcIds(lyr.shapes, map, nodes);
