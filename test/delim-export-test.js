@@ -5,12 +5,16 @@ var api = require('../'),
 describe('mapshaper-delim-export.js', function() {
 
   describe('csv export with encoding=', function () {
+    // iconv-lite's latin1 output changed in version 0.4.16 (? replacement stopped working)
+    // reverted to v0.4.15
     it('latin-1', function (done) {
+      var iconv = require('iconv-lite');
       var buf = new Buffer('foo,bar\nétranger,外国人');
-      api.applyCommands('-i input.csv -o output.csv encoding=latin1', {'input.csv': buf}, function(err, output) {
+      var buf2 = iconv.encode('foo,bar\nétranger,外国人', 'latin1');
+      api.applyCommands('-i input.csv -o output.csv encoding=latin-1', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
-        var str = internal.decodeString(csv, 'latin1');
-        assert.equal(str, 'foo,bar\nétranger,???')
+        var str = internal.decodeString(csv, 'latin-1');
+        assert.equal(str, 'foo,bar\nétranger,???');
         done();
       });
     })
