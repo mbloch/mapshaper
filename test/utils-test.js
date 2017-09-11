@@ -58,6 +58,25 @@ describe('mapshaper-utils.js', function () {
 
   })
 
+  describe('isNonNegNumber()', function () {
+    it('positive tests', function () {
+      assert(utils.isNonNegNumber(0))
+      assert(utils.isNonNegNumber(1))
+      assert(utils.isNonNegNumber(Infinity))
+    })
+
+    it('negative tests', function() {
+      assert.equal(utils.isNonNegNumber(-1e-11), false);
+      assert.equal(utils.isNonNegNumber(-Infinity), false);
+      assert.equal(utils.isNonNegNumber(), false);
+      assert.equal(utils.isNonNegNumber(NaN), false);
+      assert.equal(utils.isNonNegNumber(null), false);
+      assert.equal(utils.isNonNegNumber({}), false);
+      assert.equal(utils.isNonNegNumber('0'), false);
+      assert.equal(utils.isNonNegNumber('1'), false);
+    })
+  })
+
   describe('isFiniteNumber()', function () {
     it('positive tests', function () {
       assert(utils.isFiniteNumber(1));

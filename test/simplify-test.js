@@ -4,6 +4,20 @@ var assert = require('assert'),
 
 describe("mapshaper-simplify.js", function() {
 
+  describe('Fix: -simplify 0% removes all removable vertices', function () {
+    it('-simplify planar 0%', function (done) {
+      var input = {
+        type: 'LineString',
+        coordinates: [[0,0], [0,1], [0.1, 1.1], [0, 1.2], [0, 2]]
+      };
+      api.applyCommands('-i in.json -simplify planar 0% -o out.json', {'in.json': input}, function(err, output) {
+        var json = JSON.parse(output['out.json']);
+        assert.deepEqual(json.geometries[0].coordinates, [[0,0], [0, 2]]);
+        done();
+      })
+    })
+  })
+
   describe('simplify() can be re-applied', function () {
 
     it('test 1', function(done) {
@@ -35,26 +49,26 @@ describe("mapshaper-simplify.js", function() {
 
   })
 
-  describe('simplify() creates database.info.simplify object', function () {
+  describe('simplify() creates dataset.info.simplify object', function () {
     it('default method, auto-detect spherical', function () {
       var arcs = new api.internal.ArcCollection([[[180, 90], [-180, -90]]]);
       var dataset = {arcs: arcs};
-      api.simplify(dataset);
-      assert.deepEqual(dataset.info.simplify, {method: 'weighted_visvalingam', spherical: true});
+      api.simplify(dataset, {percentage: 1});
+      assert.deepEqual(dataset.info.simplify, {method: 'weighted_visvalingam', spherical: true, percentage: 1});
     })
 
     it('Douglas-Peucker, auto-detect planar', function () {
       var arcs = new api.internal.ArcCollection([[[0, 100], [100, 100]]]);
       var dataset = {arcs: arcs};
-      api.simplify(dataset, {method: 'dp'});
-      assert.deepEqual(dataset.info.simplify, {method: 'dp', spherical: false});
+      api.simplify(dataset, {method: 'dp', percentage: 0.5});
+      assert.deepEqual(dataset.info.simplify, {method: 'dp', spherical: false, percentage: 0.5});
     })
 
     it('unweighted Visvalingam, explicit planar', function () {
       var arcs = new api.internal.ArcCollection([[[0, 0], [1, -1]]]);
       var dataset = {arcs: arcs};
-      api.simplify(dataset, {method: 'visvalingam', planar: true});
-      assert.deepEqual(dataset.info.simplify, {method: 'visvalingam', spherical: false, planar: true});
+      api.simplify(dataset, {method: 'visvalingam', planar: true, percentage: 0});
+      assert.deepEqual(dataset.info.simplify, {method: 'visvalingam', spherical: false, planar: true, percentage: 0});
     })
   })
 

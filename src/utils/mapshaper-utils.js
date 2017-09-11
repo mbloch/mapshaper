@@ -62,6 +62,10 @@ utils.isFiniteNumber = function(val) {
   return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
 };
 
+utils.isNonNegNumber = function(val) {
+  return val === 0 || val > 0 && val.constructor == Number;
+};
+
 utils.parsePercent = function(o) {
   var str = String(o);
   var isPct = str.indexOf('%') > 0;

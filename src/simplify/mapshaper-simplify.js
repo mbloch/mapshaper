@@ -17,12 +17,14 @@ api.simplify = function(dataset, opts) {
 
   internal.simplifyPaths(arcs, opts);
 
-  if (opts.percentage) {
+  if (utils.isNonNegNumber(opts.percentage)) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
-  } else if (utils.isNumber(opts.interval)) {
+  } else if (utils.isNonNegNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
-  } else if (opts.resolution) {
+  } else if (opts.resolution > 0) {
     arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
+  } else {
+    stop("Missing a simplification amount");
   }
 
   if (opts.keep_shapes) {
