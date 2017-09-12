@@ -30,7 +30,7 @@
 	"main": "./mapshaper.js",
 	"dependencies": {
 		"d3-dsv": "~1.0.3",
-		"iconv-lite": "0.4.15",
+		"iconv-lite": "0.4.19",
 		"mproj": "0.0.14",
 		"open": "~0.0.3",
 		"optimist": "~0.6.0",

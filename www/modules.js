@@ -532,8 +532,8 @@ function isUndefined(arg) {
 }
 
 },{}],5:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Multibyte codec. In this scheme, a character is represented by 1 or more bytes.
 // Our codec supports UTF-16 surrogates, extensions for GB18030 and unicode sequences.
@@ -1088,9 +1088,8 @@ function findIdx(table, val) {
 }
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],6:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Description of supported double byte encodings and aliases.
 // Tables are not require()-d until they are needed to speed up library load.
@@ -1268,7 +1267,7 @@ module.exports = {
 };
 
 },{"./tables/big5-added.json":12,"./tables/cp936.json":13,"./tables/cp949.json":14,"./tables/cp950.json":15,"./tables/eucjp.json":16,"./tables/gb18030-ranges.json":17,"./tables/gbk-added.json":18,"./tables/shiftjis.json":19}],7:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Update this array if you add/rename/remove files in this directory.
 // We support Browserify by skipping automatic module discovery and requiring modules directly.
@@ -1292,8 +1291,8 @@ for (var i = 0; i < modules.length; i++) {
 }
 
 },{"./dbcs-codec":5,"./dbcs-data":6,"./internal":8,"./sbcs-codec":9,"./sbcs-data":11,"./sbcs-data-generated":10,"./utf16":20,"./utf7":21}],8:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Export Node.js internal encodings.
 
@@ -1327,7 +1326,7 @@ function InternalCodec(codecOptions, iconv) {
         this.encoder = InternalEncoderCesu8;
 
         // Add decoder for versions of Node not supporting CESU-8
-        if (new Buffer("eda080", 'hex').toString().length == 3) {
+        if (new Buffer('eda0bdedb2a9', 'hex').toString() !== '💩') {
             this.decoder = InternalDecoderCesu8;
             this.defaultCharUnicode = iconv.defaultCharUnicode;
         }
@@ -1481,10 +1480,9 @@ InternalDecoderCesu8.prototype.end = function() {
     return res;
 }
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer","string_decoder":55}],9:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Single-byte codec. Needs a 'chars' string parameter that contains 256 or 128 chars that
 // correspond to encoded bytes (if 128 - then lower half is ASCII). 
@@ -1557,9 +1555,8 @@ SBCSDecoder.prototype.write = function(buf) {
 SBCSDecoder.prototype.end = function() {
 }
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],10:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Generated data for sbcs codec. Don't edit manually. Regenerate using generation/gen-sbcs.js script.
 module.exports = {
@@ -1652,7 +1649,7 @@ module.exports = {
   "cp1254": "windows1254",
   "windows1255": {
     "type": "_sbcs",
-    "chars": "€�‚ƒ„…†‡ˆ‰�‹�����‘’“”•–—˜™�›���� ¡¢£₪¥¦§¨©×«¬­®¯°±²³´µ¶·¸¹÷»¼½¾¿ְֱֲֳִֵֶַָֹ�ֻּֽ־ֿ׀ׁׂ׃װױײ׳״�������אבגדהוזחטיךכלםמןנסעףפץצקרשת��‎‏�"
+    "chars": "€�‚ƒ„…†‡ˆ‰�‹�����‘’“”•–—˜™�›���� ¡¢£₪¥¦§¨©×«¬­®¯°±²³´µ¶·¸¹÷»¼½¾¿ְֱֲֳִֵֶַָֹֺֻּֽ־ֿ׀ׁׂ׃װױײ׳״�������אבגדהוזחטיךכלםמןנסעףפץצקרשת��‎‏�"
   },
   "win1255": "windows1255",
   "cp1255": "windows1255",
@@ -2011,7 +2008,7 @@ module.exports = {
   }
 }
 },{}],11:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Manually added data to be used by sbcs codec in addition to generated one.
 
@@ -3396,8 +3393,8 @@ module.exports=[
 ]
 
 },{}],20:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Note: UTF16-LE (or UCS2) codec is Node.js native. See encodings/internal.js
 
@@ -3574,10 +3571,9 @@ function detectEncoding(buf, defaultEncoding) {
 
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],21:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // UTF-7 codec, according to https://tools.ietf.org/html/rfc2152
 // See also below a UTF-7-IMAP codec, according to http://tools.ietf.org/html/rfc3501#section-5.1.3
@@ -3867,9 +3863,8 @@ Utf7IMAPDecoder.prototype.end = function() {
 
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],22:[function(require,module,exports){
-"use strict"
+"use strict";
 
 var BOMChar = '\uFEFF';
 
@@ -3923,8 +3918,8 @@ StripBOMWrapper.prototype.end = function() {
 
 
 },{}],23:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // == Extend Node primitives to use iconv-lite =================================
 
@@ -4139,12 +4134,11 @@ module.exports = function (iconv) {
     }
 }
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer","stream":54}],24:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
 
-var Transform = require("stream").Transform;
+var Buffer = require("buffer").Buffer,
+    Transform = require("stream").Transform;
 
 
 // == Exports ==================================================================
@@ -4263,7 +4257,6 @@ IconvLiteDecoderStream.prototype.collect = function(cb) {
 }
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer","stream":54}],25:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -9524,10 +9517,14 @@ Object.defineProperty(exports, '__esModule', { value: true });
 },{}],"fs":[function(require,module,exports){
 arguments[4][2][0].apply(exports,arguments)
 },{"dup":2}],"iconv-lite":[function(require,module,exports){
-(function (process,Buffer){
-"use strict"
+(function (process){
+"use strict";
 
-var bomHandling = require('./bom-handling'),
+// Some environments don't have global Buffer (e.g. React Native).
+// Solution would be installing npm modules "buffer" and "stream" explicitly.
+var Buffer = require("buffer").Buffer;
+
+var bomHandling = require("./bom-handling"),
     iconv = module.exports;
 
 // All codecs and aliases are kept here, keyed by encoding name/alias.
@@ -9666,8 +9663,11 @@ if (nodeVer) {
     require("./extend-node")(iconv);
 }
 
+if ("Ā" != "\u0100") {
+    console.error("iconv-lite warning: javascript files use encoding different from utf-8. See https://github.com/ashtuchkin/iconv-lite/wiki/Javascript-source-file-encodings for more info.");
+}
 
-}).call(this,require('_process'),require("buffer").Buffer)
+}).call(this,require('_process'))
 },{"../encodings":7,"./bom-handling":22,"./extend-node":23,"./streams":24,"_process":30,"buffer":"buffer"}],"mproj":[function(require,module,exports){
 (function (__filename){
 (function(){
