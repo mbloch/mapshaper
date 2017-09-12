@@ -1955,9 +1955,7 @@ function ImportControl(model, opts) {
   function readSingleFile(file) {
     var name = file.name,
         reader = new FileReader(),
-        useBinary = internal.isBinaryFile(name) ||
-          internal.guessInputFileType(name) == 'json' ||
-          internal.guessInputFileType(name) == 'text';
+        useBinary = internal.isBinaryFile(name) || internal.guessInputFileType(name) == 'json';
 
     reader.addEventListener('loadend', function(e) {
       if (!reader.result) {

@@ -412,9 +412,7 @@ utils.initializeArray = function(arr, init) {
 
 utils.replaceArray = function(arr, arr2) {
   arr.splice(0, arr.length);
-  for (var i=0, n=arr2.length; i<n; i++) {
-    arr.push(arr2[i]);
-  }
+  arr.push.apply(arr, arr2);
 };
 
 
@@ -1034,7 +1032,6 @@ BinArray.uintSize = function(i) {
   return i & 1 || i & 2 || 4;
 };
 
-// @dest, @src: TypedArrays
 BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
   srcId = srcId || 0;
   bytes = bytes || src.byteLength - srcId;
@@ -1490,10 +1487,6 @@ utils.isFiniteNumber = function(val) {
   return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
 };
 
-utils.isNonNegNumber = function(val) {
-  return val === 0 || val > 0 && val.constructor == Number;
-};
-
 utils.parsePercent = function(o) {
   var str = String(o);
   var isPct = str.indexOf('%') > 0;
@@ -1512,7 +1505,56 @@ utils.parsePercent = function(o) {
 
 
 
-var Buffer = require('buffer').Buffer; // works with browserify
+// Use a proxy for Buffer if running in browser and using browserify shim
+// (Mostly to improve performance of string conversion)
+var Buffer = (function() {
+  var Buffer = require('buffer').Buffer;
+  var ProxyBuffer;
+  if (typeof TextDecoder == 'undefined' || typeof TextEncoder == 'undefined') {
+    return Buffer;
+  }
+
+  ProxyBuffer = function(arg, encodingOrOffset, length) {
+    var buf;
+    if (typeof arg == "string" && encodingIsUtf8(encodingOrOffset)) {
+      arg = fromUtf8(arg);
+      encodingOrOffset = null;
+    }
+    return init(new Buffer(arg, encodingOrOffset, length));
+  };
+
+  ProxyBuffer.concat = Buffer.concat;
+  ProxyBuffer.from = Buffer.from;
+
+  function encodingIsUtf8(enc) {
+    return !enc || /^utf-?8$/i.test(String(enc));
+  }
+
+  function fromUtf8(str) {
+    // returns ArrayBuffer
+    return new TextEncoder('utf8').encode(str).buffer;
+  }
+
+  function init(buf) {
+    buf.toString = toString;
+    buf.slice = slice;
+    return buf;
+  }
+
+  function slice(start, end) {
+    return init(Buffer.prototype.slice.call(this, start, end));
+  }
+
+  function toString(enc, start, end) {
+    if (encodingIsUtf8(enc)) {
+      return new TextDecoder('utf8').decode(start || end ? this.slice(start || 0, end) : this);
+    }
+    return Buffer.prototype.toString.call(enc, start, end);
+  }
+
+  return ProxyBuffer;
+}());
+
 
 
 
@@ -4475,47 +4517,33 @@ function PathIndex(shapes, arcs) {
 
     function addPath(ids, shpId) {
       var bounds = arcs.getSimpleShapeBounds(ids);
-      var item = rbushBounds(bounds.toArray());
-      item.ids = ids;
-      item.bounds = bounds;
-      item.id = shpId;
-      boxes.push(item);
+      var bbox = rbushBounds(bounds.toArray());
+      bbox.ids = ids;
+      bbox.bounds = bounds;
+      bbox.id = shpId;
+      boxes.push(bbox);
     }
   }
 
-  // Returns shape ids of all polygons that intersect point p
-  // (p is inside a ring or on the boundary)
-  this.findEnclosingShapes = function(p) {
-    var ids = [];
-    var groups = groupItemsByShapeId(findPointHitCandidates(p));
-    groups.forEach(function(group) {
-      if (testPointInRings(p, group)) {
-        ids.push(group[0].id);
-      }
-    });
-    return ids;
-  };
-
-  // Returns shape id of a polygon that intersects p or -1
-  // (If multiple intersections, returns on of the polygons)
   this.findEnclosingShape = function(p) {
     var shpId = -1;
-    var groups = groupItemsByShapeId(findPointHitCandidates(p));
-    groups.forEach(function(group) {
-      if (testPointInRings(p, group)) {
-        shpId = group[0].id;
+    var shapes = findPointHitShapes(p);
+    shapes.forEach(function(paths) {
+      if (testPointInRings(p, paths)) {
+        shpId = paths[0].id;
       }
     });
     return shpId;
   };
 
   this.findPointEnclosureCandidates = function(p, buffer) {
-    var items = findPointHitCandidates(p, buffer);
-    return utils.pluck(items, 'id');
+    var b = buffer > 0 ? buffer : 0;
+    var boxes = _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
+    return utils.pluck(boxes, 'id');
   };
 
   this.pointIsEnclosed = function(p) {
-    return testPointInRings(p, findPointHitCandidates(p));
+    return testPointInRings(p, findPointHitRings(p));
   };
 
   // Finds the polygon containing the smallest ring that entirely contains @ring
@@ -4528,7 +4556,7 @@ function PathIndex(shapes, arcs) {
     var bounds = arcs.getSimpleShapeBounds(ring);
     var p = getTestPoint(ring);
     var smallest;
-    findPointHitCandidates(p).forEach(function(cand) {
+    findPointHitRings(p).forEach(function(cand) {
       if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
           !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
           !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
@@ -4599,7 +4627,6 @@ function PathIndex(shapes, arcs) {
         geom.testPointInRing(p[0], p[1], cand.ids, arcs);
   }
 
-  //
   function testPointInRings(p, cands) {
     var isOn = false,
         isIn = false;
@@ -4623,26 +4650,27 @@ function PathIndex(shapes, arcs) {
     };
   }
 
-  function groupItemsByShapeId(items) {
-    var groups = [],
-        group, item;
-    if (items.length > 0) {
-      items.sort(function(a, b) {return a.id - b.id;});
-      for (var i=0; i<items.length; i++) {
-        item = items[i];
-        if (i === 0 || item.id != items[i-1].id) {
-          groups.push(group=[]);
+  function findPointHitShapes(p) {
+    var rings = findPointHitRings(p),
+        shapes = [],
+        shape, bbox;
+    if (rings.length > 0) {
+      rings.sort(function(a, b) {return a.id - b.id;});
+      for (var i=0; i<rings.length; i++) {
+        bbox = rings[i];
+        if (i === 0 || bbox.id != rings[i-1].id) {
+          shapes.push(shape=[]);
         }
-        group.push(item);
+        shape.push(bbox);
       }
     }
-    return groups;
+    return shapes;
   }
 
-  function findPointHitCandidates(p, buffer) {
-    var b = buffer > 0 ? buffer : 0;
-    var x = p[0], y = p[1];
-    return _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
+  function findPointHitRings(p) {
+    var x = p[0],
+        y = p[1];
+    return _index.search(rbushBounds([x, y, x, y]));
   }
 
   // Find a point on a ring to use for point-in-polygon testing
@@ -5400,25 +5428,20 @@ internal.repairSelfIntersections = function(lyr, nodes) {
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
-  var snapDist, snapCount, dupeCount, map, nodes;
-
-  // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
-  // used to reset simplification)
-  arcs.flatten();
-  snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
-  snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
-  dupeCount = arcs.dedupCoords();
+  var snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
+  var snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
+  var dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
     // Detect topology again if coordinates have changed
     api.buildTopology(dataset);
   }
 
   // cut arcs at points where segments intersect
-  map = internal.divideArcs(arcs);
+  var map = internal.divideArcs(arcs);
 
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
-  nodes = new NodeCollection(arcs);
+  var nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
     if (internal.layerHasPaths(lyr)) {
       internal.updateArcIds(lyr.shapes, map, nodes);
@@ -5963,106 +5986,25 @@ internal.validateEncoding = function(enc) {
   return enc;
 };
 
-internal.encodingIsUtf8 = function(enc) {
-  // treating utf-8 as default
-  return !enc || /^utf-?8$/i.test(String(enc));
-};
-
-// Identify the most common encodings that are supersets of ascii at the
-// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
-// (this allows identifying line breaks and other ascii patterns in buffers)
-internal.encodingIsAsciiCompat = function(enc) {
-  enc = internal.standardizeEncodingName(enc);
-  // gb.* selects the Guo Biao encodings
-  // big5 in not compatible -- second byte starts at 0x40
-  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
-};
-
-// Ex. convert UTF-8 to utf8
-internal.standardizeEncodingName = function(enc) {
-  return (enc || '').toLowerCase().replace(/[_-]/g, '');
-};
-
-// Similar to Buffer#toString(); tries to speed up utf8 conversion in
-// web browser (when using browserify Buffer shim)
-internal.bufferToString = function(buf, enc, start, end) {
-  if (start >= 0) {
-    buf = buf.slice(start, end);
-  }
-  return internal.decodeString(buf, enc);
-};
-
-internal.getNativeEncoder = function(enc) {
-  var encoder = null;
-  enc = internal.standardizeEncodingName(enc);
-  if (enc != 'utf8') {
-    // TODO: support more encodings if TextEncoder is available
-    return null;
-  }
-  if (typeof TextEncoder != 'undefined') {
-    encoder = new TextEncoder(enc);
-  }
-  return function(str) {
-    return encoder ? encoder.encode(str) : new Buffer(str, enc);
-  };
-};
-
-internal.encodeString = (function() {
-  var iconv = require('iconv-lite');
-  var toUtf8 = internal.getNativeEncoder('utf8');
-  return function(str, enc) {
-    // TODO: faster ascii encoding?
-    var buf;
-    if (internal.encodingIsUtf8(enc)) {
-      buf = toUtf8(str);
-    } else {
-      buf = iconv.encode(str, enc);
-    }
-    return buf;
-  };
-}());
-
-internal.getNativeDecoder = function(enc) {
-  var decoder = null;
-  enc = internal.standardizeEncodingName(enc);
-  if (enc != 'utf8') {
-    // TODO: support more encodings if TextDecoder is available
-    return null;
-  }
-  if (typeof TextDecoder != 'undefined') {
-    decoder = new TextDecoder(enc);
-  }
-  return function(buf) {
-    return decoder ? decoder.decode(buf) : buf.toString(enc);
-  };
-};
-
-internal.decodeString = (function() {
-  var iconv = require('iconv-lite');
-  var fromUtf8 = internal.getNativeDecoder('utf8');
-  // @buf a Node Buffer
-  return function(buf, enc) {
-    var str;
-    if (internal.encodingIsUtf8(enc)) {
-      str = fromUtf8(buf);
-    } else {
-      str = iconv.decode(buf, enc);
-    }
-    return str;
-  };
-}());
-
 internal.encodingIsSupported = function(raw) {
   var enc = internal.standardizeEncodingName(raw);
   return utils.contains(internal.getEncodings(), enc);
 };
 
-internal.trimBOM = function(str) {
+// @buf a Node Buffer
+internal.decodeString = function(buf, encoding) {
+  var iconv = require('iconv-lite'),
+      str = iconv.decode(buf, encoding);
   // remove BOM if present
   if (str.charCodeAt(0) == 0xfeff) {
     str = str.substr(1);
   }
   return str;
+};
+
+// Ex. convert UTF-8 to utf8
+internal.standardizeEncodingName = function(enc) {
+  return enc.toLowerCase().replace(/[_-]/g, '');
 };
 
 internal.printEncodings = function() {
@@ -6340,11 +6282,7 @@ Dbf.readStringBytes = function(bin, size, buf) {
   var count = 0, c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
-    // treating 0 as C-style string terminator (observed in-the-wild)
-    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
-    //   characters than the NULL character (ascii 0). The following code
-    //   should be changed to support non-ascii-compatible encodings
-    if (c === 0) break;
+    if (c === 0) break; // C string-terminator (observed in-the-wild)
     if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
       buf[count++] = c;
     }
@@ -6356,36 +6294,42 @@ Dbf.readStringBytes = function(bin, size, buf) {
   return count;
 };
 
-
-Dbf.getStringReader = function(arg) {
-  var encoding = arg || 'ascii';
-  var slug = internal.standardizeEncodingName(encoding);
-  var buf = new Buffer(256);
-  var inNode = typeof module == 'object';
-
-  // optimization -- use (fast) native Node conversion if available
-  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
-    return function(bin, size) {
-      var n = Dbf.readStringBytes(bin, size, buf);
-      return buf.toString(slug, 0, n);
-    };
-  }
-
-  return function readEncodedString(bin, size) {
-    var n = Dbf.readStringBytes(bin, size, buf),
-        str = '', i, c;
-    // optimization: fall back to text decoder only if string contains non-ascii bytes
-    // (data files of any encoding typically contain mostly ascii fields)
-    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
-    for (i=0; i<n; i++) {
-      c = buf[i];
-      if (c > 127) {
-        return internal.bufferToString(buf, encoding, 0, n);
-      }
-      str += String.fromCharCode(c);
+Dbf.getAsciiStringReader = function() {
+  var buf = new Uint8Array(256); // new Buffer(256);
+  return function readAsciiString(bin, size) {
+    var str = '',
+        n = Dbf.readStringBytes(bin, size, buf);
+    for (var i=0; i<n; i++) {
+      str += String.fromCharCode(buf[i]);
     }
     return str;
   };
+};
+
+Dbf.getEncodedStringReader = function(encoding) {
+  var buf = new Buffer(256),
+      isUtf8 = internal.standardizeEncodingName(encoding) == 'utf8';
+  return function readEncodedString(bin, size) {
+    var i = Dbf.readStringBytes(bin, size, buf),
+        str;
+    if (i === 0) {
+      str = '';
+    } else if (isUtf8) {
+      str = buf.toString('utf8', 0, i);
+    } else {
+      str = internal.decodeString(buf.slice(0, i), encoding); // slice references same memory
+    }
+    return str;
+  };
+};
+
+Dbf.getStringReader = function(encoding) {
+  if (!encoding || encoding === 'ascii') {
+    return Dbf.getAsciiStringReader();
+    // return Dbf.readAsciiString;
+  } else {
+    return Dbf.getEncodedStringReader(encoding);
+  }
 };
 
 Dbf.bufferContainsHighBit = function(buf, n) {
@@ -6396,7 +6340,7 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 };
 
 Dbf.getNumberReader = function() {
-  var read = Dbf.getStringReader('ascii');
+  var read = Dbf.getAsciiStringReader();
   return function readNumber(bin, size) {
     var str = read(bin, size);
     var val;
@@ -6677,30 +6621,6 @@ function DbfReader(src, encodingArg) {
 
 Dbf.MAX_STRING_LEN = 254;
 
-function BufferPool() {
-  var n = 5000,
-      pool, i;
-  newPool();
-
-  function newPool() {
-    pool = new Uint8Array(n);
-    i = 0;
-  }
-
-  return {
-    reserve: function(bytes) {
-      if (i + bytes > n) newPool();
-      i += bytes;
-      return pool.subarray(i - bytes, i);
-    },
-    putBack: function(bytes) {
-      i -= bytes;
-    }
-  };
-}
-
-Dbf.bufferPool = new BufferPool();
-
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Dbf.getFieldNames(arr);
@@ -6851,22 +6771,18 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var size = 0;
-  var buffers = arr.map(function(rec) {
+  var values = arr.map(function(rec) {
     var buf = formatter(rec[name]);
-    size = Math.max(size, buf.length);
+    size = Math.max(size, buf.byteLength);
     return buf;
   });
   info.size = size;
   info.write = function(i, bin) {
-    var buf = buffers[i],
-        n = Math.min(size, buf.length),
-        dest = bin._bytes,
-        pos = bin.position(),
-        j;
-    for (j=0; j<n; j++) {
-      dest[j + pos] = buf[j];
-    }
-    bin.position(pos + size);
+    var buf = values[i],
+        bytes = Math.min(size, buf.byteLength),
+        idx = bin.position();
+    bin.writeBuffer(buf, bytes, 0);
+    bin.position(idx + size);
   };
 };
 
@@ -6959,46 +6875,35 @@ Dbf.getNumericFieldInfo = function(arr, name) {
 // Return function to convert a JS str to an ArrayBuffer containing encoded str.
 Dbf.getStringWriter = function(encoding) {
   if (encoding === 'ascii') {
-    return Dbf.encodeValueAsAscii;
+    return Dbf.getStringWriterAscii();
   } else {
     return Dbf.getStringWriterEncoded(encoding);
   }
 };
 
-// return an array buffer or null if value contains non-ascii chars
-Dbf.encodeValueAsAscii = function(val, strict) {
-  var str = String(val),
-      n = Math.min(str.length, Dbf.MAX_STRING_LEN),
-      view = Dbf.bufferPool.reserve(n),
-      i, c;
-  for (i=0; i<n; i++) {
-    c = str.charCodeAt(i);
-    if (c > 127) {
-      if (strict) {
-        view = null;
-        i = 0; // return all bytes to pool
-        break;
-      }
-      c = '?'.charCodeAt(0);
+// TODO: handle non-ascii chars. Option: switch to
+// utf8 encoding if non-ascii chars are found.
+Dbf.getStringWriterAscii = function() {
+  return function(val) {
+    var str = String(val),
+        n = Math.min(str.length, Dbf.MAX_STRING_LEN),
+        dest = new ArrayBuffer(n),
+        view = new Uint8ClampedArray(dest);
+    for (var i=0; i<n; i++) {
+      view[i] = str.charCodeAt(i);
     }
-    view[i] = c;
-  }
-  Dbf.bufferPool.putBack(n-i);
-  return view ? view.subarray(0, i) : null;
+    return dest;
+  };
 };
 
 Dbf.getStringWriterEncoded = function(encoding) {
+  var iconv = require('iconv-lite');
   return function(val) {
-    // optimization -- large majority of strings in real-world datasets are
-    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
-    var buf = Dbf.encodeValueAsAscii(val, true);
-    if (buf === null) {
-      buf = internal.encodeString(String(val), encoding);
-      if (buf.length >= Dbf.MAX_STRING_LEN) {
-        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
-      }
+    var buf = iconv.encode(val, encoding);
+    if (buf.length >= Dbf.MAX_STRING_LEN) {
+      buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
     }
-    return buf;
+    return BinArray.toArrayBuffer(buf);
   };
 };
 
@@ -10489,10 +10394,6 @@ GeoJSON.pathIsRing = function(coords) {
 internal.FileReader = FileReader;
 internal.BufferReader = BufferReader;
 
-internal.readFirstChars = function(reader, n) {
-  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
-};
-
 // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
 function BufferReader(src) {
   var bufSize = src.byteLength || src.length,
@@ -10506,7 +10407,7 @@ function BufferReader(src) {
   };
 
   this.toString = function(enc) {
-    return internal.bufferToString(buffer(), enc);
+    return buffer().toString(enc);
   };
 
   this.readSync = function(start, length) {
@@ -10694,10 +10595,7 @@ function GeoJSONReader(reader) {
       } else if (c == RBRACE) {
         level--;
         if (level === 0) {
-          retn = {
-            text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
-            offset: offs + i + 1
-          };
+          retn = {text: buf.toString('utf8', startPos, i + 1), offset: offs + i + 1};
           break;
         } else if (level == -1) {
           break; // error -- "}" encountered before "{"
@@ -12046,9 +11944,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
       // number of JS objects in memory (so larger files can be exported)
       obj = stringify(obj);
       if (ofmt == 'buffer') {
-        obj = internal.encodeString(obj, 'utf8');
-        // obj = internal.stringToBuffer(obj);
-        // obj = new Buffer(obj, 'utf8');
+        obj = new Buffer(obj, 'utf8');
       }
     }
     memo.push(obj);
@@ -13714,8 +13610,6 @@ internal.getProjection = function(str) {
 
 internal.setDatasetProjection = function(dataset, info) {
   dataset.info = dataset.info || {};
-  // Assumes that proj4 object is never mutated.
-  // TODO: assign a copy of crs (if present)
   dataset.info.crs = info.crs;
   dataset.info.prj = info.prj;
 };
@@ -14480,7 +14374,7 @@ internal.exportDelim = function(dataset, opts) {
     if (lyr.data){
       arr.push({
         // TODO: consider supporting encoding= option
-        content: internal.exportDelimTable(lyr, delim, opts.encoding),
+        content: internal.exportDelimTable(lyr, delim),
         filename: (lyr.name || 'output') + '.' + ext
       });
     }
@@ -14495,7 +14389,7 @@ internal.exportDelimTable = function(lyr, delim) {
 };
 */
 
-internal.exportDelimTable = function(lyr, delim, encoding) {
+internal.exportDelimTable = function(lyr, delim) {
   var dsv = require("d3-dsv").dsvFormat(delim);
   var fields = lyr.data.getFields();
   var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
@@ -14513,12 +14407,6 @@ internal.exportDelimTable = function(lyr, delim, encoding) {
       str += '\n' + dsv.formatRows(tmp);
       tmp = [];
     }
-  }
-  // exporting utf8 as a string, temporarily, until tests are rewritten
-  // (it will be encoded as utf-8 when written to a file)
-  //
-  if (!internal.encodingIsUtf8(encoding)) {
-    return internal.encodeString(str, encoding);
   }
   return str;
 };
@@ -14936,7 +14824,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 };
 
 internal.importJSONFile = function(reader, opts) {
-  var str = internal.readFirstChars(reader, 1000);
+  var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
@@ -14966,8 +14854,7 @@ internal.importJSON = function(data, opts) {
   } else if (content instanceof ArrayBuffer) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if (content.byteLength < 1e7) {
-      // content = new Buffer(content).toString();
-      content = internal.bufferToString(new Buffer(content));
+      content = new Buffer(content).toString();
     } else {
       reader = new BufferReader(content);
       content = null;
@@ -15025,7 +14912,7 @@ internal.importContent = function(obj, opts) {
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
-    dataset = internal.importDelim2(data, opts);
+    dataset = internal.importDelim(data.content, opts);
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;
@@ -15166,11 +15053,8 @@ api.importFile = function(path, opts) {
     // let ShpReader read the file (supports larger files)
     content = null;
   } else if (apparentType == 'json' && !cached) {
-    // postpone reading of JSON files, to support incremental parsing
+    // postpone reading of JSON files, to support incremental parsing of GeoJSON
     content = null;
-  } else if (apparentType == 'text' && !cached) {
-    content = cli.readFile(path); // read from buffer, to support larger files
-    // content = null // read incrementally from file, to support largest files
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
   } else { // assuming text file
@@ -15708,113 +15592,30 @@ internal.selectFeatures = function(lyr, arcs, opts) {
 
 
 
-// TODO: support other encodings than utf-8
-// (Need to update readDelimLines() to work with all encodings)
-internal.readDelimRecords = function(reader, delim, encoding) {
-  var dsv = require("d3-dsv").dsvFormat(delim),
-      records = [],
-      retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
-      header = internal.trimBOM(retn ? retn.text : '');
-  // read in batches (faster than line-by-line)
-  while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
-    records.push.apply(records, dsv.parse(header + retn.text));
-  }
-  return records;
-};
-
-internal.readDelimLines = function(reader, offs, delim, encoding, lines) {
-  var CR = 13,
-      LF = 10,
-      DQUOTE = 34,
-      DELIM = delim.charCodeAt(0),
-      inQuotedField = false,
-      buf = reader.readSync(offs),
-      eol = false,
-      linesLeft = lines > 0 ? lines : 1,
-      i, n, c, prev;
-
-  for (i=0, n=buf.length; i<n; i++) {
-    c = buf[i];
-    if (eol) {
-      if (prev == CR && c == LF) {
-        // consume LF
-      } else {
-        eol = false;
-        linesLeft--;
-      }
-      if (linesLeft <= 0) break;
+// Convert a string containing delimited text data into a dataset object
+internal.importDelim = function(str, opts) {
+  var delim = internal.guessDelimiter(str);
+  return {
+    layers: [{
+      data: internal.importDelimTable(str, delim, opts)
+    }],
+    info: {
+      input_delimiter: delim
     }
-    if (c == DQUOTE) {
-      // according to spec, double quotes either enclose a field or are
-      // paired inside a quoted field
-      // https://tools.ietf.org/html/rfc4180
-      // the following handles both cases (no error checking though)
-      inQuotedField = !inQuotedField;
-    } else if (!inQuotedField && (c == CR || c == LF)) {
-      eol = true;
-    }
-
-    if (i == n-1) {
-      buf = reader.expandBuffer().readSync(offs);
-      n = buf.length;
-    }
-    prev = c;
-  }
-  return i === 0 ? null : {
-    offset: i + offs,
-    text: internal.bufferToString(buf, encoding, 0, i)
   };
 };
 
-
-
-
-
-// Convert a string containing delimited text data into a dataset object
-internal.importDelim = function(str, opts) {
-  return internal.importDelim2({content: str}, opts);
-};
-
-internal.importDelim2 = function(data, opts) {
-  // TODO: remove duplication with importJSON()
-  var content = data.content,
-      reader, records, delimiter, table;
-
-  if (!content) {
-    reader = new FileReader(data.filename);
-  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
-    // Web API may import as ArrayBuffer, to support larger files
-    reader = new BufferReader(content);
-    content = null;
-  } else if (!utils.isString(content)) {
-    error("Unexpected object type");
-  }
-
-  if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
-    // Currently, incremental reading assumes ascii-compatible data.
-    // Incompatible encodings must be parsed as strings.
-    content = reader.toString(opts.encoding);
-    reader = null;
-  }
-
-  if (reader) {
-    delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords(reader, delimiter, opts.encoding);
-  } else {
-    delimiter = internal.guessDelimiter(content);
-    records = require("d3-dsv").dsvFormat(delimiter).parse(content);
-    delete records.columns; // added by d3-dsv
-  }
+internal.importDelimTable = function(str, delim, opts) {
+  var records = require("d3-dsv").dsvFormat(delim).parse(str);
+  var table;
   if (records.length === 0) {
     stop("Unable to read any data records");
   }
+  delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts);
   table = new DataTable(records);
   internal.deleteFields(table, internal.isInvalidFieldName);
-  return {
-    layers: [{data: table}],
-    info: {input_delimiter: delimiter}
-  };
+ return table;
 };
 
 internal.supportedDelimiters = ['|', '\t', ',', ';'];
@@ -15993,14 +15794,14 @@ function PointIndex(shapes, opts) {
 
 
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
-  // TODO: option to copy points that can't be joined to a new layer
+  // TODO: copy points that can't be joined to a new layer
   var joinFunction = internal.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
   internal.prepJoinLayers(targetLyr, pointLyr);
   return internal.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
 };
 
 api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
-  var joinFunction = internal.getPointToPolygonsFunction(targetLyr, polygonLyr, arcs, opts);
+  var joinFunction = internal.getPointToPolygonFunction(targetLyr, polygonLyr, arcs, opts);
   internal.prepJoinLayers(targetLyr, polygonLyr);
   return internal.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 };
@@ -16032,45 +15833,26 @@ internal.getPointToPointFunction = function(targetLyr, srcLyr, opts) {
 };
 
 internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
-  // Build a reverse lookup table for mapping polygon ids to point ids.
-  var joinFunction = internal.getPointToPolygonsFunction(pointLyr, polygonLyr, arcs, opts);
+  var joinFunction = internal.getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts);
   var index = [];
-  var hits, polygonId;
-  pointLyr.shapes.forEach(function(shp, pointId) {
-    var polygonIds = joinFunction(pointId);
-    var n = polygonIds ? polygonIds.length : 0;
-    var polygonId;
-    for (var i=0; i<n; i++) {
-      polygonId = polygonIds[i];
+  var hit, polygonId;
+  for (var i=0, n=pointLyr.shapes.length; i<n; i++) {
+    hit = joinFunction(i);
+    if (hit) {
+      polygonId = hit[0]; // TODO: handle multiple hits
       if (polygonId in index) {
-        index[polygonId].push(pointId);
+        index[polygonId].push(i);
       } else {
-        index[polygonId] = [pointId];
+        index[polygonId] = [i];
       }
     }
-  });
-
-  return function(polygonId) {
-    return index[polygonId] || null;
+  }
+  // @i id of a polygon feature
+  return function(i) {
+    return index[i] || null;
   };
 };
 
-
-// Returned function gets ids of all polygons that intersect a point (or the first
-//   point of multipoint features). TODO: handle multipoint features properly.
-internal.getPointToPolygonsFunction = function(pointLyr, polygonLyr, arcs, opts) {
-  var index = new PathIndex(polygonLyr.shapes, arcs),
-      points = pointLyr.shapes;
-
-  return function(pointId) {
-    var shp = points[pointId],
-        polygonIds = shp ? index.findEnclosingShapes(shp[0]) : [];
-    return polygonIds.length > 0 ? polygonIds : null;
-  };
-};
-
-
-// TODO: remove (replaced by getPointToPolygonsFunction())
 internal.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) {
   var index = new PathIndex(polygonLyr.shapes, arcs),
       points = pointLyr.shapes;
@@ -16432,27 +16214,21 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   }
   return function(i) {
     var destRec = destRecords[i],
-        val = destRec ? destRec[destKey] : null,
-        retn = null;
-    if (destRec && val in index) {
-      retn = index[val];
-      if (!Array.isArray(retn)) retn = [retn];
-    }
-    return retn;
+        val = destRec ? destRec[destKey] : null;
+    return destRec && val in index ? index[val] : null;
   };
 };
+
 
 internal.createTableIndex = function(records, f) {
   var index = {}, rec, key;
   for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];
     key = rec[f];
-    if (key in index === false) {
-      index[key] = i;
-    } else if (Array.isArray(index[key])) {
+    if (key in index) {
       index[key].push(i);
     } else {
-      index[key] = [index[key], i];
+      index[key] = [i];
     }
   }
   return index;
@@ -16792,66 +16568,13 @@ api.pointGrid = function(dataset, opts) {
   } else {
     bbox = [-180, -90, 180, 90];
   }
-  return internal.createPointGridLayer(internal.createPointGrid(bbox, opts), opts);
-};
-
-api.polygonGrid = function(dataset, opts) {
-  var bbox, gridLyr;
-  if (opts.bbox) {
-    bbox = opts.bbox;
-  } else if (dataset) {
-    bbox = internal.getDatasetBounds(dataset).toArray();
-  } else {
-    bbox = [-180, -90, 180, 90];
-  }
-  return internal.createPolygonGridDataset(internal.createPointGrid(bbox, opts), opts);
-};
-
-internal.createPointGridLayer = function(rows, opts) {
-  var points = [], lyr;
-  rows.forEach(function(row, rowId) {
-    for (var i=0; i<row.length; i++) {
-      points.push([row[i]]);
-    }
-  });
-  lyr = {
-    geometry_type: 'point',
-    shapes: points
-  };
-  if (opts.name) lyr.name = opts.name;
-  return lyr;
-};
-
-internal.createPolygonGridDataset = function(rows, opts) {
-  var rings = [], rowArr;
-  var col, row, tl, br, ring;
-  for (row = 0; row < rows.length - 1; row++) {
-    rowArr = rows[row];
-    for (col = 0; col < rowArr.length - 1; col++) {
-      bl = rows[row][col];
-      tr = rows[row + 1][col + 1];
-      ring = [[bl[0], bl[1]], [bl[0], tr[1]], [tr[0], tr[1]], [tr[0], bl[1]], [bl[0], bl[1]]];
-      rings.push(ring);
-    }
-  }
-  var geojson = {
-    type: "GeometryCollection",
-    geometries: rings.map(function(ring){
-      return {
-        type: 'Polygon',
-        coordinates: [ring]
-      };
-    })
-  };
-  var dataset = internal.importGeoJSON(geojson, {});
-  if (opts.name) dataset.layers[0].name = opts.name;
-  return dataset;
+  return internal.createPointGrid(bbox, opts);
 };
 
 internal.createPointGrid = function(bbox, opts) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
-      rowsArr = [], rowArr,
+      points = [],
       cols, rows, dx, dy, x0, y0, x, y;
 
   if (opts.interval > 0) {
@@ -16877,14 +16600,16 @@ internal.createPointGrid = function(bbox, opts) {
   y = y0;
   while (y <= bbox[3]) {
     x = x0;
-    rowsArr.push(rowArr = []);
     while (x <= bbox[2]) {
-      rowArr.push([x, y]);
+      points.push([[x, y]]);
       x += dx;
     }
     y += dy;
   }
-  return rowsArr;
+  return {
+    geometry_type: 'point',
+    shapes: points
+  };
 };
 
 
@@ -17314,10 +17039,9 @@ api.shape = function(opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var bounds, coords, sourceInfo;
+  var bounds, coords;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
-    sourceInfo = source.dataset.info;
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
   }
@@ -17330,9 +17054,6 @@ api.rectangle = function(source, opts) {
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
-  if (sourceInfo) {
-    internal.setDatasetProjection(dataset, sourceInfo);
-  }
   return dataset;
 };
 
@@ -18051,14 +17772,12 @@ api.simplify = function(dataset, opts) {
 
   internal.simplifyPaths(arcs, opts);
 
-  if (utils.isNonNegNumber(opts.percentage)) {
+  if (opts.percentage) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
-  } else if (utils.isNonNegNumber(opts.interval)) {
+  } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
-  } else if (opts.resolution > 0) {
+  } else if (opts.resolution) {
     arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
-  } else {
-    stop("Missing a simplification amount");
   }
 
   if (opts.keep_shapes) {
@@ -18539,7 +18258,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'polygon-grid')) {
+      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle')) {
         throw new UserError("Missing a -i command");
       }
     }
@@ -18648,10 +18367,6 @@ api.runCommand = function(cmd, catalog, cb) {
       if (!targetDataset) {
         catalog.addDataset({layers: outputLayers});
       }
-
-    } else if (name == 'polygon-grid') {
-      catalog.addDataset(api.polygonGrid(targetDataset, opts));
-
     } else if (name == 'points') {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
@@ -19341,8 +19056,6 @@ internal.guessInputFileType = function(file) {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';
-  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt') {
-    type = 'text';
   }
   return type;
 };
@@ -20116,29 +19829,6 @@ internal.getOptionParser = function() {
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
-
-  parser.command("polygon-grid")
-    // .describe("create a rectangular grid of cells")
-    .validate(validateGridOpts)
-    .option("-", {
-      label: "<cols,rows>",
-      describe: "size of the grid, e.g. -point-grid 100,100"
-    })
-    .option('interval', {
-      describe: 'distance between adjacent points, in source units',
-      type: 'number'
-    })
-    .option("cols", {
-      type: "integer"
-    })
-    .option("rows", {
-      type: "integer"
-    })
-    .option('bbox', {
-      type: "bbox",
-      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
-    })
-    .option("name", nameOpt);
 
   parser.command("proj")
     .describe("project your data (using Proj.4)")
@@ -21126,7 +20816,7 @@ cli.readFile = function(fname, encoding, cache) {
     content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
-    content = internal.trimBOM(internal.decodeString(content, encoding));
+    content = internal.decodeString(content, encoding);
   }
   return content;
 };
