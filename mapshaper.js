@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.50';
+var VERSION = '0.4.49';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1584,7 +1584,7 @@ function UserError(msg) {
 function messageArgs(args) {
   var arr = utils.toArray(args);
   var cmd = internal.getStateVar('current_command');
-  if (cmd && cmd != 'help') {
+  if (cmd && cmd != 'help' && cmd != 'info') {
     arr.unshift('[' + cmd + ']');
   }
   return arr;
@@ -3040,16 +3040,6 @@ internal.countArcsInShapes = function(shapes, counts) {
   });
 };
 
-// Count arcs in a collection of layers
-internal.countArcReferences = function(layers, arcs) {
-  var counts = new Uint32Array(arcs.size());
-  layers.forEach(function(lyr) {
-    internal.countArcsInShapes(lyr.shapes, counts);
-  });
-  return counts;
-};
-
-
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 internal.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],
@@ -3356,9 +3346,6 @@ internal.quantizeArcs = function(arcs, quanta) {
 
 
 
-
-
-
 // Apply rotation, scale and/or shift to some or all of the features in a dataset
 //
 api.affine = function(targetLayers, dataset, opts) {
@@ -3592,22 +3579,12 @@ internal.datasetHasPaths = function(dataset) {
   });
 };
 
-// Remove ArcCollection of a dataset if not referenced by any layer
-// TODO: consider doing arc dissolve, or just removing unreferenced arcs
-// (currently cleanupArcs() is run after every command, so be mindful of performance)
 internal.cleanupArcs = function(dataset) {
+  // remove arcs if no longer referenced by any layer
+  // TODO: consider doing arc dissolve, or just removing unreferenced arcs
   if (dataset.arcs && !utils.some(dataset.layers, internal.layerHasPaths)) {
     dataset.arcs = null;
     return true;
-  }
-};
-
-// Remove unused arcs from a dataset
-// Warning: using dissolveArcs() means that adjacent arcs are combined when possible
-internal.pruneArcs = function(dataset) {
-  internal.cleanupArcs(dataset);
-  if (dataset.arcs) {
-    internal.dissolveArcs(dataset);
   }
 };
 
@@ -6249,10 +6226,6 @@ internal.patchMissingFields = function(records, fields) {
       }
     }
   }
-};
-
-internal.fieldListContainsAll = function(list, fields) {
-  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
 };
 
 var c = 0;
@@ -9468,6 +9441,14 @@ internal.getFilteredNodeCollection = function(layers, arcs) {
   return new NodeCollection(arcs, test);
 };
 
+internal.countArcReferences = function(layers, arcs) {
+  var counts = new Uint32Array(arcs.size());
+  layers.forEach(function(lyr) {
+    internal.countArcsInShapes(lyr.shapes, counts);
+  });
+  return counts;
+};
+
 
 
 
@@ -10475,36 +10456,6 @@ internal.buildAssignmentIndex = function(lyr, field, arcs) {
     o[shpB] = len + (o[shpB] || 0);
   }
 };
-
-
-
-
-api.drop = function(catalog, layers, dataset, opts) {
-  var updateArcs = false;
-
-  layers.forEach(function(lyr) {
-    var fields = lyr.data && opts.fields;
-    var allFields = fields && internal.fieldListContainsAll(fields, lyr.data.getFields());
-    var deletion = !fields && !opts.geometry || allFields && opts.geometry;
-    if (opts.geometry) {
-      updateArcs |= internal.layerHasPaths(lyr);
-      delete lyr.shapes;
-      delete lyr.geometry_type;
-    }
-    if (deletion) {
-      catalog.deleteLayer(lyr, dataset);
-    } else if (allFields) {
-      delete lyr.data;
-    } else if (fields) {
-      opts.fields.forEach(lyr.data.deleteField, lyr.data);
-    }
-  });
-
-  if (updateArcs) {
-    internal.pruneArcs(dataset);
-  }
-};
-
 
 
 
@@ -15418,14 +15369,11 @@ internal.createParallel = function(y, xmin, xmax, precision) {
 
 
 
-internal.printInfo = function(layers, targetLayers) {
+internal.printInfo = function(layers) {
   var str = '';
   layers.forEach(function(o, i) {
-    var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
-    var targStr = isTarget ? ' *' : '';
-    str += '\n';
-    str += 'Layer ' + (i + 1) + targStr + '\n' + internal.getLayerInfo(o.layer, o.dataset);
-    str += '\n';
+    if (i > 0) str += '\n';
+    str += '\nLayer ' + (i + 1) + '\n' + internal.getLayerInfo(o.layer, o.dataset);
   });
   message(str);
 };
@@ -16019,7 +15967,7 @@ utils.parseNumber = function(raw) {
 
 // TODO: use an actual index instead of linear search
 function PointIndex(shapes, opts) {
-  var buf = utils.isNonNegNumber(opts.buffer) ? opts.buffer : 1e-3;
+  var buf = opts.buffer >= 0 ? opts.buffer : 1e-3;
   var minDistSq, minId, target;
   this.findNearestPointFeature = function(shape) {
     minDistSq = Infinity;
@@ -18569,11 +18517,9 @@ api.runCommand = function(cmd, catalog, cb) {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
-
     } else if (name == 'proj') {
       // accepts multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
-
     } else {
       targets = catalog.findCommandTargets(opts.target);
       if (targets.length == 1) {
@@ -18594,7 +18540,7 @@ api.runCommand = function(cmd, catalog, cb) {
             opts.target, internal.getFormattedLayerList(catalog)));
       }
       if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'polygon-grid')) {
-        throw new UserError("No data is available");
+        throw new UserError("Missing a -i command");
       }
     }
 
@@ -18632,9 +18578,6 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
-    } else if (name == 'drop') {
-      api.drop(catalog, targetLayers, targetDataset, opts);
-
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
@@ -18671,7 +18614,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'info') {
-      internal.printInfo(catalog.getLayers(), targetLayers);
+      internal.printInfo(catalog.getLayers());
 
     } else if (name == 'inspect') {
       internal.applyCommand(api.inspect, targetLayers, arcs, opts);
@@ -19944,19 +19887,6 @@ internal.getOptionParser = function() {
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
-  parser.command("drop")
-    .describe("delete the target layer(s) or items within the target layer(s)")
-    .option("geometry", {
-      describe: "delete all geometry from the target layer(s)",
-      type: "flag"
-    })
-    .option("fields", {
-      type: "strings",
-      describe: "delete a list of attribute data fields, e.g. 'id,name' '*'"
-    })
-    .option("target", targetOpt);
-
-
   parser.command("each")
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +
@@ -20782,7 +20712,7 @@ internal.getLayerMatch = function(pattern) {
 //   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
-      defaultTarget = null; // saved default command target {layers:[], dataset}
+      target;
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -20795,21 +20725,26 @@ function Catalog() {
 
   // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
-    var targ = this.getDefaultTarget();
+    var targ = this.getDefaultTarget(),
+        other;
 
     // remove layer from its dataset
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
+
     if (dataset.layers.length === 0) {
       this.removeDataset(dataset);
     }
+
     if (this.isEmpty()) {
-      defaultTarget = null;
+      target = null;
     } else if (targ.layers[0] == lyr) {
       // deleting first target layer (selected in gui) -- switch to some other layer
-      defaultTarget = null;
+      other = this.findAnotherLayer(lyr);
+      this.setDefaultTarget([other.layer], other.dataset);
     } else if (targ.layers.indexOf(lyr) > -1) {
       // deleted layer is targeted -- update target
       targ.layers.splice(targ.layers.indexOf(lyr), 1);
+      this.setDefaultTarget(targ.layers, targ.dataset);
     } else {
       // deleted layer is not a targeted layer, target not updated
     }
@@ -20826,17 +20761,15 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern, type) {
-    var targ;
     if (pattern) {
       return internal.findCommandTargets(this, pattern, type);
     }
-    targ = this.getDefaultTarget();
-    return targ ? [targ] : [];
+    return target ? [target] : [];
   };
 
   this.removeDataset = function(dataset) {
-    if (defaultTarget && defaultTarget.dataset == dataset) {
-      defaultTarget = null;
+    if (target && target.dataset == dataset) {
+      target = null;
     }
     datasets = datasets.filter(function(d) {
       return d != dataset;
@@ -20872,11 +20805,11 @@ function Catalog() {
     return idx > -1 ? layers[(idx - 1 + layers.length) % layers.length] : null;
   };
 
-  this.findAnotherLayer = function(lyr) {
+  this.findAnotherLayer = function(target) {
     var layers = this.getLayers(),
         found = null;
     if (layers.length > 0) {
-      found = layers[0].layer == lyr ? layers[1] : layers[0];
+      found = layers[0].layer == target ? layers[1] : layers[0];
     }
     return found;
   };
@@ -20885,20 +20818,13 @@ function Catalog() {
     return datasets.length === 0;
   };
 
-  this.getDefaultTarget = function() {
-    var tmp;
-    if (!defaultTarget && !this.isEmpty()) {
-      tmp = this.findAnotherLayer(null);
-      defaultTarget = {dataset: tmp.dataset, layers: [tmp.layer]};
-    }
-    return defaultTarget;
-  };
+  this.getDefaultTarget = function() {return target || null;};
 
   this.setDefaultTarget = function(layers, dataset) {
     if (datasets.indexOf(dataset) == -1) {
       datasets.push(dataset);
     }
-    defaultTarget = {
+    target = {
       layers: layers,
       dataset: dataset
     };
