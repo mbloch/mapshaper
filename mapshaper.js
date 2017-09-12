@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.49';
+var VERSION = '0.4.51';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -412,7 +412,9 @@ utils.initializeArray = function(arr, init) {
 
 utils.replaceArray = function(arr, arr2) {
   arr.splice(0, arr.length);
-  arr.push.apply(arr, arr2);
+  for (var i=0, n=arr2.length; i<n; i++) {
+    arr.push(arr2[i]);
+  }
 };
 
 
@@ -1032,6 +1034,7 @@ BinArray.uintSize = function(i) {
   return i & 1 || i & 2 || 4;
 };
 
+// @dest, @src: TypedArrays
 BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
   srcId = srcId || 0;
   bytes = bytes || src.byteLength - srcId;
@@ -1487,6 +1490,10 @@ utils.isFiniteNumber = function(val) {
   return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
 };
 
+utils.isNonNegNumber = function(val) {
+  return val === 0 || val > 0 && val.constructor == Number;
+};
+
 utils.parsePercent = function(o) {
   var str = String(o);
   var isPct = str.indexOf('%') > 0;
@@ -1505,56 +1512,7 @@ utils.parsePercent = function(o) {
 
 
 
-// Use a proxy for Buffer if running in browser and using browserify shim
-// (Mostly to improve performance of string conversion)
-var Buffer = (function() {
-  var Buffer = require('buffer').Buffer;
-  var ProxyBuffer;
-  if (typeof TextDecoder == 'undefined' || typeof TextEncoder == 'undefined') {
-    return Buffer;
-  }
-
-  ProxyBuffer = function(arg, encodingOrOffset, length) {
-    var buf;
-    if (typeof arg == "string" && encodingIsUtf8(encodingOrOffset)) {
-      arg = fromUtf8(arg);
-      encodingOrOffset = null;
-    }
-    return init(new Buffer(arg, encodingOrOffset, length));
-  };
-
-  ProxyBuffer.concat = Buffer.concat;
-  ProxyBuffer.from = Buffer.from;
-
-  function encodingIsUtf8(enc) {
-    return !enc || /^utf-?8$/i.test(String(enc));
-  }
-
-  function fromUtf8(str) {
-    // returns ArrayBuffer
-    return new TextEncoder('utf8').encode(str).buffer;
-  }
-
-  function init(buf) {
-    buf.toString = toString;
-    buf.slice = slice;
-    return buf;
-  }
-
-  function slice(start, end) {
-    return init(Buffer.prototype.slice.call(this, start, end));
-  }
-
-  function toString(enc, start, end) {
-    if (encodingIsUtf8(enc)) {
-      return new TextDecoder('utf8').decode(start || end ? this.slice(start || 0, end) : this);
-    }
-    return Buffer.prototype.toString.call(enc, start, end);
-  }
-
-  return ProxyBuffer;
-}());
-
+var Buffer = require('buffer').Buffer; // works with browserify
 
 
 
@@ -1626,7 +1584,7 @@ function UserError(msg) {
 function messageArgs(args) {
   var arr = utils.toArray(args);
   var cmd = internal.getStateVar('current_command');
-  if (cmd && cmd != 'help' && cmd != 'info') {
+  if (cmd && cmd != 'help') {
     arr.unshift('[' + cmd + ']');
   }
   return arr;
@@ -3082,6 +3040,16 @@ internal.countArcsInShapes = function(shapes, counts) {
   });
 };
 
+// Count arcs in a collection of layers
+internal.countArcReferences = function(layers, arcs) {
+  var counts = new Uint32Array(arcs.size());
+  layers.forEach(function(lyr) {
+    internal.countArcsInShapes(lyr.shapes, counts);
+  });
+  return counts;
+};
+
+
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 internal.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],
@@ -3388,6 +3356,9 @@ internal.quantizeArcs = function(arcs, quanta) {
 
 
 
+
+
+
 // Apply rotation, scale and/or shift to some or all of the features in a dataset
 //
 api.affine = function(targetLayers, dataset, opts) {
@@ -3621,12 +3592,22 @@ internal.datasetHasPaths = function(dataset) {
   });
 };
 
+// Remove ArcCollection of a dataset if not referenced by any layer
+// TODO: consider doing arc dissolve, or just removing unreferenced arcs
+// (currently cleanupArcs() is run after every command, so be mindful of performance)
 internal.cleanupArcs = function(dataset) {
-  // remove arcs if no longer referenced by any layer
-  // TODO: consider doing arc dissolve, or just removing unreferenced arcs
   if (dataset.arcs && !utils.some(dataset.layers, internal.layerHasPaths)) {
     dataset.arcs = null;
     return true;
+  }
+};
+
+// Remove unused arcs from a dataset
+// Warning: using dissolveArcs() means that adjacent arcs are combined when possible
+internal.pruneArcs = function(dataset) {
+  internal.cleanupArcs(dataset);
+  if (dataset.arcs) {
+    internal.dissolveArcs(dataset);
   }
 };
 
@@ -4517,33 +4498,47 @@ function PathIndex(shapes, arcs) {
 
     function addPath(ids, shpId) {
       var bounds = arcs.getSimpleShapeBounds(ids);
-      var bbox = rbushBounds(bounds.toArray());
-      bbox.ids = ids;
-      bbox.bounds = bounds;
-      bbox.id = shpId;
-      boxes.push(bbox);
+      var item = rbushBounds(bounds.toArray());
+      item.ids = ids;
+      item.bounds = bounds;
+      item.id = shpId;
+      boxes.push(item);
     }
   }
 
+  // Returns shape ids of all polygons that intersect point p
+  // (p is inside a ring or on the boundary)
+  this.findEnclosingShapes = function(p) {
+    var ids = [];
+    var groups = groupItemsByShapeId(findPointHitCandidates(p));
+    groups.forEach(function(group) {
+      if (testPointInRings(p, group)) {
+        ids.push(group[0].id);
+      }
+    });
+    return ids;
+  };
+
+  // Returns shape id of a polygon that intersects p or -1
+  // (If multiple intersections, returns on of the polygons)
   this.findEnclosingShape = function(p) {
     var shpId = -1;
-    var shapes = findPointHitShapes(p);
-    shapes.forEach(function(paths) {
-      if (testPointInRings(p, paths)) {
-        shpId = paths[0].id;
+    var groups = groupItemsByShapeId(findPointHitCandidates(p));
+    groups.forEach(function(group) {
+      if (testPointInRings(p, group)) {
+        shpId = group[0].id;
       }
     });
     return shpId;
   };
 
   this.findPointEnclosureCandidates = function(p, buffer) {
-    var b = buffer > 0 ? buffer : 0;
-    var boxes = _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
-    return utils.pluck(boxes, 'id');
+    var items = findPointHitCandidates(p, buffer);
+    return utils.pluck(items, 'id');
   };
 
   this.pointIsEnclosed = function(p) {
-    return testPointInRings(p, findPointHitRings(p));
+    return testPointInRings(p, findPointHitCandidates(p));
   };
 
   // Finds the polygon containing the smallest ring that entirely contains @ring
@@ -4556,7 +4551,7 @@ function PathIndex(shapes, arcs) {
     var bounds = arcs.getSimpleShapeBounds(ring);
     var p = getTestPoint(ring);
     var smallest;
-    findPointHitRings(p).forEach(function(cand) {
+    findPointHitCandidates(p).forEach(function(cand) {
       if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
           !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
           !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
@@ -4627,6 +4622,7 @@ function PathIndex(shapes, arcs) {
         geom.testPointInRing(p[0], p[1], cand.ids, arcs);
   }
 
+  //
   function testPointInRings(p, cands) {
     var isOn = false,
         isIn = false;
@@ -4650,27 +4646,26 @@ function PathIndex(shapes, arcs) {
     };
   }
 
-  function findPointHitShapes(p) {
-    var rings = findPointHitRings(p),
-        shapes = [],
-        shape, bbox;
-    if (rings.length > 0) {
-      rings.sort(function(a, b) {return a.id - b.id;});
-      for (var i=0; i<rings.length; i++) {
-        bbox = rings[i];
-        if (i === 0 || bbox.id != rings[i-1].id) {
-          shapes.push(shape=[]);
+  function groupItemsByShapeId(items) {
+    var groups = [],
+        group, item;
+    if (items.length > 0) {
+      items.sort(function(a, b) {return a.id - b.id;});
+      for (var i=0; i<items.length; i++) {
+        item = items[i];
+        if (i === 0 || item.id != items[i-1].id) {
+          groups.push(group=[]);
         }
-        shape.push(bbox);
+        group.push(item);
       }
     }
-    return shapes;
+    return groups;
   }
 
-  function findPointHitRings(p) {
-    var x = p[0],
-        y = p[1];
-    return _index.search(rbushBounds([x, y, x, y]));
+  function findPointHitCandidates(p, buffer) {
+    var b = buffer > 0 ? buffer : 0;
+    var x = p[0], y = p[1];
+    return _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
   }
 
   // Find a point on a ring to use for point-in-polygon testing
@@ -5428,20 +5423,25 @@ internal.repairSelfIntersections = function(lyr, nodes) {
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
-  var snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
-  var snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
-  var dupeCount = arcs.dedupCoords();
+  var snapDist, snapCount, dupeCount, map, nodes;
+
+  // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
+  // used to reset simplification)
+  arcs.flatten();
+  snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
+  snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
+  dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
     // Detect topology again if coordinates have changed
     api.buildTopology(dataset);
   }
 
   // cut arcs at points where segments intersect
-  var map = internal.divideArcs(arcs);
+  map = internal.divideArcs(arcs);
 
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
-  var nodes = new NodeCollection(arcs);
+  nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
     if (internal.layerHasPaths(lyr)) {
       internal.updateArcIds(lyr.shapes, map, nodes);
@@ -5986,25 +5986,107 @@ internal.validateEncoding = function(enc) {
   return enc;
 };
 
+internal.encodingIsUtf8 = function(enc) {
+  // treating utf-8 as default
+  return !enc || /^utf-?8$/i.test(String(enc));
+};
+
+// Identify the most common encodings that are supersets of ascii at the
+// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
+// (this allows identifying line breaks and other ascii patterns in buffers)
+internal.encodingIsAsciiCompat = function(enc) {
+  enc = internal.standardizeEncodingName(enc);
+  // gb.* selects the Guo Biao encodings
+  // big5 in not compatible -- second byte starts at 0x40
+  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
+};
+
+// Ex. convert UTF-8 to utf8
+internal.standardizeEncodingName = function(enc) {
+  return (enc || '').toLowerCase().replace(/[_-]/g, '');
+};
+
+// Similar to Buffer#toString(); tries to speed up utf8 conversion in
+// web browser (when using browserify Buffer shim)
+internal.bufferToString = function(buf, enc, start, end) {
+  if (start >= 0) {
+    buf = buf.slice(start, end);
+  }
+  return internal.decodeString(buf, enc);
+};
+
+internal.getNativeEncoder = function(enc) {
+  var encoder = null;
+  enc = internal.standardizeEncodingName(enc);
+  if (enc != 'utf8') {
+    // TODO: support more encodings if TextEncoder is available
+    return null;
+  }
+  if (typeof TextEncoder != 'undefined') {
+    encoder = new TextEncoder(enc);
+  }
+  return function(str) {
+    // Convert Uint8Array from encoder to Buffer (fix for issue #216)
+    return encoder ? Buffer.from(encoder.encode(str).buffer) : new Buffer(str, enc);
+  };
+};
+
+internal.encodeString = (function() {
+  var iconv = require('iconv-lite');
+  var toUtf8 = internal.getNativeEncoder('utf8');
+  return function(str, enc) {
+    // TODO: faster ascii encoding?
+    var buf;
+    if (internal.encodingIsUtf8(enc)) {
+      buf = toUtf8(str);
+    } else {
+      buf = iconv.encode(str, enc);
+    }
+    return buf;
+  };
+}());
+
+internal.getNativeDecoder = function(enc) {
+  var decoder = null;
+  enc = internal.standardizeEncodingName(enc);
+  if (enc != 'utf8') {
+    // TODO: support more encodings if TextDecoder is available
+    return null;
+  }
+  if (typeof TextDecoder != 'undefined') {
+    decoder = new TextDecoder(enc);
+  }
+  return function(buf) {
+    return decoder ? decoder.decode(buf) : buf.toString(enc);
+  };
+};
+
+internal.decodeString = (function() {
+  var iconv = require('iconv-lite');
+  var fromUtf8 = internal.getNativeDecoder('utf8');
+  // @buf a Node Buffer
+  return function(buf, enc) {
+    var str;
+    if (internal.encodingIsUtf8(enc)) {
+      str = fromUtf8(buf);
+    } else {
+      str = iconv.decode(buf, enc);
+    }
+    return str;
+  };
+}());
+
 internal.encodingIsSupported = function(raw) {
   var enc = internal.standardizeEncodingName(raw);
   return utils.contains(internal.getEncodings(), enc);
 };
 
-// @buf a Node Buffer
-internal.decodeString = function(buf, encoding) {
-  var iconv = require('iconv-lite'),
-      str = iconv.decode(buf, encoding);
+internal.trimBOM = function(str) {
   // remove BOM if present
   if (str.charCodeAt(0) == 0xfeff) {
     str = str.substr(1);
   }
   return str;
-};
-
-// Ex. convert UTF-8 to utf8
-internal.standardizeEncodingName = function(enc) {
-  return enc.toLowerCase().replace(/[_-]/g, '');
 };
 
 internal.printEncodings = function() {
@@ -6170,6 +6252,10 @@ internal.patchMissingFields = function(records, fields) {
   }
 };
 
+internal.fieldListContainsAll = function(list, fields) {
+  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
+};
+
 var c = 0;
 internal.getColumnType = function(key, table) {
   var type = null,
@@ -6282,7 +6368,11 @@ Dbf.readStringBytes = function(bin, size, buf) {
   var count = 0, c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
-    if (c === 0) break; // C string-terminator (observed in-the-wild)
+    // treating 0 as C-style string terminator (observed in-the-wild)
+    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
+    //   characters than the NULL character (ascii 0). The following code
+    //   should be changed to support non-ascii-compatible encodings
+    if (c === 0) break;
     if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
       buf[count++] = c;
     }
@@ -6294,42 +6384,36 @@ Dbf.readStringBytes = function(bin, size, buf) {
   return count;
 };
 
-Dbf.getAsciiStringReader = function() {
-  var buf = new Uint8Array(256); // new Buffer(256);
-  return function readAsciiString(bin, size) {
-    var str = '',
-        n = Dbf.readStringBytes(bin, size, buf);
-    for (var i=0; i<n; i++) {
-      str += String.fromCharCode(buf[i]);
-    }
-    return str;
-  };
-};
 
-Dbf.getEncodedStringReader = function(encoding) {
-  var buf = new Buffer(256),
-      isUtf8 = internal.standardizeEncodingName(encoding) == 'utf8';
-  return function readEncodedString(bin, size) {
-    var i = Dbf.readStringBytes(bin, size, buf),
-        str;
-    if (i === 0) {
-      str = '';
-    } else if (isUtf8) {
-      str = buf.toString('utf8', 0, i);
-    } else {
-      str = internal.decodeString(buf.slice(0, i), encoding); // slice references same memory
-    }
-    return str;
-  };
-};
+Dbf.getStringReader = function(arg) {
+  var encoding = arg || 'ascii';
+  var slug = internal.standardizeEncodingName(encoding);
+  var buf = new Buffer(256);
+  var inNode = typeof module == 'object';
 
-Dbf.getStringReader = function(encoding) {
-  if (!encoding || encoding === 'ascii') {
-    return Dbf.getAsciiStringReader();
-    // return Dbf.readAsciiString;
-  } else {
-    return Dbf.getEncodedStringReader(encoding);
+  // optimization -- use (fast) native Node conversion if available
+  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
+    return function(bin, size) {
+      var n = Dbf.readStringBytes(bin, size, buf);
+      return buf.toString(slug, 0, n);
+    };
   }
+
+  return function readEncodedString(bin, size) {
+    var n = Dbf.readStringBytes(bin, size, buf),
+        str = '', i, c;
+    // optimization: fall back to text decoder only if string contains non-ascii bytes
+    // (data files of any encoding typically contain mostly ascii fields)
+    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
+    for (i=0; i<n; i++) {
+      c = buf[i];
+      if (c > 127) {
+        return internal.bufferToString(buf, encoding, 0, n);
+      }
+      str += String.fromCharCode(c);
+    }
+    return str;
+  };
 };
 
 Dbf.bufferContainsHighBit = function(buf, n) {
@@ -6340,7 +6424,7 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 };
 
 Dbf.getNumberReader = function() {
-  var read = Dbf.getAsciiStringReader();
+  var read = Dbf.getStringReader('ascii');
   return function readNumber(bin, size) {
     var str = read(bin, size);
     var val;
@@ -6621,6 +6705,30 @@ function DbfReader(src, encodingArg) {
 
 Dbf.MAX_STRING_LEN = 254;
 
+function BufferPool() {
+  var n = 5000,
+      pool, i;
+  newPool();
+
+  function newPool() {
+    pool = new Uint8Array(n);
+    i = 0;
+  }
+
+  return {
+    reserve: function(bytes) {
+      if (i + bytes > n) newPool();
+      i += bytes;
+      return pool.subarray(i - bytes, i);
+    },
+    putBack: function(bytes) {
+      i -= bytes;
+    }
+  };
+}
+
+Dbf.bufferPool = new BufferPool();
+
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Dbf.getFieldNames(arr);
@@ -6771,18 +6879,22 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var size = 0;
-  var values = arr.map(function(rec) {
+  var buffers = arr.map(function(rec) {
     var buf = formatter(rec[name]);
-    size = Math.max(size, buf.byteLength);
+    size = Math.max(size, buf.length);
     return buf;
   });
   info.size = size;
   info.write = function(i, bin) {
-    var buf = values[i],
-        bytes = Math.min(size, buf.byteLength),
-        idx = bin.position();
-    bin.writeBuffer(buf, bytes, 0);
-    bin.position(idx + size);
+    var buf = buffers[i],
+        n = Math.min(size, buf.length),
+        dest = bin._bytes,
+        pos = bin.position(),
+        j;
+    for (j=0; j<n; j++) {
+      dest[j + pos] = buf[j];
+    }
+    bin.position(pos + size);
   };
 };
 
@@ -6875,35 +6987,46 @@ Dbf.getNumericFieldInfo = function(arr, name) {
 // Return function to convert a JS str to an ArrayBuffer containing encoded str.
 Dbf.getStringWriter = function(encoding) {
   if (encoding === 'ascii') {
-    return Dbf.getStringWriterAscii();
+    return Dbf.encodeValueAsAscii;
   } else {
     return Dbf.getStringWriterEncoded(encoding);
   }
 };
 
-// TODO: handle non-ascii chars. Option: switch to
-// utf8 encoding if non-ascii chars are found.
-Dbf.getStringWriterAscii = function() {
-  return function(val) {
-    var str = String(val),
-        n = Math.min(str.length, Dbf.MAX_STRING_LEN),
-        dest = new ArrayBuffer(n),
-        view = new Uint8ClampedArray(dest);
-    for (var i=0; i<n; i++) {
-      view[i] = str.charCodeAt(i);
+// return an array buffer or null if value contains non-ascii chars
+Dbf.encodeValueAsAscii = function(val, strict) {
+  var str = String(val),
+      n = Math.min(str.length, Dbf.MAX_STRING_LEN),
+      view = Dbf.bufferPool.reserve(n),
+      i, c;
+  for (i=0; i<n; i++) {
+    c = str.charCodeAt(i);
+    if (c > 127) {
+      if (strict) {
+        view = null;
+        i = 0; // return all bytes to pool
+        break;
+      }
+      c = '?'.charCodeAt(0);
     }
-    return dest;
-  };
+    view[i] = c;
+  }
+  Dbf.bufferPool.putBack(n-i);
+  return view ? view.subarray(0, i) : null;
 };
 
 Dbf.getStringWriterEncoded = function(encoding) {
-  var iconv = require('iconv-lite');
   return function(val) {
-    var buf = iconv.encode(val, encoding);
-    if (buf.length >= Dbf.MAX_STRING_LEN) {
-      buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+    // optimization -- large majority of strings in real-world datasets are
+    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
+    var buf = Dbf.encodeValueAsAscii(val, true);
+    if (buf === null) {
+      buf = internal.encodeString(String(val), encoding);
+      if (buf.length >= Dbf.MAX_STRING_LEN) {
+        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      }
     }
-    return BinArray.toArrayBuffer(buf);
+    return buf;
   };
 };
 
@@ -9346,14 +9469,6 @@ internal.getFilteredNodeCollection = function(layers, arcs) {
   return new NodeCollection(arcs, test);
 };
 
-internal.countArcReferences = function(layers, arcs) {
-  var counts = new Uint32Array(arcs.size());
-  layers.forEach(function(lyr) {
-    internal.countArcsInShapes(lyr.shapes, counts);
-  });
-  return counts;
-};
-
 
 
 
@@ -10365,6 +10480,36 @@ internal.buildAssignmentIndex = function(lyr, field, arcs) {
 
 
 
+api.drop = function(catalog, layers, dataset, opts) {
+  var updateArcs = false;
+
+  layers.forEach(function(lyr) {
+    var fields = lyr.data && opts.fields;
+    var allFields = fields && internal.fieldListContainsAll(fields, lyr.data.getFields());
+    var deletion = !fields && !opts.geometry || allFields && opts.geometry;
+    if (opts.geometry) {
+      updateArcs |= internal.layerHasPaths(lyr);
+      delete lyr.shapes;
+      delete lyr.geometry_type;
+    }
+    if (deletion) {
+      catalog.deleteLayer(lyr, dataset);
+    } else if (allFields) {
+      delete lyr.data;
+    } else if (fields) {
+      opts.fields.forEach(lyr.data.deleteField, lyr.data);
+    }
+  });
+
+  if (updateArcs) {
+    internal.pruneArcs(dataset);
+  }
+};
+
+
+
+
+
 var GeoJSON = {};
 GeoJSON.ID_FIELD = "FID"; // default field name of imported *JSON feature ids
 
@@ -10394,6 +10539,10 @@ GeoJSON.pathIsRing = function(coords) {
 internal.FileReader = FileReader;
 internal.BufferReader = BufferReader;
 
+internal.readFirstChars = function(reader, n) {
+  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
+};
+
 // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
 function BufferReader(src) {
   var bufSize = src.byteLength || src.length,
@@ -10407,7 +10556,7 @@ function BufferReader(src) {
   };
 
   this.toString = function(enc) {
-    return buffer().toString(enc);
+    return internal.bufferToString(buffer(), enc);
   };
 
   this.readSync = function(start, length) {
@@ -10595,7 +10744,10 @@ function GeoJSONReader(reader) {
       } else if (c == RBRACE) {
         level--;
         if (level === 0) {
-          retn = {text: buf.toString('utf8', startPos, i + 1), offset: offs + i + 1};
+          retn = {
+            text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
+            offset: offs + i + 1
+          };
           break;
         } else if (level == -1) {
           break; // error -- "}" encountered before "{"
@@ -11944,7 +12096,9 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
       // number of JS objects in memory (so larger files can be exported)
       obj = stringify(obj);
       if (ofmt == 'buffer') {
-        obj = new Buffer(obj, 'utf8');
+        obj = internal.encodeString(obj, 'utf8');
+        // obj = internal.stringToBuffer(obj);
+        // obj = new Buffer(obj, 'utf8');
       }
     }
     memo.push(obj);
@@ -13610,6 +13764,8 @@ internal.getProjection = function(str) {
 
 internal.setDatasetProjection = function(dataset, info) {
   dataset.info = dataset.info || {};
+  // Assumes that proj4 object is never mutated.
+  // TODO: assign a copy of crs (if present)
   dataset.info.crs = info.crs;
   dataset.info.prj = info.prj;
 };
@@ -14374,7 +14530,7 @@ internal.exportDelim = function(dataset, opts) {
     if (lyr.data){
       arr.push({
         // TODO: consider supporting encoding= option
-        content: internal.exportDelimTable(lyr, delim),
+        content: internal.exportDelimTable(lyr, delim, opts.encoding),
         filename: (lyr.name || 'output') + '.' + ext
       });
     }
@@ -14389,7 +14545,7 @@ internal.exportDelimTable = function(lyr, delim) {
 };
 */
 
-internal.exportDelimTable = function(lyr, delim) {
+internal.exportDelimTable = function(lyr, delim, encoding) {
   var dsv = require("d3-dsv").dsvFormat(delim);
   var fields = lyr.data.getFields();
   var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
@@ -14407,6 +14563,12 @@ internal.exportDelimTable = function(lyr, delim) {
       str += '\n' + dsv.formatRows(tmp);
       tmp = [];
     }
+  }
+  // exporting utf8 as a string, temporarily, until tests are rewritten
+  // (it will be encoded as utf-8 when written to a file)
+  //
+  if (!internal.encodingIsUtf8(encoding)) {
+    return internal.encodeString(str, encoding);
   }
   return str;
 };
@@ -14824,7 +14986,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 };
 
 internal.importJSONFile = function(reader, opts) {
-  var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
+  var str = internal.readFirstChars(reader, 1000);
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
@@ -14854,7 +15016,8 @@ internal.importJSON = function(data, opts) {
   } else if (content instanceof ArrayBuffer) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if (content.byteLength < 1e7) {
-      content = new Buffer(content).toString();
+      // content = new Buffer(content).toString();
+      content = internal.bufferToString(new Buffer(content));
     } else {
       reader = new BufferReader(content);
       content = null;
@@ -14912,7 +15075,7 @@ internal.importContent = function(obj, opts) {
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
-    dataset = internal.importDelim(data.content, opts);
+    dataset = internal.importDelim2(data, opts);
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;
@@ -15053,8 +15216,11 @@ api.importFile = function(path, opts) {
     // let ShpReader read the file (supports larger files)
     content = null;
   } else if (apparentType == 'json' && !cached) {
-    // postpone reading of JSON files, to support incremental parsing of GeoJSON
+    // postpone reading of JSON files, to support incremental parsing
     content = null;
+  } else if (apparentType == 'text' && !cached) {
+    content = cli.readFile(path); // read from buffer, to support larger files
+    // content = null // read incrementally from file, to support largest files
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
   } else { // assuming text file
@@ -15253,11 +15419,14 @@ internal.createParallel = function(y, xmin, xmax, precision) {
 
 
 
-internal.printInfo = function(layers) {
+internal.printInfo = function(layers, targetLayers) {
   var str = '';
   layers.forEach(function(o, i) {
-    if (i > 0) str += '\n';
-    str += '\nLayer ' + (i + 1) + '\n' + internal.getLayerInfo(o.layer, o.dataset);
+    var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
+    var targStr = isTarget ? ' *' : '';
+    str += '\n';
+    str += 'Layer ' + (i + 1) + targStr + '\n' + internal.getLayerInfo(o.layer, o.dataset);
+    str += '\n';
   });
   message(str);
 };
@@ -15592,30 +15761,113 @@ internal.selectFeatures = function(lyr, arcs, opts) {
 
 
 
-// Convert a string containing delimited text data into a dataset object
-internal.importDelim = function(str, opts) {
-  var delim = internal.guessDelimiter(str);
-  return {
-    layers: [{
-      data: internal.importDelimTable(str, delim, opts)
-    }],
-    info: {
-      input_delimiter: delim
+// TODO: support other encodings than utf-8
+// (Need to update readDelimLines() to work with all encodings)
+internal.readDelimRecords = function(reader, delim, encoding) {
+  var dsv = require("d3-dsv").dsvFormat(delim),
+      records = [],
+      retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
+      header = internal.trimBOM(retn ? retn.text : '');
+  // read in batches (faster than line-by-line)
+  while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
+    records.push.apply(records, dsv.parse(header + retn.text));
+  }
+  return records;
+};
+
+internal.readDelimLines = function(reader, offs, delim, encoding, lines) {
+  var CR = 13,
+      LF = 10,
+      DQUOTE = 34,
+      DELIM = delim.charCodeAt(0),
+      inQuotedField = false,
+      buf = reader.readSync(offs),
+      eol = false,
+      linesLeft = lines > 0 ? lines : 1,
+      i, n, c, prev;
+
+  for (i=0, n=buf.length; i<n; i++) {
+    c = buf[i];
+    if (eol) {
+      if (prev == CR && c == LF) {
+        // consume LF
+      } else {
+        eol = false;
+        linesLeft--;
+      }
+      if (linesLeft <= 0) break;
     }
+    if (c == DQUOTE) {
+      // according to spec, double quotes either enclose a field or are
+      // paired inside a quoted field
+      // https://tools.ietf.org/html/rfc4180
+      // the following handles both cases (no error checking though)
+      inQuotedField = !inQuotedField;
+    } else if (!inQuotedField && (c == CR || c == LF)) {
+      eol = true;
+    }
+
+    if (i == n-1) {
+      buf = reader.expandBuffer().readSync(offs);
+      n = buf.length;
+    }
+    prev = c;
+  }
+  return i === 0 ? null : {
+    offset: i + offs,
+    text: internal.bufferToString(buf, encoding, 0, i)
   };
 };
 
-internal.importDelimTable = function(str, delim, opts) {
-  var records = require("d3-dsv").dsvFormat(delim).parse(str);
-  var table;
+
+
+
+
+// Convert a string containing delimited text data into a dataset object
+internal.importDelim = function(str, opts) {
+  return internal.importDelim2({content: str}, opts);
+};
+
+internal.importDelim2 = function(data, opts) {
+  // TODO: remove duplication with importJSON()
+  var content = data.content,
+      reader, records, delimiter, table;
+
+  if (!content) {
+    reader = new FileReader(data.filename);
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
+    // Web API may import as ArrayBuffer, to support larger files
+    reader = new BufferReader(content);
+    content = null;
+  } else if (!utils.isString(content)) {
+    error("Unexpected object type");
+  }
+
+  if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
+    // Currently, incremental reading assumes ascii-compatible data.
+    // Incompatible encodings must be parsed as strings.
+    content = reader.toString(opts.encoding);
+    reader = null;
+  }
+
+  if (reader) {
+    delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
+    records = internal.readDelimRecords(reader, delimiter, opts.encoding);
+  } else {
+    delimiter = internal.guessDelimiter(content);
+    records = require("d3-dsv").dsvFormat(delimiter).parse(content);
+    delete records.columns; // added by d3-dsv
+  }
   if (records.length === 0) {
     stop("Unable to read any data records");
   }
-  delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts);
   table = new DataTable(records);
   internal.deleteFields(table, internal.isInvalidFieldName);
- return table;
+  return {
+    layers: [{data: table}],
+    info: {input_delimiter: delimiter}
+  };
 };
 
 internal.supportedDelimiters = ['|', '\t', ',', ';'];
@@ -15768,7 +16020,7 @@ utils.parseNumber = function(raw) {
 
 // TODO: use an actual index instead of linear search
 function PointIndex(shapes, opts) {
-  var buf = opts.buffer >= 0 ? opts.buffer : 1e-3;
+  var buf = utils.isNonNegNumber(opts.buffer) ? opts.buffer : 1e-3;
   var minDistSq, minId, target;
   this.findNearestPointFeature = function(shape) {
     minDistSq = Infinity;
@@ -15794,14 +16046,14 @@ function PointIndex(shapes, opts) {
 
 
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
-  // TODO: copy points that can't be joined to a new layer
+  // TODO: option to copy points that can't be joined to a new layer
   var joinFunction = internal.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
   internal.prepJoinLayers(targetLyr, pointLyr);
   return internal.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
 };
 
 api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
-  var joinFunction = internal.getPointToPolygonFunction(targetLyr, polygonLyr, arcs, opts);
+  var joinFunction = internal.getPointToPolygonsFunction(targetLyr, polygonLyr, arcs, opts);
   internal.prepJoinLayers(targetLyr, polygonLyr);
   return internal.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 };
@@ -15833,26 +16085,45 @@ internal.getPointToPointFunction = function(targetLyr, srcLyr, opts) {
 };
 
 internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
-  var joinFunction = internal.getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts);
+  // Build a reverse lookup table for mapping polygon ids to point ids.
+  var joinFunction = internal.getPointToPolygonsFunction(pointLyr, polygonLyr, arcs, opts);
   var index = [];
-  var hit, polygonId;
-  for (var i=0, n=pointLyr.shapes.length; i<n; i++) {
-    hit = joinFunction(i);
-    if (hit) {
-      polygonId = hit[0]; // TODO: handle multiple hits
+  var hits, polygonId;
+  pointLyr.shapes.forEach(function(shp, pointId) {
+    var polygonIds = joinFunction(pointId);
+    var n = polygonIds ? polygonIds.length : 0;
+    var polygonId;
+    for (var i=0; i<n; i++) {
+      polygonId = polygonIds[i];
       if (polygonId in index) {
-        index[polygonId].push(i);
+        index[polygonId].push(pointId);
       } else {
-        index[polygonId] = [i];
+        index[polygonId] = [pointId];
       }
     }
-  }
-  // @i id of a polygon feature
-  return function(i) {
-    return index[i] || null;
+  });
+
+  return function(polygonId) {
+    return index[polygonId] || null;
   };
 };
 
+
+// Returned function gets ids of all polygons that intersect a point (or the first
+//   point of multipoint features). TODO: handle multipoint features properly.
+internal.getPointToPolygonsFunction = function(pointLyr, polygonLyr, arcs, opts) {
+  var index = new PathIndex(polygonLyr.shapes, arcs),
+      points = pointLyr.shapes;
+
+  return function(pointId) {
+    var shp = points[pointId],
+        polygonIds = shp ? index.findEnclosingShapes(shp[0]) : [];
+    return polygonIds.length > 0 ? polygonIds : null;
+  };
+};
+
+
+// TODO: remove (replaced by getPointToPolygonsFunction())
 internal.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) {
   var index = new PathIndex(polygonLyr.shapes, arcs),
       points = pointLyr.shapes;
@@ -16214,21 +16485,27 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   }
   return function(i) {
     var destRec = destRecords[i],
-        val = destRec ? destRec[destKey] : null;
-    return destRec && val in index ? index[val] : null;
+        val = destRec ? destRec[destKey] : null,
+        retn = null;
+    if (destRec && val in index) {
+      retn = index[val];
+      if (!Array.isArray(retn)) retn = [retn];
+    }
+    return retn;
   };
 };
-
 
 internal.createTableIndex = function(records, f) {
   var index = {}, rec, key;
   for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];
     key = rec[f];
-    if (key in index) {
+    if (key in index === false) {
+      index[key] = i;
+    } else if (Array.isArray(index[key])) {
       index[key].push(i);
     } else {
-      index[key] = [i];
+      index[key] = [index[key], i];
     }
   }
   return index;
@@ -16568,13 +16845,66 @@ api.pointGrid = function(dataset, opts) {
   } else {
     bbox = [-180, -90, 180, 90];
   }
-  return internal.createPointGrid(bbox, opts);
+  return internal.createPointGridLayer(internal.createPointGrid(bbox, opts), opts);
+};
+
+api.polygonGrid = function(dataset, opts) {
+  var bbox, gridLyr;
+  if (opts.bbox) {
+    bbox = opts.bbox;
+  } else if (dataset) {
+    bbox = internal.getDatasetBounds(dataset).toArray();
+  } else {
+    bbox = [-180, -90, 180, 90];
+  }
+  return internal.createPolygonGridDataset(internal.createPointGrid(bbox, opts), opts);
+};
+
+internal.createPointGridLayer = function(rows, opts) {
+  var points = [], lyr;
+  rows.forEach(function(row, rowId) {
+    for (var i=0; i<row.length; i++) {
+      points.push([row[i]]);
+    }
+  });
+  lyr = {
+    geometry_type: 'point',
+    shapes: points
+  };
+  if (opts.name) lyr.name = opts.name;
+  return lyr;
+};
+
+internal.createPolygonGridDataset = function(rows, opts) {
+  var rings = [], rowArr;
+  var col, row, tl, br, ring;
+  for (row = 0; row < rows.length - 1; row++) {
+    rowArr = rows[row];
+    for (col = 0; col < rowArr.length - 1; col++) {
+      bl = rows[row][col];
+      tr = rows[row + 1][col + 1];
+      ring = [[bl[0], bl[1]], [bl[0], tr[1]], [tr[0], tr[1]], [tr[0], bl[1]], [bl[0], bl[1]]];
+      rings.push(ring);
+    }
+  }
+  var geojson = {
+    type: "GeometryCollection",
+    geometries: rings.map(function(ring){
+      return {
+        type: 'Polygon',
+        coordinates: [ring]
+      };
+    })
+  };
+  var dataset = internal.importGeoJSON(geojson, {});
+  if (opts.name) dataset.layers[0].name = opts.name;
+  return dataset;
 };
 
 internal.createPointGrid = function(bbox, opts) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
-      points = [],
+      rowsArr = [], rowArr,
       cols, rows, dx, dy, x0, y0, x, y;
 
   if (opts.interval > 0) {
@@ -16600,16 +16930,14 @@ internal.createPointGrid = function(bbox, opts) {
   y = y0;
   while (y <= bbox[3]) {
     x = x0;
+    rowsArr.push(rowArr = []);
     while (x <= bbox[2]) {
-      points.push([[x, y]]);
+      rowArr.push([x, y]);
       x += dx;
     }
     y += dy;
   }
-  return {
-    geometry_type: 'point',
-    shapes: points
-  };
+  return rowsArr;
 };
 
 
@@ -17039,9 +17367,10 @@ api.shape = function(opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var bounds, coords;
+  var bounds, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
+    sourceInfo = source.dataset.info;
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
   }
@@ -17054,6 +17383,9 @@ api.rectangle = function(source, opts) {
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
+  if (sourceInfo) {
+    internal.setDatasetProjection(dataset, sourceInfo);
+  }
   return dataset;
 };
 
@@ -17772,12 +18104,14 @@ api.simplify = function(dataset, opts) {
 
   internal.simplifyPaths(arcs, opts);
 
-  if (opts.percentage) {
+  if (utils.isNonNegNumber(opts.percentage)) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
-  } else if (utils.isNumber(opts.interval)) {
+  } else if (utils.isNonNegNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
-  } else if (opts.resolution) {
+  } else if (opts.resolution > 0) {
     arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
+  } else {
+    stop("Missing a simplification amount");
   }
 
   if (opts.keep_shapes) {
@@ -18236,9 +18570,11 @@ api.runCommand = function(cmd, catalog, cb) {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+
     } else if (name == 'proj') {
       // accepts multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
+
     } else {
       targets = catalog.findCommandTargets(opts.target);
       if (targets.length == 1) {
@@ -18258,8 +18594,8 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle')) {
-        throw new UserError("Missing a -i command");
+      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'polygon-grid')) {
+        throw new UserError("No data is available");
       }
     }
 
@@ -18297,6 +18633,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
+    } else if (name == 'drop') {
+      api.drop(catalog, targetLayers, targetDataset, opts);
+
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
@@ -18333,7 +18672,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'info') {
-      internal.printInfo(catalog.getLayers());
+      internal.printInfo(catalog.getLayers(), targetLayers);
 
     } else if (name == 'inspect') {
       internal.applyCommand(api.inspect, targetLayers, arcs, opts);
@@ -18367,6 +18706,10 @@ api.runCommand = function(cmd, catalog, cb) {
       if (!targetDataset) {
         catalog.addDataset({layers: outputLayers});
       }
+
+    } else if (name == 'polygon-grid') {
+      catalog.addDataset(api.polygonGrid(targetDataset, opts));
+
     } else if (name == 'points') {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
@@ -19056,6 +19399,8 @@ internal.guessInputFileType = function(file) {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';
+  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt') {
+    type = 'text';
   }
   return type;
 };
@@ -19600,6 +19945,19 @@ internal.getOptionParser = function() {
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
+  parser.command("drop")
+    .describe("delete the target layer(s) or items within the target layer(s)")
+    .option("geometry", {
+      describe: "delete all geometry from the target layer(s)",
+      type: "flag"
+    })
+    .option("fields", {
+      type: "strings",
+      describe: "delete a list of attribute data fields, e.g. 'id,name' '*'"
+    })
+    .option("target", targetOpt);
+
+
   parser.command("each")
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +
@@ -19829,6 +20187,29 @@ internal.getOptionParser = function() {
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
+
+  parser.command("polygon-grid")
+    // .describe("create a rectangular grid of cells")
+    .validate(validateGridOpts)
+    .option("-", {
+      label: "<cols,rows>",
+      describe: "size of the grid, e.g. -point-grid 100,100"
+    })
+    .option('interval', {
+      describe: 'distance between adjacent points, in source units',
+      type: 'number'
+    })
+    .option("cols", {
+      type: "integer"
+    })
+    .option("rows", {
+      type: "integer"
+    })
+    .option('bbox', {
+      type: "bbox",
+      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
+    })
+    .option("name", nameOpt);
 
   parser.command("proj")
     .describe("project your data (using Proj.4)")
@@ -20402,7 +20783,7 @@ internal.getLayerMatch = function(pattern) {
 //   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
-      target;
+      defaultTarget = null; // saved default command target {layers:[], dataset}
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -20415,26 +20796,21 @@ function Catalog() {
 
   // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
-    var targ = this.getDefaultTarget(),
-        other;
+    var targ = this.getDefaultTarget();
 
     // remove layer from its dataset
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
-
     if (dataset.layers.length === 0) {
       this.removeDataset(dataset);
     }
-
     if (this.isEmpty()) {
-      target = null;
+      defaultTarget = null;
     } else if (targ.layers[0] == lyr) {
       // deleting first target layer (selected in gui) -- switch to some other layer
-      other = this.findAnotherLayer(lyr);
-      this.setDefaultTarget([other.layer], other.dataset);
+      defaultTarget = null;
     } else if (targ.layers.indexOf(lyr) > -1) {
       // deleted layer is targeted -- update target
       targ.layers.splice(targ.layers.indexOf(lyr), 1);
-      this.setDefaultTarget(targ.layers, targ.dataset);
     } else {
       // deleted layer is not a targeted layer, target not updated
     }
@@ -20451,15 +20827,17 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern, type) {
+    var targ;
     if (pattern) {
       return internal.findCommandTargets(this, pattern, type);
     }
-    return target ? [target] : [];
+    targ = this.getDefaultTarget();
+    return targ ? [targ] : [];
   };
 
   this.removeDataset = function(dataset) {
-    if (target && target.dataset == dataset) {
-      target = null;
+    if (defaultTarget && defaultTarget.dataset == dataset) {
+      defaultTarget = null;
     }
     datasets = datasets.filter(function(d) {
       return d != dataset;
@@ -20495,11 +20873,11 @@ function Catalog() {
     return idx > -1 ? layers[(idx - 1 + layers.length) % layers.length] : null;
   };
 
-  this.findAnotherLayer = function(target) {
+  this.findAnotherLayer = function(lyr) {
     var layers = this.getLayers(),
         found = null;
     if (layers.length > 0) {
-      found = layers[0].layer == target ? layers[1] : layers[0];
+      found = layers[0].layer == lyr ? layers[1] : layers[0];
     }
     return found;
   };
@@ -20508,13 +20886,20 @@ function Catalog() {
     return datasets.length === 0;
   };
 
-  this.getDefaultTarget = function() {return target || null;};
+  this.getDefaultTarget = function() {
+    var tmp;
+    if (!defaultTarget && !this.isEmpty()) {
+      tmp = this.findAnotherLayer(null);
+      defaultTarget = {dataset: tmp.dataset, layers: [tmp.layer]};
+    }
+    return defaultTarget;
+  };
 
   this.setDefaultTarget = function(layers, dataset) {
     if (datasets.indexOf(dataset) == -1) {
       datasets.push(dataset);
     }
-    target = {
+    defaultTarget = {
       layers: layers,
       dataset: dataset
     };
@@ -20816,7 +21201,7 @@ cli.readFile = function(fname, encoding, cache) {
     content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
-    content = internal.decodeString(content, encoding);
+    content = internal.trimBOM(internal.decodeString(content, encoding));
   }
   return content;
 };
