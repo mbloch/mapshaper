@@ -73,9 +73,11 @@ api.runCommand = function(cmd, catalog, cb) {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+
     } else if (name == 'proj') {
       // accepts multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
+
     } else {
       targets = catalog.findCommandTargets(opts.target);
       if (targets.length == 1) {
@@ -173,7 +175,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'info') {
-      internal.printInfo(catalog.getLayers());
+      internal.printInfo(catalog.getLayers(), targetLayers);
 
     } else if (name == 'inspect') {
       internal.applyCommand(api.inspect, targetLayers, arcs, opts);

@@ -3,7 +3,6 @@ var assert = require('assert'),
 
 describe('mapshaper-drop.js', function () {
 
-
   describe('-drop removes target layer(s)', function () {
     it('removes one of two layers', function (done) {
       var a = 'a,b,c,d\n1,2,3,4\n';

@@ -5,11 +5,14 @@ mapshaper-nodes
 mapshaper-projections
 */
 
-internal.printInfo = function(layers) {
+internal.printInfo = function(layers, targetLayers) {
   var str = '';
   layers.forEach(function(o, i) {
-    if (i > 0) str += '\n';
-    str += '\nLayer ' + (i + 1) + '\n' + internal.getLayerInfo(o.layer, o.dataset);
+    var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
+    var targStr = isTarget ? ' *' : '';
+    str += '\n';
+    str += 'Layer ' + (i + 1) + targStr + '\n' + internal.getLayerInfo(o.layer, o.dataset);
+    str += '\n';
   });
   message(str);
 };
