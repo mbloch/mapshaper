@@ -1,5 +1,9 @@
-v0.4.50 (unreleased)
+v0.4.50
 * Added support for reading CSV files larger than 250MB.
+* Added support for reading and writing CSV files using other encodings than UTF-8 or ascii.
+* Added -drop command for dropping loaded data layers and for deleting geometry and/or attribute data fields from targeted layers.
+* The [-info] command now shows an asterisk next to currently targetted layers.
+* Bug fixes
 
 v0.4.49
 * Added -polygons gap-tolerance= option, for closing "undershoots" (tiny gaps between two polylines).
