@@ -532,8 +532,8 @@ function isUndefined(arg) {
 }
 
 },{}],5:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Multibyte codec. In this scheme, a character is represented by 1 or more bytes.
 // Our codec supports UTF-16 surrogates, extensions for GB18030 and unicode sequences.
@@ -1088,9 +1088,8 @@ function findIdx(table, val) {
 }
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],6:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Description of supported double byte encodings and aliases.
 // Tables are not require()-d until they are needed to speed up library load.
@@ -1130,7 +1129,6 @@ module.exports = {
     //
     // Overall, it seems that it's a mess :( http://www8.plala.or.jp/tkubota1/unicode-symbols-map2.html
 
-
     'shiftjis': {
         type: '_dbcs',
         table: function() { return require('./tables/shiftjis.json') },
@@ -1141,8 +1139,10 @@ module.exports = {
     'mskanji': 'shiftjis',
     'sjis': 'shiftjis',
     'windows31j': 'shiftjis',
+    'ms31j': 'shiftjis',
     'xsjis': 'shiftjis',
     'windows932': 'shiftjis',
+    'ms932': 'shiftjis',
     '932': 'shiftjis',
     'cp932': 'shiftjis',
 
@@ -1156,8 +1156,10 @@ module.exports = {
     // TODO: IBM CCSID 942 = CP932, but F0-F9 custom chars and other char changes.
     // TODO: IBM CCSID 943 = Shift_JIS = CP932 with original Shift_JIS lower 128 chars.
 
+
     // == Chinese/GBK ==========================================================
     // http://en.wikipedia.org/wiki/GBK
+    // We mostly implement W3C recommendation: https://www.w3.org/TR/encoding/#gbk-encoder
 
     // Oldest GB2312 (1981, ~7600 chars) is a subset of CP936
     'gb2312': 'cp936',
@@ -1166,11 +1168,10 @@ module.exports = {
     'csgb2312': 'cp936',
     'csiso58gb231280': 'cp936',
     'euccn': 'cp936',
-    'isoir58': 'gbk',
 
     // Microsoft's CP936 is a subset and approximation of GBK.
-    // TODO: Euro = 0x80 in cp936, but not in GBK (where it's valid but undefined)
     'windows936': 'cp936',
+    'ms936': 'cp936',
     '936': 'cp936',
     'cp936': {
         type: '_dbcs',
@@ -1183,24 +1184,28 @@ module.exports = {
         table: function() { return require('./tables/cp936.json').concat(require('./tables/gbk-added.json')) },
     },
     'xgbk': 'gbk',
+    'isoir58': 'gbk',
 
     // GB18030 is an algorithmic extension of GBK.
+    // Main source: https://www.w3.org/TR/encoding/#gbk-encoder
+    // http://icu-project.org/docs/papers/gb18030.html
+    // http://source.icu-project.org/repos/icu/data/trunk/charset/data/xml/gb-18030-2000.xml
+    // http://www.khngai.com/chinese/charmap/tblgbk.php?page=0
     'gb18030': {
         type: '_dbcs',
         table: function() { return require('./tables/cp936.json').concat(require('./tables/gbk-added.json')) },
         gb18030: function() { return require('./tables/gb18030-ranges.json') },
+        encodeSkipVals: [0x80],
+        encodeAdd: {'€': 0xA2E3},
     },
 
     'chinese': 'gb18030',
 
-    // TODO: Support GB18030 (~27000 chars + whole unicode mapping, cp54936)
-    // http://icu-project.org/docs/papers/gb18030.html
-    // http://source.icu-project.org/repos/icu/data/trunk/charset/data/xml/gb-18030-2000.xml
-    // http://www.khngai.com/chinese/charmap/tblgbk.php?page=0
 
     // == Korean ===============================================================
     // EUC-KR, KS_C_5601 and KS X 1001 are exactly the same.
     'windows949': 'cp949',
+    'ms949': 'cp949',
     '949': 'cp949',
     'cp949': {
         type: '_dbcs',
@@ -1241,6 +1246,7 @@ module.exports = {
     // Unicode mapping (http://www.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/OTHER/BIG5.TXT) is said to be wrong.
 
     'windows950': 'cp950',
+    'ms950': 'cp950',
     '950': 'cp950',
     'cp950': {
         type: '_dbcs',
@@ -1258,11 +1264,10 @@ module.exports = {
     'cnbig5': 'big5hkscs',
     'csbig5': 'big5hkscs',
     'xxbig5': 'big5hkscs',
-
 };
 
 },{"./tables/big5-added.json":12,"./tables/cp936.json":13,"./tables/cp949.json":14,"./tables/cp950.json":15,"./tables/eucjp.json":16,"./tables/gb18030-ranges.json":17,"./tables/gbk-added.json":18,"./tables/shiftjis.json":19}],7:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Update this array if you add/rename/remove files in this directory.
 // We support Browserify by skipping automatic module discovery and requiring modules directly.
@@ -1286,8 +1291,8 @@ for (var i = 0; i < modules.length; i++) {
 }
 
 },{"./dbcs-codec":5,"./dbcs-data":6,"./internal":8,"./sbcs-codec":9,"./sbcs-data":11,"./sbcs-data-generated":10,"./utf16":20,"./utf7":21}],8:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Export Node.js internal encodings.
 
@@ -1321,7 +1326,7 @@ function InternalCodec(codecOptions, iconv) {
         this.encoder = InternalEncoderCesu8;
 
         // Add decoder for versions of Node not supporting CESU-8
-        if (new Buffer("eda080", 'hex').toString().length == 3) {
+        if (new Buffer('eda0bdedb2a9', 'hex').toString() !== '💩') {
             this.decoder = InternalDecoderCesu8;
             this.defaultCharUnicode = iconv.defaultCharUnicode;
         }
@@ -1475,10 +1480,9 @@ InternalDecoderCesu8.prototype.end = function() {
     return res;
 }
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer","string_decoder":55}],9:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // Single-byte codec. Needs a 'chars' string parameter that contains 256 or 128 chars that
 // correspond to encoded bytes (if 128 - then lower half is ASCII). 
@@ -1551,9 +1555,8 @@ SBCSDecoder.prototype.write = function(buf) {
 SBCSDecoder.prototype.end = function() {
 }
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],10:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Generated data for sbcs codec. Don't edit manually. Regenerate using generation/gen-sbcs.js script.
 module.exports = {
@@ -1646,7 +1649,7 @@ module.exports = {
   "cp1254": "windows1254",
   "windows1255": {
     "type": "_sbcs",
-    "chars": "€�‚ƒ„…†‡ˆ‰�‹�����‘’“”•–—˜™�›���� ¡¢£₪¥¦§¨©×«¬­®¯°±²³´µ¶·¸¹÷»¼½¾¿ְֱֲֳִֵֶַָֹ�ֻּֽ־ֿ׀ׁׂ׃װױײ׳״�������אבגדהוזחטיךכלםמןנסעףפץצקרשת��‎‏�"
+    "chars": "€�‚ƒ„…†‡ˆ‰�‹�����‘’“”•–—˜™�›���� ¡¢£₪¥¦§¨©×«¬­®¯°±²³´µ¶·¸¹÷»¼½¾¿ְֱֲֳִֵֶַָֹֺֻּֽ־ֿ׀ׁׂ׃װױײ׳״�������אבגדהוזחטיךכלםמןנסעףפץצקרשת��‎‏�"
   },
   "win1255": "windows1255",
   "cp1255": "windows1255",
@@ -2005,7 +2008,7 @@ module.exports = {
   }
 }
 },{}],11:[function(require,module,exports){
-"use strict"
+"use strict";
 
 // Manually added data to be used by sbcs codec in addition to generated one.
 
@@ -3390,8 +3393,10 @@ module.exports=[
 ]
 
 },{}],20:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
+
+// Note: UTF16-LE (or UCS2) codec is Node.js native. See encodings/internal.js
 
 // == UTF16-BE codec. ==========================================================
 
@@ -3566,10 +3571,9 @@ function detectEncoding(buf, defaultEncoding) {
 
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],21:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // UTF-7 codec, according to https://tools.ietf.org/html/rfc2152
 // See also below a UTF-7-IMAP codec, according to http://tools.ietf.org/html/rfc3501#section-5.1.3
@@ -3859,9 +3863,8 @@ Utf7IMAPDecoder.prototype.end = function() {
 
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer"}],22:[function(require,module,exports){
-"use strict"
+"use strict";
 
 var BOMChar = '\uFEFF';
 
@@ -3915,8 +3918,8 @@ StripBOMWrapper.prototype.end = function() {
 
 
 },{}],23:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
+var Buffer = require("buffer").Buffer;
 
 // == Extend Node primitives to use iconv-lite =================================
 
@@ -4131,12 +4134,11 @@ module.exports = function (iconv) {
     }
 }
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer","stream":54}],24:[function(require,module,exports){
-(function (Buffer){
-"use strict"
+"use strict";
 
-var Transform = require("stream").Transform;
+var Buffer = require("buffer").Buffer,
+    Transform = require("stream").Transform;
 
 
 // == Exports ==================================================================
@@ -4255,7 +4257,6 @@ IconvLiteDecoderStream.prototype.collect = function(cb) {
 }
 
 
-}).call(this,require("buffer").Buffer)
 },{"buffer":"buffer","stream":54}],25:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -9350,17 +9351,30 @@ function numberIsNaN (obj) {
 }
 
 },{"base64-js":1,"ieee754":25}],"d3-dsv":[function(require,module,exports){
-// https://d3js.org/d3-dsv/ Version 1.0.5. Copyright 2017 Mike Bostock.
+// https://d3js.org/d3-dsv/ Version 1.0.7. Copyright 2017 Mike Bostock.
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
 	typeof define === 'function' && define.amd ? define(['exports'], factory) :
 	(factory((global.d3 = global.d3 || {})));
 }(this, (function (exports) { 'use strict';
 
+var EOL = {};
+var EOF = {};
+var QUOTE = 34;
+var NEWLINE = 10;
+var RETURN = 13;
+
 function objectConverter(columns) {
   return new Function("d", "return {" + columns.map(function(name, i) {
     return JSON.stringify(name) + ": d[" + i + "]";
   }).join(",") + "}");
+}
+
+function customConverter(columns, f) {
+  var object = objectConverter(columns);
+  return function(row, i) {
+    return f(object(row), i, columns);
+  };
 }
 
 // Compute unique columns in order of discovery.
@@ -9381,7 +9395,7 @@ function inferColumns(rows) {
 
 var dsv = function(delimiter) {
   var reFormat = new RegExp("[\"" + delimiter + "\n\r]"),
-      delimiterCode = delimiter.charCodeAt(0);
+      DELIMITER = delimiter.charCodeAt(0);
 
   function parse(text, f) {
     var convert, columns, rows = parseRows(text, function(row, i) {
@@ -9393,62 +9407,49 @@ var dsv = function(delimiter) {
   }
 
   function parseRows(text, f) {
-    var EOL = {}, // sentinel value for end-of-line
-        EOF = {}, // sentinel value for end-of-file
-        rows = [], // output rows
+    var rows = [], // output rows
         N = text.length,
         I = 0, // current character index
-        n = 0, // the current line number
-        t, // the current token
-        eol; // is the current token followed by EOL?
+        n = 0, // current line number
+        t, // current token
+        eof = N <= 0, // current token followed by EOF?
+        eol = false; // current token followed by EOL?
+
+    // Strip the trailing newline.
+    if (text.charCodeAt(N - 1) === NEWLINE) --N;
+    if (text.charCodeAt(N - 1) === RETURN) --N;
 
     function token() {
-      if (I >= N) return EOF; // special case: end of file
-      if (eol) return eol = false, EOL; // special case: end of line
+      if (eof) return EOF;
+      if (eol) return eol = false, EOL;
 
-      // special case: quotes
-      var j = I, c;
-      if (text.charCodeAt(j) === 34) {
-        var i = j;
-        while (i++ < N) {
-          if (text.charCodeAt(i) === 34) {
-            if (text.charCodeAt(i + 1) !== 34) break;
-            ++i;
-          }
-        }
-        I = i + 2;
-        c = text.charCodeAt(i + 1);
-        if (c === 13) {
-          eol = true;
-          if (text.charCodeAt(i + 2) === 10) ++I;
-        } else if (c === 10) {
-          eol = true;
-        }
-        return text.slice(j + 1, i).replace(/""/g, "\"");
+      // Unescape quotes.
+      var i, j = I, c;
+      if (text.charCodeAt(j) === QUOTE) {
+        while (I++ < N && text.charCodeAt(I) !== QUOTE || text.charCodeAt(++I) === QUOTE);
+        if ((i = I) >= N) eof = true;
+        else if ((c = text.charCodeAt(I++)) === NEWLINE) eol = true;
+        else if (c === RETURN) { eol = true; if (text.charCodeAt(I) === NEWLINE) ++I; }
+        return text.slice(j + 1, i - 1).replace(/""/g, "\"");
       }
 
-      // common case: find next delimiter or newline
+      // Find next delimiter or newline.
       while (I < N) {
-        var k = 1;
-        c = text.charCodeAt(I++);
-        if (c === 10) eol = true; // \n
-        else if (c === 13) { eol = true; if (text.charCodeAt(I) === 10) ++I, ++k; } // \r|\r\n
-        else if (c !== delimiterCode) continue;
-        return text.slice(j, I - k);
+        if ((c = text.charCodeAt(i = I++)) === NEWLINE) eol = true;
+        else if (c === RETURN) { eol = true; if (text.charCodeAt(I) === NEWLINE) ++I; }
+        else if (c !== DELIMITER) continue;
+        return text.slice(j, i);
       }
 
-      // special case: last token before EOF
-      return text.slice(j);
+      // Return last token before EOF.
+      return eof = true, text.slice(j, N);
     }
 
     while ((t = token()) !== EOF) {
-      var a = [];
-      while (t !== EOL && t !== EOF) {
-        a.push(t);
-        t = token();
-      }
-      if (f && (a = f(a, n++)) == null) continue;
-      rows.push(a);
+      var row = [];
+      while (t !== EOL && t !== EOF) row.push(t), t = token();
+      if (f && (row = f(row, n++)) == null) continue;
+      rows.push(row);
     }
 
     return rows;
@@ -9473,7 +9474,7 @@ var dsv = function(delimiter) {
 
   function formatValue(text) {
     return text == null ? ""
-        : reFormat.test(text += "") ? "\"" + text.replace(/\"/g, "\"\"") + "\""
+        : reFormat.test(text += "") ? "\"" + text.replace(/"/g, "\"\"") + "\""
         : text;
   }
 
@@ -9516,10 +9517,14 @@ Object.defineProperty(exports, '__esModule', { value: true });
 },{}],"fs":[function(require,module,exports){
 arguments[4][2][0].apply(exports,arguments)
 },{"dup":2}],"iconv-lite":[function(require,module,exports){
-(function (process,Buffer){
-"use strict"
+(function (process){
+"use strict";
 
-var bomHandling = require('./bom-handling'),
+// Some environments don't have global Buffer (e.g. React Native).
+// Solution would be installing npm modules "buffer" and "stream" explicitly.
+var Buffer = require("buffer").Buffer;
+
+var bomHandling = require("./bom-handling"),
     iconv = module.exports;
 
 // All codecs and aliases are kept here, keyed by encoding name/alias.
@@ -9658,8 +9663,11 @@ if (nodeVer) {
     require("./extend-node")(iconv);
 }
 
+if ("Ā" != "\u0100") {
+    console.error("iconv-lite warning: javascript files use encoding different from utf-8. See https://github.com/ashtuchkin/iconv-lite/wiki/Javascript-source-file-encodings for more info.");
+}
 
-}).call(this,require('_process'),require("buffer").Buffer)
+}).call(this,require('_process'))
 },{"../encodings":7,"./bom-handling":22,"./extend-node":23,"./streams":24,"_process":30,"buffer":"buffer"}],"mproj":[function(require,module,exports){
 (function (__filename){
 (function(){
