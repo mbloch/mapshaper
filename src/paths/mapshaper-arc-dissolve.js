@@ -148,11 +148,3 @@ internal.getFilteredNodeCollection = function(layers, arcs) {
       };
   return new NodeCollection(arcs, test);
 };
-
-internal.countArcReferences = function(layers, arcs) {
-  var counts = new Uint32Array(arcs.size());
-  layers.forEach(function(lyr) {
-    internal.countArcsInShapes(lyr.shapes, counts);
-  });
-  return counts;
-};

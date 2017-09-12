@@ -77,6 +77,16 @@ internal.countArcsInShapes = function(shapes, counts) {
   });
 };
 
+// Count arcs in a collection of layers
+internal.countArcReferences = function(layers, arcs) {
+  var counts = new Uint32Array(arcs.size());
+  layers.forEach(function(lyr) {
+    internal.countArcsInShapes(lyr.shapes, counts);
+  });
+  return counts;
+};
+
+
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 internal.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],
@@ -379,3 +389,6 @@ internal.quantizeArcs = function(arcs, quanta) {
     return inv.transform(Math.round(p[0]), Math.round(p[1]));
   });
 };
+
+
+

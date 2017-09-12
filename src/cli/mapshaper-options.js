@@ -292,6 +292,23 @@ internal.getOptionParser = function() {
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
+  parser.command("drop")
+    .describe("delete the target layer(s) or items within the target layer(s)")
+    .option("geometry", {
+      describe: "delete all geometry from the target layer(s)",
+      type: "flag"
+    })
+    .option("properties", {
+      describe: "delete all attribute data from the target layer(s)",
+      type: "flag"
+    })
+    .option("fields", {
+      type: "strings",
+      describe: "delete a list of fields (comma-sep.), e.g. 'id,name'"
+    })
+    .option("target", targetOpt);
+
+
   parser.command("each")
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +

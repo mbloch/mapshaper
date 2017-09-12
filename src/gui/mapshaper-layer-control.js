@@ -114,9 +114,12 @@ function LayerControl(model, map) {
 
     // init delete button
     entry.findChild('img.close-btn').on('mouseup', function(e) {
-        e.stopPropagation();
-        deleteLayer(lyr, dataset);
-      });
+      e.stopPropagation();
+      if (lyr == map.getReferenceLayer()) {
+        clearPin();
+      }
+      model.deleteLayer(lyr, dataset);
+    });
 
     if (pinnable) {
       if (map.getReferenceLayer() == lyr) {
@@ -153,29 +156,6 @@ function LayerControl(model, map) {
       }
     });
     return entry;
-  }
-
-  function deleteLayer(lyr, dataset) {
-    var active, flags;
-    if (lyr == map.getReferenceLayer()) {
-      clearPin();
-    }
-    model.deleteLayer(lyr, dataset);
-    if (model.isEmpty()) {
-      // refresh browser if deleted layer was the last layer
-      window.location.href = window.location.href.toString();
-    } else {
-      // trigger event to update layer list and, if needed, the map view
-      flags = {};
-      active = model.getActiveLayer();
-      if (active.layer != lyr) {
-        flags.select = true;
-      }
-      if (internal.cleanupArcs(active.dataset)) {
-        flags.arc_count = true;
-      }
-      model.updated(flags, active.layer, active.dataset);
-    }
   }
 
   function cleanLayerName(raw) {

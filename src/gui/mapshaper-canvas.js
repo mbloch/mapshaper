@@ -239,7 +239,7 @@ function drawPathSafe(vec, t, ctx, bounds) {
 function drawPath(vec, t, ctx, minLen) {
   var x, y, xp, yp;
   if (!vec.hasNext()) return;
-  minLen = minLen >= 0 ? minLen : 0.4;
+  minLen = utils.isNonNegNumber(minLen) ? minLen : 0.4;
   x = xp = vec.x * t.mx + t.bx;
   y = yp = vec.y * t.my + t.by;
   ctx.moveTo(x, y);

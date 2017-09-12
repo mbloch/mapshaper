@@ -105,12 +105,22 @@ internal.datasetHasPaths = function(dataset) {
   });
 };
 
+// Remove ArcCollection of a dataset if not referenced by any layer
+// TODO: consider doing arc dissolve, or just removing unreferenced arcs
+// (currently cleanupArcs() is run after every command, so be mindful of performance)
 internal.cleanupArcs = function(dataset) {
-  // remove arcs if no longer referenced by any layer
-  // TODO: consider doing arc dissolve, or just removing unreferenced arcs
   if (dataset.arcs && !utils.some(dataset.layers, internal.layerHasPaths)) {
     dataset.arcs = null;
     return true;
+  }
+};
+
+// Remove unused arcs from a dataset
+// Warning: using dissolveArcs() means that adjacent arcs are combined when possible
+internal.pruneArcs = function(dataset) {
+  internal.cleanupArcs(dataset);
+  if (dataset.arcs) {
+    internal.dissolveArcs(dataset);
   }
 };
 

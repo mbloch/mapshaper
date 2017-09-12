@@ -2,7 +2,7 @@
 
 // TODO: use an actual index instead of linear search
 function PointIndex(shapes, opts) {
-  var buf = opts.buffer >= 0 ? opts.buffer : 1e-3;
+  var buf = utils.isNonNegNumber(opts.buffer) ? opts.buffer : 1e-3;
   var minDistSq, minId, target;
   this.findNearestPointFeature = function(shape) {
     minDistSq = Infinity;

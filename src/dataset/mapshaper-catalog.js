@@ -5,7 +5,7 @@
 //   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
-      target;
+      defaultTarget = null; // saved default command target {layers:[], dataset}
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -23,13 +23,11 @@ function Catalog() {
 
     // remove layer from its dataset
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
-
     if (dataset.layers.length === 0) {
       this.removeDataset(dataset);
     }
-
     if (this.isEmpty()) {
-      target = null;
+      defaultTarget = null;
     } else if (targ.layers[0] == lyr) {
       // deleting first target layer (selected in gui) -- switch to some other layer
       other = this.findAnotherLayer(lyr);
@@ -54,15 +52,17 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern, type) {
+    var targ;
     if (pattern) {
       return internal.findCommandTargets(this, pattern, type);
     }
-    return target ? [target] : [];
+    targ = this.getDefaultTarget();
+    return targ ? [targ] : [];
   };
 
   this.removeDataset = function(dataset) {
-    if (target && target.dataset == dataset) {
-      target = null;
+    if (defaultTarget && defaultTarget.dataset == dataset) {
+      defaultTarget = null;
     }
     datasets = datasets.filter(function(d) {
       return d != dataset;
@@ -98,11 +98,11 @@ function Catalog() {
     return idx > -1 ? layers[(idx - 1 + layers.length) % layers.length] : null;
   };
 
-  this.findAnotherLayer = function(target) {
+  this.findAnotherLayer = function(lyr) {
     var layers = this.getLayers(),
         found = null;
     if (layers.length > 0) {
-      found = layers[0].layer == target ? layers[1] : layers[0];
+      found = layers[0].layer == lyr ? layers[1] : layers[0];
     }
     return found;
   };
@@ -111,13 +111,20 @@ function Catalog() {
     return datasets.length === 0;
   };
 
-  this.getDefaultTarget = function() {return target || null;};
+  this.getDefaultTarget = function() {
+    var tmp;
+    if (!defaultTarget && !this.isEmpty()) {
+      tmp = this.findAnotherLayer(null);
+      defaultTarget = {dataset: tmp.dataset, layers: [tmp.layer]};
+    }
+    return defaultTarget;
+  };
 
   this.setDefaultTarget = function(layers, dataset) {
     if (datasets.indexOf(dataset) == -1) {
       datasets.push(dataset);
     }
-    target = {
+    defaultTarget = {
       layers: layers,
       dataset: dataset
     };

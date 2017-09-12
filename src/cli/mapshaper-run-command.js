@@ -7,6 +7,7 @@ mapshaper-colorizer
 mapshaper-data-fill
 mapshaper-dissolve
 mapshaper-dissolve2
+mapshaper-drop
 mapshaper-export
 mapshaper-each
 mapshaper-calc
@@ -95,7 +96,7 @@ api.runCommand = function(cmd, catalog, cb) {
             opts.target, internal.getFormattedLayerList(catalog)));
       }
       if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'polygon-grid')) {
-        throw new UserError("Missing a -i command");
+        throw new UserError("No data is available");
       }
     }
 
@@ -132,6 +133,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
+
+    } else if (name == 'drop') {
+      api.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
