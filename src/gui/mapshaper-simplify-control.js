@@ -138,7 +138,7 @@ var SimplifyControl = function(model) {
     var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
     return {
       method: method,
-      pct: _value,
+      percentage: _value,
       no_repair: true,
       keep_shapes: !!El("#import-retain-opt").node().checked,
       planar: !!El('#planar-opt').node().checked

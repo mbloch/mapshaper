@@ -98,8 +98,9 @@ describe('mapshaper-drop.js', function () {
     })
   })
 
-  describe('-drop properties removes attribute data', function () {
-    it('removes all attributes', function (done) {
+  describe('-drop fields= removes a list of data fields', function () {
+
+    it('fields=* removes all attributes', function (done) {
       var input = {
         type: 'Feature',
         properties: {foo: 'a', bar: 'b'},
@@ -108,7 +109,7 @@ describe('mapshaper-drop.js', function () {
           coordinates: [0,0]
         }
       }
-      api.applyCommands('-i in.json -drop properties -o out.json', {'in.json': input}, function(err, output) {
+      api.applyCommands('-i in.json -drop fields=* -o out.json', {'in.json': input}, function(err, output) {
         var json = JSON.parse(output['out.json']);
         var target = {
           type: 'GeometryCollection',
@@ -122,10 +123,7 @@ describe('mapshaper-drop.js', function () {
       });
     })
 
-  })
-
-  describe('-drop fields= removes a list of data fields', function () {
-    it('remove only the listed fields', function (done) {
+    it('fields=<list> removes the listed fields', function (done) {
       var input = 'a,b,c,d\n1,2,3,4\n';
       api.applyCommands('-i in.csv -drop fields=b,d -o out.csv', {'in.csv': input}, function(err, output) {
         assert.equal(output['out.csv'], 'a,c\n1,3');

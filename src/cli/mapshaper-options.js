@@ -298,13 +298,9 @@ internal.getOptionParser = function() {
       describe: "delete all geometry from the target layer(s)",
       type: "flag"
     })
-    .option("properties", {
-      describe: "delete all attribute data from the target layer(s)",
-      type: "flag"
-    })
     .option("fields", {
       type: "strings",
-      describe: "delete a list of fields (comma-sep.), e.g. 'id,name'"
+      describe: "delete a list of attribute data fields, e.g. 'id,name' '*'"
     })
     .option("target", targetOpt);
 

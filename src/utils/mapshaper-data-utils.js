@@ -66,6 +66,10 @@ internal.patchMissingFields = function(records, fields) {
   }
 };
 
+internal.fieldListContainsAll = function(list, fields) {
+  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
+};
+
 var c = 0;
 internal.getColumnType = function(key, table) {
   var type = null,
