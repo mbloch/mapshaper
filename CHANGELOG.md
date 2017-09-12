@@ -1,3 +1,6 @@
+v0.4.51
+* Fix for issue #216 (GeoJSON export fails in browser).
+
 v0.4.50
 * Added support for reading CSV files larger than 250MB.
 * Added support for reading and writing CSV files using other encodings than UTF-8 or ascii.

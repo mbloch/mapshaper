@@ -57,7 +57,8 @@ internal.getNativeEncoder = function(enc) {
     encoder = new TextEncoder(enc);
   }
   return function(str) {
-    return encoder ? encoder.encode(str) : new Buffer(str, enc);
+    // Convert Uint8Array from encoder to Buffer (fix for issue #216)
+    return encoder ? Buffer.from(encoder.encode(str).buffer) : new Buffer(str, enc);
   };
 };
 
