@@ -18,8 +18,7 @@ function Catalog() {
 
   // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
-    var targ = this.getDefaultTarget(),
-        other;
+    var targ = this.getDefaultTarget();
 
     // remove layer from its dataset
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
@@ -30,12 +29,10 @@ function Catalog() {
       defaultTarget = null;
     } else if (targ.layers[0] == lyr) {
       // deleting first target layer (selected in gui) -- switch to some other layer
-      other = this.findAnotherLayer(lyr);
-      this.setDefaultTarget([other.layer], other.dataset);
+      defaultTarget = null;
     } else if (targ.layers.indexOf(lyr) > -1) {
       // deleted layer is targeted -- update target
       targ.layers.splice(targ.layers.indexOf(lyr), 1);
-      this.setDefaultTarget(targ.layers, targ.dataset);
     } else {
       // deleted layer is not a targeted layer, target not updated
     }
