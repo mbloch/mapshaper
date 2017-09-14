@@ -153,54 +153,41 @@ a smoother appearance.</div></div></div></div>
 	</div> <!-- .info-box -->
 </div> <!-- #simplify-options -->
 
-<div id="splash-screen" class="main-area">
-	<div id="import-intro" class="drop-area">
-			<h3>Import files</h3>
-			Drag Shapefile, GeoJSON, TopoJSON, CSV, DBF or Zip files
-				here, or <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> files to import.
-	</div>
-	<div class="spacer"></div>
-	<div id="import-quick" class="drop-area">
-		<h4>Quick import</h4>
-		Drag files here to import with default settings.
-	</div>
-</div>
-
-<div id="import-options" class="main-area popup-dialog">
+<div id="import-options" class="main-area popup-dialog first-run">
 	<div class="info-box">
-
-		<div id="dropped-file-list">
-			<h3>Files to import</h3>
-			<div class="file-list"></div>
+		<div id="import-intro">
+			<h3>Import a file</h3>
+<p><span class="inline-btn btn" id="file-selection-btn"><span class="label-text">Select</span></span> or drag and drop one or more files.
+Shapefile, GeoJSON, TopoJSON, CSV and
+Zip files are supported.
+</p>
 		</div>
-
+		<h4>Import options</h4>
 		<div class="option-menu">
 
-			<div id="path-import-options">
-				<h4>Options</h4>
-
-				<div><label for="repair-intersections-opt"><input type="checkbox" checked class="checkbox" id="repair-intersections-opt"/>detect line intersections</label>
-				<div class="tip-button">?<div class="tip-anchor">
-
+			<div><label for="repair-intersections-opt"><input type="checkbox" checked class="checkbox" id="repair-intersections-opt"/>detect line intersections</label>
+			<div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Detect line intersections, including
 self-intersections, to help identify
 topological errors in a dataset.</div></div></div></div>
 
-				<div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" />snap vertices</label>
-				<div class="tip-button">?<div class="tip-anchor">
+			<div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" />snap vertices</label>
+			<div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Fix topology errors by snapping
 together points with nearly identical
 coordinates. This option does not
 apply to TopoJSON files.</div></div></div></div>
 <div style="height:5px"></div>
-
-		</div>
-
-		<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
+<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Enter options from the command line
 interface. Examples: "no-topology"
 "encoding=big5"</div></div></div></div>
 
+		</div>
+
+		<div id="dropped-file-list">
+			<h4>Files</h4>
+			<div class="file-list"></div>
 		</div>
 
 		<div id="import-buttons" class="hidden">
