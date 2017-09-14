@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>mapshaper</title>
+	<meta name="Description" content="A tool for topologically aware shape simplification. Reads and writes Shapefile, GeoJSON and TopoJSON formats." />
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<link rel="stylesheet" href="page.css">
+	<link rel="stylesheet" href="elements.css">
+	<link rel="icon"
+      type="image/png"
+      href="images/icon.png">
+</head>
+<body class="theme2">
+<div class="hidden">
+	<svg version="1.1" id="home-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
+		 y="0px" width="14px" height="19px" viewBox="0 0 14 16">
+	<g>
+		<polygon points="13,7 13,6 12,6 12,5 11,5 11,4 10,4 10,3 9,3 9,2 8,2 8,1 6,1 6,2 5,2 5,3 4,3 4,4 3,4 3,5 2,5 
+			2,6 1,6 1,7 0,7 0,9 2,9 2,14 6,14 6,10 8,10 8,14 12,14 12,9 14,9 14,7"/>
+	</g>
+	</svg>
+	<svg version="1.1" id="zoom-in-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
+		 y="0px" width="14px" height="21px" viewBox="0 0 14 14">
+	<g>
+		<polygon points="13,5 9,5 9,1 5,1 5,5 1,5 1,9 5,9 5,13 9,13 9,9 13,9"/>
+	</g>
+	</svg>
+	<svg version="1.1" id="zoom-out-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
+		 y="0px" width="14px" height="16px" viewBox="0 -1 14 10">
+	<g>
+		<polygon points="1,1 13,1 13,5 1,5 1,1" />
+	</g>
+	</svg>
+<svg version="1.1" id="info-icon2"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="13px" height="18px"
+	 viewBox="-510 390 13 18" xml:space="preserve">
+<circle fill="#30D4EF" cx="-503.4" cy="392.8" r="2.7"/>
+<rect x="-508" y="405" fill="#30D4EF" width="10" height="3"/>
+<rect x="-507" y="398" fill="#30D4EF" width="6" height="3"/>
+<rect x="-505" y="400" fill="#30D4EF" width="4" height="6"/>
+</svg>
+
+</div>
+
+<a href="https://github.com/mbloch/mapshaper"><div id="fork-me"></div></a>
+<div class="page-header">
+	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
+
+	<div id="layer-control-btn"><span class="btn header-btn layer-name"></span></div>
+
+	<div id="simplify-control-wrapper"><div id="simplify-control"><div class="header-btn btn" id="simplify-settings-btn">Settings</div>
+		<div class="slider">
+			<div class="handle"><img src="images/slider_handle_v1.png" alt=""/></div>
+			<div class="track"></div>
+		</div>
+		<input type="text" value="label" class="clicktext" />
+	</div></div>
+	<div id="mode-buttons">
+		<span id="simplify-btn" class="header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="header-btn btn">Export</span>
+	</div>
+</div>
+
+<div id="mshp-not-supported" class="main-area">
+	<div class="info-box">
+	<h3>Unfortunately, mapshaper can't run in <span class="unsupported-browser">this web browser</span></h3>
+	<div>For best results, try <a href="https://www.google.com/chrome/browser/desktop/">Google Chrome</a> or <a href="http://www.mozilla.org/en-US/firefox/new/">Mozilla Firefox</a>.</div>
+	</div>
+</div>
+
+<div id="layer-control" class="main-area popup-dialog">
+	<div class="info-box">
+		<div class="info-box-scrolled">
+		<div id="layer-menu">
+			<h3>Layers</h3>
+			<div class="layer-list"></div>
+			<div><div id="add-file-btn" class="dialog-btn btn">Add a file</div></div>
+		</div>
+		</div>
+	</div>
+</div>
+
+<div id="export-options" class="main-area popup-dialog">
+	<div class="info-box">
+		<h3>Export menu</h3>
+		<div style="height:3px"></div>
+		<div id=export-layers>
+			<h4>Layers</h4>
+			<div id="export-layer-list" class="option-menu"></div>
+		</div>
+		<h4>File format</h4>
+		<div id="export-formats" class="option-menu">
+		</div>
+
+		<div class="option-menu"><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
+		<div class="tip">Enter options from the command line
+interface. Examples: "bbox" "no-quantization"
+"precision=0.001"</div></div></div></div>
+		<div class="cancel-btn btn dialog-btn">Cancel</div>
+		<div id="save-btn" class="btn dialog-btn">Export</div>
+	</div>
+</div>
+
+<div id="simplify-options" class="main-area popup-dialog">
+	<div class="info-box">
+		<h3>Simplification menu</h3>
+		<div class="option-menu">
+			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox" id="import-retain-opt"/>prevent shape removal</label>
+							<div class="tip-button">?<div class="tip-anchor">
+			<div class="tip">Prevent small polygon features from
+disappearing at high simplification. Keeps
+the largest ring of multi-ring features.
+</div></div></div></div>
+			<div id="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox" id="planar-opt"/>use planar geometry</label>
+							<div class="tip-button">?<div class="tip-anchor">
+			<div class="tip">Interpret x, y values as Cartesian coordinates
+on a plane, rather than longitude, latitude
+coordinates on a sphere.
+</div></div></div></div>
+		</div>
+
+			<h4>Method</h4>
+			<div class="option-menu">
+
+			<div><label><input type="radio" name="method" value="dp" class="radio">Douglas-Peucker</label><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Simplified lines remain within a set
+distance of original lines. Good for
+thinning dense points, but spikes
+tend to form at high simplification.</div></div></div>
+			</div>			
+
+			<div><label><input type="radio" name="method" value="visvalingam" class="radio">Visvalingam / effective area</label><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Lines are simplified by iteratively
+removing the point that forms
+the least-area triangle with two
+adjacent points.</div></div></div>
+			</div>
+
+			<div><label><input type="radio" name="method" value="weighted_visvalingam" class="radio">Visvalingam / weighted area</label><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Points located at the vertex
+of more acute angles are
+preferentially removed, for
+a smoother appearance.</div></div></div></div>
+
+
+		</div> <!-- option menu -->
+
+		<div>
+			<div class="cancel-btn btn dialog-btn">Cancel</div>
+			<div class="submit-btn btn dialog-btn">Apply</div>
+		</div>
+	</div> <!-- .info-box -->
+</div> <!-- #simplify-options -->
+
+<div id="splash-screen" class="main-area">
+	<div id="import-text">
+		<h3>Mapshaper is an editor for map data</h3>
+		Shapefile, GeoJSON, TopoJSON, JSON, DBF and CSV files are supported
+	</div>
+	<div id="drop-areas" class="main-area">
+		<div id="import-drop" class="drop-area">
+				<h4>Drag files here or <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> from a folder</h4>
+				Files can be loose or in a zip archive
+		</div>
+		<div class="spacer"></div>
+		<div id="import-quick-drop" class="drop-area">
+			<h4>Quick import</h4>
+			Drag files here to import with default settings
+		</div>
+	</div>
+</div>
+
+<div id="import-options" class="main-area popup-dialog">
+	<div class="info-box">
+
+		<div id="dropped-file-list">
+			<h3>Files to import</h3>
+			<div class="file-list"></div>
+		</div>
+
+		<div class="option-menu">
+
+			<div id="path-import-options">
+				<h4>Options</h4>
+
+				<div><label for="repair-intersections-opt"><input type="checkbox" checked class="checkbox" id="repair-intersections-opt"/>detect line intersections</label>
+				<div class="tip-button">?<div class="tip-anchor">
+
+<div class="tip">Detect line intersections, including
+self-intersections, to help identify
+topological errors in a dataset.</div></div></div></div>
+
+				<div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" />snap vertices</label>
+				<div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Fix topology errors by snapping
+together points with nearly identical
+coordinates. This option does not
+apply to TopoJSON files.</div></div></div></div>
+<div style="height:5px"></div>
+
+		</div>
+
+		<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Enter options from the command line
+interface. Examples: "no-topology"
+"encoding=big5"</div></div></div></div>
+
+		</div>
+
+		<div id="import-buttons" class="hidden">
+			<div class="cancel-btn btn dialog-btn">Cancel</div>
+			<div class="add-btn btn dialog-btn">Select</div>
+			<div class="submit-btn btn dialog-btn">Import</div>
+		</div>
+
+	</div> <!-- .info-box -->
+</div> <!-- import-options -->
+
+<!-- TODO: remove #mshp-main-page without causing the map to jitter when resized -->
+<div id="mshp-main-page">
+	<div id="console" class="main-area console-area">
+		<div id="console-window"><div id="console-buffer" class="selectable"></div></div>
+	</div>
+	<div id="mshp-main-map" class="main-area map-area">
+		<div id="coordinate-info" class="colored-text selectable"></div>
+		<div id="intersection-display">
+			<div id="intersection-count">0 line intersections</div>
+			<div id="repair-btn" class="text-btn colored-text">Repair</div>
+		</div>
+		<div id="map-layers"></div>
+	</div>
+</div>
+<script src="zip.js" type="text/javascript"></script>
+<script src="modules.js" type="text/javascript"></script>
+<script src="mapshaper.js" type="text/javascript"></script>
+<script src="manifest.js" type="text/javascript"></script>
+<script src="mapshaper-gui.js" type="text/javascript"></script>
+</body>
+</html>
