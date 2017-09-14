@@ -269,8 +269,8 @@ div.error-box > div {
 	background-size: 149px 149px;
 	position: absolute;
 	z-index: 110;
-	top: 0;
-	right: 0;
+	top: -7px;
+	right: -10px;
 	border: 0;
 	width: 149px;
 	height: 149px;
@@ -302,9 +302,7 @@ div.error-box > div {
 }
 
 #import-text {
-	min-height: 100px;
-	padding-bottom: 12px;
-	height: 5%;
+	margin-top: 10px;
 }
 
 #drop-areas {
