@@ -142,6 +142,7 @@ div.tip {
 
 .btn.inline-btn:hover:not(.selected) {
 	background-color: #FFFCDC;
+	color: black;
 }
 
 .btn {

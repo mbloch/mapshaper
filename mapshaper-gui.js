@@ -1767,18 +1767,34 @@ gui.isReadableFileType = function(filename) {
 };
 
 // @cb function(<FileList>)
-function DropControl(cb) {
-  var el = El('body');
-  el.on('dragleave', ondrag);
-  el.on('dragover', ondrag);
-  el.on('drop', ondrop);
-  function ondrag(e) {
+function DropControl(el, cb) {
+  var area = El(el);
+  area.on('dragleave', ondragleave)
+      .on('dragover', ondragover)
+      .on('drop', ondrop);
+  function ondragleave(e) {
+    block(e);
+    out();
+  }
+  function ondragover(e) {
     // blocking drag events enables drop event
-    e.preventDefault();
+    block(e);
+    over();
   }
   function ondrop(e) {
-    e.preventDefault();
+    block(e);
+    out();
     cb(e.dataTransfer.files);
+  }
+  function over() {
+    area.addClass('dragover');
+  }
+  function out() {
+    area.removeClass('dragover');
+  }
+  function block(e) {
+    e.preventDefault();
+    e.stopPropagation();
   }
 }
 
@@ -1813,16 +1829,21 @@ function ImportControl(model, opts) {
   var importCount = 0;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
+  var _importOpts = {};
   var importDataset;
 
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
   new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   gui.addMode('import', turnOn, turnOff);
-  new DropControl(receiveFiles);
+  new DropControl('body', receiveFiles); // default area
+  new DropControl('#import-intro', receiveFiles);
+  new DropControl('#import-quick', receiveFilesQuickView);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
+
   gui.enterMode('import');
+
   gui.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
     if (!e.name && importCount === 0) {
@@ -1842,17 +1863,12 @@ function ImportControl(model, opts) {
   }
 
   function turnOn() {
-    var el = El('#import-options');
     if (manifestFiles.length > 0) {
       downloadFiles(manifestFiles);
       manifestFiles = [];
-    } else {
-      if (importCount > 0) {
-        el.removeClass('first-run');
-      } else {
-        El('#fork-me').show();
-      }
-      el.show();
+    } else if (importCount === 0) {
+      El('#fork-me').show();
+      El('#splash-screen').show();
     }
   }
 
@@ -1909,30 +1925,50 @@ function ImportControl(model, opts) {
     });
   }
 
-  function receiveFiles(files) {
+  function receiveFilesQuickView(files) {
+    receiveFiles(files, true);
+  }
+
+  function receiveFiles(files, quickView) {
     var prevSize = queuedFiles.length;
+    var firstRun = importCount === 0 && prevSize === 0;
     addFiles(utils.toArray(files));
     if (queuedFiles.length === 0) return;
     gui.enterMode('import');
-    if (importCount === 0 && prevSize === 0 && containsImmediateFile(queuedFiles)) {
-      // if the first batch of files will be imported, process right away
-      submitFiles();
+
+    if (firstRun) {
+      El('#splash-screen').hide();
+    }
+    if (quickView === true) {
+      submitFiles(quickView);
     } else {
-      showQueuedFiles();
+      El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
+      El('#import-options').show();
       El('#import-buttons').show();
+      showQueuedFiles();
     }
   }
 
   // Check if an array of File objects contains a file that should be imported right away
+  /*
   function containsImmediateFile(files) {
     return utils.some(files, function(f) {
         var type = internal.guessInputFileType(f.name);
         return type == 'shp' || type == 'json';
     });
   }
+  */
 
-  function submitFiles() {
+  function filesMayContainPaths(files) {
+    return utils.some(files, function(f) {
+        var type = internal.guessInputFileType(f.name);
+        return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
+    });
+  }
+
+  function submitFiles(quickView) {
     close();
+    setImportOpts(quickView === true ? {} : readImportOpts());
     readNext();
   }
 
@@ -1944,7 +1980,15 @@ function ImportControl(model, opts) {
     }
   }
 
+  function setImportOpts(obj) {
+    _importOpts = obj;
+  }
+
   function getImportOpts() {
+    return _importOpts;
+  }
+
+  function readImportOpts() {
     var freeform = El('#import-options .advanced-options').node().value,
         opts = gui.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#repair-intersections-opt").node().checked;

@@ -261,8 +261,8 @@ div.error-box > div {
 
 }
 
+/* --- Splash screen -------------- */
 
-/* --- Import screen -------------- */
 
 #fork-me {
 	background-image: url("images/fork-me-right-graphite@2x.png");
@@ -277,17 +277,65 @@ div.error-box > div {
 	display: none;
 }
 
-#import-options.first-run {
+#splash-screen {
+	z-index: 1;
 	background-color: #eee;
-}
-
-#import-options:not(.first-run) #import-intro {
+	text-align: center;
+	font-size: 15px;
+	color: #777;
+	padding: 12px 14px;
 	display: none;
 }
+
+#splash-screen .drop-area {
+	box-sizing: border-box;
+	border: 2px dashed #aaa;
+	border-radius: 19px;
+	background-color: #fff;
+}
+
+#splash-screen .drop-area.dragover {
+	border-color: #333;
+	background-color: #f7f7f7;
+}
+
+#import-intro {
+	height: 60%;
+}
+
+#import-quick {
+	height: 38.6%;
+}
+
+/* between the two drop areas */
+#splash-screen .spacer {
+	height: 1.4%;
+}
+
+#splash-screen h3 {
+	color: #333;
+	font-size: 20px;
+	margin: 7px 0 2px;
+}
+
+#splash-screen h4 {
+	color: #333;
+	font-size: 16px;
+	margin: 7px 0 0px;
+}
+
+#splash-screen #file-selection-btn.inline-btn {
+	padding: 2px 4px 3px 3px;
+}
+
+
+/* --- Import screen -------------- */
+
 
 #import-options .info-box {
 	margin-top: 18px;
 }
+
 
 .option-menu .advanced-options {
 	width: 210px;
@@ -306,7 +354,7 @@ div.error-box > div {
 
 #dropped-file-list {
 	display: none;
-	padding-bottom: 3px;
+	padding-bottom: 7px;
 }
 
 #dropped-file-list p {
@@ -335,7 +383,7 @@ div.error-box > div {
 .info-box h3 {
 	font-size: 1.2em;
 	padding: 0;
-	margin: 0 0 2px 0;
+	margin: 0 0 0.2em 0;
 }
 
 .info-box h4 {
@@ -345,7 +393,7 @@ div.error-box > div {
 
 .info-box p {
 	white-space: pre-line;
-	margin: 0 0 0.5em 0;
+	margin: 0 0 7px 0;
 }
 
 .option-menu {
