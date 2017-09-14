@@ -80,8 +80,9 @@ function ImportControl(model, opts) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
   new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   gui.addMode('import', turnOn, turnOff);
-  new DropControl('body', receiveFiles);
-  new DropControl('#import-hot-spot', receiveFilesQuickView);
+  new DropControl('body', receiveFiles); // default area
+  new DropControl('#import-intro', receiveFiles);
+  new DropControl('#import-quick', receiveFilesQuickView);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
@@ -110,13 +111,9 @@ function ImportControl(model, opts) {
     if (manifestFiles.length > 0) {
       downloadFiles(manifestFiles);
       manifestFiles = [];
-    } else {
-      if (importCount > 0) {
-        // el.removeClass('first-run');
-      } else {
-        El('#fork-me').show();
-        El('#splash-screen').show();
-      }
+    } else if (importCount === 0) {
+      El('#fork-me').show();
+      El('#splash-screen').show();
     }
   }
 
