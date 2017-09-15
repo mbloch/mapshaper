@@ -1867,8 +1867,7 @@ function ImportControl(model, opts) {
       downloadFiles(manifestFiles);
       manifestFiles = [];
     } else if (importCount === 0) {
-      El('#fork-me').show();
-      El('#splash-screen').show();
+      El('body').addClass('splash-screen');
     }
   }
 
@@ -1879,21 +1878,18 @@ function ImportControl(model, opts) {
       importDataset = null;
     }
     gui.clearProgressMessage();
-    clearFiles();
     close();
   }
 
   function close() {
-    El('#fork-me').hide();
-    El('#import-options').hide();
+    clearFiles();
   }
 
 
   function clearFiles() {
     queuedFiles = [];
-    El('#dropped-file-list .file-list').empty();
-    El('#dropped-file-list').hide();
-    El('#import-buttons').hide();
+    El('body').removeClass('queued-files');
+    El('#dropped-file-list').empty();
   }
 
   function addFiles(files) {
@@ -1918,10 +1914,9 @@ function ImportControl(model, opts) {
   }
 
   function showQueuedFiles() {
-    var list = El('#dropped-file-list .file-list').empty();
-    El('#dropped-file-list').show();
+    var list = El('#dropped-file-list').empty();
     queuedFiles.forEach(function(f) {
-      El('<p>').text(f.name).appendTo(El("#dropped-file-list .file-list"));
+      El('<p>').text(f.name).appendTo(El("#dropped-file-list"));
     });
   }
 
@@ -1936,28 +1931,14 @@ function ImportControl(model, opts) {
     if (queuedFiles.length === 0) return;
     gui.enterMode('import');
 
-    if (firstRun) {
-      El('#splash-screen').hide();
-    }
     if (quickView === true) {
       submitFiles(quickView);
     } else {
+      El('body').addClass('queued-files');
       El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
-      El('#import-options').show();
-      El('#import-buttons').show();
       showQueuedFiles();
     }
   }
-
-  // Check if an array of File objects contains a file that should be imported right away
-  /*
-  function containsImmediateFile(files) {
-    return utils.some(files, function(f) {
-        var type = internal.guessInputFileType(f.name);
-        return type == 'shp' || type == 'json';
-    });
-  }
-  */
 
   function filesMayContainPaths(files) {
     return utils.some(files, function(f) {
@@ -1967,7 +1948,8 @@ function ImportControl(model, opts) {
   }
 
   function submitFiles(quickView) {
-    close();
+    El('body').removeClass('queued-files');
+    El('body').removeClass('splash-screen');
     setImportOpts(quickView === true ? {} : readImportOpts());
     readNext();
   }
