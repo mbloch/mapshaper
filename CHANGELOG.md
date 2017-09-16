@@ -1,3 +1,8 @@
+
+v0.4.52
+* Redesigned initial view of the web UI.
+* Temporary fix for issue #219 -- stop trying to fix polygon geometry after applying coordinate precision.
+
 v0.4.51
 * Fix for issue #216 (GeoJSON export fails in browser).
 

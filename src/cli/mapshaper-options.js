@@ -139,7 +139,7 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("encoding", {
-      describe: "text encoding of output dbf file"
+      describe: "text encoding of output dbf or csv file"
     })
     .option("ldid", {
       // describe: "language driver id of dbf file",
