@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.51';
+var VERSION = '0.4.52';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -10176,10 +10176,12 @@ internal.roundPoints = function(lyr, round) {
 
 internal.setCoordinatePrecision = function(dataset, precision) {
   var round = utils.getRoundingFunction(precision);
-  var dissolvePolygon, nodes;
+  // var dissolvePolygon, nodes;
   internal.transformPoints(dataset, function(x, y) {
     return [round(x), round(y)];
   });
+  // v0.4.52 removing polygon dissolve - see issue #219
+  /*
   if (dataset.arcs) {
     nodes = internal.addIntersectionCuts(dataset);
     dissolvePolygon = internal.getPolygonDissolver(nodes);
@@ -10191,6 +10193,7 @@ internal.setCoordinatePrecision = function(dataset, precision) {
       lyr.shapes = lyr.shapes.map(dissolvePolygon);
     }
   });
+  */
   return dataset;
 };
 
@@ -19792,7 +19795,7 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("encoding", {
-      describe: "text encoding of output dbf file"
+      describe: "text encoding of output dbf or csv file"
     })
     .option("ldid", {
       // describe: "language driver id of dbf file",

@@ -5,14 +5,14 @@
 @font-face {
   font-family: 'Source Sans Pro';
   font-style: normal;
-  font-weight: 400;
+  font-weight: normal;
   src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url('assets/SourceSansPro-Regular.woff') format('woff');
 }
 
 @font-face {
   font-family: 'Source Sans Pro';
   font-style: normal;
-  font-weight: 600;
+  font-weight: bold;
   src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('assets/SourceSansPro-Semibold.woff') format('woff');
 }
 
@@ -137,11 +137,11 @@ body {
 
 .theme3 .page-header,
 .theme3 .dialog-btn {
-	background-color: #8c8c8c;
+	background-color: #376E7F;
 }
 
 .theme3 .nav-btn * {
-	fill: #8c8c8c;
+	fill: #376E7F;
 }
 
 .theme3 .nav-btn.selected {
@@ -150,7 +150,7 @@ body {
 
 .theme3 .dialog-btn:hover,
 .theme3 .header-btn:hover {
-	background-color: #555;
+	background-color: #1D5760;
 }
 
 /* --- Page header --------------- */
@@ -189,13 +189,17 @@ body {
 	text-decoration: none;
 }
 
-#mode-buttons {
+body.splash-screen #splash-buttons {
+	display: block;
+}
+
+.page-header-buttons {
 	z-index: 20;
 	position: absolute;
 	top: 0px;
 	right: 0px;
 	display: none;
-	margin: 0 8px 3px 0;
+	margin: 0 8px 3px 0;	
 }
 
 .separator {
@@ -223,7 +227,7 @@ body {
 }
 
 #export-options .option-menu .advanced-options {
-	width: 190px;
+	width: 175px;
 }
 
 /* --- Main area ------------- */
@@ -261,36 +265,109 @@ div.error-box > div {
 
 }
 
+/* --- Splash screen -------------- */
+
+body.splash-screen #splash-screen {
+	display: block;
+}
+
+body.queued-files.splash-screen #import-options-drop-area {
+	display: block;
+	z-index: 2;
+}
+
+#import-options-drop-area .drop-area {
+	height: 100%;
+}
+
+#splash-screen {
+	z-index: 1;
+	text-align: center;
+	font-size: 15px;
+	padding: 12px 14px;
+	display: none;
+}
+
+#splash-screen .subtitle {
+	color: #777;
+}
+
+body.splash-screen #import-options .info-box {
+	margin-top: 40px;
+}
+
+body.queued-files #import-options {
+	display: block;
+}
+
+#splash-screen *,
+#import-options-drop-area * {
+	box-sizing: border-box;
+}
+
+.drop-area {
+	border: 2px dashed #aaa;
+	border-radius: 19px;
+	background-color: #f6f6f6;
+}
+
+#splash-screen .drop-area.dragover {
+	border-color: #333;
+	background-color: #f7f7f7;
+}
+
+#import-text {
+	margin-top: 3px;
+}
+
+#drop-areas {
+	margin-top: 74px;
+}
+
+.drop-area-wrapper {
+	padding: 14px 14px 12px 14px;
+}
+
+#import-drop {
+	height: 61.6%;
+}
+
+#import-quick-drop {
+	height: 37%;
+}
+
+body.queued-files #splash-screen {
+	display: none;
+}
+
+/* between the two drop areas */
+#splash-screen .spacer {
+	height: 1.4%;
+}
+
+#splash-screen h3 {
+	color: #333;
+	font-size: 20px;
+	margin: 0px 0 2px;
+}
+
+#splash-screen h4 {
+	color: #333;
+	font-size: 16px;
+	margin: 7px 0 0 0;
+}
+
+#splash-screen #file-selection-btn.inline-btn {
+	padding: 2px 4px 3px 3px;
+}
+
+
 
 /* --- Import screen -------------- */
 
-#fork-me {
-	background-image: url("images/fork-me-right-graphite@2x.png");
-	background-size: 149px 149px;
-	position: absolute;
-	z-index: 110;
-	top: 0;
-	right: 0;
-	border: 0;
-	width: 149px;
-	height: 149px;
-	display: none;
-}
-
-#import-options.first-run {
-	background-color: #eee;
-}
-
-#import-options:not(.first-run) #import-intro {
-	display: none;
-}
-
-#import-options .info-box {
-	margin-top: 18px;
-}
 
 .option-menu .advanced-options {
-	width: 210px;
+	width: 250px;
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid #999;
 	padding: 0 3px;
@@ -304,14 +381,16 @@ div.error-box > div {
 	text-align: center;
 }
 
+
 #dropped-file-list {
-	display: none;
-	padding-bottom: 3px;
+	padding-bottom: 8px;
 }
 
 #dropped-file-list p {
 	line-height: 1;
 	margin-bottom: 5px;
+	font-size: 16px;
+	font-weight: bold;
 }
 
 .popup-dialog {
@@ -335,7 +414,7 @@ div.error-box > div {
 .info-box h3 {
 	font-size: 1.2em;
 	padding: 0;
-	margin: 0 0 2px 0;
+	margin: 0 0 0.2em 0;
 }
 
 .info-box h4 {
@@ -345,7 +424,7 @@ div.error-box > div {
 
 .info-box p {
 	white-space: pre-line;
-	margin: 0 0 0.5em 0;
+	margin: 0 0 7px 0;
 }
 
 .option-menu {
