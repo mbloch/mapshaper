@@ -9,10 +9,12 @@ internal.roundPoints = function(lyr, round) {
 
 internal.setCoordinatePrecision = function(dataset, precision) {
   var round = utils.getRoundingFunction(precision);
-  var dissolvePolygon, nodes;
+  // var dissolvePolygon, nodes;
   internal.transformPoints(dataset, function(x, y) {
     return [round(x), round(y)];
   });
+  // v0.4.52 removing polygon dissolve - see issue #219
+  /*
   if (dataset.arcs) {
     nodes = internal.addIntersectionCuts(dataset);
     dissolvePolygon = internal.getPolygonDissolver(nodes);
@@ -24,6 +26,7 @@ internal.setCoordinatePrecision = function(dataset, precision) {
       lyr.shapes = lyr.shapes.map(dissolvePolygon);
     }
   });
+  */
   return dataset;
 };
 

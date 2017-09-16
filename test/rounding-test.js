@@ -107,6 +107,8 @@ describe('mapshaper-rounding.js', function () {
   })
 
   describe('exporting rounded GeoJSON', function () {
+    // removing cleanup after rounding -- unreliable
+    /*
     it('removes a spike', function () {
       var json = {
         type: "GeometryCollection",
@@ -176,6 +178,7 @@ describe('mapshaper-rounding.js', function () {
       api.internal.setCoordinatePrecision(dataset, 1);
       assert.deepEqual(dataset.layers[0].shapes, [null]);
     });
+    */
 
     it('bounding box is updated', function() {
       var json = {
