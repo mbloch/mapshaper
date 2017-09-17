@@ -471,6 +471,9 @@ internal.getOptionParser = function() {
     .option("name", nameOpt)
     .option("target", targetOpt);
 
+  parser.command("mosaic")
+    .option("target", targetOpt);
+
   parser.command("point-grid")
     .describe("create a rectangular grid of points")
     .validate(validateGridOpts)

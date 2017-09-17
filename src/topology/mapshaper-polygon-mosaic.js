@@ -4,6 +4,18 @@ mapshaper-pathfinder-utils
 mapshaper-pathfinder
 */
 
+
+// create mosaic layer from arcs (for debugging mosaic function)
+internal.createMosaicLayer = function(dataset, opts) {
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  nodes.detachAcyclicArcs();
+  return {
+    name: 'mosaic',
+    shapes: internal.buildPolygonMosaic(nodes).mosaic,
+    geometry_type: 'polygon'
+  };
+};
+
 internal.findMosaicRings = function(nodes) {
   var arcs = nodes.arcs,
       cw = [],
