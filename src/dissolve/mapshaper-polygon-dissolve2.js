@@ -201,7 +201,7 @@ internal.getPolygonDissolver2 = function(nodes) {
     holeTileIds = holesToTileIds(ccw);
     dissolvedRings = dissolve(ringTileIds.map(useRingTile));
 
-    debug("cw:", cw);
+    debug("cw:", cw, "n:", cw.length);
     debug("ringTiles:", ringTileIds);
     debug("dissolved rings:", dissolvedRings, 'n:', dissolvedRings.length);
 

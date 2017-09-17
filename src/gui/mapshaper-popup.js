@@ -1,17 +1,19 @@
 /* @requires mapshaper-gui-lib */
 
 // @onNext: handler for switching between multiple records
-function Popup(onNext) {
+function Popup(onNext, onPrev) {
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
   // multi-hit display and navigation
   var tab = El('div').addClass('popup-tab').appendTo(el).hide();
   var nav = El('div').addClass('popup-nav').appendTo(tab);
+  var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
-  var nextLink = El('span').addClass('popup-nav-next colored-text').appendTo(nav).text('»');
+  var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
 
   nextLink.on('click', onNext);
+  prevLink.on('click', onPrev);
 
   this.show = function(id, ids, table, pinned) {
     var rec = table ? table.getRecordAt(id) : {};
@@ -41,8 +43,9 @@ function Popup(onNext) {
 
   function showNav(id, ids, pinned) {
     var num = ids.indexOf(id) + 1;
-    navInfo.text(num + ' / ' + ids.length);
+    navInfo.text(' ' + num + ' / ' + ids.length + ' ');
     nextLink.css('display', pinned ? 'inline-block' : 'none');
+    prevLink.css('display', pinned && ids.length > 2 ? 'inline-block' : 'none');
     tab.show();
   }
 

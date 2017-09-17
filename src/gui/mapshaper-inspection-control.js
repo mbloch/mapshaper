@@ -1,7 +1,7 @@
 /* @requires mapshaper-gui-lib, mapshaper-popup, mapshaper-hit-control */
 
 function InspectionControl(model, hit) {
-  var _popup = new Popup(onNextHit);
+  var _popup = new Popup(getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
@@ -96,13 +96,15 @@ function InspectionControl(model, hit) {
     inspect(id, false, e.ids);
   });
 
-  function onNextHit() {
-    var i = (_hoverIds || []).indexOf(_highId);
-    var nextId;
-    if (i > -1) {
-      nextId = _hoverIds[++i % _hoverIds.length];
-      inspect(nextId, true, _hoverIds);
-    }
+  function getSwitchHandler(diff) {
+    return function() {
+      var i = (_hoverIds || []).indexOf(_highId);
+      var nextId;
+      if (i > -1) {
+        nextId = _hoverIds[(i + diff + _hoverIds.length) % _hoverIds.length];
+        inspect(nextId, true, _hoverIds);
+      }
+    };
   }
 
   function showInspector(id, ids, pinned) {

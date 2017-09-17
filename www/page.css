@@ -760,9 +760,9 @@ body.simplify #layer-control-btn {
 	white-space: nowrap;
 }
 
-.popup-nav .popup-nav-next {
+.popup-nav .popup-nav-arrow {
 	cursor: pointer;
-	padding-left: 4px;
+	padding: 0 1px;
 }
 
 .popup > div.popup-content {
