@@ -311,7 +311,8 @@ body.queued-files #import-options {
 	background-color: #f6f6f6;
 }
 
-#splash-screen .drop-area.dragover {
+#splash-screen .drop-area.dragover,
+body.dragover #import-options-drop-area .drop-area {
 	border-color: #333;
 	background-color: #f7f7f7;
 }
@@ -755,8 +756,8 @@ body.simplify #layer-control-btn {
 .popup-tab .popup-nav {
 	display: inline-block;
 	pointer-events: auto;
-	background-color: #eee;
-	padding: 3px 6px 3px 4px;
+	background-color: rgba(234,234,234,0.85);
+	padding: 3px 5px 3px 4px;
 	white-space: nowrap;
 }
 
