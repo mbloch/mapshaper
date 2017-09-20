@@ -57,7 +57,9 @@ function DisplayCanvas() {
       }
       item = styleIndex[key];
       item.shapes.push(shapes[i]);
-      if (item.shapes.length >= batchSize) {
+      // overlays should not be batched, so transparency of overlapping shapes
+      // is drawn correctly
+      if (item.shapes.length >= batchSize || style.overlay) {
         drawPaths(item.shapes, startPath, draw, item.style);
         item.shapes = [];
       }

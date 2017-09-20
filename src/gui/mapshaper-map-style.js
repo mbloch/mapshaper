@@ -3,8 +3,8 @@
 var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b7d9ea",
-      pink = "#f74b80",  // dark
-      pink2 = "rgba(239, 0, 86, 0.16)", // "#ffd9e7", // medium
+      pink = "#f74b80",  // dark pink
+      pink2 = "rgba(255, 161, 197, 0.65)",
       gold = "#efc100",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
@@ -27,6 +27,7 @@ var MapStyle = (function() {
       hoverStyles = {
         polygon: {
           fillColor: hoverFill,
+          fillOpacity: 0.5,
           strokeColor: black,
           strokeWidth: 1.2
         }, point:  {
@@ -66,8 +67,9 @@ var MapStyle = (function() {
       pinnedStyles = {
         polygon: {
           fillColor: pink2,
+          fillOpacity: 0.7,
           strokeColor: pink,
-          strokeWidth: 1.6
+          strokeWidth: 1.8
         }, point:  {
           dotColor: pink,
           dotSize: 7
@@ -155,6 +157,7 @@ var MapStyle = (function() {
       overlayStyle.type = 'styled';
     }
     overlayStyle.ids = ids;
+    overlayStyle.overlay = true;
     return ids.length > 0 ? overlayStyle : null;
   }
 
