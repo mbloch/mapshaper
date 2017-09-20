@@ -27,7 +27,6 @@ var MapStyle = (function() {
       hoverStyles = {
         polygon: {
           fillColor: hoverFill,
-          fillOpacity: 0.5,
           strokeColor: black,
           strokeWidth: 1.2
         }, point:  {
@@ -67,7 +66,6 @@ var MapStyle = (function() {
       pinnedStyles = {
         polygon: {
           fillColor: pink2,
-          fillOpacity: 0.7,
           strokeColor: pink,
           strokeWidth: 1.8
         }, point:  {
