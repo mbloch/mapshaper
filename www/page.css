@@ -723,7 +723,15 @@ body.simplify #layer-control-btn {
 	position: absolute;
 	z-index: 20;
 	top: 10px;
-	left: 13px;
+	left: 12px;
+}
+
+#intersection-count .icon {
+	background-color: #F24400;
+	display: inline-block;
+	width: 5px;
+	height: 5px;
+	margin: 0 4px 2px 0;
 }
 
 #intersection-display .text-btn.disabled {
