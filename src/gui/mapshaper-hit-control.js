@@ -121,10 +121,13 @@ function HitControl(ext, mouse) {
   }
 
   // reduce hit threshold when zoomed out
-  function getHitBuffer2(pix) {
+  function getHitBuffer2(pix, minPix) {
     var scale = ext.scale();
-    if (scale > 1) scale = 1;
-    return getHitBuffer(pix) * scale;
+    if (scale < 1) {
+      pix *= scale;
+    }
+    if (minPix > 0 && pix < minPix) pix = minPix;
+    return getHitBuffer(pix);
   }
 
   function getCoordPrecision(bounds) {
@@ -138,7 +141,7 @@ function HitControl(ext, mouse) {
   }
 
   function polygonTest(x, y) {
-    var maxDist = getHitBuffer2(5),
+    var maxDist = getHitBuffer2(5, 1),
         cands = findHitCandidates(x, y, maxDist),
         hits = [],
         cand, hitId;
@@ -174,7 +177,7 @@ function HitControl(ext, mouse) {
   }
 
   function polylineTest(x, y) {
-    var maxDist = getHitBuffer2(15),
+    var maxDist = getHitBuffer2(15, 2),
         bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, target.dataset.arcs);
@@ -189,7 +192,7 @@ function HitControl(ext, mouse) {
   }
 
   function pointTest(x, y) {
-    var dist = getHitBuffer2(25),
+    var dist = getHitBuffer2(25, 4),
         limitSq = dist * dist,
         hits = [];
     internal.forEachPoint(target.layer.shapes, function(p, id) {
