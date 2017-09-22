@@ -137,7 +137,7 @@ function ImportControl(model, opts) {
     El('#dropped-file-list').empty();
   }
 
-  function addFiles(files) {
+  function addFilesToQueue(files) {
     var index = {};
     queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
       // filter out unreadable types and dupes
@@ -172,7 +172,8 @@ function ImportControl(model, opts) {
   function receiveFiles(files, quickView) {
     var prevSize = queuedFiles.length;
     var firstRun = importCount === 0 && prevSize === 0;
-    addFiles(utils.toArray(files));
+    files = handleZipFiles(utils.toArray(files), quickView);
+    addFilesToQueue(files);
     if (queuedFiles.length === 0) return;
     gui.enterMode('import');
 
@@ -223,7 +224,8 @@ function ImportControl(model, opts) {
     return opts;
   }
 
-  function readSingleFile(file) {
+  // @file a File object
+  function readFile(file) {
     var name = file.name,
         reader = new FileReader(),
         useBinary = internal.isBinaryFile(name) ||
@@ -242,15 +244,6 @@ function ImportControl(model, opts) {
     } else {
       // TODO: improve to handle encodings, etc.
       reader.readAsText(file, 'UTF-8');
-    }
-  }
-
-  // @file a File object
-  function readFile(file) {
-    if (internal.isZipFile(file.name)) {
-      readZipFile(file);
-    } else {
-      readSingleFile(file);
     }
   }
 
@@ -334,8 +327,18 @@ function ImportControl(model, opts) {
     console.error(e);
   }
 
-  function readZipFile(file) {
-    gui.showProgressMessage('Importing');
+  function handleZipFiles(files, quickView) {
+    return files.filter(function(file) {
+      var isZip = internal.isZipFile(file.name);
+      if (isZip) {
+        readZipFile(file, quickView);
+      }
+      return !isZip;
+    });
+  }
+
+  function readZipFile(file, quickView) {
+    // gui.showProgressMessage('Importing');
     setTimeout(function() {
       gui.readZipFile(file, function(err, files) {
         if (err) {
@@ -346,8 +349,7 @@ function ImportControl(model, opts) {
           files = files.filter(function(f) {
             return !/\.txt$/i.test(f.name);
           });
-          addFiles(files);
-          readNext();
+          receiveFiles(files, quickView);
         }
       });
     }, 35);
@@ -378,8 +380,9 @@ function ImportControl(model, opts) {
       } else if (!files.length) {
         gui.clearMode();
       } else {
-        addFiles(files);
-        submitFiles();
+        // addFiles(files);
+        // submitFiles();
+        receiveFiles(files, true);
       }
     });
   }

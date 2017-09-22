@@ -382,9 +382,10 @@ body.queued-files #splash-screen {
 	text-align: center;
 }
 
-
 #dropped-file-list {
-	padding-bottom: 8px;
+	margin-bottom: 8px;
+	max-height: 300px;
+	overflow-y: scroll;
 }
 
 #dropped-file-list p {
