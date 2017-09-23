@@ -30,12 +30,14 @@ function Console(model) {
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
   gui.onClick(content, function(e) {
-    var targ = El(e.target);
-    if (gui.getInputElement() || targ.hasClass('console-message')) {
-      // don't focus if user is typing or user clicks content area
-    } else {
-      input.node().focus();
+    if (gui.getInputElement() || e.target.id != 'command-line') {
+      // prevent click-to-focus when typing or clicking on content
+      e.stopPropagation();
     }
+  });
+
+  gui.onClick(el, function(e) {
+    input.node().focus(); // focus if user clicks blank part of console
   });
 
   function toggle() {
