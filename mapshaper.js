@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.52';
+var VERSION = '0.4.53';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -4828,7 +4828,7 @@ geom.clampToCloseRange = function(a, b, c) {
   var lim;
   if (geom.outsideRange(a, b, c)) {
     lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
-    if (Math.abs(a - lim) > 1e-16) {
+    if (Math.abs(a - lim) > 1e-15) {
       debug("[clampToCloseRange()] large clamping interval", a, b, c);
     }
     a = lim;
@@ -8605,7 +8605,8 @@ internal.fixNestingErrors = function(rings, arcs) {
 
 
 
-internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
+// Assumes points have been inserted at all segment intersections
+internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
   opts = opts || {};
   var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
@@ -8616,9 +8617,166 @@ internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var shapes2 = groups.map(internal.getPolygonDissolver2(nodes));
+  var shapes2 = internal.dissolvePolygons2(groups, arcs, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
+
+
+internal.getGapFillTest = function(arcs, opts) {
+  var threshold = opts.min_gap_area;
+  var test;
+  if (threshold === 0) {
+    test = function() {return false;}; // don't fill any gaps
+  } else if (threshold > 0) {
+    test = internal.getMinAreaTest(threshold, arcs);
+  } else {
+    test = internal.getSliverTest(arcs); // default is same as -filter-slivers default
+  }
+  return test;
+};
+
+internal.dissolvePolygons2 = function(shapes, arcs, opts) {
+  var arcFilter = internal.getArcPresenceTest(shapes, arcs.size());
+  var nodes = new NodeCollection(arcs, arcFilter);
+  nodes.detachAcyclicArcs(); // remove spikes
+  var divide = internal.getHoleDivider(nodes);
+  var dissolve = internal.getRingIntersector(nodes, 'dissolve');
+  var gapTest = internal.getGapFillTest(arcs, opts);
+  T.start();
+  var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
+  T.stop("Build mosaic");
+  var fwdArcIndex = new Int32Array(arcs.size());
+  var revArcIndex = new Int32Array(arcs.size());
+  var shapeWeights = [];
+  var unassignedTiles = [];
+  var tileGroups = shapes.map(function() {return [];});
+  T.start();
+  shapes.forEach(indexPolygon);
+  mosaic.forEach(assignMosaicRing);
+  unassignedTiles = unassignedTiles.filter(assignRemainingTile);
+  var shapes2 = tileGroups.map(dissolveTileGroup);
+  T.stop('Dissolve tiles');
+  return shapes2;
+
+  function dissolveTileGroup(group) {
+    var rings = [],
+        holes = [],
+        dissolved, tile;
+    for (var i=0, n=group.length; i<n; i++) {
+      tile = mosaic[group[i]];
+      rings.push(tile[0]);
+      if (tile.length > 1) {
+        holes = holes.concat(tile.slice(1));
+      }
+    }
+    dissolved = dissolve(rings.concat(holes));
+    if (dissolved.length > 1) {
+      // Commenting-out nesting order repair -- new method should prevent nesting errors
+      // dissolved = internal.fixNestingErrors(dissolved, arcs);
+    }
+    return dissolved.length > 0 ? dissolved : null;
+  }
+
+  function assignRemainingTile(tileId) {
+    var tile = mosaic[tileId];
+    var ring = tile[0];
+    var shapeId = -1;
+    for (var i=0, n=ring.length; i<n; i++) {
+      // find highest-priority neighboring shape
+      shapeId = chooseShape(shapeId, getShapeId(~ring[i]));
+    }
+    if (shapeId > -1 && gapTest(ring)) {
+      tileGroups[shapeId].push(tileId);
+    }
+    return shapeId < 0;
+  }
+
+  function assignMosaicRing(tile, tileId) {
+    var shapeId = -1;
+    var ring = tile[0]; // cw ring
+    for (var i=0, n=ring.length; i<n; i++) {
+      shapeId = chooseShape(shapeId, getShapeId(ring[i]));
+    }
+    if (shapeId == -1) {
+      unassignedTiles.push(tileId);
+    } else {
+      tileGroups[shapeId].push(tileId);
+    }
+  }
+
+  function chooseShape(a, b) {
+    var shpId = a;
+    if (a == -1 || b > -1 && shapeWeights[a] < shapeWeights[b]) {
+      shpId = b;
+    }
+    return shpId;
+  }
+
+  function indexPolygon(shape, shapeId) {
+    // TODO: support other metrics than area
+    //       consider per-ring metrics
+    var weight = geom.getShapeArea(shape, arcs);
+    var cw = [], ccw = [], i, n;
+    shapeWeights[shapeId] = weight;
+    divide(shape, cw, ccw);
+    for (i=0, n=cw.length; i<n; i++) {
+      indexRing(cw[i], shapeId);
+    }
+    for (i=0, n=ccw.length; i<n; i++) {
+      indexRing(ccw[i], shapeId);
+    }
+  }
+
+  function indexRing(ring, shapeId) {
+    for (var i=0, n=ring.length; i<n; i++) {
+      indexArc(ring[i], shapeId);
+    }
+  }
+
+  function indexArc(arcId, shapeId) {
+    var storedId = getShapeId(arcId);
+    if (storedId === -1 || chooseShape(shapeId, storedId) == shapeId) {
+      setShapeId(arcId, shapeId);
+    }
+  }
+
+  function getShapeId(arcId) {
+    var absId = absArcId(arcId);
+    // index is 1-based, 0 is null
+    return (absId == arcId ? fwdArcIndex : revArcIndex)[absId] - 1;
+  }
+
+  function setShapeId(arcId, shpId) {
+    var absId = absArcId(arcId);
+    (absId == arcId ? fwdArcIndex : revArcIndex)[absId] = shpId + 1;
+  }
+
+};
+
+internal.extendShape = function(dest, src) {
+  if (src) {
+    for (var i=0, n=src.length; i<n; i++) {
+      dest.push(src[i]);
+    }
+  }
+};
+
+
+
+
+api.cleanLayers = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolygonLayer);
+  var nodes = internal.addIntersectionCuts(dataset);
+  layers.forEach(function(lyr) {
+    lyr.shapes = internal.dissolvePolygons2(lyr.shapes, nodes.arcs, opts);
+  });
+};
+
+
+
+
+
+// TODO: remove this obsolete dissolve code (still used by clip)
 
 internal.concatShapes = function(shapes) {
   return shapes.reduce(function(memo, shape) {
@@ -8800,9 +8958,9 @@ internal.getPolygonDissolver2 = function(nodes) {
     holeTileIds = holesToTileIds(ccw);
     dissolvedRings = dissolve(ringTileIds.map(useRingTile));
 
-    debug("cw:", cw);
+    debug("cw:", cw, "n:", cw.length);
     debug("ringTiles:", ringTileIds);
-    debug("dissolved rings:", dissolvedRings);
+    debug("dissolved rings:", dissolvedRings, 'n:', dissolvedRings.length);
 
     if (ccw.length > 0) {
       dissolvedHoles = dissolveHoles(holeTileIds, dissolvedRings);
@@ -8833,174 +8991,7 @@ internal.appendHolestoRings = function(cw, ccw) {
 
 
 
-// src: single layer or array of layers (must belong to dataset)
-api.dissolve2 = function(src, dataset, opts) {
-  var multiple = Array.isArray(src);
-  var layers = multiple ? src : [src];
-  var nodes;
-  var layers2 = layers.map(function(lyr) {
-    internal.requirePolygonLayer(lyr);
-    if (!nodes) {
-      nodes = internal.addIntersectionCuts(dataset, opts);
-    }
-    return internal.dissolvePolygonLayer(lyr, nodes, opts);
-  });
-  return multiple ? layers2 : layers2[0];
-};
-
-
-
-
-
-internal.findMosaicRings = function(nodes) {
-  var arcs = nodes.arcs,
-      cw = [],
-      ccw = [],
-      lostArcs = [];
-
-  var flags = new Uint8Array(arcs.size());
-  var findPath = internal.getPathFinder(nodes, useRoute);
-
-  for (var i=0, n=flags.length; i<n; i++) {
-    tryPath(i);
-    tryPath(~i);
-  }
-
-  return {
-    cw: cw,
-    ccw: ccw,
-    lostArcs: lostArcs
-  };
-
-  function tryPath(arcId) {
-    var ring;
-    if (!routeIsOpen(arcId)) return;
-    ring = findPath(arcId);
-    if (!ring) {
-      // arc is unused, but can not be extended to a complete ring
-      lostArcs.push(arcId);
-      debug("Dead-end arc:", arcId);
-    } else if (geom.getPlanarPathArea(ring, arcs) > 0) {
-      cw.push(ring);
-    } else {
-      ccw.push(ring);
-    }
-  }
-
-  function useRoute(arcId) {
-    return routeIsOpen(arcId, true);
-  }
-
-  function routeIsOpen(arcId, closeRoute) {
-    var absId = absArcId(arcId);
-    var bit = absId == arcId ? 1 : 2;
-    var isOpen = (flags[absId] & bit) === 0;
-    if (closeRoute && isOpen) flags[absId] |= bit;
-    return isOpen;
-  }
-};
-
-
-internal.buildPolygonMosaic = function(nodes) {
-  // Assumes that insertClippingPoints() has been run
-  var data = internal.findMosaicRings(nodes);
-  var mosaic = data.cw.map(function(ring) {return [ring];});
-  var index = new PathIndex(mosaic, nodes.arcs);
-  var enclosures = [];
-
-  // add holes to mosaic polygons
-  // TODO: skip this step if layer contains no holes (how to tell?)
-  data.ccw.forEach(function(ring) {
-    var id = index.findSmallestEnclosingPolygon(ring);
-    if (id > -1) {
-      mosaic[id].push(ring);
-    } else {
-      internal.reversePath(ring);
-      enclosures.push([ring]);
-    }
-  });
-
-  return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
-};
-
-
-
-
-api.clean2 = function(layers, dataset, opts) {
-  layers.forEach(internal.requirePolygonLayer);
-  var nodes = internal.addIntersectionCuts(dataset, opts);
-  var out = internal.buildPolygonMosaic(nodes);
-  layers = layers.concat({
-    geometry_type: 'polygon',
-    name: 'mosaic',
-    shapes: out.mosaic
-  } , {
-    geometry_type: 'polygon',
-    name: 'enclosure',
-    shapes: out.enclosures
-  });
-  if (out.lostArcs.length > 0) {
-    layers = layers.concat(getDebugLayers(out.lostArcs, nodes.arcs));
-  }
-  return layers;
-
-  function getDebugLayers(lostArcs, arcs) {
-    var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
-    var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
-    var arcData = [];
-    var pointData = [];
-    lostArcs.forEach(function(arcId) {
-      var first = arcs.getVertex(arcId, 0);
-      var last = arcs.getVertex(arcId, -1);
-      arcData.push({ARCID: arcId});
-      arcLyr.shapes.push([[arcId]]);
-      pointData.push({ARCID: arcId}, {ARCID: arcId});
-      pointLyr.shapes.push([[first.x, first.y]], [[last.x, last.y]]);
-    });
-    arcLyr.data = new DataTable(arcData);
-    pointLyr.data = new DataTable(pointData);
-    return [arcLyr, pointLyr];
-  }
-};
-
-
-// (This doesn't currently do much)
-// TODO: remove small overlaps
-// TODO: patch small gaps
-api.cleanLayers = function(layers, dataset, opts) {
-  var nodes = internal.addIntersectionCuts(dataset);
-  var flatten = internal.getPolygonFlattener(nodes);
-
-  layers.forEach(function(lyr) {
-    internal.requirePolygonLayer(lyr);
-    lyr.shapes = lyr.shapes.map(flatten);
-  });
-};
-
-
-internal.getPolygonFlattener = function(nodes) {
-  var flags = new Uint8Array(nodes.arcs.size());
-  var divide = internal.getHoleDivider(nodes);
-  var flatten = internal.getRingIntersector(nodes, 'flatten', flags);
-
-  return function(shp) {
-    if (!shp) return null;
-    var cw = [],
-        ccw = [];
-
-    divide(shp, cw, ccw);
-    cw = flatten(cw);
-    ccw.forEach(internal.reversePath);
-    ccw = flatten(ccw);
-    ccw.forEach(internal.reversePath);
-
-    var shp2 = internal.appendHolestoRings(cw, ccw);
-    return shp2 && shp2.length > 0 ? shp2 : null;
-  };
-};
-
-
-
+// TODO: remove dependency on old polygon dissolve function
 
 // assumes layers and arcs have been prepared for clipping
 internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
@@ -9620,7 +9611,8 @@ internal.getSliverTest = function(arcs) {
   var maxSliverArea = internal.calcMaxSliverArea(arcs);
   return function(path) {
     // TODO: more sophisticated metric, perhaps considering shape
-    return Math.abs(geom.getPlanarPathArea(path, arcs)) <= maxSliverArea;
+    var area = geom.getPlanarPathArea(path, arcs);
+    return Math.abs(area) <= maxSliverArea;
   };
 };
 
@@ -10478,6 +10470,21 @@ internal.buildAssignmentIndex = function(lyr, field, arcs) {
     var o = index[shpA] || (index[shpA] = {});
     o[shpB] = len + (o[shpB] || 0);
   }
+};
+
+
+
+
+
+// Newest version, with gap and overlap repair
+api.dissolve2 = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolygonLayer);
+  T.start();
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  T.stop('Add cuts');
+  return layers.map(function(lyr) {
+    return internal.dissolvePolygonLayer2(lyr, nodes.arcs, opts);
+  });
 };
 
 
@@ -17174,6 +17181,142 @@ internal.projectAndDensifyArcs = function(arcs, proj) {
 
 
 
+// More information than createMosaicLayer() (for debugging mosaic topology)
+internal.mosaic2 = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolygonLayer);
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  var out = internal.buildPolygonMosaic(nodes);
+  layers = layers.concat({
+    geometry_type: 'polygon',
+    name: 'mosaic',
+    shapes: out.mosaic
+  } , {
+    geometry_type: 'polygon',
+    name: 'enclosure',
+    shapes: out.enclosures
+  });
+  if (out.lostArcs.length > 0) {
+    layers = layers.concat(getDebugLayers(out.lostArcs, nodes.arcs));
+  }
+  return layers;
+
+  function getDebugLayers(lostArcs, arcs) {
+    var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
+    var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
+    var arcData = [];
+    var pointData = [];
+    lostArcs.forEach(function(arcId) {
+      var first = arcs.getVertex(arcId, 0);
+      var last = arcs.getVertex(arcId, -1);
+      arcData.push({ARCID: arcId});
+      arcLyr.shapes.push([[arcId]]);
+      pointData.push({ARCID: arcId}, {ARCID: arcId});
+      pointLyr.shapes.push([[first.x, first.y]], [[last.x, last.y]]);
+    });
+    arcLyr.data = new DataTable(arcData);
+    pointLyr.data = new DataTable(pointData);
+    return [arcLyr, pointLyr];
+  }
+};
+
+
+// create mosaic layer from arcs (for debugging mosaic function)
+internal.createMosaicLayer = function(dataset, opts) {
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  nodes.detachAcyclicArcs();
+  return {
+    name: 'mosaic',
+    shapes: internal.buildPolygonMosaic(nodes).mosaic,
+    geometry_type: 'polygon'
+  };
+};
+
+internal.findMosaicRings = function(nodes) {
+  var arcs = nodes.arcs,
+      cw = [],
+      ccw = [],
+      empty = [],
+      lostArcs = [];
+
+  var flags = new Uint8Array(arcs.size());
+  var findPath = internal.getPathFinder(nodes, useRoute);
+
+  for (var i=0, n=flags.length; i<n; i++) {
+    tryPath(i);
+    // TODO: consider skipping detection of island ccw paths here (if possible)
+    tryPath(~i);
+  }
+  return {
+    cw: cw,
+    ccw: ccw,
+    empty: empty,
+    lostArcs: lostArcs
+  };
+
+  function tryPath(arcId) {
+    var ring, area;
+    if (!routeIsOpen(arcId)) return;
+    ring = findPath(arcId);
+    if (!ring) {
+      // arc is unused, but can not be extended to a complete ring
+      lostArcs.push(arcId);
+      debug("Dead-end arc:", arcId);
+      return;
+    }
+    area = geom.getPlanarPathArea(ring, arcs);
+    if (area > 0) {
+      cw.push(ring);
+    } else if (area < 0) {
+      ccw.push(ring);
+    } else {
+      empty.push(ring);
+    }
+  }
+
+  function useRoute(arcId) {
+    return routeIsOpen(arcId, true);
+  }
+
+  function routeIsOpen(arcId, closeRoute) {
+    var absId = absArcId(arcId);
+    var bit = absId == arcId ? 1 : 2;
+    var isOpen = (flags[absId] & bit) === 0;
+    if (closeRoute && isOpen) flags[absId] |= bit;
+    return isOpen;
+  }
+};
+
+
+internal.buildPolygonMosaic = function(nodes) {
+  // Assumes that insertClippingPoints() has been run
+  T.start();
+  var data = internal.findMosaicRings(nodes);
+  var mosaic = data.cw.map(function(ring) {return [ring];});
+  T.stop('Find mosaic rings');
+  T.start();
+  var index = new PathIndex(mosaic, nodes.arcs);
+  var enclosures = [];
+
+  // add holes to mosaic polygons
+  // TODO: optimize -- checking ccw path of every island is costly
+  data.ccw.forEach(function(ring) {
+    var id = index.findSmallestEnclosingPolygon(ring);
+    if (id > -1) {
+      mosaic[id].push(ring);
+    } else {
+      internal.reversePath(ring);
+      enclosures.push([ring]);
+    }
+  });
+  T.stop(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length));
+
+  return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
+};
+
+
+
+
+
 internal.closeGaps = function(lyr, dataset, opts) {
   var maxGapLen = opts.gap_tolerance > 0 ? opts.gap_tolerance : 0;
   var arcs = dataset.arcs;
@@ -18621,9 +18764,6 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'clean') {
       api.cleanLayers(targetLayers, targetDataset, opts);
 
-    } else if (name == 'clean2') {
-      outputLayers = api.clean2(targetLayers, targetDataset, opts);
-
     } else if (name == 'clip') {
       outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
 
@@ -18695,6 +18835,13 @@ api.runCommand = function(cmd, catalog, cb) {
         targetLayers = targetDataset.layers; // kludge
       }
       outputLayers = api.mergeLayers(targetLayers);
+
+    } else if (name == 'mosaic') {
+      opts.no_replace = true; // add mosaic to dataset
+      outputLayers = [internal.createMosaicLayer(targetDataset, opts)];
+
+    } else if (name == 'mosaic2') {
+      outputLayers = internal.mosaic2(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
       outputFiles = internal.exportTargetLayers(targets, opts);
@@ -19241,12 +19388,6 @@ function CommandOptions(name) {
     options: []
   };
 
-  // set default option (assign unnamed argument to option of this name)
-  this.default = function(name) {
-    _command.default = name;
-    return this;
-  };
-
   this.validate = function(f) {
     _command.validate = f;
     return this;
@@ -19284,6 +19425,8 @@ function CommandOptions(name) {
     opts = opts || {}; // accept just a name -- some options don't need properties
     if (!utils.isString(name) || !name) error("Missing option name");
     if (!utils.isObject(opts)) error("Invalid option definition:", opts);
+    // default option -- assign unnamed argument to this option
+    if (opts.DEFAULT) _command.default = name;
     opts.name = name;
     _command.options.push(opts);
     return this;
@@ -19687,7 +19830,11 @@ internal.getOptionParser = function() {
         type: "flag"
       },
       snapIntervalOpt = {
-        describe: "specify snapping distance in source units",
+        describe: "snapping distance in source units (default is tiny)",
+        type: "number"
+      },
+      minGapAreaOpt = {
+        describe: "smaller gaps than this are filled (default is small)",
         type: "number"
       },
       sumFieldsOpt = {
@@ -19699,6 +19846,7 @@ internal.getOptionParser = function() {
         type: "strings"
       },
       dissolveFieldOpt = {
+        DEFAULT: true,
         describe: "(optional) name of a data field to dissolve on"
       },
       fieldTypesOpt = {
@@ -19890,12 +20038,19 @@ internal.getOptionParser = function() {
 
   parser.section("\nEditing commands");
 
+  parser.command("clean")
+    .describe("repairs overlaps and small gaps in polygon layers")
+    .option("min-gap-area", minGapAreaOpt)
+    .option("snap-interval", snapIntervalOpt)
+    .option("no-snap", noSnapOpt)
+    .option("target", targetOpt);
+
   parser.command("clip")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing clip polygons"
     })
     .option('remove-slivers', {
@@ -19916,7 +20071,6 @@ internal.getOptionParser = function() {
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .default("field")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -19935,21 +20089,21 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("dissolve2")
-    .describe("merge adjacent and overlapping polygons")
-    .default("field")
+    .describe("merge adjacent polygons (repairs overlaps and gaps)")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
+    .option("min-gap-area", minGapAreaOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
   parser.command("drop")
-    .describe("delete the target layer(s) or items within the target layer(s)")
+    .describe("delete layer(s) or elements within the target layer(s)")
     .option("geometry", {
       describe: "delete all geometry from the target layer(s)",
       type: "flag"
@@ -19965,8 +20119,8 @@ internal.getOptionParser = function() {
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +
         "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "JS expression to apply to each target feature"
     })
     .option("where", whereOpt)
@@ -19976,8 +20130,8 @@ internal.getOptionParser = function() {
     .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClipOpts)
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing erase polygons"
     })
     .option('remove-slivers', {
@@ -19998,8 +20152,8 @@ internal.getOptionParser = function() {
 
   parser.command("filter")
     .describe("delete features using a JS expression")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "delete features that evaluate to false"
     })
     .option("remove-empty", {
@@ -20015,8 +20169,8 @@ internal.getOptionParser = function() {
 
   parser.command("filter-fields")
     .describe('retain a subset of data fields')
-    .default('fields')
     .option("fields", {
+      DEFAULT: true,
       type: "strings",
       describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
@@ -20071,8 +20225,8 @@ internal.getOptionParser = function() {
         error("Command requires the name of a layer or file to join");
       }
     })
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing data records"
     })
     .option("keys", {
@@ -20112,8 +20266,8 @@ internal.getOptionParser = function() {
 
   parser.command("lines")
     .describe("convert polygons to polylines, classified by edge type")
-    .default("fields")
     .option("fields", {
+      DEFAULT: true,
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "strings"
     })
@@ -20125,6 +20279,12 @@ internal.getOptionParser = function() {
     .describe("merge multiple layers into as few layers as possible")
     .flag('no_arg')
     .option("name", nameOpt)
+    .option("target", targetOpt);
+
+  parser.command("mosaic")
+    .option("target", targetOpt);
+
+  parser.command("mosaic2")
     .option("target", targetOpt);
 
   parser.command("point-grid")
@@ -20239,29 +20399,29 @@ internal.getOptionParser = function() {
     .validate(validateProjOpts);
 
   parser.command("rename-fields")
-    .default('fields')
     .describe('rename data fields')
     .option("fields", {
+      DEFAULT: true,
       type: "strings",
       describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
 
   parser.command("rename-layers")
-    .default('names')
     .describe("assign new names to layers")
     .option("names", {
+      DEFAULT: true,
       type: "strings",
       describe: "new layer name(s) (comma-sep. list)"
     })
     .option("target", targetOpt);
 
   parser.command('simplify')
-    .default('percentage')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
     .option('percentage', {
+      DEFAULT: true,
       alias: 'p',
       type: 'percent',
       describe: "percentage of removable points to retain, e.g. 10%"
@@ -20329,8 +20489,8 @@ internal.getOptionParser = function() {
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing clip polygons"
     })
     /*
@@ -20348,8 +20508,8 @@ internal.getOptionParser = function() {
 
   parser.command("sort")
     .describe("sort features using a JS expression")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
@@ -20364,8 +20524,8 @@ internal.getOptionParser = function() {
 
   parser.command("split")
     .describe("split features into separate layers using a data field")
-    .default("field")
     .option("field", {
+      DEFAULT: true,
       describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
@@ -20445,8 +20605,8 @@ internal.getOptionParser = function() {
 
   parser.command("target")
     .describe("set active layer")
-    .default('target')
     .option("target", {
+      DEFAULT: true,
       describe: "name or index of layer to target"
     })
     .option('type', {
@@ -20458,8 +20618,8 @@ internal.getOptionParser = function() {
 
   parser.command("uniq")
     .describe("delete features with the same id as a previous feature")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "JS expression to obtain the id of a feature"
     })
     .option("verbose", {
@@ -20493,17 +20653,6 @@ internal.getOptionParser = function() {
     })
     .option("where", whereOpt)
     .option("target", targetOpt);
-
-
-  // Work-in-progress (no .describe(), so hidden from -h)
-  parser.command("clean")
-    .option("target", targetOpt);
-
-  parser.command("clean2")
-    .option("snap-interval", snapIntervalOpt)
-    .option("no-snap", noSnapOpt)
-    .option("target", targetOpt);
-
 
   parser.command("cluster")
     .describe("group polygons into compact clusters")
@@ -20616,8 +20765,8 @@ internal.getOptionParser = function() {
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")
     .validate(validateExpressionOpt)
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "boolean JS expression"
     })
     .option("target", targetOpt);
@@ -20632,8 +20781,8 @@ internal.getOptionParser = function() {
     .example("Count census blocks in NY with zero population\n" +
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(validateExpressionOpt)
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "functions: sum() average() median() max() min() count()"
     })
     .option("where", whereOpt)
@@ -20645,8 +20794,8 @@ internal.getOptionParser = function() {
   parser.command('help')
     .alias('h')
     .describe("print help; takes optional command name")
-    .default('command')
     .option("command", {
+      DEFAULT: true,
       describe: "view detailed information about a command"
     });
 
@@ -20655,8 +20804,8 @@ internal.getOptionParser = function() {
 
   parser.command('inspect')
     .describe("print information about a feature")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "boolean JS expression for selecting a feature"
     })
     .option("target", targetOpt)

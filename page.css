@@ -178,7 +178,7 @@ body {
 .mapshaper-logo {
 	font-weight: bold;
 	font-size: 18px;
-	margin: 2px 0 0 12px;
+	margin: 3px 0 0 12px;
 }
 
 .mapshaper-logo .logo-highlight {
@@ -311,7 +311,8 @@ body.queued-files #import-options {
 	background-color: #f6f6f6;
 }
 
-#splash-screen .drop-area.dragover {
+#splash-screen .drop-area.dragover,
+body.dragover #import-options-drop-area .drop-area {
 	border-color: #333;
 	background-color: #f7f7f7;
 }
@@ -381,15 +382,16 @@ body.queued-files #splash-screen {
 	text-align: center;
 }
 
-
 #dropped-file-list {
-	padding-bottom: 8px;
+	margin-bottom: 8px;
+	max-height: 300px;
+	overflow-y: auto;
 }
 
 #dropped-file-list p {
 	line-height: 1;
 	margin-bottom: 5px;
-	font-size: 16px;
+	font-size: 15px;
 	font-weight: bold;
 }
 
@@ -725,6 +727,14 @@ body.simplify #layer-control-btn {
 	left: 13px;
 }
 
+#intersection-count .icon {
+	background-color: #F24400;
+	display: inline-block;
+	width: 5px;
+	height: 5px;
+	margin: 0 4px 2px 0;
+}
+
 #intersection-display .text-btn.disabled {
 	visibility: hidden;
 }
@@ -755,14 +765,14 @@ body.simplify #layer-control-btn {
 .popup-tab .popup-nav {
 	display: inline-block;
 	pointer-events: auto;
-	background-color: #eee;
-	padding: 3px 6px 3px 4px;
+	background-color: rgba(234,234,234,0.85);
+	padding: 3px 5px 3px 4px;
 	white-space: nowrap;
 }
 
-.popup-nav .popup-nav-next {
+.popup-nav .popup-nav-arrow {
 	cursor: pointer;
-	padding-left: 4px;
+	padding: 0 1px;
 }
 
 .popup > div.popup-content {

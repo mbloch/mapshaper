@@ -1892,7 +1892,7 @@ function ImportControl(model, opts) {
     El('#dropped-file-list').empty();
   }
 
-  function addFiles(files) {
+  function addFilesToQueue(files) {
     var index = {};
     queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
       // filter out unreadable types and dupes
@@ -1927,7 +1927,8 @@ function ImportControl(model, opts) {
   function receiveFiles(files, quickView) {
     var prevSize = queuedFiles.length;
     var firstRun = importCount === 0 && prevSize === 0;
-    addFiles(utils.toArray(files));
+    files = handleZipFiles(utils.toArray(files), quickView);
+    addFilesToQueue(files);
     if (queuedFiles.length === 0) return;
     gui.enterMode('import');
 
@@ -1978,7 +1979,8 @@ function ImportControl(model, opts) {
     return opts;
   }
 
-  function readSingleFile(file) {
+  // @file a File object
+  function readFile(file) {
     var name = file.name,
         reader = new FileReader(),
         useBinary = internal.isBinaryFile(name) ||
@@ -1997,15 +1999,6 @@ function ImportControl(model, opts) {
     } else {
       // TODO: improve to handle encodings, etc.
       reader.readAsText(file, 'UTF-8');
-    }
-  }
-
-  // @file a File object
-  function readFile(file) {
-    if (internal.isZipFile(file.name)) {
-      readZipFile(file);
-    } else {
-      readSingleFile(file);
     }
   }
 
@@ -2089,8 +2082,18 @@ function ImportControl(model, opts) {
     console.error(e);
   }
 
-  function readZipFile(file) {
-    gui.showProgressMessage('Importing');
+  function handleZipFiles(files, quickView) {
+    return files.filter(function(file) {
+      var isZip = internal.isZipFile(file.name);
+      if (isZip) {
+        readZipFile(file, quickView);
+      }
+      return !isZip;
+    });
+  }
+
+  function readZipFile(file, quickView) {
+    // gui.showProgressMessage('Importing');
     setTimeout(function() {
       gui.readZipFile(file, function(err, files) {
         if (err) {
@@ -2101,8 +2104,7 @@ function ImportControl(model, opts) {
           files = files.filter(function(f) {
             return !/\.txt$/i.test(f.name);
           });
-          addFiles(files);
-          readNext();
+          receiveFiles(files, quickView);
         }
       });
     }, 35);
@@ -2133,8 +2135,9 @@ function ImportControl(model, opts) {
       } else if (!files.length) {
         gui.clearMode();
       } else {
-        addFiles(files);
-        submitFiles();
+        // addFiles(files);
+        // submitFiles();
+        receiveFiles(files, true);
       }
     });
   }
@@ -2452,10 +2455,10 @@ function RepairControl(model, map) {
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
       map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
-      readout.text(utils.format("%s line intersection%s", n, utils.pluralSuffix(n)));
+      readout.html(utils.format('<span class="icon"></span>%s line intersection%s', n, utils.pluralSuffix(n)));
     } else {
       map.setHighlightLayer(null);
-      readout.text('');
+      readout.html('');
     }
   }
 }
@@ -2773,7 +2776,9 @@ function DisplayCanvas() {
       }
       item = styleIndex[key];
       item.shapes.push(shapes[i]);
-      if (item.shapes.length >= batchSize) {
+      // overlays should not be batched, so transparency of overlapping shapes
+      // is drawn correctly
+      if (item.shapes.length >= batchSize || style.overlay) {
         drawPaths(item.shapes, startPath, draw, item.style);
         item.shapes = [];
       }
@@ -3767,10 +3772,13 @@ function HitControl(ext, mouse) {
   }
 
   // reduce hit threshold when zoomed out
-  function getHitBuffer2(pix) {
+  function getHitBuffer2(pix, minPix) {
     var scale = ext.scale();
-    if (scale > 1) scale = 1;
-    return getHitBuffer(pix) * scale;
+    if (scale < 1) {
+      pix *= scale;
+    }
+    if (minPix > 0 && pix < minPix) pix = minPix;
+    return getHitBuffer(pix);
   }
 
   function getCoordPrecision(bounds) {
@@ -3784,7 +3792,7 @@ function HitControl(ext, mouse) {
   }
 
   function polygonTest(x, y) {
-    var maxDist = getHitBuffer2(5),
+    var maxDist = getHitBuffer2(5, 1),
         cands = findHitCandidates(x, y, maxDist),
         hits = [],
         cand, hitId;
@@ -3820,7 +3828,7 @@ function HitControl(ext, mouse) {
   }
 
   function polylineTest(x, y) {
-    var maxDist = getHitBuffer2(15),
+    var maxDist = getHitBuffer2(15, 2),
         bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, target.dataset.arcs);
@@ -3835,7 +3843,7 @@ function HitControl(ext, mouse) {
   }
 
   function pointTest(x, y) {
-    var dist = getHitBuffer2(25),
+    var dist = getHitBuffer2(25, 4),
         limitSq = dist * dist,
         hits = [];
     internal.forEachPoint(target.layer.shapes, function(p, id) {
@@ -3963,17 +3971,19 @@ function HitControl(ext, mouse) {
 
 
 // @onNext: handler for switching between multiple records
-function Popup(onNext) {
+function Popup(onNext, onPrev) {
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
   // multi-hit display and navigation
   var tab = El('div').addClass('popup-tab').appendTo(el).hide();
   var nav = El('div').addClass('popup-nav').appendTo(tab);
+  var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
-  var nextLink = El('span').addClass('popup-nav-next colored-text').appendTo(nav).text('»');
+  var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
 
   nextLink.on('click', onNext);
+  prevLink.on('click', onPrev);
 
   this.show = function(id, ids, table, pinned) {
     var rec = table ? table.getRecordAt(id) : {};
@@ -4003,8 +4013,9 @@ function Popup(onNext) {
 
   function showNav(id, ids, pinned) {
     var num = ids.indexOf(id) + 1;
-    navInfo.text(num + ' / ' + ids.length);
+    navInfo.text(' ' + num + ' / ' + ids.length + ' ');
     nextLink.css('display', pinned ? 'inline-block' : 'none');
+    prevLink.css('display', pinned && ids.length > 2 ? 'inline-block' : 'none');
     tab.show();
   }
 
@@ -4134,7 +4145,7 @@ internal.getFieldType = function(val, key, table) {
 
 
 function InspectionControl(model, hit) {
-  var _popup = new Popup(onNextHit);
+  var _popup = new Popup(getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
@@ -4229,13 +4240,15 @@ function InspectionControl(model, hit) {
     inspect(id, false, e.ids);
   });
 
-  function onNextHit() {
-    var i = (_hoverIds || []).indexOf(_highId);
-    var nextId;
-    if (i > -1) {
-      nextId = _hoverIds[++i % _hoverIds.length];
-      inspect(nextId, true, _hoverIds);
-    }
+  function getSwitchHandler(diff) {
+    return function() {
+      var i = (_hoverIds || []).indexOf(_highId);
+      var nextId;
+      if (i > -1) {
+        nextId = _hoverIds[(i + diff + _hoverIds.length) % _hoverIds.length];
+        inspect(nextId, true, _hoverIds);
+      }
+    };
   }
 
   function showInspector(id, ids, pinned) {
@@ -4287,8 +4300,8 @@ function InspectionControl(model, hit) {
 var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b7d9ea",
-      pink = "#f74b80",  // dark
-      pink2 = "rgba(239, 0, 86, 0.16)", // "#ffd9e7", // medium
+      pink = "#f74b80",  // dark pink
+      pink2 = "rgba(255, 161, 197, 0.65)",
       gold = "#efc100",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
@@ -4351,7 +4364,7 @@ var MapStyle = (function() {
         polygon: {
           fillColor: pink2,
           strokeColor: pink,
-          strokeWidth: 1.6
+          strokeWidth: 1.8
         }, point:  {
           dotColor: pink,
           dotSize: 7
@@ -4439,6 +4452,7 @@ var MapStyle = (function() {
       overlayStyle.type = 'styled';
     }
     overlayStyle.ids = ids;
+    overlayStyle.overlay = true;
     return ids.length > 0 ? overlayStyle : null;
   }
 
@@ -4772,12 +4786,14 @@ function Console(model) {
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
   gui.onClick(content, function(e) {
-    var targ = El(e.target);
-    if (gui.getInputElement() || targ.hasClass('console-message')) {
-      // don't focus if user is typing or user clicks content area
-    } else {
-      input.node().focus();
+    if (gui.getInputElement() || e.target.id != 'command-line') {
+      // prevent click-to-focus when typing or clicking on content
+      e.stopPropagation();
     }
+  });
+
+  gui.onClick(el, function(e) {
+    input.node().focus(); // focus if user clicks blank part of console
   });
 
   function toggle() {
@@ -5263,11 +5279,19 @@ Browser.onload(function() {
 
 gui.getImportOpts = function() {
   var vars = gui.getUrlVars();
-  var urlFiles = vars.files ? vars.files.split(',') : [];
-  var manifestFiles = mapshaper.manifest || [];
-  return {
-    files: urlFiles.concat(manifestFiles)
-  };
+  var opts = {};
+  if (Array.isArray(mapshaper.manifest)) {
+    // old-style manifest: an array of filenames
+    opts.files = mapshaper.manifest;
+  } else if (mapshaper.manifest && mapshaper.manifest.files) {
+    utils.extend(opts, mapshaper.manifest);
+  } else {
+    opts.files = [];
+  }
+  if (vars.files) {
+    opts.files = opts.files.concat(vars.files.split(','));
+  }
+  return opts;
 };
 
 gui.startEditing = function() {
