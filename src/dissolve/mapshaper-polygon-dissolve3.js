@@ -24,12 +24,12 @@ internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
 
 
 internal.getGapFillTest = function(arcs, opts) {
-  var maxArea = opts.max_gap_area;
+  var threshold = opts.min_gap_area;
   var test;
-  if (maxArea === 0) {
+  if (threshold === 0) {
     test = function() {return false;}; // don't fill any gaps
-  } else if (maxArea > 0) {
-    test = internal.getMinAreaTest(maxArea, arcs);
+  } else if (threshold > 0) {
+    test = internal.getMinAreaTest(threshold, arcs);
   } else {
     test = internal.getSliverTest(arcs); // default is same as -filter-slivers default
   }

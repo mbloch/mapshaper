@@ -31,11 +31,11 @@ internal.getOptionParser = function() {
         type: "flag"
       },
       snapIntervalOpt = {
-        describe: "specify snapping distance in source units",
+        describe: "snapping distance in source units (default is tiny)",
         type: "number"
       },
-      maxGapOpt = {
-        describe: "max gap area to fill",
+      minGapAreaOpt = {
+        describe: "smaller gaps than this are filled (default is small)",
         type: "number"
       },
       sumFieldsOpt = {
@@ -240,8 +240,8 @@ internal.getOptionParser = function() {
   parser.section("\nEditing commands");
 
   parser.command("clean")
-    .describe("remove gaps and overlaps from a polygon layer")
-    .option("max-gap-area", maxGapOpt)
+    .describe("repairs overlaps and small gaps in polygon layers")
+    .option("min-gap-area", minGapAreaOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
@@ -290,21 +290,21 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("dissolve2")
-    .describe("merge and flatten polygons (with overlap and gap repair)")
+    .describe("merge adjacent polygons (repairs overlaps and gaps)")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
-    .option("max-gap-area", maxGapOpt)
+    .option("min-gap-area", minGapAreaOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
   parser.command("drop")
-    .describe("delete the target layer(s) or items within the target layer(s)")
+    .describe("delete layer(s) or elements within the target layer(s)")
     .option("geometry", {
       describe: "delete all geometry from the target layer(s)",
       type: "flag"

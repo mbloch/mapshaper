@@ -30,6 +30,14 @@ describe('mapshaper-clean.js', function () {
 
     })
 
+    it('-clean min-gap-area=<area>', function(done) {
+
+
+
+      done();
+
+    })
+
   })
 
   describe('cleanLayers()', function() {
