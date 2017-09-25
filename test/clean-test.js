@@ -1,15 +1,30 @@
 var assert = require('assert'),
     api = require("../"),
-    ArcCollection = api.internal.ArcCollection,
-    flattenShapes = api.internal.flattenShapes;
+    ArcCollection = api.internal.ArcCollection;
+
+function clean(shapes, arcs) {
+  var dataset = {
+    arcs: arcs,
+    layers: [{
+      geometry_type: 'polygon',
+      shapes: shapes
+    }]
+  };
+  api.cleanLayers(dataset.layers, dataset, {});
+  return dataset.layers[0].shapes;
+}
 
 describe('mapshaper-clean.js', function () {
 
-  describe('overlap tests', function () {
+  describe('-clean command', function () {
 
     it('Removes overlapping section in GeoJSON input', function(done) {
-      api.applyCommands('-i test/test_data/issues/clean/overlapping_polygons.json -clean', null, function(err, data) {
-        // console.log(err, data);
+      api.applyCommands('-i test/test_data/issues/clean/overlapping_polygons.json -clean -o out.json', null, function(err, data) {
+        var geojson = JSON.parse(data['out.json']);
+        var a = geojson.geometries[0].coordinates;
+        var b = geojson.geometries[1].coordinates;
+        assert.deepEqual(a, [ [ [ 0, 0 ], [ 0, 2 ], [ 2, 2 ], [ 1, 1 ], [ 2, 0 ], [ 0, 0 ] ] ])
+        assert.deepEqual(b, [ [ [ 2, 0 ], [ 1, 1 ], [ 2, 2 ], [ 3, 3 ], [ 5, 1 ], [ 3, -1 ], [ 2, 0 ] ] ])
         done();
       })
 
@@ -17,19 +32,7 @@ describe('mapshaper-clean.js', function () {
 
   })
 
-  describe('flattening tests', function() {
-
-    function flattenShapes(shapes, arcs) {
-      var dataset = {
-        arcs: arcs,
-        layers: [{
-          geometry_type: 'polygon',
-          shapes: shapes
-        }]
-      };
-      api.cleanLayers(dataset.layers, dataset, {});
-      return dataset.layers[0].shapes;
-    }
+  describe('cleanLayers()', function() {
 
     describe('Fig. 1', function() {
       //
@@ -46,8 +49,8 @@ describe('mapshaper-clean.js', function () {
         var arcs = new api.internal.ArcCollection(coords);
 
         var shapes = [[[1, 0]], [[2, -2]]];
-        var target = [[[1, 0]], [[2, -2]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        var target = [[[0, 1]], [[-2, 2]]]; // new mosaic-based clean function can re-arrange arc order
+        assert.deepEqual(clean(shapes, arcs), target);
       })
     })
 
@@ -68,32 +71,30 @@ describe('mapshaper-clean.js', function () {
           [[2, 3], [2, 3]],
           [[4, 3], [4, 3]], // 6
           [[1, 1]]];
-      var arcs = new api.internal.ArcCollection(coords);
 
       it ('ignores collapsed arcs', function() {
+        var arcs = new api.internal.ArcCollection(coords);
         var shapes = [[[1, 0]], [[2, 5, 3, -2]]];
-        var target = [[[1, 0]], [[2, 3, ~1]]];
-        // console.log(arcs.toArray())
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
-        // console.log(arcs.toArray())
+        var target = [[[0, 1]], [[~1, 2, 3]]];
+        assert.deepEqual(clean(shapes, arcs), target);
       })
 
 
       it ('ignores collapsed arcs 2', function() {
+        var arcs = new api.internal.ArcCollection(coords);
         var shapes = [[[4, 1, 0]], [[~4, 2, 3, -2]]];
-        var target = [[[1, 0]], [[2, 3, ~1]]];
+        var target = [[[0, 1]], [[~1, 2, 3]]];
         arcs = new api.internal.ArcCollection(coords);
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        assert.deepEqual(clean(shapes, arcs), target);
       })
 
       it ('ignores collapsed arcs 3', function() {
-        return; // TODO: pass test
+        var arcs = new api.internal.ArcCollection(coords);
         var shapes = [[[4, 4, 1, 0, 4]], [[~4, 2, 3, -2, 4]]];
-        var target = [[[1, 0]], [[2, 3, ~1]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        var target = [[[0, 1]], [[~1, 2, 3]]];
+        assert.deepEqual(clean(shapes, arcs), target);
       })
     })
-    return; // function is incomplete; later tests fail
 
     describe('Fig. 2', function () {
       //
@@ -119,8 +120,9 @@ describe('mapshaper-clean.js', function () {
 
       it('paths are preserved', function () {
         var shapes = [[[1, 2, -2, -1]]];
-        var target = [[[1, 2, -2, -1]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        // var target = [[[1, 2, -2, -1]]];
+        var target = [[[-1], [2]]]; // new clean function dissolves the shape
+        assert.deepEqual(clean(shapes, arcs), target);
 
       })
     })
@@ -144,7 +146,7 @@ describe('mapshaper-clean.js', function () {
       it('paths are preserved', function () {
         var shapes = [[[0, ~1, 2]], [[1]]];
         var target = [[[0, ~1, 2]], [[1]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        assert.deepEqual(clean(shapes, arcs), target);
       })
     })
 
@@ -171,7 +173,7 @@ describe('mapshaper-clean.js', function () {
       it('paths are preserved', function () {
         var shapes = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
         var target = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        assert.deepEqual(clean(shapes, arcs), target);
       })
 
     })
@@ -199,10 +201,9 @@ describe('mapshaper-clean.js', function () {
       it('hourglass shape is preserved', function () {
         var shapes = [[[0, 1, 2, 3, ~1]]];
         var target = [[[0], [2, 3]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        assert.deepEqual(clean(shapes, arcs), target);
       })
     })
-
 
     describe('Fig. 6', function () {
       //
@@ -223,19 +224,19 @@ describe('mapshaper-clean.js', function () {
       it ('should skip spike - test 1', function() {
         var shapes = [[[0, 1, ~1, 2]]];
         var target = [[[0, 2]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        assert.deepEqual(clean(shapes, arcs), target);
       })
 
       it ('should skip spike - test 2', function() {
         var shapes = [[[1, ~1, 2, 0]]];
-        var target = [[[2, 0]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        var target = [[[0, 2]]];
+        assert.deepEqual(clean(shapes, arcs), target);
       })
 
       it ('should skip spike - test 3', function() {
         var shapes = [[[~1, 2, 0, 1]]];
-        var target = [[[2, 0]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        var target = [[[0, 2]]];
+        assert.deepEqual(clean(shapes, arcs), target);
       })
     })
 
@@ -258,14 +259,12 @@ describe('mapshaper-clean.js', function () {
           [[3, 3], [3, 1], [1, 1], [1, 3]]];
       var arcs = new ArcCollection(coords);
 
-      it ('should split overlapping rings', function() {
+      it ('should remove overlapping portion of smaller ring', function() {
         var shapes = [[[0, 1]], [[2, 3]]];
         var target = [[[0, ~2], [1, 2]], [[3, ~1]]];
-        assert.deepEqual(flattenShapes(shapes, arcs), target);
+        var target = [[[0, ~2]], [[2, 3]]]
+        assert.deepEqual(clean(shapes, arcs), target);
       })
     })
-
   })
-
-
 })

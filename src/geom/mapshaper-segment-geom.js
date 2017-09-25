@@ -131,7 +131,7 @@ geom.clampToCloseRange = function(a, b, c) {
   var lim;
   if (geom.outsideRange(a, b, c)) {
     lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
-    if (Math.abs(a - lim) > 1e-16) {
+    if (Math.abs(a - lim) > 1e-15) {
       debug("[clampToCloseRange()] large clamping interval", a, b, c);
     }
     a = lim;

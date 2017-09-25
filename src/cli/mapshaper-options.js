@@ -34,6 +34,10 @@ internal.getOptionParser = function() {
         describe: "specify snapping distance in source units",
         type: "number"
       },
+      maxGapOpt = {
+        describe: "max gap area to fill",
+        type: "number"
+      },
       sumFieldsOpt = {
         describe: "fields to sum when dissolving  (comma-sep. list)",
         type: "strings"
@@ -43,6 +47,7 @@ internal.getOptionParser = function() {
         type: "strings"
       },
       dissolveFieldOpt = {
+        DEFAULT: true,
         describe: "(optional) name of a data field to dissolve on"
       },
       fieldTypesOpt = {
@@ -234,12 +239,19 @@ internal.getOptionParser = function() {
 
   parser.section("\nEditing commands");
 
+  parser.command("clean")
+    .describe("remove gaps and overlaps from a polygon layer")
+    .option("max-gap-area", maxGapOpt)
+    .option("snap-interval", snapIntervalOpt)
+    .option("no-snap", noSnapOpt)
+    .option("target", targetOpt);
+
   parser.command("clip")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing clip polygons"
     })
     .option('remove-slivers', {
@@ -260,7 +272,6 @@ internal.getOptionParser = function() {
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .default("field")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -278,15 +289,28 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("dissolve2")
-    .describe("merge adjacent and overlapping polygons")
-    .default("field")
+  parser.command("dissolve2a")
+    // .describe("merge adjacent and overlapping polygons")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("no-snap", noSnapOpt)
+    .option("target", targetOpt);
+
+  parser.command("dissolve2")
+    .describe("merge and flatten polygons (with overlap and gap repair)")
+    .option("field", dissolveFieldOpt)
+    .option("calc", {
+      describe: "use a JS expression to aggregate data values"
+    })
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
+    .option("max-gap-area", maxGapOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("no-snap", noSnapOpt)
@@ -309,8 +333,8 @@ internal.getOptionParser = function() {
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +
         "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "JS expression to apply to each target feature"
     })
     .option("where", whereOpt)
@@ -320,8 +344,8 @@ internal.getOptionParser = function() {
     .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClipOpts)
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing erase polygons"
     })
     .option('remove-slivers', {
@@ -342,8 +366,8 @@ internal.getOptionParser = function() {
 
   parser.command("filter")
     .describe("delete features using a JS expression")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "delete features that evaluate to false"
     })
     .option("remove-empty", {
@@ -359,8 +383,8 @@ internal.getOptionParser = function() {
 
   parser.command("filter-fields")
     .describe('retain a subset of data fields')
-    .default('fields')
     .option("fields", {
+      DEFAULT: true,
       type: "strings",
       describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
@@ -415,8 +439,8 @@ internal.getOptionParser = function() {
         error("Command requires the name of a layer or file to join");
       }
     })
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing data records"
     })
     .option("keys", {
@@ -456,8 +480,8 @@ internal.getOptionParser = function() {
 
   parser.command("lines")
     .describe("convert polygons to polylines, classified by edge type")
-    .default("fields")
     .option("fields", {
+      DEFAULT: true,
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "strings"
     })
@@ -472,6 +496,9 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("mosaic")
+    .option("target", targetOpt);
+
+  parser.command("mosaic2")
     .option("target", targetOpt);
 
   parser.command("point-grid")
@@ -586,29 +613,29 @@ internal.getOptionParser = function() {
     .validate(validateProjOpts);
 
   parser.command("rename-fields")
-    .default('fields')
     .describe('rename data fields')
     .option("fields", {
+      DEFAULT: true,
       type: "strings",
       describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
 
   parser.command("rename-layers")
-    .default('names')
     .describe("assign new names to layers")
     .option("names", {
+      DEFAULT: true,
       type: "strings",
       describe: "new layer name(s) (comma-sep. list)"
     })
     .option("target", targetOpt);
 
   parser.command('simplify')
-    .default('percentage')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
     .option('percentage', {
+      DEFAULT: true,
       alias: 'p',
       type: 'percent',
       describe: "percentage of removable points to retain, e.g. 10%"
@@ -676,8 +703,8 @@ internal.getOptionParser = function() {
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")
-    .default("source")
     .option("source", {
+      DEFAULT: true,
       describe: "file or layer containing clip polygons"
     })
     /*
@@ -695,8 +722,8 @@ internal.getOptionParser = function() {
 
   parser.command("sort")
     .describe("sort features using a JS expression")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
@@ -711,8 +738,8 @@ internal.getOptionParser = function() {
 
   parser.command("split")
     .describe("split features into separate layers using a data field")
-    .default("field")
     .option("field", {
+      DEFAULT: true,
       describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
@@ -792,8 +819,8 @@ internal.getOptionParser = function() {
 
   parser.command("target")
     .describe("set active layer")
-    .default('target')
     .option("target", {
+      DEFAULT: true,
       describe: "name or index of layer to target"
     })
     .option('type', {
@@ -805,8 +832,8 @@ internal.getOptionParser = function() {
 
   parser.command("uniq")
     .describe("delete features with the same id as a previous feature")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "JS expression to obtain the id of a feature"
     })
     .option("verbose", {
@@ -840,17 +867,6 @@ internal.getOptionParser = function() {
     })
     .option("where", whereOpt)
     .option("target", targetOpt);
-
-
-  // Work-in-progress (no .describe(), so hidden from -h)
-  parser.command("clean")
-    .option("target", targetOpt);
-
-  parser.command("clean2")
-    .option("snap-interval", snapIntervalOpt)
-    .option("no-snap", noSnapOpt)
-    .option("target", targetOpt);
-
 
   parser.command("cluster")
     .describe("group polygons into compact clusters")
@@ -963,8 +979,8 @@ internal.getOptionParser = function() {
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")
     .validate(validateExpressionOpt)
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "boolean JS expression"
     })
     .option("target", targetOpt);
@@ -979,8 +995,8 @@ internal.getOptionParser = function() {
     .example("Count census blocks in NY with zero population\n" +
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(validateExpressionOpt)
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "functions: sum() average() median() max() min() count()"
     })
     .option("where", whereOpt)
@@ -992,8 +1008,8 @@ internal.getOptionParser = function() {
   parser.command('help')
     .alias('h')
     .describe("print help; takes optional command name")
-    .default('command')
     .option("command", {
+      DEFAULT: true,
       describe: "view detailed information about a command"
     });
 
@@ -1002,8 +1018,8 @@ internal.getOptionParser = function() {
 
   parser.command('inspect')
     .describe("print information about a feature")
-    .default("expression")
     .option("expression", {
+      DEFAULT: true,
       describe: "boolean JS expression for selecting a feature"
     })
     .option("target", targetOpt)

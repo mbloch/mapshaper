@@ -101,8 +101,11 @@ function serveContent(content, response, mimeType) {
 }
 
 function getManifestJS(files) {
+  var manifest = {
+    files: files
+  };
   if (files.length > 0) {
-    return "mapshaper.manifest = " + JSON.stringify(files) + ";\n";
+    return "mapshaper.manifest = " + JSON.stringify(manifest) + ";\n";
   }
   return '';
 }

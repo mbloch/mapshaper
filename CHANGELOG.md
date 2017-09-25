@@ -1,3 +1,8 @@
+v0.4.53
+* Update -dissolve2 command to flatten polygons (remove overlaps) and optionally fill gaps.
+* Add -clean command to flatten polygons and fill gaps.
+* Show contents of zip files in web UI file import popup.
+
 v0.4.52
 * Redesigned initial view of the web UI.
 * Temporary fix for issue #219 -- stop trying to fix polygon geometry after applying coordinate precision.

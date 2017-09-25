@@ -344,12 +344,6 @@ function CommandOptions(name) {
     options: []
   };
 
-  // set default option (assign unnamed argument to option of this name)
-  this.default = function(name) {
-    _command.default = name;
-    return this;
-  };
-
   this.validate = function(f) {
     _command.validate = f;
     return this;
@@ -387,6 +381,8 @@ function CommandOptions(name) {
     opts = opts || {}; // accept just a name -- some options don't need properties
     if (!utils.isString(name) || !name) error("Missing option name");
     if (!utils.isObject(opts)) error("Invalid option definition:", opts);
+    // default option -- assign unnamed argument to this option
+    if (opts.DEFAULT) _command.default = name;
     opts.name = name;
     _command.options.push(opts);
     return this;

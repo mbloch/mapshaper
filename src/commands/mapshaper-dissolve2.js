@@ -1,16 +1,13 @@
-/* @requires mapshaper-polygon-dissolve2 */
+/* @requires mapshaper-polygon-dissolve3 */
 
-// src: single layer or array of layers (must belong to dataset)
-api.dissolve2 = function(src, dataset, opts) {
-  var multiple = Array.isArray(src);
-  var layers = multiple ? src : [src];
-  var nodes;
-  var layers2 = layers.map(function(lyr) {
-    internal.requirePolygonLayer(lyr);
-    if (!nodes) {
-      nodes = internal.addIntersectionCuts(dataset, opts);
-    }
-    return internal.dissolvePolygonLayer(lyr, nodes, opts);
+
+// Newest version, with gap and overlap repair
+api.dissolve2 = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolygonLayer);
+  T.start();
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  T.stop('Add cuts');
+  return layers.map(function(lyr) {
+    return internal.dissolvePolygonLayer2(lyr, nodes.arcs, opts);
   });
-  return multiple ? layers2 : layers2[0];
 };

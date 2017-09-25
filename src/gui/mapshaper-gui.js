@@ -32,11 +32,19 @@ Browser.onload(function() {
 
 gui.getImportOpts = function() {
   var vars = gui.getUrlVars();
-  var urlFiles = vars.files ? vars.files.split(',') : [];
-  var manifestFiles = mapshaper.manifest || [];
-  return {
-    files: urlFiles.concat(manifestFiles)
-  };
+  var opts = {};
+  if (Array.isArray(mapshaper.manifest)) {
+    // old-style manifest: an array of filenames
+    opts.files = mapshaper.manifest;
+  } else if (mapshaper.manifest && mapshaper.manifest.files) {
+    utils.extend(opts, mapshaper.manifest);
+  } else {
+    opts.files = [];
+  }
+  if (vars.files) {
+    opts.files = opts.files.concat(vars.files.split(','));
+  }
+  return opts;
 };
 
 gui.startEditing = function() {

@@ -121,9 +121,6 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'clean') {
       api.cleanLayers(targetLayers, targetDataset, opts);
 
-    } else if (name == 'clean2') {
-      outputLayers = api.clean2(targetLayers, targetDataset, opts);
-
     } else if (name == 'clip') {
       outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
 
@@ -135,6 +132,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
+
+    } else if (name == 'dissolve2a') {
+      outputLayers = api.dissolve2a(targetLayers, targetDataset, opts);
 
     } else if (name == 'drop') {
       api.drop(catalog, targetLayers, targetDataset, opts);
@@ -199,6 +199,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'mosaic') {
       opts.no_replace = true; // add mosaic to dataset
       outputLayers = [internal.createMosaicLayer(targetDataset, opts)];
+
+    } else if (name == 'mosaic2') {
+      outputLayers = internal.mosaic2(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
       outputFiles = internal.exportTargetLayers(targets, opts);

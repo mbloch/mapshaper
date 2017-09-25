@@ -59,7 +59,8 @@ internal.getSliverTest = function(arcs) {
   var maxSliverArea = internal.calcMaxSliverArea(arcs);
   return function(path) {
     // TODO: more sophisticated metric, perhaps considering shape
-    return Math.abs(geom.getPlanarPathArea(path, arcs)) <= maxSliverArea;
+    var area = geom.getPlanarPathArea(path, arcs);
+    return Math.abs(area) <= maxSliverArea;
   };
 };
 

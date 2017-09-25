@@ -1,8 +1,10 @@
 /* @requires
 mapshaper-pathfinder
-mapshaper-dissolve2
+mapshaper-polygon-dissolve2
 mapshaper-path-index
 */
+
+// TODO: remove dependency on old polygon dissolve function
 
 // assumes layers and arcs have been prepared for clipping
 internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {

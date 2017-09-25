@@ -6,20 +6,8 @@ mapshaper-data-aggregation
 mapshaper-ring-nesting
 */
 
-internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
-  opts = opts || {};
-  var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
-  var groups = lyr.shapes.reduce(function(groups, shape, i) {
-    var i2 = getGroupId(i);
-    if (i2 in groups === false) {
-      groups[i2] = [];
-    }
-    internal.extendShape(groups[i2], shape);
-    return groups;
-  }, []);
-  var shapes2 = groups.map(internal.getPolygonDissolver2(nodes));
-  return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
-};
+
+// TODO: remove this obsolete dissolve code (still used by clip)
 
 internal.concatShapes = function(shapes) {
   return shapes.reduce(function(memo, shape) {
