@@ -289,19 +289,6 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("dissolve2a")
-    // .describe("merge adjacent and overlapping polygons")
-    .option("field", dissolveFieldOpt)
-    .option("calc", {
-      describe: "use a JS expression to aggregate data values"
-    })
-    .option("sum-fields", sumFieldsOpt)
-    .option("copy-fields", copyFieldsOpt)
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("no-snap", noSnapOpt)
-    .option("target", targetOpt);
-
   parser.command("dissolve2")
     .describe("merge and flatten polygons (with overlap and gap repair)")
     .option("field", dissolveFieldOpt)

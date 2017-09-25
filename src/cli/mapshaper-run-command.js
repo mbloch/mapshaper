@@ -133,9 +133,6 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
-    } else if (name == 'dissolve2a') {
-      outputLayers = api.dissolve2a(targetLayers, targetDataset, opts);
-
     } else if (name == 'drop') {
       api.drop(catalog, targetLayers, targetDataset, opts);
 
