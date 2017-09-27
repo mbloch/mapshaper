@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.53';
+var VERSION = '0.4.54';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -8602,6 +8602,24 @@ internal.fixNestingErrors = function(rings, arcs) {
   }
 };
 
+// Convert CCW rings that are not contained into CW rings
+internal.fixNestingErrors2 = function(rings, arcs) {
+  var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
+  // convert rings to shapes for PathIndex
+  var shapes = rings.map(function(ids) {return [ids];});
+  var index = new PathIndex(shapes, arcs);
+  rings.forEach(fixRing);
+  // TODO: consider other kinds of nesting errors
+  function fixRing(ids, i) {
+    var containerId = index.findSmallestEnclosingPolygon(ids);
+    var ringIsCW = ringData[i].area > 0;
+    if (containerId == -1 && !ringIsCW) {
+      // containerIsCW = ringData[containerId].area > 0;
+      internal.reversePath(ids);
+    }
+  }
+};
+
 
 
 
@@ -8719,11 +8737,14 @@ internal.dissolvePolygons2 = function(shapes, arcs, opts) {
     var cw = [], ccw = [], i, n;
     shapeWeights[shapeId] = weight;
     divide(shape, cw, ccw);
-    for (i=0, n=cw.length; i<n; i++) {
-      indexRing(cw[i], shapeId);
+    if (ccw.length > 0) {
+      shape = cw.concat(ccw);
+      internal.fixNestingErrors2(shape, arcs);
+    } else {
+      shape = cw;
     }
-    for (i=0, n=ccw.length; i<n; i++) {
-      indexRing(ccw[i], shapeId);
+    for (i=0, n=shape.length; i<n; i++) {
+      indexRing(shape[i], shapeId);
     }
   }
 
@@ -8764,12 +8785,200 @@ internal.extendShape = function(dest, src) {
 
 
 
+// Test if the second endpoint of an arc is the endpoint of any path in any layer
+internal.getPathEndpointTest = function(layers, arcs) {
+  var index = new Uint8Array(arcs.size());
+  layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      lyr.shapes.forEach(addShape);
+    }
+  });
+
+  function addShape(shape) {
+    internal.forEachPath(shape, addPath);
+  }
+
+  function addPath(path) {
+    addEndpoint(~path[0]);
+    addEndpoint(path[path.length - 1]);
+  }
+
+  function addEndpoint(arcId) {
+    var absId = absArcId(arcId);
+    var fwd = absId == arcId;
+    index[absId] |= fwd ? 1 : 2;
+  }
+
+  return function(arcId) {
+    var absId = absArcId(arcId);
+    var fwd = absId == arcId;
+    var code = index[absId];
+    return fwd ? (code & 1) == 1 : (code & 2) == 2;
+  };
+};
+
+
+
+
+// Dissolve arcs that can be merged without affecting topology of layers
+// remove arcs that are not referenced by any layer; remap arc ids
+// in layers. (In-place).
+internal.dissolveArcs = function(dataset) {
+  var arcs = dataset.arcs,
+      layers = dataset.layers.filter(internal.layerHasPaths);
+
+  if (!arcs || !layers.length) {
+    dataset.arcs = null;
+    return;
+  }
+
+  var arcsCanDissolve = internal.getArcDissolveTest(layers, arcs),
+      newArcs = [],
+      totalPoints = 0,
+      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
+      arcStatus = new Uint8Array(arcs.size());
+      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
+  layers.forEach(function(lyr) {
+    // modify copies of the original shapes; original shapes should be unmodified
+    // (need to test this)
+    lyr.shapes = lyr.shapes.map(function(shape) {
+      return internal.editPaths(shape && shape.concat(), translatePath);
+    });
+  });
+  dataset.arcs = internal.dissolveArcCollection(arcs, newArcs, totalPoints);
+
+  function translatePath(path) {
+    var pointCount = 0;
+    var newPath = [];
+    var newArc, arcId, absId, arcLen, fw, newArcId;
+
+    for (var i=0, n=path.length; i<n; i++) {
+      arcId = path[i];
+      absId = absArcId(arcId);
+      fw = arcId === absId;
+
+      if (arcs.arcIsDegenerate(arcId)) {
+        // arc has collapsed -- skip
+      } else if (arcStatus[absId] !== 0) {
+        // arc has already been translated -- skip
+        newArc = null;
+      } else {
+        arcLen = arcs.getArcLength(arcId);
+
+        if (newArc && arcsCanDissolve(path[i-1], arcId)) {
+          if (arcLen > 0) {
+            arcLen--; // shared endpoint not counted;
+          }
+          newArc.push(arcId);  // arc data is appended to previous arc
+          arcStatus[absId] = 1; // arc is dropped from output
+        } else {
+          // start a new dissolved arc
+          newArc = [arcId];
+          arcIndex[absId] = newArcs.length;
+          newArcs.push(newArc);
+          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
+        }
+        pointCount += arcLen;
+      }
+
+      if (arcStatus[absId] > 1) {
+        // arc is retained (and renumbered) in the dissolved path -- add to path
+        newArcId = arcIndex[absId];
+        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
+          newArcId = ~newArcId;
+        }
+        newPath.push(newArcId);
+      }
+    }
+    totalPoints += pointCount;
+    return newPath;
+  }
+};
+
+internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
+  var nn2 = new Uint32Array(newArcs.length),
+      xx2 = new Float64Array(newLen),
+      yy2 = new Float64Array(newLen),
+      src = arcs.getVertexData(),
+      zz2 = src.zz ? new Float64Array(newLen) : null,
+      interval = arcs.getRetainedInterval(),
+      offs = 0;
+
+  newArcs.forEach(function(newArc, newId) {
+    newArc.forEach(function(oldId, i) {
+      extendDissolvedArc(oldId, newId);
+    });
+  });
+
+  return new ArcCollection(nn2, xx2, yy2).setThresholds(zz2).setRetainedInterval(interval);
+
+  function extendDissolvedArc(oldId, newId) {
+    var absId = absArcId(oldId),
+        rev = oldId < 0,
+        n = src.nn[absId],
+        i = src.ii[absId],
+        n2 = nn2[newId];
+
+    if (n > 0) {
+      if (n2 > 0) {
+        n--;
+        if (!rev) i++;
+      }
+      utils.copyElements(src.xx, i, xx2, offs, n, rev);
+      utils.copyElements(src.yy, i, yy2, offs, n, rev);
+      if (zz2) utils.copyElements(src.zz, i, zz2, offs, n, rev);
+      nn2[newId] += n;
+      offs += n;
+    }
+  }
+};
+
+// Test whether two arcs can be merged together
+internal.getArcDissolveTest = function(layers, arcs) {
+  var nodes = internal.getFilteredNodeCollection(layers, arcs),
+      // don't allow dissolving through endpoints of polyline paths
+      lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
+      testLineEndpoint = internal.getPathEndpointTest(lineLayers, arcs),
+      linkCount, lastId;
+
+  return function(id1, id2) {
+    if (id1 == id2 || id1 == ~id2) {
+      verbose("Unexpected arc sequence:", id1, id2);
+      return false; // This is unexpected; don't try to dissolve, anyway
+    }
+    linkCount = 0;
+    nodes.forEachConnectedArc(id1, countLink);
+    return linkCount == 1 && lastId == ~id2 && !testLineEndpoint(id1) && !testLineEndpoint(~id2);
+  };
+
+  function countLink(arcId, i) {
+    linkCount++;
+    lastId = arcId;
+  }
+};
+
+internal.getFilteredNodeCollection = function(layers, arcs) {
+  var counts = internal.countArcReferences(layers, arcs),
+      test = function(arcId) {
+        return counts[absArcId(arcId)] > 0;
+      };
+  return new NodeCollection(arcs, test);
+};
+
+
+
+
 api.cleanLayers = function(layers, dataset, opts) {
+  var nodes;
+  opts = opts || {};
   layers.forEach(internal.requirePolygonLayer);
-  var nodes = internal.addIntersectionCuts(dataset);
+  nodes = internal.addIntersectionCuts(dataset);
   layers.forEach(function(lyr) {
     lyr.shapes = internal.dissolvePolygons2(lyr.shapes, nodes.arcs, opts);
   });
+  if (!opts.no_arc_dissolve) {
+    internal.dissolveArcs(dataset); // remove leftover endpoints within contiguous lines
+  }
 };
 
 
@@ -9275,189 +9484,6 @@ internal.clipPoints = function(points, clipShapes, arcs, type) {
   }, []);
 
   return points2;
-};
-
-
-
-
-// Test if the second endpoint of an arc is the endpoint of any path in any layer
-internal.getPathEndpointTest = function(layers, arcs) {
-  var index = new Uint8Array(arcs.size());
-  layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      lyr.shapes.forEach(addShape);
-    }
-  });
-
-  function addShape(shape) {
-    internal.forEachPath(shape, addPath);
-  }
-
-  function addPath(path) {
-    addEndpoint(~path[0]);
-    addEndpoint(path[path.length - 1]);
-  }
-
-  function addEndpoint(arcId) {
-    var absId = absArcId(arcId);
-    var fwd = absId == arcId;
-    index[absId] |= fwd ? 1 : 2;
-  }
-
-  return function(arcId) {
-    var absId = absArcId(arcId);
-    var fwd = absId == arcId;
-    var code = index[absId];
-    return fwd ? (code & 1) == 1 : (code & 2) == 2;
-  };
-};
-
-
-
-
-// Dissolve arcs that can be merged without affecting topology of layers
-// remove arcs that are not referenced by any layer; remap arc ids
-// in layers. (In-place).
-internal.dissolveArcs = function(dataset) {
-  var arcs = dataset.arcs,
-      layers = dataset.layers.filter(internal.layerHasPaths);
-
-  if (!arcs || !layers.length) {
-    dataset.arcs = null;
-    return;
-  }
-
-  var arcsCanDissolve = internal.getArcDissolveTest(layers, arcs),
-      newArcs = [],
-      totalPoints = 0,
-      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
-      arcStatus = new Uint8Array(arcs.size());
-      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
-  layers.forEach(function(lyr) {
-    // modify copies of the original shapes; original shapes should be unmodified
-    // (need to test this)
-    lyr.shapes = lyr.shapes.map(function(shape) {
-      return internal.editPaths(shape && shape.concat(), translatePath);
-    });
-  });
-  dataset.arcs = internal.dissolveArcCollection(arcs, newArcs, totalPoints);
-
-  function translatePath(path) {
-    var pointCount = 0;
-    var newPath = [];
-    var newArc, arcId, absId, arcLen, fw, newArcId;
-
-    for (var i=0, n=path.length; i<n; i++) {
-      arcId = path[i];
-      absId = absArcId(arcId);
-      fw = arcId === absId;
-
-      if (arcs.arcIsDegenerate(arcId)) {
-        // arc has collapsed -- skip
-      } else if (arcStatus[absId] !== 0) {
-        // arc has already been translated -- skip
-        newArc = null;
-      } else {
-        arcLen = arcs.getArcLength(arcId);
-
-        if (newArc && arcsCanDissolve(path[i-1], arcId)) {
-          if (arcLen > 0) {
-            arcLen--; // shared endpoint not counted;
-          }
-          newArc.push(arcId);  // arc data is appended to previous arc
-          arcStatus[absId] = 1; // arc is dropped from output
-        } else {
-          // start a new dissolved arc
-          newArc = [arcId];
-          arcIndex[absId] = newArcs.length;
-          newArcs.push(newArc);
-          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
-        }
-        pointCount += arcLen;
-      }
-
-      if (arcStatus[absId] > 1) {
-        // arc is retained (and renumbered) in the dissolved path -- add to path
-        newArcId = arcIndex[absId];
-        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
-          newArcId = ~newArcId;
-        }
-        newPath.push(newArcId);
-      }
-    }
-    totalPoints += pointCount;
-    return newPath;
-  }
-};
-
-internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
-  var nn2 = new Uint32Array(newArcs.length),
-      xx2 = new Float64Array(newLen),
-      yy2 = new Float64Array(newLen),
-      src = arcs.getVertexData(),
-      zz2 = src.zz ? new Float64Array(newLen) : null,
-      interval = arcs.getRetainedInterval(),
-      offs = 0;
-
-  newArcs.forEach(function(newArc, newId) {
-    newArc.forEach(function(oldId, i) {
-      extendDissolvedArc(oldId, newId);
-    });
-  });
-
-  return new ArcCollection(nn2, xx2, yy2).setThresholds(zz2).setRetainedInterval(interval);
-
-  function extendDissolvedArc(oldId, newId) {
-    var absId = absArcId(oldId),
-        rev = oldId < 0,
-        n = src.nn[absId],
-        i = src.ii[absId],
-        n2 = nn2[newId];
-
-    if (n > 0) {
-      if (n2 > 0) {
-        n--;
-        if (!rev) i++;
-      }
-      utils.copyElements(src.xx, i, xx2, offs, n, rev);
-      utils.copyElements(src.yy, i, yy2, offs, n, rev);
-      if (zz2) utils.copyElements(src.zz, i, zz2, offs, n, rev);
-      nn2[newId] += n;
-      offs += n;
-    }
-  }
-};
-
-// Test whether two arcs can be merged together
-internal.getArcDissolveTest = function(layers, arcs) {
-  var nodes = internal.getFilteredNodeCollection(layers, arcs),
-      // don't allow dissolving through endpoints of polyline paths
-      lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
-      testLineEndpoint = internal.getPathEndpointTest(lineLayers, arcs),
-      linkCount, lastId;
-
-  return function(id1, id2) {
-    if (id1 == id2 || id1 == ~id2) {
-      verbose("Unexpected arc sequence:", id1, id2);
-      return false; // This is unexpected; don't try to dissolve, anyway
-    }
-    linkCount = 0;
-    nodes.forEachConnectedArc(id1, countLink);
-    return linkCount == 1 && lastId == ~id2 && !testLineEndpoint(id1) && !testLineEndpoint(~id2);
-  };
-
-  function countLink(arcId, i) {
-    linkCount++;
-    lastId = arcId;
-  }
-};
-
-internal.getFilteredNodeCollection = function(layers, arcs) {
-  var counts = internal.countArcReferences(layers, arcs),
-      test = function(arcId) {
-        return counts[absArcId(arcId)] > 0;
-      };
-  return new NodeCollection(arcs, test);
 };
 
 
@@ -20043,6 +20069,9 @@ internal.getOptionParser = function() {
     .option("min-gap-area", minGapAreaOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("no-snap", noSnapOpt)
+    .option("no-arc-dissolve", {
+      type: 'flag' // no description; used for testing
+    })
     .option("target", targetOpt);
 
   parser.command("clip")
