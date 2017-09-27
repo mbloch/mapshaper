@@ -28,3 +28,21 @@ internal.fixNestingErrors = function(rings, arcs) {
     return valid;
   }
 };
+
+// Convert CCW rings that are not contained into CW rings
+internal.fixNestingErrors2 = function(rings, arcs) {
+  var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
+  // convert rings to shapes for PathIndex
+  var shapes = rings.map(function(ids) {return [ids];});
+  var index = new PathIndex(shapes, arcs);
+  rings.forEach(fixRing);
+  // TODO: consider other kinds of nesting errors
+  function fixRing(ids, i) {
+    var containerId = index.findSmallestEnclosingPolygon(ids);
+    var ringIsCW = ringData[i].area > 0;
+    if (containerId == -1 && !ringIsCW) {
+      // containerIsCW = ringData[containerId].area > 0;
+      internal.reversePath(ids);
+    }
+  }
+};

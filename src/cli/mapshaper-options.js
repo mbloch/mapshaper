@@ -244,6 +244,9 @@ internal.getOptionParser = function() {
     .option("min-gap-area", minGapAreaOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("no-snap", noSnapOpt)
+    .option("no-arc-dissolve", {
+      type: 'flag' // no description; used for testing
+    })
     .option("target", targetOpt);
 
   parser.command("clip")

@@ -10,7 +10,7 @@ function clean(shapes, arcs) {
       shapes: shapes
     }]
   };
-  api.cleanLayers(dataset.layers, dataset, {});
+  api.cleanLayers(dataset.layers, dataset, {no_arc_dissolve: true});
   return dataset.layers[0].shapes;
 }
 
@@ -30,12 +30,56 @@ describe('mapshaper-clean.js', function () {
 
     })
 
-    it('-clean min-gap-area=<area>', function(done) {
+    it('Removes spurious endpoints (arc dissolve)', function(done) {
+      //  a ----- b
+      //  |       |
+      //  |       c
+      //  |       |
+      //  f - e - d
 
+      var poly = {
+        type: 'Polygon',
+        coordinates: [[[0, 1], [1, 1], [1, 0.5], [1, 0], [0.5, 0], [0.5, 0], [0, 0], [0, 1]]]
+      }
+      var expected = poly = {
+        type: 'Polygon',
+        coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
+      }
+      api.applyCommands('-i poly.json -clean -o', {'poly.json': poly}, function(err, output) {
+        var poly2 = JSON.parse(output['poly.json']).geometries[0];
+        assert.deepEqual;(poly2, expected);
+        done();
 
+      });
 
-      done();
+    })
 
+    it('handles bowtie shapes', function(done) {
+      // Fig 16 in figures.txt
+      var a = {
+        type: "Polygon",
+        coordinates: [[[0, 2], [2, 2], [3, 2], [2, 3], [2, 2], [2, 0], [0, 0], [0, 2]]]
+      }
+      var b = {
+        type: "Polygon",
+        coordinates: [[[4, 2], [2, 2], [2, 4], [4, 2]]]
+      }
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [a, b]
+      };
+      var expected = [{
+        type: 'MultiPolygon',
+        coordinates: [[[[3, 2], [2, 2], [2, 3], [3, 2]]], [[[2, 2], [2, 0], [0, 0], [0, 2], [2, 2]]]]
+      }, {
+        type: 'Polygon',
+        coordinates: [[[3, 2], [2, 3], [2, 4], [4, 2], [3, 2]]]
+      }];
+      api.applyCommands('-i input.json -clean -o output.json', {'input.json': input}, function(err, out) {
+        var geojson = JSON.parse(out['output.json']);
+        assert.deepEqual(geojson.geometries, expected);
+        done();
+      })
     })
 
   })

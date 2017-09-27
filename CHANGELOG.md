@@ -1,7 +1,10 @@
+v0.4.54
+* Improvements to -clean command
+
 v0.4.53
 * Update -dissolve2 command to flatten polygons (remove overlaps) and optionally fill gaps.
 * Add -clean command to flatten polygons and fill gaps.
-* Add min-gap-area= option to -clean and -dissolve2 to specify the threshold for filling enclosed gaps between adjacent polygons.
+* Add min-gap-area= option to -clean and -dissolve2 comands to specify the threshold for filling enclosed gaps between adjacent polygons.
 * Show contents of zip files in web UI file import popup.
 
 v0.4.52

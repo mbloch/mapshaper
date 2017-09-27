@@ -431,7 +431,7 @@ function Console(model) {
   function printExamples() {
     printExample("See a list of all console commands", "$ help");
     printExample("Get help using a single command", "$ help innerlines");
-    printExample("Get information about the active data layer", "$ info");
+    printExample("Get information about imported datasets", "$ info");
     printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
     printExample("Clear the console", "$ clear");

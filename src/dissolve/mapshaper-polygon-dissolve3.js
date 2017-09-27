@@ -120,11 +120,14 @@ internal.dissolvePolygons2 = function(shapes, arcs, opts) {
     var cw = [], ccw = [], i, n;
     shapeWeights[shapeId] = weight;
     divide(shape, cw, ccw);
-    for (i=0, n=cw.length; i<n; i++) {
-      indexRing(cw[i], shapeId);
+    if (ccw.length > 0) {
+      shape = cw.concat(ccw);
+      internal.fixNestingErrors2(shape, arcs);
+    } else {
+      shape = cw;
     }
-    for (i=0, n=ccw.length; i<n; i++) {
-      indexRing(ccw[i], shapeId);
+    for (i=0, n=shape.length; i<n; i++) {
+      indexRing(shape[i], shapeId);
     }
   }
 
