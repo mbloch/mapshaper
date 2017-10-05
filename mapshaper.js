@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.54';
+var VERSION = '0.4.55';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -160,7 +160,6 @@ var utils = {
 };
 
 var Utils = utils;
-
 
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
@@ -2929,6 +2928,20 @@ internal.countPointsInLayer = function(lyr) {
   var count = 0;
   if (internal.layerHasPoints(lyr)) {
     internal.forEachPoint(lyr.shapes, function() {count++;});
+  }
+  return count;
+};
+
+internal.countPoints2 = function(shapes, test) {
+  var count = 0;
+  var i, n, j, m, shp;
+  for (i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+      if (!test || test(shp[j])) {
+        count++;
+      }
+    }
   }
   return count;
 };
@@ -8611,11 +8624,13 @@ internal.fixNestingErrors2 = function(rings, arcs) {
   rings.forEach(fixRing);
   // TODO: consider other kinds of nesting errors
   function fixRing(ids, i) {
-    var containerId = index.findSmallestEnclosingPolygon(ids);
     var ringIsCW = ringData[i].area > 0;
-    if (containerId == -1 && !ringIsCW) {
-      // containerIsCW = ringData[containerId].area > 0;
-      internal.reversePath(ids);
+    var containerId;
+    if (!ringIsCW) {
+      containerId = index.findSmallestEnclosingPolygon(ids);
+      if (containerId == -1) {
+        internal.reversePath(ids);
+      }
     }
   }
 };
@@ -18271,7 +18286,7 @@ api.simplify = function(dataset, opts) {
   if (!arcs) stop("Missing path data");
   // standardize options
   opts = internal.getStandardSimplifyOpts(dataset, opts);
-  // stash simplifcation options (used by gui settings dialog)
+  // stash simplifcation options (ufsed by gui settings dialog)
   dataset.info = utils.defaults({simplify: opts}, dataset.info);
 
   internal.simplifyPaths(arcs, opts);
@@ -18280,7 +18295,7 @@ api.simplify = function(dataset, opts) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (utils.isNonNegNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
-  } else if (opts.resolution > 0) {
+  } else if (opts.resolution) {
     arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
   } else {
     stop("Missing a simplification amount");
@@ -18432,7 +18447,7 @@ internal.parseSimplifyResolution = function(raw) {
     h = raw;
   }
   else if (utils.isString(raw)) {
-    parts = raw.split('x');
+    parts = raw.split(/[x ,]/);
     w = Number(parts[0]) || 0;
     h = parts.length == 2 ? Number(parts[1]) || 0 : w;
   }

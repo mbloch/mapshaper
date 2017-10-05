@@ -81,7 +81,8 @@ body {
 }
 
 .dialog-btn:hover,
-.header-btn:hover {
+.header-btn:hover,
+.dialog-btn.default-btn {
 	background-color: #0F5A84;
 }
 
@@ -329,6 +330,13 @@ body.dragover #import-options-drop-area .drop-area {
 	padding: 14px 14px 12px 14px;
 }
 
+body.catalog-mode #import-drop,
+body.catalog-mode #import-quick-drop,
+body.catalog-mode #file-catalog {
+	height: 32%;
+}
+
+
 #import-drop {
 	height: 61.6%;
 }
@@ -362,7 +370,46 @@ body.queued-files #splash-screen {
 	padding: 2px 4px 3px 3px;
 }
 
+/* --- File catalog --------------- */
 
+body.catalog-mode #file-catalog,
+body.catalog-mode #file-catalog-spacer {
+	display: block;
+}
+
+.catalog-area {
+	overflow: hidden;
+	border: 1.5px solid #aaa;
+	border-radius: 19px;
+	background-color: #f6f6f6;
+}
+
+#file-catalog table {
+	margin: 0;
+	border-collapse: collapse;
+	height: 100%;
+	width: 100%;
+}
+
+#file-catalog th {
+	vertical-align: top;
+	height: 40px;
+}
+
+#file-catalog,
+#file-catalog-spacer {
+	display: none;
+}
+
+#file-catalog td {
+	margin: 0;
+	cursor: pointer;
+	vertical-align: top;
+}
+
+#file-catalog td:hover {
+	background-color: #ddd;
+}
 
 /* --- Import screen -------------- */
 

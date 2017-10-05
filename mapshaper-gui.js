@@ -1327,6 +1327,15 @@ function SimpleButton(ref) {
     return false;
   });
 
+  if (_el.hasClass('default-btn')) {
+    gui.on('enter_key', function(e) {
+      if (isVisible()) {
+        _self.dispatchEvent('click');
+        e.stopPropagation();
+      }
+    });
+  }
+
   this.active = function(a) {
     if (a === void 0) return _active;
     if (a !== _active) {
@@ -1335,6 +1344,11 @@ function SimpleButton(ref) {
     }
     return this;
   };
+
+  function isVisible() {
+    var el = _el.node();
+    return el.offsetParent !== null;
+  }
 }
 
 utils.inherit(SimpleButton, EventDispatcher);
@@ -1665,12 +1679,6 @@ var SimplifyControl = function(model) {
 
 
 // Assume zip.js is loaded and zip is defined globally
-zip.workerScripts = {
-  // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
-  // TODO: find out why it was necessary to rename pako_deflate.min.js
-  deflater: ['z-worker.js', 'pako.deflate.js', 'codecs.js'],
-  inflater: ['z-worker.js', 'pako.inflate.js', 'codecs.js']
-};
 
 // @file: Zip file
 // @cb: function(err, <files>)
@@ -1758,6 +1766,73 @@ gui.parseFreeformOptions = function(raw, cmd) {
 
 
 
+function CatalogControl(catalog, onSelect) {
+  var el = El('#file-catalog');
+  var cols = catalog.cols,
+      items = catalog.items,
+      n = items.length,
+      row = 0,
+      html;
+
+  if (n > 0 === false) {
+    console.error("Catalog is missing array of items");
+    return;
+  }
+
+  El('body').addClass('catalog-mode');
+
+  if (!cols) {
+    cols = Math.ceil(Math.sqrt(n));
+  }
+  rows = Math.ceil(n / cols);
+
+  html = '<table>';
+  if (catalog.title) {
+    html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
+  }
+  while (row < rows) {
+    html += renderRow(items.slice(row * cols, row * cols + cols));
+    row++;
+  }
+  html += '</table>';
+  el.node().innerHTML = html;
+  Elements('#file-catalog td').forEach(function(el, i) {
+    el.on('click', function() {
+      selectItem(i);
+    });
+  });
+
+  function renderRow(items) {
+    var tds = items.map(function(o, col) {
+      var i = row * cols + col;
+      return renderCell(o, i);
+    });
+    return '<tr>' + tds.join('') + '</tr>';
+  }
+
+  function selectItem(i) {
+    var item = items[i];
+    var path = getBaseUrl() + (item.url || '');
+    var urls = item.files.map(function(file) {
+      return path + file;
+    });
+    // console.log(urls);
+    onSelect(urls);
+  }
+
+  function renderCell(item, i) {
+    var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
+    return utils.format(template, i, item.title, item.subtitle || '');
+  }
+
+  function getBaseUrl() {
+    return window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
+  }
+
+}
+
+
+
 
 // tests if filename is a type that can be used
 gui.isReadableFileType = function(filename) {
@@ -1832,6 +1907,10 @@ function ImportControl(model, opts) {
   var _importOpts = {};
   var importDataset;
 
+  if (opts.catalog) {
+    new CatalogControl(opts.catalog, downloadFiles);
+  }
+
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
   new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   gui.addMode('import', turnOn, turnOff);
@@ -1864,7 +1943,7 @@ function ImportControl(model, opts) {
 
   function turnOn() {
     if (manifestFiles.length > 0) {
-      downloadFiles(manifestFiles);
+      downloadFiles(manifestFiles, true);
       manifestFiles = [];
     } else if (importCount === 0) {
       El('body').addClass('splash-screen');
@@ -2127,7 +2206,7 @@ function ImportControl(model, opts) {
     return items.filter(Boolean);
   }
 
-  function downloadFiles(paths, opts) {
+  function downloadFiles(paths, quickView) {
     var items = prepFilesForDownload(paths);
     utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
       if (err) {
@@ -2135,9 +2214,7 @@ function ImportControl(model, opts) {
       } else if (!files.length) {
         gui.clearMode();
       } else {
-        // addFiles(files);
-        // submitFiles();
-        receiveFiles(files, true);
+        receiveFiles(files, quickView);
       }
     });
   }
@@ -2799,9 +2876,8 @@ function DisplayCanvas() {
 
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        pixRatio = gui.getPixelRatio(),
-        scaleRatio = getDotScale(_ext),
-        size = Math.ceil((style.dotSize || 3) * pixRatio * scaleRatio),
+        scaleRatio = getDotScale2(shapes, _ext),
+        size = (style.dotSize || 3) * scaleRatio,
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
@@ -2810,7 +2886,7 @@ function DisplayCanvas() {
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points
         styler(style, i);
-        size = style.dotSize * pixRatio * scaleRatio;
+        size = style.dotSize * scaleRatio;
         _ctx.fillStyle = style.dotColor;
       }
       shp = shapes[i];
@@ -2878,6 +2954,41 @@ function DisplayCanvas() {
   return _self;
 }
 
+// Vary line width according to zoom ratio.
+// For performance and clarity don't start widening until zoomed quite far in.
+function getLineScale(ext) {
+  var mapScale = ext.scale(),
+      s = 1;
+  if (mapScale < 0.5) {
+    s *= Math.pow(mapScale + 0.5, 0.35);
+  } else if (mapScale > 100) {
+    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
+      s *= Math.pow(mapScale - 99, 0.10);
+  }
+  return s;
+}
+
+function getDotScale(ext) {
+  return Math.pow(getLineScale(ext), 0.7);
+}
+
+function getDotScale2(shapes, ext) {
+  var pixRatio = gui.getPixelRatio();
+  var scale = ext.scale();
+  var side = Math.min(ext.width(), ext.height());
+  var bounds = ext.getBounds();
+  var test, n, k, j;
+  if (scale >= 2) {
+    test = function(p) {
+      return bounds.containsPoint(p[0], p[1]);
+    };
+  }
+  n = internal.countPoints2(shapes, test);
+  k = n > 100000 && 0.25 || n > 10000 && 0.45 || n > 1000 && 0.65 || n > 200 && 0.85 || 1;
+  j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
+  return getDotScale(ext) * k * j * pixRatio;
+}
+
 function getScaledTransform(ext) {
   return ext.getTransform(gui.getPixelRatio());
 }
@@ -2890,10 +3001,11 @@ function drawCircle(x, y, radius, ctx) {
 }
 
 function drawSquare(x, y, size, ctx) {
+  var offs = size / 2;
   if (size > 0) {
-    var offs = size / 2;
     x = Math.round(x - offs);
     y = Math.round(y - offs);
+    size = Math.ceil(size);
     ctx.fillRect(x, y, size, size);
   }
 }
@@ -2985,24 +3097,6 @@ function getShapePencil(arcs, ext) {
       drawPath(iter, t, ctx, 0.2);
     }
   };
-}
-
-// Vary line width according to zoom ratio.
-// For performance and clarity don't start widening until zoomed quite far in.
-function getLineScale(ext) {
-  var mapScale = ext.scale(),
-      s = 1;
-  if (mapScale < 0.5) {
-    s *= Math.pow(mapScale + 0.5, 0.25);
-  } else if (mapScale > 100) {
-    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
-      s *= Math.pow(mapScale - 99, 0.10);
-  }
-  return s;
-}
-
-function getDotScale(ext) {
-  return Math.pow(getLineScale(ext), 0.7);
 }
 
 function getPathStart(ext, lineScale) {
@@ -4310,16 +4404,19 @@ var MapStyle = (function() {
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
-        dotColor: "#223"
+        dotColor: "#223",
+        dotSize: 4
       },
       referenceStyle = {
         type: 'outline',
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
-        dotColor: "#73ba20"
+        dotColor: "#73ba20",
+        dotSize: 3
       },
       highStyle = {
-        dotColor: "#F24400"
+        dotColor: "#F24400",
+        dotSize: 3
       },
       hoverStyles = {
         polygon: {
@@ -4376,15 +4473,10 @@ var MapStyle = (function() {
 
   return {
     getHighlightStyle: function(lyr) {
-      var style = utils.extend({}, highStyle);
-      var n = internal.countPointsInLayer(lyr);
-      style.dotSize = n < 20 && 4 || n < 500 && 3 || 2;
-      return style;
+      return utils.extend({}, highStyle);
     },
     getReferenceStyle: function(lyr) {
-      var style = utils.extend({}, referenceStyle);
-      style.dotSize = calcDotSize(internal.countPointsInLayer(lyr));
-      return style;
+      return utils.extend({}, referenceStyle);
     },
     getActiveStyle: function(lyr) {
       var style;
@@ -4392,16 +4484,11 @@ var MapStyle = (function() {
         style = internal.getSvgDisplayStyle(lyr);
       } else {
         style = utils.extend({}, outlineStyle);
-        style.dotSize = calcDotSize(internal.countPointsInLayer(lyr));
       }
       return style;
     },
     getOverlayStyle: getOverlayStyle
   };
-
-  function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || n < 10000 && 3 || n < 200000 && 2 || 1;
-  }
 
   function getOverlayStyle(lyr, o) {
     var type = lyr.geometry_type;
@@ -4918,10 +5005,8 @@ function Console(model) {
     } else if (kc == 8 && !typing) {
       capture = true; // prevent delete from leaving page
 
-    // any key while console is open
-    // } else if (_isOpen) {
-
     // any key while console is open and not typing in a non-console field
+    // TODO: prevent console from blocking <enter> for menus
     } else if (_isOpen && (typingInConsole || !typing)) {
       capture = true;
       gui.clearMode(); // close any panels that  might be open
@@ -4960,6 +5045,8 @@ function Console(model) {
         gui.dispatchEvent('inspector_toggle');
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
+      } else if (kc == 13) {
+        gui.dispatchEvent('enter_key'); // signal for default buttons on any open menus
       }
     }
 
@@ -5279,17 +5366,21 @@ Browser.onload(function() {
 
 gui.getImportOpts = function() {
   var vars = gui.getUrlVars();
+  var manifest = mapshaper.manifest || {};
   var opts = {};
-  if (Array.isArray(mapshaper.manifest)) {
+  if (Array.isArray(manifest)) {
     // old-style manifest: an array of filenames
-    opts.files = mapshaper.manifest;
-  } else if (mapshaper.manifest && mapshaper.manifest.files) {
-    utils.extend(opts, mapshaper.manifest);
+    opts.files = manifest;
+  } else if (manifest.files) {
+    opts.files = manifest.files.concat();
   } else {
     opts.files = [];
   }
   if (vars.files) {
     opts.files = opts.files.concat(vars.files.split(','));
+  }
+  if (manifest.catalog) {
+    opts.catalog = manifest.catalog;
   }
   return opts;
 };
@@ -5307,12 +5398,12 @@ gui.startEditing = function() {
   new ImportControl(model, gui.getImportOpts());
   new ExportControl(model);
   new LayerControl(model, map);
+  new Console(model);
 
   model.on('select', function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
-      new Console(model);
     }
   });
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
