@@ -8,6 +8,20 @@ internal.countPointsInLayer = function(lyr) {
   return count;
 };
 
+internal.countPoints2 = function(shapes, test) {
+  var count = 0;
+  var i, n, j, m, shp;
+  for (i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+      if (!test || test(shp[j])) {
+        count++;
+      }
+    }
+  }
+  return count;
+};
+
 internal.getPointBounds = function(shapes) {
   var bounds = new Bounds();
   internal.forEachPoint(shapes, function(p) {

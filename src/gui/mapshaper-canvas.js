@@ -80,9 +80,8 @@ function DisplayCanvas() {
 
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        pixRatio = gui.getPixelRatio(),
-        scaleRatio = getDotScale(_ext),
-        size = Math.ceil((style.dotSize || 3) * pixRatio * scaleRatio),
+        scaleRatio = getDotScale2(shapes, _ext),
+        size = (style.dotSize || 3) * scaleRatio,
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
@@ -91,7 +90,7 @@ function DisplayCanvas() {
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points
         styler(style, i);
-        size = style.dotSize * pixRatio * scaleRatio;
+        size = style.dotSize * scaleRatio;
         _ctx.fillStyle = style.dotColor;
       }
       shp = shapes[i];
@@ -159,6 +158,41 @@ function DisplayCanvas() {
   return _self;
 }
 
+// Vary line width according to zoom ratio.
+// For performance and clarity don't start widening until zoomed quite far in.
+function getLineScale(ext) {
+  var mapScale = ext.scale(),
+      s = 1;
+  if (mapScale < 0.5) {
+    s *= Math.pow(mapScale + 0.5, 0.35);
+  } else if (mapScale > 100) {
+    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
+      s *= Math.pow(mapScale - 99, 0.10);
+  }
+  return s;
+}
+
+function getDotScale(ext) {
+  return Math.pow(getLineScale(ext), 0.7);
+}
+
+function getDotScale2(shapes, ext) {
+  var pixRatio = gui.getPixelRatio();
+  var scale = ext.scale();
+  var side = Math.min(ext.width(), ext.height());
+  var bounds = ext.getBounds();
+  var test, n, k, j;
+  if (scale >= 2) {
+    test = function(p) {
+      return bounds.containsPoint(p[0], p[1]);
+    };
+  }
+  n = internal.countPoints2(shapes, test);
+  k = n > 100000 && 0.25 || n > 10000 && 0.45 || n > 1000 && 0.65 || n > 200 && 0.85 || 1;
+  j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
+  return getDotScale(ext) * k * j * pixRatio;
+}
+
 function getScaledTransform(ext) {
   return ext.getTransform(gui.getPixelRatio());
 }
@@ -171,10 +205,11 @@ function drawCircle(x, y, radius, ctx) {
 }
 
 function drawSquare(x, y, size, ctx) {
+  var offs = size / 2;
   if (size > 0) {
-    var offs = size / 2;
     x = Math.round(x - offs);
     y = Math.round(y - offs);
+    size = Math.ceil(size);
     ctx.fillRect(x, y, size, size);
   }
 }
@@ -266,24 +301,6 @@ function getShapePencil(arcs, ext) {
       drawPath(iter, t, ctx, 0.2);
     }
   };
-}
-
-// Vary line width according to zoom ratio.
-// For performance and clarity don't start widening until zoomed quite far in.
-function getLineScale(ext) {
-  var mapScale = ext.scale(),
-      s = 1;
-  if (mapScale < 0.5) {
-    s *= Math.pow(mapScale + 0.5, 0.25);
-  } else if (mapScale > 100) {
-    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
-      s *= Math.pow(mapScale - 99, 0.10);
-  }
-  return s;
-}
-
-function getDotScale(ext) {
-  return Math.pow(getLineScale(ext), 0.7);
 }
 
 function getPathStart(ext, lineScale) {

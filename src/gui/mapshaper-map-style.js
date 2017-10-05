@@ -13,16 +13,19 @@ var MapStyle = (function() {
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
-        dotColor: "#223"
+        dotColor: "#223",
+        dotSize: 4
       },
       referenceStyle = {
         type: 'outline',
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
-        dotColor: "#73ba20"
+        dotColor: "#73ba20",
+        dotSize: 3
       },
       highStyle = {
-        dotColor: "#F24400"
+        dotColor: "#F24400",
+        dotSize: 3
       },
       hoverStyles = {
         polygon: {
@@ -79,15 +82,10 @@ var MapStyle = (function() {
 
   return {
     getHighlightStyle: function(lyr) {
-      var style = utils.extend({}, highStyle);
-      var n = internal.countPointsInLayer(lyr);
-      style.dotSize = n < 20 && 4 || n < 500 && 3 || 2;
-      return style;
+      return utils.extend({}, highStyle);
     },
     getReferenceStyle: function(lyr) {
-      var style = utils.extend({}, referenceStyle);
-      style.dotSize = calcDotSize(internal.countPointsInLayer(lyr));
-      return style;
+      return utils.extend({}, referenceStyle);
     },
     getActiveStyle: function(lyr) {
       var style;
@@ -95,16 +93,11 @@ var MapStyle = (function() {
         style = internal.getSvgDisplayStyle(lyr);
       } else {
         style = utils.extend({}, outlineStyle);
-        style.dotSize = calcDotSize(internal.countPointsInLayer(lyr));
       }
       return style;
     },
     getOverlayStyle: getOverlayStyle
   };
-
-  function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || n < 10000 && 3 || n < 200000 && 2 || 1;
-  }
 
   function getOverlayStyle(lyr, o) {
     var type = lyr.geometry_type;
