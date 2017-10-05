@@ -2,6 +2,7 @@
 mapshaper-zip-reader
 mapshaper-progress-message
 mapshaper-gui-options
+mapshaper-catalog-control
 */
 
 // tests if filename is a type that can be used
@@ -77,6 +78,10 @@ function ImportControl(model, opts) {
   var _importOpts = {};
   var importDataset;
 
+  if (opts.catalog) {
+    new CatalogControl(opts.catalog, downloadFiles);
+  }
+
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
   new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   gui.addMode('import', turnOn, turnOff);
@@ -109,7 +114,7 @@ function ImportControl(model, opts) {
 
   function turnOn() {
     if (manifestFiles.length > 0) {
-      downloadFiles(manifestFiles);
+      downloadFiles(manifestFiles, true);
       manifestFiles = [];
     } else if (importCount === 0) {
       El('body').addClass('splash-screen');
@@ -372,7 +377,7 @@ function ImportControl(model, opts) {
     return items.filter(Boolean);
   }
 
-  function downloadFiles(paths, opts) {
+  function downloadFiles(paths, quickView) {
     var items = prepFilesForDownload(paths);
     utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
       if (err) {
@@ -380,9 +385,7 @@ function ImportControl(model, opts) {
       } else if (!files.length) {
         gui.clearMode();
       } else {
-        // addFiles(files);
-        // submitFiles();
-        receiveFiles(files, true);
+        receiveFiles(files, quickView);
       }
     });
   }

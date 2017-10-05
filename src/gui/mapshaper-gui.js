@@ -32,17 +32,21 @@ Browser.onload(function() {
 
 gui.getImportOpts = function() {
   var vars = gui.getUrlVars();
+  var manifest = mapshaper.manifest || {};
   var opts = {};
-  if (Array.isArray(mapshaper.manifest)) {
+  if (Array.isArray(manifest)) {
     // old-style manifest: an array of filenames
-    opts.files = mapshaper.manifest;
-  } else if (mapshaper.manifest && mapshaper.manifest.files) {
-    utils.extend(opts, mapshaper.manifest);
+    opts.files = manifest;
+  } else if (manifest.files) {
+    opts.files = manifest.files.concat();
   } else {
     opts.files = [];
   }
   if (vars.files) {
     opts.files = opts.files.concat(vars.files.split(','));
+  }
+  if (manifest.catalog) {
+    opts.catalog = manifest.catalog;
   }
   return opts;
 };
@@ -60,12 +64,12 @@ gui.startEditing = function() {
   new ImportControl(model, gui.getImportOpts());
   new ExportControl(model);
   new LayerControl(model, map);
+  new Console(model);
 
   model.on('select', function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
-      new Console(model);
     }
   });
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map

@@ -38,11 +38,13 @@ internal.fixNestingErrors2 = function(rings, arcs) {
   rings.forEach(fixRing);
   // TODO: consider other kinds of nesting errors
   function fixRing(ids, i) {
-    var containerId = index.findSmallestEnclosingPolygon(ids);
     var ringIsCW = ringData[i].area > 0;
-    if (containerId == -1 && !ringIsCW) {
-      // containerIsCW = ringData[containerId].area > 0;
-      internal.reversePath(ids);
+    var containerId;
+    if (!ringIsCW) {
+      containerId = index.findSmallestEnclosingPolygon(ids);
+      if (containerId == -1) {
+        internal.reversePath(ids);
+      }
     }
   }
 };

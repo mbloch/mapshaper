@@ -100,7 +100,7 @@
 interface. Examples: "bbox" "no-quantization"
 "precision=0.001"</div></div></div></div>
 		<div class="cancel-btn btn dialog-btn">Cancel</div>
-		<div id="save-btn" class="btn dialog-btn">Export</div>
+		<div id="save-btn" class="btn dialog-btn default-btn">Export</div>
 	</div>
 </div>
 
@@ -150,7 +150,7 @@ a smoother appearance.</div></div></div></div>
 
 		<div>
 			<div class="cancel-btn btn dialog-btn">Cancel</div>
-			<div class="submit-btn btn dialog-btn">Apply</div>
+			<div class="submit-btn btn dialog-btn default-btn">Apply</div>
 		</div>
 	</div> <!-- .info-box -->
 </div> <!-- #simplify-options -->
@@ -161,6 +161,11 @@ a smoother appearance.</div></div></div></div>
 		<div class="subtitle">Shapefile, GeoJSON, TopoJSON, DBF and CSV files are supported</div>
 	</div>
 	<div id="drop-areas" class="drop-area-wrapper main-area">
+
+		<div id="file-catalog" class="catalog-area">
+		</div>
+		<div id="file-catalog-spacer" class="spacer"></div>
+
 		<div id="import-drop" class="drop-area">
 			<h4>Drop files here or <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> from a folder</h4>
 			<div class="subtitle">Files can be loose or in a zip archive</div>
@@ -173,7 +178,6 @@ a smoother appearance.</div></div></div></div>
 		</div>
 	</div>
 </div>
-
 
 <div id="import-options" class="main-area popup-dialog">
 	<div class="info-box">
@@ -213,7 +217,7 @@ interface. Examples: "no-topology"
 		<div id="import-buttons">
 			<div class="cancel-btn btn dialog-btn">Cancel</div>
 			<div class="add-btn btn dialog-btn">Select</div>
-			<div class="submit-btn btn dialog-btn">Import</div>
+			<div class="submit-btn btn dialog-btn default-btn">Import</div>
 		</div>
 
 	</div> <!-- .info-box -->
@@ -245,5 +249,11 @@ interface. Examples: "no-topology"
 <script src="mapshaper.js" type="text/javascript"></script>
 <script src="manifest.js" type="text/javascript"></script>
 <script src="mapshaper-gui.js" type="text/javascript"></script>
+<script type="text/javascript">
+zip.workerScripts = {
+  deflater: ['z-worker.js', 'pako.deflate.js', 'codecs.js'],
+  inflater: ['z-worker.js', 'pako.inflate.js', 'codecs.js']
+};
+</script>
 </body>
 </html>

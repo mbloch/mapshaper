@@ -162,10 +162,8 @@ function Console(model) {
     } else if (kc == 8 && !typing) {
       capture = true; // prevent delete from leaving page
 
-    // any key while console is open
-    // } else if (_isOpen) {
-
     // any key while console is open and not typing in a non-console field
+    // TODO: prevent console from blocking <enter> for menus
     } else if (_isOpen && (typingInConsole || !typing)) {
       capture = true;
       gui.clearMode(); // close any panels that  might be open
@@ -204,6 +202,8 @@ function Console(model) {
         gui.dispatchEvent('inspector_toggle');
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
+      } else if (kc == 13) {
+        gui.dispatchEvent('enter_key'); // signal for default buttons on any open menus
       }
     }
 
