@@ -4,6 +4,21 @@ var assert = require('assert'),
 
 describe("mapshaper-simplify.js", function() {
 
+  describe('-simplify resolution= option', function () {
+
+    it('resolution=100x100', function (done) {
+      var input = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0, 1], [1, 1], [1, 2]]
+      }
+      api.applyCommands('-i line.json -simplify resolution=100x100 -o', {'line.json': input}, function(err, out) {
+        var output = JSON.parse(out['line.json']);
+        assert.deepEqual(output.geometries[0], input);
+        done();
+      })
+    })
+  })
+
   describe('Fix: -simplify 0% removes all removable vertices', function () {
     it('-simplify planar 0%', function (done) {
       var input = {
@@ -121,6 +136,12 @@ describe("mapshaper-simplify.js", function() {
   describe('parseSimplifyResolution()', function () {
     it('parse grid', function () {
       assert.deepEqual(api.internal.parseSimplifyResolution('100x200'), [100, 200]);
+    })
+    it('parse grid (comma delim)', function () {
+      assert.deepEqual(api.internal.parseSimplifyResolution('100,200'), [100, 200]);
+    })
+    it('parse grid (space delim)', function () {
+      assert.deepEqual(api.internal.parseSimplifyResolution('100 200'), [100, 200]);
     })
     it('parse partial grid', function () {
       assert.deepEqual(api.internal.parseSimplifyResolution('x200'), [0, 200]);
