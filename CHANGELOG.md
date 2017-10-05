@@ -1,3 +1,6 @@
+v0.4.55
+* Fix for issue #221 (-simplify resolution= option error).
+
 v0.4.54
 * Improvements to -clean command
 
