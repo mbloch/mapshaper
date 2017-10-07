@@ -4,7 +4,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
   layers.forEach(internal.requirePolygonLayer);
-  nodes = internal.addIntersectionCuts(dataset);
+  nodes = internal.addIntersectionCuts(dataset, opts);
   layers.forEach(function(lyr) {
     lyr.shapes = internal.dissolvePolygons2(lyr.shapes, nodes.arcs, opts);
   });

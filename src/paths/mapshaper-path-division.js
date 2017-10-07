@@ -21,6 +21,7 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   var arcs = dataset.arcs;
   var snapDist, snapCount, dupeCount, map, nodes;
 
+
   // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
   // used to reset simplification)
   arcs.flatten();
