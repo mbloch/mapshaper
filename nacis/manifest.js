@@ -15,12 +15,13 @@ mapshaper.manifest = {
       subtitle: 'Line intersections',
       url: 'b/',
       files: [
-        'ne_10m_admin_0_countries.shp',
-        'ne_10m_admin_0_countries.dbf',
-        'ne_10m_admin_0_countries.prj',
+        'ne_50m_admin_0_countries.shp',
+        'ne_50m_admin_0_countries.dbf',
+        'ne_50m_admin_0_countries.prj',
         'mt-2016-general.shp',
         'mt-2016-general.dbf',
         'mt-2016-general.prj',
+        'hex_grid.json'
       ]
     }, {
       title: 'Sample Three',
@@ -29,8 +30,7 @@ mapshaper.manifest = {
       files: [
         'britain.shp',
         'britain.dbf',
-        'britain.prj',
-        'grid.json'
+        'britain.prj'
       ]
     }, {
       title: 'Sample Four',
