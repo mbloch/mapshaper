@@ -13,33 +13,23 @@ mapshaper.manifest = {
     }, {
       title: 'Sample Two',
       subtitle: 'Line intersections',
-      url: 'b/',
+      url: '',
       files: [
-        'ne_50m_admin_0_countries.shp',
-        'ne_50m_admin_0_countries.dbf',
-        'ne_50m_admin_0_countries.prj',
-        'mt-2016-general.shp',
-        'mt-2016-general.dbf',
-        'mt-2016-general.prj',
-        'hex_grid.json'
+        'b.zip'
       ]
     }, {
       title: 'Sample Three',
       subtitle: 'British constituencies',
-      url: 'c/',
+      url: '',
       files: [
-        'britain.shp',
-        'britain.dbf',
-        'britain.prj'
+       'c.zip'
       ]
     }, {
       title: 'Sample Four',
       subtitle: 'U.S. counties',
-      url: 'd/',
+      url: '',
       files: [
-        'countyp010.shp',
-        'countyp010.dbf',
-        'countyp010.prj'
+        'd.zip'
       ]
     }]
   }
