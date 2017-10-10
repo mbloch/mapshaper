@@ -1,6 +1,6 @@
 mapshaper.manifest = {
   catalog: {
-    cols: 4,
+    cols: 3,
     title: 'NACIS PCD Example Datasets',
     items: [{
       title: 'Sample One',
@@ -18,14 +18,14 @@ mapshaper.manifest = {
         'b.zip'
       ]
     }, {
-      title: 'Sample Three',
+    /*  title: 'Sample Three',
       subtitle: 'British constituencies',
       url: '',
       files: [
        'c.zip'
       ]
-    }, {
-      title: 'Sample Four',
+    }, {*/
+      title: 'Sample Three',
       subtitle: 'U.S. counties',
       url: '',
       files: [
