@@ -4,7 +4,7 @@ map:
 		-filter 'STATE_FIPS < 72' \
 		-filter 'COUNTY != ""' \
 		-dissolve FIPS copy-fields=STATE \
-		-simplify 4% \
+		-simplify 2% \
 		-proj albersusa \
 		-points inner + name=points \
 		-i 2012-president-general-counties.csv string-fields=fips name=data \
