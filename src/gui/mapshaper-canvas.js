@@ -188,7 +188,7 @@ function getDotScale2(shapes, ext) {
     };
   }
   n = internal.countPoints2(shapes, test);
-  k = n > 100000 && 0.25 || n > 10000 && 0.45 || n > 1000 && 0.65 || n > 200 && 0.85 || 1;
+  k = n > 100000 && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
   j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
   return getDotScale(ext) * k * j * pixRatio;
 }
