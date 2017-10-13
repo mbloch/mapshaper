@@ -17,7 +17,7 @@ function testInnerPoints(file, cmd, done) {
 }
 
 
-describe('mapshaper-polygon-centroid.js', function () {
+describe('mapshaper-anchor-points.js', function () {
   describe('inner points test', function () {
 
     var a = "-each 'cx=$.innerX, cy=$.innerY' -points x=cx y=cy +";
@@ -42,14 +42,14 @@ describe('mapshaper-polygon-centroid.js', function () {
   it('"-points inner" converts collapsed polygon to null geometry', function () {
     var shp = [[[0]]];
     var arcs = new api.internal.ArcCollection([[[0, 0], [0, 0], [0, 0], [0, 0]]]);
-    var p = api.geom.findInteriorPoint(shp, arcs);
+    var p = api.internal.findAnchorPoint(shp, arcs);
     assert.equal(p, null);
   })
 
   it('"-points inner" finds center of a rectangle', function () {
     var shape = [[0]];
     var arcs = new api.internal.ArcCollection([[[0, 0], [0, 1], [2, 1], [2, 0], [0, 0]]]);
-    var p = api.geom.findInteriorPoint(shape, arcs);
+    var p = api.internal.findAnchorPoint(shape, arcs);
     assert.equal(p.x, 1);
     assert.equal(p.y, 0.5);
   })

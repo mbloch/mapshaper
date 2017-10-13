@@ -2,6 +2,8 @@
 mapshaper-data-table
 mapshaper-dataset-utils
 mapshaper-polygon-centroid
+mapshaper-anchor-points
+mapshaper-inner-points
 mapshaper-geom
 */
 
@@ -150,7 +152,7 @@ internal.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
     stop("Expected a polygon layer");
   }
-  var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
+  var func = opts.inner ? internal.findAnchorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
     var p = func(shp, arcs);
     return p ? [[p.x, p.y]] : null;

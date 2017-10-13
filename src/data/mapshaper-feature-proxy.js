@@ -1,6 +1,7 @@
 /* @requires
 mapshaper-shape-geom
 mapshaper-polygon-centroid
+mapshaper-anchor-points
 mapshaper-arcs
 mapshaper-dataset-utils
 */
@@ -129,7 +130,7 @@ internal.initFeatureProxy = function(lyr, arcs) {
   }
 
   function innerXY() {
-    _innerXY = _innerXY || geom.findInteriorPoint(_ids, arcs);
+    _innerXY = _innerXY || internal.findAnchorPoint(_ids, arcs);
     return _innerXY;
   }
 
