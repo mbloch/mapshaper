@@ -77,9 +77,10 @@ function ImportControl(model, opts) {
   var manifestFiles = opts.files || [];
   var _importOpts = {};
   var importDataset;
+  var cat;
 
   if (opts.catalog) {
-    new CatalogControl(opts.catalog, downloadFiles);
+    cat = new CatalogControl(opts.catalog, downloadFiles);
   }
 
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
@@ -122,6 +123,7 @@ function ImportControl(model, opts) {
   }
 
   function turnOff() {
+    if (cat) cat.enable(); // re-enable clickable catalog
     if (importDataset) {
       // display first layer of most recently imported dataset
       model.selectLayer(importDataset.layers[0], importDataset);

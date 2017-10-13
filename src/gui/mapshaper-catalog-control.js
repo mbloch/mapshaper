@@ -2,10 +2,13 @@
 function CatalogControl(catalog, onSelect) {
   var el = El('#file-catalog');
   var cols = catalog.cols,
+      enabled = true,
       items = catalog.items,
       n = items.length,
       row = 0,
       html;
+
+  this.enable = function() {enabled = true;};
 
   if (n > 0 === false) {
     console.error("Catalog is missing array of items");
@@ -49,8 +52,11 @@ function CatalogControl(catalog, onSelect) {
     var urls = item.files.map(function(file) {
       return path + file;
     });
-    // console.log(urls);
-    onSelect(urls);
+    if (enabled) {
+      // handle multiple clicks
+      enabled = false;
+      onSelect(urls);
+    }
   }
 
   function renderCell(item, i) {
