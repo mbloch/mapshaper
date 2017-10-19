@@ -1,5 +1,4 @@
 (function(){
-var VERSION = '0.4.55';
 
 var api = mapshaper; // assuming mapshaper is in global scope
 var utils = api.utils;
@@ -1768,19 +1767,21 @@ gui.parseFreeformOptions = function(raw, cmd) {
 
 
 function CatalogControl(catalog, onSelect) {
-  var el = El('#file-catalog');
-  var cols = catalog.cols,
+  var self = this,
+      el = El('#file-catalog'),
+      cols = catalog.cols,
       enabled = true,
       items = catalog.items,
       n = items.length,
       row = 0,
       html;
 
-  this.enable = function() {enabled = true;};
-
-  this.progress = function(pct) {
-    console.log(pct);
+  this.reset = function() {
+    enabled = true;
+    this.progress(0);
   };
+
+  this.progress = function() {}; // set by click handler
 
   if (n > 0 === false) {
     console.error("Catalog is missing array of items");
@@ -1806,9 +1807,25 @@ function CatalogControl(catalog, onSelect) {
   el.node().innerHTML = html;
   Elements('#file-catalog td').forEach(function(el, i) {
     el.on('click', function() {
-      selectItem(i);
+      selectItem(el, i);
     });
   });
+
+  // Generate onprogress callback to show a progress indicator
+  function getProgressFunction(el) {
+    var visible = false,
+        i = 0;
+    return function(pct) {
+      i++;
+      if (i == 2 && pct < 0.5) {
+        // only show progress bar if file will take a while to load
+        visible = true;
+      }
+      if (visible) {
+        el.css('background-size', (Math.round(pct * 100) + '% 100%'));
+      }
+    };
+  }
 
   function renderRow(items) {
     var tds = items.map(function(o, col) {
@@ -1818,7 +1835,7 @@ function CatalogControl(catalog, onSelect) {
     return '<tr>' + tds.join('') + '</tr>';
   }
 
-  function selectItem(i) {
+  function selectItem(el,i) {
     var pageUrl = window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
     var item = items[i];
     var urls = item.files.map(function(file) {
@@ -1829,15 +1846,15 @@ function CatalogControl(catalog, onSelect) {
       }
       return url;
     });
-    if (enabled) {
-      // handle multiple clicks
+    if (enabled) { // only respond to first click
+      self.progress = getProgressFunction(el);
       enabled = false;
       onSelect(urls);
     }
   }
 
   function renderCell(item, i) {
-    var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
+    var template = '<td data-id="%d" class="bg-progress"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
     return utils.format(template, i, item.title, item.subtitle || '');
   }
 
@@ -1964,7 +1981,7 @@ function ImportControl(model, opts) {
   }
 
   function turnOff() {
-    if (cat) cat.enable(); // re-enable clickable catalog
+    if (cat) cat.reset(); // re-enable clickable catalog
     if (importDataset) {
       // display first layer of most recently imported dataset
       model.selectLayer(importDataset.layers[0], importDataset);
