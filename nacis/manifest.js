@@ -5,43 +5,23 @@ mapshaper.manifest = {
     items: [{
       title: 'Sample One',
       subtitle: 'Inspection practice',
-      url: 'a/',
       files: [
-        'latest_track.zip',
-        'points.csv'
+        'https://dl.dropboxusercontent.com/s/krtvbezmvgg102x/a.zip?dl=1'
       ]
     }, {
       title: 'Sample Two',
       subtitle: 'Line intersections',
       url: '',
       files: [
-        'b.zip'
+        'https://dl.dropboxusercontent.com/s/0duqwhavungcxl3/b.zip?dl=1'
       ]
     }, {
-    /*  title: 'Sample Three',
-      subtitle: 'British constituencies',
-      url: '',
-      files: [
-       'c.zip'
-      ]
-    }, {*/
       title: 'Sample Three',
       subtitle: 'U.S. counties',
       url: '',
       files: [
-        'd.zip'
+        'https://dl.dropboxusercontent.com/s/4bwywe2856gmnrd/c.zip?dl=1'
       ]
     }]
   }
 };
-
-/*
-
-        'floodplainsharris.shp',
-        'floodplainsharris.dbf',
-        'floodplainsharris.prj',
-        'parcel_points.shp',
-        'parcel_points.dbf',
-        'parcel_points.prj'
-
-*/

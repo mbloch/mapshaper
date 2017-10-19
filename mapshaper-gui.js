@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.54';
+var VERSION = '0.4.55';
 
 var api = mapshaper; // assuming mapshaper is in global scope
 var utils = api.utils;
@@ -1778,6 +1778,10 @@ function CatalogControl(catalog, onSelect) {
 
   this.enable = function() {enabled = true;};
 
+  this.progress = function(pct) {
+    console.log(pct);
+  };
+
   if (n > 0 === false) {
     console.error("Catalog is missing array of items");
     return;
@@ -1815,10 +1819,15 @@ function CatalogControl(catalog, onSelect) {
   }
 
   function selectItem(i) {
+    var pageUrl = window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
     var item = items[i];
-    var path = getBaseUrl() + (item.url || '');
     var urls = item.files.map(function(file) {
-      return path + file;
+      var url = (item.url || '') + file;
+      if (/^http/.test(url) === false) {
+        // assume relative url
+        url = pageUrl + '/' + url;
+      }
+      return url;
     });
     if (enabled) {
       // handle multiple clicks
@@ -1830,10 +1839,6 @@ function CatalogControl(catalog, onSelect) {
   function renderCell(item, i) {
     var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
     return utils.format(template, i, item.title, item.subtitle || '');
-  }
-
-  function getBaseUrl() {
-    return window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
   }
 
 }
@@ -2205,6 +2210,7 @@ function ImportControl(model, opts) {
       if (isUrl) {
         item.url = name;
         item.basename = gui.getUrlFilename(name);
+
       } else {
         item.basename = name;
         // Assume non-urls are local files loaded via mapshaper-gui
@@ -2236,6 +2242,10 @@ function ImportControl(model, opts) {
       if (req.status == 200) {
         blob = req.response;
       }
+    });
+    req.addEventListener('progress', function(e) {
+      var pct = e.loaded / e.total;
+      if (cat) cat.progress(pct);
     });
     req.addEventListener('loadend', function() {
       var err;

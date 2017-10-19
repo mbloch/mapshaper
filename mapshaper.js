@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.54';
+var VERSION = '0.4.55';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -7164,6 +7164,43 @@ utils.extend(DataTable.prototype, dataTableProto);
 
 
 
+// Get the centroid of the largest ring of a polygon
+// TODO: Include holes in the calculation
+// TODO: Add option to find centroid of all rings, not just the largest
+geom.getShapeCentroid = function(shp, arcs) {
+  var maxPath = geom.getMaxPath(shp, arcs);
+  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
+};
+
+geom.getPathCentroid = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      sum = 0,
+      sumX = 0,
+      sumY = 0,
+      ax, ay, tmp, area;
+  if (!iter.hasNext()) return null;
+  ax = iter.x;
+  ay = iter.y;
+  while (iter.hasNext()) {
+    tmp = ax * iter.y - ay * iter.x;
+    sum += tmp;
+    sumX += tmp * (iter.x + ax);
+    sumY += tmp * (iter.y + ay);
+    ax = iter.x;
+    ay = iter.y;
+  }
+  area = sum / 2;
+  if (area === 0) {
+    return geom.getAvgPathXY(ids, arcs);
+  } else return {
+    x: sumX / (6 * area),
+    y: sumY / (6 * area)
+  };
+};
+
+
+
+
 internal.simplifyArcsFast = function(arcs, dist) {
   var xx = [],
       yy = [],
@@ -7232,39 +7269,6 @@ internal.simplifyPathFast = function(path, arcs, dist, xx, yy) {
 
 
 
-// Get the centroid of the largest ring of a polygon
-// TODO: Include holes in the calculation
-// TODO: Add option to find centroid of all rings, not just the largest
-geom.getShapeCentroid = function(shp, arcs) {
-  var maxPath = geom.getMaxPath(shp, arcs);
-  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
-};
-
-geom.getPathCentroid = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids),
-      sum = 0,
-      sumX = 0,
-      sumY = 0,
-      ax, ay, tmp, area;
-  if (!iter.hasNext()) return null;
-  ax = iter.x;
-  ay = iter.y;
-  while (iter.hasNext()) {
-    tmp = ax * iter.y - ay * iter.x;
-    sum += tmp;
-    sumX += tmp * (iter.x + ax);
-    sumY += tmp * (iter.y + ay);
-    ax = iter.x;
-    ay = iter.y;
-  }
-  area = sum / 2;
-  if (area === 0) {
-    return geom.getAvgPathXY(ids, arcs);
-  } else return {
-    x: sumX / (6 * area),
-    y: sumY / (6 * area)
-  };
-};
 
 // Find a point inside a polygon and located away from the polygon edge
 // Method:
@@ -7279,23 +7283,28 @@ geom.getPathCentroid = function(ids, arcs) {
 //
 // (distance is weighted to slightly favor points near centroid)
 //
-geom.findInteriorPoint = function(shp, arcs) {
+internal.findAnchorPoint = function(shp, arcs) {
   var maxPath = shp && geom.getMaxPath(shp, arcs),
       pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
       thresh, simple;
   if (!pathBounds || !pathBounds.hasBounds() || pathBounds.area() === 0) {
     return null;
   }
+  // Optimization: quickly simplify using a relatively small distance threshold.
+  // (testing multiple candidate points can be very slow for large and detailed
+  //   polgons; simplification alleviates this)
+  // Caveat: In rare cases this could cause poor point placement, e.g. if
+  //   simplification causes small holes to be removed.
   thresh = Math.sqrt(pathBounds.area()) * 0.01;
   simple = internal.simplifyPolygonFast(shp, arcs, thresh);
   if (!simple.shape) {
     return null; // collapsed shape
   }
-  return geom.findInteriorPoint2(simple.shape, simple.arcs);
+  return internal.findAnchorPoint2(simple.shape, simple.arcs);
 };
 
 // Assumes: shp is a polygon with at least one space-enclosing ring
-geom.findInteriorPoint2 = function(shp, arcs) {
+internal.findAnchorPoint2 = function(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs);
   var pathBounds = arcs.getSimpleShapeBounds(maxPath);
   var centroid = geom.getPathCentroid(maxPath, arcs);
@@ -7320,13 +7329,13 @@ geom.findInteriorPoint2 = function(shp, arcs) {
   hstep = hrange / htics;
 
   // Find a best-fit point
-  p = internal.probeForBestInteriorPoint(shp, arcs, lbound, rbound, htics, weight);
+  p = internal.probeForBestAnchorPoint(shp, arcs, lbound, rbound, htics, weight);
   if (!p) {
     verbose("[points inner] failed, falling back to centroid");
    p = centroid;
   } else {
     // Look for even better fit close to best-fit point
-    p2 = internal.probeForBestInteriorPoint(shp, arcs, p.x - hstep / 2,
+    p2 = internal.probeForBestAnchorPoint(shp, arcs, p.x - hstep / 2,
         p.x + hstep / 2, 2, weight);
     if (p2.distance > p.distance) {
       p = p2;
@@ -7345,7 +7354,7 @@ internal.getPointWeightingFunction = function(centroid, pathBounds) {
   };
 };
 
-internal.findInteriorPointCandidates = function(shp, arcs, xx) {
+internal.findAnchorPointCandidates = function(shp, arcs, xx) {
   var ymin = arcs.getBounds().ymin - 1;
   return xx.reduce(function(memo, x) {
     var cands = internal.findHitCandidates(x, ymin, shp, arcs);
@@ -7353,11 +7362,11 @@ internal.findInteriorPointCandidates = function(shp, arcs, xx) {
   }, []);
 };
 
-internal.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
+internal.probeForBestAnchorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
   var tics = internal.getInnerTics(lbound, rbound, htics);
   var interval = (rbound - lbound) / htics;
   // Get candidate points, distributed along x-axis
-  var candidates = internal.findInteriorPointCandidates(shp, arcs, tics);
+  var candidates = internal.findAnchorPointCandidates(shp, arcs, tics);
   var bestP, adjustedP, candP;
 
   // Sort candidates so points at the center of longer segments are tried first
@@ -7609,7 +7618,7 @@ internal.initFeatureProxy = function(lyr, arcs) {
   }
 
   function innerXY() {
-    _innerXY = _innerXY || geom.findInteriorPoint(_ids, arcs);
+    _innerXY = _innerXY || internal.findAnchorPoint(_ids, arcs);
     return _innerXY;
   }
 
@@ -16716,6 +16725,46 @@ internal.importFiles = function(files, opts) {
 
 
 
+// Return an interior point for each space-containing ring
+internal.findInnerPoints = function(shp, arcs) {
+  var groups, points;
+  if (!shp) {
+    points = null; // null shape
+  } else {
+    groups = shp.length == 1 ? [shp] : internal.findPotentialRingGroups(shp, arcs);
+    points = internal.findInnerPoints2(groups, arcs);
+  }
+  return points;
+};
+
+internal.findInnerPoints2 = function(shapes, arcs) {
+  return shapes.map(function(shp) {
+    return internal.findInnerPoint(shp, arcs);
+  });
+};
+
+internal.findPotentialRingGroups = function(shp, arcs) {
+  var data = internal.getPathMetadata(shp, arcs, 'polygon');
+  var groups = [];
+  // sort shp parts by descending bbox area
+  data.sort(function(a, b) {
+    return b.bounds.area() - a.bounds.area();
+  });
+  data.forEach(function(d, i) {
+    if (d.area > 0 === false) return; // skip holes
+    groups.push(utils.pluck(data.slice(i), 'ids'));
+  });
+  return groups;
+};
+
+
+// assume: shp[0] is outer ring
+internal.findInnerPoint = function(shp, arcs) {
+};
+
+
+
+
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
   if (opts.interpolated) {
@@ -16861,7 +16910,7 @@ internal.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
     stop("Expected a polygon layer");
   }
-  var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
+  var func = opts.inner ? internal.findAnchorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
     var p = func(shp, arcs);
     return p ? [[p.x, p.y]] : null;
