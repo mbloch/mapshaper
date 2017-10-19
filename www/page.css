@@ -411,6 +411,13 @@ body.catalog-mode #file-catalog-spacer {
 	background-color: #ddd;
 }
 
+.bg-progress {
+	background-size: 0% 100%;
+	background-repeat: no-repeat;
+	background-position: top left;
+	background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAMAAABFaP0WAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAZQTFRFt7e3AAAAgOo4JQAAAA5JREFUeNpiYAABgAADAAAGAAHgQhFOAAAAAElFTkSuQmCC);
+}
+
 /* --- Import screen -------------- */
 
 

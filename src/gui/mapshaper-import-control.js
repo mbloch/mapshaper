@@ -123,7 +123,7 @@ function ImportControl(model, opts) {
   }
 
   function turnOff() {
-    if (cat) cat.enable(); // re-enable clickable catalog
+    if (cat) cat.reset(); // re-enable clickable catalog
     if (importDataset) {
       // display first layer of most recently imported dataset
       model.selectLayer(importDataset.layers[0], importDataset);
@@ -369,6 +369,7 @@ function ImportControl(model, opts) {
       if (isUrl) {
         item.url = name;
         item.basename = gui.getUrlFilename(name);
+
       } else {
         item.basename = name;
         // Assume non-urls are local files loaded via mapshaper-gui
@@ -400,6 +401,10 @@ function ImportControl(model, opts) {
       if (req.status == 200) {
         blob = req.response;
       }
+    });
+    req.addEventListener('progress', function(e) {
+      var pct = e.loaded / e.total;
+      if (cat) cat.progress(pct);
     });
     req.addEventListener('loadend', function() {
       var err;
