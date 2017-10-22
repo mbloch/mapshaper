@@ -408,10 +408,11 @@ body.catalog-mode #file-catalog-spacer {
 }
 
 #file-catalog td:hover {
-	background-color: #ddd;
+	background-color: #e2e2e2;
 }
 
-.bg-progress {
+#file-catalog.downloading td.downloading {
+	background-color: #d5d5d5;
 	background-size: 0% 100%;
 	background-repeat: no-repeat;
 	background-position: top left;

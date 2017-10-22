@@ -1,7 +1,7 @@
 
 function CatalogControl(catalog, onSelect) {
   var self = this,
-      el = El('#file-catalog'),
+      container = El('#file-catalog'),
       cols = catalog.cols,
       enabled = true,
       items = catalog.items,
@@ -11,7 +11,8 @@ function CatalogControl(catalog, onSelect) {
 
   this.reset = function() {
     enabled = true;
-    this.progress(0);
+    container.removeClass('downloading');
+    this.progress(-1);
   };
 
   this.progress = function() {}; // set by click handler
@@ -37,7 +38,7 @@ function CatalogControl(catalog, onSelect) {
     row++;
   }
   html += '</table>';
-  el.node().innerHTML = html;
+  container.node().innerHTML = html;
   Elements('#file-catalog td').forEach(function(el, i) {
     el.on('click', function() {
       selectItem(el, i);
@@ -53,6 +54,11 @@ function CatalogControl(catalog, onSelect) {
       if (i == 2 && pct < 0.5) {
         // only show progress bar if file will take a while to load
         visible = true;
+      }
+      if (pct == -1) {
+        // kludge to reset progress bar
+        el.removeClass('downloading');
+        pct = 0;
       }
       if (visible) {
         el.css('background-size', (Math.round(pct * 100) + '% 100%'));
@@ -81,13 +87,15 @@ function CatalogControl(catalog, onSelect) {
     });
     if (enabled) { // only respond to first click
       self.progress = getProgressFunction(el);
+      el.addClass('downloading');
+      container.addClass('downloading');
       enabled = false;
       onSelect(urls);
     }
   }
 
   function renderCell(item, i) {
-    var template = '<td data-id="%d" class="bg-progress"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
+    var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
     return utils.format(template, i, item.title, item.subtitle || '');
   }
 
