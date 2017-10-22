@@ -1,5 +1,10 @@
 /* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table */
 
+// Wrapper class for a data layer. Has methods for mediating between the GUI interface
+// (layer display and interactive simplification) and the underlying data.
+// Provides reduced-detail versions of arcs for rendering zoomed-out views of
+// large data layers.
+//
 function DisplayLayer(lyr, dataset, ext) {
   var _displayBounds;
   var _arcCounts;
