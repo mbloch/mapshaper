@@ -1,5 +1,4 @@
 (function(){
-var VERSION = '0.4.55';
 
 var api = mapshaper; // assuming mapshaper is in global scope
 var utils = api.utils;
@@ -3235,9 +3234,22 @@ function FilteredArcCollection(unfilteredArcs) {
     return useFiltering ? filteredArcs : unfilteredArcs;
   };
 
+  function needFilterUpdate() {
+    if (filteredArcs) {
+      // Filtered arcs need to be rebuilt if number of arcs has changed or
+      // thresholds haven't been sorted yet (to support the GUI slider)
+      // TODO: consider other cases where filtered arcs might need to be updated
+      if (filteredArcs.size() != unfilteredArcs.size() ||
+          unfilteredArcs.getVertexData().zz && !sortedThresholds) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function refreshFilteredArcs() {
     if (filteredArcs) {
-      if (filteredArcs.size() != unfilteredArcs.size()) {
+      if (needFilterUpdate()) {
         init();
       }
       filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
@@ -3250,7 +3262,6 @@ function FilteredArcCollection(unfilteredArcs) {
     if (sortedThresholds) {
       var z = sortedThresholds[Math.floor(pct * sortedThresholds.length)];
       z = internal.clampIntervalByPct(z, pct);
-      // this.setRetainedInterval(z);
       unfilteredArcs.setRetainedInterval(z);
     } else {
       unfilteredArcs.setRetainedPct(pct);
@@ -3327,6 +3338,11 @@ gui.getDisplayLayerForTable = function(table) {
 
 
 
+// Wrapper class for a data layer. Has methods for mediating between the GUI interface
+// (layer display and interactive simplification) and the underlying data.
+// Provides reduced-detail versions of arcs for rendering zoomed-out views of
+// large data layers.
+//
 function DisplayLayer(lyr, dataset, ext) {
   var _displayBounds;
   var _arcCounts;
