@@ -18,6 +18,83 @@ describe('mapshaper-clean.js', function () {
 
   describe('-clean command', function () {
 
+  it('Removes empty geometries by default', function(done) {
+      //  a ----- b
+      //  |       |
+      //  |       |
+      //  |       |
+      //  d ----- c
+
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: "Feature",
+          properties: {id: 0},
+          geometry: null
+        }, {
+          type: "Feature",
+          properties: {id: 1},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
+          }
+        }, {
+          type: "Feature",
+          properties: {id: 2},
+          geometry: null
+        }]};
+
+      var expected = {
+        type: 'FeatureCollection',
+        features: [{
+          type: "Feature",
+          properties: {id: 1},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
+          }
+        }]};
+      api.applyCommands('-i poly.json -clean -o', {'poly.json': input}, function(err, output) {
+        var poly2 = JSON.parse(output['poly.json']);
+        assert.deepEqual(poly2, expected);
+        done();
+      });
+    })
+
+  it('Retains empty geometries if "allow-empty" flag is present', function(done) {
+      //  a ----- b
+      //  |       |
+      //  |       |
+      //  |       |
+      //  d ----- c
+
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: "Feature",
+          properties: {id: 0},
+          geometry: null
+        }, {
+          type: "Feature",
+          properties: {id: 1},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
+          }
+        }, {
+          type: "Feature",
+          properties: {id: 2},
+          geometry: null
+        }]};
+
+      api.applyCommands('-i poly.json -clean allow-empty -o', {'poly.json': input}, function(err, output) {
+        var poly2 = JSON.parse(output['poly.json']);
+        assert.deepEqual(poly2, input);
+        done();
+      });
+    });
+
+
     it('Removes overlapping section in GeoJSON input', function(done) {
       api.applyCommands('-i test/test_data/issues/clean/overlapping_polygons.json -clean -o out.json', null, function(err, data) {
         var geojson = JSON.parse(data['out.json']);

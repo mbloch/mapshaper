@@ -82,6 +82,8 @@ function DisplayLayer(lyr, dataset, ext) {
     }
   };
 
+  // Return a function for testing if an arc should be drawn at the current
+  //   map view.
   function getArcFilter(arcs, ext, usedFlag, arcCounts) {
     var minPathLen = 0.5 * ext.getPixelSize(),
         geoBounds = ext.getBounds(),
@@ -166,7 +168,8 @@ function getDisplayBounds(lyr, arcs, isTable) {
     }
   }
 
-  // If a layer has collapsed, inflate it by a default amount
+  // If a layer has zero width or height (e.g. if it contains a single point),
+  // inflate its display bounding box by a default amount
   if (bounds.width() === 0) {
     bounds.xmin = (bounds.centerX() || 0) - 1;
     bounds.xmax = bounds.xmin + 2;
@@ -179,6 +182,7 @@ function getDisplayBounds(lyr, arcs, isTable) {
   return bounds;
 }
 
+// Calculate margin when displaying content at full zoom, as pct of screen size
 function getVariableMargin(lyr) {
   var n = internal.getFeatureCount(lyr);
   var pct = 0.04;

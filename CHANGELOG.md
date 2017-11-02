@@ -1,3 +1,9 @@
+v0.4.56
+* -clean now removes empty geometries by default.
+* Added -clean allow-empty option to retain empty geometries.
+* Added -clean snap-interval= option to override the default snapping threshold.
+* Updated mapshaper-proj to v0.0.15 (improved .prj file support).
+
 v0.4.55
 * Fix for issue #221 (-simplify resolution= option error).
 
@@ -6,8 +12,8 @@ v0.4.54
 
 v0.4.53
 * Update -dissolve2 command to flatten polygons (remove overlaps) and optionally fill gaps.
-* Add -clean command to flatten polygons and fill gaps.
-* Add min-gap-area= option to -clean and -dissolve2 comands to specify the threshold for filling enclosed gaps between adjacent polygons.
+* Added -clean command to flatten polygons and fill gaps.
+* Added min-gap-area= option to -clean and -dissolve2 comands to specify the threshold for filling enclosed gaps between adjacent polygons.
 * Show contents of zip files in web UI file import popup.
 
 v0.4.52

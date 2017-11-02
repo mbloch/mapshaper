@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.4.55",
+	"version": "0.4.56",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -31,7 +31,7 @@
 	"dependencies": {
 		"d3-dsv": "~1.0.3",
 		"iconv-lite": "0.4.19",
-		"mproj": "0.0.14",
+		"mproj": "0.0.15",
 		"open": "~0.0.3",
 		"optimist": "~0.6.0",
 		"rbush": "~2.0.1",

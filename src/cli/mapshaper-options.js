@@ -244,8 +244,12 @@ internal.getOptionParser = function() {
     .option("min-gap-area", minGapAreaOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("no-snap", noSnapOpt)
+    .option("allow-empty", {
+      describe: 'allow null geometries (removed by default)',
+      type: 'flag'
+    })
     .option("no-arc-dissolve", {
-      type: 'flag' // no description; used for testing
+      type: 'flag' // no description
     })
     .option("target", targetOpt);
 
@@ -417,6 +421,11 @@ internal.getOptionParser = function() {
     .describe("convert polygons to polylines along shared edges")
     .flag('no_arg')
     .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("intersect")
+    // .describe("convert polygons to polylines along shared edges")
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 

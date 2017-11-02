@@ -65,6 +65,7 @@ internal.createPolygonGridDataset = function(rows, opts) {
   return dataset;
 };
 
+// Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
 internal.createPointGrid = function(bbox, opts) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
