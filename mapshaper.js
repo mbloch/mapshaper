@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.55';
+var VERSION = '0.4.56';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -8996,12 +8996,17 @@ internal.getFilteredNodeCollection = function(layers, arcs) {
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
-  layers.forEach(internal.requirePolygonLayer);
+  // layers.forEach(internal.requirePolygonLayer);
   nodes = internal.addIntersectionCuts(dataset, opts);
   layers.forEach(function(lyr) {
-    lyr.shapes = internal.dissolvePolygons2(lyr.shapes, nodes.arcs, opts);
+    if (lyr.geometry_type == 'polygon') {
+      lyr.shapes = internal.dissolvePolygons2(lyr.shapes, nodes.arcs, opts);
+    }
+    if (!opts.allow_empty) {
+      api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+    }
   });
-  if (!opts.no_arc_dissolve) {
+  if (!opts.no_arc_dissolve && dataset.arcs) {
     internal.dissolveArcs(dataset); // remove leftover endpoints within contiguous lines
   }
 };
@@ -17002,6 +17007,7 @@ internal.createPolygonGridDataset = function(rows, opts) {
   return dataset;
 };
 
+// Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
 internal.createPointGrid = function(bbox, opts) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
@@ -20134,8 +20140,12 @@ internal.getOptionParser = function() {
     .option("min-gap-area", minGapAreaOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("no-snap", noSnapOpt)
+    .option("allow-empty", {
+      describe: 'allow null geometries (removed by default)',
+      type: 'flag'
+    })
     .option("no-arc-dissolve", {
-      type: 'flag' // no description; used for testing
+      type: 'flag' // no description
     })
     .option("target", targetOpt);
 
@@ -20307,6 +20317,11 @@ internal.getOptionParser = function() {
     .describe("convert polygons to polylines along shared edges")
     .flag('no_arg')
     .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("intersect")
+    // .describe("convert polygons to polylines along shared edges")
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
