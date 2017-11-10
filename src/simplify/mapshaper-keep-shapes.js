@@ -35,28 +35,18 @@ internal.protectShape = function(arcData, shape) {
   if (!maxRing || maxRing.length === 0) {
     // invald shape
     verbose("[protectShape()] Invalid shape:", shape);
-  } else if (maxRing.length == 1) {
-    internal.protectIslandRing(arcData, maxRing);
   } else {
-    internal.protectMultiRing(arcData, maxRing);
+    internal.protectPolygonRing(arcData, maxRing);
   }
 };
 
-// Add two vertices to the ring to form a triangle.
-// Assuming that this will inflate the ring.
-// Consider using the function for multi-arc rings, which
-//   calculates ring area...
-internal.protectIslandRing = function(arcData, ring) {
-  var added = internal.lockMaxThreshold(arcData, ring);
-  if (added == 1) {
-    added += internal.lockMaxThreshold(arcData, ring);
-  }
-  if (added < 2) verbose("[protectIslandRing()] Failed on ring:", ring);
-};
-
-internal.protectMultiRing = function(arcData, ring) {
+// Re-inflate a polygon ring that has collapsed due to simplification by
+//   adding points in reverse order of removal until polygon is inflated.
+internal.protectPolygonRing = function(arcData, ring) {
   var zlim = arcData.getRetainedInterval(),
-      minArea = 0, // 0.00000001, // Need to handle rounding error?
+      // use epsilon as min area instead of 0, in case f.p. rounding produces
+      // a positive area for a collapsed polygon.
+      minArea = 1e-10,
       area, added;
   arcData.setRetainedInterval(Infinity);
   area = geom.getPlanarPathArea(ring, arcData);
