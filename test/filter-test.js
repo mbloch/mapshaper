@@ -3,7 +3,8 @@ var assert = require('assert'),
     internal = api.internal;
 
 describe('mapshaper-filter.js', function () {
-  describe('Command line tests', function() {
+
+  describe('Command line options', function() {
     var geojson = {
       type:"FeatureCollection",
       features: [{
@@ -72,6 +73,8 @@ describe('mapshaper-filter.js', function () {
       });
     })
   })
+
+
 
   describe('filter()', function () {
     var nullArcs = new api.internal.ArcCollection([]);

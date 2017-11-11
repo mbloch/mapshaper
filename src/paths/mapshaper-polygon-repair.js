@@ -13,7 +13,7 @@ internal.cleanShapes = function(shapes, arcs, type) {
 // Don't remove duplicate points
 // Don't check winding order of polygon rings
 internal.cleanShape = function(shape, arcs, type) {
-  return internal.editPaths(shape, function(path) {
+  return internal.editShapeParts(shape, function(path) {
     var cleaned = internal.cleanPath(path, arcs);
     if (type == 'polygon' && cleaned) {
       internal.removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
@@ -84,7 +84,7 @@ internal.repairSelfIntersections = function(lyr, nodes) {
 
   function cleanPolygon(shp) {
     var cleanedPolygon = [];
-    internal.forEachPath(shp, function(ids) {
+    internal.forEachShapePart(shp, function(ids) {
       // TODO: consider returning null if path can't be split
       var splitIds = splitter(ids);
       if (splitIds.length === 0) {

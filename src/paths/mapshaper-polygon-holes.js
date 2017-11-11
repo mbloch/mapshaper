@@ -8,7 +8,7 @@ internal.getHoleDivider = function(nodes, spherical) {
 
   return function(rings, cw, ccw) {
     var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
-    internal.forEachPath(rings, function(ringIds) {
+    internal.forEachShapePart(rings, function(ringIds) {
       var splitRings = split(ringIds);
       if (splitRings.length === 0) {
         debug("[getRingDivider()] Defective path:", ringIds);

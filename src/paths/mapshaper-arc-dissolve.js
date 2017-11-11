@@ -26,7 +26,7 @@ internal.dissolveArcs = function(dataset) {
     // modify copies of the original shapes; original shapes should be unmodified
     // (need to test this)
     lyr.shapes = lyr.shapes.map(function(shape) {
-      return internal.editPaths(shape && shape.concat(), translatePath);
+      return internal.editShapeParts(shape && shape.concat(), translatePath);
     });
   });
   dataset.arcs = internal.dissolveArcCollection(arcs, newArcs, totalPoints);

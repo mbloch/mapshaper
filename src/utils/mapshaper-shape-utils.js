@@ -195,43 +195,44 @@ internal.forEachArcId = function(arr, cb) {
   }
 };
 
-internal.forEachPath = function(paths, cb) {
-  internal.editPaths(paths, cb);
+internal.forEachShapePart = function(paths, cb) {
+  internal.editShapeParts(paths, cb);
 };
 
-internal.editShapes = function(shapes, editPath) {
+//
+internal.editShapes = function(shapes, editPart) {
   for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = internal.editPaths(shapes[i], editPath);
+    shapes[i] = internal.editShapeParts(shapes[i], editPart);
   }
 };
 
-// @paths: geometry of a feature (array of paths or null)
-// @cb: function(path, i, paths)
+// @parts: geometry of a feature (array of paths, array of points or null)
+// @cb: function(part, i, parts)
 //    If @cb returns an array, it replaces the existing value
 //    If @cb returns null, the path is removed from the feature
 //
-internal.editPaths = function(paths, cb) {
-  if (!paths) return null; // null shape
-  if (!utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
+internal.editShapeParts = function(parts, cb) {
+  if (!parts) return null; // null geometry not edited
+  if (!utils.isArray(parts)) error("Expected an array, received:", parts);
   var nulls = 0,
-      n = paths.length,
+      n = parts.length,
       retn;
 
   for (var i=0; i<n; i++) {
-    retn = cb(paths[i], i, paths);
+    retn = cb(parts[i], i, parts);
     if (retn === null) {
       nulls++;
-      paths[i] = null;
+      parts[i] = null;
     } else if (utils.isArray(retn)) {
-      paths[i] = retn;
+      parts[i] = retn;
     }
   }
   if (nulls == n) {
     return null;
   } else if (nulls > 0) {
-    return paths.filter(function(ids) {return !!ids;});
+    return parts.filter(function(part) {return !!part;});
   } else {
-    return paths;
+    return parts;
   }
 };
 

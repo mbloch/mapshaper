@@ -64,7 +64,7 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
     // need to create polygons that connect positive-space rings and holes
     internal.openArcRoutes(shape, arcs, routeFlags, true, false, false);
 
-    internal.forEachPath(shape, function(ids) {
+    internal.forEachShapePart(shape, function(ids) {
       var path;
       for (var i=0, n=ids.length; i<n; i++) {
         clipArcTouches = 0;
@@ -167,7 +167,7 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   function findUndividedClipShapes(clipShapes) {
     return clipShapes.map(function(shape) {
       var usableParts = [];
-      internal.forEachPath(shape, function(ids) {
+      internal.forEachShapePart(shape, function(ids) {
         var pathIsClean = true,
             pathIsVisible = false;
         for (var i=0; i<ids.length; i++) {

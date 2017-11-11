@@ -9,7 +9,7 @@ var TopoJSON = {};
 // @cb callback: function(ids)
 // callback returns undefined or an array of replacement ids
 //
-TopoJSON.forEachPath = function forEachPath(obj, cb) {
+TopoJSON.forEachShapePart = function forEachShapePart(obj, cb) {
   var iterators = {
         GeometryCollection: function(o) {o.geometries.forEach(eachGeom);},
         LineString: function(o) {
@@ -39,7 +39,7 @@ TopoJSON.forEachPath = function forEachPath(obj, cb) {
 };
 
 TopoJSON.forEachArc = function forEachArc(obj, cb) {
-  TopoJSON.forEachPath(obj, function(ids) {
+  TopoJSON.forEachShapePart(obj, function(ids) {
     var retn;
     for (var i=0; i<ids.length; i++) {
       retn = cb(ids[i]);

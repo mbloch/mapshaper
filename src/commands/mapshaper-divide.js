@@ -18,7 +18,7 @@ internal.dividePolygons = function(shapes, arcs, flags) {
   var divide = internal.getPathFinder(nodes, flags);
   return shapes.map(function(shape, i) {
     var dividedShape = [];
-    internal.forEachPath(shape, function(ids) {
+    internal.forEachShapePart(shape, function(ids) {
       var path;
       for (var i=0; i<ids.length; i++) {
         path = divide(ids[i]);

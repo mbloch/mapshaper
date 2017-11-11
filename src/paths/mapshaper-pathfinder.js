@@ -169,7 +169,7 @@ internal.getRingIntersector = function(nodes, type, flags) {
     if (rings.length > 0) {
       output = [];
       internal.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
-      internal.forEachPath(rings, function(ids) {
+      internal.forEachShapePart(rings, function(ids) {
         var path;
         for (var i=0, n=ids.length; i<n; i++) {
           path = findPath(ids[i]);

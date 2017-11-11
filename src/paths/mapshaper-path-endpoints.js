@@ -10,7 +10,7 @@ internal.getPathEndpointTest = function(layers, arcs) {
   });
 
   function addShape(shape) {
-    internal.forEachPath(shape, addPath);
+    internal.forEachShapePart(shape, addPath);
   }
 
   function addPath(path) {

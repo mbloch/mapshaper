@@ -201,7 +201,7 @@ internal.updateArcIds = function(shapes, map, nodes) {
       shape2;
   for (var i=0; i<shapes.length; i++) {
     shape2 = [];
-    internal.forEachPath(shapes[i], remapPathIds);
+    internal.forEachShapePart(shapes[i], remapPathIds);
     shapes[i] = shape2;
   }
 
