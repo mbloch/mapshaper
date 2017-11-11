@@ -384,6 +384,14 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command("filter-geom")
+    .describe("")
+    .option("bbox", {
+      type: "bbox",
+      describe: "remove non-intersecting geometry (xmin,ymin,xmax,ymax)"
+    })
+    .option("target", targetOpt);
+
   parser.command("filter-islands")
     .describe("remove small detached polygon rings (islands)")
     .option("min-area", {

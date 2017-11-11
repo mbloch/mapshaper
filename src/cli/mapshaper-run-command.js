@@ -14,6 +14,7 @@ mapshaper-calc
 mapshaper-file-import
 mapshaper-file-export
 mapshaper-filter
+mapshaper-filter-geom
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
@@ -150,6 +151,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'filter-fields') {
       internal.applyCommand(api.filterFields, targetLayers, opts.fields);
+
+    } else if (name == 'filter-geom') {
+      internal.applyCommand(api.filterGeom, targetLayers, arcs, opts);
 
     } else if (name == 'filter-islands') {
       internal.applyCommand(api.filterIslands, targetLayers, arcs, opts);
