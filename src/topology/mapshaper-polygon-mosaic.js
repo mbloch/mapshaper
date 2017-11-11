@@ -4,28 +4,36 @@ mapshaper-pathfinder-utils
 mapshaper-pathfinder
 */
 
-// More information than createMosaicLayer() (for debugging mosaic topology)
-internal.mosaic2 = function(layers, dataset, opts) {
-  layers.forEach(internal.requirePolygonLayer);
-  var nodes = internal.addIntersectionCuts(dataset, opts);
-  var out = internal.buildPolygonMosaic(nodes);
-  layers = layers.concat({
-    geometry_type: 'polygon',
-    name: 'mosaic',
-    shapes: out.mosaic
-  } , {
-    geometry_type: 'polygon',
-    name: 'enclosure',
-    shapes: out.enclosures
-  });
-  if (out.lostArcs.length > 0) {
-    layers = layers.concat(getDebugLayers(out.lostArcs, nodes.arcs));
-  }
-  return layers;
 
-  function getDebugLayers(lostArcs, arcs) {
-    var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
-    var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
+// Create mosaic layer from arcs (for debugging mosaic function)
+internal.mosaic = function(dataset, opts) {
+  var layers2 = [];
+  var nodes, output;
+  if (!dataset.arcs) stop("Dataset is missing path data");
+  nodes = internal.addIntersectionCuts(dataset, opts);
+  nodes.detachAcyclicArcs();
+  output = internal.buildPolygonMosaic(nodes);
+  layers2.push({
+    name: 'mosaic',
+    shapes: output.mosaic,
+    geometry_type: 'polygon'
+  });
+  if (opts.debug) {
+    layers2.push({
+      geometry_type: 'polygon',
+      name: 'mosaic-enclosure',
+      shapes: output.enclosures
+    });
+
+    if (output.lostArcs.length > 0) {
+      layers2 = layers2.concat(getLostArcLayers(output.lostArcs, nodes.arcs));
+    }
+  }
+  return layers2;
+
+  function getLostArcLayers(lostArcs, arcs) {
+    var arcLyr = {geometry_type: 'polyline', name: 'lost-arcs', shapes: []};
+    var pointLyr = {geometry_type: 'point', name: 'lost-arc-endpoints', shapes: []};
     var arcData = [];
     var pointData = [];
     lostArcs.forEach(function(arcId) {
@@ -42,17 +50,6 @@ internal.mosaic2 = function(layers, dataset, opts) {
   }
 };
 
-
-// create mosaic layer from arcs (for debugging mosaic function)
-internal.createMosaicLayer = function(dataset, opts) {
-  var nodes = internal.addIntersectionCuts(dataset, opts);
-  nodes.detachAcyclicArcs();
-  return {
-    name: 'mosaic',
-    shapes: internal.buildPolygonMosaic(nodes).mosaic,
-    geometry_type: 'polygon'
-  };
-};
 
 internal.findMosaicRings = function(nodes) {
   var arcs = nodes.arcs,

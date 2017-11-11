@@ -198,11 +198,8 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'mosaic') {
-      opts.no_replace = true; // add mosaic to dataset
-      outputLayers = [internal.createMosaicLayer(targetDataset, opts)];
-
-    } else if (name == 'mosaic2') {
-      outputLayers = internal.mosaic2(targetLayers, targetDataset, opts);
+      opts.no_replace = true; // add mosaic as a new layer
+      outputLayers = internal.mosaic(targetDataset, opts);
 
     } else if (name == 'o') {
       outputFiles = internal.exportTargetLayers(targets, opts);

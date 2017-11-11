@@ -503,9 +503,7 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("mosaic")
-    .option("target", targetOpt);
-
-  parser.command("mosaic2")
+    .option("debug", {type: "flag"})
     .option("target", targetOpt);
 
   parser.command("point-grid")
