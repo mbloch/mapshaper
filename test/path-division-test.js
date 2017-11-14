@@ -111,9 +111,6 @@ describe('mapshaper-path-division.js', function () {
     var coords = [[[3, 3], [3, 1], [1, 1], [1, 3], [3, 3]],
         [[2, 2], [2, 4], [4, 4], [4, 2], [2, 2]]];
 
-    var arcs = new ArcCollection(coords);
-    var map = api.internal.divideArcs(arcs);
-    var nodes = new api.internal.NodeCollection(arcs);
 
     it('insert clipping points', function () {
 
@@ -127,7 +124,7 @@ describe('mapshaper-path-division.js', function () {
       //  c ----- b
       //
 
-      var result = arcs.toArray();
+      var arcs = new ArcCollection(coords);
       var targetArcs = [[[3, 3], [3, 2]],
           [[3, 2], [3, 1], [1, 1], [1, 3], [2, 3]],
           [[2, 3], [3, 3]],
@@ -135,11 +132,13 @@ describe('mapshaper-path-division.js', function () {
           [[2, 3], [2, 4], [4, 4], [4, 2], [3, 2]],
           [[3, 2], [2, 2]]];
 
-      assert.deepEqual(result, targetArcs);
+      var map = api.internal.divideArcs(arcs);
+      assert.deepEqual(arcs.toArray(), targetArcs);
       assert.deepEqual(api.utils.toArray(map), [0, 3]);
     })
 
     it('update polygon ids', function () {
+      var arcs = new ArcCollection(coords);
       var lyrA = {
         geometry_type: "polygon",
         shapes: [[[0]]]
@@ -148,16 +147,16 @@ describe('mapshaper-path-division.js', function () {
         geometry_type: "polygon",
         shapes: [[[1]]]
       };
+      var dataset = {arcs: arcs, layers: [lyrA, lyrB]};
       var targetA = [[[0, 1, 2]]],
           targetB = [[[3, 4, 5]]];
 
-      api.internal.updateArcIds(lyrA.shapes, map, nodes);
-      api.internal.updateArcIds(lyrB.shapes, map, nodes);
+      api.internal.cutPathsAtIntersections(dataset);
       assert.deepEqual(lyrA.shapes, targetA);
       assert.deepEqual(lyrB.shapes, targetB);
     })
-
     it('update ids of reversed polygons', function () {
+      var arcs = new ArcCollection(coords);
       var lyrA = {
         geometry_type: "polygon",
         shapes: [[[~0]]]
@@ -166,32 +165,14 @@ describe('mapshaper-path-division.js', function () {
         geometry_type: "polygon",
         shapes: [[[~1]]]
       };
+      var dataset = {arcs: arcs, layers: [lyrA, lyrB]};
       var targetA = [[[~2, ~1, ~0]]],
           targetB = [[[~5, ~4, ~3]]];
 
-      api.internal.updateArcIds(lyrA.shapes, map, nodes);
-      api.internal.updateArcIds(lyrB.shapes, map, nodes);
+      api.internal.cutPathsAtIntersections(dataset);
       assert.deepEqual(lyrA.shapes, targetA);
       assert.deepEqual(lyrB.shapes, targetB);
     })
-
-    /*
-    it('divide lyr A polygon', function () {
-      var lyrA = {
-        geometry_type: "polygon",
-        shapes: [[[0]]]
-      };
-      var lyrB = {
-        geometry_type: "polygon",
-        shapes: [[[1]]]
-      };
-      var target = [[[0, 5, 3, 2], [1, ~3, ~5]]];
-      api.internal.updateArcIds(lyrA.shapes, map, arcs);
-      api.internal.updateArcIds(lyrB.shapes, map, arcs);
-      var dividedLyr = api.dividePolygonLayer(lyrA, lyrB, arcs);
-      assert.deepEqual(dividedLyr.shapes, target);
-    })
-    */
 
   })
 
@@ -211,11 +192,9 @@ describe('mapshaper-path-division.js', function () {
     var coords = [[[3, 3], [3, 1], [1, 1], [1, 3], [3, 3]],
         [[2, 2], [2, 3], [2, 4], [4, 4], [4, 2], [3, 2], [2, 2]]];
 
-
-    var arcs = new ArcCollection(coords);
-    var map = api.internal.divideArcs(arcs);
-
     it('arcs are divided', function () {
+      var arcs = new ArcCollection(coords);
+      var map = api.internal.divideArcs(arcs);
       var targetArcs = [
           [[3, 3], [3, 2]],  // (0)
           [[3, 2], [3, 1], [1, 1], [1, 3], [2, 3]],
@@ -263,11 +242,9 @@ describe('mapshaper-path-division.js', function () {
       geometry_type: "polygon",
       shapes: [[[1, 2]], [[4, ~2]]]
     };
+    var dataset = {arcs: arcs, layers: [lyrA, lyrB]};
 
-    var map = api.internal.divideArcs(arcs);
-    var nodes = new api.internal.NodeCollection(arcs);
-    api.internal.updateArcIds(lyrA.shapes, map, nodes);
-    api.internal.updateArcIds(lyrB.shapes, map, nodes);
+    api.internal.cutPathsAtIntersections(dataset);
 
     it ("divide arcs", function() {
 
@@ -301,11 +278,11 @@ describe('mapshaper-path-division.js', function () {
         [[2, 2], [2, 3]]];                // .f
 
       assert.deepEqual(coords, target);
-      assert.deepEqual(api.utils.toArray(map), [0, 3, 7, 9, 12])
+      // assert.deepEqual(api.utils.toArray(map), [0, 3, 7, 9, 12])
     })
 
     it ("layer A remapped", function() {
-      var targetA = [[[0, 1, 2], [9, 5, 11]]];
+      var targetA = [[[0, 1, 2], [9, 10, 11]]];
       assert.deepEqual(lyrA.shapes, targetA);
     })
 

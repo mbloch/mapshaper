@@ -348,23 +348,25 @@ describe('mapshaper-clean.js', function () {
       var coords = [[[1, 3], [2, 3]],
           [[2, 3], [2, 2]],
           [[2, 3], [3, 3], [3, 1], [1, 1], [1, 3]]];
-      var arcs = new ArcCollection(coords);
 
       it ('should skip spike - test 1', function() {
         var shapes = [[[0, 1, ~1, 2]]];
-        var target = [[[0, 2]]];
+        var target = [[[0, 1]]];
+        var arcs = new ArcCollection(coords);
         assert.deepEqual(clean(shapes, arcs), target);
       })
 
       it ('should skip spike - test 2', function() {
         var shapes = [[[1, ~1, 2, 0]]];
-        var target = [[[0, 2]]];
+        var target = [[[0, 1]]];
+        var arcs = new ArcCollection(coords);
         assert.deepEqual(clean(shapes, arcs), target);
       })
 
       it ('should skip spike - test 3', function() {
         var shapes = [[[~1, 2, 0, 1]]];
-        var target = [[[0, 2]]];
+        var target = [[[0, 1]]];
+        var arcs = new ArcCollection(coords);
         assert.deepEqual(clean(shapes, arcs), target);
       })
     })

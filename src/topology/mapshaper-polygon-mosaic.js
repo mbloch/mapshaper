@@ -4,14 +4,12 @@ mapshaper-pathfinder-utils
 mapshaper-pathfinder
 */
 
-
 // Create mosaic layer from arcs (for debugging mosaic function)
 internal.mosaic = function(dataset, opts) {
   var layers2 = [];
   var nodes, output;
   if (!dataset.arcs) stop("Dataset is missing path data");
   nodes = internal.addIntersectionCuts(dataset, opts);
-  nodes.detachAcyclicArcs();
   output = internal.buildPolygonMosaic(nodes);
   layers2.push({
     name: 'mosaic',
@@ -49,7 +47,6 @@ internal.mosaic = function(dataset, opts) {
     return [arcLyr, pointLyr];
   }
 };
-
 
 internal.findMosaicRings = function(nodes) {
   var arcs = nodes.arcs,
@@ -107,9 +104,17 @@ internal.findMosaicRings = function(nodes) {
 };
 
 
+// Assumes that the arc-node topology of @nodes NodeCollection meets these
+//    conditions (should be true if addIntersectionCuts() has been run)
+// 1. Arcs only touch at endpoints.
+// 2. The angle between any two segments that meet at a node is never zero.
+//      (this should follow from 1... but may occur due to FP errors)
+// TODO: a better job of handling FP errors
+//
 internal.buildPolygonMosaic = function(nodes) {
-  // Assumes that insertClippingPoints() has been run
   T.start();
+  // Detach any spikes from arc graph (modifies nodes -- a side effect)
+  nodes.detachAcyclicArcs();
   var data = internal.findMosaicRings(nodes);
   var mosaic = data.cw.map(function(ring) {return [ring];});
   T.stop('Find mosaic rings');

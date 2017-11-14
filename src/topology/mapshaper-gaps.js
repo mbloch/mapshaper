@@ -4,7 +4,7 @@
 internal.closeGaps = function(lyr, dataset, opts) {
   var maxGapLen = opts.gap_tolerance > 0 ? opts.gap_tolerance : 0;
   var arcs = dataset.arcs;
-  var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs.size());
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var dangles = internal.findPotentialUndershoots(nodes, maxGapLen);
   if (dangles.length === 0) return nodes;

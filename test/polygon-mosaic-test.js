@@ -4,7 +4,7 @@ var assert = require('assert'),
     NodeCollection = api.internal.NodeCollection;
 
 describe('mapshaper-polygon-mosaic.js', function () {
-  return;
+  return; // TODO: restore these tests
   describe('buildPolygonMosaic()', function () {
     it ('works for single ring', function() {
       var coords = [[[0, 0], [0, 1], [1, 0], [0, 0]]];

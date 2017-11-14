@@ -1,6 +1,6 @@
 /* @require mapshaper-polygon-holes */
 
-// clean polygon or polyline shapes, in-place
+// Clean polygon or polyline shapes (in-place)
 //
 internal.cleanShapes = function(shapes, arcs, type) {
   for (var i=0, n=shapes.length; i<n; i++) {

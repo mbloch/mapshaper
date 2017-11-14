@@ -28,7 +28,7 @@ function ArcIndex(pointCount) {
   // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
   // so coincident boundaries should contain the same points in reverse sequence).
   //
-  this.findMatchingArc = function(xx, yy, start, end, getNext, getPrev) {
+  this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
     // First, look for a reverse match
     var arcId = findArcNeighbor(xx, yy, start, end, getNext);
     if (arcId === null) {

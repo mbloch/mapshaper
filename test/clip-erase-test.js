@@ -906,8 +906,10 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(lyr1, lyr2, dataset);
-      var target = [[[3, ~1]]];
+      var target = [[[2, ~0]]];
+      // var target = [[[3, ~1]]];
       assert.deepEqual(erasedLyr.shapes, target);
+      assert.deepEqual(dataset.arcs.toArray(), coords.slice(1)); // arc 0 is removed (unused)
     })
   })
 

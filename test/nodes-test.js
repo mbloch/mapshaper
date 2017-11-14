@@ -284,14 +284,14 @@ describe('mapshaper-nodes.js', function () {
       assert.equal(nodes.internal.testArcMatch(~1, 2), false)
     })
 
-    it ("NodeCollection#findMatchingArc()", function() {
-      assert.equal(nodes.findMatchingArc(0), 0);
-      assert.equal(nodes.findMatchingArc(~0), ~0);
-      assert.equal(nodes.findMatchingArc(5), 0);
-      assert.equal(nodes.findMatchingArc(~5), ~0);
-      assert.equal(nodes.findMatchingArc(~7), ~2);
-      assert.equal(nodes.findMatchingArc(7), 2);
-      assert.equal(nodes.findMatchingArc(2), 2);
+    it ("NodeCollection#findDuplicateArc()", function() {
+      assert.equal(nodes.findDuplicateArc(0), 0);
+      assert.equal(nodes.findDuplicateArc(~0), ~0);
+      assert.equal(nodes.findDuplicateArc(5), 0);
+      assert.equal(nodes.findDuplicateArc(~5), ~0);
+      assert.equal(nodes.findDuplicateArc(~7), ~2);
+      assert.equal(nodes.findDuplicateArc(7), 2);
+      assert.equal(nodes.findDuplicateArc(2), 2);
     });
 
   });

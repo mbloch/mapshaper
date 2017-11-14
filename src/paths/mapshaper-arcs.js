@@ -286,26 +286,29 @@ function ArcCollection() {
   // Return null if no arcs were re-indexed (and no arcs were removed)
   //
   this.filter = function(cb) {
-    var map = new Int32Array(this.size()),
+    var test = function(i) {
+      return cb(this.getArcIter(i), i);
+    }.bind(this);
+    return this.deleteArcs(test);
+  };
+
+  this.deleteArcs = function(test) {
+    var n = this.size(),
+        map = new Int32Array(n),
         goodArcs = 0,
         goodPoints = 0;
-    for (var i=0, n=this.size(); i<n; i++) {
-      if (cb(this.getArcIter(i), i)) {
+    for (var i=0; i<n; i++) {
+      if (test(i)) {
         map[i] = goodArcs++;
         goodPoints += _nn[i];
       } else {
         map[i] = -1;
       }
     }
-    if (goodArcs === this.size()) {
-      return null;
-    } else {
+    if (goodArcs < n) {
       condenseArcs(map);
-      if (goodArcs === 0) {
-        // no remaining arcs
-      }
-      return map;
     }
+    return map;
   };
 
   function condenseArcs(map) {

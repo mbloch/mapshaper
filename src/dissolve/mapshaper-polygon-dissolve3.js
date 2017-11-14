@@ -37,9 +37,8 @@ internal.getGapFillTest = function(arcs, opts) {
 };
 
 internal.dissolvePolygons2 = function(shapes, arcs, opts) {
-  var arcFilter = internal.getArcPresenceTest(shapes, arcs.size());
+  var arcFilter = internal.getArcPresenceTest(shapes, arcs);
   var nodes = new NodeCollection(arcs, arcFilter);
-  nodes.detachAcyclicArcs(); // remove spikes
   var divide = internal.getHoleDivider(nodes);
   var dissolve = internal.getRingIntersector(nodes, 'dissolve');
   var gapTest = internal.getGapFillTest(arcs, opts);

@@ -75,12 +75,10 @@ function NodeCollection(arcs, filter) {
     return count;
   };
 
-
   this.detachArc = function(arcId) {
     unlinkDirectedArc(arcId);
     unlinkDirectedArc(~arcId);
   };
-
 
   this.forEachConnectedArc = function(arcId, cb) {
     var nextId = nextConnectedArc(arcId),
@@ -103,7 +101,7 @@ function NodeCollection(arcs, filter) {
 
   // Returns the id of the first identical arc or @arcId if none found
   // TODO: find a better function name
-  this.findMatchingArc = function(arcId) {
+  this.findDuplicateArc = function(arcId) {
     var nextId = nextConnectedArc(arcId),
         match = arcId;
     while (nextId != arcId) {
@@ -111,9 +109,6 @@ function NodeCollection(arcs, filter) {
         if (absArcId(nextId) < absArcId(match)) match = nextId;
       }
       nextId = nextConnectedArc(nextId);
-    }
-    if (match != arcId) {
-      // console.log("found identical arc:", arcId, "->", match);
     }
     return match;
   };

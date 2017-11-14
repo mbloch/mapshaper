@@ -1,6 +1,7 @@
 /* @requires
 mapshaper-nodes
 mapshaper-path-endpoints
+mapshaper-path-utils
 mapshaper-dataset-utils
 */
 
@@ -119,7 +120,7 @@ internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
 
 // Test whether two arcs can be merged together
 internal.getArcDissolveTest = function(layers, arcs) {
-  var nodes = internal.getFilteredNodeCollection(layers, arcs),
+  var nodes = new NodeCollection(arcs, internal.getArcPresenceTest2(layers, arcs)),
       // don't allow dissolving through endpoints of polyline paths
       lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
       testLineEndpoint = internal.getPathEndpointTest(lineLayers, arcs),
@@ -139,12 +140,4 @@ internal.getArcDissolveTest = function(layers, arcs) {
     linkCount++;
     lastId = arcId;
   }
-};
-
-internal.getFilteredNodeCollection = function(layers, arcs) {
-  var counts = internal.countArcReferences(layers, arcs),
-      test = function(arcId) {
-        return counts[absArcId(arcId)] > 0;
-      };
-  return new NodeCollection(arcs, test);
 };

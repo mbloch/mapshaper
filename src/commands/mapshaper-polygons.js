@@ -16,9 +16,7 @@ api.polygons = function(layers, dataset, opts) {
 
 internal.createPolygonLayer = function(lyr, dataset, opts) {
   var nodes = internal.closeGaps(lyr, dataset, opts);
-  var data;
-  nodes.detachAcyclicArcs();
-  data = internal.buildPolygonMosaic(nodes);
+  var data = internal.buildPolygonMosaic(nodes);
   return {
     geometry_type: 'polygon',
     name: lyr.name,

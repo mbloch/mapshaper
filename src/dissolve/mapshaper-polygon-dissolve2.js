@@ -54,7 +54,6 @@ internal.getPolygonDissolver = function(nodes, spherical) {
 };
 
 internal.getPolygonDissolver2 = function(nodes) {
-  nodes.detachAcyclicArcs(); // remove spikes, which interfere with building mosaic
   var arcs = nodes.arcs;
   var mosaic = internal.findMosaicRings(nodes).cw;
   // index of mosaic tiles: each tile can be used once as ring and once as hole

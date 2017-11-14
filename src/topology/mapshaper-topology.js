@@ -186,7 +186,7 @@ internal.buildPathTopology = function(nn, xx, yy) {
   }
 
   function addSplitEdge(start1, end1, start2, end2) {
-    var arcId = index.findMatchingArc(xx, yy, start1, end2, nextPoint, prevPoint);
+    var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
     if (arcId === null) {
       arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
           mergeArcParts(yy, start1, end1, start2, end2));
@@ -196,7 +196,7 @@ internal.buildPathTopology = function(nn, xx, yy) {
 
   function addEdge(start, end) {
     // search for a matching edge that has already been generated
-    var arcId = index.findMatchingArc(xx, yy, start, end, nextPoint, prevPoint);
+    var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
     if (arcId === null) {
       arcId = index.addArc(slice.call(xx, start, end + 1),
           slice.call(yy, start, end + 1));
@@ -221,7 +221,7 @@ internal.buildPathTopology = function(nn, xx, yy) {
     }
 
     for (var i=startId; i<endId; i++) {
-      arcId = index.findMatchingArc(xx, yy, i, i, nextPoint, prevPoint);
+      arcId = index.findDuplicateArc(xx, yy, i, i, nextPoint, prevPoint);
       if (arcId !== null) return arcId;
     }
     error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
