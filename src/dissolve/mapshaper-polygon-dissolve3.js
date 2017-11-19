@@ -6,7 +6,7 @@ mapshaper-data-aggregation
 mapshaper-ring-nesting
 */
 
-// Assumes points have been inserted at all segment intersections
+// Assumes that arcs do not intersect except at endpoints
 internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
   opts = opts || {};
   var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
@@ -45,6 +45,7 @@ internal.dissolvePolygons2 = function(shapes, arcs, opts) {
   T.start();
   var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
   T.stop("Build mosaic");
+  // Indexes for looking up shape/feature id by arc id
   var fwdArcIndex = new Int32Array(arcs.size());
   var revArcIndex = new Int32Array(arcs.size());
   var shapeWeights = [];
@@ -91,11 +92,35 @@ internal.dissolvePolygons2 = function(shapes, arcs, opts) {
     return shapeId < 0;
   }
 
+  // @tile An indivisible mosaic tile
+  function findFullEnclosureCandidates(tile) {
+    var shapeIds = [];
+    var reversedRing = internal.reversePath(ring.concat());
+    reversedRing.forEach(function(arcId) {
+      var shpId = getShapeId(arcId);
+      if (shpId > -1  && shapeIds.indexOf(shpId) == -1) {
+        shapeIds.push(shpId);
+      }
+    });
+  }
+
+
+  // STUB
+  // Search for a shape that entirely encloses a tile ring but doesn't intersect it
+  // @tileRing a (cw) mosaic ring
+  // Returns: id of enclosing shape or -1 if none found
+  function findEnclosingShape(tileRing) {
+    return -1;
+  }
+
   function assignMosaicRing(tile, tileId) {
     var shapeId = -1;
     var ring = tile[0]; // cw ring
     for (var i=0, n=ring.length; i<n; i++) {
       shapeId = chooseShape(shapeId, getShapeId(ring[i]));
+    }
+    if (shapeId == -1) {
+      shapeId = findEnclosingShape(ring);
     }
     if (shapeId == -1) {
       unassignedTiles.push(tileId);
