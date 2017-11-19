@@ -4,7 +4,10 @@ mapshaper-pathfinder-utils
 mapshaper-pathfinder
 */
 
-// Create mosaic layer from arcs (for debugging mosaic function)
+// Create a mosaic layer from a dataset (useful for debugging commands like -clean
+//    that create a mosaic as an intermediate data structure)
+// Create additional layers if the "debug" flag is present
+//
 internal.mosaic = function(dataset, opts) {
   var layers2 = [];
   var nodes, output;
@@ -46,6 +49,49 @@ internal.mosaic = function(dataset, opts) {
     pointLyr.data = new DataTable(pointData);
     return [arcLyr, pointLyr];
   }
+};
+
+// Process arc-node topology to generate a layer of indivisible mosaic "tiles" {mosaic}
+//   ... also return a layer of outer-boundary polygons {enclosures}
+//   ... also return an array of arcs that were dropped from the mosaic {lostArcs}
+//
+// Assumes that the arc-node topology of @nodes NodeCollection meets several
+//    conditions (expected to be true if addIntersectionCuts() has just been run)
+// 1. Arcs only touch at endpoints.
+// 2. The angle between any two segments that meet at a node is never zero.
+//      (this should follow from 1... but may occur due to FP errors)
+// TODO: a better job of handling FP errors
+//
+internal.buildPolygonMosaic = function(nodes) {
+  T.start();
+  // Detach any acyclic paths (spikes) from arc graph (these would interfere with
+  //    the ring finding operation). This modifies @nodes -- a side effect.
+  nodes.detachAcyclicArcs();
+  var data = internal.findMosaicRings(nodes);
+
+  // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
+  var mosaic = data.cw.map(function(ring) {return [ring];});
+  T.stop('Find mosaic rings');
+  T.start();
+
+  // Process CCW rings: these are either holes or enclosure
+  // TODO: optimize -- testing CCW path of every island is costly
+  var enclosures = [];
+  var index = new PathIndex(mosaic, nodes.arcs); // index CW rings to help identify holes
+  data.ccw.forEach(function(ring) {
+    var id = index.findSmallestEnclosingPolygon(ring);
+    if (id > -1) {
+      // Enclosed CCW rings are holes in the enclosing mosaic tile
+      mosaic[id].push(ring);
+    } else {
+      // Non-enclosed CCW rings are outer boundaries -- add to enclosures layer
+      internal.reversePath(ring);
+      enclosures.push([ring]);
+    }
+  });
+  T.stop(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length));
+
+  return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
 };
 
 internal.findMosaicRings = function(nodes) {
@@ -101,39 +147,4 @@ internal.findMosaicRings = function(nodes) {
     if (closeRoute && isOpen) flags[absId] |= bit;
     return isOpen;
   }
-};
-
-
-// Assumes that the arc-node topology of @nodes NodeCollection meets these
-//    conditions (should be true if addIntersectionCuts() has been run)
-// 1. Arcs only touch at endpoints.
-// 2. The angle between any two segments that meet at a node is never zero.
-//      (this should follow from 1... but may occur due to FP errors)
-// TODO: a better job of handling FP errors
-//
-internal.buildPolygonMosaic = function(nodes) {
-  T.start();
-  // Detach any spikes from arc graph (modifies nodes -- a side effect)
-  nodes.detachAcyclicArcs();
-  var data = internal.findMosaicRings(nodes);
-  var mosaic = data.cw.map(function(ring) {return [ring];});
-  T.stop('Find mosaic rings');
-  T.start();
-  var index = new PathIndex(mosaic, nodes.arcs);
-  var enclosures = [];
-
-  // add holes to mosaic polygons
-  // TODO: optimize -- checking ccw path of every island is costly
-  data.ccw.forEach(function(ring) {
-    var id = index.findSmallestEnclosingPolygon(ring);
-    if (id > -1) {
-      mosaic[id].push(ring);
-    } else {
-      internal.reversePath(ring);
-      enclosures.push([ring]);
-    }
-  });
-  T.stop(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length));
-
-  return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
 };
