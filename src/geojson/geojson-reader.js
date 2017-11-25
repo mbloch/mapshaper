@@ -34,6 +34,7 @@ function GeoJSONReader(reader) {
   function readObject(offs) {
     var LBRACE = 123,
         RBRACE = 125,
+        RBRACK = 93,
         BSLASH = 92,
         DQUOTE = 34,
         level = 0,
@@ -70,6 +71,8 @@ function GeoJSONReader(reader) {
         } else if (level == -1) {
           break; // error -- "}" encountered before "{"
         }
+      } else if (c == RBRACK && level === 0) {
+        break; // end of collection
       }
       if (i == n-1) {
         buf = reader.expandBuffer().readSync(offs);

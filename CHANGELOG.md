@@ -1,5 +1,6 @@
-v0.4.58 (unreleased)
-* Added -filter-geom command with bbox= option, for removing non-intersecting geometry.
+v0.4.58
+* Fix for issue #236 - error reading some GeoJSON files.
+* Added undocumented -filter-geom command with bbox= option, for removing non-intersecting geometry.
 
 v0.4.57
 * Bug fix for issue #228 "keep_shapes option doesn't always keep shapes".
