@@ -74,7 +74,7 @@ SVG.stringifyProperties = function(o) {
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var symbolType = GeoJSON.translateGeoJSONType(geomType);
-  if (symbolType == 'point' && ('label-text' in rec)) {
+  if (['point', 'polygon'].indexOf(symbolType) > -1 && 'label-text' in rec) {
     symbolType = 'label';
   }
   var fields = SVG.findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
@@ -195,12 +195,20 @@ SVG.importPoint = function(coords, d) {
   return children.length > 1 ? {tag: 'g', children: children} : children[0];
 };
 
-SVG.importPolygon = function(coords) {
+SVG.importPolygon = function(coords, dd) {
   var d, o;
+  var rec = dd || {}
+  var isLabel = 'label-text' in rec;
   for (var i=0; i<coords.length; i++) {
     d = o ? o.properties.d + ' ' : '';
     o = SVG.importLineString(coords[i]);
     o.properties.d = d + o.properties.d + ' Z';
+  }
+  if (isLabel) {
+    var children = [];
+    children.push(o);
+    children.push(SVG.importLabel([(coords[0][0][0] + coords[0][1][0]) / 2, (coords[0][1][1] + coords[0][2][1]) / 2], rec));
+    return children.length > 1 ? {tag: 'g', children: children} : children[0];
   }
   return o;
 };
