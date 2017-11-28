@@ -4,7 +4,7 @@
 GeoJSON.convertPointFeatureToSquare = function(feature, radiusField, fixedRadius) {
   var geom = feature.geometry;
   var side = (radiusField in feature.properties ? feature.properties[radiusField] : fixedRadius) * 2;
-  if (side > 0 === false) {
+  if (side > 0 === false || geom === null) {
     feature.geometry = null;
   } else if (geom.type == 'Point') {
     feature.geometry = {
