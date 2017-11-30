@@ -258,44 +258,69 @@ internal.filterEmptyArcs = function(shape, coords) {
 //   geometry.
 //
 internal.groupPolygonRings = function(paths, reverseWinding) {
+  if (!paths || paths.length == 0) {
+    return [];
+  }
+
   var pos = [],
       neg = [],
       sign = reverseWinding ? -1 : 1;
-  if (paths) {
-    paths.forEach(function(path) {
-      if (path.area * sign > 0) {
-        pos.push(path);
-      } else if (path.area * sign < 0) {
-        neg.push(path);
-      } else {
-        // verbose("Zero-area ring, skipping");
+
+  paths.forEach(function(path) {
+    if (path.area * sign > 0) {
+      pos.push({part: path, idx: pos.length});
+    } else if (path.area * sign < 0) {
+      neg.push({
+        minX: path.bounds.xmin,
+        minY: path.bounds.ymin,
+        maxX: path.bounds.xmax,
+        maxY: path.bounds.ymax,
+        hole: path
+      });
+    } else {
+      // verbose("Zero-area ring, skipping");
+    }
+  });
+
+  if (pos.length == 0) {
+    return [];
+  }
+
+  var output = pos.map(function(elemp) {
+    return [elemp.part];
+  });
+
+  if (neg.length == 0) {
+    return output;
+  }
+
+  pos.sort(function(a, b) { return a.part.area * sign - b.part.area * sign});
+
+  var tree = require('rbush')();
+  tree.load(neg);
+
+  for(var i=0, n=pos.length; i<n; i++) {
+    var part = pos[i].part,
+        containerId = pos[i].idx,
+        partArea = part.area * sign;
+
+    var contained = tree.search({
+      minX: part.bounds.xmin,
+      minY: part.bounds.ymin,
+      maxX: part.bounds.xmax,
+      maxY: part.bounds.ymax
+    });
+
+    contained.forEach(function(elemn) {
+      var hole = elemn.hole,
+        holeArea = hole.area * -sign;
+      if (partArea > holeArea && part.bounds.contains(hole.bounds)) {
+        output[containerId].push(hole);
+        tree.remove(elemn);
       }
     });
   }
 
-  var output = pos.map(function(part) {
-    return [part];
-  });
-
-  neg.forEach(function(hole) {
-    var containerId = -1,
-        containerArea = 0,
-        holeArea = hole.area * -sign;
-    for (var i=0, n=pos.length; i<n; i++) {
-      var part = pos[i],
-          partArea = part.area * sign,
-          contained = part.bounds.contains(hole.bounds) && partArea > holeArea;
-      if (contained && (containerArea === 0 || partArea < containerArea)) {
-        containerArea = partArea;
-        containerId = i;
-      }
-    }
-    if (containerId == -1) {
-      verbose("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
-    } else {
-      output[containerId].push(hole);
-    }
-  });
   return output;
 };
 
