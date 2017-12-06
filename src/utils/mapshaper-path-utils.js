@@ -250,52 +250,83 @@ internal.filterEmptyArcs = function(shape, coords) {
 };
 
 // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
-// Assumes outer rings are CW and inner (hole) rings are CCW.
+// Assumes outer rings are CW and inner (hole) rings are CCW, unless
+//   the reverseWinding flag is set.
 // @paths array of objects with path metadata -- see internal.exportPathData()
 //
 // TODO: Improve reliability. Currently uses winding order, area and bbox to
-//   identify holes and their enclosures -- could be confused by strange
+//   identify holes and their enclosures -- could be confused by some strange
 //   geometry.
 //
 internal.groupPolygonRings = function(paths, reverseWinding) {
-  var pos = [],
-      neg = [],
-      sign = reverseWinding ? -1 : 1;
-  if (paths) {
-    paths.forEach(function(path) {
-      if (path.area * sign > 0) {
-        pos.push(path);
-      } else if (path.area * sign < 0) {
-        neg.push(path);
-      } else {
-        // verbose("Zero-area ring, skipping");
-      }
-    });
-  }
+  var rings = [],
+      holes = [],
+      output = [],
+      sign = reverseWinding ? -1 : 1,
+      ringIndex;
 
-  var output = pos.map(function(part) {
-    return [part];
+  (paths || []).forEach(function(path) {
+    if (path.area * sign > 0) {
+      rings.push(path);
+      output.push([path]);
+    } else if (path.area * sign < 0) {
+      holes.push(path);
+    } else {
+      // Zero-area ring, skipping
+    }
   });
 
-  neg.forEach(function(hole) {
+  if (holes.length === 0) {
+    return output;
+  }
+
+  // Using a spatial index to improve performance when the current feature
+  // contains many holes and space-filling rings.
+  // (Thanks to @simonepri for providing an example implementation in PR #248)
+  ringIndex = require('rbush')();
+  ringIndex.load(rings.map(function(ring, i) {
+    return {
+      minX: ring.bounds.xmin,
+      minY: ring.bounds.ymin,
+      maxX: ring.bounds.xmax,
+      maxY: ring.bounds.ymax,
+      idx: i
+    };
+  }));
+
+  // Group each hole with its containing ring
+  holes.forEach(function(hole) {
     var containerId = -1,
         containerArea = 0,
-        holeArea = hole.area * -sign;
-    for (var i=0, n=pos.length; i<n; i++) {
-      var part = pos[i],
-          partArea = part.area * sign,
-          contained = part.bounds.contains(hole.bounds) && partArea > holeArea;
-      if (contained && (containerArea === 0 || partArea < containerArea)) {
-        containerArea = partArea;
-        containerId = i;
+        holeArea = hole.area * -sign,
+        // Find rings that might contain this hole
+        candidates = ringIndex.search({
+          minX: hole.bounds.xmin,
+          minY: hole.bounds.ymin,
+          maxX: hole.bounds.xmax,
+          maxY: hole.bounds.ymax
+        }),
+        ring, ringId, ringArea, isContained;
+    // Group this hole with the smallest-area ring that contains it.
+    // (Assumes that if a ring's bbox contains a hole, then the ring also
+    //  contains the hole).
+    for (var i=0, n=candidates.length; i<n; i++) {
+      ringId = candidates[i].idx;
+      ring = rings[ringId];
+      ringArea = ring.area * sign;
+      isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
+      if (isContained && (containerArea === 0 || ringArea < containerArea)) {
+        containerArea = ringArea;
+        containerId = ringId;
       }
     }
     if (containerId == -1) {
-      verbose("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
+      debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
     } else {
       output[containerId].push(hole);
     }
   });
+
   return output;
 };
 
