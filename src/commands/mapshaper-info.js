@@ -26,6 +26,16 @@ internal.countNullShapes = function(shapes) {
   return count;
 };
 
+internal.countRings = function(shapes, arcs) {
+  var holes = 0, rings = 0;
+  internal.editShapes(shapes, function(ids) {
+    var area = geom.getPlanarPathArea(ids, arcs);
+    if (area > 0) rings++;
+    if (area < 0) holes++;
+  });
+  return {rings: rings, holes: holes};
+};
+
 internal.getLayerInfo = function(lyr, dataset) {
   var str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
   str += utils.format("Records: %,d\n", internal.getFeatureCount(lyr));
@@ -45,6 +55,11 @@ internal.getGeometryInfo = function(lyr, dataset) {
     if (nullCount > 0) {
       lines.push(utils.format("Null shapes: %'d", nullCount));
     }
+    // if (lyr.geometry_type == 'polygon') {
+    //   var info = internal.countRings(lyr.shapes, dataset.arcs);
+    //   lines.push("Rings: " + info.rings);
+    //   lines.push("Holes: " + info.holes);
+    // }
     if (shapeCount > nullCount) {
       lines.push("Bounds: " + internal.getLayerBounds(lyr, dataset.arcs).toArray().join(' '));
       lines.push("Proj.4: " + internal.getProjInfo(dataset));
