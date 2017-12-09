@@ -259,16 +259,14 @@ internal.filterEmptyArcs = function(shape, coords) {
 //   geometry.
 //
 internal.groupPolygonRings = function(paths, reverseWinding) {
-  var rings = [],
-      holes = [],
-      output = [],
+  var holes = [],
+      groups = [],
       sign = reverseWinding ? -1 : 1,
       ringIndex;
 
   (paths || []).forEach(function(path) {
     if (path.area * sign > 0) {
-      rings.push(path);
-      output.push([path]);
+      groups.push([path]);
     } else if (path.area * sign < 0) {
       holes.push(path);
     } else {
@@ -277,19 +275,20 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
   });
 
   if (holes.length === 0) {
-    return output;
+    return groups;
   }
 
   // Using a spatial index to improve performance when the current feature
   // contains many holes and space-filling rings.
   // (Thanks to @simonepri for providing an example implementation in PR #248)
   ringIndex = require('rbush')();
-  ringIndex.load(rings.map(function(ring, i) {
+  ringIndex.load(groups.map(function(group, i) {
+    var bounds = group[0].bounds;
     return {
-      minX: ring.bounds.xmin,
-      minY: ring.bounds.ymin,
-      maxX: ring.bounds.xmax,
-      maxY: ring.bounds.ymax,
+      minX: bounds.xmin,
+      minY: bounds.ymin,
+      maxX: bounds.xmax,
+      maxY: bounds.ymax,
       idx: i
     };
   }));
@@ -312,7 +311,7 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
     //  contains the hole).
     for (var i=0, n=candidates.length; i<n; i++) {
       ringId = candidates[i].idx;
-      ring = rings[ringId];
+      ring = groups[ringId][0];
       ringArea = ring.area * sign;
       isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
       if (isContained && (containerArea === 0 || ringArea < containerArea)) {
@@ -323,11 +322,11 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
     if (containerId == -1) {
       debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
     } else {
-      output[containerId].push(hole);
+      groups[containerId].push(hole);
     }
   });
 
-  return output;
+  return groups;
 };
 
 internal.getPathMetadata = function(shape, arcs, type) {
