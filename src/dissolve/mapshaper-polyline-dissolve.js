@@ -7,8 +7,7 @@ mapshaper-pathfinder
 internal.dissolvePolylineGeometry = function(lyr, getGroupId, arcs, opts) {
   var groups = internal.getPolylineDissolveGroups(lyr.shapes, getGroupId);
   var dissolve = internal.getPolylineDissolver(arcs);
-  var shapes2 = groups.map(dissolve);
-  return shapes2;
+  return groups.map(dissolve);
 };
 
 // Create one array of arc ids for each group
@@ -38,7 +37,7 @@ internal.getPolylineDissolver = function(arcs) {
     ids.forEach(function(id) {flags[absArcId(id)] = 0;}); // may not be necessary
     return allParts;
   };
-}
+};
 
 // TODO: use polygon pathfinder shared code
 internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
@@ -49,8 +48,8 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
     var nextIds;
     while (testArc(nextId)) {
       part.push(nextId);
-      useArc(nextId);
       nextIds = nodes.getConnectedArcs(nextId, testArc);
+      useArc(nextId); // use (unset) arc after connections have been found
       if (nextIds.length > 0) {
         nextId = ~nextIds[0]; // switch arc direction to lead away from node
       } else {

@@ -5,21 +5,21 @@ var api = require('../'),
 
 describe('mapshaper-nodes.js', function () {
 
-  describe('NodeCollection()', function () {
-    it('test 1', function () {
-      // Fig. 1
-      //
-      //      b --- d
-      //     / \   /
-      //    /   \ /
-      //   a --- c
-      //
-      //   cab, bc, bdc
-      //   0,   1,  2
+  describe('NodeCollection() Fig. 1 tests', function () {
+    // Fig. 1
+    //
+    //      b --- d
+    //     / \   /
+    //    /   \ /
+    //   a --- c
+    //
+    //   cab, bc, bdc
+    //   0,   1,  2
 
-      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+    var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+
+    it('#toArray()', function () {
       var nodes = new NodeCollection(new ArcCollection(arcs));
-
       assert.deepEqual(nodes.toArray(), [{
         coordinates: [3, 1],
         arcs: [~0, 1, 2]
@@ -29,8 +29,7 @@ describe('mapshaper-nodes.js', function () {
       }]);
     })
 
-    it('filter function excludes nodes', function() {
-      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+    it('Optional filter function constructor argument filters arcs', function() {
       var filter = function(id) {return id != 0;}; // exclude arc 0
       var nodes = new NodeCollection(new ArcCollection(arcs), filter);
       assert.deepEqual(nodes.getConnectedArcs(0), []);
@@ -48,6 +47,19 @@ describe('mapshaper-nodes.js', function () {
       }]);
 
     })
+
+    it('#getConnectedArcs() takes an optional filter function argument', function() {
+      var filter = function(id) {
+        return id != 0;}; // exclude arc 0
+      var nodes = new NodeCollection(new ArcCollection(arcs));
+      assert.deepEqual(nodes.getConnectedArcs(0, filter), []);
+      assert.deepEqual(nodes.getConnectedArcs(1, filter), [2]);
+      assert.deepEqual(nodes.getConnectedArcs(2, filter), [1]);
+      assert.deepEqual(nodes.getConnectedArcs(~0, filter), []);
+      assert.deepEqual(nodes.getConnectedArcs(~1, filter), [~2]);
+      assert.deepEqual(nodes.getConnectedArcs(~2, filter), [~1]);
+    })
+
 
   })
 

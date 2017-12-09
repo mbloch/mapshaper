@@ -6,6 +6,7 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve.js', function () {
 
+
   describe('-dissolve command', function () {
 
     it('polyline test 1 (multiple segments)', function(done) {

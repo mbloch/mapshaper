@@ -89,11 +89,18 @@ function NodeCollection(arcs, filter) {
     }
   };
 
-  this.getConnectedArcs = function(arcId) {
+  // @filter (optional) only includes arc ids that return positive
+  //    Filter function receives the forward (positive) id of each connected arc
+  this.getConnectedArcs = function(arcId, filter) {
     var ids = [];
     var nextId = nextConnectedArc(arcId);
+    if (filter && !filter(absArcId(arcId))) {
+      return ids;
+    }
     while (nextId != arcId) {
-      ids.push(nextId);
+      if (!filter || filter(absArcId(nextId))) {
+        ids.push(nextId);
+      }
       nextId = nextConnectedArc(nextId);
     }
     return ids;
