@@ -118,6 +118,9 @@ internal.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
+    .option("geometry-type", {
+      // undocumented; GeoJSON import rejects all but one kind of geometry
+    })
     .option("string-fields", stringFieldsOpt)
     .option("field-types", fieldTypesOpt)
     .option("name", {

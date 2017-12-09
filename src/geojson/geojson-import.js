@@ -23,7 +23,7 @@ function GeoJSONParser(opts) {
       geom = o;
     }
     importer.startShape(rec);
-    if (geom) GeoJSON.importGeometry(geom, importer);
+    if (geom) GeoJSON.importGeometry(geom, importer, opts);
   };
 
   this.done = function() {
@@ -57,14 +57,17 @@ internal.importGeoJSON = function(src, opts) {
   return dataset;
 };
 
-
-GeoJSON.importGeometry = function(geom, importer) {
+GeoJSON.importGeometry = function(geom, importer, opts) {
   var type = geom.type;
   if (type in GeoJSON.pathImporters) {
+    if (opts.geometry_type && opts.geometry_type != GeoJSON.translateGeoJSONType(type)) {
+      // kludge to filter out all but one type of geometry
+      return;
+    }
     GeoJSON.pathImporters[type](geom.coordinates, importer);
   } else if (type == 'GeometryCollection') {
     geom.geometries.forEach(function(geom) {
-      GeoJSON.importGeometry(geom, importer);
+      GeoJSON.importGeometry(geom, importer, opts);
     });
   } else {
     verbose("GeoJSON.importGeometry() Unsupported geometry type:", geom.type);

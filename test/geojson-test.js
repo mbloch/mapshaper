@@ -325,6 +325,40 @@ describe('mapshaper-geojson.js', function () {
       })
     })
 
+    describe('-i geometry-type option', function () {
+      it('filters geometry types inside nested GeometryCollection', function (done) {
+        var geo = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'GeometryCollection',
+            geometries: [{
+              type: 'Point',
+              coordinates: [0, 0]
+            }, {
+              type: 'LineString',
+              coordinates: [[1, 1], [0, 1]]
+            }, {
+              type: 'Polygon',
+              coordinates: [[[5, 5], [5, 6], [6, 6], [5, 5]]]
+            }]
+          }]
+        };
+        var expect = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'Point',
+            coordinates: [0, 0]
+          }]
+        }
+        api.applyCommands('-i geo.json geometry-type=point -o', {'geo.json': geo}, function(err, output) {
+          var geom = JSON.parse(output['geo.json']);
+          assert.deepEqual(geom, expect)
+          done();
+        });
+        assert.equal()
+      })
+    })
+
     describe('-o combine-layers option', function () {
       it('combines datasets derived from same input file', function(done) {
         var a = {
