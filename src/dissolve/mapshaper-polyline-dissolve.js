@@ -6,9 +6,8 @@ mapshaper-pathfinder
 // with the arcs in each part laid out in connected sequence
 internal.dissolvePolylineGeometry = function(lyr, getGroupId, arcs, opts) {
   var groups = internal.getPolylineDissolveGroups(lyr.shapes, getGroupId);
-  var shapes2 = groups.map(function(group) {
-    return internal.dissolvePolylineArcs(group, arcs);
-  });
+  var dissolve = internal.getPolylineDissolver(arcs);
+  var shapes2 = groups.map(dissolve);
   return shapes2;
 };
 
@@ -25,17 +24,21 @@ internal.getPolylineDissolveGroups = function(shapes, getGroupId) {
   return groups;
 };
 
-internal.dissolvePolylineArcs = function(ids, arcs) {
+internal.getPolylineDissolver = function(arcs) {
   var flags = new Uint8Array(arcs.size());
-  ids.forEach(function(id) {flags[absArcId(id)] = 1;});
   var testArc = function(id) {return flags[absArcId(id)] > 0;};
   var useArc = function(id) {flags[absArcId(id)] = 0;};
-  var nodes = new NodeCollection(arcs, testArc);
-  var ends = internal.findPolylineEnds(ids, nodes);
-  var straightParts = internal.collectPolylineArcs(ends, nodes, testArc, useArc);
-  var ringParts = internal.collectPolylineArcs(ids, nodes, testArc, useArc);
-  return straightParts.concat(ringParts);
-};
+  var nodes = new NodeCollection(arcs);
+  return function(ids) {
+    ids.forEach(function(id) {flags[absArcId(id)] = 1;});
+    var ends = internal.findPolylineEnds(ids, nodes, testArc);
+    var straightParts = internal.collectPolylineArcs(ends, nodes, testArc, useArc);
+    var ringParts = internal.collectPolylineArcs(ids, nodes, testArc, useArc);
+    var allParts = straightParts.concat(ringParts);
+    ids.forEach(function(id) {flags[absArcId(id)] = 0;}); // may not be necessary
+    return allParts;
+  };
+}
 
 // TODO: use polygon pathfinder shared code
 internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
@@ -44,10 +47,10 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
     var part = [];
     var nextId = startId;
     var nextIds;
-    while(testArc(nextId)) {
+    while (testArc(nextId)) {
       part.push(nextId);
       useArc(nextId);
-      nextIds = nodes.getConnectedArcs(nextId).filter(testArc);
+      nextIds = nodes.getConnectedArcs(nextId, testArc);
       if (nextIds.length > 0) {
         nextId = ~nextIds[0]; // switch arc direction to lead away from node
       } else {
@@ -60,13 +63,13 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
 };
 
 // Return array of dead-end arcs for a dissolved group.
-internal.findPolylineEnds = function(ids, nodes) {
+internal.findPolylineEnds = function(ids, nodes, filter) {
   var ends = [];
   ids.forEach(function(arcId) {
-    if (nodes.getConnectedArcs(arcId).length === 0) {
+    if (nodes.getConnectedArcs(arcId, filter).length === 0) {
       ends.push(~arcId); // arc points away from terminus
     }
-    if (nodes.getConnectedArcs(~arcId).length === 0) {
+    if (nodes.getConnectedArcs(~arcId, filter).length === 0) {
       ends.push(arcId);
     }
   });
