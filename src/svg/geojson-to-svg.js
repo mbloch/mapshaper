@@ -1,12 +1,13 @@
 /* @requires geojson-common, svg-common, mapshaper-svg-style */
 
-SVG.importGeoJSONFeatures = function(features) {
+SVG.importGeoJSONFeatures = function(features, opts) {
+  opts = opts || {};
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
     var svgObj = null;
     if (geomType && geom.coordinates) {
-      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties);
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
     }
     if (!svgObj) {
       return {tag: 'g'}; // empty element
@@ -92,10 +93,10 @@ SVG.setAttribute = function(obj, k, v) {
   }
 };
 
-SVG.importMultiPoint = function(coords, rec) {
+SVG.importMultiPoint = function(coords, rec, layerOpts) {
   var children = [], p;
   for (var i=0; i<coords.length; i++) {
-    p = SVG.importPoint(coords[i], rec);
+    p = SVG.importPoint(coords[i], rec, layerOpts);
     if (p.tag == 'g' && p.children) {
       children = children.concat(p.children);
     } else {
@@ -170,22 +171,35 @@ SVG.importLabel = function(p, rec) {
   return obj;
 };
 
-SVG.importPoint = function(coords, d) {
+SVG.importPoint = function(coords, d, layerOpts) {
   var rec = d || {};
   var isLabel = 'label-text' in rec;
   var children = [];
+  var symbolType = layerOpts.point_symbol || '';
+  var halfSize = rec.r || 0; // radius or half of symbol size
   var p;
-  // if not a label, create a circle even without a radius
-  // (radius can be set via CSS)
-  if (rec.r || !isLabel) {
-    p = {
-    tag: 'circle',
-    properties: {
-      cx: coords[0],
-      cy: coords[1]
-    }};
-    if (rec.r) {
-      p.properties.r = rec.r;
+  // if not a label, create a symbol even without a size
+  // (circle radius can be set via CSS)
+  if (halfSize > 0 || !isLabel) {
+    if (symbolType == 'square') {
+      p = {
+        tag: 'rect',
+        properties: {
+          x: coords[0] - halfSize,
+          y: coords[1] - halfSize,
+          width: halfSize * 2,
+          height: halfSize * 2
+        }};
+    } else { // default is circle
+      p = {
+        tag: 'circle',
+        properties: {
+          cx: coords[0],
+          cy: coords[1]
+        }};
+      if (halfSize > 0) {
+        p.properties.r = halfSize;
+      }
     }
     children.push(p);
   }
@@ -209,8 +223,8 @@ SVG.geojsonImporters = {
   Point: SVG.importPoint,
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
-  MultiPoint: function(coords, rec) {
-    return SVG.importMultiPoint(coords, rec);
+  MultiPoint: function(coords, rec, opts) {
+    return SVG.importMultiPoint(coords, rec, opts);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);
