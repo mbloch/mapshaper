@@ -56,8 +56,56 @@ describe('geojson-to-svg.js', function () {
           properties: {cx: 1, cy: 2, r: 2}
         }]
       }];
-      assert.deepEqual(SVG.importGeoJSONFeatures([geo], {r: 2}), target);
+      assert.deepEqual(SVG.importGeoJSONFeatures([geo]), target);
     })
+
+    it('feature with null geometry', function() {
+      var geo = {
+        type: 'Feature',
+        properties: {r: 2},
+        geometry: null
+      };
+      var expected = [{
+        tag: 'g',
+      }];
+      assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
+    })
+
+    it('point feature with square symbol', function() {
+      var geo = {
+        type: 'Feature',
+        properties: {r: 2},
+        geometry: {type: 'Point', coordinates: [5, 5]}
+      };
+      var expected = [{
+        tag: 'rect',
+        properties: {x: 3, y: 3, width: 4, height: 4}
+      }];
+      assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
+
+    });
+
+    it('point feature with square symbol and label', function() {
+      var geo = {
+        type: 'Feature',
+        properties: {r: 2, 'label-text': 'foo'},
+        geometry: {type: 'Point', coordinates: [5, 5]}
+      };
+      var expected = [{
+        tag: 'g',
+        children: [{
+          tag: 'rect',
+          properties: {x: 3, y: 3, width: 4, height: 4}
+        }, {
+          tag: 'text',
+          value: 'foo',
+          properties: {x: 5, y: 5}
+        }]
+      }];
+      assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
+
+    });
+
 
     it('label feature', function() {
       var geo = {

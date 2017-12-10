@@ -1,6 +1,7 @@
 /* @requires geojson-common, svg-common, mapshaper-svg-style */
 
 SVG.importGeoJSONFeatures = function(features, opts) {
+  opts = opts || {};
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
@@ -174,33 +175,31 @@ SVG.importPoint = function(coords, d, layerOpts) {
   var rec = d || {};
   var isLabel = 'label-text' in rec;
   var children = [];
-  var symbolType = typeof layerOpts !== 'undefined' ? layerOpts['point_symbol'] : '';
+  var symbolType = layerOpts.point_symbol || '';
+  var halfSize = rec.r || 0; // radius or half of symbol size
   var p;
-  // if not a label, create a circle even without a radius
-  // (radius can be set via CSS)
-  if (rec.r || !isLabel) {
-    switch (symbolType) {
-      case 'square':
-        p = {
+  // if not a label, create a symbol even without a size
+  // (circle radius can be set via CSS)
+  if (halfSize > 0 || !isLabel) {
+    if (symbolType == 'square') {
+      p = {
         tag: 'rect',
         properties: {
-          x: coords[0] - rec.r,
-          y: coords[1] - rec.r,
-          width: rec.r * 2,
-          height: rec.r * 2
+          x: coords[0] - halfSize,
+          y: coords[1] - halfSize,
+          width: halfSize * 2,
+          height: halfSize * 2
         }};
-        break;
-      default: // defaulting to a circle
-        p = {
+    } else { // default is circle
+      p = {
         tag: 'circle',
         properties: {
           cx: coords[0],
           cy: coords[1]
         }};
-        break;
-    }
-    if (rec.r) {
-      p.properties.r = rec.r;
+      if (halfSize > 0) {
+        p.properties.r = halfSize;
+      }
     }
     children.push(p);
   }
@@ -224,8 +223,8 @@ SVG.geojsonImporters = {
   Point: SVG.importPoint,
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
-  MultiPoint: function(coords, rec) {
-    return SVG.importMultiPoint(coords, rec);
+  MultiPoint: function(coords, rec, opts) {
+    return SVG.importMultiPoint(coords, rec, opts);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);
