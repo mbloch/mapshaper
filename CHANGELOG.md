@@ -1,3 +1,7 @@
+v0.4.59
+* Bug fixes and performance improvements.
+* Added undocumented -i geometry-type= option, to allow importing GeoJSON features containing GeometryCollections with mixed types (which would otherwise cause an error).
+
 v0.4.58
 * Fix for issue #236 - error reading some GeoJSON files.
 * Added undocumented -filter-geom command with bbox= option, for removing non-intersecting geometry.
