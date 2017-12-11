@@ -14,7 +14,8 @@ internal.initProjLibrary = function(opts, done) {done();};
 // Find Proj.4 definition file names in strings like "+init=epsg:3000"
 // (Used by GUI, defined here for testing)
 internal.findProjLibs = function(str) {
-  return utils.uniq(str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/g) || []);
+  var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
+  return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
 };
 
 internal.getProjInfo = function(dataset) {

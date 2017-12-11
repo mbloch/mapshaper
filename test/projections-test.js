@@ -31,11 +31,15 @@ function invalid(proj) {
 describe('mapshaper-projections.js', function() {
 
   describe('findProjLibs()', function() {
-    it ('tests', function() {
+    it('tests', function() {
       assert.deepEqual(api.internal.findProjLibs('+init=epsg:4300 +init=esri:10099'), ['epsg', 'esri']);
       assert.deepEqual(api.internal.findProjLibs('+proj=merc'), []);
       assert.deepEqual(api.internal.findProjLibs('+init=epsg:4300 +init=dummy:10099 +init=epsg:1000'), ['epsg']);
     });
+
+    it('Works with upper case library names (e.g. EPSG:1000', function() {
+      assert.deepEqual(api.internal.findProjLibs('+init=EPSG:4300 +init=ESRI:10099'), ['epsg', 'esri']);
+    })
   });
 
 

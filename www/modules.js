@@ -10385,28 +10385,39 @@ function mproj_search_libcache(libId) {
   return libcache[libId] || null;
 }
 
+function mproj_read_lib_anycase(libFile) {
+  var fs = require('fs'),
+      path = require('path'),
+      // path to library assumes mproj script is in the dist/ directory
+      dir = path.join(path.dirname(__filename), '../nad'),
+      pathUC = path.join(dir, libFile.toUpperCase()),
+      pathLC = path.join(dir, libFile.toLowerCase()),
+      contents;
+  if (fs.existsSync(pathUC)) {
+    contents = fs.readFileSync(pathUC, 'utf8');
+  } else if (fs.existsSync(pathLC)) {
+    contents = fs.readFileSync(pathLC, 'utf8');
+  } else {
+    fatal('unable to read from \'init\' file named ' + libFile); // not in Proj.4
+  }
+  return contents;
+}
+
 // Return opts from a section of a config file,
 //   or null if not found or unable to read file
 function pj_read_init_opts(initStr) {
   var parts = initStr.split(':'),
       libId = parts[0],
       crsId = parts[1],
-      libStr, libPath, path, o;
+      libStr, o;
   if (!crsId || !libId) {
     error(-3);
   }
+  libId = libId.toLowerCase(); // not in Proj.4
   libStr = mproj_search_libcache(libId);
   if (!libStr) {
-    try {
-      // path to library assumes mproj script is in the dist/ directory
-      // read error is handled elsewhere
-      path = require('path');
-      libPath = path.join(path.dirname(__filename), '../nad', libId);
-      libStr = require('fs').readFileSync(libPath, 'utf8');
-      libcache[libId] = libStr;
-    } catch(e) {
-      fatal('unable to read from \'init\' file named ' + libId); // not in Proj.4
-    }
+    libStr = mproj_read_lib_anycase(libId);
+    libcache[libId] = libStr;
   }
   return libStr ? pj_find_opts(libStr, crsId) : null;
 }
