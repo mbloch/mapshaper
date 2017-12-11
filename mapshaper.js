@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.58';
+var VERSION = '0.4.59';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -3177,53 +3177,83 @@ internal.filterEmptyArcs = function(shape, coords) {
 };
 
 // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
-// Assumes outer rings are CW and inner (hole) rings are CCW.
+// Assumes outer rings are CW and inner (hole) rings are CCW, unless
+//   the reverseWinding flag is set.
 // @paths array of objects with path metadata -- see internal.exportPathData()
 //
 // TODO: Improve reliability. Currently uses winding order, area and bbox to
-//   identify holes and their enclosures -- could be confused by strange
+//   identify holes and their enclosures -- could be confused by some strange
 //   geometry.
 //
 internal.groupPolygonRings = function(paths, reverseWinding) {
-  var pos = [],
-      neg = [],
-      sign = reverseWinding ? -1 : 1;
-  if (paths) {
-    paths.forEach(function(path) {
-      if (path.area * sign > 0) {
-        pos.push(path);
-      } else if (path.area * sign < 0) {
-        neg.push(path);
-      } else {
-        // verbose("Zero-area ring, skipping");
-      }
-    });
-  }
+  var holes = [],
+      groups = [],
+      sign = reverseWinding ? -1 : 1,
+      ringIndex;
 
-  var output = pos.map(function(part) {
-    return [part];
+  (paths || []).forEach(function(path) {
+    if (path.area * sign > 0) {
+      groups.push([path]);
+    } else if (path.area * sign < 0) {
+      holes.push(path);
+    } else {
+      // Zero-area ring, skipping
+    }
   });
 
-  neg.forEach(function(hole) {
+  if (holes.length === 0) {
+    return groups;
+  }
+
+  // Using a spatial index to improve performance when the current feature
+  // contains many holes and space-filling rings.
+  // (Thanks to @simonepri for providing an example implementation in PR #248)
+  ringIndex = require('rbush')();
+  ringIndex.load(groups.map(function(group, i) {
+    var bounds = group[0].bounds;
+    return {
+      minX: bounds.xmin,
+      minY: bounds.ymin,
+      maxX: bounds.xmax,
+      maxY: bounds.ymax,
+      idx: i
+    };
+  }));
+
+  // Group each hole with its containing ring
+  holes.forEach(function(hole) {
     var containerId = -1,
         containerArea = 0,
-        holeArea = hole.area * -sign;
-    for (var i=0, n=pos.length; i<n; i++) {
-      var part = pos[i],
-          partArea = part.area * sign,
-          contained = part.bounds.contains(hole.bounds) && partArea > holeArea;
-      if (contained && (containerArea === 0 || partArea < containerArea)) {
-        containerArea = partArea;
-        containerId = i;
+        holeArea = hole.area * -sign,
+        // Find rings that might contain this hole
+        candidates = ringIndex.search({
+          minX: hole.bounds.xmin,
+          minY: hole.bounds.ymin,
+          maxX: hole.bounds.xmax,
+          maxY: hole.bounds.ymax
+        }),
+        ring, ringId, ringArea, isContained;
+    // Group this hole with the smallest-area ring that contains it.
+    // (Assumes that if a ring's bbox contains a hole, then the ring also
+    //  contains the hole).
+    for (var i=0, n=candidates.length; i<n; i++) {
+      ringId = candidates[i].idx;
+      ring = groups[ringId][0];
+      ringArea = ring.area * sign;
+      isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
+      if (isContained && (containerArea === 0 || ringArea < containerArea)) {
+        containerArea = ringArea;
+        containerId = ringId;
       }
     }
     if (containerId == -1) {
-      verbose("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
+      debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
     } else {
-      output[containerId].push(hole);
+      groups[containerId].push(hole);
     }
   });
-  return output;
+
+  return groups;
 };
 
 internal.getPathMetadata = function(shape, arcs, type) {
@@ -3797,11 +3827,18 @@ function NodeCollection(arcs, filter) {
     }
   };
 
-  this.getConnectedArcs = function(arcId) {
+  // @filter (optional) only includes arc ids that return positive
+  //    Filter function receives the forward (positive) id of each connected arc
+  this.getConnectedArcs = function(arcId, filter) {
     var ids = [];
     var nextId = nextConnectedArc(arcId);
+    if (filter && !filter(absArcId(arcId))) {
+      return ids;
+    }
     while (nextId != arcId) {
-      ids.push(nextId);
+      if (!filter || filter(absArcId(nextId))) {
+        ids.push(nextId);
+      }
       nextId = nextConnectedArc(nextId);
     }
     return ids;
@@ -8524,10 +8561,8 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
 // with the arcs in each part laid out in connected sequence
 internal.dissolvePolylineGeometry = function(lyr, getGroupId, arcs, opts) {
   var groups = internal.getPolylineDissolveGroups(lyr.shapes, getGroupId);
-  var shapes2 = groups.map(function(group) {
-    return internal.dissolvePolylineArcs(group, arcs);
-  });
-  return shapes2;
+  var dissolve = internal.getPolylineDissolver(arcs);
+  return groups.map(dissolve);
 };
 
 // Create one array of arc ids for each group
@@ -8543,16 +8578,20 @@ internal.getPolylineDissolveGroups = function(shapes, getGroupId) {
   return groups;
 };
 
-internal.dissolvePolylineArcs = function(ids, arcs) {
+internal.getPolylineDissolver = function(arcs) {
   var flags = new Uint8Array(arcs.size());
-  ids.forEach(function(id) {flags[absArcId(id)] = 1;});
   var testArc = function(id) {return flags[absArcId(id)] > 0;};
   var useArc = function(id) {flags[absArcId(id)] = 0;};
-  var nodes = new NodeCollection(arcs, testArc);
-  var ends = internal.findPolylineEnds(ids, nodes);
-  var straightParts = internal.collectPolylineArcs(ends, nodes, testArc, useArc);
-  var ringParts = internal.collectPolylineArcs(ids, nodes, testArc, useArc);
-  return straightParts.concat(ringParts);
+  var nodes = new NodeCollection(arcs);
+  return function(ids) {
+    ids.forEach(function(id) {flags[absArcId(id)] = 1;});
+    var ends = internal.findPolylineEnds(ids, nodes, testArc);
+    var straightParts = internal.collectPolylineArcs(ends, nodes, testArc, useArc);
+    var ringParts = internal.collectPolylineArcs(ids, nodes, testArc, useArc);
+    var allParts = straightParts.concat(ringParts);
+    ids.forEach(function(id) {flags[absArcId(id)] = 0;}); // may not be necessary
+    return allParts;
+  };
 };
 
 // TODO: use polygon pathfinder shared code
@@ -8562,10 +8601,10 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
     var part = [];
     var nextId = startId;
     var nextIds;
-    while(testArc(nextId)) {
+    while (testArc(nextId)) {
       part.push(nextId);
-      useArc(nextId);
-      nextIds = nodes.getConnectedArcs(nextId).filter(testArc);
+      nextIds = nodes.getConnectedArcs(nextId, testArc);
+      useArc(nextId); // use (unset) arc after connections have been found
       if (nextIds.length > 0) {
         nextId = ~nextIds[0]; // switch arc direction to lead away from node
       } else {
@@ -8578,13 +8617,13 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
 };
 
 // Return array of dead-end arcs for a dissolved group.
-internal.findPolylineEnds = function(ids, nodes) {
+internal.findPolylineEnds = function(ids, nodes, filter) {
   var ends = [];
   ids.forEach(function(arcId) {
-    if (nodes.getConnectedArcs(arcId).length === 0) {
+    if (nodes.getConnectedArcs(arcId, filter).length === 0) {
       ends.push(~arcId); // arc points away from terminus
     }
-    if (nodes.getConnectedArcs(~arcId).length === 0) {
+    if (nodes.getConnectedArcs(~arcId, filter).length === 0) {
       ends.push(arcId);
     }
   });
@@ -11613,7 +11652,7 @@ function GeoJSONParser(opts) {
       geom = o;
     }
     importer.startShape(rec);
-    if (geom) GeoJSON.importGeometry(geom, importer);
+    if (geom) GeoJSON.importGeometry(geom, importer, opts);
   };
 
   this.done = function() {
@@ -11647,14 +11686,17 @@ internal.importGeoJSON = function(src, opts) {
   return dataset;
 };
 
-
-GeoJSON.importGeometry = function(geom, importer) {
+GeoJSON.importGeometry = function(geom, importer, opts) {
   var type = geom.type;
   if (type in GeoJSON.pathImporters) {
+    if (opts.geometry_type && opts.geometry_type != GeoJSON.translateGeoJSONType(type)) {
+      // kludge to filter out all but one type of geometry
+      return;
+    }
     GeoJSON.pathImporters[type](geom.coordinates, importer);
   } else if (type == 'GeometryCollection') {
     geom.geometries.forEach(function(geom) {
-      GeoJSON.importGeometry(geom, importer);
+      GeoJSON.importGeometry(geom, importer, opts);
     });
   } else {
     verbose("GeoJSON.importGeometry() Unsupported geometry type:", geom.type);
@@ -13682,7 +13724,8 @@ internal.initProjLibrary = function(opts, done) {done();};
 // Find Proj.4 definition file names in strings like "+init=epsg:3000"
 // (Used by GUI, defined here for testing)
 internal.findProjLibs = function(str) {
-  return utils.uniq(str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/g) || []);
+  var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
+  return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
 };
 
 internal.getProjInfo = function(dataset) {
@@ -14062,39 +14105,6 @@ internal.exportDbfFile = function(lyr, dataset, opts) {
 
 
 
-
-// Converts geometry in-place
-GeoJSON.convertPointFeatureToSquare = function(feature, radiusField, fixedRadius) {
-  var geom = feature.geometry;
-  var side = (radiusField in feature.properties ? feature.properties[radiusField] : fixedRadius) * 2;
-  if (side > 0 === false) {
-    feature.geometry = null;
-  } else if (geom.type == 'Point') {
-    feature.geometry = {
-      type: 'Polygon',
-      coordinates: GeoJSON.convertPointCoordsToSquareCoords(geom.coordinates, side)
-    };
-  } else if (geom.type == 'MultiPoint') {
-    feature.geometry = {
-      type: 'MultiPolygon',
-      coordinates: geom.coordinates.map(function(p) {
-        return GeoJSON.convertPointCoordsToSquareCoords(p, side);
-      })
-    };
-  }
-};
-
-GeoJSON.convertPointCoordsToSquareCoords = function(p, side) {
-  var offs = side / 2,
-      l = p[0] - offs,
-      r = p[0] + offs,
-      t = p[1] + offs,
-      b = p[1] - offs;
-  return [[[l, t], [r, t], [r, b], [l, b], [l, t]]];
-};
-
-
-
 var SVG = {};
 
 SVG.propertyTypes = {
@@ -14211,13 +14221,14 @@ internal.isSvgColor = function(str) {
 
 
 
-SVG.importGeoJSONFeatures = function(features) {
+SVG.importGeoJSONFeatures = function(features, opts) {
+  opts = opts || {};
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
     var svgObj = null;
     if (geomType && geom.coordinates) {
-      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties);
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
     }
     if (!svgObj) {
       return {tag: 'g'}; // empty element
@@ -14303,10 +14314,10 @@ SVG.setAttribute = function(obj, k, v) {
   }
 };
 
-SVG.importMultiPoint = function(coords, rec) {
+SVG.importMultiPoint = function(coords, rec, layerOpts) {
   var children = [], p;
   for (var i=0; i<coords.length; i++) {
-    p = SVG.importPoint(coords[i], rec);
+    p = SVG.importPoint(coords[i], rec, layerOpts);
     if (p.tag == 'g' && p.children) {
       children = children.concat(p.children);
     } else {
@@ -14381,22 +14392,35 @@ SVG.importLabel = function(p, rec) {
   return obj;
 };
 
-SVG.importPoint = function(coords, d) {
+SVG.importPoint = function(coords, d, layerOpts) {
   var rec = d || {};
   var isLabel = 'label-text' in rec;
   var children = [];
+  var symbolType = layerOpts.point_symbol || '';
+  var halfSize = rec.r || 0; // radius or half of symbol size
   var p;
-  // if not a label, create a circle even without a radius
-  // (radius can be set via CSS)
-  if (rec.r || !isLabel) {
-    p = {
-    tag: 'circle',
-    properties: {
-      cx: coords[0],
-      cy: coords[1]
-    }};
-    if (rec.r) {
-      p.properties.r = rec.r;
+  // if not a label, create a symbol even without a size
+  // (circle radius can be set via CSS)
+  if (halfSize > 0 || !isLabel) {
+    if (symbolType == 'square') {
+      p = {
+        tag: 'rect',
+        properties: {
+          x: coords[0] - halfSize,
+          y: coords[1] - halfSize,
+          width: halfSize * 2,
+          height: halfSize * 2
+        }};
+    } else { // default is circle
+      p = {
+        tag: 'circle',
+        properties: {
+          cx: coords[0],
+          cy: coords[1]
+        }};
+      if (halfSize > 0) {
+        p.properties.r = halfSize;
+      }
     }
     children.push(p);
   }
@@ -14420,8 +14444,8 @@ SVG.geojsonImporters = {
   Point: SVG.importPoint,
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
-  MultiPoint: function(coords, rec) {
-    return SVG.importMultiPoint(coords, rec);
+  MultiPoint: function(coords, rec, opts) {
+    return SVG.importMultiPoint(coords, rec, opts);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);
@@ -14472,12 +14496,7 @@ internal.exportLayerForSVG = function(lyr, dataset, opts) {
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  if (opts.point_symbol == 'square' && geojson.type == 'FeatureCollection') {
-    features.forEach(function(feat) {
-      GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
-    });
-  }
-  var symbols = SVG.importGeoJSONFeatures(features);
+  var symbols = SVG.importGeoJSONFeatures(features, opts);
   var layerObj = {
     tag: 'g',
     properties: {id: lyr.name},
@@ -15457,6 +15476,16 @@ internal.countNullShapes = function(shapes) {
   return count;
 };
 
+internal.countRings = function(shapes, arcs) {
+  var holes = 0, rings = 0;
+  internal.editShapes(shapes, function(ids) {
+    var area = geom.getPlanarPathArea(ids, arcs);
+    if (area > 0) rings++;
+    if (area < 0) holes++;
+  });
+  return {rings: rings, holes: holes};
+};
+
 internal.getLayerInfo = function(lyr, dataset) {
   var str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
   str += utils.format("Records: %,d\n", internal.getFeatureCount(lyr));
@@ -15476,6 +15505,11 @@ internal.getGeometryInfo = function(lyr, dataset) {
     if (nullCount > 0) {
       lines.push(utils.format("Null shapes: %'d", nullCount));
     }
+    // if (lyr.geometry_type == 'polygon') {
+    //   var info = internal.countRings(lyr.shapes, dataset.arcs);
+    //   lines.push("Rings: " + info.rings);
+    //   lines.push("Holes: " + info.holes);
+    // }
     if (shapeCount > nullCount) {
       lines.push("Bounds: " + internal.getLayerBounds(lyr, dataset.arcs).toArray().join(' '));
       lines.push("Proj.4: " + internal.getProjInfo(dataset));
@@ -19965,6 +19999,9 @@ internal.getOptionParser = function() {
     }) */
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
+    })
+    .option("geometry-type", {
+      // undocumented; GeoJSON import rejects all but one kind of geometry
     })
     .option("string-fields", stringFieldsOpt)
     .option("field-types", fieldTypesOpt)
