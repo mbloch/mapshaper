@@ -78,9 +78,13 @@ internal.exportFileContent = function(dataset, opts) {
   }, dataset);
 
   // Adjust layer names, so they can be used as output file names
-  if (opts.file && outFmt != 'topojson') {
+  if (opts.file && ['topojson','svg'].indexOf(outFmt) == -1) {
     dataset.layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.file);
+    });
+  } else if (opts.file && outFmt == 'svg' && dataset.layers.length > 1) {
+    dataset.layers.forEach(function(lyr) {
+      lyr.name = utils.getFileBase(opts.file) + '-' + lyr.name;
     });
   }
   internal.assignUniqueLayerNames(dataset.layers);
