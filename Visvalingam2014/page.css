@@ -1,0 +1,324 @@
+/*
+@import url(http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600);
+*/
+
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url(SourceSansPro-Regular.woff) format('woff');
+}
+
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 600;
+  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url(SourceSansPro-Semibold.woff) format('woff');
+}
+
+html, body {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+}
+
+#page-wrapper {
+	overflow: hidden;
+	background-color: #fff;
+	height: 100%;
+	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
+	color: #444;
+}
+
+
+/* --- Page header --------------- */
+
+.g-page-header {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 10;
+	width: 100%;
+	height: 30px;
+	background-color:#6E90BA;
+	background: -webkit-linear-gradient(top, #6E90BA, #85B3DD);
+	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
+}
+
+.g-page-header .mshp-version {
+	font-size: 11px;
+	color: white;
+	font-weight: normal;
+}
+
+.g-mapshaper-logo {
+	color: white;
+	font-weight: bold;
+	font-size: 18px;
+	margin: 1px 0 0 12px;
+}
+
+.g-mapshaper-logo .g-logo-highlight {
+	color: #ffa;
+}
+
+.g-page-header a {
+	text-decoration: none;
+}
+
+
+/* --- Import screen -------------- */
+
+.homepage-note {
+	float: left;
+	width: 380px;
+	text-align: left;
+	margin: 0px 0px 0 50px;
+}
+
+#fork-me {
+	background-image: url("images/fork-me-right-cerulean.png");
+    background-size: 149px 149px;
+	position: absolute;
+	z-index: 50;
+	top: 0;
+	right: 0;
+	border: 0;
+	width: 149px;
+	height: 149px;
+}
+
+@media only screen and (-webkit-device-pixel-ratio: 2) {
+	#fork-me {
+		background-image: url("images/fork-me-right-cerulean@2x.png");
+	}
+}
+
+#mshp-not-supported, #mshp-import {
+	display:none;
+}
+
+#mshp-import .g-info-box {
+	text-align: left;
+}
+
+#mshp-import .g-clicktext {
+	width: 40px;
+	background: rgba(255, 255, 255, 0.4);
+	text-align: right;
+	border: 1px solid rgba(0,0,0,0.2);
+	padding: 0 3px;
+	margin: 0 5px 0 0px;
+	font-size: 10px;
+
+}
+
+#mshp-intro-screen {
+	text-align: center;
+	padding-top: 50px;
+	height: 100%;
+	color: #555;
+}
+
+.g-info-box {
+	margin-right: 30px;
+	background-color: #fff;
+	padding: 10px 14px 12px 14px;
+	vertical-align: top;
+	display: inline-block;
+	border: 1px solid #b5b5b5;
+	border-radius: 9px;
+}
+
+#mshp-intro-screen h3 {
+	padding: 0;
+	margin: 0;
+}
+
+#mshp-intro-screen h4 {
+	margin: 0.4em 0 0 0;
+}
+
+#mshp-intro-screen p {
+	white-space: pre-line;
+	margin: 0.45em 0 0 0;
+}
+
+.g-option-menu {
+	font-size: 13px;
+	margin: 2px 0 0 11px;
+}
+
+.g-option-menu input {
+	width: 12px;
+	height: 12px;
+}
+
+.g-option-menu .g-tip-button {
+	margin-left: 5px;
+}
+
+.g-option-menu input.g-checkbox {
+	margin: 3px 5px 0 0;
+}
+
+.g-option-menu input.g-radio {
+	margin: 0 5px 0 0;
+}
+
+
+/* === Editing interface =================== */
+
+@media (max-width: 876px) {
+	body.editing  #g-simplify-control-wrapper {
+		top: 21px;
+	}
+
+	body.editing .g-page-header {
+		height: 48px;
+	}
+
+	body.editing #mshp-main-map {
+		margin-top: 51px;
+	}
+}
+
+#mshp-main-page {
+	height: 100%;
+	width: 100%;
+	position: relative;
+}
+
+/* --- Intersection control ----------*/
+
+#g-intersection-display {
+	cursor: default;
+	visibility: visible;
+	display: none;
+	position: absolute;
+	z-index: 2000;
+	top: 7px;
+	right: 10px;
+	text-align: right;
+}
+
+#g-intersection-display .g-text-btn.disabled {
+	visibility: hidden;
+}
+
+
+/* --- Map ---------------------- */
+
+#mshp-main-map {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	margin: 30px 0 0 0;
+	background-color: #fff;
+}
+
+.g-home-btn {
+	cursor:pointer;
+	position: absolute;
+	z-index: 50;
+	padding: 9px;
+	margin: 2px;
+}
+
+.g-home-btn:hover {
+	opacity: 0.7 !important;
+}
+
+.g-home-btn:not(.active) {
+	opacity: 0.3;
+}
+
+
+/* --- Export control ------------- */
+
+#g-export-control {
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	display: none;
+	margin: 5px 9px 0 0;
+}
+
+#g-export-buttons {
+	display: none;
+}
+
+.g-page-header .g-label {
+	color: #fff;
+	margin: 0 4px 0 0;
+}
+
+.g-page-header .g-panel-btn {
+	margin-right: 0;
+	color: #fff;
+	background-color: rgba(16, 69, 104, 0.3);
+	border: none;
+	padding: 3px 5px 4px 5px;
+	border-radius: 3px;
+}
+
+.g-page-header .g-panel-btn.active:hover:not(.selected) {
+	background-color: rgba(172, 205, 245, 0.3);
+}
+
+
+/* Simplification control ------------ */
+
+#g-simplify-control-wrapper {
+	position: absolute;
+	width: 100%;
+	margin: 6px auto 0 auto;
+	top: 0px;
+}
+
+#g-simplify-control {
+	text-align: center;
+	display: none;
+	white-space: nowrap;
+	padding: 0 144px 0 12px;
+}
+
+#g-simplify-control .g-slider {
+	padding: 9px 5px 0px 5px;
+	position: relative;
+	vertical-align: top;
+	display: inline-block;
+}
+
+#g-simplify-control .g-track {   	
+  	border-radius: 2px;
+	width: 340px;
+	background-color: #fff;
+	height: 2px;
+}
+
+#g-simplify-control .g-handle {
+	position: absolute;
+	top: 6px;
+}
+
+#g-simplify-control .g-handle img {
+	width: 20px;
+	height: 20px;
+	margin-left: -10px;
+	margin-top: -10px;
+}
+
+#g-simplify-control .g-clicktext {
+	width: 56px;
+	background: rgba(255, 255, 255, 0.4);
+	text-align: center;
+	border: 1px solid rgba(0,0,0,0);
+	font-size: 13px;
+}
+
+#g-simplify-control .g-clicktext:focus {
+	background: #fff;
+}

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>mapshaper</title>
+	<meta name="Description" content="A tool for topologically aware shape simplification. Reads and writes Shapefile, GeoJSON and TopoJSON formats." />
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<link rel="stylesheet" type="text/css" href="page.css">
+	<link rel="stylesheet" type="text/css" href="elements.css">
+	<script src="mapshaper.js" type="text/javascript"></script>
+	<script src="zip.js" type="text/javascript"></script>
+</head>
+<body>
+
+<div id="page-wrapper">
+<div class="g-page-header">
+	<div class="g-mapshaper-logo">map<span class="g-logo-highlight">shaper</span> <span class="mshp-version">v. 0.2.0</span></div>
+
+	<div id="g-simplify-control-wrapper"><div id="g-simplify-control"><span class="g-label">Simplify</span>
+		<div class="g-slider">
+			<div class="g-handle"><img src="images/slider_handle_v1.png" /></div>
+			<div class="g-track"></div>		
+		</div>
+		<input type="text" value="label" class="g-clicktext" />
+	</div></div>
+	<div id="g-export-control"><span class="g-label">Export</span><span id="g-export-buttons">
+		<div id="g-shapefile-btn" class="g-next-btn g-panel-btn">Shapefile</div>
+		<div id="g-geojson-btn" class="g-next-btn g-panel-btn">GeoJSON</div>
+		<div id="g-topojson-btn" class="g-next-btn g-panel-btn">TopoJSON</div></span>
+	</div>
+</div>
+
+<div id="mshp-intro-screen">
+	<a href="https://github.com/mbloch/mapshaper"><div id="fork-me"></div></a>
+
+	<div id="mshp-not-supported">
+		<div class="g-info-box">
+		<h3>Unfortunately, mapshaper can't run in <span class="g-unsupported-browser">this web browser</span></h3>
+		<div>For best results, try <a href="http://www.google.com/chrome">Google Chrome</a> or <a href="http://www.mozilla.org/en-US/firefox/new/">Mozilla Firefox</a>.</div>
+		</div>
+	</div>
+
+	<div id="mshp-import">
+		<div class="homepage-note">
+			<h3>Please note</h3>
+			<p>This version of Mapshaper is maintained for readers of <em>Implications of Weighting Metrics for Line Generalisation with Visvalingam’s Algorithm</em> (Visvalingam and Whelan, 2014). The latest version (available <a href="http://mapshaper.org">here</a>) uses a different function for weighted Visvalingam simplification than the function discussed in the paper.</p>
+			<p>There are several options for those who would like to help improve Mapshaper. You can:</p>
+			<ul>
+				<li>request a feature or report a bug using the <a href="https://github.com/mbloch/mapshaper/issues">issue tracker</a></li>
+				<li>view the <a href="https://github.com/mbloch/mapshaper">latest version</a> of the source code on Mapshaper's project page</li>
+				<li>view <a href="https://github.com/mbloch/mapshaper/tree/Visvalingam_2014">this version</a> (0.2.0) of the source code.
+				<li>send feedback to Mapshaper's creator (Matthew Bloch) at masiyou@gmail.com</li>
+			</ul>
+
+		</div>
+		<div class="g-info-box">
+			<h3>Edit a file</h3>
+<p>Drag a Shapefile .shp, GeoJSON or
+TopoJSON file onto this window,
+or <span class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></span> a file from a local folder.</p>
+			<h4>Simplification method</h4>
+			<div id="g-simplification-menu" class="g-option-menu">
+				<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Simplified lines remain within a
+given distance of original lines.
+Good for thinning dense points
+but tends to form spikes at high
+simplification.</div></div></div>
+				</div>
+
+				<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Lines are simplified by iteratively
+removing the point that forms
+the least-area triangle with two
+adjacent points.</div></div></div>
+				</div>
+
+				<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Points located at the vertex
+of more acute angles are
+preferentially removed, for
+a smoother appearance.</div></div></div></div>
+
+			</div>
+
+			<h4>Other options</h4>
+			<div class="g-option-menu">
+
+				<div><label for="g-repair-intersections-opt"><input type="checkbox" checked class="g-checkbox" id="g-repair-intersections-opt"/>repair intersections</label>
+				<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Remove line intersections. Works
+by rolling back simplification
+along intersecting segments.</div></div></div></div>
+
+				<div><label for="g-snap-points-opt"><input type="checkbox" class="g-checkbox" id="g-snap-points-opt" unchecked />auto-snap (experimental)</span></label>
+				<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Automatically fix minor topology
+errors by snapping together points
+that are almost identical. Doesn't
+apply to TopoJSON files.</div></div></div></div>
+
+				<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
+								<div class="g-tip-button">?<div class="g-tip-anchor">
+				<div class="g-tip">Prevent small polygons from
+disappearing at high simplification.
+Protects the largest ring of multi-
+ring features.
+</div></div></div></div>
+
+				<div><input type="text" placeholder="0.0" class="g-clicktext g-import-clicktext" id="g-import-precision-opt" />coordinate precision<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Round coordinates by a specified
+precision. Reduces the size of GeoJSON
+files but can cause intersections and
+collapsed shapes. Uses same units as
+the source file, e.g. decimal degrees for
+most unprojected files.</div></div></div></div>
+			</div>
+		</div>
+	</div> <!-- mshp-import -->
+</div> <!-- mshp-intro-screen -->
+
+<div id="mshp-main-page">
+
+	<div id="mshp-main-map">
+		<div id="g-intersection-display">
+			<div id="g-intersection-count">0 line intersections</div>
+			<div id="g-repair-btn" class="g-text-btn">Repair</div>
+		</div>
+	</div>
+
+</div>
+</div>
+</body>
+</html>
