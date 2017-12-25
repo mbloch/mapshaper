@@ -78,7 +78,8 @@ internal.exportFileContent = function(dataset, opts) {
   }, dataset);
 
   // Adjust layer names, so they can be used as output file names
-  if (opts.file && outFmt != 'topojson') {
+  // (except for multi-layer formats TopoJSON and SVG)
+  if (opts.file && outFmt != 'topojson' && outFmt != 'svg') {
     dataset.layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.file);
     });

@@ -1,3 +1,6 @@
+v0.4.60 (unreleased)
+* Fix: SVG layer ids are based on layer names instead of output file name.
+
 v0.4.59
 * Bug fixes and performance improvements.
 * Added undocumented -i geometry-type= option, to allow importing GeoJSON features containing GeometryCollections with mixed types (which would otherwise cause an error).
