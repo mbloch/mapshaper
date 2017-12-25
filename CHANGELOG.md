@@ -1,4 +1,5 @@
 v0.4.60 (unreleased)
+* Added -o id-prefix=  option for namespacing svg layer and symbol ids.
 * Fix: SVG layer ids are based on layer names instead of output file name.
 
 v0.4.59

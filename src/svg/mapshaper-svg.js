@@ -48,7 +48,7 @@ internal.exportLayerForSVG = function(lyr, dataset, opts) {
   var symbols = SVG.importGeoJSONFeatures(features, opts);
   var layerObj = {
     tag: 'g',
-    properties: {id: lyr.name},
+    properties: {id: (opts.id_prefix || '') + lyr.name},
     children: symbols
   };
 

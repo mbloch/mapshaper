@@ -233,6 +233,9 @@ internal.getOptionParser = function() {
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
     })
+    .option("id-prefix", {
+      describe: "(SVG) prefix for namespacing layer and feature ids"
+    })
     .option("delimiter", {
       describe: "(CSV) field delimiter"
     })

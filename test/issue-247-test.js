@@ -2,7 +2,7 @@ var fs = require('fs'),
     api = require('..'),
     assert = require('assert');
 
-describe('Issue #247: Nicer SVG layer names', function () {
+describe('Issue #247 (Better SVG layer and feature ids)', function () {
   it ('SVG layer gets name of data layer', function(done) {
     var input = {
         type: 'LineString',
@@ -15,6 +15,40 @@ describe('Issue #247: Nicer SVG layer names', function () {
         assert(/<g[^>]* id="line"/.test(svg))
         done();
     })
+  });
+
+  it ('-o id-prefix=<string> is applied to SVG layer and feature ids', function() {
+    var dataset = {
+        layers: [{
+            name: 'dataset',
+            geometry_type: 'point',
+            shapes: [[[0,0], [1,1]]],
+            data: new api.internal.DataTable([{FID: 'A'}])
+        }]
+    };
+    var out = api.internal.exportLayerForSVG(dataset.layers[0], dataset, {id_prefix: 'points-'});
+    var target = {
+        tag: 'g',
+        properties: {id: 'points-dataset'},
+        children: [{
+            tag: 'g',
+            properties: {id: 'points-A'},
+            children: [{
+              "tag": "circle",
+              "properties": {
+                "cx": 0,
+                "cy": 0
+              }
+            }, {
+              "tag": "circle",
+              "properties": {
+                "cx": 1,
+                "cy": 1
+              }
+            }]
+        }]
+    }
+    assert.deepEqual(out, target);
   });
 
 });

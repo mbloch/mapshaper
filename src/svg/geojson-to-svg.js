@@ -20,7 +20,7 @@ SVG.importGeoJSONFeatures = function(features, opts) {
       if (!svgObj.properties) {
         svgObj.properties = {};
       }
-      svgObj.properties.id = obj.id;
+      svgObj.properties.id = (opts.id_prefix || '') + obj.id;
     }
     return svgObj;
   });
