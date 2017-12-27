@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.59';
+var VERSION = '0.4.60';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -14241,7 +14241,7 @@ SVG.importGeoJSONFeatures = function(features, opts) {
       if (!svgObj.properties) {
         svgObj.properties = {};
       }
-      svgObj.properties.id = obj.id;
+      svgObj.properties.id = (opts.id_prefix || '') + obj.id;
     }
     return svgObj;
   });
@@ -14499,7 +14499,7 @@ internal.exportLayerForSVG = function(lyr, dataset, opts) {
   var symbols = SVG.importGeoJSONFeatures(features, opts);
   var layerObj = {
     tag: 'g',
-    properties: {id: lyr.name},
+    properties: {id: (opts.id_prefix || '') + lyr.name},
     children: symbols
   };
 
@@ -14725,7 +14725,8 @@ internal.exportFileContent = function(dataset, opts) {
   }, dataset);
 
   // Adjust layer names, so they can be used as output file names
-  if (opts.file && outFmt != 'topojson') {
+  // (except for multi-layer formats TopoJSON and SVG)
+  if (opts.file && outFmt != 'topojson' && outFmt != 'svg') {
     dataset.layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.file);
     });
@@ -20114,6 +20115,9 @@ internal.getOptionParser = function() {
     })
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
+    })
+    .option("id-prefix", {
+      describe: "(SVG) prefix for namespacing layer and feature ids"
     })
     .option("delimiter", {
       describe: "(CSV) field delimiter"
