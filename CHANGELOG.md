@@ -1,3 +1,6 @@
+v0.4.61 (unreleased)
+* Improve command line help for options with alternative forms.
+
 v0.4.60
 * Added -o id-prefix=  option for namespacing svg layer and symbol ids.
 * Fix: SVG layer ids are based on layer names instead of output file name.
@@ -14,6 +17,7 @@ v0.4.57
 * Bug fix for issue #228 "keep_shapes option doesn't always keep shapes".
 
 v0.4.56
+
 * -clean now removes empty geometries by default.
 * Added -clean allow-empty option to retain empty geometries.
 * Added -clean snap-interval= option to override the default snapping threshold.

@@ -218,113 +218,126 @@ function CommandParser() {
     }
   };
 
-  this.getHelpMessage = function(commandName) {
-    var helpStr = '',
-        cmdPre = '  ',
-        optPre = '  ',
-        exPre = '  ',
-        gutter = '  ',
-        colWidth = 0,
-        detailView = false,
-        cmd, helpCommands;
+  this.getHelpMessage = function(singleCommand) {
+    var helpCommands, lines;
 
-    helpCommands = getCommands().filter(function(cmd) {
-      // hide commands without a description, except section headers
-      return !!cmd.describe || cmd.title;
-    });
-
-    if (commandName) {
-      cmd = utils.find(helpCommands, function(cmd) {return cmd.name == commandName;});
-      if (!cmd) {
-        stop(commandName, "is not a known command");
+    if (singleCommand) {
+      helpCommands = getCommands().filter(function(cmd) {return cmd.name == singleCommand;});
+      if (helpCommands.length != 1) {
+        stop(singleCommand, "is not a known command");
       }
-      detailView = true;
-      helpCommands = [cmd];
+      lines = getSingleCommandLines(helpCommands[0]);
+    } else {
+      helpCommands = getCommands().filter(function(cmd) {return cmd.name && cmd.describe || cmd.title;});
+      lines = getMultiCommandLines(helpCommands);
     }
 
-    if (!detailView) {
-      if (_usage) {
-        helpStr += _usage + "\n\n";
-      }
+    return formatLines(lines);
+
+    function formatLines(lines) {
+      var colWidth = calcColWidth(lines);
+      var gutter = ' ';
+      var helpStr = lines.map(function(line) {
+        if (Array.isArray(line)) {
+          line = '  ' + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
+        }
+        return line;
+      }).join('\n');
+      return helpStr;
     }
 
-    // Format help strings, calc width of left column.
-    colWidth = helpCommands.reduce(function(w, cmd) {
-      var help = cmdPre + (cmd.name ? "-" + cmd.name : "");
-      if (cmd.alias) help += ", -" + cmd.alias;
-      cmd.help = help;
-      if (detailView) {
-        w = cmd.options.reduce(function(w, opt) {
-          if (opt.describe) {
-            w = Math.max(formatOption(opt, cmd), w);
-          }
-          return w;
-        }, w);
-      }
-      return Math.max(w, help.length);
-    }, 0);
+    function getSingleCommandLines(cmd) {
+      var lines = [];
+      // command name
+      lines.push('Command', getCommandLine(cmd));
 
-    // Layout help display
-    helpCommands.forEach(function(cmd) {
-      if (!detailView && cmd.title) {
-        helpStr += cmd.title;
-      }
-      if (detailView) {
-        helpStr += '\nCommand\n';
-      }
-      helpStr += formatHelpLine(cmd.help, cmd.describe);
-      if (detailView && cmd.options.length > 0) {
-        helpStr += '\nOptions\n';
+      // options
+      if (cmd.options.length > 0) {
+        lines.push('', 'Options');
         cmd.options.forEach(function(opt) {
-          if (opt.help && opt.describe) {
-            helpStr += formatHelpLine(opt.help, opt.describe);
-          }
+          lines = lines.concat(getOptionLines(opt, cmd));
         });
       }
-      if (detailView && cmd.examples) {
-        helpStr += '\nExample' + (cmd.examples.length > 1 ? 's' : ''); //  + '\n';
-        cmd.examples.forEach(function(ex) {
-          ex.split('\n').forEach(function(line) {
-            helpStr += '\n' + exPre + line;
+
+      // examples
+      if (cmd.examples) {
+        lines.push('', 'Example' + (cmd.examples.length > 1 ? 's' : ''));
+        cmd.examples.forEach(function(ex, i) {
+          if (i > 0) lines.push('');
+          ex.split('\n').forEach(function(line, i) {
+            lines.push('  ' + line);
           });
-          helpStr += '\n';
         });
       }
-    });
-
-    // additional notes for non-detail view
-    if (!detailView) {
-      if (_examples.length > 0) {
-        helpStr += "\nExamples\n";
-        _examples.forEach(function(str) {
-          helpStr += "\n" + str + "\n";
-        });
-      }
-      if (_note) {
-        helpStr += '\n' + _note;
-      }
+      return lines;
     }
 
-    return helpStr;
-
-    function formatHelpLine(help, desc) {
-      return utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
-    }
-
-    function formatOption(o, cmd) {
-      o.help = optPre;
-      if (o.label) {
-        o.help += o.label;
-      } else if (o.name == cmd.default) {
-        o.help += '<' + o.name + '>';
+    function getOptionLines(opt, cmd) {
+      var lines = [];
+      var description = opt.describe;
+      var label;
+      if (!description) {
+        // empty
+      } else if (opt.label) {
+        lines.push([opt.label, description]);
+      } else if (opt.name == cmd.default) {
+        label = '<' + opt.name + '>';
+        lines.push([label, description]);
+        lines.push([opt.name + '=', 'alternative syntax to ' + label]);
       } else {
-        o.help += o.name;
-        if (o.alias) o.help += ", " + o.alias;
-        if (o.type != 'flag' && !o.assign_to) o.help += "=";
+        label = opt.name;
+        if (opt.alias) label += ', ' + opt.alias;
+        if (opt.type != 'flag' && !opt.assign_to) label += '=';
+        lines.push([label, description]);
       }
-      return o.help.length;
+      return lines;
     }
 
+    function getCommandLine(cmd) {
+      var name = cmd.name ? "-" + cmd.name : '';
+      if (cmd.alias) name += ', -' + cmd.alias;
+      return [name, cmd.describe || '(undocumented command)'];
+    }
+
+    function getMultiCommandLines(commands) {
+      var lines = [];
+      // usage
+      if (_usage) lines.push(_usage);
+
+      // list of commands
+      commands.forEach(function(cmd) {
+        if (cmd.title) {
+          lines.push('', cmd.title);
+        } else {
+          lines.push(getCommandLine(cmd));
+        }
+      });
+
+      // examples
+      if (_examples.length > 0) {
+        lines.push('', 'Examples');
+        _examples.forEach(function(str) {
+          lines.push('', str);
+        });
+      }
+
+      // note
+      if (_note) {
+        lines.push('', _note);
+      }
+      return lines;
+    }
+
+
+    function calcColWidth(lines) {
+      var w = 0;
+      lines.forEach(function(line) {
+        if (Array.isArray(line)) {
+          w = Math.max(w, line[0].length);
+        }
+      });
+      return w;
+    }
   };
 
   this.printHelp = function(command) {

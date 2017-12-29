@@ -243,7 +243,7 @@ internal.getOptionParser = function() {
       type: "flag" // for testing
     });
 
-  parser.section("\nEditing commands");
+  parser.section("Editing commands");
 
   parser.command("clean")
     .describe("repairs overlaps and small gaps in polygon layers")
@@ -855,7 +855,7 @@ internal.getOptionParser = function() {
 
 
   // Experimental commands
-  parser.section("\nExperimental commands (may give unexpected results)");
+  parser.section("Experimental commands (may give unexpected results)");
 
   parser.command("affine")
     .describe("transform coordinates by shifting, scaling and rotating")
@@ -997,7 +997,7 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
 
-  parser.section("\nInformational commands");
+  parser.section("Informational commands");
 
   parser.command("calc")
     .describe("calculate statistics about the features in a layer")
