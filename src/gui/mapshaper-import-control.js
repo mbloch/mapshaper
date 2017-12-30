@@ -227,7 +227,7 @@ function ImportControl(model, opts) {
     var freeform = El('#import-options .advanced-options').node().value,
         opts = gui.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#repair-intersections-opt").node().checked;
-    opts.auto_snap = !!El("#snap-points-opt").node().checked;
+    opts.snap = !!El("#snap-points-opt").node().checked;
     return opts;
   }
 

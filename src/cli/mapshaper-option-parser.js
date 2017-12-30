@@ -123,24 +123,44 @@ function CommandParser() {
       }
     }
 
+    function splitAssignment(token) {
+      var match = assignmentRxp.exec(token),
+          name = match[1],
+          val = utils.trimQuotes(match[2]);
+      return [name, val];
+    }
+
     // Try to read an option for command @cmdDef from @argv
     function readOption(cmd, argv, cmdDef) {
       var token = argv.shift(),
-          optDef = findOptionDefn(token, cmdDef),
-          optName;
+          optName, optDef, parts;
 
+      // handle name=value style options
       if (assignmentRxp.test(token)) {
-        parseAssignment(cmd, token, cmdDef);
-        return;
+        parts = splitAssignment(token);
+        optDef = findOptionDefn(parts[0], cmdDef);
+        if (!optDef) {
+          // left-hand identifier is not a recognized option -- handle later
+        } else if (optDef.type == 'flag' || optDef.assign_to) {
+          stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
+        } else {
+          argv.unshift(parts[1]);
+        }
+      } else {
+        optDef = findOptionDefn(token, cmdDef);
       }
 
       if (!optDef) {
-        // not a defined option; add it to _ array for later processing
+        // token is not a defined option; add it to _ array for later processing
         cmd._.push(token);
         return;
       }
 
-      optName = optDef.alias_to || optDef.name;
+      if (optDef.alias_to) {
+        optDef = findOptionDefn(optDef.alias_to, cmdDef);
+      }
+
+      optName = optDef.name;
       optName = optName.replace(/-/g, '_');
 
       if (optDef.assign_to) {

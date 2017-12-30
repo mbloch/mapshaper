@@ -12,12 +12,12 @@ describe('mapshaper-options.js', function () {
     bad("-i precision " + file1);
     bad("-i precision 0 " + file1);
     // filename expansion
-    good('-i snap', {auto_snap: true}); // same as auto-snap
-    good('-i auto-snap', {auto_snap: true});
+    good('-i snap', {snap: true});
+    good('-i auto-snap', {snap: true});
     good('-i', {}); // now accepting no files
     good("-i " + file1, {files: [file1]});
     good("-i no-topology " + file1 + " auto-snap precision 0.1",
-      {files: [file1], auto_snap: true, no_topology: true, precision: 0.1});
+      {files: [file1], snap: true, no_topology: true, precision: 0.1});
     good("-i " + file1 + " snap-interval 0.001", {snap_interval: 0.001, files: [file1]});
     good("-i merge-files " + file1 + " " + file2, {merge_files: true, files: [file1, file2]});
     good("-i combine-files " + file1 + " " + file2, {combine_files: true, files: [file1, file2]});

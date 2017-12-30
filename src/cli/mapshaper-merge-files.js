@@ -5,7 +5,7 @@ internal.importFiles = function(files, opts) {
   var unbuiltTopology = false;
   var datasets = files.map(function(fname) {
     // import without topology or snapping
-    var importOpts = utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
+    var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
     var dataset = api.importFile(fname, importOpts);
     // check if dataset contains non-topological paths
     // TODO: may also need to rebuild topology if multiple topojson files are merged
@@ -22,7 +22,7 @@ internal.importFiles = function(files, opts) {
   if (unbuiltTopology && !opts.no_topology) {
     // TODO: remove duplication with mapshaper-path-import.js; consider applying
     //   snapping option inside buildTopology()
-    if (opts.auto_snap || opts.snap_interval) {
+    if (opts.auto_snap || opts.snap || opts.snap_interval) { // auto_snap is older name
       internal.snapCoords(combined.arcs, opts.snap_interval);
     }
     api.buildTopology(combined);

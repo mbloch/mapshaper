@@ -122,7 +122,7 @@ function PathImporter(opts) {
       }
       arcs = new ArcCollection(nn, xx, yy);
 
-      if (opts.auto_snap || opts.snap_interval) {
+      if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
         internal.snapCoords(arcs, opts.snap_interval);
       }
     }

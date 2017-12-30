@@ -25,11 +25,6 @@ internal.getOptionParser = function() {
       encodingOpt = {
         describe: "text encoding (applies to .dbf and delimited text files)"
       },
-      autoSnapOpt = {
-        alias: "snap",
-        describe: "snap nearly identical points to fix minor topology errors",
-        type: "flag"
-      },
       snapIntervalOpt = {
         describe: "snapping distance in source units (default is tiny)",
         type: "number"
@@ -71,7 +66,7 @@ internal.getOptionParser = function() {
 
   /*
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
-      "$ mapshaper states.shp auto-snap -simplify 10% -o format=geojson");
+      "$ mapshaper states.shp snap -simplify 10% -o format=geojson");
 
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
@@ -107,7 +102,11 @@ internal.getOptionParser = function() {
       describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
-    .option("auto-snap", autoSnapOpt)
+    .option("snap", {
+      type: 'flag',
+      describe: "snap nearly identical points to fix minor topology errors"
+    })
+    .option("auto-snap", {alias_to: 'snap'})
     .option("snap-interval", snapIntervalOpt)
     .option("encoding", encodingOpt)
     /*
@@ -695,7 +694,6 @@ internal.getOptionParser = function() {
     })
     .option("cartesian", {
       // describe: "(deprecated) alias for planar",
-      type: "flag",
       alias_to: "planar"
     })
     .option("keep-shapes", {
