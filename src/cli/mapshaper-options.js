@@ -602,9 +602,12 @@ internal.getOptionParser = function() {
   parser.command("proj")
     .describe("project your data (using Proj.4)")
     .flag("multi_arg")
-    .option("projection", {
-      label: "<projection>",
+    .option("crs", {
+      DEFAULT: true,
       describe: "set destination CRS using a Proj.4 definition or alias"
+    })
+    .option("projection", {
+      alias_to: 'crs'
     })
     .option("match", {
       describe: "set destination CRS using a .prj file or layer id"

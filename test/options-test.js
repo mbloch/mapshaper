@@ -210,11 +210,21 @@ describe('mapshaper-options.js', function () {
 
   describe('proj', function() {
     good("-proj +proj=merc +ellps=sphere", {
-      projection: '+proj=merc +ellps=sphere'
+      crs: '+proj=merc +ellps=sphere'
     });
 
     good("-proj albersusa densify", {
-      projection: 'albersusa',
+      crs: 'albersusa',
+      densify: true
+    });
+
+    good("-proj crs='+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'", {
+      crs: '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
+    });
+
+    // projection= is alias for crs=, for backwards compatibility
+    good("-proj projection=albersusa densify", {
+      crs: 'albersusa',
       densify: true
     });
 

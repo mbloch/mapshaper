@@ -42,7 +42,7 @@ function ImportFileProxy(model) {
 //
 internal.initProjLibrary = function(opts, done) {
   var mproj = require('mproj');
-  var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.projection || ''].join(' '));
+  var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.crs || ''].join(' '));
   // skip loaded libs
   libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
   loadProjLibs(libs, done);

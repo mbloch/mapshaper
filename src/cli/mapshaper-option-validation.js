@@ -59,16 +59,16 @@ function validateProjOpts(cmd) {
   });
 
   if (proj4.length > 0) {
-    cmd.options.projection = proj4.join(' ');
+    cmd.options.crs = proj4.join(' ');
   } else if (_.length > 0) {
-    cmd.options.projection = _.shift();
+    cmd.options.crs = _.shift();
   }
 
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));
   }
 
-  if (!(cmd.options.projection  || cmd.options.match || cmd.options.from)) {
+  if (!(cmd.options.crs || cmd.options.match || cmd.options.from)) {
     stop("Missing projection data");
   }
 }

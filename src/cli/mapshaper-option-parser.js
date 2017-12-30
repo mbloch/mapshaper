@@ -283,7 +283,7 @@ function CommandParser() {
       } else if (opt.name == cmd.default) {
         label = '<' + opt.name + '>';
         lines.push([label, description]);
-        lines.push([opt.name + '=', 'alternative syntax to ' + label]);
+        lines.push([opt.name + '=', 'equivalent to ' + label]);
       } else {
         label = opt.name;
         if (opt.alias) label += ', ' + opt.alias;
