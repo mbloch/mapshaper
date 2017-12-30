@@ -83,8 +83,9 @@ internal.getOptionParser = function() {
     .validate(validateInputOpts)
     .flag("multi_arg")
     .option("files", {
-      label: "<files>",
-      describe: "files to import (separated by spaces), or - to use stdin"
+      DEFAULT: true,
+      type: "strings",
+      describe: "one or more files to import, or - to use stdin"
     })
     .option("merge-files", {
       describe: "merge features from compatible files into the same layer",

@@ -5,10 +5,15 @@ function validateInputOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
 
-  if (_[0] == '-' || _[0] == '/dev/stdin') {
-    o.stdin = true;
-  } else if (_.length > 0) {
-    o.files = cli.expandInputFiles(_);
+  if (_.length > 0 && !o.files) {
+    o.files = _;
+  }
+  if (o.files) {
+    o.files = cli.expandInputFiles(o.files);
+    if (o.files[0] == '-' || o.files[0] == '/dev/stdin') {
+      delete o.files;
+      o.stdin = true;
+    }
   }
 
   if ("precision" in o && o.precision > 0 === false) {

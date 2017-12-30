@@ -23,6 +23,8 @@ describe('mapshaper-options.js', function () {
     good("-i combine-files " + file1 + " " + file2, {combine_files: true, files: [file1, file2]});
     good("-", {stdin: true});
     good("/dev/stdin", {stdin: true});
+    good("files=states.json", {files:['states.json']});
+    good("files=states.json,counties.json", {files:['states.json', 'counties.json']});
     good("file.shp name=states", {files:['file.shp'], name: 'states'});
     good("file.shp name=", {files:['file.shp'], name: ''});
     good("file.shp name=''", {files:['file.shp'], name: ''});
