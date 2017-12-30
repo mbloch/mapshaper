@@ -105,48 +105,26 @@ function CommandParser() {
       return commandRxp.test(s);
     }
 
-    // Try to parse an assignment @token for command @cmdDef
-    function parseAssignment(cmd, token, cmdDef) {
-      var match = assignmentRxp.exec(token),
-          name = match[1],
-          val = utils.trimQuotes(match[2]),
-          optDef = findOptionDefn(name, cmdDef);
-
-      if (!optDef) {
-        // Assignment to an unrecognized identifier could be an expression
-        // (e.g. -each 'id=$.id') -- save for later parsing
-        cmd._.push(token);
-      } else if (optDef.type == 'flag' || optDef.assign_to) {
-        stop("-" + cmdDef.name + " " + name + " option doesn't take a value");
-      } else {
-        readOption(cmd, [name, val], cmdDef);
-      }
-    }
-
-    function splitAssignment(token) {
-      var match = assignmentRxp.exec(token),
-          name = match[1],
-          val = utils.trimQuotes(match[2]);
-      return [name, val];
-    }
-
     // Try to read an option for command @cmdDef from @argv
     function readOption(cmd, argv, cmdDef) {
       var token = argv.shift(),
           optName, optDef, parts;
 
-      // handle name=value style options
       if (assignmentRxp.test(token)) {
+        // token looks like name=value style option
         parts = splitAssignment(token);
         optDef = findOptionDefn(parts[0], cmdDef);
         if (!optDef) {
-          // left-hand identifier is not a recognized option -- handle later
+          // left-hand identifier is not a recognized option...
+          // assignment to an unrecognized identifier could be an expression
+          // (e.g. -each 'id=$.id') -- handle this case below
         } else if (optDef.type == 'flag' || optDef.assign_to) {
           stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
         } else {
           argv.unshift(parts[1]);
         }
       } else {
+        // looks like a simple spaced-delimited argument
         optDef = findOptionDefn(token, cmdDef);
       }
 
@@ -170,6 +148,13 @@ function CommandParser() {
       } else {
         cmd.options[optName] = readOptionValue(argv, optDef);
       }
+    }
+
+    function splitAssignment(token) {
+      var match = assignmentRxp.exec(token),
+          name = match[1],
+          val = utils.trimQuotes(match[2]);
+      return [name, val];
     }
 
     // Read an option value for @optDef from @argv
