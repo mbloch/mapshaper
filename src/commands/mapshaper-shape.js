@@ -54,7 +54,7 @@ api.rectangle = function(source, opts) {
   var dataset = internal.importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
   if (sourceInfo) {
-    internal.setDatasetProjection(dataset, sourceInfo);
+    internal.setDatasetCRS(dataset, sourceInfo);
   }
   return dataset;
 };

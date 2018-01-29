@@ -1,5 +1,6 @@
 v0.4.61 (unreleased)
-* Improve command line help for options with alternative forms.
+* Improvements to command line help.
+* Support parameters in miles, feet and km in addition to meters (the default)
 
 v0.4.60
 * Added -o id-prefix=  option for namespacing svg layer and symbol ids.

@@ -6,7 +6,7 @@ describe('mapshaper-merge-files.js', function () {
     var a = 'test/test_data/three_points.geojson',
         b = 'test/test_data/text/two_states.csv';
     var combined = api.internal.importFiles([a, b], {});
-    assert(api.internal.getDatasetProjection(combined).is_latlong);
+    assert(api.internal.getDatasetCRS(combined).is_latlong);
     assert.deepEqual(combined.info.input_files, ['test/test_data/three_points.geojson', 'test/test_data/text/two_states.csv']);
     assert.deepEqual(combined.info.input_formats, ['geojson', 'dsv']);
   })
@@ -15,7 +15,7 @@ describe('mapshaper-merge-files.js', function () {
       var a = 'test/test_data/six_counties.shp',
           b = 'test/test_data/two_states.json',
           combined = api.internal.importFiles([a, b], {});
-      assert(api.internal.getDatasetProjection(combined).is_latlong);
+      assert(api.internal.getDatasetCRS(combined).is_latlong);
       // TODO: check geometry
   })
 

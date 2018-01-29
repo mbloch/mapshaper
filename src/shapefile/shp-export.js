@@ -20,7 +20,7 @@ internal.exportPrjFile = function(lyr, dataset) {
   var prj = info.prj;
   if (!prj) {
     try {
-      prj = internal.crsToPrj(internal.getDatasetProjection(dataset));
+      prj = internal.crsToPrj(internal.getDatasetCRS(dataset));
     } catch(e) {}
   }
   if (!prj) {

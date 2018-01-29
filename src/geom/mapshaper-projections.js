@@ -21,7 +21,7 @@ internal.findProjLibs = function(str) {
 internal.getProjInfo = function(dataset) {
   var P, info;
   try {
-    P = internal.getDatasetProjection(dataset);
+    P = internal.getDatasetCRS(dataset);
     if (P) {
       info = internal.crsToProj4(P);
     }
@@ -78,7 +78,7 @@ internal.getProjection = function(str) {
   return P || null;
 };
 
-internal.setDatasetProjection = function(dataset, info) {
+internal.setDatasetCRS = function(dataset, info) {
   dataset.info = dataset.info || {};
   // Assumes that proj4 object is never mutated.
   // TODO: assign a copy of crs (if present)
@@ -86,7 +86,7 @@ internal.setDatasetProjection = function(dataset, info) {
   dataset.info.prj = info.prj;
 };
 
-internal.getDatasetProjection = function(dataset) {
+internal.getDatasetCRS = function(dataset) {
   var info = dataset.info || {},
       P = info.crs;
   if (!P && info.prj) {

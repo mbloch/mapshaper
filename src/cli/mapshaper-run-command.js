@@ -232,12 +232,12 @@ api.runCommand = function(cmd, catalog, cb) {
             var destArg = opts.match || opts.crs || opts.projection;
             var srcInfo, destInfo;
             if (opts.from) {
-              srcInfo = internal.getProjectionInfo(opts.from, catalog);
+              srcInfo = internal.getCrsInfo(opts.from, catalog);
               if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
-              internal.setDatasetProjection(targ.dataset, srcInfo);
+              internal.setDatasetCRS(targ.dataset, srcInfo);
             }
             if (destArg) {
-              destInfo = internal.getProjectionInfo(destArg, catalog);
+              destInfo = internal.getCrsInfo(destArg, catalog);
               api.proj(targ.dataset, destInfo, opts);
             }
           });

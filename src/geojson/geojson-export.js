@@ -96,7 +96,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
 
 
 internal.getRFC7946Warnings = function(dataset) {
-  var P = internal.getDatasetProjection(dataset);
+  var P = internal.getDatasetCRS(dataset);
   var str;
   if (!P || !P.is_latlong) {
     str = 'RFC 7946 warning: non-WGS84 coordinates.';
@@ -106,7 +106,7 @@ internal.getRFC7946Warnings = function(dataset) {
 };
 
 internal.getDatasetBbox = function(dataset, rfc7946) {
-  var P = internal.getDatasetProjection(dataset),
+  var P = internal.getDatasetCRS(dataset),
       wrapped = rfc7946 && P && P.is_latlong,
       westBounds = new Bounds(),
       eastBounds = new Bounds(),

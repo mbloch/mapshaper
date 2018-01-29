@@ -9,7 +9,7 @@ api.graticule = function(dataset, opts) {
   var dest, src;
   if (dataset) {
     // project graticule to match dataset
-    dest = internal.getDatasetProjection(dataset);
+    dest = internal.getDatasetCRS(dataset);
     src = internal.getProjection('wgs84');
     if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
     internal.projectDataset(graticule, src, dest, {}); // TODO: densify?

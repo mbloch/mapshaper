@@ -7,7 +7,7 @@ describe('mapshaper-graticule.js', function () {
 
     api.internal.testCommands('-graticule', function(err, dataset) {
       assert.equal(dataset.layers[0].name, 'graticule');
-      assert(api.internal.getDatasetProjection(dataset).is_latlong);
+      assert(api.internal.getDatasetCRS(dataset).is_latlong);
       done();
     });
   });
