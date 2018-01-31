@@ -5,16 +5,16 @@
 // TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
 // TODO: consider separate gap removal function as an alternative to merging slivers
 //
-api.filterSlivers = function(lyr, arcs, opts) {
+api.filterSlivers = function(lyr, dataset, opts) {
   if (lyr.geometry_type != 'polygon') {
     return 0;
   }
-  return internal.filterSlivers(lyr, arcs, opts);
+  return internal.filterSlivers(lyr, dataset, opts);
 };
 
-internal.filterSlivers = function(lyr, arcs, opts) {
-  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, arcs) :
-    internal.getSliverTest(arcs);
+internal.filterSlivers = function(lyr, dataset, opts) {
+  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset) :
+    internal.getSliverTest(dataset.arcs);
   var removed = 0;
   var pathFilter = function(path, i, paths) {
     if (ringTest(path)) {

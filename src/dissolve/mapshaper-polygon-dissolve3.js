@@ -23,18 +23,11 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
 };
 
 internal.getGapFillTest = function(dataset, opts) {
-  var threshold, test;
+  var test;
   if (opts.min_gap_area === 0) {
-    threshold = 0;
-  } else if (opts.min_gap_area) {
-    threshold = internal.convertAreaParam(opts.min_gap_area, dataset);
-  } else {
-    threshold = null;
-  }
-  if (threshold === 0) {
     test = function() {return false;}; // don't fill any gaps
-  } else if (threshold > 0) {
-    test = internal.getMinAreaTest(threshold, dataset.arcs);
+  } else if (opts.min_gap_area) {
+    test = internal.getMinAreaTest(opts.min_gap_area, dataset);
   } else {
     test = internal.getSliverTest(dataset.arcs); // default is same as -filter-slivers default
   }

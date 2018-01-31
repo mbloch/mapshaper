@@ -1,6 +1,7 @@
 /* @requires mapshaper-shape-geom, mapshaper-filter, mapshaper-shape-utils */
 
-api.filterIslands = function(lyr, arcs, opts) {
+api.filterIslands = function(lyr, dataset, opts) {
+  var arcs = dataset.arcs;
   var removed = 0;
   if (lyr.geometry_type != 'polygon') {
     return;
@@ -8,7 +9,7 @@ api.filterIslands = function(lyr, arcs, opts) {
 
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
-      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, arcs));
+      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset));
     }
     if (opts.min_vertices) {
       removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
@@ -29,7 +30,9 @@ internal.getVertexCountTest = function(minVertices, arcs) {
   };
 };
 
-internal.getMinAreaTest = function(minArea, arcs) {
+internal.getMinAreaTest = function(areaParam, dataset) {
+  var arcs = dataset.arcs;
+  var minArea = internal.convertAreaParam(areaParam, dataset);
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(path) {
     var area = pathArea(path, arcs);

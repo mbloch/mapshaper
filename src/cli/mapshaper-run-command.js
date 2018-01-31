@@ -156,10 +156,10 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.filterGeom, targetLayers, arcs, opts);
 
     } else if (name == 'filter-islands') {
-      internal.applyCommand(api.filterIslands, targetLayers, arcs, opts);
+      internal.applyCommand(api.filterIslands, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-slivers') {
-      internal.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
+      internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));

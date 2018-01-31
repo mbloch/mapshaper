@@ -401,7 +401,7 @@ internal.getOptionParser = function() {
   parser.command("filter-islands")
     .describe("remove small detached polygon rings (islands)")
     .option("min-area", {
-      type: "number",
+      type: "area",
       describe: "remove small-area islands (sq meters or projected units)"
     })
     .option("min-vertices", {
@@ -417,7 +417,7 @@ internal.getOptionParser = function() {
   parser.command("filter-slivers")
     .describe("remove small polygon rings")
     .option("min-area", {
-      type: "number",
+      type: "area",
       describe: "remove small-area rings (sq meters or projected units)"
     })
     /*
