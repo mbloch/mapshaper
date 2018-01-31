@@ -8,6 +8,6 @@ api.dissolve2 = function(layers, dataset, opts) {
   var nodes = internal.addIntersectionCuts(dataset, opts);
   T.stop('Add cuts');
   return layers.map(function(lyr) {
-    return internal.dissolvePolygonLayer2(lyr, nodes.arcs, opts);
+    return internal.dissolvePolygonLayer2(lyr, dataset, opts);
   });
 };

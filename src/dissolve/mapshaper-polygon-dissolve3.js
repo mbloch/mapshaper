@@ -7,7 +7,7 @@ mapshaper-ring-nesting
 */
 
 // Assumes that arcs do not intersect except at endpoints
-internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
+internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   opts = opts || {};
   var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
@@ -18,30 +18,36 @@ internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var shapes2 = internal.dissolvePolygons2(groups, arcs, opts);
+  var shapes2 = internal.dissolvePolygons2(groups, dataset, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
-
-internal.getGapFillTest = function(arcs, opts) {
-  var threshold = opts.min_gap_area;
-  var test;
+internal.getGapFillTest = function(dataset, opts) {
+  var threshold, test;
+  if (opts.min_gap_area === 0) {
+    threshold = 0;
+  } else if (opts.min_gap_area) {
+    threshold = internal.convertAreaParam(opts.min_gap_area, dataset);
+  } else {
+    threshold = null;
+  }
   if (threshold === 0) {
     test = function() {return false;}; // don't fill any gaps
   } else if (threshold > 0) {
-    test = internal.getMinAreaTest(threshold, arcs);
+    test = internal.getMinAreaTest(threshold, dataset.arcs);
   } else {
-    test = internal.getSliverTest(arcs); // default is same as -filter-slivers default
+    test = internal.getSliverTest(dataset.arcs); // default is same as -filter-slivers default
   }
   return test;
 };
 
-internal.dissolvePolygons2 = function(shapes, arcs, opts) {
+internal.dissolvePolygons2 = function(shapes, dataset, opts) {
+  var arcs = dataset.arcs;
   var arcFilter = internal.getArcPresenceTest(shapes, arcs);
   var nodes = new NodeCollection(arcs, arcFilter);
   var divide = internal.getHoleDivider(nodes);
   var dissolve = internal.getRingIntersector(nodes, 'dissolve');
-  var gapTest = internal.getGapFillTest(arcs, opts);
+  var gapTest = internal.getGapFillTest(dataset, opts);
   T.start();
   var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
   T.stop("Build mosaic");

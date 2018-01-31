@@ -3,7 +3,10 @@ var assert = require('assert'),
     ArcCollection = api.internal.ArcCollection,
     NodeCollection = api.internal.NodeCollection,
     dissolve2 = api.dissolve2,
-    dissolvePolygons = api.internal.dissolvePolygonLayer2;
+    dissolvePolygons = function(lyr, arcs, opts) {
+      // wrapper for bw compatibility with tests
+      return api.internal.dissolvePolygonLayer2(lyr, {arcs: arcs}, opts);
+    };
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
 

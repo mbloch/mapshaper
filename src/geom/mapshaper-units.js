@@ -54,10 +54,15 @@ internal.getIntervalConversionFactor = function(paramUnits, crs) {
   return k;
 };
 
-internal.parseMeasure = function(s) {
-  var match = /(sq|)([a-z]+)(2|)$/i.exec(s);
+internal.parseMeasure = function(m) {
+  var s = utils.isString(m) ? m : '';
+  var match = /(sq|)([a-z]+)(2|)$/i.exec(s); // units rxp
   var o = {};
-  if (match) {
+  if (utils.isNumber(m)) {
+    o.value = m;
+  } else if (s === '') {
+    o.value = NaN;
+  } else if (match) {
     o.units = UNITS_LOOKUP[match[2].toLowerCase()];
     if (!o.units) {
       stop('Unknown units:', match[0]);
@@ -67,8 +72,8 @@ internal.parseMeasure = function(s) {
   } else {
     o.value = Number(s);
   }
-  if (isNaN(o.value) || !s.length) {
-    stop('Invalid parameter:', s);
+  if (isNaN(o.value)) {
+    stop('Invalid parameter:', m);
   }
   return o;
 };

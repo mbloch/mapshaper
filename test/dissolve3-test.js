@@ -68,6 +68,20 @@ describe('mapshaper-dissolve2.js II', function () {
       test(input, {min_gap_area: 1.1}, expect, done);
     })
 
+    it('min-gap-area=<area> supports units', function(done) {
+      // Fig. 14
+      var input = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 13], [3, 13], [3, 0], [0, 0]],
+          [[1, 1], [1.02, 1], [1.02, 1.02], [1, 1.02], [1, 1]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 13], [3, 13], [3, 0], [0, 0]]]
+      };
+      test(input, {min_gap_area: '10km2'}, expect, done);
+    })
+
 
     it('dissolving single polygon with min-gap-area=<smaller area> retains hole', function (done) {
       // Fig. 14

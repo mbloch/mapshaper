@@ -31,7 +31,7 @@ internal.getOptionParser = function() {
       },
       minGapAreaOpt = {
         describe: "smaller gaps than this are filled (default is small)",
-        type: "number"
+        type: "area"
       },
       sumFieldsOpt = {
         describe: "fields to sum when dissolving  (comma-sep. list)",
