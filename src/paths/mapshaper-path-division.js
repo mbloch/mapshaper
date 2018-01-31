@@ -3,6 +3,7 @@ mapshaper-segment-intersection,
 mapshaper-dataset-utils,
 mapshaper-path-index
 mapshaper-polygon-repair
+mapshaper-units
 */
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
@@ -20,11 +21,15 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
   var snapDist, snapCount, dupeCount, nodes;
+  if (opts.snap_interval) {
+    snapDist = internal.convertIntervalParam(opts.snap_interval, dataset);
+  } else {
+    snapDist = internal.getHighPrecisionSnapInterval(arcs);
+  }
 
   // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
   // used to reset simplification)
   arcs.flatten();
-  snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
   snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
   dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {

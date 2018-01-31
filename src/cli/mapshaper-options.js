@@ -27,7 +27,7 @@ internal.getOptionParser = function() {
       },
       snapIntervalOpt = {
         describe: "snapping distance in source units (default is tiny)",
-        type: "number"
+        type: "distance"
       },
       minGapAreaOpt = {
         describe: "smaller gaps than this are filled (default is small)",

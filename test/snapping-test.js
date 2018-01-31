@@ -28,6 +28,34 @@ describe('mapshaper-snapping.js', function () {
   })
   */
 
+  describe('-i snap', function () {
+    it('polyline A, outside threshold', function (done) {
+      var input = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0.1, 0.1], [1, 1]]
+      };
+      api.applyCommands('-i snap-interval=0.11 line.json -o', {'line.json': input}, function(err, data) {
+        var output = JSON.parse(data['line.json']);
+        assert.deepEqual(output.geometries[0].coordinates, input.coordinates);
+        done();
+      });
+    })
+
+
+    it('polyline A, inside threshold', function (done) {
+      var input = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0.05, 0.05], [0.1, 0.1], [1, 1], [1.1, 1.1]]
+      };
+      api.applyCommands('-i snap-interval=0.2 line.json -o', {'line.json': input}, function(err, data) {
+        var output = JSON.parse(data['line.json']);
+        assert.deepEqual(output.geometries[0].coordinates, [[0, 0],  [1, 1]]);
+        done();
+      });
+    })
+
+  })
+
   describe('sortCoordinateIds()', function () {
 
     it('test 2', function () {

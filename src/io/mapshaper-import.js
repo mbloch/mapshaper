@@ -20,6 +20,8 @@ internal.importContent = function(obj, opts) {
     data = internal.importJSON(obj.json, opts);
     fileFmt = data.format;
     dataset = data.dataset;
+    internal.cleanPathsAfterImport(dataset, opts);
+
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
@@ -28,6 +30,8 @@ internal.importContent = function(obj, opts) {
     fileFmt = 'shapefile';
     data = obj.shp;
     dataset = internal.importShapefile(obj, opts);
+    internal.cleanPathsAfterImport(dataset, opts);
+
   } else if (obj.dbf) {
     fileFmt = 'dbf';
     data = obj.dbf;

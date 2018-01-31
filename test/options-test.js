@@ -18,7 +18,8 @@ describe('mapshaper-options.js', function () {
     good("-i " + file1, {files: [file1]});
     good("-i no-topology " + file1 + " auto-snap precision 0.1",
       {files: [file1], snap: true, no_topology: true, precision: 0.1});
-    good("-i " + file1 + " snap-interval 0.001", {snap_interval: 0.001, files: [file1]});
+    good("-i " + file1 + " snap-interval 0.001", {snap_interval: '0.001', files: [file1]});
+    good("-i " + file1 + " snap-interval 1ft", {snap_interval: '1ft', files: [file1]});
     good("-i merge-files " + file1 + " " + file2, {merge_files: true, files: [file1, file2]});
     good("-i combine-files " + file1 + " " + file2, {combine_files: true, files: [file1, file2]});
     good("-", {stdin: true});

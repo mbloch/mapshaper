@@ -15,16 +15,11 @@ internal.importFiles = function(files, opts) {
     return dataset;
   });
   var combined = internal.mergeDatasets(datasets);
-
   // Build topology, if needed
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
   // (but problem of mismatched coordinates due to quantization in input files.)
   if (unbuiltTopology && !opts.no_topology) {
-    // TODO: remove duplication with mapshaper-path-import.js; consider applying
-    //   snapping option inside buildTopology()
-    if (opts.auto_snap || opts.snap || opts.snap_interval) { // auto_snap is older name
-      internal.snapCoords(combined.arcs, opts.snap_interval);
-    }
+    internal.cleanPathsAfterImport(combined, opts);
     api.buildTopology(combined);
   }
   return combined;

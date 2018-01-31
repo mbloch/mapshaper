@@ -185,6 +185,8 @@ function CommandParser() {
         val = token.split(',').map(parseFloat);
       } else if (type == 'percent') {
         val = utils.parsePercent(token);
+      } else if (type == 'distance' || type == 'area') {
+        val = token; // string value is parsed by command function
       } else {
         val = token; // assume string type
       }

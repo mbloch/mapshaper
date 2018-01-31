@@ -4,7 +4,29 @@ mapshaper-shape-geom,
 mapshaper-snapping,
 mapshaper-shape-utils,
 mapshaper-polygon-repair
+mapshaper-units
 */
+
+// Apply snapping, remove duplicate coords and clean up defective paths in a dataset
+// Assumes that any CRS info has been added to the dataset
+// @opts: import options
+internal.cleanPathsAfterImport = function(dataset, opts) {
+  var arcs = dataset.arcs;
+  var snapDist;
+  if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
+    if (opts.snap_interval) {
+      snapDist = internal.convertIntervalParam(opts.snap_interval, dataset);
+    }
+    if (arcs) {
+      internal.snapCoords(arcs, snapDist);
+    }
+  }
+  dataset.layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    }
+  });
+};
 
 // Accumulates points in buffers until #endPath() is called
 // @drain callback: function(xarr, yarr, size) {}
@@ -108,6 +130,7 @@ function PathImporter(opts) {
     var arcs;
     var layers;
     var lyr = {name: ''};
+    var snapDist;
 
     if (dupeCount > 0) {
       verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
@@ -122,9 +145,9 @@ function PathImporter(opts) {
       }
       arcs = new ArcCollection(nn, xx, yy);
 
-      if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
-        internal.snapCoords(arcs, opts.snap_interval);
-      }
+      //if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
+      //  internal.snapCoords(arcs, opts.snap_interval);
+      //}
     }
 
     if (collectionType == 'mixed') {
@@ -142,9 +165,9 @@ function PathImporter(opts) {
     }
 
     layers.forEach(function(lyr) {
-      if (internal.layerHasPaths(lyr)) {
-        internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
-      }
+      //if (internal.layerHasPaths(lyr)) {
+        //internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+      //}
       if (lyr.data) {
         internal.fixInconsistentFields(lyr.data.getRecords());
       }

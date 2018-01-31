@@ -71,37 +71,53 @@ describe('mapshaper-units.js', function () {
   })
 
   describe('convertAreaParam()', function () {
-    it('km2/wgs84', function (done) {
+    it('km2/wgs84', function () {
       var json = require('fs').readFileSync('test/test_data/three_points.geojson', 'utf8');
       var dataset = api.internal.importGeoJSON(json, {});
       var val = api.internal.convertAreaParam('20km2', dataset);
       assert.equal(val, 20e6)
-      done();
     })
   })
 
   describe('convertDistanceParam()', function () {
-     var json = require('fs').readFileSync('test/test_data/three_points.geojson', 'utf8');
-     var dataset = api.internal.importGeoJSON(json, {});
-   it('areal units trigger error', function (done) {
+    var json = require('fs').readFileSync('test/test_data/three_points.geojson', 'utf8');
+    var dataset = api.internal.importGeoJSON(json, {});
+      it('areal units trigger error', function () {
       assert.throws(function() {
         var val = api.internal.convertDistanceParam('20km2', dataset);
       })
-      done();
     })
 
-    it('miles/wgs84', function (done) {
+    it('miles/wgs84', function () {
       var val = api.internal.convertDistanceParam('10mi', dataset);
       assert.equal(val, 10 * 1609.344);
-      done();
     })
 
-    it('no units/wgs84', function (done) {
+    it('no units/wgs84', function () {
       var val = api.internal.convertDistanceParam('4000', dataset);
       assert.equal(val, 4000);
-      done();
     })
 
   })
 
+  describe('convertIntervalParam()', function () {
+    var json = require('fs').readFileSync('test/test_data/three_points.geojson', 'utf8');
+    var dataset = api.internal.importGeoJSON(json, {});
+    it('km units trigger error for latlong dataset', function () {
+      assert.throws(function() {
+        var val = api.internal.convertIntervalParam('20km', dataset);
+      })
+    })
+
+    it('mi units trigger error for latlong dataset', function () {
+      assert.throws(function() {
+        var val = api.internal.convertIntervalParam('10mi', dataset);
+      })
+    })
+
+    it('no units/wgs84', function () {
+      var val = api.internal.convertIntervalParam('4000', dataset);
+      assert.equal(val, 4000);
+    })
+  })
 })

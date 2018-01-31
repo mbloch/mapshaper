@@ -60,7 +60,7 @@ internal.parseMeasure = function(s) {
   if (match) {
     o.units = UNITS_LOOKUP[match[2].toLowerCase()];
     if (!o.units) {
-      error('Unknown units:', match[0]);
+      stop('Unknown units:', match[0]);
     }
     o.areal = !!(match[1] || match[3]);
     o.value = Number(s.substring(0, s.length - match[0].length));
@@ -68,7 +68,7 @@ internal.parseMeasure = function(s) {
     o.value = Number(s);
   }
   if (isNaN(o.value) || !s.length) {
-    error('Invalid parameter:', s);
+    stop('Invalid parameter:', s);
   }
   return o;
 };
@@ -83,7 +83,24 @@ internal.convertDistanceParam = function(opt, dataset) {
   var o = internal.parseMeasure(opt);
   var k = internal.getIntervalConversionFactor(o.units, internal.getDatasetCRS(dataset));
   if (o.areal) {
-    error('Expected a distance, received an area:', s);
+    stop('Expected a distance, received an area:', opt);
   }
   return o.value * k;
 };
+
+// Same as convertDistanceParam(), except:
+//   in the case of latlong datasets, coordinates are unitless (instead of meters),
+//   and parameters with units trigger an error
+internal.convertIntervalParam = function(opt, dataset) {
+  var crs = internal.getDatasetCRS(dataset);
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, internal.getDatasetCRS(dataset));
+  if (o.units && crs && crs.is_latlong) {
+    stop('Parameter does not support distance units with latlong datasets');
+  }
+  if (o.areal) {
+    stop('Expected a distance, received an area:', opt);
+  }
+  return o.value * k;
+};
+
