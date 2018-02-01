@@ -1,8 +1,13 @@
 
-/* @requires mapshaper-nodes, mapshaper-shape-geom, mapshaper-segment-geom */
+/* @requires
+mapshaper-nodes
+mapshaper-shape-geom
+mapshaper-segment-geom
+mapshaper-units
+*/
 
 internal.closeGaps = function(lyr, dataset, opts) {
-  var maxGapLen = opts.gap_tolerance > 0 ? opts.gap_tolerance : 0;
+  var maxGapLen = opts.gap_tolerance ? internal.convertIntervalParam(opts.gap_tolerance, dataset) : 0;
   var arcs = dataset.arcs;
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
