@@ -19,10 +19,10 @@ api.simplify = function(dataset, opts) {
 
   if (utils.isNonNegNumber(opts.percentage)) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
-  } else if (utils.isNonNegNumber(opts.interval)) {
-    arcs.setRetainedInterval(opts.interval);
+  } else if (opts.interval || opts.interval === 0) {
+    arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
   } else if (opts.resolution) {
-    arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
+    arcs.setRetainedInterval(internal.convertSimplifyResolution(opts.resolution, arcs, opts));
   } else {
     stop("Missing a simplification amount");
   }
@@ -199,21 +199,28 @@ internal.calcSphericalInterval = function(xres, yres, bounds) {
   return internal.calcPlanarInterval(xres, yres, width, height);
 };
 
-internal.calcSimplifyInterval = function(arcs, opts) {
-  var res, interval, bounds;
-  if (opts.interval) {
-    interval = opts.interval;
-  } else if (opts.resolution) {
-    res = internal.parseSimplifyResolution(opts.resolution);
-    bounds = arcs.getBounds();
-    if (internal.useSphericalSimplify(arcs, opts)) {
-      interval = internal.calcSphericalInterval(res[0], res[1], bounds);
-    } else {
-      interval = internal.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
-    }
-    // scale interval to double the resolution (single-pixel resolution creates
-    //  visible artefacts)
-    interval *= 0.5;
+internal.convertSimplifyInterval = function(param, dataset, opts) {
+  var interval;
+  if (internal.useSphericalSimplify(dataset.arcs, opts)) {
+    interval = internal.convertDistanceParam(param, dataset);
+  } else {
+    interval = internal.convertIntervalParam(param, dataset);
   }
+  return interval;
+};
+
+// convert resolution to an interval
+internal.convertSimplifyResolution = function(param, arcs, opts) {
+  var res = internal.parseSimplifyResolution(param);
+  var bounds = arcs.getBounds();
+  var interval;
+  if (internal.useSphericalSimplify(arcs, opts)) {
+    interval = internal.calcSphericalInterval(res[0], res[1], bounds);
+  } else {
+    interval = internal.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
+  }
+  // scale interval to double the resolution (single-pixel resolution creates
+  //  visible artifacts)
+  interval *= 0.5;
   return interval;
 };

@@ -4,6 +4,40 @@ var assert = require('assert'),
 
 describe("mapshaper-simplify.js", function() {
 
+  describe('convertSimplifyInterval', function () {
+    it('wgs84 / km', function () {
+      var input = {
+        type: 'LineString',
+        coordinates: [[-100, 40], [-101, 42], [-105, 47]]
+      }
+      var dataset = api.internal.importGeoJSON(input, {});
+      var interval = api.internal.convertSimplifyInterval('0.5km', dataset, {});
+      assert.equal(interval, 500)
+    })
+
+    it('Error: wgs84 / km / planar', function() {
+      assert.throws(function() {
+        var input = {
+          type: 'LineString',
+          coordinates: [[-100, 40], [-101, 42], [-105, 47]]
+        }
+        var dataset = api.internal.importGeoJSON(input, {});
+        var interval = api.internal.convertSimplifyInterval('0.5km', dataset, {planar: true});
+      });
+    })
+
+    it('wgs84 / [no units] / planer', function() {
+      var input = {
+        type: 'LineString',
+        coordinates: [[-100, 40], [-101, 42], [-105, 47]]
+      }
+      var dataset = api.internal.importGeoJSON(input, {});
+      var interval = api.internal.convertSimplifyInterval(3, dataset, {planar: true});
+      assert.equal(interval, 3)
+    })
+  })
+
+
   describe('-simplify resolution= option', function () {
 
     it('resolution=100x100', function (done) {

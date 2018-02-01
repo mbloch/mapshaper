@@ -680,7 +680,7 @@ internal.getOptionParser = function() {
     .option("interval", {
       // alias: "i",
       describe: "output resolution as a distance (e.g. 100)",
-      type: "number"
+      type: "distance"
     })
     /*
     .option("value", {
