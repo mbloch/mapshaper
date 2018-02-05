@@ -120,4 +120,37 @@ describe('mapshaper-units.js', function () {
       assert.equal(val, 4000);
     })
   })
+
+  describe('convertIntervalPair()', function () {
+    var json = require('fs').readFileSync('test/test_data/three_points.geojson', 'utf8');
+    var dataset = api.internal.importGeoJSON(json, {});
+    it('less than two args = error', function () {
+      assert.throws(function() {
+        var val = api.internal.convertIntervalPair(['20'], dataset);
+      })
+    })
+
+    it('mi units trigger error for latlong dataset', function () {
+      assert.throws(function() {
+        var val = api.internal.convertIntervalPair(['10mi', '2mi'], dataset);
+      })
+    })
+
+    it('no units/wgs84', function () {
+      var val = api.internal.convertIntervalPair(['4000', '2000'], dataset);
+      assert.deepEqual(val, [4000, 2000]);
+    })
+
+    it('km/mercator', function(done) {
+      var cmd = '-i test/test_data/three_points.geojson -proj webmercator';
+      api.internal.testCommands(cmd, function(err, dataset) {
+        var pair = api.internal.convertIntervalPair(['2km','5km'], dataset);
+        assert.deepEqual(pair, [2000, 5000])
+        done();
+      });
+    })
+
+  })
+
+
 })

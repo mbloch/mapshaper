@@ -10,6 +10,9 @@ api.affine = function(targetLayers, dataset, opts) {
   // TODO: explore alternative: if some arcs are shared between transformed and
   //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
   //
+  var rotateArg = opts.rotate || 0;
+  var scaleArg = opts.scale || 1;
+  var shiftArg = opts.shift ? internal.convertIntervalPair(opts.shift, dataset) : [0, 0];
   var arcs = dataset.arcs;
   var targetShapes = [];
   var otherShapes = [];
@@ -36,10 +39,10 @@ api.affine = function(targetLayers, dataset, opts) {
       otherShapes = otherShapes.concat(misses);
     }
   });
-  opts = internal.getAffineOpts({arcs: dataset.arcs, layers: [{
+  var anchorArg = internal.getAffineAnchor({arcs: dataset.arcs, layers: [{
     geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
     shapes: targetShapes}]}, opts);
-  transform = internal.getAffineTransform(opts.rotate, opts.scale, opts.shift, opts.anchor);
+  transform = internal.getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
   if (targetShapes.length > 0) {
     targetFlags = new Uint8Array(arcs.size());
     otherFlags = new Uint8Array(arcs.size());
@@ -62,21 +65,16 @@ api.affine = function(targetLayers, dataset, opts) {
   });
 };
 
-internal.getAffineOpts = function(dataset, opts) {
-  var o = {
-    shift: opts.shift || [0, 0],
-    rotate: opts.rotate || 0,
-    scale: opts.scale || 1
-  };
-  var bounds;
+internal.getAffineAnchor = function(dataset, opts) {
+  var anchor, bounds;
   if (opts.anchor) {
-    o.anchor = opts.anchor;
+    anchor = opts.anchor;
   } else {
     // get bounds of selected shapes to calculate center of rotation/scale
     bounds = internal.getDatasetBounds(dataset);
-    o.anchor = [bounds.centerX(), bounds.centerY()];
+    anchor = [bounds.centerX(), bounds.centerY()];
   }
-  return o;
+  return anchor;
 };
 
 // TODO: handle problems with unprojected datasets

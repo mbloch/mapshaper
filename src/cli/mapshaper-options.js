@@ -863,7 +863,7 @@ internal.getOptionParser = function() {
     .describe("transform coordinates by shifting, scaling and rotating")
     .flag("no_args")
     .option("shift", {
-      type: 'numbers',
+      type: 'strings',
       describe: "x,y offsets in source units (e.g. 5000,-5000)"
     })
     .option("scale", {

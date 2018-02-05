@@ -109,3 +109,16 @@ internal.convertIntervalParam = function(opt, dataset) {
   return o.value * k;
 };
 
+internal.convertIntervalPair = function(opt, dataset) {
+  var a, b;
+  if (!Array.isArray(opt) || opt.length != 2) {
+    stop('Expected two distance parameters, received', opt);
+  }
+  a = internal.parseMeasure(opt[0]);
+  b = internal.parseMeasure(opt[1]);
+  if (a.units && !b.units || b.units && !a.units) {
+    stop('Both parameters should have units:', opt);
+  }
+  return [internal.convertIntervalParam(opt[0], dataset),
+          internal.convertIntervalParam(opt[1], dataset)];
+};
