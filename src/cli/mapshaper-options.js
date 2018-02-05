@@ -966,7 +966,7 @@ internal.getOptionParser = function() {
     })
     .option("offset", {
       describe: "space around bbox or source layer",
-      type: "number"
+      type: "distance"
     })
     .option("source", {
       describe: "name of layer to enclose"

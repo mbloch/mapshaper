@@ -15,7 +15,7 @@ internal.cleanPathsAfterImport = function(dataset, opts) {
   var snapDist;
   if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
     if (opts.snap_interval) {
-      snapDist = internal.convertIntervalParam(opts.snap_interval, dataset);
+      snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
     }
     if (arcs) {
       internal.snapCoords(arcs, snapDist);

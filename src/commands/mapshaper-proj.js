@@ -78,7 +78,7 @@ internal.getCrsInfo = function(name, catalog) {
       // defn = internal.crsToProj4(P);
     } else {
       // assume name is a projection defn
-      info.crs = internal.getProjection(name);
+      info.crs = internal.getCRS(name);
     }
   }
   return info;

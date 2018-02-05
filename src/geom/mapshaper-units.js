@@ -78,15 +78,15 @@ internal.parseMeasure = function(m) {
   return o;
 };
 
-internal.convertAreaParam = function(opt, dataset) {
+internal.convertAreaParam = function(opt, crs) {
   var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, internal.getDatasetCRS(dataset));
+  var k = internal.getIntervalConversionFactor(o.units, crs);
   return o.value * k * k;
 };
 
-internal.convertDistanceParam = function(opt, dataset) {
+internal.convertDistanceParam = function(opt, crs) {
   var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, internal.getDatasetCRS(dataset));
+  var k = internal.getIntervalConversionFactor(o.units, crs);
   if (o.areal) {
     stop('Expected a distance, received an area:', opt);
   }
@@ -96,10 +96,9 @@ internal.convertDistanceParam = function(opt, dataset) {
 // Same as convertDistanceParam(), except:
 //   in the case of latlong datasets, coordinates are unitless (instead of meters),
 //   and parameters with units trigger an error
-internal.convertIntervalParam = function(opt, dataset) {
-  var crs = internal.getDatasetCRS(dataset);
+internal.convertIntervalParam = function(opt, crs) {
   var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, internal.getDatasetCRS(dataset));
+  var k = internal.getIntervalConversionFactor(o.units, crs);
   if (o.units && crs && crs.is_latlong) {
     stop('Parameter does not support distance units with latlong datasets');
   }
@@ -109,7 +108,7 @@ internal.convertIntervalParam = function(opt, dataset) {
   return o.value * k;
 };
 
-internal.convertIntervalPair = function(opt, dataset) {
+internal.convertIntervalPair = function(opt, crs) {
   var a, b;
   if (!Array.isArray(opt) || opt.length != 2) {
     stop('Expected two distance parameters, received', opt);
@@ -119,6 +118,6 @@ internal.convertIntervalPair = function(opt, dataset) {
   if (a.units && !b.units || b.units && !a.units) {
     stop('Both parameters should have units:', opt);
   }
-  return [internal.convertIntervalParam(opt[0], dataset),
-          internal.convertIntervalParam(opt[1], dataset)];
+  return [internal.convertIntervalParam(opt[0], crs),
+          internal.convertIntervalParam(opt[1], crs)];
 };

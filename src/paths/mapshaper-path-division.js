@@ -22,7 +22,7 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   var arcs = dataset.arcs;
   var snapDist, snapCount, dupeCount, nodes;
   if (opts.snap_interval) {
-    snapDist = internal.convertIntervalParam(opts.snap_interval, dataset);
+    snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
   } else {
     snapDist = internal.getHighPrecisionSnapInterval(arcs);
   }

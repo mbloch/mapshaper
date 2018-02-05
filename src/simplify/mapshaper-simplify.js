@@ -200,11 +200,12 @@ internal.calcSphericalInterval = function(xres, yres, bounds) {
 };
 
 internal.convertSimplifyInterval = function(param, dataset, opts) {
+  var crs = internal.getDatasetCRS(dataset);
   var interval;
   if (internal.useSphericalSimplify(dataset.arcs, opts)) {
-    interval = internal.convertDistanceParam(param, dataset);
+    interval = internal.convertDistanceParam(param, crs);
   } else {
-    interval = internal.convertIntervalParam(param, dataset);
+    interval = internal.convertIntervalParam(param, crs);
   }
   return interval;
 };

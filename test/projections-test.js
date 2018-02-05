@@ -6,8 +6,8 @@ var util = require('./helpers.js');
 
 function roundtrip(proj, xy) {
   it (proj, function() {
-    var src = api.internal.getProjection('wgs84');
-    var dest = api.internal.getProjection(proj);
+    var src = api.internal.getCRS('wgs84');
+    var dest = api.internal.getCRS(proj);
     var fwd = api.internal.getProjTransform(src, dest);
     var inv = api.internal.getProjTransform(dest, src);
     var xy2 = fwd(xy[0], xy[1]);
@@ -22,7 +22,7 @@ function roundtrip(proj, xy) {
 function invalid(proj) {
   it('invalid: ' + proj, function() {
     assert.throws(function() {
-      api.internal.getProjection(proj);
+      api.internal.getCRS(proj);
     });
   })
 }
@@ -60,8 +60,8 @@ describe('mapshaper-projections.js', function() {
 
   describe('test aliases', function () {
     it('webmercator', function () {
-      var a = api.internal.getProjection('webmercator');
-      var b = api.internal.getProjection('+proj=merc +a=6378137');
+      var a = api.internal.getCRS('webmercator');
+      var b = api.internal.getCRS('+proj=merc +a=6378137');
       var lp = {lam: 0.3, phi: 0.2};
       assert.deepEqual(mproj.pj_fwd(lp, a), mproj.pj_fwd(lp, b));
     })

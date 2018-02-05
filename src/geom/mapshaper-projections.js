@@ -63,7 +63,7 @@ internal.getProjDefn = function(str) {
   return defn;
 };
 
-internal.getProjection = function(str) {
+internal.getCRS = function(str) {
   var defn = internal.getProjDefn(str);
   var P;
   if (typeof defn == 'function') {
@@ -78,6 +78,8 @@ internal.getProjection = function(str) {
   return P || null;
 };
 
+// @info: info property of source dataset (instead of crs object, so wkt string
+//        can be preserved if present)
 internal.setDatasetCRS = function(dataset, info) {
   dataset.info = dataset.info || {};
   // Assumes that proj4 object is never mutated.
@@ -94,7 +96,7 @@ internal.getDatasetCRS = function(dataset) {
   }
   if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
     // use wgs84 for probable latlong datasets with unknown datums
-    P = internal.getProjection('wgs84');
+    P = internal.getCRS('wgs84');
   }
   return P;
 };
@@ -124,7 +126,7 @@ internal.translatePrj = function(str) {
 
 // Convert contents of a .prj file to a projection object
 internal.parsePrj = function(str) {
-  return internal.getProjection(internal.translatePrj(str));
+  return internal.getCRS(internal.translatePrj(str));
 };
 
 function AlbersNYT() {

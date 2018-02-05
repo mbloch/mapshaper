@@ -12,7 +12,7 @@ api.affine = function(targetLayers, dataset, opts) {
   //
   var rotateArg = opts.rotate || 0;
   var scaleArg = opts.scale || 1;
-  var shiftArg = opts.shift ? internal.convertIntervalPair(opts.shift, dataset) : [0, 0];
+  var shiftArg = opts.shift ? internal.convertIntervalPair(opts.shift, internal.getDatasetCRS(dataset)) : [0, 0];
   var arcs = dataset.arcs;
   var targetShapes = [];
   var otherShapes = [];

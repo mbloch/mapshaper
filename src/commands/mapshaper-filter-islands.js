@@ -32,7 +32,7 @@ internal.getVertexCountTest = function(minVertices, arcs) {
 
 internal.getMinAreaTest = function(areaParam, dataset) {
   var arcs = dataset.arcs;
-  var minArea = internal.convertAreaParam(areaParam, dataset);
+  var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(path) {
     var area = pathArea(path, arcs);

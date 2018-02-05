@@ -7,7 +7,7 @@ mapshaper-units
 */
 
 internal.closeGaps = function(lyr, dataset, opts) {
-  var maxGapLen = opts.gap_tolerance ? internal.convertIntervalParam(opts.gap_tolerance, dataset) : 0;
+  var maxGapLen = opts.gap_tolerance ? internal.convertIntervalParam(opts.gap_tolerance, internal.getDatasetCRS(dataset)) : 0;
   var arcs = dataset.arcs;
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);

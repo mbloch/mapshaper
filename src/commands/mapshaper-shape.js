@@ -37,18 +37,21 @@ api.shape = function(opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var bounds, coords, sourceInfo;
+  var offset, bounds, crs, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
     sourceInfo = source.dataset.info;
+    crs = internal.getDatasetCRS(source.dataset);
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
+    crs = internal.getCRS('wgs84');
   }
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
   }
-  if (opts.offset > 0) {
-    bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);
+  if (opts.offset) {
+    offset = internal.convertIntervalParam(opts.offset, crs);
+    bounds.padBounds(offset, offset, offset, offset);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
