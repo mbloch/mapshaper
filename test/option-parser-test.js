@@ -24,6 +24,9 @@ describe('mapshaper-option-parser.js', function () {
         list4 = '"white", "black"',
         expected = ['white', 'black'];
 
+    var list5 = 'rgba(0, 0, 0, 0), rgb(22,32,0),aliceblue',
+        expected5 = ['rgba(0,0,0,0)', 'rgb(22,32,0)', 'aliceblue'];
+
     it(list1, function() {
       assert.deepEqual(internal.parseColorList(list1), expected);
     })
@@ -35,6 +38,9 @@ describe('mapshaper-option-parser.js', function () {
     })
     it(list4, function() {
       assert.deepEqual(internal.parseColorList(list4), expected);
+    })
+    it(list5, function() {
+      assert.deepEqual(internal.parseColorList(list5), expected5);
     })
   })
 })

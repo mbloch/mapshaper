@@ -427,10 +427,14 @@ internal.parseStringList = function(token) {
 // Accept spaces and/or commas as delimiters
 internal.parseColorList = function(token) {
   var delim = ', ';
-  var list = internal.splitTokens(token, delim);
+  var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
+  var list = internal.splitTokens(token2, delim);
   if (list.length == 1) {
     list = internal.splitTokens(list[0], delim);
   }
+  list = list.map(function(str) {
+    return str.replace(/~~~/g, ',');
+  });
   return list;
 };
 
