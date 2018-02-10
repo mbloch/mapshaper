@@ -1,27 +1,34 @@
 /* @requires mapshaper-dataset-utils, geojson-import */
 
 api.pointGrid = function(dataset, opts) {
-  var bbox, gridLyr;
-  if (opts.bbox) {
-    bbox = opts.bbox;
-  } else if (dataset) {
-    bbox = internal.getDatasetBounds(dataset).toArray();
-  } else {
-    bbox = [-180, -90, 180, 90];
-  }
-  return internal.createPointGridLayer(internal.createPointGrid(bbox, opts), opts);
+  var gridOpts = internal.getPointGridParams(dataset, opts);
+  return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
 };
 
 api.polygonGrid = function(dataset, opts) {
-  var bbox, gridLyr;
-  if (opts.bbox) {
-    bbox = opts.bbox;
-  } else if (dataset) {
-    bbox = internal.getDatasetBounds(dataset).toArray();
+  var gridOpts = internal.getPointGridParams(dataset, opts);
+  return internal.createPolygonGridDataset(internal.createPointGrid(gridOpts), opts);
+};
+
+internal.getPointGridParams = function(dataset, opts) {
+  var params = {};
+  var crs = dataset ? internal.getDatasetCRS(dataset) : null;
+  if (opts.interval) {
+    params.interval = internal.convertIntervalParam(opts.interval, crs);
+  } else if (opts.rows > 0 && opts.cols > 0) {
+    params.rows = opts.rows;
+    params.cols = opts.cols;
   } else {
-    bbox = [-180, -90, 180, 90];
+    // error, handled later
   }
-  return internal.createPolygonGridDataset(internal.createPointGrid(bbox, opts), opts);
+  if (opts.bbox) {
+    params.bbox = opts.bbox;
+  } else if (dataset) {
+    params.bbox = internal.getDatasetBounds(dataset).toArray();
+  } else {
+    params.bbox = [-180, -90, 180, 90];
+  }
+  return params;
 };
 
 internal.createPointGridLayer = function(rows, opts) {
@@ -66,8 +73,9 @@ internal.createPolygonGridDataset = function(rows, opts) {
 };
 
 // Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
-internal.createPointGrid = function(bbox, opts) {
-  var w = bbox[2] - bbox[0],
+internal.createPointGrid = function(opts) {
+  var bbox = opts.bbox,
+      w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
       rowsArr = [], rowArr,
       cols, rows, dx, dy, x0, y0, x, y;

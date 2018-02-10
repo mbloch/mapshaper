@@ -3,6 +3,60 @@ var api = require('../'),
 
 describe('mapshaper-point-grid.js', function () {
 
+  describe('-point-grid command', function () {
+
+    it('create a grid without importing a file using <rows,cols>', function (done) {
+      var cmd = '-point-grid bbox=10,10,20,20 2,2 -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        var expected = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'Point',
+            coordinates: [12.5, 12.5]
+          }, {
+            type: 'Point',
+            coordinates: [17.5, 12.5]
+          }, {
+            type: 'Point',
+            coordinates: [12.5, 17.5]
+          }, {
+            type: 'Point',
+            coordinates: [17.5, 17.5]
+          }]
+        };
+        assert.deepEqual(json, expected);
+        done();
+      })
+    })
+
+    it('create a grid without importing a file using interval=', function (done) {
+      var cmd = '-point-grid bbox=10,10,20,20 interval=5 -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        var expected = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'Point',
+            coordinates: [12.5, 12.5]
+          }, {
+            type: 'Point',
+            coordinates: [17.5, 12.5]
+          }, {
+            type: 'Point',
+            coordinates: [12.5, 17.5]
+          }, {
+            type: 'Point',
+            coordinates: [17.5, 17.5]
+          }]
+        };
+        assert.deepEqual(json, expected);
+        done();
+      })
+    })
+
+  })
+
   it('grid with rows, cols has margins', function() {
     var opts = {
       bbox: [0, 0, 2, 4],

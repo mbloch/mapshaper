@@ -19,6 +19,23 @@ describe('mapshaper-points.js', function () {
     })
   })
 
+  it ('interpolated points with interval in km', function(done) {
+    var a = {
+      type: 'LineString',
+      coordinates: [[100, 100], [100, 10000]]
+    };
+    var expected = {
+      type: 'MultiPoint',
+      coordinates: [[100, 100], [100, 2100], [100, 4100], [100, 6100], [100, 8100], [100, 10000]]
+    };
+    var cmd = '-i a.json -proj from=webmercator -points interpolated interval=2km -o';
+    api.applyCommands(cmd, {'a.json': a}, function(err, output) {
+      var geom = JSON.parse(output['a.json']);
+      assert.deepEqual(geom.geometries[0], expected);
+      done();
+    })
+  })
+
   it ('-points command with vertices option', function(done) {
     var a = {
       type: 'Polygon',

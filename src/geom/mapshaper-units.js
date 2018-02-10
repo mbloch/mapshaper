@@ -30,8 +30,14 @@ internal.getIntervalConversionFactor = function(paramUnits, crs) {
       k;
 
   if (crs) {
-    // calculations on latlong coordinates use meters
-    fromCRS = crs.is_latlong ? 1 : crs.to_meter;
+    if (crs.is_latlong) {
+      // calculations on latlong coordinates typically use meters
+      fromCRS = 1;
+    } else if (crs.to_meter > 0) {
+      fromCRS = crs.to_meter;
+    } else {
+      error('Invalid CRS');
+    }
   }
   if (paramUnits) {
     fromParam = TO_METERS[paramUnits];

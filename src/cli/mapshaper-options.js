@@ -521,7 +521,7 @@ internal.getOptionParser = function() {
     })
     .option('interval', {
       describe: 'distance between adjacent points, in source units',
-      type: 'number'
+      type: 'distance'
     })
     .option("cols", {
       type: "integer"
@@ -570,7 +570,7 @@ internal.getOptionParser = function() {
     })
     .option("interval", {
       describe: "distance between interpolated points (meters or projected units)",
-      type: "number"
+      type: "distance"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)

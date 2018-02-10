@@ -219,7 +219,7 @@ api.runCommand = function(cmd, catalog, cb) {
       catalog.addDataset(api.polygonGrid(targetDataset, opts));
 
     } else if (name == 'points') {
-      outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
+      outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, targetDataset, opts);
 
     } else if (name == 'polygons') {
       outputLayers = api.polygons(targetLayers, targetDataset, opts);

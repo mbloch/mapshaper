@@ -7,11 +7,12 @@ mapshaper-inner-points
 mapshaper-geom
 */
 
-api.createPointLayer = function(srcLyr, arcs, opts) {
+api.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
+  var arcs = dataset.arcs;
   if (opts.interpolated) {
     // TODO: consider making attributed points, including distance from origin
-    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, arcs, opts);
+    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.endpoints) {
@@ -76,10 +77,10 @@ internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
   return coords;
 };
 
-internal.interpolatedPointsFromVertices = function(lyr, arcs, opts) {
-  var interval = opts.interval;
+internal.interpolatedPointsFromVertices = function(lyr, dataset, opts) {
+  var interval = internal.convertIntervalParam(opts.interval, internal.getDatasetCRS(dataset));
   var coords;
-  if (interval > 0 === false) stop("Invalid interpolation interval:", interval);
+  if (interval > 0 === false) stop("Invalid interpolation interval:", opts.interval);
   if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
   return lyr.shapes.map(function(shp, shpId) {
     coords = [];
@@ -87,7 +88,7 @@ internal.interpolatedPointsFromVertices = function(lyr, arcs, opts) {
     return coords.length > 0 ? coords : null;
   });
   function nextPart(ids) {
-    var points = internal.interpolatePointsAlongArc(ids, arcs, interval);
+    var points = internal.interpolatePointsAlongArc(ids, dataset.arcs, interval);
     coords = coords.concat(points);
   }
 };
