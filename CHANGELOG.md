@@ -1,6 +1,7 @@
-v0.4.61 (unreleased)
+v0.4.61
 * Improvements to command line help.
-* Support parameters in miles, feet and km in addition to meters (the default)
+* Add support for specifying most distance parameters using a variety of units. For example. For example: -affine shift=1km,2km
+* Add support for specifying areal parameters with units. For example: -filter-islands min-area=5sqkm. Recognizes sqmi/mi2, sqkm/km2, sqm/m2, sqft/ft2.
 
 v0.4.60
 * Added -o id-prefix=  option for namespacing svg layer and symbol ids.
