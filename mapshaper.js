@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.60';
+var VERSION = '0.4.61';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -3411,6 +3411,9 @@ api.affine = function(targetLayers, dataset, opts) {
   // TODO: explore alternative: if some arcs are shared between transformed and
   //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
   //
+  var rotateArg = opts.rotate || 0;
+  var scaleArg = opts.scale || 1;
+  var shiftArg = opts.shift ? internal.convertIntervalPair(opts.shift, internal.getDatasetCRS(dataset)) : [0, 0];
   var arcs = dataset.arcs;
   var targetShapes = [];
   var otherShapes = [];
@@ -3437,10 +3440,10 @@ api.affine = function(targetLayers, dataset, opts) {
       otherShapes = otherShapes.concat(misses);
     }
   });
-  opts = internal.getAffineOpts({arcs: dataset.arcs, layers: [{
+  var anchorArg = internal.getAffineAnchor({arcs: dataset.arcs, layers: [{
     geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
     shapes: targetShapes}]}, opts);
-  transform = internal.getAffineTransform(opts.rotate, opts.scale, opts.shift, opts.anchor);
+  transform = internal.getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
   if (targetShapes.length > 0) {
     targetFlags = new Uint8Array(arcs.size());
     otherFlags = new Uint8Array(arcs.size());
@@ -3463,21 +3466,16 @@ api.affine = function(targetLayers, dataset, opts) {
   });
 };
 
-internal.getAffineOpts = function(dataset, opts) {
-  var o = {
-    shift: opts.shift || [0, 0],
-    rotate: opts.rotate || 0,
-    scale: opts.scale || 1
-  };
-  var bounds;
+internal.getAffineAnchor = function(dataset, opts) {
+  var anchor, bounds;
   if (opts.anchor) {
-    o.anchor = opts.anchor;
+    anchor = opts.anchor;
   } else {
     // get bounds of selected shapes to calculate center of rotation/scale
     bounds = internal.getDatasetBounds(dataset);
-    o.anchor = [bounds.centerX(), bounds.centerY()];
+    anchor = [bounds.centerX(), bounds.centerY()];
   }
-  return o;
+  return anchor;
 };
 
 // TODO: handle problems with unprojected datasets
@@ -5452,6 +5450,394 @@ internal.repairSelfIntersections = function(lyr, nodes) {
 
 
 
+// A matrix class that supports affine transformations (scaling, translation, rotation).
+// Elements:
+//   a  c  tx
+//   b  d  ty
+//   0  0  1  (u v w are not used)
+//
+function Matrix2D() {
+  this.a = 1;
+  this.c = 0;
+  this.tx = 0;
+  this.b = 0;
+  this.d = 1;
+  this.ty = 0;
+}
+
+Matrix2D.prototype.transformXY = function(x, y, p) {
+  p = p || {};
+  p.x = x * this.a + y * this.c + this.tx;
+  p.y = x * this.b + y * this.d + this.ty;
+  return p;
+};
+
+Matrix2D.prototype.translate = function(dx, dy) {
+  this.tx += dx;
+  this.ty += dy;
+};
+
+Matrix2D.prototype.rotate = function(q, x, y) {
+  var cos = Math.cos(q);
+  var sin = Math.sin(q);
+  x = x || 0;
+  y = y || 0;
+  this.a = cos;
+  this.c = -sin;
+  this.b = sin;
+  this.d = cos;
+  this.tx += x - x * cos + y * sin;
+  this.ty += y - x * sin - y * cos;
+};
+
+Matrix2D.prototype.scale = function(sx, sy) {
+  this.a *= sx;
+  this.c *= sx;
+  this.b *= sy;
+  this.d *= sy;
+};
+
+
+
+
+// A compound projection, consisting of a default projection and one or more rectangular frames
+// that are reprojected and/or affine transformed.
+// @proj Default projection.
+function MixedProjection(proj) {
+  var frames = [];
+  var mixed = utils.extend({}, proj);
+  var mproj = require('mproj');
+
+  // @proj2 projection to use.
+  // @ctr1 {lam, phi} center of the frame contents.
+  // @ctr2 {lam, phi} geo location to move the frame center
+  // @frameWidth Width of the frame in base projection units
+  // @frameHeight Height of the frame in base projection units
+  // @scale Scale factor; 1 = no scaling.
+  // @rotation Rotation in degrees; 0 = no rotation.
+  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
+    var m = new Matrix2D(),
+        a2 = proj.a * 2,
+        xy1 = toRawXY(ctr1, proj),
+        xy2 = toRawXY(ctr2, proj),
+        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
+            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
+    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
+    m.scale(scale, scale);
+    m.transformXY(xy1.x, xy1.y, xy1);
+    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
+    frames.push({
+      bbox: bbox,
+      matrix: m,
+      projection: proj2
+    });
+    return this;
+  };
+
+  // convert a latlon position to x,y in earth radii relative to datum origin
+  function toRawXY(lp, P) {
+    var xy = mproj.pj_fwd_deg(lp, P);
+    return {
+      x: (xy.x / P.fr_meter - P.x0) / P.a,
+      y: (xy.y / P.fr_meter - P.y0) / P.a
+    };
+  }
+
+  mixed.fwd = function(lp, xy) {
+    var lam = lp.lam,
+        phi = lp.phi,
+        frame, bbox;
+    proj.fwd(lp, xy);
+    for (var i=0, n=frames.length; i<n; i++) {
+      frame = frames[i];
+      bbox = frame.bbox;
+      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
+        // copy lp (some proj functions may modify it)
+        frame.projection.fwd({lam: lam, phi: phi}, xy);
+        frame.matrix.transformXY(xy.x, xy.y, xy);
+        break;
+      }
+    }
+  };
+
+  return mixed;
+}
+
+
+
+
+// some aliases
+internal.projectionIndex = {
+  robinson: '+proj=robin +datum=WGS84',
+  webmercator: '+proj=merc +a=6378137 +b=6378137',
+  wgs84: '+proj=longlat +datum=WGS84',
+  albersusa: AlbersNYT
+};
+
+// This stub is replaced when loaded in GUI, which may need to load some files
+internal.initProjLibrary = function(opts, done) {done();};
+
+// Find Proj.4 definition file names in strings like "+init=epsg:3000"
+// (Used by GUI, defined here for testing)
+internal.findProjLibs = function(str) {
+  var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
+  return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
+};
+
+internal.getProjInfo = function(dataset) {
+  var P, info;
+  try {
+    P = internal.getDatasetCRS(dataset);
+    if (P) {
+      info = internal.crsToProj4(P);
+    }
+  } catch(e) {}
+  return info || "[unknown]";
+};
+
+internal.crsToProj4 = function(P) {
+  return require('mproj').internal.get_proj_defn(P);
+};
+
+internal.crsToPrj = function(P) {
+  var wkt;
+  try {
+    wkt = require('mproj').internal.wkt_from_proj4(P);
+  } catch(e) {
+
+  }
+  return wkt;
+};
+
+internal.crsAreEqual = function(a, b) {
+  var str = internal.crsToProj4(a);
+  return !!str && str == internal.crsToProj4(b);
+};
+
+internal.getProjDefn = function(str) {
+  var mproj = require('mproj');
+  var defn;
+  if (str in internal.projectionIndex) {
+    defn = internal.projectionIndex[str];
+  } else if (str in mproj.internal.pj_list) {
+    defn = '+proj=' + str;
+  } else if (/^\+/.test(str)) {
+    defn = str;
+  } else {
+    stop("Unknown projection definition:", str);
+  }
+  return defn;
+};
+
+internal.getCRS = function(str) {
+  var defn = internal.getProjDefn(str);
+  var P;
+  if (typeof defn == 'function') {
+    P = defn();
+  } else {
+    try {
+      P = require('mproj').pj_init(defn);
+    } catch(e) {
+      stop('Unable to use projection', defn, '(' + e.message + ')');
+    }
+  }
+  return P || null;
+};
+
+// @info: info property of source dataset (instead of crs object, so wkt string
+//        can be preserved if present)
+internal.setDatasetCRS = function(dataset, info) {
+  dataset.info = dataset.info || {};
+  // Assumes that proj4 object is never mutated.
+  // TODO: assign a copy of crs (if present)
+  dataset.info.crs = info.crs;
+  dataset.info.prj = info.prj;
+};
+
+internal.getDatasetCRS = function(dataset) {
+  var info = dataset.info || {},
+      P = info.crs;
+  if (!P && info.prj) {
+    P = internal.parsePrj(info.prj);
+  }
+  if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
+    // use wgs84 for probable latlong datasets with unknown datums
+    P = internal.getCRS('wgs84');
+  }
+  return P;
+};
+
+internal.printProjections = function() {
+  var index = require('mproj').internal.pj_list;
+  var msg = 'Proj4 projections\n';
+  Object.keys(index).sort().forEach(function(id) {
+    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
+  });
+  msg += '\nAliases';
+  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
+    msg += '\n  ' + n;
+  });
+  message(msg);
+};
+
+internal.translatePrj = function(str) {
+  var proj4;
+  try {
+    proj4 = require('mproj').internal.wkt_to_proj4(str);
+  } catch(e) {
+    stop('Unusable .prj file (' + e.message + ')');
+  }
+  return proj4;
+};
+
+// Convert contents of a .prj file to a projection object
+internal.parsePrj = function(str) {
+  return internal.getCRS(internal.translatePrj(str));
+};
+
+function AlbersNYT() {
+  var mproj = require('mproj');
+  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
+  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
+  var mixed = new MixedProjection(aea)
+    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
+    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
+  return mixed;
+}
+
+
+
+
+var UNITS_LOOKUP = {
+  m: 'meters',
+  meter: 'meters',
+  meters: 'meters',
+  mi: 'miles',
+  mile: 'miles',
+  miles: 'miles',
+  km: 'kilometers',
+  ft: 'feet',
+  feet: 'feet'
+};
+
+// From pj_units.js in mapshaper-proj
+var TO_METERS = {
+  meters: 1,
+  kilometers: 1000,
+  feet: 0.3048, // International Standard Foot
+  miles: 1609.344 // International Statute Mile
+};
+
+// Return coeff. for converting a distance measure to dataset coordinates
+// @paramUnits: units code of distance param, or null if units are not specified
+// @crs: Proj.4 CRS object, or null (unknown latlong CRS);
+//
+internal.getIntervalConversionFactor = function(paramUnits, crs) {
+  var fromParam = 0,
+      fromCRS = 0,
+      k;
+
+  if (crs) {
+    if (crs.is_latlong) {
+      // calculations on latlong coordinates typically use meters
+      fromCRS = 1;
+    } else if (crs.to_meter > 0) {
+      fromCRS = crs.to_meter;
+    } else {
+      error('Invalid CRS');
+    }
+  }
+  if (paramUnits) {
+    fromParam = TO_METERS[paramUnits];
+    if (!fromParam) error('Unknown units:', paramUnits);
+  }
+
+  if (fromParam && fromCRS) {
+    // known param units, known CRS conversion
+    k = fromParam / fromCRS;
+  } else if (!fromParam && !fromCRS) {
+    // unknown param units, unknown (projected) CRS -- no scaling
+    k = 1;
+  } else if (fromParam && !fromCRS) {
+    // known param units, unknown CRS -- error condition, not convertible
+    stop('Unable to convert', paramUnits, 'to unknown coordinates');
+  } else if (!fromParam && fromCRS) {
+    // unknown param units, known CRS -- assume param in meters (bw compatibility)
+    k = 1 / fromCRS;
+  }
+  return k;
+};
+
+internal.parseMeasure = function(m) {
+  var s = utils.isString(m) ? m : '';
+  var match = /(sq|)([a-z]+)(2|)$/i.exec(s); // units rxp
+  var o = {};
+  if (utils.isNumber(m)) {
+    o.value = m;
+  } else if (s === '') {
+    o.value = NaN;
+  } else if (match) {
+    o.units = UNITS_LOOKUP[match[2].toLowerCase()];
+    if (!o.units) {
+      stop('Unknown units:', match[0]);
+    }
+    o.areal = !!(match[1] || match[3]);
+    o.value = Number(s.substring(0, s.length - match[0].length));
+  } else {
+    o.value = Number(s);
+  }
+  if (isNaN(o.value)) {
+    stop('Invalid parameter:', m);
+  }
+  return o;
+};
+
+internal.convertAreaParam = function(opt, crs) {
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, crs);
+  return o.value * k * k;
+};
+
+internal.convertDistanceParam = function(opt, crs) {
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, crs);
+  if (o.areal) {
+    stop('Expected a distance, received an area:', opt);
+  }
+  return o.value * k;
+};
+
+// Same as convertDistanceParam(), except:
+//   in the case of latlong datasets, coordinates are unitless (instead of meters),
+//   and parameters with units trigger an error
+internal.convertIntervalParam = function(opt, crs) {
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, crs);
+  if (o.units && crs && crs.is_latlong) {
+    stop('Parameter does not support distance units with latlong datasets');
+  }
+  if (o.areal) {
+    stop('Expected a distance, received an area:', opt);
+  }
+  return o.value * k;
+};
+
+internal.convertIntervalPair = function(opt, crs) {
+  var a, b;
+  if (!Array.isArray(opt) || opt.length != 2) {
+    stop('Expected two distance parameters, received', opt);
+  }
+  a = internal.parseMeasure(opt[0]);
+  b = internal.parseMeasure(opt[1]);
+  if (a.units && !b.units || b.units && !a.units) {
+    stop('Both parameters should have units:', opt);
+  }
+  return [internal.convertIntervalParam(opt[0], crs),
+          internal.convertIntervalParam(opt[1], crs)];
+};
+
+
+
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
@@ -5468,11 +5854,15 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
   var snapDist, snapCount, dupeCount, nodes;
+  if (opts.snap_interval) {
+    snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+  } else {
+    snapDist = internal.getHighPrecisionSnapInterval(arcs);
+  }
 
   // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
   // used to reset simplification)
   arcs.flatten();
-  snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
   snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
   dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
@@ -8744,7 +9134,7 @@ internal.fixNestingErrors2 = function(rings, arcs) {
 
 
 // Assumes that arcs do not intersect except at endpoints
-internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
+internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   opts = opts || {};
   var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
@@ -8755,30 +9145,29 @@ internal.dissolvePolygonLayer2 = function(lyr, arcs, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var shapes2 = internal.dissolvePolygons2(groups, arcs, opts);
+  var shapes2 = internal.dissolvePolygons2(groups, dataset, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
-
-internal.getGapFillTest = function(arcs, opts) {
-  var threshold = opts.min_gap_area;
+internal.getGapFillTest = function(dataset, opts) {
   var test;
-  if (threshold === 0) {
+  if (opts.min_gap_area === 0) {
     test = function() {return false;}; // don't fill any gaps
-  } else if (threshold > 0) {
-    test = internal.getMinAreaTest(threshold, arcs);
+  } else if (opts.min_gap_area) {
+    test = internal.getMinAreaTest(opts.min_gap_area, dataset);
   } else {
-    test = internal.getSliverTest(arcs); // default is same as -filter-slivers default
+    test = internal.getSliverTest(dataset.arcs); // default is same as -filter-slivers default
   }
   return test;
 };
 
-internal.dissolvePolygons2 = function(shapes, arcs, opts) {
+internal.dissolvePolygons2 = function(shapes, dataset, opts) {
+  var arcs = dataset.arcs;
   var arcFilter = internal.getArcPresenceTest(shapes, arcs);
   var nodes = new NodeCollection(arcs, arcFilter);
   var divide = internal.getHoleDivider(nodes);
   var dissolve = internal.getRingIntersector(nodes, 'dissolve');
-  var gapTest = internal.getGapFillTest(arcs, opts);
+  var gapTest = internal.getGapFillTest(dataset, opts);
   T.start();
   var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
   T.stop("Build mosaic");
@@ -9111,7 +9500,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   nodes = internal.addIntersectionCuts(dataset, opts);
   layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon') {
-      lyr.shapes = internal.dissolvePolygons2(lyr.shapes, nodes.arcs, opts);
+      lyr.shapes = internal.dissolvePolygons2(lyr.shapes, dataset, opts);
     }
     if (!opts.allow_empty) {
       api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
@@ -9472,7 +9861,8 @@ internal.clipPoints = function(points, clipShapes, arcs, type) {
 
 
 
-api.filterIslands = function(lyr, arcs, opts) {
+api.filterIslands = function(lyr, dataset, opts) {
+  var arcs = dataset.arcs;
   var removed = 0;
   if (lyr.geometry_type != 'polygon') {
     return;
@@ -9480,7 +9870,7 @@ api.filterIslands = function(lyr, arcs, opts) {
 
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
-      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, arcs));
+      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset));
     }
     if (opts.min_vertices) {
       removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
@@ -9501,7 +9891,9 @@ internal.getVertexCountTest = function(minVertices, arcs) {
   };
 };
 
-internal.getMinAreaTest = function(minArea, arcs) {
+internal.getMinAreaTest = function(areaParam, dataset) {
+  var arcs = dataset.arcs;
+  var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(path) {
     var area = pathArea(path, arcs);
@@ -9566,16 +9958,16 @@ internal.ringHasHoles = function(ring, rings, arcs) {
 // TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
 // TODO: consider separate gap removal function as an alternative to merging slivers
 //
-api.filterSlivers = function(lyr, arcs, opts) {
+api.filterSlivers = function(lyr, dataset, opts) {
   if (lyr.geometry_type != 'polygon') {
     return 0;
   }
-  return internal.filterSlivers(lyr, arcs, opts);
+  return internal.filterSlivers(lyr, dataset, opts);
 };
 
-internal.filterSlivers = function(lyr, arcs, opts) {
-  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, arcs) :
-    internal.getSliverTest(arcs);
+internal.filterSlivers = function(lyr, dataset, opts) {
+  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset) :
+    internal.getSliverTest(dataset.arcs);
   var removed = 0;
   var pathFilter = function(path, i, paths) {
     if (ringTest(path)) {
@@ -10492,7 +10884,7 @@ api.dissolve2 = function(layers, dataset, opts) {
   var nodes = internal.addIntersectionCuts(dataset, opts);
   T.stop('Add cuts');
   return layers.map(function(lyr) {
-    return internal.dissolvePolygonLayer2(lyr, nodes.arcs, opts);
+    return internal.dissolvePolygonLayer2(lyr, dataset, opts);
   });
 };
 
@@ -11409,6 +11801,27 @@ utils.insertionSortIds = function(arr, ids, start, end) {
 
 
 
+// Apply snapping, remove duplicate coords and clean up defective paths in a dataset
+// Assumes that any CRS info has been added to the dataset
+// @opts: import options
+internal.cleanPathsAfterImport = function(dataset, opts) {
+  var arcs = dataset.arcs;
+  var snapDist;
+  if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
+    if (opts.snap_interval) {
+      snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+    }
+    if (arcs) {
+      internal.snapCoords(arcs, snapDist);
+    }
+  }
+  dataset.layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    }
+  });
+};
+
 // Accumulates points in buffers until #endPath() is called
 // @drain callback: function(xarr, yarr, size) {}
 //
@@ -11511,6 +11924,7 @@ function PathImporter(opts) {
     var arcs;
     var layers;
     var lyr = {name: ''};
+    var snapDist;
 
     if (dupeCount > 0) {
       verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
@@ -11525,9 +11939,9 @@ function PathImporter(opts) {
       }
       arcs = new ArcCollection(nn, xx, yy);
 
-      if (opts.auto_snap || opts.snap_interval) {
-        internal.snapCoords(arcs, opts.snap_interval);
-      }
+      //if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
+      //  internal.snapCoords(arcs, opts.snap_interval);
+      //}
     }
 
     if (collectionType == 'mixed') {
@@ -11545,9 +11959,9 @@ function PathImporter(opts) {
     }
 
     layers.forEach(function(lyr) {
-      if (internal.layerHasPaths(lyr)) {
-        internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
-      }
+      //if (internal.layerHasPaths(lyr)) {
+        //internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+      //}
       if (lyr.data) {
         internal.fixInconsistentFields(lyr.data.getRecords());
       }
@@ -12133,7 +12547,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
 
 
 internal.getRFC7946Warnings = function(dataset) {
-  var P = internal.getDatasetProjection(dataset);
+  var P = internal.getDatasetCRS(dataset);
   var str;
   if (!P || !P.is_latlong) {
     str = 'RFC 7946 warning: non-WGS84 coordinates.';
@@ -12143,7 +12557,7 @@ internal.getRFC7946Warnings = function(dataset) {
 };
 
 internal.getDatasetBbox = function(dataset, rfc7946) {
-  var P = internal.getDatasetProjection(dataset),
+  var P = internal.getDatasetCRS(dataset),
       wrapped = rfc7946 && P && P.is_latlong,
       westBounds = new Bounds(),
       eastBounds = new Bounds(),
@@ -13594,261 +14008,6 @@ internal.importShp = function(src, opts) {
 
 
 
-// A matrix class that supports affine transformations (scaling, translation, rotation).
-// Elements:
-//   a  c  tx
-//   b  d  ty
-//   0  0  1  (u v w are not used)
-//
-function Matrix2D() {
-  this.a = 1;
-  this.c = 0;
-  this.tx = 0;
-  this.b = 0;
-  this.d = 1;
-  this.ty = 0;
-}
-
-Matrix2D.prototype.transformXY = function(x, y, p) {
-  p = p || {};
-  p.x = x * this.a + y * this.c + this.tx;
-  p.y = x * this.b + y * this.d + this.ty;
-  return p;
-};
-
-Matrix2D.prototype.translate = function(dx, dy) {
-  this.tx += dx;
-  this.ty += dy;
-};
-
-Matrix2D.prototype.rotate = function(q, x, y) {
-  var cos = Math.cos(q);
-  var sin = Math.sin(q);
-  x = x || 0;
-  y = y || 0;
-  this.a = cos;
-  this.c = -sin;
-  this.b = sin;
-  this.d = cos;
-  this.tx += x - x * cos + y * sin;
-  this.ty += y - x * sin - y * cos;
-};
-
-Matrix2D.prototype.scale = function(sx, sy) {
-  this.a *= sx;
-  this.c *= sx;
-  this.b *= sy;
-  this.d *= sy;
-};
-
-
-
-
-// A compound projection, consisting of a default projection and one or more rectangular frames
-// that are reprojected and/or affine transformed.
-// @proj Default projection.
-function MixedProjection(proj) {
-  var frames = [];
-  var mixed = utils.extend({}, proj);
-  var mproj = require('mproj');
-
-  // @proj2 projection to use.
-  // @ctr1 {lam, phi} center of the frame contents.
-  // @ctr2 {lam, phi} geo location to move the frame center
-  // @frameWidth Width of the frame in base projection units
-  // @frameHeight Height of the frame in base projection units
-  // @scale Scale factor; 1 = no scaling.
-  // @rotation Rotation in degrees; 0 = no rotation.
-  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
-    var m = new Matrix2D(),
-        a2 = proj.a * 2,
-        xy1 = toRawXY(ctr1, proj),
-        xy2 = toRawXY(ctr2, proj),
-        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
-            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
-    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
-    m.scale(scale, scale);
-    m.transformXY(xy1.x, xy1.y, xy1);
-    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
-    frames.push({
-      bbox: bbox,
-      matrix: m,
-      projection: proj2
-    });
-    return this;
-  };
-
-  // convert a latlon position to x,y in earth radii relative to datum origin
-  function toRawXY(lp, P) {
-    var xy = mproj.pj_fwd_deg(lp, P);
-    return {
-      x: (xy.x / P.fr_meter - P.x0) / P.a,
-      y: (xy.y / P.fr_meter - P.y0) / P.a
-    };
-  }
-
-  mixed.fwd = function(lp, xy) {
-    var lam = lp.lam,
-        phi = lp.phi,
-        frame, bbox;
-    proj.fwd(lp, xy);
-    for (var i=0, n=frames.length; i<n; i++) {
-      frame = frames[i];
-      bbox = frame.bbox;
-      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
-        // copy lp (some proj functions may modify it)
-        frame.projection.fwd({lam: lam, phi: phi}, xy);
-        frame.matrix.transformXY(xy.x, xy.y, xy);
-        break;
-      }
-    }
-  };
-
-  return mixed;
-}
-
-
-
-
-// some aliases
-internal.projectionIndex = {
-  robinson: '+proj=robin +datum=WGS84',
-  webmercator: '+proj=merc +a=6378137 +b=6378137',
-  wgs84: '+proj=longlat +datum=WGS84',
-  albersusa: AlbersNYT
-};
-
-// This stub is replaced when loaded in GUI, which may need to load some files
-internal.initProjLibrary = function(opts, done) {done();};
-
-// Find Proj.4 definition file names in strings like "+init=epsg:3000"
-// (Used by GUI, defined here for testing)
-internal.findProjLibs = function(str) {
-  var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
-  return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
-};
-
-internal.getProjInfo = function(dataset) {
-  var P, info;
-  try {
-    P = internal.getDatasetProjection(dataset);
-    if (P) {
-      info = internal.crsToProj4(P);
-    }
-  } catch(e) {}
-  return info || "[unknown]";
-};
-
-internal.crsToProj4 = function(P) {
-  return require('mproj').internal.get_proj_defn(P);
-};
-
-internal.crsToPrj = function(P) {
-  var wkt;
-  try {
-    wkt = require('mproj').internal.wkt_from_proj4(P);
-  } catch(e) {
-
-  }
-  return wkt;
-};
-
-internal.crsAreEqual = function(a, b) {
-  var str = internal.crsToProj4(a);
-  return !!str && str == internal.crsToProj4(b);
-};
-
-internal.getProjDefn = function(str) {
-  var mproj = require('mproj');
-  var defn;
-  if (str in internal.projectionIndex) {
-    defn = internal.projectionIndex[str];
-  } else if (str in mproj.internal.pj_list) {
-    defn = '+proj=' + str;
-  } else if (/^\+/.test(str)) {
-    defn = str;
-  } else {
-    stop("Unknown projection definition:", str);
-  }
-  return defn;
-};
-
-internal.getProjection = function(str) {
-  var defn = internal.getProjDefn(str);
-  var P;
-  if (typeof defn == 'function') {
-    P = defn();
-  } else {
-    try {
-      P = require('mproj').pj_init(defn);
-    } catch(e) {
-      stop('Unable to use projection', defn, '(' + e.message + ')');
-    }
-  }
-  return P || null;
-};
-
-internal.setDatasetProjection = function(dataset, info) {
-  dataset.info = dataset.info || {};
-  // Assumes that proj4 object is never mutated.
-  // TODO: assign a copy of crs (if present)
-  dataset.info.crs = info.crs;
-  dataset.info.prj = info.prj;
-};
-
-internal.getDatasetProjection = function(dataset) {
-  var info = dataset.info || {},
-      P = info.crs;
-  if (!P && info.prj) {
-    P = internal.parsePrj(info.prj);
-  }
-  if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
-    // use wgs84 for probable latlong datasets with unknown datums
-    P = internal.getProjection('wgs84');
-  }
-  return P;
-};
-
-internal.printProjections = function() {
-  var index = require('mproj').internal.pj_list;
-  var msg = 'Proj4 projections\n';
-  Object.keys(index).sort().forEach(function(id) {
-    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
-  });
-  msg += '\nAliases';
-  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
-    msg += '\n  ' + n;
-  });
-  message(msg);
-};
-
-internal.translatePrj = function(str) {
-  var proj4;
-  try {
-    proj4 = require('mproj').internal.wkt_to_proj4(str);
-  } catch(e) {
-    stop('Unusable .prj file (' + e.message + ')');
-  }
-  return proj4;
-};
-
-// Convert contents of a .prj file to a projection object
-internal.parsePrj = function(str) {
-  return internal.getProjection(internal.translatePrj(str));
-};
-
-function AlbersNYT() {
-  var mproj = require('mproj');
-  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
-  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
-  var mixed = new MixedProjection(aea)
-    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
-    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
-  return mixed;
-}
-
-
-
 
 // Convert a dataset to Shapefile files
 internal.exportShapefile = function(dataset, opts) {
@@ -13866,7 +14025,7 @@ internal.exportPrjFile = function(lyr, dataset) {
   var prj = info.prj;
   if (!prj) {
     try {
-      prj = internal.crsToPrj(internal.getDatasetProjection(dataset));
+      prj = internal.crsToPrj(internal.getDatasetCRS(dataset));
     } catch(e) {}
   }
   if (!prj) {
@@ -15075,6 +15234,8 @@ internal.importContent = function(obj, opts) {
     data = internal.importJSON(obj.json, opts);
     fileFmt = data.format;
     dataset = data.dataset;
+    internal.cleanPathsAfterImport(dataset, opts);
+
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
@@ -15083,6 +15244,8 @@ internal.importContent = function(obj, opts) {
     fileFmt = 'shapefile';
     data = obj.shp;
     dataset = internal.importShapefile(obj, opts);
+    internal.cleanPathsAfterImport(dataset, opts);
+
   } else if (obj.dbf) {
     fileFmt = 'dbf';
     data = obj.dbf;
@@ -15386,8 +15549,8 @@ api.graticule = function(dataset, opts) {
   var dest, src;
   if (dataset) {
     // project graticule to match dataset
-    dest = internal.getDatasetProjection(dataset);
-    src = internal.getProjection('wgs84');
+    dest = internal.getDatasetCRS(dataset);
+    src = internal.getCRS('wgs84');
     if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
     internal.projectDataset(graticule, src, dest, {}); // TODO: densify?
   }
@@ -16678,7 +16841,7 @@ internal.importFiles = function(files, opts) {
   var unbuiltTopology = false;
   var datasets = files.map(function(fname) {
     // import without topology or snapping
-    var importOpts = utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
+    var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
     var dataset = api.importFile(fname, importOpts);
     // check if dataset contains non-topological paths
     // TODO: may also need to rebuild topology if multiple topojson files are merged
@@ -16688,16 +16851,11 @@ internal.importFiles = function(files, opts) {
     return dataset;
   });
   var combined = internal.mergeDatasets(datasets);
-
   // Build topology, if needed
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
   // (but problem of mismatched coordinates due to quantization in input files.)
   if (unbuiltTopology && !opts.no_topology) {
-    // TODO: remove duplication with mapshaper-path-import.js; consider applying
-    //   snapping option inside buildTopology()
-    if (opts.auto_snap || opts.snap_interval) {
-      internal.snapCoords(combined.arcs, opts.snap_interval);
-    }
+    internal.cleanPathsAfterImport(combined, opts);
     api.buildTopology(combined);
   }
   return combined;
@@ -16746,11 +16904,12 @@ internal.findInnerPoint = function(shp, arcs) {
 
 
 
-api.createPointLayer = function(srcLyr, arcs, opts) {
+api.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
+  var arcs = dataset.arcs;
   if (opts.interpolated) {
     // TODO: consider making attributed points, including distance from origin
-    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, arcs, opts);
+    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.endpoints) {
@@ -16815,10 +16974,10 @@ internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
   return coords;
 };
 
-internal.interpolatedPointsFromVertices = function(lyr, arcs, opts) {
-  var interval = opts.interval;
+internal.interpolatedPointsFromVertices = function(lyr, dataset, opts) {
+  var interval = internal.convertIntervalParam(opts.interval, internal.getDatasetCRS(dataset));
   var coords;
-  if (interval > 0 === false) stop("Invalid interpolation interval:", interval);
+  if (interval > 0 === false) stop("Invalid interpolation interval:", opts.interval);
   if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
   return lyr.shapes.map(function(shp, shpId) {
     coords = [];
@@ -16826,7 +16985,7 @@ internal.interpolatedPointsFromVertices = function(lyr, arcs, opts) {
     return coords.length > 0 ? coords : null;
   });
   function nextPart(ids) {
-    var points = internal.interpolatePointsAlongArc(ids, arcs, interval);
+    var points = internal.interpolatePointsAlongArc(ids, dataset.arcs, interval);
     coords = coords.concat(points);
   }
 };
@@ -16919,27 +17078,34 @@ internal.pointsFromDataTable = function(data, opts) {
 
 
 api.pointGrid = function(dataset, opts) {
-  var bbox, gridLyr;
-  if (opts.bbox) {
-    bbox = opts.bbox;
-  } else if (dataset) {
-    bbox = internal.getDatasetBounds(dataset).toArray();
-  } else {
-    bbox = [-180, -90, 180, 90];
-  }
-  return internal.createPointGridLayer(internal.createPointGrid(bbox, opts), opts);
+  var gridOpts = internal.getPointGridParams(dataset, opts);
+  return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
 };
 
 api.polygonGrid = function(dataset, opts) {
-  var bbox, gridLyr;
-  if (opts.bbox) {
-    bbox = opts.bbox;
-  } else if (dataset) {
-    bbox = internal.getDatasetBounds(dataset).toArray();
+  var gridOpts = internal.getPointGridParams(dataset, opts);
+  return internal.createPolygonGridDataset(internal.createPointGrid(gridOpts), opts);
+};
+
+internal.getPointGridParams = function(dataset, opts) {
+  var params = {};
+  var crs = dataset ? internal.getDatasetCRS(dataset) : null;
+  if (opts.interval) {
+    params.interval = internal.convertIntervalParam(opts.interval, crs);
+  } else if (opts.rows > 0 && opts.cols > 0) {
+    params.rows = opts.rows;
+    params.cols = opts.cols;
   } else {
-    bbox = [-180, -90, 180, 90];
+    // error, handled later
   }
-  return internal.createPolygonGridDataset(internal.createPointGrid(bbox, opts), opts);
+  if (opts.bbox) {
+    params.bbox = opts.bbox;
+  } else if (dataset) {
+    params.bbox = internal.getDatasetBounds(dataset).toArray();
+  } else {
+    params.bbox = [-180, -90, 180, 90];
+  }
+  return params;
 };
 
 internal.createPointGridLayer = function(rows, opts) {
@@ -16984,8 +17150,9 @@ internal.createPolygonGridDataset = function(rows, opts) {
 };
 
 // Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
-internal.createPointGrid = function(bbox, opts) {
-  var w = bbox[2] - bbox[0],
+internal.createPointGrid = function(opts) {
+  var bbox = opts.bbox,
+      w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
       rowsArr = [], rowArr,
       cols, rows, dx, dy, x0, y0, x, y;
@@ -17072,7 +17239,7 @@ api.proj = function(dataset, destInfo, opts) {
       target = {},
       src, dest;
 
-  src = internal.getDatasetProjection(dataset);
+  src = internal.getDatasetCRS(dataset);
   if (!src) {
     stop("Unable to project -- source coordinate system is unknown");
   }
@@ -17118,9 +17285,9 @@ api.proj = function(dataset, destInfo, opts) {
 
 
 // @source: a layer identifier, .prj file or projection defn
-// Converts layer ids and .prj files to projection defn
+// Converts layer ids and .prj files to CRS defn
 // Returns projection defn
-internal.getProjectionInfo = function(name, catalog) {
+internal.getCrsInfo = function(name, catalog) {
   var dataset, sources, info = {};
   if (/\.prj$/i.test(name)) {
     dataset = api.importFile(name, {});
@@ -17132,12 +17299,12 @@ internal.getProjectionInfo = function(name, catalog) {
     sources = catalog.findCommandTargets(name);
     if (sources.length > 0) {
       dataset = sources[0].dataset;
-      info.crs = internal.getDatasetProjection(dataset);
+      info.crs = internal.getDatasetCRS(dataset);
       info.prj = dataset.info.prj; // may be undefined
       // defn = internal.crsToProj4(P);
     } else {
       // assume name is a projection defn
-      info.crs = internal.getProjection(name);
+      info.crs = internal.getCRS(name);
     }
   }
   return info;
@@ -17404,7 +17571,7 @@ internal.findMosaicRings = function(nodes) {
 
 
 internal.closeGaps = function(lyr, dataset, opts) {
-  var maxGapLen = opts.gap_tolerance > 0 ? opts.gap_tolerance : 0;
+  var maxGapLen = opts.gap_tolerance ? internal.convertIntervalParam(opts.gap_tolerance, internal.getDatasetCRS(dataset)) : 0;
   var arcs = dataset.arcs;
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
@@ -17597,24 +17764,27 @@ api.shape = function(opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var bounds, coords, sourceInfo;
+  var offset, bounds, crs, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
     sourceInfo = source.dataset.info;
+    crs = internal.getDatasetCRS(source.dataset);
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
+    crs = internal.getCRS('wgs84');
   }
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
   }
-  if (opts.offset > 0) {
-    bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);
+  if (opts.offset) {
+    offset = internal.convertIntervalParam(opts.offset, crs);
+    bounds.padBounds(offset, offset, offset, offset);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
   if (sourceInfo) {
-    internal.setDatasetProjection(dataset, sourceInfo);
+    internal.setDatasetCRS(dataset, sourceInfo);
   }
   return dataset;
 };
@@ -18336,10 +18506,10 @@ api.simplify = function(dataset, opts) {
 
   if (utils.isNonNegNumber(opts.percentage)) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
-  } else if (utils.isNonNegNumber(opts.interval)) {
-    arcs.setRetainedInterval(opts.interval);
+  } else if (opts.interval || opts.interval === 0) {
+    arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
   } else if (opts.resolution) {
-    arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
+    arcs.setRetainedInterval(internal.convertSimplifyResolution(opts.resolution, arcs, opts));
   } else {
     stop("Missing a simplification amount");
   }
@@ -18516,22 +18686,30 @@ internal.calcSphericalInterval = function(xres, yres, bounds) {
   return internal.calcPlanarInterval(xres, yres, width, height);
 };
 
-internal.calcSimplifyInterval = function(arcs, opts) {
-  var res, interval, bounds;
-  if (opts.interval) {
-    interval = opts.interval;
-  } else if (opts.resolution) {
-    res = internal.parseSimplifyResolution(opts.resolution);
-    bounds = arcs.getBounds();
-    if (internal.useSphericalSimplify(arcs, opts)) {
-      interval = internal.calcSphericalInterval(res[0], res[1], bounds);
-    } else {
-      interval = internal.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
-    }
-    // scale interval to double the resolution (single-pixel resolution creates
-    //  visible artefacts)
-    interval *= 0.5;
+internal.convertSimplifyInterval = function(param, dataset, opts) {
+  var crs = internal.getDatasetCRS(dataset);
+  var interval;
+  if (internal.useSphericalSimplify(dataset.arcs, opts)) {
+    interval = internal.convertDistanceParam(param, crs);
+  } else {
+    interval = internal.convertIntervalParam(param, crs);
   }
+  return interval;
+};
+
+// convert resolution to an interval
+internal.convertSimplifyResolution = function(param, arcs, opts) {
+  var res = internal.parseSimplifyResolution(param);
+  var bounds = arcs.getBounds();
+  var interval;
+  if (internal.useSphericalSimplify(arcs, opts)) {
+    interval = internal.calcSphericalInterval(res[0], res[1], bounds);
+  } else {
+    interval = internal.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
+  }
+  // scale interval to double the resolution (single-pixel resolution creates
+  //  visible artifacts)
+  interval *= 0.5;
   return interval;
 };
 
@@ -18882,10 +19060,10 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.filterGeom, targetLayers, arcs, opts);
 
     } else if (name == 'filter-islands') {
-      internal.applyCommand(api.filterIslands, targetLayers, arcs, opts);
+      internal.applyCommand(api.filterIslands, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-slivers') {
-      internal.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
+      internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
@@ -18945,7 +19123,7 @@ api.runCommand = function(cmd, catalog, cb) {
       catalog.addDataset(api.polygonGrid(targetDataset, opts));
 
     } else if (name == 'points') {
-      outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
+      outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, targetDataset, opts);
 
     } else if (name == 'polygons') {
       outputLayers = api.polygons(targetLayers, targetDataset, opts);
@@ -18955,14 +19133,15 @@ api.runCommand = function(cmd, catalog, cb) {
         var err = null;
         try {
           targets.forEach(function(targ) {
+            var destArg = opts.match || opts.crs || opts.projection;
             var srcInfo, destInfo;
             if (opts.from) {
-              srcInfo = internal.getProjectionInfo(opts.from, catalog);
+              srcInfo = internal.getCrsInfo(opts.from, catalog);
               if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
-              internal.setDatasetProjection(targ.dataset, srcInfo);
+              internal.setDatasetCRS(targ.dataset, srcInfo);
             }
-            if (opts.match || opts.projection) {
-              destInfo = internal.getProjectionInfo(opts.match || opts.projection, catalog);
+            if (destArg) {
+              destInfo = internal.getCrsInfo(destArg, catalog);
               api.proj(targ.dataset, destInfo, opts);
             }
           });
@@ -19233,42 +19412,40 @@ function CommandParser() {
       return commandRxp.test(s);
     }
 
-    // Try to parse an assignment @token for command @cmdDef
-    function parseAssignment(cmd, token, cmdDef) {
-      var match = assignmentRxp.exec(token),
-          name = match[1],
-          val = utils.trimQuotes(match[2]),
-          optDef = findOptionDefn(name, cmdDef);
-
-      if (!optDef) {
-        // Assignment to an unrecognized identifier could be an expression
-        // (e.g. -each 'id=$.id') -- save for later parsing
-        cmd._.push(token);
-      } else if (optDef.type == 'flag' || optDef.assign_to) {
-        stop("-" + cmdDef.name + " " + name + " option doesn't take a value");
-      } else {
-        readOption(cmd, [name, val], cmdDef);
-      }
-    }
-
     // Try to read an option for command @cmdDef from @argv
     function readOption(cmd, argv, cmdDef) {
       var token = argv.shift(),
-          optDef = findOptionDefn(token, cmdDef),
-          optName;
+          optName, optDef, parts;
 
       if (assignmentRxp.test(token)) {
-        parseAssignment(cmd, token, cmdDef);
-        return;
+        // token looks like name=value style option
+        parts = splitAssignment(token);
+        optDef = findOptionDefn(parts[0], cmdDef);
+        if (!optDef) {
+          // left-hand identifier is not a recognized option...
+          // assignment to an unrecognized identifier could be an expression
+          // (e.g. -each 'id=$.id') -- handle this case below
+        } else if (optDef.type == 'flag' || optDef.assign_to) {
+          stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
+        } else {
+          argv.unshift(parts[1]);
+        }
+      } else {
+        // looks like a simple spaced-delimited argument
+        optDef = findOptionDefn(token, cmdDef);
       }
 
       if (!optDef) {
-        // not a defined option; add it to _ array for later processing
+        // token is not a defined option; add it to _ array for later processing
         cmd._.push(token);
         return;
       }
 
-      optName = optDef.alias_to || optDef.name;
+      if (optDef.alias_to) {
+        optDef = findOptionDefn(optDef.alias_to, cmdDef);
+      }
+
+      optName = optDef.name;
       optName = optName.replace(/-/g, '_');
 
       if (optDef.assign_to) {
@@ -19278,6 +19455,13 @@ function CommandParser() {
       } else {
         cmd.options[optName] = readOptionValue(argv, optDef);
       }
+    }
+
+    function splitAssignment(token) {
+      var match = assignmentRxp.exec(token),
+          name = match[1],
+          val = utils.trimQuotes(match[2]);
+      return [name, val];
     }
 
     // Read an option value for @optDef from @argv
@@ -19308,6 +19492,8 @@ function CommandParser() {
         val = token.split(',').map(parseFloat);
       } else if (type == 'percent') {
         val = utils.parsePercent(token);
+      } else if (type == 'distance' || type == 'area') {
+        val = token; // string value is parsed by command function
       } else {
         val = token; // assume string type
       }
@@ -19346,113 +19532,126 @@ function CommandParser() {
     }
   };
 
-  this.getHelpMessage = function(commandName) {
-    var helpStr = '',
-        cmdPre = '  ',
-        optPre = '  ',
-        exPre = '  ',
-        gutter = '  ',
-        colWidth = 0,
-        detailView = false,
-        cmd, helpCommands;
+  this.getHelpMessage = function(singleCommand) {
+    var helpCommands, lines;
 
-    helpCommands = getCommands().filter(function(cmd) {
-      // hide commands without a description, except section headers
-      return !!cmd.describe || cmd.title;
-    });
-
-    if (commandName) {
-      cmd = utils.find(helpCommands, function(cmd) {return cmd.name == commandName;});
-      if (!cmd) {
-        stop(commandName, "is not a known command");
+    if (singleCommand) {
+      helpCommands = getCommands().filter(function(cmd) {return cmd.name == singleCommand;});
+      if (helpCommands.length != 1) {
+        stop(singleCommand, "is not a known command");
       }
-      detailView = true;
-      helpCommands = [cmd];
+      lines = getSingleCommandLines(helpCommands[0]);
+    } else {
+      helpCommands = getCommands().filter(function(cmd) {return cmd.name && cmd.describe || cmd.title;});
+      lines = getMultiCommandLines(helpCommands);
     }
 
-    if (!detailView) {
-      if (_usage) {
-        helpStr += _usage + "\n\n";
-      }
+    return formatLines(lines);
+
+    function formatLines(lines) {
+      var colWidth = calcColWidth(lines);
+      var gutter = ' ';
+      var helpStr = lines.map(function(line) {
+        if (Array.isArray(line)) {
+          line = '  ' + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
+        }
+        return line;
+      }).join('\n');
+      return helpStr;
     }
 
-    // Format help strings, calc width of left column.
-    colWidth = helpCommands.reduce(function(w, cmd) {
-      var help = cmdPre + (cmd.name ? "-" + cmd.name : "");
-      if (cmd.alias) help += ", -" + cmd.alias;
-      cmd.help = help;
-      if (detailView) {
-        w = cmd.options.reduce(function(w, opt) {
-          if (opt.describe) {
-            w = Math.max(formatOption(opt, cmd), w);
-          }
-          return w;
-        }, w);
-      }
-      return Math.max(w, help.length);
-    }, 0);
+    function getSingleCommandLines(cmd) {
+      var lines = [];
+      // command name
+      lines.push('Command', getCommandLine(cmd));
 
-    // Layout help display
-    helpCommands.forEach(function(cmd) {
-      if (!detailView && cmd.title) {
-        helpStr += cmd.title;
-      }
-      if (detailView) {
-        helpStr += '\nCommand\n';
-      }
-      helpStr += formatHelpLine(cmd.help, cmd.describe);
-      if (detailView && cmd.options.length > 0) {
-        helpStr += '\nOptions\n';
+      // options
+      if (cmd.options.length > 0) {
+        lines.push('', 'Options');
         cmd.options.forEach(function(opt) {
-          if (opt.help && opt.describe) {
-            helpStr += formatHelpLine(opt.help, opt.describe);
-          }
+          lines = lines.concat(getOptionLines(opt, cmd));
         });
       }
-      if (detailView && cmd.examples) {
-        helpStr += '\nExample' + (cmd.examples.length > 1 ? 's' : ''); //  + '\n';
-        cmd.examples.forEach(function(ex) {
-          ex.split('\n').forEach(function(line) {
-            helpStr += '\n' + exPre + line;
+
+      // examples
+      if (cmd.examples) {
+        lines.push('', 'Example' + (cmd.examples.length > 1 ? 's' : ''));
+        cmd.examples.forEach(function(ex, i) {
+          if (i > 0) lines.push('');
+          ex.split('\n').forEach(function(line, i) {
+            lines.push('  ' + line);
           });
-          helpStr += '\n';
         });
       }
-    });
-
-    // additional notes for non-detail view
-    if (!detailView) {
-      if (_examples.length > 0) {
-        helpStr += "\nExamples\n";
-        _examples.forEach(function(str) {
-          helpStr += "\n" + str + "\n";
-        });
-      }
-      if (_note) {
-        helpStr += '\n' + _note;
-      }
+      return lines;
     }
 
-    return helpStr;
-
-    function formatHelpLine(help, desc) {
-      return utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
-    }
-
-    function formatOption(o, cmd) {
-      o.help = optPre;
-      if (o.label) {
-        o.help += o.label;
-      } else if (o.name == cmd.default) {
-        o.help += '<' + o.name + '>';
+    function getOptionLines(opt, cmd) {
+      var lines = [];
+      var description = opt.describe;
+      var label;
+      if (!description) {
+        // empty
+      } else if (opt.label) {
+        lines.push([opt.label, description]);
+      } else if (opt.name == cmd.default) {
+        label = '<' + opt.name + '>';
+        lines.push([label, description]);
+        lines.push([opt.name + '=', 'equivalent to ' + label]);
       } else {
-        o.help += o.name;
-        if (o.alias) o.help += ", " + o.alias;
-        if (o.type != 'flag' && !o.assign_to) o.help += "=";
+        label = opt.name;
+        if (opt.alias) label += ', ' + opt.alias;
+        if (opt.type != 'flag' && !opt.assign_to) label += '=';
+        lines.push([label, description]);
       }
-      return o.help.length;
+      return lines;
     }
 
+    function getCommandLine(cmd) {
+      var name = cmd.name ? "-" + cmd.name : '';
+      if (cmd.alias) name += ', -' + cmd.alias;
+      return [name, cmd.describe || '(undocumented command)'];
+    }
+
+    function getMultiCommandLines(commands) {
+      var lines = [];
+      // usage
+      if (_usage) lines.push(_usage);
+
+      // list of commands
+      commands.forEach(function(cmd) {
+        if (cmd.title) {
+          lines.push('', cmd.title);
+        } else {
+          lines.push(getCommandLine(cmd));
+        }
+      });
+
+      // examples
+      if (_examples.length > 0) {
+        lines.push('', 'Examples');
+        _examples.forEach(function(str) {
+          lines.push('', str);
+        });
+      }
+
+      // note
+      if (_note) {
+        lines.push('', _note);
+      }
+      return lines;
+    }
+
+
+    function calcColWidth(lines) {
+      var w = 0;
+      lines.forEach(function(line) {
+        if (Array.isArray(line)) {
+          w = Math.max(w, line[0].length);
+        }
+      });
+      return w;
+    }
   };
 
   this.printHelp = function(command) {
@@ -19535,10 +19734,14 @@ internal.parseStringList = function(token) {
 // Accept spaces and/or commas as delimiters
 internal.parseColorList = function(token) {
   var delim = ', ';
-  var list = internal.splitTokens(token, delim);
+  var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
+  var list = internal.splitTokens(token2, delim);
   if (list.length == 1) {
     list = internal.splitTokens(list[0], delim);
   }
+  list = list.map(function(str) {
+    return str.replace(/~~~/g, ',');
+  });
   return list;
 };
 
@@ -19725,10 +19928,15 @@ function validateInputOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
 
-  if (_[0] == '-' || _[0] == '/dev/stdin') {
-    o.stdin = true;
-  } else if (_.length > 0) {
-    o.files = cli.expandInputFiles(_);
+  if (_.length > 0 && !o.files) {
+    o.files = _;
+  }
+  if (o.files) {
+    o.files = cli.expandInputFiles(o.files);
+    if (o.files[0] == '-' || o.files[0] == '/dev/stdin') {
+      delete o.files;
+      o.stdin = true;
+    }
   }
 
   if ("precision" in o && o.precision > 0 === false) {
@@ -19779,16 +19987,16 @@ function validateProjOpts(cmd) {
   });
 
   if (proj4.length > 0) {
-    cmd.options.projection = proj4.join(' ');
+    cmd.options.crs = proj4.join(' ');
   } else if (_.length > 0) {
-    cmd.options.projection = _.shift();
+    cmd.options.crs = _.shift();
   }
 
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));
   }
 
-  if (!(cmd.options.projection  || cmd.options.match || cmd.options.from)) {
+  if (!(cmd.options.crs || cmd.options.match || cmd.options.from)) {
     stop("Missing projection data");
   }
 }
@@ -19908,18 +20116,13 @@ internal.getOptionParser = function() {
       encodingOpt = {
         describe: "text encoding (applies to .dbf and delimited text files)"
       },
-      autoSnapOpt = {
-        alias: "snap",
-        describe: "snap nearly identical points to fix minor topology errors",
-        type: "flag"
-      },
       snapIntervalOpt = {
         describe: "snapping distance in source units (default is tiny)",
-        type: "number"
+        type: "distance"
       },
       minGapAreaOpt = {
         describe: "smaller gaps than this are filled (default is small)",
-        type: "number"
+        type: "area"
       },
       sumFieldsOpt = {
         describe: "fields to sum when dissolving  (comma-sep. list)",
@@ -19954,7 +20157,7 @@ internal.getOptionParser = function() {
 
   /*
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
-      "$ mapshaper states.shp auto-snap -simplify 10% -o format=geojson");
+      "$ mapshaper states.shp snap -simplify 10% -o format=geojson");
 
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
@@ -19971,8 +20174,9 @@ internal.getOptionParser = function() {
     .validate(validateInputOpts)
     .flag("multi_arg")
     .option("files", {
-      label: "<files>",
-      describe: "files to import (separated by spaces), or - to use stdin"
+      DEFAULT: true,
+      type: "strings",
+      describe: "one or more files to import, or - to use stdin"
     })
     .option("merge-files", {
       describe: "merge features from compatible files into the same layer",
@@ -19990,7 +20194,11 @@ internal.getOptionParser = function() {
       describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
-    .option("auto-snap", autoSnapOpt)
+    .option("snap", {
+      type: 'flag',
+      describe: "snap nearly identical points to fix minor topology errors"
+    })
+    .option("auto-snap", {alias_to: 'snap'})
     .option("snap-interval", snapIntervalOpt)
     .option("encoding", encodingOpt)
     /*
@@ -20126,7 +20334,7 @@ internal.getOptionParser = function() {
       type: "flag" // for testing
     });
 
-  parser.section("\nEditing commands");
+  parser.section("Editing commands");
 
   parser.command("clean")
     .describe("repairs overlaps and small gaps in polygon layers")
@@ -20284,7 +20492,7 @@ internal.getOptionParser = function() {
   parser.command("filter-islands")
     .describe("remove small detached polygon rings (islands)")
     .option("min-area", {
-      type: "number",
+      type: "area",
       describe: "remove small-area islands (sq meters or projected units)"
     })
     .option("min-vertices", {
@@ -20300,7 +20508,7 @@ internal.getOptionParser = function() {
   parser.command("filter-slivers")
     .describe("remove small polygon rings")
     .option("min-area", {
-      type: "number",
+      type: "area",
       describe: "remove small-area rings (sq meters or projected units)"
     })
     /*
@@ -20404,7 +20612,7 @@ internal.getOptionParser = function() {
     })
     .option('interval', {
       describe: 'distance between adjacent points, in source units',
-      type: 'number'
+      type: 'distance'
     })
     .option("cols", {
       type: "integer"
@@ -20453,7 +20661,7 @@ internal.getOptionParser = function() {
     })
     .option("interval", {
       describe: "distance between interpolated points (meters or projected units)",
-      type: "number"
+      type: "distance"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -20485,9 +20693,12 @@ internal.getOptionParser = function() {
   parser.command("proj")
     .describe("project your data (using Proj.4)")
     .flag("multi_arg")
-    .option("projection", {
-      label: "<projection>",
+    .option("crs", {
+      DEFAULT: true,
       describe: "set destination CRS using a Proj.4 definition or alias"
+    })
+    .option("projection", {
+      alias_to: 'crs'
     })
     .option("match", {
       describe: "set destination CRS using a .prj file or layer id"
@@ -20560,7 +20771,7 @@ internal.getOptionParser = function() {
     .option("interval", {
       // alias: "i",
       describe: "output resolution as a distance (e.g. 100)",
-      type: "number"
+      type: "distance"
     })
     /*
     .option("value", {
@@ -20575,7 +20786,6 @@ internal.getOptionParser = function() {
     })
     .option("cartesian", {
       // describe: "(deprecated) alias for planar",
-      type: "flag",
       alias_to: "planar"
     })
     .option("keep-shapes", {
@@ -20738,13 +20948,13 @@ internal.getOptionParser = function() {
 
 
   // Experimental commands
-  parser.section("\nExperimental commands (may give unexpected results)");
+  parser.section("Experimental commands (may give unexpected results)");
 
   parser.command("affine")
     .describe("transform coordinates by shifting, scaling and rotating")
     .flag("no_args")
     .option("shift", {
-      type: 'numbers',
+      type: 'strings',
       describe: "x,y offsets in source units (e.g. 5000,-5000)"
     })
     .option("scale", {
@@ -20832,7 +21042,7 @@ internal.getOptionParser = function() {
     .describe("convert polylines to polygons")
     .option("gap-tolerance", {
       describe: "specify gap tolerance in source units",
-      type: "number"
+      type: "distance"
     })
     .option("target", targetOpt);
 
@@ -20847,7 +21057,7 @@ internal.getOptionParser = function() {
     })
     .option("offset", {
       describe: "space around bbox or source layer",
-      type: "number"
+      type: "distance"
     })
     .option("source", {
       describe: "name of layer to enclose"
@@ -20880,7 +21090,7 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
 
-  parser.section("\nInformational commands");
+  parser.section("Informational commands");
 
   parser.command("calc")
     .describe("calculate statistics about the features in a layer")
