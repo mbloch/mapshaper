@@ -1,6 +1,9 @@
+v0.4.62 (unreleased)
+* Added -o singles option for saving each output layer to a separate file (TopoJSON only).
+
 v0.4.61
 * Improvements to command line help.
-* Add support for specifying most distance parameters using a variety of units. For example. For example: -affine shift=1km,2km
+* Add support for specifying most distance parameters using a variety of units. For example: -affine shift=1km,2km
 * Add support for specifying areal parameters with units. For example: -filter-islands min-area=5sqkm. Recognizes sqmi/mi2, sqkm/km2, sqm/m2, sqft/ft2.
 
 v0.4.60

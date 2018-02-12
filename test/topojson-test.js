@@ -201,6 +201,38 @@ describe('topojson-export.js and topojson-import.js', function () {
 
   describe('TopoJSON export', function () {
 
+    it('-o singles option', function(done) {
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [0, 0]
+        }, {
+          type: 'LineString',
+          coordinates: [[1, 1], [2, 2]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[3, 3], [3, 4], [4, 3], [3, 3]]]
+        }]
+      };
+      var cmd = '-i in.json -rename-layers points,lines,polygons -o format=topojson no-quantization singles';
+      api.applyCommands(cmd, {'in.json': input}, function(err, output) {
+        var points = JSON.parse(output['points.json']);
+        var lines = JSON.parse(output['lines.json']);
+        var polygons = JSON.parse(output['polygons.json']);
+        assert.deepEqual(points.objects.points, {
+          type: 'GeometryCollection',
+          geometries: [{type: 'Point', coordinates: [0, 0]}]
+        });
+        assert.equal(lines.objects.lines.geometries[0].type, 'LineString');
+        assert.equal(lines.objects.lines.geometries.length, 1);
+        assert.equal(polygons.objects.polygons.geometries[0].type, 'Polygon');
+        assert.equal(polygons.objects.polygons.geometries.length, 1);
+        done();
+      });
+
+    });
+
     describe('-o width= option', function () {
 
       it('apply width and margin to points', function () {

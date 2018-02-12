@@ -185,7 +185,7 @@ internal.getOptionParser = function() {
       describe: "(Topo/GeoJSON) format output for readability"
     })
     .option("singles", {
-      // describe: "(TopoJSON) save each layer as a single file",
+      describe: "(TopoJSON) save each target layer as a separate file",
       type: "flag"
     })
     .option("quantization", {
