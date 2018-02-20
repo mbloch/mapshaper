@@ -13,15 +13,23 @@ api.proj = function(dataset, destInfo, opts) {
       target = {},
       src, dest;
 
+  dest = destInfo.crs;
+  if (!dest) {
+    stop("Missing projection data");
+  }
+
+  if (!internal.datasetHasGeometry(dataset)) {
+    // still set the crs of datasets that are missing geometry
+    dataset.info.crs = dest;
+    dataset.info.prj = destInfo.prj; // may be undefined
+    return;
+  }
+
   src = internal.getDatasetCRS(dataset);
   if (!src) {
     stop("Unable to project -- source coordinate system is unknown");
   }
 
-  dest = destInfo.crs;
-  if (!dest) {
-    stop("Missing projection data");
-  }
   if (internal.crsAreEqual(src, dest)) {
     message("Source and destination CRS are the same");
     return;

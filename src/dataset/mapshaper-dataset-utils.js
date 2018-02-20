@@ -98,6 +98,11 @@ internal.getDatasetBounds = function(dataset) {
   return bounds;
 };
 
+internal.datasetHasGeometry = function(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return internal.layerHasGeometry(lyr);
+  });
+};
 
 internal.datasetHasPaths = function(dataset) {
   return utils.some(dataset.layers, function(lyr) {

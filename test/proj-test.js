@@ -38,6 +38,16 @@ describe('mapshaper-proj.js', function() {
       })
     })
 
+    it('from= works even if dataset is empty', function (done) {
+      var input = {type: 'GeometryCollection', geometries: []};
+      var cmd = '-i in.json -proj from="+proj=merc" -o merc.shp';
+      api.applyCommands(cmd, {'in.json': input}, function(err, output) {
+        assert(/Mercator/.test(output['merc.prj']));
+        done();
+      })
+    })
+
+
     it('Match a .prj file', function (done) {
       var cmd = '-i test/test_data/two_states_merc_copy.shp -proj from="test/test_data/two_states_mercator.prj" +proj=robin -o robin.shp';
       api.applyCommands(cmd, null, function(err, output) {
@@ -45,8 +55,17 @@ describe('mapshaper-proj.js', function() {
         done();
       })
     })
-  })
 
+    it('Match a .prj file even if dataset is empty', function (done) {
+      var input = {type: 'GeometryCollection', geometries: []};
+      var cmd = '-i in.json -proj from="test/test_data/two_states_mercator.prj" +proj=robin -o robin.shp';
+      api.applyCommands(cmd, {'in.json': input}, function(err, output) {
+        assert(/Robinson/.test(output['robin.prj']));
+        done();
+      })
+    })
+
+  })
 
   describe('-proj match= tests', function () {
     it('match= argument can be a .prj file', function(done) {
@@ -69,6 +88,15 @@ describe('mapshaper-proj.js', function() {
       api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i test/test_data/three_points.shp -proj match=states -o',
           {}, function(err, output) {
         assert(/Mercator/.test(output['three_points.prj']));
+        done();
+      })
+    })
+
+    it('match= works even if dataset is empty', function(done) {
+      var empty = {type: 'GeometryCollection', geometries: []};
+      api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i in.json -proj match=states -o format=shapefile',
+          {'in.json': empty}, function(err, output) {
+        assert(/Mercator/.test(output['in.prj']));
         done();
       })
     })
