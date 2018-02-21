@@ -1,5 +1,6 @@
 v0.4.62 (unreleased)
 * Added -o singles option for saving each output layer to a separate file (TopoJSON only).
+* Allow -proj command to set the projection of an empty dataset.
 
 v0.4.61
 * Improvements to command line help.
