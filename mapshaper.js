@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.61';
+var VERSION = '0.4.62';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -3625,6 +3625,11 @@ internal.getDatasetBounds = function(dataset) {
   return bounds;
 };
 
+internal.datasetHasGeometry = function(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return internal.layerHasGeometry(lyr);
+  });
+};
 
 internal.datasetHasPaths = function(dataset) {
   return utils.some(dataset.layers, function(lyr) {
@@ -17239,15 +17244,23 @@ api.proj = function(dataset, destInfo, opts) {
       target = {},
       src, dest;
 
+  dest = destInfo.crs;
+  if (!dest) {
+    stop("Missing projection data");
+  }
+
+  if (!internal.datasetHasGeometry(dataset)) {
+    // still set the crs of datasets that are missing geometry
+    dataset.info.crs = dest;
+    dataset.info.prj = destInfo.prj; // may be undefined
+    return;
+  }
+
   src = internal.getDatasetCRS(dataset);
   if (!src) {
     stop("Unable to project -- source coordinate system is unknown");
   }
 
-  dest = destInfo.crs;
-  if (!dest) {
-    stop("Missing projection data");
-  }
   if (internal.crsAreEqual(src, dest)) {
     message("Source and destination CRS are the same");
     return;
@@ -20276,7 +20289,7 @@ internal.getOptionParser = function() {
       describe: "(Topo/GeoJSON) format output for readability"
     })
     .option("singles", {
-      // describe: "(TopoJSON) save each layer as a single file",
+      describe: "(TopoJSON) save each target layer as a separate file",
       type: "flag"
     })
     .option("quantization", {
