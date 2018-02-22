@@ -26,7 +26,7 @@ For a detailed reference, see the [Command Reference](https://github.com/mbloch/
 
 ### Interactive web interface
 
-The web UI works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari.
+The web UI works in recent desktop versions of Chrome, Firefox, Safari and Internet Explorer. Safari before v10.1 and IE before v10 are not supported.
 
 The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
 
