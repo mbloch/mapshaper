@@ -2,7 +2,7 @@
 
 // Run mapshaper in a child process with more memory
 // note: require('v8').getHeapStatistics().heap_size_limit seems to give the current limit
-var megabytes = 4096;
+var megabytes = 8000;
 var mapshaper = require('path').join(__dirname, 'mapshaper'); // path of mapshaper executable
 var opts = {stdio: 'inherit'};
 var args = ['--max-old-space-size=' + megabytes, mapshaper].concat(process.argv.slice(2));

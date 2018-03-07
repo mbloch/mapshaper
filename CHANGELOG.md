@@ -1,5 +1,5 @@
 v0.4.63 (unreleased)
-* Added mapshaper-xl executable, to run mapshaper commands with 4GB of heap memory instead of the default amount.
+* Added mapshaper-xl executable, to run mapshaper commands with about 8GB of heap memory instead of the default amount.
 
 v0.4.62
 * Added -o singles option for saving each output layer to a separate file (TopoJSON only).
