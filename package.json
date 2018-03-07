@@ -46,6 +46,7 @@
 	},
 	"bin": {
 		"mapshaper": "./bin/mapshaper",
-		"mapshaper-gui": "./bin/mapshaper-gui"
+		"mapshaper-gui": "./bin/mapshaper-gui",
+		"mapshaper-xl": "./bin/mapshaper-xl"
 	}
 }

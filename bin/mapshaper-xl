@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+
+var mapshaper = require('path').join(__dirname, 'mapshaper'); // path of mapshaper executable
+var opts = {stdio: 'inherit'};
+var args = ['--max-old-space-size=4096', mapshaper].concat(process.argv.slice(2));
+var proc = require('child_process').spawn(process.argv[0], args, opts);
