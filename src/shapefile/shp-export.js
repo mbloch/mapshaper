@@ -61,20 +61,32 @@ internal.getShapefileExportType = function(lyr) {
 };
 
 internal.exportShpAndShxFiles = function(layer, dataset, opts) {
-  var shpType = internal.getShapefileExportType(layer);
-  var fileBytes = 100;
   var shapes = layer.shapes || utils.initializeArray(new Array(internal.getFeatureCount(layer)), null);
   var bounds = new Bounds();
+  var shpType = internal.getShapefileExportType(layer);
+  var fileBytes = 100;
+  var shxBytes = 100 + shapes.length * 8;
+  var shxBin = new BinArray(shxBytes).bigEndian().position(100); // jump to record section
+  var shpBin;
+
+  // TODO: write shp records to an expanding buffer, to avoid creating
   var shapeBuffers = shapes.map(function(shape, i) {
     var pathData = internal.exportPathData(shape, dataset.arcs, layer.geometry_type);
     var rec = internal.exportShpRecord(pathData, i+1, shpType);
-    fileBytes += rec.buffer.byteLength;
+    var recBytes = rec.buffer.byteLength;
+
+    // add shx record
+    shxBin.writeInt32(fileBytes / 2); // add record offset in 16-bit words
+    // alternative to below: shxBin.writeBuffer(rec.buffer, 4, 4)
+    shxBin.writeInt32(recBytes / 2 - 4); // add record content length in 16-bit words
+
+    fileBytes += recBytes;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
     return rec.buffer;
   });
 
   // write .shp header section
-  var shpBin = new BinArray(fileBytes, false)
+  shpBin = new BinArray(fileBytes, false)
     .writeInt32(9994)
     .skipBytes(5 * 4)
     .writeInt32(fileBytes / 2)
@@ -91,26 +103,18 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
     // no bounds -- assume no shapes or all null shapes -- using 0s as bbox
     shpBin.skipBytes(4 * 8);
   }
-
   shpBin.skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
-  // write .shx header
-  var shxBytes = 100 + shapeBuffers.length * 8;
-  var shxBin = new BinArray(shxBytes, false)
-    .writeBuffer(shpBin.buffer(), 100) // copy .shp header to .shx
-    .position(24)
-    .bigEndian()
-    .writeInt32(shxBytes/2)
-    .position(100);
-
-  // write record sections of .shp and .shx
-  shapeBuffers.forEach(function(buf, i) {
-    var shpOff = shpBin.position() / 2,
-        shpSize = (buf.byteLength - 8) / 2; // alternative: shxBin.writeBuffer(buf, 4, 4);
-    shxBin.writeInt32(shpOff);
-    shxBin.writeInt32(shpSize);
+  // write records section of .shp
+  shapeBuffers.forEach(function(buf) {
     shpBin.writeBuffer(buf);
   });
+
+  // write .shx header
+  shxBin.position(0)
+    .writeBuffer(shpBin.buffer(), 100) // copy .shp header to .shx
+    .position(24) // substitute shx file size for shp file size
+    .writeInt32(shxBytes / 2);
 
   return [{
       content: shpBin.buffer(),
