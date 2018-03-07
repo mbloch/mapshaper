@@ -92,9 +92,86 @@ describe('mapshaper-shapefile.js', function () {
     })
   })
 
-  describe('Import/Export rountrip tests', function() {
+  describe('GeoJSON -> Shapefile -> GeoJSON roundtrip tests', function() {
 
+    it ('Point type dataset (testing shp type 1 output)', function(done) {
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {
+            name: 'alpha',
+            value: 94.3
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [-35.8, 22.4]
+          }
+        }, {
+          type: 'Feature',
+          properties: {
+            name: 'beta',
+            value: 0
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [10.2, -55.1]
+          }
+        }]
+      };
+      roundtrip(input, done);
+    });
 
+    it ('Mixed point type dataset', function(done) {
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {
+            name: 'alpha',
+            value: 94.3
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [-35.8, 22.4]
+          }
+        }, {
+          type: 'Feature',
+          properties: {
+            name: 'beta',
+            value: 0
+          },
+          geometry: {
+            type: 'MultiPoint',
+            coordinates: [[10.2, -55.1], [-180, -90]]
+          }
+        }]
+      };
+      roundtrip(input, done);
+    });
+
+    function fail(err) {
+      assert(false, err);
+    }
+
+    function roundtrip(input, done) {
+      toShapefile(input, function(err, output) {
+        if (err) fail(err);
+        toGeoJSON(output, function(err, output) {
+          if (err) fail(err);
+          assert.deepEqual(JSON.parse(output['output.json']), input);
+          done();
+        });
+      });
+    }
+
+    function toShapefile(input, cb) {
+      api.applyCommands('-i input.json -o output.shp', {'input.json': input}, cb);
+    }
+
+    function toGeoJSON(input, cb) {
+      api.applyCommands('-i output.shp -o output.json format=geojson', input, cb);
+    }
   })
 
   describe('Export/Import roundtrip tests', function () {

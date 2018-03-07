@@ -32,14 +32,41 @@ internal.exportPrjFile = function(lyr, dataset) {
   } : null;
 };
 
+// Get max number of parts in a single shape from an array of shapes.
+// Caveat: polygon holes are counted as separate parts.
+internal.findMaxPartCount = function(shapes) {
+  var maxCount = 0, shp;
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    if (shp && shp.length > maxCount) {
+      maxCount = shp.length;
+    }
+  }
+  return maxCount;
+};
+
+internal.getShapefileExportType = function(lyr) {
+  var type = lyr.geometry_type;
+  var shpType;
+  if (type == 'point') {
+    shpType = internal.findMaxPartCount(lyr.shapes || []) <= 1 ? ShpType.POINT : ShpType.MULTIPOINT;
+  } else if (type == 'polygon') {
+    shpType = ShpType.POLYGON;
+  } else if (type == 'polyline') {
+    shpType = ShpType.POLYLINE;
+  } else {
+    shpType = ShpType.NULL;
+  }
+  return shpType;
+};
+
 internal.exportShpAndShxFiles = function(layer, dataset, opts) {
-  var geomType = layer.geometry_type;
-  var shpType = internal.getShapefileType(geomType);
+  var shpType = internal.getShapefileExportType(layer);
   var fileBytes = 100;
-  var bounds = new Bounds();
   var shapes = layer.shapes || utils.initializeArray(new Array(internal.getFeatureCount(layer)), null);
+  var bounds = new Bounds();
   var shapeBuffers = shapes.map(function(shape, i) {
-    var pathData = internal.exportPathData(shape, dataset.arcs, geomType);
+    var pathData = internal.exportPathData(shape, dataset.arcs, layer.geometry_type);
     var rec = internal.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
@@ -99,16 +126,34 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
 internal.exportShpRecord = function(data, id, shpType) {
-  var bounds = null,
+  var multiPartType = ShpType.isMultiPartType(shpType),
+      singlePointType = !multiPartType && !ShpType.isMultiPointType(shpType),
+      isNull = data.pointCount > 0 === false,
+      bounds = isNull ? null : data.bounds,
       bin = null;
-  if (data.pointCount > 0) {
-    var multiPart = ShpType.isMultiPartType(shpType),
-        partIndexIdx = 52,
-        pointsIdx = multiPart ? partIndexIdx + 4 * data.pathCount : 48,
+
+  if (isNull) {
+    bin = new BinArray(12, false)
+      .writeInt32(id)
+      .writeInt32(2)
+      .littleEndian()
+      .writeInt32(0);
+
+  } else if (singlePointType) {
+    bin = new BinArray(28, false)
+      .writeInt32(id)
+      .writeInt32(10)
+      .littleEndian()
+      .writeInt32(shpType)
+      .writeFloat64(data.pathData[0].points[0][0])
+      .writeFloat64(data.pathData[0].points[0][1]);
+
+  } else {
+    var partIndexIdx = 52,
+        pointsIdx = multiPartType ? partIndexIdx + 4 * data.pathCount : 48,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
-    bounds = data.bounds;
     bin = new BinArray(recordBytes, false)
       .writeInt32(id)
       .writeInt32((recordBytes - 8) / 2)
@@ -119,40 +164,26 @@ internal.exportShpRecord = function(data, id, shpType) {
       .writeFloat64(bounds.xmax)
       .writeFloat64(bounds.ymax);
 
-    if (multiPart) {
+    if (multiPartType) {
       bin.writeInt32(data.pathCount);
-    } else {
-      if (data.pathData.length > 1) {
-        error("[exportShpRecord()] Tried to export multiple paths as type:", shpType);
-      }
     }
 
     bin.writeInt32(data.pointCount);
-
     data.pathData.forEach(function(path, i) {
-      if (multiPart) {
+      if (multiPartType) {
         bin.position(partIndexIdx + i * 4).writeInt32(pointCount);
       }
       bin.position(pointsIdx + pointCount * 16);
-
-      var points = path.points;
-      for (var j=0, len=points.length; j<len; j++) {
-        bin.writeFloat64(points[j][0]);
-        bin.writeFloat64(points[j][1]);
+      for (var j=0, len=path.points.length; j<len; j++) {
+        bin.writeFloat64(path.points[j][0]);
+        bin.writeFloat64(path.points[j][1]);
       }
       pointCount += j;
     });
-    if (data.pointCount != pointCount)
+    if (data.pointCount != pointCount) {
       error("Shp record point count mismatch; pointCount:",
           pointCount, "data.pointCount:", data.pointCount);
-
-  } else {
-    // no data -- export null record
-    bin = new BinArray(12, false)
-      .writeInt32(id)
-      .writeInt32(2)
-      .littleEndian()
-      .writeInt32(0);
+    }
   }
 
   return {bounds: bounds, buffer: bin.buffer()};
