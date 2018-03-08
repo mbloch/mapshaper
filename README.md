@@ -40,7 +40,11 @@ Firefox is able to load Shapefiles and GeoJSON files larger than 1GB. Chrome has
 
 **Command line interface**
 
-When working with very large files, Node may crash with the message "JavaScript heap out of memory." You can work around this problem by granting Node more memory. The following example (Mac or Linux) allocates 8GB of memory:
+When working with very large files, mapshaper may become unresponsive or crash with the message "JavaScript heap out of memory."
+
+One option is to run `mapshaper-xl` (added in v0.4.63), which allocates more memory than the standard `mapshaper` program.
+
+Another solution is to run Node directly with the `--max-old-space-size` option. The following example (Mac or Linux) allocates 8GB of memory:
 ```bash
 $ node  --max-old-space-size=8192 `which mapshaper` <mapshaper commands>
 ```

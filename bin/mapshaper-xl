@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Run mapshaper in a child process with more memory
+// Run node in a child process with more memory
 // note: require('v8').getHeapStatistics().heap_size_limit seems to give the current limit
 var megabytes = 8000;
 var mapshaper = require('path').join(__dirname, 'mapshaper'); // path of mapshaper executable

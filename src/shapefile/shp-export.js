@@ -69,16 +69,18 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
   var shxBin = new BinArray(shxBytes).bigEndian().position(100); // jump to record section
   var shpBin;
 
-  // TODO: write shp records to an expanding buffer, to avoid creating
+  // TODO: consider writing records to an expanding buffer instead of generating
+  // individual buffers for each record (for large point datasets,
+  // creating millions of buffers impacts performance significantly)
   var shapeBuffers = shapes.map(function(shape, i) {
     var pathData = internal.exportPathData(shape, dataset.arcs, layer.geometry_type);
     var rec = internal.exportShpRecord(pathData, i+1, shpType);
     var recBytes = rec.buffer.byteLength;
 
     // add shx record
-    shxBin.writeInt32(fileBytes / 2); // add record offset in 16-bit words
+    shxBin.writeInt32(fileBytes / 2); // record offset in 16-bit words
     // alternative to below: shxBin.writeBuffer(rec.buffer, 4, 4)
-    shxBin.writeInt32(recBytes / 2 - 4); // add record content length in 16-bit words
+    shxBin.writeInt32(recBytes / 2 - 4); // record content length in 16-bit words
 
     fileBytes += recBytes;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
