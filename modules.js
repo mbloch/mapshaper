@@ -4630,16 +4630,14 @@ process.umask = function() { return 0; };
 },{}],31:[function(require,module,exports){
 'use strict';
 
-module.exports = partialSort;
+module.exports = quickselect;
+module.exports.default = quickselect;
 
-// Floyd-Rivest selection algorithm:
-// Rearrange items so that all items in the [left, k] range are smaller than all items in (k, right];
-// The k-th element will have the (k - left + 1)th smallest value in [left, right]
+function quickselect(arr, k, left, right, compare) {
+    quickselectStep(arr, k, left || 0, right || (arr.length - 1), compare || defaultCompare);
+};
 
-function partialSort(arr, k, left, right, compare) {
-    left = left || 0;
-    right = right || (arr.length - 1);
-    compare = compare || defaultCompare;
+function quickselectStep(arr, k, left, right, compare) {
 
     while (right > left) {
         if (right - left > 600) {
@@ -4650,7 +4648,7 @@ function partialSort(arr, k, left, right, compare) {
             var sd = 0.5 * Math.sqrt(z * s * (n - s) / n) * (m - n / 2 < 0 ? -1 : 1);
             var newLeft = Math.max(left, Math.floor(k - m * s / n + sd));
             var newRight = Math.min(right, Math.floor(k + (n - m) * s / n + sd));
-            partialSort(arr, k, newLeft, newRight, compare);
+            quickselectStep(arr, k, newLeft, newRight, compare);
         }
 
         var t = arr[k];
@@ -6994,7 +6992,7 @@ module.exports = function(filename, options) {
     var fd = fs.openSync(filename, options && options.flag || "r"),
         decoder = decode(options);
 
-    while (true) {
+    while (true) { // eslint-disable-line no-constant-condition
       try {
         var buffer = new Buffer(bufferSize),
             bytesRead = fs.readSync(fd, buffer, 0, bufferSize);
@@ -7020,27 +7018,26 @@ var bufferSize = 1 << 16;
 var fs = require("fs"),
     decode = require("./decode");
 
-module.exports = function(filename, options, callback) {
+module.exports = function(path, options, callback) {
   if (arguments.length < 3) callback = options, options = null;
-  fs.stat(filename, function(error, stat) {
+
+  switch (path) {
+    case "/dev/stdin": return readStream(process.stdin, options, callback);
+  }
+
+  fs.stat(path, function(error, stat) {
     if (error) return callback(error);
-    if (stat.isFile()) {
-      fs.readFile(filename, options, callback);
-    } else {
-      var decoder = decode(options), stream;
-
-      switch (filename) {
-        case "/dev/stdin": stream = process.stdin; break;
-        default: stream = fs.createReadStream(filename, options ? {flags: options.flag || "r"} : {}); break; // N.B. flag / flags
-      }
-
-      stream
-          .on("error", callback)
-          .on("data", function(d) { decoder.push(d); })
-          .on("end", function() { callback(null, decoder.value()); });
-    }
+    if (stat.isFile()) return fs.readFile(path, options, callback);
+    readStream(fs.createReadStream(path, options ? {flags: options.flag || "r"} : {}), options, callback); // N.B. flag / flags
   });
 };
+
+function readStream(stream, options, callback) {
+  var decoder = decode(options);
+  stream.on("error", callback);
+  stream.on("data", function(d) { decoder.push(d); });
+  stream.on("end", function() { callback(null, decoder.value()); });
+}
 
 }).call(this,require('_process'))
 },{"./decode":47,"_process":30,"fs":"fs"}],51:[function(require,module,exports){
@@ -7082,27 +7079,25 @@ module.exports = function(filename, data, options) {
 var fs = require("fs"),
     encode = require("./encode");
 
-module.exports = function(filename, data, options, callback) {
+module.exports = function(path, data, options, callback) {
   if (arguments.length < 4) callback = options, options = null;
-  fs.stat(filename, function(error, stat) {
+
+  switch (path) {
+    case "/dev/stdout": return writeStream(process.stdout, "write", data, options, callback);
+    case "/dev/stderr": return writeStream(process.stderr, "write", data, options, callback);
+  }
+
+  fs.stat(path, function(error, stat) {
     if (error && error.code !== "ENOENT") return callback(error);
-    if (stat && stat.isFile()) {
-      fs.writeFile(filename, data, options, callback);
-    } else {
-      var stream, send = "end";
-
-      switch (filename) {
-        case "/dev/stdout": stream = process.stdout, send = "write"; break;
-        case "/dev/stderr": stream = process.stderr, send = "write"; break;
-        default: stream = fs.createWriteStream(filename, options ? {flags: options.flag || "w"} : {}); break; // N.B. flag / flags
-      }
-
-      stream
-          .on("error", function(error) { callback(error.code === "EPIPE" ? null : error); }) // ignore broken pipe, e.g., | head
-          [send](encode(data, options), function(error) { callback(error && error.code === "EPIPE" ? null : error); });
-    }
+    if (stat && stat.isFile()) return fs.writeFile(path, data, options, callback);
+    writeStream(fs.createWriteStream(path, options ? {flags: options.flag || "w"} : {}), "end", data, options, callback); // N.B. flag / flags
   });
 };
+
+function writeStream(stream, send, data, options, callback) {
+  stream.on("error", function(error) { callback(error.code === "EPIPE" ? null : error); }); // ignore broken pipe, e.g., | head
+  stream[send](encode(data, options), function(error) { callback(error && error.code === "EPIPE" ? null : error); });
+}
 
 }).call(this,require('_process'))
 },{"./encode":48,"_process":30,"fs":"fs"}],53:[function(require,module,exports){
@@ -9359,7 +9354,7 @@ function numberIsNaN (obj) {
 }
 
 },{"base64-js":1,"ieee754":25}],"d3-dsv":[function(require,module,exports){
-// https://d3js.org/d3-dsv/ Version 1.0.7. Copyright 2017 Mike Bostock.
+// https://d3js.org/d3-dsv/ Version 1.0.8. Copyright 2017 Mike Bostock.
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
 	typeof define === 'function' && define.amd ? define(['exports'], factory) :
@@ -9410,7 +9405,7 @@ var dsv = function(delimiter) {
       if (convert) return convert(row, i - 1);
       columns = row, convert = f ? customConverter(row, f) : objectConverter(row);
     });
-    rows.columns = columns;
+    rows.columns = columns || [];
     return rows;
   }
 
@@ -21281,6 +21276,7 @@ var substr = 'ab'.substr(-1) === 'b'
 'use strict';
 
 module.exports = rbush;
+module.exports.default = rbush;
 
 var quickselect = require('quickselect');
 
@@ -21370,7 +21366,7 @@ rbush.prototype = {
             return this;
         }
 
-        // recursively build the tree with the given data from stratch using OMT algorithm
+        // recursively build the tree with the given data from scratch using OMT algorithm
         var node = this._build(data.slice(), 0, data.length - 1, 0);
 
         if (!this.data.children.length) {

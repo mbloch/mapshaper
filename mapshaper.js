@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.62';
+var VERSION = '0.4.63';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -13544,14 +13544,6 @@ internal.isSupportedShapefileType = function(t) {
   return utils.contains([0,1,3,5,8,11,13,15,18,21,23,25,28], t);
 };
 
-internal.getShapefileType = function(type) {
-  return {
-    polygon: ShpType.POLYGON,
-    polyline: ShpType.POLYLINE,
-    point: ShpType.MULTIPOINT  // TODO: use POINT when possible
-  }[type] || ShpType.NULL;
-};
-
 
 
 
@@ -14042,22 +14034,63 @@ internal.exportPrjFile = function(lyr, dataset) {
   } : null;
 };
 
+// Get max number of parts in a single shape from an array of shapes.
+// Caveat: polygon holes are counted as separate parts.
+internal.findMaxPartCount = function(shapes) {
+  var maxCount = 0, shp;
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    if (shp && shp.length > maxCount) {
+      maxCount = shp.length;
+    }
+  }
+  return maxCount;
+};
+
+internal.getShapefileExportType = function(lyr) {
+  var type = lyr.geometry_type;
+  var shpType;
+  if (type == 'point') {
+    shpType = internal.findMaxPartCount(lyr.shapes || []) <= 1 ? ShpType.POINT : ShpType.MULTIPOINT;
+  } else if (type == 'polygon') {
+    shpType = ShpType.POLYGON;
+  } else if (type == 'polyline') {
+    shpType = ShpType.POLYLINE;
+  } else {
+    shpType = ShpType.NULL;
+  }
+  return shpType;
+};
+
 internal.exportShpAndShxFiles = function(layer, dataset, opts) {
-  var geomType = layer.geometry_type;
-  var shpType = internal.getShapefileType(geomType);
-  var fileBytes = 100;
-  var bounds = new Bounds();
   var shapes = layer.shapes || utils.initializeArray(new Array(internal.getFeatureCount(layer)), null);
+  var bounds = new Bounds();
+  var shpType = internal.getShapefileExportType(layer);
+  var fileBytes = 100;
+  var shxBytes = 100 + shapes.length * 8;
+  var shxBin = new BinArray(shxBytes).bigEndian().position(100); // jump to record section
+  var shpBin;
+
+  // TODO: consider writing records to an expanding buffer instead of generating
+  // individual buffers for each record (for large point datasets,
+  // creating millions of buffers impacts performance significantly)
   var shapeBuffers = shapes.map(function(shape, i) {
-    var pathData = internal.exportPathData(shape, dataset.arcs, geomType);
+    var pathData = internal.exportPathData(shape, dataset.arcs, layer.geometry_type);
     var rec = internal.exportShpRecord(pathData, i+1, shpType);
-    fileBytes += rec.buffer.byteLength;
+    var recBytes = rec.buffer.byteLength;
+
+    // add shx record
+    shxBin.writeInt32(fileBytes / 2); // record offset in 16-bit words
+    // alternative to below: shxBin.writeBuffer(rec.buffer, 4, 4)
+    shxBin.writeInt32(recBytes / 2 - 4); // record content length in 16-bit words
+
+    fileBytes += recBytes;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
     return rec.buffer;
   });
 
   // write .shp header section
-  var shpBin = new BinArray(fileBytes, false)
+  shpBin = new BinArray(fileBytes, false)
     .writeInt32(9994)
     .skipBytes(5 * 4)
     .writeInt32(fileBytes / 2)
@@ -14074,26 +14107,18 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
     // no bounds -- assume no shapes or all null shapes -- using 0s as bbox
     shpBin.skipBytes(4 * 8);
   }
-
   shpBin.skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
-  // write .shx header
-  var shxBytes = 100 + shapeBuffers.length * 8;
-  var shxBin = new BinArray(shxBytes, false)
-    .writeBuffer(shpBin.buffer(), 100) // copy .shp header to .shx
-    .position(24)
-    .bigEndian()
-    .writeInt32(shxBytes/2)
-    .position(100);
-
-  // write record sections of .shp and .shx
-  shapeBuffers.forEach(function(buf, i) {
-    var shpOff = shpBin.position() / 2,
-        shpSize = (buf.byteLength - 8) / 2; // alternative: shxBin.writeBuffer(buf, 4, 4);
-    shxBin.writeInt32(shpOff);
-    shxBin.writeInt32(shpSize);
+  // write records section of .shp
+  shapeBuffers.forEach(function(buf) {
     shpBin.writeBuffer(buf);
   });
+
+  // write .shx header
+  shxBin.position(0)
+    .writeBuffer(shpBin.buffer(), 100) // copy .shp header to .shx
+    .position(24) // substitute shx file size for shp file size
+    .writeInt32(shxBytes / 2);
 
   return [{
       content: shpBin.buffer(),
@@ -14109,16 +14134,34 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
 internal.exportShpRecord = function(data, id, shpType) {
-  var bounds = null,
+  var multiPartType = ShpType.isMultiPartType(shpType),
+      singlePointType = !multiPartType && !ShpType.isMultiPointType(shpType),
+      isNull = data.pointCount > 0 === false,
+      bounds = isNull ? null : data.bounds,
       bin = null;
-  if (data.pointCount > 0) {
-    var multiPart = ShpType.isMultiPartType(shpType),
-        partIndexIdx = 52,
-        pointsIdx = multiPart ? partIndexIdx + 4 * data.pathCount : 48,
+
+  if (isNull) {
+    bin = new BinArray(12, false)
+      .writeInt32(id)
+      .writeInt32(2)
+      .littleEndian()
+      .writeInt32(0);
+
+  } else if (singlePointType) {
+    bin = new BinArray(28, false)
+      .writeInt32(id)
+      .writeInt32(10)
+      .littleEndian()
+      .writeInt32(shpType)
+      .writeFloat64(data.pathData[0].points[0][0])
+      .writeFloat64(data.pathData[0].points[0][1]);
+
+  } else {
+    var partIndexIdx = 52,
+        pointsIdx = multiPartType ? partIndexIdx + 4 * data.pathCount : 48,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
-    bounds = data.bounds;
     bin = new BinArray(recordBytes, false)
       .writeInt32(id)
       .writeInt32((recordBytes - 8) / 2)
@@ -14129,40 +14172,26 @@ internal.exportShpRecord = function(data, id, shpType) {
       .writeFloat64(bounds.xmax)
       .writeFloat64(bounds.ymax);
 
-    if (multiPart) {
+    if (multiPartType) {
       bin.writeInt32(data.pathCount);
-    } else {
-      if (data.pathData.length > 1) {
-        error("[exportShpRecord()] Tried to export multiple paths as type:", shpType);
-      }
     }
 
     bin.writeInt32(data.pointCount);
-
     data.pathData.forEach(function(path, i) {
-      if (multiPart) {
+      if (multiPartType) {
         bin.position(partIndexIdx + i * 4).writeInt32(pointCount);
       }
       bin.position(pointsIdx + pointCount * 16);
-
-      var points = path.points;
-      for (var j=0, len=points.length; j<len; j++) {
-        bin.writeFloat64(points[j][0]);
-        bin.writeFloat64(points[j][1]);
+      for (var j=0, len=path.points.length; j<len; j++) {
+        bin.writeFloat64(path.points[j][0]);
+        bin.writeFloat64(path.points[j][1]);
       }
       pointCount += j;
     });
-    if (data.pointCount != pointCount)
+    if (data.pointCount != pointCount) {
       error("Shp record point count mismatch; pointCount:",
           pointCount, "data.pointCount:", data.pointCount);
-
-  } else {
-    // no data -- export null record
-    bin = new BinArray(12, false)
-      .writeInt32(id)
-      .writeInt32(2)
-      .littleEndian()
-      .writeInt32(0);
+    }
   }
 
   return {bounds: bounds, buffer: bin.buffer()};
