@@ -21,11 +21,11 @@ var MapStyle = (function() {
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
         dotColor: "#73ba20",
-        dotSize: 3
+        dotSize: 4
       },
       highStyle = {
         dotColor: "#F24400",
-        dotSize: 3
+        dotSize: 4
       },
       hoverStyles = {
         polygon: {

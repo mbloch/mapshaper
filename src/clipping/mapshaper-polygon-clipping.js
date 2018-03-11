@@ -17,7 +17,6 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var dividePath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = internal.getPolygonDissolver(nodes);
 
-
   // clean each target polygon by dissolving its rings
   targetShapes = targetShapes.map(dissolvePolygon);
 
