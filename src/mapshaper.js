@@ -23,6 +23,7 @@ utils.extend(api.internal, {
   DbfReader: DbfReader,
   ShapefileTable: ShapefileTable,
   ArcCollection: ArcCollection,
+  PointIter: PointIter,
   ArcIter: ArcIter,
   ShapeIter: ShapeIter,
   Bounds: Bounds,

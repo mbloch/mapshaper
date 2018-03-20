@@ -1,13 +1,38 @@
 
-// Constructor takes arrays of coords: xx, yy, zz (optional)
+// Coordinate iterators
 //
-// Iterate over the points of an arc
-// properties: x, y
-// method: hasNext()
-// usage:
+// Interface:
+//   properties: x, y
+//   method: hasNext()
+//
+// Usage:
 //   while (iter.hasNext()) {
 //     iter.x, iter.y; // do something w/ x & y
 //   }
+
+
+// Iterate over an array of [x, y] points
+//
+function PointIter(points) {
+  var n = points.length,
+      i = 0,
+      iter = {
+        x: 0,
+        y: 0,
+        hasNext: hasNext
+      };
+  function hasNext() {
+    if (i >= n) return false;
+    iter.x = points[i][0];
+    iter.y = points[i][1];
+    i++;
+    return true;
+  }
+  return iter;
+}
+
+
+// Constructor takes arrays of coords: xx, yy, zz (optional)
 //
 function ArcIter(xx, yy) {
   this._i = 0;
@@ -86,7 +111,6 @@ function FilteredArcIter(xx, yy, zz) {
 }
 
 // Iterate along a path made up of one or more arcs.
-// Similar interface to ArcIter()
 //
 function ShapeIter(arcs) {
   this._arcs = arcs;
