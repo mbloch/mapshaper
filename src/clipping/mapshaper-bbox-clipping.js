@@ -168,12 +168,13 @@ function addClippedPoint(points, p1, p2, bbox) {
 
       } else if (q2 == 4) {
         // opposite corner
-        // TODO: could be intersection, left corner or right corner
         if (!addSegmentBoundsIntersection(points, p1, p2, bbox)) {
+          // determine if bbox is to the left or right of segment
           if (geom.orient2D(p1[0], p1[1], p2[0], p2[1], bbox[0][0], bbox[0][1]) > 1) {
-            // seg -> nearest corner is CCW
+            // bbox is on the left (seg -> nearest corner is CCW)
             addCornerPoint(points, 6, bbox);
           } else {
+            // bbox is on the right
             addCornerPoint(points, 2, bbox);
           }
         }
