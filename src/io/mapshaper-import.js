@@ -78,7 +78,7 @@ internal.importFileContent = function(content, filename, opts) {
 
 
 internal.importShapefile = function(obj, opts) {
-  var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing
+  var shpSrc = obj.shp.content || obj.shp.filename, // read from a file if (binary) content is missing
       dataset = internal.importShp(shpSrc, opts),
       lyr = dataset.layers[0],
       dbf;

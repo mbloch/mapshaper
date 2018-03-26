@@ -1,3 +1,6 @@
+v0.4.64
+* Bug fixes
+
 v0.4.63
 * Added mapshaper-xl script, for running mapshaper with about 8GB of heap memory instead of the default amount.
 * Output type 1 Shapefiles if features are all single points (more compact than type 8/multipoint).

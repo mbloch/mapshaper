@@ -38,6 +38,7 @@ api.importFile = function(path, opts) {
       cached = cache && (path in cache),
       type, content;
 
+
   cli.checkFileExists(path, cache);
   if (apparentType == 'shp' && !cached) {
     // let ShpReader read the file (supports larger files)
@@ -50,6 +51,10 @@ api.importFile = function(path, opts) {
     // content = null // read incrementally from file, to support largest files
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
+    if (utils.isString(content)) {
+      // Fix for issue #264 (applyCommands() input is file path instead of binary content)
+      stop('Expected binary content, received a string');
+    }
   } else { // assuming text file
     content = cli.readFile(path, encoding || 'utf-8', cache);
   }

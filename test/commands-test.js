@@ -29,6 +29,15 @@ function runCmd(cmd, input, done) {
 
 describe('mapshaper-commands.js', function () {
 
+  describe('Issue #264 applyCommands()', function() {
+    it ('should throw error if input is a file path, not file content', function(done) {
+      mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/test_data/two_states.shp'}, function(err, output) {
+        assert(!!err);
+        done();
+      });
+    });
+  })
+
   describe('User-reported bug: wildcard expansion in Windows', function () {
     it('files are processed, no error thrown', function (done) {
       // this duplicates the error (Windows shell doesn't expand wildcards,
