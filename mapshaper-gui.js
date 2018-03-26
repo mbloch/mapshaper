@@ -2970,10 +2970,11 @@ function DisplayCanvas() {
   _self.drawArcs = function(arcs, style, filter) {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
-        clipping = _ext.scale() > 2000,
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
-        count = 0;
+        count = 0,
+        iter;
+
     startPath(ctx, style);
     for (i=0, n=arcs.size(); i<n; i++) {
       if (filter && !filter(i)) continue;
@@ -2981,11 +2982,8 @@ function DisplayCanvas() {
         endPath(ctx, style);
         startPath(ctx, style);
       }
-      if (clipping) {
-        drawPathSafe(arcs.getArcIter(i), t, ctx, _ext.getBounds());
-      } else {
-        drawPath(arcs.getArcIter(i), t, ctx, 0.6);
-      }
+      iter = protectIterForDrawing(arcs.getArcIter(i), _ext);
+      drawPath(iter, t, ctx, 0.6);
     }
     endPath(ctx, style);
   };
@@ -3054,65 +3052,6 @@ function drawSquare(x, y, size, ctx) {
   }
 }
 
-//  7 8 9
-//  4 5 6
-//  1 2 3
-function getPointQuadrant(p, bounds) {
-  var x = p[0], y = p[1];
-  var col = x < bounds.xmin && 1 || x <= bounds.xmax && 2 || x > bounds.xmax && 3 || 0;
-  var row = y < bounds.ymin && 1 || y <= bounds.ymax && 2 || y > bounds.ymax && 3 || 0;
-  if (col === 0 || row === 0) return 0;
-  return col + (row - 1) * 3;
-}
-
-function getSafeSegment(a, b, bounds) {
-  var qa = getPointQuadrant(a, bounds),
-      qb = getPointQuadrant(b, bounds),
-      hits, i, j, p, xx, yy, seg;
-  if (qa == 5 && qb == 5) {
-    return [a, b]; // both points are inside box -- no clip
-  } else if (qa == qb) {
-    return null; // both points are in the same outer quadrant -- safely skip
-  }
-  hits = [];
-  xx = [bounds.xmin, bounds.xmin, bounds.xmax, bounds.xmax];
-  yy = [bounds.ymin, bounds.ymax, bounds.ymax, bounds.ymin];
-  for (i=0; i<4; i++) {
-    j = (i + 1) % 4;
-    p = geom.segmentIntersection(a[0], a[1], b[0], b[1], xx[i], yy[i],
-        xx[j], yy[j]);
-    if (p) hits.push(p);
-  }
-  if (hits.length > 0) {
-    if (qa == 5) {
-      seg = [a, hits[0]];
-    } else if (qb == 5) {
-      seg = [b, hits[0]];
-    } else if (hits.length == 2) {
-      seg = hits;
-    }
-  }
-  // TODO: handle edge cases (e.g. collinear hits, corner hits)
-  return seg;
-}
-
-// Clip segments if they might be too long for the Canvas renderer to display
-function drawPathSafe(vec, t, ctx, bounds) {
-  var a, b, ab;
-  bounds = bounds.clone().transform(t);
-  while (vec.hasNext()) {
-    b = t.transform(vec.x, vec.y);
-    if (a) {
-      ab = getSafeSegment(a, b, bounds);
-    }
-    if (ab) {
-      ctx.moveTo(ab[0][0], ab[0][1]);
-      ctx.lineTo(ab[1][0], ab[1][1]);
-    }
-    a = b;
-  }
-}
-
 function drawPath(vec, t, ctx, minLen) {
   var x, y, xp, yp;
   if (!vec.hasNext()) return;
@@ -3138,9 +3077,21 @@ function getShapePencil(arcs, ext) {
     for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
       iter.init(shp[i]);
       // 0.2 trades visible seams for performance
-      drawPath(iter, t, ctx, 0.2);
+      drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
     }
   };
+}
+
+function protectIterForDrawing(iter, ext) {
+  var bounds;
+  if (ext.scale() > 100) {
+    // clip to rectangle when zoomed far in (canvas stops drawing shapes when
+    // the coordinates become too large)
+    bounds = ext.getBounds().clone();
+    bounds.scale(1.1); // add a margin, to hide strokes along the edges
+    iter = new internal.PointIter(internal.clipIterByBounds(iter, bounds));
+  }
+  return iter;
 }
 
 function getPathStart(ext, lineScale) {
@@ -4477,11 +4428,11 @@ var MapStyle = (function() {
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
         dotColor: "#73ba20",
-        dotSize: 3
+        dotSize: 4
       },
       highStyle = {
         dotColor: "#F24400",
-        dotSize: 3
+        dotSize: 4
       },
       hoverStyles = {
         polygon: {
