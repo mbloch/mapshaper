@@ -66,9 +66,8 @@ Dbf.exportRecords = function(arr, encoding) {
   bin.skipBytes(2);
 
   // field subrecords
-  fieldData.reduce(function(recordOffset, obj, i) {
-    var fieldName = uniqFields[i];
-    bin.writeCString(fieldName, 11);
+  fieldData.reduce(function(recordOffset, obj) {
+    bin.writeCString(obj.name, 11);
     bin.writeUint8(obj.type.charCodeAt(0));
     bin.writeUint32(recordOffset);
     bin.writeUint8(obj.size);
