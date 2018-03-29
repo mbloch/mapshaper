@@ -183,13 +183,17 @@ Dbf.initDateField = function(info, arr, name) {
 };
 
 Dbf.initStringField = function(info, arr, name, encoding) {
-  var formatter = Dbf.getStringWriter(encoding);
+  var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
   var size = 0;
   var truncated = 0;
   var buffers = arr.map(function(rec) {
     var buf = formatter(rec[name]);
     if (buf.length > Dbf.MAX_STRING_LEN) {
-      buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      if (encoding == 'ascii') {
+        buf = buf.subarray(0, Dbf.MAX_STRING_LEN);
+      } else {
+        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      }
       truncated++;
     }
     size = Math.max(size, buf.length);
@@ -301,15 +305,6 @@ Dbf.getNumericFieldInfo = function(arr, name) {
   };
 };
 
-// Return function to convert a JS str to an ArrayBuffer containing encoded str.
-Dbf.getStringWriter = function(encoding) {
-  if (encoding === 'ascii') {
-    return Dbf.encodeValueAsAscii;
-  } else {
-    return Dbf.getStringWriterEncoded(encoding);
-  }
-};
-
 // return an array buffer or null if value contains non-ascii chars
 Dbf.encodeValueAsAscii = function(val, strict) {
   var str = String(val),
@@ -346,7 +341,7 @@ Dbf.getStringWriterEncoded = function(encoding) {
 
 // try to remove partial multi-byte characters from the end of an encoded string.
 Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
-  var truncated = (buf.slice || buf.subarray).call(buf, 0, maxLen); // ascii uses Uint8Array -- slice not implemented on some platforms
+  var truncated = buf.slice(0, maxLen);
   var len = maxLen;
   var tmp, str;
   while (len > 0 && len >= maxLen - 3) {
