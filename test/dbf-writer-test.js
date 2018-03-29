@@ -55,7 +55,20 @@ describe('dbf-writer.js', function () {
       assert.equal(info.type, 'C');
       assert.equal(info.size, 254);
       assert.equal(info.decimals, 0);
-      assert.equal(info.name, 'a');
+      assert(!!info.warning);
+    })
+
+    it('objects are exported as empty values, with a warning', function() {
+      var data = [{a: {}, b: [1], c: function() {}}],
+          a = Dbf.getFieldInfo(data, 'a'),
+          b = Dbf.getFieldInfo(data, 'b'),
+          c = Dbf.getFieldInfo(data, 'c');
+      assert(!!a.warning);
+      assert(!!b.warning);
+      assert(!!c.warning);
+      assert.equal(a.size, 0);
+      assert.equal(b.size, 0);
+      assert.equal(c.size, 0);
     })
   })
 

@@ -26,13 +26,23 @@ function BufferPool() {
 
 Dbf.bufferPool = new BufferPool();
 
+
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Dbf.getFieldNames(arr);
   var uniqFields = internal.getUniqFieldNames(fields, 10);
   var rows = arr.length;
-  var fieldData = fields.map(function(name) {
-    return Dbf.getFieldInfo(arr, name, encoding);
+  var fieldData = fields.map(function(name, i) {
+    var info = Dbf.getFieldInfo(arr, name, encoding);
+    var uniqName = uniqFields[i];
+    info.name = uniqName;
+    if (name != uniqName) {
+      message('[' + name + '] Truncated field name to "' + uniqName + '"');
+    }
+    if (info.warning) {
+      message('[' + name + '] ' + info.warning);
+    }
+    return info;
   });
 
   var headerBytes = Dbf.getHeaderSize(fieldData.length),
@@ -176,8 +186,13 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var size = 0;
+  var truncated = 0;
   var buffers = arr.map(function(rec) {
     var buf = formatter(rec[name]);
+    if (buf.length > Dbf.MAX_STRING_LEN) {
+      buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      truncated++;
+    }
     size = Math.max(size, buf.length);
     return buf;
   });
@@ -193,12 +208,14 @@ Dbf.initStringField = function(info, arr, name, encoding) {
     }
     bin.position(pos + size);
   };
+  if (truncated > 0) {
+    info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
+  }
 };
 
 Dbf.getFieldInfo = function(arr, name, encoding) {
   var type = this.discoverFieldType(arr, name),
       info = {
-        name: name,
         type: type,
         decimals: 0
       };
@@ -215,6 +232,9 @@ Dbf.getFieldInfo = function(arr, name, encoding) {
     // again as nulls.
     info.size = 0;
     info.type = 'N';
+    if (type) {
+      info.warning = 'Unable to export ' + type + '-type data, writing null values';
+    }
     info.write = function() {};
   }
   return info;
@@ -228,6 +248,7 @@ Dbf.discoverFieldType = function(arr, name) {
     if (utils.isNumber(val)) return "N";
     if (utils.isBoolean(val)) return "L";
     if (val instanceof Date) return "D";
+    if (val) return (typeof val);
   }
   return null;
 };
@@ -293,7 +314,7 @@ Dbf.getStringWriter = function(encoding) {
 // return an array buffer or null if value contains non-ascii chars
 Dbf.encodeValueAsAscii = function(val, strict) {
   var str = String(val),
-      n = Math.min(str.length, Dbf.MAX_STRING_LEN),
+      n = str.length,
       view = Dbf.bufferPool.reserve(n),
       i, c;
   for (i=0; i<n; i++) {
@@ -319,9 +340,6 @@ Dbf.getStringWriterEncoded = function(encoding) {
     var buf = Dbf.encodeValueAsAscii(val, true);
     if (buf === null) {
       buf = internal.encodeString(String(val), encoding);
-      if (buf.length >= Dbf.MAX_STRING_LEN) {
-        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
-      }
     }
     return buf;
   };
