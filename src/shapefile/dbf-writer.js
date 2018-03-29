@@ -346,7 +346,7 @@ Dbf.getStringWriterEncoded = function(encoding) {
 
 // try to remove partial multi-byte characters from the end of an encoded string.
 Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
-  var truncated = buf.slice(0, maxLen);
+  var truncated = (buf.slice || buf.subarray).call(buf, 0, maxLen); // ascii uses Uint8Array -- slice not implemented on some platforms
   var len = maxLen;
   var tmp, str;
   while (len > 0 && len >= maxLen - 3) {
