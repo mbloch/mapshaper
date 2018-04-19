@@ -23,7 +23,7 @@ internal.exportTopoJSON = function(dataset, opts) {
     stringify = internal.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
 
-  if (opts.width > 0) {
+  if (opts.width > 0 || opts.height > 0) {
     opts = utils.defaults({invert_y: true}, opts);
     internal.transformDatasetToPixels(dataset, opts);
   }

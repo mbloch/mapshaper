@@ -1,3 +1,6 @@
+v0.4.65
+* Add -o height option, for setting the pixel height of SVG and TopoJSON output.
+
 v0.4.64
 * Bug fixes
 
