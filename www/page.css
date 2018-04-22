@@ -924,6 +924,18 @@ body.simplify #layer-control-btn {
 	-webkit-transform: scale3D(0.5, 0.5, 1);
 }
 
+#map-layers > svg {
+	position: absolute;
+}
+
+#map-layers > svg text.selected {
+	stroke: #FAC0FF;
+	stroke-width: 4;
+	paint-order: stroke;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
 #nav-buttons {
 	z-index: 20;
 	position: absolute;

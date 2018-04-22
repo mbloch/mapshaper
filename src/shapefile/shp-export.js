@@ -2,6 +2,7 @@
 shp-common
 mapshaper-path-export
 mapshaper-projections
+mapshaper-shape-utils
 */
 
 // Convert a dataset to Shapefile files
@@ -30,19 +31,6 @@ internal.exportPrjFile = function(lyr, dataset) {
     content: prj,
     filename: lyr.name + '.prj'
   } : null;
-};
-
-// Get max number of parts in a single shape from an array of shapes.
-// Caveat: polygon holes are counted as separate parts.
-internal.findMaxPartCount = function(shapes) {
-  var maxCount = 0, shp;
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shp = shapes[i];
-    if (shp && shp.length > maxCount) {
-      maxCount = shp.length;
-    }
-  }
-  return maxCount;
 };
 
 internal.getShapefileExportType = function(lyr) {

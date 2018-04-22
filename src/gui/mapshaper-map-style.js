@@ -16,6 +16,10 @@ var MapStyle = (function() {
         dotColor: "#223",
         dotSize: 4
       },
+      outlineStyleForLabels = {
+        dotColor: "#F79DFC",
+        dotSize: 4
+      },
       referenceStyle = {
         type: 'outline',
         strokeColors: [null, '#86c927'],
@@ -89,8 +93,10 @@ var MapStyle = (function() {
     },
     getActiveStyle: function(lyr) {
       var style;
-      if (internal.layerHasSvgDisplayStyle(lyr)) {
-        style = internal.getSvgDisplayStyle(lyr);
+      if (internal.layerHasCanvasDisplayStyle(lyr)) {
+        style = internal.getCanvasDisplayStyle(lyr);
+      } else if (internal.layerHasLabels(lyr)) {
+        style = utils.extend({}, outlineStyleForLabels);
       } else {
         style = utils.extend({}, outlineStyle);
       }
@@ -141,9 +147,9 @@ var MapStyle = (function() {
       styles.push(style);
     }
 
-    if (internal.layerHasSvgDisplayStyle(lyr)) {
+    if (internal.layerHasCanvasDisplayStyle(lyr)) {
       if (type == 'point') {
-        overlayStyle = internal.wrapOverlayStyle(internal.getSvgDisplayStyle(lyr), overlayStyle);
+        overlayStyle = internal.wrapOverlayStyle(internal.getCanvasDisplayStyle(lyr), overlayStyle);
       }
       overlayStyle.type = 'styled';
     }
@@ -177,7 +183,7 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
   return {styler: styler};
 };
 
-internal.getSvgDisplayStyle = function(lyr) {
+internal.getCanvasDisplayStyle = function(lyr) {
   var styleIndex = {
         opacity: 'opacity',
         r: 'radius',
@@ -186,7 +192,7 @@ internal.getSvgDisplayStyle = function(lyr) {
         'stroke-width': 'strokeWidth'
       },
       // array of field names of relevant svg display properties
-      fields = internal.getSvgStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+      fields = internal.getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
       records = lyr.data.getRecords();
   var styler = function(style, i) {
     var rec = records[i];
@@ -216,15 +222,23 @@ internal.getSvgDisplayStyle = function(lyr) {
 };
 
 // check if layer should be displayed with styles
-internal.layerHasSvgDisplayStyle = function(lyr) {
-  var fields = internal.getSvgStyleFields(lyr);
+internal.layerHasCanvasDisplayStyle = function(lyr) {
+  var fields = internal.getCanvasStyleFields(lyr);
   if (lyr.geometry_type == 'point') {
     return fields.indexOf('r') > -1; // require 'r' field for point symbols
   }
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 
-internal.getSvgStyleFields = function(lyr) {
+internal.layerHasLabels = function(lyr) {
+  var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
+  if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
+    console.error('Multi-point labels are not fully supported');
+  }
+  return hasLabels;
+};
+
+internal.getCanvasStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
   return internal.svg.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
 };

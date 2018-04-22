@@ -6,6 +6,7 @@ mapshaper-map-extent
 mapshaper-hit-control
 mapshaper-inspection-control
 mapshaper-map-style
+mapshaper-svg-display
 */
 
 // Test if map should be re-framed to show updated layer
@@ -41,10 +42,8 @@ gui.getIntersectionPct = function(bb1, bb2) {
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _layers = El('#map-layers'),
-      _referenceCanv = new DisplayCanvas().appendTo(_layers), // comparison layer
-      _activeCanv = new DisplayCanvas().appendTo(_layers),    // data layer shapes
-      _overlayCanv = new DisplayCanvas().appendTo(_layers),   // hover and selection shapes
-      _annotationCanv = new DisplayCanvas().appendTo(_layers), // line intersection dots
+      _referenceCanv, _activeCanv, _overlayCanv, _annotationCanv,
+      _svg,
       _annotationLyr, _annotationStyle,
       _referenceLyr, _referenceStyle,
       _activeLyr, _activeStyle, _overlayStyle,
@@ -83,7 +82,10 @@ function MshpMap(model) {
       }
     }
 
-    _activeLyr = initActiveLayer(e);
+    _activeLyr = new DisplayLayer(e.layer, e.dataset, _ext);
+    _activeStyle = MapStyle.getActiveStyle(_activeLyr.getDisplayLayer().layer);
+    _inspector.updateLayer(_activeLyr, _activeStyle);
+
     if (!prevLyr) {
       needReset = true;
     } else if (isTableLayer(prevLyr) || isTableLayer(_activeLyr)) {
@@ -123,7 +125,7 @@ function MshpMap(model) {
       _annotationStyle = null;
       _annotationLyr = null;
     }
-    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
+    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
@@ -140,15 +142,20 @@ function MshpMap(model) {
     var ext = new MapExtent(position);
     var nav = new MapNav(_root, ext, mouse);
     var inspector = new InspectionControl(model, new HitControl(ext, mouse));
-    ext.on('change', drawLayers);
+    ext.on('change', function() {drawLayers(true);});
     inspector.on('change', function(e) {
       var lyr = _activeLyr.getDisplayLayer().layer;
       _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
-      drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
+      drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle);
     });
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
+    _referenceCanv = new DisplayCanvas().appendTo(_layers); // comparison layer
+    _activeCanv = new DisplayCanvas().appendTo(_layers);    // data layer shapes
+    _overlayCanv = new DisplayCanvas().appendTo(_layers);   // hover and selection shapes
+    _annotationCanv = new DisplayCanvas().appendTo(_layers); // line intersection dots
+    _svg = new SvgDisplayLayer(ext, mouse).appendTo(_layers);  // labels
     // export objects that are referenced by other functions
     _inspector = inspector;
     _ext = ext;
@@ -174,12 +181,6 @@ function MshpMap(model) {
     return true;
   }
 
-  function initActiveLayer(o) {
-    var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
-    _activeStyle = MapStyle.getActiveStyle(lyr.getDisplayLayer().layer);
-    _inspector.updateLayer(lyr, _activeStyle);
-    return lyr;
-  }
 
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
@@ -204,22 +205,22 @@ function MshpMap(model) {
     return style;
   }
 
-  function drawLayers() {
-    // TODO: consider drawing active and reference layers to the same canvas
-    drawLayer(_referenceLyr, _referenceCanv, referenceStyle());
-    drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
-    drawLayer(_activeLyr, _activeCanv, activeStyle());
-    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
+  // onlyNav (bool): only map extent has changed, symbols are unchanged
+  function drawLayers(onlyNav) {
+    drawCanvasLayer(_referenceLyr, _referenceCanv, referenceStyle());   // draw reference shapes from second layer
+    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // draw intersection dots
+    drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle); // draw hover & selection effects
+    drawCanvasLayer(_activeLyr, _activeCanv, _activeStyle);   // draw active layer (to canvas)
+    _svg.drawLayer(_activeLyr.getLayer(), onlyNav);           // draw labels on active layer (to SVG)
   }
 
-  function drawLayer(lyr, canv, style) {
+  function drawCanvasLayer(lyr, canv, style) {
     if (style) {
       canv.prep(_ext);
       lyr.draw(canv, style);
     } else {
       canv.hide();
     }
-
   }
 }
 

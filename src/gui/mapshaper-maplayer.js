@@ -22,7 +22,6 @@ function DisplayLayer(lyr, dataset, ext) {
     }
   };
 
-  // @ext map extent
   this.getDisplayLayer = function() {
     var arcs = lyr.display.arcs,
         layer = lyr.display.layer || lyr;

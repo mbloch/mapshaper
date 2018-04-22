@@ -41,15 +41,24 @@ internal.transformCoordsForSVG = function(dataset, opts) {
 };
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
+  var layerObj = internal.getEmptyLayerForSVG(lyr, opts);
+  layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+  return layerObj;
+};
+
+internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  var symbols = SVG.importGeoJSONFeatures(features, opts);
+  return SVG.importGeoJSONFeatures(features, opts);
+};
+
+internal.getEmptyLayerForSVG = function(lyr, opts) {
   var layerObj = {
     tag: 'g',
     properties: {id: (opts.id_prefix || '') + lyr.name},
-    children: symbols
+    children: []
   };
 
   // add default display properties to line layers
