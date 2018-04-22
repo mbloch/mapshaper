@@ -148,6 +148,12 @@ function MshpMap(model) {
       _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
       drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle);
     });
+    inspector.on('data_change', function(e) {
+      // refresh the display if a style variable has been changed
+      if (internal.isSupportedSvgProperty(e.field)) {
+        drawActiveLayer();
+      }
+    });
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
@@ -209,6 +215,10 @@ function MshpMap(model) {
   function drawLayers(onlyNav) {
     drawCanvasLayer(_referenceLyr, _referenceCanv, referenceStyle());   // draw reference shapes from second layer
     drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // draw intersection dots
+    drawActiveLayer(onlyNav);
+  }
+
+  function drawActiveLayer(onlyNav) {
     drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle); // draw hover & selection effects
     drawCanvasLayer(_activeLyr, _activeCanv, _activeStyle);   // draw active layer (to canvas)
     _svg.drawLayer(_activeLyr.getLayer(), onlyNav);           // draw labels on active layer (to SVG)

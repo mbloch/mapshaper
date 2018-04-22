@@ -2,6 +2,7 @@
 
 // @onNext: handler for switching between multiple records
 function Popup(onNext, onPrev) {
+  var self = new EventDispatcher();
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
@@ -15,10 +16,10 @@ function Popup(onNext, onPrev) {
   nextLink.on('click', onNext);
   prevLink.on('click', onPrev);
 
-  this.show = function(id, ids, table, pinned) {
+  self.show = function(id, ids, table, pinned) {
     var rec = table ? table.getRecordAt(id) : {};
     var maxHeight = parent.node().clientHeight - 36;
-    this.hide(); // clean up if panel is already open
+    self.hide(); // clean up if panel is already open
     render(content, rec, table, pinned);
     if (ids && ids.length > 1) {
       showNav(id, ids, pinned);
@@ -32,7 +33,7 @@ function Popup(onNext, onPrev) {
   };
 
 
-  this.hide = function() {
+  self.hide = function() {
     // make sure any pending edits are made before re-rendering popup
     // TODO: only blur popup fields
     gui.blurActiveElement();
@@ -40,6 +41,8 @@ function Popup(onNext, onPrev) {
     content.node().removeAttribute('style'); // remove inline height
     el.hide();
   };
+
+  return self;
 
   function showNav(id, ids, pinned) {
     var num = ids.indexOf(id) + 1;
@@ -107,11 +110,12 @@ function Popup(onNext, onPrev) {
         // invalid value; revert to previous value
         input.value(strval);
       } else {
-        // field content has changed;
+        // field content has changed
         strval = strval2;
         rec[key] = val2;
         input.value(strval);
         setFieldClass(el, val2, type);
+        self.dispatchEvent('update', {field: key, value: val2});
       }
     });
   }

@@ -17,6 +17,12 @@ function InspectionControl(model, hit) {
     if (_inspecting) turnOff(); else turnOn();
   });
 
+  _popup.on('update', function(e) {
+    var d = e.data;
+    d.i = _highId; // need to add record id
+    _self.dispatchEvent('data_change', d);
+  });
+
   _self.updateLayer = function(o, style) {
     var shapes = o.getDisplayLayer().layer.shapes;
     if (_inspecting) {
@@ -111,7 +117,6 @@ function InspectionControl(model, hit) {
     var o = _lyr.getDisplayLayer();
     var table = o.layer.data || null;
     _popup.show(id, ids, table, pinned);
-
   }
 
   // @id Id of a feature in the active layer, or -1
