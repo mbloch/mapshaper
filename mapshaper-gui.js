@@ -449,7 +449,7 @@ utils.extend(El.prototype, {
     var el = this.el.cloneNode(true);
     if (el.nodeName == 'SCRIPT') {
       // Assume scripts are templates and convert to divs, so children
-      //    can
+      //    can ...
       el = El('div').addClass(el.className).html(el.innerHTML).node();
     }
     el.id = utils.getUniqueName();
@@ -859,14 +859,46 @@ Tween.quadraticOut = function(n) {
 };
 
 
+function MouseWheelDirection() {
+  var ptime = 0;
+  var getAverage;
+
+  // use avg of three values, as a buffer against single anomalous values
+  return function(e, time) {
+    var dir = (e.wheelDelta || e.detail) > 0 ? 1 : -1;
+    var avg;
+    if (time - ptime > 300) getAverage = LimitedAverage(3); // reset
+    ptime = time;
+    avg = getAverage(dir) || dir; // handle average == 0
+    return avg > 0 ? 1 : -1;
+  };
+}
+
+function LimitedAverage(maxSize) {
+  var arr = [];
+  return function(val) {
+    var sum = 0,
+        i = -1;
+    arr.push(val);
+    if (arr.length > maxSize) arr.shift();
+    while (++i < arr.length) {
+      sum += arr[i];
+    }
+    return sum / arr.length;
+  };
+}
+
 // @mouse: MouseArea object
 function MouseWheel(mouse) {
   var self = this,
-      prevWheelTime = 0,
-      currDirection = 0,
+      active = false,
       timer = new Timer().addEventListener('tick', onTick),
-      sustainTime = 60,
-      fadeTime = 80;
+      sustainInterval = 150,
+      fadeDelay = 70,
+      eventTime = 0,
+      getAverageRate = LimitedAverage(10),
+      getWheelDirection = MouseWheelDirection(),
+      wheelDirection;
 
   if (window.onmousewheel !== undefined) { // ie, webkit
     window.addEventListener('mousewheel', handleWheel);
@@ -874,36 +906,43 @@ function MouseWheel(mouse) {
     window.addEventListener('DOMMouseScroll', handleWheel);
   }
 
+  function updateSustainInterval(eventRate) {
+    var fadeInterval = 80;
+    fadeDelay = eventRate + 50; // adding a little extra time helps keep trackpad scrolling smooth in Firefox
+    sustainInterval = fadeDelay + fadeInterval;
+  }
+
   function handleWheel(evt) {
-    var direction;
-    if (evt.wheelDelta) {
-      direction = evt.wheelDelta > 0 ? 1 : -1;
-    } else if (evt.detail) {
-      direction = evt.detail > 0 ? -1 : 1;
-    }
-    if (!mouse.isOver() || !direction) return;
+    var now = +new Date();
+    wheelDirection = getWheelDirection(evt, now);
+    if (!mouse.isOver()) return;
     evt.preventDefault();
-    prevWheelTime = +new Date();
-    if (!currDirection) {
+    if (!active) {
+      active = true;
       self.dispatchEvent('mousewheelstart');
+    } else {
+      updateSustainInterval(getAverageRate(now - eventTime));
     }
-    currDirection = direction;
-    timer.start(sustainTime + fadeTime);
+    eventTime = now;
+    timer.start(sustainInterval);
   }
 
   function onTick(evt) {
-    var elapsed = evt.time - prevWheelTime,
-        fadeElapsed = elapsed - sustainTime,
-        scale = evt.tickTime / 25,
+    var tickInterval = evt.time - eventTime,
+        multiplier = evt.tickTime / 25,
+        fadeFactor = 0,
         obj;
+    if (tickInterval > fadeDelay) {
+      fadeFactor = Math.min(1, (tickInterval - fadeDelay) / (sustainInterval - fadeDelay));
+    }
     if (evt.done) {
-      currDirection = 0;
+      active = false;
     } else {
-      if (fadeElapsed > 0) {
-        // Decelerate if the timer fires during 'fade time' (for smoother zooming)
-        scale *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+      if (fadeFactor > 0) {
+        // Decelerate towards the end of the sustain interval (for smoother zooming)
+        multiplier *= Tween.quadraticOut(1 - fadeFactor);
       }
-      obj = utils.extend({direction: currDirection, multiplier: scale}, mouse.mouseData());
+      obj = utils.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
       self.dispatchEvent('mousewheel', obj);
     }
   }
@@ -3311,7 +3350,6 @@ function DisplayLayer(lyr, dataset, ext) {
     }
   };
 
-  // @ext map extent
   this.getDisplayLayer = function() {
     var arcs = lyr.display.arcs,
         layer = lyr.display.layer || lyr;
@@ -4082,6 +4120,7 @@ function HitControl(ext, mouse) {
 
 // @onNext: handler for switching between multiple records
 function Popup(onNext, onPrev) {
+  var self = new EventDispatcher();
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
@@ -4095,10 +4134,10 @@ function Popup(onNext, onPrev) {
   nextLink.on('click', onNext);
   prevLink.on('click', onPrev);
 
-  this.show = function(id, ids, table, pinned) {
+  self.show = function(id, ids, table, pinned) {
     var rec = table ? table.getRecordAt(id) : {};
     var maxHeight = parent.node().clientHeight - 36;
-    this.hide(); // clean up if panel is already open
+    self.hide(); // clean up if panel is already open
     render(content, rec, table, pinned);
     if (ids && ids.length > 1) {
       showNav(id, ids, pinned);
@@ -4112,7 +4151,7 @@ function Popup(onNext, onPrev) {
   };
 
 
-  this.hide = function() {
+  self.hide = function() {
     // make sure any pending edits are made before re-rendering popup
     // TODO: only blur popup fields
     gui.blurActiveElement();
@@ -4120,6 +4159,8 @@ function Popup(onNext, onPrev) {
     content.node().removeAttribute('style'); // remove inline height
     el.hide();
   };
+
+  return self;
 
   function showNav(id, ids, pinned) {
     var num = ids.indexOf(id) + 1;
@@ -4187,11 +4228,12 @@ function Popup(onNext, onPrev) {
         // invalid value; revert to previous value
         input.value(strval);
       } else {
-        // field content has changed;
+        // field content has changed
         strval = strval2;
         rec[key] = val2;
         input.value(strval);
         setFieldClass(el, val2, type);
+        self.dispatchEvent('update', {field: key, value: val2});
       }
     });
   }
@@ -4269,6 +4311,17 @@ function InspectionControl(model, hit) {
 
   gui.on('inspector_toggle', function() {
     if (_inspecting) turnOff(); else turnOn();
+  });
+
+  // inspector and label editing aren't fully synced - stop inspecting if label editor starts
+  gui.on('label_editor_on', function() {
+    if (_inspecting) turnOff();
+  });
+
+  _popup.on('update', function(e) {
+    var d = e.data;
+    d.i = _highId; // need to add record id
+    _self.dispatchEvent('data_change', d);
   });
 
   _self.updateLayer = function(o, style) {
@@ -4365,7 +4418,6 @@ function InspectionControl(model, hit) {
     var o = _lyr.getDisplayLayer();
     var table = o.layer.data || null;
     _popup.show(id, ids, table, pinned);
-
   }
 
   // @id Id of a feature in the active layer, or -1
@@ -4391,6 +4443,7 @@ function InspectionControl(model, hit) {
     btn.addClass('selected');
     _inspecting = true;
     hit.start();
+    gui.dispatchEvent('inspector_on');
   }
 
   function turnOff() {
@@ -4410,17 +4463,22 @@ function InspectionControl(model, hit) {
 var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b7d9ea",
-      pink = "#f74b80",  // dark pink
-      pink2 = "rgba(255, 161, 197, 0.65)",
+      violet = "#cc6acc",
+      violetFill = "rgba(249, 170, 249, 0.32)",
+      violetDot = "#F79DFC",
       gold = "#efc100",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
-      hoverFill = "rgba(255, 117, 165, 0.18)",
+      hoverFill = "rgba(255, 180, 255, 0.2)",
       outlineStyle = {
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223",
+        dotSize: 4
+      },
+      outlineStyleForLabels = {
+        dotColor: violetDot,
         dotSize: 4
       },
       referenceStyle = {
@@ -4475,14 +4533,14 @@ var MapStyle = (function() {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: pink2,
-          strokeColor: pink,
+          fillColor: violetFill,
+          strokeColor: violet,
           strokeWidth: 1.8
         }, point:  {
-          dotColor: pink,
+          dotColor: 'violet',
           dotSize: 7
         }, polyline:  {
-          strokeColor: pink,
+          strokeColor: violet,
           strokeWidth: 3
         }
       };
@@ -4496,8 +4554,10 @@ var MapStyle = (function() {
     },
     getActiveStyle: function(lyr) {
       var style;
-      if (internal.layerHasSvgDisplayStyle(lyr)) {
-        style = internal.getSvgDisplayStyle(lyr);
+      if (internal.layerHasCanvasDisplayStyle(lyr)) {
+        style = internal.getCanvasDisplayStyle(lyr);
+      } else if (internal.layerHasLabels(lyr)) {
+        style = utils.extend({}, outlineStyleForLabels);
       } else {
         style = utils.extend({}, outlineStyle);
       }
@@ -4548,9 +4608,9 @@ var MapStyle = (function() {
       styles.push(style);
     }
 
-    if (internal.layerHasSvgDisplayStyle(lyr)) {
+    if (internal.layerHasCanvasDisplayStyle(lyr)) {
       if (type == 'point') {
-        overlayStyle = internal.wrapOverlayStyle(internal.getSvgDisplayStyle(lyr), overlayStyle);
+        overlayStyle = internal.wrapOverlayStyle(internal.getCanvasDisplayStyle(lyr), overlayStyle);
       }
       overlayStyle.type = 'styled';
     }
@@ -4574,8 +4634,8 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
       obj.radius += 0.4;
-      delete obj.fillColor; // only show outline
-      // obj.fillColor = dotColor; // comment out to only highlight stroke
+      // delete obj.fillColor; // only show outline
+      obj.fillColor = dotColor; // comment out to only highlight stroke
       obj.strokeColor = dotColor;
       obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
       obj.opacity = 1;
@@ -4584,7 +4644,7 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
   return {styler: styler};
 };
 
-internal.getSvgDisplayStyle = function(lyr) {
+internal.getCanvasDisplayStyle = function(lyr) {
   var styleIndex = {
         opacity: 'opacity',
         r: 'radius',
@@ -4593,7 +4653,7 @@ internal.getSvgDisplayStyle = function(lyr) {
         'stroke-width': 'strokeWidth'
       },
       // array of field names of relevant svg display properties
-      fields = internal.getSvgStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+      fields = internal.getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
       records = lyr.data.getRecords();
   var styler = function(style, i) {
     var rec = records[i];
@@ -4623,18 +4683,259 @@ internal.getSvgDisplayStyle = function(lyr) {
 };
 
 // check if layer should be displayed with styles
-internal.layerHasSvgDisplayStyle = function(lyr) {
-  var fields = internal.getSvgStyleFields(lyr);
+internal.layerHasCanvasDisplayStyle = function(lyr) {
+  var fields = internal.getCanvasStyleFields(lyr);
   if (lyr.geometry_type == 'point') {
     return fields.indexOf('r') > -1; // require 'r' field for point symbols
   }
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 
-internal.getSvgStyleFields = function(lyr) {
+internal.layerHasLabels = function(lyr) {
+  var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
+  if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
+    console.error('Multi-point labels are not fully supported');
+  }
+  return hasLabels;
+};
+
+internal.getCanvasStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
   return internal.svg.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
 };
+
+
+
+
+function SvgDisplayLayer(ext, mouse) {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  var el = El(svg);
+  var editing = false;
+  var dragging = false;
+  var textNode;
+  var activeLayer;
+
+  initDragging();
+
+  // need to handle several kinds of changes
+  // a) map extent changes (e.g. on pan, zoom or window resize), all else is the same
+  // b) layer changes (new set of symbols)
+  // c) same layer, but symbols have changed (different attributes, etc.)
+  // actions: (a) reposition existing symbols; (b, c) remove all existing symbols, re-render
+  el.drawLayer = function(lyr, repositionOnly) {
+    var hasLabels = internal.layerHasLabels(lyr);
+    var transform = ext.getTransform();
+    if (!hasLabels) {
+      clear();
+    } else if (activeLayer && repositionOnly) {
+      resize(ext);
+      reposition(lyr, transform);
+    } else {
+      clear();
+      resize(ext);
+      renderLabels(lyr, transform);
+      activeLayer = lyr;
+    }
+  };
+
+  function initDragging() {
+    var downEvt;
+    var eventPriority = 1;
+
+    // inspector and label editing aren't fully synced - stop editing if inspector opens
+    gui.on('inspector_on', function() {
+      stopEditing();
+    });
+
+    // down event on svg
+    // a: off text
+    //    -> stop editing
+    // b: on text
+    //    1: not editing -> nop
+    //    2: on selected text -> start dragging
+    //    3: on other text -> stop dragging, select new text
+    svg.addEventListener('mousedown', function(e) {
+      var textTarget = getTextTarget(e);
+      downEvt = e;
+      if (!textTarget) {
+        stopEditing();
+      } else if (!editing) {
+        // nop
+      } else if (textTarget == textNode) {
+        dragging = true;
+      } else {
+        dragging = false;
+        editTextNode(textTarget);
+      }
+    });
+
+    // up event on svg
+    // a: currently dragging text
+    //   -> stop dragging
+    // b: clicked on a text feature
+    //   -> start editing it
+    svg.addEventListener('mouseup', function(e) {
+      var textTarget = getTextTarget(e);
+      var isClick = isClickEvent(e, downEvt);
+      if (dragging) {
+        dragging = false;
+      } else if (isClick && textTarget) {
+        editTextNode(textTarget);
+      }
+    });
+
+    mouse.on('dragstart', function(e) {
+      var table, i;
+      onDrag(e);
+      if (!textNode) return; // error
+      table = activeLayer.data;
+      i = +textNode.getAttribute('data-id');
+      activeRecord = table.getRecords()[i];
+      // add dx and dy properties, if not available
+      if (!table.fieldExists('dx')) {
+        table.addField('dx', 0);
+      }
+      if (!table.fieldExists('dy')) {
+        table.addField('dy', 0);
+      }
+    }, null, eventPriority);
+
+    mouse.on('drag', function(e) {
+      onDrag(e);
+      if (!dragging || !activeRecord) return;
+      applyDelta(activeRecord, 'dx', e.dx);
+      applyDelta(activeRecord, 'dy', e.dy);
+      setMultilineAttribute(textNode, 'dx', activeRecord.dx);
+      textNode.setAttribute('dy', activeRecord.dy);
+    }, null, eventPriority);
+
+    mouse.on('dragend', function(e) {
+      onDrag(e);
+      dragging = false;
+    }, null, eventPriority);
+
+    // handle either numeric strings or numbers in fields
+    function applyDelta(rec, key, delta) {
+      var currVal = rec[key];
+      var isString = utils.isString(currVal);
+      var newVal = (+currVal + delta) || 0;
+      rec[key] = isString ? String(newVal) : newVal;
+    }
+
+    function onDrag(e) {
+      if (dragging) {
+        e.stopPropagation();
+      }
+    }
+  }
+
+  function isClickEvent(up, down) {
+    var dx = up.screenX - down.screenX;
+    var dy = up.screenY - down.screenY;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    return dist <= 4;
+  }
+
+  function stopEditing() {
+    if (editing) {
+      // TODO: close editing panel
+    }
+    if (textNode) deselectText(textNode);
+    textNode = null;
+    dragging = editing = false;
+  }
+
+  function deselectText(el) {
+    el.setAttribute('class', '');
+  }
+
+  function selectText(el) {
+    el.setAttribute('class', 'selected');
+  }
+
+  function editTextNode(el) {
+    if (textNode) deselectText(textNode);
+    editing = true;
+    gui.dispatchEvent('label_editor_on'); // signal inspector to close
+    textNode = el;
+    selectText(el);
+    // TODO: show editing panel
+  }
+
+  function getTextTarget(e) {
+    var el = e.target;
+    if (el.tagName == 'tspan') {
+      el = el.parentNode;
+    }
+    return el.tagName == 'text' ? el : null;
+  }
+
+  // Set an attribute on a <text> node and any child <tspan> elements
+  // (mapshaper's svg labels require tspans to have the same x and dx values
+  //  as the enclosing text node)
+  function setMultilineAttribute(textNode, name, value) {
+    var n = textNode.childNodes.length;
+    var i = -1;
+    var child;
+    textNode.setAttribute(name, value);
+    while (++i < n) {
+      child = textNode.childNodes[i];
+      if (child.tagName == 'tspan') {
+        child.setAttribute(name, value);
+      }
+    }
+  }
+
+  function reposition(lyr, fwd) {
+    var texts = svg.getElementsByTagName('text');
+    var n = texts.length;
+    var text, xy, idx, p;
+    for (var i=0; i<n; i++) {
+      text = texts[i];
+      idx = +text.getAttribute('data-id');
+      p = lyr.shapes[idx];
+      if (!p) continue;
+      xy = fwd.transform(p[0][0], p[0][1]);
+      setMultilineAttribute(text, 'x', xy[0]);
+      text.setAttribute('y', xy[1]);
+    }
+  }
+
+  function renderLabels(lyr, fwd) {
+    var records = lyr.data.getRecords();
+    var opts = {};
+    var symbols = lyr.shapes.map(function(shp, i) {
+      var d = records[i];
+      var p = shp[0];
+      var p2 = fwd.transform(p[0], p[1]);
+      var obj = internal.svg.importLabel(p2, d);
+      internal.svg.applyStyleAttributes(obj, 'Point', d);
+      obj.properties['data-id'] = i;
+      return obj;
+    });
+    var obj = internal.getEmptyLayerForSVG(lyr, opts);
+    obj.children = symbols;
+    var str = internal.svg.stringify(obj);
+    svg.innerHTML = str;
+  }
+
+  function clear() {
+    if (activeLayer) {
+      stopEditing();
+      while (svg.lastChild) {
+        svg.removeChild(svg.lastChild);
+      }
+      activeLayer = null;
+    }
+  }
+
+  function resize(ext) {
+    svg.style.width = ext.width() + 'px';
+    svg.style.height = ext.height() + 'px';
+  }
+
+  return el;
+}
 
 
 
@@ -4672,10 +4973,8 @@ gui.getIntersectionPct = function(bb1, bb2) {
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _layers = El('#map-layers'),
-      _referenceCanv = new DisplayCanvas().appendTo(_layers), // comparison layer
-      _activeCanv = new DisplayCanvas().appendTo(_layers),    // data layer shapes
-      _overlayCanv = new DisplayCanvas().appendTo(_layers),   // hover and selection shapes
-      _annotationCanv = new DisplayCanvas().appendTo(_layers), // line intersection dots
+      _referenceCanv, _activeCanv, _overlayCanv, _annotationCanv,
+      _svg,
       _annotationLyr, _annotationStyle,
       _referenceLyr, _referenceStyle,
       _activeLyr, _activeStyle, _overlayStyle,
@@ -4714,7 +5013,10 @@ function MshpMap(model) {
       }
     }
 
-    _activeLyr = initActiveLayer(e);
+    _activeLyr = new DisplayLayer(e.layer, e.dataset, _ext);
+    _activeStyle = MapStyle.getActiveStyle(_activeLyr.getDisplayLayer().layer);
+    _inspector.updateLayer(_activeLyr, _activeStyle);
+
     if (!prevLyr) {
       needReset = true;
     } else if (isTableLayer(prevLyr) || isTableLayer(_activeLyr)) {
@@ -4754,7 +5056,7 @@ function MshpMap(model) {
       _annotationStyle = null;
       _annotationLyr = null;
     }
-    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
+    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
@@ -4771,15 +5073,27 @@ function MshpMap(model) {
     var ext = new MapExtent(position);
     var nav = new MapNav(_root, ext, mouse);
     var inspector = new InspectionControl(model, new HitControl(ext, mouse));
-    ext.on('change', drawLayers);
+    ext.on('change', function() {drawLayers(true);});
     inspector.on('change', function(e) {
       var lyr = _activeLyr.getDisplayLayer().layer;
       _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
-      drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
+      drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle);
+    });
+    inspector.on('data_change', function(e) {
+      // refresh the display if a style variable has been changed
+      // TODO: consider only updating the affected symbol (might make sense for labels)
+      if (internal.isSupportedSvgProperty(e.field)) {
+        drawActiveLayer();
+      }
     });
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
+    _referenceCanv = new DisplayCanvas().appendTo(_layers); // comparison layer
+    _activeCanv = new DisplayCanvas().appendTo(_layers);    // data layer shapes
+    _overlayCanv = new DisplayCanvas().appendTo(_layers);   // hover and selection shapes
+    _annotationCanv = new DisplayCanvas().appendTo(_layers); // line intersection dots
+    _svg = new SvgDisplayLayer(ext, mouse).appendTo(_layers);  // labels
     // export objects that are referenced by other functions
     _inspector = inspector;
     _ext = ext;
@@ -4805,12 +5119,6 @@ function MshpMap(model) {
     return true;
   }
 
-  function initActiveLayer(o) {
-    var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
-    _activeStyle = MapStyle.getActiveStyle(lyr.getDisplayLayer().layer);
-    _inspector.updateLayer(lyr, _activeStyle);
-    return lyr;
-  }
 
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
@@ -4835,22 +5143,26 @@ function MshpMap(model) {
     return style;
   }
 
-  function drawLayers() {
-    // TODO: consider drawing active and reference layers to the same canvas
-    drawLayer(_referenceLyr, _referenceCanv, referenceStyle());
-    drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
-    drawLayer(_activeLyr, _activeCanv, activeStyle());
-    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
+  // onlyNav (bool): only map extent has changed, symbols are unchanged
+  function drawLayers(onlyNav) {
+    drawCanvasLayer(_referenceLyr, _referenceCanv, referenceStyle());   // draw reference shapes from second layer
+    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // draw intersection dots
+    drawActiveLayer(onlyNav);
   }
 
-  function drawLayer(lyr, canv, style) {
+  function drawActiveLayer(onlyNav) {
+    drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle); // draw hover & selection effects
+    drawCanvasLayer(_activeLyr, _activeCanv, _activeStyle);   // draw active layer (to canvas)
+    _svg.drawLayer(_activeLyr.getLayer(), onlyNav);           // draw labels on active layer (to SVG)
+  }
+
+  function drawCanvasLayer(lyr, canv, style) {
     if (style) {
       canv.prep(_ext);
       lyr.draw(canv, style);
     } else {
       canv.hide();
     }
-
   }
 }
 

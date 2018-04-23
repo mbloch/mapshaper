@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.65';
+var VERSION = '0.4.66';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -160,6 +160,7 @@ var utils = {
 };
 
 var Utils = utils;
+
 
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
@@ -521,7 +522,7 @@ Transform.prototype.transform = function(x, y, xy) {
 };
 
 Transform.prototype.toString = function() {
-  return Utils.toString(Utils.extend({}, this));
+  return JSON.stringify(Utils.extend({}, this));
 };
 
 
@@ -1033,7 +1034,6 @@ BinArray.uintSize = function(i) {
   return i & 1 || i & 2 || 4;
 };
 
-// @dest, @src: TypedArrays
 BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
   srcId = srcId || 0;
   bytes = bytes || src.byteLength - srcId;
@@ -3420,6 +3420,19 @@ internal.editShapeParts = function(parts, cb) {
   } else {
     return parts;
   }
+};
+
+// Get max number of parts in a single shape from an array of shapes.
+// Caveat: polygon holes are counted as separate parts.
+internal.findMaxPartCount = function(shapes) {
+  var maxCount = 0, shp;
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    if (shp && shp.length > maxCount) {
+      maxCount = shp.length;
+    }
+  }
+  return maxCount;
 };
 
 
@@ -14348,19 +14361,6 @@ internal.exportPrjFile = function(lyr, dataset) {
   } : null;
 };
 
-// Get max number of parts in a single shape from an array of shapes.
-// Caveat: polygon holes are counted as separate parts.
-internal.findMaxPartCount = function(shapes) {
-  var maxCount = 0, shp;
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shp = shapes[i];
-    if (shp && shp.length > maxCount) {
-      maxCount = shp.length;
-    }
-  }
-  return maxCount;
-};
-
 internal.getShapefileExportType = function(lyr) {
   var type = lyr.geometry_type;
   var shpType;
@@ -14999,15 +14999,24 @@ internal.transformCoordsForSVG = function(dataset, opts) {
 };
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
+  var layerObj = internal.getEmptyLayerForSVG(lyr, opts);
+  layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+  return layerObj;
+};
+
+internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  var symbols = SVG.importGeoJSONFeatures(features, opts);
+  return SVG.importGeoJSONFeatures(features, opts);
+};
+
+internal.getEmptyLayerForSVG = function(lyr, opts) {
   var layerObj = {
     tag: 'g',
     properties: {id: (opts.id_prefix || '') + lyr.name},
-    children: symbols
+    children: []
   };
 
   // add default display properties to line layers
