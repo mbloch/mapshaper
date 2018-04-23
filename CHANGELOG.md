@@ -1,3 +1,7 @@
+v0.4.66
+* Display SVG labels in the GUI
+* Update label position relative to its anchor point by clicking and dragging the label.
+
 v0.4.65
 * Add -o height option, for setting the pixel height of SVG and TopoJSON output.
 
