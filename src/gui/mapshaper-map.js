@@ -150,6 +150,7 @@ function MshpMap(model) {
     });
     inspector.on('data_change', function(e) {
       // refresh the display if a style variable has been changed
+      // TODO: consider only updating the affected symbol (might make sense for labels)
       if (internal.isSupportedSvgProperty(e.field)) {
         drawActiveLayer();
       }

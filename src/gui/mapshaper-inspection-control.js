@@ -17,6 +17,11 @@ function InspectionControl(model, hit) {
     if (_inspecting) turnOff(); else turnOn();
   });
 
+  // inspector and label editing aren't fully synced - stop inspecting if label editor starts
+  gui.on('label_editor_on', function() {
+    if (_inspecting) turnOff();
+  });
+
   _popup.on('update', function(e) {
     var d = e.data;
     d.i = _highId; // need to add record id
@@ -142,6 +147,7 @@ function InspectionControl(model, hit) {
     btn.addClass('selected');
     _inspecting = true;
     hit.start();
+    gui.dispatchEvent('inspector_on');
   }
 
   function turnOff() {

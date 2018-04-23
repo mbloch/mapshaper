@@ -35,6 +35,11 @@ function SvgDisplayLayer(ext, mouse) {
     var downEvt;
     var eventPriority = 1;
 
+    // inspector and label editing aren't fully synced - stop editing if inspector opens
+    gui.on('inspector_on', function() {
+      stopEditing();
+    });
+
     // down event on svg
     // a: off text
     //    -> stop editing
@@ -91,8 +96,8 @@ function SvgDisplayLayer(ext, mouse) {
     mouse.on('drag', function(e) {
       onDrag(e);
       if (!dragging || !activeRecord) return;
-      activeRecord.dx += e.dx;
-      activeRecord.dy += e.dy;
+      applyDelta(activeRecord, 'dx', e.dx);
+      applyDelta(activeRecord, 'dy', e.dy);
       setMultilineAttribute(textNode, 'dx', activeRecord.dx);
       textNode.setAttribute('dy', activeRecord.dy);
     }, null, eventPriority);
@@ -101,6 +106,14 @@ function SvgDisplayLayer(ext, mouse) {
       onDrag(e);
       dragging = false;
     }, null, eventPriority);
+
+    // handle either numeric strings or numbers in fields
+    function applyDelta(rec, key, delta) {
+      var currVal = rec[key];
+      var isString = utils.isString(currVal);
+      var newVal = (+currVal + delta) || 0;
+      rec[key] = isString ? String(newVal) : newVal;
+    }
 
     function onDrag(e) {
       if (dragging) {
@@ -136,6 +149,7 @@ function SvgDisplayLayer(ext, mouse) {
   function editTextNode(el) {
     if (textNode) deselectText(textNode);
     editing = true;
+    gui.dispatchEvent('label_editor_on'); // signal inspector to close
     textNode = el;
     selectText(el);
     // TODO: show editing panel
@@ -209,8 +223,8 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function resize(ext) {
-    svg.style.width = ext.width();
-    svg.style.height = ext.height();
+    svg.style.width = ext.width() + 'px';
+    svg.style.height = ext.height() + 'px';
   }
 
   return el;

@@ -929,11 +929,15 @@ body.simplify #layer-control-btn {
 }
 
 #map-layers > svg text.selected {
-	stroke: #FAC0FF;
+	stroke: #FFC3FF;
 	stroke-width: 4;
 	paint-order: stroke;
 	stroke-linecap: round;
 	stroke-linejoin: round;
+}
+
+#map-layers > svg text.selected:hover {
+	cursor: pointer;
 }
 
 #nav-buttons {

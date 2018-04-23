@@ -3,12 +3,13 @@
 var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b7d9ea",
-      pink = "#f74b80",  // dark pink
-      pink2 = "rgba(255, 161, 197, 0.65)",
+      violet = "#cc6acc",
+      violetFill = "rgba(249, 170, 249, 0.32)",
+      violetDot = "#F79DFC",
       gold = "#efc100",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
-      hoverFill = "rgba(255, 117, 165, 0.18)",
+      hoverFill = "rgba(255, 180, 255, 0.2)",
       outlineStyle = {
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
@@ -17,7 +18,7 @@ var MapStyle = (function() {
         dotSize: 4
       },
       outlineStyleForLabels = {
-        dotColor: "#F79DFC",
+        dotColor: violetDot,
         dotSize: 4
       },
       referenceStyle = {
@@ -72,14 +73,14 @@ var MapStyle = (function() {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: pink2,
-          strokeColor: pink,
+          fillColor: violetFill,
+          strokeColor: violet,
           strokeWidth: 1.8
         }, point:  {
-          dotColor: pink,
+          dotColor: 'violet',
           dotSize: 7
         }, polyline:  {
-          strokeColor: pink,
+          strokeColor: violet,
           strokeWidth: 3
         }
       };
@@ -173,8 +174,8 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
       obj.radius += 0.4;
-      delete obj.fillColor; // only show outline
-      // obj.fillColor = dotColor; // comment out to only highlight stroke
+      // delete obj.fillColor; // only show outline
+      obj.fillColor = dotColor; // comment out to only highlight stroke
       obj.strokeColor = dotColor;
       obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
       obj.opacity = 1;
