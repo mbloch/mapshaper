@@ -95,12 +95,6 @@ function CommandParser() {
     }
     return commands;
 
-    function tokenIsCommandName(s) {
-      return !!utils.find(getCommands(), function(cmd) {
-        return s === cmd.name || s === cmd.alias;
-      });
-    }
-
     function tokenLooksLikeCommand(s) {
       return commandRxp.test(s);
     }
@@ -212,28 +206,17 @@ function CommandParser() {
       return null;
     }
 
-    function findCommandDefn(name, arr) {
-      return utils.find(arr, function(cmd) {
-        return cmd.name === name || cmd.alias === name;
-      });
-    }
-
-    function findOptionDefn(name, cmdDef) {
-      return utils.find(cmdDef.options, function(o) {
-        return o.name === name || o.alias === name;
-      });
-    }
   };
 
-  this.getHelpMessage = function(singleCommand) {
-    var helpCommands, lines;
+  this.getHelpMessage = function(cmdName) {
+    var helpCommands, singleCommand, lines;
 
-    if (singleCommand) {
-      helpCommands = getCommands().filter(function(cmd) {return cmd.name == singleCommand;});
-      if (helpCommands.length != 1) {
-        stop(singleCommand, "is not a known command");
+    if (cmdName) {
+      singleCommand = findCommandDefn(cmdName, getCommands());
+      if (!singleCommand) {
+        stop(cmdName, "is not a known command");
       }
-      lines = getSingleCommandLines(helpCommands[0]);
+      lines = getSingleCommandLines(singleCommand);
     } else {
       helpCommands = getCommands().filter(function(cmd) {return cmd.name && cmd.describe || cmd.title;});
       lines = getMultiCommandLines(helpCommands);
@@ -356,6 +339,23 @@ function CommandParser() {
       return cmd.done();
     });
   }
+
+  function tokenIsCommandName(s) {
+    var cmd = findCommandDefn(s, getCommands());
+    return !!cmd;
+  }
+
+  function findCommandDefn(name, arr) {
+    return utils.find(arr, function(cmd) {
+      return cmd.name === name || cmd.alias === name || cmd.old_alias === name;
+    });
+  }
+
+  function findOptionDefn(name, cmdDef) {
+    return utils.find(cmdDef.options, function(o) {
+      return o.name === name || o.alias === name;
+    });
+  }
 }
 
 function CommandOptions(name) {
@@ -384,6 +384,13 @@ function CommandOptions(name) {
 
   this.alias = function(name) {
     _command.alias = name;
+    return this;
+  };
+
+  // define an alias command name that doesn't appear in command line help
+  // (to support old versions of renamed commands)
+  this.oldAlias = function(name) {
+    _command.old_alias = name;
     return this;
   };
 

@@ -281,7 +281,7 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'subdivide') {
       outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
-    } else if (name == 'svg-style') {
+    } else if (name == 'style') {
       internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'uniq') {

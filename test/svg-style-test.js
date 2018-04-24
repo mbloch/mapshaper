@@ -2,6 +2,32 @@ var api = require('../'),
     assert = require('assert');
 
 describe('mapshaper-svg-style.js', function () {
+
+  describe('command line tests', function() {
+    it('-svg-style (old name) works', function(done) {
+      var input = [{
+        name: 'foo'
+      }];
+      api.applyCommands('-i data.json -svg-style r=2 -o', {'data.json': input}, function(err, out) {
+        var result = JSON.parse(out['data.json']);
+        assert.deepEqual(result, [{name: 'foo', r: 2}]);
+        done();
+      });
+    })
+
+    it('-style (new name) works', function(done) {
+      var input = [{
+        name: 'foo'
+      }];
+      api.applyCommands('-i data.json -style r=2 -o', {'data.json': input}, function(err, out) {
+        var result = JSON.parse(out['data.json']);
+        assert.deepEqual(result, [{name: 'foo', r: 2}]);
+        done();
+      });
+    })
+  })
+
+
   describe('isSvgColor()', function () {
     var isSvgColor = api.internal.isSvgColor;
     it('hits', function () {

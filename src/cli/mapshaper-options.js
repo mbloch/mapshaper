@@ -781,8 +781,9 @@ internal.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("svg-style")
-    .describe("set SVG properties using JS expressions or literal values")
+  parser.command("style")
+    .oldAlias("svg-style")
+    .describe("set SVG style properties using JS expressions or literal values")
     .option("where", whereOpt)
     .option("class", {
       describe: 'name of CSS class or classes (space-separated)'
@@ -812,7 +813,7 @@ internal.getOptionParser = function() {
       describe: 'x offset of labels (default is 0)'
     })
     .option("dy", {
-      describe: 'y offset of labels (default is baseline-aligned)'
+      describe: 'y offset of labels (default is 0/baseline-aligned)'
     })
     .option("font-size", {
       describe: 'size of label text (default is 12)'
