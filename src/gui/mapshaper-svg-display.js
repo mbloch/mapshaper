@@ -57,7 +57,7 @@ function SvgDisplayLayer(ext, mouse) {
       } else if (textTarget == textNode) {
         dragging = true;
       } else {
-        dragging = false;
+        dragging = true;
         editTextNode(textTarget);
       }
     });
