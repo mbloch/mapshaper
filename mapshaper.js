@@ -19555,7 +19555,7 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'subdivide') {
       outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
-    } else if (name == 'svg-style') {
+    } else if (name == 'style') {
       internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'uniq') {
@@ -19772,12 +19772,6 @@ function CommandParser() {
     }
     return commands;
 
-    function tokenIsCommandName(s) {
-      return !!utils.find(getCommands(), function(cmd) {
-        return s === cmd.name || s === cmd.alias;
-      });
-    }
-
     function tokenLooksLikeCommand(s) {
       return commandRxp.test(s);
     }
@@ -19889,28 +19883,17 @@ function CommandParser() {
       return null;
     }
 
-    function findCommandDefn(name, arr) {
-      return utils.find(arr, function(cmd) {
-        return cmd.name === name || cmd.alias === name;
-      });
-    }
-
-    function findOptionDefn(name, cmdDef) {
-      return utils.find(cmdDef.options, function(o) {
-        return o.name === name || o.alias === name;
-      });
-    }
   };
 
-  this.getHelpMessage = function(singleCommand) {
-    var helpCommands, lines;
+  this.getHelpMessage = function(cmdName) {
+    var helpCommands, singleCommand, lines;
 
-    if (singleCommand) {
-      helpCommands = getCommands().filter(function(cmd) {return cmd.name == singleCommand;});
-      if (helpCommands.length != 1) {
-        stop(singleCommand, "is not a known command");
+    if (cmdName) {
+      singleCommand = findCommandDefn(cmdName, getCommands());
+      if (!singleCommand) {
+        stop(cmdName, "is not a known command");
       }
-      lines = getSingleCommandLines(helpCommands[0]);
+      lines = getSingleCommandLines(singleCommand);
     } else {
       helpCommands = getCommands().filter(function(cmd) {return cmd.name && cmd.describe || cmd.title;});
       lines = getMultiCommandLines(helpCommands);
@@ -20033,6 +20016,23 @@ function CommandParser() {
       return cmd.done();
     });
   }
+
+  function tokenIsCommandName(s) {
+    var cmd = findCommandDefn(s, getCommands());
+    return !!cmd;
+  }
+
+  function findCommandDefn(name, arr) {
+    return utils.find(arr, function(cmd) {
+      return cmd.name === name || cmd.alias === name || cmd.old_alias === name;
+    });
+  }
+
+  function findOptionDefn(name, cmdDef) {
+    return utils.find(cmdDef.options, function(o) {
+      return o.name === name || o.alias === name;
+    });
+  }
 }
 
 function CommandOptions(name) {
@@ -20061,6 +20061,13 @@ function CommandOptions(name) {
 
   this.alias = function(name) {
     _command.alias = name;
+    return this;
+  };
+
+  // define an alias command name that doesn't appear in command line help
+  // (to support old versions of renamed commands)
+  this.oldAlias = function(name) {
+    _command.old_alias = name;
     return this;
   };
 
@@ -21242,8 +21249,9 @@ internal.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("svg-style")
-    .describe("set SVG properties using JS expressions or literal values")
+  parser.command("style")
+    .oldAlias("svg-style")
+    .describe("set SVG style properties using JS expressions or literal values")
     .option("where", whereOpt)
     .option("class", {
       describe: 'name of CSS class or classes (space-separated)'
@@ -21273,7 +21281,7 @@ internal.getOptionParser = function() {
       describe: 'x offset of labels (default is 0)'
     })
     .option("dy", {
-      describe: 'y offset of labels (default is baseline-aligned)'
+      describe: 'y offset of labels (default is 0/baseline-aligned)'
     })
     .option("font-size", {
       describe: 'size of label text (default is 12)'

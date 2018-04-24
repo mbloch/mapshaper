@@ -732,6 +732,10 @@ body.simplify #layer-control-btn {
 	outline: none;
 }
 
+.layer-item .row.layer-problems {
+	color: #f93b00;
+}
+
 .layer-item .layer-name.editing {
 	border-bottom: 1px solid transparent;
 }
