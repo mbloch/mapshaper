@@ -266,6 +266,104 @@ describe('topojson-export.js and topojson-import.js', function () {
       })
     })
 
+    describe('-o height= option', function () {
+
+      it('apply height and margin to points', function () {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[1, 1], [2, 3]]
+        }
+        var dataset = api.internal.importGeoJSON(input, {});
+        var opts = {
+          height: 800, margin: 2, bbox: true,
+          no_quantization: true,
+          precision: 0.001 // remove rounding errors
+        };
+        var output = api.internal.exportTopoJSON(dataset, opts);
+        var outputObj = JSON.parse(output[0].content);
+        var target = {
+          type: 'Topology',
+          bbox: [2, 2, 400, 798],
+          arcs: [],
+          objects: {
+            layer1: {
+              type: 'GeometryCollection',
+              geometries: [{
+                type: 'MultiPoint',
+                coordinates: [[2, 798], [400, 2]]
+              }]
+            }
+          }
+        }
+        assert.deepEqual(outputObj, target);
+      })
+    })
+
+    describe('-o width= and height= options', function () {
+
+      it('content is centered horizontally to fit a wide bbox', function () {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[1, 1], [2, 3]]
+        }
+        var dataset = api.internal.importGeoJSON(input, {});
+        var opts = {
+          height: 80, width: 80, margin: 2, bbox: true,
+          no_quantization: true,
+          precision: 0.001 // remove rounding errors
+        };
+        var output = api.internal.exportTopoJSON(dataset, opts);
+        var outputObj = JSON.parse(output[0].content);
+        var target = {
+          type: 'Topology',
+          bbox: [21, 2, 59, 78],
+          arcs: [],
+          objects: {
+            layer1: {
+              type: 'GeometryCollection',
+              geometries: [{
+                type: 'MultiPoint',
+                coordinates: [[21, 78], [59, 2]]
+              }]
+            }
+          }
+        }
+        assert.deepEqual(outputObj, target);
+      })
+
+      it('content is centered vertically to fit a tall bbox', function () {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[1, 1], [3, 2]]
+        }
+        var dataset = api.internal.importGeoJSON(input, {});
+        var opts = {
+          height: 80, width: 80, margin: 2, bbox: true,
+          no_quantization: true,
+          precision: 0.001 // remove rounding errors
+        };
+        var output = api.internal.exportTopoJSON(dataset, opts);
+        var outputObj = JSON.parse(output[0].content);
+        var target = {
+          type: 'Topology',
+          bbox: [2, 21, 78, 59],
+          arcs: [],
+          objects: {
+            layer1: {
+              type: 'GeometryCollection',
+              geometries: [{
+                type: 'MultiPoint',
+                coordinates: [[2, 59], [78, 21]]
+              }]
+            }
+          }
+        }
+        assert.deepEqual(outputObj, target);
+      })
+
+    })
+
+
     it('default file extension is .json', function(done) {
       api.applyCommands('-i test/test_data/two_states.shp -o format=topojson', {}, function(err, output) {
         assert('two_states.json' in output);
