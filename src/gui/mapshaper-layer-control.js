@@ -64,13 +64,31 @@ function LayerControl(model, map) {
     return str;
   }
 
-  function describeSrc(lyr, dataset) {
-    var inputs = dataset.info.input_files;
-    var file = inputs && inputs[0] || '';
-    if (utils.endsWith(file, '.shp') && !lyr.data && lyr == dataset.layers[0]) {
-      file += " (missing .dbf)";
+  function getWarnings(lyr, dataset) {
+    var file = getSourceFile(lyr, dataset);
+    var missing = [];
+    var msg;
+    if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
+      if (!lyr.data) {
+        missing.push('.dbf');
+      }
+      if (!dataset.info.prj) {
+        missing.push('.prj');
+      }
     }
-    return file;
+    if (missing.length) {
+      msg = 'missing ' + missing.join(' and ') + ' data';
+    }
+    return msg;
+  }
+
+  function getSourceFile(lyr, dataset) {
+    var inputs = dataset.info.input_files;
+    return inputs && inputs[0] || '';
+  }
+
+  function describeSrc(lyr, dataset) {
+    return getSourceFile(lyr, dataset);
   }
 
   function getDisplayName(name) {
@@ -103,8 +121,12 @@ function LayerControl(model, map) {
     var editLyr = model.getActiveLayer().layer;
     var entry = El('div').addClass('layer-item').classed('active', lyr == editLyr);
     var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
+    var warn = getWarnings(lyr, dataset);
     html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
     html += rowHTML('contents', describeLyr(lyr));
+    if (warn) {
+      html += rowHTML('problems', warn, 'layer-problems');
+    }
     html += '<img class="close-btn" src="images/close.png">';
     if (pinnable) {
       html += '<img class="pin-btn unpinned" src="images/eye.png">';
