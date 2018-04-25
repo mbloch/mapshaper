@@ -865,8 +865,10 @@ function MouseWheelDirection() {
 
   // use avg of three values, as a buffer against single anomalous values
   return function(e, time) {
-    var dir = (e.wheelDelta || e.detail) > 0 ? 1 : -1;
+    var dir = 0;
     var avg;
+    if (e.wheelDelta) dir = e.wheelDelta > 0 ? 1 : -1;
+    else if (e.detail) dir = e.detail > 0 ? -1 : 1;
     if (time - ptime > 300) getAverage = LimitedAverage(3); // reset
     ptime = time;
     avg = getAverage(dir) || dir; // handle average == 0
@@ -4784,9 +4786,9 @@ function SvgDisplayLayer(ext, mouse) {
       } else if (!editing) {
         // nop
       } else if (textTarget == textNode) {
-        dragging = true;
+        startDragging();
       } else {
-        dragging = true;
+        startDragging();
         editTextNode(textTarget);
       }
     });
@@ -4800,7 +4802,7 @@ function SvgDisplayLayer(ext, mouse) {
       var textTarget = getTextTarget(e);
       var isClick = isClickEvent(e, downEvt);
       if (dragging) {
-        dragging = false;
+        stopDragging();
       } else if (isClick && textTarget) {
         editTextNode(textTarget);
       }
@@ -4833,7 +4835,7 @@ function SvgDisplayLayer(ext, mouse) {
 
     mouse.on('dragend', function(e) {
       onDrag(e);
-      dragging = false;
+      stopDragging();
     }, null, eventPriority);
 
     // handle either numeric strings or numbers in fields
@@ -4842,6 +4844,16 @@ function SvgDisplayLayer(ext, mouse) {
       var isString = utils.isString(currVal);
       var newVal = (+currVal + delta) || 0;
       rec[key] = isString ? String(newVal) : newVal;
+    }
+
+    function startDragging() {
+      dragging = true;
+      svg.setAttribute('class', 'dragging');
+    }
+
+    function stopDragging() {
+      dragging = false;
+      svg.removeAttribute('class');
     }
 
     function onDrag(e) {
@@ -4859,16 +4871,19 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function stopEditing() {
+    if (dragging) {
+      stopDragging();
+    }
     if (editing) {
       // TODO: close editing panel
+      editing = false;
     }
     if (textNode) deselectText(textNode);
     textNode = null;
-    dragging = editing = false;
   }
 
   function deselectText(el) {
-    el.setAttribute('class', '');
+    el.removeAttribute('class');
   }
 
   function selectText(el) {

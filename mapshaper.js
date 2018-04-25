@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.66';
+var VERSION = '0.4.67';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -21251,7 +21251,7 @@ internal.getOptionParser = function() {
 
   parser.command("style")
     .oldAlias("svg-style")
-    .describe("set SVG style properties using JS expressions or literal values")
+    .describe("set SVG style properties using JS or literal values")
     .option("where", whereOpt)
     .option("class", {
       describe: 'name of CSS class or classes (space-separated)'
