@@ -940,7 +940,8 @@ body.simplify #layer-control-btn {
 	stroke-linejoin: round;
 }
 
-#map-layers > svg text.selected:hover {
+#map-layers > svg.dragging,
+#map-layers > svg text.selected {
 	cursor: pointer;
 }
 

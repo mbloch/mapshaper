@@ -783,7 +783,7 @@ internal.getOptionParser = function() {
 
   parser.command("style")
     .oldAlias("svg-style")
-    .describe("set SVG style properties using JS expressions or literal values")
+    .describe("set SVG style properties using JS or literal values")
     .option("where", whereOpt)
     .option("class", {
       describe: 'name of CSS class or classes (space-separated)'
