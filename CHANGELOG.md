@@ -1,5 +1,9 @@
+v0.4.67
+* Renamed -svg-style command to -style (-svg-style still works as an alias).
+* Minor web interface improvements
+
 v0.4.66
-* Display SVG labels in the GUI
+* SVG labels are displayed in the web interface.
 * Update label position relative to its anchor point by clicking and dragging the label.
 
 v0.4.65
