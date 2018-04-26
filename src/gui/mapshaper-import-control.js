@@ -135,11 +135,10 @@ function ImportControl(model, opts) {
   }
 
   function close() {
-    clearFiles();
+    clearQueuedFiles();
   }
 
-
-  function clearFiles() {
+  function clearQueuedFiles() {
     queuedFiles = [];
     El('body').removeClass('queued-files');
     El('#dropped-file-list').empty();
@@ -155,13 +154,14 @@ function ImportControl(model, opts) {
       }
       return memo;
     }, []);
-    // sort alphabetically by filename
+
+    // sort queued files by filename (a-z), so when filenames are
+    // popped from the queue, .shp is imported before .dbf and .prj
+    // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
+    //
     queuedFiles.sort(function(a, b) {
-      // Sorting on LC filename is a kludge, so Shapefiles with mixed-case
-      // extensions are sorted with .shp component before .dbf
-      // (When .dbf files are queued first, they are imported as a separate layer.
-      // This is so data layers are not later converted into shape layers,
-      // e.g. to allow joining a shape layer to its own dbf data table).
+      // Sorting on LC filename so Shapefiles with mixed-case
+      // extensions are sorted correctly
       return a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1;
     });
   }
@@ -215,7 +215,7 @@ function ImportControl(model, opts) {
 
   function procNextQueuedFile() {
     if (queuedFiles.length > 0) {
-      readFile(queuedFiles.pop()); // read in rev. alphabetic order, so .shp comes before .dbf
+      readFile(queuedFiles.pop());
     } else {
       gui.clearMode();
     }
@@ -247,7 +247,7 @@ function ImportControl(model, opts) {
     if (useBinary) {
       reader.readAsArrayBuffer(file);
     } else {
-      // TODO: improve to handle encodings, etc.
+      // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
       reader.readAsText(file, 'UTF-8');
     }
   }
@@ -284,7 +284,7 @@ function ImportControl(model, opts) {
       }
     }
 
-    // Add prj file to previously imported .shp file
+    // Add .prj file to previously imported .shp file
     if (fileType == 'prj') {
       matches.forEach(function(d) {
         if (!d.info.prj) {
@@ -328,7 +328,7 @@ function ImportControl(model, opts) {
     if (fileName) {
       msg = "Error importing <i>" + fileName + "</i><br>" + msg;
     }
-    clearFiles();
+    clearQueuedFiles();
     gui.alert(msg);
     console.error(e);
   }
