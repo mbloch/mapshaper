@@ -323,11 +323,11 @@ body.dragover #import-options-drop-area .drop-area {
 }
 
 #drop-areas {
-	margin-top: 74px;
+	margin-top: 41px;
 }
 
 .drop-area-wrapper {
-	padding: 14px 14px 12px 14px;
+	padding: 18px 18px 17px 18px;
 }
 
 body.catalog-mode #import-drop,
@@ -351,7 +351,7 @@ body.queued-files #splash-screen {
 
 /* between the two drop areas */
 #splash-screen .spacer {
-	height: 1.4%;
+	height: 1.6%;
 }
 
 #splash-screen h3 {

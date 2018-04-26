@@ -76,28 +76,27 @@ function ImportControl(model, opts) {
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var _importOpts = {};
-  var importDataset;
-  var cat;
+  var catalog;
 
   if (opts.catalog) {
-    cat = new CatalogControl(opts.catalog, downloadFiles);
+    catalog = new CatalogControl(opts.catalog, downloadFiles);
   }
 
-  new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
+  new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
   new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
-  gui.addMode('import', turnOn, turnOff);
-  new DropControl('body', receiveFiles); // default area
+  new DropControl('body', receiveFiles); // default drop area is entire page
   new DropControl('#import-drop', receiveFiles);
   new DropControl('#import-quick-drop', receiveFilesQuickView);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
 
+  gui.addMode('import', turnOn, turnOff);
   gui.enterMode('import');
 
   gui.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
-    if (!e.name && importCount === 0) {
+    if (!e.name && model.isEmpty()) {
       gui.enterMode('import');
     }
   });
@@ -117,19 +116,21 @@ function ImportControl(model, opts) {
     if (manifestFiles.length > 0) {
       downloadFiles(manifestFiles, true);
       manifestFiles = [];
-    } else if (importCount === 0) {
+    } else if (model.isEmpty()) {
       El('body').addClass('splash-screen');
     }
   }
 
   function turnOff() {
-    if (cat) cat.reset(); // re-enable clickable catalog
-    if (importDataset) {
-      // display first layer of most recently imported dataset
-      model.selectLayer(importDataset.layers[0], importDataset);
-      importDataset = null;
+    var target;
+    if (catalog) catalog.reset(); // re-enable clickable catalog
+    if (importCount > 0) {
+      // display first layer of last imported dataset
+      target = model.getDefaultTarget();
+      model.selectLayer(target.layers[0], target.dataset);
     }
     gui.clearProgressMessage();
+    importCount = 0;
     close();
   }
 
@@ -178,14 +179,13 @@ function ImportControl(model, opts) {
 
   function receiveFiles(files, quickView) {
     var prevSize = queuedFiles.length;
-    var firstRun = importCount === 0 && prevSize === 0;
     files = handleZipFiles(utils.toArray(files), quickView);
     addFilesToQueue(files);
     if (queuedFiles.length === 0) return;
     gui.enterMode('import');
 
     if (quickView === true) {
-      submitFiles(quickView);
+      onSubmit(quickView);
     } else {
       El('body').addClass('queued-files');
       El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
@@ -200,27 +200,25 @@ function ImportControl(model, opts) {
     });
   }
 
-  function submitFiles(quickView) {
+  function onSubmit(quickView) {
     El('body').removeClass('queued-files');
     El('body').removeClass('splash-screen');
-    setImportOpts(quickView === true ? {} : readImportOpts());
-    readNext();
+    _importOpts = quickView === true ? {} : readImportOpts();
+    procNextQueuedFile();
   }
 
-  function readNext() {
+  function addDataset(dataset) {
+    model.addDataset(dataset);
+    importCount++;
+    procNextQueuedFile();
+  }
+
+  function procNextQueuedFile() {
     if (queuedFiles.length > 0) {
       readFile(queuedFiles.pop()); // read in rev. alphabetic order, so .shp comes before .dbf
     } else {
       gui.clearMode();
     }
-  }
-
-  function setImportOpts(obj) {
-    _importOpts = obj;
-  }
-
-  function getImportOpts() {
-    return _importOpts;
   }
 
   function readImportOpts() {
@@ -243,7 +241,7 @@ function ImportControl(model, opts) {
       if (!reader.result) {
         handleImportError("Web browser was unable to load the file.", name);
       } else {
-        readFileContent(name, reader.result);
+        importFileContent(name, reader.result);
       }
     });
     if (useBinary) {
@@ -254,14 +252,15 @@ function ImportControl(model, opts) {
     }
   }
 
-  function readFileContent(name, content) {
-    var type = internal.guessInputType(name, content),
-        importOpts = getImportOpts(),
-        matches = findMatchingShp(name),
+  function importFileContent(fileName, content) {
+    var fileType = internal.guessInputType(fileName, content),
+        importOpts = utils.extend({}, _importOpts),
+        matches = findMatchingShp(fileName),
         dataset, lyr;
 
-    // TODO: refactor
-    if (type == 'dbf' && matches.length > 0) {
+    // Add dbf data to a previously imported .shp file with a matching name
+    // (.shp should have been queued before .dbf)
+    if (fileType == 'dbf' && matches.length > 0) {
       // find an imported .shp layer that is missing attribute data
       // (if multiple matches, try to use the most recently imported one)
       dataset = matches.reduce(function(memo, d) {
@@ -280,54 +279,54 @@ function ImportControl(model, opts) {
           // kludge: trigger display of table cells if .shp has null geometry
           model.updated({}, lyr, dataset);
         }
-        readNext();
+        procNextQueuedFile();
         return;
       }
     }
 
-    if (type == 'prj') {
-      // assumes that .shp has been imported first
+    // Add prj file to previously imported .shp file
+    if (fileType == 'prj') {
       matches.forEach(function(d) {
         if (!d.info.prj) {
           d.info.prj = content;
         }
       });
-      readNext();
+      procNextQueuedFile();
       return;
     }
 
-    importFileContent(type, name, content, importOpts);
+    importNewDataset(fileType, fileName, content, importOpts);
   }
 
-  function importFileContent(type, path, content, importOpts) {
+  function importNewDataset(fileType, fileName, content, importOpts) {
     var size = content.byteLength || content.length, // ArrayBuffer or string
-        showMsg = size > 4e7, // don't show message if dataset is small
         delay = 0;
 
-    importOpts.files = [path]; // TODO: try to remove this
-    if (showMsg) {
+    // show importing message if file is large
+    if (size > 4e7) {
       gui.showProgressMessage('Importing');
       delay = 35;
     }
     setTimeout(function() {
       var dataset;
+      var input = {};
       try {
-        dataset = internal.importFileContent(content, path, importOpts);
-        dataset.info.no_repair = importOpts.no_repair;
-        model.addDataset(dataset);
-        importDataset = dataset;
-        importCount++;
-        readNext();
+        input[fileType] = {filename: fileName, content: content};
+        dataset = internal.importContent(input, importOpts);
+        // save import options for use by repair control, etc.
+        dataset.info.import_options = importOpts;
+        addDataset(dataset);
+
       } catch(e) {
-        handleImportError(e, path);
+        handleImportError(e, fileName);
       }
     }, delay);
   }
 
-  function handleImportError(e, path) {
+  function handleImportError(e, fileName) {
     var msg = utils.isString(e) ? e : e.message;
-    if (path) {
-      msg = "Error importing <i>" + path + "</i><br>" + msg;
+    if (fileName) {
+      msg = "Error importing <i>" + fileName + "</i><br>" + msg;
     }
     clearFiles();
     gui.alert(msg);
@@ -404,7 +403,7 @@ function ImportControl(model, opts) {
     });
     req.addEventListener('progress', function(e) {
       var pct = e.loaded / e.total;
-      if (cat) cat.progress(pct);
+      if (catalog) catalog.progress(pct);
     });
     req.addEventListener('loadend', function() {
       var err;

@@ -7,6 +7,10 @@ function RepairControl(model, map) {
       _self = this,
       _dataset, _currXX;
 
+  gui.on('mode', function(e) {
+    // TODO: handle visibility in simplify mode, when control has been turned off
+  });
+
   model.on('update', function(e) {
     if (e.flags.simplify || e.flags.proj || e.flags.arc_count ||e.flags.affine ||
       e.flags.points) {
@@ -58,11 +62,19 @@ function RepairControl(model, map) {
     btn.classed('disabled', !showBtn);
   };
 
+  function updateNeeded(dataset) {
+    var opts = dataset.info && dataset.info.import_options || {};
+    return !opts.no_repair;
+  }
+
   function delayedUpdate() {
+    // Delay intersection calculation, so map display can update after previous
+    // operation (e.g. layer load, simplification change)
     setTimeout(function() {
       var e = model.getActiveLayer();
-      if (e.dataset && e.dataset != _dataset && !e.dataset.info.no_repair &&
-          internal.layerHasPaths(e.layer)) {
+      if (!e.dataset || e.dataset == _dataset) return;
+      if (!internal.layerHasPaths(e.layer)) return;
+      if (updateNeeded(e.dataset)) {
         _dataset = e.dataset;
         _self.update();
       }
