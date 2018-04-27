@@ -190,10 +190,6 @@ body {
 	text-decoration: none;
 }
 
-body.splash-screen #splash-buttons {
-	display: block;
-}
-
 .page-header-buttons {
 	z-index: 20;
 	position: absolute;
@@ -272,6 +268,10 @@ body.splash-screen #splash-screen {
 	display: block;
 }
 
+body.splash-screen #splash-buttons {
+	display: block;
+}
+
 body.queued-files.splash-screen #import-options-drop-area {
 	display: block;
 	z-index: 2;
@@ -285,8 +285,11 @@ body.queued-files.splash-screen #import-options-drop-area {
 	z-index: 1;
 	text-align: center;
 	font-size: 15px;
-	padding: 12px 14px;
 	display: none;
+}
+
+#splash-screen, #import-options-drop-area {
+	background-color: #def1f9;
 }
 
 #splash-screen .subtitle {
@@ -307,27 +310,23 @@ body.queued-files #import-options {
 }
 
 .drop-area {
-	border: 2px dashed #aaa;
+	border: 2px dashed #a2a2a2;
 	border-radius: 19px;
-	background-color: #f6f6f6;
+	background-color: #f2f7f9;
+	overflow: hidden;
 }
 
 #splash-screen .drop-area.dragover,
 body.dragover #import-options-drop-area .drop-area {
 	border-color: #333;
-	background-color: #f7f7f7;
-}
-
-#import-text {
-	margin-top: 3px;
 }
 
 #drop-areas {
-	margin-top: 74px;
+	margin-top: 30px;
 }
 
 .drop-area-wrapper {
-	padding: 14px 14px 12px 14px;
+	padding: 16px 16px 15px 16px;
 }
 
 body.catalog-mode #import-drop,
@@ -335,7 +334,6 @@ body.catalog-mode #import-quick-drop,
 body.catalog-mode #file-catalog {
 	height: 32%;
 }
-
 
 #import-drop {
 	height: 61.6%;
@@ -351,22 +349,22 @@ body.queued-files #splash-screen {
 
 /* between the two drop areas */
 #splash-screen .spacer {
-	height: 1.4%;
+	height: 1.6%;
 }
 
 #splash-screen h3 {
+	margin: 11px 0 0 0;
 	color: #333;
-	font-size: 20px;
-	margin: 0px 0 2px;
+	font-size: 18px;
 }
 
 #splash-screen h4 {
 	color: #333;
-	font-size: 16px;
-	margin: 7px 0 0 0;
+	font-size: 17px;
+	margin: 11px 0 0 0;
 }
 
-#splash-screen #file-selection-btn.inline-btn {
+#file-selection-btn.inline-btn {
 	padding: 2px 4px 3px 3px;
 }
 
@@ -381,7 +379,7 @@ body.catalog-mode #file-catalog-spacer {
 	overflow: hidden;
 	border: 1.5px solid #aaa;
 	border-radius: 19px;
-	background-color: #f6f6f6;
+	background-color: #f2f7f9;
 }
 
 #file-catalog table {
@@ -687,8 +685,11 @@ body.simplify #layer-control-btn {
 	right: 6px;
 }
 
-.layer-item img.close-btn {
+img.close-btn {
 	opacity: 0.2;
+}
+
+.layer-item img.close-btn {
 	top: 7px;
 }
 
@@ -710,7 +711,7 @@ body.simplify #layer-control-btn {
 }
 
 .visible-pin .layer-item.active img.unpinned,
-.layer-item img.close-btn:hover,
+img.close-btn:hover,
 .layer-item.pinned img.pinned {
 	opacity: 1
 }
@@ -786,12 +787,25 @@ body.simplify #layer-control-btn {
 	left: 13px;
 }
 
+#intersection-count {
+	vertical-align: middle;
+}
+
 #intersection-count .icon {
 	background-color: #F24400;
 	display: inline-block;
 	width: 5px;
 	height: 5px;
-	margin: 0 4px 2px 0;
+	margin: 0 5px 2px 0;
+}
+
+#intersection-count .close-btn {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+	position: relative;
+	top: 4px;
+	margin-left: 2px;
 }
 
 #intersection-display .text-btn.disabled {
