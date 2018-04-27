@@ -72,7 +72,7 @@ function LayerControl(model, map) {
       if (!lyr.data) {
         missing.push('.dbf');
       }
-      if (!dataset.info.prj) {
+      if (!dataset.info.prj && !dataset.info.crs) {
         missing.push('.prj');
       }
     }
