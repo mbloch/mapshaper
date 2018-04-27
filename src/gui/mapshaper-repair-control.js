@@ -63,8 +63,9 @@ function RepairControl(model, map) {
   };
 
   function updateNeeded(dataset) {
-    var opts = dataset.info && dataset.info.import_options || {};
-    return !opts.no_repair;
+    var info = dataset.info || {};
+    var opts = info.import_options || {};
+    return !opts.no_repair && !info.no_intersections;
   }
 
   function delayedUpdate() {
@@ -87,13 +88,22 @@ function RepairControl(model, map) {
     _self.hide();
   }
 
+  function dismiss() {
+    if (_dataset) {
+      _dataset.info.intersections = null;
+      _dataset.info.no_intersections = true;
+    }
+    reset();
+  }
+
   function showIntersections(XX) {
     var n = XX.length, pointLyr;
     _currXX = XX;
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
       map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
-      readout.html(utils.format('<span class="icon"></span>%s line intersection%s', n, utils.pluralSuffix(n)));
+      readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
+      readout.findChild('.close-btn').on('click', dismiss);
     } else {
       map.setHighlightLayer(null);
       readout.html('');

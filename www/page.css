@@ -313,6 +313,7 @@ body.queued-files #import-options {
 	border: 2px dashed #a2a2a2;
 	border-radius: 19px;
 	background-color: #f2f7f9;
+	overflow: hidden;
 }
 
 #splash-screen .drop-area.dragover,
@@ -684,8 +685,11 @@ body.simplify #layer-control-btn {
 	right: 6px;
 }
 
-.layer-item img.close-btn {
+img.close-btn {
 	opacity: 0.2;
+}
+
+.layer-item img.close-btn {
 	top: 7px;
 }
 
@@ -707,7 +711,7 @@ body.simplify #layer-control-btn {
 }
 
 .visible-pin .layer-item.active img.unpinned,
-.layer-item img.close-btn:hover,
+img.close-btn:hover,
 .layer-item.pinned img.pinned {
 	opacity: 1
 }
@@ -783,12 +787,25 @@ body.simplify #layer-control-btn {
 	left: 13px;
 }
 
+#intersection-count {
+	vertical-align: middle;
+}
+
 #intersection-count .icon {
 	background-color: #F24400;
 	display: inline-block;
 	width: 5px;
 	height: 5px;
-	margin: 0 4px 2px 0;
+	margin: 0 5px 2px 0;
+}
+
+#intersection-count .close-btn {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+	position: relative;
+	top: 4px;
+	margin-left: 2px;
 }
 
 #intersection-display .text-btn.disabled {
