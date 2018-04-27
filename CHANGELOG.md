@@ -1,3 +1,7 @@
+v0.4.68
+* Added ability to dismiss the intersection display on the GUI.
+* Updated web interface colors.
+
 v0.4.67
 * Renamed -svg-style command to -style (-svg-style still works as an alias).
 * Minor web interface improvements
