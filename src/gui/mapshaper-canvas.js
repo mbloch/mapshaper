@@ -39,7 +39,7 @@ function DisplayCanvas() {
   */
 
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
-  _self.drawPathShapes = function(shapes, arcs, style) {
+  _self.drawPathShapes = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
     var startPath = getPathStart(_ext, getLineScale(_ext));
@@ -47,6 +47,7 @@ function DisplayCanvas() {
     var key, item;
     var styler = style.styler || null;
     for (var i=0; i<shapes.length; i++) {
+      if (filter && !filter(shapes[i])) continue;
       if (styler) styler(style, i);
       key = getStyleKey(style);
       if (key in styleIndex === false) {

@@ -70,6 +70,7 @@ function DisplayLayer(lyr, dataset, ext) {
     // TODO: add filter for out-of-view shapes
     var obj = this.getDisplayLayer(ext);
     var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
+    var filter;
     if (lyr.geometry_type == 'point') {
       if (style.type == 'styled') {
         canv.drawPoints(lyr.shapes, style);
@@ -77,9 +78,21 @@ function DisplayLayer(lyr, dataset, ext) {
         canv.drawSquareDots(lyr.shapes, style);
       }
     } else {
-      canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style);
+      filter = getShapeFilter(obj.dataset.arcs);
+      canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style, filter);
     }
   };
+
+  function getShapeFilter(arcs) {
+    var viewBounds = ext.getBounds();
+    var bounds = new Bounds();
+    if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
+    return function(shape) {
+      bounds.empty();
+      arcs.getMultiShapeBounds(shape, bounds);
+      return viewBounds.intersects(bounds);
+    };
+  }
 
   // Return a function for testing if an arc should be drawn at the current
   //   map view.
