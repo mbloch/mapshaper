@@ -6,9 +6,9 @@ mapshaper-path-import
 */
 
 // Read Shapefile data from a file, ArrayBuffer or Buffer
-// @src filename or buffer
-internal.importShp = function(src, opts) {
-  var reader = new ShpReader(src),
+// @shp, @shx: filename or buffer
+internal.importShp = function(shp, shx, opts) {
+  var reader = new ShpReader(shp, shx),
       shpType = reader.type(),
       type = internal.translateShapefileType(shpType),
       importOpts = utils.defaults({

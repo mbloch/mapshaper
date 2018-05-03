@@ -4,7 +4,7 @@
 internal.guessInputFileType = function(file) {
   var ext = utils.getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';
@@ -87,7 +87,7 @@ internal.getFormatName = function(fmt) {
 // Assumes file at @path is one of Mapshaper's supported file types
 internal.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation

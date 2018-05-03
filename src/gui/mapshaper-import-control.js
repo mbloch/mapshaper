@@ -76,6 +76,7 @@ function ImportControl(model, opts) {
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var _importOpts = {};
+  var cachedFiles = {};
   var catalog;
 
   if (opts.catalog) {
@@ -136,6 +137,7 @@ function ImportControl(model, opts) {
 
   function close() {
     clearQueuedFiles();
+    cachedFiles = {};
   }
 
   function clearQueuedFiles() {
@@ -284,6 +286,12 @@ function ImportControl(model, opts) {
       }
     }
 
+    if (fileType == 'shx') {
+      cachedFiles[fileName.toLowerCase()] = content;
+      procNextQueuedFile();
+      return;
+    }
+
     // Add .prj file to previously imported .shp file
     if (fileType == 'prj') {
       matches.forEach(function(d) {
@@ -296,6 +304,14 @@ function ImportControl(model, opts) {
     }
 
     importNewDataset(fileType, fileName, content, importOpts);
+  }
+
+  function addCachedShx(shpName, input) {
+    var shxName = shpName.replace(/shp$/i, 'shx');
+    var shx = cachedFiles[shxName.toLowerCase()];
+    if (shx) {
+      input.shx = {filename: shxName, content: shx};
+    }
   }
 
   function importNewDataset(fileType, fileName, content, importOpts) {
@@ -312,6 +328,9 @@ function ImportControl(model, opts) {
       var input = {};
       try {
         input[fileType] = {filename: fileName, content: content};
+        if (fileType == 'shp') {
+          addCachedShx(fileName, input);
+        }
         dataset = internal.importContent(input, importOpts);
         // save import options for use by repair control, etc.
         dataset.info.import_options = importOpts;

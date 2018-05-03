@@ -211,7 +211,10 @@ describe('mapshaper-shapefile.js', function () {
 function shapefileRoundTrip(fname) {
   var data = api.importFile(fixPath(fname), {encoding: 'ascii'});
   var files = api.internal.exportFileContent(data, {encoding: 'ascii', format:"shapefile"});
-  var data2 = api.internal.importFileContent(files[0].content, fname, {encoding: 'ascii'});
+  var input2 = {
+    shp: {filename: fname, content: files[0].content},
+    shx: {content: files[1].content}};
+  var data2 = api.internal.importContent(input2, {encoding: 'ascii'});
   var files2 = api.internal.exportFileContent(data2, {encoding: 'ascii', format:"shapefile"});
 
   assert.ok(Utils.buffersAreIdentical(files[0].content, files2[0].content));

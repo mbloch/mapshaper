@@ -20,16 +20,22 @@
 //      var data = s.read();
 //    });
 //
-function ShpReader(src) {
+function ShpReader(shpSrc, shxSrc) {
   if (this instanceof ShpReader === false) {
-    return new ShpReader(src);
+    return new ShpReader(shpSrc, shxSrc);
   }
 
-  var file = utils.isString(src) ? new FileReader(src) : new BufferReader(src);
-  var header = parseHeader(file.readToBinArray(0, 100));
-  var fileSize = file.size();
+  var shpFile = utils.isString(shpSrc) ? new FileReader(shpSrc) : new BufferReader(shpSrc);
+  var header = parseHeader(shpFile.readToBinArray(0, 100));
+  var shpSize = shpFile.size();
   var RecordClass = new ShpRecordClass(header.type);
-  var recordOffs, i, skippedBytes;
+  var shpOffset, recordCount, skippedBytes;
+  var shxBin, shxFile;
+
+  if (shxSrc) {
+    shxFile = utils.isString(shxSrc) ? new FileReader(shxSrc) : new BufferReader(shxSrc);
+    shxBin = shxFile.readToBinArray(0, shxFile.size()).bigEndian();
+  }
 
   reset();
 
@@ -50,38 +56,57 @@ function ShpReader(src) {
 
   // Iterator interface for reading shape records
   this.nextShape = function() {
-    var shape = readShapeAtOffset(recordOffs, i),
-        offs2, skipped;
-    if (!shape && recordOffs + 12 <= fileSize) {
-      // Very rarely, in-the-wild .shp files may contain junk bytes between
-      // records; it may be possible to scan past the junk to find the next record.
-      // TODO: Probably better to use the .shx file to index records, rather
-      // than trying to read consecutive records from the .shp file.
-      shape = huntForNextShape(recordOffs + 4, i);
-    }
-    if (shape) {
-      recordOffs += shape.byteLength;
-      if (shape.id < i) {
-        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
-        return this.nextShape();
-      }
-      i++;
-    } else {
+    var shape = readNextShape();
+    if (!shape) {
       if (skippedBytes > 0) {
         // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
         message("Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
       }
-      file.close();
+      shpFile.close();
       reset();
     }
     return shape;
   };
 
+  function readNextShape() {
+    var shape, offset;
+    if (done()) return null;
+    if (shxBin) {
+      shxBin.position(100 + recordCount * 8);
+      offset = shxBin.readUint32() * 2;
+      // TODO: warn if offset not equal to shpOffset?
+    } else {
+      offset = shpOffset;
+    }
+    shape = readShapeAtOffset(offset);
+    if (!shape) {
+      // Very rarely, in-the-wild .shp files may contain junk bytes between
+      // records; it may be possible to scan past the junk to find the next record.
+      // TODO: Probably better to use the .shx file to index records, rather
+      // than trying to read consecutive records from the .shp file.
+      shape = huntForNextShape(offset + 4, recordCount + 1);
+    }
+    if (shape) {
+      if (shape.id <= recordCount) {
+        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
+        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
+        return readNextShape();
+      }
+      recordCount++;
+    }
+    return shape || null;
+  }
+
+  function done() {
+    if (shxFile && shxFile.size() <= 100 + recordCount * 8) return true;
+    if (shpOffset + 12 > shpSize) return true;
+    return false;
+  }
+
   function reset() {
-    recordOffs = 100;
+    shpOffset = 100;
     skippedBytes = 0;
-    i = 1; // Shapefile id of first record
+    recordCount = 0;
   }
 
   function parseHeader(bin) {
@@ -103,29 +128,29 @@ function ShpReader(src) {
       error("Unsupported .shp type:", header.type);
     }
 
-    if (header.byteLength != file.size()) {
+    if (header.byteLength != shpFile.size()) {
       error("File size of .shp doesn't match size in header");
     }
 
     return header;
   }
 
-  function readShapeAtOffset(recordOffs, i) {
+  function readShapeAtOffset(offset) {
     var shape = null,
-        recordSize, recordType, recordId, goodId, goodSize, goodType, bin;
+        recordSize, recordType, recordId, goodSize, goodType, bin;
 
-    if (recordOffs + 12 <= fileSize) {
-      bin = file.readToBinArray(recordOffs, 12);
+    if (offset + 12 <= shpSize) {
+      bin = shpFile.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       // record size is bytes in content section + 8 header bytes
       recordSize = bin.readUint32() * 2 + 8;
       recordType = bin.littleEndian().readUint32();
-      goodId = recordId == i; // not checking id ...
-      goodSize = recordOffs + recordSize <= fileSize && recordSize >= 12;
+      goodSize = offset + recordSize <= shpSize && recordSize >= 12;
       goodType = recordType === 0 || recordType == header.type;
       if (goodSize && goodType) {
-        bin = file.readToBinArray(recordOffs, recordSize);
+        bin = shpFile.readToBinArray(offset, recordSize);
         shape = new RecordClass(bin, recordSize);
+        shpOffset = offset + shape.byteLength; // advance read position
       }
     }
     return shape;
@@ -137,18 +162,18 @@ function ShpReader(src) {
     var offset = start,
         shape = null,
         bin, recordId, recordType, count;
-    while (offset + 12 <= fileSize) {
-      bin = file.readToBinArray(offset, 12);
+    while (offset + 12 <= shpSize) {
+      bin = shpFile.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       recordType = bin.littleEndian().skipBytes(4).readUint32();
       if (recordId == id && (recordType == header.type || recordType === 0)) {
         // we have a likely position, but may still be unparsable
-        shape = readShapeAtOffset(offset, id);
+        shape = readShapeAtOffset(offset);
         break;
       }
       offset += 4; // try next integer position
     }
-    count = shape ? offset - start : fileSize - start;
+    count = shape ? offset - start : shpSize - start;
     debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
     skippedBytes += count;
     return shape;

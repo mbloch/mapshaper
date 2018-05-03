@@ -38,7 +38,6 @@ api.importFile = function(path, opts) {
       cached = cache && (path in cache),
       type, content;
 
-
   cli.checkFileExists(path, cache);
   if (apparentType == 'shp' && !cached) {
     // let ShpReader read the file (supports larger files)
@@ -75,10 +74,14 @@ api.importFile = function(path, opts) {
 
 internal.readShapefileAuxFiles = function(path, obj, cache) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
+  var shxPath = utils.replaceFileExtension(path, 'shx');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
   var prjPath = utils.replaceFileExtension(path, 'prj');
   if (cli.isFile(prjPath, cache)) {
     obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8', cache)};
+  }
+  if (cli.isFile(shxPath, cache)) {
+    obj.shx = {filename: shxPath, content: cli.readFile(shxPath, null, cache)};
   }
   if (!obj.dbf && cli.isFile(dbfPath, cache)) {
     obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
