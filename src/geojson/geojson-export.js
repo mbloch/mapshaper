@@ -191,13 +191,13 @@ GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
 };
 
 GeoJSON.joinOutputBuffers = function(head, tail, collection) {
-  var comma = new Buffer(',\n', 'utf8');
+  var comma = utils.createBuffer(',\n', 'utf8');
   var parts = collection.reduce(function(memo, buf, i) {
     if (i > 0) memo.push(comma);
     memo.push(buf);
     return memo;
-  }, [new Buffer(head, 'utf8')]);
-  parts.push(new Buffer(tail, 'utf8'));
+  }, [utils.createBuffer(head, 'utf8')]);
+  parts.push(utils.createBuffer(tail, 'utf8'));
   return Buffer.concat(parts);
 };
 

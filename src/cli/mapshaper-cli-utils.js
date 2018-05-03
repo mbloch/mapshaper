@@ -51,7 +51,7 @@ cli.writeFile = function(path, content, cb) {
 // Returns Node Buffer
 cli.convertArrayBuffer = function(buf) {
   var src = new Uint8Array(buf),
-      dest = new Buffer(src.length);
+      dest = utils.createBuffer(src.length);
   for (var i = 0, n=src.length; i < n; i++) {
     dest[i] = src[i];
   }

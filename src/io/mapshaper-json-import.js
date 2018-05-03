@@ -66,8 +66,8 @@ internal.importJSON = function(data, opts) {
   } else if (content instanceof ArrayBuffer) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if (content.byteLength < 1e7) {
-      // content = new Buffer(content).toString();
-      content = internal.bufferToString(new Buffer(content));
+      // content = utils.createBuffer(content).toString();
+      content = internal.bufferToString(utils.createBuffer(content));
     } else {
       reader = new BufferReader(content);
       content = null;

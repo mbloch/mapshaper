@@ -1,7 +1,8 @@
 var api = require('../'),
     internal = api.internal,
     fs = require('fs'),
-    assert = require('assert');
+    assert = require('assert'),
+    utils = api.utils;
 
 describe('mapshaper-encodings.js', function () {
 
@@ -29,12 +30,12 @@ describe('mapshaper-encodings.js', function () {
 
   describe('bufferToString()', function () {
     it('accepts start and end arguments', function () {
-      var buf = new Buffer('012345678')
+      var buf = utils.createBuffer('012345678')
       assert.equal(internal.bufferToString(buf, 'utf8', 2, 3), '2');
     })
 
     it('start and end positions are byte positions, not character positions', function () {
-      var buf = new Buffer('...朋友 ')
+      var buf = utils.createBuffer('...朋友 ')
       assert.equal(internal.bufferToString(buf, 'utf8', 3, 9), '朋友');
     })
 

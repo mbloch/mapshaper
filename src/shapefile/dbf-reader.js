@@ -72,7 +72,7 @@ Dbf.readStringBytes = function(bin, size, buf) {
 Dbf.getStringReader = function(arg) {
   var encoding = arg || 'ascii';
   var slug = internal.standardizeEncodingName(encoding);
-  var buf = new Buffer(256);
+  var buf = utils.createBuffer(256);
   var inNode = typeof module == 'object';
 
   // optimization -- use (fast) native Node conversion if available
@@ -360,7 +360,7 @@ function DbfReader(src, encodingArg) {
     var stringFields = header.fields.filter(function(f) {
       return f.type == 'C';
     });
-    var buf = new Buffer(256);
+    var buf = utils.createBuffer(256);
     var index = {};
     var f, chars, sample, hash;
     for (var r=0, rows=header.recordCount; r<rows; r++) {
@@ -370,7 +370,7 @@ function DbfReader(src, encodingArg) {
         bin.position(getRowOffset(r) + f.columnOffset);
         chars = Dbf.readStringBytes(bin, f.size, buf);
         if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-          sample = new Buffer(buf.slice(0, chars)); //
+          sample = utils.createBuffer(buf.slice(0, chars)); //
           hash = sample.toString('hex');
           if (hash in index === false) { // avoid duplicate samples
             index[hash] = true;

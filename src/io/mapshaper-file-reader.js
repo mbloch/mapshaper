@@ -30,7 +30,7 @@ function BufferReader(src) {
 
   function buffer() {
     if (!buf) {
-      buf = (src instanceof ArrayBuffer) ? new Buffer(src) : src;
+      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
     }
     return buf;
   }
@@ -73,7 +73,7 @@ function FileReader(path, opts) {
         length = fileLen - start; // truncate at eof
       }
       if (length === 0) {
-        return new Buffer(0); // kludge to allow reading up to eof
+        return utils.createBuffer(0); // kludge to allow reading up to eof
       }
     }
     updateCache(start, length);
@@ -113,7 +113,7 @@ function FileReader(path, opts) {
       bytesToRead = headroom;
     }
     if (!cache || bytesToRead != cache.length) {
-      cache = new Buffer(bytesToRead);
+      cache = utils.createBuffer(bytesToRead);
     }
     if (!fd) {
       fd = fs.openSync(path, 'r');

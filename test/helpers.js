@@ -1,4 +1,5 @@
 var api = require('..');
+var utils = api.utils;
 var assert = require('assert');
 
 module.exports.coordinatesAlmostEqual = coordinatesAlmostEqual;
@@ -25,7 +26,7 @@ function coordinatesAlmostEqual(a, b, eps) {
 };
 
 function toBuf(str) {
-  return new Buffer(str, 'utf8');
+  return utils.createBuffer(str, 'utf8');
 }
 
 function Reader(str, chunkLen) {

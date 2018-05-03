@@ -1,6 +1,7 @@
 var api = require('../'),
     internal = api.internal,
-    assert = require('assert');
+    assert = require('assert'),
+    utils = api.utils;
 
 describe('mapshaper-delim-export.js', function() {
 
@@ -9,7 +10,7 @@ describe('mapshaper-delim-export.js', function() {
     // reverted to v0.4.15
     it('latin-1', function (done) {
       var iconv = require('iconv-lite');
-      var buf = new Buffer('foo,bar\nétranger,外国人');
+      var buf = utils.createBuffer('foo,bar\nétranger,外国人');
       var buf2 = iconv.encode('foo,bar\nétranger,外国人', 'latin1');
       api.applyCommands('-i input.csv -o output.csv encoding=latin-1', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
@@ -19,7 +20,7 @@ describe('mapshaper-delim-export.js', function() {
       });
     })
     it('ascii', function (done) {
-      var buf = new Buffer('foo,bar\nétranger,外国人');
+      var buf = utils.createBuffer('foo,bar\nétranger,外国人');
       api.applyCommands('-i input.csv -o output.csv encoding=ascii', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
         var str = internal.decodeString(csv, 'ascii');
@@ -28,7 +29,7 @@ describe('mapshaper-delim-export.js', function() {
       });
     })
     it('utf-16be', function (done) {
-      var buf = new Buffer('foo,bar\nétranger,外国人');
+      var buf = utils.createBuffer('foo,bar\nétranger,外国人');
       api.applyCommands('-i input.csv -o output.csv encoding=utf-16be', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
         var str = internal.decodeString(csv, 'utf-16be');
