@@ -1983,6 +1983,7 @@ function ImportControl(model, opts) {
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var _importOpts = {};
+  var cachedFiles = {};
   var catalog;
 
   if (opts.catalog) {
@@ -2043,6 +2044,7 @@ function ImportControl(model, opts) {
 
   function close() {
     clearQueuedFiles();
+    cachedFiles = {};
   }
 
   function clearQueuedFiles() {
@@ -2191,6 +2193,14 @@ function ImportControl(model, opts) {
       }
     }
 
+    if (fileType == 'shx') {
+      // save .shx for use when importing .shp
+      // (queue should be sorted so that .shx is processed before .shp)
+      cachedFiles[fileName.toLowerCase()] = content;
+      procNextQueuedFile();
+      return;
+    }
+
     // Add .prj file to previously imported .shp file
     if (fileType == 'prj') {
       matches.forEach(function(d) {
@@ -2203,6 +2213,14 @@ function ImportControl(model, opts) {
     }
 
     importNewDataset(fileType, fileName, content, importOpts);
+  }
+
+  function addCachedShx(shpName, input) {
+    var shxName = shpName.replace(/shp$/i, 'shx');
+    var shx = cachedFiles[shxName.toLowerCase()];
+    if (shx) {
+      input.shx = {filename: shxName, content: shx};
+    }
   }
 
   function importNewDataset(fileType, fileName, content, importOpts) {
@@ -2219,6 +2237,9 @@ function ImportControl(model, opts) {
       var input = {};
       try {
         input[fileType] = {filename: fileName, content: content};
+        if (fileType == 'shp') {
+          addCachedShx(fileName, input);
+        }
         dataset = internal.importContent(input, importOpts);
         // save import options for use by repair control, etc.
         dataset.info.import_options = importOpts;
@@ -2963,7 +2984,7 @@ function DisplayCanvas() {
   */
 
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
-  _self.drawPathShapes = function(shapes, arcs, style) {
+  _self.drawPathShapes = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
     var startPath = getPathStart(_ext, getLineScale(_ext));
@@ -2971,6 +2992,7 @@ function DisplayCanvas() {
     var key, item;
     var styler = style.styler || null;
     for (var i=0; i<shapes.length; i++) {
+      if (filter && !filter(shapes[i])) continue;
       if (styler) styler(style, i);
       key = getStyleKey(style);
       if (key in styleIndex === false) {
@@ -3443,6 +3465,7 @@ function DisplayLayer(lyr, dataset, ext) {
     // TODO: add filter for out-of-view shapes
     var obj = this.getDisplayLayer(ext);
     var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
+    var filter;
     if (lyr.geometry_type == 'point') {
       if (style.type == 'styled') {
         canv.drawPoints(lyr.shapes, style);
@@ -3450,9 +3473,21 @@ function DisplayLayer(lyr, dataset, ext) {
         canv.drawSquareDots(lyr.shapes, style);
       }
     } else {
-      canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style);
+      filter = getShapeFilter(obj.dataset.arcs);
+      canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style, filter);
     }
   };
+
+  function getShapeFilter(arcs) {
+    var viewBounds = ext.getBounds();
+    var bounds = new Bounds();
+    if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
+    return function(shape) {
+      bounds.empty();
+      arcs.getMultiShapeBounds(shape, bounds);
+      return viewBounds.intersects(bounds);
+    };
+  }
 
   // Return a function for testing if an arc should be drawn at the current
   //   map view.

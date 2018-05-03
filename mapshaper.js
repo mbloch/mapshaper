@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.68';
+var VERSION = '0.4.69';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1512,6 +1512,16 @@ utils.parsePercent = function(o) {
 
 
 var Buffer = require('buffer').Buffer; // works with browserify
+
+utils.createBuffer = function(arg, arg2) {
+  if (!Buffer.from) {
+    return new Buffer(arg);
+  }
+  if (utils.isInteger(arg)) {
+    return Buffer.allocUnsafe(arg);
+  }
+  return Buffer.from(arg, arg2);
+};
 
 
 
@@ -6566,7 +6576,7 @@ internal.getNativeEncoder = function(enc) {
   }
   return function(str) {
     // Convert Uint8Array from encoder to Buffer (fix for issue #216)
-    return encoder ? Buffer.from(encoder.encode(str).buffer) : new Buffer(str, enc);
+    return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
   };
 };
 
@@ -6697,7 +6707,7 @@ internal.replaceUtf8ReplacementChar = function(buf) {
     // Check for UTF-8 encoded replacement char (0xEF 0xBF 0xBD)
     if (buf[i] == 0xef && i + 2 < n && buf[i+1] == 0xbf && buf[i+2] == 0xbd) {
       if (!isCopy) {
-        buf = new Buffer(buf);
+        buf = utils.createBuffer(buf);
         isCopy = true;
       }
       buf[i] = buf[i+1] = buf[i+2] = 63; // ascii question mark
@@ -6927,7 +6937,7 @@ Dbf.readStringBytes = function(bin, size, buf) {
 Dbf.getStringReader = function(arg) {
   var encoding = arg || 'ascii';
   var slug = internal.standardizeEncodingName(encoding);
-  var buf = new Buffer(256);
+  var buf = utils.createBuffer(256);
   var inNode = typeof module == 'object';
 
   // optimization -- use (fast) native Node conversion if available
@@ -7215,7 +7225,7 @@ function DbfReader(src, encodingArg) {
     var stringFields = header.fields.filter(function(f) {
       return f.type == 'C';
     });
-    var buf = new Buffer(256);
+    var buf = utils.createBuffer(256);
     var index = {};
     var f, chars, sample, hash;
     for (var r=0, rows=header.recordCount; r<rows; r++) {
@@ -7225,7 +7235,7 @@ function DbfReader(src, encodingArg) {
         bin.position(getRowOffset(r) + f.columnOffset);
         chars = Dbf.readStringBytes(bin, f.size, buf);
         if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-          sample = new Buffer(buf.slice(0, chars)); //
+          sample = utils.createBuffer(buf.slice(0, chars)); //
           hash = sample.toString('hex');
           if (hash in index === false) { // avoid duplicate samples
             index[hash] = true;
@@ -11272,7 +11282,7 @@ function BufferReader(src) {
 
   function buffer() {
     if (!buf) {
-      buf = (src instanceof ArrayBuffer) ? new Buffer(src) : src;
+      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
     }
     return buf;
   }
@@ -11315,7 +11325,7 @@ function FileReader(path, opts) {
         length = fileLen - start; // truncate at eof
       }
       if (length === 0) {
-        return new Buffer(0); // kludge to allow reading up to eof
+        return utils.createBuffer(0); // kludge to allow reading up to eof
       }
     }
     updateCache(start, length);
@@ -11355,7 +11365,7 @@ function FileReader(path, opts) {
       bytesToRead = headroom;
     }
     if (!cache || bytesToRead != cache.length) {
-      cache = new Buffer(bytesToRead);
+      cache = utils.createBuffer(bytesToRead);
     }
     if (!fd) {
       fd = fs.openSync(path, 'r');
@@ -12937,13 +12947,13 @@ GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
 };
 
 GeoJSON.joinOutputBuffers = function(head, tail, collection) {
-  var comma = new Buffer(',\n', 'utf8');
+  var comma = utils.createBuffer(',\n', 'utf8');
   var parts = collection.reduce(function(memo, buf, i) {
     if (i > 0) memo.push(comma);
     memo.push(buf);
     return memo;
-  }, [new Buffer(head, 'utf8')]);
-  parts.push(new Buffer(tail, 'utf8'));
+  }, [utils.createBuffer(head, 'utf8')]);
+  parts.push(utils.createBuffer(tail, 'utf8'));
   return Buffer.concat(parts);
 };
 
@@ -14136,16 +14146,22 @@ function ShpRecordClass(type) {
 //      var data = s.read();
 //    });
 //
-function ShpReader(src) {
+function ShpReader(shpSrc, shxSrc) {
   if (this instanceof ShpReader === false) {
-    return new ShpReader(src);
+    return new ShpReader(shpSrc, shxSrc);
   }
 
-  var file = utils.isString(src) ? new FileReader(src) : new BufferReader(src);
-  var header = parseHeader(file.readToBinArray(0, 100));
-  var fileSize = file.size();
+  var shpFile = utils.isString(shpSrc) ? new FileReader(shpSrc) : new BufferReader(shpSrc);
+  var header = parseHeader(shpFile.readToBinArray(0, 100));
+  var shpSize = shpFile.size();
   var RecordClass = new ShpRecordClass(header.type);
-  var recordOffs, i, skippedBytes;
+  var shpOffset, recordCount, skippedBytes;
+  var shxBin, shxFile;
+
+  if (shxSrc) {
+    shxFile = utils.isString(shxSrc) ? new FileReader(shxSrc) : new BufferReader(shxSrc);
+    shxBin = shxFile.readToBinArray(0, shxFile.size()).bigEndian();
+  }
 
   reset();
 
@@ -14166,38 +14182,57 @@ function ShpReader(src) {
 
   // Iterator interface for reading shape records
   this.nextShape = function() {
-    var shape = readShapeAtOffset(recordOffs, i),
-        offs2, skipped;
-    if (!shape && recordOffs + 12 <= fileSize) {
-      // Very rarely, in-the-wild .shp files may contain junk bytes between
-      // records; it may be possible to scan past the junk to find the next record.
-      // TODO: Probably better to use the .shx file to index records, rather
-      // than trying to read consecutive records from the .shp file.
-      shape = huntForNextShape(recordOffs + 4, i);
-    }
-    if (shape) {
-      recordOffs += shape.byteLength;
-      if (shape.id < i) {
-        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
-        return this.nextShape();
-      }
-      i++;
-    } else {
+    var shape = readNextShape();
+    if (!shape) {
       if (skippedBytes > 0) {
         // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
         message("Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
       }
-      file.close();
+      shpFile.close();
       reset();
     }
     return shape;
   };
 
+  function readNextShape() {
+    var shape, offset;
+    if (done()) return null;
+    if (shxBin) {
+      shxBin.position(100 + recordCount * 8);
+      offset = shxBin.readUint32() * 2;
+      // TODO: warn if offset not equal to shpOffset?
+    } else {
+      offset = shpOffset;
+    }
+    shape = readShapeAtOffset(offset);
+    if (!shape) {
+      // Very rarely, in-the-wild .shp files may contain junk bytes between
+      // records; it may be possible to scan past the junk to find the next record.
+      // TODO: Probably better to use the .shx file to index records, rather
+      // than trying to read consecutive records from the .shp file.
+      shape = huntForNextShape(offset + 4, recordCount + 1);
+    }
+    if (shape) {
+      if (shape.id <= recordCount) {
+        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
+        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
+        return readNextShape();
+      }
+      recordCount++;
+    }
+    return shape || null;
+  }
+
+  function done() {
+    if (shxFile && shxFile.size() <= 100 + recordCount * 8) return true;
+    if (shpOffset + 12 > shpSize) return true;
+    return false;
+  }
+
   function reset() {
-    recordOffs = 100;
+    shpOffset = 100;
     skippedBytes = 0;
-    i = 1; // Shapefile id of first record
+    recordCount = 0;
   }
 
   function parseHeader(bin) {
@@ -14219,29 +14254,29 @@ function ShpReader(src) {
       error("Unsupported .shp type:", header.type);
     }
 
-    if (header.byteLength != file.size()) {
+    if (header.byteLength != shpFile.size()) {
       error("File size of .shp doesn't match size in header");
     }
 
     return header;
   }
 
-  function readShapeAtOffset(recordOffs, i) {
+  function readShapeAtOffset(offset) {
     var shape = null,
-        recordSize, recordType, recordId, goodId, goodSize, goodType, bin;
+        recordSize, recordType, recordId, goodSize, goodType, bin;
 
-    if (recordOffs + 12 <= fileSize) {
-      bin = file.readToBinArray(recordOffs, 12);
+    if (offset + 12 <= shpSize) {
+      bin = shpFile.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       // record size is bytes in content section + 8 header bytes
       recordSize = bin.readUint32() * 2 + 8;
       recordType = bin.littleEndian().readUint32();
-      goodId = recordId == i; // not checking id ...
-      goodSize = recordOffs + recordSize <= fileSize && recordSize >= 12;
+      goodSize = offset + recordSize <= shpSize && recordSize >= 12;
       goodType = recordType === 0 || recordType == header.type;
       if (goodSize && goodType) {
-        bin = file.readToBinArray(recordOffs, recordSize);
+        bin = shpFile.readToBinArray(offset, recordSize);
         shape = new RecordClass(bin, recordSize);
+        shpOffset = offset + shape.byteLength; // advance read position
       }
     }
     return shape;
@@ -14253,18 +14288,18 @@ function ShpReader(src) {
     var offset = start,
         shape = null,
         bin, recordId, recordType, count;
-    while (offset + 12 <= fileSize) {
-      bin = file.readToBinArray(offset, 12);
+    while (offset + 12 <= shpSize) {
+      bin = shpFile.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       recordType = bin.littleEndian().skipBytes(4).readUint32();
       if (recordId == id && (recordType == header.type || recordType === 0)) {
         // we have a likely position, but may still be unparsable
-        shape = readShapeAtOffset(offset, id);
+        shape = readShapeAtOffset(offset);
         break;
       }
       offset += 4; // try next integer position
     }
-    count = shape ? offset - start : fileSize - start;
+    count = shape ? offset - start : shpSize - start;
     debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
     skippedBytes += count;
     return shape;
@@ -14295,9 +14330,9 @@ ShpReader.prototype.getCounts = function() {
 
 
 // Read Shapefile data from a file, ArrayBuffer or Buffer
-// @src filename or buffer
-internal.importShp = function(src, opts) {
-  var reader = new ShpReader(src),
+// @shp, @shx: filename or buffer
+internal.importShp = function(shp, shx, opts) {
+  var reader = new ShpReader(shp, shx),
       shpType = reader.type(),
       type = internal.translateShapefileType(shpType),
       importOpts = utils.defaults({
@@ -15535,8 +15570,8 @@ internal.importJSON = function(data, opts) {
   } else if (content instanceof ArrayBuffer) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if (content.byteLength < 1e7) {
-      // content = new Buffer(content).toString();
-      content = internal.bufferToString(new Buffer(content));
+      // content = utils.createBuffer(content).toString();
+      content = internal.bufferToString(utils.createBuffer(content));
     } else {
       reader = new BufferReader(content);
       content = null;
@@ -15650,7 +15685,8 @@ internal.importFileContent = function(content, filename, opts) {
 
 internal.importShapefile = function(obj, opts) {
   var shpSrc = obj.shp.content || obj.shp.filename, // read from a file if (binary) content is missing
-      dataset = internal.importShp(shpSrc, opts),
+      shxSrc = obj.shx ? obj.shx.content || obj.shx.filename : null,
+      dataset = internal.importShp(shpSrc, shxSrc, opts),
       lyr = dataset.layers[0],
       dbf;
   if (obj.dbf) {
@@ -15734,7 +15770,6 @@ api.importFile = function(path, opts) {
       cached = cache && (path in cache),
       type, content;
 
-
   cli.checkFileExists(path, cache);
   if (apparentType == 'shp' && !cached) {
     // let ShpReader read the file (supports larger files)
@@ -15771,10 +15806,14 @@ api.importFile = function(path, opts) {
 
 internal.readShapefileAuxFiles = function(path, obj, cache) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
+  var shxPath = utils.replaceFileExtension(path, 'shx');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
   var prjPath = utils.replaceFileExtension(path, 'prj');
   if (cli.isFile(prjPath, cache)) {
     obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8', cache)};
+  }
+  if (cli.isFile(shxPath, cache)) {
+    obj.shx = {filename: shxPath, content: cli.readFile(shxPath, null, cache)};
   }
   if (!obj.dbf && cli.isFile(dbfPath, cache)) {
     obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
@@ -20205,7 +20244,7 @@ utils.getOutputFileBase = function(dataset) {
 internal.guessInputFileType = function(file) {
   var ext = utils.getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';
@@ -20288,7 +20327,7 @@ internal.getFormatName = function(fmt) {
 // Assumes file at @path is one of Mapshaper's supported file types
 internal.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
@@ -22071,7 +22110,7 @@ cli.writeFile = function(path, content, cb) {
 // Returns Node Buffer
 cli.convertArrayBuffer = function(buf) {
   var src = new Uint8Array(buf),
-      dest = new Buffer(src.length);
+      dest = utils.createBuffer(src.length);
   for (var i = 0, n=src.length; i < n; i++) {
     dest[i] = src[i];
   }
