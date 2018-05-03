@@ -287,6 +287,8 @@ function ImportControl(model, opts) {
     }
 
     if (fileType == 'shx') {
+      // save .shx for use when importing .shp
+      // (queue should be sorted so that .shx is processed before .shp)
       cachedFiles[fileName.toLowerCase()] = content;
       procNextQueuedFile();
       return;

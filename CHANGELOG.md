@@ -1,3 +1,6 @@
+v0.4.69
+* Added support for using .shx file when present. (Very occasionally, records in the .shp file are packed in an unusual way, and the .shx index file is needed for reading the .shp file).
+
 v0.4.68
 * Added ability to dismiss the intersection display on the GUI.
 * Updated web interface colors.
