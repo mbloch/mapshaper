@@ -1,3 +1,6 @@
+v0.4.70
+* Order of data fields is preserved in DBF output (previously fields were sorted in case-sensitive ascending order).
+
 v0.4.69
 * Added support for using .shx file when present. (Very occasionally, records in the .shp file are packed in an unusual way, and the .shx index file is needed for reading the .shp file).
 
