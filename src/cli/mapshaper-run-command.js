@@ -325,7 +325,7 @@ api.runCommand = function(cmd, catalog, cb) {
   done(null);
 
   function done(err) {
-    T.stop('-' + name);
+    T.stop('-');
     cb(err, err ? null : catalog);
   }
 };

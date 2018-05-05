@@ -15,6 +15,8 @@ api.importFiles = function(opts) {
     stop('Missing input file(s)');
   }
 
+  verbose("Importing: " + files.join(' '));
+
   if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.merge_files) {

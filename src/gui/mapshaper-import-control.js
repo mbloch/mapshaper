@@ -289,7 +289,7 @@ function ImportControl(model, opts) {
     if (fileType == 'shx') {
       // save .shx for use when importing .shp
       // (queue should be sorted so that .shx is processed before .shp)
-      cachedFiles[fileName.toLowerCase()] = content;
+      cachedFiles[fileName.toLowerCase()] = {filename: fileName, content: content};
       procNextQueuedFile();
       return;
     }
@@ -308,14 +308,6 @@ function ImportControl(model, opts) {
     importNewDataset(fileType, fileName, content, importOpts);
   }
 
-  function addCachedShx(shpName, input) {
-    var shxName = shpName.replace(/shp$/i, 'shx');
-    var shx = cachedFiles[shxName.toLowerCase()];
-    if (shx) {
-      input.shx = {filename: shxName, content: shx};
-    }
-  }
-
   function importNewDataset(fileType, fileName, content, importOpts) {
     var size = content.byteLength || content.length, // ArrayBuffer or string
         delay = 0;
@@ -331,7 +323,8 @@ function ImportControl(model, opts) {
       try {
         input[fileType] = {filename: fileName, content: content};
         if (fileType == 'shp') {
-          addCachedShx(fileName, input);
+          // shx file should already be cached, if it was added together with the shp
+          input.shx = cachedFiles[fileName.replace(/shp$/i, 'shx').toLowerCase()] || null;
         }
         dataset = internal.importContent(input, importOpts);
         // save import options for use by repair control, etc.

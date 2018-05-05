@@ -46,4 +46,3 @@ function Reader(str, chunkLen) {
 }
 
 Reader.prototype.findString = api.internal.FileReader.prototype.findString;
-

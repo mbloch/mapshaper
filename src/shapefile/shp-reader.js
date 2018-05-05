@@ -59,8 +59,10 @@ function ShpReader(shpSrc, shxSrc) {
     var shape = readNextShape();
     if (!shape) {
       if (skippedBytes > 0) {
-        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
+        // Encountered in files from natural earth v2.0.0:
+        // ne_10m_admin_0_boundary_lines_land.shp
+        // ne_110m_admin_0_scale_rank.shp
+        verbose("Skipped over " + skippedBytes + " non-data bytes in the .shp file.");
       }
       shpFile.close();
       reset();
@@ -69,28 +71,31 @@ function ShpReader(shpSrc, shxSrc) {
   };
 
   function readNextShape() {
+    var expectedId = recordCount + 1; // Shapefile ids are 1-based
     var shape, offset;
     if (done()) return null;
     if (shxBin) {
       shxBin.position(100 + recordCount * 8);
       offset = shxBin.readUint32() * 2;
-      // TODO: warn if offset not equal to shpOffset?
+      if (offset > shpOffset) {
+        skippedBytes += offset - shpOffset;
+      }
     } else {
       offset = shpOffset;
     }
     shape = readShapeAtOffset(offset);
     if (!shape) {
-      // Very rarely, in-the-wild .shp files may contain junk bytes between
-      // records; it may be possible to scan past the junk to find the next record.
-      // TODO: Probably better to use the .shx file to index records, rather
-      // than trying to read consecutive records from the .shp file.
-      shape = huntForNextShape(offset + 4, recordCount + 1);
+      // Some in-the-wild .shp files contain junk bytes between records. This
+      // is a problem if the .shx index file is not present.
+      // Here, we try to scan past the junk to find the next record.
+      shape = huntForNextShape(offset, expectedId);
     }
     if (shape) {
-      if (shape.id <= recordCount) {
-        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
+      if (shape.id < expectedId) {
+        message("Found a Shapefile record with the same id as a previous record (" + shape.id + ") -- skipping.");
         return readNextShape();
+      } else if (shape.id > expectedId) {
+        stop("Shapefile contains an out-of-sequence record. Possible data corruption -- bailing.");
       }
       recordCount++;
     }
@@ -159,7 +164,7 @@ function ShpReader(shpSrc, shxSrc) {
   // TODO: add tests
   // Try to scan past unreadable content to find next record
   function huntForNextShape(start, id) {
-    var offset = start,
+    var offset = start + 4,
         shape = null,
         bin, recordId, recordType, count;
     while (offset + 12 <= shpSize) {
@@ -174,7 +179,7 @@ function ShpReader(shpSrc, shxSrc) {
       offset += 4; // try next integer position
     }
     count = shape ? offset - start : shpSize - start;
-    debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
+    // debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
     skippedBytes += count;
     return shape;
   }
