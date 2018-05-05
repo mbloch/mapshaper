@@ -26,14 +26,13 @@ function BufferPool() {
 
 Dbf.bufferPool = new BufferPool();
 
-
-Dbf.exportRecords = function(arr, encoding) {
-  encoding = encoding || 'ascii';
-  var fields = Dbf.getFieldNames(arr);
+Dbf.exportRecords = function(records, encodingOpt) {
+  var encoding = encodingOpt || 'ascii';
+  var rows = records.length;
+  var fields = internal.findFieldNames(records);
   var uniqFields = internal.getUniqFieldNames(fields, 10);
-  var rows = arr.length;
   var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(arr, name, encoding);
+    var info = Dbf.getFieldInfo(records, name, encoding);
     var uniqName = uniqFields[i];
     info.name = uniqName;
     if (name != uniqName) {
@@ -81,7 +80,7 @@ Dbf.exportRecords = function(arr, encoding) {
     error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
   }
 
-  arr.forEach(function(rec, i) {
+  records.forEach(function(rec, i) {
     var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
     for (var j=0, n=fieldData.length; j<n; j++) {
@@ -100,17 +99,6 @@ Dbf.exportRecords = function(arr, encoding) {
   return buffer;
 };
 
-
-Dbf.getFieldNames = function(records) {
-  if (!records || !records.length) {
-    return [];
-  }
-  var names = Object.keys(records[0]);
-  names.sort(); // kludge: sorting gives correct order when truncating fields
-  return names;
-};
-
-
 Dbf.getHeaderSize = function(numFields) {
   return 33 + numFields * 32;
 };
@@ -118,13 +106,6 @@ Dbf.getHeaderSize = function(numFields) {
 Dbf.getRecordSize = function(fieldSizes) {
   return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
 };
-
-/*
-Dbf.getValidFieldName = function(name) {
-  // TODO: handle non-ascii chars in name
-  return name.substr(0, 10); // max 10 chars
-};
-*/
 
 Dbf.initNumericField = function(info, arr, name) {
   var MAX_FIELD_SIZE = 18,

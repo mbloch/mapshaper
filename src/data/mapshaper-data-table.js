@@ -1,4 +1,4 @@
-/* @require mapshaper-common, dbf-writer */
+/* @require mapshaper-common, mapshaper-data-utils, dbf-writer */
 
 var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
 
@@ -69,9 +69,7 @@ var dataTableProto = {
   },
 
   getFields: function() {
-    var records = this.getRecords(),
-        first = records[0];
-    return first ? Object.keys(first) : [];
+    return internal.findFieldNames(this.getRecords());
   },
 
   update: function(f) {

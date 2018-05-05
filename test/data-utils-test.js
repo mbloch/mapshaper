@@ -20,4 +20,12 @@ describe('mapshaper-data-utils.js', function () {
     })
   })
 
+  describe('getUniqFieldNames()', function () {
+    it('truncate fields, without replacing pre-exisiting names', function () {
+      var fields = ['foobar2', 'foobar', 'foobar1'];
+      var out = api.internal.getUniqFieldNames(fields, 6);
+      assert.deepEqual(out, ['foob_1', 'foobar', 'foob_2']);
+    })
+  })
+
 });

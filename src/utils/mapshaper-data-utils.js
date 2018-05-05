@@ -109,7 +109,9 @@ internal.getUniqFieldNames = function(fields, maxLen) {
     do {
       validName = internal.adjustFieldName(name, maxLen, i);
       i++;
-    } while (validName in used);
+    } while ((validName in used) ||
+      // don't replace an existing valid field name with a truncated name
+      name != validName && utils.contains(fields, validName));
     used[validName] = true;
     return validName;
   });
@@ -129,4 +131,9 @@ internal.adjustFieldName = function(name, maxLen, i) {
     name2 = name.substr(0, maxLen - suff.length) + suff;
   }
   return name2;
+};
+
+internal.findFieldNames = function(records) {
+  var first = records[0];
+  return first ? Object.keys(first) : [];
 };
