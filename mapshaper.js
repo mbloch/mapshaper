@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.69';
+var VERSION = '0.4.70';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -179,40 +179,6 @@ var Env = (function() {
     ie: !isNaN(ieVersion)
   };
 })();
-
-
-// Support for timing using T.start() and T.stop("message")
-//
-var T = {
-  stack: [],
-  verbose: true,
-
-  start: function(msg) {
-    if (T.verbose && msg) verbose(T.prefix() + msg);
-    T.stack.push(+new Date);
-  },
-
-  // Stop timing, print a message if T.verbose == true
-  stop: function(note) {
-    var startTime = T.stack.pop();
-    var elapsed = (+new Date - startTime);
-    if (T.verbose) {
-      var msg =  T.prefix() + elapsed + 'ms';
-      if (note) {
-        msg += " " + note;
-      }
-      verbose(msg);
-    }
-    return elapsed;
-  },
-
-  prefix: function() {
-    var str = "- ",
-        level = this.stack.length;
-    while (level--) str = "-" + str;
-    return str;
-  }
-};
 
 
 // Append elements of @src array to @dest array
@@ -1532,6 +1498,23 @@ var internal = {
   context: createContext()
 };
 
+// Support for timing using T.start() and T.stop("message")
+var T = {
+  stack: [],
+  start: function() {
+    T.stack.push(+new Date());
+  },
+  stop: function(note) {
+    var elapsed = (+new Date() - T.stack.pop());
+    var msg = elapsed + 'ms';
+    if (note) {
+      msg = note + " " + msg;
+    }
+    verbose(msg);
+    return elapsed;
+  }
+};
+
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
 
 internal.getStateVar = function(key) {
@@ -1605,7 +1588,8 @@ function message() {
 
 function verbose() {
   if (internal.getStateVar('VERBOSE')) {
-    internal.logArgs(arguments);
+    // internal.logArgs(arguments);
+    internal.message.apply(null, messageArgs(arguments));
   }
 }
 
@@ -6518,6 +6502,147 @@ internal.debugFlags = function(flags) {
 
 
 
+// Insert a column of values into a (new or existing) data field
+internal.insertFieldValues = function(lyr, fieldName, values) {
+  var size = internal.getFeatureCount(lyr) || values.length,
+      table = lyr.data = (lyr.data || new DataTable(size)),
+      records = table.getRecords();
+  internal.insertFieldValues2(fieldName, table.getRecords(), values);
+};
+
+internal.insertFieldValues2 = function(key, records, values) {
+  var n = records.length,
+      i, rec, val;
+  for (i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    val = values[i];
+    if (!rec) rec = records[i] = {};
+    rec[key] = val === undefined ? null : val;
+  }
+};
+
+internal.getValueType = function(val) {
+  var type = null;
+  if (utils.isString(val)) {
+    type = 'string';
+  } else if (utils.isNumber(val)) {
+    type = 'number';
+  } else if (utils.isBoolean(val)) {
+    type = 'boolean';
+  } else if (utils.isObject(val)) {
+    type = 'object';
+  }
+  return type;
+};
+
+// Fill out a data table with undefined values
+// The undefined members will disappear when records are exported as JSON,
+// but will show up when fields are listed using Object.keys()
+internal.fixInconsistentFields = function(records) {
+  var fields = internal.findIncompleteFields(records);
+  internal.patchMissingFields(records, fields);
+};
+
+internal.findIncompleteFields = function(records) {
+  var counts = {},
+      i, j, keys;
+  for (i=0; i<records.length; i++) {
+    keys = Object.keys(records[i] || {});
+    for (j=0; j<keys.length; j++) {
+      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
+    }
+  }
+  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
+};
+
+internal.patchMissingFields = function(records, fields) {
+  var rec, i, j, f;
+  for (i=0; i<records.length; i++) {
+    rec = records[i] || (records[i] = {});
+    for (j=0; j<fields.length; j++) {
+      f = fields[j];
+      if (f in rec === false) {
+        rec[f] = undefined;
+      }
+    }
+  }
+};
+
+internal.fieldListContainsAll = function(list, fields) {
+  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
+};
+
+var c = 0;
+internal.getColumnType = function(key, table) {
+  var type = null,
+      records = table.getRecords(),
+      rec;
+  for (var i=0, n=table.size(); i<n; i++) {
+    c++;
+    rec = records[i];
+    type = rec ? internal.getValueType(rec[key]) : null;
+    if (type) break;
+  }
+  return type;
+};
+
+internal.deleteFields = function(table, test) {
+  table.getFields().forEach(function(name) {
+    if (test(name)) {
+      table.deleteField(name);
+    }
+  });
+};
+
+internal.isInvalidFieldName = function(f) {
+  // Reject empty and all-whitespace strings. TODO: consider other criteria
+  return /^\s*$/.test(f);
+};
+
+// Resolve name conflicts in field names by appending numbers
+// @fields Array of field names
+// @maxLen (optional) Maximum chars in name
+//
+internal.getUniqFieldNames = function(fields, maxLen) {
+  var used = {};
+  return fields.map(function(name) {
+    var i = 0,
+        validName;
+    do {
+      validName = internal.adjustFieldName(name, maxLen, i);
+      i++;
+    } while ((validName in used) ||
+      // don't replace an existing valid field name with a truncated name
+      name != validName && utils.contains(fields, validName));
+    used[validName] = true;
+    return validName;
+  });
+};
+
+// Truncate and/or uniqify a name (if relevant params are present)
+internal.adjustFieldName = function(name, maxLen, i) {
+  var name2, suff;
+  maxLen = maxLen || 256;
+  if (!i) {
+    name2 = name.substr(0, maxLen);
+  } else {
+    suff = String(i);
+    if (suff.length == 1) {
+      suff = '_' + suff;
+    }
+    name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+};
+
+internal.findFieldNames = function(records) {
+  var first = records[0];
+  return first ? Object.keys(first) : [];
+};
+
+
+
+
 // List of encodings supported by iconv-lite:
 // https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
 
@@ -6730,140 +6855,6 @@ internal.getCharScore = function(str, chars) {
     count += index[str[i]] || 0;
   }
   return count / str.length;
-};
-
-
-
-
-// Insert a column of values into a (new or existing) data field
-internal.insertFieldValues = function(lyr, fieldName, values) {
-  var size = internal.getFeatureCount(lyr) || values.length,
-      table = lyr.data = (lyr.data || new DataTable(size)),
-      records = table.getRecords();
-  internal.insertFieldValues2(fieldName, table.getRecords(), values);
-};
-
-internal.insertFieldValues2 = function(key, records, values) {
-  var n = records.length,
-      i, rec, val;
-  for (i=0, n=records.length; i<n; i++) {
-    rec = records[i];
-    val = values[i];
-    if (!rec) rec = records[i] = {};
-    rec[key] = val === undefined ? null : val;
-  }
-};
-
-internal.getValueType = function(val) {
-  var type = null;
-  if (utils.isString(val)) {
-    type = 'string';
-  } else if (utils.isNumber(val)) {
-    type = 'number';
-  } else if (utils.isBoolean(val)) {
-    type = 'boolean';
-  } else if (utils.isObject(val)) {
-    type = 'object';
-  }
-  return type;
-};
-
-// Fill out a data table with undefined values
-// The undefined members will disappear when records are exported as JSON,
-// but will show up when fields are listed using Object.keys()
-internal.fixInconsistentFields = function(records) {
-  var fields = internal.findIncompleteFields(records);
-  internal.patchMissingFields(records, fields);
-};
-
-internal.findIncompleteFields = function(records) {
-  var counts = {},
-      i, j, keys;
-  for (i=0; i<records.length; i++) {
-    keys = Object.keys(records[i] || {});
-    for (j=0; j<keys.length; j++) {
-      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
-    }
-  }
-  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
-};
-
-internal.patchMissingFields = function(records, fields) {
-  var rec, i, j, f;
-  for (i=0; i<records.length; i++) {
-    rec = records[i] || (records[i] = {});
-    for (j=0; j<fields.length; j++) {
-      f = fields[j];
-      if (f in rec === false) {
-        rec[f] = undefined;
-      }
-    }
-  }
-};
-
-internal.fieldListContainsAll = function(list, fields) {
-  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
-};
-
-var c = 0;
-internal.getColumnType = function(key, table) {
-  var type = null,
-      records = table.getRecords(),
-      rec;
-  for (var i=0, n=table.size(); i<n; i++) {
-    c++;
-    rec = records[i];
-    type = rec ? internal.getValueType(rec[key]) : null;
-    if (type) break;
-  }
-  return type;
-};
-
-internal.deleteFields = function(table, test) {
-  table.getFields().forEach(function(name) {
-    if (test(name)) {
-      table.deleteField(name);
-    }
-  });
-};
-
-internal.isInvalidFieldName = function(f) {
-  // Reject empty and all-whitespace strings. TODO: consider other criteria
-  return /^\s*$/.test(f);
-};
-
-// Resolve name conflicts in field names by appending numbers
-// @fields Array of field names
-// @maxLen (optional) Maximum chars in name
-//
-internal.getUniqFieldNames = function(fields, maxLen) {
-  var used = {};
-  return fields.map(function(name) {
-    var i = 0,
-        validName;
-    do {
-      validName = internal.adjustFieldName(name, maxLen, i);
-      i++;
-    } while (validName in used);
-    used[validName] = true;
-    return validName;
-  });
-};
-
-// Truncate and/or uniqify a name (if relevant params are present)
-internal.adjustFieldName = function(name, maxLen, i) {
-  var name2, suff;
-  maxLen = maxLen || 256;
-  if (!i) {
-    name2 = name.substr(0, maxLen);
-  } else {
-    suff = String(i);
-    if (suff.length == 1) {
-      suff = '_' + suff;
-    }
-    name2 = name.substr(0, maxLen - suff.length) + suff;
-  }
-  return name2;
 };
 
 
@@ -7278,14 +7269,13 @@ function BufferPool() {
 
 Dbf.bufferPool = new BufferPool();
 
-
-Dbf.exportRecords = function(arr, encoding) {
-  encoding = encoding || 'ascii';
-  var fields = Dbf.getFieldNames(arr);
+Dbf.exportRecords = function(records, encodingOpt) {
+  var encoding = encodingOpt || 'ascii';
+  var rows = records.length;
+  var fields = internal.findFieldNames(records);
   var uniqFields = internal.getUniqFieldNames(fields, 10);
-  var rows = arr.length;
   var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(arr, name, encoding);
+    var info = Dbf.getFieldInfo(records, name, encoding);
     var uniqName = uniqFields[i];
     info.name = uniqName;
     if (name != uniqName) {
@@ -7333,7 +7323,7 @@ Dbf.exportRecords = function(arr, encoding) {
     error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
   }
 
-  arr.forEach(function(rec, i) {
+  records.forEach(function(rec, i) {
     var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
     for (var j=0, n=fieldData.length; j<n; j++) {
@@ -7352,17 +7342,6 @@ Dbf.exportRecords = function(arr, encoding) {
   return buffer;
 };
 
-
-Dbf.getFieldNames = function(records) {
-  if (!records || !records.length) {
-    return [];
-  }
-  var names = Object.keys(records[0]);
-  names.sort(); // kludge: sorting gives correct order when truncating fields
-  return names;
-};
-
-
 Dbf.getHeaderSize = function(numFields) {
   return 33 + numFields * 32;
 };
@@ -7370,13 +7349,6 @@ Dbf.getHeaderSize = function(numFields) {
 Dbf.getRecordSize = function(fieldSizes) {
   return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
 };
-
-/*
-Dbf.getValidFieldName = function(name) {
-  // TODO: handle non-ascii chars in name
-  return name.substr(0, 10); // max 10 chars
-};
-*/
 
 Dbf.initNumericField = function(info, arr, name) {
   var MAX_FIELD_SIZE = 18,
@@ -7680,9 +7652,7 @@ var dataTableProto = {
   },
 
   getFields: function() {
-    var records = this.getRecords(),
-        first = records[0];
-    return first ? Object.keys(first) : [];
+    return internal.findFieldNames(this.getRecords());
   },
 
   update: function(f) {
@@ -14185,8 +14155,10 @@ function ShpReader(shpSrc, shxSrc) {
     var shape = readNextShape();
     if (!shape) {
       if (skippedBytes > 0) {
-        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
+        // Encountered in files from natural earth v2.0.0:
+        // ne_10m_admin_0_boundary_lines_land.shp
+        // ne_110m_admin_0_scale_rank.shp
+        verbose("Skipped over " + skippedBytes + " non-data bytes in the .shp file.");
       }
       shpFile.close();
       reset();
@@ -14195,28 +14167,31 @@ function ShpReader(shpSrc, shxSrc) {
   };
 
   function readNextShape() {
+    var expectedId = recordCount + 1; // Shapefile ids are 1-based
     var shape, offset;
     if (done()) return null;
     if (shxBin) {
       shxBin.position(100 + recordCount * 8);
       offset = shxBin.readUint32() * 2;
-      // TODO: warn if offset not equal to shpOffset?
+      if (offset > shpOffset) {
+        skippedBytes += offset - shpOffset;
+      }
     } else {
       offset = shpOffset;
     }
     shape = readShapeAtOffset(offset);
     if (!shape) {
-      // Very rarely, in-the-wild .shp files may contain junk bytes between
-      // records; it may be possible to scan past the junk to find the next record.
-      // TODO: Probably better to use the .shx file to index records, rather
-      // than trying to read consecutive records from the .shp file.
-      shape = huntForNextShape(offset + 4, recordCount + 1);
+      // Some in-the-wild .shp files contain junk bytes between records. This
+      // is a problem if the .shx index file is not present.
+      // Here, we try to scan past the junk to find the next record.
+      shape = huntForNextShape(offset, expectedId);
     }
     if (shape) {
-      if (shape.id <= recordCount) {
-        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
+      if (shape.id < expectedId) {
+        message("Found a Shapefile record with the same id as a previous record (" + shape.id + ") -- skipping.");
         return readNextShape();
+      } else if (shape.id > expectedId) {
+        stop("Shapefile contains an out-of-sequence record. Possible data corruption -- bailing.");
       }
       recordCount++;
     }
@@ -14285,7 +14260,7 @@ function ShpReader(shpSrc, shxSrc) {
   // TODO: add tests
   // Try to scan past unreadable content to find next record
   function huntForNextShape(start, id) {
-    var offset = start,
+    var offset = start + 4,
         shape = null,
         bin, recordId, recordType, count;
     while (offset + 12 <= shpSize) {
@@ -14300,7 +14275,7 @@ function ShpReader(shpSrc, shxSrc) {
       offset += 4; // try next integer position
     }
     count = shape ? offset - start : shpSize - start;
-    debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
+    // debug('Skipped', count, 'bytes', shape ? 'before record ' + id : 'at the end of the file');
     skippedBytes += count;
     return shape;
   }
@@ -15746,6 +15721,8 @@ api.importFiles = function(opts) {
   if (files.length > 0 === false) {
     stop('Missing input file(s)');
   }
+
+  verbose("Importing: " + files.join(' '));
 
   if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
@@ -19638,7 +19615,7 @@ api.runCommand = function(cmd, catalog, cb) {
   done(null);
 
   function done(err) {
-    T.stop('-' + name);
+    T.stop('-');
     cb(err, err ? null : catalog);
   }
 };
