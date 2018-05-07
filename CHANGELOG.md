@@ -1,3 +1,6 @@
+v0.4.72
+* -dissolve and -dissolve2 now accept a comma-separated list of field names to dissolve on. 
+
 v0.4.71
 * Added -o field-order=ascending option, for sorting the column names (A-Z) of DBF and CSV files. 
 

@@ -6,8 +6,16 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve.js', function () {
 
-
   describe('-dissolve command', function () {
+
+    it('dissolve CSV on three fields', function(done) {
+      var str = 'id1,id2,id3\na,1,x\na,1,x\na,2,x\nb,1,x\nb,2,x\nb,2,x\nc,2,x\na,1,y\na,1,y';
+      api.applyCommands('-i in.csv -dissolve id1,id2,id3 -o out.csv', {'in.csv': str}, function(err, out) {
+        var csv = out['out.csv'];
+        assert.equal(csv, 'id1,id2,id3\na,1,x\na,2,x\nb,1,x\nb,2,x\nc,2,x\na,1,y');
+        done();
+      })
+    });
 
     it('polyline test 1 (multiple segments)', function(done) {
       var a = {

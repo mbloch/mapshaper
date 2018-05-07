@@ -7,15 +7,15 @@ mapshaper-polyline-dissolve
 */
 
 // Generate a dissolved layer
-// @opts.field (optional) name of data field (dissolves all if falsy)
+// @opts.fields (optional) names of data fields (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 //
-api.dissolve = function(lyr, arcs, o) {
-  var opts = o || {},
-      getGroupId = internal.getCategoryClassifier(opts.field, lyr.data),
-      dissolveShapes = null;
-
+api.dissolve = function(lyr, arcs, opts) {
+  var dissolveShapes, getGroupId;
+  opts = utils.extend({}, opts);
+  if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+  getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   if (lyr.geometry_type == 'polygon') {
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   } else if (lyr.geometry_type == 'polyline') {

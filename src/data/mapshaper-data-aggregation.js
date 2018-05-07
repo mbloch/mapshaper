@@ -1,23 +1,35 @@
 /* @requires mapshaper-common, mapshaper-join-calc */
 
-// Return a function to convert original feature ids into ids of combined features
-// Use categorical classification (a different id for each unique value)
-internal.getCategoryClassifier = function(field, data) {
-  if (!field) return function(i) {return 0;};
-  if (!data || !data.fieldExists(field)) {
-    stop("Data table is missing field:", field);
-  }
+// Return a function to convert indexes or original features into indexes of grouped features
+// Uses categorical classification (a different id for each unique value)
+internal.getCategoryClassifier = function(fields, data) {
+  if (!fields || fields.length === 0) return function() {return 0;};
+  fields.forEach(function(f) {
+    if (!data || !data.fieldExists(f)) {
+      stop("Data table is missing field:", f);
+    }
+  });
   var index = {},
       count = 0,
-      records = data.getRecords();
+      records = data.getRecords(),
+      getKey = internal.getMultiFieldKeyFunction(fields);
   return function(i) {
-    var val = String(records[i][field]);
-    if (val in index === false) {
-      index[val] = count++;
+    var key = getKey(records[i]);
+    if (key in index === false) {
+      index[key] = count++;
     }
-    return index[val];
+    return index[key];
   };
 };
+
+internal.getMultiFieldKeyFunction = function(fields) {
+  return fields.reduce(function(partial, field) {
+    // TODO: consider using JSON.stringify for fields that contain objects
+    var strval = function(rec) {return String(rec[field]);};
+    return partial ? function(rec) {return partial(rec) + '~~\n' + strval(rec);} : strval;
+  }, null);
+};
+
 
 // Return a properties array for a set of aggregated features
 //
@@ -30,8 +42,8 @@ internal.aggregateDataRecords = function(properties, getGroupId, opts) {
       copyFields = opts.copy_fields || [],
       calc;
 
-  if (opts.field) {
-    copyFields.push(opts.field);
+  if (opts.fields) {
+    copyFields = copyFields.concat(opts.fields);
   }
 
   if (opts.calc) {

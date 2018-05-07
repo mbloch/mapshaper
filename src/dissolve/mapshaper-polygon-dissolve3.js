@@ -8,8 +8,9 @@ mapshaper-ring-nesting
 
 // Assumes that arcs do not intersect except at endpoints
 internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
-  opts = opts || {};
-  var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
+  opts = utils.extend({}, opts);
+  if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+  var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
     var i2 = getGroupId(i);
     if (i2 in groups === false) {

@@ -41,9 +41,10 @@ internal.getOptionParser = function() {
         describe: "fields to copy when dissolving (comma-sep. list)",
         type: "strings"
       },
-      dissolveFieldOpt = {
+      dissolveFieldsOpt = {
         DEFAULT: true,
-        describe: "(optional) name of a data field to dissolve on"
+        type: "strings",
+        describe: "(optional) field or fields to dissolve on (comma-sep. list)"
       },
       fieldTypesOpt = {
         describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
@@ -292,7 +293,8 @@ internal.getOptionParser = function() {
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .option("field", dissolveFieldOpt)
+    .option("field", {}) // alias
+    .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
@@ -311,7 +313,8 @@ internal.getOptionParser = function() {
 
   parser.command("dissolve2")
     .describe("merge adjacent polygons (repairs overlaps and gaps)")
-    .option("field", dissolveFieldOpt)
+    .option("field", {}) // alias
+    .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
