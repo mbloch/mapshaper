@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.71';
+var VERSION = '0.4.72';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -8623,24 +8623,36 @@ internal.getJoinCalc = function(src, exp) {
 
 
 
-// Return a function to convert original feature ids into ids of combined features
-// Use categorical classification (a different id for each unique value)
-internal.getCategoryClassifier = function(field, data) {
-  if (!field) return function(i) {return 0;};
-  if (!data || !data.fieldExists(field)) {
-    stop("Data table is missing field:", field);
-  }
+// Return a function to convert indexes or original features into indexes of grouped features
+// Uses categorical classification (a different id for each unique value)
+internal.getCategoryClassifier = function(fields, data) {
+  if (!fields || fields.length === 0) return function() {return 0;};
+  fields.forEach(function(f) {
+    if (!data || !data.fieldExists(f)) {
+      stop("Data table is missing field:", f);
+    }
+  });
   var index = {},
       count = 0,
-      records = data.getRecords();
+      records = data.getRecords(),
+      getKey = internal.getMultiFieldKeyFunction(fields);
   return function(i) {
-    var val = String(records[i][field]);
-    if (val in index === false) {
-      index[val] = count++;
+    var key = getKey(records[i]);
+    if (key in index === false) {
+      index[key] = count++;
     }
-    return index[val];
+    return index[key];
   };
 };
+
+internal.getMultiFieldKeyFunction = function(fields) {
+  return fields.reduce(function(partial, field) {
+    // TODO: consider using JSON.stringify for fields that contain objects
+    var strval = function(rec) {return String(rec[field]);};
+    return partial ? function(rec) {return partial(rec) + '~~\n' + strval(rec);} : strval;
+  }, null);
+};
+
 
 // Return a properties array for a set of aggregated features
 //
@@ -8653,8 +8665,8 @@ internal.aggregateDataRecords = function(properties, getGroupId, opts) {
       copyFields = opts.copy_fields || [],
       calc;
 
-  if (opts.field) {
-    copyFields.push(opts.field);
+  if (opts.fields) {
+    copyFields = copyFields.concat(opts.fields);
   }
 
   if (opts.calc) {
@@ -9067,15 +9079,15 @@ internal.findPolylineEnds = function(ids, nodes, filter) {
 
 
 // Generate a dissolved layer
-// @opts.field (optional) name of data field (dissolves all if falsy)
+// @opts.fields (optional) names of data fields (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 //
-api.dissolve = function(lyr, arcs, o) {
-  var opts = o || {},
-      getGroupId = internal.getCategoryClassifier(opts.field, lyr.data),
-      dissolveShapes = null;
-
+api.dissolve = function(lyr, arcs, opts) {
+  var dissolveShapes, getGroupId;
+  opts = utils.extend({}, opts);
+  if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+  getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   if (lyr.geometry_type == 'polygon') {
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   } else if (lyr.geometry_type == 'polyline') {
@@ -9178,8 +9190,9 @@ internal.fixNestingErrors2 = function(rings, arcs) {
 
 // Assumes that arcs do not intersect except at endpoints
 internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
-  opts = opts || {};
-  var getGroupId = internal.getCategoryClassifier(opts.field, lyr.data);
+  opts = utils.extend({}, opts);
+  if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+  var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
     var i2 = getGroupId(i);
     if (i2 in groups === false) {
@@ -20535,9 +20548,10 @@ internal.getOptionParser = function() {
         describe: "fields to copy when dissolving (comma-sep. list)",
         type: "strings"
       },
-      dissolveFieldOpt = {
+      dissolveFieldsOpt = {
         DEFAULT: true,
-        describe: "(optional) name of a data field to dissolve on"
+        type: "strings",
+        describe: "(optional) field or fields to dissolve on (comma-sep. list)"
       },
       fieldTypesOpt = {
         describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
@@ -20786,7 +20800,8 @@ internal.getOptionParser = function() {
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .option("field", dissolveFieldOpt)
+    .option("field", {}) // alias
+    .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
@@ -20805,7 +20820,8 @@ internal.getOptionParser = function() {
 
   parser.command("dissolve2")
     .describe("merge adjacent polygons (repairs overlaps and gaps)")
-    .option("field", dissolveFieldOpt)
+    .option("field", {}) // alias
+    .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
