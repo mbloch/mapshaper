@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.70';
+var VERSION = '0.4.71';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -6635,9 +6635,19 @@ internal.adjustFieldName = function(name, maxLen, i) {
   return name2;
 };
 
-internal.findFieldNames = function(records) {
+internal.applyFieldOrder = function(arr, option) {
+  if (option == 'ascending') {
+    arr.sort(function(a, b) {
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+  }
+  return arr;
+};
+
+internal.findFieldNames = function(records, order) {
   var first = records[0];
-  return first ? Object.keys(first) : [];
+  var names = first ? Object.keys(first) : [];
+  return internal.applyFieldOrder(names, order);
 };
 
 
@@ -7269,13 +7279,12 @@ function BufferPool() {
 
 Dbf.bufferPool = new BufferPool();
 
-Dbf.exportRecords = function(records, encodingOpt) {
-  var encoding = encodingOpt || 'ascii';
+Dbf.exportRecords = function(records, encoding, fieldOrder) {
   var rows = records.length;
-  var fields = internal.findFieldNames(records);
+  var fields = internal.findFieldNames(records, fieldOrder);
   var uniqFields = internal.getUniqFieldNames(fields, 10);
   var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(records, name, encoding);
+    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
     var uniqName = uniqFields[i];
     info.name = uniqName;
     if (name != uniqName) {
@@ -7601,8 +7610,8 @@ function DataTable(obj) {
     }
   }
 
-  this.exportAsDbf = function(encoding) {
-    return Dbf.exportRecords(records, encoding);
+  this.exportAsDbf = function(opts) {
+    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
   };
 
   this.getRecords = function() {
@@ -14550,9 +14559,10 @@ function ShapefileTable(buf, encoding) {
     return table;
   }
 
-  this.exportAsDbf = function(encoding) {
-    // export original dbf bytes if records haven't been touched.
-    return reader && !altered ? reader.getBuffer() : getTable().exportAsDbf(encoding);
+  this.exportAsDbf = function(opts) {
+    // export original dbf bytes if possible, for performance
+    var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
+    return useOriginal ? reader.getBuffer() : getTable().exportAsDbf(opts);
   };
 
   this.getRecordAt = function(i) {
@@ -14606,7 +14616,7 @@ internal.exportDbfFile = function(lyr, dataset, opts) {
   if (data.getFields().length === 0) {
     data.addIdField();
   }
-  buf = data.exportAsDbf(opts.encoding || 'utf8');
+  buf = data.exportAsDbf(opts);
   if (utils.isInteger(opts.ldid)) {
     new Uint8Array(buf)[29] = opts.ldid; // set language driver id
   }
@@ -15058,7 +15068,7 @@ internal.exportDelim = function(dataset, opts) {
     if (lyr.data){
       arr.push({
         // TODO: consider supporting encoding= option
-        content: internal.exportDelimTable(lyr, delim, opts.encoding),
+        content: internal.exportLayerAsDSV(lyr, delim, opts),
         filename: (lyr.name || 'output') + '.' + ext
       });
     }
@@ -15066,18 +15076,14 @@ internal.exportDelim = function(dataset, opts) {
   }, []);
 };
 
-/* default d3 formatting doesn't serialize objects
-internal.exportDelimTable = function(lyr, delim) {
-  var dsv = require("d3-dsv").dsvFormat(delim);
-  return dsv.format(lyr.data.getRecords());
-};
-*/
 
-internal.exportDelimTable = function(lyr, delim, encoding) {
+internal.exportLayerAsDSV = function(lyr, delim, optsArg) {
+  var opts = optsArg || {};
+  var encoding = opts.encoding || 'utf8';
   var dsv = require("d3-dsv").dsvFormat(delim);
-  var fields = lyr.data.getFields();
-  var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var records = lyr.data.getRecords();
+  var fields = internal.findFieldNames(records, opts.field_order);
+  var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var str = dsv.formatRows([fields]); // headers
   var tmp = [];
   var n = records.length;
@@ -16070,7 +16076,7 @@ internal.getTableInfo = function(lyr, i) {
 internal.getAttributeInfo = function(data, i) {
   var featureId = i || 0;
   var featureLabel = i >= 0 ? 'Value' : 'First value';
-  var fields = data.getFields().sort();
+  var fields = internal.applyFieldOrder(data.getFields(), 'ascending');
   var col1Chars = fields.reduce(function(memo, name) {
     return Math.max(memo, name.length);
   }, 5) + 2;
@@ -20476,6 +20482,10 @@ function validateOutputOpts(cmd) {
     o.encoding = internal.validateEncoding(o.encoding);
   }
 
+  if (o.field_order && o.field_order != 'ascending') {
+    error('Unsupported field order:', o.field_order);
+  }
+
   // topojson-specific
   if ("quantization" in o && o.quantization > 0 === false) {
     error("quantization= option should be a nonnegative integer");
@@ -20630,11 +20640,12 @@ internal.getOptionParser = function() {
       // describe: "do not output any files"
       type: "flag"
     })
-    .option("encoding", {
-      describe: "text encoding of output dbf or csv file"
-    })
     .option("ldid", {
       // describe: "language driver id of dbf file",
+      type: "number"
+    })
+    .option("precision", {
+      describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
     .option("bbox-index", {
@@ -20649,9 +20660,11 @@ internal.getOptionParser = function() {
       describe: "remove data attributes from output",
       type: "flag"
     })
-    .option("precision", {
-      describe: "coordinate precision in source units, e.g. 0.001",
-      type: "number"
+    .option("encoding", {
+      describe: "(Shapefile/CSV) text encoding (default is utf8)"
+    })
+    .option("field-order", {
+      describe: "(Shapefile/CSV) field-order=ascending sorts columns A-Z"
     })
     .option("id-field", {
       describe: "(Topo/GeoJSON/SVG) field to use for id property",
