@@ -23,7 +23,7 @@ internal.exportDbfFile = function(lyr, dataset, opts) {
   if (data.getFields().length === 0) {
     data.addIdField();
   }
-  buf = data.exportAsDbf(opts.encoding || 'utf8');
+  buf = data.exportAsDbf(opts);
   if (utils.isInteger(opts.ldid)) {
     new Uint8Array(buf)[29] = opts.ldid; // set language driver id
   }

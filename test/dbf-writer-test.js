@@ -31,7 +31,19 @@ describe('dbf-writer.js', function () {
     })
   })
 
-  describe('Dbf#getFieldInfo()', function () {
+  describe('field-order=ascending option', function () {
+    it ('sorts columns in case-insensitive order', function(done) {
+      var a = 'A,Z,B,Y,c,X\na,z,b,y,c,x';
+      var cmd = '-i a.csv -o format=dbf field-order=ascending';
+      api.applyCommands(cmd, {'a.csv': a}, function(err, output) {
+        var dbf = new api.internal.DbfReader(output['a.dbf']);
+        assert.deepEqual(dbf.getFields(), 'A,B,c,X,Y,Z'.split(','));
+        done();
+      });
+    });
+  })
+
+  describe('Dbf.getFieldInfo()', function () {
     it('integers are identified as type "N"', function () {
       var data = [{a: 2147483648, b: -2147483649, c: 2147483647, d: -2147483648}],
           info;

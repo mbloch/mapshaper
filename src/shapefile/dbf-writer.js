@@ -26,13 +26,12 @@ function BufferPool() {
 
 Dbf.bufferPool = new BufferPool();
 
-Dbf.exportRecords = function(records, encodingOpt) {
-  var encoding = encodingOpt || 'ascii';
+Dbf.exportRecords = function(records, encoding, fieldOrder) {
   var rows = records.length;
-  var fields = internal.findFieldNames(records);
+  var fields = internal.findFieldNames(records, fieldOrder);
   var uniqFields = internal.getUniqFieldNames(fields, 10);
   var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(records, name, encoding);
+    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
     var uniqName = uniqFields[i];
     info.name = uniqName;
     if (name != uniqName) {

@@ -1,3 +1,6 @@
+v0.4.71
+* Added -o field-order=ascending option, for sorting the column names (A-Z) of DBF and CSV files. 
+
 v0.4.70
 * Order of data fields is preserved in DBF output (previously fields were sorted in case-sensitive ascending order).
 

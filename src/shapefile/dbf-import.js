@@ -29,9 +29,10 @@ function ShapefileTable(buf, encoding) {
     return table;
   }
 
-  this.exportAsDbf = function(encoding) {
-    // export original dbf bytes if records haven't been touched.
-    return reader && !altered ? reader.getBuffer() : getTable().exportAsDbf(encoding);
+  this.exportAsDbf = function(opts) {
+    // export original dbf bytes if possible, for performance
+    var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
+    return useOriginal ? reader.getBuffer() : getTable().exportAsDbf(opts);
   };
 
   this.getRecordAt = function(i) {

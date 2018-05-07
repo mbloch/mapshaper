@@ -39,21 +39,30 @@ describe('mapshaper-delim-export.js', function() {
     })
   })
 
-  describe('exportDelimTable()', function() {
+  describe('exportLayerAsDSV()', function() {
     it('objects are exported as JSON', function() {
       var data = new api.internal.DataTable([{foo: {}, bar: {a: 2}}]);
-      var csv = api.internal.exportDelimTable({data: data}, ',');
+      var csv = api.internal.exportLayerAsDSV({data: data}, ',');
       var target = 'foo,bar\n{},"{""a"":2}"';
       assert.equal(csv, target);
     });
 
     it('arrays are exported as JSON', function() {
       var data = new api.internal.DataTable([{foo: [], bar: ["a", "b"]}]);
-      var csv = api.internal.exportDelimTable({data: data}, ',');
+      var csv = api.internal.exportLayerAsDSV({data: data}, ',');
       var target = 'foo,bar\n[],"[""a"",""b""]"';
       assert.equal(csv, target);
     });
   });
+
+  describe('field_order= option', function () {
+    it('field-order=ascending sorts in case-insensitive A-Z order', function () {
+      var str = 'Z,A,b,D,c\nfoo,foo,foo,foo,bar';
+      var dataset = api.internal.importDelim(str, {});
+      var output = api.internal.exportLayerAsDSV(dataset.layers[0], ',', {field_order: 'ascending'});
+      assert.equal(output, 'A,b,c,D,Z\nfoo,foo,bar,foo,foo');
+    })
+  })
 
   describe('import/export roundtrip', function() {
     function roundtrip(str) {

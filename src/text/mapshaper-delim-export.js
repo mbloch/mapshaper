@@ -8,7 +8,7 @@ internal.exportDelim = function(dataset, opts) {
     if (lyr.data){
       arr.push({
         // TODO: consider supporting encoding= option
-        content: internal.exportDelimTable(lyr, delim, opts.encoding),
+        content: internal.exportLayerAsDSV(lyr, delim, opts),
         filename: (lyr.name || 'output') + '.' + ext
       });
     }
@@ -16,18 +16,14 @@ internal.exportDelim = function(dataset, opts) {
   }, []);
 };
 
-/* default d3 formatting doesn't serialize objects
-internal.exportDelimTable = function(lyr, delim) {
-  var dsv = require("d3-dsv").dsvFormat(delim);
-  return dsv.format(lyr.data.getRecords());
-};
-*/
 
-internal.exportDelimTable = function(lyr, delim, encoding) {
+internal.exportLayerAsDSV = function(lyr, delim, optsArg) {
+  var opts = optsArg || {};
+  var encoding = opts.encoding || 'utf8';
   var dsv = require("d3-dsv").dsvFormat(delim);
-  var fields = lyr.data.getFields();
-  var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var records = lyr.data.getRecords();
+  var fields = internal.findFieldNames(records, opts.field_order);
+  var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var str = dsv.formatRows([fields]); // headers
   var tmp = [];
   var n = records.length;

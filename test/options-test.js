@@ -53,6 +53,9 @@ describe('mapshaper-options.js', function () {
     good("-o -", {stdout: true})
     good("-o /dev/stdout", {stdout: true})
 
+    good("-o field-order=ascending", {field_order: "ascending"})
+    bad("-o field-order=descending");
+
     // topojson options
     good("-o quantization 10000", {quantization: 10000});
     good("-o no-quantization", {no_quantization: true});

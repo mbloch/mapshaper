@@ -18,8 +18,8 @@ function DataTable(obj) {
     }
   }
 
-  this.exportAsDbf = function(encoding) {
-    return Dbf.exportRecords(records, encoding);
+  this.exportAsDbf = function(opts) {
+    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
   };
 
   this.getRecords = function() {

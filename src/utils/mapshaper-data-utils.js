@@ -133,7 +133,17 @@ internal.adjustFieldName = function(name, maxLen, i) {
   return name2;
 };
 
-internal.findFieldNames = function(records) {
+internal.applyFieldOrder = function(arr, option) {
+  if (option == 'ascending') {
+    arr.sort(function(a, b) {
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+  }
+  return arr;
+};
+
+internal.findFieldNames = function(records, order) {
   var first = records[0];
-  return first ? Object.keys(first) : [];
+  var names = first ? Object.keys(first) : [];
+  return internal.applyFieldOrder(names, order);
 };

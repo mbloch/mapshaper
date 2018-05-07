@@ -146,11 +146,12 @@ internal.getOptionParser = function() {
       // describe: "do not output any files"
       type: "flag"
     })
-    .option("encoding", {
-      describe: "text encoding of output dbf or csv file"
-    })
     .option("ldid", {
       // describe: "language driver id of dbf file",
+      type: "number"
+    })
+    .option("precision", {
+      describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
     .option("bbox-index", {
@@ -165,9 +166,11 @@ internal.getOptionParser = function() {
       describe: "remove data attributes from output",
       type: "flag"
     })
-    .option("precision", {
-      describe: "coordinate precision in source units, e.g. 0.001",
-      type: "number"
+    .option("encoding", {
+      describe: "(Shapefile/CSV) text encoding (default is utf8)"
+    })
+    .option("field-order", {
+      describe: "(Shapefile/CSV) field-order=ascending sorts columns A-Z"
     })
     .option("id-field", {
       describe: "(Topo/GeoJSON/SVG) field to use for id property",

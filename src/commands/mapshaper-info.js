@@ -78,7 +78,7 @@ internal.getTableInfo = function(lyr, i) {
 internal.getAttributeInfo = function(data, i) {
   var featureId = i || 0;
   var featureLabel = i >= 0 ? 'Value' : 'First value';
-  var fields = data.getFields().sort();
+  var fields = internal.applyFieldOrder(data.getFields(), 'ascending');
   var col1Chars = fields.reduce(function(memo, name) {
     return Math.max(memo, name.length);
   }, 5) + 2;

@@ -160,6 +160,10 @@ function validateOutputOpts(cmd) {
     o.encoding = internal.validateEncoding(o.encoding);
   }
 
+  if (o.field_order && o.field_order != 'ascending') {
+    error('Unsupported field order:', o.field_order);
+  }
+
   // topojson-specific
   if ("quantization" in o && o.quantization > 0 === false) {
     error("quantization= option should be a nonnegative integer");
