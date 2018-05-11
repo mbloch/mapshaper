@@ -195,7 +195,7 @@ api.runCommand = function(cmd, catalog, cb) {
       if (!opts.target) {
         targetLayers = targetDataset.layers; // kludge
       }
-      outputLayers = api.mergeLayers(targetLayers);
+      outputLayers = api.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {
       opts.no_replace = true; // add mosaic as a new layer

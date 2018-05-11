@@ -1,7 +1,7 @@
 /* @requires mapshaper-common, mapshaper-join-calc */
 
-// Return a function to convert indexes or original features into indexes of grouped features
-// Uses categorical classification (a different id for each unique value)
+// Return a function to convert indexes of original features into indexes of grouped features
+// Uses categorical classification (a different id for each unique combination of values)
 internal.getCategoryClassifier = function(fields, data) {
   if (!fields || fields.length === 0) return function() {return 0;};
   fields.forEach(function(f) {
@@ -26,18 +26,18 @@ internal.getMultiFieldKeyFunction = function(fields) {
   return fields.reduce(function(partial, field) {
     // TODO: consider using JSON.stringify for fields that contain objects
     var strval = function(rec) {return String(rec[field]);};
-    return partial ? function(rec) {return partial(rec) + '~~\n' + strval(rec);} : strval;
+    return partial ? function(rec) {return partial(rec) + '~~' + strval(rec);} : strval;
   }, null);
 };
 
 
-// Return a properties array for a set of aggregated features
+// Return an array of data records for a set of aggregated features
 //
-// @properties input records
+// @records input records
 // @getGroupId()  converts input record id to id of aggregated record
 //
-internal.aggregateDataRecords = function(properties, getGroupId, opts) {
-  var groups = internal.groupIds(getGroupId, properties.length),
+internal.aggregateDataRecords = function(records, getGroupId, opts) {
+  var groups = internal.groupIds(getGroupId, records.length),
       sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [],
       calc;
@@ -47,13 +47,13 @@ internal.aggregateDataRecords = function(properties, getGroupId, opts) {
   }
 
   if (opts.calc) {
-    calc = internal.getJoinCalc(new DataTable(properties), opts.calc);
+    calc = internal.getJoinCalc(new DataTable(records), opts.calc);
   }
 
   function sum(field, group) {
     var tot = 0, rec;
     for (var i=0; i<group.length; i++) {
-      rec = properties[group[i]];
+      rec = records[group[i]];
       tot += rec && rec[field] || 0;
     }
     return tot;
@@ -63,7 +63,7 @@ internal.aggregateDataRecords = function(properties, getGroupId, opts) {
     var rec = {},
         j, first;
     group = group || [];
-    first = properties[group[0]];
+    first = records[group[0]];
     for (j=0; j<sumFields.length; j++) {
       rec[sumFields[j]] = sum(sumFields[j], group);
     }

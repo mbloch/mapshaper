@@ -1,7 +1,7 @@
 var api = require('../'),
   assert = require('assert')
 
-describe('mapshaper-database-utils.js', function () {
+describe('mapshaper-dataset-utils.js', function () {
 
   describe('copyLayer()', function () {
     it('duplicate data records', function () {

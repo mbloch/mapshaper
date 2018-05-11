@@ -1,40 +1,82 @@
-/* @require mapshaper-merging, mapshaper-data-utils */
+/* @require mapshaper-merging, mapshaper-data-utils, mapshaper-dataset-utils */
 
-// Merge layers; assumes that layers belong to the same dataset and have compatible
-// geometries and data fields.
-api.mergeLayers = function(layers) {
-  var merged;
+// Merge layers, checking for incompatible geometries and data fields.
+api.mergeLayers = function(layers, opts) {
+  var merged = {};
+  opts = opts || {};
   if (!layers.length) return null;
-  internal.checkLayersCanMerge(layers);
-  layers.forEach(function(lyr) {
-    if (!merged) {
-      merged = lyr;
-    } else {
-      if (merged.shapes && lyr.shapes) {
-        merged.shapes = merged.shapes.concat(lyr.shapes);
-      } else {
-        merged.shapes = null;
-      }
-      if (merged.data && lyr.data) {
-        merged.data = new DataTable(merged.data.getRecords().concat(lyr.data.getRecords()));
-      } else {
-        merged.data = null;
-      }
-    }
-  });
+  if (layers.length == 1) return layers.concat();
+  merged.data = internal.mergeDataFromLayers(layers, opts.force);
   merged.name = internal.mergeLayerNames(layers);
+  merged.geometry_type = internal.getMergedLayersGeometryType(layers);
+  if (merged.geometry_type) {
+    merged.shapes = internal.mergeShapesFromLayers(layers);
+  }
+  if (merged.shapes && merged.data && merged.shapes.length != merged.data.size()) {
+    error("Mismatch between geometry and attribute data");
+  }
   return [merged];
 };
 
-internal.mergeLayerNames = function(layers) {
+internal.getMergedLayersGeometryType = function(layers) {
+  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'));
+  if (geoTypes.length > 1) {
+    stop("Incompatible geometry types:",
+      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
+  }
+  return geoTypes[0] || null;
+};
+
+internal.mergeShapesFromLayers = function(layers) {
   return layers.reduce(function(memo, lyr) {
-    if (memo === null) {
-      memo = lyr.name || null;
-    } else if (memo && lyr.name) {
-      memo = utils.mergeNames(memo, lyr.name);
+    return memo.concat(lyr.shapes);
+  }, []);
+};
+
+internal.mergeDataFromLayers = function(layers, force) {
+  var allFields = utils.uniq(layers.reduce(function(memo, lyr) {
+    return memo.concat(lyr.data ? lyr.data.getFields() : []);
+  }, []));
+  if (allFields.length === 0) return null; // no data in any fields
+  var missingFields = internal.checkMergeLayersInconsistentFields(allFields, layers, force);
+  var mergedRecords = layers.reduce(function(memo, lyr) {
+    var records = lyr.data ? lyr.data.getRecords() : new DataTable(internal.getFeatureCount(lyr)).getRecords();
+    return memo.concat(records);
+  }, []);
+  if (missingFields.length > 0) {
+    internal.fixInconsistentFields(mergedRecords);
+  }
+  return new DataTable(mergedRecords);
+};
+
+internal.checkMergeLayersInconsistentFields = function(allFields, layers, force) {
+  var msg;
+  // handle fields that are missing from one or more layers
+  // (warn if force-merging, else error)
+  var missingFields = utils.uniq(layers.reduce(function(memo, lyr) {
+    return memo.concat(utils.difference(allFields, lyr.data ? lyr.data.getFields() : []));
+  }, []));
+  if (missingFields.length > 0) {
+    msg = '[' + missingFields.join(', ') + ']';
+    msg = (missingFields.length == 1 ? 'Field ' + msg + ' is missing' : 'Fields ' + msg + ' are missing') + ' from one or more layers';
+    if (force) {
+      message('Warning: ' + msg);
+    } else {
+      stop(msg);
     }
-    return memo;
-  }, null) || '';
+  }
+  // check for fields with incompatible data types (e.g. number, string)
+  internal.checkMergeLayersFieldTypes(allFields, layers);
+  return missingFields;
+};
+
+internal.checkMergeLayersFieldTypes = function(fields, layers) {
+  fields.forEach(function(key) {
+    var types = internal.checkFieldTypes(key, layers);
+    if (types.length > 1) {
+      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+    }
+  });
 };
 
 internal.checkFieldTypes = function(key, layers) {
@@ -48,33 +90,13 @@ internal.checkFieldTypes = function(key, layers) {
   }, []);
 };
 
-internal.findMissingFields = function(layers) {
-  var matrix = layers.map(function(lyr) {return lyr.data ? lyr.data.getFields() : [];});
-  var allFields = matrix.reduce(function(memo, fields) {
-    return utils.uniq(memo.concat(fields));
-  }, []);
-  return matrix.reduce(function(memo, fields) {
-    var diff = utils.difference(allFields, fields);
-    return utils.uniq(memo.concat(diff));
-  }, []);
-};
-
-internal.checkLayersCanMerge = function(layers) {
-  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type')),
-      fields = layers[0].data ? layers[0].data.getFields() : [],
-      missingFields = internal.findMissingFields(layers);
-  if (utils.uniq(geoTypes).length > 1) {
-    stop("Incompatible geometry types:",
-      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
-  }
-  if (missingFields.length > 0) {
-    stop("Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
-        missingFields.join(', '));
-  }
-  fields.forEach(function(key) {
-    var types = internal.checkFieldTypes(key, layers);
-    if (types.length > 1) {
-      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+internal.mergeLayerNames = function(layers) {
+  return layers.reduce(function(memo, lyr) {
+    if (memo === null) {
+      memo = lyr.name || null;
+    } else if (memo && lyr.name) {
+      memo = utils.mergeNames(memo, lyr.name);
     }
-  });
+    return memo;
+  }, null) || '';
 };

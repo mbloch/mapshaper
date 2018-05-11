@@ -293,7 +293,7 @@ internal.getOptionParser = function() {
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .option("field", {}) // alias
+    .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -313,7 +313,7 @@ internal.getOptionParser = function() {
 
   parser.command("dissolve2")
     .describe("merge adjacent polygons (repairs overlaps and gaps)")
-    .option("field", {}) // alias
+    .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -515,6 +515,10 @@ internal.getOptionParser = function() {
   parser.command("merge-layers")
     .describe("merge multiple layers into as few layers as possible")
     .flag('no_arg')
+    .option("force", {
+      type: "flag",
+      describe: "merge layers with inconsistent data fields"
+    })
     .option("name", nameOpt)
     .option("target", targetOpt);
 
