@@ -950,7 +950,10 @@ internal.getOptionParser = function() {
     .option("precision", {
       describe: "rounding precision to apply before classification (e.g. 0.1)",
       type: "number"
-    });
+    })
+    .example('Define a sequential color scheme and use it to create a new field\n' +
+        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
+        '  colors=#e0f3db,#a8ddb5,#43a2ca -each "fill = getColor(RATING)" -o output.json');
 
   parser.command("data-fill")
     // .describe("interpolate missing values by copying from neighbor polygons")
