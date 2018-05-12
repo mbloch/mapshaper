@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.72';
+var VERSION = '0.4.73';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -6572,13 +6572,11 @@ internal.fieldListContainsAll = function(list, fields) {
   return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
 };
 
-var c = 0;
 internal.getColumnType = function(key, table) {
   var type = null,
       records = table.getRecords(),
       rec;
   for (var i=0, n=table.size(); i<n; i++) {
-    c++;
     rec = records[i];
     type = rec ? internal.getValueType(rec[key]) : null;
     if (type) break;
@@ -8623,8 +8621,8 @@ internal.getJoinCalc = function(src, exp) {
 
 
 
-// Return a function to convert indexes or original features into indexes of grouped features
-// Uses categorical classification (a different id for each unique value)
+// Return a function to convert indexes of original features into indexes of grouped features
+// Uses categorical classification (a different id for each unique combination of values)
 internal.getCategoryClassifier = function(fields, data) {
   if (!fields || fields.length === 0) return function() {return 0;};
   fields.forEach(function(f) {
@@ -8649,18 +8647,18 @@ internal.getMultiFieldKeyFunction = function(fields) {
   return fields.reduce(function(partial, field) {
     // TODO: consider using JSON.stringify for fields that contain objects
     var strval = function(rec) {return String(rec[field]);};
-    return partial ? function(rec) {return partial(rec) + '~~\n' + strval(rec);} : strval;
+    return partial ? function(rec) {return partial(rec) + '~~' + strval(rec);} : strval;
   }, null);
 };
 
 
-// Return a properties array for a set of aggregated features
+// Return an array of data records for a set of aggregated features
 //
-// @properties input records
+// @records input records
 // @getGroupId()  converts input record id to id of aggregated record
 //
-internal.aggregateDataRecords = function(properties, getGroupId, opts) {
-  var groups = internal.groupIds(getGroupId, properties.length),
+internal.aggregateDataRecords = function(records, getGroupId, opts) {
+  var groups = internal.groupIds(getGroupId, records.length),
       sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [],
       calc;
@@ -8670,13 +8668,13 @@ internal.aggregateDataRecords = function(properties, getGroupId, opts) {
   }
 
   if (opts.calc) {
-    calc = internal.getJoinCalc(new DataTable(properties), opts.calc);
+    calc = internal.getJoinCalc(new DataTable(records), opts.calc);
   }
 
   function sum(field, group) {
     var tot = 0, rec;
     for (var i=0; i<group.length; i++) {
-      rec = properties[group[i]];
+      rec = records[group[i]];
       tot += rec && rec[field] || 0;
     }
     return tot;
@@ -8686,7 +8684,7 @@ internal.aggregateDataRecords = function(properties, getGroupId, opts) {
     var rec = {},
         j, first;
     group = group || [];
-    first = properties[group[0]];
+    first = records[group[0]];
     for (j=0; j<sumFields.length; j++) {
       rec[sumFields[j]] = sum(sumFields[j], group);
     }
@@ -12576,6 +12574,25 @@ internal.mergeDatasetsForExport = function(arr) {
   return internal.mergeDatasets(copy);
 };
 
+internal.mergeCommandTargets = function(targets, catalog) {
+  var targetLayers = [];
+  var targetDatasets = [];
+  var merged;
+  targets.forEach(function(target) {
+    targetLayers = targetLayers.concat(target.layers);
+    targetDatasets = targetDatasets.concat(target.dataset);
+  });
+  merged = internal.mergeDatasets(targetDatasets);
+  // remove old datasets after merging, so catalog is not affected if merge throws an error
+  targetDatasets.forEach(catalog.removeDataset);
+  catalog.addDataset(merged); // sets default target to all layers in merged dataset
+  catalog.setDefaultTarget(targetLayers, merged); // reset default target
+  return [{
+    layers: targetLayers,
+    dataset: merged
+  }];
+};
+
 internal.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
@@ -12672,41 +12689,86 @@ utils.mergeArrays = function(arrays, TypedArr) {
 
 
 
-// Merge layers; assumes that layers belong to the same dataset and have compatible
-// geometries and data fields.
-api.mergeLayers = function(layers) {
-  var merged;
+// Merge layers, checking for incompatible geometries and data fields.
+api.mergeLayers = function(layers, opts) {
+  var merged = {};
+  opts = opts || {};
   if (!layers.length) return null;
-  internal.checkLayersCanMerge(layers);
-  layers.forEach(function(lyr) {
-    if (!merged) {
-      merged = lyr;
-    } else {
-      if (merged.shapes && lyr.shapes) {
-        merged.shapes = merged.shapes.concat(lyr.shapes);
-      } else {
-        merged.shapes = null;
-      }
-      if (merged.data && lyr.data) {
-        merged.data = new DataTable(merged.data.getRecords().concat(lyr.data.getRecords()));
-      } else {
-        merged.data = null;
-      }
-    }
-  });
+  if (layers.length == 1) {
+    message('Use the target= option to specify multiple layers for merging');
+    return layers.concat();
+  }
+  merged.data = internal.mergeDataFromLayers(layers, opts.force);
   merged.name = internal.mergeLayerNames(layers);
+  merged.geometry_type = internal.getMergedLayersGeometryType(layers);
+  if (merged.geometry_type) {
+    merged.shapes = internal.mergeShapesFromLayers(layers);
+  }
+  if (merged.shapes && merged.data && merged.shapes.length != merged.data.size()) {
+    error("Mismatch between geometry and attribute data");
+  }
   return [merged];
 };
 
-internal.mergeLayerNames = function(layers) {
+internal.getMergedLayersGeometryType = function(layers) {
+  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'));
+  if (geoTypes.length > 1) {
+    stop("Incompatible geometry types:",
+      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
+  }
+  return geoTypes[0] || null;
+};
+
+internal.mergeShapesFromLayers = function(layers) {
   return layers.reduce(function(memo, lyr) {
-    if (memo === null) {
-      memo = lyr.name || null;
-    } else if (memo && lyr.name) {
-      memo = utils.mergeNames(memo, lyr.name);
+    return memo.concat(lyr.shapes);
+  }, []);
+};
+
+internal.mergeDataFromLayers = function(layers, force) {
+  var allFields = utils.uniq(layers.reduce(function(memo, lyr) {
+    return memo.concat(lyr.data ? lyr.data.getFields() : []);
+  }, []));
+  if (allFields.length === 0) return null; // no data in any fields
+  var missingFields = internal.checkMergeLayersInconsistentFields(allFields, layers, force);
+  var mergedRecords = layers.reduce(function(memo, lyr) {
+    var records = lyr.data ? lyr.data.getRecords() : new DataTable(internal.getFeatureCount(lyr)).getRecords();
+    return memo.concat(records);
+  }, []);
+  if (missingFields.length > 0) {
+    internal.fixInconsistentFields(mergedRecords);
+  }
+  return new DataTable(mergedRecords);
+};
+
+internal.checkMergeLayersInconsistentFields = function(allFields, layers, force) {
+  var msg;
+  // handle fields that are missing from one or more layers
+  // (warn if force-merging, else error)
+  var missingFields = utils.uniq(layers.reduce(function(memo, lyr) {
+    return memo.concat(utils.difference(allFields, lyr.data ? lyr.data.getFields() : []));
+  }, []));
+  if (missingFields.length > 0) {
+    msg = '[' + missingFields.join(', ') + ']';
+    msg = (missingFields.length == 1 ? 'Field ' + msg + ' is missing' : 'Fields ' + msg + ' are missing') + ' from one or more layers';
+    if (force) {
+      message('Warning: ' + msg);
+    } else {
+      stop(msg);
     }
-    return memo;
-  }, null) || '';
+  }
+  // check for fields with incompatible data types (e.g. number, string)
+  internal.checkMergeLayersFieldTypes(allFields, layers);
+  return missingFields;
+};
+
+internal.checkMergeLayersFieldTypes = function(fields, layers) {
+  fields.forEach(function(key) {
+    var types = internal.checkFieldTypes(key, layers);
+    if (types.length > 1) {
+      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+    }
+  });
 };
 
 internal.checkFieldTypes = function(key, layers) {
@@ -12720,35 +12782,15 @@ internal.checkFieldTypes = function(key, layers) {
   }, []);
 };
 
-internal.findMissingFields = function(layers) {
-  var matrix = layers.map(function(lyr) {return lyr.data ? lyr.data.getFields() : [];});
-  var allFields = matrix.reduce(function(memo, fields) {
-    return utils.uniq(memo.concat(fields));
-  }, []);
-  return matrix.reduce(function(memo, fields) {
-    var diff = utils.difference(allFields, fields);
-    return utils.uniq(memo.concat(diff));
-  }, []);
-};
-
-internal.checkLayersCanMerge = function(layers) {
-  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type')),
-      fields = layers[0].data ? layers[0].data.getFields() : [],
-      missingFields = internal.findMissingFields(layers);
-  if (utils.uniq(geoTypes).length > 1) {
-    stop("Incompatible geometry types:",
-      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
-  }
-  if (missingFields.length > 0) {
-    stop("Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
-        missingFields.join(', '));
-  }
-  fields.forEach(function(key) {
-    var types = internal.checkFieldTypes(key, layers);
-    if (types.length > 1) {
-      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+internal.mergeLayerNames = function(layers) {
+  return layers.reduce(function(memo, lyr) {
+    if (memo === null) {
+      memo = lyr.name || null;
+    } else if (memo && lyr.name) {
+      memo = utils.mergeNames(memo, lyr.name);
     }
-  });
+    return memo;
+  }, null) || '';
 };
 
 
@@ -19390,6 +19432,13 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else {
       targets = catalog.findCommandTargets(opts.target);
+
+      // special case to allow merge-layers to merge layers from multiple datasets
+      // TODO: support multi-dataset targets for other commands
+      if (targets.length > 1 && name == 'merge-layers') {
+        targets = internal.mergeCommandTargets(targets, catalog);
+      }
+
       if (targets.length == 1) {
         targetDataset = targets[0].dataset;
         arcs = targetDataset.arcs;
@@ -19398,7 +19447,7 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.setDefaultTarget(targetLayers, targetDataset);
 
       } else if (targets.length > 1) {
-        stop("Targetting multiple datasets is not supported");
+        stop("This command does not support targetting layers from different datasets");
       }
     }
 
@@ -19500,11 +19549,9 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.lines, targetLayers, arcs, opts);
 
     } else if (name == 'merge-layers') {
-      // careful, returned layers are modified input layers
-      if (!opts.target) {
-        targetLayers = targetDataset.layers; // kludge
-      }
-      outputLayers = api.mergeLayers(targetLayers);
+      // returned layers are modified input layers
+      // (assumes that targetLayers are replaced by outputLayers below)
+      outputLayers = api.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {
       opts.no_replace = true; // add mosaic as a new layer
@@ -20800,7 +20847,7 @@ internal.getOptionParser = function() {
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .option("field", {}) // alias
+    .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -20820,7 +20867,7 @@ internal.getOptionParser = function() {
 
   parser.command("dissolve2")
     .describe("merge adjacent polygons (repairs overlaps and gaps)")
-    .option("field", {}) // alias
+    .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -21022,6 +21069,10 @@ internal.getOptionParser = function() {
   parser.command("merge-layers")
     .describe("merge multiple layers into as few layers as possible")
     .flag('no_arg')
+    .option("force", {
+      type: "flag",
+      describe: "merge layers with inconsistent data fields"
+    })
     .option("name", nameOpt)
     .option("target", targetOpt);
 

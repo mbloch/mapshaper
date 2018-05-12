@@ -4258,7 +4258,11 @@ function Popup(onNext, onPrev) {
     if (rows > 0) {
       tableEl.appendTo(el);
     } else {
-      el.html('<div class="note">This layer is missing attribute data.</div>');
+      // Some individual features can have undefined values for some or all of
+      // their data properties (properties are set to undefined when an input JSON file
+      // has inconsistent fields, or after force-merging layers with inconsistent fields).
+      el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
+          table.getFields().length > 0 ? 'feature': 'layer'));
     }
   }
 
