@@ -11,6 +11,25 @@ internal.mergeDatasetsForExport = function(arr) {
   return internal.mergeDatasets(copy);
 };
 
+internal.mergeCommandTargets = function(targets, catalog) {
+  var targetLayers = [];
+  var targetDatasets = [];
+  var merged;
+  targets.forEach(function(target) {
+    targetLayers = targetLayers.concat(target.layers);
+    targetDatasets = targetDatasets.concat(target.dataset);
+  });
+  merged = internal.mergeDatasets(targetDatasets);
+  // remove old datasets after merging, so catalog is not affected if merge throws an error
+  targetDatasets.forEach(catalog.removeDataset);
+  catalog.addDataset(merged); // sets default target to all layers in merged dataset
+  catalog.setDefaultTarget(targetLayers, merged); // reset default target
+  return [{
+    layers: targetLayers,
+    dataset: merged
+  }];
+};
+
 internal.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,

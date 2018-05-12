@@ -1,3 +1,7 @@
+v0.4.73
+* The -merge-layers command is now able to merge layers from different datasets (including layers in the GUI and layers loaded via separate -i commands).
+* Added -merge-layers "force" option for merging layers with inconsistent data fields.
+
 v0.4.72
 * -dissolve and -dissolve2 now accept a comma-separated list of field names to dissolve on. 
 

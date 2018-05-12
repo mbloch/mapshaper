@@ -5,7 +5,10 @@ api.mergeLayers = function(layers, opts) {
   var merged = {};
   opts = opts || {};
   if (!layers.length) return null;
-  if (layers.length == 1) return layers.concat();
+  if (layers.length == 1) {
+    message('Use the target= option to specify multiple layers for merging');
+    return layers.concat();
+  }
   merged.data = internal.mergeDataFromLayers(layers, opts.force);
   merged.name = internal.mergeLayerNames(layers);
   merged.geometry_type = internal.getMergedLayersGeometryType(layers);

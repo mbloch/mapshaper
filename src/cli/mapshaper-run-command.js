@@ -81,6 +81,13 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else {
       targets = catalog.findCommandTargets(opts.target);
+
+      // special case to allow merge-layers to merge layers from multiple datasets
+      // TODO: support multi-dataset targets for other commands
+      if (targets.length > 1 && name == 'merge-layers') {
+        targets = internal.mergeCommandTargets(targets, catalog);
+      }
+
       if (targets.length == 1) {
         targetDataset = targets[0].dataset;
         arcs = targetDataset.arcs;
@@ -89,7 +96,7 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.setDefaultTarget(targetLayers, targetDataset);
 
       } else if (targets.length > 1) {
-        stop("Targetting multiple datasets is not supported");
+        stop("This command does not support targetting layers from different datasets");
       }
     }
 
@@ -191,10 +198,8 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.lines, targetLayers, arcs, opts);
 
     } else if (name == 'merge-layers') {
-      // careful, returned layers are modified input layers
-      if (!opts.target) {
-        targetLayers = targetDataset.layers; // kludge
-      }
+      // returned layers are modified input layers
+      // (assumes that targetLayers are replaced by outputLayers below)
       outputLayers = api.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {

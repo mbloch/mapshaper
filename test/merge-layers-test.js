@@ -15,6 +15,53 @@ describe('mapshaper-merge-layers.js', function () {
         });
 
       });
+
+      it('supports merging layers from multiple datasets', function(done) {
+        var a = 'FIPS\n36',
+            b = 'FIPS\n34',
+            c = 'FIPS\n52',
+            // merge two of three datasets
+            cmd = '-i a.csv -i b.csv -i c.csv -merge-layers target=b,c name=bc -o target=*';
+        api.applyCommands(cmd, {'a.csv': a, 'b.csv': b, 'c.csv': c}, function(err, out) {
+          var a = out['a.csv'],
+              bc = out['bc.csv'];
+          assert.deepEqual(Object.keys(out).sort(), ['a.csv', 'bc.csv']);
+          assert.equal(a, 'FIPS\n36');
+          assert.equal(bc, 'FIPS\n34\n52');
+          done();
+        });
+      });
+
+      it('supports merging layers from multiple datasets 2', function(done) {
+        var a = 'FIPS\n36',
+            b = 'FIPS\n34',
+            c = 'FIPS\n52',
+            // test that default target after merge is the merged layer
+            cmd = '-i a.csv b.csv combine-files -i c.csv -merge-layers target=b,c name=bc -each \'FIPS=null\' -o target=*';
+        api.applyCommands(cmd, {'a.csv': a, 'b.csv': b, 'c.csv': c}, function(err, out) {
+          var a = out['a.csv'],
+              bc = out['bc.csv'];
+          assert.deepEqual(Object.keys(out).sort(), ['a.csv', 'bc.csv']);
+          assert.equal(a, 'FIPS\n36');
+          assert.equal(bc, 'FIPS\n\n');
+          done();
+        });
+      });
+
+      it('supports merging layers from multiple datasets 3', function(done) {
+        var a = 'FIPS\n36',
+            b = 'FIPS\n34',
+            c = 'FIPS\n52',
+            // merge all datasets
+            cmd = '-i a.csv -i b.csv -i c.csv -merge-layers target=* name=abc -o target=*';
+        api.applyCommands(cmd, {'a.csv': a, 'b.csv': b, 'c.csv': c}, function(err, out) {
+          var abc = out['abc.csv'];
+          assert.deepEqual(Object.keys(out), ['abc.csv']);
+          assert.equal(abc, 'FIPS\n36\n34\n52');
+          done();
+        });
+      });
+
   })
 
   describe('mergeLayers()', function () {
