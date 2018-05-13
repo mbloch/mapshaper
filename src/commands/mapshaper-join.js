@@ -128,7 +128,6 @@ internal.joinTables = function(dest, src, join, opts) {
       internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
 
-
   }
   if (matchCount === 0) {
     stop("No records could be joined");

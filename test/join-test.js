@@ -32,6 +32,26 @@ describe('mapshaper-join.js', function () {
       });
     });
 
+    it('calc assignments add values to unmatched records', function(done) {
+      var a = 'id\n1\n2';
+      var b = 'id\n1';
+      api.applyCommands('a.csv -join b.csv keys=id,id calc="JOINS=count(), AVG=average(id)" -o format=json', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        var json = JSON.parse(out['a.json']);
+        assert.deepEqual(json, [{id: 1, JOINS: 1, AVG: 1}, {id: 2, JOINS: 0, AVG: null}]);
+        done();
+      });
+    });
+
+    it('calc() assignments supersede fields= assignments', function(done) {
+      var a = 'id\n1\n2';
+      var b = 'id,COUNT\n1,45\n1,35';
+      api.applyCommands('a.csv -join b.csv keys=id,id calc="COUNT=count()" fields=COUNT -o format=json', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        var json = JSON.parse(out['a.json']);
+        assert.deepEqual(json, [{id: 1, COUNT: 2}, {id: 2, COUNT: 0}]);
+        done();
+      });
+    });
+
     it('test1, with field-types= option', function (done) {
       var shp = "test/test_data/two_states.shp";
       var csv = "test/test_data/text/states.csv";
