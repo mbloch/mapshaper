@@ -56,11 +56,8 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
       destKey = keys[0],
       srcKey = keys[1],
       destTable = lyr.data,
-      // exclude source key field from join unless explicitly listed
-      joinFields = opts.fields || utils.difference(srcTable.getFields(), [srcKey]),
       joinFunction = internal.getJoinByKey(destTable, destKey, srcTable, srcKey);
   internal.validateFieldNames(keys);
-  opts = utils.defaults({fields: joinFields}, opts);
   return internal.joinTables(destTable, srcTable, joinFunction, opts);
 };
 
@@ -130,6 +127,8 @@ internal.joinTables = function(dest, src, join, opts) {
       }
       internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
+
+
   }
   if (matchCount === 0) {
     stop("No records could be joined");
@@ -232,6 +231,10 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
     // If a list of fields to join is not given, try to join all the
     // source fields, unless calc= option is present
     joinFields = opts.calc ? [] : srcFields;
+    // exclude source key field from key-based join (if fields are not given explicitly)
+    if (opts.keys) {
+      joinFields = utils.difference(joinFields, [opts.keys[1]]);
+    }
   }
   if (!opts.force) {
     // only overwrite existing fields if the "force" option is set.

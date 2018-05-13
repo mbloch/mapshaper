@@ -13,6 +13,25 @@ function fixPath(p) {
 describe('mapshaper-join.js', function () {
 
   describe('-join command', function () {
+
+    it('includes source key with fields=* option', function(done) {
+      var a = 'id\n1';
+      var b = 'key,score\n1,100';
+      api.applyCommands('a.csv -join b.csv keys=id,key fields=* -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert.deepEqual(out['a.csv'], 'id,key,score\n1,1,100');
+        done();
+      });
+    });
+
+    it('excludes source key by default', function(done) {
+      var a = 'id\n1';
+      var b = 'key,score\n1,100';
+      api.applyCommands('a.csv -join b.csv keys=id,key -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert.deepEqual(out['a.csv'], 'id,score\n1,100');
+        done();
+      });
+    });
+
     it('test1, with field-types= option', function (done) {
       var shp = "test/test_data/two_states.shp";
       var csv = "test/test_data/text/states.csv";
@@ -254,6 +273,16 @@ describe('mapshaper-join.js', function () {
     it('Use all fields, if fields option is missing', function () {
       var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {})
       assert.deepEqual(fields, ['st', 'co']);
+    })
+
+    it('Exclude source key, if fields option is missing', function () {
+      var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {keys: ['id', 'st']})
+      assert.deepEqual(fields, ['co']);
+    })
+
+   it('Include source key, if fields option in "*"', function () {
+      var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {fields: ['*'], keys: ['id', 'st']})
+      assert.deepEqual(fields, ['st','co']);
     })
 
     it('Do not join fields that are already present in dest table', function () {
