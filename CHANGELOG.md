@@ -1,3 +1,6 @@
+v0.4.74
+* -join fields=* now copies all of the fields from the source layer, including the key field.
+
 v0.4.73
 * The -merge-layers command is now able to merge layers from different datasets (including layers in the GUI and layers loaded via separate -i commands).
 * Added -merge-layers "force" option for merging layers with inconsistent data fields.

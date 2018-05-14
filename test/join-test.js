@@ -52,6 +52,26 @@ describe('mapshaper-join.js', function () {
       });
     });
 
+    it('fields= option with an empty list copies no fields', function(done) {
+      var a = 'id\n1';
+      var b = 'id,PARTIAL,TOTAL\n1,4,35';
+      api.applyCommands('a.csv -join b.csv keys=id,id calc="COUNT=count()" fields= -o format=json', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        var json = JSON.parse(out['a.json']);
+        assert.deepEqual(json, [{id: 1, COUNT: 1}]);
+        done();
+      });
+    });
+
+    it('calc= functions can use the same field as input and output', function(done) {
+      var a = 'id\n1';
+      var b = 'id,COUNT\n1,4\n1,3';
+      api.applyCommands('a.csv -join b.csv keys=id,id calc="COUNT=sum(COUNT)" -o format=json', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        var json = JSON.parse(out['a.json']);
+        assert.deepEqual(json, [{id: 1, COUNT: 7}]);
+        done();
+      });
+    });
+
     it('test1, with field-types= option', function (done) {
       var shp = "test/test_data/two_states.shp";
       var csv = "test/test_data/text/states.csv";

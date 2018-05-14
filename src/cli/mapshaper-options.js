@@ -467,23 +467,23 @@ internal.getOptionParser = function() {
       describe: "file or layer containing data records"
     })
     .option("keys", {
-      describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
+      describe: "join by matching target,source key fields; e.g. keys=FIPS,ID",
       type: "strings"
     })
     .option("calc", {
-      describe: "use a JS expression to calculate values for many-to-one joins"
+      describe: "use a JS expression to assign values in many-to-one joins"
     })
     .option("where", {
       describe: "use a JS expression to filter source records"
     })
     .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
+      describe: "fields to copy (comma-sep.) (default is all but key field)",
       type: "strings"
     })
     .option("string-fields", stringFieldsOpt)
     .option("field-types", fieldTypesOpt)
     .option("sum-fields", {
-      describe: "fields to sum for many-to-one join (consider calc= option instead)",
+      describe: "fields to sum in a many-to-one join (or use calc= for this)",
       type: "strings"
     })
     .option("force", {
