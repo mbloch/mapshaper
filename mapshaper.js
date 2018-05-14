@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.73';
+var VERSION = '0.4.74';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -16942,11 +16942,8 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
       destKey = keys[0],
       srcKey = keys[1],
       destTable = lyr.data,
-      // exclude source key field from join unless explicitly listed
-      joinFields = opts.fields || utils.difference(srcTable.getFields(), [srcKey]),
       joinFunction = internal.getJoinByKey(destTable, destKey, srcTable, srcKey);
   internal.validateFieldNames(keys);
-  opts = utils.defaults({fields: joinFields}, opts);
   return internal.joinTables(destTable, srcTable, joinFunction, opts);
 };
 
@@ -17016,6 +17013,7 @@ internal.joinTables = function(dest, src, join, opts) {
       }
       internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
+
   }
   if (matchCount === 0) {
     stop("No records could be joined");
@@ -17118,6 +17116,10 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
     // If a list of fields to join is not given, try to join all the
     // source fields, unless calc= option is present
     joinFields = opts.calc ? [] : srcFields;
+    // exclude source key field from key-based join (if fields are not given explicitly)
+    if (opts.keys) {
+      joinFields = utils.difference(joinFields, [opts.keys[1]]);
+    }
   }
   if (!opts.force) {
     // only overwrite existing fields if the "force" option is set.
@@ -21021,23 +21023,23 @@ internal.getOptionParser = function() {
       describe: "file or layer containing data records"
     })
     .option("keys", {
-      describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
+      describe: "join by matching target,source key fields; e.g. keys=FIPS,ID",
       type: "strings"
     })
     .option("calc", {
-      describe: "use a JS expression to calculate values for many-to-one joins"
+      describe: "use a JS expression to assign values in many-to-one joins"
     })
     .option("where", {
       describe: "use a JS expression to filter source records"
     })
     .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
+      describe: "fields to copy (comma-sep.) (default is all but key field)",
       type: "strings"
     })
     .option("string-fields", stringFieldsOpt)
     .option("field-types", fieldTypesOpt)
     .option("sum-fields", {
-      describe: "fields to sum for many-to-one join (consider calc= option instead)",
+      describe: "fields to sum in a many-to-one join (or use calc= for this)",
       type: "strings"
     })
     .option("force", {
@@ -21504,7 +21506,10 @@ internal.getOptionParser = function() {
     .option("precision", {
       describe: "rounding precision to apply before classification (e.g. 0.1)",
       type: "number"
-    });
+    })
+    .example('Define a sequential color scheme and use it to create a new field\n' +
+        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
+        '  colors=#e0f3db,#a8ddb5,#43a2ca -each "fill = getColor(RATING)" -o output.json');
 
   parser.command("data-fill")
     // .describe("interpolate missing values by copying from neighbor polygons")
