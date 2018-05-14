@@ -328,6 +328,7 @@ internal.getOptionParser = function() {
 
   parser.command("drop")
     .describe("delete layer(s) or elements within the target layer(s)")
+    .flag('no_arg') // prevent trying to pass a list of layer names as default option
     .option("geometry", {
       describe: "delete all geometry from the target layer(s)",
       type: "flag"

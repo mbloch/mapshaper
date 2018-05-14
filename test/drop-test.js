@@ -4,6 +4,19 @@ var assert = require('assert'),
 describe('mapshaper-drop.js', function () {
 
   describe('-drop removes target layer(s)', function () {
+
+    it('removes layers from multiple datasets', function(done) {
+      var a = 'a\na',
+          b = 'b\nb',
+          c = 'c\nc',
+          d = 'd\nd',
+          cmd = '-i combine-files a.csv b.csv -i c.csv -i d.csv -drop target=b,c -o target=*';
+      api.applyCommands(cmd, {'a.csv':a, 'b.csv': b, 'c.csv': c, 'd.csv': d}, function(err, out) {
+        assert.deepEqual(out, {'a.csv': 'a\na', 'd.csv': 'd\nd'});
+        done();
+      });
+    });
+
     it('removes one of two layers', function (done) {
       var a = 'a,b,c,d\n1,2,3,4\n';
       var b = 'e\n5\n';

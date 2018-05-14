@@ -1,5 +1,12 @@
 /* @requires mapshaper-common, mapshaper-data-utils */
 
+api.drop2 = function(catalog, targets, opts) {
+  targets.forEach(function(target) {
+    api.drop(catalog, target.layers, target.dataset, opts);
+  });
+};
+
+
 api.drop = function(catalog, layers, dataset, opts) {
   var updateArcs = false;
 
@@ -25,4 +32,3 @@ api.drop = function(catalog, layers, dataset, opts) {
     internal.pruneArcs(dataset);
   }
 };
-

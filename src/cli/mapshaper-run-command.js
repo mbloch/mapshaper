@@ -75,8 +75,8 @@ api.runCommand = function(cmd, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'proj') {
-      // accepts multiple target datasets
+    } else if (name == 'proj' || name == 'drop') {
+      // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
     } else {
@@ -142,7 +142,8 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
     } else if (name == 'drop') {
-      api.drop(catalog, targetLayers, targetDataset, opts);
+      api.drop2(catalog, targets, opts);
+      // api.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
