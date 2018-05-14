@@ -15,10 +15,10 @@ describe('mapshaper-join.js', function () {
   describe('-join command', function () {
 
     it('includes source key with fields=* option', function(done) {
-      var a = 'id\n1';
+      var a = 'id,name\n1,foo';
       var b = 'key,score\n1,100';
       api.applyCommands('a.csv -join b.csv keys=id,key fields=* -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
-        assert.deepEqual(out['a.csv'], 'id,key,score\n1,1,100');
+        assert.deepEqual(out['a.csv'], 'id,name,key,score\n1,foo,1,100');
         done();
       });
     });

@@ -71,7 +71,7 @@ function Popup(onNext, onPrev) {
       // their data properties (properties are set to undefined when an input JSON file
       // has inconsistent fields, or after force-merging layers with inconsistent fields).
       el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
-          table.getFields().length > 0 ? 'feature': 'layer'));
+          table && table.getFields().length > 0 ? 'feature': 'layer'));
     }
   }
 
