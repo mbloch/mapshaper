@@ -18948,7 +18948,7 @@ api.simplify = function(dataset, opts) {
   if (!arcs) stop("Missing path data");
   // standardize options
   opts = internal.getStandardSimplifyOpts(dataset, opts);
-  // stash simplifcation options (ufsed by gui settings dialog)
+  // stash simplifcation options (used by gui settings dialog)
   dataset.info = utils.defaults({simplify: opts}, dataset.info);
 
   internal.simplifyPaths(arcs, opts);
