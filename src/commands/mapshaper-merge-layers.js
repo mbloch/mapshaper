@@ -1,7 +1,8 @@
 /* @require mapshaper-merging, mapshaper-data-utils, mapshaper-dataset-utils */
 
 // Merge layers, checking for incompatible geometries and data fields.
-api.mergeLayers = function(layers, opts) {
+api.mergeLayers = function(layersArg, opts) {
+  var layers = layersArg.filter(internal.getFeatureCount); // ignore empty layers
   var merged = {};
   opts = opts || {};
   if (!layers.length) return null;
