@@ -132,14 +132,15 @@ function DisplayCanvas() {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
         ctx = _ctx,
-        n = 25, // render paths in batches of this size (an optimization)
+        batch = 25, // render paths in batches of this size (an optimization)
         count = 0,
-        iter;
+        n = arcs.size(),
+        i, iter;
 
     startPath(ctx, style);
-    for (i=0, n=arcs.size(); i<n; i++) {
+    for (i=0; i<n; i++) {
       if (filter && !filter(i)) continue;
-      if (++count % n === 0) {
+      if (++count % batch === 0) {
         endPath(ctx, style);
         startPath(ctx, style);
       }
