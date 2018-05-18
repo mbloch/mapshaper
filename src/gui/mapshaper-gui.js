@@ -73,12 +73,6 @@ gui.startEditing = function() {
     }
   });
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
-  simplify.on('simplify-start', function() {
-    repair.hide();
-  });
-  simplify.on('simplify-end', function() {
-    repair.update();
-  });
   simplify.on('change', function(e) {
     map.setSimplifyPct(e.value);
   });

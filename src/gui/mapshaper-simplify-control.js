@@ -40,12 +40,12 @@ var SimplifyControl = function(model) {
     var pct = fromSliderPct(e.pct);
     text.value(pct);
     pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
-    onchange(pct);
+    onChange(pct);
   });
   slider.on('start', function(e) {
-    control.dispatchEvent('simplify-start');
+    // control.dispatchEvent('simplify-start');
   }).on('end', function(e) {
-    control.dispatchEvent('simplify-end');
+    onDone();
   });
 
   text = new ClickText("#simplify-control .clicktext");
@@ -70,9 +70,8 @@ var SimplifyControl = function(model) {
   text.on('change', function(e) {
     var pct = e.value;
     slider.pct(toSliderPct(pct));
-    control.dispatchEvent('simplify-start');
-    onchange(pct);
-    control.dispatchEvent('simplify-end');
+    onChange(pct);
+    onDone();
   });
 
   function turnOn() {
@@ -156,9 +155,15 @@ var SimplifyControl = function(model) {
     return pct * pct;
   }
 
-  function onchange(val) {
+  function onDone() {
+    // TODO: update arc threshold here, not via map object
+    model.updated({'simplify': true});
+  }
+
+  function onChange(val) {
     if (_value != val) {
       _value = val;
+      model.updated({'simplify_slider': true});
       control.dispatchEvent('change', {value:val});
       updateSliderDisplay();
     }

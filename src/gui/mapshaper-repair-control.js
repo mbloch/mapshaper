@@ -3,102 +3,98 @@
 function RepairControl(model, map) {
   var el = El("#intersection-display"),
       readout = el.findChild("#intersection-count"),
-      btn = el.findChild("#repair-btn"),
-      _self = this,
-      _dataset, _currXX;
-
-  gui.on('mode', function(e) {
-    // TODO: handle visibility in simplify mode, when control has been turned off
-  });
+      repairBtn = el.findChild("#repair-btn"),
+      _prevFlags,
+      // keeping a reference to current arcs and intersections, so intersections
+      // don't need to be recalculated before 'repair' is triggered
+      _currArcs,
+      _currXX;
 
   model.on('update', function(e) {
-    if (e.flags.simplify || e.flags.proj || e.flags.arc_count ||e.flags.affine ||
-      e.flags.points) {
-      // these changes require nulling out any cached intersection data and recalculating
-      if (_dataset) {
-        _dataset.info.intersections = null;
-        _dataset = null;
-        _self.hide();
+    var flags = e.flags;
+    var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
+        flags.affine || flags.points || flags['merge-layers'] || flags.select;
+    if (flags.simplify_slider) {
+      // hide while sliding; wait for 'simplify' flag before updating
+      hide();
+    } else if (needUpdate) {
+      // some changes require deleting any cached intersection data and recalculating
+      if (flags.select || flags.simplify && _prevFlags.simplify_slider) {
+        // preserve cached intersections
+      } else {
+        e.dataset.info.intersections = null;
       }
-      delayedUpdate();
-    } else if (e.flags.select) {
-      _self.hide();
-      reset();
-      delayedUpdate();
+      updateAsync();
     }
+    _prevFlags = flags;
   });
 
-  btn.on('click', function() {
-    var fixed = internal.repairIntersections(_dataset.arcs, _currXX);
-    showIntersections(fixed);
-    btn.addClass('disabled');
+  repairBtn.on('click', function() {
+    var fixed = internal.repairIntersections(_currArcs, _currXX);
+    showIntersections(fixed, _currArcs);
+    repairBtn.addClass('disabled');
     model.updated({repair: true});
   });
 
-  this.hide = function() {
+  function hide() {
     el.hide();
     map.setHighlightLayer(null);
-  };
+  }
 
-  // Detect and display intersections for current level of arc simplification
-  this.update = function() {
-    var XX, showBtn, pct;
-    if (!_dataset) return;
-    if (_dataset.arcs.getRetainedInterval() > 0) {
-      // TODO: cache these intersections
-      XX = internal.findSegmentIntersections(_dataset.arcs);
-      showBtn = XX.length > 0;
-    } else { // no simplification
-      XX = _dataset.info.intersections;
-      if (!XX) {
-        // cache intersections at 0 simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = _dataset.info.intersections = internal.findSegmentIntersections(_dataset.arcs);
-      }
-      showBtn = false;
-    }
-    el.show();
-    showIntersections(XX);
-    btn.classed('disabled', !showBtn);
-  };
-
-  function updateNeeded(dataset) {
+  function updatesRequested(dataset) {
     var info = dataset.info || {};
     var opts = info.import_options || {};
     return !opts.no_repair && !info.no_intersections;
   }
 
-  function delayedUpdate() {
-    // Delay intersection calculation, so map display can update after previous
-    // operation (e.g. layer load, simplification change)
-    setTimeout(function() {
-      var e = model.getActiveLayer();
-      if (!e.dataset || e.dataset == _dataset) return;
-      if (!internal.layerHasPaths(e.layer)) return;
-      if (updateNeeded(e.dataset)) {
-        _dataset = e.dataset;
-        _self.update();
+  // Delay intersection calculation, so map can redraw after previous
+  // operation (e.g. layer load, simplification change)
+  function updateAsync() {
+    reset();
+    setTimeout(updateSync, 10);
+  }
+
+  function updateSync() {
+    var e = model.getActiveLayer();
+    var dataset = e.dataset;
+    var arcs = dataset && dataset.arcs;
+    var XX, showBtn;
+    if (!arcs || !internal.layerHasPaths(e.layer) || !updatesRequested(dataset)) return;
+    if (arcs.getRetainedInterval() > 0) {
+      // TODO: cache these intersections
+      XX = internal.findSegmentIntersections(arcs);
+      showBtn = XX.length > 0;
+    } else { // no simplification
+      XX = dataset.info.intersections;
+      if (!XX) {
+        // cache intersections at 0 simplification, to avoid recalculating
+        // every time the simplification slider is set to 100% or the layer is selected at 100%
+        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs);
       }
-    }, 10);
+      showBtn = false;
+    }
+    el.show();
+    showIntersections(XX, arcs);
+    repairBtn.classed('disabled', !showBtn);
   }
 
   function reset() {
-    _dataset = null;
+    _currArcs = null;
     _currXX = null;
-    _self.hide();
+    hide();
   }
 
   function dismiss() {
-    if (_dataset) {
-      _dataset.info.intersections = null;
-      _dataset.info.no_intersections = true;
-    }
+    var dataset = model.getActiveLayer().dataset;
+    dataset.info.intersections = null;
+    dataset.info.no_intersections = true;
     reset();
   }
 
-  function showIntersections(XX) {
+  function showIntersections(XX, arcs) {
     var n = XX.length, pointLyr;
     _currXX = XX;
+    _currArcs = arcs;
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
       map.setHighlightLayer(pointLyr, {layers:[pointLyr]});

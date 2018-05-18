@@ -70,6 +70,11 @@ function MshpMap(model) {
       initMap(); // wait until first layer is added to init map extent, resize events, etc.
     }
 
+    if (e.flags.simplify_slider) {
+      // TODO: update display layer here
+      return;
+    }
+
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs when simplification thresholds are calculated
       // or arcs are updated

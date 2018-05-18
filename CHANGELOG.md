@@ -1,3 +1,7 @@
+v0.4.75 unreleased
+* -join copies source fields by default even if calc= option is present.
+* -join prints a warning when inconsistent values are found in copied fields during many-to-one joins.
+
 v0.4.74
 * -join fields=* now copies all of the fields from the source layer, including the key field.
 
