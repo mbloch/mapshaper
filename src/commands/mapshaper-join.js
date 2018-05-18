@@ -76,9 +76,10 @@ internal.joinTables = function(dest, src, join, opts) {
       joinCounts = new Uint32Array(srcRecords.length),
       matchCount = 0,
       collisionCount = 0,
+      collisionFields = [],
       skipCount = 0,
       retn = {},
-      srcRec, srcId, destRec, joinIds, joins, count, filter, calc, i, j, n, m;
+      srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
   if (opts.where) {
     filter = internal.getJoinFilter(src, opts.where);
@@ -106,6 +107,9 @@ internal.joinTables = function(dest, src, join, opts) {
           internal.joinByCopy(destRec, srcRec, copyFields);
         }
       } else if (count == 1) {
+        if (copyFields.length > 0) {
+          internal.findCollisionFields(destRec, srcRec, copyFields, collisionFields);
+        }
         collisionCount++; // count target records with multiple joins
       }
       if (sumFields.length > 0) {
@@ -134,7 +138,7 @@ internal.joinTables = function(dest, src, join, opts) {
   }
 
   internal.printJoinMessage(matchCount, destRecords.length,
-      internal.countJoins(joinCounts), srcRecords.length, collisionCount, skipCount);
+      internal.countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -191,6 +195,16 @@ internal.joinByCopy = function(dest, src, fields) {
   }
 };
 
+internal.findCollisionFields = function(dest, src, fields, collisionFields) {
+  var f;
+  for (var i=0, n=fields.length; i<n; i++) {
+    f = fields[i];
+    if (dest[f] !== src[f] && collisionFields.indexOf(f) === -1) {
+      collisionFields.push(f);
+    }
+  }
+};
+
 internal.joinBySum = function(dest, src, fields) {
   var f;
   for (var j=0; j<fields.length; j++) {
@@ -199,21 +213,24 @@ internal.joinBySum = function(dest, src, fields) {
   }
 };
 
-internal.printJoinMessage = function(matches, n, joins, m, collisions, skipped) {
+internal.printJoinMessage = function(matches, n, joins, m, skipped, collisions, collisionFields) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
   message(utils.format("Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
   if (matches < n) {
     message(utils.format('%d/%d target records received no data', n-matches, n));
   }
-  if (collisions > 0) {
-    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
-  }
   if (joins < m) {
     message(utils.format("%d/%d source records could not be joined", m-joins, m));
   }
   if (skipped > 0) {
     message(utils.format("%d/%d source records were skipped", skipped, m));
+  }
+  if (collisions > 0) {
+    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
+    if (collisionFields.length > 0) {
+      message(utils.format('Found inconsistent values in field%s [%s] during many-to-one join', utils.pluralSuffix(collisionFields.length), collisionFields.join(', ')));
+    }
   }
 };
 
@@ -227,9 +244,9 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
       internal.validateFieldNames(joinFields);
     }
   } else {
-    // If a list of fields to join is not given, try to join all the
-    // source fields, unless calc= option is present
-    joinFields = opts.calc ? [] : srcFields;
+    // If a list of fields to join is not given, try to join all of the
+    // source fields
+    joinFields = srcFields;
     // exclude source key field from key-based join (if fields are not given explicitly)
     if (opts.keys) {
       joinFields = utils.difference(joinFields, [opts.keys[1]]);

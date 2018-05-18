@@ -299,6 +299,15 @@ describe('mapshaper-join.js', function () {
     })
   })
 
+  describe('findCollisionFields()', function() {
+    var src = {foo: null, bar: 'a', baz: 0},
+        dest = {foo: 1, bar: undefined, baz: 0},
+        fields = [];
+    api.internal.findCollisionFields(dest, src, ['foo', 'bar', 'baz'], fields);
+    assert.deepEqual(fields, ['foo', 'bar']);
+
+  });
+
   describe('getFieldsToJoin()', function () {
     it('Use fields option, if present', function () {
       var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {fields: ['st']})
@@ -320,7 +329,7 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(fields, ['co']);
     })
 
-   it('Include source key, if fields option in "*"', function () {
+    it('Include source key, if fields option in "*"', function () {
       var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {fields: ['*'], keys: ['id', 'st']})
       assert.deepEqual(fields, ['st','co']);
     })
@@ -335,9 +344,14 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(fields, ['st', 'co']);
     })
 
-    it('Do not join all fields by default if calc= option is present', function () {
+    // Changed in v0.74.
+    // it('Do not join all fields by default if calc= option is present', function () {
+    //   var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {calc: 'n=count()'})
+    //   assert.deepEqual(fields, []);
+    // })
+    it('Join all fields by default even if calc= option is present', function () {
       var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {calc: 'n=count()'})
-      assert.deepEqual(fields, []);
+      assert.deepEqual(fields, ['st', 'co']);
     })
 
     it('Error if type hints are present', function() {
