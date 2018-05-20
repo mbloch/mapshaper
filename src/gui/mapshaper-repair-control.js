@@ -4,29 +4,27 @@ function RepairControl(model, map) {
   var el = El("#intersection-display"),
       readout = el.findChild("#intersection-count"),
       repairBtn = el.findChild("#repair-btn"),
-      _prevFlags,
       // keeping a reference to current arcs and intersections, so intersections
-      // don't need to be recalculated before 'repair' is triggered
+      // don't need to be recalculated when 'repair' button is pressed.
       _currArcs,
       _currXX;
+
+  gui.on('simplify_drag_start', hide);
+  gui.on('simplify_drag_end', updateAsync);
 
   model.on('update', function(e) {
     var flags = e.flags;
     var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
         flags.affine || flags.points || flags['merge-layers'] || flags.select;
-    if (flags.simplify_slider) {
-      // hide while sliding; wait for 'simplify' flag before updating
-      hide();
-    } else if (needUpdate) {
+    if (needUpdate) {
       // some changes require deleting any cached intersection data and recalculating
-      if (flags.select || flags.simplify && _prevFlags.simplify_slider) {
+      if (flags.select) {
         // preserve cached intersections
       } else {
         e.dataset.info.intersections = null;
       }
       updateAsync();
     }
-    _prevFlags = flags;
   });
 
   repairBtn.on('click', function() {
@@ -41,7 +39,7 @@ function RepairControl(model, map) {
     map.setHighlightLayer(null);
   }
 
-  function updatesRequested(dataset) {
+  function enabledForDataset(dataset) {
     var info = dataset.info || {};
     var opts = info.import_options || {};
     return !opts.no_repair && !info.no_intersections;
@@ -59,7 +57,7 @@ function RepairControl(model, map) {
     var dataset = e.dataset;
     var arcs = dataset && dataset.arcs;
     var XX, showBtn;
-    if (!arcs || !internal.layerHasPaths(e.layer) || !updatesRequested(dataset)) return;
+    if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
     if (arcs.getRetainedInterval() > 0) {
       // TODO: cache these intersections
       XX = internal.findSegmentIntersections(arcs);

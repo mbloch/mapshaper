@@ -15,13 +15,6 @@ function DisplayLayer(lyr, dataset, ext) {
     return _displayBounds;
   };
 
-  this.setRetainedPct = function(pct) {
-    var arcs = dataset.filteredArcs || dataset.arcs;
-    if (arcs) {
-      arcs.setRetainedPct(pct);
-    }
-  };
-
   this.getDisplayLayer = function() {
     var arcs = lyr.display.arcs,
         layer = lyr.display.layer || lyr;

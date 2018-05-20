@@ -1,11 +1,34 @@
-/* @requires mapshaper-elements, mapshaper-mode-button, mapshaper-slider */
+/* @requires mapshaper-elements, mapshaper-mode-button, mapshaper-slider, mapshaper-simplify-pct */
+
+/*
+Events
+
+data calculated, 100%
+ - filtered arcs deleted
+
+data calculated, <100%
+ - filtered arcs deleted, map redraw, intersection update
+
+change via text field
+ - map redraw, intersection update
+
+slider start
+ - intersections hidden
+
+slider drag
+ - map redraw
+
+slider end
+ - intersection update
+
+*/
 
 var SimplifyControl = function(model) {
-  var control = new EventDispatcher();
+  var control = {};
   var _value = 1;
   var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options');
-  var slider, text;
+  var slider, text, fromPct;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', function() {
@@ -43,9 +66,9 @@ var SimplifyControl = function(model) {
     onChange(pct);
   });
   slider.on('start', function(e) {
-    // control.dispatchEvent('simplify-start');
+    gui.dispatchEvent('simplify_drag_start'); // trigger intersection control to hide
   }).on('end', function(e) {
-    onDone();
+    gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
   });
 
   text = new ClickText("#simplify-control .clicktext");
@@ -71,19 +94,22 @@ var SimplifyControl = function(model) {
     var pct = e.value;
     slider.pct(toSliderPct(pct));
     onChange(pct);
-    onDone();
+    gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
   });
 
   function turnOn() {
     var target = model.getActiveLayer();
+    var arcs = target.dataset.arcs;
     if (!internal.layerHasPaths(target.layer)) {
       gui.alert("This layer can not be simplified");
       return;
     }
-    if (target.dataset.arcs.getVertexData().zz) {
+    if (arcs.getVertexData().zz) {
       // TODO: try to avoid calculating pct (slow);
       showSlider(); // need to show slider before setting; TODO: fix
-      control.value(target.dataset.arcs.getRetainedPct());
+      fromPct = internal.getThresholdFunction(arcs, false);
+      control.value(arcs.getRetainedPct());
+
     } else {
       initMenu();
     }
@@ -118,12 +144,12 @@ var SimplifyControl = function(model) {
       var opts = getSimplifyOptions();
       mapshaper.simplify(dataset, opts);
       model.updated({
-        // use presimplify flag if no vertices are removed
-        // (to trigger map redraw without recalculating intersections)
-        presimplify: opts.pct == 1,
-        simplify: opts.pct < 1
+        // trigger filtered arc rebuild without redraw if pct is 1
+        simplify_method: opts.percentage == 1,
+        simplify: opts.percentage < 1
       });
       showSlider();
+      fromPct = internal.getThresholdFunction(dataset.arcs, false);
       gui.clearProgressMessage();
     }, delay);
   }
@@ -155,16 +181,11 @@ var SimplifyControl = function(model) {
     return pct * pct;
   }
 
-  function onDone() {
-    // TODO: update arc threshold here, not via map object
-    model.updated({'simplify': true});
-  }
-
-  function onChange(val) {
-    if (_value != val) {
-      _value = val;
-      model.updated({'simplify_slider': true});
-      control.dispatchEvent('change', {value:val});
+  function onChange(pct) {
+    if (_value != pct) {
+      _value = pct;
+      model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      model.updated({'simplify_amount': true});
       updateSliderDisplay();
     }
   }

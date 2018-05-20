@@ -524,10 +524,11 @@ function ArcCollection() {
     return _zz.subarray(start, end);
   };
 
-  this.getPctByThreshold = function(val) {
+  // nth (optional): sample every nth threshold (use estimate for speed)
+  this.getPctByThreshold = function(val, nth) {
     var arr, rank, pct;
     if (val > 0) {
-      arr = this.getRemovableThresholds();
+      arr = this.getRemovableThresholds(nth);
       rank = utils.findRankByValue(arr, val);
       pct = arr.length > 0 ? 1 - (rank - 1) / arr.length : 1;
     } else {
@@ -536,8 +537,9 @@ function ArcCollection() {
     return pct;
   };
 
-  this.getThresholdByPct = function(pct) {
-    var tmp = this.getRemovableThresholds(),
+  // nth (optional): sample every nth threshold (use estimate for speed)
+  this.getThresholdByPct = function(pct, nth) {
+    var tmp = this.getRemovableThresholds(nth),
         rank, z;
     if (tmp.length === 0) { // No removable points
       rank = 0;

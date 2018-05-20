@@ -72,8 +72,4 @@ gui.startEditing = function() {
       El('#mode-buttons').show();
     }
   });
-  // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
-  simplify.on('change', function(e) {
-    map.setSimplifyPct(e.value);
-  });
 };

@@ -62,6 +62,7 @@ function MshpMap(model) {
     }
   });
 
+  // Refresh map display in response to data changes, layer selection, etc.
   model.on('update', function(e) {
     var prevLyr = _activeLyr || null,
         needReset = false;
@@ -70,14 +71,8 @@ function MshpMap(model) {
       initMap(); // wait until first layer is added to init map extent, resize events, etc.
     }
 
-    if (e.flags.simplify_slider) {
-      // TODO: update display layer here
-      return;
-    }
-
     if (arcsMayHaveChanged(e.flags)) {
-      // regenerate filtered arcs when simplification thresholds are calculated
-      // or arcs are updated
+      // regenerate filtered arcs the next time they are needed for rendering
       delete e.dataset.filteredArcs;
 
       // reset simplification after projection (thresholds have changed)
@@ -85,6 +80,15 @@ function MshpMap(model) {
       if (e.flags.proj && e.dataset.arcs) {
         e.dataset.arcs.setRetainedPct(1);
       }
+    }
+
+    if (e.flags.simplify_method) { // no redraw needed
+      return false;
+    }
+
+    if (e.flags.simplify_amount) { // only redraw (slider drag)
+      drawLayers();
+      return;
     }
 
     _activeLyr = new DisplayLayer(e.layer, e.dataset, _ext);
@@ -98,7 +102,10 @@ function MshpMap(model) {
     } else {
       needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
     }
-    _ext.setBounds(_activeLyr.getBounds()); // update map extent to match bounds of active group
+
+    // set 'home' extent to match bounds of active group
+    _ext.setBounds(_activeLyr.getBounds());
+
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
@@ -193,11 +200,10 @@ function MshpMap(model) {
     return true;
   }
 
-
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
   function arcsMayHaveChanged(flags) {
-    return flags.presimplify || flags.simplify || flags.proj ||
+    return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
       flags.slice || flags.affine || false;
   }
