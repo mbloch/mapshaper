@@ -1526,13 +1526,55 @@ function Slider(ref, opts) {
 utils.inherit(Slider, EventDispatcher);
 
 
+internal.getThresholdFunction = function(arcs) {
+  var size = arcs.getPointCount(),
+      nth = Math.ceil(size / 5e5),
+      sortedThresholds = arcs.getRemovableThresholds(nth);
+      // Sort simplification thresholds for all non-endpoint vertices
+      // for quick conversion of simplification percentage to threshold value.
+      // For large datasets, use every nth point, for faster sorting.
+      utils.quicksort(sortedThresholds, false);
+
+  return function(pct) {
+    var n = sortedThresholds.length;
+    if (pct >= 1) return 0;
+    if (pct <= 0 || n === 0) return Infinity;
+    return sortedThresholds[Math.floor(pct * n)];
+  };
+};
+
+
+
+
+/*
+Events
+
+data calculated, 100%
+ - filtered arcs deleted
+
+data calculated, <100%
+ - filtered arcs deleted, map redraw, intersection update
+
+change via text field
+ - map redraw, intersection update
+
+slider start
+ - intersections hidden
+
+slider drag
+ - map redraw
+
+slider end
+ - intersection update
+
+*/
 
 var SimplifyControl = function(model) {
-  var control = new EventDispatcher();
+  var control = {};
   var _value = 1;
   var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options');
-  var slider, text;
+  var slider, text, fromPct;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', function() {
@@ -1567,12 +1609,12 @@ var SimplifyControl = function(model) {
     var pct = fromSliderPct(e.pct);
     text.value(pct);
     pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
-    onchange(pct);
+    onChange(pct);
   });
   slider.on('start', function(e) {
-    control.dispatchEvent('simplify-start');
+    gui.dispatchEvent('simplify_drag_start'); // trigger intersection control to hide
   }).on('end', function(e) {
-    control.dispatchEvent('simplify-end');
+    gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
   });
 
   text = new ClickText("#simplify-control .clicktext");
@@ -1597,21 +1639,23 @@ var SimplifyControl = function(model) {
   text.on('change', function(e) {
     var pct = e.value;
     slider.pct(toSliderPct(pct));
-    control.dispatchEvent('simplify-start');
-    onchange(pct);
-    control.dispatchEvent('simplify-end');
+    onChange(pct);
+    gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
   });
 
   function turnOn() {
     var target = model.getActiveLayer();
+    var arcs = target.dataset.arcs;
     if (!internal.layerHasPaths(target.layer)) {
       gui.alert("This layer can not be simplified");
       return;
     }
-    if (target.dataset.arcs.getVertexData().zz) {
+    if (arcs.getVertexData().zz) {
       // TODO: try to avoid calculating pct (slow);
       showSlider(); // need to show slider before setting; TODO: fix
-      control.value(target.dataset.arcs.getRetainedPct());
+      fromPct = internal.getThresholdFunction(arcs, false);
+      control.value(arcs.getRetainedPct());
+
     } else {
       initMenu();
     }
@@ -1646,12 +1690,12 @@ var SimplifyControl = function(model) {
       var opts = getSimplifyOptions();
       mapshaper.simplify(dataset, opts);
       model.updated({
-        // use presimplify flag if no vertices are removed
-        // (to trigger map redraw without recalculating intersections)
-        presimplify: opts.pct == 1,
-        simplify: opts.pct < 1
+        // trigger filtered arc rebuild without redraw if pct is 1
+        simplify_method: opts.percentage == 1,
+        simplify: opts.percentage < 1
       });
       showSlider();
+      fromPct = internal.getThresholdFunction(dataset.arcs, false);
       gui.clearProgressMessage();
     }, delay);
   }
@@ -1683,10 +1727,11 @@ var SimplifyControl = function(model) {
     return pct * pct;
   }
 
-  function onchange(val) {
-    if (_value != val) {
-      _value = val;
-      control.dispatchEvent('change', {value:val});
+  function onChange(pct) {
+    if (_value != pct) {
+      _value = pct;
+      model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      model.updated({'simplify_amount': true});
       updateSliderDisplay();
     }
   }
@@ -2552,102 +2597,96 @@ var ExportControl = function(model) {
 function RepairControl(model, map) {
   var el = El("#intersection-display"),
       readout = el.findChild("#intersection-count"),
-      btn = el.findChild("#repair-btn"),
-      _self = this,
-      _dataset, _currXX;
+      repairBtn = el.findChild("#repair-btn"),
+      // keeping a reference to current arcs and intersections, so intersections
+      // don't need to be recalculated when 'repair' button is pressed.
+      _currArcs,
+      _currXX;
 
-  gui.on('mode', function(e) {
-    // TODO: handle visibility in simplify mode, when control has been turned off
-  });
+  gui.on('simplify_drag_start', hide);
+  gui.on('simplify_drag_end', updateAsync);
 
   model.on('update', function(e) {
-    if (e.flags.simplify || e.flags.proj || e.flags.arc_count ||e.flags.affine ||
-      e.flags.points) {
-      // these changes require nulling out any cached intersection data and recalculating
-      if (_dataset) {
-        _dataset.info.intersections = null;
-        _dataset = null;
-        _self.hide();
+    var flags = e.flags;
+    var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
+        flags.affine || flags.points || flags['merge-layers'] || flags.select;
+    if (needUpdate) {
+      // some changes require deleting any cached intersection data and recalculating
+      if (flags.select) {
+        // preserve cached intersections
+      } else {
+        e.dataset.info.intersections = null;
       }
-      delayedUpdate();
-    } else if (e.flags.select) {
-      _self.hide();
-      reset();
-      delayedUpdate();
+      updateAsync();
     }
   });
 
-  btn.on('click', function() {
-    var fixed = internal.repairIntersections(_dataset.arcs, _currXX);
-    showIntersections(fixed);
-    btn.addClass('disabled');
+  repairBtn.on('click', function() {
+    var fixed = internal.repairIntersections(_currArcs, _currXX);
+    showIntersections(fixed, _currArcs);
+    repairBtn.addClass('disabled');
     model.updated({repair: true});
   });
 
-  this.hide = function() {
+  function hide() {
     el.hide();
     map.setHighlightLayer(null);
-  };
+  }
 
-  // Detect and display intersections for current level of arc simplification
-  this.update = function() {
-    var XX, showBtn, pct;
-    if (!_dataset) return;
-    if (_dataset.arcs.getRetainedInterval() > 0) {
-      // TODO: cache these intersections
-      XX = internal.findSegmentIntersections(_dataset.arcs);
-      showBtn = XX.length > 0;
-    } else { // no simplification
-      XX = _dataset.info.intersections;
-      if (!XX) {
-        // cache intersections at 0 simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = _dataset.info.intersections = internal.findSegmentIntersections(_dataset.arcs);
-      }
-      showBtn = false;
-    }
-    el.show();
-    showIntersections(XX);
-    btn.classed('disabled', !showBtn);
-  };
-
-  function updateNeeded(dataset) {
+  function enabledForDataset(dataset) {
     var info = dataset.info || {};
     var opts = info.import_options || {};
     return !opts.no_repair && !info.no_intersections;
   }
 
-  function delayedUpdate() {
-    // Delay intersection calculation, so map display can update after previous
-    // operation (e.g. layer load, simplification change)
-    setTimeout(function() {
-      var e = model.getActiveLayer();
-      if (!e.dataset || e.dataset == _dataset) return;
-      if (!internal.layerHasPaths(e.layer)) return;
-      if (updateNeeded(e.dataset)) {
-        _dataset = e.dataset;
-        _self.update();
+  // Delay intersection calculation, so map can redraw after previous
+  // operation (e.g. layer load, simplification change)
+  function updateAsync() {
+    reset();
+    setTimeout(updateSync, 10);
+  }
+
+  function updateSync() {
+    var e = model.getActiveLayer();
+    var dataset = e.dataset;
+    var arcs = dataset && dataset.arcs;
+    var XX, showBtn;
+    if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
+    if (arcs.getRetainedInterval() > 0) {
+      // TODO: cache these intersections
+      XX = internal.findSegmentIntersections(arcs);
+      showBtn = XX.length > 0;
+    } else { // no simplification
+      XX = dataset.info.intersections;
+      if (!XX) {
+        // cache intersections at 0 simplification, to avoid recalculating
+        // every time the simplification slider is set to 100% or the layer is selected at 100%
+        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs);
       }
-    }, 10);
+      showBtn = false;
+    }
+    el.show();
+    showIntersections(XX, arcs);
+    repairBtn.classed('disabled', !showBtn);
   }
 
   function reset() {
-    _dataset = null;
+    _currArcs = null;
     _currXX = null;
-    _self.hide();
+    hide();
   }
 
   function dismiss() {
-    if (_dataset) {
-      _dataset.info.intersections = null;
-      _dataset.info.no_intersections = true;
-    }
+    var dataset = model.getActiveLayer().dataset;
+    dataset.info.intersections = null;
+    dataset.info.no_intersections = true;
     reset();
   }
 
-  function showIntersections(XX) {
+  function showIntersections(XX, arcs) {
     var n = XX.length, pointLyr;
     _currXX = XX;
+    _currArcs = arcs;
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
       map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
@@ -3070,14 +3109,15 @@ function DisplayCanvas() {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
         ctx = _ctx,
-        n = 25, // render paths in batches of this size (an optimization)
+        batch = 25, // render paths in batches of this size (an optimization)
         count = 0,
-        iter;
+        n = arcs.size(),
+        i, iter;
 
     startPath(ctx, style);
-    for (i=0, n=arcs.size(); i<n; i++) {
+    for (i=0; i<n; i++) {
       if (filter && !filter(i)) continue;
-      if (++count % n === 0) {
+      if (++count % batch === 0) {
         endPath(ctx, style);
         startPath(ctx, style);
       }
@@ -3229,93 +3269,44 @@ function endPath(ctx, style) {
 
 
 
-// A wrapper for ArcCollection that filters paths to speed up rendering.
-//
+// Create low-detail versions of large arc collections for faster rendering
+// at zoomed-out scales.
 function FilteredArcCollection(unfilteredArcs) {
-  var sortedThresholds,
-      filteredArcs,
-      filteredSegLen;
+  var size = unfilteredArcs.getPointCount(),
+      filteredArcs, filteredSegLen;
 
-  init();
-
-  function init() {
-    var size = unfilteredArcs.getPointCount(),
-        cutoff = 5e5,
-        nth;
-    sortedThresholds = filteredArcs = null;
+  // Only generate low-detail arcs for larger datasets
+  if (size > 5e5) {
     if (!!unfilteredArcs.getVertexData().zz) {
-      // If we have simplification data...
-      // Sort simplification thresholds for all non-endpoint vertices
-      // for quick conversion of simplification percentage to threshold value.
-      // For large datasets, use every nth point, for faster sorting.
-      nth = Math.ceil(size / cutoff);
-      sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
-      utils.quicksort(sortedThresholds, false);
-      // For large datasets, create a filtered copy of the data for faster rendering
-      if (size > cutoff) {
-        filteredArcs = initFilteredArcs(unfilteredArcs, sortedThresholds);
-        filteredSegLen = internal.getAvgSegment(filteredArcs);
-      }
+      // Use precalculated simplification data for vertex filtering, if available
+      filteredArcs = initFilteredArcs(unfilteredArcs);
+      filteredSegLen = internal.getAvgSegment(filteredArcs);
     } else {
-      if (size > cutoff) {
-        // generate filtered arcs when no simplification data is present
-        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
-        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
-      }
+      // Use fast simplification as a fallback
+      filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
+      filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
     }
   }
 
-  // Use simplification data to create a low-detail copy of arcs, for faster
-  // rendering when zoomed-out.
-  function initFilteredArcs(arcs, sortedThresholds) {
+  function initFilteredArcs(arcs) {
     var filterPct = 0.08;
+    var nth = Math.ceil(arcs.getPointCount() / 5e5);
     var currInterval = arcs.getRetainedInterval();
-    var filterZ = sortedThresholds[Math.floor(filterPct * sortedThresholds.length)];
+    var filterZ = arcs.getThresholdByPct(filterPct, nth);
     var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
     arcs.setRetainedInterval(currInterval); // reset current simplification
     return filteredArcs;
   }
 
   this.getArcCollection = function(ext) {
-    refreshFilteredArcs();
-    // Use a filtered version of arcs at small scales
+    if (filteredArcs) {
+      // match simplification of unfiltered arcs
+      filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
+    }
+    // switch to filtered version of arcs at small scales
     var unitsPerPixel = 1/ext.getTransform().mx,
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
-  };
-
-  function needFilterUpdate() {
-    if (filteredArcs) {
-      // Filtered arcs need to be rebuilt if number of arcs has changed or
-      // thresholds haven't been sorted yet (to support the GUI slider)
-      // TODO: consider other cases where filtered arcs might need to be updated
-      if (filteredArcs.size() != unfilteredArcs.size() ||
-          unfilteredArcs.getVertexData().zz && !sortedThresholds) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function refreshFilteredArcs() {
-    if (filteredArcs) {
-      if (needFilterUpdate()) {
-        init();
-      }
-      filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
-    }
-  }
-
-  this.size = function() {return unfilteredArcs.size();};
-
-  this.setRetainedPct = function(pct) {
-    if (sortedThresholds) {
-      var z = sortedThresholds[Math.floor(pct * sortedThresholds.length)];
-      z = internal.clampIntervalByPct(z, pct);
-      unfilteredArcs.setRetainedInterval(z);
-    } else {
-      unfilteredArcs.setRetainedPct(pct);
-    }
   };
 }
 
@@ -3401,13 +3392,6 @@ function DisplayLayer(lyr, dataset, ext) {
 
   this.getBounds = function() {
     return _displayBounds;
-  };
-
-  this.setRetainedPct = function(pct) {
-    var arcs = dataset.filteredArcs || dataset.arcs;
-    if (arcs) {
-      arcs.setRetainedPct(pct);
-    }
   };
 
   this.getDisplayLayer = function() {
@@ -5083,6 +5067,7 @@ function MshpMap(model) {
     }
   });
 
+  // Refresh map display in response to data changes, layer selection, etc.
   model.on('update', function(e) {
     var prevLyr = _activeLyr || null,
         needReset = false;
@@ -5092,8 +5077,7 @@ function MshpMap(model) {
     }
 
     if (arcsMayHaveChanged(e.flags)) {
-      // regenerate filtered arcs when simplification thresholds are calculated
-      // or arcs are updated
+      // regenerate filtered arcs the next time they are needed for rendering
       delete e.dataset.filteredArcs;
 
       // reset simplification after projection (thresholds have changed)
@@ -5101,6 +5085,15 @@ function MshpMap(model) {
       if (e.flags.proj && e.dataset.arcs) {
         e.dataset.arcs.setRetainedPct(1);
       }
+    }
+
+    if (e.flags.simplify_method) { // no redraw needed
+      return false;
+    }
+
+    if (e.flags.simplify_amount) { // only redraw (slider drag)
+      drawLayers();
+      return;
     }
 
     _activeLyr = new DisplayLayer(e.layer, e.dataset, _ext);
@@ -5114,7 +5107,10 @@ function MshpMap(model) {
     } else {
       needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
     }
-    _ext.setBounds(_activeLyr.getBounds()); // update map extent to match bounds of active group
+
+    // set 'home' extent to match bounds of active group
+    _ext.setBounds(_activeLyr.getBounds());
+
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
@@ -5209,11 +5205,10 @@ function MshpMap(model) {
     return true;
   }
 
-
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
   function arcsMayHaveChanged(flags) {
-    return flags.presimplify || flags.simplify || flags.proj ||
+    return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
       flags.slice || flags.affine || false;
   }
@@ -5823,16 +5818,6 @@ gui.startEditing = function() {
       dataLoaded = true;
       El('#mode-buttons').show();
     }
-  });
-  // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
-  simplify.on('simplify-start', function() {
-    repair.hide();
-  });
-  simplify.on('simplify-end', function() {
-    repair.update();
-  });
-  simplify.on('change', function(e) {
-    map.setSimplifyPct(e.value);
   });
 };
 

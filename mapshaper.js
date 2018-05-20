@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.74';
+var VERSION = '0.4.75';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -2800,10 +2800,11 @@ function ArcCollection() {
     return _zz.subarray(start, end);
   };
 
-  this.getPctByThreshold = function(val) {
+  // nth (optional): sample every nth threshold (use estimate for speed)
+  this.getPctByThreshold = function(val, nth) {
     var arr, rank, pct;
     if (val > 0) {
-      arr = this.getRemovableThresholds();
+      arr = this.getRemovableThresholds(nth);
       rank = utils.findRankByValue(arr, val);
       pct = arr.length > 0 ? 1 - (rank - 1) / arr.length : 1;
     } else {
@@ -2812,8 +2813,9 @@ function ArcCollection() {
     return pct;
   };
 
-  this.getThresholdByPct = function(pct) {
-    var tmp = this.getRemovableThresholds(),
+  // nth (optional): sample every nth threshold (use estimate for speed)
+  this.getThresholdByPct = function(pct, nth) {
+    var tmp = this.getRemovableThresholds(nth),
         rank, z;
     if (tmp.length === 0) { // No removable points
       rank = 0;
@@ -11186,6 +11188,13 @@ api.dissolve2 = function(layers, dataset, opts) {
 
 
 
+api.drop2 = function(catalog, targets, opts) {
+  targets.forEach(function(target) {
+    api.drop(catalog, target.layers, target.dataset, opts);
+  });
+};
+
+
 api.drop = function(catalog, layers, dataset, opts) {
   var updateArcs = false;
 
@@ -11211,7 +11220,6 @@ api.drop = function(catalog, layers, dataset, opts) {
     internal.pruneArcs(dataset);
   }
 };
-
 
 
 
@@ -12690,7 +12698,8 @@ utils.mergeArrays = function(arrays, TypedArr) {
 
 
 // Merge layers, checking for incompatible geometries and data fields.
-api.mergeLayers = function(layers, opts) {
+api.mergeLayers = function(layersArg, opts) {
+  var layers = layersArg.filter(internal.getFeatureCount); // ignore empty layers
   var merged = {};
   opts = opts || {};
   if (!layers.length) return null;
@@ -16962,9 +16971,10 @@ internal.joinTables = function(dest, src, join, opts) {
       joinCounts = new Uint32Array(srcRecords.length),
       matchCount = 0,
       collisionCount = 0,
+      collisionFields = [],
       skipCount = 0,
       retn = {},
-      srcRec, srcId, destRec, joinIds, joins, count, filter, calc, i, j, n, m;
+      srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
   if (opts.where) {
     filter = internal.getJoinFilter(src, opts.where);
@@ -16992,6 +17002,9 @@ internal.joinTables = function(dest, src, join, opts) {
           internal.joinByCopy(destRec, srcRec, copyFields);
         }
       } else if (count == 1) {
+        if (copyFields.length > 0) {
+          internal.findCollisionFields(destRec, srcRec, copyFields, collisionFields);
+        }
         collisionCount++; // count target records with multiple joins
       }
       if (sumFields.length > 0) {
@@ -17020,7 +17033,7 @@ internal.joinTables = function(dest, src, join, opts) {
   }
 
   internal.printJoinMessage(matchCount, destRecords.length,
-      internal.countJoins(joinCounts), srcRecords.length, collisionCount, skipCount);
+      internal.countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -17077,6 +17090,16 @@ internal.joinByCopy = function(dest, src, fields) {
   }
 };
 
+internal.findCollisionFields = function(dest, src, fields, collisionFields) {
+  var f;
+  for (var i=0, n=fields.length; i<n; i++) {
+    f = fields[i];
+    if (dest[f] !== src[f] && collisionFields.indexOf(f) === -1) {
+      collisionFields.push(f);
+    }
+  }
+};
+
 internal.joinBySum = function(dest, src, fields) {
   var f;
   for (var j=0; j<fields.length; j++) {
@@ -17085,21 +17108,24 @@ internal.joinBySum = function(dest, src, fields) {
   }
 };
 
-internal.printJoinMessage = function(matches, n, joins, m, collisions, skipped) {
+internal.printJoinMessage = function(matches, n, joins, m, skipped, collisions, collisionFields) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
   message(utils.format("Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
   if (matches < n) {
     message(utils.format('%d/%d target records received no data', n-matches, n));
   }
-  if (collisions > 0) {
-    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
-  }
   if (joins < m) {
     message(utils.format("%d/%d source records could not be joined", m-joins, m));
   }
   if (skipped > 0) {
     message(utils.format("%d/%d source records were skipped", skipped, m));
+  }
+  if (collisions > 0) {
+    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
+    if (collisionFields.length > 0) {
+      message(utils.format('Found inconsistent values in field%s [%s] during many-to-one join', utils.pluralSuffix(collisionFields.length), collisionFields.join(', ')));
+    }
   }
 };
 
@@ -17113,9 +17139,9 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
       internal.validateFieldNames(joinFields);
     }
   } else {
-    // If a list of fields to join is not given, try to join all the
-    // source fields, unless calc= option is present
-    joinFields = opts.calc ? [] : srcFields;
+    // If a list of fields to join is not given, try to join all of the
+    // source fields
+    joinFields = srcFields;
     // exclude source key field from key-based join (if fields are not given explicitly)
     if (opts.keys) {
       joinFields = utils.difference(joinFields, [opts.keys[1]]);
@@ -19428,8 +19454,8 @@ api.runCommand = function(cmd, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'proj') {
-      // accepts multiple target datasets
+    } else if (name == 'proj' || name == 'drop') {
+      // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
     } else {
@@ -19495,7 +19521,8 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
     } else if (name == 'drop') {
-      api.drop(catalog, targetLayers, targetDataset, opts);
+      api.drop2(catalog, targets, opts);
+      // api.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
       internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
@@ -20884,6 +20911,7 @@ internal.getOptionParser = function() {
 
   parser.command("drop")
     .describe("delete layer(s) or elements within the target layer(s)")
+    .flag('no_arg') // prevent trying to pass a list of layer names as default option
     .option("geometry", {
       describe: "delete all geometry from the target layer(s)",
       type: "flag"
