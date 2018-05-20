@@ -1,25 +1,25 @@
 /* @requires mapshaper-elements, mapshaper-mode-button, mapshaper-slider, mapshaper-simplify-pct */
 
 /*
-Events
+How changes in the simplify control should affect other components
 
-data calculated, 100%
- - filtered arcs deleted
+data calculated, 100% simplification
+ -> [map] filtered arcs update
 
-data calculated, <100%
- - filtered arcs deleted, map redraw, intersection update
+data calculated, <100% simplification
+ -> [map] filtered arcs update, redraw; [repair] intersection update
 
 change via text field
- - map redraw, intersection update
+ -> [map] redraw; [repair] intersection update
 
-slider start
- - intersections hidden
+slider drag start
+ -> [repair] hide display
 
 slider drag
- - map redraw
+ -> [map] redraw
 
-slider end
- - intersection update
+slider drag end
+ -> [repair] intersection update
 
 */
 

@@ -1,4 +1,6 @@
 
+// Returns a function for converting simplification ratio [0-1] to an interval value.
+// If the dataset is large, the value is an approximation (for speed while using slider)
 internal.getThresholdFunction = function(arcs) {
   var size = arcs.getPointCount(),
       nth = Math.ceil(size / 5e5),
