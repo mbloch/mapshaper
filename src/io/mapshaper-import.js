@@ -5,6 +5,7 @@ mapshaper-topojson
 mapshaper-shapefile
 mapshaper-json-table
 mapshaper-json-import
+mapshaper-delim-import
 */
 
 // Parse content of one or more input files and return a dataset

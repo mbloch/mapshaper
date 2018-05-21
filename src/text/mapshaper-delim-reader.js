@@ -7,6 +7,7 @@ internal.readDelimRecords = function(reader, delim, encoding) {
       records = [],
       retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
       header = internal.trimBOM(retn ? retn.text : '');
+  if (!retn) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
     records.push.apply(records, dsv.parse(header + retn.text));

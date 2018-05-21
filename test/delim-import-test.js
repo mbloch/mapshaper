@@ -16,6 +16,39 @@ describe('mapshaper-delim-import.js', function() {
 
   describe('csv decoding with -i', function () {
 
+    it('handle empty files', function(done) {
+      api.applyCommands('-i empty.csv -o', {'empty.csv': ''}, function(err, out) {
+        assert(!err);
+        assert.strictEqual(out['empty.csv'], '');
+        done();
+      });
+    });
+
+    it('handle files with no data rows', function(done) {
+      api.applyCommands('-i empty.csv -o', {'empty.csv': 'ID,STATE,VALUE'}, function(err, out) {
+        assert(!err);
+        // field names are lost
+        assert.strictEqual(out['empty.csv'], '');
+        done();
+      });
+    });
+
+    it('missing fields are filled out with nulls', function(done) {
+      api.applyCommands('-i test.csv -o', {'test.csv': 'ID,STATE,VALUE\n1\n2,WA,300'}, function(err, out) {
+        assert(!err);
+        assert.strictEqual(out['test.csv'], 'ID,STATE,VALUE\n1,,\n2,WA,300');
+        done();
+      });
+    });
+
+    it('extra fields are dropped', function(done) {
+      api.applyCommands('-i test.csv -o', {'test.csv': 'ID,STATE\n1,OR,3000\n2,WA'}, function(err, out) {
+        assert(!err);
+        assert.strictEqual(out['test.csv'], 'ID,STATE\n1,OR\n2,WA');
+        done();
+      });
+    });
+
     it('latin-1', function (done) {
       var buf = internal.encodeString('chars,chars2\r\n»¼ü©Å÷,è绿', 'latin1');
       api.applyCommands('-i chars.csv encoding=latin1 -o out.tsv', {'chars.csv': buf}, function(err, output) {

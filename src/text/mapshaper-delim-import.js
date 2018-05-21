@@ -11,14 +11,17 @@ internal.importDelim2 = function(data, opts) {
   var content = data.content,
       reader, records, delimiter, table;
 
-  if (!content) {
-    reader = new FileReader(data.filename);
-  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
+  if (content instanceof ArrayBuffer || content instanceof Buffer) {
     // Web API may import as ArrayBuffer, to support larger files
     reader = new BufferReader(content);
     content = null;
-  } else if (!utils.isString(content)) {
+  } else if (utils.isString(content)) {
+    // import as string
+  } else if (content) {
     error("Unexpected object type");
+  } else {
+    // try to read data from file, if content is missing
+    reader = new FileReader(data.filename);
   }
 
   if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
@@ -37,7 +40,8 @@ internal.importDelim2 = function(data, opts) {
     delete records.columns; // added by d3-dsv
   }
   if (records.length === 0) {
-    stop("Unable to read any data records");
+    // stop("Unable to read any data records");
+    message("Unable to read any data records");
   }
   internal.adjustRecordTypes(records, opts);
   table = new DataTable(records);

@@ -17,10 +17,10 @@ function RepairControl(model, map) {
     var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
         flags.affine || flags.points || flags['merge-layers'] || flags.select;
     if (needUpdate) {
-      // some changes require deleting any cached intersection data and recalculating
       if (flags.select) {
         // preserve cached intersections
       } else {
+        // delete any cached intersection data
         e.dataset.info.intersections = null;
       }
       updateAsync();

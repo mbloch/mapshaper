@@ -16,7 +16,6 @@ internal.exportDelim = function(dataset, opts) {
   }, []);
 };
 
-
 internal.exportLayerAsDSV = function(lyr, delim, optsArg) {
   var opts = optsArg || {};
   var encoding = opts.encoding || 'utf8';
