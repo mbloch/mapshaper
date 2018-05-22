@@ -1,5 +1,6 @@
 v0.4.76
-* Increased maximum size of CSV output to ~2GB (the maximum Buffer size in Node).
+* Increased the maximum size of CSV output to ~2GB (the maximum Buffer size in Node).
+* Print a warning instead of throwing an error if a CSV file contains no data records.
 
 v0.4.75
 * -join copies source fields by default even if calc= option is present.
