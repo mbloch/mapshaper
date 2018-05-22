@@ -312,7 +312,7 @@ body.queued-files #import-options {
 .drop-area {
 	border: 2px dashed #a2a2a2;
 	border-radius: 19px;
-	background-color: #f2f7f9;
+	background-color: #f8fdff;
 	overflow: hidden;
 }
 
@@ -379,7 +379,7 @@ body.catalog-mode #file-catalog-spacer {
 	overflow: hidden;
 	border: 1.5px solid #aaa;
 	border-radius: 19px;
-	background-color: #f2f7f9;
+	background-color: #f8fdff;
 }
 
 #file-catalog table {

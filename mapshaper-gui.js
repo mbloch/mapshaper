@@ -1526,6 +1526,8 @@ function Slider(ref, opts) {
 utils.inherit(Slider, EventDispatcher);
 
 
+// Returns a function for converting simplification ratio [0-1] to an interval value.
+// If the dataset is large, the value is an approximation (for speed while using slider)
 internal.getThresholdFunction = function(arcs) {
   var size = arcs.getPointCount(),
       nth = Math.ceil(size / 5e5),
@@ -1547,25 +1549,25 @@ internal.getThresholdFunction = function(arcs) {
 
 
 /*
-Events
+How changes in the simplify control should affect other components
 
-data calculated, 100%
- - filtered arcs deleted
+data calculated, 100% simplification
+ -> [map] filtered arcs update
 
-data calculated, <100%
- - filtered arcs deleted, map redraw, intersection update
+data calculated, <100% simplification
+ -> [map] filtered arcs update, redraw; [repair] intersection update
 
 change via text field
- - map redraw, intersection update
+ -> [map] redraw; [repair] intersection update
 
-slider start
- - intersections hidden
+slider drag start
+ -> [repair] hide display
 
 slider drag
- - map redraw
+ -> [map] redraw
 
-slider end
- - intersection update
+slider drag end
+ -> [repair] intersection update
 
 */
 
@@ -2611,10 +2613,10 @@ function RepairControl(model, map) {
     var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
         flags.affine || flags.points || flags['merge-layers'] || flags.select;
     if (needUpdate) {
-      // some changes require deleting any cached intersection data and recalculating
       if (flags.select) {
         // preserve cached intersections
       } else {
+        // delete any cached intersection data
         e.dataset.info.intersections = null;
       }
       updateAsync();
@@ -4351,7 +4353,7 @@ internal.getInputParser = function(type) {
 
 internal.getFieldType = function(val, key, table) {
   // if a field has a null value, look at entire column to identify type
-  return internal.getValueType(val) || internal.getColumnType(key, table);
+  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
 };
 
 
