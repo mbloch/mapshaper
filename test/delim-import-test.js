@@ -94,6 +94,13 @@ describe('mapshaper-delim-import.js', function() {
       assert(deepStrictEqual(records, target));
     })
 
+    it('detect numeric field when field contains "NA" (from R export) or "NaN"', function() {
+      var str = 'a,b,c,d\n  NA,4,NA,NaN\n3,"NA",NA,9';
+      var records = importRecords(str);
+      var target = [{a:null, b:4, c:"NA", d: null}, {a:3, b:null, c:"NA", d: 9}];
+      assert(deepStrictEqual(records, target));
+    })
+
     it('detect string field when first value looks like a number', function() {
       var str = 'a,b\n2,0\n4a,8x';
       var records = importRecords(str);
