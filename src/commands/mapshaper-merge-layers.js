@@ -86,7 +86,7 @@ internal.checkMergeLayersFieldTypes = function(fields, layers) {
 internal.checkFieldTypes = function(key, layers) {
   // ignores empty-type fields
   return layers.reduce(function(memo, lyr) {
-    var type = lyr.data ? internal.getColumnType(key, lyr.data) : null;
+    var type = lyr.data ? internal.getColumnType(key, lyr.data.getRecords()) : null;
     if (type && memo.indexOf(type) == -1) {
       memo.push(type);
     }

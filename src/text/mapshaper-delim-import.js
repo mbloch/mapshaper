@@ -7,6 +7,7 @@ internal.importDelim = function(str, opts) {
 };
 
 internal.importDelim2 = function(data, opts) {
+
   // TODO: remove duplication with importJSON()
   var content = data.content,
       reader, records, delimiter, table;

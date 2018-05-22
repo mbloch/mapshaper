@@ -19,38 +19,49 @@ internal.exportDelim = function(dataset, opts) {
 internal.exportLayerAsDSV = function(lyr, delim, optsArg) {
   var opts = optsArg || {};
   var encoding = opts.encoding || 'utf8';
-  var dsv = require("d3-dsv").dsvFormat(delim);
+  var formatRows = require("d3-dsv").dsvFormat(delim).formatRows;
   var records = lyr.data.getRecords();
   var fields = internal.findFieldNames(records, opts.field_order);
-  var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
-  var str = dsv.formatRows([fields]); // headers
+  // exporting utf8 and ascii text as string by default (for now)
+  var exportAsString = internal.encodingIsUtf8(encoding) && !opts.to_buffer &&
+      (records.length < 10000 || opts.to_string);
+  if (exportAsString) {
+    return internal.exportRecordsAsString(fields, records, formatRows);
+  } else {
+    return internal.exportRecordsAsBuffer(fields, records, formatRows, encoding);
+  }
+};
+
+internal.exportRecordsAsString = function(fields, records, formatRows) {
+  var formatRow = internal.getDelimRowFormatter(fields, records);
+  var rows = [fields].concat(records.map(formatRow));
+  return formatRows(rows);
+};
+
+internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding) {
+  var formatRow = internal.getDelimRowFormatter(fields, records);
+  var str = formatRows([fields]); // header
+  var buffers = [internal.encodeString(str, encoding)];
   var tmp = [];
   var n = records.length;
   var i = 0;
-  // Formatting rows in groups avoids a memory allocation error that occured when
-  // generating a file containing 2.8 million rows.
   while (i < n) {
     tmp.push(formatRow(records[i]));
     i++;
-    if (i % 50 === 0 || i == n) {
-      str += '\n' + dsv.formatRows(tmp);
+    if (i % 1000 === 0 || i == n) {
+      str = '\n' + formatRows(tmp);
       tmp = [];
+      buffers.push(internal.encodeString(str, encoding));
     }
   }
-  // exporting utf8 as a string, temporarily, until tests are rewritten
-  // (it will be encoded as utf-8 when written to a file)
-  //
-  if (!internal.encodingIsUtf8(encoding)) {
-    return internal.encodeString(str, encoding);
-  }
-  return str;
+  return Buffer.concat(buffers);
 };
 
 // Return a function for converting a record into an array of values
 // to pass to dsv.formatRows()
-internal.getDelimRowFormatter = function(fields, data) {
+internal.getDelimRowFormatter = function(fields, records) {
   var formatters = fields.map(function(f) {
-    var type = internal.getColumnType(f, data);
+    var type = internal.getColumnType(f, records);
     return function(rec) {
       if (type == 'object') {
         return JSON.stringify(rec[f]);

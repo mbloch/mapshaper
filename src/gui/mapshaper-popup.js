@@ -176,5 +176,5 @@ internal.getInputParser = function(type) {
 
 internal.getFieldType = function(val, key, table) {
   // if a field has a null value, look at entire column to identify type
-  return internal.getValueType(val) || internal.getColumnType(key, table);
+  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
 };

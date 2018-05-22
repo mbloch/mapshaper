@@ -40,6 +40,24 @@ describe('mapshaper-delim-export.js', function() {
   })
 
   describe('exportLayerAsDSV()', function() {
+    it('>10000 rows are exported as Buffer by default', function() {
+      var rows = [],
+          i=0;
+      while(i++ < 10001) {
+        rows.push({i: i, foo: 'bar'});
+      }
+      var layer = {data: new internal.DataTable(rows)};
+      var buf = internal.exportLayerAsDSV(layer, ',');
+      var str = buf.toString();
+      var lines = str.split('\n');
+      assert(Buffer.isBuffer(buf));
+      assert.equal(lines.length, 10002);
+      assert.equal(lines[0], 'i,foo');
+      assert.equal(lines[lines.length - 1], '10001,bar');
+      // and as string if to_string option is passed
+      assert.equal(internal.exportLayerAsDSV(layer, ',', {to_string: true}), str);
+    })
+
     it('objects are exported as JSON', function() {
       var data = new api.internal.DataTable([{foo: {}, bar: {a: 2}}]);
       var csv = api.internal.exportLayerAsDSV({data: data}, ',');

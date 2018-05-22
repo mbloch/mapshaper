@@ -1,3 +1,6 @@
+v0.4.76
+* Increased maximum size of CSV output to ~2GB (the maximum Buffer size in Node).
+
 v0.4.75
 * -join copies source fields by default even if calc= option is present.
 * -join prints a warning when inconsistent values are found in copied fields during many-to-one joins.

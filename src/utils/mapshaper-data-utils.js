@@ -70,11 +70,10 @@ internal.fieldListContainsAll = function(list, fields) {
   return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
 };
 
-internal.getColumnType = function(key, table) {
+internal.getColumnType = function(key, records) {
   var type = null,
-      records = table.getRecords(),
       rec;
-  for (var i=0, n=table.size(); i<n; i++) {
+  for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];
     type = rec ? internal.getValueType(rec[key]) : null;
     if (type) break;
