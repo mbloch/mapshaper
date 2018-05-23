@@ -41,7 +41,6 @@ internal.importDelim2 = function(data, opts) {
     delete records.columns; // added by d3-dsv
   }
   if (records.length === 0) {
-    // stop("Unable to read any data records");
     message("Unable to read any data records");
   }
   internal.adjustRecordTypes(records, opts);
@@ -134,6 +133,8 @@ internal.adjustRecordTypes = function(records, opts) {
   }
 };
 
+// Copy original data properties and replacements to a new set of records
+// (Better performance in v8 than making in-place replacements)
 internal.updateFieldsInRecords = function(fields, records, replacements) {
   records.forEach(function(rec, recId) {
     var rec2 = {}, n, i, f;
