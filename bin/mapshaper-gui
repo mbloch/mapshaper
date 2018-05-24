@@ -4,6 +4,7 @@ var http = require("http"),
     path = require("path"),
     url = require("url"),
     fs = require("fs"),
+    Cookies = require("cookies"),
     open = require("open"),
     optimist = require("optimist"),
     defaultPort = 5555,
@@ -19,6 +20,16 @@ var http = require("http"),
         default: defaultPort,
         describe: "http port of server on localhost"
       })
+      .options("s", {
+        alias: "direct-save",
+        describe: "allow saving files directly (outside Download folder)",
+        'boolean': true
+      })
+      .options("f", {
+        alias: "force-save",
+        describe: "allow overwriting input files with output files",
+        'boolean': true
+      })
       .check(function(argv) {
         if (argv.h) {
           optimist.showHelp();
@@ -27,7 +38,8 @@ var http = require("http"),
       }).argv,
     port = parseInt(opts.port, 10) || defaultPort,
     probeCount = 0,
-    dataFiles = expandShapefiles(opts._);
+    dataFiles = expandShapefiles(opts._),
+    sessionId = null;
 
 validateFiles(dataFiles);
 
@@ -48,7 +60,13 @@ process.on('uncaughtException', function(err) {
 
 startServer(port);
 
+function getRandomSessionId() {
+  var str = Math.random().toString(16) + Math.random().toString(16);
+  return str.replace(/0\./g, '').substr(0, 20);
+}
+
 function startServer(port) {
+  var savePath = '/save';
   var dataPath = '/data/';
   var timeout;
 
@@ -61,12 +79,20 @@ function startServer(port) {
         process.exit(0);
       }, 200);
     } else if (uri == "/manifest.js") {
+      if (!sessionId && opts.s) {
+        // create a session id for authenticating requests to save files
+        // (see saveContent())
+        sessionId = getRandomSessionId();
+        new Cookies(request, response).set('session_id', sessionId);
+      }
       // serve JS file containing manifest of files for mapshaper to load
-      serveContent(getManifestJS(dataFiles), response, getMimeType(uri));
+      serveContent(getManifestJS(dataFiles, opts.s), response, getMimeType(uri));
     } else if (uri.indexOf(dataPath) === 0) {
       // serve a file from a path relative to this script
       // assumed to be a data file from the cmd line (!)
       serveFile(decodeURI(uri).replace(dataPath, ''), response);
+    } else if (uri.indexOf(savePath) === 0) {
+      saveContent(request, response);
     } else {
       // serve a file from the web root
       if (uri == '/') {
@@ -79,12 +105,16 @@ function startServer(port) {
   });
 }
 
+function serveError(text, code, response) {
+  response.writeHead(code, {"Content-Type": "text/plain"});
+  response.write(text);
+  response.end();
+}
+
 function serveFile(filename, response) {
   fs.readFile(filename, function(err, content) {
     if (err) {
-      response.writeHead(404, {"Content-Type": "text/plain"});
-      response.write("404 Not Found\n");
-      response.end();
+      serveError("404 Not Found\n", 404, response);
     } else {
       serveContent(content, response, getMimeType(filename));
     }
@@ -100,14 +130,72 @@ function serveContent(content, response, mimeType) {
   response.end();
 }
 
-function getManifestJS(files) {
-  var manifest = {
-    files: files
-  };
-  if (files.length > 0) {
-    return "mapshaper.manifest = " + JSON.stringify(manifest) + ";\n";
+function readPostData(req, cb) {
+  var qs = require('querystring');
+  var buffers = [];
+  // TODO: consider quitting if a size limit is reached
+  req.on('data', function(data) {buffers.push(data);});
+  req.on('end', function () {
+    cb(null, Buffer.concat(buffers));
+  });
+}
+
+function stop(msg) {
+  if (msg) console.error(msg);
+  process.exit(1);
+}
+
+// https://github.com/pillarjs/cookies
+function saveContent(req, res) {
+  var requestId = new Cookies(req, res).get('session_id'),
+      urlData = url.parse(req.url),
+      query = require('querystring').parse(urlData.query),
+      file = query.file;
+  // Only requests containing a cookie with the original session id are allowed to save.
+  // This should limit direct saving to the user who is running mapshaper-gui,
+  // preventing another user who has the URL of this Node service from saving.
+  if (!sessionId || requestId != sessionId) return fail('invalid session id');
+  if (req.method != 'POST') return fail('expected a post request');
+  if (err = validateOutputFile(file)) return fail(err);
+
+  readPostData(req, function(err, buf) {
+    if (err) return fail(err);
+    if (!Buffer.isBuffer(buf)) return fail('malformed file content');
+    try {
+      fs.writeFileSync(file, buf);
+    } catch(e) {
+      return fail(e);
+    }
+    serveContent('File saved', res, 'text/plain');
+  });
+
+  function fail(err) {
+    console.error('Unable to save ' + file + ":", err);
+    serveError(err, 400, res);
+  }
+}
+
+function validateOutputFile(file) {
+  var relPath = path.relative('.', file);
+  // TODO: remove path restrictions?
+  if (relPath.indexOf('..') > -1) {
+    return 'parent directories are blocked';
+  }
+  if (!opts.f) {
+    for (var i=0; i<dataFiles.length; i++) {
+      if (!path.relative(file, dataFiles[i])) {
+        return 'tried to overwrite a source file';
+      }
+    }
   }
   return '';
+}
+
+
+function getManifestJS(files, saving) {
+  var o = {files: files};
+  if (saving) o.allow_saving = true;
+  return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 
 // print an error and exit if a file is unreadable
@@ -124,8 +212,7 @@ function validateFiles(files) {
       msg = 'File not found';
     }
     if (msg) {
-      console.error(msg + ":", f);
-      process.exit(1);
+      stop(msg + ": " + f);
     }
   });
 }

@@ -1,3 +1,7 @@
+v0.4.77
+* Added -s/--direct-save option to mapshaper-gui, for saving output files to a path relative to the user's current working directory, instead of into the Download folder.
+* Added -f/--force-save option to mapshaper-gui, to allow overwriting input files.
+
 v0.4.76
 * Increased the maximum size of CSV output to ~2GB (the maximum Buffer size in Node).
 * Print a warning instead of throwing an error if a CSV file contains no data records.

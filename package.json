@@ -29,6 +29,7 @@
 	},
 	"main": "./mapshaper.js",
 	"dependencies": {
+		"cookies": "^0.7.1",
 		"d3-dsv": "~1.0.8",
 		"iconv-lite": "0.4.19",
 		"mproj": "0.0.16",
