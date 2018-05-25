@@ -24,15 +24,18 @@ internal.findCommandTargets = function(catalog, pattern, type) {
 // a 1-based index (1..n)
 internal.findMatchingLayers = function(layers, pattern) {
   var matches = [];
+  var index = {};
   pattern.split(',').forEach(function(subpattern, i) {
     var test = internal.getLayerMatch(subpattern);
     layers.forEach(function(lyr, layerId) {
-      if (matches.indexOf(lyr) > -1) return;
+      // if (matches.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
+      if (layerId in index) return;
       if (test(lyr, layerId + 1)) {  // layers are 1-indexed
-        lyr.match_id = matches.length;
+        lyr.target_id = matches.length;
         matches.push(lyr);
+        index[layerId] = true;
       } else {
-        lyr.match_id = -1;
+        lyr.target_id = -1;
       }
     });
   });

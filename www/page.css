@@ -253,7 +253,8 @@ body {
 
 div.error-box {
 	margin-top: 55px;
-	/* padding: 8px 12px 10px 12px; */
+	overflow: auto;
+	max-height: 70%;
 	max-width: 400px;
 	font-size: 16px;
 }

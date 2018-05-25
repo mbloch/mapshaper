@@ -131,7 +131,6 @@ function serveContent(content, response, mimeType) {
 }
 
 function readPostData(req, cb) {
-  var qs = require('querystring');
   var buffers = [];
   // TODO: consider quitting if a size limit is reached
   req.on('data', function(data) {buffers.push(data);});
@@ -140,12 +139,6 @@ function readPostData(req, cb) {
   });
 }
 
-function stop(msg) {
-  if (msg) console.error(msg);
-  process.exit(1);
-}
-
-// https://github.com/pillarjs/cookies
 function saveContent(req, res) {
   var requestId = new Cookies(req, res).get('session_id'),
       urlData = url.parse(req.url),
@@ -212,7 +205,8 @@ function validateFiles(files) {
       msg = 'File not found';
     }
     if (msg) {
-      stop(msg + ": " + f);
+      console.error(msg + ": " + f);
+      process.exit(1);
     }
   });
 }
