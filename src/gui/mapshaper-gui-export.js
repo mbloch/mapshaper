@@ -21,7 +21,7 @@ internal.writeFiles = function(files, opts, done) {
       var msg;
       if (err) {
         msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
-        msg += "<br>Downloading output as a fallback.";
+        msg += "<br>Saving to download folder instead.";
         gui.alert(msg);
         // fall back to standard method if saving to server fails
         internal.writeFiles(files, {save_to_download_folder: true}, done);
