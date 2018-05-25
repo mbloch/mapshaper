@@ -19,6 +19,7 @@ mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
 mapshaper-graticule
+mapshaper-include
 mapshaper-info
 mapshaper-innerlines
 mapshaper-inspect
@@ -105,7 +106,9 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'polygon-grid')) {
+      if (!(name == 'help' || name == 'graticule' || name == 'i' ||
+          name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+          name == 'polygon-grid' || name == 'include')) {
         throw new UserError("No data is available");
       }
     }
@@ -182,6 +185,9 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.addDataset(targetDataset);
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
+
+    } else if (name == 'include') {
+      internal.include(opts);
 
     } else if (name == 'info') {
       internal.printInfo(catalog.getLayers(), targetLayers);

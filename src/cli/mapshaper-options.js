@@ -966,6 +966,13 @@ internal.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("include")
+    .describe("import JS data and functions for use in JS expressions")
+    .option("file", {
+      DEFAULT: true,
+      describe: 'file containing a JS object with key:value pairs to import'
+    });
+
   parser.command("polygons")
     .describe("convert polylines to polygons")
     .option("gap-tolerance", {

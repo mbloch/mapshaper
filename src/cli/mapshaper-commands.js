@@ -38,10 +38,10 @@ api.applyCommands = function(commands, input, done) {
     return internal.applyCommandsOld(commands, input, done);
   }
   // add options to -i -o -join -clip -erase commands to bypass file i/o
-  // TODO: find a less kludgy solution
+  // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
   commands = commands.map(function(cmd) {
     var name = cmd.name;
-    if ((name == 'i' || name == 'join' || name == 'erase' || name == 'clip') && input) {
+    if ((name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include') && input) {
       cmd.options.input = input;
     } else if (name == 'o') {
       cmd.options.output = output;
