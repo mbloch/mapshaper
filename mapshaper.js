@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.76';
+var VERSION = '0.4.77';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -15770,7 +15770,6 @@ internal.importDelim2 = function(data, opts) {
     delete records.columns; // added by d3-dsv
   }
   if (records.length === 0) {
-    // stop("Unable to read any data records");
     message("Unable to read any data records");
   }
   internal.adjustRecordTypes(records, opts);
@@ -15832,54 +15831,68 @@ internal.getFieldTypeHints = function(opts) {
   return hints;
 };
 
+
 // Detect and convert data types of data from csv files.
 // TODO: decide how to handle records with inconstent properties. Mapshaper
 //    currently assumes tabular data
 internal.adjustRecordTypes = function(records, opts) {
   var typeIndex = internal.getFieldTypeHints(opts),
       fields = Object.keys(records[0] || []),
-      detectedNumFields = [];
+      detectedNumFields = [],
+      replacements = {};
   fields.forEach(function(key) {
     var typeHint = typeIndex[key];
-    var type = internal.adjustFieldValues(key, records, typeHint);
-    if (!typeHint && type == 'number') {
-      detectedNumFields.push(key);
+    var values = null;
+    if (typeHint == 'number') {
+      values = internal.convertDataField(key, records, utils.parseNumber);
+    } else if (typeHint == 'string') {
+      values = internal.convertDataField(key, records, utils.parseString);
+    } else {
+      values = internal.tryNumericField(key, records);
+      if (values) detectedNumFields.push(key);
     }
+    if (values) replacements[key] = values;
   });
+  if (Object.keys(replacements).length > 0) {
+    internal.updateFieldsInRecords(fields, records, replacements);
+  }
   if (detectedNumFields.length > 0) {
     message(utils.format("Auto-detected number field%s: %s",
         detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
   }
 };
 
-internal.adjustFieldValues = function(key, records, type) {
-  var values;
-  if (!type) {
-    values = internal.tryNumericField(key, records);
-  }
-  if (values) {
-    type = 'number';
-    internal.insertFieldValues2(key, records, values);
-  } else if (type == 'number') {
-    internal.convertDataField(key, records, utils.parseNumber);
-  } else {
-    type = 'string';
-    internal.convertDataField(key, records, utils.parseString);
-  }
-  return type;
+// Copy original data properties and replacements to a new set of records
+// (Better performance in v8 than making in-place replacements)
+internal.updateFieldsInRecords = function(fields, records, replacements) {
+  records.forEach(function(rec, recId) {
+    var rec2 = {}, n, i, f;
+    for (i=0, n=fields.length; i<n; i++) {
+      f = fields[i];
+      if (f in replacements) {
+        rec2[f] = replacements[f][recId];
+      } else {
+        rec2[f] = rec[f];
+      }
+    }
+    records[recId] = rec2;
+  });
 };
 
 internal.tryNumericField = function(key, records) {
   var arr = [],
       count = 0,
-      raw, num;
+      raw, str, num;
   for (var i=0, n=records.length; i<n; i++) {
     raw = records[i][key];
     num = utils.parseNumber(raw);
-    if (num !== null) {
+    if (num === null) {
+      str = raw ? raw.trim() : '';
+      if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
+        return null; // unparseable value -- fail
+      }
+    } else {
       count++;
-    } else if (raw && raw.trim()) {
-      return null; // unparseable value -- fail
     }
     arr.push(num);
   }
@@ -15887,9 +15900,11 @@ internal.tryNumericField = function(key, records) {
 };
 
 internal.convertDataField = function(name, records, f) {
+  var values = [];
   for (var i=0, n=records.length; i<n; i++) {
-    records[i][name] = f(records[i][name]);
+    values.push(f(records[i][name]));
   }
+  return values;
 };
 
 // Accept a type hint from a header like "FIPS:str"
@@ -15904,7 +15919,6 @@ internal.validateFieldType = function(hint) {
   }
   return type;
 };
-
 
 // Remove comma separators from strings
 // TODO: accept European-style numbers?
