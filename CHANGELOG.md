@@ -1,3 +1,6 @@
+v0.4.78
+* Bug fix
+
 v0.4.77
 * Added -s/--direct-save option to mapshaper-gui, for saving output files to a path relative to the user's current working directory, instead of into the browser's download folder.
 * Added -f/--force-save option to mapshaper-gui, to allow overwriting input files.

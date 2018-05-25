@@ -7,8 +7,7 @@ gui.exportIsSupported = function() {
 };
 
 function canSaveToServer() {
-  return typeof mapshaper.manifest.allow_saving != 'undefined' &&
-    !!mapshaper.manifest.allow_saving && typeof fetch == 'function';
+  return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
 }
 
 // replaces function from mapshaper.js
