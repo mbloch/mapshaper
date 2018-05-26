@@ -1,5 +1,8 @@
+v0.4.80 unreleased
+* Results of assigments in -calc expressions are available to subsequent -each expressions as variables.
+
 v0.4.79
-* Added new -include command for loading JS data and functions from an external file. The file should contain a single JS object. The keys and values of this object are converted to variables in the JS expressions used by -each, -filter and other commands.
+* Added new -include command for loading JS data and functions from an external file. The file should contain a single JS object. The keys and values of this object are converted to variables in the JS expression used by -each.
 
 v0.4.78
 * Bug fix

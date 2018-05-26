@@ -14,7 +14,7 @@ mapshaper-calc-utils
 //
 api.calc = function(lyr, arcs, opts) {
   var msg = opts.expression,
-      result;
+      result, compiled, defs;
   if (opts.where) {
     // TODO: implement no_replace option for filter() instead of this
     lyr = {
@@ -24,7 +24,11 @@ api.calc = function(lyr, arcs, opts) {
     api.filterFeatures(lyr, arcs, {expression: opts.where});
     msg += ' where ' + opts.where;
   }
-  result = internal.evalCalcExpression(lyr, arcs, opts.expression);
+  // Save any assigned variables to the defs object, so they will be available
+  // for later -each expressions to use.
+  defs = internal.getStateVar('defs');
+  compiled = internal.compileCalcExpression(lyr, arcs, opts.expression);
+  result = compiled(null, defs);
   message(msg + ":  " + result);
   return result;
 };

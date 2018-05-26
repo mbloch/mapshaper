@@ -4,6 +4,20 @@ var assert = require('assert'),
     DataTable = api.internal.DataTable;
 
 describe('mapshaper-calc.js', function () {
+
+  describe('-calc command', function() {
+    it('results are available to -each expressions', function(done) {
+      var data = [{a: 1}, {a: 3}];
+      var cmd = '-i data.json -calc "SUM = sum(a)" -each "pct = a / SUM * 100" -o';
+      var expect = [{a: 1, pct: 25}, {a: 3, pct: 75}];
+      api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+        assert.deepEqual(JSON.parse(out['data.json']), expect);
+        done();
+      });
+    })
+  });
+
+
   describe('evalCalcExpression()', function () {
     var data1 = [{foo: -1}, {foo: 3}, {foo: 4}],
         lyr1 = {

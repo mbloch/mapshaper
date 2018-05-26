@@ -30,5 +30,19 @@ describe('mapshaper-include.js', function () {
         done();
       });
     });
+
+    it('can require node modules', function(done) {
+      var o = '{\
+        _: require("underscore"),\
+        testNull: function(val) {return this._.isNull(val)}\
+      }';
+      var data = [{a: null}, {a: 'apple'}];
+      var cmd = '-i data.json -include includes.js -each "empty = testNull(a), empty2 = _.isNull(a)" -o';
+      var expect = [{a: null, empty: true, empty2: true}, {a: 'apple', empty: false, empty2: false}];
+      api.applyCommands(cmd, {'data.json': data, 'includes.js': o}, function(err, out) {
+        assert.deepEqual(JSON.parse(out['data.json']), expect);
+        done();
+      });
+    });
   })
 })
