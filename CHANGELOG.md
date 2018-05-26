@@ -1,3 +1,6 @@
+v0.4.79
+* Added new -include command for loading JS data and functions from an external file. The file should contain a single JS object. The keys and values of this object are converted to variables in the JS expressions used by -each, -filter and other commands.
+
 v0.4.78
 * Bug fix
 
@@ -6,7 +9,7 @@ v0.4.77
 * Added -f/--force-save option to mapshaper-gui, to allow overwriting input files.
 
 v0.4.76
-* Increased the maximum size of CSV output to ~2GB (the maximum Buffer size in Node).
+* Increased the maximum size of CSV output to 2GB (the maximum Buffer size in Node).
 * Print a warning instead of throwing an error if a CSV file contains no data records.
 
 v0.4.75
