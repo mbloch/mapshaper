@@ -132,6 +132,7 @@ function serveContent(content, response, mimeType) {
 
 function readPostData(req, cb) {
   var buffers = [];
+  if (req.method != 'POST') return cb('expected a post request');
   // TODO: consider quitting if a size limit is reached
   req.on('data', function(data) {buffers.push(data);});
   req.on('end', function () {
@@ -141,6 +142,7 @@ function readPostData(req, cb) {
 
 function saveContent(req, res) {
   var requestId = new Cookies(req, res).get('session_id'),
+      ip = req.connection.remoteAddress,
       urlData = url.parse(req.url),
       query = require('querystring').parse(urlData.query),
       file = query.file;
@@ -148,9 +150,8 @@ function saveContent(req, res) {
   // This should limit direct saving to the user who is running mapshaper-gui,
   // preventing another user who has the URL of this Node service from saving.
   if (!sessionId || requestId != sessionId) return fail('invalid session id');
-  if (req.method != 'POST') return fail('expected a post request');
+  if (ip != '::ffff:127.0.0.1' && ip != '::1' && ip != '127.0.0.1') return fail('saving is only allowed from localhost');
   if (err = validateOutputFile(file)) return fail(err);
-
   readPostData(req, function(err, buf) {
     if (err) return fail(err);
     if (!Buffer.isBuffer(buf)) return fail('malformed file content');
