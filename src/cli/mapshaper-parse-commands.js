@@ -17,19 +17,19 @@ internal.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 internal.parseConsoleCommands = function(raw) {
+  var blocked = ['i', 'include'];
   var str = raw.replace(/^mapshaper\b/, '').trim();
   var parsed;
   if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
-  if (utils.contains(internal.splitShellTokens(str), '-i')) {
-    stop("The input command cannot be run in the browser");
-  }
   parsed = internal.parseCommands(str);
-  // block implicit initial -i command
-  if (parsed.length > 0 && parsed[0].name == 'i') {
-    stop(utils.format("Unable to run [%s]", raw));
-  }
+  parsed.forEach(function(cmd) {
+    var i = blocked.indexOf(cmd.name);
+    if (i > -1) {
+      stop("The -" + blocked[i] + " command cannot be run in the browser");
+    }
+  });
   return parsed;
 };
