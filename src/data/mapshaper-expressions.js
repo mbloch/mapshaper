@@ -130,7 +130,7 @@ internal.getBaseContext = function() {
   // Mask global properties (is this effective/worth doing?)
   (function() {
     for (var key in this) {
-      obj[key] = null;
+      obj[key] = void 0;
     }
   }());
   obj.console = console;

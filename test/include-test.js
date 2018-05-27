@@ -6,6 +6,22 @@ describe('mapshaper-include.js', function () {
   describe('-include command', function () {
     // TODO: test importing keys that are not valid JS variable names
 
+    it('JS unable to modify program scope', function(done) {
+      var js = '{ \
+        _internal: typeof internal, \
+        _this: this, \
+        _require: typeof require, \
+        _global: typeof global \
+      }';
+      var input = [{}];
+      var cmd = '-i data.json -include include.js -each "a = _internal, b = _this, c = _require, d = _global" -o';
+      api.applyCommands(cmd, {'data.json': input, 'include.js': js}, function(err, out) {
+        assert.deepEqual(JSON.parse(out['data.json']), [{a: 'undefined', b: {}, c: 'function', d: 'undefined'}])
+        done();
+      });
+
+    });
+
     it('imports data and functions from JS string', function (done) {
       var o = "{ \
         foo: 'bar', \

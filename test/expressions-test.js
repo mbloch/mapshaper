@@ -11,8 +11,8 @@ describe('mapshaper-expressions.js', function () {
 
     it('global properties are masked', function () {
       var env = api.internal.getBaseContext();
-      assert.strictEqual(env.mapshaper, null);
-      assert.strictEqual(env.global, null);
+      assert.strictEqual(env.mapshaper, undefined);
+      assert.strictEqual(env.global, undefined);
     })
 
     it('build-in functions and libraries are not masked', function () {
