@@ -4,13 +4,29 @@ function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
+  var renderCache = {};
+  var idCount = 0; // layer counter for creating unique layer ids
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
   model.on('update', function(e) {
-    updateBtn();
+    updateMenuBtn();
     if (isOpen) render();
   });
+
+  function findLayerById(id) {
+    return model.findLayer(function(lyr, dataset) {
+      return lyr.menu_id == id;
+    });
+  }
+
+  function layerIsPinned(lyr) {
+    return lyr == map.getReferenceLayer();
+  }
+
+  function layerIsSelected(lyr) {
+    return lyr == model.getActiveLayer().layer;
+  }
 
   function turnOn() {
     isOpen = true;
@@ -25,27 +41,124 @@ function LayerControl(model, map) {
     el.hide();
   }
 
-  function updateBtn() {
+  function updateMenuBtn() {
     var name = model.getActiveLayer().layer.name || "[unnamed layer]";
     buttonLabel.html(name + " &nbsp;&#9660;");
   }
 
   function render() {
     var list = El('#layer-control .layer-list');
-    var pinnable = 0;
-    if (isOpen) {
-      list.hide().empty();
-      model.forEachLayer(function(lyr, dataset) {
-        if (isPinnable(lyr)) pinnable++;
-      });
-      if (pinnable === 0 && map.getReferenceLayer()) {
-        clearPin(); // a layer has been deleted...
-      }
-      model.forEachLayer(function(lyr, dataset) {
-        list.appendChild(renderLayer(lyr, dataset, pinnable > 1 && isPinnable(lyr)));
-      });
-      list.show();
+    var uniqIds = {};
+    var pinnableCount = 0;
+    var oldCache = renderCache;
+    if (!isOpen) return;
+    renderCache = {};
+    list.empty();
+    model.forEachLayer(function(lyr, dataset) {
+      if (isPinnable(lyr)) pinnableCount++;
+    });
+    if (pinnableCount === 0 && map.getReferenceLayer()) {
+      clearPin(); // a layer has been deleted...
     }
+    model.forEachLayer(function(lyr, dataset) {
+      var pinnable = pinnableCount > 1 && isPinnable(lyr);
+      var html, element;
+      // Assign a unique id to each layer, so html strings
+      // can be used as unique identifiers for caching rendered HTML, and as
+      // an id for layer menu event handlers
+      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
+        lyr.menu_id = ++idCount;
+      }
+      uniqIds[lyr.menu_id] = true;
+      html = renderLayer(lyr, dataset, pinnable);
+      if (html in oldCache) {
+        element = oldCache[html];
+      } else {
+        element = El('div').html(html).firstChild();
+        initMouseEvents(element, lyr.menu_id, pinnable);
+      }
+      renderCache[html] = element;
+      list.appendChild(element);
+    });
+  }
+
+  function renderLayer(lyr, dataset, pinnable) {
+    var warnings = getWarnings(lyr, dataset);
+    var classes = 'layer-item';
+    var entry, html;
+
+    if (layerIsSelected(lyr)) classes += ' active';
+    if (layerIsPinned(lyr)) classes += ' pinned';
+
+    html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
+    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
+    html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
+    html += rowHTML('contents', describeLyr(lyr));
+    if (warnings) {
+      html += rowHTML('problems', warnings, 'layer-problems');
+    }
+    html += '<img class="close-btn" src="images/close.png">';
+    if (pinnable) {
+      html += '<img class="pin-btn unpinned" src="images/eye.png">';
+      html += '<img class="pin-btn pinned" src="images/eye2.png">';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function initMouseEvents(entry, id, pinnable) {
+    entry.on('mouseover', init);
+    function init() {
+      entry.removeEventListener('mouseover', init);
+      initMouseEvents2(entry, id, pinnable);
+    }
+  }
+
+  function initMouseEvents2(entry, id, pinnable) {
+    // init delete button
+    entry.findChild('img.close-btn').on('mouseup', function(e) {
+      var target = findLayerById(id);
+      e.stopPropagation();
+      if (layerIsPinned(target.layer)) {
+        clearPin();
+      }
+      model.deleteLayer(target.layer, target.dataset);
+    });
+
+    if (pinnable) {
+      // init pin button
+      entry.findChild('img.pinned').on('mouseup', function(e) {
+        var target = findLayerById(id);
+        e.stopPropagation();
+        if (layerIsPinned(target.layer)) {
+          clearPin();
+        } else {
+          setPin(target.layer, target.dataset);
+          entry.addClass('pinned');
+        }
+      });
+    }
+
+    // init name editor
+    new ClickText2(entry.findChild('.layer-name'))
+      .on('change', function(e) {
+        var target = findLayerById(id);
+        var str = cleanLayerName(this.value());
+        this.value(getDisplayName(str));
+        target.layer.name = str;
+        updateMenuBtn();
+      });
+
+    // init click-to-select
+    gui.onClick(entry, function() {
+      var target = findLayerById(id);
+      if (!gui.getInputElement()) { // don't select if user is typing
+        gui.clearMode();
+        if (!layerIsSelected(target.layer)) {
+          model.updated({select: true}, target.layer, target.dataset);
+        }
+      }
+    });
   }
 
   function describeLyr(lyr) {
@@ -117,68 +230,6 @@ function LayerControl(model, map) {
     return internal.layerHasGeometry(lyr);
   }
 
-  function renderLayer(lyr, dataset, pinnable) {
-    var editLyr = model.getActiveLayer().layer;
-    var entry = El('div').addClass('layer-item').classed('active', lyr == editLyr);
-    var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
-    var warn = getWarnings(lyr, dataset);
-    html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
-    html += rowHTML('contents', describeLyr(lyr));
-    if (warn) {
-      html += rowHTML('problems', warn, 'layer-problems');
-    }
-    html += '<img class="close-btn" src="images/close.png">';
-    if (pinnable) {
-      html += '<img class="pin-btn unpinned" src="images/eye.png">';
-      html += '<img class="pin-btn pinned" src="images/eye2.png">';
-    }
-    entry.html(html);
-
-    // init delete button
-    entry.findChild('img.close-btn').on('mouseup', function(e) {
-      e.stopPropagation();
-      if (lyr == map.getReferenceLayer()) {
-        clearPin();
-      }
-      model.deleteLayer(lyr, dataset);
-    });
-
-    if (pinnable) {
-      if (map.getReferenceLayer() == lyr) {
-        entry.addClass('pinned');
-      }
-
-      // init pin button
-      entry.findChild('img.pinned').on('mouseup', function(e) {
-        e.stopPropagation();
-        if (lyr == map.getReferenceLayer()) {
-          clearPin();
-        } else {
-          setPin(lyr, dataset);
-          entry.addClass('pinned');
-        }
-      });
-    }
-
-    // init name editor
-    new ClickText2(entry.findChild('.layer-name'))
-      .on('change', function(e) {
-        var str = cleanLayerName(this.value());
-        this.value(getDisplayName(str));
-        lyr.name = str;
-        updateBtn();
-      });
-    // init click-to-select
-    gui.onClick(entry, function() {
-      if (!gui.getInputElement()) { // don't select if user is typing
-        gui.clearMode();
-        if (lyr != editLyr) {
-          model.updated({select: true}, lyr, dataset);
-        }
-      }
-    });
-    return entry;
-  }
 
   function cleanLayerName(raw) {
     return raw.replace(/[\n\t/\\]/g, '')

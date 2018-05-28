@@ -38,10 +38,12 @@ function Catalog() {
     }
   };
 
-  this.findLayer = function(target) {
+  // @arg: a layer object or a test function
+  this.findLayer = function(arg) {
+    var test = typeof arg == 'function' ? arg : null;
     var found = null;
     this.forEachLayer(function(lyr, dataset) {
-      if (lyr == target) {
+      if (test ? test(lyr, dataset) : lyr == arg) {
         found = layerObject(lyr, dataset);
       }
     });
