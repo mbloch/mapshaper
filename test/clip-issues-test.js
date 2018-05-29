@@ -93,7 +93,7 @@ describe('mapshaper-clip-erase.js', function () {
         });
       })
 
-      it('test 3', function() {
+      it('test 3', function(done) {
         // Coords of two simplified counties that had been disappearing after
         // bbox clipping
         var geojson = {"type":"FeatureCollection","features":[
@@ -101,10 +101,11 @@ describe('mapshaper-clip-erase.js', function () {
           {"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.07743991381154576,-7.903170760234177],[0.1510172129721194,-7.718678964010099],[0.5017038816766441,-7.922859553851434],[0.13322915296487942,-8.237697197954503],[-0.07743991381154576,-7.903170760234177]]]},"properties":{"GEOID":"48157"}}
           ]};
         api.applyCommands('-clip bbox=0,-90,90,90', geojson, function(err, output) {
+
           if (err) throw err
           var geojson = JSON.parse(output);
-          assert(!!geojson.geometries[0]);
-          assert(!!geojson.geometries[1]);
+          assert(!!geojson.features[0].geometry.coordinates);
+          assert(!!geojson.features[1].geometry.coordinates);
           done();
         });
       })
