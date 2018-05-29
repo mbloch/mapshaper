@@ -5,7 +5,7 @@ var http = require("http"),
     url = require("url"),
     fs = require("fs"),
     Cookies = require("cookies"),
-    open = require("open"),
+    opn = require("opn"),
     optimist = require("optimist"),
     defaultPort = 5555,
     webRoot = path.join(__dirname, "../www"),
@@ -101,7 +101,7 @@ function startServer(port) {
       serveFile(path.join(webRoot, uri), response);
     }
   }).listen(port, function() {
-    open("http://localhost:" + port);
+    opn("http://localhost:" + port);
   });
 }
 
