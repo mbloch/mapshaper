@@ -30,9 +30,8 @@ function LayerControl(model, map) {
 
   function turnOn() {
     isOpen = true;
-    // set max layer menu height
-    render();
     El('#layer-control div.info-box-scrolled').css('max-height', El('body').height() - 80);
+    render();
     el.show();
   }
 
@@ -51,7 +50,6 @@ function LayerControl(model, map) {
     var uniqIds = {};
     var pinnableCount = 0;
     var oldCache = renderCache;
-    if (!isOpen) return;
     renderCache = {};
     list.empty();
     model.forEachLayer(function(lyr, dataset) {
