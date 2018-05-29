@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.79';
+var VERSION = '0.4.80';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -8316,7 +8316,7 @@ internal.getBaseContext = function() {
   // Mask global properties (is this effective/worth doing?)
   (function() {
     for (var key in this) {
-      obj[key] = null;
+      obj[key] = void 0;
     }
   }());
   obj.console = console;
@@ -8449,7 +8449,7 @@ internal.getModeData = function(values) {
 //
 api.calc = function(lyr, arcs, opts) {
   var msg = opts.expression,
-      result;
+      result, compiled, defs;
   if (opts.where) {
     // TODO: implement no_replace option for filter() instead of this
     lyr = {
@@ -8459,7 +8459,11 @@ api.calc = function(lyr, arcs, opts) {
     api.filterFeatures(lyr, arcs, {expression: opts.where});
     msg += ' where ' + opts.where;
   }
-  result = internal.evalCalcExpression(lyr, arcs, opts.expression);
+  // Save any assigned variables to the defs object, so they will be available
+  // for later -each expressions to use.
+  defs = internal.getStateVar('defs');
+  compiled = internal.compileCalcExpression(lyr, arcs, opts.expression);
+  result = compiled(null, defs);
   message(msg + ":  " + result);
   return result;
 };
@@ -16637,7 +16641,7 @@ cli.statSync = function(fpath) {
 
 
 internal.include = function(opts) {
-  var content, obj;
+  var content, obj, context;
   // TODO: handle web context
   if (!opts.file) {
     stop("Missing name of a JS file to load");
@@ -16650,7 +16654,13 @@ internal.include = function(opts) {
       stop("Expected a JavasScript object containing key:value pairs");
     }
     try {
-      obj = eval('(' + content + ')');
+      // Try to isolate the imported JS code from the program scope and global environment
+      // TODO: consider whether this is desirable... it may be pointless anyway
+      //   as long as we're passing through the 'require()' function
+      context = internal.getBaseContext();
+      context.require = require;
+      obj = Function('ctx', 'with(ctx) {return (' + content + ');}').call({}, context);
+      // obj = eval('(' + content + ')');
     } catch(e) {
       stop(e.name, 'in JS source:', e.message);
     }
@@ -21985,10 +21995,12 @@ function Catalog() {
     }
   };
 
-  this.findLayer = function(target) {
+  // @arg: a layer object or a test function
+  this.findLayer = function(arg) {
+    var test = typeof arg == 'function' ? arg : null;
     var found = null;
     this.forEachLayer(function(lyr, dataset) {
-      if (lyr == target) {
+      if (test ? test(lyr, dataset) : lyr == arg) {
         found = layerObject(lyr, dataset);
       }
     });
