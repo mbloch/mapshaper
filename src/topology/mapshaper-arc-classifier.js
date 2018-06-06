@@ -1,6 +1,7 @@
 /* @requires mapshaper-shape-utils */
 
-internal.getArcClassifier = function(shapes, arcs) {
+// @filter  optional filter function; signature: function(idA, idB or -1):bool
+internal.getArcClassifier = function(shapes, arcs, filter) {
   var n = arcs.size(),
       a = new Int32Array(n),
       b = new Int32Array(n);
@@ -24,14 +25,16 @@ internal.getArcClassifier = function(shapes, arcs) {
 
   function classify(arcId, getKey) {
     var i = absArcId(arcId);
-    var key = null;
-    if (a[i] > -1) {
-      key = getKey(a[i], b[i]);
-      if (key) {
-        a[i] = -1;
-        b[i] = -1;
-      }
-    }
+    var shpA = a[i];
+    var shpB = b[i];
+    var key;
+    if (shpA == -1) return null;
+    key = getKey(shpA, shpB);
+    if (!key) return null;
+    a[i] = -1;
+    b[i] = -1;
+    // use optional filter to exclude some arcs
+    if (filter && !filter(shpA, shpB)) return null;
     return key;
   }
 

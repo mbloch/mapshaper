@@ -47,6 +47,40 @@ describe('mapshaper-innerlines.js', function () {
       [[3, 2], [3, 1], [2, 1]]];
   arcsb = new api.internal.ArcCollection(arcsb);
 
+  // tl, tr, bl, br
+  var geojsonB = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {foo: 'a', bar: 1},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[0, 1], [0, 2], [1, 2], [1, 1], [0, 1]]]
+      }
+    }, {
+      properties: {foo: 'a', bar: 1},
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]]
+      }
+    }, {
+      type: 'Feature',
+      properties: {foo: 'b', bar: 2},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+      }
+    }, {
+      type: 'Feature',
+      properties: {foo: 'b', bar: 3},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[1, 0], [1, 1], [2, 1], [2, 0], [1, 0]]]
+      }
+    }]
+  };
+
   //  a -- b -- c
   //  |    |    |
   //  d    e    f
@@ -67,6 +101,103 @@ describe('mapshaper-innerlines.js', function () {
       [[2, 2], [2, 1]],
       [[2, 1], [1, 1], [1, 2]],
       [[3, 2], [3, 1], [2, 1]]]);
+
+  describe('-lines where= option', function () {
+    it('can be used to extract only inner lines', function (done) {
+      var cmd = '-i in.json -lines where="!!B" -o out.json';
+      var expect = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {RANK: 1, TYPE: 'inner'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1,2],[1,1]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {RANK: 1, TYPE: 'inner'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1,1],[0,1]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {RANK: 1, TYPE: 'inner'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[2,1],[1,1]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {RANK: 1, TYPE: 'inner'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1,1],[1,0]]
+          }
+        }]
+      }
+      api.applyCommands(cmd, {'in.json': geojsonB}, function(err, out) {
+        var output = JSON.parse(out['out.json']);
+        assert.deepEqual(output, expect);
+        done();
+      });
+    })
+
+    it('expressions can reference data properties', function (done) {
+      var cmd = '-i in.json -lines where="A.foo == \'a\' && !!B && B.foo == \'a\'" -o out.json';
+      var expect = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {RANK: 1, TYPE: 'inner'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1,2],[1,1]]
+          }
+        }]
+      }
+      api.applyCommands(cmd, {'in.json': geojsonB}, function(err, out) {
+        var output = JSON.parse(out['out.json']);
+        assert.deepEqual(output, expect);
+        done();
+      });
+    })
+
+  })
+
+  describe('-innerlines where= option', function () {
+
+    it('Shape ids of A and B are in ascending order', function (done) {
+      var cmd = '-i in.json -innerlines where="A.$.id > B.$.id" -o out.json';
+      var expect = {
+        type: 'GeometryCollection',
+        geometries: []
+      }
+      api.applyCommands(cmd, {'in.json': geojsonB}, function(err, out) {
+        var output = JSON.parse(out['out.json']);
+        assert.deepEqual(output, expect);
+        done();
+      });
+    })
+
+    it('A and B are always defined (no need to check for existence of B)', function (done) {
+      var cmd = '-i in.json -innerlines where="A.bar == 2 && B.bar == 3" -o out.json';
+      var expect = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[1,1],[1,0]]
+        }]
+      }
+      api.applyCommands(cmd, {'in.json': geojsonB}, function(err, out) {
+        var output = JSON.parse(out['out.json']);
+        assert.deepEqual(output, expect);
+        done();
+      });
+    })
+
+  });
 
   describe('innerlines()', function () {
     it('test 1', function () {

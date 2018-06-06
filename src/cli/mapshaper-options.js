@@ -60,6 +60,9 @@ internal.getOptionParser = function() {
       },
       whereOpt = {
         describe: "use a JS expression to select a subset of features"
+      },
+      whereOpt2 = {
+        describe: "use a JS expression to filter lines (using A and B)"
       };
 
   var parser = new CommandParser();
@@ -445,6 +448,7 @@ internal.getOptionParser = function() {
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
     .flag('no_arg')
+    .option("where", whereOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -509,6 +513,7 @@ internal.getOptionParser = function() {
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "strings"
     })
+    .option("where", whereOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

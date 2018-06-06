@@ -7,6 +7,54 @@ internal.compileValueExpression = function(exp, lyr, arcs, opts) {
   return internal.compileFeatureExpression(exp, lyr, arcs, opts);
 };
 
+internal.compileFeaturePairWhereExpression = function(exp, lyr, arcs, opts) {
+  var ctx = internal.getExpressionContext(lyr);
+  var A = getProxyFactory(lyr, arcs);
+  var B = getProxyFactory(lyr, arcs);
+  var functionBody = "with(env){return " + exp + "}";
+  var func;
+
+  try {
+    func = new Function("env", functionBody);
+  } catch(e) {
+    console.error(e);
+    stop(e.name, "in expression [" + exp + "]");
+  }
+
+  function getProxyFactory(lyr, arcs) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    var getFeatureById = internal.initFeatureProxy(lyr, arcs);
+    function Proxy(id) {}
+
+    return function(id) {
+      var proxy;
+      if (id == -1) return null;
+      Proxy.prototype = records[id] || {};
+      proxy = new Proxy();
+      proxy.$ = getFeatureById(id);
+      return proxy;
+    };
+  }
+
+  // idA - id of a record
+  // idB - id of a record, or -1
+  return function(idA, idB) {
+    var val;
+    ctx.A = ctx.a = A(idA);
+    ctx.B = ctx.b = B(idB);
+    try {
+      val = func.call(ctx, ctx);
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val !== true && val !== false) {
+      stop("where expression must return true or false");
+    }
+    return val;
+  };
+};
+
+
 internal.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
   var opts = utils.extend({}, opts_),
       exp = rawExp || '',

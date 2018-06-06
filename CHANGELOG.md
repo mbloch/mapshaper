@@ -1,3 +1,6 @@
+v0.4.81
+* Added -lines where= and -innerlines where= options, for filtering lines using properties of adjacent polygons. Polygons are represented as A and B objects in the expression. B is null for "outer" lines.
+
 v0.4.80
 * Results of assigments in -calc expressions are available to subsequent -each expressions as variables.
 * Updated dependencies.
