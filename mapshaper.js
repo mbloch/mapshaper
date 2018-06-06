@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.81';
+var VERSION = '0.4.82';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -8193,19 +8193,35 @@ internal.compileValueExpression = function(exp, lyr, arcs, opts) {
   return internal.compileFeatureExpression(exp, lyr, arcs, opts);
 };
 
-internal.compileFeaturePairWhereExpression = function(exp, lyr, arcs, opts) {
+
+internal.compileFeaturePairFilterExpression = function(exp, lyr, arcs) {
+  var func = internal.compileFeaturePairExpression(exp, lyr, arcs);
+  return function(idA, idB) {
+    var val = func(idA, idB);
+    if (val !== true && val !== false) {
+      stop("where expression must return true or false");
+    }
+    return val;
+  };
+};
+
+internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
   var ctx = internal.getExpressionContext(lyr);
   var A = getProxyFactory(lyr, arcs);
   var B = getProxyFactory(lyr, arcs);
-  var functionBody = "with(env){return " + exp + "}";
+  var vars = internal.getAssignedVars(exp);
+  var functionBody = "with(env){with(record){return " + exp + "}}";
   var func;
 
   try {
-    func = new Function("env", functionBody);
+    func = new Function("record,env", functionBody);
   } catch(e) {
     console.error(e);
     stop(e.name, "in expression [" + exp + "]");
   }
+
+  // protect global object from assigned values
+  internal.nullifyUnsetProperties(vars, ctx);
 
   function getProxyFactory(lyr, arcs) {
     var records = lyr.data ? lyr.data.getRecords() : [];
@@ -8224,17 +8240,19 @@ internal.compileFeaturePairWhereExpression = function(exp, lyr, arcs, opts) {
 
   // idA - id of a record
   // idB - id of a record, or -1
-  return function(idA, idB) {
+  // rec - optional data record
+  return function(idA, idB, rec) {
     var val;
-    ctx.A = ctx.a = A(idA);
-    ctx.B = ctx.b = B(idB);
+    ctx.A = A(idA);
+    ctx.B = B(idB);
+    if (rec) {
+      // initialize new fields to null so assignments work
+      internal.nullifyUnsetProperties(vars, rec);
+    }
     try {
-      val = func.call(ctx, ctx);
+      val = func.call(ctx, rec || {}, ctx);
     } catch(e) {
       stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    if (val !== true && val !== false) {
-      stop("where expression must return true or false");
     }
     return val;
   };
@@ -8350,7 +8368,7 @@ internal.getExpressionContext = function(lyr, mixins) {
       if (key in env) message('Warning: "' + key + '" has multiple definitions');
       env[key] = mixins[key];
     });
-    utils.extend(env, mixins);
+    // utils.extend(env, mixins);
   }
   // make context properties non-writable, so they can't be replaced by an expression
   return Object.keys(env).reduce(function(memo, key) {
@@ -16879,7 +16897,7 @@ internal.countInteriorVertices = function(arcs) {
 api.innerlines = function(lyr, arcs, opts) {
   opts = opts || {};
   internal.requirePolygonLayer(lyr);
-  var filter = opts.where ? internal.compileFeaturePairWhereExpression(opts.where, lyr, arcs) : null;
+  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null;
   var classifier = internal.getArcClassifier(lyr.shapes, arcs, filter);
   var lines = internal.extractInnerLines(lyr.shapes, classifier);
   var outputLyr = internal.createLineLayer(lines, null);
@@ -16893,7 +16911,8 @@ api.innerlines = function(lyr, arcs, opts) {
 
 api.lines = function(lyr, arcs, opts) {
   opts = opts || {};
-  var filter = opts.where ? internal.compileFeaturePairWhereExpression(opts.where, lyr, arcs) : null,
+  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
+      decorateRecord = opts.each ? internal.getLineRecordDecorator(opts.each, lyr, arcs) : null,
       classifier = internal.getArcClassifier(lyr.shapes, arcs, filter),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
       rankId = 0,
@@ -16932,12 +16951,32 @@ api.lines = function(lyr, arcs, opts) {
 
   function addLines(lines, typeName) {
     var attr = lines.map(function(shp, i) {
-      return {RANK: rankId, TYPE: typeName};
+      var rec = {RANK: rankId, TYPE: typeName};
+      if (decorateRecord) decorateRecord(rec, shp);
+      return rec;
     });
     shapes = utils.merge(lines, shapes);
     records = utils.merge(attr, records);
     rankId++;
   }
+};
+
+// kludgy way to implement each= option of -lines command
+internal.getLineRecordDecorator = function(exp, lyr, arcs) {
+  // repurpose arc classifier function to convert arc ids to shape ids of original polygons
+  var procArcId = internal.getArcClassifier(lyr.shapes, arcs)(procShapeIds);
+  var compiled = internal.compileFeaturePairExpression(exp, lyr, arcs);
+  var tmp;
+
+  function procShapeIds(shpA, shpB) {
+    compiled(shpA, shpB, tmp);
+  }
+
+  return function(rec, shp) {
+    tmp = rec;
+    procArcId(shp[0][0]);
+    return rec;
+  };
 };
 
 internal.createLineLayer = function(lines, records) {
@@ -20888,6 +20927,9 @@ internal.getOptionParser = function() {
       },
       whereOpt2 = {
         describe: "use a JS expression to filter lines (using A and B)"
+      },
+      eachOpt2 = {
+        describe: "apply a JS expression to each line (using A and B)"
       };
 
   var parser = new CommandParser();
@@ -21274,6 +21316,7 @@ internal.getOptionParser = function() {
     .describe("convert polygons to polylines along shared edges")
     .flag('no_arg')
     .option("where", whereOpt2)
+    // .option("each", eachOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -21339,6 +21382,7 @@ internal.getOptionParser = function() {
       type: "strings"
     })
     .option("where", whereOpt2)
+    .option("each", eachOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
