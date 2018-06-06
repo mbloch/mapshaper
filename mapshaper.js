@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.80';
+var VERSION = '0.4.81';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1480,14 +1480,14 @@ utils.parsePercent = function(o) {
 var Buffer = require('buffer').Buffer; // works with browserify
 
 utils.createBuffer = function(arg, arg2) {
-  if (!Buffer.from) {
-    return new Buffer(arg);
-  }
   if (utils.isInteger(arg)) {
-    return Buffer.allocUnsafe(arg);
+    return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
+  } else {
+    // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
+    return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
   }
-  return Buffer.from(arg, arg2);
 };
+
 
 
 
@@ -8193,6 +8193,54 @@ internal.compileValueExpression = function(exp, lyr, arcs, opts) {
   return internal.compileFeatureExpression(exp, lyr, arcs, opts);
 };
 
+internal.compileFeaturePairWhereExpression = function(exp, lyr, arcs, opts) {
+  var ctx = internal.getExpressionContext(lyr);
+  var A = getProxyFactory(lyr, arcs);
+  var B = getProxyFactory(lyr, arcs);
+  var functionBody = "with(env){return " + exp + "}";
+  var func;
+
+  try {
+    func = new Function("env", functionBody);
+  } catch(e) {
+    console.error(e);
+    stop(e.name, "in expression [" + exp + "]");
+  }
+
+  function getProxyFactory(lyr, arcs) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    var getFeatureById = internal.initFeatureProxy(lyr, arcs);
+    function Proxy(id) {}
+
+    return function(id) {
+      var proxy;
+      if (id == -1) return null;
+      Proxy.prototype = records[id] || {};
+      proxy = new Proxy();
+      proxy.$ = getFeatureById(id);
+      return proxy;
+    };
+  }
+
+  // idA - id of a record
+  // idB - id of a record, or -1
+  return function(idA, idB) {
+    var val;
+    ctx.A = ctx.a = A(idA);
+    ctx.B = ctx.b = B(idB);
+    try {
+      val = func.call(ctx, ctx);
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val !== true && val !== false) {
+      stop("where expression must return true or false");
+    }
+    return val;
+  };
+};
+
+
 internal.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
   var opts = utils.extend({}, opts_),
       exp = rawExp || '',
@@ -10587,7 +10635,8 @@ internal.convertClipBounds = function(bb) {
 
 
 
-internal.getArcClassifier = function(shapes, arcs) {
+// @filter  optional filter function; signature: function(idA, idB or -1):bool
+internal.getArcClassifier = function(shapes, arcs, filter) {
   var n = arcs.size(),
       a = new Int32Array(n),
       b = new Int32Array(n);
@@ -10611,14 +10660,16 @@ internal.getArcClassifier = function(shapes, arcs) {
 
   function classify(arcId, getKey) {
     var i = absArcId(arcId);
-    var key = null;
-    if (a[i] > -1) {
-      key = getKey(a[i], b[i]);
-      if (key) {
-        a[i] = -1;
-        b[i] = -1;
-      }
-    }
+    var shpA = a[i];
+    var shpB = b[i];
+    var key;
+    if (shpA == -1) return null;
+    key = getKey(shpA, shpB);
+    if (!key) return null;
+    a[i] = -1;
+    b[i] = -1;
+    // use optional filter to exclude some arcs
+    if (filter && !filter(shpA, shpB)) return null;
     return key;
   }
 
@@ -16826,21 +16877,24 @@ internal.countInteriorVertices = function(arcs) {
 
 
 api.innerlines = function(lyr, arcs, opts) {
+  opts = opts || {};
   internal.requirePolygonLayer(lyr);
-  var classifier = internal.getArcClassifier(lyr.shapes, arcs);
+  var filter = opts.where ? internal.compileFeaturePairWhereExpression(opts.where, lyr, arcs) : null;
+  var classifier = internal.getArcClassifier(lyr.shapes, arcs, filter);
   var lines = internal.extractInnerLines(lyr.shapes, classifier);
   var outputLyr = internal.createLineLayer(lines, null);
 
   if (lines.length === 0) {
     message("No shared boundaries were found");
   }
-  outputLyr.name = opts && opts.no_replace ? null : lyr.name;
+  outputLyr.name = opts.no_replace ? null : lyr.name;
   return outputLyr;
 };
 
 api.lines = function(lyr, arcs, opts) {
   opts = opts || {};
-  var classifier = internal.getArcClassifier(lyr.shapes, arcs),
+  var filter = opts.where ? internal.compileFeaturePairWhereExpression(opts.where, lyr, arcs) : null,
+      classifier = internal.getArcClassifier(lyr.shapes, arcs, filter),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
       rankId = 0,
       shapes = [],
@@ -20831,6 +20885,9 @@ internal.getOptionParser = function() {
       },
       whereOpt = {
         describe: "use a JS expression to select a subset of features"
+      },
+      whereOpt2 = {
+        describe: "use a JS expression to filter lines (using A and B)"
       };
 
   var parser = new CommandParser();
@@ -21216,6 +21273,7 @@ internal.getOptionParser = function() {
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
     .flag('no_arg')
+    .option("where", whereOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -21280,6 +21338,7 @@ internal.getOptionParser = function() {
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "strings"
     })
+    .option("where", whereOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
