@@ -3,7 +3,7 @@
 api.innerlines = function(lyr, arcs, opts) {
   opts = opts || {};
   internal.requirePolygonLayer(lyr);
-  var filter = opts.where ? internal.compileFeaturePairWhereExpression(opts.where, lyr, arcs) : null;
+  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null;
   var classifier = internal.getArcClassifier(lyr.shapes, arcs, filter);
   var lines = internal.extractInnerLines(lyr.shapes, classifier);
   var outputLyr = internal.createLineLayer(lines, null);
@@ -17,7 +17,8 @@ api.innerlines = function(lyr, arcs, opts) {
 
 api.lines = function(lyr, arcs, opts) {
   opts = opts || {};
-  var filter = opts.where ? internal.compileFeaturePairWhereExpression(opts.where, lyr, arcs) : null,
+  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
+      decorateRecord = opts.each ? internal.getLineRecordDecorator(opts.each, lyr, arcs) : null,
       classifier = internal.getArcClassifier(lyr.shapes, arcs, filter),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
       rankId = 0,
@@ -56,12 +57,32 @@ api.lines = function(lyr, arcs, opts) {
 
   function addLines(lines, typeName) {
     var attr = lines.map(function(shp, i) {
-      return {RANK: rankId, TYPE: typeName};
+      var rec = {RANK: rankId, TYPE: typeName};
+      if (decorateRecord) decorateRecord(rec, shp);
+      return rec;
     });
     shapes = utils.merge(lines, shapes);
     records = utils.merge(attr, records);
     rankId++;
   }
+};
+
+// kludgy way to implement each= option of -lines command
+internal.getLineRecordDecorator = function(exp, lyr, arcs) {
+  // repurpose arc classifier function to convert arc ids to shape ids of original polygons
+  var procArcId = internal.getArcClassifier(lyr.shapes, arcs)(procShapeIds);
+  var compiled = internal.compileFeaturePairExpression(exp, lyr, arcs);
+  var tmp;
+
+  function procShapeIds(shpA, shpB) {
+    compiled(shpA, shpB, tmp);
+  }
+
+  return function(rec, shp) {
+    tmp = rec;
+    procArcId(shp[0][0]);
+    return rec;
+  };
 };
 
 internal.createLineLayer = function(lines, records) {

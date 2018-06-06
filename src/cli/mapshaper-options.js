@@ -63,6 +63,9 @@ internal.getOptionParser = function() {
       },
       whereOpt2 = {
         describe: "use a JS expression to filter lines (using A and B)"
+      },
+      eachOpt2 = {
+        describe: "apply a JS expression to each line (using A and B)"
       };
 
   var parser = new CommandParser();
@@ -449,6 +452,7 @@ internal.getOptionParser = function() {
     .describe("convert polygons to polylines along shared edges")
     .flag('no_arg')
     .option("where", whereOpt2)
+    // .option("each", eachOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -514,6 +518,7 @@ internal.getOptionParser = function() {
       type: "strings"
     })
     .option("where", whereOpt2)
+    .option("each", eachOpt2)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

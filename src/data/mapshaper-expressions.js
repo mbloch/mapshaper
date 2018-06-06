@@ -7,19 +7,35 @@ internal.compileValueExpression = function(exp, lyr, arcs, opts) {
   return internal.compileFeatureExpression(exp, lyr, arcs, opts);
 };
 
-internal.compileFeaturePairWhereExpression = function(exp, lyr, arcs, opts) {
+
+internal.compileFeaturePairFilterExpression = function(exp, lyr, arcs) {
+  var func = internal.compileFeaturePairExpression(exp, lyr, arcs);
+  return function(idA, idB) {
+    var val = func(idA, idB);
+    if (val !== true && val !== false) {
+      stop("where expression must return true or false");
+    }
+    return val;
+  };
+};
+
+internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
   var ctx = internal.getExpressionContext(lyr);
   var A = getProxyFactory(lyr, arcs);
   var B = getProxyFactory(lyr, arcs);
-  var functionBody = "with(env){return " + exp + "}";
+  var vars = internal.getAssignedVars(exp);
+  var functionBody = "with(env){with(record){return " + exp + "}}";
   var func;
 
   try {
-    func = new Function("env", functionBody);
+    func = new Function("record,env", functionBody);
   } catch(e) {
     console.error(e);
     stop(e.name, "in expression [" + exp + "]");
   }
+
+  // protect global object from assigned values
+  internal.nullifyUnsetProperties(vars, ctx);
 
   function getProxyFactory(lyr, arcs) {
     var records = lyr.data ? lyr.data.getRecords() : [];
@@ -38,17 +54,19 @@ internal.compileFeaturePairWhereExpression = function(exp, lyr, arcs, opts) {
 
   // idA - id of a record
   // idB - id of a record, or -1
-  return function(idA, idB) {
+  // rec - optional data record
+  return function(idA, idB, rec) {
     var val;
-    ctx.A = ctx.a = A(idA);
-    ctx.B = ctx.b = B(idB);
+    ctx.A = A(idA);
+    ctx.B = B(idB);
+    if (rec) {
+      // initialize new fields to null so assignments work
+      internal.nullifyUnsetProperties(vars, rec);
+    }
     try {
-      val = func.call(ctx, ctx);
+      val = func.call(ctx, rec || {}, ctx);
     } catch(e) {
       stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    if (val !== true && val !== false) {
-      stop("where expression must return true or false");
     }
     return val;
   };
@@ -164,7 +182,7 @@ internal.getExpressionContext = function(lyr, mixins) {
       if (key in env) message('Warning: "' + key + '" has multiple definitions');
       env[key] = mixins[key];
     });
-    utils.extend(env, mixins);
+    // utils.extend(env, mixins);
   }
   // make context properties non-writable, so they can't be replaced by an expression
   return Object.keys(env).reduce(function(memo, key) {

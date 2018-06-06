@@ -1,3 +1,6 @@
+v0.4.82
+* Added -lines each= option, for applying a JS expression to each output line feature. The expression can access data about the original polygon features, just like the where= option.
+
 v0.4.81
 * Added -lines where= and -innerlines where= options, for filtering lines using properties of adjacent polygons. Polygons are represented as A and B objects in the expression. B is null for "outer" lines.
 

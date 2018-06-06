@@ -102,6 +102,68 @@ describe('mapshaper-innerlines.js', function () {
       [[2, 1], [1, 1], [1, 2]],
       [[3, 2], [3, 1], [2, 1]]]);
 
+  describe('-lines each= option', function () {
+    it('can be used to create new fields', function (done) {
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {NAME: 'a'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[1, 0], [0, 0], [0, 1], [1, 1], [1, 0]]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {NAME: 'b'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[1, 0], [1, 1], [2, 1], [2, 0], [1, 0]]]
+          }
+        }]
+      };
+      var expect = [{RANK: 1, TYPE: 'inner', NAME: 'ab'},
+          {RANK: 0, TYPE: 'outer', NAME: 'a'},
+          {RANK: 0, TYPE: 'outer', NAME: 'b'}]
+      var cmd = '-i in.json -lines each="NAME = B ? A.NAME + B.NAME : A.NAME" -o out.json format=json';
+      api.applyCommands(cmd, {'in.json': input}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.deepEqual(json, expect);
+        done();
+      });
+    })
+
+    it('can use RANK and TYPE variables', function (done) {
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {NAME: 'a'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[1, 0], [0, 0], [0, 1], [1, 1], [1, 0]]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {NAME: 'b'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[1, 0], [1, 1], [2, 1], [2, 0], [1, 0]]]
+          }
+        }]
+      };
+      var expect = [{RANK: 1, TYPE: 'inner', NAME: 'inner1'},
+          {RANK: 0, TYPE: 'outer', NAME: 'outer0'},
+          {RANK: 0, TYPE: 'outer', NAME: 'outer0'}]
+      var cmd = '-i in.json -lines each="NAME = TYPE + RANK" -o out.json format=json';
+      api.applyCommands(cmd, {'in.json': input}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.deepEqual(json, expect);
+        done();
+      });
+    })
+  })
+
   describe('-lines where= option', function () {
     it('can be used to extract only inner lines', function (done) {
       var cmd = '-i in.json -lines where="!!B" -o out.json';
