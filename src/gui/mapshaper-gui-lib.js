@@ -7,6 +7,10 @@ mapshaper-gui-modes
 var gui = api.gui = new ModeSwitcher();
 api.enableLogging();
 
+gui.consoleIsOpen = function() {
+  return !El('body').hasClass('console-open');
+};
+
 gui.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&
       typeof Blob != 'undefined' && typeof File != 'undefined';

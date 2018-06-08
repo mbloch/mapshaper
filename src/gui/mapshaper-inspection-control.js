@@ -68,18 +68,31 @@ function InspectionControl(model, hit) {
     // esc key closes (unless in an editing mode)
     if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
       turnOff();
+      return;
+    }
 
-    // arrow keys advance pinned feature unless user is editing text.
-    } else if ((kc == 37 || kc == 39) && _pinned && !gui.getInputElement()) {
-      n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
-      if (n > 1) {
-        if (kc == 37) {
-          id = (_highId + n - 1) % n;
-        } else {
-          id = (_highId + 1) % n;
+    if (_pinned && !gui.getInputElement()) {
+      // an element is selected and user is not editing text
+
+      if (kc == 37 || kc == 39) {
+        // arrow keys advance pinned feature
+        n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
+        if (n > 1) {
+          if (kc == 37) {
+            id = (_highId + n - 1) % n;
+          } else {
+            id = (_highId + 1) % n;
+          }
+          inspect(id, true);
+          e.stopPropagation();
         }
-        inspect(id, true);
-        e.stopPropagation();
+      } else if (kc == 8) {
+        // delete key
+        // to help protect against inadvertent deletion, don't delete
+        // when console is open or a popup menu is open
+        if (!gui.getMode() && !gui.consoleIsOpen()) {
+          deletePinnedFeature();
+        }
       }
     }
   }, !!'capture'); // preempt the layer control's arrow key handler
@@ -156,6 +169,15 @@ function InspectionControl(model, hit) {
     _selectionIds = null;
     inspect(-1); // clear the map
     _inspecting = false;
+  }
+
+  function deletePinnedFeature() {
+    var lyr = model.getActiveLayer().layer;
+    if (!_pinned || _highId == -1) return;
+    lyr.shapes.splice(_highId, 1);
+    if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
+    inspect(-1);
+    model.updated({flags: 'filter'});
   }
 
   return _self;
