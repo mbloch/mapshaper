@@ -171,10 +171,11 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function isClickEvent(up, down) {
+    var elapsed = Math.abs(down.timeStamp - up.timeStamp);
     var dx = up.screenX - down.screenX;
     var dy = up.screenY - down.screenY;
     var dist = Math.sqrt(dx * dx + dy * dy);
-    return dist <= 4;
+    return dist <= 4 && elapsed < 300;
   }
 
   function stopEditing() {
