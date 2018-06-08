@@ -7,6 +7,7 @@ function SvgDisplayLayer(ext, mouse) {
   var dragging = false;
   var textNode;
   var activeLayer;
+  var activeRecord;
 
   initDragging();
 
@@ -70,27 +71,24 @@ function SvgDisplayLayer(ext, mouse) {
     svg.addEventListener('mouseup', function(e) {
       var textTarget = getTextTarget(e);
       var isClick = isClickEvent(e, downEvt);
+      if (isClick && textTarget && textTarget == textNode &&
+          activeRecord && isMultilineLabel(textNode)) {
+        toggleTextAlign(textNode, activeRecord);
+      }
       if (dragging) {
         stopDragging();
-      } else if (isClick && textTarget) {
+       } else if (isClick && textTarget) {
         editTextNode(textTarget);
       }
     });
 
+    // block dbl-click navigation when editing
+    mouse.on('dblclick', function(e) {
+      if (editing) e.stopPropagation();
+    }, null, eventPriority);
+
     mouse.on('dragstart', function(e) {
-      var table, i;
       onDrag(e);
-      if (!textNode) return; // error
-      table = activeLayer.data;
-      i = +textNode.getAttribute('data-id');
-      activeRecord = table.getRecords()[i];
-      // add dx and dy properties, if not available
-      if (!table.fieldExists('dx')) {
-        table.addField('dx', 0);
-      }
-      if (!table.fieldExists('dy')) {
-        table.addField('dy', 0);
-      }
     }, null, eventPriority);
 
     mouse.on('drag', function(e) {
@@ -98,14 +96,54 @@ function SvgDisplayLayer(ext, mouse) {
       if (!dragging || !activeRecord) return;
       applyDelta(activeRecord, 'dx', e.dx);
       applyDelta(activeRecord, 'dy', e.dy);
+      if (!isMultilineLabel(textNode)) {
+        // update anchor position of single-line labels based on label position
+        // relative to anchor point, for better placement when eventual display font is
+        // different from mapshaper's font.
+        updateTextAnchor(textNode, activeRecord);
+      }
       setMultilineAttribute(textNode, 'dx', activeRecord.dx);
       textNode.setAttribute('dy', activeRecord.dy);
+
     }, null, eventPriority);
 
     mouse.on('dragend', function(e) {
       onDrag(e);
       stopDragging();
     }, null, eventPriority);
+
+    function toggleTextAlign(textNode, rec) {
+      var curr = rec['text-anchor'] || 'middle';
+      var targ = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+      updateTextAnchor(textNode, rec, targ);
+      setMultilineAttribute(textNode, 'dx', rec.dx);
+    }
+
+    // @value: optional position to set; if missing, auto-set
+    function updateTextAnchor(textNode, rec, value) {
+      var rect = textNode.getBoundingClientRect();
+      var width = rect.width;
+      var anchorX = +textNode.getAttribute('x');
+      var labelCenterX = rect.left - svg.getBoundingClientRect().left + width / 2;
+      var xpct = (labelCenterX - anchorX) / width; // offset of label center from anchor center
+      var curr = rec['text-anchor'] || 'middle';
+      var xshift = 0;
+      var targ = value || xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
+      if (curr == 'middle' && targ == 'end' || curr == 'start' && targ == 'middle') {
+        xshift = width / 2;
+      } else if (curr == 'middle' && targ == 'start' || curr == 'end' && targ == 'middle') {
+        xshift = -width / 2;
+      } else if (curr == 'start' && targ == 'end') {
+        xshift = width;
+      } else if (curr == 'end' && targ == 'start') {
+        xshift = -width;
+      }
+      if (xshift) {
+        rec['text-anchor'] = targ;
+        applyDelta(rec, 'dx', xshift);
+        textNode.setAttribute('text-anchor', targ);
+      }
+    }
 
     // handle either numeric strings or numbers in fields
     function applyDelta(rec, key, delta) {
@@ -160,11 +198,25 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function editTextNode(el) {
+    var table, i;
     if (textNode) deselectText(textNode);
+    textNode = el;
     editing = true;
     gui.dispatchEvent('label_editor_on'); // signal inspector to close
-    textNode = el;
     selectText(el);
+    table = activeLayer.data;
+    i = +textNode.getAttribute('data-id');
+    activeRecord = table.getRecords()[i];
+    // add dx and dy properties, if not available
+    if (!table.fieldExists('dx')) {
+      table.addField('dx', 0);
+    }
+    if (!table.fieldExists('dy')) {
+      table.addField('dy', 0);
+    }
+    if (!table.fieldExists('text-anchor')) {
+      table.addField('text-anchor', '');
+    }
     // TODO: show editing panel
   }
 
@@ -174,6 +226,10 @@ function SvgDisplayLayer(ext, mouse) {
       el = el.parentNode;
     }
     return el.tagName == 'text' ? el : null;
+  }
+
+  function isMultilineLabel(textNode) {
+    return textNode.childNodes.length > 1;
   }
 
   // Set an attribute on a <text> node and any child <tspan> elements
