@@ -66,9 +66,11 @@ SVG.stringEscape = (function() {
 }());
 
 SVG.stringifyProperties = function(o) {
-  return Object.keys(o).reduce(function(memo, key, i) {
+  return Object.keys(o).reduce(function(memo, key) {
     var val = o[key],
-        strval = utils.isString(val) ? val : JSON.stringify(val);
+        strval;
+    if (!val && val !== 0) return memo; // omit undefined / empty / null values
+    strval = utils.isString(val) ? val : JSON.stringify(val);
     return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
   }, '');
 };

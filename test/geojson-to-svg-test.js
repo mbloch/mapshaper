@@ -343,6 +343,14 @@ describe('geojson-to-svg.js', function () {
       assert.equal(SVG.stringify(obj), '<path d="M 0 0 1 1"/>')
     })
 
+    it('null and undefined properties are omitted', function() {
+      var obj = {tag: 'circle', properties: {
+        cx: 144, cy: 380, r: 5, stroke: undefined, fill: undefined, 'stroke-width': null
+      }};
+      var expect = '<circle cx="144" cy="380" r="5"/>';
+      assert.equal(SVG.stringify(obj), expect);
+    })
+
     it('group inside a group', function() {
       var obj = {
         tag: 'g',
