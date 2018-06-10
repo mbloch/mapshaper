@@ -7,6 +7,7 @@ mapshaper-hit-control
 mapshaper-inspection-control
 mapshaper-map-style
 mapshaper-svg-display
+mapshaper-layer-stack
 */
 
 // Test if map should be re-framed to show updated layer
@@ -38,12 +39,9 @@ gui.getIntersectionPct = function(bb1, bb2) {
   return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
 };
 
-
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
-      _layers = El('#map-layers'),
-      _referenceCanv, _activeCanv, _overlayCanv, _annotationCanv,
-      _svg,
+      _stack = new LayerStack(),
       _annotationLyr, _annotationStyle,
       _referenceLyr, _referenceStyle,
       _activeLyr, _activeStyle, _overlayStyle,
@@ -137,7 +135,7 @@ function MshpMap(model) {
       _annotationStyle = null;
       _annotationLyr = null;
     }
-    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
+    _stack.drawAnnotationLayer(_annotationLyr, _annotationStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
@@ -148,8 +146,9 @@ function MshpMap(model) {
   };
 
   function initMap() {
-    var position = new ElementPosition(_layers);
-    var mouse = new MouseArea(_layers.node(), position);
+    // TODO: simplify these tangled dependencies
+    var position = new ElementPosition(_stack);
+    var mouse = new MouseArea(_stack.node(), position);
     // var mouse = new MouseArea(_root.node(), position);
     var ext = new MapExtent(position);
     var nav = new MapNav(_root, ext, mouse);
@@ -158,23 +157,19 @@ function MshpMap(model) {
     inspector.on('change', function(e) {
       var lyr = _activeLyr.getDisplayLayer().layer;
       _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
-      drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle);
+      _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
     });
     inspector.on('data_change', function(e) {
       // refresh the display if a style variable has been changed
       // TODO: consider only updating the affected symbol (might make sense for labels)
       if (internal.isSupportedSvgProperty(e.field)) {
-        drawActiveLayer();
+        _stack.drawActiveLayer(_activeLyr, _activeStyle);
       }
     });
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
-    _referenceCanv = new DisplayCanvas().appendTo(_layers); // comparison layer
-    _activeCanv = new DisplayCanvas().appendTo(_layers);    // data layer shapes
-    _overlayCanv = new DisplayCanvas().appendTo(_layers);   // hover and selection shapes
-    _annotationCanv = new DisplayCanvas().appendTo(_layers); // line intersection dots
-    _svg = new SvgDisplayLayer(ext, mouse).appendTo(_layers);  // labels
+    _stack.init(ext, mouse);
     // export objects that are referenced by other functions
     _inspector = inspector;
     _ext = ext;
@@ -225,25 +220,16 @@ function MshpMap(model) {
 
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
-    drawCanvasLayer(_referenceLyr, _referenceCanv, referenceStyle());   // draw reference shapes from second layer
-    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // draw intersection dots
-    drawActiveLayer(onlyNav);
+    // draw reference shapes from second layer
+    _stack.drawReferenceLayer(_referenceLyr, referenceStyle());
+    // draw intersection dots
+    _stack.drawAnnotationLayer(_annotationLyr, _annotationStyle);
+    // draw hover & selection effects
+    _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
+    // draw currently active layer
+    _stack.drawActiveLayer(_activeLyr, _activeStyle, onlyNav);
   }
 
-  function drawActiveLayer(onlyNav) {
-    drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle); // draw hover & selection effects
-    drawCanvasLayer(_activeLyr, _activeCanv, _activeStyle);   // draw active layer (to canvas)
-    _svg.drawLayer(_activeLyr.getLayer(), onlyNav);           // draw labels on active layer (to SVG)
-  }
-
-  function drawCanvasLayer(lyr, canv, style) {
-    if (style) {
-      canv.prep(_ext);
-      lyr.draw(canv, style);
-    } else {
-      canv.hide();
-    }
-  }
 }
 
 utils.inherit(MshpMap, EventDispatcher);
