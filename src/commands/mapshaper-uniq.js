@@ -6,7 +6,8 @@ mapshaper-dataset-utils
 api.uniq = function(lyr, arcs, opts) {
   var n = internal.getFeatureCount(lyr),
       compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
-      index = {},
+      maxCount = opts.max_count || 1,
+      counts = {},
       flags = [],
       verbose = !!opts.verbose,
       records = lyr.data ? lyr.data.getRecords() : null,
@@ -14,11 +15,12 @@ api.uniq = function(lyr, arcs, opts) {
 
   utils.repeat(n, function(i) {
     var val = compiled(i);
-    flags[i] = val in index;
-    if (verbose && index[val]) {
+    var count = val in counts ? counts[val] + 1 : 1;
+    flags[i] = count > maxCount;
+    counts[val] = count;
+    if (verbose && !flags[i]) {
       message(utils.format('Removing feature %i key: [%s]', i, val));
     }
-    index[val] = true;
   });
 
   if (lyr.shapes) {

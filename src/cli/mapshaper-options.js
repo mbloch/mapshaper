@@ -875,6 +875,10 @@ internal.getOptionParser = function() {
       DEFAULT: true,
       describe: "JS expression to obtain the id of a feature"
     })
+    .option("max-count", {
+      type: "number",
+      describe: "max features with the same id (default is 1)"
+    })
     .option("verbose", {
       describe: "print each removed feature",
       type: "flag"
