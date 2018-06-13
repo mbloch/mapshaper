@@ -37,6 +37,17 @@ describe('mapshaper-include.js', function () {
       })
     })
 
+    it('can be used as an accumulator', function (done) {
+      var o = "{counts: {}}";
+      var input = [{type: 'foo'}, {type: 'foo'}, {type: 'foo'}, {type: 'bar'}];
+      var cmd = '-i in.json -include in.js -each "counts[type] = type in counts ? counts[type] + 1 : 1" -each "count = counts[type]" -o out.json';
+      api.applyCommands(cmd, {'in.json': input, 'in.js': o}, function(err, out) {
+        assert.deepEqual(JSON.parse(out['out.json']), [{type: 'foo', count: 3},
+              {type: 'foo', count: 3}, {type: 'foo', count: 3}, {type: 'bar', count: 1}]);
+        done();
+      })
+    })
+
     it('can come first in command string; values cover existing fields', function(done) {
       var o = {a: 'b'};
       var input = [{}];

@@ -55,9 +55,7 @@ function LayerControl(model, map) {
     model.forEachLayer(function(lyr, dataset) {
       if (isPinnable(lyr)) pinnableCount++;
     });
-    if (pinnableCount === 0 && map.getReferenceLayer()) {
-      clearPin(); // a layer has been deleted...
-    }
+
     model.forEachLayer(function(lyr, dataset) {
       var pinnable = pinnableCount > 1 && isPinnable(lyr);
       var html, element;
@@ -86,7 +84,7 @@ function LayerControl(model, map) {
     var entry, html;
 
     if (layerIsSelected(lyr)) classes += ' active';
-    if (layerIsPinned(lyr)) classes += ' pinned';
+    if (map.isReferenceLayer(lyr)) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
@@ -117,8 +115,9 @@ function LayerControl(model, map) {
     entry.findChild('img.close-btn').on('mouseup', function(e) {
       var target = findLayerById(id);
       e.stopPropagation();
-      if (layerIsPinned(target.layer)) {
-        clearPin();
+      if (map.isReferenceLayer(target.layer)) {
+        // TODO: check for double map refresh after model.deleteLayer() below
+        map.removeReferenceLayer(target.layer);
       }
       model.deleteLayer(target.layer, target.dataset);
     });
@@ -128,10 +127,11 @@ function LayerControl(model, map) {
       entry.findChild('img.pinned').on('mouseup', function(e) {
         var target = findLayerById(id);
         e.stopPropagation();
-        if (layerIsPinned(target.layer)) {
-          clearPin();
+        if (map.isReferenceLayer(target.layer)) {
+          map.removeReferenceLayer(target.layer);
+          entry.removeClass('pinned');
         } else {
-          setPin(target.layer, target.dataset);
+          map.addReferenceLayer(target.layer, target.dataset);
           entry.addClass('pinned');
         }
       });
@@ -204,24 +204,6 @@ function LayerControl(model, map) {
 
   function getDisplayName(name) {
     return name || '[unnamed]';
-  }
-
-  function setPin(lyr, dataset) {
-    if (map.getReferenceLayer() != lyr) {
-      clearPin();
-      map.setReferenceLayer(lyr, dataset);
-      el.addClass('visible-pin');
-    }
-  }
-
-  function clearPin() {
-    if (map.getReferenceLayer()) {
-      Elements('.layer-item.pinned').forEach(function(el) {
-        el.removeClass('pinned');
-      });
-      el.removeClass('visible-pin');
-      map.setReferenceLayer(null);
-    }
   }
 
   function isPinnable(lyr) {

@@ -711,7 +711,7 @@ img.close-btn {
 	display: none;
 }
 
-.visible-pin .layer-item.active img.unpinned,
+.layer-item.active img.unpinned,
 img.close-btn:hover,
 .layer-item.pinned img.pinned {
 	opacity: 1
@@ -920,6 +920,8 @@ img.close-btn:hover,
 /* --- Map ---------------------- */
 
 #map-layers {
+	z-index: 0;
+	position: relative;
 	height: 100%;
 }
 

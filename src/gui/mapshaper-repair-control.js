@@ -36,7 +36,7 @@ function RepairControl(model, map) {
 
   function hide() {
     el.hide();
-    map.setHighlightLayer(null);
+    map.setIntersectionLayer(null);
   }
 
   function enabledForDataset(dataset) {
@@ -95,11 +95,11 @@ function RepairControl(model, map) {
     _currArcs = arcs;
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
-      map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
+      map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
       readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
       readout.findChild('.close-btn').on('click', dismiss);
     } else {
-      map.setHighlightLayer(null);
+      map.setIntersectionLayer(null);
       readout.html('');
     }
   }

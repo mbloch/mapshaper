@@ -42,28 +42,20 @@ gui.getIntersectionPct = function(bb1, bb2) {
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _stack = new LayerStack(),
-      _annotationLyr, _annotationStyle,
-      _referenceLyr, _referenceStyle,
+      _referenceLayers = [],
+      _intersectionLyr, _intersectionStyle,
       _activeLyr, _activeStyle, _overlayStyle,
+      _needReset = false,
       _ext, _inspector;
 
   model.on('select', function(e) {
-    _annotationStyle = null;
+    _intersectionStyle = null;
     _overlayStyle = null;
-
-    // if reference layer is newly selected, and (old) active layer is usable,
-    // make active layer the reference layer.
-    // this must run before 'update' event, so layer menu is updated correctly
-    if (_referenceLyr && _referenceLyr.getLayer() == e.layer && _activeLyr &&
-        internal.layerHasGeometry(_activeLyr.getLayer())) {
-      updateReferenceLayer(_activeLyr);
-    }
   });
 
   // Refresh map display in response to data changes, layer selection, etc.
   model.on('update', function(e) {
-    var prevLyr = _activeLyr || null,
-        needReset = false;
+    var prevLyr = _activeLyr || null;
 
     if (!prevLyr) {
       initMap(); // wait until first layer is added to init map extent, resize events, etc.
@@ -94,17 +86,17 @@ function MshpMap(model) {
     _inspector.updateLayer(_activeLyr, _activeStyle);
 
     if (!prevLyr) {
-      needReset = true;
+      _needReset = true;
     } else if (isTableLayer(prevLyr) || isTableLayer(_activeLyr)) {
-      needReset = true;
+      _needReset = true;
     } else {
-      needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
+      _needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
     }
 
     // set 'home' extent to match bounds of active group
     _ext.setBounds(_activeLyr.getBounds());
 
-    if (needReset) {
+    if (_needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
     } else {
@@ -113,29 +105,16 @@ function MshpMap(model) {
     }
   });
 
-  this.getReferenceLayer = function() {
-    return _referenceLyr ? _referenceLyr.getLayer() : null;
-  };
-
-  this.setReferenceLayer = function(lyr, dataset) {
-    if (lyr && internal.layerHasGeometry(lyr)) {
-      updateReferenceLayer(new DisplayLayer(lyr, dataset, _ext));
-    } else if (_referenceLyr) {
-      updateReferenceLayer(null);
-    }
-    drawLayers(); // draw all layers (reference layer can change how active layer is drawn)
-  };
-
   // Currently used to show dots at line intersections
-  this.setHighlightLayer = function(lyr, dataset) {
+  this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr) {
-      _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
-      _annotationStyle = MapStyle.getHighlightStyle(lyr);
+      _intersectionLyr = new DisplayLayer(lyr, dataset, _ext);
+      _intersectionStyle = MapStyle.getIntersectionStyle(lyr);
     } else {
-      _annotationStyle = null;
-      _annotationLyr = null;
+      _intersectionStyle = null;
+      _intersectionLyr = null;
     }
-    _stack.drawAnnotationLayer(_annotationLyr, _annotationStyle); // also hides
+    _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
@@ -149,21 +128,23 @@ function MshpMap(model) {
     // TODO: simplify these tangled dependencies
     var position = new ElementPosition(_stack);
     var mouse = new MouseArea(_stack.node(), position);
-    // var mouse = new MouseArea(_root.node(), position);
     var ext = new MapExtent(position);
     var nav = new MapNav(_root, ext, mouse);
     var inspector = new InspectionControl(model, new HitControl(ext, mouse));
-    ext.on('change', function() {drawLayers(true);});
+
+    ext.on('change', function() {
+      drawLayers(!_needReset);
+      _needReset = false;
+    });
     inspector.on('change', function(e) {
       var lyr = _activeLyr.getDisplayLayer().layer;
       _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
       _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
     });
     inspector.on('data_change', function(e) {
-      // refresh the display if a style variable has been changed
-      // TODO: consider only updating the affected symbol (might make sense for labels)
+      // refresh the display if a style variable has been changed interactively
       if (internal.isSupportedSvgProperty(e.field)) {
-        _stack.drawActiveLayer(_activeLyr, _activeStyle);
+        drawLayers();
       }
     });
     gui.on('resize', function() {
@@ -177,11 +158,6 @@ function MshpMap(model) {
 
   function isTableLayer(displayLyr) {
     return !displayLyr.getLayer().geometry_type; // kludge
-  }
-
-  function updateReferenceLayer(lyr) {
-    _referenceLyr = lyr;
-    _referenceStyle = lyr ? MapStyle.getReferenceStyle(lyr.getLayer()) : null;
   }
 
   function referenceLayerVisible() {
@@ -203,33 +179,86 @@ function MshpMap(model) {
       flags.slice || flags.affine || false;
   }
 
-  function referenceStyle() {
-    return referenceLayerVisible() ? _referenceStyle : null;
+  // Remove layers that have been deleted from the catalog
+  function updateReferenceLayers() {
+    _referenceLayers = _referenceLayers.filter(function(o) {
+      return !!model.findLayer(o.getLayer());
+    });
   }
 
-  function activeStyle() {
-    var style = _activeStyle;
-    if (referenceLayerVisible() && _activeStyle.type != 'styled') {
-      style = utils.defaults({
-        // kludge to hide ghosted layers
-        strokeColors: [null, _activeStyle.strokeColors[1]]
-      }, _activeStyle);
+  this.isReferenceLayer = function(lyr) {
+    return _referenceLayers.filter(function(o) {
+      return o.getLayer() == lyr;
+    }).length > 0;
+  };
+
+  this.removeReferenceLayer = function(lyr) {
+    _referenceLayers = _referenceLayers.filter(function(o) {
+      return o.getLayer() != lyr;
+    });
+    drawLayers(); // TODO: optimize
+  };
+
+  this.addReferenceLayer = function(lyr, dataset) {
+    if (this.isReferenceLayer(lyr)) return;
+    if (lyr && internal.layerHasGeometry(lyr)) {
+      _referenceLayers.push(new DisplayLayer(lyr, dataset, _ext));
+      drawLayers();
     }
-    return style;
+  };
+
+  function getDrawableLayers() {
+    // delete any layers that have been dropped from the catalog
+    updateReferenceLayers();
+    if (isTableLayer(_activeLyr)) {
+      return [_activeLyr]; // no reference layers if active layer is displayed as a table
+    }
+    // concat active and reference layers, excluding dupes
+    return [_activeLyr].concat(_referenceLayers.filter(function(o) {
+      return o.getLayer() != _activeLyr.getLayer() && !isTableLayer(o);
+    }));
+  }
+
+  function updateLayerStyles(layers) {
+    layers.forEach(function(o, i) {
+      var lyr = o.getLayer();
+      var style;
+      if (!lyr.display) lyr.display = {};
+      if (i === 0) {
+        // active style (assume first layer is the active layer)
+        style = _activeStyle;
+        if (style.type != 'styled' && layers.length > 0 && _activeStyle.strokeColors) {
+          // kludge to hide ghosted layers when reference layers are present
+          style = utils.defaults({
+            strokeColors: [null, _activeStyle.strokeColors[1]]
+          }, style);
+        }
+        // add data for the renderer in layer-stack to use
+        lyr.display.active = true;
+        lyr.display.canvas = true;
+        lyr.display.svg = internal.layerHasLabels(lyr);
+      } else {
+        // reference style
+        lyr.display.active = false;
+        lyr.display.canvas = true;
+        lyr.display.svg = false; // TODO: display labels on reference layers too
+        style = MapStyle.getReferenceStyle(lyr);
+      }
+      lyr.display.style = style;
+    });
   }
 
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
-    // draw reference shapes from second layer
-    _stack.drawReferenceLayer(_referenceLyr, referenceStyle());
+    // draw active and reference layers
+    var layers = getDrawableLayers();
+    if (!onlyNav) updateLayerStyles(layers);
+    _stack.drawLayers(layers, onlyNav);
     // draw intersection dots
-    _stack.drawAnnotationLayer(_annotationLyr, _annotationStyle);
+    _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle);
     // draw hover & selection effects
     _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
-    // draw currently active layer
-    _stack.drawActiveLayer(_activeLyr, _activeStyle, onlyNav);
   }
-
 }
 
 utils.inherit(MshpMap, EventDispatcher);

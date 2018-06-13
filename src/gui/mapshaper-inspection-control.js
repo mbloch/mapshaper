@@ -71,6 +71,7 @@ function InspectionControl(model, hit) {
       return;
     }
 
+
     if (_pinned && !gui.getInputElement()) {
       // an element is selected and user is not editing text
 

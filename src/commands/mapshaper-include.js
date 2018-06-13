@@ -11,7 +11,7 @@ internal.include = function(opts) {
   content = cli.readFile(opts.file, 'utf8', opts.input);
   if (typeof content == 'string') {
     if (!/^\s*\{[\s\S]*\}\s*$/.test(content)) {
-      stop("Expected a JavasScript object containing key:value pairs");
+      stop("Expected a JavaScript object containing key:value pairs");
     }
     try {
       // Try to isolate the imported JS code from the program scope and global environment

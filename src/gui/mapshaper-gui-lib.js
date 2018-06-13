@@ -8,7 +8,7 @@ var gui = api.gui = new ModeSwitcher();
 api.enableLogging();
 
 gui.consoleIsOpen = function() {
-  return !El('body').hasClass('console-open');
+  return El('body').hasClass('console-open');
 };
 
 gui.browserIsSupported = function() {

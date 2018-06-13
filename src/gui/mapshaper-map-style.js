@@ -28,7 +28,7 @@ var MapStyle = (function() {
         dotColor: "#73ba20",
         dotSize: 4
       },
-      highStyle = {
+      intersectionStyle = {
         dotColor: "#F24400",
         dotSize: 4
       },
@@ -86,11 +86,19 @@ var MapStyle = (function() {
       };
 
   return {
-    getHighlightStyle: function(lyr) {
-      return utils.extend({}, highStyle);
+    getIntersectionStyle: function(lyr) {
+      return utils.extend({}, intersectionStyle);
     },
     getReferenceStyle: function(lyr) {
-      return utils.extend({}, referenceStyle);
+      var style;
+      if (internal.layerHasCanvasDisplayStyle(lyr)) {
+        style = internal.getCanvasDisplayStyle(lyr);
+      // } else if (internal.layerHasLabels(lyr)) {
+      //   style = utils.extend({}, outlineStyleForLabels);
+      } else {
+        style = utils.extend({}, referenceStyle);
+      }
+      return style;
     },
     getActiveStyle: function(lyr) {
       var style;
@@ -106,6 +114,8 @@ var MapStyle = (function() {
     getOverlayStyle: getOverlayStyle
   };
 
+  // Returns a display style for the overlay layer. This style displays any
+  // hover or selection affects for the active data layer.
   function getOverlayStyle(lyr, o) {
     var type = lyr.geometry_type;
     var topId = o.id;
@@ -117,7 +127,7 @@ var MapStyle = (function() {
     var overlayStyle = {
       styler: styler
     };
-    // first layer: selected feature(s)
+    // first layer: features that were selected via the -inspect command
     o.selection_ids.forEach(function(i) {
       // skip features in a higher layer
       if (i == topId || o.hover_ids.indexOf(i) > -1) return;
@@ -132,7 +142,7 @@ var MapStyle = (function() {
       ids.push(i);
       styles.push(style);
     });
-    // top layer: highlighted feature
+    // top layer: feature that was selected by clicking in inspection mode ([i])
     if (topId > -1) {
       var isPinned = o.pinned;
       var inSelection = o.selection_ids.indexOf(topId) > -1;
@@ -158,7 +168,6 @@ var MapStyle = (function() {
     overlayStyle.overlay = true;
     return ids.length > 0 ? overlayStyle : null;
   }
-
 }());
 
 // Modify style to use scaled circle instead of dot symbol
