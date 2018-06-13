@@ -1,3 +1,10 @@
+v0.4.83
+* Now you can turn on multiple reference layers from the layers menu in the web UI. Reference layers are styled on the map if they have style attributes.
+* If a feature is pinned via the [i] inspector tool, the delete key will delete it.
+* The text-anchor property of single-line SVG labels is automatically updated on drag, based on its horizontal position in relation to its anchor point. Labels towards the left of the anchor are given text-anchor=end, labels to the right are given text-anchor=start and centered labels are given text-anchor=middle.
+* The text-anchor property of multi-line SVG labels can be toggled by clicking the label after it has been selected.
+* Added -uniq max-count= option to retain multiple features with the same id.
+
 v0.4.82
 * Added -lines each= option, for applying a JS expression to each output line feature. The expression can access data about the original polygon features, just like the where= option.
 

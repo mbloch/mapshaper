@@ -217,14 +217,13 @@ internal.getCanvasDisplayStyle = function(lyr) {
       style[styleIndex[fname]] = val;
     }
 
-    // TODO: make sure canvas rendering matches svg output
-    if (('strokeWidth' in style) && !style.strokeColor) {
-      style.strokeColor = 'transparent';
-    } else if (!('strokeWidth' in style) && style.strokeColor) {
+    if (style.strokeWidth && !style.strokeColor) {
+      style.strokeColor = 'black';
+    }
+    if (!('strokeWidth' in style) && style.strokeColor) {
       style.strokeWidth = 1;
     }
-    if (('radius' in style) && !style.strokeColor && !style.fillColor &&
-      lyr.geometry_type == 'point') {
+    if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
       style.fillColor = 'black';
     }
   };
