@@ -387,6 +387,7 @@ function ImportControl(model, opts) {
         item.basename = name;
         // Assume non-urls are local files loaded via mapshaper-gui
         item.url = '/data/' + name;
+        item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
       }
       return gui.isReadableFileType(item.basename) ? item : null;
     });

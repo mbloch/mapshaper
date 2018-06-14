@@ -23,7 +23,7 @@ function SvgDisplayLayer(ext, mouse) {
     var transform = ext.getTransform();
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     // kludge to identify container when symbols are repositioned
-    var id = 'labels-' + utils.getUniqueName();
+    var id = utils.getUniqueName();
     g.setAttribute('id', id);
     lyr.display.svg_id = id;
     resize(ext);

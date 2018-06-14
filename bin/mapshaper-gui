@@ -66,8 +66,6 @@ function getRandomSessionId() {
 }
 
 function startServer(port) {
-  var savePath = '/save';
-  var dataPath = '/data/';
   var timeout;
 
   http.createServer(function(request, response) {
@@ -87,11 +85,11 @@ function startServer(port) {
       }
       // serve JS file containing manifest of files for mapshaper to load
       serveContent(getManifestJS(dataFiles, opts.s), response, getMimeType(uri));
-    } else if (uri.indexOf(dataPath) === 0) {
+    } else if (uri.indexOf('/data/') === 0) {
       // serve a file from a path relative to this script
       // assumed to be a data file from the cmd line (!)
-      serveFile(decodeURI(uri).replace(dataPath, ''), response);
-    } else if (uri.indexOf(savePath) === 0) {
+      serveFile(getDataFilePath(uri), response);
+    } else if (uri.indexOf('/save') === 0) {
       saveContent(request, response);
     } else {
       // serve a file from the web root
@@ -103,6 +101,11 @@ function startServer(port) {
   }).listen(port, function() {
     opn("http://localhost:" + port);
   });
+}
+
+function getDataFilePath(uri) {
+  // kludge to access one level of parent
+  return decodeURI(uri).replace('/~/', '/../').replace('/data/', '');
 }
 
 function serveError(text, code, response) {
