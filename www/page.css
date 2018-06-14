@@ -696,13 +696,21 @@ img.close-btn {
 	cursor: pointer;
 }
 
-.layer-item img.close-btn {
+
+.layer-item img.pin-btn {
 	top: 7px;
 }
 
-.layer-item img.pin-btn {
-	top: 26px;
+.layer-item img.close-btn {
+	top: 30px;
+	/* bottom: 8px; */
 }
+
+/* hide close button when not hovering */
+.layer-item:not(:hover) img.close-btn {
+	display: none;
+}
+
 
 img.pin-btn {
 	opacity: 0;
