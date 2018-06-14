@@ -11,24 +11,24 @@ function SvgDisplayLayer(ext, mouse) {
 
   initDragging();
 
-  // need to handle several kinds of changes
-  // a) map extent changes (e.g. on pan, zoom or window resize), all else is the same
-  // b) layer changes (new set of symbols)
-  // c) same layer, but symbols have changed (different attributes, etc.)
-  // actions: (a) reposition existing symbols; (b, c) remove all existing symbols, re-render
-  el.drawLayer = function(lyr, repositionOnly) {
-    var hasLabels = internal.layerHasLabels(lyr);
+  el.clear = clear;
+
+  el.reposition = function(lyr) {
     var transform = ext.getTransform();
-    if (!hasLabels) {
-      clear();
-    } else if (activeLayer && repositionOnly) {
-      resize(ext);
-      reposition(lyr, transform);
-    } else {
-      clear();
-      resize(ext);
-      renderLabels(lyr, transform);
+    resize(ext);
+    reposition(lyr, transform);
+  };
+
+  el.drawLayer = function(lyr, isActive) {
+    var transform = ext.getTransform();
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    resize(ext);
+    g.innerHTML = renderLabels(lyr, transform);
+    svg.append(g);
+    if (isActive) {
       activeLayer = lyr;
+    } else {
+      g.style.pointerEvents = 'none';
     }
   };
 
@@ -104,7 +104,6 @@ function SvgDisplayLayer(ext, mouse) {
       }
       setMultilineAttribute(textNode, 'dx', activeRecord.dx);
       textNode.setAttribute('dy', activeRecord.dy);
-
     }, null, eventPriority);
 
     mouse.on('dragend', function(e) {
@@ -278,18 +277,15 @@ function SvgDisplayLayer(ext, mouse) {
     });
     var obj = internal.getEmptyLayerForSVG(lyr, opts);
     obj.children = symbols;
-    var str = internal.svg.stringify(obj);
-    svg.innerHTML = str;
+    return internal.svg.stringify(obj);
   }
 
   function clear() {
-    if (activeLayer) {
-      stopEditing();
-      while (svg.lastChild) {
-        svg.removeChild(svg.lastChild);
-      }
-      activeLayer = null;
+    if (editing) stopEditing();
+    while (svg.childNodes.length > 0) {
+      svg.removeChild(svg.childNodes[0]);
     }
+    activeLayer = null;
   }
 
   function resize(ext) {

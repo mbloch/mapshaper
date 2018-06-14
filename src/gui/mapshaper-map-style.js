@@ -5,23 +5,22 @@ var MapStyle = (function() {
       lightStroke = "#b7d9ea",
       violet = "#cc6acc",
       violetFill = "rgba(249, 170, 249, 0.32)",
-      violetDot = "#F79DFC",
       gold = "#efc100",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 180, 255, 0.2)",
-      outlineStyle = {
+      activeStyle = { // outline style for the active layer
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223",
         dotSize: 4
       },
-      outlineStyleForLabels = {
-        dotColor: violetDot,
+      activeStyleForLabels = {
+        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
         dotSize: 4
       },
-      referenceStyle = {
+      referenceStyle = { // outline style for reference layers
         type: 'outline',
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
@@ -93,8 +92,8 @@ var MapStyle = (function() {
       var style;
       if (internal.layerHasCanvasDisplayStyle(lyr)) {
         style = internal.getCanvasDisplayStyle(lyr);
-      // } else if (internal.layerHasLabels(lyr)) {
-      //   style = utils.extend({}, outlineStyleForLabels);
+      } else if (internal.layerHasLabels(lyr)) {
+        style = {dotSize: 0}; // no reference dots if labels are visible
       } else {
         style = utils.extend({}, referenceStyle);
       }
@@ -105,14 +104,15 @@ var MapStyle = (function() {
       if (internal.layerHasCanvasDisplayStyle(lyr)) {
         style = internal.getCanvasDisplayStyle(lyr);
       } else if (internal.layerHasLabels(lyr)) {
-        style = utils.extend({}, outlineStyleForLabels);
+        style = utils.extend({}, activeStyleForLabels);
       } else {
-        style = utils.extend({}, outlineStyle);
+        style = utils.extend({}, activeStyle);
       }
       return style;
     },
     getOverlayStyle: getOverlayStyle
   };
+
 
   // Returns a display style for the overlay layer. This style displays any
   // hover or selection affects for the active data layer.

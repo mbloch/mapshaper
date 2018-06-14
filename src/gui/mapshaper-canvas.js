@@ -82,11 +82,12 @@ function DisplayCanvas() {
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
         scaleRatio = getDotScale2(shapes, _ext),
-        size = (style.dotSize || 3) * scaleRatio,
+        size = (style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio,
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
         shp, x, y, i, j, n, m;
+    if (size === 0) return;
     _ctx.fillStyle = style.dotColor || "black";
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points

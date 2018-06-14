@@ -239,15 +239,13 @@ function MshpMap(model) {
         }
         // add data for the renderer in layer-stack to use
         lyr.display.active = true;
-        lyr.display.canvas = true;
-        lyr.display.svg = internal.layerHasLabels(lyr);
       } else {
         // reference style
         lyr.display.active = false;
-        lyr.display.canvas = true;
-        lyr.display.svg = false; // TODO: display labels on reference layers too
         style = MapStyle.getReferenceStyle(lyr);
       }
+      lyr.display.canvas = true;
+      lyr.display.svg = internal.layerHasLabels(lyr);
       lyr.display.style = style;
     });
   }

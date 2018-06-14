@@ -14,34 +14,42 @@ function LayerStack() {
   };
 
   self.drawOverlay2Layer = function(lyr, style) {
-    drawCanvasLayer(lyr, _overlay2Canv, style);
+    drawSingleCanvasLayer(lyr, _overlay2Canv, style);
   };
 
   self.drawOverlayLayer = function(lyr, style) {
-    drawCanvasLayer(lyr, _overlayCanv, style);
+    drawSingleCanvasLayer(lyr, _overlayCanv, style);
   };
 
   self.drawLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
     sortLayers(layers);
-    layers.forEach(function(o) {
-      drawLayer(o, onlyNav);
+    if (!onlyNav) {
+      _svg.clear();
+    }
+    layers.forEach(function(target) {
+      var lyr = target.getLayer();
+      if (lyr.display.canvas) {
+        target.draw(_activeCanv, lyr.display.style);
+      }
+      if (lyr.display.svg) {
+        drawSvgLayer(lyr, onlyNav);
+      }
     });
   };
 
-  function drawLayer(target, onlyNav) {
-    var lyr = target.getLayer();
-    target.draw(_activeCanv, lyr.display.style);
-    // if (lyr.display.svg) {
-    if (lyr.display.active) {
-      _svg.drawLayer(lyr, onlyNav); // draw labels (if relevant)
+  function drawSvgLayer(lyr, onlyNav) {
+    if (onlyNav) {
+      _svg.reposition(lyr);
+    } else {
+      _svg.drawLayer(lyr, lyr.display.active);
     }
   }
 
-  function drawCanvasLayer(lyr, canv, style) {
+  function drawSingleCanvasLayer(target, canv, style) {
     if (style) {
       canv.prep(_ext);
-      lyr.draw(canv, style);
+      target.draw(canv, style);
     } else {
       canv.hide();
     }
