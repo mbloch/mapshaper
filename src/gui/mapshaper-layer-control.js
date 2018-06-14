@@ -6,6 +6,7 @@ function LayerControl(model, map) {
   var isOpen = false;
   var renderCache = {};
   var idCount = 0; // layer counter for creating unique layer ids
+  var pinAll = El('#pin-all');
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -14,18 +15,39 @@ function LayerControl(model, map) {
     if (isOpen) render();
   });
 
+  pinAll.on('click', function() {
+    var allOn = testAllLayersPinned();
+    model.forEachLayer(function(lyr, dataset) {
+      if (allOn) {
+        map.removeReferenceLayer(lyr);
+      } else {
+        map.addReferenceLayer(lyr, dataset);
+      }
+    });
+    El.findAll('.pinnable', el.node()).forEach(function(item) {
+      El(item).classed('pinned', !allOn);
+    });
+    map.redraw();
+  });
+
+  function updatePinAllButton() {
+    pinAll.classed('pinned', testAllLayersPinned());
+  }
+
+  function testAllLayersPinned() {
+    var yes = true;
+    model.forEachLayer(function(lyr, dataset) {
+      if (isPinnable(lyr) && !map.isReferenceLayer(lyr) && !map.isActiveLayer(lyr)) {
+        yes = false;
+      }
+    });
+    return yes;
+  }
+
   function findLayerById(id) {
     return model.findLayer(function(lyr, dataset) {
       return lyr.menu_id == id;
     });
-  }
-
-  function layerIsPinned(lyr) {
-    return lyr == map.getReferenceLayer();
-  }
-
-  function layerIsSelected(lyr) {
-    return lyr == model.getActiveLayer().layer;
   }
 
   function turnOn() {
@@ -56,6 +78,12 @@ function LayerControl(model, map) {
       if (isPinnable(lyr)) pinnableCount++;
     });
 
+    if (pinnableCount < 2) {
+      pinAll.hide();
+    } else {
+      updatePinAllButton();
+    }
+
     model.forEachLayer(function(lyr, dataset) {
       var pinnable = pinnableCount > 1 && isPinnable(lyr);
       var html, element;
@@ -83,7 +111,8 @@ function LayerControl(model, map) {
     var classes = 'layer-item';
     var entry, html;
 
-    if (layerIsSelected(lyr)) classes += ' active';
+    if (pinnable) classes += ' pinnable';
+    if (map.isActiveLayer(lyr)) classes += ' active';
     if (map.isReferenceLayer(lyr)) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
@@ -134,6 +163,8 @@ function LayerControl(model, map) {
           map.addReferenceLayer(target.layer, target.dataset);
           entry.addClass('pinned');
         }
+        updatePinAllButton();
+        map.redraw();
       });
     }
 
@@ -152,7 +183,7 @@ function LayerControl(model, map) {
       var target = findLayerById(id);
       if (!gui.getInputElement()) { // don't select if user is typing
         gui.clearMode();
-        if (!layerIsSelected(target.layer)) {
+        if (!map.isActiveLayer(target.layer)) {
           model.updated({select: true}, target.layer, target.dataset);
         }
       }

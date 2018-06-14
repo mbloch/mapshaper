@@ -678,6 +678,7 @@ body.simplify #layer-control-btn {
 	width: 100%;
 }
 
+#pin-all img,
 .layer-item img {
 	position: absolute;
 	width: 16px;
@@ -690,34 +691,42 @@ img.close-btn {
 	opacity: 0.2;
 }
 
+#pin-all img {
+	top: 11px;
+	cursor: pointer;
+}
+
 .layer-item img.close-btn {
 	top: 7px;
 }
 
 .layer-item img.pin-btn {
-	opacity: 0;
 	top: 26px;
 }
 
-.layer-item:not(.active) img.unpinned {
+img.pin-btn {
+	opacity: 0;
+}
+
+.pinnable:not(.active) img.unpinned {
 	opacity: 0.2;
 }
 
-.layer-item:not(.pinned) img.pinned:hover {
+.pinnable:not(.pinned) img.pinned:hover {
 	opacity: 0.6;
 }
 
-.layer-item.active img.pinned {
+.pinnable.active img.pinned {
 	display: none;
 }
 
-.layer-item.active img.unpinned,
+.pinnable.active img.unpinned,
 img.close-btn:hover,
-.layer-item.pinned img.pinned {
+.pinnable.pinned img.pinned {
 	opacity: 1
 }
 
-.layer-item img.pinned {
+.pinnable img.pinned {
 	z-index: 1;
 }
 

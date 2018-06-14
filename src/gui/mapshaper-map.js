@@ -186,6 +186,10 @@ function MshpMap(model) {
     });
   }
 
+  this.isActiveLayer = function(lyr) {
+    return lyr == _activeLyr.getLayer();
+  };
+
   this.isReferenceLayer = function(lyr) {
     return _referenceLayers.filter(function(o) {
       return o.getLayer() == lyr;
@@ -196,16 +200,16 @@ function MshpMap(model) {
     _referenceLayers = _referenceLayers.filter(function(o) {
       return o.getLayer() != lyr;
     });
-    drawLayers(); // TODO: optimize
   };
 
   this.addReferenceLayer = function(lyr, dataset) {
     if (this.isReferenceLayer(lyr)) return;
     if (lyr && internal.layerHasGeometry(lyr)) {
       _referenceLayers.push(new DisplayLayer(lyr, dataset, _ext));
-      drawLayers();
     }
   };
+
+  this.redraw = drawLayers;
 
   function getDrawableLayers() {
     // delete any layers that have been dropped from the catalog
