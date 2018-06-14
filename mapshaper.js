@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.82';
+var VERSION = '0.4.83';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -7591,8 +7591,6 @@ Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
 
 
 
-var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
-
 function DataTable(obj) {
   var records;
   if (utils.isArray(obj)) {
@@ -7640,7 +7638,8 @@ var dataTableProto = {
       error("DataTable#addField() requires a string, number or function for initialization");
     }
     if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
-    if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
+    // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
+    // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
     this.getRecords().forEach(function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
@@ -14950,9 +14949,11 @@ SVG.stringEscape = (function() {
 }());
 
 SVG.stringifyProperties = function(o) {
-  return Object.keys(o).reduce(function(memo, key, i) {
+  return Object.keys(o).reduce(function(memo, key) {
     var val = o[key],
-        strval = utils.isString(val) ? val : JSON.stringify(val);
+        strval;
+    if (!val && val !== 0) return memo; // omit undefined / empty / null values
+    strval = utils.isString(val) ? val : JSON.stringify(val);
     return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
   }, '');
 };
@@ -16720,7 +16721,7 @@ internal.include = function(opts) {
   content = cli.readFile(opts.file, 'utf8', opts.input);
   if (typeof content == 'string') {
     if (!/^\s*\{[\s\S]*\}\s*$/.test(content)) {
-      stop("Expected a JavasScript object containing key:value pairs");
+      stop("Expected a JavaScript object containing key:value pairs");
     }
     try {
       // Try to isolate the imported JS code from the program scope and global environment
@@ -19836,7 +19837,8 @@ internal.target = function(catalog, opts) {
 api.uniq = function(lyr, arcs, opts) {
   var n = internal.getFeatureCount(lyr),
       compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
-      index = {},
+      maxCount = opts.max_count || 1,
+      counts = {},
       flags = [],
       verbose = !!opts.verbose,
       records = lyr.data ? lyr.data.getRecords() : null,
@@ -19844,11 +19846,12 @@ api.uniq = function(lyr, arcs, opts) {
 
   utils.repeat(n, function(i) {
     var val = compiled(i);
-    flags[i] = val in index;
-    if (verbose && index[val]) {
+    var count = val in counts ? counts[val] + 1 : 1;
+    flags[i] = count > maxCount;
+    counts[val] = count;
+    if (verbose && !flags[i]) {
       message(utils.format('Removing feature %i key: [%s]', i, val));
     }
-    index[val] = true;
   });
 
   if (lyr.shapes) {
@@ -21738,6 +21741,10 @@ internal.getOptionParser = function() {
     .option("expression", {
       DEFAULT: true,
       describe: "JS expression to obtain the id of a feature"
+    })
+    .option("max-count", {
+      type: "number",
+      describe: "max features with the same id (default is 1)"
     })
     .option("verbose", {
       describe: "print each removed feature",

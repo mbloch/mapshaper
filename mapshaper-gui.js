@@ -1116,6 +1116,10 @@ utils.inherit(ModeSwitcher, EventDispatcher);
 var gui = api.gui = new ModeSwitcher();
 api.enableLogging();
 
+gui.consoleIsOpen = function() {
+  return El('body').hasClass('console-open');
+};
+
 gui.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&
       typeof Blob != 'undefined' && typeof File != 'undefined';
@@ -2683,7 +2687,7 @@ function RepairControl(model, map) {
 
   function hide() {
     el.hide();
-    map.setHighlightLayer(null);
+    map.setIntersectionLayer(null);
   }
 
   function enabledForDataset(dataset) {
@@ -2742,11 +2746,11 @@ function RepairControl(model, map) {
     _currArcs = arcs;
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
-      map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
+      map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
       readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
       readout.findChild('.close-btn').on('click', dismiss);
     } else {
-      map.setHighlightLayer(null);
+      map.setIntersectionLayer(null);
       readout.html('');
     }
   }
@@ -2763,6 +2767,7 @@ function LayerControl(model, map) {
   var isOpen = false;
   var renderCache = {};
   var idCount = 0; // layer counter for creating unique layer ids
+  var pinAll = El('#pin-all');
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -2771,18 +2776,39 @@ function LayerControl(model, map) {
     if (isOpen) render();
   });
 
+  pinAll.on('click', function() {
+    var allOn = testAllLayersPinned();
+    model.forEachLayer(function(lyr, dataset) {
+      if (allOn) {
+        map.removeReferenceLayer(lyr);
+      } else {
+        map.addReferenceLayer(lyr, dataset);
+      }
+    });
+    El.findAll('.pinnable', el.node()).forEach(function(item) {
+      El(item).classed('pinned', !allOn);
+    });
+    map.redraw();
+  });
+
+  function updatePinAllButton() {
+    pinAll.classed('pinned', testAllLayersPinned());
+  }
+
+  function testAllLayersPinned() {
+    var yes = true;
+    model.forEachLayer(function(lyr, dataset) {
+      if (isPinnable(lyr) && !map.isReferenceLayer(lyr) && !map.isActiveLayer(lyr)) {
+        yes = false;
+      }
+    });
+    return yes;
+  }
+
   function findLayerById(id) {
     return model.findLayer(function(lyr, dataset) {
       return lyr.menu_id == id;
     });
-  }
-
-  function layerIsPinned(lyr) {
-    return lyr == map.getReferenceLayer();
-  }
-
-  function layerIsSelected(lyr) {
-    return lyr == model.getActiveLayer().layer;
   }
 
   function turnOn() {
@@ -2812,9 +2838,13 @@ function LayerControl(model, map) {
     model.forEachLayer(function(lyr, dataset) {
       if (isPinnable(lyr)) pinnableCount++;
     });
-    if (pinnableCount === 0 && map.getReferenceLayer()) {
-      clearPin(); // a layer has been deleted...
+
+    if (pinnableCount < 2) {
+      pinAll.hide();
+    } else {
+      updatePinAllButton();
     }
+
     model.forEachLayer(function(lyr, dataset) {
       var pinnable = pinnableCount > 1 && isPinnable(lyr);
       var html, element;
@@ -2842,8 +2872,9 @@ function LayerControl(model, map) {
     var classes = 'layer-item';
     var entry, html;
 
-    if (layerIsSelected(lyr)) classes += ' active';
-    if (layerIsPinned(lyr)) classes += ' pinned';
+    if (pinnable) classes += ' pinnable';
+    if (map.isActiveLayer(lyr)) classes += ' active';
+    if (map.isReferenceLayer(lyr)) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
@@ -2874,8 +2905,9 @@ function LayerControl(model, map) {
     entry.findChild('img.close-btn').on('mouseup', function(e) {
       var target = findLayerById(id);
       e.stopPropagation();
-      if (layerIsPinned(target.layer)) {
-        clearPin();
+      if (map.isReferenceLayer(target.layer)) {
+        // TODO: check for double map refresh after model.deleteLayer() below
+        map.removeReferenceLayer(target.layer);
       }
       model.deleteLayer(target.layer, target.dataset);
     });
@@ -2885,12 +2917,15 @@ function LayerControl(model, map) {
       entry.findChild('img.pinned').on('mouseup', function(e) {
         var target = findLayerById(id);
         e.stopPropagation();
-        if (layerIsPinned(target.layer)) {
-          clearPin();
+        if (map.isReferenceLayer(target.layer)) {
+          map.removeReferenceLayer(target.layer);
+          entry.removeClass('pinned');
         } else {
-          setPin(target.layer, target.dataset);
+          map.addReferenceLayer(target.layer, target.dataset);
           entry.addClass('pinned');
         }
+        updatePinAllButton();
+        map.redraw();
       });
     }
 
@@ -2909,7 +2944,7 @@ function LayerControl(model, map) {
       var target = findLayerById(id);
       if (!gui.getInputElement()) { // don't select if user is typing
         gui.clearMode();
-        if (!layerIsSelected(target.layer)) {
+        if (!map.isActiveLayer(target.layer)) {
           model.updated({select: true}, target.layer, target.dataset);
         }
       }
@@ -2961,24 +2996,6 @@ function LayerControl(model, map) {
 
   function getDisplayName(name) {
     return name || '[unnamed]';
-  }
-
-  function setPin(lyr, dataset) {
-    if (map.getReferenceLayer() != lyr) {
-      clearPin();
-      map.setReferenceLayer(lyr, dataset);
-      el.addClass('visible-pin');
-    }
-  }
-
-  function clearPin() {
-    if (map.getReferenceLayer()) {
-      Elements('.layer-item.pinned').forEach(function(el) {
-        el.removeClass('pinned');
-      });
-      el.removeClass('visible-pin');
-      map.setReferenceLayer(null);
-    }
   }
 
   function isPinnable(lyr) {
@@ -3161,11 +3178,12 @@ function DisplayCanvas() {
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
         scaleRatio = getDotScale2(shapes, _ext),
-        size = (style.dotSize || 3) * scaleRatio,
+        size = (style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio,
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
         shp, x, y, i, j, n, m;
+    if (size === 0) return;
     _ctx.fillStyle = style.dotColor || "black";
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points
@@ -4527,18 +4545,32 @@ function InspectionControl(model, hit) {
     // esc key closes (unless in an editing mode)
     if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
       turnOff();
+      return;
+    }
 
-    // arrow keys advance pinned feature unless user is editing text.
-    } else if ((kc == 37 || kc == 39) && _pinned && !gui.getInputElement()) {
-      n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
-      if (n > 1) {
-        if (kc == 37) {
-          id = (_highId + n - 1) % n;
-        } else {
-          id = (_highId + 1) % n;
+
+    if (_pinned && !gui.getInputElement()) {
+      // an element is selected and user is not editing text
+
+      if (kc == 37 || kc == 39) {
+        // arrow keys advance pinned feature
+        n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
+        if (n > 1) {
+          if (kc == 37) {
+            id = (_highId + n - 1) % n;
+          } else {
+            id = (_highId + 1) % n;
+          }
+          inspect(id, true);
+          e.stopPropagation();
         }
-        inspect(id, true);
-        e.stopPropagation();
+      } else if (kc == 8) {
+        // delete key
+        // to help protect against inadvertent deletion, don't delete
+        // when console is open or a popup menu is open
+        if (!gui.getMode() && !gui.consoleIsOpen()) {
+          deletePinnedFeature();
+        }
       }
     }
   }, !!'capture'); // preempt the layer control's arrow key handler
@@ -4617,6 +4649,15 @@ function InspectionControl(model, hit) {
     _inspecting = false;
   }
 
+  function deletePinnedFeature() {
+    var lyr = model.getActiveLayer().layer;
+    if (!_pinned || _highId == -1) return;
+    lyr.shapes.splice(_highId, 1);
+    if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
+    inspect(-1);
+    model.updated({flags: 'filter'});
+  }
+
   return _self;
 }
 
@@ -4628,30 +4669,29 @@ var MapStyle = (function() {
       lightStroke = "#b7d9ea",
       violet = "#cc6acc",
       violetFill = "rgba(249, 170, 249, 0.32)",
-      violetDot = "#F79DFC",
       gold = "#efc100",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 180, 255, 0.2)",
-      outlineStyle = {
+      activeStyle = { // outline style for the active layer
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223",
         dotSize: 4
       },
-      outlineStyleForLabels = {
-        dotColor: violetDot,
+      activeStyleForLabels = {
+        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
         dotSize: 4
       },
-      referenceStyle = {
+      referenceStyle = { // outline style for reference layers
         type: 'outline',
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
         dotColor: "#73ba20",
         dotSize: 4
       },
-      highStyle = {
+      intersectionStyle = {
         dotColor: "#F24400",
         dotSize: 4
       },
@@ -4709,26 +4749,37 @@ var MapStyle = (function() {
       };
 
   return {
-    getHighlightStyle: function(lyr) {
-      return utils.extend({}, highStyle);
+    getIntersectionStyle: function(lyr) {
+      return utils.extend({}, intersectionStyle);
     },
     getReferenceStyle: function(lyr) {
-      return utils.extend({}, referenceStyle);
+      var style;
+      if (internal.layerHasCanvasDisplayStyle(lyr)) {
+        style = internal.getCanvasDisplayStyle(lyr);
+      } else if (internal.layerHasLabels(lyr)) {
+        style = {dotSize: 0}; // no reference dots if labels are visible
+      } else {
+        style = utils.extend({}, referenceStyle);
+      }
+      return style;
     },
     getActiveStyle: function(lyr) {
       var style;
       if (internal.layerHasCanvasDisplayStyle(lyr)) {
         style = internal.getCanvasDisplayStyle(lyr);
       } else if (internal.layerHasLabels(lyr)) {
-        style = utils.extend({}, outlineStyleForLabels);
+        style = utils.extend({}, activeStyleForLabels);
       } else {
-        style = utils.extend({}, outlineStyle);
+        style = utils.extend({}, activeStyle);
       }
       return style;
     },
     getOverlayStyle: getOverlayStyle
   };
 
+
+  // Returns a display style for the overlay layer. This style displays any
+  // hover or selection affects for the active data layer.
   function getOverlayStyle(lyr, o) {
     var type = lyr.geometry_type;
     var topId = o.id;
@@ -4740,7 +4791,7 @@ var MapStyle = (function() {
     var overlayStyle = {
       styler: styler
     };
-    // first layer: selected feature(s)
+    // first layer: features that were selected via the -inspect command
     o.selection_ids.forEach(function(i) {
       // skip features in a higher layer
       if (i == topId || o.hover_ids.indexOf(i) > -1) return;
@@ -4755,7 +4806,7 @@ var MapStyle = (function() {
       ids.push(i);
       styles.push(style);
     });
-    // top layer: highlighted feature
+    // top layer: feature that was selected by clicking in inspection mode ([i])
     if (topId > -1) {
       var isPinned = o.pinned;
       var inSelection = o.selection_ids.indexOf(topId) > -1;
@@ -4781,7 +4832,6 @@ var MapStyle = (function() {
     overlayStyle.overlay = true;
     return ids.length > 0 ? overlayStyle : null;
   }
-
 }());
 
 // Modify style to use scaled circle instead of dot symbol
@@ -4831,14 +4881,13 @@ internal.getCanvasDisplayStyle = function(lyr) {
       style[styleIndex[fname]] = val;
     }
 
-    // TODO: make sure canvas rendering matches svg output
-    if (('strokeWidth' in style) && !style.strokeColor) {
-      style.strokeColor = 'transparent';
-    } else if (!('strokeWidth' in style) && style.strokeColor) {
+    if (style.strokeWidth && !style.strokeColor) {
+      style.strokeColor = 'black';
+    }
+    if (!('strokeWidth' in style) && style.strokeColor) {
       style.strokeWidth = 1;
     }
-    if (('radius' in style) && !style.strokeColor && !style.fillColor &&
-      lyr.geometry_type == 'point') {
+    if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
       style.fillColor = 'black';
     }
   };
@@ -4877,27 +4926,28 @@ function SvgDisplayLayer(ext, mouse) {
   var dragging = false;
   var textNode;
   var activeLayer;
+  var activeRecord;
 
   initDragging();
 
-  // need to handle several kinds of changes
-  // a) map extent changes (e.g. on pan, zoom or window resize), all else is the same
-  // b) layer changes (new set of symbols)
-  // c) same layer, but symbols have changed (different attributes, etc.)
-  // actions: (a) reposition existing symbols; (b, c) remove all existing symbols, re-render
-  el.drawLayer = function(lyr, repositionOnly) {
-    var hasLabels = internal.layerHasLabels(lyr);
+  el.clear = clear;
+
+  el.reposition = function(lyr) {
     var transform = ext.getTransform();
-    if (!hasLabels) {
-      clear();
-    } else if (activeLayer && repositionOnly) {
-      resize(ext);
-      reposition(lyr, transform);
-    } else {
-      clear();
-      resize(ext);
-      renderLabels(lyr, transform);
+    resize(ext);
+    reposition(lyr, transform);
+  };
+
+  el.drawLayer = function(lyr, isActive) {
+    var transform = ext.getTransform();
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    resize(ext);
+    g.innerHTML = renderLabels(lyr, transform);
+    svg.append(g);
+    if (isActive) {
       activeLayer = lyr;
+    } else {
+      g.style.pointerEvents = 'none';
     }
   };
 
@@ -4940,27 +4990,24 @@ function SvgDisplayLayer(ext, mouse) {
     svg.addEventListener('mouseup', function(e) {
       var textTarget = getTextTarget(e);
       var isClick = isClickEvent(e, downEvt);
+      if (isClick && textTarget && textTarget == textNode &&
+          activeRecord && isMultilineLabel(textNode)) {
+        toggleTextAlign(textNode, activeRecord);
+      }
       if (dragging) {
         stopDragging();
-      } else if (isClick && textTarget) {
+       } else if (isClick && textTarget) {
         editTextNode(textTarget);
       }
     });
 
+    // block dbl-click navigation when editing
+    mouse.on('dblclick', function(e) {
+      if (editing) e.stopPropagation();
+    }, null, eventPriority);
+
     mouse.on('dragstart', function(e) {
-      var table, i;
       onDrag(e);
-      if (!textNode) return; // error
-      table = activeLayer.data;
-      i = +textNode.getAttribute('data-id');
-      activeRecord = table.getRecords()[i];
-      // add dx and dy properties, if not available
-      if (!table.fieldExists('dx')) {
-        table.addField('dx', 0);
-      }
-      if (!table.fieldExists('dy')) {
-        table.addField('dy', 0);
-      }
     }, null, eventPriority);
 
     mouse.on('drag', function(e) {
@@ -4968,6 +5015,12 @@ function SvgDisplayLayer(ext, mouse) {
       if (!dragging || !activeRecord) return;
       applyDelta(activeRecord, 'dx', e.dx);
       applyDelta(activeRecord, 'dy', e.dy);
+      if (!isMultilineLabel(textNode)) {
+        // update anchor position of single-line labels based on label position
+        // relative to anchor point, for better placement when eventual display font is
+        // different from mapshaper's font.
+        updateTextAnchor(textNode, activeRecord);
+      }
       setMultilineAttribute(textNode, 'dx', activeRecord.dx);
       textNode.setAttribute('dy', activeRecord.dy);
     }, null, eventPriority);
@@ -4976,6 +5029,39 @@ function SvgDisplayLayer(ext, mouse) {
       onDrag(e);
       stopDragging();
     }, null, eventPriority);
+
+    function toggleTextAlign(textNode, rec) {
+      var curr = rec['text-anchor'] || 'middle';
+      var targ = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+      updateTextAnchor(textNode, rec, targ);
+      setMultilineAttribute(textNode, 'dx', rec.dx);
+    }
+
+    // @value: optional position to set; if missing, auto-set
+    function updateTextAnchor(textNode, rec, value) {
+      var rect = textNode.getBoundingClientRect();
+      var width = rect.width;
+      var anchorX = +textNode.getAttribute('x');
+      var labelCenterX = rect.left - svg.getBoundingClientRect().left + width / 2;
+      var xpct = (labelCenterX - anchorX) / width; // offset of label center from anchor center
+      var curr = rec['text-anchor'] || 'middle';
+      var xshift = 0;
+      var targ = value || xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
+      if (curr == 'middle' && targ == 'end' || curr == 'start' && targ == 'middle') {
+        xshift = width / 2;
+      } else if (curr == 'middle' && targ == 'start' || curr == 'end' && targ == 'middle') {
+        xshift = -width / 2;
+      } else if (curr == 'start' && targ == 'end') {
+        xshift = width;
+      } else if (curr == 'end' && targ == 'start') {
+        xshift = -width;
+      }
+      if (xshift) {
+        rec['text-anchor'] = targ;
+        applyDelta(rec, 'dx', xshift);
+        textNode.setAttribute('text-anchor', targ);
+      }
+    }
 
     // handle either numeric strings or numbers in fields
     function applyDelta(rec, key, delta) {
@@ -5003,10 +5089,11 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function isClickEvent(up, down) {
+    var elapsed = Math.abs(down.timeStamp - up.timeStamp);
     var dx = up.screenX - down.screenX;
     var dy = up.screenY - down.screenY;
     var dist = Math.sqrt(dx * dx + dy * dy);
-    return dist <= 4;
+    return dist <= 4 && elapsed < 300;
   }
 
   function stopEditing() {
@@ -5030,11 +5117,25 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function editTextNode(el) {
+    var table, i;
     if (textNode) deselectText(textNode);
+    textNode = el;
     editing = true;
     gui.dispatchEvent('label_editor_on'); // signal inspector to close
-    textNode = el;
     selectText(el);
+    table = activeLayer.data;
+    i = +textNode.getAttribute('data-id');
+    activeRecord = table.getRecords()[i];
+    // add dx and dy properties, if not available
+    if (!table.fieldExists('dx')) {
+      table.addField('dx', 0);
+    }
+    if (!table.fieldExists('dy')) {
+      table.addField('dy', 0);
+    }
+    if (!table.fieldExists('text-anchor')) {
+      table.addField('text-anchor', '');
+    }
     // TODO: show editing panel
   }
 
@@ -5044,6 +5145,10 @@ function SvgDisplayLayer(ext, mouse) {
       el = el.parentNode;
     }
     return el.tagName == 'text' ? el : null;
+  }
+
+  function isMultilineLabel(textNode) {
+    return textNode.childNodes.length > 1;
   }
 
   // Set an attribute on a <text> node and any child <tspan> elements
@@ -5091,18 +5196,15 @@ function SvgDisplayLayer(ext, mouse) {
     });
     var obj = internal.getEmptyLayerForSVG(lyr, opts);
     obj.children = symbols;
-    var str = internal.svg.stringify(obj);
-    svg.innerHTML = str;
+    return internal.svg.stringify(obj);
   }
 
   function clear() {
-    if (activeLayer) {
-      stopEditing();
-      while (svg.lastChild) {
-        svg.removeChild(svg.lastChild);
-      }
-      activeLayer = null;
+    if (editing) stopEditing();
+    while (svg.childNodes.length > 0) {
+      svg.removeChild(svg.childNodes[0]);
     }
+    activeLayer = null;
   }
 
   function resize(ext) {
@@ -5111,6 +5213,87 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   return el;
+}
+
+
+/* @requires mapshaper-svg-display, @mapshaper-canvas, mapshaper-map-style */
+
+function LayerStack() {
+  var self = El('#map-layers');
+  var _activeCanv, _overlayCanv, _overlay2Canv,
+      _svg, _ext;
+
+  self.init = function(ext, mouse) {
+    _ext = ext;
+    _activeCanv = new DisplayCanvas().appendTo(self);      // data layer shapes
+    _overlayCanv = new DisplayCanvas().appendTo(self);     // hover and selection shapes
+    _overlay2Canv = new DisplayCanvas().appendTo(self);  // line intersection dots
+    _svg = new SvgDisplayLayer(ext, mouse).appendTo(self); // labels
+  };
+
+  self.drawOverlay2Layer = function(lyr, style) {
+    drawSingleCanvasLayer(lyr, _overlay2Canv, style);
+  };
+
+  self.drawOverlayLayer = function(lyr, style) {
+    drawSingleCanvasLayer(lyr, _overlayCanv, style);
+  };
+
+  self.drawLayers = function(layers, onlyNav) {
+    _activeCanv.prep(_ext);
+    sortLayers(layers);
+    if (!onlyNav) {
+      _svg.clear();
+    }
+    layers.forEach(function(target) {
+      var lyr = target.getLayer();
+      if (lyr.display.canvas) {
+        target.draw(_activeCanv, lyr.display.style);
+      }
+      if (lyr.display.svg) {
+        drawSvgLayer(lyr, onlyNav);
+      }
+    });
+  };
+
+  function drawSvgLayer(lyr, onlyNav) {
+    if (onlyNav) {
+      _svg.reposition(lyr);
+    } else {
+      _svg.drawLayer(lyr, lyr.display.active);
+    }
+  }
+
+  function drawSingleCanvasLayer(target, canv, style) {
+    if (style) {
+      canv.prep(_ext);
+      target.draw(canv, style);
+    } else {
+      canv.hide();
+    }
+  }
+
+  // sort layers in their drawing order
+  function sortLayers(arr) {
+    arr.sort(function(a, b) {
+      var za = getLayerStackOrder(a),
+          zb = getLayerStackOrder(b);
+      return za - zb;
+    });
+  }
+
+  function getLayerStackOrder(o) {
+    var lyr = o.getLayer();
+    var type = lyr.geometry_type;
+    var z = 0;
+    if (type == 'point') z = 6;
+    else if (type == 'polyline') z = 4;
+    else if (type == 'polygon') z = 2;
+    if (lyr.display.active) z += 1; // put active layer on top of same-type layers
+    return z;
+  }
+
+  return self;
 }
 
 
@@ -5145,34 +5328,23 @@ gui.getIntersectionPct = function(bb1, bb2) {
   return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
 };
 
-
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
-      _layers = El('#map-layers'),
-      _referenceCanv, _activeCanv, _overlayCanv, _annotationCanv,
-      _svg,
-      _annotationLyr, _annotationStyle,
-      _referenceLyr, _referenceStyle,
+      _stack = new LayerStack(),
+      _referenceLayers = [],
+      _intersectionLyr, _intersectionStyle,
       _activeLyr, _activeStyle, _overlayStyle,
+      _needReset = false,
       _ext, _inspector;
 
   model.on('select', function(e) {
-    _annotationStyle = null;
+    _intersectionStyle = null;
     _overlayStyle = null;
-
-    // if reference layer is newly selected, and (old) active layer is usable,
-    // make active layer the reference layer.
-    // this must run before 'update' event, so layer menu is updated correctly
-    if (_referenceLyr && _referenceLyr.getLayer() == e.layer && _activeLyr &&
-        internal.layerHasGeometry(_activeLyr.getLayer())) {
-      updateReferenceLayer(_activeLyr);
-    }
   });
 
   // Refresh map display in response to data changes, layer selection, etc.
   model.on('update', function(e) {
-    var prevLyr = _activeLyr || null,
-        needReset = false;
+    var prevLyr = _activeLyr || null;
 
     if (!prevLyr) {
       initMap(); // wait until first layer is added to init map extent, resize events, etc.
@@ -5203,17 +5375,17 @@ function MshpMap(model) {
     _inspector.updateLayer(_activeLyr, _activeStyle);
 
     if (!prevLyr) {
-      needReset = true;
+      _needReset = true;
     } else if (isTableLayer(prevLyr) || isTableLayer(_activeLyr)) {
-      needReset = true;
+      _needReset = true;
     } else {
-      needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
+      _needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
     }
 
     // set 'home' extent to match bounds of active group
     _ext.setBounds(_activeLyr.getBounds());
 
-    if (needReset) {
+    if (_needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
     } else {
@@ -5222,29 +5394,16 @@ function MshpMap(model) {
     }
   });
 
-  this.getReferenceLayer = function() {
-    return _referenceLyr ? _referenceLyr.getLayer() : null;
-  };
-
-  this.setReferenceLayer = function(lyr, dataset) {
-    if (lyr && internal.layerHasGeometry(lyr)) {
-      updateReferenceLayer(new DisplayLayer(lyr, dataset, _ext));
-    } else if (_referenceLyr) {
-      updateReferenceLayer(null);
-    }
-    drawLayers(); // draw all layers (reference layer can change how active layer is drawn)
-  };
-
   // Currently used to show dots at line intersections
-  this.setHighlightLayer = function(lyr, dataset) {
+  this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr) {
-      _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
-      _annotationStyle = MapStyle.getHighlightStyle(lyr);
+      _intersectionLyr = new DisplayLayer(lyr, dataset, _ext);
+      _intersectionStyle = MapStyle.getIntersectionStyle(lyr);
     } else {
-      _annotationStyle = null;
-      _annotationLyr = null;
+      _intersectionStyle = null;
+      _intersectionLyr = null;
     }
-    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
+    _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
@@ -5255,33 +5414,32 @@ function MshpMap(model) {
   };
 
   function initMap() {
-    var position = new ElementPosition(_layers);
-    var mouse = new MouseArea(_layers.node(), position);
-    // var mouse = new MouseArea(_root.node(), position);
+    // TODO: simplify these tangled dependencies
+    var position = new ElementPosition(_stack);
+    var mouse = new MouseArea(_stack.node(), position);
     var ext = new MapExtent(position);
     var nav = new MapNav(_root, ext, mouse);
     var inspector = new InspectionControl(model, new HitControl(ext, mouse));
-    ext.on('change', function() {drawLayers(true);});
+
+    ext.on('change', function() {
+      drawLayers(!_needReset);
+      _needReset = false;
+    });
     inspector.on('change', function(e) {
       var lyr = _activeLyr.getDisplayLayer().layer;
       _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
-      drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle);
+      _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
     });
     inspector.on('data_change', function(e) {
-      // refresh the display if a style variable has been changed
-      // TODO: consider only updating the affected symbol (might make sense for labels)
+      // refresh the display if a style variable has been changed interactively
       if (internal.isSupportedSvgProperty(e.field)) {
-        drawActiveLayer();
+        drawLayers();
       }
     });
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
-    _referenceCanv = new DisplayCanvas().appendTo(_layers); // comparison layer
-    _activeCanv = new DisplayCanvas().appendTo(_layers);    // data layer shapes
-    _overlayCanv = new DisplayCanvas().appendTo(_layers);   // hover and selection shapes
-    _annotationCanv = new DisplayCanvas().appendTo(_layers); // line intersection dots
-    _svg = new SvgDisplayLayer(ext, mouse).appendTo(_layers);  // labels
+    _stack.init(ext, mouse);
     // export objects that are referenced by other functions
     _inspector = inspector;
     _ext = ext;
@@ -5289,11 +5447,6 @@ function MshpMap(model) {
 
   function isTableLayer(displayLyr) {
     return !displayLyr.getLayer().geometry_type; // kludge
-  }
-
-  function updateReferenceLayer(lyr) {
-    _referenceLyr = lyr;
-    _referenceStyle = lyr ? MapStyle.getReferenceStyle(lyr.getLayer()) : null;
   }
 
   function referenceLayerVisible() {
@@ -5315,41 +5468,87 @@ function MshpMap(model) {
       flags.slice || flags.affine || false;
   }
 
-  function referenceStyle() {
-    return referenceLayerVisible() ? _referenceStyle : null;
+  // Remove layers that have been deleted from the catalog
+  function updateReferenceLayers() {
+    _referenceLayers = _referenceLayers.filter(function(o) {
+      return !!model.findLayer(o.getLayer());
+    });
   }
 
-  function activeStyle() {
-    var style = _activeStyle;
-    if (referenceLayerVisible() && _activeStyle.type != 'styled') {
-      style = utils.defaults({
-        // kludge to hide ghosted layers
-        strokeColors: [null, _activeStyle.strokeColors[1]]
-      }, _activeStyle);
+  this.isActiveLayer = function(lyr) {
+    return lyr == _activeLyr.getLayer();
+  };
+
+  this.isReferenceLayer = function(lyr) {
+    return _referenceLayers.filter(function(o) {
+      return o.getLayer() == lyr;
+    }).length > 0;
+  };
+
+  this.removeReferenceLayer = function(lyr) {
+    _referenceLayers = _referenceLayers.filter(function(o) {
+      return o.getLayer() != lyr;
+    });
+  };
+
+  this.addReferenceLayer = function(lyr, dataset) {
+    if (this.isReferenceLayer(lyr)) return;
+    if (lyr && internal.layerHasGeometry(lyr)) {
+      _referenceLayers.push(new DisplayLayer(lyr, dataset, _ext));
     }
-    return style;
+  };
+
+  this.redraw = drawLayers;
+
+  function getDrawableLayers() {
+    // delete any layers that have been dropped from the catalog
+    updateReferenceLayers();
+    if (isTableLayer(_activeLyr)) {
+      return [_activeLyr]; // no reference layers if active layer is displayed as a table
+    }
+    // concat active and reference layers, excluding dupes
+    return [_activeLyr].concat(_referenceLayers.filter(function(o) {
+      return o.getLayer() != _activeLyr.getLayer() && !isTableLayer(o);
+    }));
+  }
+
+  function updateLayerStyles(layers) {
+    layers.forEach(function(o, i) {
+      var lyr = o.getLayer();
+      var style;
+      if (!lyr.display) lyr.display = {};
+      if (i === 0) {
+        // active style (assume first layer is the active layer)
+        style = _activeStyle;
+        if (style.type != 'styled' && layers.length > 0 && _activeStyle.strokeColors) {
+          // kludge to hide ghosted layers when reference layers are present
+          style = utils.defaults({
+            strokeColors: [null, _activeStyle.strokeColors[1]]
+          }, style);
+        }
+        // add data for the renderer in layer-stack to use
+        lyr.display.active = true;
+      } else {
+        // reference style
+        lyr.display.active = false;
+        style = MapStyle.getReferenceStyle(lyr);
+      }
+      lyr.display.canvas = true;
+      lyr.display.svg = internal.layerHasLabels(lyr);
+      lyr.display.style = style;
+    });
   }
 
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
-    drawCanvasLayer(_referenceLyr, _referenceCanv, referenceStyle());   // draw reference shapes from second layer
-    drawCanvasLayer(_annotationLyr, _annotationCanv, _annotationStyle); // draw intersection dots
-    drawActiveLayer(onlyNav);
-  }
-
-  function drawActiveLayer(onlyNav) {
-    drawCanvasLayer(_activeLyr, _overlayCanv, _overlayStyle); // draw hover & selection effects
-    drawCanvasLayer(_activeLyr, _activeCanv, _activeStyle);   // draw active layer (to canvas)
-    _svg.drawLayer(_activeLyr.getLayer(), onlyNav);           // draw labels on active layer (to SVG)
-  }
-
-  function drawCanvasLayer(lyr, canv, style) {
-    if (style) {
-      canv.prep(_ext);
-      lyr.draw(canv, style);
-    } else {
-      canv.hide();
-    }
+    // draw active and reference layers
+    var layers = getDrawableLayers();
+    if (!onlyNav) updateLayerStyles(layers);
+    _stack.drawLayers(layers, onlyNav);
+    // draw intersection dots
+    _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle);
+    // draw hover & selection effects
+    _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
   }
 }
 
