@@ -2345,6 +2345,7 @@ function ImportControl(model, opts) {
         item.basename = name;
         // Assume non-urls are local files loaded via mapshaper-gui
         item.url = '/data/' + name;
+        item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
       }
       return gui.isReadableFileType(item.basename) ? item : null;
     });
@@ -4941,6 +4942,10 @@ function SvgDisplayLayer(ext, mouse) {
   el.drawLayer = function(lyr, isActive) {
     var transform = ext.getTransform();
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    // kludge to identify container when symbols are repositioned
+    var id = utils.getUniqueName();
+    g.setAttribute('id', id);
+    lyr.display.svg_id = id;
     resize(ext);
     g.innerHTML = renderLabels(lyr, transform);
     svg.append(g);
@@ -5168,7 +5173,8 @@ function SvgDisplayLayer(ext, mouse) {
   }
 
   function reposition(lyr, fwd) {
-    var texts = svg.getElementsByTagName('text');
+    var container = document.getElementById(lyr.display.svg_id);
+    var texts = container.getElementsByTagName('text');
     var n = texts.length;
     var text, xy, idx, p;
     for (var i=0; i<n; i++) {
