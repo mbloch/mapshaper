@@ -1,10 +1,10 @@
-/* @require mapshaper-gui-lib */
+/* @require mapshaper-gui-lib mapshaper-dom-cache */
 
 function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
-  var renderCache = {};
+  var cache = new DomCache();
   var idCount = 0; // layer counter for creating unique layer ids
   var pinAll = El('#pin-all'); // button for toggling layer visibility
 
@@ -98,8 +98,6 @@ function LayerControl(model, map) {
     var list = El('#layer-control .layer-list');
     var uniqIds = {};
     var pinnableCount = 0;
-    var oldCache = renderCache;
-    renderCache = {};
     list.empty();
     model.forEachLayer(function(lyr, dataset) {
       if (isPinnable(lyr)) pinnableCount++;
@@ -123,16 +121,18 @@ function LayerControl(model, map) {
       }
       uniqIds[lyr.menu_id] = true;
       html = renderLayer(lyr, dataset, pinnable);
-      if (html in oldCache) {
-        element = oldCache[html];
+      if (cache.contains(html)) {
+        element = cache.use(html);
       } else {
         element = El('div').html(html).firstChild();
         initMouseEvents(element, lyr.menu_id, pinnable);
+        cache.add(html, element);
       }
-      renderCache[html] = element;
       list.appendChild(element);
     });
   }
+
+  cache.cleanup();
 
   function renderLayer(lyr, dataset, pinnable) {
     var warnings = getWarnings(lyr, dataset);
