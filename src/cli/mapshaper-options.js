@@ -1011,7 +1011,9 @@ internal.getOptionParser = function() {
     .option("source", {
       describe: "name of layer to enclose"
     })
-    .option("name", nameOpt);
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("shape")
     .describe("create a polyline or polygon from coordinates")

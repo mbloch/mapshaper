@@ -35,38 +35,3 @@ api.shape = function(opts) {
   dataset.layers[0].name = opts.name || 'shape';
   return dataset;
 };
-
-api.rectangle = function(source, opts) {
-  var offset, bounds, crs, coords, sourceInfo;
-  if (source) {
-    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
-    sourceInfo = source.dataset.info;
-    crs = internal.getDatasetCRS(source.dataset);
-  } else if (opts.bbox) {
-    bounds = new Bounds(opts.bbox);
-    crs = internal.getCRS('wgs84');
-  }
-  if (!bounds || !bounds.hasBounds()) {
-    stop('Missing rectangle extent');
-  }
-  if (opts.offset) {
-    offset = internal.convertIntervalParam(opts.offset, crs);
-    bounds.padBounds(offset, offset, offset, offset);
-  }
-  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
-  var dataset = internal.importGeoJSON(geojson, {});
-  dataset.layers[0].name = opts.name || 'rectangle';
-  if (sourceInfo) {
-    internal.setDatasetCRS(dataset, sourceInfo);
-  }
-  return dataset;
-};
-
-internal.convertBboxToGeoJSON = function(bbox, opts) {
-  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
-  return {
-    type: 'Polygon',
-    coordinates: [coords]
-  };
-};

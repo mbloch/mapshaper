@@ -22,11 +22,12 @@ api.splitLayer = function(src, splitField, opts) {
 
     if (key in index === false) {
       index[key] = splitLayers.length;
-      lyr = utils.defaults({
+      lyr = {
+        geometry_type: lyr0.geometry_type,
         name: internal.getSplitLayerName(prefix, key),
         data: properties ? new DataTable() : null,
         shapes: shapes ? [] : null
-      }, lyr0);
+      };
       splitLayers.push(lyr);
     } else {
       lyr = splitLayers[index[key]];

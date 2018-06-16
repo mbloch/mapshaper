@@ -176,7 +176,7 @@ function MshpMap(model) {
   function arcsMayHaveChanged(flags) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
-      flags.slice || flags.affine || false;
+      flags.slice || flags.affine || flags.rectangle || false;
   }
 
   // Remove layers that have been deleted from the catalog
@@ -241,6 +241,9 @@ function MshpMap(model) {
         lyr.display.active = true;
       } else {
         // reference style
+        if (lyr.display == _activeLyr.getLayer().display) {
+          console.error("Error: shared display object");
+        }
         lyr.display.active = false;
         style = MapStyle.getReferenceStyle(lyr);
       }
@@ -254,7 +257,9 @@ function MshpMap(model) {
   function drawLayers(onlyNav) {
     // draw active and reference layers
     var layers = getDrawableLayers();
-    if (!onlyNav) updateLayerStyles(layers);
+    if (!onlyNav) {
+      updateLayerStyles(layers);
+    }
     _stack.drawLayers(layers, onlyNav);
     // draw intersection dots
     _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle);

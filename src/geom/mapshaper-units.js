@@ -127,3 +127,21 @@ internal.convertIntervalPair = function(opt, crs) {
   return [internal.convertIntervalParam(opt[0], crs),
           internal.convertIntervalParam(opt[1], crs)];
 };
+
+// Accepts a single value or a list of four values. List order is l,b,t,r
+internal.convertFourSides = function(opt, crs, bounds) {
+  var arr = opt.split(',');
+  if (arr.length == 1) {
+    arr = [arr[0], arr[0], arr[0], arr[0]];
+  } else if (arr.length != 4) {
+    stop("Expected a distance parameter or a list of four params");
+  }
+  return arr.map(function(param, i) {
+    var tmp;
+    if (param.indexOf('%') > 0) {
+      tmp = parseFloat(param) / 100 || 0;
+      return tmp * (i == 1 || i == 3 ? bounds.height() : bounds.width());
+    }
+    return internal.convertIntervalParam(opt, crs);
+  });
+};

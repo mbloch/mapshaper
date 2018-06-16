@@ -82,11 +82,15 @@ internal.copyLayer = function(lyr) {
 };
 
 internal.copyLayerShapes = function(lyr) {
-  var copy = utils.extend({}, lyr);
-    if (lyr.shapes) {
-      copy.shapes = internal.cloneShapes(lyr.shapes);
-    }
-    return copy;
+  var copy = {
+    name: lyr.name,
+    geometry_type: lyr.geometry_type,
+    data: lyr.data
+  };
+  if (lyr.shapes) {
+    copy.shapes = internal.cloneShapes(lyr.shapes);
+  }
+  return copy;
 };
 
 internal.getDatasetBounds = function(dataset) {

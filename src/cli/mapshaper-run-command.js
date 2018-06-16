@@ -31,6 +31,7 @@ mapshaper-points
 mapshaper-point-grid
 mapshaper-proj
 mapshaper-polygons
+mapshaper-rectangle
 mapshaper-rename-layers
 mapshaper-shape
 mapshaper-simplify
@@ -261,7 +262,11 @@ api.runCommand = function(cmd, catalog, cb) {
       return; // async command
 
     } else if (name == 'rectangle') {
-      catalog.addDataset(api.rectangle(source, opts));
+      if (source || opts.bbox || targets.length === 0) {
+        catalog.addDataset(api.rectangle(source, opts));
+      } else {
+        outputLayers = api.rectangle2(targets[0], opts);
+      }
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -326,6 +331,10 @@ api.runCommand = function(cmd, catalog, cb) {
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
         internal.replaceLayers(targetDataset, targetLayers, outputLayers);
+        // some operations leave unreferenced arcs that should be cleaned up
+        if ((name == 'clip' || name == 'erase' || name == 'rectangle') && !opts.no_cleanup) {
+          internal.dissolveArcs(targetDataset);
+        }
       }
       // use command output as new default target
       catalog.setDefaultTarget(outputLayers, targetDataset);

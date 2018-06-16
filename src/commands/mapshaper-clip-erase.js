@@ -38,7 +38,7 @@ api.sliceLayer = function(targetLyr, src, dataset, opts) {
 // @type: 'clip' or 'erase'
 internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
-  var clipDataset, mergedDataset, clipLyr, nodes, tmp, outputLayers;
+  var clipDataset, mergedDataset, clipLyr, nodes, tmp;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
   if (clipSrc && clipSrc.geometry_type) {
     // TODO: update tests to remove this case (clipSrc is a layer)
@@ -75,21 +75,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
-  outputLayers = internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-  if (usingPathClip && !opts.no_cleanup) {
-    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
-    // This is to remove arcs belonging to the clipping paths from the target
-    // dataset, and to heal the cuts that were made where clipping paths
-    // crossed target paths
-    tmp = {
-      arcs: mergedDataset.arcs,
-      layers: targetDataset.layers
-    };
-    internal.replaceLayers(tmp, targetLayers, outputLayers);
-    internal.dissolveArcs(tmp);
-    targetDataset.arcs = tmp.arcs;
-  }
-  return outputLayers;
+  return internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
 };
 
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {

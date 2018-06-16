@@ -7,7 +7,7 @@ mapshaper-dataset-utils
 
 // Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
-// in layers. (In-place).
+// in layers. (dataset.arcs is replaced).
 internal.dissolveArcs = function(dataset) {
   var arcs = dataset.arcs,
       layers = dataset.layers.filter(internal.layerHasPaths);

@@ -1,5 +1,10 @@
 /* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table */
 
+
+// TODO: replace DisplayLayer with a data object with layer, dataset,
+//   display and other properties... stop adding display object to layers
+//   (causes bugs when mapshaper commands need to copy layers).
+
 // Wrapper class for a data layer. Has methods for mediating between the GUI interface
 // (layer display and interactive simplification) and the underlying data.
 // Provides reduced-detail versions of arcs for rendering zoomed-out views of

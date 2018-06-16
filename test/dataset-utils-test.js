@@ -15,6 +15,8 @@ describe('mapshaper-dataset-utils.js', function () {
 
     it('duplicate shapes', function () {
       var lyr = {
+        name: undefined,
+        data: undefined,
         geometry_type: 'point',
         shapes: [[[1, 3]], null]
       };
