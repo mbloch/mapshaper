@@ -108,6 +108,7 @@ function LayerControl(model, map) {
     if (pinnableCount < 2) {
       pinAll.hide();
     } else {
+      pinAll.show();
       updatePinAllButton();
     }
 
