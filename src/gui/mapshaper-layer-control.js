@@ -6,7 +6,12 @@ function LayerControl(model, map) {
   var isOpen = false;
   var renderCache = {};
   var idCount = 0; // layer counter for creating unique layer ids
-  var pinAll = El('#pin-all');
+  var pinAll = El('#pin-all'); // button for toggling layer visibility
+
+  // layer repositioning
+  var dragLayer = null;
+  var hoverLayer = null;
+  var dragStarted = false;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -15,6 +20,10 @@ function LayerControl(model, map) {
     if (isOpen) render();
   });
 
+  el.on('mouseup', clearInsertion);
+  el.on('mouseleave', clearInsertion);
+
+  // init layer visibility button
   pinAll.on('click', function() {
     var allOn = testAllLayersPinned();
     model.forEachLayer(function(lyr, dataset) {
@@ -29,6 +38,7 @@ function LayerControl(model, map) {
     });
     map.redraw();
   });
+
 
   function updatePinAllButton() {
     pinAll.classed('pinned', testAllLayersPinned());
@@ -48,6 +58,23 @@ function LayerControl(model, map) {
     return model.findLayer(function(lyr, dataset) {
       return lyr.menu_id == id;
     });
+  }
+
+  function clearClass(name) {
+    var targ = el.findChild('.' + name);
+    if (targ) targ.removeClass(name);
+  }
+
+  function clearInsertion() {
+    clearClass('drag-target');
+    clearClass('insert-above');
+    clearClass('insert-below');
+    dragLayer = hoverLayer = null;
+  }
+
+  function insertLayer(targetId, referenceId, above) {
+    // TODO: finish
+    clearInsertion();
   }
 
   function turnOn() {
@@ -139,7 +166,49 @@ function LayerControl(model, map) {
     }
   }
 
+  // TODO: finish implementing this
+  function initLayerDragging(entry, id) {
+    var rect;
+
+    // support layer drag-drop
+    entry.on('mousemove', function(e) {
+      var y = e.pageY - rect.top;
+      hoverLayer = id;
+      if (dragStarted) {
+        dragStarted = false;
+        dragLayer = id;
+        recr = entry.node().getBoundingClientRect();
+        entry.addClass('drag-target');
+      }
+      if (!dragLayer) return;
+      if (y < rect.height / 2) {
+        entry.addClass('insert-above');
+        entry.removeClass('insert-below');
+      } else {
+        entry.removeClass('insert-above');
+        entry.addClass('insert-below');
+      }
+    });
+
+    entry.on('mouseup', function() {
+      if (dragLayer && dragLayer != id) {
+        insertLayer(dragLayer, id, entry.hasClass('insert-above'));
+        clearInsertion();
+      }
+    });
+
+    entry.on('mousedown', function() {
+      dragStarted = true;
+    });
+
+    entry.on('mouseleave', function(e) {
+      dragStarted = false;
+      hoverLayer = null;
+    });
+  }
+
   function initMouseEvents2(entry, id, pinnable) {
+
     // init delete button
     entry.findChild('img.close-btn').on('mouseup', function(e) {
       var target = findLayerById(id);
