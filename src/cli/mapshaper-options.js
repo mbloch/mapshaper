@@ -1005,7 +1005,7 @@ internal.getOptionParser = function() {
       type: "bbox"
     })
     .option("offset", {
-      describe: "space around bbox or source layer",
+      describe: "padding around bbox or contents (number or list)",
       type: "distance"
     })
     .option("source", {
