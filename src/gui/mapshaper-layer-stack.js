@@ -1,57 +1,59 @@
 /* @requires mapshaper-svg-display, @mapshaper-canvas, mapshaper-map-style */
 
-function LayerStack() {
-  var self = El('#map-layers');
-  var _activeCanv, _overlayCanv, _overlay2Canv,
-      _svg, _ext;
+function LayerStack(container, ext, mouse) {
+  var el = El(container),
+      _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
+      _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
+      _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
+      _svg = new SvgDisplayLayer(ext, mouse).appendTo(el), // labels, _ext;
+      _ext = ext;
 
-  self.init = function(ext, mouse) {
-    _ext = ext;
-    _activeCanv = new DisplayCanvas().appendTo(self);      // data layer shapes
-    _overlayCanv = new DisplayCanvas().appendTo(self);     // hover and selection shapes
-    _overlay2Canv = new DisplayCanvas().appendTo(self);  // line intersection dots
-    _svg = new SvgDisplayLayer(ext, mouse).appendTo(self); // labels
+  this.drawOverlay2Layer = function(lyr) {
+    drawSingleCanvasLayer(lyr, _overlay2Canv);
   };
 
-  self.drawOverlay2Layer = function(lyr, style) {
-    drawSingleCanvasLayer(lyr, _overlay2Canv, style);
+  this.drawOverlayLayer = function(lyr) {
+    drawSingleCanvasLayer(lyr, _overlayCanv);
   };
 
-  self.drawOverlayLayer = function(lyr, style) {
-    drawSingleCanvasLayer(lyr, _overlayCanv, style);
-  };
-
-  self.drawLayers = function(layers, onlyNav) {
+  this.drawLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
     sortLayers(layers);
     if (!onlyNav) {
       _svg.clear();
     }
     layers.forEach(function(target) {
-      var lyr = target.getLayer();
-      if (lyr.display.canvas) {
-        target.draw(_activeCanv, lyr.display.style);
+      if (target.canvas) {
+        drawCanvasLayer(target, _activeCanv);
       }
-      if (lyr.display.svg) {
-        drawSvgLayer(lyr, onlyNav);
+      if (target.svg) {
+        drawSvgLayer(target, onlyNav);
       }
     });
   };
 
-  function drawSvgLayer(lyr, onlyNav) {
-    if (onlyNav) {
-      _svg.reposition(lyr);
+  function drawCanvasLayer(target, canv) {
+    if (target.style.type == 'outline') {
+      drawOutlineLayerToCanvas(target, canv, ext);
     } else {
-      _svg.drawLayer(lyr, lyr.display.active);
+      drawStyledLayerToCanvas(target, canv, ext);
     }
   }
 
-  function drawSingleCanvasLayer(target, canv, style) {
-    if (style) {
-      canv.prep(_ext);
-      target.draw(canv, style);
+  function drawSvgLayer(target, onlyNav) {
+    if (onlyNav) {
+      _svg.reposition(target);
     } else {
+      _svg.drawLayer(target);
+    }
+  }
+
+  function drawSingleCanvasLayer(target, canv) {
+    if (!target) {
       canv.hide();
+    } else {
+      canv.prep(_ext);
+      drawCanvasLayer(target, canv);
     }
   }
 
@@ -65,15 +67,12 @@ function LayerStack() {
   }
 
   function getLayerStackOrder(o) {
-    var lyr = o.getLayer();
-    var type = lyr.geometry_type;
+    var type = o.layer.geometry_type;
     var z = 0;
     if (type == 'point') z = 6;
     else if (type == 'polyline') z = 4;
     else if (type == 'polygon') z = 2;
-    if (lyr.display.active) z += 1; // put active layer on top of same-type layers
+    if (o.active) z += 1; // put active layer on top of same-type layers
     return z;
   }
-
-  return self;
 }

@@ -8,7 +8,6 @@ mapshaper-repair-control
 mapshaper-layer-control
 mapshaper-gui-proxy
 mapshaper-map
-mapshaper-maplayer
 mapshaper-console
 mapshaper-gui-model
 mapshaper-gui-modes

@@ -13,24 +13,24 @@ function SvgDisplayLayer(ext, mouse) {
 
   el.clear = clear;
 
-  el.reposition = function(lyr) {
+  el.reposition = function(target) {
     var transform = ext.getTransform();
     resize(ext);
-    reposition(lyr, transform);
+    reposition(target, transform);
   };
 
-  el.drawLayer = function(lyr, isActive) {
+  el.drawLayer = function(target) {
     var transform = ext.getTransform();
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     // kludge to identify container when symbols are repositioned
     var id = utils.getUniqueName();
     g.setAttribute('id', id);
-    lyr.display.svg_id = id;
+    target.svg_id = id;
     resize(ext);
-    g.innerHTML = renderLabels(lyr, transform);
+    g.innerHTML = renderLabels(target.layer, transform);
     svg.append(g);
-    if (isActive) {
-      activeLayer = lyr;
+    if (target.active) {
+      activeLayer = target.layer;
     } else {
       g.style.pointerEvents = 'none';
     }
@@ -252,15 +252,15 @@ function SvgDisplayLayer(ext, mouse) {
     }
   }
 
-  function reposition(lyr, fwd) {
-    var container = document.getElementById(lyr.display.svg_id);
+  function reposition(target, fwd) {
+    var container = document.getElementById(target.svg_id);
     var texts = container.getElementsByTagName('text');
     var n = texts.length;
     var text, xy, idx, p;
     for (var i=0; i<n; i++) {
       text = texts[i];
       idx = +text.getAttribute('data-id');
-      p = lyr.shapes[idx];
+      p = target.layer.shapes[idx];
       if (!p) continue;
       xy = fwd.transform(p[0][0], p[0][1]);
       setMultilineAttribute(text, 'x', xy[0]);

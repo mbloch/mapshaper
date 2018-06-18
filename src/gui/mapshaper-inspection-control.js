@@ -1,6 +1,7 @@
 /* @requires mapshaper-gui-lib, mapshaper-popup, mapshaper-hit-control */
 
-function InspectionControl(model, hit) {
+function InspectionControl(model, ext, mouse) {
+  var hit = new HitControl(ext, mouse);
   var _popup = new Popup(getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
@@ -11,7 +12,10 @@ function InspectionControl(model, hit) {
     gui.dispatchEvent('inspector_toggle');
   });
   var _self = new EventDispatcher();
-  var _shapes, _lyr;
+  var _target;
+  // keep a reference to shapes array of current layer, to check if
+  // shapes have changed when layer is updated.
+  var _shapes;
 
   gui.on('inspector_toggle', function() {
     if (_inspecting) turnOff(); else turnOn();
@@ -28,21 +32,21 @@ function InspectionControl(model, hit) {
     _self.dispatchEvent('data_change', d);
   });
 
-  _self.updateLayer = function(o, style) {
-    var shapes = o.getDisplayLayer().layer.shapes;
+  _self.updateLayer = function(mapLayer) {
+    var shapes = mapLayer.layer.shapes;
+    _target = mapLayer;
     if (_inspecting) {
-      // kludge: check if shapes have changed
       if (_shapes == shapes) {
-        // kludge: re-display the inspector, in case data changed
+        // shapes haven't changed -- refresh in case data has changed
         inspect(_highId, _pinned);
       } else {
+        // shapes have changed -- clear any selected shapes
         _selectionIds = null;
         inspect(-1, false);
       }
     }
-    hit.setLayer(o, style);
     _shapes = shapes;
-    _lyr = o;
+    hit.setLayer(mapLayer);
   };
 
   // replace cli inspect command
@@ -77,7 +81,7 @@ function InspectionControl(model, hit) {
 
       if (kc == 37 || kc == 39) {
         // arrow keys advance pinned feature
-        n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
+        n = internal.getFeatureCount(_target.layer);
         if (n > 1) {
           if (kc == 37) {
             id = (_highId + n - 1) % n;
@@ -133,8 +137,7 @@ function InspectionControl(model, hit) {
   }
 
   function showInspector(id, ids, pinned) {
-    var o = _lyr.getDisplayLayer();
-    var table = o.layer.data || null;
+    var table = _target.layer.data || null;
     _popup.show(id, ids, table, pinned);
   }
 

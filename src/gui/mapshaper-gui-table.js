@@ -7,14 +7,11 @@ gui.getDisplayLayerForTable = function(table) {
       gutter = 6,
       arcs = [],
       shapes = [],
-      lyr = {shapes: shapes},
-      data = {layer: lyr},
       aspectRatio = 1.1,
-      usePoints = false,
       x, y, col, row, blockSize;
 
   if (n > 10000) {
-    usePoints = true;
+    arcs = null;
     gutter = 0;
     cellWidth = 4;
     cellHeight = 4;
@@ -40,25 +37,24 @@ gui.getDisplayLayerForTable = function(table) {
     col = Math.floor(i / blockSize);
     x = col * (cellWidth + gutter);
     y = cellHeight * (blockSize - row);
-    if (usePoints) {
-      shapes.push([[x, y]]);
-    } else {
+    if (arcs) {
       arcs.push(getArc(x, y, cellWidth, cellHeight));
       shapes.push([[i]]);
+    } else {
+      shapes.push([[x, y]]);
     }
   }
-
-  if (usePoints) {
-    lyr.geometry_type = 'point';
-  } else {
-    data.arcs = new internal.ArcCollection(arcs);
-    lyr.geometry_type = 'polygon';
-  }
-  lyr.data = table;
 
   function getArc(x, y, w, h) {
     return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
   }
 
-  return data;
+  return {
+    layer: {
+      geometry_type: arcs ? 'polygon' : 'point',
+      shapes: shapes,
+      data: table
+    },
+    arcs: arcs ? new internal.ArcCollection(arcs) : null
+  };
 };

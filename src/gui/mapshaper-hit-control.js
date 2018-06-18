@@ -11,7 +11,7 @@ function HitControl(ext, mouse) {
   };
   var readout = El('#coordinate-info').hide();
   var bboxPoint;
-  var lyr, target, test;
+  var target, test;
 
   readout.on('copy', function(e) {
     // remove selection on copy (using timeout or else copy is cancelled)
@@ -25,16 +25,17 @@ function HitControl(ext, mouse) {
   ext.on('change', function() {
     clearCoords();
     // shapes may change along with map scale
-    target = lyr ? lyr.getDisplayLayer() : null;
+    // target = lyr ? lyr.getDisplayLayer() : null;
   });
 
-  self.setLayer = function(o, style) {
-    lyr = o;
-    target = o.getDisplayLayer();
-    if (target.layer.geometry_type == 'point' && style.type == 'styled') {
+  self.setLayer = function(mapLayer) {
+    var layer = mapLayer.layer;
+    var style = mapLayer.style;
+    target = mapLayer;
+    if (layer.geometry_type == 'point' && style.type == 'styled') {
       test = getGraduatedCircleTest(getRadiusFunction(style));
     } else {
-      test = tests[target.layer.geometry_type];
+      test = tests[layer.geometry_type];
     }
     readout.hide();
   };
@@ -147,13 +148,13 @@ function HitControl(ext, mouse) {
         cand, hitId;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, target.dataset.arcs)) {
+      if (geom.testPointInPolygon(x, y, cand.shape, target.arcs)) {
         hits.push(cand.id);
       }
     }
     if (cands.length > 0 && hits.length === 0) {
       // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, target.dataset.arcs);
+      sortByDistance(x, y, cands, target.arcs);
       hits = pickNearestCandidates(cands, 0, maxDist);
     }
     return hits;
@@ -180,7 +181,7 @@ function HitControl(ext, mouse) {
     var maxDist = getHitBuffer2(15, 2),
         bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
         cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, target.dataset.arcs);
+    sortByDistance(x, y, cands, target.arcs);
     return pickNearestCandidates(cands, bufDist, maxDist);
   }
 
@@ -290,7 +291,7 @@ function HitControl(ext, mouse) {
   }
 
   function findHitCandidates(x, y, dist) {
-    var arcs = target.dataset.arcs,
+    var arcs = target.arcs,
         index = {},
         cands = [],
         bbox = [];

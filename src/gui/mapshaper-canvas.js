@@ -5,6 +5,94 @@ gui.getPixelRatio = function() {
   return deviceRatio > 1 ? 2 : 1;
 };
 
+// TODO: consider moving this upstream
+function getArcsForRendering(obj, ext) {
+  var sourceArcs = obj.source.dataset.arcs;
+  if (obj.geographic && sourceArcs.filteredArcs) {
+    return sourceArcs.filteredArcs.getArcCollection(ext);
+  }
+  return obj.arcs;
+}
+
+function drawOutlineLayerToCanvas(obj, canv, ext) {
+  var arcs;
+  var style = obj.style;
+  var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+      lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+  var filter;
+  if (internal.layerHasPaths(obj.layer) && !obj.arcCounts) {
+    obj.arcCounts = new Uint8Array(obj.arcs.size());
+    internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
+  }
+  if (obj.arcCounts) {
+    arcs = getArcsForRendering(obj, ext);
+    if (lightStyle.strokeColor) {
+      filter = getArcFilter(arcs, ext, false, obj.arcCounts);
+      canv.drawArcs(arcs, lightStyle, filter);
+    }
+    if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
+      filter = getArcFilter(arcs, ext, true, obj.arcCounts);
+      canv.drawArcs(arcs, darkStyle, filter);
+    }
+  }
+  if (obj.layer.geometry_type == 'point') {
+    canv.drawSquareDots(obj.layer.shapes, style);
+  }
+}
+
+function drawStyledLayerToCanvas(obj, canv, ext) {
+  // TODO: add filter for out-of-view shapes
+  var style = obj.style;
+  var layer = obj.layer;
+  var arcs, filter;
+  if (layer.geometry_type == 'point') {
+    if (style.type == 'styled') {
+      canv.drawPoints(layer.shapes, style);
+    } else {
+      canv.drawSquareDots(layer.shapes, style);
+    }
+  } else {
+    arcs = getArcsForRendering(obj, ext);
+    filter = getShapeFilter(arcs, ext);
+    canv.drawPathShapes(layer.shapes, arcs, style, filter);
+  }
+}
+
+
+// Return a function for testing if an arc should be drawn in the current view
+function getArcFilter(arcs, ext, usedFlag, arcCounts) {
+  var minPathLen = 0.5 * ext.getPixelSize(),
+      geoBounds = ext.getBounds(),
+      geoBBox = geoBounds.toArray(),
+      allIn = geoBounds.contains(arcs.getBounds()),
+      visible;
+  // don't continue dropping paths if user zooms out farther than full extent
+  if (ext.scale() < 1) minPathLen *= ext.scale();
+  return function(i) {
+      var visible = true;
+      if (usedFlag != arcCounts[i] > 0) { // show either used or unused arcs
+        visible = false;
+      } else if (arcs.arcIsSmaller(i, minPathLen)) {
+        visible = false;
+      } else if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) {
+        visible = false;
+      }
+      return visible;
+    };
+  }
+
+// Return a function for testing if a shape should be drawn in the current view
+function getShapeFilter(arcs, ext) {
+  var viewBounds = ext.getBounds();
+  var bounds = new Bounds();
+  if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
+  return function(shape) {
+    bounds.empty();
+    arcs.getMultiShapeBounds(shape, bounds);
+    return viewBounds.intersects(bounds);
+  };
+}
+
 function DisplayCanvas() {
   var _self = El('canvas'),
       _canvas = _self.node(),
