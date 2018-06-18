@@ -20,19 +20,21 @@ function drawOutlineLayerToCanvas(obj, canv, ext) {
   var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
       lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
   var filter;
-  if (internal.layerHasPaths(obj.layer) && !obj.arcCounts) {
-    obj.arcCounts = new Uint8Array(obj.arcs.size());
-    internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
-  }
-  if (obj.arcCounts) {
-    arcs = getArcsForRendering(obj, ext);
-    if (lightStyle.strokeColor) {
-      filter = getArcFilter(arcs, ext, false, obj.arcCounts);
-      canv.drawArcs(arcs, lightStyle, filter);
+  if (internal.layerHasPaths(obj.layer)) {
+    if (!obj.arcCounts) {
+      obj.arcCounts = new Uint8Array(obj.arcs.size());
+      internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
     }
-    if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
-      filter = getArcFilter(arcs, ext, true, obj.arcCounts);
-      canv.drawArcs(arcs, darkStyle, filter);
+    if (obj.arcCounts) {
+      arcs = getArcsForRendering(obj, ext);
+      if (lightStyle.strokeColor) {
+        filter = getArcFilter(arcs, ext, false, obj.arcCounts);
+        canv.drawArcs(arcs, lightStyle, filter);
+      }
+      if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
+        filter = getArcFilter(arcs, ext, true, obj.arcCounts);
+        canv.drawArcs(arcs, darkStyle, filter);
+      }
     }
   }
   if (obj.layer.geometry_type == 'point') {
