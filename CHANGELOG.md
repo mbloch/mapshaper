@@ -1,5 +1,5 @@
 v0.4.84
-* [rectangle] offset= option accepts a list of four values (minx,miny,maxx, maxy) in addition to a single value. Value can be a percentage or an interval.
+* [rectangle] offset= option accepts a list of four values (minx,miny,maxx,maxy) in addition to a single value. Value can be a percentage or an interval.
 * [rectangle] If no source= or bbox= option is given, -rectangle uses the bounding box of the current target layer(s).
 * [points] Added a polyline-to-point conversion that reduces each polyline feature to a single vertex, suitable for point-in-polygon testing.
 * Bug fixes

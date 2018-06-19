@@ -1,5 +1,46 @@
 /* @require mapshaper-geojson, mapshaper-dataset-utils */
 
+// Create rectangles around each feature in a layer
+api.rectangles = function(targetLyr, targetDataset, opts) {
+  if (!internal.layerHasGeometry(targetLyr)) {
+    stop("Layer is missing geometric shapes");
+  }
+  var crs = internal.getDatasetCRS(targetDataset);
+  var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+  var geometries = targetLyr.shapes.map(function(shp) {
+    var bounds = targetLyr.geometryType == 'point' ?
+      internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
+    if (!bounds.hasBounds()) return null;
+    if (opts.offset) {
+      bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
+    }
+    if (bounds.area() <= 0) return null;
+    return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+  });
+  var geojson = {
+    type: 'FeatureCollection',
+    features: geometries.map(function(geom, i) {
+      var rec = records && records[i] || null;
+      if (rec && opts.no_replace) {
+        rec = utils.extend({}, rec); // make a copy
+      }
+      return {
+        type: 'Feature',
+        properties: rec,
+        geometry: geom
+      };
+    })
+  };
+  var dataset = internal.importGeoJSON(geojson, {});
+  var merged = internal.mergeDatasets([targetDataset, dataset]);
+  var outputLyr = dataset.layers[0];
+  targetDataset.arcs = merged.arcs;
+  if (!opts.no_replace) {
+    outputLyr.name = targetLyr.name || outputLyr.name;
+  }
+  return [outputLyr];
+};
+
 // Create rectangles around one or more target layers
 //
 api.rectangle2 = function(target, opts) {
@@ -18,7 +59,6 @@ api.rectangle2 = function(target, opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var clampGeographicBoxes = true; // TODO: make this an option?
   var isGeoBox;
   var offsets, bounds, crs, coords, sourceInfo;
   if (source) {
@@ -33,13 +73,7 @@ api.rectangle = function(source, opts) {
     stop('Missing rectangle extent');
   }
   if (opts.offset) {
-    isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
-    offsets = internal.convertFourSides(opts.offset, crs, bounds);
-    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-    if (isGeoBox && clampGeographicBoxes) {
-      bounds = internal.clampToWorldBounds(bounds);
-    }
-
+    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
@@ -48,6 +82,17 @@ api.rectangle = function(source, opts) {
     internal.setDatasetCRS(dataset, sourceInfo);
   }
   return dataset;
+};
+
+internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
+  var clampGeographicBoxes = true; // TODO: make this an option?
+  var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
+  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
+  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+  if (isGeoBox && clampGeographicBoxes) {
+    bounds = internal.clampToWorldBounds(bounds);
+  }
+  return bounds;
 };
 
 internal.convertBboxToGeoJSON = function(bbox, opts) {

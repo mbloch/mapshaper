@@ -618,6 +618,7 @@ function ArcCollection() {
     return bbox;
   };
 
+  // TODO: move this and similar methods out of ArcCollection
   this.getMultiShapeBounds = function(shapeIds, bounds) {
     bounds = bounds || new Bounds();
     if (shapeIds) { // handle null shapes

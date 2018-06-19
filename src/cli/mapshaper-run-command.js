@@ -268,6 +268,9 @@ api.runCommand = function(cmd, catalog, cb) {
         outputLayers = api.rectangle2(targets[0], opts);
       }
 
+    } else if (name == 'rectangles') {
+      outputLayers = internal.applyCommand(api.rectangles, targetLayers, targetDataset, opts);
+
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
 
@@ -332,7 +335,7 @@ api.runCommand = function(cmd, catalog, cb) {
         // TODO: consider replacing old layers as they are generated, for gc
         internal.replaceLayers(targetDataset, targetLayers, outputLayers);
         // some operations leave unreferenced arcs that should be cleaned up
-        if ((name == 'clip' || name == 'erase' || name == 'rectangle') && !opts.no_cleanup) {
+        if ((name == 'clip' || name == 'erase' || name == 'rectangle' || name == 'rectangles') && !opts.no_cleanup) {
           internal.dissolveArcs(targetDataset);
         }
       }

@@ -30,6 +30,17 @@ internal.getPointBounds = function(shapes) {
   return bounds;
 };
 
+internal.getPointFeatureBounds = function(shape, bounds) {
+  var n = shape ? shape.length : 0;
+  var p;
+  if (!bounds) bounds = new Bounds();
+  for (var i=0; i<n; i++) {
+    p = shape[i];
+    bounds.mergePoint(p[0], p[1]);
+  }
+  return bounds;
+};
+
 internal.forEachPoint = function(shapes, cb) {
   shapes.forEach(function(shape, id) {
     var n = shape ? shape.length : 0;

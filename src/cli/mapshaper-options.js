@@ -997,9 +997,6 @@ internal.getOptionParser = function() {
 
   parser.command("rectangle")
     .describe("create a rectangular polygon")
-    .option('type', {
-
-    })
     .option("bbox", {
       describe: "rectangle coordinates (xmin,ymin,xmax,ymax)",
       type: "bbox"
@@ -1010,6 +1007,16 @@ internal.getOptionParser = function() {
     })
     .option("source", {
       describe: "name of layer to enclose"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("rectangles")
+    // .describe("create a polygon layer with a rectangle for each feature")
+    .option("offset", {
+      describe: "padding around bbox or contents (number or list)",
+      type: "distance"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
