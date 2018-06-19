@@ -18,6 +18,8 @@ api.rectangle2 = function(target, opts) {
 };
 
 api.rectangle = function(source, opts) {
+  var clampGeographicBoxes = true; // TODO: make this an option?
+  var isGeoBox;
   var offsets, bounds, crs, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
@@ -31,8 +33,13 @@ api.rectangle = function(source, opts) {
     stop('Missing rectangle extent');
   }
   if (opts.offset) {
+    isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
     offsets = internal.convertFourSides(opts.offset, crs, bounds);
     bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+    if (isGeoBox && clampGeographicBoxes) {
+      bounds = internal.clampToWorldBounds(bounds);
+    }
+
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});

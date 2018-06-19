@@ -187,6 +187,12 @@ internal.probablyDecimalDegreeBounds = function(b) {
   return containsBounds(world, bbox);
 };
 
+internal.clampToWorldBounds = function(b) {
+  var bbox = (b instanceof Bounds) ? b.toArray() : b;
+  return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
+      Math.min(bbox[2], 180), Math.min(bbox[3], 90));
+};
+
 internal.layerHasGeometry = function(lyr) {
   return internal.layerHasPaths(lyr) || internal.layerHasPoints(lyr);
 };
