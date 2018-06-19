@@ -4,6 +4,7 @@ mapshaper-dataset-utils
 mapshaper-polygon-centroid
 mapshaper-anchor-points
 mapshaper-inner-points
+mapshaper-polyline-to-point
 mapshaper-geom
 */
 
@@ -19,8 +20,12 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
     destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
-  } else {
+  } else if (srcLyr.geometry_type == 'polygon') {
     destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
+  } else if (srcLyr.geometry_type == 'polyline') {
+    destLyr.shapes = internal.pointsFromPolylines(srcLyr, arcs, opts);
+  } else {
+    stop("Expected a polygon or polyline layer");
   }
   destLyr.geometry_type = 'point';
 
@@ -149,10 +154,14 @@ internal.pointsFromEndpoints = function(lyr, arcs) {
   }
 };
 
+internal.pointsFromPolylines = function(lyr, arcs, opts) {
+  return lyr.shapes.map(function(shp) {
+    var p = internal.polylineToPoint(shp, arcs, opts);
+    return p ? [[p.x, p.y]] : null;
+  });
+};
+
 internal.pointsFromPolygons = function(lyr, arcs, opts) {
-  if (lyr.geometry_type != "polygon") {
-    stop("Expected a polygon layer");
-  }
   var func = opts.inner ? internal.findAnchorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
     var p = func(shp, arcs);
