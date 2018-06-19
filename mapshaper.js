@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.83';
+var VERSION = '0.4.84';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1676,6 +1676,12 @@ internal.probablyDecimalDegreeBounds = function(b) {
   var world = internal.getWorldBounds(-1), // add a bit of excess
       bbox = (b instanceof Bounds) ? b.toArray() : b;
   return containsBounds(world, bbox);
+};
+
+internal.clampToWorldBounds = function(b) {
+  var bbox = (b instanceof Bounds) ? b.toArray() : b;
+  return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
+      Math.min(bbox[2], 180), Math.min(bbox[3], 90));
 };
 
 internal.layerHasGeometry = function(lyr) {
@@ -3642,11 +3648,15 @@ internal.copyLayer = function(lyr) {
 };
 
 internal.copyLayerShapes = function(lyr) {
-  var copy = utils.extend({}, lyr);
-    if (lyr.shapes) {
-      copy.shapes = internal.cloneShapes(lyr.shapes);
-    }
-    return copy;
+  var copy = {
+    name: lyr.name,
+    geometry_type: lyr.geometry_type,
+    data: lyr.data
+  };
+  if (lyr.shapes) {
+    copy.shapes = internal.cloneShapes(lyr.shapes);
+  }
+  return copy;
 };
 
 internal.getDatasetBounds = function(dataset) {
@@ -5872,6 +5882,24 @@ internal.convertIntervalPair = function(opt, crs) {
   }
   return [internal.convertIntervalParam(opt[0], crs),
           internal.convertIntervalParam(opt[1], crs)];
+};
+
+// Accepts a single value or a list of four values. List order is l,b,t,r
+internal.convertFourSides = function(opt, crs, bounds) {
+  var arr = opt.split(',');
+  if (arr.length == 1) {
+    arr = [arr[0], arr[0], arr[0], arr[0]];
+  } else if (arr.length != 4) {
+    stop("Expected a distance parameter or a list of four params");
+  }
+  return arr.map(function(param, i) {
+    var tmp;
+    if (param.indexOf('%') > 0) {
+      tmp = parseFloat(param) / 100 || 0;
+      return tmp * (i == 1 || i == 3 ? bounds.height() : bounds.width());
+    }
+    return internal.convertIntervalParam(opt, crs);
+  });
 };
 
 
@@ -9479,7 +9507,7 @@ internal.getPathEndpointTest = function(layers, arcs) {
 
 // Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
-// in layers. (In-place).
+// in layers. (dataset.arcs is replaced).
 internal.dissolveArcs = function(dataset) {
   var arcs = dataset.arcs,
       layers = dataset.layers.filter(internal.layerHasPaths);
@@ -10430,11 +10458,12 @@ api.splitLayer = function(src, splitField, opts) {
 
     if (key in index === false) {
       index[key] = splitLayers.length;
-      lyr = utils.defaults({
+      lyr = {
+        geometry_type: lyr0.geometry_type,
         name: internal.getSplitLayerName(prefix, key),
         data: properties ? new DataTable() : null,
         shapes: shapes ? [] : null
-      }, lyr0);
+      };
       splitLayers.push(lyr);
     } else {
       lyr = splitLayers[index[key]];
@@ -10489,7 +10518,7 @@ api.sliceLayer = function(targetLyr, src, dataset, opts) {
 // @type: 'clip' or 'erase'
 internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
-  var clipDataset, mergedDataset, clipLyr, nodes, tmp, outputLayers;
+  var clipDataset, mergedDataset, clipLyr, nodes, tmp;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
   if (clipSrc && clipSrc.geometry_type) {
     // TODO: update tests to remove this case (clipSrc is a layer)
@@ -10526,21 +10555,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
-  outputLayers = internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-  if (usingPathClip && !opts.no_cleanup) {
-    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
-    // This is to remove arcs belonging to the clipping paths from the target
-    // dataset, and to heal the cuts that were made where clipping paths
-    // crossed target paths
-    tmp = {
-      arcs: mergedDataset.arcs,
-      layers: targetDataset.layers
-    };
-    internal.replaceLayers(tmp, targetLayers, outputLayers);
-    internal.dissolveArcs(tmp);
-    targetDataset.arcs = tmp.arcs;
-  }
-  return outputLayers;
+  return internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
 };
 
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
@@ -17816,6 +17831,51 @@ internal.findInnerPoint = function(shp, arcs) {
 
 
 
+// Returns x,y coordinates of the vertex that is closest to the bbox center point
+//   (uses part with the largest-area bbox in )
+// TODO: explore other methods for replacing a polyline with a point.
+internal.polylineToPoint = function(shp, arcs, opts) {
+  var spherical = !arcs.isPlanar();
+  var part = !shp ? null : (shp.length == 1 ? shp[0] : internal.findLongestPolylinePart(shp, arcs, spherical));
+  if (!part) return null;
+  var bbox = arcs.getSimpleShapeBounds(part);
+  var p = internal.findNearestPolylineVertex(bbox.centerX(), bbox.centerY(), part, arcs, spherical);
+  return p;
+};
+
+internal.findNearestPolylineVertex = function(x, y, path, arcs, spherical) {
+  var minLen = Infinity,
+      minX, minY,
+      iter = arcs.getShapeIter(path),
+      calcLen = spherical ? greatCircleDistance : distance2D,
+      dist;
+  while (iter.hasNext()) {
+    dist = calcLen(x, y, iter.x, iter.y);
+    if (dist < minLen) {
+      minLen = dist;
+      minX = iter.x;
+      minY = iter.y;
+    }
+  }
+  return minLen < Infinity ? {x: minX, y: minY} : null;
+};
+
+internal.findLongestPolylinePart = function(shp, arcs, spherical) {
+  var maxLen = 0;
+  var maxPart = null;
+  shp.forEach(function(path) {
+    var len = geom.calcPathLen(path, arcs, spherical);
+    if (len > maxLen) {
+      maxLen = len;
+      maxPart = path;
+    }
+  });
+  return maxPart;
+};
+
+
+
+
 api.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
   var arcs = dataset.arcs;
@@ -17828,8 +17888,12 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
     destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
-  } else {
+  } else if (srcLyr.geometry_type == 'polygon') {
     destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
+  } else if (srcLyr.geometry_type == 'polyline') {
+    destLyr.shapes = internal.pointsFromPolylines(srcLyr, arcs, opts);
+  } else {
+    stop("Expected a polygon or polyline layer");
   }
   destLyr.geometry_type = 'point';
 
@@ -17958,10 +18022,14 @@ internal.pointsFromEndpoints = function(lyr, arcs) {
   }
 };
 
+internal.pointsFromPolylines = function(lyr, arcs, opts) {
+  return lyr.shapes.map(function(shp) {
+    var p = internal.polylineToPoint(shp, arcs, opts);
+    return p ? [[p.x, p.y]] : null;
+  });
+};
+
 internal.pointsFromPolygons = function(lyr, arcs, opts) {
-  if (lyr.geometry_type != "polygon") {
-    stop("Expected a polygon layer");
-  }
   var func = opts.inner ? internal.findAnchorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
     var p = func(shp, arcs);
@@ -18629,6 +18697,68 @@ internal.createPolygonLayer = function(lyr, dataset, opts) {
 
 
 
+// Create rectangles around one or more target layers
+//
+api.rectangle2 = function(target, opts) {
+  var outputLayers = [];
+  var datasets = target.layers.map(function(lyr) {
+    var dataset = api.rectangle({layer: lyr, dataset: target.dataset}, opts);
+    outputLayers.push(dataset.layers[0]);
+    if (!opts.no_replace) {
+      dataset.layers[0].name = lyr.name || dataset.layers[0].name;
+    }
+    return dataset;
+  });
+  var merged = internal.mergeDatasets([target.dataset].concat(datasets));
+  target.dataset.arcs = merged.arcs;
+  return outputLayers;
+};
+
+api.rectangle = function(source, opts) {
+  var clampGeographicBoxes = true; // TODO: make this an option?
+  var isGeoBox;
+  var offsets, bounds, crs, coords, sourceInfo;
+  if (source) {
+    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
+    sourceInfo = source.dataset.info;
+    crs = internal.getDatasetCRS(source.dataset);
+  } else if (opts.bbox) {
+    bounds = new Bounds(opts.bbox);
+    crs = internal.getCRS('wgs84');
+  }
+  if (!bounds || !bounds.hasBounds()) {
+    stop('Missing rectangle extent');
+  }
+  if (opts.offset) {
+    isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
+    offsets = internal.convertFourSides(opts.offset, crs, bounds);
+    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+    if (isGeoBox && clampGeographicBoxes) {
+      bounds = internal.clampToWorldBounds(bounds);
+    }
+
+  }
+  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+  var dataset = internal.importGeoJSON(geojson, {});
+  dataset.layers[0].name = opts.name || 'rectangle';
+  if (sourceInfo) {
+    internal.setDatasetCRS(dataset, sourceInfo);
+  }
+  return dataset;
+};
+
+internal.convertBboxToGeoJSON = function(bbox, opts) {
+  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+  return {
+    type: 'Polygon',
+    coordinates: [coords]
+  };
+};
+
+
+
+
 api.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
   var name = 'layer';
@@ -18681,41 +18811,6 @@ api.shape = function(opts) {
   dataset = internal.importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'shape';
   return dataset;
-};
-
-api.rectangle = function(source, opts) {
-  var offset, bounds, crs, coords, sourceInfo;
-  if (source) {
-    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
-    sourceInfo = source.dataset.info;
-    crs = internal.getDatasetCRS(source.dataset);
-  } else if (opts.bbox) {
-    bounds = new Bounds(opts.bbox);
-    crs = internal.getCRS('wgs84');
-  }
-  if (!bounds || !bounds.hasBounds()) {
-    stop('Missing rectangle extent');
-  }
-  if (opts.offset) {
-    offset = internal.convertIntervalParam(opts.offset, crs);
-    bounds.padBounds(offset, offset, offset, offset);
-  }
-  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
-  var dataset = internal.importGeoJSON(geojson, {});
-  dataset.layers[0].name = opts.name || 'rectangle';
-  if (sourceInfo) {
-    internal.setDatasetCRS(dataset, sourceInfo);
-  }
-  return dataset;
-};
-
-internal.convertBboxToGeoJSON = function(bbox, opts) {
-  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
-  return {
-    type: 'Polygon',
-    coordinates: [coords]
-  };
 };
 
 
@@ -20086,7 +20181,11 @@ api.runCommand = function(cmd, catalog, cb) {
       return; // async command
 
     } else if (name == 'rectangle') {
-      catalog.addDataset(api.rectangle(source, opts));
+      if (source || opts.bbox || targets.length === 0) {
+        catalog.addDataset(api.rectangle(source, opts));
+      } else {
+        outputLayers = api.rectangle2(targets[0], opts);
+      }
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -20151,6 +20250,10 @@ api.runCommand = function(cmd, catalog, cb) {
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
         internal.replaceLayers(targetDataset, targetLayers, outputLayers);
+        // some operations leave unreferenced arcs that should be cleaned up
+        if ((name == 'clip' || name == 'erase' || name == 'rectangle') && !opts.no_cleanup) {
+          internal.dissolveArcs(targetDataset);
+        }
       }
       // use command output as new default target
       catalog.setDefaultTarget(outputLayers, targetDataset);
@@ -21872,13 +21975,15 @@ internal.getOptionParser = function() {
       type: "bbox"
     })
     .option("offset", {
-      describe: "space around bbox or source layer",
+      describe: "padding around bbox or contents (number or list)",
       type: "distance"
     })
     .option("source", {
       describe: "name of layer to enclose"
     })
-    .option("name", nameOpt);
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("shape")
     .describe("create a polyline or polygon from coordinates")

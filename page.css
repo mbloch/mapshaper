@@ -793,6 +793,18 @@ img.close-btn:hover,
 	*/
 }
 
+.layer-item.drag-target {
+	background-color: #BDE2F4 !important;
+}
+
+.layer-item.insert-above {
+	border-top: 1px solid black;
+}
+
+.layer-item.insert-below {
+	border-bottom: 1px solid black;
+}
+
 /* --- Intersection control ----------*/
 
 #intersection-display {

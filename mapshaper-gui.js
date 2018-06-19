@@ -609,8 +609,7 @@ utils.extend(El.prototype, {
 
   findChild: function(sel) {
     var node = Elements.__select(sel, this.el)[0];
-    if (!node) error("Unmatched selector:", sel);
-    return new El(node);
+    return node ? new El(node) : null;
   },
 
   appendTo: function(ref) {
@@ -2760,15 +2759,44 @@ function RepairControl(model, map) {
 utils.inherit(RepairControl, EventDispatcher);
 
 
+function DomCache() {
+  var cache = {};
+  var used = {};
+
+  this.contains = function(html) {
+    return html in cache;
+  };
+
+  this.use = function(html) {
+    var el = used[html] = cache[html];
+    return el;
+  };
+
+  this.cleanup = function() {
+    cache = used;
+    used = {};
+  };
+
+  this.add = function(html, el) {
+    used[html] = el;
+  };
+}
+
+
 
 
 function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
-  var renderCache = {};
+  var cache = new DomCache();
   var idCount = 0; // layer counter for creating unique layer ids
-  var pinAll = El('#pin-all');
+  var pinAll = El('#pin-all'); // button for toggling layer visibility
+
+  // layer repositioning
+  var dragLayer = null;
+  var hoverLayer = null;
+  var dragStarted = false;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -2777,6 +2805,10 @@ function LayerControl(model, map) {
     if (isOpen) render();
   });
 
+  el.on('mouseup', clearInsertion);
+  el.on('mouseleave', clearInsertion);
+
+  // init layer visibility button
   pinAll.on('click', function() {
     var allOn = testAllLayersPinned();
     model.forEachLayer(function(lyr, dataset) {
@@ -2791,6 +2823,7 @@ function LayerControl(model, map) {
     });
     map.redraw();
   });
+
 
   function updatePinAllButton() {
     pinAll.classed('pinned', testAllLayersPinned());
@@ -2810,6 +2843,23 @@ function LayerControl(model, map) {
     return model.findLayer(function(lyr, dataset) {
       return lyr.menu_id == id;
     });
+  }
+
+  function clearClass(name) {
+    var targ = el.findChild('.' + name);
+    if (targ) targ.removeClass(name);
+  }
+
+  function clearInsertion() {
+    clearClass('drag-target');
+    clearClass('insert-above');
+    clearClass('insert-below');
+    dragLayer = hoverLayer = null;
+  }
+
+  function insertLayer(targetId, referenceId, above) {
+    // TODO: finish
+    clearInsertion();
   }
 
   function turnOn() {
@@ -2833,8 +2883,6 @@ function LayerControl(model, map) {
     var list = El('#layer-control .layer-list');
     var uniqIds = {};
     var pinnableCount = 0;
-    var oldCache = renderCache;
-    renderCache = {};
     list.empty();
     model.forEachLayer(function(lyr, dataset) {
       if (isPinnable(lyr)) pinnableCount++;
@@ -2843,6 +2891,7 @@ function LayerControl(model, map) {
     if (pinnableCount < 2) {
       pinAll.hide();
     } else {
+      pinAll.show();
       updatePinAllButton();
     }
 
@@ -2857,16 +2906,18 @@ function LayerControl(model, map) {
       }
       uniqIds[lyr.menu_id] = true;
       html = renderLayer(lyr, dataset, pinnable);
-      if (html in oldCache) {
-        element = oldCache[html];
+      if (cache.contains(html)) {
+        element = cache.use(html);
       } else {
         element = El('div').html(html).firstChild();
         initMouseEvents(element, lyr.menu_id, pinnable);
+        cache.add(html, element);
       }
-      renderCache[html] = element;
       list.appendChild(element);
     });
   }
+
+  cache.cleanup();
 
   function renderLayer(lyr, dataset, pinnable) {
     var warnings = getWarnings(lyr, dataset);
@@ -2901,7 +2952,49 @@ function LayerControl(model, map) {
     }
   }
 
+  // TODO: finish implementing this
+  function initLayerDragging(entry, id) {
+    var rect;
+
+    // support layer drag-drop
+    entry.on('mousemove', function(e) {
+      var y = e.pageY - rect.top;
+      hoverLayer = id;
+      if (dragStarted) {
+        dragStarted = false;
+        dragLayer = id;
+        recr = entry.node().getBoundingClientRect();
+        entry.addClass('drag-target');
+      }
+      if (!dragLayer) return;
+      if (y < rect.height / 2) {
+        entry.addClass('insert-above');
+        entry.removeClass('insert-below');
+      } else {
+        entry.removeClass('insert-above');
+        entry.addClass('insert-below');
+      }
+    });
+
+    entry.on('mouseup', function() {
+      if (dragLayer && dragLayer != id) {
+        insertLayer(dragLayer, id, entry.hasClass('insert-above'));
+        clearInsertion();
+      }
+    });
+
+    entry.on('mousedown', function() {
+      dragStarted = true;
+    });
+
+    entry.on('mouseleave', function(e) {
+      dragStarted = false;
+      hoverLayer = null;
+    });
+  }
+
   function initMouseEvents2(entry, id, pinnable) {
+
     // init delete button
     entry.findChild('img.close-btn').on('mouseup', function(e) {
       var target = findLayerById(id);
@@ -3101,6 +3194,96 @@ gui.getPixelRatio = function() {
   var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
   return deviceRatio > 1 ? 2 : 1;
 };
+
+// TODO: consider moving this upstream
+function getArcsForRendering(obj, ext) {
+  var sourceArcs = obj.source.dataset.arcs;
+  if (obj.geographic && sourceArcs.filteredArcs) {
+    return sourceArcs.filteredArcs.getArcCollection(ext);
+  }
+  return obj.arcs;
+}
+
+function drawOutlineLayerToCanvas(obj, canv, ext) {
+  var arcs;
+  var style = obj.style;
+  var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+      lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+  var filter;
+  if (internal.layerHasPaths(obj.layer)) {
+    if (!obj.arcCounts) {
+      obj.arcCounts = new Uint8Array(obj.arcs.size());
+      internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
+    }
+    if (obj.arcCounts) {
+      arcs = getArcsForRendering(obj, ext);
+      if (lightStyle.strokeColor) {
+        filter = getArcFilter(arcs, ext, false, obj.arcCounts);
+        canv.drawArcs(arcs, lightStyle, filter);
+      }
+      if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
+        filter = getArcFilter(arcs, ext, true, obj.arcCounts);
+        canv.drawArcs(arcs, darkStyle, filter);
+      }
+    }
+  }
+  if (obj.layer.geometry_type == 'point') {
+    canv.drawSquareDots(obj.layer.shapes, style);
+  }
+}
+
+function drawStyledLayerToCanvas(obj, canv, ext) {
+  // TODO: add filter for out-of-view shapes
+  var style = obj.style;
+  var layer = obj.layer;
+  var arcs, filter;
+  if (layer.geometry_type == 'point') {
+    if (style.type == 'styled') {
+      canv.drawPoints(layer.shapes, style);
+    } else {
+      canv.drawSquareDots(layer.shapes, style);
+    }
+  } else {
+    arcs = getArcsForRendering(obj, ext);
+    filter = getShapeFilter(arcs, ext);
+    canv.drawPathShapes(layer.shapes, arcs, style, filter);
+  }
+}
+
+
+// Return a function for testing if an arc should be drawn in the current view
+function getArcFilter(arcs, ext, usedFlag, arcCounts) {
+  var minPathLen = 0.5 * ext.getPixelSize(),
+      geoBounds = ext.getBounds(),
+      geoBBox = geoBounds.toArray(),
+      allIn = geoBounds.contains(arcs.getBounds()),
+      visible;
+  // don't continue dropping paths if user zooms out farther than full extent
+  if (ext.scale() < 1) minPathLen *= ext.scale();
+  return function(i) {
+      var visible = true;
+      if (usedFlag != arcCounts[i] > 0) { // show either used or unused arcs
+        visible = false;
+      } else if (arcs.arcIsSmaller(i, minPathLen)) {
+        visible = false;
+      } else if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) {
+        visible = false;
+      }
+      return visible;
+    };
+  }
+
+// Return a function for testing if a shape should be drawn in the current view
+function getShapeFilter(arcs, ext) {
+  var viewBounds = ext.getBounds();
+  var bounds = new Bounds();
+  if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
+  return function(shape) {
+    bounds.empty();
+    arcs.getMultiShapeBounds(shape, bounds);
+    return viewBounds.intersects(bounds);
+  };
+}
 
 function DisplayCanvas() {
   var _self = El('canvas'),
@@ -3441,14 +3624,11 @@ gui.getDisplayLayerForTable = function(table) {
       gutter = 6,
       arcs = [],
       shapes = [],
-      lyr = {shapes: shapes},
-      data = {layer: lyr},
       aspectRatio = 1.1,
-      usePoints = false,
       x, y, col, row, blockSize;
 
   if (n > 10000) {
-    usePoints = true;
+    arcs = null;
     gutter = 0;
     cellWidth = 4;
     cellHeight = 4;
@@ -3474,184 +3654,62 @@ gui.getDisplayLayerForTable = function(table) {
     col = Math.floor(i / blockSize);
     x = col * (cellWidth + gutter);
     y = cellHeight * (blockSize - row);
-    if (usePoints) {
-      shapes.push([[x, y]]);
-    } else {
+    if (arcs) {
       arcs.push(getArc(x, y, cellWidth, cellHeight));
       shapes.push([[i]]);
+    } else {
+      shapes.push([[x, y]]);
     }
   }
-
-  if (usePoints) {
-    lyr.geometry_type = 'point';
-  } else {
-    data.arcs = new internal.ArcCollection(arcs);
-    lyr.geometry_type = 'polygon';
-  }
-  lyr.data = table;
 
   function getArc(x, y, w, h) {
     return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
   }
 
-  return data;
+  return {
+    layer: {
+      geometry_type: arcs ? 'polygon' : 'point',
+      shapes: shapes,
+      data: table
+    },
+    arcs: arcs ? new internal.ArcCollection(arcs) : null
+  };
 };
 
 
 
 
-// Wrapper class for a data layer. Has methods for mediating between the GUI interface
-// (layer display and interactive simplification) and the underlying data.
-// Provides reduced-detail versions of arcs for rendering zoomed-out views of
-// large data layers.
-//
-function DisplayLayer(lyr, dataset, ext) {
-  var _displayBounds;
-  var _arcCounts;
-
-  this.getLayer = function() {return lyr;};
-
-  this.getBounds = function() {
-    return _displayBounds;
-  };
-
-  this.getDisplayLayer = function() {
-    var arcs = lyr.display.arcs,
-        layer = lyr.display.layer || lyr;
-    if (!arcs) {
-      // use filtered arcs if available & map extent is known
-      arcs = dataset.filteredArcs ?
-        dataset.filteredArcs.getArcCollection(ext) : dataset.arcs;
-    }
-    return {
+// Wrap a layer in an object along with information needed for rendering
+function getMapLayer(layer, dataset) {
+  var obj = {
+    layer: null,
+    arcs: null,
+    style: null,
+    source: {
       layer: layer,
-      dataset: {arcs: arcs},
-      geographic: layer == lyr // false if using table-only shapes
-    };
+      dataset: dataset
+    },
+    empty: internal.getFeatureCount(layer) === 0
   };
 
-  this.draw = function(canv, style) {
-    if (style.type == 'outline') {
-      this.drawStructure(canv, style);
-    } else {
-      this.drawShapes(canv, style);
-    }
-  };
-
-  this.drawStructure = function(canv, style) {
-    var obj = this.getDisplayLayer(ext);
-    var arcs = obj.dataset.arcs;
-    var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
-        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
-    var filter;
-    if (arcs && _arcCounts) {
-      if (lightStyle.strokeColor) {
-        filter = getArcFilter(arcs, ext, false, _arcCounts);
-        canv.drawArcs(arcs, lightStyle, filter);
-      }
-      if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
-        filter = getArcFilter(arcs, ext, true, _arcCounts);
-        canv.drawArcs(arcs, darkStyle, filter);
-      }
-    }
-    if (obj.layer.geometry_type == 'point') {
-      canv.drawSquareDots(obj.layer.shapes, style);
-    }
-  };
-
-  this.drawShapes = function(canv, style) {
-    // TODO: add filter for out-of-view shapes
-    var obj = this.getDisplayLayer(ext);
-    var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
-    var filter;
-    if (lyr.geometry_type == 'point') {
-      if (style.type == 'styled') {
-        canv.drawPoints(lyr.shapes, style);
-      } else {
-        canv.drawSquareDots(lyr.shapes, style);
-      }
-    } else {
-      filter = getShapeFilter(obj.dataset.arcs);
-      canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style, filter);
-    }
-  };
-
-  function getShapeFilter(arcs) {
-    var viewBounds = ext.getBounds();
-    var bounds = new Bounds();
-    if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
-    return function(shape) {
-      bounds.empty();
-      arcs.getMultiShapeBounds(shape, bounds);
-      return viewBounds.intersects(bounds);
-    };
+  // init filtered arcs, if needed
+  if (internal.layerHasPaths(layer) && !dataset.filteredArcs) {
+    dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
   }
 
-  // Return a function for testing if an arc should be drawn at the current
-  //   map view.
-  function getArcFilter(arcs, ext, usedFlag, arcCounts) {
-    var minPathLen = 0.5 * ext.getPixelSize(),
-        geoBounds = ext.getBounds(),
-        geoBBox = geoBounds.toArray(),
-        allIn = geoBounds.contains(arcs.getBounds()),
-        visible;
-    // don't continue dropping paths if user zooms out farther than full extent
-    if (ext.scale() < 1) minPathLen *= ext.scale();
-    return function(i) {
-      var visible = true;
-      if (usedFlag != arcCounts[i] > 0) { // show either used or unused arcs
-        visible = false;
-      } else if (arcs.arcIsSmaller(i, minPathLen)) {
-        visible = false;
-      } else if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) {
-        visible = false;
-      }
-      return visible;
-    };
+  if (obj.empty) return obj;
+
+  if (!layer.geometry_type) {
+    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
+    obj.tabular = true;
+  } else {
+    obj.geographic = true;
+    obj.layer = layer;
+    obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence
   }
 
-  function filterLayer(lyr, ids) {
-    if (lyr.shapes) {
-      shapes = ids.map(function(id) {
-        return lyr.shapes[id];
-      });
-      return utils.defaults({shapes: shapes}, lyr);
-    }
-    return lyr;
-  }
-
-  function initArcCounts(self) {
-    var o = self.getDisplayLayer();
-    _arcCounts = o.dataset.arcs ? new Uint8Array(o.dataset.arcs.size()) : null;
-    if (internal.layerHasPaths(o.layer)) {
-      internal.countArcsInShapes(o.layer.shapes, _arcCounts);
-    }
-  }
-
-  function init(self) {
-    var display = lyr.display = lyr.display || {};
-    var isTable = lyr.data && !lyr.geometry_type;
-
-    // init filtered arcs, if needed
-    if (internal.layerHasPaths(lyr) && !dataset.filteredArcs) {
-      dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
-    }
-
-    // init table shapes, if needed
-    if (isTable) {
-      if (!display.layer || display.layer.shapes.length != lyr.data.size()) {
-        utils.extend(display, gui.getDisplayLayerForTable(lyr.data));
-      }
-    } else if (display.layer) {
-      delete display.layer;
-      delete display.arcs;
-    }
-
-    _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs, isTable);
-    initArcCounts(self);
-  }
-
-  init(this);
+  obj.bounds = getDisplayBounds(obj.layer, obj.arcs, obj.tabular);
+  return obj;
 }
 
 function getDisplayBounds(lyr, arcs, isTable) {
@@ -3698,7 +3756,6 @@ function getVariableMargin(lyr) {
   }
   return pct;
 }
-
 
 
 
@@ -3977,325 +4034,6 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 
-function HitControl(ext, mouse) {
-  var self = new EventDispatcher();
-  var prevHits = [];
-  var active = false;
-  var tests = {
-    polygon: polygonTest,
-    polyline: polylineTest,
-    point: pointTest
-  };
-  var readout = El('#coordinate-info').hide();
-  var bboxPoint;
-  var lyr, target, test;
-
-  readout.on('copy', function(e) {
-    // remove selection on copy (using timeout or else copy is cancelled)
-    setTimeout(function() {
-      getSelection().removeAllRanges();
-    }, 50);
-    // don't display bounding box if user copies coords
-    bboxPoint = null;
-  });
-
-  ext.on('change', function() {
-    clearCoords();
-    // shapes may change along with map scale
-    target = lyr ? lyr.getDisplayLayer() : null;
-  });
-
-  self.setLayer = function(o, style) {
-    lyr = o;
-    target = o.getDisplayLayer();
-    if (target.layer.geometry_type == 'point' && style.type == 'styled') {
-      test = getGraduatedCircleTest(getRadiusFunction(style));
-    } else {
-      test = tests[target.layer.geometry_type];
-    }
-    readout.hide();
-  };
-
-  self.start = function() {
-    active = true;
-  };
-
-  self.stop = function() {
-    if (active) {
-      hover([]);
-      // readout.text('').hide();
-      active = false;
-    }
-  };
-
-  mouse.on('click', function(e) {
-    if (!target) return;
-    if (active) {
-      trigger('click', prevHits);
-    }
-    if (target.geographic) {
-      gui.selectElement(readout.node());
-      // don't save bbox point when inspector is active
-      // clear bbox point if already present
-      bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);
-    }
-  });
-
-  mouse.on('leave', clearCoords);
-
-  mouse.on('hover', function(e) {
-    if (!target) return;
-    var isOver = isOverMap(e);
-    var p = ext.translatePixelCoords(e.x, e.y);
-    if (target.geographic && isOver) {
-      // update coordinate readout if displaying geographic shapes
-      displayCoords(p);
-    } else {
-      clearCoords();
-    }
-    if (active && test) {
-      if (!isOver) {
-        // mouse is off of map viewport -- clear any current hit
-        hover([]);
-      } else if (e.hover) {
-        // mouse is hovering directly over map area -- update hit detection
-        hover(test(p[0], p[1]));
-      } else {
-        // mouse is over map viewport but not directly over map (e.g. hovering
-        // over popup) -- don't update hit detection
-      }
-    }
-  });
-
-  function isOverMap(e) {
-    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-  }
-
-  function displayCoords(p) {
-    var decimals = getCoordPrecision(ext.getBounds());
-    var coords = bboxPoint ? getBbox(p, bboxPoint) : p;
-    var str = coords.map(function(n) {return n.toFixed(decimals);}).join(',');
-    readout.text(str).show();
-  }
-
-  function getBbox(a, b) {
-    return [
-      Math.min(a[0], b[0]),
-      Math.min(a[1], b[1]),
-      Math.max(a[0], b[0]),
-      Math.max(a[1], b[1])
-    ];
-  }
-
-  function clearCoords() {
-    bboxPoint = null;
-    readout.hide();
-  }
-
-  // Convert pixel distance to distance in coordinate units.
-  function getHitBuffer(pix) {
-    return pix / ext.getTransform().mx;
-  }
-
-  // reduce hit threshold when zoomed out
-  function getHitBuffer2(pix, minPix) {
-    var scale = ext.scale();
-    if (scale < 1) {
-      pix *= scale;
-    }
-    if (minPix > 0 && pix < minPix) pix = minPix;
-    return getHitBuffer(pix);
-  }
-
-  function getCoordPrecision(bounds) {
-    var range = Math.min(bounds.width(), bounds.height()) + 1e-8;
-    var digits = 0;
-    while (range < 2000) {
-      range *= 10;
-      digits++;
-    }
-    return digits;
-  }
-
-  function polygonTest(x, y) {
-    var maxDist = getHitBuffer2(5, 1),
-        cands = findHitCandidates(x, y, maxDist),
-        hits = [],
-        cand, hitId;
-    for (var i=0; i<cands.length; i++) {
-      cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, target.dataset.arcs)) {
-        hits.push(cand.id);
-      }
-    }
-    if (cands.length > 0 && hits.length === 0) {
-      // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, target.dataset.arcs);
-      hits = pickNearestCandidates(cands, 0, maxDist);
-    }
-    return hits;
-  }
-
-  function pickNearestCandidates(sorted, bufDist, maxDist) {
-    var hits = [],
-        cand, minDist;
-    for (var i=0; i<sorted.length; i++) {
-      cand = sorted[i];
-      if (cand.dist < maxDist !== true) {
-        break;
-      } else if (i === 0) {
-        minDist = cand.dist;
-      } else if (cand.dist - minDist > bufDist) {
-        break;
-      }
-      hits.push(cand.id);
-    }
-    return hits;
-  }
-
-  function polylineTest(x, y) {
-    var maxDist = getHitBuffer2(15, 2),
-        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
-        cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, target.dataset.arcs);
-    return pickNearestCandidates(cands, bufDist, maxDist);
-  }
-
-  function sortByDistance(x, y, cands, arcs) {
-    for (var i=0; i<cands.length; i++) {
-      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
-    }
-    utils.sortOn(cands, 'dist');
-  }
-
-  function pointTest(x, y) {
-    var dist = getHitBuffer2(25, 4),
-        limitSq = dist * dist,
-        hits = [];
-    internal.forEachPoint(target.layer.shapes, function(p, id) {
-      var distSq = geom.distanceSq(x, y, p[0], p[1]);
-      if (distSq < limitSq) {
-        hits = [id];
-        limitSq = distSq;
-      } else if (distSq == limitSq) {
-        hits.push(id);
-      }
-    });
-    return hits;
-  }
-
-  function getRadiusFunction(style) {
-    var o = {};
-    if (style.styler) {
-      return function(i) {
-        style.styler(o, i);
-        return o.radius || 0;
-      };
-    }
-    return function() {return style.radius || 0;};
-  }
-
-  function getGraduatedCircleTest(radius) {
-    return function(x, y) {
-      var hits = [],
-          margin = getHitBuffer(12),
-          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
-          directHit = false,
-          hitRadius = 0,
-          hitDist;
-      internal.forEachPoint(target.layer.shapes, function(p, id) {
-        var distSq = geom.distanceSq(x, y, p[0], p[1]);
-        var isHit = false;
-        var isOver, isNear, r, d, rpix;
-        if (distSq > limit * limit) return;
-        rpix = radius(id);
-        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
-        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
-        isOver = d < 0;
-        isNear = d < margin;
-        if (!isNear || rpix > 0 === false) {
-          isHit = false;
-        } else if (hits.length === 0) {
-          isHit = isNear;
-        } else if (!directHit && isOver) {
-          isHit = true;
-        } else if (directHit && isOver) {
-          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
-        } else if (!directHit && !isOver) {
-          // closest to bubble edge wins
-          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
-        }
-        if (isHit) {
-          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
-            hits = [];
-          }
-          hitRadius = r;
-          hitDist = d;
-          directHit = isOver;
-          hits.push(id);
-        }
-      });
-      return hits;
-    };
-  }
-
-  function getProperties(id) {
-    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
-  }
-
-  function sameIds(a, b) {
-    if (a.length != b.length) return false;
-    for (var i=0; i<a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-
-  function trigger(event, hits) {
-    self.dispatchEvent(event, {
-      ids: hits,
-      id: hits.length > 0 ? hits[0] : -1
-    });
-  }
-
-  function hover(hits) {
-    if (!sameIds(hits, prevHits)) {
-      prevHits = hits;
-      El('#map-layers').classed('hover', hits.length > 0);
-      trigger('hover', hits);
-    }
-  }
-
-  function findHitCandidates(x, y, dist) {
-    var arcs = target.dataset.arcs,
-        index = {},
-        cands = [],
-        bbox = [];
-    target.layer.shapes.forEach(function(shp, shpId) {
-      var cand;
-      for (var i = 0, n = shp && shp.length; i < n; i++) {
-        arcs.getSimpleShapeBounds2(shp[i], bbox);
-        if (x + dist < bbox[0] || x - dist > bbox[2] ||
-          y + dist < bbox[1] || y - dist > bbox[3]) {
-          continue; // bbox non-intersection
-        }
-        cand = index[shpId];
-        if (!cand) {
-          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
-          cands.push(cand);
-        }
-        cand.shape.push(shp[i]);
-      }
-    });
-    return cands;
-  }
-
-  return self;
-}
-
-
-
-
 // @onNext: handler for switching between multiple records
 function Popup(onNext, onPrev) {
   var self = new EventDispatcher();
@@ -4478,7 +4216,328 @@ internal.getFieldType = function(val, key, table) {
 
 
 
-function InspectionControl(model, hit) {
+function HitControl(ext, mouse) {
+  var self = new EventDispatcher();
+  var prevHits = [];
+  var active = false;
+  var tests = {
+    polygon: polygonTest,
+    polyline: polylineTest,
+    point: pointTest
+  };
+  var readout = El('#coordinate-info').hide();
+  var bboxPoint;
+  var target, test;
+
+  readout.on('copy', function(e) {
+    // remove selection on copy (using timeout or else copy is cancelled)
+    setTimeout(function() {
+      getSelection().removeAllRanges();
+    }, 50);
+    // don't display bounding box if user copies coords
+    bboxPoint = null;
+  });
+
+  ext.on('change', function() {
+    clearCoords();
+    // shapes may change along with map scale
+    // target = lyr ? lyr.getDisplayLayer() : null;
+  });
+
+  self.setLayer = function(mapLayer) {
+    var layer = mapLayer.layer;
+    var style = mapLayer.style;
+    target = mapLayer;
+    if (layer.geometry_type == 'point' && style.type == 'styled') {
+      test = getGraduatedCircleTest(getRadiusFunction(style));
+    } else {
+      test = tests[layer.geometry_type];
+    }
+    readout.hide();
+  };
+
+  self.start = function() {
+    active = true;
+  };
+
+  self.stop = function() {
+    if (active) {
+      hover([]);
+      // readout.text('').hide();
+      active = false;
+    }
+  };
+
+  mouse.on('click', function(e) {
+    if (!target) return;
+    if (active) {
+      trigger('click', prevHits);
+    }
+    if (target.geographic) {
+      gui.selectElement(readout.node());
+      // don't save bbox point when inspector is active
+      // clear bbox point if already present
+      bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);
+    }
+  });
+
+  mouse.on('leave', clearCoords);
+
+  mouse.on('hover', function(e) {
+    if (!target) return;
+    var isOver = isOverMap(e);
+    var p = ext.translatePixelCoords(e.x, e.y);
+    if (target.geographic && isOver) {
+      // update coordinate readout if displaying geographic shapes
+      displayCoords(p);
+    } else {
+      clearCoords();
+    }
+    if (active && test) {
+      if (!isOver) {
+        // mouse is off of map viewport -- clear any current hit
+        hover([]);
+      } else if (e.hover) {
+        // mouse is hovering directly over map area -- update hit detection
+        hover(test(p[0], p[1]));
+      } else {
+        // mouse is over map viewport but not directly over map (e.g. hovering
+        // over popup) -- don't update hit detection
+      }
+    }
+  });
+
+  function isOverMap(e) {
+    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
+  }
+
+  function displayCoords(p) {
+    var decimals = getCoordPrecision(ext.getBounds());
+    var coords = bboxPoint ? getBbox(p, bboxPoint) : p;
+    var str = coords.map(function(n) {return n.toFixed(decimals);}).join(',');
+    readout.text(str).show();
+  }
+
+  function getBbox(a, b) {
+    return [
+      Math.min(a[0], b[0]),
+      Math.min(a[1], b[1]),
+      Math.max(a[0], b[0]),
+      Math.max(a[1], b[1])
+    ];
+  }
+
+  function clearCoords() {
+    bboxPoint = null;
+    readout.hide();
+  }
+
+  // Convert pixel distance to distance in coordinate units.
+  function getHitBuffer(pix) {
+    return pix / ext.getTransform().mx;
+  }
+
+  // reduce hit threshold when zoomed out
+  function getHitBuffer2(pix, minPix) {
+    var scale = ext.scale();
+    if (scale < 1) {
+      pix *= scale;
+    }
+    if (minPix > 0 && pix < minPix) pix = minPix;
+    return getHitBuffer(pix);
+  }
+
+  function getCoordPrecision(bounds) {
+    var range = Math.min(bounds.width(), bounds.height()) + 1e-8;
+    var digits = 0;
+    while (range < 2000) {
+      range *= 10;
+      digits++;
+    }
+    return digits;
+  }
+
+  function polygonTest(x, y) {
+    var maxDist = getHitBuffer2(5, 1),
+        cands = findHitCandidates(x, y, maxDist),
+        hits = [],
+        cand, hitId;
+    for (var i=0; i<cands.length; i++) {
+      cand = cands[i];
+      if (geom.testPointInPolygon(x, y, cand.shape, target.arcs)) {
+        hits.push(cand.id);
+      }
+    }
+    if (cands.length > 0 && hits.length === 0) {
+      // secondary detection: proximity, if not inside a polygon
+      sortByDistance(x, y, cands, target.arcs);
+      hits = pickNearestCandidates(cands, 0, maxDist);
+    }
+    return hits;
+  }
+
+  function pickNearestCandidates(sorted, bufDist, maxDist) {
+    var hits = [],
+        cand, minDist;
+    for (var i=0; i<sorted.length; i++) {
+      cand = sorted[i];
+      if (cand.dist < maxDist !== true) {
+        break;
+      } else if (i === 0) {
+        minDist = cand.dist;
+      } else if (cand.dist - minDist > bufDist) {
+        break;
+      }
+      hits.push(cand.id);
+    }
+    return hits;
+  }
+
+  function polylineTest(x, y) {
+    var maxDist = getHitBuffer2(15, 2),
+        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, target.arcs);
+    return pickNearestCandidates(cands, bufDist, maxDist);
+  }
+
+  function sortByDistance(x, y, cands, arcs) {
+    for (var i=0; i<cands.length; i++) {
+      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+    }
+    utils.sortOn(cands, 'dist');
+  }
+
+  function pointTest(x, y) {
+    var dist = getHitBuffer2(25, 4),
+        limitSq = dist * dist,
+        hits = [];
+    internal.forEachPoint(target.layer.shapes, function(p, id) {
+      var distSq = geom.distanceSq(x, y, p[0], p[1]);
+      if (distSq < limitSq) {
+        hits = [id];
+        limitSq = distSq;
+      } else if (distSq == limitSq) {
+        hits.push(id);
+      }
+    });
+    return hits;
+  }
+
+  function getRadiusFunction(style) {
+    var o = {};
+    if (style.styler) {
+      return function(i) {
+        style.styler(o, i);
+        return o.radius || 0;
+      };
+    }
+    return function() {return style.radius || 0;};
+  }
+
+  function getGraduatedCircleTest(radius) {
+    return function(x, y) {
+      var hits = [],
+          margin = getHitBuffer(12),
+          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
+          directHit = false,
+          hitRadius = 0,
+          hitDist;
+      internal.forEachPoint(target.layer.shapes, function(p, id) {
+        var distSq = geom.distanceSq(x, y, p[0], p[1]);
+        var isHit = false;
+        var isOver, isNear, r, d, rpix;
+        if (distSq > limit * limit) return;
+        rpix = radius(id);
+        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
+        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
+        isOver = d < 0;
+        isNear = d < margin;
+        if (!isNear || rpix > 0 === false) {
+          isHit = false;
+        } else if (hits.length === 0) {
+          isHit = isNear;
+        } else if (!directHit && isOver) {
+          isHit = true;
+        } else if (directHit && isOver) {
+          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
+        } else if (!directHit && !isOver) {
+          // closest to bubble edge wins
+          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
+        }
+        if (isHit) {
+          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
+            hits = [];
+          }
+          hitRadius = r;
+          hitDist = d;
+          directHit = isOver;
+          hits.push(id);
+        }
+      });
+      return hits;
+    };
+  }
+
+  function getProperties(id) {
+    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
+  }
+
+  function sameIds(a, b) {
+    if (a.length != b.length) return false;
+    for (var i=0; i<a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function trigger(event, hits) {
+    self.dispatchEvent(event, {
+      ids: hits,
+      id: hits.length > 0 ? hits[0] : -1
+    });
+  }
+
+  function hover(hits) {
+    if (!sameIds(hits, prevHits)) {
+      prevHits = hits;
+      El('#map-layers').classed('hover', hits.length > 0);
+      trigger('hover', hits);
+    }
+  }
+
+  function findHitCandidates(x, y, dist) {
+    var arcs = target.arcs,
+        index = {},
+        cands = [],
+        bbox = [];
+    target.layer.shapes.forEach(function(shp, shpId) {
+      var cand;
+      for (var i = 0, n = shp && shp.length; i < n; i++) {
+        arcs.getSimpleShapeBounds2(shp[i], bbox);
+        if (x + dist < bbox[0] || x - dist > bbox[2] ||
+          y + dist < bbox[1] || y - dist > bbox[3]) {
+          continue; // bbox non-intersection
+        }
+        cand = index[shpId];
+        if (!cand) {
+          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
+          cands.push(cand);
+        }
+        cand.shape.push(shp[i]);
+      }
+    });
+    return cands;
+  }
+
+  return self;
+}
+
+
+
+
+function InspectionControl(model, ext, mouse) {
+  var hit = new HitControl(ext, mouse);
   var _popup = new Popup(getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
@@ -4489,7 +4548,10 @@ function InspectionControl(model, hit) {
     gui.dispatchEvent('inspector_toggle');
   });
   var _self = new EventDispatcher();
-  var _shapes, _lyr;
+  var _target;
+  // keep a reference to shapes array of current layer, to check if
+  // shapes have changed when layer is updated.
+  var _shapes;
 
   gui.on('inspector_toggle', function() {
     if (_inspecting) turnOff(); else turnOn();
@@ -4506,21 +4568,21 @@ function InspectionControl(model, hit) {
     _self.dispatchEvent('data_change', d);
   });
 
-  _self.updateLayer = function(o, style) {
-    var shapes = o.getDisplayLayer().layer.shapes;
+  _self.updateLayer = function(mapLayer) {
+    var shapes = mapLayer.layer.shapes;
+    _target = mapLayer;
     if (_inspecting) {
-      // kludge: check if shapes have changed
       if (_shapes == shapes) {
-        // kludge: re-display the inspector, in case data changed
+        // shapes haven't changed -- refresh in case data has changed
         inspect(_highId, _pinned);
       } else {
+        // shapes have changed -- clear any selected shapes
         _selectionIds = null;
         inspect(-1, false);
       }
     }
-    hit.setLayer(o, style);
     _shapes = shapes;
-    _lyr = o;
+    hit.setLayer(mapLayer);
   };
 
   // replace cli inspect command
@@ -4555,7 +4617,7 @@ function InspectionControl(model, hit) {
 
       if (kc == 37 || kc == 39) {
         // arrow keys advance pinned feature
-        n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
+        n = internal.getFeatureCount(_target.layer);
         if (n > 1) {
           if (kc == 37) {
             id = (_highId + n - 1) % n;
@@ -4611,8 +4673,7 @@ function InspectionControl(model, hit) {
   }
 
   function showInspector(id, ids, pinned) {
-    var o = _lyr.getDisplayLayer();
-    var table = o.layer.data || null;
+    var table = _target.layer.data || null;
     _popup.show(id, ids, table, pinned);
   }
 
@@ -4933,24 +4994,24 @@ function SvgDisplayLayer(ext, mouse) {
 
   el.clear = clear;
 
-  el.reposition = function(lyr) {
+  el.reposition = function(target) {
     var transform = ext.getTransform();
     resize(ext);
-    reposition(lyr, transform);
+    reposition(target, transform);
   };
 
-  el.drawLayer = function(lyr, isActive) {
+  el.drawLayer = function(target) {
     var transform = ext.getTransform();
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     // kludge to identify container when symbols are repositioned
     var id = utils.getUniqueName();
     g.setAttribute('id', id);
-    lyr.display.svg_id = id;
+    target.svg_id = id;
     resize(ext);
-    g.innerHTML = renderLabels(lyr, transform);
+    g.innerHTML = renderLabels(target.layer, transform);
     svg.append(g);
-    if (isActive) {
-      activeLayer = lyr;
+    if (target.active) {
+      activeLayer = target.layer;
     } else {
       g.style.pointerEvents = 'none';
     }
@@ -5172,15 +5233,15 @@ function SvgDisplayLayer(ext, mouse) {
     }
   }
 
-  function reposition(lyr, fwd) {
-    var container = document.getElementById(lyr.display.svg_id);
+  function reposition(target, fwd) {
+    var container = document.getElementById(target.svg_id);
     var texts = container.getElementsByTagName('text');
     var n = texts.length;
     var text, xy, idx, p;
     for (var i=0; i<n; i++) {
       text = texts[i];
       idx = +text.getAttribute('data-id');
-      p = lyr.shapes[idx];
+      p = target.layer.shapes[idx];
       if (!p) continue;
       xy = fwd.transform(p[0][0], p[0][1]);
       setMultilineAttribute(text, 'x', xy[0]);
@@ -5224,58 +5285,60 @@ function SvgDisplayLayer(ext, mouse) {
 
 /* @requires mapshaper-svg-display, @mapshaper-canvas, mapshaper-map-style */
 
-function LayerStack() {
-  var self = El('#map-layers');
-  var _activeCanv, _overlayCanv, _overlay2Canv,
-      _svg, _ext;
+function LayerStack(container, ext, mouse) {
+  var el = El(container),
+      _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
+      _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
+      _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
+      _svg = new SvgDisplayLayer(ext, mouse).appendTo(el), // labels, _ext;
+      _ext = ext;
 
-  self.init = function(ext, mouse) {
-    _ext = ext;
-    _activeCanv = new DisplayCanvas().appendTo(self);      // data layer shapes
-    _overlayCanv = new DisplayCanvas().appendTo(self);     // hover and selection shapes
-    _overlay2Canv = new DisplayCanvas().appendTo(self);  // line intersection dots
-    _svg = new SvgDisplayLayer(ext, mouse).appendTo(self); // labels
+  this.drawOverlay2Layer = function(lyr) {
+    drawSingleCanvasLayer(lyr, _overlay2Canv);
   };
 
-  self.drawOverlay2Layer = function(lyr, style) {
-    drawSingleCanvasLayer(lyr, _overlay2Canv, style);
+  this.drawOverlayLayer = function(lyr) {
+    drawSingleCanvasLayer(lyr, _overlayCanv);
   };
 
-  self.drawOverlayLayer = function(lyr, style) {
-    drawSingleCanvasLayer(lyr, _overlayCanv, style);
-  };
-
-  self.drawLayers = function(layers, onlyNav) {
+  this.drawLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
     sortLayers(layers);
     if (!onlyNav) {
       _svg.clear();
     }
     layers.forEach(function(target) {
-      var lyr = target.getLayer();
-      if (lyr.display.canvas) {
-        target.draw(_activeCanv, lyr.display.style);
+      if (target.canvas) {
+        drawCanvasLayer(target, _activeCanv);
       }
-      if (lyr.display.svg) {
-        drawSvgLayer(lyr, onlyNav);
+      if (target.svg) {
+        drawSvgLayer(target, onlyNav);
       }
     });
   };
 
-  function drawSvgLayer(lyr, onlyNav) {
-    if (onlyNav) {
-      _svg.reposition(lyr);
+  function drawCanvasLayer(target, canv) {
+    if (target.style.type == 'outline') {
+      drawOutlineLayerToCanvas(target, canv, ext);
     } else {
-      _svg.drawLayer(lyr, lyr.display.active);
+      drawStyledLayerToCanvas(target, canv, ext);
     }
   }
 
-  function drawSingleCanvasLayer(target, canv, style) {
-    if (style) {
-      canv.prep(_ext);
-      target.draw(canv, style);
+  function drawSvgLayer(target, onlyNav) {
+    if (onlyNav) {
+      _svg.reposition(target);
     } else {
+      _svg.drawLayer(target);
+    }
+  }
+
+  function drawSingleCanvasLayer(target, canv) {
+    if (!target) {
       canv.hide();
+    } else {
+      canv.prep(_ext);
+      drawCanvasLayer(target, canv);
     }
   }
 
@@ -5289,63 +5352,31 @@ function LayerStack() {
   }
 
   function getLayerStackOrder(o) {
-    var lyr = o.getLayer();
-    var type = lyr.geometry_type;
+    var type = o.layer.geometry_type;
     var z = 0;
     if (type == 'point') z = 6;
     else if (type == 'polyline') z = 4;
     else if (type == 'polygon') z = 2;
-    if (lyr.display.active) z += 1; // put active layer on top of same-type layers
+    if (o.active) z += 1; // put active layer on top of same-type layers
     return z;
   }
-
-  return self;
 }
 
 
 
 
-// Test if map should be re-framed to show updated layer
-gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);
-  var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
-  var boundsChanged = !prevBounds.equals(newBounds);
-  var inView = newBounds.intersects(mapBounds);
-  var areaChg = newBounds.area() / prevBounds.area();
-  if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
-  if (!inView) return true; // reset if layer is out-of-view
-  if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
-  if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
-  return false;
-};
-
-// TODO: move to utilities file
-gui.getBoundsIntersection = function(a, b) {
-  var c = new Bounds();
-  if (a.intersects(b)) {
-    c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
-    Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
-  }
-  return c;
-};
-
-// Returns proportion of bb2 occupied by bb1
-gui.getIntersectionPct = function(bb1, bb2) {
-  return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
-};
+utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
-      _stack = new LayerStack(),
       _referenceLayers = [],
-      _intersectionLyr, _intersectionStyle,
-      _activeLyr, _activeStyle, _overlayStyle,
+      _intersectionLyr, _activeLyr, _overlayLyr,
       _needReset = false,
-      _ext, _inspector;
+      _ext, _inspector, _stack;
 
   model.on('select', function(e) {
-    _intersectionStyle = null;
-    _overlayStyle = null;
+    _intersectionLyr = null;
+    _overlayLyr = null;
   });
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -5376,20 +5407,20 @@ function MshpMap(model) {
       return;
     }
 
-    _activeLyr = new DisplayLayer(e.layer, e.dataset, _ext);
-    _activeStyle = MapStyle.getActiveStyle(_activeLyr.getDisplayLayer().layer);
-    _inspector.updateLayer(_activeLyr, _activeStyle);
+    _activeLyr = getMapLayer(e.layer, e.dataset);
+    _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
+    _inspector.updateLayer(_activeLyr);
 
     if (!prevLyr) {
       _needReset = true;
-    } else if (isTableLayer(prevLyr) || isTableLayer(_activeLyr)) {
+    } else if (prevLyr.tabular || _activeLyr.tabular) {
       _needReset = true;
     } else {
-      _needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
+      _needReset = gui.mapNeedsReset(_activeLyr.bounds, prevLyr.bounds, _ext.getBounds());
     }
 
     // set 'home' extent to match bounds of active group
-    _ext.setBounds(_activeLyr.getBounds());
+    _ext.setBounds(_activeLyr.bounds);
 
     if (_needReset) {
       // zoom to full view of the active layer and redraw
@@ -5403,40 +5434,33 @@ function MshpMap(model) {
   // Currently used to show dots at line intersections
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr) {
-      _intersectionLyr = new DisplayLayer(lyr, dataset, _ext);
-      _intersectionStyle = MapStyle.getIntersectionStyle(lyr);
+      _intersectionLyr = getMapLayer(lyr, dataset);
+      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
     } else {
-      _intersectionStyle = null;
       _intersectionLyr = null;
     }
-    _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle); // also hides
-  };
-
-  // lightweight way to update simplification of display lines
-  // TODO: consider handling this as a model update
-  this.setSimplifyPct = function(pct) {
-    _activeLyr.setRetainedPct(pct);
-    drawLayers();
+    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
 
   function initMap() {
-    // TODO: simplify these tangled dependencies
-    var position = new ElementPosition(_stack);
-    var mouse = new MouseArea(_stack.node(), position);
-    var ext = new MapExtent(position);
-    var nav = new MapNav(_root, ext, mouse);
-    var inspector = new InspectionControl(model, new HitControl(ext, mouse));
+    var el = El('#map-layers').node();
+    var position = new ElementPosition(el);
+    var mouse = new MouseArea(el, position);
+    _ext = new MapExtent(position);
+    new MapNav(_root, _ext, mouse);
+    _stack = new LayerStack(el, _ext, mouse);
+    _inspector = new InspectionControl(model, _ext, mouse);
 
-    ext.on('change', function() {
+
+    _ext.on('change', function() {
       drawLayers(!_needReset);
       _needReset = false;
     });
-    inspector.on('change', function(e) {
-      var lyr = _activeLyr.getDisplayLayer().layer;
-      _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
-      _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
+    _inspector.on('change', function(e) {
+      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+      _stack.drawOverlayLayer(_overlayLyr);
     });
-    inspector.on('data_change', function(e) {
+    _inspector.on('data_change', function(e) {
       // refresh the display if a style variable has been changed interactively
       if (internal.isSupportedSvgProperty(e.field)) {
         drawLayers();
@@ -5445,25 +5469,6 @@ function MshpMap(model) {
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
-    _stack.init(ext, mouse);
-    // export objects that are referenced by other functions
-    _inspector = inspector;
-    _ext = ext;
-  }
-
-  function isTableLayer(displayLyr) {
-    return !displayLyr.getLayer().geometry_type; // kludge
-  }
-
-  function referenceLayerVisible() {
-    if (!_referenceLyr ||
-        // don't show if same as active layer
-        _activeLyr && _activeLyr.getLayer() == _referenceLyr.getLayer() ||
-        // or if active layer isn't geographic (kludge)
-        _activeLyr && !internal.layerHasGeometry(_activeLyr.getLayer())) {
-      return false;
-    }
-    return true;
   }
 
   // Test if an update may have affected the visible shape of arcs
@@ -5471,36 +5476,36 @@ function MshpMap(model) {
   function arcsMayHaveChanged(flags) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
-      flags.slice || flags.affine || false;
+      flags.slice || flags.affine || flags.rectangle || false;
   }
 
   // Remove layers that have been deleted from the catalog
   function updateReferenceLayers() {
     _referenceLayers = _referenceLayers.filter(function(o) {
-      return !!model.findLayer(o.getLayer());
+      return !!model.findLayer(o.source.layer);
     });
   }
 
   this.isActiveLayer = function(lyr) {
-    return lyr == _activeLyr.getLayer();
+    return lyr == _activeLyr.source.layer;
   };
 
   this.isReferenceLayer = function(lyr) {
     return _referenceLayers.filter(function(o) {
-      return o.getLayer() == lyr;
+      return o.source.layer == lyr;
     }).length > 0;
   };
 
   this.removeReferenceLayer = function(lyr) {
     _referenceLayers = _referenceLayers.filter(function(o) {
-      return o.getLayer() != lyr;
+      return o.source.layer != lyr;
     });
   };
 
   this.addReferenceLayer = function(lyr, dataset) {
     if (this.isReferenceLayer(lyr)) return;
     if (lyr && internal.layerHasGeometry(lyr)) {
-      _referenceLayers.push(new DisplayLayer(lyr, dataset, _ext));
+      _referenceLayers.push(getMapLayer(lyr, dataset));
     }
   };
 
@@ -5509,39 +5514,39 @@ function MshpMap(model) {
   function getDrawableLayers() {
     // delete any layers that have been dropped from the catalog
     updateReferenceLayers();
-    if (isTableLayer(_activeLyr)) {
-      return [_activeLyr]; // no reference layers if active layer is displayed as a table
+    if (_activeLyr.tabular) {
+       // don't show reference layers if active layer is displayed as a table
+      return [_activeLyr];
     }
     // concat active and reference layers, excluding dupes
     return [_activeLyr].concat(_referenceLayers.filter(function(o) {
-      return o.getLayer() != _activeLyr.getLayer() && !isTableLayer(o);
+      return o.source.layer != _activeLyr.source.layer && o.geographic;
     }));
   }
 
   function updateLayerStyles(layers) {
-    layers.forEach(function(o, i) {
-      var lyr = o.getLayer();
-      var style;
-      if (!lyr.display) lyr.display = {};
+    layers.forEach(function(mapLayer, i) {
       if (i === 0) {
-        // active style (assume first layer is the active layer)
-        style = _activeStyle;
-        if (style.type != 'styled' && layers.length > 0 && _activeStyle.strokeColors) {
+        if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
           // kludge to hide ghosted layers when reference layers are present
-          style = utils.defaults({
-            strokeColors: [null, _activeStyle.strokeColors[1]]
-          }, style);
+          // TODO: consider never showing ghosted layers (which appear after
+          // commands like dissolve and filter).
+          mapLayer.style = utils.defaults({
+            strokeColors: [null, mapLayer.style.strokeColors[1]]
+          }, mapLayer.style);
         }
-        // add data for the renderer in layer-stack to use
-        lyr.display.active = true;
+        mapLayer.active = true;
       } else {
+        if (mapLayer.layer == _activeLyr.layer) {
+          console.error("Error: shared map layer");
+        }
+        mapLayer.active = false;
         // reference style
-        lyr.display.active = false;
-        style = MapStyle.getReferenceStyle(lyr);
+        mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
       }
-      lyr.display.canvas = true;
-      lyr.display.svg = internal.layerHasLabels(lyr);
-      lyr.display.style = style;
+      // data for the renderer in layer-stack to use
+      mapLayer.canvas = true;
+      mapLayer.svg = internal.layerHasLabels(mapLayer.layer);
     });
   }
 
@@ -5549,16 +5554,64 @@ function MshpMap(model) {
   function drawLayers(onlyNav) {
     // draw active and reference layers
     var layers = getDrawableLayers();
-    if (!onlyNav) updateLayerStyles(layers);
+    if (!onlyNav) {
+      updateLayerStyles(layers);
+    }
     _stack.drawLayers(layers, onlyNav);
     // draw intersection dots
-    _stack.drawOverlay2Layer(_intersectionLyr, _intersectionStyle);
+    _stack.drawOverlay2Layer(_intersectionLyr);
     // draw hover & selection effects
-    _stack.drawOverlayLayer(_activeLyr, _overlayStyle);
+    _stack.drawOverlayLayer(_overlayLyr);
   }
 }
 
-utils.inherit(MshpMap, EventDispatcher);
+function getMapLayerOverlay(obj, e) {
+  var style = MapStyle.getOverlayStyle(obj.layer, e);
+  if (!style) return null;
+  return utils.defaults({
+    layer: filterLayerByIds(obj.layer, style.ids),
+    style: style
+  }, obj);
+}
+
+function filterLayerByIds(lyr, ids) {
+  if (lyr.shapes) {
+    shapes = ids.map(function(id) {
+      return lyr.shapes[id];
+    });
+    return utils.defaults({shapes: shapes}, lyr);
+  }
+  return lyr;
+}
+
+// Test if map should be re-framed to show updated layer
+gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
+  var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);
+  var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
+  var boundsChanged = !prevBounds.equals(newBounds);
+  var inView = newBounds.intersects(mapBounds);
+  var areaChg = newBounds.area() / prevBounds.area();
+  if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
+  if (!inView) return true; // reset if layer is out-of-view
+  if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
+  if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
+  return false;
+};
+
+// TODO: move to utilities file
+gui.getBoundsIntersection = function(a, b) {
+  var c = new Bounds();
+  if (a.intersects(b)) {
+    c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
+    Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
+  }
+  return c;
+};
+
+// Returns proportion of bb2 occupied by bb1
+gui.getIntersectionPct = function(bb1, bb2) {
+  return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+};
 
 
 
