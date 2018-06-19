@@ -1,3 +1,9 @@
+v0.4.84
+* [rectangle] offset= option accepts a list of four values (minx,miny,maxx, maxy) in addition to a single value. Value can be a percentage or an interval.
+* [rectangle] If no source= or bbox= option is given, -rectangle uses the bounding box of the current target layer(s).
+* [points] Added a polyline-to-point conversion that reduces each polyline feature to a single vertex, suitable for point-in-polygon testing.
+* Bug fixes
+
 v0.4.83
 * Now you can turn on multiple reference layers from the layers menu in the web UI. Reference layers are styled on the map if they have style attributes.
 * If a feature is pinned via the [i] inspector tool, the delete key will delete it.
