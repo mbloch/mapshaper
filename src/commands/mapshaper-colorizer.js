@@ -11,7 +11,7 @@ api.colorizer = function(opts) {
 };
 
 internal.isReservedName = function(name) {
-  return /^(stroke|stroke-width|fill|opacity|r|class)$/.test(name);
+  return /^(stroke|stroke-width|stroke-dasharray|fill|opacity|r|class)$/.test(name);
 };
 
 internal.getColorizerFunction = function(opts) {

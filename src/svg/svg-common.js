@@ -11,15 +11,12 @@ SVG.propertyTypes = {
   stroke: 'color',
   'line-height': 'measure',
   'letter-spacing': 'measure',
-  'stroke-width': 'number'
+  'stroke-width': 'number',
+  'stroke-dasharray': 'dasharray'
 };
 
-SVG.canvasEquivalents = {
-  'stroke-width': 'strokeWidth'
-};
-
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
-SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
+SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
 
 SVG.propertiesBySymbolType = {
   polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),

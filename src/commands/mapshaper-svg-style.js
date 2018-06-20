@@ -48,6 +48,8 @@ internal.parseSvgValue = function(name, strVal, fields) {
     val = internal.isSvgClassName(strVal) ? strVal : null;
   } else if (type == 'measure') { // SVG/CSS length (e.g. 12px, 1em, 4)
     val = internal.isSvgMeasure(strVal) ? strVal : null;
+  } else if (type == 'dasharray') {
+    val = strVal; // TODO: parse or validate
   } else {
     // unknown type -- assume string is an expression if JS syntax chars are found
     // (but not chars like <sp> and ',', which may be in a font-family, e.g.)

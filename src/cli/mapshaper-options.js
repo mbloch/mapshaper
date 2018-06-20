@@ -818,6 +818,9 @@ internal.getOptionParser = function() {
     .option("stroke-width", {
       describe: 'stroke width'
     })
+    .option("stroke-dasharray", {
+      describe: 'stroke dashes. Examples: "4" "2 4"'
+    })
     .option("opacity", {
       describe: 'opacity; example: 0.5'
     })

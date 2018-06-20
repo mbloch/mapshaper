@@ -366,6 +366,9 @@ function getPathStart(ext, lineScale) {
       ctx.lineJoin = 'round';
       ctx.lineWidth = strokeWidth * lineScale;
       ctx.strokeStyle = style.strokeColor;
+      if (style.lineDash){
+        ctx.setLineDash(style.lineDash.split(' '));
+      }
     }
     if (style.fillColor) {
       ctx.fillStyle = style.fillColor;
@@ -375,7 +378,10 @@ function getPathStart(ext, lineScale) {
 
 function endPath(ctx, style) {
   if (style.fillColor) ctx.fill();
-  if (style.strokeWidth > 0) ctx.stroke();
+  if (style.strokeWidth > 0) {
+    ctx.stroke();
+    if (style.lineDash) ctx.setLineDash([]);
+  }
   if (style.opacity >= 0) ctx.globalAlpha = 1;
   ctx.closePath();
 }

@@ -199,7 +199,8 @@ internal.getCanvasDisplayStyle = function(lyr) {
         r: 'radius',
         fill: 'fillColor',
         stroke: 'strokeColor',
-        'stroke-width': 'strokeWidth'
+        'stroke-width': 'strokeWidth',
+        'stroke-dasharray': 'lineDash'
       },
       // array of field names of relevant svg display properties
       fields = internal.getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
