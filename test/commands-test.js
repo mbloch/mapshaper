@@ -347,26 +347,6 @@ describe('mapshaper-commands.js', function () {
 
     })
 
-  })
-
-  describe('applyCommands() (<v0.4 API)', function () {
-    it('import GeoJSON points as string', function (done) {
-      var json = fs.readFileSync('test/test_data/three_points.geojson', 'utf8');
-      api.applyCommands('', json, function(err, output) {
-        assert.deepEqual(JSON.parse(json), JSON.parse(output));
-        done();
-      });
-    })
-
-    it('import GeoJSON points as object', function (done) {
-      var json = fs.readFileSync('test/test_data/three_points.geojson', 'utf8');
-      json = JSON.parse(json);
-      api.applyCommands('', json, function(err, output) {
-        assert.deepEqual(JSON.parse(output), json);
-        done();
-      });
-    })
-
     it('convert GeoJSON points to TopoJSON', function (done) {
       var geojson = {
         type: "GeometryCollection",
@@ -379,7 +359,7 @@ describe('mapshaper-commands.js', function () {
         type: "Topology",
         arcs: [],
         objects: {
-          layer1: {
+          point: {
             type: "GeometryCollection",
             geometries: [{
               type: "Point",
@@ -388,42 +368,11 @@ describe('mapshaper-commands.js', function () {
           }
         }
       };
-      api.applyCommands('-o format=topojson precision=1', geojson, function(err, output) {
-        assert.deepEqual(JSON.parse(output), topojson);
+      api.applyCommands('-i data.json name=point -o format=topojson precision=1', {'data.json': geojson}, function(err, output) {
+        assert.deepEqual(JSON.parse(output['data.json']), topojson);
         done();
       });
     })
-
-    it('-o command accepts target= option', function(done) {
-      var topojson = {
-        type: "Topology",
-        arcs: [],
-        objects: {
-          layer1: {
-            type: "GeometryCollection",
-            geometries: [{
-              type: "Point",
-              coordinates: [0, 0]
-            }]
-          },
-          layer2: {
-            type: "GeometryCollection",
-            geometries: [{
-              type: "Point",
-              coordinates: [1, 1]
-            }]
-          }
-        }
-      };
-
-      api.applyCommands('-o target=layer2', topojson, function(err, output) {
-        var obj = JSON.parse(output);
-        assert.equal(obj.objects.layer1, undefined);
-        assert.deepEqual(obj.objects.layer2, topojson.objects.layer2);
-        done();
-      });
-
-    });
 
     it('import GeoJSON points with rounding on import', function (done) {
      var geojson = {
@@ -440,8 +389,8 @@ describe('mapshaper-commands.js', function () {
           coordinates: [0, 0]
         }]
       };
-      api.applyCommands('-i precision=1', geojson, function(err, output) {
-        assert.deepEqual(JSON.parse(output), target);
+      api.applyCommands('-i precision=1 data.json -o', {'data.json': geojson}, function(err, output) {
+        assert.deepEqual(JSON.parse(output['data.json']), target);
         done();
       });
     })

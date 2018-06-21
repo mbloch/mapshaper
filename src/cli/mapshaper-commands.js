@@ -2,60 +2,72 @@
 
 // Parse command line args into commands and run them
 // @argv String or array of command line args, or array of parsed commands
-api.runCommands = function(argv, done) {
-  var commands;
-  try {
-    commands = internal.parseCommands(argv);
-  } catch(e) {
-    return done(e);
-  }
-  internal.runParsedCommands(commands, null, function(err, catalog) {
-    done(err);
-  });
+// @input (optional) Object containing file contents indexed by filename
+// Two signatures:
+//   function(argv, input, callback)
+//   function(argv, callback)
+api.runCommands = function() {
+  internal.unifiedRun(arguments, 'run');
 };
 
-// Similar to runCommands(), but receives input files from an object and
-// returns output files to a callback, instead of using file I/O.
-//
-// @commands  String or array of command line args, or array of parsed commands
-// @input  Object containing file contents indexed by filename
-// @done  Callback: function(<error>, <output>), where output is an object
+// Similar to runCommands(), but returns output files to the callback, instead of using file I/O.
+// Callback: function(<error>, <output>), where output is an object
 //           containing output from -o command(s) indexed by filename
-//
-api.applyCommands = function(commands, input, done) {
-  var output = [],
-      type = internal.guessInputContentType(input);
+api.applyCommands = function() {
+  internal.unifiedRun(arguments, 'apply');
+};
+
+internal.unifiedRun = function(args, mode) {
+  var outputArr = mode == 'apply' ? [] : null;
+  var inputObj, inputType, done, commands;
+  if (utils.isFunction(args[1])) {
+    done = args[1];
+  } else if (utils.isFunction(args[2])) {
+    done = args[2];
+    inputObj = args[1];
+    inputType = internal.guessInputContentType(inputObj);
+  } else {
+    error('Expected an optional input object and a callback');
+  }
 
   try {
-    commands = internal.parseCommands(commands);
+    commands = internal.parseCommands(args[0]);
   } catch(e) {
     return done(e);
   }
-  if (type == 'text' || type == 'json') {
+
+  if (inputType == 'text' || inputType == 'json') {
     // old api: input is the content of a CSV or JSON file
     // return done(new UserError('applyCommands() has changed, see v0.4 docs'));
-    message("Warning: applyCommands() was called with deprecated input format");
-    return internal.applyCommandsOld(commands, input, done);
+    message("Warning: deprecated input format");
+    return internal.applyCommandsOld(commands, inputObj, done);
   }
   // add options to -i -o -join -clip -erase commands to bypass file i/o
   // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
-  commands = commands.map(function(cmd) {
-    var name = cmd.name;
-    if ((name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include') && input) {
-      cmd.options.input = input;
-    } else if (name == 'o') {
-      cmd.options.output = output;
+  commands.forEach(function(cmd) {
+    if (internal.commandTakesFileInput(cmd.name) && inputObj) {
+      cmd.options.input = inputObj;
     }
-    return cmd;
+    if (cmd.name == 'o' && outputArr) {
+      cmd.options.output = outputArr;
+    }
   });
 
   internal.runParsedCommands(commands, null, function(err) {
-    var data = output.reduce(function(memo, o) {
+    var outputObj;
+    if (err || !outputArr) {
+      return done(err);
+    }
+    outputObj = outputArr.reduce(function(memo, o) {
         memo[o.filename] = o.content;
         return memo;
       }, {});
-    done(err, err ? null : data);
+    done(null, outputObj);
   });
+};
+
+internal.commandTakesFileInput = function(name) {
+  return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
 };
 
 // TODO: rewrite applyCommands() tests and remove this function

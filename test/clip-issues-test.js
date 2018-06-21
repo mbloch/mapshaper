@@ -70,9 +70,9 @@ describe('mapshaper-clip-erase.js', function () {
           type: "Polygon",
           coordinates: [[[-5,0.4],[-4,0.4],[-4,8.673617379884035e-19],[-5,0],[-5,0.4]]]
         };
-        api.applyCommands('-clip bbox=-10,0,0,10', polygon, function(err, output) {
+        api.applyCommands('-i poly.json -clip bbox=-10,0,0,10 -o', {'poly.json': polygon}, function(err, output) {
           if (err) throw err
-          var geojson = JSON.parse(output);
+          var geojson = JSON.parse(output['poly.json']);
           var coords = geojson.geometries[0].coordinates[0];
           assert.deepEqual(coords, [[-5,0.4],[-4,0.4],[-4,8.673617379884035e-19],[-5,0],[-5,0.4]])
           done();
@@ -85,8 +85,8 @@ describe('mapshaper-clip-erase.js', function () {
           type: "Polygon",
           coordinates: [[[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,-1.734723475976807e-18],[-0.9,0.4]]]
         };
-        api.applyCommands('-clip bbox=-1,0,0,1', polygon, function(err, output) {
-          var geojson = JSON.parse(output);
+        api.applyCommands('-i poly.json -clip bbox=-1,0,0,1 -o', {'poly.json': polygon}, function(err, output) {
+          var geojson = JSON.parse(output['poly.json']);
           var coords = geojson.geometries[0].coordinates[0];
           assert.deepEqual(coords, [[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,0], [-0.9, 0.4]])
           done();
@@ -100,10 +100,10 @@ describe('mapshaper-clip-erase.js', function () {
           {"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.07743991381154576,-7.903170760234177],[0.13322915296487942,-8.237697197954503],[-0.27135433200713655,-8.532257229768865],[-0.5600689007971446,-8.250514088134027],[-0.07743991381154576,-7.903170760234177]]]},"properties":{"GEOID":"48481"}},
           {"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.07743991381154576,-7.903170760234177],[0.1510172129721194,-7.718678964010099],[0.5017038816766441,-7.922859553851434],[0.13322915296487942,-8.237697197954503],[-0.07743991381154576,-7.903170760234177]]]},"properties":{"GEOID":"48157"}}
           ]};
-        api.applyCommands('-clip bbox=0,-90,90,90', geojson, function(err, output) {
+        api.applyCommands('-i poly.json -clip bbox=0,-90,90,90 -o', {'poly.json': geojson}, function(err, output) {
 
           if (err) throw err
-          var geojson = JSON.parse(output);
+          var geojson = JSON.parse(output['poly.json']);
           assert(!!geojson.features[0].geometry.coordinates);
           assert(!!geojson.features[1].geometry.coordinates);
           done();

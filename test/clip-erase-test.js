@@ -50,8 +50,9 @@ describe('mapshaper-clip-erase.js', function () {
           coordinates: [[1, 1], [2, 1]]
         }]
       }
-      api.applyCommands('-clip bbox=1,0,2,2', input, function(err, data) {
-        var json = JSON.parse(data);
+      api.applyCommands('-i input.json -clip bbox=1,0,2,2 -o output.json',
+          {'input.json': input}, function(err, out) {
+        var json = JSON.parse(out['output.json']);
         assert.deepEqual(json, output);
         done();
       });
