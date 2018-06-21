@@ -92,6 +92,10 @@ SVG.setAttribute = function(obj, k, v) {
   } else {
     if (!obj.properties) obj.properties = {};
     obj.properties[k] = v;
+    if (k == 'stroke-dasharray' && v) {
+      // kludge for cleaner dashes... make butt the default?
+      obj.properties['stroke-linecap'] = 'butt';
+    }
   }
 };
 

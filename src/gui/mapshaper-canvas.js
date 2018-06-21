@@ -243,7 +243,8 @@ function DisplayCanvas() {
 
   function getStyleKey(style) {
     return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-      '~' : '') + (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
+      '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
+      (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
   }
 
   return _self;
@@ -367,6 +368,7 @@ function getPathStart(ext, lineScale) {
       ctx.lineWidth = strokeWidth * lineScale;
       ctx.strokeStyle = style.strokeColor;
       if (style.lineDash){
+        ctx.lineCap = 'butt';
         ctx.setLineDash(style.lineDash.split(' '));
       }
     }
@@ -380,7 +382,10 @@ function endPath(ctx, style) {
   if (style.fillColor) ctx.fill();
   if (style.strokeWidth > 0) {
     ctx.stroke();
-    if (style.lineDash) ctx.setLineDash([]);
+    if (style.lineDash) {
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
+    }
   }
   if (style.opacity >= 0) ctx.globalAlpha = 1;
   ctx.closePath();

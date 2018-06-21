@@ -49,13 +49,17 @@ internal.parseSvgValue = function(name, strVal, fields) {
   } else if (type == 'measure') { // SVG/CSS length (e.g. 12px, 1em, 4)
     val = internal.isSvgMeasure(strVal) ? strVal : null;
   } else if (type == 'dasharray') {
-    val = strVal; // TODO: parse or validate
+    val = internal.isDashArray(strVal) ? strVal : null;
   } else {
     // unknown type -- assume string is an expression if JS syntax chars are found
     // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
     val = /[\?\:\[\(\+]/.test(strVal) ? null : strVal; //
   }
   return val;
+};
+
+internal.isDashArray = function(str) {
+  return /^[0-9]+( [0-9]+)*$/.test(str);
 };
 
 internal.isSvgClassName = function(str) {
