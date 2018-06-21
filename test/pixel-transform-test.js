@@ -1,8 +1,25 @@
 var assert = require('assert'),
     api = require("../"),
-    util = require("./helpers.js");
+    util = require("./helpers.js"),
+    Bounds = api.internal.Bounds;
 
 describe('mapshaper-pixel-transform.js', function () {
+
+  describe('calcOutputSizeInPixels()', function () {
+    var calcOutputSizeInPixels = api.internal.calcOutputSizeInPixels;
+
+    it('max-height option limits height of relatively tall maps', function () {
+      var bounds = new Bounds(100, 200, 200, 400);
+      var opts = {
+        width: 10,
+        max_height: 10,
+        margin: 0
+      };
+      var bounds2 = calcOutputSizeInPixels(bounds, opts);
+      assert.deepEqual(bounds2.toArray(), [0, 0, 10, 10])
+      assert.deepEqual(bounds.toArray(), [50, 200, 250, 400]); // equal padding left and right
+    });
+  })
 
   function test(opts, points, expectedPoints, expectedSize) {
     var dataset = {

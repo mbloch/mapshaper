@@ -1,21 +1,10 @@
 /* @require mapshaper-dataset-utils */
 
 internal.transformDatasetToPixels = function(dataset, opts) {
-  var margins = internal.parseMarginOption(opts.margin),
-      bounds = internal.getDatasetBounds(dataset),
-      width, height, bounds2, fwd;
+  var bounds = internal.getDatasetBounds(dataset),
+      bounds2 = internal.calcOutputSizeInPixels(bounds, opts),
+      fwd = bounds.getTransform(bounds2, opts.invert_y);
 
-  if (opts.svg_scale > 0) {
-    // alternative to using a fixed width (e.g. when generating multiple files
-    // at a consistent geographic scale)
-    width = bounds.width() / opts.svg_scale + margins[0] + margins[2];
-    height = 0;
-  } else {
-    height = opts.height || 0;
-    width = opts.width || (height > 0 ? 0 : 800); // 800 is default width
-  }
-  bounds2 = internal.applyMarginInPixels(bounds, width, height, margins);
-  fwd = bounds.getTransform(bounds2, opts.invert_y);
   internal.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
@@ -37,17 +26,29 @@ internal.parseMarginOption = function(opt) {
 // bounds: Bounds object containing bounds of content in geographic coordinates
 // returns Bounds object containing bounds of pixel output
 // side effect: bounds param is modified to match the output frame
-internal.applyMarginInPixels = function(bounds, widthPx, heightPx, margins) {
+internal.calcOutputSizeInPixels = function(bounds, opts) {
   var padX = 0,
       padY = 0,
       width = bounds.width(),
       height = bounds.height(),
+      margins = internal.parseMarginOption(opts.margin),
       marginX = margins[0] + margins[2],
       marginY = margins[1] + margins[3],
       // TODO: add option to tweak alignment of content when both width and height are given
       wx = 0.5, // how padding is distributed horizontally (0: left aligned, 0.5: centered, 1: right aligned)
       wy = 0.5, // vertical padding distribution
-      kx, ky, k;
+      widthPx, heightPx, kx, ky;
+
+  if (opts.svg_scale > 0) {
+    // alternative to using a fixed width (e.g. when generating multiple files
+    // at a consistent geographic scale)
+    widthPx = width / opts.svg_scale + marginX;
+    heightPx = 0;
+  } else {
+    heightPx = opts.height || 0;
+    widthPx = opts.width || (heightPx > 0 ? 0 : 800); // 800 is default width
+  }
+
   if (heightPx > 0) {
     // vertical meters per pixel to fit height param
     ky = (height || width || 1) / (heightPx - marginY);
@@ -56,25 +57,40 @@ internal.applyMarginInPixels = function(bounds, widthPx, heightPx, margins) {
     // horizontal meters per pixel to fit width param
     kx = (width || height || 1) / (widthPx - marginX);
   }
-  if (!kx) { // no widthPx param
-    k = ky;
-    widthPx = width > 0 ? marginX + width / k : heightPx; // export square graphic if content has 0 width (reconsider this?)
-  } else if (!ky) { // no heightPx param
-    k = kx;
-    heightPx = height > 0 ? marginY + height / k : widthPx;
-  } else if (kx > ky) { // content is wide -- need to pad vertically
-    k = kx;
-    padY = k * (heightPx - marginY) - height;
+
+  if (!widthPx) { // heightPx and ky are defined, set width to match
+    kx = ky;
+    widthPx = width > 0 ? marginX + width / kx : heightPx; // export square graphic if content has 0 width (reconsider this?)
+  } else if (!heightPx) { // widthPx and kx are set, set height to match
+    ky = kx;
+    heightPx = height > 0 ? marginY + height / ky : widthPx;
+    // limit height if max_height is defined
+    if (opts.max_height > 0 && heightPx > opts.max_height) {
+      ky = kx * heightPx / opts.max_height;
+      heightPx = opts.max_height;
+    }
+  }
+
+  if (kx > ky) { // content is wide -- need to pad vertically
+    ky = kx;
+    padY = ky * (heightPx - marginY) - height;
   } else if (ky > kx) { // content is tall -- need to pad horizontally
-    k = ky;
-    padX = k * (widthPx - marginX) - width;
-  } else {
+    kx = ky;
+    padX = kx * (widthPx - marginX) - width;
+  }
+
+  bounds.padBounds(
+    margins[0] * kx + padX * wx,
+    margins[1] * ky + padY * wy,
+    margins[2] * kx + padX * (1 - wx),
+    margins[3] * ky + padY * (1 - wy));
+
+  if (!(widthPx > 0 && heightPx > 0)) {
     error("Missing valid height and width parameters");
   }
-  bounds.padBounds(
-    margins[0] * k + padX * wx,
-    margins[1] * k + padY * wy,
-    margins[2] * k + padX * (1 - wx),
-    margins[3] * k + padY * (1 - wy));
+  if (!(kx === ky && kx > 0)) {
+    error("Missing valid margin parameters");
+  }
+
   return new Bounds(0, 0, widthPx, heightPx);
 };

@@ -237,6 +237,10 @@ internal.getOptionParser = function() {
       describe: "(SVG/TopoJSON) pixel height of output (optional)",
       type: "number"
     })
+    .option("max-height", {
+      describe: "(SVG/TopoJSON) max pixel height of output (optional)",
+      type: "number"
+    })
     .option("margin", {
       describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)"
     })
