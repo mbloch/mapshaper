@@ -1,3 +1,9 @@
+v0.4.85
+* [style] Added -style stroke-dasharray= option.
+* Added -o max-height= option, for limiting the height of SVG output files.
+* Added undocumented -rectangles option, for creating a box around every feature in a layer.
+* Bug fixes
+
 v0.4.84
 * [rectangle] offset= option accepts a list of four values (minx,miny,maxx,maxy) in addition to a single value. Value can be a percentage or an interval.
 * [rectangle] If no source= or bbox= option is given, -rectangle uses the bounding box of the current target layer(s).
