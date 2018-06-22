@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.84';
+var VERSION = '0.4.85';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -2900,6 +2900,7 @@ function ArcCollection() {
     return bbox;
   };
 
+  // TODO: move this and similar methods out of ArcCollection
   this.getMultiShapeBounds = function(shapeIds, bounds) {
     bounds = bounds || new Bounds();
     if (shapeIds) { // handle null shapes
@@ -3346,6 +3347,17 @@ internal.getPointBounds = function(shapes) {
   return bounds;
 };
 
+internal.getPointFeatureBounds = function(shape, bounds) {
+  var n = shape ? shape.length : 0;
+  var p;
+  if (!bounds) bounds = new Bounds();
+  for (var i=0; i<n; i++) {
+    p = shape[i];
+    bounds.mergePoint(p[0], p[1]);
+  }
+  return bounds;
+};
+
 internal.forEachPoint = function(shapes, cb) {
   shapes.forEach(function(shape, id) {
     var n = shape ? shape.length : 0;
@@ -3648,11 +3660,7 @@ internal.copyLayer = function(lyr) {
 };
 
 internal.copyLayerShapes = function(lyr) {
-  var copy = {
-    name: lyr.name,
-    geometry_type: lyr.geometry_type,
-    data: lyr.data
-  };
+  var copy = utils.extend({}, lyr);
   if (lyr.shapes) {
     copy.shapes = internal.cloneShapes(lyr.shapes);
   }
@@ -11002,7 +11010,7 @@ api.colorizer = function(opts) {
 };
 
 internal.isReservedName = function(name) {
-  return /^(stroke|stroke-width|fill|opacity|r|class)$/.test(name);
+  return /^(stroke|stroke-width|stroke-dasharray|fill|opacity|r|class)$/.test(name);
 };
 
 internal.getColorizerFunction = function(opts) {
@@ -13614,21 +13622,10 @@ internal.cloneProperties = function(obj) {
 
 
 internal.transformDatasetToPixels = function(dataset, opts) {
-  var margins = internal.parseMarginOption(opts.margin),
-      bounds = internal.getDatasetBounds(dataset),
-      width, height, bounds2, fwd;
+  var bounds = internal.getDatasetBounds(dataset),
+      bounds2 = internal.calcOutputSizeInPixels(bounds, opts),
+      fwd = bounds.getTransform(bounds2, opts.invert_y);
 
-  if (opts.svg_scale > 0) {
-    // alternative to using a fixed width (e.g. when generating multiple files
-    // at a consistent geographic scale)
-    width = bounds.width() / opts.svg_scale + margins[0] + margins[2];
-    height = 0;
-  } else {
-    height = opts.height || 0;
-    width = opts.width || (height > 0 ? 0 : 800); // 800 is default width
-  }
-  bounds2 = internal.applyMarginInPixels(bounds, width, height, margins);
-  fwd = bounds.getTransform(bounds2, opts.invert_y);
   internal.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
@@ -13650,17 +13647,29 @@ internal.parseMarginOption = function(opt) {
 // bounds: Bounds object containing bounds of content in geographic coordinates
 // returns Bounds object containing bounds of pixel output
 // side effect: bounds param is modified to match the output frame
-internal.applyMarginInPixels = function(bounds, widthPx, heightPx, margins) {
+internal.calcOutputSizeInPixels = function(bounds, opts) {
   var padX = 0,
       padY = 0,
       width = bounds.width(),
       height = bounds.height(),
+      margins = internal.parseMarginOption(opts.margin),
       marginX = margins[0] + margins[2],
       marginY = margins[1] + margins[3],
       // TODO: add option to tweak alignment of content when both width and height are given
       wx = 0.5, // how padding is distributed horizontally (0: left aligned, 0.5: centered, 1: right aligned)
       wy = 0.5, // vertical padding distribution
-      kx, ky, k;
+      widthPx, heightPx, kx, ky;
+
+  if (opts.svg_scale > 0) {
+    // alternative to using a fixed width (e.g. when generating multiple files
+    // at a consistent geographic scale)
+    widthPx = width / opts.svg_scale + marginX;
+    heightPx = 0;
+  } else {
+    heightPx = opts.height || 0;
+    widthPx = opts.width || (heightPx > 0 ? 0 : 800); // 800 is default width
+  }
+
   if (heightPx > 0) {
     // vertical meters per pixel to fit height param
     ky = (height || width || 1) / (heightPx - marginY);
@@ -13669,26 +13678,41 @@ internal.applyMarginInPixels = function(bounds, widthPx, heightPx, margins) {
     // horizontal meters per pixel to fit width param
     kx = (width || height || 1) / (widthPx - marginX);
   }
-  if (!kx) { // no widthPx param
-    k = ky;
-    widthPx = width > 0 ? marginX + width / k : heightPx; // export square graphic if content has 0 width (reconsider this?)
-  } else if (!ky) { // no heightPx param
-    k = kx;
-    heightPx = height > 0 ? marginY + height / k : widthPx;
-  } else if (kx > ky) { // content is wide -- need to pad vertically
-    k = kx;
-    padY = k * (heightPx - marginY) - height;
+
+  if (!widthPx) { // heightPx and ky are defined, set width to match
+    kx = ky;
+    widthPx = width > 0 ? marginX + width / kx : heightPx; // export square graphic if content has 0 width (reconsider this?)
+  } else if (!heightPx) { // widthPx and kx are set, set height to match
+    ky = kx;
+    heightPx = height > 0 ? marginY + height / ky : widthPx;
+    // limit height if max_height is defined
+    if (opts.max_height > 0 && heightPx > opts.max_height) {
+      ky = kx * heightPx / opts.max_height;
+      heightPx = opts.max_height;
+    }
+  }
+
+  if (kx > ky) { // content is wide -- need to pad vertically
+    ky = kx;
+    padY = ky * (heightPx - marginY) - height;
   } else if (ky > kx) { // content is tall -- need to pad horizontally
-    k = ky;
-    padX = k * (widthPx - marginX) - width;
-  } else {
+    kx = ky;
+    padX = kx * (widthPx - marginX) - width;
+  }
+
+  bounds.padBounds(
+    margins[0] * kx + padX * wx,
+    margins[1] * ky + padY * wy,
+    margins[2] * kx + padX * (1 - wx),
+    margins[3] * ky + padY * (1 - wy));
+
+  if (!(widthPx > 0 && heightPx > 0)) {
     error("Missing valid height and width parameters");
   }
-  bounds.padBounds(
-    margins[0] * k + padX * wx,
-    margins[1] * k + padY * wy,
-    margins[2] * k + padX * (1 - wx),
-    margins[3] * k + padY * (1 - wy));
+  if (!(kx === ky && kx > 0)) {
+    error("Missing valid margin parameters");
+  }
+
   return new Bounds(0, 0, widthPx, heightPx);
 };
 
@@ -14794,15 +14818,12 @@ SVG.propertyTypes = {
   stroke: 'color',
   'line-height': 'measure',
   'letter-spacing': 'measure',
-  'stroke-width': 'number'
+  'stroke-width': 'number',
+  'stroke-dasharray': 'dasharray'
 };
 
-SVG.canvasEquivalents = {
-  'stroke-width': 'strokeWidth'
-};
-
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
-SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
+SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
 
 SVG.propertiesBySymbolType = {
   polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),
@@ -14870,12 +14891,18 @@ internal.parseSvgValue = function(name, strVal, fields) {
     val = internal.isSvgClassName(strVal) ? strVal : null;
   } else if (type == 'measure') { // SVG/CSS length (e.g. 12px, 1em, 4)
     val = internal.isSvgMeasure(strVal) ? strVal : null;
+  } else if (type == 'dasharray') {
+    val = internal.isDashArray(strVal) ? strVal : null;
   } else {
     // unknown type -- assume string is an expression if JS syntax chars are found
     // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
     val = /[\?\:\[\(\+]/.test(strVal) ? null : strVal; //
   }
   return val;
+};
+
+internal.isDashArray = function(str) {
+  return /^[0-9]+( [0-9]+)*$/.test(str);
 };
 
 internal.isSvgClassName = function(str) {
@@ -14990,6 +15017,10 @@ SVG.setAttribute = function(obj, k, v) {
   } else {
     if (!obj.properties) obj.properties = {};
     obj.properties[k] = v;
+    if (k == 'stroke-dasharray' && v) {
+      // kludge for cleaner dashes... make butt the default?
+      obj.properties['stroke-linecap'] = 'butt';
+    }
   }
 };
 
@@ -15390,7 +15421,7 @@ internal.exportDatasets = function(datasets, opts) {
     if (opts.target) {
       // kludge to export layers in order that target= option matched them
       // (useful mainly for SVG output)
-      // match_id was assigned to each layer by findCommandTargets()
+      // target_id was assigned to each layer by findCommandTargets()
       utils.sortOn(dataset.layers, 'target_id', true);
     }
     return memo.concat(internal.exportFileContent(dataset, opts));
@@ -18697,6 +18728,47 @@ internal.createPolygonLayer = function(lyr, dataset, opts) {
 
 
 
+// Create rectangles around each feature in a layer
+api.rectangles = function(targetLyr, targetDataset, opts) {
+  if (!internal.layerHasGeometry(targetLyr)) {
+    stop("Layer is missing geometric shapes");
+  }
+  var crs = internal.getDatasetCRS(targetDataset);
+  var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+  var geometries = targetLyr.shapes.map(function(shp) {
+    var bounds = targetLyr.geometryType == 'point' ?
+      internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
+    if (!bounds.hasBounds()) return null;
+    if (opts.offset) {
+      bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
+    }
+    if (bounds.area() <= 0) return null;
+    return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+  });
+  var geojson = {
+    type: 'FeatureCollection',
+    features: geometries.map(function(geom, i) {
+      var rec = records && records[i] || null;
+      if (rec && opts.no_replace) {
+        rec = utils.extend({}, rec); // make a copy
+      }
+      return {
+        type: 'Feature',
+        properties: rec,
+        geometry: geom
+      };
+    })
+  };
+  var dataset = internal.importGeoJSON(geojson, {});
+  var merged = internal.mergeDatasets([targetDataset, dataset]);
+  var outputLyr = dataset.layers[0];
+  targetDataset.arcs = merged.arcs;
+  if (!opts.no_replace) {
+    outputLyr.name = targetLyr.name || outputLyr.name;
+  }
+  return [outputLyr];
+};
+
 // Create rectangles around one or more target layers
 //
 api.rectangle2 = function(target, opts) {
@@ -18715,7 +18787,6 @@ api.rectangle2 = function(target, opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var clampGeographicBoxes = true; // TODO: make this an option?
   var isGeoBox;
   var offsets, bounds, crs, coords, sourceInfo;
   if (source) {
@@ -18730,13 +18801,7 @@ api.rectangle = function(source, opts) {
     stop('Missing rectangle extent');
   }
   if (opts.offset) {
-    isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
-    offsets = internal.convertFourSides(opts.offset, crs, bounds);
-    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-    if (isGeoBox && clampGeographicBoxes) {
-      bounds = internal.clampToWorldBounds(bounds);
-    }
-
+    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
@@ -18745,6 +18810,17 @@ api.rectangle = function(source, opts) {
     internal.setDatasetCRS(dataset, sourceInfo);
   }
   return dataset;
+};
+
+internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
+  var clampGeographicBoxes = true; // TODO: make this an option?
+  var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
+  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
+  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+  if (isGeoBox && clampGeographicBoxes) {
+    bounds = internal.clampToWorldBounds(bounds);
+  }
+  return bounds;
 };
 
 internal.convertBboxToGeoJSON = function(bbox, opts) {
@@ -20187,6 +20263,9 @@ api.runCommand = function(cmd, catalog, cb) {
         outputLayers = api.rectangle2(targets[0], opts);
       }
 
+    } else if (name == 'rectangles') {
+      outputLayers = internal.applyCommand(api.rectangles, targetLayers, targetDataset, opts);
+
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
 
@@ -20251,7 +20330,8 @@ api.runCommand = function(cmd, catalog, cb) {
         // TODO: consider replacing old layers as they are generated, for gc
         internal.replaceLayers(targetDataset, targetLayers, outputLayers);
         // some operations leave unreferenced arcs that should be cleaned up
-        if ((name == 'clip' || name == 'erase' || name == 'rectangle') && !opts.no_cleanup) {
+        if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
+            name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
           internal.dissolveArcs(targetDataset);
         }
       }
@@ -21207,6 +21287,10 @@ internal.getOptionParser = function() {
       describe: "(SVG/TopoJSON) pixel height of output (optional)",
       type: "number"
     })
+    .option("max-height", {
+      describe: "(SVG/TopoJSON) max pixel height of output (optional)",
+      type: "number"
+    })
     .option("margin", {
       describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)"
     })
@@ -21364,6 +21448,7 @@ internal.getOptionParser = function() {
     .option("keep-shapes", {
       type: "flag"
     })
+    .option("cleanup", {type: 'flag'}) // TODO: document
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -21788,6 +21873,9 @@ internal.getOptionParser = function() {
     .option("stroke-width", {
       describe: 'stroke width'
     })
+    .option("stroke-dasharray", {
+      describe: 'stroke dashes. Examples: "4" "2 4"'
+    })
     .option("opacity", {
       describe: 'opacity; example: 0.5'
     })
@@ -21967,9 +22055,6 @@ internal.getOptionParser = function() {
 
   parser.command("rectangle")
     .describe("create a rectangular polygon")
-    .option('type', {
-
-    })
     .option("bbox", {
       describe: "rectangle coordinates (xmin,ymin,xmax,ymax)",
       type: "bbox"
@@ -21980,6 +22065,16 @@ internal.getOptionParser = function() {
     })
     .option("source", {
       describe: "name of layer to enclose"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("rectangles")
+    // .describe("create a polygon layer with a rectangle for each feature")
+    .option("offset", {
+      describe: "padding around bbox or contents (number or list)",
+      type: "distance"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -22336,60 +22431,72 @@ internal.getFormattedLayerList = function(catalog) {
 
 // Parse command line args into commands and run them
 // @argv String or array of command line args, or array of parsed commands
-api.runCommands = function(argv, done) {
-  var commands;
-  try {
-    commands = internal.parseCommands(argv);
-  } catch(e) {
-    return done(e);
-  }
-  internal.runParsedCommands(commands, null, function(err, catalog) {
-    done(err);
-  });
+// @input (optional) Object containing file contents indexed by filename
+// Two signatures:
+//   function(argv, input, callback)
+//   function(argv, callback)
+api.runCommands = function() {
+  internal.unifiedRun(arguments, 'run');
 };
 
-// Similar to runCommands(), but receives input files from an object and
-// returns output files to a callback, instead of using file I/O.
-//
-// @commands  String or array of command line args, or array of parsed commands
-// @input  Object containing file contents indexed by filename
-// @done  Callback: function(<error>, <output>), where output is an object
+// Similar to runCommands(), but returns output files to the callback, instead of using file I/O.
+// Callback: function(<error>, <output>), where output is an object
 //           containing output from -o command(s) indexed by filename
-//
-api.applyCommands = function(commands, input, done) {
-  var output = [],
-      type = internal.guessInputContentType(input);
+api.applyCommands = function() {
+  internal.unifiedRun(arguments, 'apply');
+};
+
+internal.unifiedRun = function(args, mode) {
+  var outputArr = mode == 'apply' ? [] : null;
+  var inputObj, inputType, done, commands;
+  if (utils.isFunction(args[1])) {
+    done = args[1];
+  } else if (utils.isFunction(args[2])) {
+    done = args[2];
+    inputObj = args[1];
+    inputType = internal.guessInputContentType(inputObj);
+  } else {
+    error('Expected an optional input object and a callback');
+  }
 
   try {
-    commands = internal.parseCommands(commands);
+    commands = internal.parseCommands(args[0]);
   } catch(e) {
     return done(e);
   }
-  if (type == 'text' || type == 'json') {
+
+  if (inputType == 'text' || inputType == 'json') {
     // old api: input is the content of a CSV or JSON file
     // return done(new UserError('applyCommands() has changed, see v0.4 docs'));
-    message("Warning: applyCommands() was called with deprecated input format");
-    return internal.applyCommandsOld(commands, input, done);
+    message("Warning: deprecated input format");
+    return internal.applyCommandsOld(commands, inputObj, done);
   }
   // add options to -i -o -join -clip -erase commands to bypass file i/o
   // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
-  commands = commands.map(function(cmd) {
-    var name = cmd.name;
-    if ((name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include') && input) {
-      cmd.options.input = input;
-    } else if (name == 'o') {
-      cmd.options.output = output;
+  commands.forEach(function(cmd) {
+    if (internal.commandTakesFileInput(cmd.name) && inputObj) {
+      cmd.options.input = inputObj;
     }
-    return cmd;
+    if (cmd.name == 'o' && outputArr) {
+      cmd.options.output = outputArr;
+    }
   });
 
   internal.runParsedCommands(commands, null, function(err) {
-    var data = output.reduce(function(memo, o) {
+    var outputObj;
+    if (err || !outputArr) {
+      return done(err);
+    }
+    outputObj = outputArr.reduce(function(memo, o) {
         memo[o.filename] = o.content;
         return memo;
       }, {});
-    done(err, err ? null : data);
+    done(null, outputObj);
   });
+};
+
+internal.commandTakesFileInput = function(name) {
+  return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
 };
 
 // TODO: rewrite applyCommands() tests and remove this function

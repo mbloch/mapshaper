@@ -3433,7 +3433,8 @@ function DisplayCanvas() {
 
   function getStyleKey(style) {
     return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-      '~' : '') + (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
+      '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
+      (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
   }
 
   return _self;
@@ -3556,6 +3557,10 @@ function getPathStart(ext, lineScale) {
       ctx.lineJoin = 'round';
       ctx.lineWidth = strokeWidth * lineScale;
       ctx.strokeStyle = style.strokeColor;
+      if (style.lineDash){
+        ctx.lineCap = 'butt';
+        ctx.setLineDash(style.lineDash.split(' '));
+      }
     }
     if (style.fillColor) {
       ctx.fillStyle = style.fillColor;
@@ -3565,7 +3570,13 @@ function getPathStart(ext, lineScale) {
 
 function endPath(ctx, style) {
   if (style.fillColor) ctx.fill();
-  if (style.strokeWidth > 0) ctx.stroke();
+  if (style.strokeWidth > 0) {
+    ctx.stroke();
+    if (style.lineDash) {
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
+    }
+  }
   if (style.opacity >= 0) ctx.globalAlpha = 1;
   ctx.closePath();
 }
@@ -4925,7 +4936,8 @@ internal.getCanvasDisplayStyle = function(lyr) {
         r: 'radius',
         fill: 'fillColor',
         stroke: 'strokeColor',
-        'stroke-width': 'strokeWidth'
+        'stroke-width': 'strokeWidth',
+        'stroke-dasharray': 'lineDash'
       },
       // array of field names of relevant svg display properties
       fields = internal.getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
