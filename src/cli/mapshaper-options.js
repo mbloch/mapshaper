@@ -398,6 +398,7 @@ internal.getOptionParser = function() {
     .option("keep-shapes", {
       type: "flag"
     })
+    .option("cleanup", {type: 'flag'}) // TODO: document
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

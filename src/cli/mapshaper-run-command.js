@@ -335,7 +335,8 @@ api.runCommand = function(cmd, catalog, cb) {
         // TODO: consider replacing old layers as they are generated, for gc
         internal.replaceLayers(targetDataset, targetLayers, outputLayers);
         // some operations leave unreferenced arcs that should be cleaned up
-        if ((name == 'clip' || name == 'erase' || name == 'rectangle' || name == 'rectangles') && !opts.no_cleanup) {
+        if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
+            name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
           internal.dissolveArcs(targetDataset);
         }
       }
