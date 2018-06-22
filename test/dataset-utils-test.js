@@ -3,6 +3,28 @@ var api = require('../'),
 
 describe('mapshaper-dataset-utils.js', function () {
 
+  describe('copyLayerShapes()', function () {
+    it('deep-copy shapes, shallow-copy other attributes', function () {
+      var data = new api.internal.DataTable([{foo: 'bar'}]);
+      var shapes = [[[1, 1]]];
+      var lyr = {
+        geometry_type: 'point',
+        data: data,
+        shapes: shapes,
+        target_id: 1,
+        name: 'layer1'
+      }
+      var copy = api.internal.copyLayerShapes(lyr);
+      assert.strictEqual(data, copy.data);
+      assert(copy.shapes != shapes);
+      assert(copy.shapes[0] != shapes[0]);
+      assert(copy.shapes[0][0] != shapes[0][0]);
+      assert.equal(copy.target_id, 1);
+      assert.equal(copy.name, 'layer1');
+      assert.equal(copy.geometry_type, 'point');
+    })
+  })
+
   describe('copyLayer()', function () {
     it('duplicate data records', function () {
       var lyr = {
@@ -15,8 +37,6 @@ describe('mapshaper-dataset-utils.js', function () {
 
     it('duplicate shapes', function () {
       var lyr = {
-        name: undefined,
-        data: undefined,
         geometry_type: 'point',
         shapes: [[[1, 3]], null]
       };

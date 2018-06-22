@@ -49,7 +49,7 @@ internal.exportDatasets = function(datasets, opts) {
     if (opts.target) {
       // kludge to export layers in order that target= option matched them
       // (useful mainly for SVG output)
-      // match_id was assigned to each layer by findCommandTargets()
+      // target_id was assigned to each layer by findCommandTargets()
       utils.sortOn(dataset.layers, 'target_id', true);
     }
     return memo.concat(internal.exportFileContent(dataset, opts));
