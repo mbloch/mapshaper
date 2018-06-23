@@ -1013,6 +1013,9 @@ internal.getOptionParser = function() {
       describe: "padding around bbox or contents (number or list)",
       type: "distance"
     })
+    .option("aspect-ratio", {
+      type: "string"
+    })
     .option("source", {
       describe: "name of layer to enclose"
     })
@@ -1025,6 +1028,9 @@ internal.getOptionParser = function() {
     .option("offset", {
       describe: "padding around bbox or contents (number or list)",
       type: "distance"
+    })
+    .option("aspect-ratio", {
+      type: "string"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)

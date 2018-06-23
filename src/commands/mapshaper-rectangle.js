@@ -10,11 +10,8 @@ api.rectangles = function(targetLyr, targetDataset, opts) {
   var geometries = targetLyr.shapes.map(function(shp) {
     var bounds = targetLyr.geometryType == 'point' ?
       internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-    if (!bounds.hasBounds()) return null;
-    if (opts.offset) {
-      bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
-    }
-    if (bounds.area() <= 0) return null;
+    bounds = internal.applyRectangleOptions(bounds, crs, opts);
+    if (!bounds) return null;
     return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   });
   var geojson = {
@@ -59,7 +56,6 @@ api.rectangle2 = function(target, opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var isGeoBox;
   var offsets, bounds, crs, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
@@ -69,11 +65,9 @@ api.rectangle = function(source, opts) {
     bounds = new Bounds(opts.bbox);
     crs = internal.getCRS('wgs84');
   }
+  bounds = bounds && internal.applyRectangleOptions(bounds, crs, opts);
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
-  }
-  if (opts.offset) {
-    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
@@ -84,14 +78,41 @@ api.rectangle = function(source, opts) {
   return dataset;
 };
 
-internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
-  var clampGeographicBoxes = true; // TODO: make this an option?
+internal.applyRectangleOptions = function(bounds, crs, opts) {
   var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
-  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
-  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-  if (isGeoBox && clampGeographicBoxes) {
+  if (opts.offset) {
+    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
+  }
+  if (bounds.area() > 0 === false) return null;
+  if (opts.aspect_ratio) {
+    bounds = internal.applyAspectRatio(opts.aspect_ratio, bounds);
+  }
+  if (isGeoBox) {
     bounds = internal.clampToWorldBounds(bounds);
   }
+  return bounds;
+};
+
+internal.applyAspectRatio = function(opt, bounds) {
+  var range = String(opt).split(','),
+    aspectRatio = bounds.width() / bounds.height(),
+    min, max; // min is height limit, max is width limit
+  min = Number(range[0]);
+  max = range.length > 1 ? Number(range[1]) : min;
+  if (!min && !max) return bounds;
+  if (!min) min = -Infinity;
+  if (!max) max = Infinity;
+  if (aspectRatio < min) {
+    bounds.fillOut(min);
+  } else if (aspectRatio > max) {
+    bounds.fillOut(max);
+  }
+  return bounds;
+};
+
+internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
+  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
+  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
   return bounds;
 };
 

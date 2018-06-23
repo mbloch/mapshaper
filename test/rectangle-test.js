@@ -1,7 +1,41 @@
 var assert = require('assert'),
-    api = require("../");
+    api = require("../"),
+    Bounds = api.internal.Bounds;
 
-describe('mapshaper-shape.js', function () {
+describe('mapshaper-rectangle.js', function () {
+
+  describe('applyAspectRatio()', function () {
+    var applyAspectRatio = api.internal.applyAspectRatio;
+    it('Handle max ratio', function () {
+      var bounds = new Bounds(1, 1, 4, 2); // wide box
+      applyAspectRatio(',1', bounds)
+      assert.deepEqual(bounds.toArray(), [1, 0, 4, 3]);
+    })
+
+    it('Handle min ratio', function () {
+      var bounds = new Bounds(1, 1, 2, 4); // tall box
+      applyAspectRatio('1,', bounds)
+      assert.deepEqual(bounds.toArray(), [0, 1, 3, 4]);
+    })
+
+    it('Handle fixed ratio', function () {
+      var bounds = new Bounds(0, 0, 2, 2); // tall box
+      applyAspectRatio('2', bounds);
+      assert.deepEqual(bounds.toArray(), [-1, 0, 3, 2]);
+    })
+
+    it('Handle min and max ratio 1', function () {
+      var bounds = new Bounds(0, 0, 2, 2); // tall box
+      applyAspectRatio('1,2', bounds);
+      assert.deepEqual(bounds.toArray(), [0, 0, 2, 2]); // box fits
+    })
+
+    it('Handle min and max ratio 2', function () {
+      var bounds = new Bounds(0, 0, 4, 1); // tall box
+      applyAspectRatio('1,2', bounds);
+      assert.deepEqual(bounds.toArray(), [0, -0.5, 4, 1.5]); // pad vertically
+    })
+  })
 
   it('Rectangles created using -rectangle source= are assigned CRS of source', function(done) {
     var cmd = '-rectangle bbox=0,0,1,1 name=box1 -proj +proj=merc -rectangle source=box1 name=box2' +
