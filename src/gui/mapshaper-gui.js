@@ -47,12 +47,14 @@ gui.getImportOpts = function() {
   if (manifest.catalog) {
     opts.catalog = manifest.catalog;
   }
+  opts.display_all = !!manifest.display_all;
   return opts;
 };
 
 gui.startEditing = function() {
   var model = new Model(),
       dataLoaded = false,
+      importOpts = gui.getImportOpts(),
       map, repair, simplify;
   gui.startEditing = function() {};
   map = new MshpMap(model);
@@ -60,7 +62,7 @@ gui.startEditing = function() {
   simplify = new SimplifyControl(model);
   new AlertControl();
   new ImportFileProxy(model);
-  new ImportControl(model, gui.getImportOpts());
+  new ImportControl(model, importOpts);
   new ExportControl(model);
   new LayerControl(model, map);
   new Console(model);
@@ -69,6 +71,9 @@ gui.startEditing = function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
+      if (importOpts.display_all) {
+        model.forEachLayer(map.addReferenceLayer.bind(map));
+      }
     }
   });
 };

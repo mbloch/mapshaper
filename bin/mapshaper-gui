@@ -30,6 +30,11 @@ var http = require("http"),
         describe: "allow overwriting input files with output files",
         'boolean': true
       })
+      .options("a", {
+        alias: "display-all",
+        describe: "turn on visibility of all layers",
+        'boolean': true
+      })
       .check(function(argv) {
         if (argv.h) {
           optimist.showHelp();
@@ -84,7 +89,7 @@ function startServer(port) {
         new Cookies(request, response).set('session_id', sessionId);
       }
       // serve JS file containing manifest of files for mapshaper to load
-      serveContent(getManifestJS(dataFiles, opts.s), response, getMimeType(uri));
+      serveContent(getManifestJS(dataFiles, opts), response, getMimeType(uri));
     } else if (uri.indexOf('/data/') === 0) {
       // serve a file from a path relative to this script
       // assumed to be a data file from the cmd line (!)
@@ -188,10 +193,10 @@ function validateOutputFile(file) {
   return '';
 }
 
-
-function getManifestJS(files, saving) {
+function getManifestJS(files, opts) {
   var o = {files: files};
-  if (saving) o.allow_saving = true;
+  if (opts.s) o.allow_saving = true;
+  if (opts.a) o.display_all = true;
   return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 
