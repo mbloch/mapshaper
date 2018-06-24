@@ -130,6 +130,10 @@ function MshpMap(model) {
     });
   }
 
+  this.isVisibleLayer = function(lyr) {
+    return this.isActiveLayer(lyr) || this.isReferenceLayer(lyr);
+  };
+
   this.isActiveLayer = function(lyr) {
     return lyr == _activeLyr.source.layer;
   };

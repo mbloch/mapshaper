@@ -5,12 +5,12 @@ function LayerControl(model, map) {
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
   var cache = new DomCache();
-  var idCount = 0; // layer counter for creating unique layer ids
   var pinAll = El('#pin-all'); // button for toggling layer visibility
 
   // layer repositioning
   var dragLayerId = null;
-  var hoverLayer = null;
+  var hoverLayerId = null;
+  var layerOrderSlug;
   var dragStarted = false;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
@@ -60,6 +60,12 @@ function LayerControl(model, map) {
     });
   }
 
+  function getLayerOrderSlug() {
+    return internal.sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
+      return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
+    }).join('');
+  }
+
   function clearClass(name) {
     var targ = el.findChild('.' + name);
     if (targ) targ.removeClass(name);
@@ -69,17 +75,20 @@ function LayerControl(model, map) {
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
-    dragLayerId = hoverLayer = null;
+    dragLayerId = hoverLayerId = layerOrderSlug = null;
   }
 
   function insertLayer(dragId, dropId, above) {
     var dragLyr = findLayerById(dragId);
     var dropLyr = findLayerById(dropId);
-    clearInsertion();
+    var slug;
     if (dragId == dropId) return;
     dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
-    render();
-    map.redraw();
+    slug = getLayerOrderSlug();
+    if (slug != layerOrderSlug) {
+      layerOrderSlug = slug;
+      map.redraw();
+    }
   }
 
   function turnOn() {
@@ -105,6 +114,13 @@ function LayerControl(model, map) {
     var pinnableCount = 0;
     list.empty();
     model.forEachLayer(function(lyr, dataset) {
+      // Assign a unique id to each layer, so html strings
+      // can be used as unique identifiers for caching rendered HTML, and as
+      // an id for layer menu event handlers
+      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
+        lyr.menu_id = utils.getUniqueName();
+      }
+      uniqIds[lyr.menu_id] = true;
       if (isPinnable(lyr)) pinnableCount++;
     });
 
@@ -119,13 +135,6 @@ function LayerControl(model, map) {
       var lyr = o.layer;
       var pinnable = pinnableCount > 1 && isPinnable(lyr);
       var html, element;
-      // Assign a unique id to each layer, so html strings
-      // can be used as unique identifiers for caching rendered HTML, and as
-      // an id for layer menu event handlers
-      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-        lyr.menu_id = ++idCount;
-      }
-      uniqIds[lyr.menu_id] = true;
       html = renderLayer(lyr, o.dataset, pinnable);
       if (cache.contains(html)) {
         element = cache.use(html);
@@ -179,30 +188,36 @@ function LayerControl(model, map) {
 
     // support layer drag-drop
     entry.on('mousemove', function(e) {
-      hoverLayer = id;
+      hoverLayerId = id;
       if (dragStarted) {
         // mousedown event was just fired - start dragging
+        layerOrderSlug = getLayerOrderSlug();
         dragStarted = false;
         dragLayerId = id;
         entry.addClass('drag-target');
       }
       if (!dragLayerId) return;
       rect = entry.node().getBoundingClientRect();
+      entry.addClass('dragging');
+
+      if (dragLayerId == id) return;
 
       var y = e.pageY - rect.top;
       if (y < rect.height / 2) {
         entry.addClass('insert-above');
         entry.removeClass('insert-below');
+        insertLayer(dragLayerId, id, true);
       } else {
         entry.removeClass('insert-above');
         entry.addClass('insert-below');
+        insertLayer(dragLayerId, id, false);
       }
-      entry.addClass('dragging');
     });
 
     entry.on('mouseup', function() {
       if (dragLayerId) {
-        insertLayer(dragLayerId, id, entry.hasClass('insert-above'));
+        render(); // in case menu changed...
+        clearInsertion();
       }
     });
 
@@ -215,7 +230,7 @@ function LayerControl(model, map) {
       entry.removeClass('insert-below');
       entry.removeClass('dragging');
       dragStarted = false;
-      hoverLayer = null;
+      hoverLayerId = null;
     });
   }
 
@@ -238,6 +253,7 @@ function LayerControl(model, map) {
       // init pin button
       entry.findChild('img.pinned').on('mouseup', function(e) {
         var target = findLayerById(id);
+        if (entry.hasClass('dragging')) return;
         e.stopPropagation();
         if (map.isReferenceLayer(target.layer)) {
           map.removeReferenceLayer(target.layer);

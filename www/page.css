@@ -712,7 +712,6 @@ img.close-btn {
 	display: none;
 }
 
-
 img.pin-btn {
 	opacity: 0;
 }
@@ -796,6 +795,10 @@ img.close-btn:hover,
 
 .layer-item.drag-target:not(.active) {
 	background-color: #f7f7f7;
+}
+
+.layer-item.drag-target:not(.dragging) {
+	opacity: 0.3;
 }
 
 .layer-item.drag-target.active {

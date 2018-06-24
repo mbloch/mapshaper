@@ -18,7 +18,6 @@ function LayerStack(container, ext, mouse) {
 
   this.drawLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
-    // sortLayers(layers);
     if (!onlyNav) {
       _svg.clear();
     }
@@ -55,24 +54,5 @@ function LayerStack(container, ext, mouse) {
       canv.prep(_ext);
       drawCanvasLayer(target, canv);
     }
-  }
-
-  // sort layers in their drawing order
-  function sortLayers(arr) {
-    arr.sort(function(a, b) {
-      var za = getLayerStackOrder(a),
-          zb = getLayerStackOrder(b);
-      return za - zb;
-    });
-  }
-
-  function getLayerStackOrder(o) {
-    var type = o.layer.geometry_type;
-    var z = 0;
-    if (type == 'point') z = 6;
-    else if (type == 'polyline') z = 4;
-    else if (type == 'polygon') z = 2;
-    if (o.active) z += 1; // put active layer on top of same-type layers
-    return z;
   }
 }
