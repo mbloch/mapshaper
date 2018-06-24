@@ -707,7 +707,8 @@ img.close-btn {
 }
 
 /* hide close button when not hovering */
-.layer-item:not(:hover) img.close-btn {
+.layer-item:not(:hover) img.close-btn,
+.layer-item.dragging img.close-btn {
 	display: none;
 }
 
@@ -771,7 +772,7 @@ img.close-btn:hover,
 	text-decoration: none;
 }
 
-.layer-item:hover:not(.active) {
+.layer-item:hover:not(.active):not(.dragging) {
 	background-color: #f7f7f7;
 }
 
@@ -793,8 +794,12 @@ img.close-btn:hover,
 	*/
 }
 
-.layer-item.drag-target {
-	background-color: #BDE2F4 !important;
+.layer-item.drag-target:not(.active) {
+	background-color: #f7f7f7;
+}
+
+.layer-item.drag-target.active {
+	/* background-color: #BDE2F4; */
 }
 
 .layer-item.insert-above {

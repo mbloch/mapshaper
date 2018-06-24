@@ -1,4 +1,4 @@
-/* @require mapshaper-gui-lib mapshaper-dom-cache */
+/* @require mapshaper-gui-lib mapshaper-dom-cache mapshaper-layer-sorting */
 
 function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
@@ -9,7 +9,7 @@ function LayerControl(model, map) {
   var pinAll = El('#pin-all'); // button for toggling layer visibility
 
   // layer repositioning
-  var dragLayer = null;
+  var dragLayerId = null;
   var hoverLayer = null;
   var dragStarted = false;
 
@@ -69,12 +69,17 @@ function LayerControl(model, map) {
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
-    dragLayer = hoverLayer = null;
+    dragLayerId = hoverLayer = null;
   }
 
-  function insertLayer(targetId, referenceId, above) {
-    // TODO: finish
+  function insertLayer(dragId, dropId, above) {
+    var dragLyr = findLayerById(dragId);
+    var dropLyr = findLayerById(dropId);
     clearInsertion();
+    if (dragId == dropId) return;
+    dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
+    render();
+    map.redraw();
   }
 
   function turnOn() {
@@ -110,7 +115,8 @@ function LayerControl(model, map) {
       updatePinAllButton();
     }
 
-    model.forEachLayer(function(lyr, dataset) {
+    internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
+      var lyr = o.layer;
       var pinnable = pinnableCount > 1 && isPinnable(lyr);
       var html, element;
       // Assign a unique id to each layer, so html strings
@@ -120,7 +126,7 @@ function LayerControl(model, map) {
         lyr.menu_id = ++idCount;
       }
       uniqIds[lyr.menu_id] = true;
-      html = renderLayer(lyr, dataset, pinnable);
+      html = renderLayer(lyr, o.dataset, pinnable);
       if (cache.contains(html)) {
         element = cache.use(html);
       } else {
@@ -173,15 +179,17 @@ function LayerControl(model, map) {
 
     // support layer drag-drop
     entry.on('mousemove', function(e) {
-      var y = e.pageY - rect.top;
       hoverLayer = id;
       if (dragStarted) {
+        // mousedown event was just fired - start dragging
         dragStarted = false;
-        dragLayer = id;
-        recr = entry.node().getBoundingClientRect();
+        dragLayerId = id;
         entry.addClass('drag-target');
       }
-      if (!dragLayer) return;
+      if (!dragLayerId) return;
+      rect = entry.node().getBoundingClientRect();
+
+      var y = e.pageY - rect.top;
       if (y < rect.height / 2) {
         entry.addClass('insert-above');
         entry.removeClass('insert-below');
@@ -189,12 +197,12 @@ function LayerControl(model, map) {
         entry.removeClass('insert-above');
         entry.addClass('insert-below');
       }
+      entry.addClass('dragging');
     });
 
     entry.on('mouseup', function() {
-      if (dragLayer && dragLayer != id) {
-        insertLayer(dragLayer, id, entry.hasClass('insert-above'));
-        clearInsertion();
+      if (dragLayerId) {
+        insertLayer(dragLayerId, id, entry.hasClass('insert-above'));
       }
     });
 
@@ -203,12 +211,17 @@ function LayerControl(model, map) {
     });
 
     entry.on('mouseleave', function(e) {
+      entry.removeClass('insert-above');
+      entry.removeClass('insert-below');
+      entry.removeClass('dragging');
       dragStarted = false;
       hoverLayer = null;
     });
   }
 
   function initMouseEvents2(entry, id, pinnable) {
+
+    initLayerDragging(entry, id);
 
     // init delete button
     entry.findChild('img.close-btn').on('mouseup', function(e) {

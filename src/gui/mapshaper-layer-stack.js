@@ -18,7 +18,7 @@ function LayerStack(container, ext, mouse) {
 
   this.drawLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
-    sortLayers(layers);
+    // sortLayers(layers);
     if (!onlyNav) {
       _svg.clear();
     }

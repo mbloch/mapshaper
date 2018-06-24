@@ -194,13 +194,23 @@ function MshpMap(model) {
     });
   }
 
+  function sortMapLayers(layers) {
+    layers.sort(function(a, b) {
+      // assume that each layer has a stack_id (assigned by updateLayerStackOrde())
+      return a.source.layer.stack_id - b.source.layer.stack_id;
+    });
+  }
+
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
     // draw active and reference layers
     var layers = getDrawableLayers();
     if (!onlyNav) {
       updateLayerStyles(layers);
+      // update stack_id property of all layers
+      internal.updateLayerStackOrder(model.getLayers());
     }
+    sortMapLayers(layers);
     _stack.drawLayers(layers, onlyNav);
     // draw intersection dots
     _stack.drawOverlay2Layer(_intersectionLyr);
