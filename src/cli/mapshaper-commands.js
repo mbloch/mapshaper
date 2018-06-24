@@ -103,11 +103,11 @@ internal.applyCommandsOld = function(commands, content, done) {
 // TODO: rewrite tests and remove this function
 internal.testCommands = function(argv, done) {
   internal.runParsedCommands(internal.parseCommands(argv), null, function(err, catalog) {
-    var target = catalog && catalog.getDefaultTarget();
+    var targets = catalog ? catalog.getDefaultTargets() : [];
     var output;
-    if (!err && target) {
+    if (!err && targets.length > 0) {
       // returns dataset for compatibility with some older tests
-      output = target.dataset;
+      output = targets[0].dataset;
     }
     done(err, output);
   });

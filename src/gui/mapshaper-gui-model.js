@@ -33,7 +33,7 @@ function Model() {
     if (lyr && dataset) {
       self.setDefaultTarget([lyr], dataset);
     }
-    targ = self.getDefaultTarget();
+    targ = self.getDefaultTargets()[0];
     if (lyr && targ.layers[0] != lyr) {
       flags.select = true;
     }

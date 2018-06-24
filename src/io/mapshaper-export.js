@@ -46,12 +46,12 @@ internal.exportDatasets = function(datasets, opts) {
     internal.assignUniqueLayerNames2(datasets);
   }
   files = datasets.reduce(function(memo, dataset) {
-    if (opts.target) {
+    // if (opts.target) {
       // kludge to export layers in order that target= option matched them
       // (useful mainly for SVG output)
       // target_id was assigned to each layer by findCommandTargets()
       utils.sortOn(dataset.layers, 'target_id', true);
-    }
+    // }
     return memo.concat(internal.exportFileContent(dataset, opts));
   }, []);
   // need unique names for multiple output files

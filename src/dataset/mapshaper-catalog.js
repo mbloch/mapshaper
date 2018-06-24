@@ -5,7 +5,7 @@
 //   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
-      defaultTarget = null; // saved default command target {layers:[], dataset}
+      defaultTargets = [];// saved default command targets [{layers:[], dataset}, ...]
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -18,24 +18,24 @@ function Catalog() {
 
   // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
-    var targ = this.getDefaultTarget();
+    // if deleting first target layer (selected in gui) -- switch to some other layer
+    if (this.getActiveLayer().layer == lyr) {
+      defaultTargets = [];
+    }
 
     // remove layer from its dataset
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
     if (dataset.layers.length === 0) {
       this.removeDataset(dataset);
     }
-    if (this.isEmpty()) {
-      defaultTarget = null;
-    } else if (targ.layers[0] == lyr) {
-      // deleting first target layer (selected in gui) -- switch to some other layer
-      defaultTarget = null;
-    } else if (targ.layers.indexOf(lyr) > -1) {
-      // deleted layer is targeted -- update target
-      targ.layers.splice(targ.layers.indexOf(lyr), 1);
-    } else {
-      // deleted layer is not a targeted layer, target not updated
-    }
+
+    // remove layer from defaultTargets
+    defaultTargets = defaultTargets.filter(function(targ) {
+      var i = targ.layers.indexOf(lyr);
+      if (i == -1) return true;
+      targ.layers.splice(i, 1);
+      return targ.layers.length > 0;
+    });
   };
 
   // @arg: a layer object or a test function
@@ -51,18 +51,16 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern, type) {
-    var targ;
     if (pattern) {
       return internal.findCommandTargets(this, pattern, type);
     }
-    targ = this.getDefaultTarget();
-    return targ ? [targ] : [];
+    return this.getDefaultTargets() || [];
   };
 
   this.removeDataset = function(dataset) {
-    if (defaultTarget && defaultTarget.dataset == dataset) {
-      defaultTarget = null;
-    }
+    defaultTargets = defaultTargets.filter(function(targ) {
+      return targ.dataset != dataset;
+    });
     datasets = datasets.filter(function(d) {
       return d != dataset;
     });
@@ -97,41 +95,35 @@ function Catalog() {
     return idx > -1 ? layers[(idx - 1 + layers.length) % layers.length] : null;
   };
 
-  this.findAnotherLayer = function(lyr) {
-    var layers = this.getLayers(),
-        found = null;
-    if (layers.length > 0) {
-      found = layers[0].layer == lyr ? layers[1] : layers[0];
-    }
-    return found;
-  };
-
   this.isEmpty = function() {
     return datasets.length === 0;
   };
 
-  this.getDefaultTarget = function() {
-    var tmp;
-    if (!defaultTarget && !this.isEmpty()) {
-      tmp = this.findAnotherLayer(null);
-      defaultTarget = {dataset: tmp.dataset, layers: [tmp.layer]};
+  this.getDefaultTargets = function() {
+    if (defaultTargets.length === 0 && !this.isEmpty()) {
+      // defaultTargets = [{dataset: datasets[0], layers: datasets[0].layers.slice(0, 1)}];
+      defaultTargets = [{dataset: datasets[0], layers: datasets[0].layers.slice(0, 1)}];
     }
-    return defaultTarget;
+    return defaultTargets;
   };
 
   this.setDefaultTarget = function(layers, dataset) {
     if (datasets.indexOf(dataset) == -1) {
       datasets.push(dataset);
     }
-    defaultTarget = {
+    defaultTargets = [{
       layers: layers,
       dataset: dataset
-    };
+    }];
+  };
+
+  this.setDefaultTargets = function(arr) {
+    defaultTargets = arr;
   };
 
   // should be in mapshaper-gui-model.js, moved here for testing
   this.getActiveLayer = function() {
-    var targ = this.getDefaultTarget();
+    var targ = (this.getDefaultTargets() || [])[0];
     return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
   };
 

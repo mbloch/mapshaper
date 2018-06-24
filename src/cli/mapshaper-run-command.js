@@ -77,7 +77,7 @@ api.runCommand = function(cmd, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'proj' || name == 'drop') {
+    } else if (name == 'proj' || name == 'drop' || name == 'target') {
       // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
@@ -298,17 +298,17 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'stitch') {
       api.stitch(targetDataset);
 
-    } else if (name == 'subdivide') {
-      outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
-
     } else if (name == 'style') {
       internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
 
-    } else if (name == 'uniq') {
-      internal.applyCommand(api.uniq, targetLayers, arcs, opts);
+    } else if (name == 'subdivide') {
+      outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'target') {
       internal.target(catalog, opts);
+
+    } else if (name == 'uniq') {
+      internal.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");

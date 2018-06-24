@@ -126,9 +126,9 @@ function ImportControl(model, opts) {
     var target;
     if (catalog) catalog.reset(); // re-enable clickable catalog
     if (importCount > 0) {
-      // display first layer of last imported dataset
-      target = model.getDefaultTarget();
-      model.selectLayer(target.layers[0], target.dataset);
+      // display last layer of last imported dataset
+      target = model.getDefaultTargets()[0];
+      model.selectLayer(target.layers[target.layers.length-1], target.dataset);
     }
     gui.clearProgressMessage();
     importCount = 0;
