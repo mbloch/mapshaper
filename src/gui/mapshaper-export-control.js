@@ -55,17 +55,17 @@ var ExportControl = function(model) {
   }
 
   function initLayerMenu() {
-    // init layer menu with current editing layer selected
     var list = El('#export-layer-list').empty();
-    var template = '<label><input type="checkbox" checked> %s</label>';
-    var checkboxes = [];
-    model.forEachLayer(function(lyr, dataset) {
-      var html = utils.format(template, lyr.name || '[unnamed layer]');
-      var box = El('div').html(html).appendTo(list).findChild('input').node();
-      checkboxes.push(box);
+    var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
+    var objects = model.getLayers().map(function(o, i) {
+      var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
+      return {layer: o.layer, html: html};
+    });
+    internal.sortLayersForMenuDisplay(objects);
+    checkboxes = objects.map(function(o) {
+      return El('div').html(o.html).appendTo(list).findChild('input').node();
     });
     El('#export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
-    return checkboxes;
   }
 
   function getInputFormats() {
@@ -93,7 +93,7 @@ var ExportControl = function(model) {
   }
 
   function turnOn() {
-    checkboxes = initLayerMenu();
+    initLayerMenu();
     initFormatMenu();
     menu.show();
   }
@@ -108,7 +108,7 @@ var ExportControl = function(model) {
 
   function getTargetLayers() {
     var ids = checkboxes.reduce(function(memo, box, i) {
-      if (box.checked) memo.push(String(i + 1)); // numerical layer id
+      if (box.checked) memo.push(box.value);
       return memo;
     }, []).join(',');
     return ids ? model.findCommandTargets(ids) : [];

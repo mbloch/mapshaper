@@ -26,6 +26,8 @@ var T = {
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
 
+internal.runningInBrowser = function() {return !!api.gui;};
+
 internal.getStateVar = function(key) {
   return internal.context[key];
 };
