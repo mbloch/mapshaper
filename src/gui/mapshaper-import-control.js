@@ -156,16 +156,34 @@ function ImportControl(model, opts) {
       }
       return memo;
     }, []);
+  }
 
-    // sort queued files by filename (a-z), so when filenames are
-    // popped from the queue, .shp is imported before .dbf and .prj
-    // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
-    //
-    queuedFiles.sort(function(a, b) {
+  // When a Shapefile component is at the head of the queue, move the entire
+  // Shapefile to the front of the queue, sorted in reverse alphabetical order,
+  // (a kludge), so .shp is read before .dbf and .prj
+  // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
+  // TODO: import Shapefile parts without relying on this kludge
+  function sortQueue(queue) {
+    var nextFile = queue[0];
+    var basename, parts;
+    if (!isShapefilePart(nextFile.name)) {
+      return queue;
+    }
+    basename = utils.getFileBase(nextFile.name).toLowerCase();
+    parts = [];
+    queue = queue.filter(function(file) {
+      if (utils.getFileBase(file.name).toLowerCase() == basename) {
+        parts.push(file);
+        return false;
+      }
+      return true;
+    });
+    parts.sort(function(a, b) {
       // Sorting on LC filename so Shapefiles with mixed-case
       // extensions are sorted correctly
-      return a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1;
+      return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
     });
+    return parts.concat(queue);
   }
 
   function showQueuedFiles() {
@@ -216,11 +234,17 @@ function ImportControl(model, opts) {
   }
 
   function procNextQueuedFile() {
-    if (queuedFiles.length > 0) {
-      readFile(queuedFiles.pop());
-    } else {
+    if (queuedFiles.length === 0) {
       gui.clearMode();
+    } else {
+      queuedFiles = sortQueue(queuedFiles);
+      readFile(queuedFiles.shift());
     }
+  }
+
+  // TODO: support .cpg
+  function isShapefilePart(name) {
+    return /\.(shp|shx|dbf|prj)$/i.test(name);
   }
 
   function readImportOpts() {
