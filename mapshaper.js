@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.85';
+var VERSION = '0.4.86';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1516,6 +1516,8 @@ var T = {
 };
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
+
+internal.runningInBrowser = function() {return !!api.gui;};
 
 internal.getStateVar = function(key) {
   return internal.context[key];
@@ -14890,7 +14892,7 @@ internal.parseSvgValue = function(name, strVal, fields) {
   } else if (type == 'classname') {
     val = internal.isSvgClassName(strVal) ? strVal : null;
   } else if (type == 'measure') { // SVG/CSS length (e.g. 12px, 1em, 4)
-    val = internal.isSvgMeasure(strVal) ? strVal : null;
+    val = internal.isSvgMeasure(strVal) ? internal.parseSvgMeasure(strVal) : null;
   } else if (type == 'dasharray') {
     val = internal.isDashArray(strVal) ? strVal : null;
   } else {
@@ -14915,6 +14917,11 @@ internal.isSvgNumber = function(o) {
 
 internal.isSvgMeasure = function(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+[a-z]*$/.test(o);
+};
+
+// Can be a number or a string
+internal.parseSvgMeasure = function(str) {
+  return utils.isString(str) && /[a-z]/.test(str) ? str : Number(str);
 };
 
 internal.isSvgColor = function(str) {
@@ -15418,9 +15425,11 @@ internal.exportDatasets = function(datasets, opts) {
     internal.assignUniqueLayerNames2(datasets);
   }
   files = datasets.reduce(function(memo, dataset) {
-    if (opts.target) {
-      // kludge to export layers in order that target= option matched them
-      // (useful mainly for SVG output)
+    if (internal.runningInBrowser()) {
+      utils.sortOn(dataset.layers, 'stack_id', true);
+    } else {
+      // kludge to export layers in order that target= option or previous
+      // -target command matched them (useful mainly for SVG output)
       // target_id was assigned to each layer by findCommandTargets()
       utils.sortOn(dataset.layers, 'target_id', true);
     }
@@ -18738,11 +18747,8 @@ api.rectangles = function(targetLyr, targetDataset, opts) {
   var geometries = targetLyr.shapes.map(function(shp) {
     var bounds = targetLyr.geometryType == 'point' ?
       internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-    if (!bounds.hasBounds()) return null;
-    if (opts.offset) {
-      bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
-    }
-    if (bounds.area() <= 0) return null;
+    bounds = internal.applyRectangleOptions(bounds, crs, opts);
+    if (!bounds) return null;
     return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   });
   var geojson = {
@@ -18787,7 +18793,6 @@ api.rectangle2 = function(target, opts) {
 };
 
 api.rectangle = function(source, opts) {
-  var isGeoBox;
   var offsets, bounds, crs, coords, sourceInfo;
   if (source) {
     bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
@@ -18797,11 +18802,9 @@ api.rectangle = function(source, opts) {
     bounds = new Bounds(opts.bbox);
     crs = internal.getCRS('wgs84');
   }
+  bounds = bounds && internal.applyRectangleOptions(bounds, crs, opts);
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
-  }
-  if (opts.offset) {
-    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
   }
   var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = internal.importGeoJSON(geojson, {});
@@ -18812,14 +18815,41 @@ api.rectangle = function(source, opts) {
   return dataset;
 };
 
-internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
-  var clampGeographicBoxes = true; // TODO: make this an option?
+internal.applyRectangleOptions = function(bounds, crs, opts) {
   var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
-  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
-  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-  if (isGeoBox && clampGeographicBoxes) {
+  if (opts.offset) {
+    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
+  }
+  if (bounds.area() > 0 === false) return null;
+  if (opts.aspect_ratio) {
+    bounds = internal.applyAspectRatio(opts.aspect_ratio, bounds);
+  }
+  if (isGeoBox) {
     bounds = internal.clampToWorldBounds(bounds);
   }
+  return bounds;
+};
+
+internal.applyAspectRatio = function(opt, bounds) {
+  var range = String(opt).split(','),
+    aspectRatio = bounds.width() / bounds.height(),
+    min, max; // min is height limit, max is width limit
+  min = Number(range[0]);
+  max = range.length > 1 ? Number(range[1]) : min;
+  if (!min && !max) return bounds;
+  if (!min) min = -Infinity;
+  if (!max) max = Infinity;
+  if (aspectRatio < min) {
+    bounds.fillOut(min);
+  } else if (aspectRatio > max) {
+    bounds.fillOut(max);
+  }
+  return bounds;
+};
+
+internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
+  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
+  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
   return bounds;
 };
 
@@ -19987,19 +20017,17 @@ internal.target = function(catalog, opts) {
   var type = (opts.type || '').toLowerCase().replace('linestring', 'polyline');
   var pattern = opts.target || '*';
   var targets = catalog.findCommandTargets(pattern, type);
-  var target = targets[0];
   if (type && 'polygon,polyline,point'.split(',').indexOf(type) == -1) {
     stop("Invalid layer type:", opts.type);
   }
-  if (!target || target.layers.length === 0) {
+  if (targets.length === 0) {
     stop("No layers were matched (pattern: " + pattern + (type ? ' type: ' + type : '') + ")");
-  } else if (targets.length > 1 || target.layers.length > 1) {
-    stop("Matched more than one layer");
   }
   if (opts.name) {
-    target.layers[0].name = opts.name;
+    // TODO: improve this
+    targets[0].layers[0].name = opts.name;
   }
-  catalog.setDefaultTarget(target.layers, target.dataset);
+  catalog.setDefaultTargets(targets);
 };
 
 
@@ -20072,7 +20100,7 @@ api.runCommand = function(cmd, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'proj' || name == 'drop') {
+    } else if (name == 'proj' || name == 'drop' || name == 'target') {
       // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
@@ -20293,17 +20321,17 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'stitch') {
       api.stitch(targetDataset);
 
-    } else if (name == 'subdivide') {
-      outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
-
     } else if (name == 'style') {
       internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
 
-    } else if (name == 'uniq') {
-      internal.applyCommand(api.uniq, targetLayers, arcs, opts);
+    } else if (name == 'subdivide') {
+      outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'target') {
       internal.target(catalog, opts);
+
+    } else if (name == 'uniq') {
+      internal.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");
@@ -22063,6 +22091,9 @@ internal.getOptionParser = function() {
       describe: "padding around bbox or contents (number or list)",
       type: "distance"
     })
+    .option("aspect-ratio", {
+      type: "string"
+    })
     .option("source", {
       describe: "name of layer to enclose"
     })
@@ -22075,6 +22106,9 @@ internal.getOptionParser = function() {
     .option("offset", {
       describe: "padding around bbox or contents (number or list)",
       type: "distance"
+    })
+    .option("aspect-ratio", {
+      type: "string"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -22272,7 +22306,7 @@ internal.getLayerMatch = function(pattern) {
 //   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
-      defaultTarget = null; // saved default command target {layers:[], dataset}
+      defaultTargets = [];// saved default command targets [{layers:[], dataset}, ...]
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -22285,24 +22319,24 @@ function Catalog() {
 
   // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
-    var targ = this.getDefaultTarget();
+    // if deleting first target layer (selected in gui) -- switch to some other layer
+    if (this.getActiveLayer().layer == lyr) {
+      defaultTargets = [];
+    }
 
     // remove layer from its dataset
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
     if (dataset.layers.length === 0) {
       this.removeDataset(dataset);
     }
-    if (this.isEmpty()) {
-      defaultTarget = null;
-    } else if (targ.layers[0] == lyr) {
-      // deleting first target layer (selected in gui) -- switch to some other layer
-      defaultTarget = null;
-    } else if (targ.layers.indexOf(lyr) > -1) {
-      // deleted layer is targeted -- update target
-      targ.layers.splice(targ.layers.indexOf(lyr), 1);
-    } else {
-      // deleted layer is not a targeted layer, target not updated
-    }
+
+    // remove layer from defaultTargets
+    defaultTargets = defaultTargets.filter(function(targ) {
+      var i = targ.layers.indexOf(lyr);
+      if (i == -1) return true;
+      targ.layers.splice(i, 1);
+      return targ.layers.length > 0;
+    });
   };
 
   // @arg: a layer object or a test function
@@ -22318,18 +22352,16 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern, type) {
-    var targ;
     if (pattern) {
       return internal.findCommandTargets(this, pattern, type);
     }
-    targ = this.getDefaultTarget();
-    return targ ? [targ] : [];
+    return this.getDefaultTargets() || [];
   };
 
   this.removeDataset = function(dataset) {
-    if (defaultTarget && defaultTarget.dataset == dataset) {
-      defaultTarget = null;
-    }
+    defaultTargets = defaultTargets.filter(function(targ) {
+      return targ.dataset != dataset;
+    });
     datasets = datasets.filter(function(d) {
       return d != dataset;
     });
@@ -22364,41 +22396,35 @@ function Catalog() {
     return idx > -1 ? layers[(idx - 1 + layers.length) % layers.length] : null;
   };
 
-  this.findAnotherLayer = function(lyr) {
-    var layers = this.getLayers(),
-        found = null;
-    if (layers.length > 0) {
-      found = layers[0].layer == lyr ? layers[1] : layers[0];
-    }
-    return found;
-  };
-
   this.isEmpty = function() {
     return datasets.length === 0;
   };
 
-  this.getDefaultTarget = function() {
-    var tmp;
-    if (!defaultTarget && !this.isEmpty()) {
-      tmp = this.findAnotherLayer(null);
-      defaultTarget = {dataset: tmp.dataset, layers: [tmp.layer]};
+  this.getDefaultTargets = function() {
+    if (defaultTargets.length === 0 && !this.isEmpty()) {
+      // defaultTargets = [{dataset: datasets[0], layers: datasets[0].layers.slice(0, 1)}];
+      defaultTargets = [{dataset: datasets[0], layers: datasets[0].layers.slice(0, 1)}];
     }
-    return defaultTarget;
+    return defaultTargets;
   };
 
   this.setDefaultTarget = function(layers, dataset) {
     if (datasets.indexOf(dataset) == -1) {
       datasets.push(dataset);
     }
-    defaultTarget = {
+    defaultTargets = [{
       layers: layers,
       dataset: dataset
-    };
+    }];
+  };
+
+  this.setDefaultTargets = function(arr) {
+    defaultTargets = arr;
   };
 
   // should be in mapshaper-gui-model.js, moved here for testing
   this.getActiveLayer = function() {
-    var targ = this.getDefaultTarget();
+    var targ = (this.getDefaultTargets() || [])[0];
     return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
   };
 
@@ -22532,11 +22558,11 @@ internal.applyCommandsOld = function(commands, content, done) {
 // TODO: rewrite tests and remove this function
 internal.testCommands = function(argv, done) {
   internal.runParsedCommands(internal.parseCommands(argv), null, function(err, catalog) {
-    var target = catalog && catalog.getDefaultTarget();
+    var targets = catalog ? catalog.getDefaultTargets() : [];
     var output;
-    if (!err && target) {
+    if (!err && targets.length > 0) {
       // returns dataset for compatibility with some older tests
-      output = target.dataset;
+      output = targets[0].dataset;
     }
     done(err, output);
   });

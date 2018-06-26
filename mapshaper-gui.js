@@ -2083,9 +2083,9 @@ function ImportControl(model, opts) {
     var target;
     if (catalog) catalog.reset(); // re-enable clickable catalog
     if (importCount > 0) {
-      // display first layer of last imported dataset
-      target = model.getDefaultTarget();
-      model.selectLayer(target.layers[0], target.dataset);
+      // display last layer of last imported dataset
+      target = model.getDefaultTargets()[0];
+      model.selectLayer(target.layers[target.layers.length-1], target.dataset);
     }
     gui.clearProgressMessage();
     importCount = 0;
@@ -2113,16 +2113,34 @@ function ImportControl(model, opts) {
       }
       return memo;
     }, []);
+  }
 
-    // sort queued files by filename (a-z), so when filenames are
-    // popped from the queue, .shp is imported before .dbf and .prj
-    // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
-    //
-    queuedFiles.sort(function(a, b) {
+  // When a Shapefile component is at the head of the queue, move the entire
+  // Shapefile to the front of the queue, sorted in reverse alphabetical order,
+  // (a kludge), so .shp is read before .dbf and .prj
+  // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
+  // TODO: import Shapefile parts without relying on this kludge
+  function sortQueue(queue) {
+    var nextFile = queue[0];
+    var basename, parts;
+    if (!isShapefilePart(nextFile.name)) {
+      return queue;
+    }
+    basename = utils.getFileBase(nextFile.name).toLowerCase();
+    parts = [];
+    queue = queue.filter(function(file) {
+      if (utils.getFileBase(file.name).toLowerCase() == basename) {
+        parts.push(file);
+        return false;
+      }
+      return true;
+    });
+    parts.sort(function(a, b) {
       // Sorting on LC filename so Shapefiles with mixed-case
       // extensions are sorted correctly
-      return a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1;
+      return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
     });
+    return parts.concat(queue);
   }
 
   function showQueuedFiles() {
@@ -2173,11 +2191,17 @@ function ImportControl(model, opts) {
   }
 
   function procNextQueuedFile() {
-    if (queuedFiles.length > 0) {
-      readFile(queuedFiles.pop());
-    } else {
+    if (queuedFiles.length === 0) {
       gui.clearMode();
+    } else {
+      queuedFiles = sortQueue(queuedFiles);
+      readFile(queuedFiles.shift());
     }
+  }
+
+  // TODO: support .cpg
+  function isShapefilePart(name) {
+    return /\.(shp|shx|dbf|prj)$/i.test(name);
   }
 
   function readImportOpts() {
@@ -2588,17 +2612,17 @@ var ExportControl = function(model) {
   }
 
   function initLayerMenu() {
-    // init layer menu with current editing layer selected
     var list = El('#export-layer-list').empty();
-    var template = '<label><input type="checkbox" checked> %s</label>';
-    var checkboxes = [];
-    model.forEachLayer(function(lyr, dataset) {
-      var html = utils.format(template, lyr.name || '[unnamed layer]');
-      var box = El('div').html(html).appendTo(list).findChild('input').node();
-      checkboxes.push(box);
+    var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
+    var objects = model.getLayers().map(function(o, i) {
+      var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
+      return {layer: o.layer, html: html};
+    });
+    internal.sortLayersForMenuDisplay(objects);
+    checkboxes = objects.map(function(o) {
+      return El('div').html(o.html).appendTo(list).findChild('input').node();
     });
     El('#export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
-    return checkboxes;
   }
 
   function getInputFormats() {
@@ -2626,7 +2650,7 @@ var ExportControl = function(model) {
   }
 
   function turnOn() {
-    checkboxes = initLayerMenu();
+    initLayerMenu();
     initFormatMenu();
     menu.show();
   }
@@ -2641,7 +2665,7 @@ var ExportControl = function(model) {
 
   function getTargetLayers() {
     var ids = checkboxes.reduce(function(memo, box, i) {
-      if (box.checked) memo.push(String(i + 1)); // numerical layer id
+      if (box.checked) memo.push(box.value);
       return memo;
     }, []).join(',');
     return ids ? model.findCommandTargets(ids) : [];
@@ -2785,18 +2809,43 @@ function DomCache() {
 
 
 
+
+internal.updateLayerStackOrder = function(layers) {
+  // 1. assign ascending ids to unassigned layers above the range of other layers
+  layers.forEach(function(o, i) {
+    if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
+  });
+  // 2. sort in ascending order
+  layers.sort(function(a, b) {
+    return a.layer.stack_id - b.layer.stack_id;
+  });
+  // 3. assign consecutve ids
+  layers.forEach(function(o, i) {
+    o.layer.stack_id = i + 1;
+  });
+  return layers;
+};
+
+internal.sortLayersForMenuDisplay = function(layers) {
+  layers = internal.updateLayerStackOrder(layers);
+  return layers.reverse();
+};
+
+
+
+
+
 function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
   var cache = new DomCache();
-  var idCount = 0; // layer counter for creating unique layer ids
   var pinAll = El('#pin-all'); // button for toggling layer visibility
 
   // layer repositioning
-  var dragLayer = null;
-  var hoverLayer = null;
-  var dragStarted = false;
+  var dragTargetId = null;
+  var dragging = false;
+  var layerOrderSlug;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -2845,6 +2894,12 @@ function LayerControl(model, map) {
     });
   }
 
+  function getLayerOrderSlug() {
+    return internal.sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
+      return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
+    }).join('');
+  }
+
   function clearClass(name) {
     var targ = el.findChild('.' + name);
     if (targ) targ.removeClass(name);
@@ -2854,12 +2909,24 @@ function LayerControl(model, map) {
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
-    dragLayer = hoverLayer = null;
+    dragTargetId = layerOrderSlug = null;
+    if (dragging) {
+      render(); // in case menu changed...
+      dragging = false;
+    }
   }
 
-  function insertLayer(targetId, referenceId, above) {
-    // TODO: finish
-    clearInsertion();
+  function insertLayer(dragId, dropId, above) {
+    var dragLyr = findLayerById(dragId);
+    var dropLyr = findLayerById(dropId);
+    var slug;
+    if (dragId == dropId) return;
+    dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
+    slug = getLayerOrderSlug();
+    if (slug != layerOrderSlug) {
+      layerOrderSlug = slug;
+      map.redraw();
+    }
   }
 
   function turnOn() {
@@ -2885,6 +2952,13 @@ function LayerControl(model, map) {
     var pinnableCount = 0;
     list.empty();
     model.forEachLayer(function(lyr, dataset) {
+      // Assign a unique id to each layer, so html strings
+      // can be used as unique identifiers for caching rendered HTML, and as
+      // an id for layer menu event handlers
+      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
+        lyr.menu_id = utils.getUniqueName();
+      }
+      uniqIds[lyr.menu_id] = true;
       if (isPinnable(lyr)) pinnableCount++;
     });
 
@@ -2895,17 +2969,11 @@ function LayerControl(model, map) {
       updatePinAllButton();
     }
 
-    model.forEachLayer(function(lyr, dataset) {
+    internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
+      var lyr = o.layer;
       var pinnable = pinnableCount > 1 && isPinnable(lyr);
       var html, element;
-      // Assign a unique id to each layer, so html strings
-      // can be used as unique identifiers for caching rendered HTML, and as
-      // an id for layer menu event handlers
-      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-        lyr.menu_id = ++idCount;
-      }
-      uniqIds[lyr.menu_id] = true;
-      html = renderLayer(lyr, dataset, pinnable);
+      html = renderLayer(lyr, o.dataset, pinnable);
       if (cache.contains(html)) {
         element = cache.use(html);
       } else {
@@ -2935,10 +3003,10 @@ function LayerControl(model, map) {
     if (warnings) {
       html += rowHTML('problems', warnings, 'layer-problems');
     }
-    html += '<img class="close-btn" src="images/close.png">';
+    html += '<img class="close-btn" draggable="false" src="images/close.png">';
     if (pinnable) {
-      html += '<img class="pin-btn unpinned" src="images/eye.png">';
-      html += '<img class="pin-btn pinned" src="images/eye2.png">';
+      html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
+      html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
     }
     html += '</div>';
     return html;
@@ -2952,51 +3020,55 @@ function LayerControl(model, map) {
     }
   }
 
-  // TODO: finish implementing this
   function initLayerDragging(entry, id) {
     var rect;
 
     // support layer drag-drop
     entry.on('mousemove', function(e) {
-      var y = e.pageY - rect.top;
-      hoverLayer = id;
-      if (dragStarted) {
-        dragStarted = false;
-        dragLayer = id;
-        recr = entry.node().getBoundingClientRect();
-        entry.addClass('drag-target');
-      }
-      if (!dragLayer) return;
-      if (y < rect.height / 2) {
-        entry.addClass('insert-above');
-        entry.removeClass('insert-below');
-      } else {
-        entry.removeClass('insert-above');
-        entry.addClass('insert-below');
-      }
-    });
-
-    entry.on('mouseup', function() {
-      if (dragLayer && dragLayer != id) {
-        insertLayer(dragLayer, id, entry.hasClass('insert-above'));
+      if (!e.buttons && (dragging || dragTargetId)) { // button is up
         clearInsertion();
       }
-    });
-
-    entry.on('mousedown', function() {
-      dragStarted = true;
-    });
-
-    entry.on('mouseleave', function(e) {
-      dragStarted = false;
-      hoverLayer = null;
+      if (e.buttons && !dragTargetId) {
+        dragTargetId = id;
+        entry.addClass('drag-target');
+      }
+      if (!dragTargetId) {
+        return;
+      }
+      if (dragTargetId != id) {
+        // signal to redraw menu later; TODO: improve
+        dragging = true;
+      }
+      rect = entry.node().getBoundingClientRect();
+      var y = e.pageY - rect.top;
+      if (y < rect.height / 2) {
+        if (!entry.hasClass('insert-above')) {
+          clearClass('dragging');
+          clearClass('insert-above');
+          clearClass('insert-below');
+          entry.addClass('dragging');
+          entry.addClass('insert-above');
+          insertLayer(dragTargetId, id, true);
+        }
+      } else {
+        if (!entry.hasClass('insert-below')) {
+          clearClass('dragging');
+          clearClass('insert-above');
+          clearClass('insert-below');
+          entry.addClass('insert-below');
+          entry.addClass('dragging');
+          insertLayer(dragTargetId, id, false);
+        }
+      }
     });
   }
 
   function initMouseEvents2(entry, id, pinnable) {
 
+    initLayerDragging(entry, id);
+
     // init delete button
-    entry.findChild('img.close-btn').on('mouseup', function(e) {
+    gui.onClick(entry.findChild('img.close-btn'), function(e) {
       var target = findLayerById(id);
       e.stopPropagation();
       if (map.isReferenceLayer(target.layer)) {
@@ -3008,19 +3080,20 @@ function LayerControl(model, map) {
 
     if (pinnable) {
       // init pin button
-      entry.findChild('img.pinned').on('mouseup', function(e) {
-        var target = findLayerById(id);
-        e.stopPropagation();
-        if (map.isReferenceLayer(target.layer)) {
-          map.removeReferenceLayer(target.layer);
-          entry.removeClass('pinned');
-        } else {
-          map.addReferenceLayer(target.layer, target.dataset);
-          entry.addClass('pinned');
-        }
-        updatePinAllButton();
-        map.redraw();
-      });
+      gui.onClick(entry.findChild('img.pinned'), function(e) {
+          var target = findLayerById(id);
+          if (entry.hasClass('dragging')) return;
+          e.stopPropagation();
+          if (map.isReferenceLayer(target.layer)) {
+            map.removeReferenceLayer(target.layer);
+            entry.removeClass('pinned');
+          } else {
+            map.addReferenceLayer(target.layer, target.dataset);
+            entry.addClass('pinned');
+          }
+          updatePinAllButton();
+          map.redraw();
+        });
     }
 
     // init name editor
@@ -5315,7 +5388,6 @@ function LayerStack(container, ext, mouse) {
 
   this.drawLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
-    sortLayers(layers);
     if (!onlyNav) {
       _svg.clear();
     }
@@ -5352,25 +5424,6 @@ function LayerStack(container, ext, mouse) {
       canv.prep(_ext);
       drawCanvasLayer(target, canv);
     }
-  }
-
-  // sort layers in their drawing order
-  function sortLayers(arr) {
-    arr.sort(function(a, b) {
-      var za = getLayerStackOrder(a),
-          zb = getLayerStackOrder(b);
-      return za - zb;
-    });
-  }
-
-  function getLayerStackOrder(o) {
-    var type = o.layer.geometry_type;
-    var z = 0;
-    if (type == 'point') z = 6;
-    else if (type == 'polyline') z = 4;
-    else if (type == 'polygon') z = 2;
-    if (o.active) z += 1; // put active layer on top of same-type layers
-    return z;
   }
 }
 
@@ -5498,6 +5551,10 @@ function MshpMap(model) {
     });
   }
 
+  this.isVisibleLayer = function(lyr) {
+    return this.isActiveLayer(lyr) || this.isReferenceLayer(lyr);
+  };
+
   this.isActiveLayer = function(lyr) {
     return lyr == _activeLyr.source.layer;
   };
@@ -5562,13 +5619,23 @@ function MshpMap(model) {
     });
   }
 
+  function sortMapLayers(layers) {
+    layers.sort(function(a, b) {
+      // assume that each layer has a stack_id (assigned by updateLayerStackOrde())
+      return a.source.layer.stack_id - b.source.layer.stack_id;
+    });
+  }
+
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
     // draw active and reference layers
     var layers = getDrawableLayers();
     if (!onlyNav) {
       updateLayerStyles(layers);
+      // update stack_id property of all layers
+      internal.updateLayerStackOrder(model.getLayers());
     }
+    sortMapLayers(layers);
     _stack.drawLayers(layers, onlyNav);
     // draw intersection dots
     _stack.drawOverlay2Layer(_intersectionLyr);
@@ -6102,7 +6169,7 @@ function Model() {
     if (lyr && dataset) {
       self.setDefaultTarget([lyr], dataset);
     }
-    targ = self.getDefaultTarget();
+    targ = self.getDefaultTargets()[0];
     if (lyr && targ.layers[0] != lyr) {
       flags.select = true;
     }
@@ -6167,12 +6234,14 @@ gui.getImportOpts = function() {
   if (manifest.catalog) {
     opts.catalog = manifest.catalog;
   }
+  opts.display_all = !!manifest.display_all;
   return opts;
 };
 
 gui.startEditing = function() {
   var model = new Model(),
       dataLoaded = false,
+      importOpts = gui.getImportOpts(),
       map, repair, simplify;
   gui.startEditing = function() {};
   map = new MshpMap(model);
@@ -6180,7 +6249,7 @@ gui.startEditing = function() {
   simplify = new SimplifyControl(model);
   new AlertControl();
   new ImportFileProxy(model);
-  new ImportControl(model, gui.getImportOpts());
+  new ImportControl(model, importOpts);
   new ExportControl(model);
   new LayerControl(model, map);
   new Console(model);
@@ -6189,6 +6258,9 @@ gui.startEditing = function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
+      if (importOpts.display_all) {
+        model.forEachLayer(map.addReferenceLayer.bind(map));
+      }
     }
   });
 };

@@ -707,10 +707,10 @@ img.close-btn {
 }
 
 /* hide close button when not hovering */
-.layer-item:not(:hover) img.close-btn {
+.layer-item:not(:hover) img.close-btn,
+.layer-item.dragging img.close-btn {
 	display: none;
 }
-
 
 img.pin-btn {
 	opacity: 0;
@@ -771,7 +771,7 @@ img.close-btn:hover,
 	text-decoration: none;
 }
 
-.layer-item:hover:not(.active) {
+.layer-item:hover:not(.active):not(.dragging) {
 	background-color: #f7f7f7;
 }
 
@@ -787,21 +787,24 @@ img.close-btn:hover,
 	margin-right: 19px; /* room for buttons */
 }
 
-.layer-item .col2 {
-	/*position: relative;
-	left: 12px;
-	*/
+
+.layer-item.drag-target:not(.active) {
+	background-color: #f7f7f7;
 }
 
-.layer-item.drag-target {
-	background-color: #BDE2F4 !important;
+.layer-item.drag-target * {
+	/* opacity: 0.3; */
 }
 
-.layer-item.insert-above {
+.layer-item.drag-target.active {
+	/* background-color: #BDE2F4; */
+}
+
+.layer-item.insert-above:not(.drag-target) {
 	border-top: 1px solid black;
 }
 
-.layer-item.insert-below {
+.layer-item.insert-below:not(.drag-target) {
 	border-bottom: 1px solid black;
 }
 
