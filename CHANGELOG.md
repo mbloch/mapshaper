@@ -1,3 +1,9 @@
+v0.4.86
+* [gui] Now you can drag layers in the layer menu to change their stacking order.
+* Added mapshaper-gui -a option, to display all layers initially.
+* The -target command can now target multiple layers.
+* Added undocumented aspect-ratio= option to -rectangle and -rectangles commands.
+
 v0.4.85
 * [style] Added -style stroke-dasharray= option.
 * Added -o max-height= option, for limiting the height of SVG output files.
