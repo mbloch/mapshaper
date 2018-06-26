@@ -787,29 +787,24 @@ img.close-btn:hover,
 	margin-right: 19px; /* room for buttons */
 }
 
-.layer-item .col2 {
-	/*position: relative;
-	left: 12px;
-	*/
-}
 
 .layer-item.drag-target:not(.active) {
 	background-color: #f7f7f7;
 }
 
-.layer-item.drag-target:not(.dragging) {
-	opacity: 0.3;
+.layer-item.drag-target * {
+	/* opacity: 0.3; */
 }
 
 .layer-item.drag-target.active {
 	/* background-color: #BDE2F4; */
 }
 
-.layer-item.insert-above {
+.layer-item.insert-above:not(.drag-target) {
 	border-top: 1px solid black;
 }
 
-.layer-item.insert-below {
+.layer-item.insert-below:not(.drag-target) {
 	border-bottom: 1px solid black;
 }
 

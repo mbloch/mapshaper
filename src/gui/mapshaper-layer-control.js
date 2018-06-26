@@ -8,10 +8,9 @@ function LayerControl(model, map) {
   var pinAll = El('#pin-all'); // button for toggling layer visibility
 
   // layer repositioning
-  var dragLayerId = null;
-  var hoverLayerId = null;
+  var dragTargetId = null;
+  var dragging = false;
   var layerOrderSlug;
-  var dragStarted = false;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -75,7 +74,11 @@ function LayerControl(model, map) {
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
-    dragLayerId = hoverLayerId = layerOrderSlug = null;
+    dragTargetId = layerOrderSlug = null;
+    if (dragging) {
+      render(); // in case menu changed...
+      dragging = false;
+    }
   }
 
   function insertLayer(dragId, dropId, above) {
@@ -165,10 +168,10 @@ function LayerControl(model, map) {
     if (warnings) {
       html += rowHTML('problems', warnings, 'layer-problems');
     }
-    html += '<img class="close-btn" src="images/close.png">';
+    html += '<img class="close-btn" draggable="false" src="images/close.png">';
     if (pinnable) {
-      html += '<img class="pin-btn unpinned" src="images/eye.png">';
-      html += '<img class="pin-btn pinned" src="images/eye2.png">';
+      html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
+      html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
     }
     html += '</div>';
     return html;
@@ -182,55 +185,46 @@ function LayerControl(model, map) {
     }
   }
 
-  // TODO: finish implementing this
   function initLayerDragging(entry, id) {
     var rect;
 
     // support layer drag-drop
     entry.on('mousemove', function(e) {
-      hoverLayerId = id;
-      if (dragStarted) {
-        // mousedown event was just fired - start dragging
-        layerOrderSlug = getLayerOrderSlug();
-        dragStarted = false;
-        dragLayerId = id;
-        entry.addClass('drag-target');
-      }
-      if (!dragLayerId) return;
-      rect = entry.node().getBoundingClientRect();
-      entry.addClass('dragging');
-
-      if (dragLayerId == id) return;
-
-      var y = e.pageY - rect.top;
-      if (y < rect.height / 2) {
-        entry.addClass('insert-above');
-        entry.removeClass('insert-below');
-        insertLayer(dragLayerId, id, true);
-      } else {
-        entry.removeClass('insert-above');
-        entry.addClass('insert-below');
-        insertLayer(dragLayerId, id, false);
-      }
-    });
-
-    entry.on('mouseup', function() {
-      if (dragLayerId) {
-        render(); // in case menu changed...
+      if (!e.buttons && (dragging || dragTargetId)) { // button is up
         clearInsertion();
       }
-    });
-
-    entry.on('mousedown', function() {
-      dragStarted = true;
-    });
-
-    entry.on('mouseleave', function(e) {
-      entry.removeClass('insert-above');
-      entry.removeClass('insert-below');
-      entry.removeClass('dragging');
-      dragStarted = false;
-      hoverLayerId = null;
+      if (e.buttons && !dragTargetId) {
+        dragTargetId = id;
+        entry.addClass('drag-target');
+      }
+      if (!dragTargetId) {
+        return;
+      }
+      if (dragTargetId != id) {
+        // signal to redraw menu later; TODO: improve
+        dragging = true;
+      }
+      rect = entry.node().getBoundingClientRect();
+      var y = e.pageY - rect.top;
+      if (y < rect.height / 2) {
+        if (!entry.hasClass('insert-above')) {
+          clearClass('dragging');
+          clearClass('insert-above');
+          clearClass('insert-below');
+          entry.addClass('dragging');
+          entry.addClass('insert-above');
+          insertLayer(dragTargetId, id, true);
+        }
+      } else {
+        if (!entry.hasClass('insert-below')) {
+          clearClass('dragging');
+          clearClass('insert-above');
+          clearClass('insert-below');
+          entry.addClass('insert-below');
+          entry.addClass('dragging');
+          insertLayer(dragTargetId, id, false);
+        }
+      }
     });
   }
 
@@ -239,7 +233,7 @@ function LayerControl(model, map) {
     initLayerDragging(entry, id);
 
     // init delete button
-    entry.findChild('img.close-btn').on('mouseup', function(e) {
+    gui.onClick(entry.findChild('img.close-btn'), function(e) {
       var target = findLayerById(id);
       e.stopPropagation();
       if (map.isReferenceLayer(target.layer)) {
@@ -251,20 +245,20 @@ function LayerControl(model, map) {
 
     if (pinnable) {
       // init pin button
-      entry.findChild('img.pinned').on('mouseup', function(e) {
-        var target = findLayerById(id);
-        if (entry.hasClass('dragging')) return;
-        e.stopPropagation();
-        if (map.isReferenceLayer(target.layer)) {
-          map.removeReferenceLayer(target.layer);
-          entry.removeClass('pinned');
-        } else {
-          map.addReferenceLayer(target.layer, target.dataset);
-          entry.addClass('pinned');
-        }
-        updatePinAllButton();
-        map.redraw();
-      });
+      gui.onClick(entry.findChild('img.pinned'), function(e) {
+          var target = findLayerById(id);
+          if (entry.hasClass('dragging')) return;
+          e.stopPropagation();
+          if (map.isReferenceLayer(target.layer)) {
+            map.removeReferenceLayer(target.layer);
+            entry.removeClass('pinned');
+          } else {
+            map.addReferenceLayer(target.layer, target.dataset);
+            entry.addClass('pinned');
+          }
+          updatePinAllButton();
+          map.redraw();
+        });
     }
 
     // init name editor

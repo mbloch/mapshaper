@@ -47,7 +47,7 @@ internal.parseSvgValue = function(name, strVal, fields) {
   } else if (type == 'classname') {
     val = internal.isSvgClassName(strVal) ? strVal : null;
   } else if (type == 'measure') { // SVG/CSS length (e.g. 12px, 1em, 4)
-    val = internal.isSvgMeasure(strVal) ? strVal : null;
+    val = internal.isSvgMeasure(strVal) ? internal.parseSvgMeasure(strVal) : null;
   } else if (type == 'dasharray') {
     val = internal.isDashArray(strVal) ? strVal : null;
   } else {
@@ -72,6 +72,11 @@ internal.isSvgNumber = function(o) {
 
 internal.isSvgMeasure = function(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+[a-z]*$/.test(o);
+};
+
+// Can be a number or a string
+internal.parseSvgMeasure = function(str) {
+  return utils.isString(str) && /[a-z]/.test(str) ? str : Number(str);
 };
 
 internal.isSvgColor = function(str) {
