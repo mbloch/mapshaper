@@ -674,6 +674,16 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command("run")
+    // .describe("run commands generated on-they-fly")
+    .option("file", {
+
+    })
+    .option("function", {
+
+    })
+    .option("target", targetOpt);
+
   parser.command('simplify')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")

@@ -17,11 +17,35 @@ internal.printInfo = function(layers, targetLayers) {
   message(str);
 };
 
+internal.getLayerData = function(lyr, dataset) {
+  var n = internal.getFeatureCount(lyr);
+  var o = {
+    geometry_type: lyr.geometry_type,
+    feature_count: n,
+    null_shape_count: 0,
+    null_data_count: lyr.data ? internal.countNullRecords(lyr.data.getRecords()) : n
+  };
+  if (lyr.shapes) {
+    o.null_shape_count = internal.countNullShapes(lyr.shapes);
+    o.bbox =internal.getLayerBounds(lyr, dataset.arcs).toArray();
+    o.proj4 = internal.getProjInfo(dataset);
+  }
+  return o;
+};
+
 // TODO: consider polygons with zero area or other invalid geometries
 internal.countNullShapes = function(shapes) {
   var count = 0;
   for (var i=0; i<shapes.length; i++) {
     if (!shapes[i] || shapes[i].length === 0) count++;
+  }
+  return count;
+};
+
+internal.countNullRecords = function(records) {
+  var count = 0;
+  for (var i=0; i<records.length; i++) {
+    if (!records[i]) count++;
   }
   return count;
 };
@@ -37,32 +61,26 @@ internal.countRings = function(shapes, arcs) {
 };
 
 internal.getLayerInfo = function(lyr, dataset) {
+  var data = internal.getLayerData(lyr, dataset);
   var str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
-  str += utils.format("Records: %,d\n", internal.getFeatureCount(lyr));
-  str += internal.getGeometryInfo(lyr, dataset);
+  str += utils.format("Records: %,d\n",data.feature_count);
+  str += internal.getGeometryInfo(data);
   str += internal.getTableInfo(lyr);
   return str;
 };
 
-internal.getGeometryInfo = function(lyr, dataset) {
-  var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
-      nullCount = shapeCount > 0 ? internal.countNullShapes(lyr.shapes) : 0,
-      lines;
-  if (!lyr.geometry_type) {
+internal.getGeometryInfo = function(data) {
+  var lines;
+  if (!data.geometry_type) {
     lines = ["Geometry: [none]"];
   } else {
-    lines = ["Geometry", "Type: " + lyr.geometry_type];
-    if (nullCount > 0) {
-      lines.push(utils.format("Null shapes: %'d", nullCount));
+    lines = ["Geometry", "Type: " + data.geometry_type];
+    if (data.null_shape_count > 0) {
+      lines.push(utils.format("Null shapes: %'d", data.null_shape_count));
     }
-    // if (lyr.geometry_type == 'polygon') {
-    //   var info = internal.countRings(lyr.shapes, dataset.arcs);
-    //   lines.push("Rings: " + info.rings);
-    //   lines.push("Holes: " + info.holes);
-    // }
-    if (shapeCount > nullCount) {
-      lines.push("Bounds: " + internal.getLayerBounds(lyr, dataset.arcs).toArray().join(' '));
-      lines.push("Proj.4: " + internal.getProjInfo(dataset));
+    if (data.feature_count > data.null_shape_count) {
+      lines.push("Bounds: " + data.bbox.join(' '));
+      lines.push("Proj.4: " + data.proj4);
     }
   }
   return lines.join('\n  ') + '\n';
