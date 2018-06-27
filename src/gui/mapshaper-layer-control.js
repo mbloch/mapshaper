@@ -71,6 +71,7 @@ function LayerControl(model, map) {
   }
 
   function stopDragging() {
+    clearClass('dragging');
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
@@ -186,10 +187,10 @@ function LayerControl(model, map) {
   }
 
   function initLayerDragging(entry, id) {
-    var rect;
 
     // support layer drag-drop
     entry.on('mousemove', function(e) {
+      var rect, insertionClass;
       if (!e.buttons && (dragging || dragTargetId)) { // button is up
         stopDragging();
       }
@@ -205,25 +206,14 @@ function LayerControl(model, map) {
         dragging = true;
       }
       rect = entry.node().getBoundingClientRect();
-      var y = e.pageY - rect.top;
-      if (y < rect.height / 2) {
-        if (!entry.hasClass('insert-above')) {
-          clearClass('dragging');
-          clearClass('insert-above');
-          clearClass('insert-below');
-          entry.addClass('dragging');
-          entry.addClass('insert-above');
-          insertLayer(dragTargetId, id, true);
-        }
-      } else {
-        if (!entry.hasClass('insert-below')) {
-          clearClass('dragging');
-          clearClass('insert-above');
-          clearClass('insert-below');
-          entry.addClass('insert-below');
-          entry.addClass('dragging');
-          insertLayer(dragTargetId, id, false);
-        }
+      insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+      if (!entry.hasClass(insertionClass)) {
+        clearClass('dragging');
+        clearClass('insert-above');
+        clearClass('insert-below');
+        entry.addClass('dragging');
+        entry.addClass(insertionClass);
+        insertLayer(dragTargetId, id, insertionClass == 'insert-above');
       }
     });
   }
