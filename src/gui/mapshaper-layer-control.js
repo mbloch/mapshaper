@@ -19,8 +19,8 @@ function LayerControl(model, map) {
     if (isOpen) render();
   });
 
-  el.on('mouseup', clearInsertion);
-  el.on('mouseleave', clearInsertion);
+  el.on('mouseup', stopDragging);
+  el.on('mouseleave', stopDragging);
 
   // init layer visibility button
   pinAll.on('click', function() {
@@ -70,7 +70,7 @@ function LayerControl(model, map) {
     if (targ) targ.removeClass(name);
   }
 
-  function clearInsertion() {
+  function stopDragging() {
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
@@ -191,7 +191,7 @@ function LayerControl(model, map) {
     // support layer drag-drop
     entry.on('mousemove', function(e) {
       if (!e.buttons && (dragging || dragTargetId)) { // button is up
-        clearInsertion();
+        stopDragging();
       }
       if (e.buttons && !dragTargetId) {
         dragTargetId = id;
@@ -245,20 +245,27 @@ function LayerControl(model, map) {
 
     if (pinnable) {
       // init pin button
-      gui.onClick(entry.findChild('img.pinned'), function(e) {
-          var target = findLayerById(id);
-          if (entry.hasClass('dragging')) return;
-          e.stopPropagation();
-          if (map.isReferenceLayer(target.layer)) {
-            map.removeReferenceLayer(target.layer);
-            entry.removeClass('pinned');
-          } else {
-            map.addReferenceLayer(target.layer, target.dataset);
-            entry.addClass('pinned');
-          }
-          updatePinAllButton();
-          map.redraw();
-        });
+      gui.onClick(entry.findChild('img.unpinned'), function(e) {
+        var target = findLayerById(id);
+        e.stopPropagation();
+        if (entry.hasClass('active')) {
+          return; // selected layer
+        }
+        if (map.isReferenceLayer(target.layer)) {
+          map.removeReferenceLayer(target.layer);
+          entry.removeClass('pinned');
+        } else {
+          map.addReferenceLayer(target.layer, target.dataset);
+          entry.addClass('pinned');
+        }
+        updatePinAllButton();
+        map.redraw();
+      });
+
+      // catch click event
+      gui.onClick(entry.findChild('img.unpinned'), function(e) {
+        e.stopPropagation();
+      });
     }
 
     // init name editor
@@ -274,7 +281,8 @@ function LayerControl(model, map) {
     // init click-to-select
     gui.onClick(entry, function() {
       var target = findLayerById(id);
-      if (!gui.getInputElement()) { // don't select if user is typing
+      // don't select if user is typing or dragging
+      if (!gui.getInputElement() && !dragTargetId) {
         gui.clearMode();
         if (!map.isActiveLayer(target.layer)) {
           model.updated({select: true}, target.layer, target.dataset);
