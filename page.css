@@ -716,16 +716,17 @@ img.pin-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.active) img.unpinned {
+.pinnable:not(.active):not(.pinned) img.unpinned {
 	opacity: 0.2;
 }
 
-.pinnable:not(.pinned) img.pinned:hover {
-	opacity: 0.6;
+.pinnable:not(.pinned) img.unpinned:hover {
+	opacity: 0.3;
 }
 
-.pinnable.active img.pinned {
-	display: none;
+.pinnable.pinned.active img.pinned {
+	/* display: none; */
+	opacity: 0;
 }
 
 .pinnable.active img.unpinned,
@@ -734,7 +735,7 @@ img.close-btn:hover,
 	opacity: 1
 }
 
-.pinnable img.pinned {
+.pinnable img.unpinned {
 	z-index: 1;
 }
 
