@@ -3,13 +3,13 @@
 
 api.run = function(targets, catalog, opts, cb) {
   var commandStr, commands;
-  if (opts.file) {
-    internal.include(opts);
+  if (opts.include) {
+    internal.include({file: opts.include});
   }
-  if (!opts.command) {
+  if (!opts.commands) {
     stop("Missing commands parameter");
   }
-  commandStr = internal.getCommandString(targets, opts.command);
+  commandStr = internal.getCommandString(targets, opts.commands);
   commands = internal.parseCommands(commandStr);
   internal.runParsedCommands(commands, catalog, cb);
 };

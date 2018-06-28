@@ -42,6 +42,24 @@ describe('mapshaper-each-calc.js', function () {
       assert.deepEqual(records, [{foo:'mi'}, {foo:'be'}]);
     })
 
+    it('this.properties exposes feature data', function() {
+      var records = [{'label-text':'Finland'}, {'label-text':'Sweden'}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "this.properties['label-text'] = this.properties['label-text'].toUpperCase()");
+      assert.deepEqual(records, [{'label-text':'FINLAND'}, {'label-text':'SWEDEN'}]);
+    })
+
+    it('"d" is equivalent to "this.properties"', function() {
+      var records = [{'label-text':'Finland'}, {'label-text':'Sweden'}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "d['label-text'] = d['label-text'].toUpperCase()");
+      assert.deepEqual(records, [{'label-text':'FINLAND'}, {'label-text':'SWEDEN'}]);
+    })
+
     it('test $.partCount', function () {
       var records = [{}, {}];
       var lyr = {

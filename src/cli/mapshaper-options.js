@@ -676,10 +676,10 @@ internal.getOptionParser = function() {
 
   parser.command("run")
     // .describe("run commands generated on-they-fly")
-    .option("file", {
+    .option("include", {
 
     })
-    .option("command", {
+    .option("commands", {
       DEFAULT: true,
       describe: "command string or JS expresson to generate command(s)"
     })

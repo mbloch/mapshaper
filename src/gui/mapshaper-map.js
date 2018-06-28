@@ -26,6 +26,7 @@ function MshpMap(model) {
   // Refresh map display in response to data changes, layer selection, etc.
   model.on('update', function(e) {
     var prevLyr = _activeLyr || null;
+    var fullBounds;
 
     if (!prevLyr) {
       initMap(); // wait until first layer is added to init map extent, resize events, etc.
@@ -55,16 +56,18 @@ function MshpMap(model) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _inspector.updateLayer(_activeLyr);
 
+    fullBounds = getVisibleBounds(); // _activeLyr.bounds;
+
     if (!prevLyr) {
       _needReset = true;
     } else if (prevLyr.tabular || _activeLyr.tabular) {
       _needReset = true;
     } else {
-      _needReset = gui.mapNeedsReset(_activeLyr.bounds, prevLyr.bounds, _ext.getBounds());
+      _needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
 
     // set 'home' extent to match bounds of active group
-    _ext.setBounds(_activeLyr.bounds);
+    _ext.setBounds(fullBounds);
 
     if (_needReset) {
       // zoom to full view of the active layer and redraw
@@ -128,6 +131,14 @@ function MshpMap(model) {
     _referenceLayers = _referenceLayers.filter(function(o) {
       return !!model.findLayer(o.source.layer);
     });
+  }
+
+  function getVisibleBounds() {
+    var b = new Bounds();
+    getDrawableLayers().forEach(function(lyr) {
+      b.mergeBounds(lyr.bounds);
+    });
+    return b;
   }
 
   this.isVisibleLayer = function(lyr) {

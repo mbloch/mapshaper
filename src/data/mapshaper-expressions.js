@@ -150,8 +150,11 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
   }
   return function(rec, i) {
     var val;
+    // Assigning feature object to '$' -- this should maybe be removed, it is
+    // also exposed as "this".
     ctx.$ = getFeatureById(i);
     ctx._ = ctx; // provide access to functions when masked by variable names
+    ctx.d = rec || null; // expose data properties a la d3 (also exposed as this.properties)
     try {
       val = func.call(ctx.$, rec, ctx);
     } catch(e) {
