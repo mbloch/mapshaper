@@ -679,8 +679,9 @@ internal.getOptionParser = function() {
     .option("file", {
 
     })
-    .option("function", {
-
+    .option("command", {
+      DEFAULT: true,
+      describe: "command string or JS expresson to generate command(s)"
     })
     .option("target", targetOpt);
 

@@ -2,22 +2,33 @@
 /* @requires mapshaper-include, mapshaper-info */
 
 api.run = function(targets, catalog, opts, cb) {
-  var defs, data, commandStr, commands;
-  if (targets.length != 1 || targets[0].layers.length != 1) {
-    stop("Expected a single target layer");
+  var commandStr, commands;
+  if (opts.file) {
+    internal.include(opts);
   }
-  internal.include(opts);
-  defs = internal.getStateVar('defs');
-  if (!opts.function) {
-    stop("Expected a \"function\" parameter");
+  if (!opts.command) {
+    stop("Missing commands parameter");
   }
-  if (typeof defs[opts.function] != 'function') {
-    stop("Expected a function named", opts.function);
-  }
-  data = internal.getRunCommandData(targets[0]);
-  commandStr = defs[opts.function](data);
+  commandStr = internal.getCommandString(targets, opts.command);
   commands = internal.parseCommands(commandStr);
   internal.runParsedCommands(commands, catalog, cb);
+};
+
+internal.getCommandString = function(targets, expression) {
+  var ctx = internal.getBaseContext();
+  var output, targetData;
+  // TODO: throw an informative error if target is used when there are multiple targets
+  if (targets.length == 1) {
+    targetData = internal.getRunCommandData(targets[0]);
+    Object.defineProperty(ctx, 'target', {value: targetData});
+  }
+  utils.extend(ctx, internal.getStateVar('defs'));
+  try {
+    output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
+  } catch(e) {
+    stop(e.name, 'in JS source:', e.message);
+  }
+  return output;
 };
 
 internal.getRunCommandData = function(target) {
