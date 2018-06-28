@@ -134,11 +134,11 @@ internal.joinTables = function(dest, src, join, opts) {
 
   }
   if (matchCount === 0) {
-    stop("No records could be joined");
-  }
-
-  internal.printJoinMessage(matchCount, destRecords.length,
+    message("No records could be joined");
+  } else {
+    internal.printJoinMessage(matchCount, destRecords.length,
       internal.countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
+  }
 
   if (opts.unjoined) {
     retn.unjoined = {
