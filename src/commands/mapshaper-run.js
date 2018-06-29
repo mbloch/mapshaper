@@ -9,12 +9,16 @@ api.run = function(targets, catalog, opts, cb) {
   if (!opts.commands) {
     stop("Missing commands parameter");
   }
-  commandStr = internal.getCommandString(targets, opts.commands);
-  commands = internal.parseCommands(commandStr);
-  internal.runParsedCommands(commands, catalog, cb);
+  commandStr = internal.runGlobalExpressions(opts.commands, targets);
+  if (commandStr) {
+    commands = internal.parseCommands(commandStr);
+    internal.runParsedCommands(commands, catalog, cb);
+  } else {
+    cb(null);
+  }
 };
 
-internal.getCommandString = function(targets, expression) {
+internal.runGlobalExpression = function(expression, targets) {
   var ctx = internal.getBaseContext();
   var output, targetData;
   // TODO: throw an informative error if target is used when there are multiple targets
@@ -30,6 +34,7 @@ internal.getCommandString = function(targets, expression) {
   }
   return output;
 };
+
 
 internal.getRunCommandData = function(target) {
   var lyr = target.layers[0];

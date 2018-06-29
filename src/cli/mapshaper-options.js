@@ -674,6 +674,19 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command("require")
+    // .describe("require a Node module and include it in the expression context")
+    .option("module", {
+      DEFAULT: true,
+      describe: "Name of Node module or path to module file"
+    })
+    .option("alias", {
+      describe: "Alias to use when importing a named module"
+    })
+    .option("init", {
+      describe: "JS expression to run after the module loads"
+    });
+
   parser.command("run")
     // .describe("run commands generated on-they-fly")
     .option("include", {

@@ -33,6 +33,7 @@ mapshaper-proj
 mapshaper-polygons
 mapshaper-rectangle
 mapshaper-rename-layers
+mapshaper-require
 mapshaper-run
 mapshaper-shape
 mapshaper-simplify
@@ -277,6 +278,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'require') {
+      api.require(targets, opts);
 
     } else if (name == 'run') {
       api.run(targets, catalog, opts, done);
