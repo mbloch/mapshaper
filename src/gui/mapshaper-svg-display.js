@@ -26,9 +26,9 @@ function SvgDisplayLayer(ext, mouse) {
   el.drawLayer = function(target) {
     var transform = ext.getTransform();
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    // kludge to identify container when symbols are repositioned
-    var id = utils.getUniqueName();
     var html = '';
+    // assign a unique id so layer can be identified when symbols are repositioned
+    var id = utils.getUniqueName();
     g.setAttribute('id', id);
     target.svg_id = id;
     resize(ext);
@@ -39,7 +39,8 @@ function SvgDisplayLayer(ext, mouse) {
     }
     g.innerHTML = html;
     svg.append(g);
-    if (target.active) {
+    // TODO: support mouse dragging on symbol layers
+    if (target.active && internal.layerHasLabels(target.layer)) {
       activeLayer = target.layer;
     } else {
       g.style.pointerEvents = 'none';
