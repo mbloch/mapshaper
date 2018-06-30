@@ -13,6 +13,7 @@ mapshaper-pixel-transform
 internal.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
+  var symbols = [];
   var size, svg;
 
   // TODO: consider moving this logic to mapshaper-export.js
@@ -25,8 +26,11 @@ internal.exportSVG = function(dataset, opts) {
   utils.extend(opts, {invert_y: true});
   size = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
-    return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
+    var obj = internal.exportLayerForSVG(lyr, dataset, opts);
+    SVG.embedImages(obj, symbols);
+    return SVG.stringify(obj);
   }).join('\n');
+  svg = utils.pluck(symbols, 'svg').join('') + svg;
   svg = utils.format(template, size[0], size[1], 0, 0, size[0], size[1], svg);
   return [{
     content: svg,

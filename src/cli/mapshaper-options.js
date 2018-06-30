@@ -865,7 +865,7 @@ internal.getOptionParser = function() {
    .option("target", targetOpt);
 
   parser.command("target")
-    .describe("set active layer")
+    .describe("set active layer (or layers)")
     .option("target", {
       DEFAULT: true,
       describe: "name or index of layer to target"

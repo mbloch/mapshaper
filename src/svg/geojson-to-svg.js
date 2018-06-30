@@ -1,4 +1,4 @@
-/* @requires geojson-common, svg-common, mapshaper-svg-style */
+/* @requires geojson-common, svg-common, mapshaper-svg-style, svg-stringify */
 
 SVG.importGeoJSONFeatures = function(features, opts) {
   opts = opts || {};
@@ -24,55 +24,6 @@ SVG.importGeoJSONFeatures = function(features, opts) {
     }
     return svgObj;
   });
-};
-
-SVG.stringify = function(obj) {
-  var svg = '<' + obj.tag;
-  // w.s. is significant in text elements
-  var joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
-  if (obj.properties) {
-    svg += SVG.stringifyProperties(obj.properties);
-  }
-  if (obj.children || obj.value) {
-    svg += '>' + joinStr;
-    if (obj.value) {
-      svg += obj.value;
-    }
-    if (obj.children) {
-      svg += obj.children.map(SVG.stringify).join(joinStr);
-    }
-    svg += joinStr + '</' + obj.tag + '>';
-  } else {
-    svg += '/>';
-  }
-  return svg;
-};
-
-SVG.stringEscape = (function() {
-  // See http://commons.oreilly.com/wiki/index.php/SVG_Essentials/The_XML_You_Need_for_SVG
-  var rxp = /[&<>"']/g,
-      map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&apos;'
-      };
-  return function(s) {
-    return String(s).replace(rxp, function(s) {
-      return map[s];
-    });
-  };
-}());
-
-SVG.stringifyProperties = function(o) {
-  return Object.keys(o).reduce(function(memo, key) {
-    var val = o[key],
-        strval;
-    if (!val && val !== 0) return memo; // omit undefined / empty / null values
-    strval = utils.isString(val) ? val : JSON.stringify(val);
-    return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
-  }, '');
 };
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
