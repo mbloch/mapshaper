@@ -9,7 +9,7 @@ api.run = function(targets, catalog, opts, cb) {
   if (!opts.commands) {
     stop("Missing commands parameter");
   }
-  commandStr = internal.runGlobalExpressions(opts.commands, targets);
+  commandStr = internal.runGlobalExpression(opts.commands, targets);
   if (commandStr) {
     commands = internal.parseCommands(commandStr);
     internal.runParsedCommands(commands, catalog, cb);
