@@ -177,11 +177,28 @@ SVG.importLabel = function(p, rec) {
   return obj;
 };
 
-SVG.importPoint = function(coords, d, layerOpts) {
-  var rec = d || {};
+SVG.importPoint = function(coords, rec, layerOpts) {
+  rec = rec || {};
+  if ('svg-symbol' in rec) {
+    return SVG.importSymbol(coords, rec['svg-symbol']);
+  }
+  return SVG.importStandardPoint(coords, rec, layerOpts || {});
+};
+
+SVG.importPolygon = function(coords) {
+  var d, o;
+  for (var i=0; i<coords.length; i++) {
+    d = o ? o.properties.d + ' ' : '';
+    o = SVG.importLineString(coords[i]);
+    o.properties.d = d + o.properties.d + ' Z';
+  }
+  return o;
+};
+
+SVG.importStandardPoint = function(coords, rec, layerOpts) {
   var isLabel = 'label-text' in rec;
-  var children = [];
   var symbolType = layerOpts.point_symbol || '';
+  var children = [];
   var halfSize = rec.r || 0; // radius or half of symbol size
   var p;
   // if not a label, create a symbol even without a size
@@ -213,16 +230,6 @@ SVG.importPoint = function(coords, d, layerOpts) {
     children.push(SVG.importLabel(coords, rec));
   }
   return children.length > 1 ? {tag: 'g', children: children} : children[0];
-};
-
-SVG.importPolygon = function(coords) {
-  var d, o;
-  for (var i=0; i<coords.length; i++) {
-    d = o ? o.properties.d + ' ' : '';
-    o = SVG.importLineString(coords[i]);
-    o.properties.d = d + o.properties.d + ' Z';
-  }
-  return o;
 };
 
 SVG.geojsonImporters = {

@@ -1,4 +1,8 @@
-/* @requires mapshaper-gui-lib */
+/* @requires
+mapshaper-gui-lib
+mapshaper-svg-labels
+mapshaper-svg-symbols
+*/
 
 function SvgDisplayLayer(ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -24,10 +28,16 @@ function SvgDisplayLayer(ext, mouse) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     // kludge to identify container when symbols are repositioned
     var id = utils.getUniqueName();
+    var html = '';
     g.setAttribute('id', id);
     target.svg_id = id;
     resize(ext);
-    g.innerHTML = renderLabels(target.layer, transform);
+    if (internal.layerHasLabels(target.layer)) {
+      html = renderLabels(target.layer, transform);
+    } else if (internal.layerHasSvgSymbols(target.layer)) {
+      html = renderSymbols(target.layer, transform);
+    }
+    g.innerHTML = html;
     svg.append(g);
     if (target.active) {
       activeLayer = target.layer;
@@ -236,53 +246,13 @@ function SvgDisplayLayer(ext, mouse) {
     return textNode.childNodes.length > 1;
   }
 
-  // Set an attribute on a <text> node and any child <tspan> elements
-  // (mapshaper's svg labels require tspans to have the same x and dx values
-  //  as the enclosing text node)
-  function setMultilineAttribute(textNode, name, value) {
-    var n = textNode.childNodes.length;
-    var i = -1;
-    var child;
-    textNode.setAttribute(name, value);
-    while (++i < n) {
-      child = textNode.childNodes[i];
-      if (child.tagName == 'tspan') {
-        child.setAttribute(name, value);
-      }
-    }
-  }
-
   function reposition(target, fwd) {
     var container = document.getElementById(target.svg_id);
-    var texts = container.getElementsByTagName('text');
-    var n = texts.length;
-    var text, xy, idx, p;
-    for (var i=0; i<n; i++) {
-      text = texts[i];
-      idx = +text.getAttribute('data-id');
-      p = target.layer.shapes[idx];
-      if (!p) continue;
-      xy = fwd.transform(p[0][0], p[0][1]);
-      setMultilineAttribute(text, 'x', xy[0]);
-      text.setAttribute('y', xy[1]);
+    if (internal.layerHasLabels(target.layer)) {
+      repositionLabels(container, target.layer, fwd);
+    } else if (internal.layerHasSvgSymbols(target.layer)) {
+      repositionSymbols(container, target.layer, fwd);
     }
-  }
-
-  function renderLabels(lyr, fwd) {
-    var records = lyr.data.getRecords();
-    var opts = {};
-    var symbols = lyr.shapes.map(function(shp, i) {
-      var d = records[i];
-      var p = shp[0];
-      var p2 = fwd.transform(p[0], p[1]);
-      var obj = internal.svg.importLabel(p2, d);
-      internal.svg.applyStyleAttributes(obj, 'Point', d);
-      obj.properties['data-id'] = i;
-      return obj;
-    });
-    var obj = internal.getEmptyLayerForSVG(lyr, opts);
-    obj.children = symbols;
-    return internal.svg.stringify(obj);
   }
 
   function clear() {

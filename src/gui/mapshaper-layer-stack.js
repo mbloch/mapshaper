@@ -22,14 +22,24 @@ function LayerStack(container, ext, mouse) {
       _svg.clear();
     }
     layers.forEach(function(target) {
-      if (target.canvas) {
+      if (layerUsesCanvas(target.layer)) {
         drawCanvasLayer(target, _activeCanv);
       }
-      if (target.svg) {
+      if (layerUsesSVG(target.layer)) {
         drawSvgLayer(target, onlyNav);
       }
     });
   };
+
+
+  function layerUsesCanvas(layer) {
+    // TODO: return false if a label layer does not have dots
+    return !internal.layerHasSvgSymbols(layer);
+  }
+
+  function layerUsesSVG(layer) {
+    return internal.layerHasLabels(layer) || internal.layerHasSvgSymbols(layer);
+  }
 
   function drawCanvasLayer(target, canv) {
     if (target.style.type == 'outline') {

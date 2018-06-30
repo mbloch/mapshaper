@@ -203,9 +203,6 @@ function MshpMap(model) {
         // reference style
         mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
       }
-      // data for the renderer in layer-stack to use
-      mapLayer.canvas = true;
-      mapLayer.svg = internal.layerHasLabels(mapLayer.layer);
     });
   }
 

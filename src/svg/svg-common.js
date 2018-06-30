@@ -15,6 +15,8 @@ SVG.propertyTypes = {
   'stroke-dasharray': 'dasharray'
 };
 
+SVG.symbolRenderers = {};
+
 SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
 
@@ -31,4 +33,8 @@ SVG.findPropertiesBySymbolGeom = function(fields, type) {
   return fields.filter(function(name) {
     return name in index;
   });
+};
+
+SVG.getTransform = function(xy) {
+  return 'translate(' + xy[0] + ' ' + xy[1] + ')';
 };
