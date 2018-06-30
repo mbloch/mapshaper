@@ -1,3 +1,9 @@
+v0.4.87
+* Added experimental -run command, for creating commands on-the-fly and running them.
+* Added experimental -require command, for importing Node modules for use in -each expressions.
+* Added "d" as an alias for "this.properties" in expressions, with a nod to D3.
+* -join command prints a warning instead of erroring if no records are joined.
+
 v0.4.86
 * [gui] Now you can drag layers in the layer menu to change their stacking order.
 * Added mapshaper-gui -a option, to display all layers initially.

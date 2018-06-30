@@ -17,7 +17,7 @@ internal.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 internal.parseConsoleCommands = function(raw) {
-  var blocked = ['i', 'include'];
+  var blocked = ['i', 'include', 'require'];
   var str = raw.replace(/^mapshaper\b/, '').trim();
   var parsed;
   if (/^[a-z]/.test(str)) {

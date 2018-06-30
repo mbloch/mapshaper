@@ -674,30 +674,6 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command("require")
-    // .describe("require a Node module and include it in the expression context")
-    .option("module", {
-      DEFAULT: true,
-      describe: "Name of Node module or path to module file"
-    })
-    .option("alias", {
-      describe: "Alias to use when importing a named module"
-    })
-    .option("init", {
-      describe: "JS expression to run after the module loads"
-    });
-
-  parser.command("run")
-    // .describe("run commands generated on-they-fly")
-    .option("include", {
-
-    })
-    .option("commands", {
-      DEFAULT: true,
-      describe: "command string or JS expresson to generate command(s)"
-    })
-    .option("target", targetOpt);
-
   parser.command('simplify')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
@@ -1058,6 +1034,30 @@ internal.getOptionParser = function() {
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("require")
+    .describe("require a Node module for use in -each expressions")
+    .option("module", {
+      DEFAULT: true,
+      describe: "name of Node module or path to module file"
+    })
+    .option("alias", {
+      describe: "Set the module name to an alias"
+    })
+    .option("init", {
+      describe: "JS expression to run after the module loads"
+    });
+
+  parser.command("run")
+    .describe("create commands on-the-fly and run them")
+    .option("include", {
+      // TODO: remove this option
+    })
+    .option("commands", {
+      DEFAULT: true,
+      describe: "command string or JS expresson to generate command(s)"
+    })
     .option("target", targetOpt);
 
   parser.command("shape")
