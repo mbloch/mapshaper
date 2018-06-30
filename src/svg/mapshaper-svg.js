@@ -63,19 +63,31 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
   };
 
   // add default display properties to line layers
-  // (these are overridden by feature-level styles set via -svg-style)
+  // (these are overridden by feature-level styles set via -style)
   if (lyr.geometry_type == 'polyline') {
     layerObj.properties.fill = 'none';
     layerObj.properties.stroke = 'black';
     layerObj.properties['stroke-width'] = 1;
   }
 
-  // add default text properties to label layers
-  if (lyr.data && lyr.data.fieldExists('label-text')) {
+  // add default text properties to layers with labels
+  if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr)) {
     layerObj.properties['font-family'] = 'sans-serif';
     layerObj.properties['font-size'] = '12';
     layerObj.properties['text-anchor'] = 'middle';
   }
 
   return layerObj;
+};
+
+internal.layerHasSvgSymbols = function(lyr) {
+  return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
+};
+
+internal.layerHasLabels = function(lyr) {
+  var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
+  //if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
+  //  console.error('Multi-point labels are not fully supported');
+  //}
+  return hasLabels;
 };

@@ -240,17 +240,6 @@ internal.layerHasCanvasDisplayStyle = function(lyr) {
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 
-internal.layerHasSvgSymbols = function(lyr) {
-  return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
-};
-
-internal.layerHasLabels = function(lyr) {
-  var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
-  if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
-    console.error('Multi-point labels are not fully supported');
-  }
-  return hasLabels;
-};
 
 internal.getCanvasStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
