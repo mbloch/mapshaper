@@ -916,6 +916,11 @@ function MouseWheel(mouse) {
   function handleWheel(evt) {
     var now = +new Date();
     wheelDirection = getWheelDirection(evt, now);
+    if (evt.ctrlKey) {
+      // Prevent pinch-zoom in Chrome (doesn't work in Safari, though)
+      evt.preventDefault();
+      evt.stopImmediatePropagation();
+    }
     if (!mouse.isOver()) return;
     evt.preventDefault();
     if (!active) {
@@ -2906,6 +2911,7 @@ function LayerControl(model, map) {
   }
 
   function stopDragging() {
+    clearClass('dragging');
     clearClass('drag-target');
     clearClass('insert-above');
     clearClass('insert-below');
@@ -3021,10 +3027,10 @@ function LayerControl(model, map) {
   }
 
   function initLayerDragging(entry, id) {
-    var rect;
 
     // support layer drag-drop
     entry.on('mousemove', function(e) {
+      var rect, insertionClass;
       if (!e.buttons && (dragging || dragTargetId)) { // button is up
         stopDragging();
       }
@@ -3040,25 +3046,14 @@ function LayerControl(model, map) {
         dragging = true;
       }
       rect = entry.node().getBoundingClientRect();
-      var y = e.pageY - rect.top;
-      if (y < rect.height / 2) {
-        if (!entry.hasClass('insert-above')) {
-          clearClass('dragging');
-          clearClass('insert-above');
-          clearClass('insert-below');
-          entry.addClass('dragging');
-          entry.addClass('insert-above');
-          insertLayer(dragTargetId, id, true);
-        }
-      } else {
-        if (!entry.hasClass('insert-below')) {
-          clearClass('dragging');
-          clearClass('insert-above');
-          clearClass('insert-below');
-          entry.addClass('insert-below');
-          entry.addClass('dragging');
-          insertLayer(dragTargetId, id, false);
-        }
+      insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+      if (!entry.hasClass(insertionClass)) {
+        clearClass('dragging');
+        clearClass('insert-above');
+        clearClass('insert-below');
+        entry.addClass('dragging');
+        entry.addClass(insertionClass);
+        insertLayer(dragTargetId, id, insertionClass == 'insert-above');
       }
     });
   }
@@ -5058,6 +5053,10 @@ internal.layerHasCanvasDisplayStyle = function(lyr) {
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 
+internal.layerHasSvgSymbols = function(lyr) {
+  return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
+};
+
 internal.layerHasLabels = function(lyr) {
   var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
   if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
@@ -5070,6 +5069,88 @@ internal.getCanvasStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
   return internal.svg.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
 };
+
+
+
+
+function repositionLabels(container, layer, fwd) {
+  var texts = container.getElementsByTagName('text');
+  var n = texts.length;
+  var text, xy, idx, p;
+  for (var i=0; i<n; i++) {
+    text = texts[i];
+    idx = +text.getAttribute('data-id');
+    p = layer.shapes[idx];
+    if (!p) continue;
+    xy = fwd.transform(p[0][0], p[0][1]);
+    setMultilineAttribute(text, 'x', xy[0]);
+    text.setAttribute('y', xy[1]);
+  }
+}
+
+function renderLabels(lyr, fwd) {
+  var records = lyr.data.getRecords();
+  var symbols = lyr.shapes.map(function(shp, i) {
+    var d = records[i];
+    var p = shp[0];
+    var p2 = fwd.transform(p[0], p[1]);
+    var obj = internal.svg.importLabel(p2, d);
+    internal.svg.applyStyleAttributes(obj, 'Point', d);
+    obj.properties['data-id'] = i;
+    return obj;
+  });
+  var obj = internal.getEmptyLayerForSVG(lyr, {});
+  obj.children = symbols;
+  return internal.svg.stringify(obj);
+}
+
+// Set an attribute on a <text> node and any child <tspan> elements
+// (mapshaper's svg labels require tspans to have the same x and dx values
+//  as the enclosing text node)
+function setMultilineAttribute(textNode, name, value) {
+  var n = textNode.childNodes.length;
+  var i = -1;
+  var child;
+  textNode.setAttribute(name, value);
+  while (++i < n) {
+    child = textNode.childNodes[i];
+    if (child.tagName == 'tspan') {
+      child.setAttribute(name, value);
+    }
+  }
+}
+
+
+
+
+function repositionSymbols(container, layer, fwd) {
+  var symbols = El.findAll('.mapshaper-svg-symbol', container);
+  var n = symbols.length;
+  var sym, xy, idx, p;
+  for (var i=0; i<n; i++) {
+    sym = symbols[i];
+    idx = +sym.getAttribute('data-id');
+    p = layer.shapes[idx];
+    if (!p) continue;
+    xy = fwd.transform(p[0][0], p[0][1]);
+    sym.setAttribute('transform', internal.svg.getTransform(xy));
+  }
+}
+
+function renderSymbols(lyr, fwd) {
+  var records = lyr.data.getRecords();
+  var symbols = lyr.shapes.map(function(shp, i) {
+    var d = records[i];
+    var p = shp[0];
+    var p2 = fwd.transform(p[0], p[1]);
+    var obj = internal.svg.importSymbol(p2, d['svg-symbol']);
+    obj.properties['data-id'] = i;
+    return obj;
+  });
+  var obj = internal.getEmptyLayerForSVG(lyr, {});
+  obj.children = symbols;
+  return internal.svg.stringify(obj);
+}
 
 
 
@@ -5098,10 +5179,16 @@ function SvgDisplayLayer(ext, mouse) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     // kludge to identify container when symbols are repositioned
     var id = utils.getUniqueName();
+    var html = '';
     g.setAttribute('id', id);
     target.svg_id = id;
     resize(ext);
-    g.innerHTML = renderLabels(target.layer, transform);
+    if (internal.layerHasLabels(target.layer)) {
+      html = renderLabels(target.layer, transform);
+    } else if (internal.layerHasSvgSymbols(target.layer)) {
+      html = renderSymbols(target.layer, transform);
+    }
+    g.innerHTML = html;
     svg.append(g);
     if (target.active) {
       activeLayer = target.layer;
@@ -5310,53 +5397,13 @@ function SvgDisplayLayer(ext, mouse) {
     return textNode.childNodes.length > 1;
   }
 
-  // Set an attribute on a <text> node and any child <tspan> elements
-  // (mapshaper's svg labels require tspans to have the same x and dx values
-  //  as the enclosing text node)
-  function setMultilineAttribute(textNode, name, value) {
-    var n = textNode.childNodes.length;
-    var i = -1;
-    var child;
-    textNode.setAttribute(name, value);
-    while (++i < n) {
-      child = textNode.childNodes[i];
-      if (child.tagName == 'tspan') {
-        child.setAttribute(name, value);
-      }
-    }
-  }
-
   function reposition(target, fwd) {
     var container = document.getElementById(target.svg_id);
-    var texts = container.getElementsByTagName('text');
-    var n = texts.length;
-    var text, xy, idx, p;
-    for (var i=0; i<n; i++) {
-      text = texts[i];
-      idx = +text.getAttribute('data-id');
-      p = target.layer.shapes[idx];
-      if (!p) continue;
-      xy = fwd.transform(p[0][0], p[0][1]);
-      setMultilineAttribute(text, 'x', xy[0]);
-      text.setAttribute('y', xy[1]);
+    if (internal.layerHasLabels(target.layer)) {
+      repositionLabels(container, target.layer, fwd);
+    } else if (internal.layerHasSvgSymbols(target.layer)) {
+      repositionSymbols(container, target.layer, fwd);
     }
-  }
-
-  function renderLabels(lyr, fwd) {
-    var records = lyr.data.getRecords();
-    var opts = {};
-    var symbols = lyr.shapes.map(function(shp, i) {
-      var d = records[i];
-      var p = shp[0];
-      var p2 = fwd.transform(p[0], p[1]);
-      var obj = internal.svg.importLabel(p2, d);
-      internal.svg.applyStyleAttributes(obj, 'Point', d);
-      obj.properties['data-id'] = i;
-      return obj;
-    });
-    var obj = internal.getEmptyLayerForSVG(lyr, opts);
-    obj.children = symbols;
-    return internal.svg.stringify(obj);
   }
 
   function clear() {
@@ -5400,14 +5447,24 @@ function LayerStack(container, ext, mouse) {
       _svg.clear();
     }
     layers.forEach(function(target) {
-      if (target.canvas) {
+      if (layerUsesCanvas(target.layer)) {
         drawCanvasLayer(target, _activeCanv);
       }
-      if (target.svg) {
+      if (layerUsesSVG(target.layer)) {
         drawSvgLayer(target, onlyNav);
       }
     });
   };
+
+
+  function layerUsesCanvas(layer) {
+    // TODO: return false if a label layer does not have dots
+    return !internal.layerHasSvgSymbols(layer);
+  }
+
+  function layerUsesSVG(layer) {
+    return internal.layerHasLabels(layer) || internal.layerHasSvgSymbols(layer);
+  }
 
   function drawCanvasLayer(target, canv) {
     if (target.style.type == 'outline') {
@@ -5455,6 +5512,7 @@ function MshpMap(model) {
   // Refresh map display in response to data changes, layer selection, etc.
   model.on('update', function(e) {
     var prevLyr = _activeLyr || null;
+    var fullBounds;
 
     if (!prevLyr) {
       initMap(); // wait until first layer is added to init map extent, resize events, etc.
@@ -5484,16 +5542,18 @@ function MshpMap(model) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _inspector.updateLayer(_activeLyr);
 
+    fullBounds = getVisibleBounds(); // _activeLyr.bounds;
+
     if (!prevLyr) {
       _needReset = true;
     } else if (prevLyr.tabular || _activeLyr.tabular) {
       _needReset = true;
     } else {
-      _needReset = gui.mapNeedsReset(_activeLyr.bounds, prevLyr.bounds, _ext.getBounds());
+      _needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
 
     // set 'home' extent to match bounds of active group
-    _ext.setBounds(_activeLyr.bounds);
+    _ext.setBounds(fullBounds);
 
     if (_needReset) {
       // zoom to full view of the active layer and redraw
@@ -5559,6 +5619,14 @@ function MshpMap(model) {
     });
   }
 
+  function getVisibleBounds() {
+    var b = new Bounds();
+    getDrawableLayers().forEach(function(lyr) {
+      b.mergeBounds(lyr.bounds);
+    });
+    return b;
+  }
+
   this.isVisibleLayer = function(lyr) {
     return this.isActiveLayer(lyr) || this.isReferenceLayer(lyr);
   };
@@ -5621,9 +5689,6 @@ function MshpMap(model) {
         // reference style
         mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
       }
-      // data for the renderer in layer-stack to use
-      mapLayer.canvas = true;
-      mapLayer.svg = internal.layerHasLabels(mapLayer.layer);
     });
   }
 

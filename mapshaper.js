@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.86';
+var VERSION = '0.4.87';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -8373,8 +8373,11 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
   }
   return function(rec, i) {
     var val;
+    // Assigning feature object to '$' -- this should maybe be removed, it is
+    // also exposed as "this".
     ctx.$ = getFeatureById(i);
     ctx._ = ctx; // provide access to functions when masked by variable names
+    ctx.d = rec || null; // expose data properties a la d3 (also exposed as this.properties)
     try {
       val = func.call(ctx.$, rec, ctx);
     } catch(e) {
@@ -14824,6 +14827,8 @@ SVG.propertyTypes = {
   'stroke-dasharray': 'dasharray'
 };
 
+SVG.symbolRenderers = {};
+
 SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
 
@@ -14840,6 +14845,79 @@ SVG.findPropertiesBySymbolGeom = function(fields, type) {
   return fields.filter(function(name) {
     return name in index;
   });
+};
+
+SVG.getTransform = function(xy) {
+  return 'translate(' + xy[0] + ' ' + xy[1] + ')';
+};
+
+
+
+
+SVG.symbolRenderers.circle = function(d) {
+  var o = SVG.importPoint([0, 0], d, {});
+  SVG.applyStyleAttributes(o, 'Point', d);
+  return [o];
+};
+
+SVG.symbolRenderers.label = function(d) {
+  var o = SVG.importLabel([0, 0], d);
+  SVG.applyStyleAttributes(o, 'Point', d);
+  return [o];
+};
+
+SVG.symbolRenderers.image = function(d) {
+  var w = d.width || 20,
+      h = d.height || 20,
+      x = -w / 2,
+      y = -h / 2;
+  var o = {
+    tag: 'image',
+    properties: {
+      width: w,
+      height: h,
+      x: x,
+      y: y,
+      href: d.href || ''
+    }
+  };
+  return [o];
+};
+
+SVG.symbolRenderers.square = function(d) {
+  var o = SVG.importPoint([0, 0], d, {point_symbol: 'square'});
+  SVG.applyStyleAttributes(o, 'Point', d);
+  return [o];
+};
+
+SVG.symbolRenderers.line = function(d) {
+  var coords = [[0, 0], [d.dx || 0, d.dy || 0]];
+  var o = SVG.importLineString(coords);
+  SVG.applyStyleAttributes(o, 'LineString', d);
+  return [o];
+};
+
+// d: svg-symbol object from feature data object
+SVG.importSymbol = function(xy, d) {
+  var renderer;
+  if (!d) {
+    return {tag: 'g', properties: {}, children: []}; // empty symbol
+  }
+  if (utils.isString(d)) {
+    d = JSON.parse(d);
+  }
+  renderer = SVG.symbolRenderers[d.type];
+  if (!renderer) {
+    stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
+  }
+  return {
+    tag: 'g',
+    properties: {
+      'class': 'mapshaper-svg-symbol',
+      transform: SVG.getTransform(xy)
+    },
+    children: renderer(d)
+  };
 };
 
 
@@ -15109,11 +15187,28 @@ SVG.importLabel = function(p, rec) {
   return obj;
 };
 
-SVG.importPoint = function(coords, d, layerOpts) {
-  var rec = d || {};
+SVG.importPoint = function(coords, rec, layerOpts) {
+  rec = rec || {};
+  if ('svg-symbol' in rec) {
+    return SVG.importSymbol(coords, rec['svg-symbol']);
+  }
+  return SVG.importStandardPoint(coords, rec, layerOpts || {});
+};
+
+SVG.importPolygon = function(coords) {
+  var d, o;
+  for (var i=0; i<coords.length; i++) {
+    d = o ? o.properties.d + ' ' : '';
+    o = SVG.importLineString(coords[i]);
+    o.properties.d = d + o.properties.d + ' Z';
+  }
+  return o;
+};
+
+SVG.importStandardPoint = function(coords, rec, layerOpts) {
   var isLabel = 'label-text' in rec;
-  var children = [];
   var symbolType = layerOpts.point_symbol || '';
+  var children = [];
   var halfSize = rec.r || 0; // radius or half of symbol size
   var p;
   // if not a label, create a symbol even without a size
@@ -15145,16 +15240,6 @@ SVG.importPoint = function(coords, d, layerOpts) {
     children.push(SVG.importLabel(coords, rec));
   }
   return children.length > 1 ? {tag: 'g', children: children} : children[0];
-};
-
-SVG.importPolygon = function(coords) {
-  var d, o;
-  for (var i=0; i<coords.length; i++) {
-    d = o ? o.properties.d + ' ' : '';
-    o = SVG.importLineString(coords[i]);
-    o.properties.d = d + o.properties.d + ' Z';
-  }
-  return o;
 };
 
 SVG.geojsonImporters = {
@@ -16812,11 +16897,35 @@ internal.printInfo = function(layers, targetLayers) {
   message(str);
 };
 
+internal.getLayerData = function(lyr, dataset) {
+  var n = internal.getFeatureCount(lyr);
+  var o = {
+    geometry_type: lyr.geometry_type,
+    feature_count: n,
+    null_shape_count: 0,
+    null_data_count: lyr.data ? internal.countNullRecords(lyr.data.getRecords()) : n
+  };
+  if (lyr.shapes) {
+    o.null_shape_count = internal.countNullShapes(lyr.shapes);
+    o.bbox =internal.getLayerBounds(lyr, dataset.arcs).toArray();
+    o.proj4 = internal.getProjInfo(dataset);
+  }
+  return o;
+};
+
 // TODO: consider polygons with zero area or other invalid geometries
 internal.countNullShapes = function(shapes) {
   var count = 0;
   for (var i=0; i<shapes.length; i++) {
     if (!shapes[i] || shapes[i].length === 0) count++;
+  }
+  return count;
+};
+
+internal.countNullRecords = function(records) {
+  var count = 0;
+  for (var i=0; i<records.length; i++) {
+    if (!records[i]) count++;
   }
   return count;
 };
@@ -16832,32 +16941,26 @@ internal.countRings = function(shapes, arcs) {
 };
 
 internal.getLayerInfo = function(lyr, dataset) {
+  var data = internal.getLayerData(lyr, dataset);
   var str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
-  str += utils.format("Records: %,d\n", internal.getFeatureCount(lyr));
-  str += internal.getGeometryInfo(lyr, dataset);
+  str += utils.format("Records: %,d\n",data.feature_count);
+  str += internal.getGeometryInfo(data);
   str += internal.getTableInfo(lyr);
   return str;
 };
 
-internal.getGeometryInfo = function(lyr, dataset) {
-  var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
-      nullCount = shapeCount > 0 ? internal.countNullShapes(lyr.shapes) : 0,
-      lines;
-  if (!lyr.geometry_type) {
+internal.getGeometryInfo = function(data) {
+  var lines;
+  if (!data.geometry_type) {
     lines = ["Geometry: [none]"];
   } else {
-    lines = ["Geometry", "Type: " + lyr.geometry_type];
-    if (nullCount > 0) {
-      lines.push(utils.format("Null shapes: %'d", nullCount));
+    lines = ["Geometry", "Type: " + data.geometry_type];
+    if (data.null_shape_count > 0) {
+      lines.push(utils.format("Null shapes: %'d", data.null_shape_count));
     }
-    // if (lyr.geometry_type == 'polygon') {
-    //   var info = internal.countRings(lyr.shapes, dataset.arcs);
-    //   lines.push("Rings: " + info.rings);
-    //   lines.push("Holes: " + info.holes);
-    // }
-    if (shapeCount > nullCount) {
-      lines.push("Bounds: " + internal.getLayerBounds(lyr, dataset.arcs).toArray().join(' '));
-      lines.push("Proj.4: " + internal.getProjInfo(dataset));
+    if (data.feature_count > data.null_shape_count) {
+      lines.push("Bounds: " + data.bbox.join(' '));
+      lines.push("Proj.4: " + data.proj4);
     }
   }
   return lines.join('\n  ') + '\n';
@@ -17529,11 +17632,11 @@ internal.joinTables = function(dest, src, join, opts) {
 
   }
   if (matchCount === 0) {
-    stop("No records could be joined");
-  }
-
-  internal.printJoinMessage(matchCount, destRecords.length,
+    message("No records could be joined");
+  } else {
+    internal.printJoinMessage(matchCount, destRecords.length,
       internal.countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
+  }
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -18878,6 +18981,87 @@ api.renameLayers = function(layers, names) {
     }
     lyr.name = name + suffix;
   });
+};
+
+
+
+
+
+api.run = function(targets, catalog, opts, cb) {
+  var commandStr, commands;
+  if (opts.include) {
+    internal.include({file: opts.include});
+  }
+  if (!opts.commands) {
+    stop("Missing commands parameter");
+  }
+  commandStr = internal.runGlobalExpression(opts.commands, targets);
+  if (commandStr) {
+    commands = internal.parseCommands(commandStr);
+    internal.runParsedCommands(commands, catalog, cb);
+  } else {
+    cb(null);
+  }
+};
+
+internal.runGlobalExpression = function(expression, targets) {
+  var ctx = internal.getBaseContext();
+  var output, targetData;
+  // TODO: throw an informative error if target is used when there are multiple targets
+  if (targets.length == 1) {
+    targetData = internal.getRunCommandData(targets[0]);
+    Object.defineProperty(ctx, 'target', {value: targetData});
+  }
+  utils.extend(ctx, internal.getStateVar('defs'));
+  try {
+    output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
+  } catch(e) {
+    stop(e.name, 'in JS source:', e.message);
+  }
+  return output;
+};
+
+
+internal.getRunCommandData = function(target) {
+  var lyr = target.layers[0];
+  var data = internal.getLayerData(lyr, target.dataset);
+  data.layer = lyr;
+  data.dataset = target.dataset;
+  return data;
+};
+
+
+
+
+api.require = function(targets, opts) {
+  var defs = internal.getStateVar('defs');
+  var moduleFile, moduleName, mod;
+  if (!opts.module) {
+    stop("Missing module name or path to module");
+  }
+  if (cli.isFile(opts.module)) {
+    moduleFile = opts.module;
+  } else if (cli.isFile(opts.module + '.js')) {
+    moduleFile = opts.module + '.js';
+  } else {
+    moduleName = opts.module;
+  }
+  if (moduleFile) {
+    moduleFile = require('path').join(process.cwd(), moduleFile);
+  }
+  try {
+    mod = require(moduleFile || moduleName);
+  } catch(e) {
+    stop(e);
+  }
+  if (moduleName || opts.alias) {
+    defs[opts.alias || moduleName] = mod;
+  } else {
+    utils.extend(defs, mod);
+  }
+  if (opts.init) {
+    internal.runGlobalExpression(opts.init, targets);
+  }
 };
 
 
@@ -20299,6 +20483,13 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'require') {
+      api.require(targets, opts);
+
+    } else if (name == 'run') {
+      api.run(targets, catalog, opts, done);
+      return;
 
     } else if (name == 'shape') {
       catalog.addDataset(api.shape(opts));
@@ -22114,6 +22305,30 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
+  parser.command("require")
+    .describe("require a Node module for use in -each expressions")
+    .option("module", {
+      DEFAULT: true,
+      describe: "name of Node module or path to module file"
+    })
+    .option("alias", {
+      describe: "Set the module name to an alias"
+    })
+    .option("init", {
+      describe: "JS expression to run after the module loads"
+    });
+
+  parser.command("run")
+    .describe("create commands on-the-fly and run them")
+    .option("include", {
+      // TODO: remove this option
+    })
+    .option("commands", {
+      DEFAULT: true,
+      describe: "command string or JS expresson to generate command(s)"
+    })
+    .option("target", targetOpt);
+
   parser.command("shape")
     .describe("create a polyline or polygon from coordinates")
     .option("coordinates", {
@@ -22228,7 +22443,7 @@ internal.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 internal.parseConsoleCommands = function(raw) {
-  var blocked = ['i', 'include'];
+  var blocked = ['i', 'include', 'require'];
   var str = raw.replace(/^mapshaper\b/, '').trim();
   var parsed;
   if (/^[a-z]/.test(str)) {
