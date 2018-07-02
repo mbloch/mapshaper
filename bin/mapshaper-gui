@@ -101,11 +101,17 @@ function startServer(port) {
       if (uri == '/') {
         uri = '/index.html';
       }
-      serveFile(path.join(webRoot, uri), response);
+      serveFile(getAssetFilePath(uri), response);
     }
   }).listen(port, function() {
     opn("http://localhost:" + port);
   });
+}
+
+function getAssetFilePath(uri) {
+  var webPath = path.join(webRoot, uri),
+      relPath = path.join(process.cwd(), uri);
+  return fs.existsSync(webPath) ? webPath : relPath;
 }
 
 function getDataFilePath(uri) {
@@ -237,7 +243,8 @@ function getMimeType(filename) {
     css: 'text/css',
     js: 'application/javascript',
     html: 'text/html',
-    png: 'image/png'
+    png: 'image/png',
+    svg: 'image/svg+xml'
   }[extname(filename)] || null;
 }
 
