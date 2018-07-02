@@ -43,18 +43,32 @@ SVG.symbolRenderers.line = function(d) {
   return [o];
 };
 
+SVG.symbolRenderers.group = function(d) {
+  return (d.parts || []).reduce(function(memo, o) {
+    return memo.concat(SVG.renderSymbol(o));
+  }, []);
+};
+
+SVG.getEmptySymbol = function() {
+  return {tag: 'g', properties: {}, children: []};
+};
+
+SVG.renderSymbol = function(d) {
+  var renderer = SVG.symbolRenderers[d.type];
+   if (!renderer) {
+    stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
+  }
+  return renderer(d);
+};
+
 // d: svg-symbol object from feature data object
 SVG.importSymbol = function(xy, d) {
   var renderer;
   if (!d) {
-    return {tag: 'g', properties: {}, children: []}; // empty symbol
+    return SVG.getEmptySymbol();
   }
   if (utils.isString(d)) {
     d = JSON.parse(d);
-  }
-  renderer = SVG.symbolRenderers[d.type];
-  if (!renderer) {
-    stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
   }
   return {
     tag: 'g',
@@ -62,6 +76,6 @@ SVG.importSymbol = function(xy, d) {
       'class': 'mapshaper-svg-symbol',
       transform: SVG.getTransform(xy)
     },
-    children: renderer(d)
+    children: SVG.renderSymbol(d)
   };
 };
