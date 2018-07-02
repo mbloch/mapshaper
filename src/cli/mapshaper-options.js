@@ -66,6 +66,13 @@ internal.getOptionParser = function() {
       },
       eachOpt2 = {
         describe: "apply a JS expression to each line (using A and B)"
+      },
+      aspectRatioOpt = {
+        describe: "aspect ratio as a number or range (e.g. 2 0.8,1.6 ,2)"
+      },
+      offsetOpt = {
+        describe: "padding as distance or pct of h/w (single value or list)",
+        type: "distance"
       };
 
   var parser = new CommandParser();
@@ -1004,18 +1011,13 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("rectangle")
-    .describe("create a rectangular polygon")
+    .describe("create a rectangle from a bbox or target layer extent")
     .option("bbox", {
       describe: "rectangle coordinates (xmin,ymin,xmax,ymax)",
       type: "bbox"
     })
-    .option("offset", {
-      describe: "padding around bbox or contents (number or list)",
-      type: "distance"
-    })
-    .option("aspect-ratio", {
-      type: "string"
-    })
+    .option("offset", offsetOpt)
+    .option("aspect-ratio", aspectRatioOpt)
     .option("source", {
       describe: "name of layer to enclose"
     })
@@ -1024,14 +1026,9 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("rectangles")
-    // .describe("create a polygon layer with a rectangle for each feature")
-    .option("offset", {
-      describe: "padding around bbox or contents (number or list)",
-      type: "distance"
-    })
-    .option("aspect-ratio", {
-      type: "string"
-    })
+    .describe("create a rectangle around each feature in the target layer")
+    .option("offset", offsetOpt)
+    .option("aspect-ratio", aspectRatioOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
