@@ -35,8 +35,13 @@ SVG.embedImages = function(obj, symbols) {
   }
 
   function convertSvgToSymbol(svg, id) {
-    svg = svg.replace(/[^]*<svg/, '<svg'); // strip xml namespace
-    svg = svg.replace(/<metadata[^]*?metadata>/, ''); // Inkscape metadata triggered an error in Chrome
+    svg = svg.replace(/[^]*<svg/, '<svg');
+    // Remove inkscape tags (there were errors caused when namespaces were
+    // stripped when converting <svg> to <symbol> ... this may be futile, may
+    // have to go back to embedding entire SVG document instead of using symbols)
+    svg = svg.replace(/<metadata[^]*?metadata>/, '');
+    svg = svg.replace(/<sodipodi[^>]*>/, '');
+    // convert <svg> to <symbol>
     svg = svg.replace(/^<svg[^>]*>/, function(a) {
       var viewBox = a.match(/viewBox=".*?"/)[0];
       return '<symbol id="' + id + '" ' + viewBox + '>';
@@ -46,10 +51,16 @@ SVG.embedImages = function(obj, symbols) {
   }
 
   function getSvgFile(href) {
-    var request = require('sync-request');
-    var res = request('GET', href, {timeout: 2000});
-    var content = res.getBody();
-    return content.toString();
+    var res, content, fs;
+    if (href.indexOf('http') === 0) {
+      res  = require('sync-request')('GET', href, {timeout: 1000});
+      content = res.getBody().toString();
+    } else if (require('fs').existsSync(href)) { // assume href is a relative path
+      content = require('fs').readFileSync(href, 'utf8');
+    } else {
+      stop("Invalid SVG location:", href);
+    }
+    return content;
   }
 
   /*
