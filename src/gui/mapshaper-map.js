@@ -149,6 +149,10 @@ function MshpMap(model) {
     return lyr == _activeLyr.source.layer;
   };
 
+  this.isFrame = function(o) {
+    return !!o.source.dataset.info.frame;
+  };
+
   this.isReferenceLayer = function(lyr) {
     return _referenceLayers.filter(function(o) {
       return o.source.layer == lyr;

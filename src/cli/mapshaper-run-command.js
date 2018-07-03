@@ -18,6 +18,7 @@ mapshaper-filter-geom
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
+mapshaper-frame
 mapshaper-graticule
 mapshaper-include
 mapshaper-info
@@ -174,6 +175,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'filter-slivers') {
       internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
+
+    } else if (name == 'frame') {
+      catalog.addDataset(api.frame(source, opts));
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));

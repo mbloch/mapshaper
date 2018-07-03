@@ -995,6 +995,24 @@ internal.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("frame")
+    // .describe("create a map frame at a given size")
+    .option("bbox", {
+      describe: "frame coordinates (xmin,ymin,xmax,ymax)",
+      type: "bbox"
+    })
+    .option("offset", offsetOpt)
+    .option("width", {
+      describe: "pixel width of output (default is 800)"
+    })
+    .option("height", {
+      describe: "pixel height of output (may be a range)"
+    })
+    .option("source", {
+      describe: "name of layer to enclose"
+    })
+    .option("name", nameOpt);
+
   parser.command("include")
     .describe("import JS data and functions for use in JS expressions")
     .option("file", {
