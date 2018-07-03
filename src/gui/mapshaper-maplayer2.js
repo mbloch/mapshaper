@@ -18,9 +18,9 @@ function getMapLayer(layer, dataset) {
     dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
   }
 
-  if (obj.empty) return obj;
-
-  if (!layer.geometry_type) {
+  if (obj.empty) {
+    obj.layer = {shapes: []}; // ideally we should avoid empty layers
+  } else if (!layer.geometry_type) {
     utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
     obj.tabular = true;
   } else {
@@ -50,6 +50,10 @@ function getDisplayBounds(lyr, arcs, isTable) {
         bounds = arcBounds.mergeBounds(lyrBounds);
       }
     }
+  }
+
+  if (!bounds || !bounds.hasBounds()) { // empty layer
+    return new Bounds(); // may cause errors downstream
   }
 
   // If a layer has zero width or height (e.g. if it contains a single point),

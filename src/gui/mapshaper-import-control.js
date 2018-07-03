@@ -228,9 +228,17 @@ function ImportControl(model, opts) {
   }
 
   function addDataset(dataset) {
-    model.addDataset(dataset);
-    importCount++;
+    if (!datasetIsEmpty(dataset)) {
+      model.addDataset(dataset);
+      importCount++;
+    }
     procNextQueuedFile();
+  }
+
+  function datasetIsEmpty(dataset) {
+    return dataset.layers.every(function(lyr) {
+      return internal.getFeatureCount(lyr) === 0;
+    });
   }
 
   function procNextQueuedFile() {

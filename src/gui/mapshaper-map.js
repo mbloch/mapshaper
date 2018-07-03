@@ -29,7 +29,7 @@ function MshpMap(model) {
     var fullBounds;
 
     if (!prevLyr) {
-      initMap(); // wait until first layer is added to init map extent, resize events, etc.
+      initMap(); // init map extent, resize events, etc. on first call
     }
 
     if (arcsMayHaveChanged(e.flags)) {
@@ -56,7 +56,7 @@ function MshpMap(model) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _inspector.updateLayer(_activeLyr);
 
-    fullBounds = getVisibleBounds(); // _activeLyr.bounds;
+    fullBounds = getVisibleBounds();
 
     if (!prevLyr) {
       _needReset = true;
