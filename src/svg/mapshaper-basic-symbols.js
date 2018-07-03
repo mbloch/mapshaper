@@ -1,51 +1,55 @@
 /* @require svg-common */
 
-SVG.symbolRenderers.circle = function(d) {
-  var o = SVG.importPoint([0, 0], d, {});
+SVG.symbolRenderers.circle = function(d, x, y) {
+  var o = SVG.importPoint([x, y], d, {});
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
 
-SVG.symbolRenderers.label = function(d) {
-  var o = SVG.importLabel([0, 0], d);
+SVG.symbolRenderers.label = function(d, x, y) {
+  var o = SVG.importLabel([x, y], d);
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
 
-SVG.symbolRenderers.image = function(d) {
+SVG.symbolRenderers.image = function(d, x, y) {
   var w = d.width || 20,
-      h = d.height || 20,
-      x = -w / 2,
-      y = -h / 2;
+      h = d.height || 20;
   var o = {
     tag: 'image',
     properties: {
       width: w,
       height: h,
-      x: x,
-      y: y,
+      x: x - w / 2,
+      y: y - h / 2,
       href: d.href || ''
     }
   };
   return [o];
 };
 
-SVG.symbolRenderers.square = function(d) {
-  var o = SVG.importPoint([0, 0], d, {point_symbol: 'square'});
+SVG.symbolRenderers.square = function(d, x, y) {
+  var o = SVG.importPoint([x, y], d, {point_symbol: 'square'});
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
 
-SVG.symbolRenderers.line = function(d) {
-  var coords = [[0, 0], [d.dx || 0, d.dy || 0]];
-  var o = SVG.importLineString(coords);
+SVG.symbolRenderers.line = function(d, x, y) {
+  var coords, o;
+  coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
+  o = SVG.importLineString(coords);
   SVG.applyStyleAttributes(o, 'LineString', d);
   return [o];
 };
 
-SVG.symbolRenderers.group = function(d) {
+SVG.symbolRenderers.group = function(d, x, y) {
   return (d.parts || []).reduce(function(memo, o) {
-    return memo.concat(SVG.renderSymbol(o));
+    var sym = SVG.renderSymbol(o, x, y);
+    if (d.chained) {
+      x += (o.dx || 0);
+      y += (o.dy || 0);
+    }
+    return memo.concat(sym);
   }, []);
 };
 
@@ -53,12 +57,12 @@ SVG.getEmptySymbol = function() {
   return {tag: 'g', properties: {}, children: []};
 };
 
-SVG.renderSymbol = function(d) {
+SVG.renderSymbol = function(d, x, y) {
   var renderer = SVG.symbolRenderers[d.type];
    if (!renderer) {
     stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
   }
-  return renderer(d);
+  return renderer(d, x || 0, y || 0);
 };
 
 // d: svg-symbol object from feature data object
