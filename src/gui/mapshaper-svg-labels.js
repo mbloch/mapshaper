@@ -4,15 +4,13 @@ function repositionLabels(container, layer, ext) {
   var fwd = ext.getTransform();
   var texts = container.getElementsByTagName('text');
   var n = texts.length;
-  var text, xy, idx, p;
+  var text, idx, p;
   for (var i=0; i<n; i++) {
     text = texts[i];
     idx = +text.getAttribute('data-id');
     p = layer.shapes[idx];
     if (!p) continue;
-    xy = fwd.transform(p[0][0], p[0][1]);
-    setMultilineAttribute(text, 'x', xy[0]);
-    text.setAttribute('y', xy[1]);
+    text.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
   }
 }
 
@@ -21,9 +19,8 @@ function renderLabels(lyr, ext) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var p = shp[0];
-    var p2 = fwd.transform(p[0], p[1]);
-    var obj = internal.svg.importLabel(p2, d);
+    var obj = internal.svg.importLabel(d);
+    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     internal.svg.applyStyleAttributes(obj, 'Point', d);
     obj.properties['data-id'] = i;
     return obj;

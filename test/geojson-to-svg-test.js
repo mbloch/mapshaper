@@ -99,7 +99,8 @@ describe('geojson-to-svg.js', function () {
         }, {
           tag: 'text',
           value: 'foo',
-          properties: {x: 5, y: 5}
+          // properties: {x: 5, y: 5}
+          properties: {transform: 'translate(5 5)', x: 0, y: 0}
         }]
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
@@ -121,7 +122,8 @@ describe('geojson-to-svg.js', function () {
         children: [{
           tag: 'text',
           value: 'TBD',
-          properties: {x: 0, y: 1}
+          // properties: {x: 0, y: 1}
+          properties: {transform: 'translate(0 1)', x: 0, y: 0}
         }]
       }];
       var output = SVG.importGeoJSONFeatures([geo]);
@@ -142,7 +144,8 @@ describe('geojson-to-svg.js', function () {
         children: [{
           tag: 'text',
           value: 'New',
-          properties: {x: 0, y: 1},
+          // properties: {x: 0, y: 1},
+          properties: {transform: 'translate(0 1)', x: 0, y: 0},
           children: [{
             tag: 'tspan',
             value: 'York',
@@ -187,7 +190,8 @@ describe('geojson-to-svg.js', function () {
         children: [{
           tag: 'text',
           value: 'TBD',
-          properties: {x: 0, y: 1, dx: '10px', dy: '-1em'}
+          // properties: {x: 0, y: 1, dx: '10px', dy: '-1em'}
+          properties: {transform: 'translate(0 1)', x: '10px', y: '-1em'}
         }],
         properties: {'font-family': 'Gill Sans, sans-serif', 'font-style': 'italic', 'font-weight': 'bold'}
       }];
@@ -218,7 +222,8 @@ describe('geojson-to-svg.js', function () {
         },{
           tag: 'text',
           value: 'Milwaukee',
-          properties: {x: 0, y: 1, dx: 5}
+          // properties: {x: 0, y: 1, dx: 5}
+          properties: {transform: 'translate(0 1)', x: 5, y: 0}
         }],
         properties: {'text-anchor': 'start'}
       }];
@@ -309,23 +314,24 @@ describe('geojson-to-svg.js', function () {
   describe('SVG.importLabel()', function () {
     it('recognizes several newline markers', function () {
       var str = 'line one\nline two\\nline three<br>line four';
-      var obj = SVG.importLabel([1, 2], {'label-text': str})
+      var obj = SVG.importLabel({'label-text': str}, [1, 2])
       var target = {
         tag: 'text',
         value: 'line one',
-        properties: {x: 1, y: 2},
+        // properties: {x: 1, y: 2},
+        properties: {transform: 'translate(1 2)', x: 0, y: 0},
         children: [{
           tag: 'tspan',
           value: 'line two',
-          properties: {x: 1, dy: '1.1em'}
+          properties: {x: 0, dy: '1.1em'}
         }, {
           tag: 'tspan',
           value: 'line three',
-          properties: {x: 1, dy: '1.1em'}
+          properties: {x: 0, dy: '1.1em'}
         }, {
           tag: 'tspan',
           value: 'line four',
-          properties: {x: 1, dy: '1.1em'}
+          properties: {x: 0, dy: '1.1em'}
         }]
       }
       assert.deepEqual(obj, target);

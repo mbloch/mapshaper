@@ -41,10 +41,13 @@ describe('mapshaper-svg.js', function () {
           tag: 'text',
           value: 'TEXAS',
           properties: {
-            x: 0,
-            y: 0,
-            dx: 5,
-            dy: -6,
+            //x: 0,
+            //y: 0,
+            //dx: 5,
+            //dy: -6,
+            transform: 'translate(0 0)',
+            x: 5,
+            y: -6,
             'font-size': '13',
             'text-anchor': 'start'
           }
@@ -52,10 +55,13 @@ describe('mapshaper-svg.js', function () {
           tag: 'text',
           value: 'OKLA.',
           properties: {
-            x: 1,
-            y: 1,
-            dx: -5,
-            dy: -6,
+            // x: 1,
+            // y: 1,
+            // dx: -5,
+            // dy: -6,
+            transform: 'translate(1 1)',
+            x: -5,
+            y: -6,
             'font-size': '13',
             'text-anchor': 'end'
           }

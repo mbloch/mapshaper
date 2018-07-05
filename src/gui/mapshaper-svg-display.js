@@ -105,18 +105,19 @@ function SvgDisplayLayer(ext, mouse) {
     }, null, eventPriority);
 
     mouse.on('drag', function(e) {
+      var scale = ext.getSymbolScale() || 1;
       onDrag(e);
       if (!dragging || !activeRecord) return;
-      applyDelta(activeRecord, 'dx', e.dx);
-      applyDelta(activeRecord, 'dy', e.dy);
+      applyDelta(activeRecord, 'dx', e.dx / scale);
+      applyDelta(activeRecord, 'dy', e.dy / scale);
       if (!isMultilineLabel(textNode)) {
         // update anchor position of single-line labels based on label position
         // relative to anchor point, for better placement when eventual display font is
         // different from mapshaper's font.
         updateTextAnchor(textNode, activeRecord);
       }
-      setMultilineAttribute(textNode, 'dx', activeRecord.dx);
-      textNode.setAttribute('dy', activeRecord.dy);
+      setMultilineAttribute(textNode, 'x', activeRecord.dx);
+      textNode.setAttribute('y', activeRecord.dy);
     }, null, eventPriority);
 
     mouse.on('dragend', function(e) {

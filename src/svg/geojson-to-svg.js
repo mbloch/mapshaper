@@ -87,19 +87,24 @@ SVG.importLineString = function(coords) {
   };
 };
 
-SVG.importLabel = function(p, rec) {
+SVG.importLabel = function(rec, p) {
   var line = rec['label-text'] || '';
   var morelines, obj;
   // Accepting \n (two chars) as an alternative to the newline character
   // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
   // Also accepting <br>
   var newline = /\n|\\n|<br>/i;
+  var dx = rec.dx || 0;
+  var dy = rec.dy || 0;
   var properties = {
-    x: p[0],
-    y: p[1]
+    // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
+    // dx value when importing text with text-anchor=end
+    y: dy,
+    x: dx
   };
-  if (rec.dx) properties.dx = rec.dx;
-  if (rec.dy) properties.dy = rec.dy;
+  if (p) {
+    properties.transform = SVG.getTransform(p);
+  }
   if (newline.test(line)) {
     morelines = line.split(newline);
     line = morelines.shift();
@@ -117,11 +122,10 @@ SVG.importLabel = function(p, rec) {
         tag: 'tspan',
         value: line,
         properties: {
-          x: p[0],
+          x: dx,
           dy: rec['line-height'] || '1.1em'
         }
       };
-      if (rec.dx) tspan.properties.dx = rec.dx;
       obj.children.push(tspan);
     });
   }
@@ -178,7 +182,7 @@ SVG.importStandardPoint = function(coords, rec, layerOpts) {
     children.push(p);
   }
   if (isLabel) {
-    children.push(SVG.importLabel(coords, rec));
+    children.push(SVG.importLabel(rec, coords));
   }
   return children.length > 1 ? {tag: 'g', children: children} : children[0];
 };

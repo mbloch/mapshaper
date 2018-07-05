@@ -7,7 +7,7 @@ SVG.symbolRenderers.circle = function(d, x, y) {
 };
 
 SVG.symbolRenderers.label = function(d, x, y) {
-  var o = SVG.importLabel([x, y], d);
+  var o = SVG.importLabel(d, [x, y]);
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
