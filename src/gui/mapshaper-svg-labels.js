@@ -1,6 +1,7 @@
 
 
-function repositionLabels(container, layer, fwd) {
+function repositionLabels(container, layer, ext) {
+  var fwd = ext.getTransform();
   var texts = container.getElementsByTagName('text');
   var n = texts.length;
   var text, xy, idx, p;
@@ -15,7 +16,8 @@ function repositionLabels(container, layer, fwd) {
   }
 }
 
-function renderLabels(lyr, fwd) {
+function renderLabels(lyr, ext) {
+  var fwd = ext.getTransform();
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];

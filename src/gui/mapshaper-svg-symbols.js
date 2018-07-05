@@ -1,26 +1,31 @@
 
+function getSvgSymbolTransform(xy, ext) {
+  var scale = ext.getSymbolScale();
+  var p = ext.translateCoords(xy[0], xy[1]);
+  return internal.svg.getTransform(p, scale);
+}
 
-function repositionSymbols(container, layer, fwd) {
+
+function repositionSymbols(container, layer, ext) {
+  var fwd = ext.getTransform();
   var symbols = El.findAll('.mapshaper-svg-symbol', container);
   var n = symbols.length;
-  var sym, xy, idx, p;
+  var sym, idx, p;
   for (var i=0; i<n; i++) {
     sym = symbols[i];
     idx = +sym.getAttribute('data-id');
     p = layer.shapes[idx];
     if (!p) continue;
-    xy = fwd.transform(p[0][0], p[0][1]);
-    sym.setAttribute('transform', internal.svg.getTransform(xy));
+    sym.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
   }
 }
 
-function renderSymbols(lyr, fwd) {
+function renderSymbols(lyr, ext) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var p = shp[0];
-    var p2 = fwd.transform(p[0], p[1]);
-    var obj = internal.svg.importSymbol(p2, d['svg-symbol']);
+    var obj = internal.svg.importSymbol(d['svg-symbol']);
+    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     obj.properties['data-id'] = i;
     return obj;
   });

@@ -98,7 +98,6 @@ function MshpMap(model) {
     _stack = new LayerStack(el, _ext, mouse);
     _inspector = new InspectionControl(model, _ext, mouse);
 
-
     _ext.on('change', function() {
       drawLayers(!_needReset);
       _needReset = false;
@@ -145,12 +144,9 @@ function MshpMap(model) {
     return this.isActiveLayer(lyr) || this.isReferenceLayer(lyr);
   };
 
+
   this.isActiveLayer = function(lyr) {
     return lyr == _activeLyr.source.layer;
-  };
-
-  this.isFrame = function(o) {
-    return !!o.source.dataset.info.frame;
   };
 
   this.isReferenceLayer = function(lyr) {
@@ -173,6 +169,12 @@ function MshpMap(model) {
   };
 
   this.redraw = drawLayers;
+
+  function findMapFrame() {
+    return getDrawableLayers().reduce(function(memo, lyr) {
+      return memo || lyr.frame || null;
+    }, null);
+  }
 
   function getDrawableLayers() {
     // delete any layers that have been dropped from the catalog
@@ -222,6 +224,7 @@ function MshpMap(model) {
     // draw active and reference layers
     var layers = getDrawableLayers();
     if (!onlyNav) {
+      _ext.setFrame(findMapFrame() || null);
       updateLayerStyles(layers);
       // update stack_id property of all layers
       internal.updateLayerStackOrder(model.getLayers());

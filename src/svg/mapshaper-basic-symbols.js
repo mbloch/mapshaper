@@ -66,7 +66,7 @@ SVG.renderSymbol = function(d, x, y) {
 };
 
 // d: svg-symbol object from feature data object
-SVG.importSymbol = function(xy, d) {
+SVG.importSymbol = function(d, xy) {
   var renderer;
   if (!d) {
     return SVG.getEmptySymbol();
@@ -78,7 +78,7 @@ SVG.importSymbol = function(xy, d) {
     tag: 'g',
     properties: {
       'class': 'mapshaper-svg-symbol',
-      transform: SVG.getTransform(xy)
+      transform: xy ? SVG.getTransform(xy) : null
     },
     children: SVG.renderSymbol(d)
   };

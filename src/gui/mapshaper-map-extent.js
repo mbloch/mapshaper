@@ -3,7 +3,8 @@
 function MapExtent(_position) {
   var _scale = 1,
       _cx, _cy, // center in geographic units
-      _contentBounds;
+      _contentBounds,
+      _frame;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
@@ -92,6 +93,20 @@ function MapExtent(_position) {
       _cx = b.centerX();
       _cy = b.centerY();
     }
+  };
+
+  this.translateCoords = function(x, y) {
+    return this.getTransform().transform(x, y);
+  };
+
+  this.setFrame = function(frame) {
+    _frame = frame || null;
+  };
+
+  this.getSymbolScale = function() {
+    if (!_frame) return 1;
+    var bounds2 = _frame.bounds.clone().transform(this.getTransform());
+    return bounds2.width() / _frame.width;
   };
 
   this.translatePixelCoords = function(x, y) {

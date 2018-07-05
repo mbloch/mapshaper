@@ -18,13 +18,11 @@ function SvgDisplayLayer(ext, mouse) {
   el.clear = clear;
 
   el.reposition = function(target) {
-    var transform = ext.getTransform();
     resize(ext);
-    reposition(target, transform);
+    reposition(target, ext);
   };
 
   el.drawLayer = function(target) {
-    var transform = ext.getTransform();
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var html = '';
     // assign a unique id so layer can be identified when symbols are repositioned
@@ -33,9 +31,9 @@ function SvgDisplayLayer(ext, mouse) {
     target.svg_id = id;
     resize(ext);
     if (internal.layerHasLabels(target.layer)) {
-      html = renderLabels(target.layer, transform);
+      html = renderLabels(target.layer, ext);
     } else if (internal.layerHasSvgSymbols(target.layer)) {
-      html = renderSymbols(target.layer, transform);
+      html = renderSymbols(target.layer, ext);
     }
     g.innerHTML = html;
     svg.append(g);
@@ -247,12 +245,12 @@ function SvgDisplayLayer(ext, mouse) {
     return textNode.childNodes.length > 1;
   }
 
-  function reposition(target, fwd) {
+  function reposition(target, ext) {
     var container = document.getElementById(target.svg_id);
     if (internal.layerHasLabels(target.layer)) {
-      repositionLabels(container, target.layer, fwd);
+      repositionLabels(container, target.layer, ext);
     } else if (internal.layerHasSvgSymbols(target.layer)) {
-      repositionSymbols(container, target.layer, fwd);
+      repositionSymbols(container, target.layer, ext);
     }
   }
 

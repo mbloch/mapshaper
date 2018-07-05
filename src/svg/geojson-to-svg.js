@@ -131,7 +131,7 @@ SVG.importLabel = function(p, rec) {
 SVG.importPoint = function(coords, rec, layerOpts) {
   rec = rec || {};
   if ('svg-symbol' in rec) {
-    return SVG.importSymbol(coords, rec['svg-symbol']);
+    return SVG.importSymbol(rec['svg-symbol'], coords);
   }
   return SVG.importStandardPoint(coords, rec, layerOpts || {});
 };

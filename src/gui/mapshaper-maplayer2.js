@@ -24,6 +24,7 @@ function getMapLayer(layer, dataset) {
     utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
     obj.tabular = true;
   } else {
+    obj.frame = dataset.info.frame || null;
     obj.geographic = true;
     obj.layer = layer;
     obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence
