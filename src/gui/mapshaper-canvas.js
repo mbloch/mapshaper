@@ -132,7 +132,7 @@ function DisplayCanvas() {
   _self.drawPathShapes = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
-    var startPath = getPathStart(_ext, getLineScale(_ext));
+    var startPath = getPathStart(_ext, getScaledLineScale(_ext));
     var draw = getShapePencil(arcs, _ext);
     var key, item;
     var styler = style.styler || null;
@@ -201,7 +201,7 @@ function DisplayCanvas() {
   // is bad if circles are graduated.
   _self.drawPoints = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        pixRatio = gui.getPixelRatio(),
+        scale = gui.getPixelRatio() * (_ext.getSymbolScale() || 1),
         startPath = getPathStart(_ext),
         styler = style.styler || null,
         shp, p;
@@ -213,7 +213,7 @@ function DisplayCanvas() {
       if (!shp || style.radius > 0 === false) continue;
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * pixRatio, _ctx);
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * scale, _ctx);
       }
       endPath(_ctx, style);
     }
@@ -248,6 +248,10 @@ function DisplayCanvas() {
   }
 
   return _self;
+}
+
+function getScaledLineScale(ext) {
+  return ext.getSymbolScale() || getLineScale(ext);
 }
 
 // Vary line width according to zoom ratio.

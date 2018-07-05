@@ -104,7 +104,7 @@ function MapExtent(_position) {
   };
 
   this.getSymbolScale = function() {
-    if (!_frame) return 1;
+    if (!_frame) return 0;
     var bounds2 = _frame.bounds.clone().transform(this.getTransform());
     return bounds2.width() / _frame.width;
   };
