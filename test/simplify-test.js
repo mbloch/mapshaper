@@ -37,6 +37,28 @@ describe("mapshaper-simplify.js", function() {
     })
   })
 
+  describe('-simplify target= option', function () {
+    // TODO: change this behavior
+    it('targeting one layer in a dataset simplifies all layers in the dataset', function (done) {
+      var a = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0, 1], [1, 1]]
+      };
+      var b = {
+        type: 'LineString',
+        coordinates: [[2, 0], [2, 1], [3, 1]]
+      }
+      var cmd = '-i a.json b.json combine-files -simplify target=a 5% -o target=*';
+      api.applyCommands(cmd, {'a.json': a, 'b.json': b}, function(err, out) {
+        var a = JSON.parse(out['a.json']);
+        var b = JSON.parse(out['b.json']);
+        assert.deepEqual(a.geometries[0].coordinates, [[0, 0], [1, 1]]);
+        assert.deepEqual(b.geometries[0].coordinates, [[2, 0], [3, 1]]);
+        done();
+      });
+    })
+  })
+
 
   describe('-simplify resolution= option', function () {
 

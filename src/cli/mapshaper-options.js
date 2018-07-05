@@ -681,7 +681,7 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command('simplify')
+  parser.command("simplify")
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
@@ -749,7 +749,9 @@ internal.getOptionParser = function() {
     .option("stats", {
       describe: "display simplification statistics",
       type: "flag"
-    });
+    })
+    .option("target", targetOpt);
+
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")
