@@ -172,7 +172,7 @@ function MshpMap(model) {
 
   function findMapFrame() {
     return getDrawableLayers().reduce(function(memo, lyr) {
-      return memo || lyr.frame || null;
+      return memo || internal.getFrameData(lyr.source.layer, lyr.source.dataset);
     }, null);
   }
 

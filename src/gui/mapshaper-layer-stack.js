@@ -31,7 +31,6 @@ function LayerStack(container, ext, mouse) {
     });
   };
 
-
   function layerUsesCanvas(layer) {
     // TODO: return false if a label layer does not have dots
     return !internal.layerHasSvgSymbols(layer);
