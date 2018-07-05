@@ -81,9 +81,7 @@ var dataTableProto = {
   clone: function() {
     // TODO: this could be sped up using a record constructor function
     // (see getRecordConstructor() in DbfReader)
-    var records2 = this.getRecords().map(function(rec) {
-      return utils.extend({}, rec);
-    });
+    var records2 = this.getRecords().map(internal.copyRecord);
     return new DataTable(records2);
   },
 

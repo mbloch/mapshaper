@@ -1,5 +1,19 @@
 /* @requires mapshaper-common */
 
+// Not a general-purpose deep copy function
+internal.copyRecord = function(o) {
+  var o2 = {}, key, val;
+  if (!o) return null;
+  for (key in o) {
+    if (o.hasOwnProperty(key)) {
+      val = o[key];
+      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
+    }
+  }
+  return o2;
+};
+
+
 // Insert a column of values into a (new or existing) data field
 internal.insertFieldValues = function(lyr, fieldName, values) {
   var size = internal.getFeatureCount(lyr) || values.length,

@@ -91,6 +91,17 @@ describe('data-table.js', function () {
       })
     })
 
+    describe('#clone()', function () {
+      it('deep-copies object records', function () {
+        var arr = [{a: {foo: 'bar'}}];
+        var table = new DataTable(arr);
+        var table2 = table.clone();
+        table2.getRecords()[0].a.foo = 'baz';
+        assert.deepEqual(table.getRecords(), [{a: {foo: 'bar'}}]);
+        assert.deepEqual(table2.getRecords(), [{a: {foo: 'baz'}}]);
+      })
+    })
+
     describe('#update()', function () {
       it('rename a field', function () {
         var table = new DataTable([{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}]);
