@@ -28,26 +28,11 @@ SVG.embedImages = function(obj, symbols) {
         href: href,
         id: utils.getUniqueName()
       };
-      item.svg = convertSvgToSymbol(getSvgFile(href), item.id) + '\n';
+      // item.svg = convertSvgToSymbol(getSvgFile(href), item.id) + '\n';
+      item.svg = convertSvg(getSvgFile(href), item.id) + '\n';
       symbols.push(item);
     }
     return item.id;
-  }
-
-  function convertSvgToSymbol(svg, id) {
-    svg = svg.replace(/[^]*<svg/, '<svg');
-    // Remove inkscape tags (there were errors caused when namespaces were
-    // stripped when converting <svg> to <symbol> ... this may be futile, may
-    // have to go back to embedding entire SVG document instead of using symbols)
-    svg = svg.replace(/<metadata[^]*?metadata>/, '');
-    svg = svg.replace(/<sodipodi[^>]*>/, '');
-    // convert <svg> to <symbol>
-    svg = svg.replace(/^<svg[^>]*>/, function(a) {
-      var viewBox = a.match(/viewBox=".*?"/)[0];
-      return '<symbol id="' + id + '" ' + viewBox + '>';
-    });
-    svg = svg.replace('svg>', 'symbol>');
-    return svg;
   }
 
   function getSvgFile(href) {
@@ -64,17 +49,33 @@ SVG.embedImages = function(obj, symbols) {
   }
 
   /*
-  // Switched to convertSvgToSymbol(). For this function to work, need to
-  // add display:none inline style
+  function convertSvgToSymbol(svg, id) {
+    svg = svg.replace(/[^]*<svg/, '<svg');
+    // Remove inkscape tags (there were errors caused when namespaces were
+    // stripped when converting <svg> to <symbol> ... this may be futile, may
+    // have to go back to embedding entire SVG document instead of using symbols)
+    svg = svg.replace(/<metadata[^]*?metadata>/, '');
+    svg = svg.replace(/<sodipodi[^>]*>/, '');
+    // convert <svg> to <symbol>
+    svg = svg.replace(/^<svg[^>]*>/, function(a) {
+      var viewBox = a.match(/viewBox=".*?"/)[0];
+      return '<symbol id="' + id + '" ' + viewBox + '>';
+    });
+    svg = svg.replace('svg>', 'symbol>');
+    return svg;
+  }
+  */
+
   function convertSvg(svg, id) {
+    // Remove stuff before <svg> tag
     svg = svg.replace(/[^]*<svg/, '<svg');
     return svg.replace(/^<svg[^>]*>/, function(a) {
+      // set id property of <svg>
       a = a.replace(/ id="[^"]*"/, '');
       a = a.replace(/<svg/, '<svg id="' + id + '"');
       return a;
     });
-  };
-  */
+  }
 };
 
 SVG.stringify = function(obj) {
@@ -122,6 +123,9 @@ SVG.stringifyProperties = function(o) {
         strval;
     if (!val && val !== 0) return memo; // omit undefined / empty / null values
     strval = utils.isString(val) ? val : JSON.stringify(val);
+    if (key == 'href') {
+      key = 'xlink:href';
+    }
     return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
   }, '');
 };

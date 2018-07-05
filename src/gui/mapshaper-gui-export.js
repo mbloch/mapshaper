@@ -48,10 +48,15 @@ function saveZipFile(zipfileName, files, done) {
     done("This browser doesn't support Zip file creation.");
   }
 
-  function zipError(msg) {
+  function zipError(err) {
     var str = "Error creating Zip file";
+    var msg = '';
+    // error events thrown by Zip library seem to be missing a message
+    if (err && err.message) {
+      msg = err.message;
+    }
     if (msg) {
-      str += ": " + (msg.message || msg);
+      str += ": " + msg;
     }
     done(str);
   }
