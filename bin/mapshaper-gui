@@ -109,13 +109,19 @@ function startServer(port) {
 }
 
 function getAssetFilePath(uri) {
+  // allowing loading of assets from paths relative to the cwd (in addition to
+  // the www/ directory of the mapshaper intall); this is useful
+  // for displaying svg icons in the web ui; svg output then embeds the icons
+  // in the output file.
   var webPath = path.join(webRoot, uri),
       relPath = path.join(process.cwd(), uri);
   return fs.existsSync(webPath) ? webPath : relPath;
 }
 
 function getDataFilePath(uri) {
-  // kludge to access one level of parent
+  // tilde is added by the web ui; allows accessing a single level of parent
+  // directory when loading data files (an attempt to add a bit of flexibility
+  // without giving access to the entire filesystem)
   return decodeURI(uri).replace('/~/', '/../').replace('/data/', '');
 }
 
@@ -137,8 +143,9 @@ function serveFile(filename, response) {
 
 function serveContent(content, response, mimeType) {
   if (mimeType) {
-    response.setHeader("Content-Type", mimeType);
+    response.setHeader('Content-Type', mimeType);
   }
+  response.setHeader('Cache-Control', 'no-cache');
   response.writeHead(200);
   response.write(content, "binary");
   response.end();
