@@ -103,6 +103,7 @@ function LayerControl(model, map) {
   }
 
   function turnOff() {
+    stopDragging();
     isOpen = false;
     el.hide();
   }
@@ -252,7 +253,7 @@ function LayerControl(model, map) {
         map.redraw();
       });
 
-      // catch click event
+      // catch click event on pin button
       gui.onClick(entry.findChild('img.unpinned'), function(e) {
         e.stopPropagation();
       });
@@ -272,7 +273,7 @@ function LayerControl(model, map) {
     gui.onClick(entry, function() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
-      if (!gui.getInputElement() && !dragTargetId) {
+      if (!gui.getInputElement() && !dragging) {
         gui.clearMode();
         if (!map.isActiveLayer(target.layer)) {
           model.updated({select: true}, target.layer, target.dataset);
