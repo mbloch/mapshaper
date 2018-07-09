@@ -86,6 +86,7 @@ function MapExtent(_position) {
   // Update the extent of 'full' zoom without navigating the current view
   this.setBounds = function(b) {
     var prev = _contentBounds;
+    if (!b.hasBounds()) return; // kludge
     _contentBounds = b;
     if (prev) {
       _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();

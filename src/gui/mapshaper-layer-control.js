@@ -25,12 +25,8 @@ function LayerControl(model, map) {
   // init layer visibility button
   pinAll.on('click', function() {
     var allOn = testAllLayersPinned();
-    model.forEachLayer(function(lyr, dataset) {
-      if (allOn) {
-        map.removeReferenceLayer(lyr);
-      } else {
-        map.addReferenceLayer(lyr, dataset);
-      }
+    model.getLayers().forEach(function(target) {
+      map.setLayerVisibility(target, !allOn);
     });
     El.findAll('.pinnable', el.node()).forEach(function(item) {
       El(item).classed('pinned', !allOn);
@@ -46,7 +42,7 @@ function LayerControl(model, map) {
   function testAllLayersPinned() {
     var yes = true;
     model.forEachLayer(function(lyr, dataset) {
-      if (isPinnable(lyr) && !map.isReferenceLayer(lyr) && !map.isActiveLayer(lyr)) {
+      if (isPinnable(lyr) && !map.isVisibleLayer(lyr)) {
         yes = false;
       }
     });
@@ -161,7 +157,7 @@ function LayerControl(model, map) {
 
     if (pinnable) classes += ' pinnable';
     if (map.isActiveLayer(lyr)) classes += ' active';
-    if (map.isReferenceLayer(lyr)) classes += ' pinned';
+    if (map.isVisibleLayer(lyr)) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
@@ -227,9 +223,9 @@ function LayerControl(model, map) {
     gui.onClick(entry.findChild('img.close-btn'), function(e) {
       var target = findLayerById(id);
       e.stopPropagation();
-      if (map.isReferenceLayer(target.layer)) {
+      if (map.isVisibleLayer(target.layer)) {
         // TODO: check for double map refresh after model.deleteLayer() below
-        map.removeReferenceLayer(target.layer);
+        map.setLayerVisibility(target, false);
       }
       model.deleteLayer(target.layer, target.dataset);
     });
@@ -239,14 +235,11 @@ function LayerControl(model, map) {
       gui.onClick(entry.findChild('img.unpinned'), function(e) {
         var target = findLayerById(id);
         e.stopPropagation();
-        if (entry.hasClass('active')) {
-          return; // selected layer
-        }
-        if (map.isReferenceLayer(target.layer)) {
-          map.removeReferenceLayer(target.layer);
+        if (map.isVisibleLayer(target.layer)) {
+          map.setLayerVisibility(target, false);
           entry.removeClass('pinned');
         } else {
-          map.addReferenceLayer(target.layer, target.dataset);
+          map.setLayerVisibility(target, true);
           entry.addClass('pinned');
         }
         updatePinAllButton();

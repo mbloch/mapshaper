@@ -29,15 +29,16 @@ function HitControl(ext, mouse) {
   });
 
   self.setLayer = function(mapLayer) {
-    var layer = mapLayer.layer;
-    var style = mapLayer.style;
     target = mapLayer;
-    if (layer.geometry_type == 'point' && style.type == 'styled') {
-      test = getGraduatedCircleTest(getRadiusFunction(style));
-    } else {
-      test = tests[layer.geometry_type];
-    }
     readout.hide();
+    if (!mapLayer) {
+      test = null;
+      self.stop();
+    } else if (mapLayer.layer.geometry_type == 'point' && mapLayer.style.type == 'styled') {
+      test = getGraduatedCircleTest(getRadiusFunction(mapLayer.style));
+    } else {
+      test = tests[mapLayer.layer.geometry_type];
+    }
   };
 
   self.start = function() {
@@ -47,7 +48,6 @@ function HitControl(ext, mouse) {
   self.stop = function() {
     if (active) {
       hover([]);
-      // readout.text('').hide();
       active = false;
     }
   };

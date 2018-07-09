@@ -33,10 +33,21 @@ function InspectionControl(model, ext, mouse) {
   });
 
   _self.updateLayer = function(mapLayer) {
-    var shapes = mapLayer.layer.shapes;
+    if (!mapLayer) {
+      if (_target) { // enabled to disabled
+        _target = _shapes = null;
+        btn.hide();
+        turnOff();
+        hit.setLayer(null);
+      }
+      return;
+    }
+    if (!_target) { // disabled to enabled
+      btn.show();
+    }
     _target = mapLayer;
     if (_inspecting) {
-      if (_shapes == shapes) {
+      if (_shapes == mapLayer.layer.shapes) {
         // shapes haven't changed -- refresh in case data has changed
         inspect(_highId, _pinned);
       } else {
@@ -45,13 +56,14 @@ function InspectionControl(model, ext, mouse) {
         inspect(-1, false);
       }
     }
-    _shapes = shapes;
+    _shapes = mapLayer.layer.shapes;
     hit.setLayer(mapLayer);
   };
 
   // replace cli inspect command
   api.inspect = function(lyr, arcs, opts) {
     var ids;
+    if (!_target) return; // control is disabled (selected layer is hidden, etc)
     if (lyr != model.getActiveLayer().layer) {
       error("Only the active layer can be targeted");
     }
@@ -67,14 +79,13 @@ function InspectionControl(model, ext, mouse) {
 
   document.addEventListener('keydown', function(e) {
     var kc = e.keyCode, n, id;
-    if (!_inspecting) return;
+    if (!_inspecting || !_target) return;
 
     // esc key closes (unless in an editing mode)
     if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
       turnOff();
       return;
     }
-
 
     if (_pinned && !gui.getInputElement()) {
       // an element is selected and user is not editing text
@@ -126,6 +137,7 @@ function InspectionControl(model, ext, mouse) {
   });
 
   function getSwitchHandler(diff) {
+    // function for switching between multiple hover shapes
     return function() {
       var i = (_hoverIds || []).indexOf(_highId);
       var nextId;

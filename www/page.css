@@ -716,7 +716,7 @@ img.pin-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.active):not(.pinned) img.unpinned {
+.pinnable:not(.pinned) img.unpinned {
 	opacity: 0.2;
 }
 
@@ -729,9 +729,9 @@ img.pin-btn {
 	opacity: 0;
 }
 
-.pinnable.active img.unpinned,
 img.close-btn:hover,
-.pinnable.pinned img.pinned {
+.pinnable.pinned.active img.unpinned,
+.pinnable.pinned:not(.active) img.pinned {
 	opacity: 1
 }
 

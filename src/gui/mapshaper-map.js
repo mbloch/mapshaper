@@ -54,6 +54,7 @@ function MshpMap(model) {
 
     _activeLyr = getMapLayer(e.layer, e.dataset);
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
+    _activeLyr.active = true;
     _inspector.updateLayer(_activeLyr);
 
     fullBounds = getVisibleBounds();
@@ -65,12 +66,9 @@ function MshpMap(model) {
     } else {
       _needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
-
-    // set 'home' extent to match bounds of active group
-    _ext.setBounds(fullBounds);
-
+    updateFullExtent();
     if (_needReset) {
-      // zoom to full view of the active layer and redraw
+      // zoom to full view and redraw
       _ext.reset(true);
     } else {
       // refresh without navigating
@@ -88,6 +86,11 @@ function MshpMap(model) {
     }
     _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
+
+  // update 'home' button extent
+  function updateFullExtent() {
+    _ext.setBounds(getVisibleBounds());
+  }
 
   function initMap() {
     var el = El('#map-layers').node();
@@ -140,33 +143,50 @@ function MshpMap(model) {
     return b;
   }
 
-  this.isVisibleLayer = function(lyr) {
-    return this.isActiveLayer(lyr) || this.isReferenceLayer(lyr);
+  function isVisibleLayer(lyr) {
+    if (isActiveLayer(lyr)) {
+      return lyr.visibility != 'hidden';
+    }
+    return lyr.visibility == 'visible';
+  }
+
+  this.setLayerVisibility = function(target, isVisible) {
+    var lyr = target.layer;
+    if (isActiveLayer(lyr)) {
+      _inspector.updateLayer(isVisible ? _activeLyr : null);
+      lyr.visibility = isVisible ? undefined : 'hidden';
+    } else {
+      lyr.visibility = isVisible ? 'visible' : 'hidden';
+      if (isVisible) addReferenceLayer(lyr, target.dataset);
+      else removeReferenceLayer(lyr);
+    }
   };
 
+  this.isActiveLayer = isActiveLayer;
+  this.isVisibleLayer = isVisibleLayer;
 
-  this.isActiveLayer = function(lyr) {
+  function isActiveLayer(lyr) {
     return lyr == _activeLyr.source.layer;
-  };
+  }
 
-  this.isReferenceLayer = function(lyr) {
+  function isReferenceLayer(lyr) {
     return _referenceLayers.filter(function(o) {
       return o.source.layer == lyr;
     }).length > 0;
-  };
+  }
 
-  this.removeReferenceLayer = function(lyr) {
+  function removeReferenceLayer(lyr) {
     _referenceLayers = _referenceLayers.filter(function(o) {
       return o.source.layer != lyr;
     });
-  };
+  }
 
-  this.addReferenceLayer = function(lyr, dataset) {
-    if (this.isReferenceLayer(lyr)) return;
+  function addReferenceLayer(lyr, dataset) {
+    if (isReferenceLayer(lyr)) return;
     if (lyr && internal.layerHasGeometry(lyr)) {
       _referenceLayers.push(getMapLayer(lyr, dataset));
     }
-  };
+  }
 
   this.redraw = drawLayers;
 
@@ -177,21 +197,26 @@ function MshpMap(model) {
   }
 
   function getDrawableLayers() {
+    var layers = [];
     // delete any layers that have been dropped from the catalog
     updateReferenceLayers();
+    if (isVisibleLayer(_activeLyr.source.layer)) {
+      layers.push(_activeLyr);
+    }
     if (_activeLyr.tabular) {
        // don't show reference layers if active layer is displayed as a table
-      return [_activeLyr];
+      return layers;
     }
     // concat active and reference layers, excluding dupes
-    return [_activeLyr].concat(_referenceLayers.filter(function(o) {
+    return layers.concat(_referenceLayers.filter(function(o) {
       return o.source.layer != _activeLyr.source.layer && o.geographic;
     }));
   }
 
   function updateLayerStyles(layers) {
     layers.forEach(function(mapLayer, i) {
-      if (i === 0) {
+      if (mapLayer.active) {
+        // style is already assigned
         if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
@@ -200,13 +225,10 @@ function MshpMap(model) {
             strokeColors: [null, mapLayer.style.strokeColors[1]]
           }, mapLayer.style);
         }
-        mapLayer.active = true;
       } else {
         if (mapLayer.layer == _activeLyr.layer) {
           console.error("Error: shared map layer");
         }
-        mapLayer.active = false;
-        // reference style
         mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
       }
     });
@@ -224,6 +246,7 @@ function MshpMap(model) {
     // draw active and reference layers
     var layers = getDrawableLayers();
     if (!onlyNav) {
+      updateFullExtent(); // kludge to handle layer visibility toggling
       _ext.setFrame(findMapFrame() || null);
       updateLayerStyles(layers);
       // update stack_id property of all layers
