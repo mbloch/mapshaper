@@ -48,7 +48,7 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
     'font-size': fontSize,
     'font-family': 'sans-serif',
     'text-anchor': halign == 'left' ? 'start': 'end',
-    'alignment-baseline': 'hanging'
+    'dominant-baseline': 'hanging' // NOT alignment-baseline
   };
   var labelObj = SVG.symbolRenderers.label(labelOpts, anchorX, anchorY)[0]; // TODO: don't align to font baseline
   var g = {
