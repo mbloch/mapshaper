@@ -32,7 +32,13 @@ function LayerStack(container, ext, mouse) {
   };
 
   this.drawFurnitureLayers = function(layers, onlyNav) {
-    // TODO
+    layers.forEach(function(target) {
+      if (onlyNav) {
+        _svg.reposition(target, 'furniture');
+      } else {
+        _svg.drawLayer(target, 'furniture');
+      }
+    });
   };
 
   function layerUsesCanvas(layer) {
@@ -53,10 +59,16 @@ function LayerStack(container, ext, mouse) {
   }
 
   function drawSvgLayer(target, onlyNav) {
+    var type;
+    if (internal.layerHasLabels(target.layer)) {
+      type = 'label';
+    } else if (internal.layerHasSvgSymbols(target.layer)) {
+      type = 'symbol';
+    }
     if (onlyNav) {
-      _svg.reposition(target);
+      _svg.reposition(target, type);
     } else {
-      _svg.drawLayer(target);
+      _svg.drawLayer(target, type);
     }
   }
 

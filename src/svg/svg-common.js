@@ -26,7 +26,7 @@ SVG.propertiesBySymbolType = {
   polyline: utils.arrayToIndex(SVG.commonProperties),
   point: utils.arrayToIndex(SVG.commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(SVG.commonProperties.concat(
-    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,alignment-baseline'.split(',')))
+    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
 };
 
 SVG.findPropertiesBySymbolGeom = function(fields, type) {

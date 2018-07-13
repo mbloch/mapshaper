@@ -2,6 +2,7 @@
 mapshaper-gui-lib
 mapshaper-svg-labels
 mapshaper-svg-symbols
+mapshaper-svg-furniture
 */
 
 function SvgDisplayLayer(ext, mouse) {
@@ -17,12 +18,12 @@ function SvgDisplayLayer(ext, mouse) {
 
   el.clear = clear;
 
-  el.reposition = function(target) {
+  el.reposition = function(target, type) {
     resize(ext);
-    reposition(target, ext);
+    reposition(target, type, ext);
   };
 
-  el.drawLayer = function(target) {
+  el.drawLayer = function(target, type) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var html = '';
     // assign a unique id so layer can be identified when symbols are repositioned
@@ -30,15 +31,17 @@ function SvgDisplayLayer(ext, mouse) {
     g.setAttribute('id', id);
     target.svg_id = id;
     resize(ext);
-    if (internal.layerHasLabels(target.layer)) {
+    if (type == 'label') {
       html = renderLabels(target.layer, ext);
-    } else if (internal.layerHasSvgSymbols(target.layer)) {
+    } else if (type == 'symbol') {
       html = renderSymbols(target.layer, ext);
+    } else if (type == 'furniture') {
+      html = renderFurniture(target.layer, ext);
     }
     g.innerHTML = html;
     svg.append(g);
     // TODO: support mouse dragging on symbol layers
-    if (target.active && internal.layerHasLabels(target.layer)) {
+    if (target.active && type == 'label') {
       activeLayer = target.layer;
     } else {
       g.style.pointerEvents = 'none';
@@ -246,12 +249,14 @@ function SvgDisplayLayer(ext, mouse) {
     return textNode.childNodes.length > 1;
   }
 
-  function reposition(target, ext) {
+  function reposition(target, type, ext) {
     var container = document.getElementById(target.svg_id);
-    if (internal.layerHasLabels(target.layer)) {
+    if (type == 'label') {
       repositionLabels(container, target.layer, ext);
-    } else if (internal.layerHasSvgSymbols(target.layer)) {
+    } else if (type == 'symbol') {
       repositionSymbols(container, target.layer, ext);
+    } else if (type == 'furniture') {
+      repositionFurniture(container, target.layer, ext);
     }
   }
 

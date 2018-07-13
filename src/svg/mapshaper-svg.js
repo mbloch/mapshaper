@@ -92,7 +92,7 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
   }
 
   // add default text properties to layers with labels
-  if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr)) {
+  if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr) || internal.layerHasFurniture(lyr)) {
     layerObj.properties['font-family'] = 'sans-serif';
     layerObj.properties['font-size'] = '12';
     layerObj.properties['text-anchor'] = 'middle';

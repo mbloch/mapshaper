@@ -104,6 +104,10 @@ function MapExtent(_position) {
     _frame = frame || null;
   };
 
+  this.getFrame = function() {
+    return _frame || null;
+  };
+
   this.getSymbolScale = function() {
     if (!_frame) return 0;
     var bounds = new Bounds(_frame.bbox);
