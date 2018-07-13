@@ -13,7 +13,7 @@ utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
-      _referenceLayers = [],
+      _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
       _needReset = false,
       _ext, _inspector, _stack;
@@ -56,8 +56,8 @@ function MshpMap(model) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
     _inspector.updateLayer(_activeLyr);
-
-    fullBounds = getVisibleBounds();
+    updateVisibleMapLayers();
+    fullBounds = getFullBounds();
 
     if (!prevLyr) {
       _needReset = true;
@@ -66,7 +66,7 @@ function MshpMap(model) {
     } else {
       _needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
-    updateFullExtent();
+    _ext.setBounds(fullBounds); // update 'home' button extent
     if (_needReset) {
       // zoom to full view and redraw
       _ext.reset(true);
@@ -86,11 +86,6 @@ function MshpMap(model) {
     }
     _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
-
-  // update 'home' button extent
-  function updateFullExtent() {
-    _ext.setBounds(getVisibleBounds());
-  }
 
   function initMap() {
     var el = El('#map-layers').node();
@@ -128,16 +123,12 @@ function MshpMap(model) {
       flags.slice || flags.affine || flags.rectangle || false;
   }
 
-  // Remove layers that have been deleted from the catalog
-  function updateReferenceLayers() {
-    _referenceLayers = _referenceLayers.filter(function(o) {
-      return !!model.findLayer(o.source.layer);
-    });
-  }
-
-  function getVisibleBounds() {
+  function getFullBounds() {
     var b = new Bounds();
-    getDrawableLayers().forEach(function(lyr) {
+    if (isFrameView()) {
+      return internal.getFrameLayerBounds(internal.findFrameLayer(model));
+    }
+    getDrawableContentLayers().forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
     });
     return b;
@@ -150,15 +141,15 @@ function MshpMap(model) {
     return lyr.visibility == 'visible';
   }
 
+  function isVisibleDataLayer(lyr) {
+    return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
+  }
+
   this.setLayerVisibility = function(target, isVisible) {
     var lyr = target.layer;
+    lyr.visibility = isVisible ? 'visible' : 'hidden';
     if (isActiveLayer(lyr)) {
       _inspector.updateLayer(isVisible ? _activeLyr : null);
-      lyr.visibility = isVisible ? undefined : 'hidden';
-    } else {
-      lyr.visibility = isVisible ? 'visible' : 'hidden';
-      if (isVisible) addReferenceLayer(lyr, target.dataset);
-      else removeReferenceLayer(lyr);
     }
   };
 
@@ -166,51 +157,65 @@ function MshpMap(model) {
   this.isVisibleLayer = isVisibleLayer;
 
   function isActiveLayer(lyr) {
-    return lyr == _activeLyr.source.layer;
+    return _activeLyr && lyr == _activeLyr.source.layer || false;
   }
 
-  function isReferenceLayer(lyr) {
-    return _referenceLayers.filter(function(o) {
-      return o.source.layer == lyr;
-    }).length > 0;
+  // called by layer menu after layer visibility is updated
+  this.redraw = function() {
+    updateVisibleMapLayers();
+    drawLayers();
+  };
+
+  function isTableView() {
+    return !!_activeLyr.tabular;
   }
 
-  function removeReferenceLayer(lyr) {
-    _referenceLayers = _referenceLayers.filter(function(o) {
-      return o.source.layer != lyr;
+  function isFrameView() {
+    var frameLyr = internal.findFrameLayer(model);
+    return !isTableView() && frameLyr && isVisibleLayer(frameLyr);
+  }
+
+  function getFrameData() {
+    var frameLyr = internal.findFrameLayer(model);
+    return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+  }
+
+  function updateVisibleMapLayers() {
+    var layers = [];
+    model.getLayers().forEach(function(o) {
+      if (!isVisibleLayer(o.layer)) return;
+      if (isActiveLayer(o.layer)) {
+        layers.push(_activeLyr);
+      } else if (!isTableView()) {
+        layers.push(getMapLayer(o.layer, o.dataset));
+      }
+    });
+    _visibleLayers = layers;
+  }
+
+  function getVisibleMapLayers() {
+    return _visibleLayers;
+  }
+
+  function findActiveLayer(layers) {
+    return layers.filter(function(o) {
+      return o == _activeLyr;
     });
   }
 
-  function addReferenceLayer(lyr, dataset) {
-    if (isReferenceLayer(lyr)) return;
-    if (lyr && internal.layerHasGeometry(lyr)) {
-      _referenceLayers.push(getMapLayer(lyr, dataset));
-    }
+  function getDrawableContentLayers() {
+    var layers = getVisibleMapLayers();
+    if (isTableView()) return findActiveLayer(layers);
+    return layers.filter(function(o) {
+      return !!o.geographic;
+    });
   }
 
-  this.redraw = drawLayers;
-
-  function findMapFrame() {
-    return getDrawableLayers().reduce(function(memo, lyr) {
-      return memo || internal.getFrameData(lyr.source.layer, lyr.source.dataset);
-    }, null);
-  }
-
-  function getDrawableLayers() {
-    var layers = [];
-    // delete any layers that have been dropped from the catalog
-    updateReferenceLayers();
-    if (isVisibleLayer(_activeLyr.source.layer)) {
-      layers.push(_activeLyr);
-    }
-    if (_activeLyr.tabular) {
-       // don't show reference layers if active layer is displayed as a table
-      return layers;
-    }
-    // concat active and reference layers, excluding dupes
-    return layers.concat(_referenceLayers.filter(function(o) {
-      return o.source.layer != _activeLyr.source.layer && o.geographic;
-    }));
+  function getDrawableFurnitureLayers(layers) {
+    if (!isFrameView()) return [];
+    return getVisibleMapLayers().filter(function(o) {
+      return internal.isFurnitureLayer(o);
+    });
   }
 
   function updateLayerStyles(layers) {
@@ -236,28 +241,29 @@ function MshpMap(model) {
 
   function sortMapLayers(layers) {
     layers.sort(function(a, b) {
-      // assume that each layer has a stack_id (assigned by updateLayerStackOrde())
+      // assume that each layer has a stack_id (assigned by updateLayerStackOrder())
       return a.source.layer.stack_id - b.source.layer.stack_id;
     });
   }
 
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
-    // draw active and reference layers
-    var layers = getDrawableLayers();
+    var contentLayers = getDrawableContentLayers();
+    var furnitureLayers = getDrawableFurnitureLayers();
     if (!onlyNav) {
-      updateFullExtent(); // kludge to handle layer visibility toggling
-      _ext.setFrame(findMapFrame() || null);
-      updateLayerStyles(layers);
+      _ext.setBounds(getFullBounds()); // kludge to handle layer visibility toggling
+      _ext.setFrame(isFrameView() ? getFrameData() : null);
+      updateLayerStyles(contentLayers);
       // update stack_id property of all layers
       internal.updateLayerStackOrder(model.getLayers());
     }
-    sortMapLayers(layers);
-    _stack.drawLayers(layers, onlyNav);
+    sortMapLayers(contentLayers);
+    _stack.drawContentLayers(contentLayers, onlyNav);
     // draw intersection dots
     _stack.drawOverlay2Layer(_intersectionLyr);
     // draw hover & selection effects
     _stack.drawOverlayLayer(_overlayLyr);
+    _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
   }
 }
 

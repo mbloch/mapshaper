@@ -110,7 +110,7 @@ internal.projectDataset = function(dataset, src, dest, opts) {
 
 internal.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
-  var clampSrc = src.is_latlong;
+  var clampSrc = internal.isLatLngCRS(src);
   return function(x, y) {
     var xy;
     if (clampSrc) {

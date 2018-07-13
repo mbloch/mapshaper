@@ -72,7 +72,9 @@ gui.startEditing = function() {
       dataLoaded = true;
       El('#mode-buttons').show();
       if (importOpts.display_all) {
-        model.forEachLayer(map.addReferenceLayer.bind(map));
+        model.getLayers().forEach(function(o) {
+          map.setLayerVisibility(o, true);
+        });
       }
     }
   });

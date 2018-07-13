@@ -165,6 +165,21 @@ function ShpRecordClass(type) {
       if (xy.length != j) error('Counting error');
     },
 
+    // TODO: consider switching to this simpler functino
+    stream2: function(sink) {
+      var sizes = this.readPartSizes(),
+          bin = this._data().skipBytes(this._xypos()),
+          i = 0, n;
+      while (i < sizes.length) {
+        n = sizes[i];
+        while (n-- > 0) {
+          sink.addPoint(bin.readFloat64(), bin.readFloat64());
+        }
+        sink.endPath();
+        i++;
+      }
+    },
+
     read: function() {
       var parts = [],
           sizes = this.readPartSizes(),

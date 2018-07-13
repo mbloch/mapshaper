@@ -16,7 +16,7 @@ function LayerStack(container, ext, mouse) {
     drawSingleCanvasLayer(lyr, _overlayCanv);
   };
 
-  this.drawLayers = function(layers, onlyNav) {
+  this.drawContentLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
     if (!onlyNav) {
       _svg.clear();
@@ -29,6 +29,10 @@ function LayerStack(container, ext, mouse) {
         drawSvgLayer(target, onlyNav);
       }
     });
+  };
+
+  this.drawFurnitureLayers = function(layers, onlyNav) {
+    // TODO
   };
 
   function layerUsesCanvas(layer) {

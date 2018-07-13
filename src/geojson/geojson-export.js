@@ -98,7 +98,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
 internal.getRFC7946Warnings = function(dataset) {
   var P = internal.getDatasetCRS(dataset);
   var str;
-  if (!P || !P.is_latlong) {
+  if (!P || !internal.isLatLngCRS(P)) {
     str = 'RFC 7946 warning: non-WGS84 coordinates.';
     if (P) str += ' Use "-proj wgs84" to convert.';
   }
@@ -107,7 +107,7 @@ internal.getRFC7946Warnings = function(dataset) {
 
 internal.getDatasetBbox = function(dataset, rfc7946) {
   var P = internal.getDatasetCRS(dataset),
-      wrapped = rfc7946 && P && P.is_latlong,
+      wrapped = rfc7946 && P && internal.isLatLngCRS(P),
       westBounds = new Bounds(),
       eastBounds = new Bounds(),
       mergedBounds, gutter, margins, bbox;
@@ -267,7 +267,7 @@ internal.exportCRS = function(dataset, jsonObj) {
   if (!info.crs && 'input_geojson_crs' in info) {
     // use input geojson crs if available and coords have not changed
     jsonObj.crs = info.input_geojson_crs;
-  } else if (info.crs && !info.crs.is_latlong) {
+  } else if (info.crs && !internal.isLatLngCRS(info.crs)) {
     // Setting output crs to null if coords have been projected
     // "If the value of CRS is null, no CRS can be assumed"
     // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects

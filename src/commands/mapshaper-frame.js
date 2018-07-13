@@ -1,8 +1,8 @@
-/* @require mapshaper-rectangle */
+/* @require mapshaper-rectangle, mapshaper-projections, mapshaper-furniture */
 
-api.frame = function(source, opts) {
+api.frame = function(catalog, source, opts) {
   var width = Number(opts.width);
-  var height, dataset, bounds;
+  var height, bounds, tmp, dataset;
   if (width > 0 === false) {
     stop("Missing a width");
   }
@@ -12,35 +12,101 @@ api.frame = function(source, opts) {
       var height = Number(opt);
       if (!opt) return '';
       if (height > 0 === false) {
-        stop('missing a valid height');
+        stop('Missing a valid height');
       }
       return width / height;
     }).join(',');
   }
-  dataset = api.rectangle(source, opts);
-  bounds = internal.getDatasetBounds(dataset);
+  tmp = api.rectangle(source, opts);
+  bounds = internal.getDatasetBounds(tmp);
+  if (internal.probablyDecimalDegreeBounds(bounds)) {
+    stop('Frames require projected, not geographical coordinates');
+  }
   height = width * bounds.height() / bounds.width();
-  dataset.layers[0].data = new DataTable([{
-    width: width,
-    height: height,
-    type: 'frame'
-  }]);
-  if (!opts.name) {
-    dataset.layers[0].name = 'frame';
-  }
-  return dataset;
+  dataset = {info: {}, layers:[{
+    name: opts.name || 'frame',
+    data: new DataTable([{
+      width: width,
+      height: height,
+      bbox: bounds.toArray(),
+      type: 'frame'
+    }])
+  }]};
+  // return dataset;
+  catalog.addDataset(dataset);
 };
 
-internal.layerIsFrame = function(lyr) {
-  var rec = lyr.data && lyr.data.size() == 1 && lyr.data.getRecordAt(0) || {};
-  return rec.type == 'frame' && rec.width > 0 && rec.height > 0;
+
+internal.getDatasetDisplayBounds = function(dataset) {
+  var frameLyr = findFrameLayerInDataset(dataset);
+  if (frameLyr) {
+    // TODO: check for coordinate issues (non-intersection with other layers, etc)
+    return internal.getFrameLayerBounds(frameLyr);
+  }
+  return internal.getDatasetBounds(dataset);
 };
 
-internal.getFrameData = function(lyr, dataset) {
-  var o = null;
-  if (internal.layerIsFrame(lyr) && dataset) {
-    o = internal.copyRecord(lyr.data.getRecordAt(0));
-    o.bounds = internal.getLayerBounds(lyr, dataset.arcs);
+// @lyr dataset layer
+internal.isFrameLayer = function(lyr) {
+  return internal.getFurnitureLayerType(lyr) == 'frame';
+};
+
+internal.findFrameLayerInDataset = function(dataset) {
+  return utils.find(dataset.layers, function(lyr) {
+    return internal.isFrameLayer(lyr);
+  });
+};
+
+internal.findFrameDataset = function(catalog) {
+  var target = utils.find(catalog.getLayers(), function(o) {
+    return internal.isFrameLayer(o.layer);
+  });
+  return target ? target.dataset : null;
+};
+
+internal.findFrameLayer = function(catalog) {
+  var target = utils.find(catalog.getLayers(), function(o) {
+    return internal.isFrameLayer(o.layer);
+  });
+  return target && target.layer || null;
+};
+
+internal.getFrameLayerBounds = function(lyr) {
+  return new Bounds(internal.getFurnitureLayerData(lyr).bbox);
+};
+
+
+
+// @data frame data, including crs property if available
+// Returns a single value: the ratio or
+internal.getMapFrameMetersPerPixel = function(data) {
+  var bounds = new Bounds(data.bbox);
+  var k, toMeters, metersPerPixel;
+  if (data.crs) {
+    // TODO: handle CRS without inverse projections
+    // scale factor is the ratio of coordinate distance to true distance at a point
+    k = internal.getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
+    toMeters = data.crs.to_meter;
+  } else {
+    k = 1;
+    toMeters = 1;
+    message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
   }
-  return o;
+  metersPerPixel = bounds.width() / k * toMeters / data.width;
+  return metersPerPixel;
+};
+
+SVG.furnitureRenderers.frame = function(d) {
+  var lineWidth = 1,
+      // inset stroke by half of line width
+      off = lineWidth / 2,
+      obj = SVG.importPolygon([[[off, off], [off, d.height - off],
+        [d.width - off, d.height - off],
+        [d.width - off, off], [off, off]]]);
+  utils.extend(obj.properties, {
+      fill: 'none',
+      stroke: 'black',
+      'stroke-width': lineWidth
+  });
+  return [obj];
 };

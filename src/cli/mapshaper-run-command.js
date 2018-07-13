@@ -36,6 +36,7 @@ mapshaper-rectangle
 mapshaper-rename-layers
 mapshaper-require
 mapshaper-run
+mapshaper-scalebar
 mapshaper-shape
 mapshaper-simplify
 mapshaper-split
@@ -177,7 +178,7 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'frame') {
-      catalog.addDataset(api.frame(source, opts));
+      api.frame(catalog, source, opts);
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
@@ -289,6 +290,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'run') {
       api.run(targets, catalog, opts, done);
       return;
+
+    } else if (name == 'scalebar') {
+      api.scalebar(catalog, opts);
 
     } else if (name == 'shape') {
       catalog.addDataset(api.shape(opts));

@@ -323,7 +323,7 @@ function LayerControl(model, map) {
   }
 
   function isPinnable(lyr) {
-    return internal.layerHasGeometry(lyr);
+    return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
   }
 
 

@@ -101,6 +101,27 @@ internal.getDatasetCRS = function(dataset) {
   return P;
 };
 
+// Assumes conformal projections; consider returning average of vertical and
+// horizontal scale factors.
+// x, y: a point location in projected coordinates
+// Returns k, the ratio of coordinate distance to distance on the ground
+internal.getScaleFactorAtXY = function(x, y, crs) {
+  var proj = require('mproj');
+  var dist = 1;
+  var lp = proj.pj_inv_deg({x: x, y: y}, crs);
+  var lp2 = proj.pj_inv_deg({x: x + dist, y: y}, crs);
+  var k = dist / greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+  return k;
+};
+
+internal.isProjectedCRS = function(P) {
+  return P && P.is_latlong || false;
+};
+
+internal.isLatLngCRS = function(P) {
+  return P && P.is_latlong || false;
+};
+
 internal.printProjections = function() {
   var index = require('mproj').internal.pj_list;
   var msg = 'Proj4 projections\n';

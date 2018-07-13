@@ -18,13 +18,20 @@ function getMapLayer(layer, dataset) {
     dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
   }
 
-  if (obj.empty) {
+  if (internal.layerHasFurniture(layer)) {
+    obj.furniture = true;
+    obj.furniture_type = internal.getFurnitureLayerType(layer);
+    obj.layer = layer;
+    // treating furniture labels as tabular for now, so there is something
+    // to show if they are selected
+    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
+    obj.tabular = true;
+  } else if (obj.empty) {
     obj.layer = {shapes: []}; // ideally we should avoid empty layers
   } else if (!layer.geometry_type) {
     utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
     obj.tabular = true;
   } else {
-    obj.frame = dataset.info && dataset.info.frame || null;
     obj.geographic = true;
     obj.layer = layer;
     obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence

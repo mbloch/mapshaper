@@ -35,6 +35,7 @@ internal.importShp = function(shp, shx, opts) {
       importer.importPoints(shp.readPoints());
     } else {
       shp.stream(importer);
+      // shp.stream2(importer);
     }
   });
 

@@ -5,7 +5,6 @@ function getSvgSymbolTransform(xy, ext) {
   return internal.svg.getTransform(p, scale);
 }
 
-
 function repositionSymbols(container, layer, ext) {
   var fwd = ext.getTransform();
   var symbols = El.findAll('.mapshaper-svg-symbol', container);

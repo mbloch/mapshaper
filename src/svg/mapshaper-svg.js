@@ -51,8 +51,21 @@ internal.transformCoordsForSVG = function(dataset, opts) {
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
   var layerObj = internal.getEmptyLayerForSVG(lyr, opts);
-  layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+  if (internal.layerHasFurniture(lyr)) {
+    layerObj.children = internal.exportFurnitureForSVG(lyr, dataset, opts);
+  } else {
+    layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+  }
   return layerObj;
+};
+
+internal.exportFurnitureForSVG = function(lyr, dataset, opts) {
+  var frameLyr = internal.findFrameLayerInDataset(dataset);
+  var frameData;
+  if (!frameLyr) return [];
+  frameData = internal.getFurnitureLayerData(frameLyr);
+  frameData.crs = internal.getDatasetCRS(dataset); // required by e.g. scalebar
+  return SVG.importFurniture(internal.getFurnitureLayerData(lyr), frameData);
 };
 
 internal.exportSymbolsForSVG = function(lyr, dataset, opts) {

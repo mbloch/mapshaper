@@ -1,10 +1,19 @@
-/* @require mapshaper-dataset-utils */
+/* @require mapshaper-dataset-utils mapshaper-furniture */
 
 internal.transformDatasetToPixels = function(dataset, opts) {
-  var bounds = internal.getDatasetBounds(dataset),
-      bounds2 = internal.calcOutputSizeInPixels(bounds, opts),
-      fwd = bounds.getTransform(bounds2, opts.invert_y);
-
+  var frameLyr = internal.findFrameLayerInDataset(dataset);
+  var bounds, bounds2, fwd, frameData;
+  if (frameLyr) {
+    // TODO: handle options like width, height margin when a frame is present
+    // TODO: check that aspect ratios match
+    frameData = internal.getFurnitureLayerData(frameLyr);
+    bounds = new Bounds(frameData.bbox);
+    bounds2 = new Bounds(0, 0, frameData.width, frameData.height);
+  } else {
+    bounds = internal.getDatasetBounds(dataset);
+    bounds2 = internal.calcOutputSizeInPixels(bounds, opts);
+  }
+  fwd = bounds.getTransform(bounds2, opts.invert_y);
   internal.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
