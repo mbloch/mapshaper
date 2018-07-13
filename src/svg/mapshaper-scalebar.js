@@ -14,24 +14,54 @@ api.scalebar = function(catalog, opts) {
   frame.layers.push(lyr);
 };
 
-SVG.furnitureRenderers.scalebar = function(d, frame) {
-  var metersPerPx = internal.getMapFrameMetersPerPixel(frame);
-  var label = d.label && d.label != 'auto' ? d.label : internal.getAutoScalebarLabel(frame.width, metersPerPx);
-  var scalebarKm = internal.parseScalebarLabelToKm(label);
-  var scalebarPx = Math.round(scalebarKm / metersPerPx * 1000);
-  var barHeight = 3;
-  var labelOffs = 4;
-  var fontSize = 13;
-  var height = barHeight + labelOffs + fontSize;
-  var valign = 'bottom';
-  var halign = 'left';
-  var voffs = 8;
-  var hoffs = 8;
-  var anchorX = halign == 'left' ? 0 : scalebarPx;
-  var anchorY = barHeight + labelOffs; // TODO: support label-above
+// TODO: generalize to other kinds of furniture as they are developed
+internal.getScalebarPosition = function(d) {
+  var opts = { // defaults
+    valign: 'top',
+    halign: 'left',
+    voffs: 10,
+    hoffs: 10
+  };
+  if (+d.left > 0) {
+    opts.hoffs = +d.left;
+  }
+  if (+d.top > 0) {
+    opts.voffs = +d.top;
+  }
+  if (+d.right > 0) {
+    opts.hoffs = +d.right;
+    opts.halign = 'right';
+  }
+  if (+d.bottom > 0) {
+    opts.voffs = +d.bottom;
+    opts.valign = 'bottom';
+  }
+  return opts;
+};
 
-  if (!scalebarPx || scalebarPx < 10 || scalebarPx > frame.width  * 0.7) {
-    stop("Invalid scalebar length:", scalebarPx);
+SVG.furnitureRenderers.scalebar = function(d, frame) {
+  var pos = internal.getScalebarPosition(d);
+  var metersPerPx = internal.getMapFrameMetersPerPixel(frame);
+  var label = d.label_text || internal.getAutoScalebarLabel(frame.width, metersPerPx);
+  var scalebarKm = internal.parseScalebarLabelToKm(label);
+  var barHeight = 3;
+  var labelOffs = 1;
+  var fontSize = +d.font_size || 13;
+  var width = Math.round(scalebarKm / metersPerPx * 1000);
+  var height = barHeight + labelOffs + fontSize;
+  var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
+  var anchorX = pos.halign == 'left' ? 0 : width;
+  var anchorY = barHeight + labelOffs;
+  var dx = pos.halign == 'right' ? frame.width - width - pos.hoffs : pos.hoffs;
+  var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
+
+  if (labelPos == 'top') {
+    anchorY = -labelOffs;
+    dy += labelOffs + fontSize;
+  }
+
+  if (!width || width < 10 || width > frame.width  * 0.7) {
+    stop("Invalid scalebar length:", width);
   }
   var barObj = {
     tag: 'rect',
@@ -39,23 +69,22 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
       fill: 'black',
       x: 0,
       y: 0,
-      width: scalebarPx,
+      width: width,
       height: barHeight
     }
   };
   var labelOpts = {
-    'label-text': label,
-    'font-size': fontSize,
-    'font-family': 'sans-serif',
-    'text-anchor': halign == 'left' ? 'start': 'end',
-    'dominant-baseline': 'hanging' // NOT alignment-baseline
-  };
+      'label-text': label,
+      'font-size': fontSize,
+      'text-anchor': pos.halign == 'left' ? 'start': 'end',
+      'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge' // NOT alignment-baseline
+    };
   var labelObj = SVG.symbolRenderers.label(labelOpts, anchorX, anchorY)[0]; // TODO: don't align to font baseline
   var g = {
     tag: 'g',
     children: [barObj, labelObj],
     properties: {
-      transform: 'translate(' + hoffs + ' ' + voffs + ')'
+      transform: 'translate(' + dx + ' ' + dy + ')'
     }
   };
   return [g];

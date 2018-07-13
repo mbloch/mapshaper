@@ -1077,9 +1077,16 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command("scalebar");
+  parser.command("scalebar")
     // .describe()
-    // TODO: add options: left,top,right,bottom,label,etc.
+    .option("top", {})
+    .option("right", {})
+    .option("bottom", {})
+    .option("left", {})
+    .option("font-size", {})
+    // .option("font-family", {})
+    .option("label-position", {}) // top or bottom
+    .option("label-text", {});
 
   parser.command("shape")
     .describe("create a polyline or polygon from coordinates")
