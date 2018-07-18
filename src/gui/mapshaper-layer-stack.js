@@ -6,6 +6,7 @@ function LayerStack(container, ext, mouse) {
       _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
       _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
       _svg = new SvgDisplayLayer(ext, mouse).appendTo(el), // labels, _ext;
+      _furniture = new SvgDisplayLayer(ext).appendTo(el),  // scalebar, etc
       _ext = ext;
 
   this.drawOverlay2Layer = function(lyr) {
@@ -32,11 +33,14 @@ function LayerStack(container, ext, mouse) {
   };
 
   this.drawFurnitureLayers = function(layers, onlyNav) {
+    if (!onlyNav) {
+      _furniture.clear();
+    }
     layers.forEach(function(target) {
       if (onlyNav) {
-        _svg.reposition(target, 'furniture');
+        _furniture.reposition(target, 'furniture');
       } else {
-        _svg.drawLayer(target, 'furniture');
+        _furniture.drawLayer(target, 'furniture');
       }
     });
   };

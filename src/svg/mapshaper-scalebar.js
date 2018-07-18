@@ -60,8 +60,8 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
     dy += labelOffs + fontSize;
   }
 
-  if (!width || width < 10 || width > frame.width  * 0.7) {
-    stop("Invalid scalebar length:", width);
+  if (width > 0 === false) {
+    stop("Null scalebar length");
   }
   var barObj = {
     tag: 'rect',

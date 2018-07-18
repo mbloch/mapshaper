@@ -76,7 +76,6 @@ internal.getFrameLayerBounds = function(lyr) {
 };
 
 
-
 // @data frame data, including crs property if available
 // Returns a single value: the ratio or
 internal.getMapFrameMetersPerPixel = function(data) {

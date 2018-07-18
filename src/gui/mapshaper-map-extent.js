@@ -4,41 +4,35 @@ function MapExtent(_position) {
   var _scale = 1,
       _cx, _cy, // center in geographic units
       _contentBounds,
+      _self = this,
       _frame;
 
-  _position.on('resize', function() {
-    this.dispatchEvent('change');
-    // this.dispatchEvent('resize');
-  }, this);
+  _position.on('resize', function(e) {
+    onChange({resize: true});
+  });
 
-  this.reset = function(force) {
-    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
+  this.reset = function() {
+    recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
   };
 
-  this.recenter = function(cx, cy, scale, force) {
-    scale = scale ? limitScale(scale) : _scale;
-    if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx;
-      _cy = cy;
-      _scale = scale;
-      this.dispatchEvent('change');
-    }
+  this.home = function() {
+    recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
   };
 
   this.pan = function(xpix, ypix) {
     var t = this.getTransform();
-    this.recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
+    recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
   };
 
-  // Zoom to @scale (a multiple of the map's full scale)
+  // Zoom to @w (width of the map viewport in coordinates)
   // @xpct, @ypct: optional focus, [0-1]...
-  this.rescale = function(scale, xpct, ypct) {
-    scale = limitScale(scale);
+  this.zoomToExtent = function(w, xpct, ypct) {
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
     }
     var b = this.getBounds(),
+        scale = limitScale(b.width() / w * _scale),
         fx = b.xmin + xpct * b.width(),
         fy = b.ymax - ypct * b.height(),
         dx = b.centerX() - fx,
@@ -48,7 +42,11 @@ function MapExtent(_position) {
         dy2 = dy * ds,
         cx = fx + dx2,
         cy = fy + dy2;
-    this.recenter(cx, cy, scale);
+    recenter(cx, cy, scale);
+  };
+
+  this.zoomByPct = function(pct, xpct, ypct) {
+    this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);
   };
 
   this.resize = _position.resize;
@@ -80,16 +78,16 @@ function MapExtent(_position) {
 
   this.getBounds = function() {
     if (!_contentBounds) return new Bounds();
-    return centerAlign(calcBounds(_cx, _cy, _scale));
+    return calcBounds(_cx, _cy, _scale);
   };
 
   // Update the extent of 'full' zoom without navigating the current view
   this.setBounds = function(b) {
     var prev = _contentBounds;
     if (!b.hasBounds()) return; // kludge
-    _contentBounds = b;
+    _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
     if (prev) {
-      _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
+      _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
     } else {
       _cx = b.centerX();
       _cy = b.centerY();
@@ -119,6 +117,21 @@ function MapExtent(_position) {
     return this.getTransform().invert().transform(x, y);
   };
 
+  function recenter(cx, cy, scale, data) {
+    scale = scale ? limitScale(scale) : _scale;
+    if (!(cx == _cx && cy == _cy && scale == _scale)) {
+      _cx = cx;
+      _cy = cy;
+      _scale = scale;
+      onChange(data);
+    }
+  }
+
+  function onChange(data) {
+    data = data || {};
+    _self.dispatchEvent('change', data);
+  }
+
   // stop zooming before rounding errors become too obvious
   function maxScale() {
     var minPixelScale = 1e-16;
@@ -138,31 +151,49 @@ function MapExtent(_position) {
   }
 
   function calcBounds(cx, cy, scale) {
-    var w = _contentBounds.width() / scale,
-        h = _contentBounds.height() / scale;
+    var bounds, w, h;
+    if (_frame) {
+      bounds = fillOutFrameBounds(_frame);
+    } else {
+      bounds = fillOut(_contentBounds);
+    }
+    w = bounds.width() / scale;
+    h = bounds.height() / scale;
     return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
   }
 
-  // Receive: Geographic bounds of content to be centered in the map
-  // Return: Geographic bounds of map window centered on @_contentBounds,
-  //    with padding applied
-  function centerAlign(_contentBounds) {
-    var bounds = _contentBounds.clone(),
-        wpix = _position.width(),
-        hpix = _position.height(),
-        xmarg = 4,
-        ymarg = 4,
-        xpad, ypad;
-    wpix -= 2 * xmarg;
-    hpix -= 2 * ymarg;
+  // Calculate viewport bounds from frame data
+  function fillOutFrameBounds(frame) {
+    var bounds = new Bounds(frame.bbox);
+    var kx = _position.width() / frame.width;
+    var ky = _position.height() / frame.height;
+    bounds.scale(kx, ky);
+    return bounds;
+  }
+
+  function padBounds(b, margin) {
+    var wpix = _position.width() - 2 * margin,
+        hpix = _position.height() - 2 * margin,
+        xpad, ypad, b2;
     if (wpix <= 0 || hpix <= 0) {
       return new Bounds(0, 0, 0, 0);
     }
-    bounds.fillOut(wpix / hpix);
-    xpad = bounds.width() / wpix * xmarg;
-    ypad = bounds.height() / hpix * ymarg;
-    bounds.padBounds(xpad, ypad, xpad, ypad);
-    return bounds;
+    b = b.clone();
+    b2 = b.clone();
+    b2.fillOut(wpix / hpix);
+    xpad = b2.width() / wpix * margin;
+    ypad = b2.height() / hpix * margin;
+    b.padBounds(xpad, ypad, xpad, ypad);
+    return b;
+  }
+
+  // Pad bounds vertically or horizontally to match viewport aspect ratio
+  function fillOut(b) {
+    var wpix = _position.width(),
+        hpix = _position.height();
+    b = b.clone();
+    b.fillOut(wpix / hpix);
+    return b;
   }
 }
 

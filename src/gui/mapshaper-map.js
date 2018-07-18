@@ -15,8 +15,7 @@ function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _needReset = false,
-      _ext, _inspector, _stack;
+      _ext, _inspector, _stack, _nav;
 
   model.on('select', function(e) {
     _intersectionLyr = null;
@@ -27,6 +26,7 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var prevLyr = _activeLyr || null;
     var fullBounds;
+    var needReset;
 
     if (!prevLyr) {
       initMap(); // init map extent, resize events, etc. on first call
@@ -60,20 +60,24 @@ function MshpMap(model) {
     fullBounds = getFullBounds();
 
     if (!prevLyr) {
-      _needReset = true;
+      needReset = true;
     } else if (prevLyr.tabular || _activeLyr.tabular) {
-      _needReset = true;
+      needReset = true;
     } else {
-      _needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
+      needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
+
     _ext.setBounds(fullBounds); // update 'home' button extent
-    if (_needReset) {
-      // zoom to full view and redraw
-      _ext.reset(true);
+
+    if (isFrameView()) {
+      _nav.setZoomFactor(0.05); // 0.03
     } else {
-      // refresh without navigating
-      drawLayers();
+      _nav.setZoomFactor(1);
     }
+    if (needReset) {
+      _ext.reset();
+    }
+    drawLayers();
   });
 
   // Currently used to show dots at line intersections
@@ -92,14 +96,18 @@ function MshpMap(model) {
     var position = new ElementPosition(el);
     var mouse = new MouseArea(el, position);
     _ext = new MapExtent(position);
-    new MapNav(_root, _ext, mouse);
+    _nav = new MapNav(_root, _ext, mouse);
     _stack = new LayerStack(el, _ext, mouse);
     _inspector = new InspectionControl(model, _ext, mouse);
 
-    _ext.on('change', function() {
-      drawLayers(!_needReset);
-      _needReset = false;
+    _ext.on('change', function(e) {
+      if (e.reset) return; // don't need to redraw map here if extent has been reset
+      if (isFrameView()) {
+        updateFrameExtent();
+      }
+      drawLayers(true);
     });
+
     _inspector.on('change', function(e) {
       _overlayLyr = getMapLayerOverlay(_activeLyr, e);
       _stack.drawOverlayLayer(_overlayLyr);
@@ -123,26 +131,30 @@ function MshpMap(model) {
       flags.slice || flags.affine || flags.rectangle || false;
   }
 
+  // Update map frame after user navigates the map in frame edit mode
+  function updateFrameExtent() {
+    var frameLyr = internal.findFrameLayer(model);
+    var rec = frameLyr.data.getRecordAt(0);
+    var viewBounds = _ext.getBounds();
+    var w = viewBounds.width() * rec.width / _ext.width();
+    var h = w * rec.height / rec.width;
+    var cx = viewBounds.centerX();
+    var cy = viewBounds.centerY();
+    rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
+    _ext.setFrame(getFrameData());
+    _ext.setBounds(new Bounds(rec.bbox));
+    _ext.reset();
+  }
+
   function getFullBounds() {
     var b = new Bounds();
-    if (isFrameView()) {
+    if (isPreviewView()) {
       return internal.getFrameLayerBounds(internal.findFrameLayer(model));
     }
     getDrawableContentLayers().forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
     });
     return b;
-  }
-
-  function isVisibleLayer(lyr) {
-    if (isActiveLayer(lyr)) {
-      return lyr.visibility != 'hidden';
-    }
-    return lyr.visibility == 'visible';
-  }
-
-  function isVisibleDataLayer(lyr) {
-    return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
   }
 
   this.setLayerVisibility = function(target, isVisible) {
@@ -156,23 +168,44 @@ function MshpMap(model) {
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
 
-  function isActiveLayer(lyr) {
-    return _activeLyr && lyr == _activeLyr.source.layer || false;
-  }
-
   // called by layer menu after layer visibility is updated
   this.redraw = function() {
     updateVisibleMapLayers();
     drawLayers();
   };
 
-  function isTableView() {
-    return !!_activeLyr.tabular;
+  function isActiveLayer(lyr) {
+    return _activeLyr && lyr == _activeLyr.source.layer || false;
   }
 
+  function isVisibleLayer(lyr) {
+    if (isActiveLayer(lyr)) {
+      return lyr.visibility != 'hidden';
+    }
+    return lyr.visibility == 'visible';
+  }
+
+  function isVisibleDataLayer(lyr) {
+    return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
+  }
+
+  function isFrameLayer(lyr) {
+    return !!(lyr && lyr == internal.findFrameLayer(model));
+  }
+
+  function isTableView() {
+    return !isPreviewView() && !!_activeLyr.tabular;
+  }
+
+  function isPreviewView() {
+    var frameLyr = internal.findFrameLayer(model);
+    return !!frameLyr; //  && isVisibleLayer(frameLyr)
+  }
+
+  // Frame view means frame layer is visible and active (selected)
   function isFrameView() {
     var frameLyr = internal.findFrameLayer(model);
-    return !isTableView() && frameLyr && isVisibleLayer(frameLyr);
+    return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
   }
 
   function getFrameData() {
@@ -212,7 +245,7 @@ function MshpMap(model) {
   }
 
   function getDrawableFurnitureLayers(layers) {
-    if (!isFrameView()) return [];
+    if (!isPreviewView()) return [];
     return getVisibleMapLayers().filter(function(o) {
       return internal.isFurnitureLayer(o);
     });
@@ -251,8 +284,9 @@ function MshpMap(model) {
     var contentLayers = getDrawableContentLayers();
     var furnitureLayers = getDrawableFurnitureLayers();
     if (!onlyNav) {
-      _ext.setBounds(getFullBounds()); // kludge to handle layer visibility toggling
-      _ext.setFrame(isFrameView() ? getFrameData() : null);
+       // kludge to handle layer visibility toggling
+      _ext.setFrame(isPreviewView() ? getFrameData() : null);
+      _ext.setBounds(getFullBounds());
       updateLayerStyles(contentLayers);
       // update stack_id property of all layers
       internal.updateLayerStackOrder(model.getLayers());
@@ -263,7 +297,8 @@ function MshpMap(model) {
     _stack.drawOverlay2Layer(_intersectionLyr);
     // draw hover & selection effects
     _stack.drawOverlayLayer(_overlayLyr);
-    _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
+    // _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
+    _stack.drawFurnitureLayers(furnitureLayers); // re-render on nav, because scalebars
   }
 }
 

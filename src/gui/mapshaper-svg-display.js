@@ -14,7 +14,7 @@ function SvgDisplayLayer(ext, mouse) {
   var activeLayer;
   var activeRecord;
 
-  initDragging();
+  if (mouse) initDragging();
 
   el.clear = clear;
 

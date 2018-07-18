@@ -22,19 +22,21 @@ function getMapLayer(layer, dataset) {
     obj.furniture = true;
     obj.furniture_type = internal.getFurnitureLayerType(layer);
     obj.layer = layer;
-    // treating furniture labels as tabular for now, so there is something
-    // to show if they are selected
-    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
-    obj.tabular = true;
+    // treating furniture layers (other than frame) as tabular for now,
+    // so there is something to show if they are selected
+    obj.tabular = obj.furniture_type != 'frame';
   } else if (obj.empty) {
     obj.layer = {shapes: []}; // ideally we should avoid empty layers
   } else if (!layer.geometry_type) {
-    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
     obj.tabular = true;
   } else {
     obj.geographic = true;
     obj.layer = layer;
     obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence
+  }
+
+  if (obj.tabular) {
+    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
   }
 
   obj.bounds = getDisplayBounds(obj.layer, obj.arcs, obj.tabular);

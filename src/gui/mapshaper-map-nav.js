@@ -17,14 +17,20 @@ function MapNav(root, ext, mouse) {
       buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
-      zoomScale = 2.5,
+      zoomScale = 1.5,
+      zoomScaleMultiplier = 1,
       inBtn, outBtn,
       dragStartEvt,
       _fx, _fy; // zoom foci, [0,1]
 
+  this.setZoomFactor = function(k) {
+    zoomScaleMultiplier = k || 1;
+  };
+
   gui.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
+
   inBtn = gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
   outBtn = gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
 
@@ -33,15 +39,15 @@ function MapNav(root, ext, mouse) {
   });
 
   gui.on('map_reset', function() {
-    ext.reset();
+    ext.home();
   });
 
   zoomTween.on('change', function(e) {
-    ext.rescale(e.value, _fx, _fy);
+    ext.zoomToExtent(e.value, _fx, _fy);
   });
 
   mouse.on('dblclick', function(e) {
-    zoomByPct(zoomScale, e.x / ext.width(), e.y / ext.height());
+    zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
@@ -72,17 +78,17 @@ function MapNav(root, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier),
+    var k = 1 + (0.11 * e.multiplier * zoomScaleMultiplier),
         delta = e.direction > 0 ? k : 1 / k;
-    ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
+    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
-    zoomByPct(zoomScale, 0.5, 0.5);
+    zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
   }
 
   function zoomOut() {
-    zoomByPct(1/zoomScale, 0.5, 0.5);
+    zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
   }
 
   // @box Bounds with pixels from t,l corner of map area.
@@ -96,9 +102,9 @@ function MapNav(root, ext, mouse) {
   // @pct Change in scale (2 = 2x zoom)
   // @fx, @fy zoom focus, [0, 1]
   function zoomByPct(pct, fx, fy) {
+    var w = ext.getBounds().width();
     _fx = fx;
     _fy = fy;
-    zoomTween.start(ext.scale(), ext.scale() * pct, 400);
+    zoomTween.start(w, w / pct, 400);
   }
-
 }
