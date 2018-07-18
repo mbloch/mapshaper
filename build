@@ -17,7 +17,7 @@ var requiredModules = [
 require("catty")({follow: follow})
   .addLibrary("src")
   .cat("src/gui/mapshaper-gui.js", './www/mapshaper-gui.js')
-  .prepend("var VERSION = '" + version + "';")
+  .prepend("VERSION = '" + version + "';")
   .cat("src/mapshaper.js", onCat);
 
 

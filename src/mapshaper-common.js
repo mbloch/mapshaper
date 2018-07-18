@@ -1,6 +1,7 @@
 /* @requires mapshaper-utils, mapshaper-buffer */
 
 var api = {};
+var VERSION; // set by build script
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
