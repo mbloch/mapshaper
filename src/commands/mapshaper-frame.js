@@ -21,6 +21,8 @@ api.frame = function(catalog, source, opts) {
   bounds = internal.getDatasetBounds(tmp);
   if (internal.probablyDecimalDegreeBounds(bounds)) {
     stop('Frames require projected, not geographical coordinates');
+  } else if (!internal.getDatasetCRS(tmp)) {
+    message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
   }
   height = width * bounds.height() / bounds.width();
   dataset = {info: {}, layers:[{
@@ -87,9 +89,10 @@ internal.getMapFrameMetersPerPixel = function(data) {
     k = internal.getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
     toMeters = data.crs.to_meter;
   } else {
+    // Assuming coordinates are meters and k is 1 (not safe)
+    // A warning should be displayed when relevant furniture element is created
     k = 1;
     toMeters = 1;
-    message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
   }
   metersPerPixel = bounds.width() / k * toMeters / data.width;
   return metersPerPixel;
