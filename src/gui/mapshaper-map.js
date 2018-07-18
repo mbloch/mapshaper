@@ -59,21 +59,20 @@ function MshpMap(model) {
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
-    if (!prevLyr) {
-      needReset = true;
-    } else if (prevLyr.tabular || _activeLyr.tabular) {
+    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
       needReset = true;
     } else {
       needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
 
-    _ext.setBounds(fullBounds); // update 'home' button extent
-
     if (isFrameView()) {
-      _nav.setZoomFactor(0.05); // 0.03
+      _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
+      _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
+      needReset = true; // snap to frame extent
     } else {
       _nav.setZoomFactor(1);
     }
+    _ext.setBounds(fullBounds); // update 'home' button extent
     if (needReset) {
       _ext.reset();
     }
