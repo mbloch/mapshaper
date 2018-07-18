@@ -14,7 +14,7 @@ Handler.prototype.trigger = function(evt) {
     error("[Handler] event target/type have changed.");
   }
   this.callback.call(this.listener, evt);
-}
+};
 
 function EventData(type, target, data) {
   this.type = type;
@@ -164,15 +164,16 @@ var Browser = {
   elementIsFixed: function(el) {
     // get top-level offsetParent that isn't body (cf. Firefox)
     var body = document.body;
+    var parent;
     while (el && el != body) {
-      var parent = el;
+      parent = el;
       el = el.offsetParent;
     }
 
     // Look for position:fixed in the computed style of the top offsetParent.
     // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
     var styleObj = parent && Browser.getElementStyle(parent) || {};
-    return styleObj['position'] == 'fixed';
+    return styleObj.position == 'fixed';
   },
 
   pageXToViewportX: function(x) {
@@ -314,7 +315,7 @@ Elements.prototype = {
   },
 
   removeClass: function(className) {
-    this.forEach(function(el) { el.removeClass(className); })
+    this.forEach(function(el) { el.removeClass(className); });
     return this;
   },
 
@@ -337,7 +338,7 @@ Elements.__select = function(selector, root) {
   }
   else if (document.querySelectorAll) {
     try {
-      els = root.querySelectorAll(selector)
+      els = root.querySelectorAll(selector);
     } catch (e) {
       error("Invalid selector:", selector);
     }
@@ -345,7 +346,7 @@ Elements.__select = function(selector, root) {
     error("This browser doesn't support CSS query selectors");
   }
   return utils.toArray(els);
-}
+};
 
 Elements.__getElementsByClassName = function(cname, node) {
   if (node.getElementsByClassName) {
@@ -363,7 +364,7 @@ Elements.__getElementsByClassName = function(cname, node) {
 // Doesn't change names that are already camelCase
 //
 El.toCamelCase = function(str) {
-  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase() });
+  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
   return cc;
 };
 
@@ -386,7 +387,7 @@ El.setStyle = function(el, name, val) {
     }
   }
   el.style[jsName] = cssVal;
-}
+};
 
 El.findAll = function(sel, root) {
   return Elements.__select(sel, root);
@@ -497,7 +498,7 @@ utils.extend(El.prototype, {
 
 
   remove: function(sel) {
-    this.el.parentNode && this.el.parentNode.removeChild(this.el);
+    if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
     return this;
   },
 
@@ -615,20 +616,6 @@ utils.extend(El.prototype, {
     return this.el.nextSibling ? new El(this.el.nextSibling) : null;
   },
 
-  newSibling: function(tagName) {
-    var el = this.el,
-        sib = document.createElement(tagName),
-        e = new El(sib),
-        par = el.parentNode;
-    if (par) {
-      el.nextSibling ? par.insertBefore(sib, el.nextSibling) : par.appendChild(sib);
-    } else {
-      e._sibs = this._sibs || [];
-      e._sibs.push(el);
-    }
-    return e;
-  },
-
   firstChild: function() {
     var ch = this.el.firstChild;
     while (ch.nodeType != 1) { // skip text nodes
@@ -713,7 +700,7 @@ function ElementPosition(ref) {
       height = 0;
 
   el.on('mouseover', update);
-  window.onorientationchange && window.addEventListener('orientationchange', update);
+  if (window.onorientationchange) window.addEventListener('orientationchange', update);
   window.addEventListener('scroll', update);
   window.addEventListener('resize', update);
 
@@ -727,8 +714,8 @@ function ElementPosition(ref) {
     update();
   };
 
-  this.width = function() { return width };
-  this.height = function() { return height };
+  this.width = function() { return width; };
+  this.height = function() { return height; };
   this.position = function() {
     return {
       element: el.node(),
@@ -749,7 +736,10 @@ function ElementPosition(ref) {
         resized = w != width || h != height,
         moved = x != pageX || y != pageY;
     if (resized || moved) {
-      pageX = x, pageY = y, width = w, height = h;
+      pageX = x;
+      pageY = y;
+      width = w;
+      height = h;
       self.dispatchEvent('change', self.position());
       if (resized) {
         self.dispatchEvent('resize', self.position());
@@ -954,7 +944,7 @@ function MouseArea(element, pos) {
       _prevEvt,
       _downEvt;
 
-  _pos.on('change', function() {_areaPos = _pos.position()});
+  _pos.on('change', function() {_areaPos = _pos.position();});
   // TODO: think about touch events
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mousedown', onMouseDown);
@@ -1033,7 +1023,7 @@ function MouseArea(element, pos) {
         prev = _prevEvt;
     _prevEvt = {
       shiftKey: e.shiftKey,
-      time: +new Date,
+      time: +new Date(),
       pageX: pageX,
       pageY: pageY,
       hover: _isOver,
@@ -1047,15 +1037,15 @@ function MouseArea(element, pos) {
 
   this.isOver = function() {
     return _isOver;
-  }
+  };
 
   this.isDown = function() {
     return !!_downEvt;
-  }
+  };
 
   this.mouseData = function() {
     return utils.extend({}, _prevEvt);
-  }
+  };
 }
 
 utils.inherit(MouseArea, EventDispatcher);

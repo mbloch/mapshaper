@@ -182,7 +182,7 @@ var Env = (function() {
 // Append elements of @src array to @dest array
 utils.merge = function(dest, src) {
   if (!utils.isArray(dest) || !utils.isArray(src)) {
-    error("Usage: utils.merge(destArray, srcArray);")
+    error("Usage: utils.merge(destArray, srcArray);");
   }
   for (var i=0, n=src.length; i<n; i++) {
     dest.push(src[i]);
@@ -229,10 +229,10 @@ utils.find = function(arr, test, ctx) {
 
 utils.indexOf = function(arr, item, prop) {
   if (prop) error("utils.indexOf() No longer supports property argument");
-  var nan = !(item === item);
+  var nan = item !== item;
   for (var i = 0, len = arr.length || 0; i < len; i++) {
     if (arr[i] === item) return i;
-    if (nan && !(arr[i] === arr[i])) return i;
+    if (nan && arr[i] !== arr[i]) return i;
   }
   return -1;
 };
@@ -337,7 +337,7 @@ utils.groupBy = function(arr, k) {
     if (keyval in index) {
       index[keyval].push(o);
     } else {
-      index[keyval] = [o]
+      index[keyval] = [o];
     }
     return index;
   }, {});
@@ -731,7 +731,10 @@ Bounds.prototype.mergeCircle = function(x, y, r) {
 Bounds.prototype.mergeBounds = function(bb) {
   var a, b, c, d;
   if (bb instanceof Bounds) {
-    a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
+    a = bb.xmin;
+    b = bb.ymin;
+    c = bb.xmax;
+    d = bb.ymax;
   } else if (arguments.length == 4) {
     a = arguments[0];
     b = arguments[1];
@@ -739,7 +742,10 @@ Bounds.prototype.mergeBounds = function(bb) {
     d = arguments[3];
   } else if (bb.length == 4) {
     // assume array: [xmin, ymin, xmax, ymax]
-    a = bb[0], b = bb[1], c = bb[2], d = bb[3];
+    a = bb[0];
+    b = bb[1];
+    c = bb[2];
+    d = bb[3];
   } else {
     error("Bounds#mergeBounds() invalid argument:", bb);
   }
@@ -787,7 +793,7 @@ Utils.genericSort = function(arr, asc) {
 };
 
 Utils.sortOnKey = function(arr, getter, asc) {
-  var compare = Utils.getGenericComparator(asc !== false) // asc is default
+  var compare = Utils.getGenericComparator(asc !== false); // asc is default
   arr.sort(function(a, b) {
     return compare(getter(a), getter(b));
   });
@@ -898,7 +904,7 @@ Utils.findRankByValue = function(arr, value) {
     if (value > arr[i]) rank++;
   }
   return rank;
-}
+};
 
 Utils.findValueByPct = function(arr, pct) {
   var rank = Math.ceil((1-pct) * (arr.length));
@@ -991,7 +997,7 @@ BinArray.bufferToUintArray = function(buf, wordLen) {
   if (wordLen == 4) return new Uint32Array(buf);
   if (wordLen == 2) return new Uint16Array(buf);
   if (wordLen == 1) return new Uint8Array(buf);
-  error("BinArray.bufferToUintArray() invalid word length:", wordLen)
+  error("BinArray.bufferToUintArray() invalid word length:", wordLen);
 };
 
 BinArray.uintSize = function(i) {
@@ -1218,7 +1224,7 @@ BinArray.prototype = {
     for (var i=0; i<charsToWrite; i++) {
       cval = str.charCodeAt(i);
       if (cval > 127) {
-        trace("#writeCString() Unicode value beyond ascii range")
+        trace("#writeCString() Unicode value beyond ascii range");
         cval = '?'.charCodeAt(0);
       }
       this.writeUint8(cval);
@@ -1302,7 +1308,7 @@ function formatValue(val, matches) {
       isZero = false,
       isNeg = false;
 
-  var str;
+  var str, padChar, padStr;
   if (isString) {
     str = String(val);
   }
@@ -1335,8 +1341,8 @@ function formatValue(val, matches) {
     var minWidth = parseInt(padding, 10);
     if (strLen < minWidth) {
       padDigits = minWidth - strLen;
-      var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-      var padStr = Utils.repeatString(padChar, padDigits);
+      padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+      padStr = Utils.repeatString(padChar, padDigits);
     }
   }
 
@@ -1357,10 +1363,10 @@ Utils.formatter = function(fmt) {
       formatCodes = [],
       startIdx = 0,
       prefix = "",
-      literal,
-      matches;
+      matches = codeRxp.exec(fmt),
+      literal;
 
-  while (matches=codeRxp.exec(fmt)) {
+  while (matches) {
     literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
     if (matches[0] == '%%') {
       prefix += literal + '%';
@@ -1370,6 +1376,7 @@ Utils.formatter = function(fmt) {
       formatCodes.push(matches);
     }
     startIdx = codeRxp.lastIndex;
+    matches = codeRxp.exec(fmt);
   }
   literals.push(prefix + fmt.substr(startIdx));
 
