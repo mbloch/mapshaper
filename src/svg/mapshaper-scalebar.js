@@ -45,10 +45,10 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
   var label = d.label_text || internal.getAutoScalebarLabel(frame.width, metersPerPx);
   var scalebarKm = internal.parseScalebarLabelToKm(label);
   var barHeight = 3;
-  var labelOffs = 1;
+  var labelOffs = 4;
   var fontSize = +d.font_size || 13;
   var width = Math.round(scalebarKm / metersPerPx * 1000);
-  var height = barHeight + labelOffs + fontSize;
+  var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
   var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
   var anchorX = pos.halign == 'left' ? 0 : width;
   var anchorY = barHeight + labelOffs;
@@ -57,7 +57,7 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
 
   if (labelPos == 'top') {
     anchorY = -labelOffs;
-    dy += labelOffs + fontSize;
+    dy += Math.round(labelOffs + fontSize * 0.8);
   }
 
   if (width > 0 === false) {
@@ -77,9 +77,13 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
       'label-text': label,
       'font-size': fontSize,
       'text-anchor': pos.halign == 'left' ? 'start': 'end',
-      'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge' // NOT alignment-baseline
+      'dominant-baseline': labelPos == 'top' ? 'auto' : 'hanging'
+      //// 'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge'
+      // 'text-after-edge' is buggy in Safari and unsupported by Illustrator,
+      // so I'm using 'hanging' and 'auto', which seem to be well supported.
+      // downside: requires a kludgy multiplier to calculate scalebar height (see above)
     };
-  var labelObj = SVG.symbolRenderers.label(labelOpts, anchorX, anchorY)[0]; // TODO: don't align to font baseline
+  var labelObj = SVG.symbolRenderers.label(labelOpts, anchorX, anchorY)[0];
   var g = {
     tag: 'g',
     children: [barObj, labelObj],
