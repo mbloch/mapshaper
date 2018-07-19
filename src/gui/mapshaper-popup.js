@@ -1,9 +1,9 @@
 /* @requires mapshaper-gui-lib */
 
 // @onNext: handler for switching between multiple records
-function Popup(onNext, onPrev) {
+function Popup(gui, onNext, onPrev) {
   var self = new EventDispatcher();
-  var parent = El('#mshp-main-map');
+  var parent = gui.container.findChild('.mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
   // multi-hit display and navigation
@@ -36,7 +36,7 @@ function Popup(onNext, onPrev) {
   self.hide = function() {
     // make sure any pending edits are made before re-rendering popup
     // TODO: only blur popup fields
-    gui.blurActiveElement();
+    GUI.blurActiveElement();
     content.empty();
     content.node().removeAttribute('style'); // remove inline height
     el.hide();

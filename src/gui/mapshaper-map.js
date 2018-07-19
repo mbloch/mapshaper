@@ -11,8 +11,9 @@ mapshaper-layer-stack
 
 utils.inherit(MshpMap, EventDispatcher);
 
-function MshpMap(model) {
-  var _root = El('#mshp-main-map'),
+function MshpMap(gui) {
+  var model = gui.model,
+      _root = gui.container.findChild('.mshp-main-map'),
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
       _ext, _inspector, _stack, _nav;
@@ -97,7 +98,7 @@ function MshpMap(model) {
     _ext = new MapExtent(position);
     _nav = new MapNav(_root, _ext, mouse);
     _stack = new LayerStack(el, _ext, mouse, gui);
-    _inspector = new InspectionControl(model, _ext, mouse);
+    _inspector = new InspectionControl(gui, _ext, mouse);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset

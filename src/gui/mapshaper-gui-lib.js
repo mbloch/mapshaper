@@ -2,9 +2,10 @@
 mapshaper-gui-start
 mbloch-gui-lib
 mapshaper-gui-modes
+mapshaper-gui-instance
 */
 
-var gui = api.gui = new ModeSwitcher();
+var gui = api.gui = new GuiInstance('body');
 api.enableLogging();
 
 gui.consoleIsOpen = function() {
@@ -44,7 +45,7 @@ gui.handleDirectEvent = function(cb) {
   };
 };
 
-gui.getInputElement = function() {
+GUI.getInputElement = function() {
   var el = document.activeElement;
   return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
 };
@@ -57,8 +58,8 @@ gui.selectElement = function(el) {
   sel.addRange(range);
 };
 
-gui.blurActiveElement = function() {
-  var el = gui.getInputElement();
+GUI.blurActiveElement = function() {
+  var el = GUI.getInputElement();
   if (el) el.blur();
 };
 

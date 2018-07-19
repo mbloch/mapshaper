@@ -1,14 +1,16 @@
 /* @requires mapshaper-gui-lib mapshaper-mode-button mapshaper-gui-options mapshaper-gui-export */
 
 // Export buttons and their behavior
-var ExportControl = function(model) {
+var ExportControl = function(gui) {
+  var model = gui.model;
   var unsupportedMsg = "Exporting is not supported in this browser";
   var menu = El('#export-options').on('click', gui.handleDirectEvent(gui.clearMode));
   var checkboxes = []; // array of layer checkboxes
+  var exportBtn = gui.container.findChild('.export-btn');
   new SimpleButton('#export-options .cancel-btn').on('click', gui.clearMode);
 
   if (!gui.exportIsSupported()) {
-    El('#export-btn').on('click', function() {
+    exportBtn.on('click', function() {
       gui.alert(unsupportedMsg);
     });
 
@@ -18,7 +20,7 @@ var ExportControl = function(model) {
   } else {
     new SimpleButton('#save-btn').on('click', onExportClick);
     gui.addMode('export', turnOn, turnOff);
-    new ModeButton('#export-btn', 'export');
+    new ModeButton(exportBtn, 'export');
   }
 
   function onExportClick() {

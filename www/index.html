@@ -47,7 +47,7 @@
 <div class="page-header">
 	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
 
-	<div id="layer-control-btn"><span class="btn header-btn layer-name"></span></div>
+	<div class="layer-control-btn"><span class="btn header-btn layer-name"></span></div>
 
 	<div class="simplify-control-wrapper"><div class="simplify-control"><div class="header-btn btn simplify-settings-btn">Settings</div>
 		<div class="slider">
@@ -57,7 +57,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="header-btn btn">Export</span>
+		<span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -71,10 +71,10 @@
 	</div>
 </div>
 
-<div id="layer-control" class="main-area popup-dialog">
+<div class="layer-control main-area popup-dialog">
 	<div class="info-box">
 		<div class="info-box-scrolled">
-		<div id="layer-menu">
+		<div class="layer-menu">
 			<h3>Layers</h3>
 			<div id="pin-all" class="pinnable">
 				<img class="pin-btn unpinned" src="images/eye.png">
@@ -234,7 +234,7 @@ interface. Examples: "no-topology"
 	<div id="console" class="main-area console-area">
 		<div id="console-window"><div id="console-buffer" class="selectable"></div></div>
 	</div>
-	<div id="mshp-main-map" class="main-area map-area">
+	<div class="mshp-main-map main-area map-area">
 		<div id="coordinate-info" class="colored-text selectable"></div>
 		<div class="intersection-display">
 			<div class="intersection-count">0 line intersections</div>

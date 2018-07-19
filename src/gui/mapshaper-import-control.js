@@ -1,6 +1,5 @@
 /* @requires
 mapshaper-zip-reader
-mapshaper-progress-message
 mapshaper-gui-options
 mapshaper-catalog-control
 */

@@ -1,8 +1,10 @@
 /* @require mapshaper-gui-lib mapshaper-dom-cache mapshaper-layer-sorting */
 
-function LayerControl(model, map) {
-  var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
-  var buttonLabel = El('#layer-control-btn .layer-name');
+function LayerControl(gui, map) {
+  var model = gui.model;
+  var el = gui.container.findChild(".layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
+  var btn = gui.container.findChild('.layer-control-btn');
+  var buttonLabel = btn.findChild('.layer-name');
   var isOpen = false;
   var cache = new DomCache();
   var pinAll = El('#pin-all'); // button for toggling layer visibility
@@ -12,7 +14,7 @@ function LayerControl(model, map) {
   var dragging = false;
   var layerOrderSlug;
 
-  new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
+  new ModeButton(btn.findChild('.header-btn'), 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
   model.on('update', function(e) {
     updateMenuBtn();
@@ -93,7 +95,7 @@ function LayerControl(model, map) {
 
   function turnOn() {
     isOpen = true;
-    El('#layer-control div.info-box-scrolled').css('max-height', El('body').height() - 80);
+    el.findChild('div.info-box-scrolled').css('max-height', El('body').height() - 80);
     render();
     el.show();
   }
@@ -110,7 +112,7 @@ function LayerControl(model, map) {
   }
 
   function render() {
-    var list = El('#layer-control .layer-list');
+    var list = el.findChild('.layer-list');
     var uniqIds = {};
     var pinnableCount = 0;
     var layerCount = 0;
@@ -273,7 +275,7 @@ function LayerControl(model, map) {
     gui.onClick(entry, function() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
-      if (!gui.getInputElement() && !dragging) {
+      if (!GUI.getInputElement() && !dragging) {
         gui.clearMode();
         if (!map.isActiveLayer(target.layer)) {
           model.updated({select: true}, target.layer, target.dataset);

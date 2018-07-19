@@ -507,7 +507,7 @@ body.catalog-mode #file-catalog-spacer {
 
 /* --- Progress bar --------------- */
 
-#progress-message {
+.progress-message {
 	position: absolute;
 	width: 100%;
 	z-index: 90;
@@ -515,7 +515,7 @@ body.catalog-mode #file-catalog-spacer {
 	top: 52px;
 }
 
-#progress-message > div {
+.progress-message > div {
 	display: inline-block;
 	text-transform: uppercase;
 	padding: 3px 6px;
@@ -634,7 +634,7 @@ body.console-open .map-area {
 
 /* --- Layer menu ----------- */
 
-#layer-control-btn {
+.layer-control-btn {
 	top: 0;
 	position: absolute;
 	text-align: center;
@@ -642,17 +642,17 @@ body.console-open .map-area {
 	width: 100%;
 }
 
-body.simplify #layer-control-btn {
+body.simplify .layer-control-btn {
 	display: none;
 }
 
-#layer-control .info-box {
+.layer-control .info-box {
 	padding: 0;
 	pointer-events: none;
 	background-color: transparent;
 }
 
-#layer-control div.info-box-scrolled {
+.layer-control div.info-box-scrolled {
 	position: relative;
 	z-index: -1;
 	background-color: white;
@@ -664,12 +664,11 @@ body.simplify #layer-control-btn {
 	border-radius: 9px;
 }
 
-
-#layer-menu .layer-list {
+.layer-menu .layer-list {
 	margin: 6px 0 6px 0;
 }
 
-#layer-menu .layer-item {
+.layer-menu .layer-item {
 	position: relative;
 	margin-left: -14px;
 	margin-right: 6px;
@@ -958,7 +957,7 @@ img.close-btn:hover,
 	height: 100%;
 }
 
-#mshp-main-map {
+.mshp-main-map {
 	background-color: #fff;
 }
 

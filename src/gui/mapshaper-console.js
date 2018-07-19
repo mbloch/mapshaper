@@ -30,7 +30,7 @@ function Console(model) {
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
   gui.onClick(content, function(e) {
-    if (gui.getInputElement() || e.target.id != 'command-line') {
+    if (GUI.getInputElement() || e.target.id != 'command-line') {
       // prevent click-to-focus when typing or clicking on content
       e.stopPropagation();
     }
@@ -132,7 +132,7 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
-        inputEl = gui.getInputElement(),
+        inputEl = GUI.getInputElement(),
         typing = !!inputEl,
         typingInConsole = inputEl && inputEl == input.node(),
         inputText = readCommandLine(),

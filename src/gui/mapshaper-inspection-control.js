@@ -1,8 +1,9 @@
 /* @requires mapshaper-gui-lib, mapshaper-popup, mapshaper-hit-control */
 
-function InspectionControl(model, ext, mouse) {
+function InspectionControl(gui, ext, mouse) {
+  var model = gui.model;
   var hit = new HitControl(ext, mouse);
-  var _popup = new Popup(getSwitchHandler(1), getSwitchHandler(-1));
+  var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
@@ -87,7 +88,7 @@ function InspectionControl(model, ext, mouse) {
       return;
     }
 
-    if (_pinned && !gui.getInputElement()) {
+    if (_pinned && !GUI.getInputElement()) {
       // an element is selected and user is not editing text
 
       if (kc == 37 || kc == 39) {

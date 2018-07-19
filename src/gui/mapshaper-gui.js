@@ -52,29 +52,26 @@ gui.getImportOpts = function() {
 };
 
 gui.startEditing = function() {
-  var model = new Model(),
-      dataLoaded = false,
+  var dataLoaded = false,
       importOpts = gui.getImportOpts(),
       map;
   gui.startEditing = function() {};
-  gui.model = model;
-  gui.container = El('body');
-  map = new MshpMap(model);
+  map = new MshpMap(gui);
   new RepairControl(gui, map);
   new SimplifyControl(gui);
   new AlertControl();
-  new ImportFileProxy(model);
-  new ImportControl(model, importOpts);
-  new ExportControl(model);
-  new LayerControl(model, map);
-  new Console(model);
+  new ImportFileProxy(gui.model);
+  new ImportControl(gui.model, importOpts);
+  new ExportControl(gui);
+  new LayerControl(gui, map);
+  new Console(gui.model);
 
-  model.on('select', function() {
+  gui.model.on('select', function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
       if (importOpts.display_all) {
-        model.getLayers().forEach(function(o) {
+        gui.model.getLayers().forEach(function(o) {
           map.setLayerVisibility(o, true);
         });
       }
