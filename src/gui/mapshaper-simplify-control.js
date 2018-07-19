@@ -23,15 +23,16 @@ slider drag end
 
 */
 
-var SimplifyControl = function(model) {
+var SimplifyControl = function(gui) {
+  var model = gui.model;
   var control = {};
   var _value = 1;
-  var el = El('#simplify-control-wrapper');
-  var menu = El('#simplify-options');
+  var el = gui.container.findChild('.simplify-control-wrapper');
+  var menu = gui.container.findChild('.simplify-options');
   var slider, text, fromPct;
 
-  new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
-  new SimpleButton('#simplify-options .cancel-btn').on('click', function() {
+  new SimpleButton(menu.findChild('.submit-btn')).on('click', onSubmit);
+  new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
     if (el.visible()) {
       // cancel just hides menu if slider is visible
       menu.hide();
@@ -39,7 +40,7 @@ var SimplifyControl = function(model) {
       gui.clearMode();
     }
   });
-  new SimpleButton('#simplify-settings-btn').on('click', function() {
+  new SimpleButton(el.findChild('.simplify-settings-btn')).on('click', function() {
     if (menu.visible()) {
       menu.hide();
     } else {
@@ -47,7 +48,7 @@ var SimplifyControl = function(model) {
     }
   });
 
-  new ModeButton('#simplify-btn', 'simplify');
+  new ModeButton(gui.container.findChild('.simplify-btn'), 'simplify');
   gui.addMode('simplify', turnOn, turnOff);
   model.on('select', function() {
     if (gui.getMode() == 'simplify') gui.clearMode();
@@ -56,9 +57,9 @@ var SimplifyControl = function(model) {
   // exit simplify mode when user clicks off the visible part of the menu
   menu.on('click', gui.handleDirectEvent(gui.clearMode));
 
-  slider = new Slider("#simplify-control .slider");
-  slider.handle("#simplify-control .handle");
-  slider.track("#simplify-control .track");
+  slider = new Slider(el.findChild(".simplify-control .slider"));
+  slider.handle(el.findChild(".simplify-control .handle"));
+  slider.track(el.findChild(".simplify-control .track"));
   slider.on('change', function(e) {
     var pct = fromSliderPct(e.pct);
     text.value(pct);
@@ -71,7 +72,7 @@ var SimplifyControl = function(model) {
     gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
   });
 
-  text = new ClickText("#simplify-control .clicktext");
+  text = new ClickText(el.findChild(".simplify-control .clicktext"));
   text.bounds(0, 1);
   text.formatter(function(val) {
     if (isNaN(val)) return '-';
@@ -97,6 +98,26 @@ var SimplifyControl = function(model) {
     gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
   });
 
+
+  control.reset = function() {
+    control.value(1);
+    el.hide();
+    menu.hide();
+    gui.container.removeClass('simplify');
+  };
+
+  control.value = function(val) {
+    if (!isNaN(val)) {
+      // TODO: validate
+      _value = val;
+      slider.pct(toSliderPct(val));
+      text.value(val);
+    }
+    return _value;
+  };
+
+  control.value(_value);
+
   function turnOn() {
     var target = model.getActiveLayer();
     var arcs = target.dataset.arcs;
@@ -119,10 +140,10 @@ var SimplifyControl = function(model) {
     var dataset = model.getActiveLayer().dataset;
     var showPlanarOpt = !dataset.arcs.isPlanar();
     var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
-    El('#planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
-    El('#planar-opt').node().checked = !opts.spherical;
-    El("#import-retain-opt").node().checked = opts.keep_shapes;
-    El("#simplify-options input[value=" + opts.method + "]").node().checked = true;
+    menu.findChild('.planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
+    menu.findChild('.planar-opt').node().checked = !opts.spherical;
+    menu.findChild('.import-retain-opt').node().checked = opts.keep_shapes;
+    menu.findChild('input[value=' + opts.method + ']').node().checked = true;
     menu.show();
   }
 
@@ -156,17 +177,17 @@ var SimplifyControl = function(model) {
 
   function showSlider() {
     el.show();
-    El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
+    gui.container.addClass('simplify'); // for resizing, hiding layer label, etc.
   }
 
   function getSimplifyOptions() {
-    var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
+    var method = menu.findChild('input[name=method]:checked').attr('value') || null;
     return {
       method: method,
       percentage: _value,
       no_repair: true,
-      keep_shapes: !!El("#import-retain-opt").node().checked,
-      planar: !!El('#planar-opt').node().checked
+      keep_shapes: !!menu.findChild('.import-retain-opt').node().checked,
+      planar: !!menu.findChild('.planar-opt').node().checked
     };
   }
 
@@ -195,24 +216,4 @@ var SimplifyControl = function(model) {
     // var dataset = model.getActiveLayer().dataset;
     // var interval = dataset.arcs.getRetainedInterval();
   }
-
-  control.reset = function() {
-    control.value(1);
-    el.hide();
-    menu.hide();
-    El('body').removeClass('simplify');
-  };
-
-  control.value = function(val) {
-    if (!isNaN(val)) {
-      // TODO: validate
-      _value = val;
-      slider.pct(toSliderPct(val));
-      text.value(val);
-    }
-    return _value;
-  };
-
-  control.value(_value);
-  return control;
 };

@@ -49,7 +49,7 @@
 
 	<div id="layer-control-btn"><span class="btn header-btn layer-name"></span></div>
 
-	<div id="simplify-control-wrapper"><div id="simplify-control"><div class="header-btn btn" id="simplify-settings-btn">Settings</div>
+	<div class="simplify-control-wrapper"><div class="simplify-control"><div class="header-btn btn simplify-settings-btn">Settings</div>
 		<div class="slider">
 			<div class="handle"><img src="images/slider_handle_v1.png" alt=""/></div>
 			<div class="track"></div>
@@ -57,7 +57,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span id="simplify-btn" class="header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="header-btn btn">Export</span>
+		<span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -108,17 +108,17 @@ interface. Examples: "bbox" "no-quantization"
 	</div>
 </div>
 
-<div id="simplify-options" class="main-area popup-dialog">
+<div class="simplify-options main-area popup-dialog">
 	<div class="info-box">
 		<h3>Simplification menu</h3>
 		<div class="option-menu">
-			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox" id="import-retain-opt"/>prevent shape removal</label>
+			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox import-retain-opt"/>prevent shape removal</label>
 							<div class="tip-button">?<div class="tip-anchor">
 			<div class="tip">Prevent small polygon features from
 disappearing at high simplification. Keeps
 the largest ring of multi-ring features.
 </div></div></div></div>
-			<div id="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox" id="planar-opt"/>use planar geometry</label>
+			<div class="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox planar-opt"/>use planar geometry</label>
 							<div class="tip-button">?<div class="tip-anchor">
 			<div class="tip">Interpret x, y values as Cartesian coordinates
 on a plane, rather than longitude, latitude
@@ -157,7 +157,7 @@ a smoother appearance.</div></div></div></div>
 			<div class="submit-btn btn dialog-btn default-btn">Apply</div>
 		</div>
 	</div> <!-- .info-box -->
-</div> <!-- #simplify-options -->
+</div> <!-- simplify-options -->
 
 <div id="splash-screen" class="main-area">
 	<div>

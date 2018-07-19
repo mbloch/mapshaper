@@ -1038,7 +1038,7 @@ img.close-btn:hover,
 /* Simplification control ------------ */
 
 @media (max-width: 765px) {
-	body.simplify  #simplify-control-wrapper {
+	body.simplify  .simplify-control-wrapper {
 		top: 22px;
 	}
 
@@ -1051,7 +1051,7 @@ img.close-btn:hover,
 	}
 }
 
-#simplify-control-wrapper {
+.simplify-control-wrapper {
 	display: none;
 	position: absolute;
 	width: 100%;
@@ -1060,39 +1060,39 @@ img.close-btn:hover,
 	top: 0px;
 }
 
-#simplify-control {
+.simplify-control {
 	text-align: center;
 	white-space: nowrap;
 	padding: 0 90px 0 12px;
 }
 
-#simplify-control .slider {
+.simplify-control .slider {
 	margin: 15px 5px 0 3px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;
 }
 
-#simplify-control .track {   	
-  	border-radius: 2px;
+.simplify-control .track {
+	border-radius: 2px;
 	width: 340px;
 	background-color: #fff;
 	height: 2px;
 }
 
-#simplify-control .handle {
+.simplify-control .handle {
 	position: absolute;
 	top: -3px;
 }
 
-#simplify-control .handle img {
+.simplify-control .handle img {
 	width: 20px;
 	height: 20px;
 	margin-left: -10px;
 	margin-top: -10px;
 }
 
-#simplify-control .clicktext {
+.simplify-control .clicktext {
 	width: 56px;
 	background: rgba(255, 255, 255, 0.5);
 	text-align: center;
@@ -1100,6 +1100,6 @@ img.close-btn:hover,
 	font-size: 13px;
 }
 
-#simplify-control .clicktext:focus {
+.simplify-control .clicktext:focus {
 	background: #fff;
 }

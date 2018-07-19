@@ -57,9 +57,11 @@ gui.startEditing = function() {
       importOpts = gui.getImportOpts(),
       map;
   gui.startEditing = function() {};
+  gui.model = model;
+  gui.container = El('body');
   map = new MshpMap(model);
-  repair = new RepairControl(model, map);
-  simplify = new SimplifyControl(model);
+  new RepairControl(model, map);
+  new SimplifyControl(gui);
   new AlertControl();
   new ImportFileProxy(model);
   new ImportControl(model, importOpts);
