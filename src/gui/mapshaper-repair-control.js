@@ -1,9 +1,10 @@
 /* @requires mapshaper-gui-lib */
 
-function RepairControl(model, map) {
-  var el = El("#intersection-display"),
-      readout = el.findChild("#intersection-count"),
-      repairBtn = el.findChild("#repair-btn"),
+function RepairControl(gui, map) {
+  var model = gui.model,
+      el = gui.container.findChild(".intersection-display"),
+      readout = el.findChild(".intersection-count"),
+      repairBtn = el.findChild(".repair-btn"),
       // keeping a reference to current arcs and intersections, so intersections
       // don't need to be recalculated when 'repair' button is pressed.
       _currArcs,

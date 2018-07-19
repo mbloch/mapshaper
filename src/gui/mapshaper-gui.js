@@ -60,7 +60,7 @@ gui.startEditing = function() {
   gui.model = model;
   gui.container = El('body');
   map = new MshpMap(model);
-  new RepairControl(model, map);
+  new RepairControl(gui, map);
   new SimplifyControl(gui);
   new AlertControl();
   new ImportFileProxy(model);

@@ -811,7 +811,7 @@ img.close-btn:hover,
 
 /* --- Intersection control ----------*/
 
-#intersection-display {
+.intersection-display {
 	cursor: default;
 	visibility: visible;
 	display: none;
@@ -821,11 +821,11 @@ img.close-btn:hover,
 	left: 13px;
 }
 
-#intersection-count {
+.intersection-count {
 	vertical-align: middle;
 }
 
-#intersection-count .icon {
+.intersection-count .icon {
 	background-color: #F24400;
 	display: inline-block;
 	width: 5px;
@@ -833,7 +833,7 @@ img.close-btn:hover,
 	margin: 0 5px 2px 0;
 }
 
-#intersection-count .close-btn {
+.intersection-count .close-btn {
 	width: 16px;
 	height: 16px;
 	cursor: pointer;
@@ -842,7 +842,7 @@ img.close-btn:hover,
 	margin-left: 2px;
 }
 
-#intersection-display .text-btn.disabled {
+.intersection-display .text-btn.disabled {
 	visibility: hidden;
 }
 
