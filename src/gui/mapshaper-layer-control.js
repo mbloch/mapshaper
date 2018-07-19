@@ -113,6 +113,7 @@ function LayerControl(model, map) {
     var list = El('#layer-control .layer-list');
     var uniqIds = {};
     var pinnableCount = 0;
+    var layerCount = 0;
     list.empty();
     model.forEachLayer(function(lyr, dataset) {
       // Assign a unique id to each layer, so html strings
@@ -123,6 +124,7 @@ function LayerControl(model, map) {
       }
       uniqIds[lyr.menu_id] = true;
       if (isPinnable(lyr)) pinnableCount++;
+      layerCount++;
     });
 
     if (pinnableCount < 2) {
@@ -134,14 +136,17 @@ function LayerControl(model, map) {
 
     internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
       var lyr = o.layer;
-      var pinnable = pinnableCount > 1 && isPinnable(lyr);
+      var opts = {
+        show_source: layerCount < 5,
+        pinnable: pinnableCount > 1 && isPinnable(lyr)
+      };
       var html, element;
-      html = renderLayer(lyr, o.dataset, pinnable);
+      html = renderLayer(lyr, o.dataset, opts);
       if (cache.contains(html)) {
         element = cache.use(html);
       } else {
         element = El('div').html(html).firstChild();
-        initMouseEvents(element, lyr.menu_id, pinnable);
+        initMouseEvents(element, lyr.menu_id, opts.pinnable);
         cache.add(html, element);
       }
       list.appendChild(element);
@@ -150,24 +155,26 @@ function LayerControl(model, map) {
 
   cache.cleanup();
 
-  function renderLayer(lyr, dataset, pinnable) {
+  function renderLayer(lyr, dataset, opts) {
     var warnings = getWarnings(lyr, dataset);
     var classes = 'layer-item';
     var entry, html;
 
-    if (pinnable) classes += ' pinnable';
+    if (opts.pinnable) classes += ' pinnable';
     if (map.isActiveLayer(lyr)) classes += ' active';
     if (map.isVisibleLayer(lyr)) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
-    html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
+    if (opts.show_source) {
+      html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
+    }
     html += rowHTML('contents', describeLyr(lyr));
     if (warnings) {
       html += rowHTML('problems', warnings, 'layer-problems');
     }
     html += '<img class="close-btn" draggable="false" src="images/close.png">';
-    if (pinnable) {
+    if (opts.pinnable) {
       html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
       html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
     }
