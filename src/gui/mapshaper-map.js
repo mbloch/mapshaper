@@ -63,7 +63,7 @@ function MshpMap(gui) {
     if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
       needReset = true;
     } else {
-      needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
+      needReset = GUI.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
 
     if (isFrameView()) {
@@ -92,7 +92,7 @@ function MshpMap(gui) {
   };
 
   function initMap() {
-    var el = El('#map-layers').node();
+    var el = gui.container.findChild('.map-layers').node();
     var position = new ElementPosition(el);
     var mouse = new MouseArea(el, position);
     _ext = new MapExtent(position);
@@ -322,9 +322,9 @@ function filterLayerByIds(lyr, ids) {
 }
 
 // Test if map should be re-framed to show updated layer
-gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);
-  var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
+GUI.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
+  var viewportPct = GUI.getIntersectionPct(newBounds, mapBounds);
+  var contentPct = GUI.getIntersectionPct(mapBounds, newBounds);
   var boundsChanged = !prevBounds.equals(newBounds);
   var inView = newBounds.intersects(mapBounds);
   var areaChg = newBounds.area() / prevBounds.area();
@@ -336,7 +336,7 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 };
 
 // TODO: move to utilities file
-gui.getBoundsIntersection = function(a, b) {
+GUI.getBoundsIntersection = function(a, b) {
   var c = new Bounds();
   if (a.intersects(b)) {
     c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
@@ -346,6 +346,6 @@ gui.getBoundsIntersection = function(a, b) {
 };
 
 // Returns proportion of bb2 occupied by bb1
-gui.getIntersectionPct = function(bb1, bb2) {
-  return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+GUI.getIntersectionPct = function(bb1, bb2) {
+  return GUI.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
 };

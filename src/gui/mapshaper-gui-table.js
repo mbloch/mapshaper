@@ -1,6 +1,6 @@
 /* @requires mapshaper-gui-lib */
 
-gui.getDisplayLayerForTable = function(table) {
+function getDisplayLayerForTable(table) {
   var n = table.size(),
       cellWidth = 12,
       cellHeight = 5,
@@ -57,4 +57,4 @@ gui.getDisplayLayerForTable = function(table) {
     },
     arcs: arcs ? new internal.ArcCollection(arcs) : null
   };
-};
+}

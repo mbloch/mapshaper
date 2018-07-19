@@ -36,7 +36,7 @@ function getMapLayer(layer, dataset) {
   }
 
   if (obj.tabular) {
-    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
+    utils.extend(obj, getDisplayLayerForTable(layer.data));
   }
 
   obj.bounds = getDisplayBounds(obj.layer, obj.arcs, obj.tabular);

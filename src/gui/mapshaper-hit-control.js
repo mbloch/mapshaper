@@ -1,6 +1,6 @@
 /* @requires mapshaper-gui-lib */
 
-function HitControl(ext, mouse) {
+function HitControl(gui, ext, mouse) {
   var self = new EventDispatcher();
   var prevHits = [];
   var active = false;
@@ -285,7 +285,7 @@ function HitControl(ext, mouse) {
   function hover(hits) {
     if (!sameIds(hits, prevHits)) {
       prevHits = hits;
-      El('#map-layers').classed('hover', hits.length > 0);
+      gui.container.findChild('.map-layers').classed('hover', hits.length > 0);
       trigger('hover', hits);
     }
   }
