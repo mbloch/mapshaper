@@ -1,4 +1,5 @@
 
+var GUI = {}; // shared gui object
 var api = mapshaper; // assuming mapshaper is in global scope
 var utils = api.utils;
 var cli = api.cli;

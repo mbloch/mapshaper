@@ -6,7 +6,7 @@ mapshaper-catalog-control
 */
 
 // tests if filename is a type that can be used
-gui.isReadableFileType = function(filename) {
+GUI.isReadableFileType = function(filename) {
   var ext = utils.getFileExtension(filename).toLowerCase();
   return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
     internal.isZipFile(filename);
@@ -150,7 +150,7 @@ function ImportControl(model, opts) {
     var index = {};
     queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
       // filter out unreadable types and dupes
-      if (gui.isReadableFileType(f.name) && f.name in index === false) {
+      if (GUI.isReadableFileType(f.name) && f.name in index === false) {
         index[f.name] = true;
         memo.push(f);
       }
@@ -383,16 +383,16 @@ function ImportControl(model, opts) {
     return files.filter(function(file) {
       var isZip = internal.isZipFile(file.name);
       if (isZip) {
-        readZipFile(file, quickView);
+        importZipFile(file, quickView);
       }
       return !isZip;
     });
   }
 
-  function readZipFile(file, quickView) {
+  function importZipFile(file, quickView) {
     // gui.showProgressMessage('Importing');
     setTimeout(function() {
-      gui.readZipFile(file, function(err, files) {
+      GUI.readZipFile(file, function(err, files) {
         if (err) {
           handleImportError(err, file.name);
         } else {
@@ -421,7 +421,7 @@ function ImportControl(model, opts) {
         item.url = '/data/' + name;
         item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
       }
-      return gui.isReadableFileType(item.basename) ? item : null;
+      return GUI.isReadableFileType(item.basename) ? item : null;
     });
     return items.filter(Boolean);
   }

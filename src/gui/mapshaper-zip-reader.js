@@ -3,7 +3,7 @@
 // @file: Zip file
 // @cb: function(err, <files>)
 //
-gui.readZipFile = function(file, cb) {
+GUI.readZipFile = function(file, cb) {
   var _files = [];
   zip.createReader(new zip.BlobReader(file), importZipContent, onError);
 
@@ -35,7 +35,7 @@ gui.readZipFile = function(file, cb) {
 
     function readEntry(entry) {
       var filename = entry.filename,
-          isValid = !entry.directory && gui.isReadableFileType(filename) &&
+          isValid = !entry.directory && GUI.isReadableFileType(filename) &&
               !/^__MACOSX/.test(filename); // ignore "resource-force" files
       if (isValid) {
         entry.getData(new zip.BlobWriter(), function(file) {

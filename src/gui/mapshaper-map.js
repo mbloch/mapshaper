@@ -96,7 +96,7 @@ function MshpMap(model) {
     var mouse = new MouseArea(el, position);
     _ext = new MapExtent(position);
     _nav = new MapNav(_root, _ext, mouse);
-    _stack = new LayerStack(el, _ext, mouse);
+    _stack = new LayerStack(el, _ext, mouse, gui);
     _inspector = new InspectionControl(model, _ext, mouse);
 
     _ext.on('change', function(e) {
