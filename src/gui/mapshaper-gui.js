@@ -55,7 +55,7 @@ gui.startEditing = function() {
   var model = new Model(),
       dataLoaded = false,
       importOpts = gui.getImportOpts(),
-      map, repair, simplify;
+      map;
   gui.startEditing = function() {};
   map = new MshpMap(model);
   repair = new RepairControl(model, map);
