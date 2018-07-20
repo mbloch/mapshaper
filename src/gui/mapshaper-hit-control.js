@@ -9,7 +9,7 @@ function HitControl(gui, ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
-  var readout = El('#coordinate-info').hide();
+  var readout = gui.container.findChild('.coordinate-info').hide();
   var bboxPoint;
   var target, test;
 
@@ -58,7 +58,7 @@ function HitControl(gui, ext, mouse) {
       trigger('click', prevHits);
     }
     if (target.geographic) {
-      gui.selectElement(readout.node());
+      GUI.selectElement(readout.node());
       // don't save bbox point when inspector is active
       // clear bbox point if already present
       bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);

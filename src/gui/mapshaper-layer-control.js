@@ -2,12 +2,12 @@
 
 function LayerControl(gui, map) {
   var model = gui.model;
-  var el = gui.container.findChild(".layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
+  var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
   var btn = gui.container.findChild('.layer-control-btn');
   var buttonLabel = btn.findChild('.layer-name');
   var isOpen = false;
   var cache = new DomCache();
-  var pinAll = El('#pin-all'); // button for toggling layer visibility
+  var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
 
   // layer repositioning
   var dragTargetId = null;
@@ -229,7 +229,7 @@ function LayerControl(gui, map) {
     initLayerDragging(entry, id);
 
     // init delete button
-    gui.onClick(entry.findChild('img.close-btn'), function(e) {
+    GUI.onClick(entry.findChild('img.close-btn'), function(e) {
       var target = findLayerById(id);
       e.stopPropagation();
       if (map.isVisibleLayer(target.layer)) {
@@ -241,7 +241,7 @@ function LayerControl(gui, map) {
 
     if (pinnable) {
       // init pin button
-      gui.onClick(entry.findChild('img.unpinned'), function(e) {
+      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
         var target = findLayerById(id);
         e.stopPropagation();
         if (map.isVisibleLayer(target.layer)) {
@@ -256,7 +256,7 @@ function LayerControl(gui, map) {
       });
 
       // catch click event on pin button
-      gui.onClick(entry.findChild('img.unpinned'), function(e) {
+      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
         e.stopPropagation();
       });
     }
@@ -272,7 +272,7 @@ function LayerControl(gui, map) {
       });
 
     // init click-to-select
-    gui.onClick(entry, function() {
+    GUI.onClick(entry, function() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
       if (!GUI.getInputElement() && !dragging) {

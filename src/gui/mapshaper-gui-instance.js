@@ -18,5 +18,10 @@ function GuiInstance(container) {
     if (gui.progressMessage) gui.progressMessage.hide();
   };
 
+  gui.consoleIsOpen = function() {
+    return gui.container.hasClass('console-open');
+  };
+
+
   return gui;
 }

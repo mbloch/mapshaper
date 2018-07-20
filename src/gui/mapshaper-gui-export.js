@@ -1,21 +1,12 @@
 /* @requires mapshaper-gui-lib */
 
-gui.exportIsSupported = function() {
-  return typeof URL != 'undefined' && URL.createObjectURL &&
-    typeof document.createElement("a").download != "undefined" ||
-    !!window.navigator.msSaveBlob;
-};
-
-function canSaveToServer() {
-  return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
-}
 
 // replaces function from mapshaper.js
 internal.writeFiles = function(files, opts, done) {
   var filename;
   if (!utils.isArray(files) || files.length === 0) {
     done("Nothing to export");
-  } else if (canSaveToServer() && !opts.save_to_download_folder) {
+  } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
     saveFilesToServer(files, opts, function(err) {
       var msg;
       if (err) {

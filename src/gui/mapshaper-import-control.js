@@ -4,13 +4,6 @@ mapshaper-gui-options
 mapshaper-catalog-control
 */
 
-// tests if filename is a type that can be used
-GUI.isReadableFileType = function(filename) {
-  var ext = utils.getFileExtension(filename).toLowerCase();
-  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
-    internal.isZipFile(filename);
-};
-
 // @cb function(<FileList>)
 function DropControl(el, cb) {
   var area = El(el);
@@ -70,7 +63,8 @@ function FileChooser(el, cb) {
   }
 }
 
-function ImportControl(model, opts) {
+function ImportControl(gui, opts) {
+  var model = gui.model;
   var importCount = 0;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
@@ -79,7 +73,7 @@ function ImportControl(model, opts) {
   var catalog;
 
   if (opts.catalog) {
-    catalog = new CatalogControl(opts.catalog, downloadFiles);
+    catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
   }
 
   new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
@@ -117,7 +111,7 @@ function ImportControl(model, opts) {
       downloadFiles(manifestFiles, true);
       manifestFiles = [];
     } else if (model.isEmpty()) {
-      El('body').addClass('splash-screen');
+      gui.container.addClass('splash-screen');
     }
   }
 
@@ -141,7 +135,7 @@ function ImportControl(model, opts) {
 
   function clearQueuedFiles() {
     queuedFiles = [];
-    El('body').removeClass('queued-files');
+    gui.container.removeClass('queued-files');
     El('#dropped-file-list').empty();
   }
 
@@ -186,9 +180,9 @@ function ImportControl(model, opts) {
   }
 
   function showQueuedFiles() {
-    var list = El('#dropped-file-list').empty();
+    var list = gui.container.findChild('.dropped-file-list').empty();
     queuedFiles.forEach(function(f) {
-      El('<p>').text(f.name).appendTo(El("#dropped-file-list"));
+      El('<p>').text(f.name).appendTo(list);
     });
   }
 
@@ -206,7 +200,7 @@ function ImportControl(model, opts) {
     if (quickView === true) {
       onSubmit(quickView);
     } else {
-      El('body').addClass('queued-files');
+      gui.container.addClass('queued-files');
       El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
       showQueuedFiles();
     }
@@ -220,8 +214,8 @@ function ImportControl(model, opts) {
   }
 
   function onSubmit(quickView) {
-    El('body').removeClass('queued-files');
-    El('body').removeClass('splash-screen');
+    gui.container.removeClass('queued-files');
+    gui.container.removeClass('splash-screen');
     _importOpts = quickView === true ? {} : readImportOpts();
     procNextQueuedFile();
   }
@@ -256,7 +250,7 @@ function ImportControl(model, opts) {
 
   function readImportOpts() {
     var freeform = El('#import-options .advanced-options').node().value,
-        opts = gui.parseFreeformOptions(freeform, 'i');
+        opts = GUI.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#repair-intersections-opt").node().checked;
     opts.snap = !!El("#snap-points-opt").node().checked;
     return opts;
@@ -412,7 +406,7 @@ function ImportControl(model, opts) {
       var item = {name: name};
       if (isUrl) {
         item.url = name;
-        item.basename = gui.getUrlFilename(name);
+        item.basename = GUI.getUrlFilename(name);
 
       } else {
         item.basename = name;

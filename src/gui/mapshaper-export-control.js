@@ -4,12 +4,12 @@
 var ExportControl = function(gui) {
   var model = gui.model;
   var unsupportedMsg = "Exporting is not supported in this browser";
-  var menu = El('#export-options').on('click', gui.handleDirectEvent(gui.clearMode));
+  var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
   var checkboxes = []; // array of layer checkboxes
   var exportBtn = gui.container.findChild('.export-btn');
-  new SimpleButton('#export-options .cancel-btn').on('click', gui.clearMode);
+  new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
 
-  if (!gui.exportIsSupported()) {
+  if (!GUI.exportIsSupported()) {
     exportBtn.on('click', function() {
       gui.alert(unsupportedMsg);
     });
@@ -18,7 +18,7 @@ var ExportControl = function(gui) {
       error(unsupportedMsg);
     };
   } else {
-    new SimpleButton('#save-btn').on('click', onExportClick);
+    new SimpleButton(menu.findChild('.save-btn')).on('click', onExportClick);
     gui.addMode('export', turnOn, turnOff);
     new ModeButton(exportBtn, 'export');
   }
@@ -46,7 +46,7 @@ var ExportControl = function(gui) {
   function exportMenuSelection(done) {
     var opts, files;
     try {
-      opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
+      opts = GUI.parseFreeformOptions(menu.findChild('.advanced-options').node().value, 'o');
       if (!opts.format) opts.format = getSelectedFormat();
       // ignoring command line "target" option
       files = internal.exportTargetLayers(getTargetLayers(), opts);
@@ -57,7 +57,7 @@ var ExportControl = function(gui) {
   }
 
   function initLayerMenu() {
-    var list = El('#export-layer-list').empty();
+    var list = menu.findChild('.export-layer-list').empty();
     var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
     var objects = model.getLayers().map(function(o, i) {
       var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
@@ -67,7 +67,7 @@ var ExportControl = function(gui) {
     checkboxes = objects.map(function(o) {
       return El('div').html(o.html).appendTo(list).findChild('input').node();
     });
-    El('#export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
+    menu.findChild('.export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
   }
 
   function getInputFormats() {
@@ -90,8 +90,8 @@ var ExportControl = function(gui) {
       return utils.format('<div><label><input type="radio" name="format" value="%s"' +
         ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
     });
-    El('#export-formats').html(items.join('\n'));
-    El('#export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
+    menu.findChild('.export-formats').html(items.join('\n'));
+    menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
   }
 
   function turnOn() {
@@ -105,7 +105,7 @@ var ExportControl = function(gui) {
   }
 
   function getSelectedFormat() {
-    return El('#export-formats input:checked').node().value;
+    return menu.findChild('.export-formats input:checked').node().value;
   }
 
   function getTargetLayers() {

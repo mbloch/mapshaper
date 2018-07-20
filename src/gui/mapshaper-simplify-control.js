@@ -55,7 +55,7 @@ var SimplifyControl = function(gui) {
   });
 
   // exit simplify mode when user clicks off the visible part of the menu
-  menu.on('click', gui.handleDirectEvent(gui.clearMode));
+  menu.on('click', GUI.handleDirectEvent(gui.clearMode));
 
   slider = new Slider(el.findChild(".simplify-control .slider"));
   slider.handle(el.findChild(".simplify-control .handle"));

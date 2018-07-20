@@ -1,6 +1,6 @@
 /* @requires mapshaper-gui-lib */
 
-gui.getPixelRatio = function() {
+GUI.getPixelRatio = function() {
   var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
   return deviceRatio > 1 ? 2 : 1;
 };
@@ -104,7 +104,7 @@ function DisplayCanvas() {
   _self.prep = function(extent) {
     var w = extent.width(),
         h = extent.height(),
-        pixRatio = gui.getPixelRatio();
+        pixRatio = GUI.getPixelRatio();
     _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
     _canvas.width = w * pixRatio;
     _canvas.height = h * pixRatio;
@@ -201,7 +201,7 @@ function DisplayCanvas() {
   // is bad if circles are graduated.
   _self.drawPoints = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        scale = gui.getPixelRatio() * (_ext.getSymbolScale() || 1),
+        scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
         startPath = getPathStart(_ext),
         styler = style.styler || null,
         shp, p;
@@ -273,7 +273,7 @@ function getDotScale(ext) {
 }
 
 function getDotScale2(shapes, ext) {
-  var pixRatio = gui.getPixelRatio();
+  var pixRatio = GUI.getPixelRatio();
   var scale = ext.scale();
   var side = Math.min(ext.width(), ext.height());
   var bounds = ext.getBounds();
@@ -290,7 +290,7 @@ function getDotScale2(shapes, ext) {
 }
 
 function getScaledTransform(ext) {
-  return ext.getTransform(gui.getPixelRatio());
+  return ext.getTransform(GUI.getPixelRatio());
 }
 
 function drawCircle(x, y, radius, ctx) {
@@ -353,7 +353,7 @@ function protectIterForDrawing(iter, ext) {
 }
 
 function getPathStart(ext, lineScale) {
-  var pixRatio = gui.getPixelRatio();
+  var pixRatio = GUI.getPixelRatio();
   if (!lineScale) lineScale = 1;
   return function(ctx, style) {
     var strokeWidth;

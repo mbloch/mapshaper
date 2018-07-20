@@ -62,6 +62,7 @@ function InspectionControl(gui, ext, mouse) {
   };
 
   // replace cli inspect command
+  // TODO: support multiple editors on the page
   api.inspect = function(lyr, arcs, opts) {
     var ids;
     if (!_target) return; // control is disabled (selected layer is hidden, etc)

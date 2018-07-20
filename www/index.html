@@ -76,7 +76,7 @@
 		<div class="info-box-scrolled">
 		<div class="layer-menu">
 			<h3>Layers</h3>
-			<div id="pin-all" class="pinnable">
+			<div class="pin-all pinnable">
 				<img class="pin-btn unpinned" src="images/eye.png">
       	<img class="pin-btn pinned" src="images/eye2.png">
       </div>
@@ -87,16 +87,16 @@
 	</div>
 </div>
 
-<div id="export-options" class="main-area popup-dialog">
+<div class="export-options main-area popup-dialog">
 	<div class="info-box">
 		<h3>Export menu</h3>
 		<div style="height:3px"></div>
-		<div id=export-layers>
+		<div class=export-layers>
 			<h4>Layers</h4>
-			<div id="export-layer-list" class="option-menu"></div>
+			<div class="export-layer-list option-menu"></div>
 		</div>
 		<h4>File format</h4>
-		<div id="export-formats" class="option-menu">
+		<div class="export-formats" class="option-menu">
 		</div>
 
 		<div class="option-menu"><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
@@ -104,7 +104,7 @@
 interface. Examples: "bbox" "no-quantization"
 "precision=0.001"</div></div></div></div>
 		<div class="cancel-btn btn dialog-btn">Cancel</div>
-		<div id="save-btn" class="btn dialog-btn default-btn">Export</div>
+		<div class="save-btn btn dialog-btn default-btn">Export</div>
 	</div>
 </div>
 
@@ -165,9 +165,9 @@ a smoother appearance.</div></div></div></div>
 	</div>
 	<div id="drop-areas" class="drop-area-wrapper main-area">
 
-		<div id="file-catalog" class="catalog-area">
+		<div class="file-catalog catalog-area">
 		</div>
-		<div id="file-catalog-spacer" class="spacer"></div>
+		<div class="file-catalog-spacer spacer"></div>
 
 		<div id="import-drop" class="drop-area">
 			<h4>Drop files here or <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> from a folder</h4>
@@ -187,7 +187,7 @@ a smoother appearance.</div></div></div></div>
 	<div class="info-box">
 		<!-- <h4>Queued files</h4> -->
 
-		<div id="dropped-file-list"></div>
+		<div class="dropped-file-list"></div>
 		
 		<div class="option-menu">
 
@@ -234,7 +234,7 @@ interface. Examples: "no-topology"
 		<div id="console-window"><div id="console-buffer" class="selectable"></div></div>
 	</div>
 	<div class="mshp-main-map main-area map-area">
-		<div id="coordinate-info" class="colored-text selectable"></div>
+		<div class="coordinate-info" class="colored-text selectable"></div>
 		<div class="intersection-display">
 			<div class="intersection-count">0 line intersections</div>
 			<div class="repair-btn text-btn colored-text">Repair</div>

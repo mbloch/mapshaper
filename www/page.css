@@ -166,7 +166,7 @@ body {
 	height: 32px;
 }
 
-#coordinate-info {
+.coordinate-info {
 	z-index: 1;
 	position: absolute;
 	bottom: 6px;
@@ -207,23 +207,23 @@ body {
 
 /* --- Export dialog --------- */
 
-#export-options .dialog-btn {
+.export-options .dialog-btn {
 	min-width: 20px;
 	padding: 4px 6px 5px 6px;
 }
 
-#export-layer-list {
+.export-layer-list {
 	max-height: 160px;
 	overflow: hidden;
 	overflow-y: auto;
 	margin-right: -13px;
 }
 
-#export-layer-list > div {
+.export-layer-list > div {
 	white-space: nowrap;
 }
 
-#export-options .option-menu .advanced-options {
+.export-options .option-menu .advanced-options {
 	width: 175px;
 }
 
@@ -265,15 +265,15 @@ div.error-box > div {
 
 /* --- Splash screen -------------- */
 
-body.splash-screen #splash-screen {
+.splash-screen #splash-screen {
 	display: block;
 }
 
-body.splash-screen #splash-buttons {
+.splash-screen #splash-buttons {
 	display: block;
 }
 
-body.queued-files.splash-screen #import-options-drop-area {
+.queued-files.splash-screen #import-options-drop-area {
 	display: block;
 	z-index: 2;
 }
@@ -297,11 +297,11 @@ body.queued-files.splash-screen #import-options-drop-area {
 	color: #777;
 }
 
-body.splash-screen #import-options .info-box {
+.splash-screen #import-options .info-box {
 	margin-top: 40px;
 }
 
-body.queued-files #import-options {
+.queued-files #import-options {
 	display: block;
 }
 
@@ -330,9 +330,9 @@ body.dragover #import-options-drop-area .drop-area {
 	padding: 16px 16px 15px 16px;
 }
 
-body.catalog-mode #import-drop,
-body.catalog-mode #import-quick-drop,
-body.catalog-mode #file-catalog {
+.catalog-mode #import-drop,
+.catalog-mode #import-quick-drop,
+.catalog-mode #file-catalog {
 	height: 32%;
 }
 
@@ -344,7 +344,7 @@ body.catalog-mode #file-catalog {
 	height: 37%;
 }
 
-body.queued-files #splash-screen {
+.queued-files #splash-screen {
 	display: none;
 }
 
@@ -371,8 +371,8 @@ body.queued-files #splash-screen {
 
 /* --- File catalog --------------- */
 
-body.catalog-mode #file-catalog,
-body.catalog-mode #file-catalog-spacer {
+.catalog-mode .file-catalog,
+.catalog-mode .file-catalog-spacer {
 	display: block;
 }
 
@@ -383,34 +383,34 @@ body.catalog-mode #file-catalog-spacer {
 	background-color: #f8fdff;
 }
 
-#file-catalog table {
+.file-catalog table {
 	margin: 0;
 	border-collapse: collapse;
 	height: 100%;
 	width: 100%;
 }
 
-#file-catalog th {
+.file-catalog th {
 	vertical-align: top;
 	height: 40px;
 }
 
-#file-catalog,
-#file-catalog-spacer {
+.file-catalog,
+.file-catalog-spacer {
 	display: none;
 }
 
-#file-catalog td {
+.file-catalog td {
 	margin: 0;
 	cursor: pointer;
 	vertical-align: top;
 }
 
-#file-catalog td:hover {
+.file-catalog td:hover {
 	background-color: #e2e2e2;
 }
 
-#file-catalog.downloading td.downloading {
+.file-catalog.downloading td.downloading {
 	background-color: #d5d5d5;
 	background-size: 0% 100%;
 	background-repeat: no-repeat;
@@ -436,13 +436,13 @@ body.catalog-mode #file-catalog-spacer {
 	text-align: center;
 }
 
-#dropped-file-list {
+.dropped-file-list {
 	margin-bottom: 8px;
 	max-height: 300px;
 	overflow-y: auto;
 }
 
-#dropped-file-list p {
+.dropped-file-list p {
 	line-height: 1;
 	margin-bottom: 5px;
 	font-size: 15px;
@@ -677,7 +677,7 @@ body.simplify .layer-control-btn {
 	width: 100%;
 }
 
-#pin-all img,
+.pin-all img,
 .layer-item img {
 	position: absolute;
 	width: 16px;
@@ -690,7 +690,7 @@ img.close-btn {
 	opacity: 0.2;
 }
 
-#pin-all img {
+.pin-all img {
 	top: 11px;
 	cursor: pointer;
 }

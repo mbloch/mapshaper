@@ -14,7 +14,7 @@ mapshaper-gui-modes
 */
 
 Browser.onload(function() {
-  if (!gui.browserIsSupported()) {
+  if (!GUI.browserIsSupported()) {
     El("#mshp-not-supported").show();
     return;
   }
@@ -30,7 +30,7 @@ Browser.onload(function() {
 });
 
 gui.getImportOpts = function() {
-  var vars = gui.getUrlVars();
+  var vars = GUI.getUrlVars();
   var manifest = mapshaper.manifest || {};
   var opts = {};
   if (Array.isArray(manifest)) {
@@ -59,9 +59,9 @@ gui.startEditing = function() {
   map = new MshpMap(gui);
   new RepairControl(gui, map);
   new SimplifyControl(gui);
-  new AlertControl();
+  new AlertControl(gui);
   new ImportFileProxy(gui.model);
-  new ImportControl(gui.model, importOpts);
+  new ImportControl(gui, importOpts);
   new ExportControl(gui);
   new LayerControl(gui, map);
   new Console(gui.model);

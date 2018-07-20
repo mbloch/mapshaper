@@ -1,30 +1,22 @@
 
 /* @require mapshaper-gui-lib */
 
-// Replace error function in mapshaper lib
-var error = internal.error = function() {
-  stop.apply(null, utils.toArray(arguments));
-};
-
-// replace stop function
-var stop = internal.stop = function() {
-  // Show a popup error message, then throw an error
-  var msg = gui.formatMessageArgs(arguments);
-  gui.alert(msg);
-  throw new Error(msg);
-};
-
-
-function AlertControl() {
+function AlertControl(gui) {
   var el;
   gui.addMode('alert', function() {}, turnOff);
 
-  function turnOff() {
-    if (el) {
-      el.remove();
-      el = null;
-    }
-  }
+  // Replace error function in mapshaper lib
+  error = internal.error = function() {
+    stop.apply(null, utils.toArray(arguments));
+  };
+
+  // replace stop function
+  stop = internal.stop = function() {
+    // Show a popup error message, then throw an error
+    var msg = GUI.formatMessageArgs(arguments);
+    gui.alert(msg);
+    throw new Error(msg);
+  };
 
   gui.alert = function(str) {
     var infoBox;
@@ -37,4 +29,11 @@ function AlertControl() {
     el.findChild('.error-message').html(str);
     gui.enterMode('alert');
   };
+
+  function turnOff() {
+    if (el) {
+      el.remove();
+      el = null;
+    }
+  }
 }

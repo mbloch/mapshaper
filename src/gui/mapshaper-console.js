@@ -29,14 +29,14 @@ function Console(model) {
 
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
-  gui.onClick(content, function(e) {
+  GUI.onClick(content, function(e) {
     if (GUI.getInputElement() || e.target.id != 'command-line') {
       // prevent click-to-focus when typing or clicking on content
       e.stopPropagation();
     }
   });
 
-  gui.onClick(el, function(e) {
+  GUI.onClick(el, function(e) {
     input.node().focus(); // focus if user clicks blank part of console
   });
 
@@ -401,25 +401,25 @@ function Console(model) {
   }
 
   function consoleStop() {
-    var msg = gui.formatMessageArgs(arguments);
+    var msg = GUI.formatMessageArgs(arguments);
     warning(msg);
     throw new UserError(msg);
   }
 
   function warning() {
-    var msg = gui.formatMessageArgs(arguments);
+    var msg = GUI.formatMessageArgs(arguments);
     toLog(msg, 'console-error');
   }
 
   function consoleMessage() {
-    var msg = gui.formatMessageArgs(arguments);
+    var msg = GUI.formatMessageArgs(arguments);
     if (internal.LOGGING && !internal.getStateVar('QUIET')) {
       toLog(msg, 'console-message');
     }
   }
 
   function consoleError() {
-    var msg = gui.formatMessageArgs(arguments);
+    var msg = GUI.formatMessageArgs(arguments);
     throw new Error(msg);
   }
 

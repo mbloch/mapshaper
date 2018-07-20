@@ -5,19 +5,26 @@ mapshaper-gui-modes
 mapshaper-gui-instance
 */
 
-var gui = api.gui = new GuiInstance('body');
+var gui = new GuiInstance('body');
 api.enableLogging();
 
-gui.consoleIsOpen = function() {
-  return El('body').hasClass('console-open');
-};
-
-gui.browserIsSupported = function() {
+GUI.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&
       typeof Blob != 'undefined' && typeof File != 'undefined';
 };
 
-gui.getUrlVars = function() {
+GUI.exportIsSupported = function() {
+  return typeof URL != 'undefined' && URL.createObjectURL &&
+    typeof document.createElement("a").download != "undefined" ||
+    !!window.navigator.msSaveBlob;
+};
+
+// TODO: make this relative to a single GUI instance
+GUI.canSaveToServer = function() {
+  return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
+};
+
+GUI.getUrlVars = function() {
   var q = window.location.search.substring(1);
   return q.split('&').reduce(function(memo, chunk) {
     var pair = chunk.split('=');
@@ -28,18 +35,18 @@ gui.getUrlVars = function() {
 };
 
 // Assumes that URL path ends with a filename
-gui.getUrlFilename = function(url) {
+GUI.getUrlFilename = function(url) {
   var path = /\/\/([^#?]+)/.exec(url);
   var file = path ? path[1].split('/').pop() : '';
   return file;
 };
 
-gui.formatMessageArgs = function(args) {
+GUI.formatMessageArgs = function(args) {
   // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
   return internal.formatLogArgs(args);
 };
 
-gui.handleDirectEvent = function(cb) {
+GUI.handleDirectEvent = function(cb) {
   return function(e) {
     if (e.target == this) cb();
   };
@@ -50,7 +57,7 @@ GUI.getInputElement = function() {
   return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
 };
 
-gui.selectElement = function(el) {
+GUI.selectElement = function(el) {
   var range = document.createRange(),
       sel = getSelection();
   range.selectNodeContents(el);
@@ -64,7 +71,7 @@ GUI.blurActiveElement = function() {
 };
 
 // Filter out delayed click events, e.g. so users can highlight and copy text
-gui.onClick = function(el, cb) {
+GUI.onClick = function(el, cb) {
   var time;
   el.on('mousedown', function() {
     time = +new Date();
@@ -72,4 +79,11 @@ gui.onClick = function(el, cb) {
   el.on('mouseup', function(e) {
     if (+new Date() - time < 300) cb(e);
   });
+};
+
+// tests if filename is a type that can be used
+GUI.isReadableFileType = function(filename) {
+  var ext = utils.getFileExtension(filename).toLowerCase();
+  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
+    internal.isZipFile(filename);
 };

@@ -28,7 +28,7 @@ function ClickText2(ref) {
       }
     }).on('click', function(e) {
       if (!selected && getSelection().isCollapsed) {
-        gui.selectElement(el.node());
+        GUI.selectElement(el.node());
       }
       selected = true;
       e.stopPropagation();

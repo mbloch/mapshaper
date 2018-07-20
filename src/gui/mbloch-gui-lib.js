@@ -601,6 +601,10 @@ utils.extend(El.prototype, {
     return node ? new El(node) : null;
   },
 
+  findChildren: function(sel) {
+    return Elements.__select(sel, this.el);
+  },
+
   appendTo: function(ref) {
     var parent = ref instanceof El ? ref.el : Browser.getElement(ref);
     if (this._sibs) {

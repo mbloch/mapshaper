@@ -1,7 +1,7 @@
 
-function CatalogControl(catalog, onSelect) {
+function CatalogControl(gui, catalog, onSelect) {
   var self = this,
-      container = El('#file-catalog'),
+      container = gui.container.findChild('.file-catalog'),
       cols = catalog.cols,
       enabled = true,
       items = catalog.items,
@@ -22,7 +22,7 @@ function CatalogControl(catalog, onSelect) {
     return;
   }
 
-  El('body').addClass('catalog-mode');
+ gui.container.addClass('catalog-mode');
 
   if (!cols) {
     cols = Math.ceil(Math.sqrt(n));
@@ -39,7 +39,7 @@ function CatalogControl(catalog, onSelect) {
   }
   html += '</table>';
   container.node().innerHTML = html;
-  Elements('#file-catalog td').forEach(function(el, i) {
+  gui.container.findChildren('.file-catalog td').forEach(function(el, i) {
     el.on('click', function() {
       selectItem(el, i);
     });
