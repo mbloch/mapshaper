@@ -5,7 +5,7 @@ mapshaper-svg-symbols
 mapshaper-svg-furniture
 */
 
-function SvgDisplayLayer(ext, mouse, gui) {
+function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   var el = El(svg);
   var editing = false;

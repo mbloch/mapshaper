@@ -4,6 +4,7 @@ mapshaper-maplayer2
 mapshaper-map-nav
 mapshaper-map-extent
 mapshaper-inspection-control
+mapshaper-sidebar-buttons
 mapshaper-map-style
 mapshaper-svg-display
 mapshaper-layer-stack
@@ -13,7 +14,6 @@ utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(gui) {
   var model = gui.model,
-      _root = gui.container.findChild('.mshp-main-map'),
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
       _ext, _inspector, _stack, _nav;
@@ -95,9 +95,10 @@ function MshpMap(gui) {
     var el = gui.container.findChild('.map-layers').node();
     var position = new ElementPosition(el);
     var mouse = new MouseArea(el, position);
+    new SidebarButtons(gui);
     _ext = new MapExtent(position);
-    _nav = new MapNav(_root, _ext, mouse);
-    _stack = new LayerStack(el, _ext, mouse, gui);
+    _nav = new MapNav(gui, _ext, mouse);
+    _stack = new LayerStack(gui, el, _ext, mouse);
     _inspector = new InspectionControl(gui, _ext, mouse);
 
     _ext.on('change', function(e) {

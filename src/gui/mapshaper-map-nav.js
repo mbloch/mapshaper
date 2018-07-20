@@ -3,18 +3,9 @@ mapshaper-gui-lib
 mapshaper-highlight-box
 */
 
-gui.addSidebarButton = function(iconId) {
-  var btn = El('div').addClass('nav-btn')
-    .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
-  btn.appendChild(iconId);
-  btn.appendTo('#nav-buttons');
-  return btn;
-};
-
-function MapNav(root, ext, mouse) {
+function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
-      buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 1.5,

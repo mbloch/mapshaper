@@ -1,12 +1,12 @@
 /* @requires mapshaper-svg-display, @mapshaper-canvas, mapshaper-map-style */
 
-function LayerStack(container, ext, mouse, gui) {
+function LayerStack(gui, container, ext, mouse) {
   var el = El(container),
       _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
       _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
       _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
-      _svg = new SvgDisplayLayer(ext, mouse, gui).appendTo(el), // labels, _ext;
-      _furniture = new SvgDisplayLayer(ext, null, gui).appendTo(el),  // scalebar, etc
+      _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el), // labels, _ext;
+      _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
       _ext = ext;
 
   this.drawOverlay2Layer = function(lyr) {

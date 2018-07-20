@@ -994,7 +994,7 @@ img.close-btn:hover,
 	cursor: pointer;
 }
 
-#nav-buttons {
+.nav-buttons {
 	z-index: 20;
 	position: absolute;
 	top: 6px;
