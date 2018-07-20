@@ -57,7 +57,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
+		<span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="console-btn header-btn btn">Console</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -230,8 +230,8 @@ interface. Examples: "no-topology"
 
 <!-- TODO: remove #mshp-main-page without causing the map to jitter when resized -->
 <div id="mshp-main-page">
-	<div id="console" class="main-area console-area">
-		<div id="console-window"><div id="console-buffer" class="selectable"></div></div>
+	<div class="console main-area console-area">
+		<div class="console-window"><div class="console-buffer selectable"></div></div>
 	</div>
 	<div class="mshp-main-map main-area map-area">
 		<div class="coordinate-info" class="colored-text selectable"></div>

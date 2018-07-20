@@ -6,10 +6,80 @@ cli.isDirectory = function(name) {return false;};
 
 cli.validateOutputDir = function() {};
 
+GUI.isActiveInstance = function(gui) {
+  return gui == GUI.__active;
+};
+
+GUI.setActiveInstance = function(gui) {
+  if (GUI.isActiveInstance(gui)) return;
+  GUI.__active = gui;
+
+  // replace api.importFile()
+  MessageProxy(gui);
+  ImportFileProxy(gui);
+  WriteFilesProxy(gui);
+};
+
+// manage switching between multiple gui instances, based on mouse events
+function GuiFocus(gui, mouse) {
+  mouse.on('enter', function() {
+    GUI.setActiveInstance(gui);
+  });
+}
+
+function MessageProxy(gui) {
+  // Replace error function in mapshaper lib
+  error = internal.error = function() {
+    stop.apply(null, utils.toArray(arguments));
+  };
+
+  // replace stop function
+  stop = internal.stop = function() {
+    // Show a popup error message, then throw an error
+    var msg = GUI.formatMessageArgs(arguments);
+    gui.alert(msg);
+    throw new Error(msg);
+  };
+
+  message = internal.message = function() {
+    internal.logArgs(arguments); // reset default
+  };
+}
+
+function WriteFilesProxy(gui) {
+  // replaces function from mapshaper.js
+  internal.writeFiles = function(files, opts, done) {
+    var filename;
+    if (!utils.isArray(files) || files.length === 0) {
+      done("Nothing to export");
+    } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
+      saveFilesToServer(files, opts, function(err) {
+        var msg;
+        if (err) {
+          msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
+          msg += "<br>Saving to download folder instead.";
+          gui.alert(msg);
+          // fall back to standard method if saving to server fails
+          internal.writeFiles(files, {save_to_download_folder: true}, done);
+        } else {
+          done();
+        }
+      });
+    } else if (files.length == 1) {
+      saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
+    } else {
+      filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+      saveZipFile(filename + ".zip", files, done);
+    }
+  };
+}
+
 // Replaces functions for reading from files with functions that try to match
 // already-loaded datasets.
 //
-function ImportFileProxy(model) {
+function ImportFileProxy(gui) {
+  var model = gui.model;
+
   // Try to match an imported dataset or layer.
   // TODO: think about handling import options
   function find(src) {

@@ -96,6 +96,7 @@ function MshpMap(gui) {
     var position = new ElementPosition(el);
     var mouse = new MouseArea(el, position);
     new SidebarButtons(gui);
+    new GuiFocus(gui, mouse);
     _ext = new MapExtent(position);
     _nav = new MapNav(gui, _ext, mouse);
     _stack = new LayerStack(gui, el, _ext, mouse);

@@ -1,32 +1,5 @@
 /* @requires mapshaper-gui-lib */
 
-
-// replaces function from mapshaper.js
-internal.writeFiles = function(files, opts, done) {
-  var filename;
-  if (!utils.isArray(files) || files.length === 0) {
-    done("Nothing to export");
-  } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-    saveFilesToServer(files, opts, function(err) {
-      var msg;
-      if (err) {
-        msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
-        msg += "<br>Saving to download folder instead.";
-        gui.alert(msg);
-        // fall back to standard method if saving to server fails
-        internal.writeFiles(files, {save_to_download_folder: true}, done);
-      } else {
-        done();
-      }
-    });
-  } else if (files.length == 1) {
-    saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
-  } else {
-    filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
-    saveZipFile(filename + ".zip", files, done);
-  }
-};
-
 function saveZipFile(zipfileName, files, done) {
   var toAdd = files;
   var zipWriter;

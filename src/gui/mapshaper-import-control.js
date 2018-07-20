@@ -136,7 +136,7 @@ function ImportControl(gui, opts) {
   function clearQueuedFiles() {
     queuedFiles = [];
     gui.container.removeClass('queued-files');
-    El('#dropped-file-list').empty();
+    gui.container.findChild('.dropped-file-list').empty();
   }
 
   function addFilesToQueue(files) {

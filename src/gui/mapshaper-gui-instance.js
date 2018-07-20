@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-modes */
+/* @requires mapshaper-gui-modes, mapshaper-gui-proxy */
 
 function GuiInstance(container) {
   var gui = new ModeSwitcher();
@@ -21,7 +21,7 @@ function GuiInstance(container) {
   gui.consoleIsOpen = function() {
     return gui.container.hasClass('console-open');
   };
-
+  GUI.setActiveInstance(gui);
 
   return gui;
 }

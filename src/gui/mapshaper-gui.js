@@ -57,14 +57,13 @@ gui.startEditing = function() {
       map;
   gui.startEditing = function() {};
   map = new MshpMap(gui);
+  new AlertControl(gui);
   new RepairControl(gui, map);
   new SimplifyControl(gui);
-  new AlertControl(gui);
-  new ImportFileProxy(gui.model);
   new ImportControl(gui, importOpts);
   new ExportControl(gui);
   new LayerControl(gui, map);
-  new Console(gui.model);
+  new Console(gui);
 
   gui.model.on('select', function() {
     if (!dataLoaded) {

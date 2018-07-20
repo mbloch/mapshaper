@@ -1053,5 +1053,3 @@ function MouseArea(element, pos) {
 }
 
 utils.inherit(MouseArea, EventDispatcher);
-
-

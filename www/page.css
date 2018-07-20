@@ -577,13 +577,13 @@ body.console-open .map-area {
 }
 
 
-#console {
+.console {
 	z-index: 30;
 	pointer-events: none;
 	display: none;
 }
 
-#console-window {
+.console-window {
 	pointer-events: auto;
 	background-color: black;
 	position: absolute;
@@ -593,7 +593,7 @@ body.console-open .map-area {
 	height: 100%;
 }
 
-#console-buffer {
+.console-buffer {
 	cursor: text;
 	width: 100%;
 	position: relative;
@@ -608,7 +608,7 @@ body.console-open .map-area {
 	white-space: pre; */
 }
 
-#console-buffer > div {
+.console-buffer > div {
 	text-align: left;
 	/* max-width: 640px; */
 	margin: 0 auto;

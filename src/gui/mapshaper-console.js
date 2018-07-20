@@ -1,12 +1,13 @@
 /* @requires mapshaper-gui-lib mapshaper-mode-button */
 
-function Console(model) {
+function Console(gui) {
+  var model = gui.model;
   var CURSOR = '$ ';
   var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
-  var el = El('#console').hide();
-  var content = El('#console-buffer');
-  var log = El('div').id('console-log').appendTo(content);
-  var line = El('div').id('command-line').appendTo(content);
+  var el = gui.container.findChild('.console').hide();
+  var content = el.findChild('.console-buffer');
+  var log = El('div').appendTo(content);
+  var line = El('div').addClass('command-line').appendTo(content);
   var cursor = El('span').appendTo(line).text(CURSOR);
   var input = El('span').appendTo(line)
     .addClass('input-field')
@@ -18,19 +19,14 @@ function Console(model) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
-  var _error = internal.error; // save default error functions...
-  var _stop = internal.stop;
-  var btn = El('#console-btn').on('click', toggle);
+  var btn = gui.container.findChild('.console-btn').on('click', toggle);
 
-  // capture all messages to this console, whether open or closed
-  message = internal.message = consoleMessage;
-  message(PROMPT);
+  consoleMessage(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
   GUI.onClick(content, function(e) {
-    if (GUI.getInputElement() || e.target.id != 'command-line') {
+    if (GUI.getInputElement() || El(e.target).hasClass('command-line')) {
       // prevent click-to-focus when typing or clicking on content
       e.stopPropagation();
     }
@@ -72,9 +68,14 @@ function Console(model) {
     if (!_isOpen && !model.isEmpty()) {
       btn.addClass('active');
       _isOpen = true;
+      // use console for messages while open
+      // TODO: find a solution for logging problem when switching between multiple
+      // gui instances with the console open. E.g. console could close
+      // when an instance loses focus.
       stop = internal.stop = consoleStop;
       error = internal.error = consoleError;
-      El('body').addClass('console-open');
+      message = internal.message = consoleMessage;
+      gui.container.addClass('console-open');
       gui.dispatchEvent('resize');
       el.show();
       input.node().focus();
@@ -86,12 +87,13 @@ function Console(model) {
     if (_isOpen) {
       btn.removeClass('active');
       _isOpen = false;
-      stop = internal.stop = _stop; // restore original error functions
-      error = internal.error = _error;
+      if (GUI.isActiveInstance(gui)) {
+        MessageProxy(gui); // reset stop, message and error functions
+      }
       el.hide();
       input.node().blur();
       saveHistory(history);
-      El('body').removeClass('console-open');
+      gui.container.removeClass('console-open');
       gui.dispatchEvent('resize');
     }
   }
@@ -389,24 +391,24 @@ function Console(model) {
 
   function onError(err) {
     if (utils.isString(err)) {
-      stop(err);
+      consoleStop(err);
     } else if (err.name == 'UserError') {
       // stop() has already been called, don't need to log
     } else if (err.name) {
       // log stack trace to browser console
       console.error(err.stack);
       // log to console window
-      warning(err.message);
+      consoleWarning(err.message);
     }
   }
 
   function consoleStop() {
     var msg = GUI.formatMessageArgs(arguments);
-    warning(msg);
+    consoleWarning(msg);
     throw new UserError(msg);
   }
 
-  function warning() {
+  function consoleWarning() {
     var msg = GUI.formatMessageArgs(arguments);
     toLog(msg, 'console-error');
   }
