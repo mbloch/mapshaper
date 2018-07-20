@@ -22,7 +22,7 @@ function Console(gui) {
   var btn = gui.container.findChild('.console-btn').on('click', toggle);
 
   consoleMessage(PROMPT);
-  document.addEventListener('keydown', onKeyDown);
+  gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
   GUI.onClick(content, function(e) {
@@ -132,8 +132,9 @@ function Console(gui) {
     return e.metaKey || e.ctrlKey || e.altKey;
   }
 
-  function onKeyDown(e) {
-    var kc = e.keyCode,
+  function onKeyDown(evt) {
+    var e = evt.originalEvent,
+        kc = e.keyCode,
         inputEl = GUI.getInputElement(),
         typing = !!inputEl,
         typingInConsole = inputEl && inputEl == input.node(),

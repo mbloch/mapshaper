@@ -1,10 +1,11 @@
-/* @requires mapshaper-gui-modes, mapshaper-gui-proxy */
+/* @requires mapshaper-gui-modes, mapshaper-gui-proxy, mapshaper-keyboard */
 
 function GuiInstance(container) {
   var gui = new ModeSwitcher();
 
   gui.container = El(container);
   gui.model = new Model();
+  gui.keyboard = new KeyboardEvents(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

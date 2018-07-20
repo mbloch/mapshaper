@@ -79,7 +79,8 @@ function InspectionControl(gui, ext, mouse) {
     inspect(ids[0], true);
   };
 
-  document.addEventListener('keydown', function(e) {
+  gui.keyboard.on('keydown', function(evt) {
+    var e = evt.originalEvent;
     var kc = e.keyCode, n, id;
     if (!_inspecting || !_target) return;
 
