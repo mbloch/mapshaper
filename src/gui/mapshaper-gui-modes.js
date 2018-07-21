@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib */
+/* @requires mapshaper-gui-lib, mapshaper-mode-button */
 
 function ModeSwitcher() {
   var self = this;
@@ -9,7 +9,7 @@ function ModeSwitcher() {
   };
 
   // return a function to trigger this mode
-  self.addMode = function(name, enter, exit) {
+  self.addMode = function(name, enter, exit, btn) {
     self.on('mode', function(e) {
       if (e.prev == name) {
         exit();
@@ -18,6 +18,9 @@ function ModeSwitcher() {
         enter();
       }
     });
+    if (btn) {
+      new ModeButton(self, btn, name);
+    }
   };
 
   self.addMode(null, function() {}, function() {}); // null mode

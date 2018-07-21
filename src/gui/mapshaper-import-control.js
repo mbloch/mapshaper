@@ -85,6 +85,8 @@ function ImportControl(gui, opts) {
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
 
+  gui.keyboard.onMenuSubmit(El('#import-options'), onSubmit);
+
   gui.addMode('import', turnOn, turnOff);
   gui.enterMode('import');
 

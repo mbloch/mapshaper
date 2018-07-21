@@ -6,11 +6,9 @@ mapshaper-import-control
 mapshaper-export-control
 mapshaper-repair-control
 mapshaper-layer-control
-mapshaper-gui-proxy
-mapshaper-map
 mapshaper-console
-mapshaper-gui-model
-mapshaper-gui-modes
+mapshaper-gui-instance
+mapshaper-map
 */
 
 Browser.onload(function() {
@@ -18,7 +16,7 @@ Browser.onload(function() {
     El("#mshp-not-supported").show();
     return;
   }
-  gui.startEditing();
+  startEditing();
   if (window.location.hostname == 'localhost') {
     window.addEventListener('beforeunload', function() {
       // send termination signal for mapshaper-gui
@@ -29,7 +27,7 @@ Browser.onload(function() {
   }
 });
 
-gui.getImportOpts = function() {
+function getImportOpts() {
   var vars = GUI.getUrlVars();
   var manifest = mapshaper.manifest || {};
   var opts = {};
@@ -49,14 +47,14 @@ gui.getImportOpts = function() {
   }
   opts.display_all = !!manifest.display_all;
   return opts;
-};
+}
 
-gui.startEditing = function() {
+var startEditing = function() {
   var dataLoaded = false,
-      importOpts = gui.getImportOpts(),
-      map;
-  gui.startEditing = function() {};
-  map = new MshpMap(gui);
+      importOpts = getImportOpts(),
+      gui = new GuiInstance('body');
+      map = new MshpMap(gui);
+
   new AlertControl(gui);
   new RepairControl(gui, map);
   new SimplifyControl(gui);
@@ -64,6 +62,8 @@ gui.startEditing = function() {
   new ExportControl(gui);
   new LayerControl(gui, map);
   new Console(gui);
+
+  startEditing = function() {};
 
   gui.model.on('select', function() {
     if (!dataLoaded) {

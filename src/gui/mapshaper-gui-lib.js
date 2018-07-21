@@ -1,12 +1,8 @@
 /* @requires
 mapshaper-gui-start
 mbloch-gui-lib
-mapshaper-gui-modes
-mapshaper-gui-instance
 */
 
-var gui = new GuiInstance('body');
-api.enableLogging();
 
 GUI.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&

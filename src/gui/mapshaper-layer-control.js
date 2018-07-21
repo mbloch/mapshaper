@@ -14,8 +14,7 @@ function LayerControl(gui, map) {
   var dragging = false;
   var layerOrderSlug;
 
-  new ModeButton(btn.findChild('.header-btn'), 'layer_menu');
-  gui.addMode('layer_menu', turnOn, turnOff);
+  gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
   model.on('update', function(e) {
     updateMenuBtn();
     if (isOpen) render();

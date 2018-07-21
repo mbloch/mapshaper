@@ -1,4 +1,4 @@
-/* @requires mapshaper-elements, mapshaper-mode-button, mapshaper-slider, mapshaper-simplify-pct */
+/* @requires mapshaper-elements, mapshaper-slider, mapshaper-simplify-pct */
 
 /*
 How changes in the simplify control should affect other components
@@ -31,7 +31,8 @@ var SimplifyControl = function(gui) {
   var menu = gui.container.findChild('.simplify-options');
   var slider, text, fromPct;
 
-  new SimpleButton(menu.findChild('.submit-btn')).on('click', onSubmit);
+  // init settings menu
+  new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
   new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
     if (el.visible()) {
       // cancel just hides menu if slider is visible
@@ -44,12 +45,13 @@ var SimplifyControl = function(gui) {
     if (menu.visible()) {
       menu.hide();
     } else {
-      initMenu();
+      showMenu();
     }
   });
+  gui.keyboard.onMenuSubmit(menu, onSubmit);
 
-  new ModeButton(gui.container.findChild('.simplify-btn'), 'simplify');
-  gui.addMode('simplify', turnOn, turnOff);
+  // init simplify button and mode
+  gui.addMode('simplify', turnOn, turnOff, gui.container.findChild('.simplify-btn'));
   model.on('select', function() {
     if (gui.getMode() == 'simplify') gui.clearMode();
   });
@@ -57,6 +59,7 @@ var SimplifyControl = function(gui) {
   // exit simplify mode when user clicks off the visible part of the menu
   menu.on('click', GUI.handleDirectEvent(gui.clearMode));
 
+  // init slider
   slider = new Slider(el.findChild(".simplify-control .slider"));
   slider.handle(el.findChild(".simplify-control .handle"));
   slider.track(el.findChild(".simplify-control .track"));
@@ -72,6 +75,7 @@ var SimplifyControl = function(gui) {
     gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
   });
 
+  // init text box showing simplify pct
   text = new ClickText(el.findChild(".simplify-control .clicktext"));
   text.bounds(0, 1);
   text.formatter(function(val) {
@@ -97,7 +101,6 @@ var SimplifyControl = function(gui) {
     onChange(pct);
     gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
   });
-
 
   control.reset = function() {
     control.value(1);
@@ -132,11 +135,11 @@ var SimplifyControl = function(gui) {
       control.value(arcs.getRetainedPct());
 
     } else {
-      initMenu();
+      showMenu();
     }
   }
 
-  function initMenu() {
+  function showMenu() {
     var dataset = model.getActiveLayer().dataset;
     var showPlanarOpt = !dataset.arcs.isPlanar();
     var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);

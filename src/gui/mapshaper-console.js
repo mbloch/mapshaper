@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib mapshaper-mode-button */
+/* @requires mapshaper-gui-lib */
 
 function Console(gui) {
   var model = gui.model;
@@ -132,11 +132,15 @@ function Console(gui) {
     return e.metaKey || e.ctrlKey || e.altKey;
   }
 
+  function isTextInput(el) {
+    return el && el.type != 'radio' && el.type != 'checkbox';
+  }
+
   function onKeyDown(evt) {
     var e = evt.originalEvent,
         kc = e.keyCode,
         inputEl = GUI.getInputElement(),
-        typing = !!inputEl,
+        typing = isTextInput(inputEl),
         typingInConsole = inputEl && inputEl == input.node(),
         inputText = readCommandLine(),
         capture = false;
@@ -206,7 +210,7 @@ function Console(gui) {
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
       } else if (kc == 13) {
-        gui.dispatchEvent('enter_key'); // signal for default buttons on any open menus
+        gui.dispatchEvent('enter_key', evt); // signal for default buttons on any open menus
       }
     }
 

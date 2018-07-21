@@ -1,4 +1,10 @@
-/* @requires mapshaper-gui-modes, mapshaper-gui-proxy, mapshaper-keyboard */
+/* @requires
+mapshaper-gui-modes
+mapshaper-gui-proxy
+mapshaper-keyboard
+mapshaper-gui-model
+
+*/
 
 function GuiInstance(container) {
   var gui = new ModeSwitcher();

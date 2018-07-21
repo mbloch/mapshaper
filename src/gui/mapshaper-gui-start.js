@@ -11,3 +11,4 @@ var message = internal.message;
 var stop = internal.stop; // stop and error are replaced in mapshaper-gui-proxy.js
 var error = internal.error;
 api.gui = true; // let the main library know we're running in the GUI
+api.enableLogging();

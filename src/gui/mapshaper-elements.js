@@ -145,15 +145,6 @@ function SimpleButton(ref) {
     return false;
   });
 
-  if (_el.hasClass('default-btn')) {
-    gui.on('enter_key', function(e) {
-      if (isVisible()) {
-        _self.dispatchEvent('click');
-        e.stopPropagation();
-      }
-    });
-  }
-
   this.active = function(a) {
     if (a === void 0) return _active;
     if (a !== _active) {
