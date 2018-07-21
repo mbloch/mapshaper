@@ -1,7 +1,8 @@
 /* @requires mapshaper-gui-lib */
 
-function RepairControl(gui, map) {
-  var model = gui.model,
+function RepairControl(gui) {
+  var map = gui.map,
+      model = gui.model,
       el = gui.container.findChild(".intersection-display"),
       readout = el.findChild(".intersection-count"),
       repairBtn = el.findChild(".repair-btn"),

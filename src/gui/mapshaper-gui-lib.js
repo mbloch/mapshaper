@@ -3,7 +3,6 @@ mapshaper-gui-start
 mbloch-gui-lib
 */
 
-
 GUI.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&
       typeof Blob != 'undefined' && typeof File != 'undefined';
@@ -82,4 +81,20 @@ GUI.isReadableFileType = function(filename) {
   var ext = utils.getFileExtension(filename).toLowerCase();
   return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
     internal.isZipFile(filename);
+};
+
+GUI.parseFreeformOptions = function(raw, cmd) {
+  var str = raw.trim(),
+      parsed;
+  if (!str) {
+    return {};
+  }
+  if (!/^-/.test(str)) {
+    str = '-' + cmd + ' ' + str;
+  }
+  parsed =  internal.parseCommands(str);
+  if (!parsed.length || parsed[0].name != cmd) {
+    stop("Unable to parse command line options");
+  }
+  return parsed[0].options;
 };

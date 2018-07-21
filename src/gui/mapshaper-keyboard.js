@@ -1,5 +1,4 @@
 
-
 function KeyboardEvents(gui) {
   var self = this;
   document.addEventListener('keydown', function(e) {

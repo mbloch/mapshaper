@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-gui-lib
+mapshaper-gui-instance
 mapshaper-gui-error
 mapshaper-simplify-control
 mapshaper-import-control
@@ -7,8 +8,6 @@ mapshaper-export-control
 mapshaper-repair-control
 mapshaper-layer-control
 mapshaper-console
-mapshaper-gui-instance
-mapshaper-map
 */
 
 Browser.onload(function() {
@@ -53,14 +52,13 @@ var startEditing = function() {
   var dataLoaded = false,
       importOpts = getImportOpts(),
       gui = new GuiInstance('body');
-      map = new MshpMap(gui);
 
   new AlertControl(gui);
-  new RepairControl(gui, map);
+  new RepairControl(gui);
   new SimplifyControl(gui);
   new ImportControl(gui, importOpts);
   new ExportControl(gui);
-  new LayerControl(gui, map);
+  new LayerControl(gui);
   new Console(gui);
 
   startEditing = function() {};

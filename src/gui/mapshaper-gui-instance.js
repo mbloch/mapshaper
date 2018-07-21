@@ -3,7 +3,7 @@ mapshaper-gui-modes
 mapshaper-gui-proxy
 mapshaper-keyboard
 mapshaper-gui-model
-
+mapshaper-map
 */
 
 function GuiInstance(container) {
@@ -12,6 +12,7 @@ function GuiInstance(container) {
   gui.container = El(container);
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
+  gui.map = new MshpMap(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

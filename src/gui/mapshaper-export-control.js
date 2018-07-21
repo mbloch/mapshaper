@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib mapshaper-gui-options mapshaper-gui-export */
+/* @requires mapshaper-gui-lib mapshaper-gui-save */
 
 // Export buttons and their behavior
 var ExportControl = function(gui) {

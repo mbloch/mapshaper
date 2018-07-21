@@ -1,6 +1,7 @@
 /* @require mapshaper-gui-lib mapshaper-dom-cache mapshaper-layer-sorting */
 
-function LayerControl(gui, map) {
+function LayerControl(gui) {
+  var map = gui.map;
   var model = gui.model;
   var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
   var btn = gui.container.findChild('.layer-control-btn');
