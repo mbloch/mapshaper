@@ -1,15 +1,16 @@
 
 var error = function() {
-  var msg = Utils.toArray(arguments).join(' ');
+  var msg = utils.toArray(arguments).join(' ');
   throw new Error(msg);
 };
 
 var utils = {
-  getUniqueName: function(prefix) {
-    var n = Utils.__uniqcount || 0;
-    Utils.__uniqcount = n + 1;
-    return (prefix || "__id_") + n;
-  },
+  getUniqueName: (function() {
+    var c = 0;
+    return function(prefix) {
+      return (prefix || "__id_") + (++c);
+    };
+  }()),
 
   isFunction: function(obj) {
     return typeof obj == 'function';
@@ -23,10 +24,6 @@ var utils = {
     return val < min ? min : (val > max ? max : val);
   },
 
-  interpolate: function(val1, val2, pct) {
-    return val1 * (1-pct) + val2 * pct;
-  },
-
   isArray: function(obj) {
     return Array.isArray(obj);
   },
@@ -38,7 +35,7 @@ var utils = {
   },
 
   isInteger: function(obj) {
-    return Utils.isNumber(obj) && ((obj | 0) === obj);
+    return utils.isNumber(obj) && ((obj | 0) === obj);
   },
 
   isString: function(obj) {
@@ -53,7 +50,7 @@ var utils = {
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
   toArray: function(obj) {
     var arr;
-    if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
+    if (!utils.isArrayLike(obj)) error("utils.toArray() requires an array-like object");
     try {
       arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
     } catch(e) {
@@ -70,8 +67,8 @@ var utils = {
   // TODO: try to detect objects with length property but no indexed data elements
   isArrayLike: function(obj) {
     if (!obj) return false;
-    if (Utils.isArray(obj)) return true;
-    if (Utils.isString(obj)) return false;
+    if (utils.isArray(obj)) return true;
+    if (utils.isString(obj)) return false;
     if (obj.length === 0) return true;
     if (obj.length > 0) return true;
     return false;
@@ -118,7 +115,7 @@ var utils = {
   // Pseudoclassical inheritance
   //
   // Inherit from a Parent function:
-  //    Utils.inherit(Child, Parent);
+  //    utils.inherit(Child, Parent);
   // Call parent's constructor (inside child constructor):
   //    this.__super__([args...]);
   inherit: function(targ, src) {
@@ -137,46 +134,12 @@ var utils = {
     f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
     // Extend targ prototype instead of wiping it out --
     //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = Utils.extend(new f(), targ.prototype); //
+    targ.prototype = utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
-  },
-
-  // Inherit from a parent, call the parent's constructor, optionally extend
-  // prototype with optional additional arguments
-  subclass: function(parent) {
-    var child = function() {
-      this.__super__.apply(this, Utils.toArray(arguments));
-    };
-    Utils.inherit(child, parent);
-    for (var i=1; i<arguments.length; i++) {
-      Utils.extend(child.prototype, arguments[i]);
-    }
-    return child;
   }
 
 };
-
-var Utils = utils;
-
-
-var Env = (function() {
-  var inNode = typeof module !== 'undefined' && !!module.exports;
-  var inBrowser = typeof window !== 'undefined' && !inNode;
-  var inPhantom = inBrowser && !!(window.phantom && window.phantom.exit);
-  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
-
-  return {
-    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
-    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    canvas: inBrowser && !!document.createElement('canvas').getContext,
-    inNode : inNode,
-    inPhantom : inPhantom,
-    inBrowser: inBrowser,
-    ieVersion: ieVersion,
-    ie: !isNaN(ieVersion)
-  };
-})();
 
 
 // Append elements of @src array to @dest array
@@ -382,48 +345,48 @@ utils.replaceArray = function(arr, arr2) {
 };
 
 
-Utils.repeatString = function(src, n) {
+utils.repeatString = function(src, n) {
   var str = "";
   for (var i=0; i<n; i++)
     str += src;
   return str;
 };
 
-Utils.pluralSuffix = function(count) {
+utils.pluralSuffix = function(count) {
   return count != 1 ? 's' : '';
 };
 
-Utils.endsWith = function(str, ending) {
+utils.endsWith = function(str, ending) {
     return str.indexOf(ending, str.length - ending.length) !== -1;
 };
 
-Utils.lpad = function(str, size, pad) {
+utils.lpad = function(str, size, pad) {
   pad = pad || ' ';
   str = String(str);
-  return Utils.repeatString(pad, size - str.length) + str;
+  return utils.repeatString(pad, size - str.length) + str;
 };
 
-Utils.rpad = function(str, size, pad) {
+utils.rpad = function(str, size, pad) {
   pad = pad || ' ';
   str = String(str);
-  return str + Utils.repeatString(pad, size - str.length);
+  return str + utils.repeatString(pad, size - str.length);
 };
 
-Utils.trim = function(str) {
-  return Utils.ltrim(Utils.rtrim(str));
+utils.trim = function(str) {
+  return utils.ltrim(utils.rtrim(str));
 };
 
 var ltrimRxp = /^\s+/;
-Utils.ltrim = function(str) {
+utils.ltrim = function(str) {
   return str.replace(ltrimRxp, '');
 };
 
 var rtrimRxp = /\s+$/;
-Utils.rtrim = function(str) {
+utils.rtrim = function(str) {
   return str.replace(rtrimRxp, '');
 };
 
-Utils.addThousandsSep = function(str) {
+utils.addThousandsSep = function(str) {
   var fmt = '',
       start = str[0] == '-' ? 1 : 0,
       dec = str.indexOf('.'),
@@ -437,17 +400,17 @@ Utils.addThousandsSep = function(str) {
   return str.substring(0, end) + fmt;
 };
 
-Utils.numToStr = function(num, decimals) {
+utils.numToStr = function(num, decimals) {
   return decimals >= 0 ? num.toFixed(decimals) : String(num);
 };
 
-Utils.formatNumber = function(num, decimals, nullStr, showPos) {
+utils.formatNumber = function(num, decimals, nullStr, showPos) {
   var fmt;
   if (isNaN(num)) {
     fmt = nullStr || '-';
   } else {
-    fmt = Utils.numToStr(num, decimals);
-    fmt = Utils.addThousandsSep(fmt);
+    fmt = utils.numToStr(num, decimals);
+    fmt = utils.addThousandsSep(fmt);
     if (showPos && parseFloat(fmt) > 0) {
       fmt = "+" + fmt;
     }
@@ -486,7 +449,7 @@ Transform.prototype.transform = function(x, y, xy) {
 };
 
 Transform.prototype.toString = function() {
-  return JSON.stringify(Utils.extend({}, this));
+  return JSON.stringify(utils.extend({}, this));
 };
 
 
@@ -539,7 +502,7 @@ Bounds.prototype.empty = function() {
 Bounds.prototype.setBounds = function(a, b, c, d) {
   if (arguments.length == 1) {
     // assume first arg is a Bounds or array
-    if (Utils.isArrayLike(a)) {
+    if (utils.isArrayLike(a)) {
       b = a[1];
       c = a[2];
       d = a[3];
@@ -763,12 +726,12 @@ Bounds.prototype.mergeBounds = function(bb) {
 
 
 // Sort an array of objects based on one or more properties.
-// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
+// Usage: utils.sortOn(array, key1, asc?[, key2, asc? ...])
 //
-Utils.sortOn = function(arr) {
+utils.sortOn = function(arr) {
   var comparators = [];
   for (var i=1; i<arguments.length; i+=2) {
-    comparators.push(Utils.getKeyComparator(arguments[i], arguments[i+1]));
+    comparators.push(utils.getKeyComparator(arguments[i], arguments[i+1]));
   }
   arr.sort(function(a, b) {
     var cmp = 0,
@@ -786,37 +749,37 @@ Utils.sortOn = function(arr) {
 // Sort array of values that can be compared with < > operators (strings, numbers)
 // null, undefined and NaN are sorted to the end of the array
 //
-Utils.genericSort = function(arr, asc) {
-  var compare = Utils.getGenericComparator(asc);
+utils.genericSort = function(arr, asc) {
+  var compare = utils.getGenericComparator(asc);
   Array.prototype.sort.call(arr, compare);
   return arr;
 };
 
-Utils.sortOnKey = function(arr, getter, asc) {
-  var compare = Utils.getGenericComparator(asc !== false); // asc is default
+utils.sortOnKey = function(arr, getter, asc) {
+  var compare = utils.getGenericComparator(asc !== false); // asc is default
   arr.sort(function(a, b) {
     return compare(getter(a), getter(b));
   });
 };
 
 // Stashes keys in a temp array (better if calculating key is expensive).
-Utils.sortOnKey2 = function(arr, getKey, asc) {
-  Utils.sortArrayByKeys(arr, arr.map(getKey), asc);
+utils.sortOnKey2 = function(arr, getKey, asc) {
+  utils.sortArrayByKeys(arr, arr.map(getKey), asc);
 };
 
-Utils.sortArrayByKeys = function(arr, keys, asc) {
-  var ids = Utils.getSortedIds(keys, asc);
-  Utils.reorderArray(arr, ids);
+utils.sortArrayByKeys = function(arr, keys, asc) {
+  var ids = utils.getSortedIds(keys, asc);
+  utils.reorderArray(arr, ids);
 };
 
-Utils.getSortedIds = function(arr, asc) {
-  var ids = Utils.range(arr.length);
-  Utils.sortArrayIndex(ids, arr, asc);
+utils.getSortedIds = function(arr, asc) {
+  var ids = utils.range(arr.length);
+  utils.sortArrayIndex(ids, arr, asc);
   return ids;
 };
 
-Utils.sortArrayIndex = function(ids, arr, asc) {
-  var compare = Utils.getGenericComparator(asc);
+utils.sortArrayIndex = function(ids, arr, asc) {
+  var compare = utils.getGenericComparator(asc);
   ids.sort(function(i, j) {
     // added i, j comparison to guarantee that sort is stable
     var cmp = compare(arr[i], arr[j]);
@@ -824,7 +787,7 @@ Utils.sortArrayIndex = function(ids, arr, asc) {
   });
 };
 
-Utils.reorderArray = function(arr, idxs) {
+utils.reorderArray = function(arr, idxs) {
   var len = idxs.length;
   var arr2 = [];
   for (var i=0; i<len; i++) {
@@ -832,17 +795,17 @@ Utils.reorderArray = function(arr, idxs) {
     if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
     arr2[i] = arr[idx];
   }
-  Utils.replaceArray(arr, arr2);
+  utils.replaceArray(arr, arr2);
 };
 
-Utils.getKeyComparator = function(key, asc) {
-  var compare = Utils.getGenericComparator(asc);
+utils.getKeyComparator = function(key, asc) {
+  var compare = utils.getGenericComparator(asc);
   return function(a, b) {
     return compare(a[key], b[key]);
   };
 };
 
-Utils.getGenericComparator = function(asc) {
+utils.getGenericComparator = function(asc) {
   asc = asc !== false;
   return function(a, b) {
     var retn = 0;
@@ -866,14 +829,14 @@ Utils.getGenericComparator = function(asc) {
 
 
 // Generic in-place sort (null, NaN, undefined not handled)
-Utils.quicksort = function(arr, asc) {
-  Utils.quicksortPartition(arr, 0, arr.length-1);
+utils.quicksort = function(arr, asc) {
+  utils.quicksortPartition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
 };
 
-// Moved out of Utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
-Utils.quicksortPartition = function (a, lo, hi) {
+// Moved out of utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
+utils.quicksortPartition = function (a, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
@@ -890,14 +853,14 @@ Utils.quicksortPartition = function (a, lo, hi) {
         j--;
       }
     }
-    if (lo < j) Utils.quicksortPartition(a, lo, j);
+    if (lo < j) utils.quicksortPartition(a, lo, j);
     lo = i;
     j = hi;
   }
 };
 
 
-Utils.findRankByValue = function(arr, value) {
+utils.findRankByValue = function(arr, value) {
   if (isNaN(value)) return arr.length;
   var rank = 1;
   for (var i=0, n=arr.length; i<n; i++) {
@@ -906,18 +869,18 @@ Utils.findRankByValue = function(arr, value) {
   return rank;
 };
 
-Utils.findValueByPct = function(arr, pct) {
+utils.findValueByPct = function(arr, pct) {
   var rank = Math.ceil((1-pct) * (arr.length));
-  return Utils.findValueByRank(arr, rank);
+  return utils.findValueByRank(arr, rank);
 };
 
 // See http://ndevilla.free.fr/median/median/src/wirth.c
 // Elements of @arr are reordered
 //
-Utils.findValueByRank = function(arr, rank) {
+utils.findValueByRank = function(arr, rank) {
   if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
 
-  rank = Utils.clamp(rank | 0, 1, arr.length);
+  rank = utils.clamp(rank | 0, 1, arr.length);
   var k = rank - 1, // conv. rank to array index
       n = arr.length,
       l = 0,
@@ -947,18 +910,18 @@ Utils.findValueByRank = function(arr, rank) {
 
 //
 //
-Utils.findMedian = function(arr) {
+utils.findMedian = function(arr) {
   var n = arr.length,
       rank = Math.floor(n / 2) + 1,
-      median = Utils.findValueByRank(arr, rank);
+      median = utils.findValueByRank(arr, rank);
   if ((n & 1) == 0) {
-    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+    median = (median + utils.findValueByRank(arr, rank - 1)) / 2;
   }
   return median;
 };
 
 
-Utils.mean = function(arr) {
+utils.mean = function(arr) {
   var count = 0,
       avg = NaN,
       val;
@@ -976,7 +939,7 @@ Utils.mean = function(arr) {
 // Has convenience methods for copying from buffers, etc.
 //
 function BinArray(buf, le) {
-  if (Utils.isNumber(buf)) {
+  if (utils.isNumber(buf)) {
     buf = new ArrayBuffer(buf);
   } else if (typeof Buffer == 'function' && buf instanceof Buffer) {
     // Since node 0.10, DataView constructor doesn't accept Buffers,
@@ -1044,7 +1007,7 @@ BinArray.bufferSize = function(buf) {
   return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
 };
 
-Utils.buffersAreIdentical = function(a, b) {
+utils.buffersAreIdentical = function(a, b) {
   var alen = BinArray.bufferSize(a);
   var blen = BinArray.bufferSize(b);
   if (alen != blen) {
@@ -1283,11 +1246,11 @@ Examples:
   %'f     1000   '1,000'
 */
 
-// Usage: Utils.format(formatString, [values])
-// Tip: When reusing the same format many times, use Utils.formatter() for 5x - 10x better performance
+// Usage: utils.format(formatString, [values])
+// Tip: When reusing the same format many times, use utils.formatter() for 5x - 10x better performance
 //
-Utils.format = function(fmt) {
-  var fn = Utils.formatter(fmt);
+utils.format = function(fmt) {
+  var fn = utils.formatter(fmt);
   var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
   return str;
 };
@@ -1318,14 +1281,14 @@ function formatValue(val, matches) {
       str = str.toUpperCase();
   }
   else if (isNumber) {
-    str = Utils.numToStr(val, isInt ? 0 : decimals);
+    str = utils.numToStr(val, isInt ? 0 : decimals);
     if (str[0] == '-') {
       isNeg = true;
       str = str.substr(1);
     }
     isZero = parseFloat(str) == 0;
     if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-      str = Utils.addThousandsSep(str);
+      str = utils.addThousandsSep(str);
     }
     if (!isZero) { // BUG: sign is added when num rounds to 0
       if (isNeg) {
@@ -1342,7 +1305,7 @@ function formatValue(val, matches) {
     if (strLen < minWidth) {
       padDigits = minWidth - strLen;
       padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-      padStr = Utils.repeatString(padChar, padDigits);
+      padStr = utils.repeatString(padChar, padDigits);
     }
   }
 
@@ -1357,7 +1320,7 @@ function formatValue(val, matches) {
 }
 
 // Get a function for interpolating formatted values into a string.
-Utils.formatter = function(fmt) {
+utils.formatter = function(fmt) {
   var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
   var literals = [],
       formatCodes = [],

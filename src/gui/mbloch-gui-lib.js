@@ -113,25 +113,6 @@ EventDispatcher.prototype.countEventListeners = function(type) {
 
 
 
-var Env = (function() {
-  var inNode = typeof module !== 'undefined' && !!module.exports;
-  var inBrowser = typeof window !== 'undefined' && !inNode;
-  var inPhantom = inBrowser && !!(window.phantom && window.phantom.exit);
-  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
-
-  return {
-    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
-    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    canvas: inBrowser && !!document.createElement('canvas').getContext,
-    inNode : inNode,
-    inPhantom : inPhantom,
-    inBrowser: inBrowser,
-    ieVersion: ieVersion,
-    ie: !isNaN(ieVersion)
-  };
-})();
-
-
 var Browser = {
   getPageXY: function(el) {
     var x = 0, y = 0;
@@ -286,57 +267,12 @@ utils.htmlEscape = (function() {
 }());
 
 
-var classSelectorRE = /^\.([\w-]+)$/,
-    idSelectorRE = /^#([\w-]+)$/,
-    tagSelectorRE = /^[\w-]+$/,
-    tagOrIdSelectorRE = /^#?[\w-]+$/;
+var tagOrIdSelectorRE = /^#?[\w-]+$/;
 
-function Elements(sel) {
-  if ((this instanceof Elements) == false) {
-    return new Elements(sel);
-  }
-  this.elements = [];
-  this.select(sel);
-}
-
-Elements.prototype = {
-  size: function() {
-    return this.elements.length;
-  },
-
-  select: function(sel) {
-    this.elements = Elements.__select(sel);
-    return this;
-  },
-
-  addClass: function(className) {
-    this.forEach(function(el) { el.addClass(className); });
-    return this;
-  },
-
-  removeClass: function(className) {
-    this.forEach(function(el) { el.removeClass(className); });
-    return this;
-  },
-
-  forEach: function(callback, ctx) {
-    for (var i=0, len=this.elements.length; i<len; i++) {
-      callback.call(ctx, El(this.elements[i]), i);
-    }
-    return this;
-  }
-};
-
-Elements.__select = function(selector, root) {
+El.__select = function(selector, root) {
   root = root || document;
   var els;
-  if (classSelectorRE.test(selector)) {
-    els = Elements.__getElementsByClassName(RegExp.$1, root);
-  }
-  else if (tagSelectorRE.test(selector)) {
-    els = root.getElementsByTagName(selector);
-  }
-  else if (document.querySelectorAll) {
+  if (document.querySelectorAll) {
     try {
       els = root.querySelectorAll(selector);
     } catch (e) {
@@ -346,18 +282,6 @@ Elements.__select = function(selector, root) {
     error("This browser doesn't support CSS query selectors");
   }
   return utils.toArray(els);
-};
-
-Elements.__getElementsByClassName = function(cname, node) {
-  if (node.getElementsByClassName) {
-    return node.getElementsByClassName(cname);
-  }
-  var a = [];
-  var re = new RegExp('(^| )'+cname+'( |$)');
-  var els = node.getElementsByTagName("*");
-  for (var i=0, j=els.length; i<j; i++)
-    if (re.test(els[i].className)) a.push(els[i]);
-  return a;
 };
 
 // Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
@@ -390,7 +314,7 @@ El.setStyle = function(el, name, val) {
 };
 
 El.findAll = function(sel, root) {
-  return Elements.__select(sel, root);
+  return El.__select(sel, root);
 };
 
 function El(ref) {
@@ -404,13 +328,13 @@ function El(ref) {
 
   var node;
   if (utils.isString(ref)) {
-    if (El.isHTML(ref)) {
+    if (ref[0] == '<') {
       var parent = El('div').html(ref).node();
       node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
     } else if (tagOrIdSelectorRE.test(ref)) {
       node = Browser.getElement(ref) || document.createElement(ref); // TODO: detect type of argument
     } else {
-      node = Elements.__select(ref)[0];
+      node = El.__select(ref)[0];
     }
   } else if (ref.tagName) {
     node = ref;
@@ -419,18 +343,7 @@ function El(ref) {
   this.el = node;
 }
 
-utils.inherit(El, EventDispatcher); //
-
-El.removeAll = function(sel) {
-  var arr = Elements.__select(sel);
-  utils.forEach(arr, function(el) {
-    El(el).remove();
-  });
-};
-
-El.isHTML = function(str) {
-  return str && str[0] == '<'; // TODO: improve
-};
+utils.inherit(El, EventDispatcher);
 
 utils.extend(El.prototype, {
 
@@ -467,7 +380,6 @@ utils.extend(El.prototype, {
   },
 
   // Apply inline css styles to this Element, either as string or object.
-  //
   css: function(css, val) {
     if (val != null) {
       El.setStyle(this.el, css, val);
@@ -597,12 +509,12 @@ utils.extend(El.prototype, {
   },
 
   findChild: function(sel) {
-    var node = Elements.__select(sel, this.el)[0];
+    var node = El.__select(sel, this.el)[0];
     return node ? new El(node) : null;
   },
 
   findChildren: function(sel) {
-    return Elements.__select(sel, this.el);
+    return El.__select(sel, this.el);
   },
 
   appendTo: function(ref) {
@@ -658,7 +570,6 @@ utils.extend(El.prototype, {
   },
 
   // Remove all children of this element
-  //
   empty: function() {
     this.el.innerHTML = '';
     return this;
@@ -1053,3 +964,5 @@ function MouseArea(element, pos) {
 }
 
 utils.inherit(MouseArea, EventDispatcher);
+
+

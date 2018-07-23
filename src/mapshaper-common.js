@@ -139,7 +139,7 @@ api.printError = function(err) {
 };
 
 internal.error = function() {
-  var msg = Utils.toArray(arguments).join(' ');
+  var msg = utils.toArray(arguments).join(' ');
   throw new Error(msg);
 };
 
