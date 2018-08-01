@@ -97,8 +97,8 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
 internal.getAutoScalebarLabel = function(mapWidth, metersPerPx) {
   var minWidth = 100; // TODO: vary min size based on map width
   var minKm = metersPerPx * minWidth / 1000;
-  var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 60 ' +
-    '70 80 100 120 150 180 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +
+  var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
+    '100 150 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +
     '2,500 3,000 4,000 5,000').split(' ');
   return options.reduce(function(memo, str) {
     if (memo) return memo;
