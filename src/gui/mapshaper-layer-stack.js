@@ -9,6 +9,9 @@ function LayerStack(gui, container, ext, mouse) {
       _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
       _ext = ext;
 
+  // don't let furniture countainer block events to symbol layers
+  _furniture.css('pointer-events', 'none');
+
   this.drawOverlay2Layer = function(lyr) {
     drawSingleCanvasLayer(lyr, _overlay2Canv);
   };

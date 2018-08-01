@@ -14,7 +14,9 @@ mapshaper-layer-sorting
 utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(gui, opts) {
+  var el = gui.container.findChild('.map-layers').node();
   var model = gui.model,
+      map = this,
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
       _ext, _inspector, _stack, _nav, _hit;
@@ -111,7 +113,6 @@ function MshpMap(gui, opts) {
   };
 
   function initMap() {
-    var el = gui.container.findChild('.map-layers').node();
     var position = new ElementPosition(el);
     var mouse = new MouseArea(el, position);
     new SidebarButtons(gui);
@@ -291,6 +292,11 @@ function MshpMap(gui, opts) {
   function drawLayers(onlyNav) {
     var contentLayers = getDrawableContentLayers();
     var furnitureLayers = getDrawableFurnitureLayers();
+    if (!(_ext.width() > 0 && _ext.height() > 0)) {
+      // TODO: track down source of these errors
+      console.error("[drawLayers()] Collapsed map container, unable to draw.");
+      return;
+    }
     if (!onlyNav) {
        // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
