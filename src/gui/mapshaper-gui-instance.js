@@ -6,13 +6,17 @@ mapshaper-gui-model
 mapshaper-map
 */
 
-function GuiInstance(container) {
+function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
+  opts = utils.extend({
+    // defaults
+    inspector: true
+  }, opts);
 
   gui.container = El(container);
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
-  gui.map = new MshpMap(gui);
+  gui.map = new MshpMap(gui, opts);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

@@ -1,8 +1,7 @@
 /* @requires mapshaper-gui-lib, mapshaper-popup, mapshaper-hit-control */
 
-function InspectionControl(gui, ext, mouse) {
+function InspectionControl(gui, ext, hit) {
   var model = gui.model;
-  var hit = new HitControl(gui, ext, mouse);
   var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;

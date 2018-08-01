@@ -13,11 +13,11 @@ mapshaper-layer-sorting
 
 utils.inherit(MshpMap, EventDispatcher);
 
-function MshpMap(gui) {
+function MshpMap(gui, opts) {
   var model = gui.model,
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _ext, _inspector, _stack, _nav;
+      _ext, _inspector, _stack, _nav, _hit;
 
   model.on('select', function(e) {
     _intersectionLyr = null;
@@ -57,7 +57,7 @@ function MshpMap(gui) {
     _activeLyr = getMapLayer(e.layer, e.dataset);
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
-    _inspector.updateLayer(_activeLyr);
+    if (_inspector) _inspector.updateLayer(_activeLyr);
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
@@ -92,6 +92,24 @@ function MshpMap(gui) {
     _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
 
+  this.setLayerVisibility = function(target, isVisible) {
+    var lyr = target.layer;
+    lyr.visibility = isVisible ? 'visible' : 'hidden';
+    if (_inspector && isActiveLayer(lyr)) {
+      _inspector.updateLayer(isVisible ? _activeLyr : null);
+    }
+  };
+
+  this.getExtent = function() {return _ext;};
+  this.isActiveLayer = isActiveLayer;
+  this.isVisibleLayer = isVisibleLayer;
+
+  // called by layer menu after layer visibility is updated
+  this.redraw = function() {
+    updateVisibleMapLayers();
+    drawLayers();
+  };
+
   function initMap() {
     var el = gui.container.findChild('.map-layers').node();
     var position = new ElementPosition(el);
@@ -101,7 +119,7 @@ function MshpMap(gui) {
     _ext = new MapExtent(position);
     _nav = new MapNav(gui, _ext, mouse);
     _stack = new LayerStack(gui, el, _ext, mouse);
-    _inspector = new InspectionControl(gui, _ext, mouse);
+    _hit = new HitControl(gui, _ext, mouse);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -111,16 +129,20 @@ function MshpMap(gui) {
       drawLayers(true);
     });
 
-    _inspector.on('change', function(e) {
-      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-      _stack.drawOverlayLayer(_overlayLyr);
-    });
-    _inspector.on('data_change', function(e) {
-      // refresh the display if a style variable has been changed interactively
-      if (internal.isSupportedSvgProperty(e.field)) {
-        drawLayers();
-      }
-    });
+    if (opts.inspector) {
+      _inspector = new InspectionControl(gui, _ext, _hit);
+      _inspector.on('change', function(e) {
+        _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+        _stack.drawOverlayLayer(_overlayLyr);
+      });
+      _inspector.on('data_change', function(e) {
+        // refresh the display if a style variable has been changed interactively
+        if (internal.isSupportedSvgProperty(e.field)) {
+          drawLayers();
+        }
+      });
+    }
+
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
@@ -159,23 +181,6 @@ function MshpMap(gui) {
     });
     return b;
   }
-
-  this.setLayerVisibility = function(target, isVisible) {
-    var lyr = target.layer;
-    lyr.visibility = isVisible ? 'visible' : 'hidden';
-    if (isActiveLayer(lyr)) {
-      _inspector.updateLayer(isVisible ? _activeLyr : null);
-    }
-  };
-
-  this.isActiveLayer = isActiveLayer;
-  this.isVisibleLayer = isVisibleLayer;
-
-  // called by layer menu after layer visibility is updated
-  this.redraw = function() {
-    updateVisibleMapLayers();
-    drawLayers();
-  };
 
   function isActiveLayer(lyr) {
     return _activeLyr && lyr == _activeLyr.source.layer || false;
