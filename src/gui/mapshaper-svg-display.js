@@ -26,9 +26,10 @@ function SvgDisplayLayer(gui, ext, mouse) {
   el.drawLayer = function(target, type) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var html = '';
-    // assign a unique id so layer can be identified when symbols are repositioned
+    // generate a unique id so layer can be identified when symbols are repositioned
+    // use it as a class name to avoid id collisions
     var id = utils.getUniqueName();
-    g.setAttribute('id', id);
+    g.setAttribute('class', id);
     target.svg_id = id;
     resize(ext);
     if (type == 'label') {
@@ -250,7 +251,7 @@ function SvgDisplayLayer(gui, ext, mouse) {
   }
 
   function reposition(target, type, ext) {
-    var container = document.getElementById(target.svg_id);
+    var container = el.findChild('.' + target.svg_id).node();
     if (type == 'label') {
       repositionLabels(container, target.layer, ext);
     } else if (type == 'symbol') {

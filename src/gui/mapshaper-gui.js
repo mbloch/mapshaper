@@ -69,7 +69,7 @@ var startEditing = function() {
       El('#mode-buttons').show();
       if (importOpts.display_all) {
         gui.model.getLayers().forEach(function(o) {
-          map.setLayerVisibility(o, true);
+          gui.map.setLayerVisibility(o, true);
         });
       }
     }

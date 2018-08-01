@@ -1,4 +1,4 @@
-/* @require mapshaper-gui-lib mapshaper-dom-cache mapshaper-layer-sorting */
+/* @require mapshaper-gui-lib mapshaper-dom-cache */
 
 function LayerControl(gui) {
   var map = gui.map;

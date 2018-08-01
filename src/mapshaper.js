@@ -7,7 +7,7 @@ api.cli = cli;
 api.internal = internal;
 api.utils = utils;
 api.geom = geom;
-this.mapshaper = api;
+mapshaper = api;
 
 // Expose internal objects for testing
 utils.extend(api.internal, {

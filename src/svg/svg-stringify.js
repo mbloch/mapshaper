@@ -1,4 +1,4 @@
-/* @require svg-common */
+/* @require svg-common mapshaper-sha1 */
 
 SVG.embedImages = function(obj, symbols) {
   // Same-origin policy is an obstacle to embedding images in web UI
@@ -26,7 +26,7 @@ SVG.embedImages = function(obj, symbols) {
     if (!item) {
       item = {
         href: href,
-        id: utils.getUniqueName()
+        id: SVG.urlToId(href) // generating id from href, to try to support multiple inline svgs on page
       };
       // item.svg = convertSvgToSymbol(getSvgFile(href), item.id) + '\n';
       item.svg = convertSvg(getSvgFile(href), item.id) + '\n';
@@ -76,6 +76,10 @@ SVG.embedImages = function(obj, symbols) {
       return a;
     });
   }
+};
+
+SVG.urlToId = function(url) {
+  return utils.sha1(url).substr(0, 12);
 };
 
 SVG.stringify = function(obj) {

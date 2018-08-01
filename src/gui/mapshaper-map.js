@@ -8,6 +8,7 @@ mapshaper-sidebar-buttons
 mapshaper-map-style
 mapshaper-svg-display
 mapshaper-layer-stack
+mapshaper-layer-sorting
 */
 
 utils.inherit(MshpMap, EventDispatcher);
