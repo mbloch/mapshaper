@@ -102,13 +102,17 @@ internal.getAutoScalebarLabel = function(mapWidth, metersPerPx) {
     '2,500 3,000 4,000 5,000').split(' ');
   return options.reduce(function(memo, str) {
     if (memo) return memo;
-    var label = str + (Number(str) > 1 ? ' MILES' : ' MILE');
+    var label = internal.formatDistanceLabelAsMiles(str);
     if (internal.parseScalebarLabelToKm(label) > minKm) {
        return label;
     }
   }, null) || '';
 };
 
+internal.formatDistanceLabelAsMiles = function(str) {
+  var num = internal.parseScalebarNumber(str);
+  return str + (num > 1 ? ' MILES' : ' MILE');
+};
 
 // See test/mapshaper-scalebar.js for examples of supported formats
 internal.parseScalebarLabelToKm = function(str) {
