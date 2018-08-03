@@ -1,3 +1,6 @@
+v0.4.88
+* Fix: convert non-alphameric characters in DBF field names to underscores.
+
 v0.4.87
 * Added experimental -run command, for creating commands on-the-fly and running them.
 * Added experimental -require command, for importing Node modules for use in -each expressions.
