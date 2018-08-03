@@ -29,13 +29,13 @@ Dbf.bufferPool = new BufferPool();
 Dbf.exportRecords = function(records, encoding, fieldOrder) {
   var rows = records.length;
   var fields = internal.findFieldNames(records, fieldOrder);
-  var uniqFields = internal.getUniqFieldNames(fields, 10);
+  var dbfFields = Dbf.convertFieldNames(fields);
   var fieldData = fields.map(function(name, i) {
     var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
-    var uniqName = uniqFields[i];
-    info.name = uniqName;
-    if (name != uniqName) {
-      message('[' + name + '] Truncated field name to "' + uniqName + '"');
+    var name2 = dbfFields[i];
+    info.name = name2;
+    if (name != name2) {
+      message('Changed field name from "' + name + '" to "' + name2 + '"');
     }
     if (info.warning) {
       message('[' + name + '] ' + info.warning);
@@ -62,6 +62,7 @@ Dbf.exportRecords = function(records, encoding, fieldOrder) {
   bin.skipBytes(17);
   bin.writeUint8(0); // language flag; TODO: improve this
   bin.skipBytes(2);
+
 
   // field subrecords
   fieldData.reduce(function(recordOffset, obj) {
@@ -194,6 +195,17 @@ Dbf.initStringField = function(info, arr, name, encoding) {
   if (truncated > 0) {
     info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
   }
+};
+
+Dbf.convertFieldNames = function(names) {
+  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
+};
+
+// Replace non-alphanumeric characters with _ and merge adjacent _
+// See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
+// TODO: decide whether or not to avoid initial numerals
+Dbf.cleanFieldName = function(name) {
+  return name.replace(/[^A-Za-z0-9]+/g, '_');
 };
 
 Dbf.getFieldInfo = function(arr, name, encoding) {

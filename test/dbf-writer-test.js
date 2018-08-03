@@ -15,6 +15,14 @@ describe('dbf-writer.js', function () {
     assert.equal(Dbf.MAX_STRING_LEN, 254);
   })
 
+  describe('convertFieldNames()', function() {
+    it ('changes non-alphanumeric characters and truncates', function() {
+      var names = ['中国北京', 'brewery:kölsch'];
+      var names2 = Dbf.convertFieldNames(names);
+      assert.deepEqual(names2, ['_', 'brewery_k_'])
+    })
+  })
+
   describe('truncateEncodedString()', function () {
     it('truncates problem string to valid utf8', function () {
       // simple truncation creates a partial (invalid) final character
