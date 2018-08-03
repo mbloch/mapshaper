@@ -1,17 +1,18 @@
 (function(){
-var VERSION = '0.4.87';
+VERSION = '0.4.88';
 
 var error = function() {
-  var msg = Utils.toArray(arguments).join(' ');
+  var msg = utils.toArray(arguments).join(' ');
   throw new Error(msg);
 };
 
 var utils = {
-  getUniqueName: function(prefix) {
-    var n = Utils.__uniqcount || 0;
-    Utils.__uniqcount = n + 1;
-    return (prefix || "__id_") + n;
-  },
+  getUniqueName: (function() {
+    var c = 0;
+    return function(prefix) {
+      return (prefix || "__id_") + (++c);
+    };
+  }()),
 
   isFunction: function(obj) {
     return typeof obj == 'function';
@@ -25,10 +26,6 @@ var utils = {
     return val < min ? min : (val > max ? max : val);
   },
 
-  interpolate: function(val1, val2, pct) {
-    return val1 * (1-pct) + val2 * pct;
-  },
-
   isArray: function(obj) {
     return Array.isArray(obj);
   },
@@ -40,7 +37,7 @@ var utils = {
   },
 
   isInteger: function(obj) {
-    return Utils.isNumber(obj) && ((obj | 0) === obj);
+    return utils.isNumber(obj) && ((obj | 0) === obj);
   },
 
   isString: function(obj) {
@@ -55,7 +52,7 @@ var utils = {
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
   toArray: function(obj) {
     var arr;
-    if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
+    if (!utils.isArrayLike(obj)) error("utils.toArray() requires an array-like object");
     try {
       arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
     } catch(e) {
@@ -72,8 +69,8 @@ var utils = {
   // TODO: try to detect objects with length property but no indexed data elements
   isArrayLike: function(obj) {
     if (!obj) return false;
-    if (Utils.isArray(obj)) return true;
-    if (Utils.isString(obj)) return false;
+    if (utils.isArray(obj)) return true;
+    if (utils.isString(obj)) return false;
     if (obj.length === 0) return true;
     if (obj.length > 0) return true;
     return false;
@@ -120,7 +117,7 @@ var utils = {
   // Pseudoclassical inheritance
   //
   // Inherit from a Parent function:
-  //    Utils.inherit(Child, Parent);
+  //    utils.inherit(Child, Parent);
   // Call parent's constructor (inside child constructor):
   //    this.__super__([args...]);
   inherit: function(targ, src) {
@@ -139,52 +136,18 @@ var utils = {
     f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
     // Extend targ prototype instead of wiping it out --
     //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = Utils.extend(new f(), targ.prototype); //
+    targ.prototype = utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
-  },
-
-  // Inherit from a parent, call the parent's constructor, optionally extend
-  // prototype with optional additional arguments
-  subclass: function(parent) {
-    var child = function() {
-      this.__super__.apply(this, Utils.toArray(arguments));
-    };
-    Utils.inherit(child, parent);
-    for (var i=1; i<arguments.length; i++) {
-      Utils.extend(child.prototype, arguments[i]);
-    }
-    return child;
   }
 
 };
-
-var Utils = utils;
-
-
-var Env = (function() {
-  var inNode = typeof module !== 'undefined' && !!module.exports;
-  var inBrowser = typeof window !== 'undefined' && !inNode;
-  var inPhantom = inBrowser && !!(window.phantom && window.phantom.exit);
-  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
-
-  return {
-    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
-    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    canvas: inBrowser && !!document.createElement('canvas').getContext,
-    inNode : inNode,
-    inPhantom : inPhantom,
-    inBrowser: inBrowser,
-    ieVersion: ieVersion,
-    ie: !isNaN(ieVersion)
-  };
-})();
 
 
 // Append elements of @src array to @dest array
 utils.merge = function(dest, src) {
   if (!utils.isArray(dest) || !utils.isArray(src)) {
-    error("Usage: utils.merge(destArray, srcArray);")
+    error("Usage: utils.merge(destArray, srcArray);");
   }
   for (var i=0, n=src.length; i<n; i++) {
     dest.push(src[i]);
@@ -231,10 +194,10 @@ utils.find = function(arr, test, ctx) {
 
 utils.indexOf = function(arr, item, prop) {
   if (prop) error("utils.indexOf() No longer supports property argument");
-  var nan = !(item === item);
+  var nan = item !== item;
   for (var i = 0, len = arr.length || 0; i < len; i++) {
     if (arr[i] === item) return i;
-    if (nan && !(arr[i] === arr[i])) return i;
+    if (nan && arr[i] !== arr[i]) return i;
   }
   return -1;
 };
@@ -339,7 +302,7 @@ utils.groupBy = function(arr, k) {
     if (keyval in index) {
       index[keyval].push(o);
     } else {
-      index[keyval] = [o]
+      index[keyval] = [o];
     }
     return index;
   }, {});
@@ -384,48 +347,48 @@ utils.replaceArray = function(arr, arr2) {
 };
 
 
-Utils.repeatString = function(src, n) {
+utils.repeatString = function(src, n) {
   var str = "";
   for (var i=0; i<n; i++)
     str += src;
   return str;
 };
 
-Utils.pluralSuffix = function(count) {
+utils.pluralSuffix = function(count) {
   return count != 1 ? 's' : '';
 };
 
-Utils.endsWith = function(str, ending) {
+utils.endsWith = function(str, ending) {
     return str.indexOf(ending, str.length - ending.length) !== -1;
 };
 
-Utils.lpad = function(str, size, pad) {
+utils.lpad = function(str, size, pad) {
   pad = pad || ' ';
   str = String(str);
-  return Utils.repeatString(pad, size - str.length) + str;
+  return utils.repeatString(pad, size - str.length) + str;
 };
 
-Utils.rpad = function(str, size, pad) {
+utils.rpad = function(str, size, pad) {
   pad = pad || ' ';
   str = String(str);
-  return str + Utils.repeatString(pad, size - str.length);
+  return str + utils.repeatString(pad, size - str.length);
 };
 
-Utils.trim = function(str) {
-  return Utils.ltrim(Utils.rtrim(str));
+utils.trim = function(str) {
+  return utils.ltrim(utils.rtrim(str));
 };
 
 var ltrimRxp = /^\s+/;
-Utils.ltrim = function(str) {
+utils.ltrim = function(str) {
   return str.replace(ltrimRxp, '');
 };
 
 var rtrimRxp = /\s+$/;
-Utils.rtrim = function(str) {
+utils.rtrim = function(str) {
   return str.replace(rtrimRxp, '');
 };
 
-Utils.addThousandsSep = function(str) {
+utils.addThousandsSep = function(str) {
   var fmt = '',
       start = str[0] == '-' ? 1 : 0,
       dec = str.indexOf('.'),
@@ -439,17 +402,17 @@ Utils.addThousandsSep = function(str) {
   return str.substring(0, end) + fmt;
 };
 
-Utils.numToStr = function(num, decimals) {
+utils.numToStr = function(num, decimals) {
   return decimals >= 0 ? num.toFixed(decimals) : String(num);
 };
 
-Utils.formatNumber = function(num, decimals, nullStr, showPos) {
+utils.formatNumber = function(num, decimals, nullStr, showPos) {
   var fmt;
   if (isNaN(num)) {
     fmt = nullStr || '-';
   } else {
-    fmt = Utils.numToStr(num, decimals);
-    fmt = Utils.addThousandsSep(fmt);
+    fmt = utils.numToStr(num, decimals);
+    fmt = utils.addThousandsSep(fmt);
     if (showPos && parseFloat(fmt) > 0) {
       fmt = "+" + fmt;
     }
@@ -488,7 +451,7 @@ Transform.prototype.transform = function(x, y, xy) {
 };
 
 Transform.prototype.toString = function() {
-  return JSON.stringify(Utils.extend({}, this));
+  return JSON.stringify(utils.extend({}, this));
 };
 
 
@@ -541,7 +504,7 @@ Bounds.prototype.empty = function() {
 Bounds.prototype.setBounds = function(a, b, c, d) {
   if (arguments.length == 1) {
     // assume first arg is a Bounds or array
-    if (Utils.isArrayLike(a)) {
+    if (utils.isArrayLike(a)) {
       b = a[1];
       c = a[2];
       d = a[3];
@@ -733,7 +696,10 @@ Bounds.prototype.mergeCircle = function(x, y, r) {
 Bounds.prototype.mergeBounds = function(bb) {
   var a, b, c, d;
   if (bb instanceof Bounds) {
-    a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
+    a = bb.xmin;
+    b = bb.ymin;
+    c = bb.xmax;
+    d = bb.ymax;
   } else if (arguments.length == 4) {
     a = arguments[0];
     b = arguments[1];
@@ -741,7 +707,10 @@ Bounds.prototype.mergeBounds = function(bb) {
     d = arguments[3];
   } else if (bb.length == 4) {
     // assume array: [xmin, ymin, xmax, ymax]
-    a = bb[0], b = bb[1], c = bb[2], d = bb[3];
+    a = bb[0];
+    b = bb[1];
+    c = bb[2];
+    d = bb[3];
   } else {
     error("Bounds#mergeBounds() invalid argument:", bb);
   }
@@ -759,12 +728,12 @@ Bounds.prototype.mergeBounds = function(bb) {
 
 
 // Sort an array of objects based on one or more properties.
-// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
+// Usage: utils.sortOn(array, key1, asc?[, key2, asc? ...])
 //
-Utils.sortOn = function(arr) {
+utils.sortOn = function(arr) {
   var comparators = [];
   for (var i=1; i<arguments.length; i+=2) {
-    comparators.push(Utils.getKeyComparator(arguments[i], arguments[i+1]));
+    comparators.push(utils.getKeyComparator(arguments[i], arguments[i+1]));
   }
   arr.sort(function(a, b) {
     var cmp = 0,
@@ -782,37 +751,37 @@ Utils.sortOn = function(arr) {
 // Sort array of values that can be compared with < > operators (strings, numbers)
 // null, undefined and NaN are sorted to the end of the array
 //
-Utils.genericSort = function(arr, asc) {
-  var compare = Utils.getGenericComparator(asc);
+utils.genericSort = function(arr, asc) {
+  var compare = utils.getGenericComparator(asc);
   Array.prototype.sort.call(arr, compare);
   return arr;
 };
 
-Utils.sortOnKey = function(arr, getter, asc) {
-  var compare = Utils.getGenericComparator(asc !== false) // asc is default
+utils.sortOnKey = function(arr, getter, asc) {
+  var compare = utils.getGenericComparator(asc !== false); // asc is default
   arr.sort(function(a, b) {
     return compare(getter(a), getter(b));
   });
 };
 
 // Stashes keys in a temp array (better if calculating key is expensive).
-Utils.sortOnKey2 = function(arr, getKey, asc) {
-  Utils.sortArrayByKeys(arr, arr.map(getKey), asc);
+utils.sortOnKey2 = function(arr, getKey, asc) {
+  utils.sortArrayByKeys(arr, arr.map(getKey), asc);
 };
 
-Utils.sortArrayByKeys = function(arr, keys, asc) {
-  var ids = Utils.getSortedIds(keys, asc);
-  Utils.reorderArray(arr, ids);
+utils.sortArrayByKeys = function(arr, keys, asc) {
+  var ids = utils.getSortedIds(keys, asc);
+  utils.reorderArray(arr, ids);
 };
 
-Utils.getSortedIds = function(arr, asc) {
-  var ids = Utils.range(arr.length);
-  Utils.sortArrayIndex(ids, arr, asc);
+utils.getSortedIds = function(arr, asc) {
+  var ids = utils.range(arr.length);
+  utils.sortArrayIndex(ids, arr, asc);
   return ids;
 };
 
-Utils.sortArrayIndex = function(ids, arr, asc) {
-  var compare = Utils.getGenericComparator(asc);
+utils.sortArrayIndex = function(ids, arr, asc) {
+  var compare = utils.getGenericComparator(asc);
   ids.sort(function(i, j) {
     // added i, j comparison to guarantee that sort is stable
     var cmp = compare(arr[i], arr[j]);
@@ -820,7 +789,7 @@ Utils.sortArrayIndex = function(ids, arr, asc) {
   });
 };
 
-Utils.reorderArray = function(arr, idxs) {
+utils.reorderArray = function(arr, idxs) {
   var len = idxs.length;
   var arr2 = [];
   for (var i=0; i<len; i++) {
@@ -828,17 +797,17 @@ Utils.reorderArray = function(arr, idxs) {
     if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
     arr2[i] = arr[idx];
   }
-  Utils.replaceArray(arr, arr2);
+  utils.replaceArray(arr, arr2);
 };
 
-Utils.getKeyComparator = function(key, asc) {
-  var compare = Utils.getGenericComparator(asc);
+utils.getKeyComparator = function(key, asc) {
+  var compare = utils.getGenericComparator(asc);
   return function(a, b) {
     return compare(a[key], b[key]);
   };
 };
 
-Utils.getGenericComparator = function(asc) {
+utils.getGenericComparator = function(asc) {
   asc = asc !== false;
   return function(a, b) {
     var retn = 0;
@@ -862,14 +831,14 @@ Utils.getGenericComparator = function(asc) {
 
 
 // Generic in-place sort (null, NaN, undefined not handled)
-Utils.quicksort = function(arr, asc) {
-  Utils.quicksortPartition(arr, 0, arr.length-1);
+utils.quicksort = function(arr, asc) {
+  utils.quicksortPartition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
 };
 
-// Moved out of Utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
-Utils.quicksortPartition = function (a, lo, hi) {
+// Moved out of utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
+utils.quicksortPartition = function (a, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
@@ -886,34 +855,34 @@ Utils.quicksortPartition = function (a, lo, hi) {
         j--;
       }
     }
-    if (lo < j) Utils.quicksortPartition(a, lo, j);
+    if (lo < j) utils.quicksortPartition(a, lo, j);
     lo = i;
     j = hi;
   }
 };
 
 
-Utils.findRankByValue = function(arr, value) {
+utils.findRankByValue = function(arr, value) {
   if (isNaN(value)) return arr.length;
   var rank = 1;
   for (var i=0, n=arr.length; i<n; i++) {
     if (value > arr[i]) rank++;
   }
   return rank;
-}
+};
 
-Utils.findValueByPct = function(arr, pct) {
+utils.findValueByPct = function(arr, pct) {
   var rank = Math.ceil((1-pct) * (arr.length));
-  return Utils.findValueByRank(arr, rank);
+  return utils.findValueByRank(arr, rank);
 };
 
 // See http://ndevilla.free.fr/median/median/src/wirth.c
 // Elements of @arr are reordered
 //
-Utils.findValueByRank = function(arr, rank) {
+utils.findValueByRank = function(arr, rank) {
   if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
 
-  rank = Utils.clamp(rank | 0, 1, arr.length);
+  rank = utils.clamp(rank | 0, 1, arr.length);
   var k = rank - 1, // conv. rank to array index
       n = arr.length,
       l = 0,
@@ -943,18 +912,18 @@ Utils.findValueByRank = function(arr, rank) {
 
 //
 //
-Utils.findMedian = function(arr) {
+utils.findMedian = function(arr) {
   var n = arr.length,
       rank = Math.floor(n / 2) + 1,
-      median = Utils.findValueByRank(arr, rank);
+      median = utils.findValueByRank(arr, rank);
   if ((n & 1) == 0) {
-    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+    median = (median + utils.findValueByRank(arr, rank - 1)) / 2;
   }
   return median;
 };
 
 
-Utils.mean = function(arr) {
+utils.mean = function(arr) {
   var count = 0,
       avg = NaN,
       val;
@@ -972,7 +941,7 @@ Utils.mean = function(arr) {
 // Has convenience methods for copying from buffers, etc.
 //
 function BinArray(buf, le) {
-  if (Utils.isNumber(buf)) {
+  if (utils.isNumber(buf)) {
     buf = new ArrayBuffer(buf);
   } else if (typeof Buffer == 'function' && buf instanceof Buffer) {
     // Since node 0.10, DataView constructor doesn't accept Buffers,
@@ -993,7 +962,7 @@ BinArray.bufferToUintArray = function(buf, wordLen) {
   if (wordLen == 4) return new Uint32Array(buf);
   if (wordLen == 2) return new Uint16Array(buf);
   if (wordLen == 1) return new Uint8Array(buf);
-  error("BinArray.bufferToUintArray() invalid word length:", wordLen)
+  error("BinArray.bufferToUintArray() invalid word length:", wordLen);
 };
 
 BinArray.uintSize = function(i) {
@@ -1040,7 +1009,7 @@ BinArray.bufferSize = function(buf) {
   return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
 };
 
-Utils.buffersAreIdentical = function(a, b) {
+utils.buffersAreIdentical = function(a, b) {
   var alen = BinArray.bufferSize(a);
   var blen = BinArray.bufferSize(b);
   if (alen != blen) {
@@ -1220,7 +1189,7 @@ BinArray.prototype = {
     for (var i=0; i<charsToWrite; i++) {
       cval = str.charCodeAt(i);
       if (cval > 127) {
-        trace("#writeCString() Unicode value beyond ascii range")
+        trace("#writeCString() Unicode value beyond ascii range");
         cval = '?'.charCodeAt(0);
       }
       this.writeUint8(cval);
@@ -1279,11 +1248,11 @@ Examples:
   %'f     1000   '1,000'
 */
 
-// Usage: Utils.format(formatString, [values])
-// Tip: When reusing the same format many times, use Utils.formatter() for 5x - 10x better performance
+// Usage: utils.format(formatString, [values])
+// Tip: When reusing the same format many times, use utils.formatter() for 5x - 10x better performance
 //
-Utils.format = function(fmt) {
-  var fn = Utils.formatter(fmt);
+utils.format = function(fmt) {
+  var fn = utils.formatter(fmt);
   var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
   return str;
 };
@@ -1304,7 +1273,7 @@ function formatValue(val, matches) {
       isZero = false,
       isNeg = false;
 
-  var str;
+  var str, padChar, padStr;
   if (isString) {
     str = String(val);
   }
@@ -1314,14 +1283,14 @@ function formatValue(val, matches) {
       str = str.toUpperCase();
   }
   else if (isNumber) {
-    str = Utils.numToStr(val, isInt ? 0 : decimals);
+    str = utils.numToStr(val, isInt ? 0 : decimals);
     if (str[0] == '-') {
       isNeg = true;
       str = str.substr(1);
     }
     isZero = parseFloat(str) == 0;
     if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-      str = Utils.addThousandsSep(str);
+      str = utils.addThousandsSep(str);
     }
     if (!isZero) { // BUG: sign is added when num rounds to 0
       if (isNeg) {
@@ -1337,8 +1306,8 @@ function formatValue(val, matches) {
     var minWidth = parseInt(padding, 10);
     if (strLen < minWidth) {
       padDigits = minWidth - strLen;
-      var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-      var padStr = Utils.repeatString(padChar, padDigits);
+      padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+      padStr = utils.repeatString(padChar, padDigits);
     }
   }
 
@@ -1353,16 +1322,16 @@ function formatValue(val, matches) {
 }
 
 // Get a function for interpolating formatted values into a string.
-Utils.formatter = function(fmt) {
+utils.formatter = function(fmt) {
   var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
   var literals = [],
       formatCodes = [],
       startIdx = 0,
       prefix = "",
-      literal,
-      matches;
+      matches = codeRxp.exec(fmt),
+      literal;
 
-  while (matches=codeRxp.exec(fmt)) {
+  while (matches) {
     literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
     if (matches[0] == '%%') {
       prefix += literal + '%';
@@ -1372,6 +1341,7 @@ Utils.formatter = function(fmt) {
       formatCodes.push(matches);
     }
     startIdx = codeRxp.lastIndex;
+    matches = codeRxp.exec(fmt);
   }
   literals.push(prefix + fmt.substr(startIdx));
 
@@ -1492,6 +1462,7 @@ utils.createBuffer = function(arg, arg2) {
 
 
 var api = {};
+var VERSION; // set by build script
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
@@ -1629,7 +1600,7 @@ api.printError = function(err) {
 };
 
 internal.error = function() {
-  var msg = Utils.toArray(arguments).join(' ');
+  var msg = utils.toArray(arguments).join(' ');
   throw new Error(msg);
 };
 
@@ -5725,6 +5696,27 @@ internal.getDatasetCRS = function(dataset) {
   return P;
 };
 
+// Assumes conformal projections; consider returning average of vertical and
+// horizontal scale factors.
+// x, y: a point location in projected coordinates
+// Returns k, the ratio of coordinate distance to distance on the ground
+internal.getScaleFactorAtXY = function(x, y, crs) {
+  var proj = require('mproj');
+  var dist = 1;
+  var lp = proj.pj_inv_deg({x: x, y: y}, crs);
+  var lp2 = proj.pj_inv_deg({x: x + dist, y: y}, crs);
+  var k = dist / greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+  return k;
+};
+
+internal.isProjectedCRS = function(P) {
+  return P && P.is_latlong || false;
+};
+
+internal.isLatLngCRS = function(P) {
+  return P && P.is_latlong || false;
+};
+
 internal.printProjections = function() {
   var index = require('mproj').internal.pj_list;
   var msg = 'Proj4 projections\n';
@@ -6542,6 +6534,20 @@ internal.debugFlags = function(flags) {
 
 
 
+// Not a general-purpose deep copy function
+internal.copyRecord = function(o) {
+  var o2 = {}, key, val;
+  if (!o) return null;
+  for (key in o) {
+    if (o.hasOwnProperty(key)) {
+      val = o[key];
+      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
+    }
+  }
+  return o2;
+};
+
+
 // Insert a column of values into a (new or existing) data field
 internal.insertFieldValues = function(lyr, fieldName, values) {
   var size = internal.getFeatureCount(lyr) || values.length,
@@ -7319,13 +7325,13 @@ Dbf.bufferPool = new BufferPool();
 Dbf.exportRecords = function(records, encoding, fieldOrder) {
   var rows = records.length;
   var fields = internal.findFieldNames(records, fieldOrder);
-  var uniqFields = internal.getUniqFieldNames(fields, 10);
+  var dbfFields = Dbf.convertFieldNames(fields);
   var fieldData = fields.map(function(name, i) {
     var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
-    var uniqName = uniqFields[i];
-    info.name = uniqName;
-    if (name != uniqName) {
-      message('[' + name + '] Truncated field name to "' + uniqName + '"');
+    var name2 = dbfFields[i];
+    info.name = name2;
+    if (name != name2) {
+      message('Changed field name from "' + name + '" to "' + name2 + '"');
     }
     if (info.warning) {
       message('[' + name + '] ' + info.warning);
@@ -7352,6 +7358,7 @@ Dbf.exportRecords = function(records, encoding, fieldOrder) {
   bin.skipBytes(17);
   bin.writeUint8(0); // language flag; TODO: improve this
   bin.skipBytes(2);
+
 
   // field subrecords
   fieldData.reduce(function(recordOffset, obj) {
@@ -7484,6 +7491,17 @@ Dbf.initStringField = function(info, arr, name, encoding) {
   if (truncated > 0) {
     info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
   }
+};
+
+Dbf.convertFieldNames = function(names) {
+  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
+};
+
+// Replace non-alphanumeric characters with _ and merge adjacent _
+// See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
+// TODO: decide whether or not to avoid initial numerals
+Dbf.cleanFieldName = function(name) {
+  return name.replace(/[^A-Za-z0-9]+/g, '_');
 };
 
 Dbf.getFieldInfo = function(arr, name, encoding) {
@@ -7710,9 +7728,7 @@ var dataTableProto = {
   clone: function() {
     // TODO: this could be sped up using a record constructor function
     // (see getRecordConstructor() in DbfReader)
-    var records2 = this.getRecords().map(function(rec) {
-      return utils.extend({}, rec);
-    });
+    var records2 = this.getRecords().map(internal.copyRecord);
     return new DataTable(records2);
   },
 
@@ -12996,7 +13012,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
 internal.getRFC7946Warnings = function(dataset) {
   var P = internal.getDatasetCRS(dataset);
   var str;
-  if (!P || !P.is_latlong) {
+  if (!P || !internal.isLatLngCRS(P)) {
     str = 'RFC 7946 warning: non-WGS84 coordinates.';
     if (P) str += ' Use "-proj wgs84" to convert.';
   }
@@ -13005,7 +13021,7 @@ internal.getRFC7946Warnings = function(dataset) {
 
 internal.getDatasetBbox = function(dataset, rfc7946) {
   var P = internal.getDatasetCRS(dataset),
-      wrapped = rfc7946 && P && P.is_latlong,
+      wrapped = rfc7946 && P && internal.isLatLngCRS(P),
       westBounds = new Bounds(),
       eastBounds = new Bounds(),
       mergedBounds, gutter, margins, bbox;
@@ -13165,7 +13181,7 @@ internal.exportCRS = function(dataset, jsonObj) {
   if (!info.crs && 'input_geojson_crs' in info) {
     // use input geojson crs if available and coords have not changed
     jsonObj.crs = info.input_geojson_crs;
-  } else if (info.crs && !info.crs.is_latlong) {
+  } else if (info.crs && !internal.isLatLngCRS(info.crs)) {
     // Setting output crs to null if coords have been projected
     // "If the value of CRS is null, no CRS can be assumed"
     // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
@@ -13625,12 +13641,102 @@ internal.cloneProperties = function(obj) {
 
 
 
+var SVG = {};
+
+SVG.propertyTypes = {
+  class: 'classname',
+  opacity: 'number',
+  r: 'number',
+  dx: 'measure',
+  dy: 'measure',
+  fill: 'color',
+  stroke: 'color',
+  'line-height': 'measure',
+  'letter-spacing': 'measure',
+  'stroke-width': 'number',
+  'stroke-dasharray': 'dasharray'
+};
+
+SVG.symbolRenderers = {};
+SVG.furnitureRenderers = {};
+
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
+SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
+
+SVG.propertiesBySymbolType = {
+  polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),
+  polyline: utils.arrayToIndex(SVG.commonProperties),
+  point: utils.arrayToIndex(SVG.commonProperties.concat('fill', 'r')),
+  label: utils.arrayToIndex(SVG.commonProperties.concat(
+    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
+};
+
+SVG.findPropertiesBySymbolGeom = function(fields, type) {
+  var index = SVG.propertiesBySymbolType[type] || {};
+  return fields.filter(function(name) {
+    return name in index;
+  });
+};
+
+SVG.getTransform = function(xy, scale) {
+  var str = 'translate(' + xy[0] + ' ' + xy[1] + ')';
+  if (scale && scale != 1) {
+    str += ' scale(' + scale + ')';
+  }
+  return str;
+};
+
+
+
+
+
+// @lyr a layer in a dataset
+internal.layerHasFurniture = function(lyr) {
+  var type = internal.getFurnitureLayerType(lyr);
+  return !!type && (type in SVG.furnitureRenderers);
+};
+
+// @mapLayer a map layer object
+internal.isFurnitureLayer = function(mapLayer) {
+  return !!mapLayer.furniture;
+};
+
+
+// @lyr dataset layer
+internal.getFurnitureLayerType = function(lyr) {
+  var rec = lyr.data && lyr.data.getRecordAt(0);
+  return rec && rec.type || null;
+};
+
+internal.getFurnitureLayerData = function(lyr) {
+  return lyr.data && internal.copyRecord(lyr.data.getRecordAt(0));
+};
+
+SVG.importFurniture = function(d, frame) {
+  var renderer = SVG.furnitureRenderers[d.type];
+  if (!renderer) {
+    stop('Missing renderer for', d.type, 'element');
+  }
+  return renderer(d, frame) || [];
+};
+
+
+
 
 internal.transformDatasetToPixels = function(dataset, opts) {
-  var bounds = internal.getDatasetBounds(dataset),
-      bounds2 = internal.calcOutputSizeInPixels(bounds, opts),
-      fwd = bounds.getTransform(bounds2, opts.invert_y);
-
+  var frameLyr = internal.findFrameLayerInDataset(dataset);
+  var bounds, bounds2, fwd, frameData;
+  if (frameLyr) {
+    // TODO: handle options like width, height margin when a frame is present
+    // TODO: check that aspect ratios match
+    frameData = internal.getFurnitureLayerData(frameLyr);
+    bounds = new Bounds(frameData.bbox);
+    bounds2 = new Bounds(0, 0, frameData.width, frameData.height);
+  } else {
+    bounds = internal.getDatasetBounds(dataset);
+    bounds2 = internal.calcOutputSizeInPixels(bounds, opts);
+  }
+  fwd = bounds.getTransform(bounds2, opts.invert_y);
   internal.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
@@ -14207,6 +14313,21 @@ function ShpRecordClass(type) {
       if (xy.length != j) error('Counting error');
     },
 
+    // TODO: consider switching to this simpler functino
+    stream2: function(sink) {
+      var sizes = this.readPartSizes(),
+          bin = this._data().skipBytes(this._xypos()),
+          i = 0, n;
+      while (i < sizes.length) {
+        n = sizes[i];
+        while (n-- > 0) {
+          sink.addPoint(bin.readFloat64(), bin.readFloat64());
+        }
+        sink.endPath();
+        i++;
+      }
+    },
+
     read: function() {
       var parts = [],
           sizes = this.readPartSizes(),
@@ -14522,6 +14643,7 @@ internal.importShp = function(shp, shx, opts) {
       importer.importPoints(shp.readPoints());
     } else {
       shp.stream(importer);
+      // shp.stream2(importer);
     }
   });
 
@@ -14811,112 +14933,88 @@ internal.exportDbfFile = function(lyr, dataset, opts) {
 
 
 
-var SVG = {};
 
-SVG.propertyTypes = {
-  class: 'classname',
-  opacity: 'number',
-  r: 'number',
-  dx: 'measure',
-  dy: 'measure',
-  fill: 'color',
-  stroke: 'color',
-  'line-height': 'measure',
-  'letter-spacing': 'measure',
-  'stroke-width': 'number',
-  'stroke-dasharray': 'dasharray'
-};
-
-SVG.symbolRenderers = {};
-
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
-SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
-
-SVG.propertiesBySymbolType = {
-  polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),
-  polyline: utils.arrayToIndex(SVG.commonProperties),
-  point: utils.arrayToIndex(SVG.commonProperties.concat('fill', 'r')),
-  label: utils.arrayToIndex(SVG.commonProperties.concat(
-    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing'.split(',')))
-};
-
-SVG.findPropertiesBySymbolGeom = function(fields, type) {
-  var index = SVG.propertiesBySymbolType[type] || {};
-  return fields.filter(function(name) {
-    return name in index;
-  });
-};
-
-SVG.getTransform = function(xy) {
-  return 'translate(' + xy[0] + ' ' + xy[1] + ')';
-};
-
-
-
-
-SVG.symbolRenderers.circle = function(d) {
-  var o = SVG.importPoint([0, 0], d, {});
+SVG.symbolRenderers.circle = function(d, x, y) {
+  var o = SVG.importPoint([x, y], d, {});
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
 
-SVG.symbolRenderers.label = function(d) {
-  var o = SVG.importLabel([0, 0], d);
+SVG.symbolRenderers.label = function(d, x, y) {
+  var o = SVG.importLabel(d, [x, y]);
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
 
-SVG.symbolRenderers.image = function(d) {
+SVG.symbolRenderers.image = function(d, x, y) {
   var w = d.width || 20,
-      h = d.height || 20,
-      x = -w / 2,
-      y = -h / 2;
+      h = d.height || 20;
   var o = {
     tag: 'image',
     properties: {
       width: w,
       height: h,
-      x: x,
-      y: y,
+      x: x - w / 2,
+      y: y - h / 2,
       href: d.href || ''
     }
   };
   return [o];
 };
 
-SVG.symbolRenderers.square = function(d) {
-  var o = SVG.importPoint([0, 0], d, {point_symbol: 'square'});
+SVG.symbolRenderers.square = function(d, x, y) {
+  var o = SVG.importPoint([x, y], d, {point_symbol: 'square'});
   SVG.applyStyleAttributes(o, 'Point', d);
   return [o];
 };
 
-SVG.symbolRenderers.line = function(d) {
-  var coords = [[0, 0], [d.dx || 0, d.dy || 0]];
-  var o = SVG.importLineString(coords);
+SVG.symbolRenderers.line = function(d, x, y) {
+  var coords, o;
+  coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
+  o = SVG.importLineString(coords);
   SVG.applyStyleAttributes(o, 'LineString', d);
   return [o];
 };
 
+SVG.symbolRenderers.group = function(d, x, y) {
+  return (d.parts || []).reduce(function(memo, o) {
+    var sym = SVG.renderSymbol(o, x, y);
+    if (d.chained) {
+      x += (o.dx || 0);
+      y += (o.dy || 0);
+    }
+    return memo.concat(sym);
+  }, []);
+};
+
+SVG.getEmptySymbol = function() {
+  return {tag: 'g', properties: {}, children: []};
+};
+
+SVG.renderSymbol = function(d, x, y) {
+  var renderer = SVG.symbolRenderers[d.type];
+   if (!renderer) {
+    stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
+  }
+  return renderer(d, x || 0, y || 0);
+};
+
 // d: svg-symbol object from feature data object
-SVG.importSymbol = function(xy, d) {
+SVG.importSymbol = function(d, xy) {
   var renderer;
   if (!d) {
-    return {tag: 'g', properties: {}, children: []}; // empty symbol
+    return SVG.getEmptySymbol();
   }
   if (utils.isString(d)) {
     d = JSON.parse(d);
-  }
-  renderer = SVG.symbolRenderers[d.type];
-  if (!renderer) {
-    stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
   }
   return {
     tag: 'g',
     properties: {
       'class': 'mapshaper-svg-symbol',
-      transform: SVG.getTransform(xy)
+      transform: xy ? SVG.getTransform(xy) : null
     },
-    children: renderer(d)
+    children: SVG.renderSymbol(d)
   };
 };
 
@@ -15009,31 +15107,130 @@ internal.isSvgColor = function(str) {
 
 
 
+// public domain implementation
+// source: https://github.com/jbt/js-crypto
+utils.sha1 = function(str1){
+  for (
+    var blockstart = 0,
+      i = 0,
+      W = [],
+      A, B, C, D, F, G,
+      H = [A=0x67452301, B=0xEFCDAB89, ~A, ~B, 0xC3D2E1F0],
+      word_array = [],
+      temp2,
+      s = unescape(encodeURI(str1)),
+      str_len = s.length;
 
-SVG.importGeoJSONFeatures = function(features, opts) {
-  opts = opts || {};
-  return features.map(function(obj, i) {
-    var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
-    var geomType = geom && geom.type;
-    var svgObj = null;
-    if (geomType && geom.coordinates) {
-      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
+    i <= str_len;
+  ){
+    word_array[i >> 2] |= (s.charCodeAt(i)||128) << (8 * (3 - i++ % 4));
+  }
+  word_array[temp2 = ((str_len + 8) >> 2) | 15] = str_len << 3;
+
+  for (; blockstart <= temp2; blockstart += 16) {
+    A = H; i = 0;
+
+    for (; i < 80;
+      A = [[
+        (G = ((s = A[0]) << 5 | s >>> 27) + A[4] + (W[i] = (i<16) ? ~~word_array[blockstart + i] : G << 1 | G >>> 31) + 1518500249) + ((B = A[1]) & (C = A[2]) | ~B & (D = A[3])),
+        F = G + (B ^ C ^ D) + 341275144,
+        G + (B & C | B & D | C & D) + 882459459,
+        F + 1535694389
+      ][0|((i++) / 20)] | 0, s, B << 30 | B >>> 2, C, D]
+    ) {
+      G = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
     }
-    if (!svgObj) {
-      return {tag: 'g'}; // empty element
-    }
-    // TODO: fix error caused by null svgObj (caused by e.g. MultiPolygon with [] coordinates)
-    if (obj.properties) {
-      SVG.applyStyleAttributes(svgObj, geomType, obj.properties);
-    }
-    if ('id' in obj) {
-      if (!svgObj.properties) {
-        svgObj.properties = {};
+
+    for(i = 5; i; ) H[--i] = H[i] + A[i] | 0;
+  }
+
+  for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
+  return str1;
+};
+
+
+
+
+SVG.embedImages = function(obj, symbols) {
+  // Same-origin policy is an obstacle to embedding images in web UI
+  if (internal.runningInBrowser()) return;
+  procNode(obj);
+
+  function procNode(obj) {
+    if (obj.tag == 'image') {
+      if (/\.svg/.test(obj.properties.href || '')) {
+        embedSvgImage(obj);
       }
-      svgObj.properties.id = (opts.id_prefix || '') + obj.id;
+    } else if (obj.children) {
+      obj.children.forEach(procNode);
     }
-    return svgObj;
-  });
+  }
+
+  function embedSvgImage(obj) {
+    var id = addImage(obj.properties.href);
+    obj.tag = 'use';
+    obj.properties.href = '#' + id;
+  }
+
+  function addImage(href) {
+    var item = utils.find(symbols, function(item) {return item.href == href;});
+    if (!item) {
+      item = {
+        href: href,
+        id: SVG.urlToId(href) // generating id from href, to try to support multiple inline svgs on page
+      };
+      // item.svg = convertSvgToSymbol(getSvgFile(href), item.id) + '\n';
+      item.svg = convertSvg(getSvgFile(href), item.id) + '\n';
+      symbols.push(item);
+    }
+    return item.id;
+  }
+
+  function getSvgFile(href) {
+    var res, content, fs;
+    if (href.indexOf('http') === 0) {
+      res  = require('sync-request')('GET', href, {timeout: 1000});
+      content = res.getBody().toString();
+    } else if (require('fs').existsSync(href)) { // assume href is a relative path
+      content = require('fs').readFileSync(href, 'utf8');
+    } else {
+      stop("Invalid SVG location:", href);
+    }
+    return content;
+  }
+
+  /*
+  function convertSvgToSymbol(svg, id) {
+    svg = svg.replace(/[^]*<svg/, '<svg');
+    // Remove inkscape tags (there were errors caused when namespaces were
+    // stripped when converting <svg> to <symbol> ... this may be futile, may
+    // have to go back to embedding entire SVG document instead of using symbols)
+    svg = svg.replace(/<metadata[^]*?metadata>/, '');
+    svg = svg.replace(/<sodipodi[^>]*>/, '');
+    // convert <svg> to <symbol>
+    svg = svg.replace(/^<svg[^>]*>/, function(a) {
+      var viewBox = a.match(/viewBox=".*?"/)[0];
+      return '<symbol id="' + id + '" ' + viewBox + '>';
+    });
+    svg = svg.replace('svg>', 'symbol>');
+    return svg;
+  }
+  */
+
+  function convertSvg(svg, id) {
+    // Remove stuff before <svg> tag
+    svg = svg.replace(/[^]*<svg/, '<svg');
+    return svg.replace(/^<svg[^>]*>/, function(a) {
+      // set id property of <svg>
+      a = a.replace(/ id="[^"]*"/, '');
+      a = a.replace(/<svg/, '<svg id="' + id + '"');
+      return a;
+    });
+  }
+};
+
+SVG.urlToId = function(url) {
+  return utils.sha1(url).substr(0, 12);
 };
 
 SVG.stringify = function(obj) {
@@ -15081,8 +15278,40 @@ SVG.stringifyProperties = function(o) {
         strval;
     if (!val && val !== 0) return memo; // omit undefined / empty / null values
     strval = utils.isString(val) ? val : JSON.stringify(val);
+    if (key == 'href') {
+      key = 'xlink:href';
+    }
     return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
   }, '');
+};
+
+
+
+
+SVG.importGeoJSONFeatures = function(features, opts) {
+  opts = opts || {};
+  return features.map(function(obj, i) {
+    var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
+    var geomType = geom && geom.type;
+    var svgObj = null;
+    if (geomType && geom.coordinates) {
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
+    }
+    if (!svgObj) {
+      return {tag: 'g'}; // empty element
+    }
+    // TODO: fix error caused by null svgObj (caused by e.g. MultiPolygon with [] coordinates)
+    if (obj.properties) {
+      SVG.applyStyleAttributes(svgObj, geomType, obj.properties);
+    }
+    if ('id' in obj) {
+      if (!svgObj.properties) {
+        svgObj.properties = {};
+      }
+      svgObj.properties.id = (opts.id_prefix || '') + obj.id;
+    }
+    return svgObj;
+  });
 };
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
@@ -15146,19 +15375,24 @@ SVG.importLineString = function(coords) {
   };
 };
 
-SVG.importLabel = function(p, rec) {
+SVG.importLabel = function(rec, p) {
   var line = rec['label-text'] || '';
   var morelines, obj;
   // Accepting \n (two chars) as an alternative to the newline character
   // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
   // Also accepting <br>
   var newline = /\n|\\n|<br>/i;
+  var dx = rec.dx || 0;
+  var dy = rec.dy || 0;
   var properties = {
-    x: p[0],
-    y: p[1]
+    // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
+    // dx value when importing text with text-anchor=end
+    y: dy,
+    x: dx
   };
-  if (rec.dx) properties.dx = rec.dx;
-  if (rec.dy) properties.dy = rec.dy;
+  if (p) {
+    properties.transform = SVG.getTransform(p);
+  }
   if (newline.test(line)) {
     morelines = line.split(newline);
     line = morelines.shift();
@@ -15176,11 +15410,10 @@ SVG.importLabel = function(p, rec) {
         tag: 'tspan',
         value: line,
         properties: {
-          x: p[0],
+          x: dx,
           dy: rec['line-height'] || '1.1em'
         }
       };
-      if (rec.dx) tspan.properties.dx = rec.dx;
       obj.children.push(tspan);
     });
   }
@@ -15190,7 +15423,7 @@ SVG.importLabel = function(p, rec) {
 SVG.importPoint = function(coords, rec, layerOpts) {
   rec = rec || {};
   if ('svg-symbol' in rec) {
-    return SVG.importSymbol(coords, rec['svg-symbol']);
+    return SVG.importSymbol(rec['svg-symbol'], coords);
   }
   return SVG.importStandardPoint(coords, rec, layerOpts || {});
 };
@@ -15237,7 +15470,7 @@ SVG.importStandardPoint = function(coords, rec, layerOpts) {
     children.push(p);
   }
   if (isLabel) {
-    children.push(SVG.importLabel(coords, rec));
+    children.push(SVG.importLabel(rec, coords));
   }
   return children.length > 1 ? {tag: 'g', children: children} : children[0];
 };
@@ -15263,8 +15496,10 @@ SVG.geojsonImporters = {
 //
 //
 internal.exportSVG = function(dataset, opts) {
-  var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
+  var template = '<?xml version="1.0"?>\n<svg %s ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
+  var namespace = 'xmlns="http://www.w3.org/2000/svg"';
+  var symbols = [];
   var size, svg;
 
   // TODO: consider moving this logic to mapshaper-export.js
@@ -15277,9 +15512,15 @@ internal.exportSVG = function(dataset, opts) {
   utils.extend(opts, {invert_y: true});
   size = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
-    return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
+    var obj = internal.exportLayerForSVG(lyr, dataset, opts);
+    SVG.embedImages(obj, symbols);
+    return SVG.stringify(obj);
   }).join('\n');
-  svg = utils.format(template, size[0], size[1], 0, 0, size[0], size[1], svg);
+  if (symbols.length > 0) {
+    namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+    svg = '<defs>\n' + utils.pluck(symbols, 'svg').join('') + '</defs>\n' + svg;
+  }
+  svg = utils.format(template, namespace, size[0], size[1], 0, 0, size[0], size[1], svg);
   return [{
     content: svg,
     filename: opts.file || utils.getOutputFileBase(dataset) + '.svg'
@@ -15295,8 +15536,21 @@ internal.transformCoordsForSVG = function(dataset, opts) {
 
 internal.exportLayerForSVG = function(lyr, dataset, opts) {
   var layerObj = internal.getEmptyLayerForSVG(lyr, opts);
-  layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+  if (internal.layerHasFurniture(lyr)) {
+    layerObj.children = internal.exportFurnitureForSVG(lyr, dataset, opts);
+  } else {
+    layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+  }
   return layerObj;
+};
+
+internal.exportFurnitureForSVG = function(lyr, dataset, opts) {
+  var frameLyr = internal.findFrameLayerInDataset(dataset);
+  var frameData;
+  if (!frameLyr) return [];
+  frameData = internal.getFurnitureLayerData(frameLyr);
+  frameData.crs = internal.getDatasetCRS(dataset); // required by e.g. scalebar
+  return SVG.importFurniture(internal.getFurnitureLayerData(lyr), frameData);
 };
 
 internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
@@ -15315,21 +15569,33 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
   };
 
   // add default display properties to line layers
-  // (these are overridden by feature-level styles set via -svg-style)
+  // (these are overridden by feature-level styles set via -style)
   if (lyr.geometry_type == 'polyline') {
     layerObj.properties.fill = 'none';
     layerObj.properties.stroke = 'black';
     layerObj.properties['stroke-width'] = 1;
   }
 
-  // add default text properties to label layers
-  if (lyr.data && lyr.data.fieldExists('label-text')) {
+  // add default text properties to layers with labels
+  if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr) || internal.layerHasFurniture(lyr)) {
     layerObj.properties['font-family'] = 'sans-serif';
     layerObj.properties['font-size'] = '12';
     layerObj.properties['text-anchor'] = 'middle';
   }
 
   return layerObj;
+};
+
+internal.layerHasSvgSymbols = function(lyr) {
+  return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
+};
+
+internal.layerHasLabels = function(lyr) {
+  var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
+  //if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
+  //  console.error('Multi-point labels are not fully supported');
+  //}
+  return hasLabels;
 };
 
 
@@ -16487,6 +16753,250 @@ internal.getRecordMapper = function(map) {
     }
     return dest;
   };
+};
+
+
+
+
+// Create rectangles around each feature in a layer
+api.rectangles = function(targetLyr, targetDataset, opts) {
+  if (!internal.layerHasGeometry(targetLyr)) {
+    stop("Layer is missing geometric shapes");
+  }
+  var crs = internal.getDatasetCRS(targetDataset);
+  var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+  var geometries = targetLyr.shapes.map(function(shp) {
+    var bounds = targetLyr.geometryType == 'point' ?
+      internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
+    bounds = internal.applyRectangleOptions(bounds, crs, opts);
+    if (!bounds) return null;
+    return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+  });
+  var geojson = {
+    type: 'FeatureCollection',
+    features: geometries.map(function(geom, i) {
+      var rec = records && records[i] || null;
+      if (rec && opts.no_replace) {
+        rec = utils.extend({}, rec); // make a copy
+      }
+      return {
+        type: 'Feature',
+        properties: rec,
+        geometry: geom
+      };
+    })
+  };
+  var dataset = internal.importGeoJSON(geojson, {});
+  var merged = internal.mergeDatasets([targetDataset, dataset]);
+  var outputLyr = dataset.layers[0];
+  targetDataset.arcs = merged.arcs;
+  if (!opts.no_replace) {
+    outputLyr.name = targetLyr.name || outputLyr.name;
+  }
+  return [outputLyr];
+};
+
+// Create rectangles around one or more target layers
+//
+api.rectangle2 = function(target, opts) {
+  var outputLayers = [];
+  var datasets = target.layers.map(function(lyr) {
+    var dataset = api.rectangle({layer: lyr, dataset: target.dataset}, opts);
+    outputLayers.push(dataset.layers[0]);
+    if (!opts.no_replace) {
+      dataset.layers[0].name = lyr.name || dataset.layers[0].name;
+    }
+    return dataset;
+  });
+  var merged = internal.mergeDatasets([target.dataset].concat(datasets));
+  target.dataset.arcs = merged.arcs;
+  return outputLayers;
+};
+
+api.rectangle = function(source, opts) {
+  var offsets, bounds, crs, coords, sourceInfo;
+  if (source) {
+    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
+    sourceInfo = source.dataset.info;
+    crs = internal.getDatasetCRS(source.dataset);
+  } else if (opts.bbox) {
+    bounds = new Bounds(opts.bbox);
+    crs = internal.getCRS('wgs84');
+  }
+  bounds = bounds && internal.applyRectangleOptions(bounds, crs, opts);
+  if (!bounds || !bounds.hasBounds()) {
+    stop('Missing rectangle extent');
+  }
+  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+  var dataset = internal.importGeoJSON(geojson, {});
+  dataset.layers[0].name = opts.name || 'rectangle';
+  if (sourceInfo) {
+    internal.setDatasetCRS(dataset, sourceInfo);
+  }
+  return dataset;
+};
+
+internal.applyRectangleOptions = function(bounds, crs, opts) {
+  var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
+  if (opts.offset) {
+    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
+  }
+  if (bounds.area() > 0 === false) return null;
+  if (opts.aspect_ratio) {
+    bounds = internal.applyAspectRatio(opts.aspect_ratio, bounds);
+  }
+  if (isGeoBox) {
+    bounds = internal.clampToWorldBounds(bounds);
+  }
+  return bounds;
+};
+
+internal.applyAspectRatio = function(opt, bounds) {
+  var range = String(opt).split(','),
+    aspectRatio = bounds.width() / bounds.height(),
+    min, max; // min is height limit, max is width limit
+  min = Number(range[0]);
+  max = range.length > 1 ? Number(range[1]) : min;
+  if (!min && !max) return bounds;
+  if (!min) min = -Infinity;
+  if (!max) max = Infinity;
+  if (aspectRatio < min) {
+    bounds.fillOut(min);
+  } else if (aspectRatio > max) {
+    bounds.fillOut(max);
+  }
+  return bounds;
+};
+
+internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
+  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
+  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+  return bounds;
+};
+
+internal.convertBboxToGeoJSON = function(bbox, opts) {
+  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+  return {
+    type: 'Polygon',
+    coordinates: [coords]
+  };
+};
+
+
+
+
+api.frame = function(catalog, source, opts) {
+  var width = Number(opts.width);
+  var height, bounds, tmp, dataset;
+  if (width > 0 === false) {
+    stop("Missing a width");
+  }
+  if (opts.height) {
+    opts = utils.extend({}, opts);
+    opts.aspect_ratio = opts.height.split(',').map(function(opt) {
+      var height = Number(opt);
+      if (!opt) return '';
+      if (height > 0 === false) {
+        stop('Missing a valid height');
+      }
+      return width / height;
+    }).join(',');
+  }
+  tmp = api.rectangle(source, opts);
+  bounds = internal.getDatasetBounds(tmp);
+  if (internal.probablyDecimalDegreeBounds(bounds)) {
+    stop('Frames require projected, not geographical coordinates');
+  } else if (!internal.getDatasetCRS(tmp)) {
+    message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
+  }
+  height = width * bounds.height() / bounds.width();
+  dataset = {info: {}, layers:[{
+    name: opts.name || 'frame',
+    data: new DataTable([{
+      width: width,
+      height: height,
+      bbox: bounds.toArray(),
+      type: 'frame'
+    }])
+  }]};
+  // return dataset;
+  catalog.addDataset(dataset);
+};
+
+
+internal.getDatasetDisplayBounds = function(dataset) {
+  var frameLyr = findFrameLayerInDataset(dataset);
+  if (frameLyr) {
+    // TODO: check for coordinate issues (non-intersection with other layers, etc)
+    return internal.getFrameLayerBounds(frameLyr);
+  }
+  return internal.getDatasetBounds(dataset);
+};
+
+// @lyr dataset layer
+internal.isFrameLayer = function(lyr) {
+  return internal.getFurnitureLayerType(lyr) == 'frame';
+};
+
+internal.findFrameLayerInDataset = function(dataset) {
+  return utils.find(dataset.layers, function(lyr) {
+    return internal.isFrameLayer(lyr);
+  });
+};
+
+internal.findFrameDataset = function(catalog) {
+  var target = utils.find(catalog.getLayers(), function(o) {
+    return internal.isFrameLayer(o.layer);
+  });
+  return target ? target.dataset : null;
+};
+
+internal.findFrameLayer = function(catalog) {
+  var target = utils.find(catalog.getLayers(), function(o) {
+    return internal.isFrameLayer(o.layer);
+  });
+  return target && target.layer || null;
+};
+
+internal.getFrameLayerBounds = function(lyr) {
+  return new Bounds(internal.getFurnitureLayerData(lyr).bbox);
+};
+
+
+// @data frame data, including crs property if available
+// Returns a single value: the ratio or
+internal.getMapFrameMetersPerPixel = function(data) {
+  var bounds = new Bounds(data.bbox);
+  var k, toMeters, metersPerPixel;
+  if (data.crs) {
+    // TODO: handle CRS without inverse projections
+    // scale factor is the ratio of coordinate distance to true distance at a point
+    k = internal.getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
+    toMeters = data.crs.to_meter;
+  } else {
+    // Assuming coordinates are meters and k is 1 (not safe)
+    // A warning should be displayed when relevant furniture element is created
+    k = 1;
+    toMeters = 1;
+  }
+  metersPerPixel = bounds.width() / k * toMeters / data.width;
+  return metersPerPixel;
+};
+
+SVG.furnitureRenderers.frame = function(d) {
+  var lineWidth = 1,
+      // inset stroke by half of line width
+      off = lineWidth / 2,
+      obj = SVG.importPolygon([[[off, off], [off, d.height - off],
+        [d.width - off, d.height - off],
+        [d.width - off, off], [off, off]]]);
+  utils.extend(obj.properties, {
+      fill: 'none',
+      stroke: 'black',
+      'stroke-width': lineWidth
+  });
+  return [obj];
 };
 
 
@@ -18459,7 +18969,7 @@ internal.projectDataset = function(dataset, src, dest, opts) {
 
 internal.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
-  var clampSrc = src.is_latlong;
+  var clampSrc = internal.isLatLngCRS(src);
   return function(x, y) {
     var xy;
     if (clampSrc) {
@@ -18840,134 +19350,6 @@ internal.createPolygonLayer = function(lyr, dataset, opts) {
 
 
 
-// Create rectangles around each feature in a layer
-api.rectangles = function(targetLyr, targetDataset, opts) {
-  if (!internal.layerHasGeometry(targetLyr)) {
-    stop("Layer is missing geometric shapes");
-  }
-  var crs = internal.getDatasetCRS(targetDataset);
-  var records = targetLyr.data ? targetLyr.data.getRecords() : null;
-  var geometries = targetLyr.shapes.map(function(shp) {
-    var bounds = targetLyr.geometryType == 'point' ?
-      internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-    bounds = internal.applyRectangleOptions(bounds, crs, opts);
-    if (!bounds) return null;
-    return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
-  });
-  var geojson = {
-    type: 'FeatureCollection',
-    features: geometries.map(function(geom, i) {
-      var rec = records && records[i] || null;
-      if (rec && opts.no_replace) {
-        rec = utils.extend({}, rec); // make a copy
-      }
-      return {
-        type: 'Feature',
-        properties: rec,
-        geometry: geom
-      };
-    })
-  };
-  var dataset = internal.importGeoJSON(geojson, {});
-  var merged = internal.mergeDatasets([targetDataset, dataset]);
-  var outputLyr = dataset.layers[0];
-  targetDataset.arcs = merged.arcs;
-  if (!opts.no_replace) {
-    outputLyr.name = targetLyr.name || outputLyr.name;
-  }
-  return [outputLyr];
-};
-
-// Create rectangles around one or more target layers
-//
-api.rectangle2 = function(target, opts) {
-  var outputLayers = [];
-  var datasets = target.layers.map(function(lyr) {
-    var dataset = api.rectangle({layer: lyr, dataset: target.dataset}, opts);
-    outputLayers.push(dataset.layers[0]);
-    if (!opts.no_replace) {
-      dataset.layers[0].name = lyr.name || dataset.layers[0].name;
-    }
-    return dataset;
-  });
-  var merged = internal.mergeDatasets([target.dataset].concat(datasets));
-  target.dataset.arcs = merged.arcs;
-  return outputLayers;
-};
-
-api.rectangle = function(source, opts) {
-  var offsets, bounds, crs, coords, sourceInfo;
-  if (source) {
-    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
-    sourceInfo = source.dataset.info;
-    crs = internal.getDatasetCRS(source.dataset);
-  } else if (opts.bbox) {
-    bounds = new Bounds(opts.bbox);
-    crs = internal.getCRS('wgs84');
-  }
-  bounds = bounds && internal.applyRectangleOptions(bounds, crs, opts);
-  if (!bounds || !bounds.hasBounds()) {
-    stop('Missing rectangle extent');
-  }
-  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
-  var dataset = internal.importGeoJSON(geojson, {});
-  dataset.layers[0].name = opts.name || 'rectangle';
-  if (sourceInfo) {
-    internal.setDatasetCRS(dataset, sourceInfo);
-  }
-  return dataset;
-};
-
-internal.applyRectangleOptions = function(bounds, crs, opts) {
-  var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
-  if (opts.offset) {
-    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
-  }
-  if (bounds.area() > 0 === false) return null;
-  if (opts.aspect_ratio) {
-    bounds = internal.applyAspectRatio(opts.aspect_ratio, bounds);
-  }
-  if (isGeoBox) {
-    bounds = internal.clampToWorldBounds(bounds);
-  }
-  return bounds;
-};
-
-internal.applyAspectRatio = function(opt, bounds) {
-  var range = String(opt).split(','),
-    aspectRatio = bounds.width() / bounds.height(),
-    min, max; // min is height limit, max is width limit
-  min = Number(range[0]);
-  max = range.length > 1 ? Number(range[1]) : min;
-  if (!min && !max) return bounds;
-  if (!min) min = -Infinity;
-  if (!max) max = Infinity;
-  if (aspectRatio < min) {
-    bounds.fillOut(min);
-  } else if (aspectRatio > max) {
-    bounds.fillOut(max);
-  }
-  return bounds;
-};
-
-internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
-  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
-  bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-  return bounds;
-};
-
-internal.convertBboxToGeoJSON = function(bbox, opts) {
-  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
-  return {
-    type: 'Polygon',
-    coordinates: [coords]
-  };
-};
-
-
-
-
 api.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
   var name = 'layer';
@@ -19062,6 +19444,150 @@ api.require = function(targets, opts) {
   if (opts.init) {
     internal.runGlobalExpression(opts.init, targets);
   }
+};
+
+
+
+
+api.scalebar = function(catalog, opts) {
+  var frame = internal.findFrameDataset(catalog);
+  var obj, lyr;
+  if (!frame) {
+    stop('Missing a map frame');
+  }
+  obj = utils.defaults({type: 'scalebar'}, opts);
+  lyr = {
+    name: opts.name || 'scalebar',
+    data: new DataTable([obj])
+  };
+  frame.layers.push(lyr);
+};
+
+// TODO: generalize to other kinds of furniture as they are developed
+internal.getScalebarPosition = function(d) {
+  var opts = { // defaults
+    valign: 'top',
+    halign: 'left',
+    voffs: 10,
+    hoffs: 10
+  };
+  if (+d.left > 0) {
+    opts.hoffs = +d.left;
+  }
+  if (+d.top > 0) {
+    opts.voffs = +d.top;
+  }
+  if (+d.right > 0) {
+    opts.hoffs = +d.right;
+    opts.halign = 'right';
+  }
+  if (+d.bottom > 0) {
+    opts.voffs = +d.bottom;
+    opts.valign = 'bottom';
+  }
+  return opts;
+};
+
+SVG.furnitureRenderers.scalebar = function(d, frame) {
+  var pos = internal.getScalebarPosition(d);
+  var metersPerPx = internal.getMapFrameMetersPerPixel(frame);
+  var label = d.label_text || internal.getAutoScalebarLabel(frame.width, metersPerPx);
+  var scalebarKm = internal.parseScalebarLabelToKm(label);
+  var barHeight = 3;
+  var labelOffs = 4;
+  var fontSize = +d.font_size || 13;
+  var width = Math.round(scalebarKm / metersPerPx * 1000);
+  var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
+  var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
+  var anchorX = pos.halign == 'left' ? 0 : width;
+  var anchorY = barHeight + labelOffs;
+  var dx = pos.halign == 'right' ? frame.width - width - pos.hoffs : pos.hoffs;
+  var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
+
+  if (labelPos == 'top') {
+    anchorY = -labelOffs;
+    dy += Math.round(labelOffs + fontSize * 0.8);
+  }
+
+  if (width > 0 === false) {
+    stop("Null scalebar length");
+  }
+  var barObj = {
+    tag: 'rect',
+    properties: {
+      fill: 'black',
+      x: 0,
+      y: 0,
+      width: width,
+      height: barHeight
+    }
+  };
+  var labelOpts = {
+      'label-text': label,
+      'font-size': fontSize,
+      'text-anchor': pos.halign == 'left' ? 'start': 'end',
+      'dominant-baseline': labelPos == 'top' ? 'auto' : 'hanging'
+      //// 'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge'
+      // 'text-after-edge' is buggy in Safari and unsupported by Illustrator,
+      // so I'm using 'hanging' and 'auto', which seem to be well supported.
+      // downside: requires a kludgy multiplier to calculate scalebar height (see above)
+    };
+  var labelObj = SVG.symbolRenderers.label(labelOpts, anchorX, anchorY)[0];
+  var g = {
+    tag: 'g',
+    children: [barObj, labelObj],
+    properties: {
+      transform: 'translate(' + dx + ' ' + dy + ')'
+    }
+  };
+  return [g];
+};
+
+internal.getAutoScalebarLabel = function(mapWidth, metersPerPx) {
+  var minWidth = 100; // TODO: vary min size based on map width
+  var minKm = metersPerPx * minWidth / 1000;
+  var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
+    '100 150 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +
+    '2,500 3,000 4,000 5,000').split(' ');
+  return options.reduce(function(memo, str) {
+    if (memo) return memo;
+    var label = internal.formatDistanceLabelAsMiles(str);
+    if (internal.parseScalebarLabelToKm(label) > minKm) {
+       return label;
+    }
+  }, null) || '';
+};
+
+internal.formatDistanceLabelAsMiles = function(str) {
+  var num = internal.parseScalebarNumber(str);
+  return str + (num > 1 ? ' MILES' : ' MILE');
+};
+
+// See test/mapshaper-scalebar.js for examples of supported formats
+internal.parseScalebarLabelToKm = function(str) {
+  var units = internal.parseScalebarUnits(str);
+  var value = internal.parseScalebarNumber(str);
+  if (!units || !value) return NaN;
+  return units == 'mile' ? value * 1.60934 : value;
+};
+
+internal.parseScalebarUnits = function(str) {
+  var isMiles = /miles?$/.test(str.toLowerCase());
+  var isKm = /(km|kilometers?|kilometres?)$/.test(str.toLowerCase());
+  return isMiles && 'mile' || isKm && 'km' || '';
+};
+
+internal.parseScalebarNumber = function(str) {
+  var fractionRxp = /^([0-9]+) ?\/ ?([0-9]+)/;
+  var match, value;
+  str = str.replace(/[\s]/g, '').replace(/,/g, '');
+  if (fractionRxp.test(str)) {
+    match = fractionRxp.exec(str);
+    value = +match[1] / +match[2];
+  } else {
+    value = parseFloat(str);
+  }
+  return value > 0 && value < Infinity ? value : NaN;
 };
 
 
@@ -20380,6 +20906,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'filter-slivers') {
       internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
 
+    } else if (name == 'frame') {
+      api.frame(catalog, source, opts);
+
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
 
@@ -20490,6 +21019,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'run') {
       api.run(targets, catalog, opts, done);
       return;
+
+    } else if (name == 'scalebar') {
+      api.scalebar(catalog, opts);
 
     } else if (name == 'shape') {
       catalog.addDataset(api.shape(opts));
@@ -21335,6 +21867,13 @@ internal.getOptionParser = function() {
       },
       eachOpt2 = {
         describe: "apply a JS expression to each line (using A and B)"
+      },
+      aspectRatioOpt = {
+        describe: "aspect ratio as a number or range (e.g. 2 0.8,1.6 ,2)"
+      },
+      offsetOpt = {
+        describe: "padding as distance or pct of h/w (single value or list)",
+        type: "distance"
       };
 
   var parser = new CommandParser();
@@ -21943,7 +22482,7 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command('simplify')
+  parser.command("simplify")
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
@@ -22011,7 +22550,9 @@ internal.getOptionParser = function() {
     .option("stats", {
       describe: "display simplification statistics",
       type: "flag"
-    });
+    })
+    .option("target", targetOpt);
+
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")
@@ -22134,7 +22675,7 @@ internal.getOptionParser = function() {
    .option("target", targetOpt);
 
   parser.command("target")
-    .describe("set active layer")
+    .describe("set active layer (or layers)")
     .option("target", {
       DEFAULT: true,
       describe: "name or index of layer to target"
@@ -22257,6 +22798,24 @@ internal.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("frame")
+    // .describe("create a map frame at a given size")
+    .option("bbox", {
+      describe: "frame coordinates (xmin,ymin,xmax,ymax)",
+      type: "bbox"
+    })
+    .option("offset", offsetOpt)
+    .option("width", {
+      describe: "pixel width of output (default is 800)"
+    })
+    .option("height", {
+      describe: "pixel height of output (may be a range)"
+    })
+    .option("source", {
+      describe: "name of layer to enclose"
+    })
+    .option("name", nameOpt);
+
   parser.command("include")
     .describe("import JS data and functions for use in JS expressions")
     .option("file", {
@@ -22273,18 +22832,13 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("rectangle")
-    .describe("create a rectangular polygon")
+    .describe("create a rectangle from a bbox or target layer extent")
     .option("bbox", {
       describe: "rectangle coordinates (xmin,ymin,xmax,ymax)",
       type: "bbox"
     })
-    .option("offset", {
-      describe: "padding around bbox or contents (number or list)",
-      type: "distance"
-    })
-    .option("aspect-ratio", {
-      type: "string"
-    })
+    .option("offset", offsetOpt)
+    .option("aspect-ratio", aspectRatioOpt)
     .option("source", {
       describe: "name of layer to enclose"
     })
@@ -22293,14 +22847,9 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("rectangles")
-    // .describe("create a polygon layer with a rectangle for each feature")
-    .option("offset", {
-      describe: "padding around bbox or contents (number or list)",
-      type: "distance"
-    })
-    .option("aspect-ratio", {
-      type: "string"
-    })
+    .describe("create a rectangle around each feature in the target layer")
+    .option("offset", offsetOpt)
+    .option("aspect-ratio", aspectRatioOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -22328,6 +22877,17 @@ internal.getOptionParser = function() {
       describe: "command string or JS expresson to generate command(s)"
     })
     .option("target", targetOpt);
+
+  parser.command("scalebar")
+    // .describe()
+    .option("top", {})
+    .option("right", {})
+    .option("bottom", {})
+    .option("left", {})
+    .option("font-size", {})
+    // .option("font-family", {})
+    .option("label-position", {}) // top or bottom
+    .option("label-text", {});
 
   parser.command("shape")
     .describe("create a polyline or polygon from coordinates")
@@ -22919,7 +23479,7 @@ api.cli = cli;
 api.internal = internal;
 api.utils = utils;
 api.geom = geom;
-this.mapshaper = api;
+mapshaper = api;
 
 // Expose internal objects for testing
 utils.extend(api.internal, {

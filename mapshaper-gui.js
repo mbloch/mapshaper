@@ -1,14 +1,18 @@
 (function(){
 
+var GUI = {}; // shared namespace for all GUI instances
 var api = mapshaper; // assuming mapshaper is in global scope
 var utils = api.utils;
 var cli = api.cli;
 var geom = api.geom;
 var internal = api.internal;
-var Bounds = api.internal.Bounds;
-var UserError = api.internal.UserError;
-var message = api.internal.message;
-
+var Bounds = internal.Bounds;
+var UserError = internal.UserError;
+var message = internal.message;
+var stop = internal.stop; // stop and error are replaced in mapshaper-gui-proxy.js
+var error = internal.error;
+api.gui = true; // let the main library know we're running in the GUI
+api.enableLogging();
 
 function Handler(type, target, callback, listener, priority) {
   this.type = type;
@@ -26,7 +30,7 @@ Handler.prototype.trigger = function(evt) {
     error("[Handler] event target/type have changed.");
   }
   this.callback.call(this.listener, evt);
-}
+};
 
 function EventData(type, target, data) {
   this.type = type;
@@ -125,25 +129,6 @@ EventDispatcher.prototype.countEventListeners = function(type) {
 
 
 
-var Env = (function() {
-  var inNode = typeof module !== 'undefined' && !!module.exports;
-  var inBrowser = typeof window !== 'undefined' && !inNode;
-  var inPhantom = inBrowser && !!(window.phantom && window.phantom.exit);
-  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
-
-  return {
-    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
-    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    canvas: inBrowser && !!document.createElement('canvas').getContext,
-    inNode : inNode,
-    inPhantom : inPhantom,
-    inBrowser: inBrowser,
-    ieVersion: ieVersion,
-    ie: !isNaN(ieVersion)
-  };
-})();
-
-
 var Browser = {
   getPageXY: function(el) {
     var x = 0, y = 0;
@@ -176,15 +161,16 @@ var Browser = {
   elementIsFixed: function(el) {
     // get top-level offsetParent that isn't body (cf. Firefox)
     var body = document.body;
+    var parent;
     while (el && el != body) {
-      var parent = el;
+      parent = el;
       el = el.offsetParent;
     }
 
     // Look for position:fixed in the computed style of the top offsetParent.
     // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
     var styleObj = parent && Browser.getElementStyle(parent) || {};
-    return styleObj['position'] == 'fixed';
+    return styleObj.position == 'fixed';
   },
 
   pageXToViewportX: function(x) {
@@ -297,59 +283,14 @@ utils.htmlEscape = (function() {
 }());
 
 
-var classSelectorRE = /^\.([\w-]+)$/,
-    idSelectorRE = /^#([\w-]+)$/,
-    tagSelectorRE = /^[\w-]+$/,
-    tagOrIdSelectorRE = /^#?[\w-]+$/;
+var tagOrIdSelectorRE = /^#?[\w-]+$/;
 
-function Elements(sel) {
-  if ((this instanceof Elements) == false) {
-    return new Elements(sel);
-  }
-  this.elements = [];
-  this.select(sel);
-}
-
-Elements.prototype = {
-  size: function() {
-    return this.elements.length;
-  },
-
-  select: function(sel) {
-    this.elements = Elements.__select(sel);
-    return this;
-  },
-
-  addClass: function(className) {
-    this.forEach(function(el) { el.addClass(className); });
-    return this;
-  },
-
-  removeClass: function(className) {
-    this.forEach(function(el) { el.removeClass(className); })
-    return this;
-  },
-
-  forEach: function(callback, ctx) {
-    for (var i=0, len=this.elements.length; i<len; i++) {
-      callback.call(ctx, El(this.elements[i]), i);
-    }
-    return this;
-  }
-};
-
-Elements.__select = function(selector, root) {
+El.__select = function(selector, root) {
   root = root || document;
   var els;
-  if (classSelectorRE.test(selector)) {
-    els = Elements.__getElementsByClassName(RegExp.$1, root);
-  }
-  else if (tagSelectorRE.test(selector)) {
-    els = root.getElementsByTagName(selector);
-  }
-  else if (document.querySelectorAll) {
+  if (document.querySelectorAll) {
     try {
-      els = root.querySelectorAll(selector)
+      els = root.querySelectorAll(selector);
     } catch (e) {
       error("Invalid selector:", selector);
     }
@@ -357,25 +298,13 @@ Elements.__select = function(selector, root) {
     error("This browser doesn't support CSS query selectors");
   }
   return utils.toArray(els);
-}
-
-Elements.__getElementsByClassName = function(cname, node) {
-  if (node.getElementsByClassName) {
-    return node.getElementsByClassName(cname);
-  }
-  var a = [];
-  var re = new RegExp('(^| )'+cname+'( |$)');
-  var els = node.getElementsByTagName("*");
-  for (var i=0, j=els.length; i<j; i++)
-    if (re.test(els[i].className)) a.push(els[i]);
-  return a;
 };
 
 // Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
 // Doesn't change names that are already camelCase
 //
 El.toCamelCase = function(str) {
-  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase() });
+  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
   return cc;
 };
 
@@ -398,10 +327,10 @@ El.setStyle = function(el, name, val) {
     }
   }
   el.style[jsName] = cssVal;
-}
+};
 
 El.findAll = function(sel, root) {
-  return Elements.__select(sel, root);
+  return El.__select(sel, root);
 };
 
 function El(ref) {
@@ -415,13 +344,13 @@ function El(ref) {
 
   var node;
   if (utils.isString(ref)) {
-    if (El.isHTML(ref)) {
+    if (ref[0] == '<') {
       var parent = El('div').html(ref).node();
       node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
     } else if (tagOrIdSelectorRE.test(ref)) {
       node = Browser.getElement(ref) || document.createElement(ref); // TODO: detect type of argument
     } else {
-      node = Elements.__select(ref)[0];
+      node = El.__select(ref)[0];
     }
   } else if (ref.tagName) {
     node = ref;
@@ -430,18 +359,7 @@ function El(ref) {
   this.el = node;
 }
 
-utils.inherit(El, EventDispatcher); //
-
-El.removeAll = function(sel) {
-  var arr = Elements.__select(sel);
-  utils.forEach(arr, function(el) {
-    El(el).remove();
-  });
-};
-
-El.isHTML = function(str) {
-  return str && str[0] == '<'; // TODO: improve
-};
+utils.inherit(El, EventDispatcher);
 
 utils.extend(El.prototype, {
 
@@ -478,7 +396,6 @@ utils.extend(El.prototype, {
   },
 
   // Apply inline css styles to this Element, either as string or object.
-  //
   css: function(css, val) {
     if (val != null) {
       El.setStyle(this.el, css, val);
@@ -509,7 +426,7 @@ utils.extend(El.prototype, {
 
 
   remove: function(sel) {
-    this.el.parentNode && this.el.parentNode.removeChild(this.el);
+    if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
     return this;
   },
 
@@ -608,8 +525,12 @@ utils.extend(El.prototype, {
   },
 
   findChild: function(sel) {
-    var node = Elements.__select(sel, this.el)[0];
+    var node = El.__select(sel, this.el)[0];
     return node ? new El(node) : null;
+  },
+
+  findChildren: function(sel) {
+    return El.__select(sel, this.el).map(El);
   },
 
   appendTo: function(ref) {
@@ -625,20 +546,6 @@ utils.extend(El.prototype, {
 
   nextSibling: function() {
     return this.el.nextSibling ? new El(this.el.nextSibling) : null;
-  },
-
-  newSibling: function(tagName) {
-    var el = this.el,
-        sib = document.createElement(tagName),
-        e = new El(sib),
-        par = el.parentNode;
-    if (par) {
-      el.nextSibling ? par.insertBefore(sib, el.nextSibling) : par.appendChild(sib);
-    } else {
-      e._sibs = this._sibs || [];
-      e._sibs.push(el);
-    }
-    return e;
   },
 
   firstChild: function() {
@@ -679,7 +586,6 @@ utils.extend(El.prototype, {
   },
 
   // Remove all children of this element
-  //
   empty: function() {
     this.el.innerHTML = '';
     return this;
@@ -725,7 +631,7 @@ function ElementPosition(ref) {
       height = 0;
 
   el.on('mouseover', update);
-  window.onorientationchange && window.addEventListener('orientationchange', update);
+  if (window.onorientationchange) window.addEventListener('orientationchange', update);
   window.addEventListener('scroll', update);
   window.addEventListener('resize', update);
 
@@ -739,8 +645,8 @@ function ElementPosition(ref) {
     update();
   };
 
-  this.width = function() { return width };
-  this.height = function() { return height };
+  this.width = function() { return width; };
+  this.height = function() { return height; };
   this.position = function() {
     return {
       element: el.node(),
@@ -761,7 +667,10 @@ function ElementPosition(ref) {
         resized = w != width || h != height,
         moved = x != pageX || y != pageY;
     if (resized || moved) {
-      pageX = x, pageY = y, width = w, height = h;
+      pageX = x;
+      pageY = y;
+      width = w;
+      height = h;
       self.dispatchEvent('change', self.position());
       if (resized) {
         self.dispatchEvent('resize', self.position());
@@ -966,7 +875,7 @@ function MouseArea(element, pos) {
       _prevEvt,
       _downEvt;
 
-  _pos.on('change', function() {_areaPos = _pos.position()});
+  _pos.on('change', function() {_areaPos = _pos.position();});
   // TODO: think about touch events
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mousedown', onMouseDown);
@@ -1045,7 +954,7 @@ function MouseArea(element, pos) {
         prev = _prevEvt;
     _prevEvt = {
       shiftKey: e.shiftKey,
-      time: +new Date,
+      time: +new Date(),
       pageX: pageX,
       pageY: pageY,
       hover: _isOver,
@@ -1059,20 +968,139 @@ function MouseArea(element, pos) {
 
   this.isOver = function() {
     return _isOver;
-  }
+  };
 
   this.isDown = function() {
     return !!_downEvt;
-  }
+  };
 
   this.mouseData = function() {
     return utils.extend({}, _prevEvt);
-  }
+  };
 }
 
 utils.inherit(MouseArea, EventDispatcher);
 
 
+
+
+
+
+GUI.browserIsSupported = function() {
+  return typeof ArrayBuffer != 'undefined' &&
+      typeof Blob != 'undefined' && typeof File != 'undefined';
+};
+
+GUI.exportIsSupported = function() {
+  return typeof URL != 'undefined' && URL.createObjectURL &&
+    typeof document.createElement("a").download != "undefined" ||
+    !!window.navigator.msSaveBlob;
+};
+
+// TODO: make this relative to a single GUI instance
+GUI.canSaveToServer = function() {
+  return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
+};
+
+GUI.getUrlVars = function() {
+  var q = window.location.search.substring(1);
+  return q.split('&').reduce(function(memo, chunk) {
+    var pair = chunk.split('=');
+    var key = decodeURIComponent(pair[0]);
+    memo[key] = decodeURIComponent(pair[1]);
+    return memo;
+  }, {});
+};
+
+// Assumes that URL path ends with a filename
+GUI.getUrlFilename = function(url) {
+  var path = /\/\/([^#?]+)/.exec(url);
+  var file = path ? path[1].split('/').pop() : '';
+  return file;
+};
+
+GUI.formatMessageArgs = function(args) {
+  // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
+  return internal.formatLogArgs(args);
+};
+
+GUI.handleDirectEvent = function(cb) {
+  return function(e) {
+    if (e.target == this) cb();
+  };
+};
+
+GUI.getInputElement = function() {
+  var el = document.activeElement;
+  return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
+};
+
+GUI.selectElement = function(el) {
+  var range = document.createRange(),
+      sel = getSelection();
+  range.selectNodeContents(el);
+  sel.removeAllRanges();
+  sel.addRange(range);
+};
+
+GUI.blurActiveElement = function() {
+  var el = GUI.getInputElement();
+  if (el) el.blur();
+};
+
+// Filter out delayed click events, e.g. so users can highlight and copy text
+GUI.onClick = function(el, cb) {
+  var time;
+  el.on('mousedown', function() {
+    time = +new Date();
+  });
+  el.on('mouseup', function(e) {
+    if (+new Date() - time < 300) cb(e);
+  });
+};
+
+// tests if filename is a type that can be used
+GUI.isReadableFileType = function(filename) {
+  var ext = utils.getFileExtension(filename).toLowerCase();
+  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
+    internal.isZipFile(filename);
+};
+
+GUI.parseFreeformOptions = function(raw, cmd) {
+  var str = raw.trim(),
+      parsed;
+  if (!str) {
+    return {};
+  }
+  if (!/^-/.test(str)) {
+    str = '-' + cmd + ' ' + str;
+  }
+  parsed =  internal.parseCommands(str);
+  if (!parsed.length || parsed[0].name != cmd) {
+    stop("Unable to parse command line options");
+  }
+  return parsed[0].options;
+};
+
+
+
+
+function ModeButton(modes, el, name) {
+  var btn = El(el),
+      active = false;
+  modes.on('mode', function(e) {
+    active = e.name == name;
+    if (active) {
+      btn.addClass('active');
+    } else {
+      btn.removeClass('active');
+    }
+  });
+
+  btn.on('click', function() {
+    modes.enterMode(active ? null : name);
+  });
+}
 
 
 
@@ -1086,7 +1114,7 @@ function ModeSwitcher() {
   };
 
   // return a function to trigger this mode
-  self.addMode = function(name, enter, exit) {
+  self.addMode = function(name, enter, exit, btn) {
     self.on('mode', function(e) {
       if (e.prev == name) {
         exit();
@@ -1095,6 +1123,9 @@ function ModeSwitcher() {
         enter();
       }
     });
+    if (btn) {
+      new ModeButton(self, btn, name);
+    }
   };
 
   self.addMode(null, function() {}, function() {}); // null mode
@@ -1117,2086 +1148,86 @@ utils.inherit(ModeSwitcher, EventDispatcher);
 
 
 
-var gui = api.gui = new ModeSwitcher();
-api.enableLogging();
-
-gui.consoleIsOpen = function() {
-  return El('body').hasClass('console-open');
-};
-
-gui.browserIsSupported = function() {
-  return typeof ArrayBuffer != 'undefined' &&
-      typeof Blob != 'undefined' && typeof File != 'undefined';
-};
-
-gui.getUrlVars = function() {
-  var q = window.location.search.substring(1);
-  return q.split('&').reduce(function(memo, chunk) {
-    var pair = chunk.split('=');
-    var key = decodeURIComponent(pair[0]);
-    memo[key] = decodeURIComponent(pair[1]);
-    return memo;
-  }, {});
-};
-
-// Assumes that URL path ends with a filename
-gui.getUrlFilename = function(url) {
-  var path = /\/\/([^#?]+)/.exec(url);
-  var file = path ? path[1].split('/').pop() : '';
-  return file;
-};
-
-gui.formatMessageArgs = function(args) {
-  // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
-  return internal.formatLogArgs(args);
-};
-
-gui.handleDirectEvent = function(cb) {
-  return function(e) {
-    if (e.target == this) cb();
-  };
-};
-
-gui.getInputElement = function() {
-  var el = document.activeElement;
-  return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
-};
-
-gui.selectElement = function(el) {
-  var range = document.createRange(),
-      sel = getSelection();
-  range.selectNodeContents(el);
-  sel.removeAllRanges();
-  sel.addRange(range);
-};
-
-gui.blurActiveElement = function() {
-  var el = gui.getInputElement();
-  if (el) el.blur();
-};
-
-// Filter out delayed click events, e.g. so users can highlight and copy text
-gui.onClick = function(el, cb) {
-  var time;
-  el.on('mousedown', function() {
-    time = +new Date();
-  });
-  el.on('mouseup', function(e) {
-    if (+new Date() - time < 300) cb(e);
-  });
-};
-
-
-
-
-
-// Replace error function in mapshaper lib
-var error = internal.error = function() {
-  stop.apply(null, utils.toArray(arguments));
-};
-
-// replace stop function
-var stop = internal.stop = function() {
-  // Show a popup error message, then throw an error
-  var msg = gui.formatMessageArgs(arguments);
-  gui.alert(msg);
-  throw new Error(msg);
-};
-
-
-function AlertControl() {
-  var el;
-  gui.addMode('alert', function() {}, turnOff);
-
-  function turnOff() {
-    if (el) {
-      el.remove();
-      el = null;
-    }
-  }
-
-  gui.alert = function(str) {
-    var infoBox;
-    if (!el) {
-      el = El('div').appendTo('body').addClass('error-wrapper');
-      infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
-      El('p').addClass('error-message').appendTo(infoBox);
-      El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
-    }
-    el.findChild('.error-message').html(str);
-    gui.enterMode('alert');
-  };
-}
-
-
-
-
-// TODO: switch all ClickText to ClickText2
-
-// @ref Reference to an element containing a text node
-function ClickText2(ref) {
-  var self = this;
-  var selected = false;
-  var el = El(ref).on('mousedown', init);
-
-  function init() {
-    el.removeEventListener('mousedown', init);
-    el.attr('contentEditable', true)
-    .attr('spellcheck', false)
-    .attr('autocorrect', false)
-    .on('focus', function(e) {
-      el.addClass('editing');
-      selected = false;
-    }).on('blur', function(e) {
-      el.removeClass('editing');
-      self.dispatchEvent('change');
-      getSelection().removeAllRanges();
-    }).on('keydown', function(e) {
-      if (e.keyCode == 13) { // enter
-        e.stopPropagation();
-        e.preventDefault();
-        this.blur();
-      }
-    }).on('click', function(e) {
-      if (!selected && getSelection().isCollapsed) {
-        gui.selectElement(el.node());
-      }
-      selected = true;
-      e.stopPropagation();
-    });
-  }
-
-  this.value = function(str) {
-    if (utils.isString(str)) {
-      el.node().textContent = str;
-    } else {
-      return el.node().textContent;
-    }
-  };
-}
-
-utils.inherit(ClickText2, EventDispatcher);
-
-// @ref reference to a text input element
-function ClickText(ref) {
-  var _el = El(ref);
-  var _self = this;
-  var _max = Infinity,
-      _min = -Infinity,
-      _formatter = function(v) {return String(v);},
-      _validator = function(v) {return !isNaN(v);},
-      _parser = function(s) {return parseFloat(s);},
-      _value = 0;
-
-  _el.on('blur', onblur);
-  _el.on('keydown', onpress);
-
-  function onpress(e) {
-    if (e.keyCode == 27) { // esc
-      _self.value(_value); // reset input field to current value
-      _el.el.blur();
-    } else if (e.keyCode == 13) { // enter
-      _el.el.blur();
-    }
-  }
-
-  // Validate input contents.
-  // Update internal value and fire 'change' if valid
-  //
-  function onblur() {
-    var val = _parser(_el.el.value);
-    if (val === _value) {
-      // return;
-    }
-    if (_validator(val)) {
-      _self.value(val);
-      _self.dispatchEvent('change', {value:_self.value()});
-    } else {
-      _self.value(_value);
-      _self.dispatchEvent('error'); // TODO: improve
-    }
-  }
-
-  this.bounds = function(min, max) {
-    _min = min;
-    _max = max;
-    return this;
-  };
-
-  this.validator = function(f) {
-    _validator = f;
-    return this;
-  };
-
-  this.formatter = function(f) {
-    _formatter = f;
-    return this;
-  };
-
-  this.parser = function(f) {
-    _parser = f;
-    return this;
-  };
-
-  this.text = function() {return _el.el.value;};
-
-  this.value = function(arg) {
-    if (arg == void 0) {
-      // var valStr = this.el.value;
-      // return _parser ? _parser(valStr) : parseFloat(valStr);
-      return _value;
-    }
-    var val = utils.clamp(arg, _min, _max);
-    if (!_validator(val)) {
-      error("ClickText#value() invalid value:", arg);
-    } else {
-      _value = val;
-    }
-    _el.el.value = _formatter(val);
-    return this;
-  };
-}
-
-utils.inherit(ClickText, EventDispatcher);
-
-
-function Checkbox(ref) {
-  var _el = El(ref);
-}
-
-utils.inherit(Checkbox, EventDispatcher);
-
-function SimpleButton(ref) {
-  var _el = El(ref),
-      _self = this,
-      _active = !_el.hasClass('disabled');
-
-  _el.on('click', function(e) {
-    if (_active) _self.dispatchEvent('click');
-    return false;
-  });
-
-  if (_el.hasClass('default-btn')) {
-    gui.on('enter_key', function(e) {
-      if (isVisible()) {
-        _self.dispatchEvent('click');
-        e.stopPropagation();
-      }
-    });
-  }
-
-  this.active = function(a) {
-    if (a === void 0) return _active;
-    if (a !== _active) {
-      _active = a;
-      _el.toggleClass('disabled');
-    }
-    return this;
-  };
-
-  function isVisible() {
-    var el = _el.node();
-    return el.offsetParent !== null;
-  }
-}
-
-utils.inherit(SimpleButton, EventDispatcher);
-
-
-
-
-function ModeButton(el, name) {
-  var btn = El(el),
-      active = false;
-  gui.on('mode', function(e) {
-    active = e.name == name;
-    if (active) {
-      btn.addClass('active');
-    } else {
-      btn.removeClass('active');
-    }
-  });
-
-  btn.on('click', function() {
-    gui.enterMode(active ? null : name);
-  });
-}
-
-
-
-
-function draggable(ref) {
-  var xdown, ydown;
-  var el = El(ref),
-      dragging = false,
-      obj = new EventDispatcher();
-  Browser.undraggable(el.node());
-  el.on('mousedown', function(e) {
-    xdown = e.pageX;
-    ydown = e.pageY;
-    window.addEventListener('mousemove', onmove);
-    window.addEventListener('mouseup', onrelease);
-  });
-
-  function onrelease(e) {
-    window.removeEventListener('mousemove', onmove);
-    window.removeEventListener('mouseup', onrelease);
-    if (dragging) {
-      dragging = false;
-      obj.dispatchEvent('dragend');
-    }
-  }
-
-  function onmove(e) {
-    if (!dragging) {
-      dragging = true;
-      obj.dispatchEvent('dragstart');
-    }
-    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
-  }
-  return obj;
-}
-
-function Slider(ref, opts) {
-  var _el = El(ref);
-  var _self = this;
-  var defaults = {
-    space: 7
-  };
-  opts = utils.extend(defaults, opts);
-
-  var _pct = 0;
-  var _track,
-      _handle,
-      _handleLeft = opts.space;
-
-  function size() {
-    return _track ? _track.width() - opts.space * 2 : 0;
-  }
-
-  this.track = function(ref) {
-    if (ref && !_track) {
-      _track = El(ref);
-      _handleLeft = _track.el.offsetLeft + opts.space;
-      updateHandlePos();
-    }
-    return _track;
-  };
-
-  this.handle = function(ref) {
-    var startX;
-    if (ref && !_handle) {
-      _handle = El(ref);
-      draggable(_handle)
-        .on('drag', function(e) {
-          setHandlePos(startX + e.dx, true);
-        })
-        .on('dragstart', function(e) {
-          startX = position();
-          _self.dispatchEvent('start');
-        })
-        .on('dragend', function(e) {
-          _self.dispatchEvent('end');
-        });
-      updateHandlePos();
-    }
-    return _handle;
-  };
-
-  function position() {
-    return Math.round(_pct * size());
-  }
-
-  this.pct = function(pct) {
-    if (pct >= 0 && pct <= 1) {
-      _pct = pct;
-      updateHandlePos();
-    }
-    return _pct;
-  };
-
-  function setHandlePos(x, fire) {
-    x = utils.clamp(x, 0, size());
-    var pct = x / size();
-    if (pct != _pct) {
-      _pct = pct;
-      _handle.css('left', _handleLeft + x);
-      _self.dispatchEvent('change', {pct: _pct});
-    }
-  }
-
-  function updateHandlePos() {
-    var x = _handleLeft + Math.round(position());
-    if (_handle) _handle.css('left', x);
-  }
-}
-
-utils.inherit(Slider, EventDispatcher);
-
-
-// Returns a function for converting simplification ratio [0-1] to an interval value.
-// If the dataset is large, the value is an approximation (for speed while using slider)
-internal.getThresholdFunction = function(arcs) {
-  var size = arcs.getPointCount(),
-      nth = Math.ceil(size / 5e5),
-      sortedThresholds = arcs.getRemovableThresholds(nth);
-      // Sort simplification thresholds for all non-endpoint vertices
-      // for quick conversion of simplification percentage to threshold value.
-      // For large datasets, use every nth point, for faster sorting.
-      utils.quicksort(sortedThresholds, false);
-
-  return function(pct) {
-    var n = sortedThresholds.length;
-    if (pct >= 1) return 0;
-    if (pct <= 0 || n === 0) return Infinity;
-    return sortedThresholds[Math.floor(pct * n)];
-  };
-};
-
-
-
-
-/*
-How changes in the simplify control should affect other components
-
-data calculated, 100% simplification
- -> [map] filtered arcs update
-
-data calculated, <100% simplification
- -> [map] filtered arcs update, redraw; [repair] intersection update
-
-change via text field
- -> [map] redraw; [repair] intersection update
-
-slider drag start
- -> [repair] hide display
-
-slider drag
- -> [map] redraw
-
-slider drag end
- -> [repair] intersection update
-
-*/
-
-var SimplifyControl = function(model) {
-  var control = {};
-  var _value = 1;
-  var el = El('#simplify-control-wrapper');
-  var menu = El('#simplify-options');
-  var slider, text, fromPct;
-
-  new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
-  new SimpleButton('#simplify-options .cancel-btn').on('click', function() {
-    if (el.visible()) {
-      // cancel just hides menu if slider is visible
-      menu.hide();
-    } else {
-      gui.clearMode();
-    }
-  });
-  new SimpleButton('#simplify-settings-btn').on('click', function() {
-    if (menu.visible()) {
-      menu.hide();
-    } else {
-      initMenu();
-    }
-  });
-
-  new ModeButton('#simplify-btn', 'simplify');
-  gui.addMode('simplify', turnOn, turnOff);
-  model.on('select', function() {
-    if (gui.getMode() == 'simplify') gui.clearMode();
-  });
-
-  // exit simplify mode when user clicks off the visible part of the menu
-  menu.on('click', gui.handleDirectEvent(gui.clearMode));
-
-  slider = new Slider("#simplify-control .slider");
-  slider.handle("#simplify-control .handle");
-  slider.track("#simplify-control .track");
-  slider.on('change', function(e) {
-    var pct = fromSliderPct(e.pct);
-    text.value(pct);
-    pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
-    onChange(pct);
-  });
-  slider.on('start', function(e) {
-    gui.dispatchEvent('simplify_drag_start'); // trigger intersection control to hide
-  }).on('end', function(e) {
-    gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
-  });
-
-  text = new ClickText("#simplify-control .clicktext");
-  text.bounds(0, 1);
-  text.formatter(function(val) {
-    if (isNaN(val)) return '-';
-    var pct = val * 100;
-    var decimals = 0;
-    if (pct <= 0) decimals = 1;
-    else if (pct < 0.001) decimals = 4;
-    else if (pct < 0.01) decimals = 3;
-    else if (pct < 1) decimals = 2;
-    else if (pct < 100) decimals = 1;
-    return utils.formatNumber(pct, decimals) + "%";
-  });
-
-  text.parser(function(s) {
-    return parseFloat(s) / 100;
-  });
-
-  text.value(0);
-  text.on('change', function(e) {
-    var pct = e.value;
-    slider.pct(toSliderPct(pct));
-    onChange(pct);
-    gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
-  });
-
-  function turnOn() {
-    var target = model.getActiveLayer();
-    var arcs = target.dataset.arcs;
-    if (!internal.layerHasPaths(target.layer)) {
-      gui.alert("This layer can not be simplified");
-      return;
-    }
-    if (arcs.getVertexData().zz) {
-      // TODO: try to avoid calculating pct (slow);
-      showSlider(); // need to show slider before setting; TODO: fix
-      fromPct = internal.getThresholdFunction(arcs, false);
-      control.value(arcs.getRetainedPct());
-
-    } else {
-      initMenu();
-    }
-  }
-
-  function initMenu() {
-    var dataset = model.getActiveLayer().dataset;
-    var showPlanarOpt = !dataset.arcs.isPlanar();
-    var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
-    El('#planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
-    El('#planar-opt').node().checked = !opts.spherical;
-    El("#import-retain-opt").node().checked = opts.keep_shapes;
-    El("#simplify-options input[value=" + opts.method + "]").node().checked = true;
-    menu.show();
-  }
-
-  function turnOff() {
-    menu.hide();
-    control.reset();
-  }
-
-  function onSubmit() {
-    var dataset = model.getActiveLayer().dataset;
-    var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
-    var delay = 0;
-    if (showMsg) {
-      delay = 35;
-      gui.showProgressMessage('Calculating');
-    }
-    menu.hide();
-    setTimeout(function() {
-      var opts = getSimplifyOptions();
-      mapshaper.simplify(dataset, opts);
-      model.updated({
-        // trigger filtered arc rebuild without redraw if pct is 1
-        simplify_method: opts.percentage == 1,
-        simplify: opts.percentage < 1
-      });
-      showSlider();
-      fromPct = internal.getThresholdFunction(dataset.arcs, false);
-      gui.clearProgressMessage();
-    }, delay);
-  }
-
-  function showSlider() {
-    el.show();
-    El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
-  }
-
-  function getSimplifyOptions() {
-    var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
-    return {
-      method: method,
-      percentage: _value,
-      no_repair: true,
-      keep_shapes: !!El("#import-retain-opt").node().checked,
-      planar: !!El('#planar-opt').node().checked
-    };
-  }
-
-  function toSliderPct(p) {
-    p = Math.sqrt(p);
-    var pct = 1 - p;
-    return pct;
-  }
-
-  function fromSliderPct(p) {
-    var pct = 1 - p;
-    return pct * pct;
-  }
-
-  function onChange(pct) {
-    if (_value != pct) {
-      _value = pct;
-      model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
-      model.updated({'simplify_amount': true});
-      updateSliderDisplay();
-    }
-  }
-
-  function updateSliderDisplay() {
-    // TODO: display resolution and vertex count
-    // var dataset = model.getActiveLayer().dataset;
-    // var interval = dataset.arcs.getRetainedInterval();
-  }
-
-  control.reset = function() {
-    control.value(1);
-    el.hide();
-    menu.hide();
-    El('body').removeClass('simplify');
-  };
-
-  control.value = function(val) {
-    if (!isNaN(val)) {
-      // TODO: validate
-      _value = val;
-      slider.pct(toSliderPct(val));
-      text.value(val);
-    }
-    return _value;
-  };
-
-  control.value(_value);
-  return control;
-};
-
-
-// Assume zip.js is loaded and zip is defined globally
-
-// @file: Zip file
-// @cb: function(err, <files>)
-//
-gui.readZipFile = function(file, cb) {
-  var _files = [];
-  zip.createReader(new zip.BlobReader(file), importZipContent, onError);
-
-  function onError(err) {
-    cb(err);
-  }
-
-  function onDone() {
-    cb(null, _files);
-  }
-
-  function importZipContent(reader) {
-    var _entries;
-    reader.getEntries(readEntries);
-
-    function readEntries(entries) {
-      _entries = entries || [];
-      readNext();
-    }
-
-    function readNext() {
-      if (_entries.length > 0) {
-        readEntry(_entries.pop());
-      } else {
-        reader.close();
-        onDone();
-      }
-    }
-
-    function readEntry(entry) {
-      var filename = entry.filename,
-          isValid = !entry.directory && gui.isReadableFileType(filename) &&
-              !/^__MACOSX/.test(filename); // ignore "resource-force" files
-      if (isValid) {
-        entry.getData(new zip.BlobWriter(), function(file) {
-          file.name = filename; // Give the Blob a name, like a File object
-          _files.push(file);
-          readNext();
-        });
-      } else {
-        readNext();
-      }
-    }
-  }
-};
-
-
-
-
-gui.showProgressMessage = function(msg) {
-  if (!gui.progressMessage) {
-    gui.progressMessage = El('div').id('progress-message')
-      .appendTo('body');
-  }
-  El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
-};
-
-gui.clearProgressMessage = function() {
-  if (gui.progressMessage) gui.progressMessage.hide();
-};
-
-
-
-
-gui.parseFreeformOptions = function(raw, cmd) {
-  var str = raw.trim(),
-      parsed;
-  if (!str) {
-    return {};
-  }
-  if (!/^-/.test(str)) {
-    str = '-' + cmd + ' ' + str;
-  }
-  parsed =  internal.parseCommands(str);
-  if (!parsed.length || parsed[0].name != cmd) {
-    stop("Unable to parse command line options");
-  }
-  return parsed[0].options;
-};
-
-
-
-function CatalogControl(catalog, onSelect) {
-  var self = this,
-      container = El('#file-catalog'),
-      cols = catalog.cols,
-      enabled = true,
-      items = catalog.items,
-      n = items.length,
-      row = 0,
-      html;
-
-  this.reset = function() {
-    enabled = true;
-    container.removeClass('downloading');
-    this.progress(-1);
-  };
-
-  this.progress = function() {}; // set by click handler
-
-  if (n > 0 === false) {
-    console.error("Catalog is missing array of items");
-    return;
-  }
-
-  El('body').addClass('catalog-mode');
-
-  if (!cols) {
-    cols = Math.ceil(Math.sqrt(n));
-  }
-  rows = Math.ceil(n / cols);
-
-  html = '<table>';
-  if (catalog.title) {
-    html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
-  }
-  while (row < rows) {
-    html += renderRow(items.slice(row * cols, row * cols + cols));
-    row++;
-  }
-  html += '</table>';
-  container.node().innerHTML = html;
-  Elements('#file-catalog td').forEach(function(el, i) {
-    el.on('click', function() {
-      selectItem(el, i);
-    });
-  });
-
-  // Generate onprogress callback to show a progress indicator
-  function getProgressFunction(el) {
-    var visible = false,
-        i = 0;
-    return function(pct) {
-      i++;
-      if (i == 2 && pct < 0.5) {
-        // only show progress bar if file will take a while to load
-        visible = true;
-      }
-      if (pct == -1) {
-        // kludge to reset progress bar
-        el.removeClass('downloading');
-        pct = 0;
-      }
-      if (visible) {
-        el.css('background-size', (Math.round(pct * 100) + '% 100%'));
-      }
-    };
-  }
-
-  function renderRow(items) {
-    var tds = items.map(function(o, col) {
-      var i = row * cols + col;
-      return renderCell(o, i);
-    });
-    return '<tr>' + tds.join('') + '</tr>';
-  }
-
-  function selectItem(el,i) {
-    var pageUrl = window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
-    var item = items[i];
-    var urls = item.files.map(function(file) {
-      var url = (item.url || '') + file;
-      if (/^http/.test(url) === false) {
-        // assume relative url
-        url = pageUrl + '/' + url;
-      }
-      return url;
-    });
-    if (enabled) { // only respond to first click
-      self.progress = getProgressFunction(el);
-      el.addClass('downloading');
-      container.addClass('downloading');
-      enabled = false;
-      onSelect(urls);
-    }
-  }
-
-  function renderCell(item, i) {
-    var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
-    return utils.format(template, i, item.title, item.subtitle || '');
-  }
-
-}
-
-
-
-
-// tests if filename is a type that can be used
-gui.isReadableFileType = function(filename) {
-  var ext = utils.getFileExtension(filename).toLowerCase();
-  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
-    internal.isZipFile(filename);
-};
-
-// @cb function(<FileList>)
-function DropControl(el, cb) {
-  var area = El(el);
-  area.on('dragleave', ondragleave)
-      .on('dragover', ondragover)
-      .on('drop', ondrop);
-  function ondragleave(e) {
-    block(e);
-    out();
-  }
-  function ondragover(e) {
-    // blocking drag events enables drop event
-    block(e);
-    over();
-  }
-  function ondrop(e) {
-    block(e);
-    out();
-    cb(e.dataTransfer.files);
-  }
-  function over() {
-    area.addClass('dragover');
-  }
-  function out() {
-    area.removeClass('dragover');
-  }
-  function block(e) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-}
-
-// @el DOM element for select button
-// @cb function(<FileList>)
-function FileChooser(el, cb) {
-  var btn = El(el).on('click', function() {
-    input.el.click();
-  });
-  var input = El('form')
-    .addClass('file-control').appendTo('body')
-    .newChild('input')
-    .attr('type', 'file')
-    .attr('multiple', 'multiple')
-    .on('change', onchange);
-
-  function onchange(e) {
-    var files = e.target.files;
-    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
-    if (files) {
-      // disable the button while files are being processed
-      btn.addClass('selected');
-      input.attr('disabled', true);
-      cb(files);
-      btn.removeClass('selected');
-      input.attr('disabled', false);
-    }
-  }
-}
-
-function ImportControl(model, opts) {
-  var importCount = 0;
-  var queuedFiles = [];
-  var manifestFiles = opts.files || [];
-  var _importOpts = {};
-  var cachedFiles = {};
-  var catalog;
-
-  if (opts.catalog) {
-    catalog = new CatalogControl(opts.catalog, downloadFiles);
-  }
-
-  new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
-  new DropControl('body', receiveFiles); // default drop area is entire page
-  new DropControl('#import-drop', receiveFiles);
-  new DropControl('#import-quick-drop', receiveFilesQuickView);
-  new FileChooser('#file-selection-btn', receiveFiles);
-  new FileChooser('#import-buttons .add-btn', receiveFiles);
-  new FileChooser('#add-file-btn', receiveFiles);
-
-  gui.addMode('import', turnOn, turnOff);
-  gui.enterMode('import');
-
-  gui.on('mode', function(e) {
-    // re-open import opts if leaving alert or console modes and nothing has been imported yet
-    if (!e.name && model.isEmpty()) {
-      gui.enterMode('import');
-    }
-  });
-
-  function findMatchingShp(filename) {
-    // use case-insensitive matching
-    var base = utils.getPathBase(filename).toLowerCase();
-    return model.getDatasets().filter(function(d) {
-      var fname = d.info.input_files && d.info.input_files[0] || "";
-      var ext = utils.getFileExtension(fname).toLowerCase();
-      var base2 = utils.getPathBase(fname).toLowerCase();
-      return base == base2 && ext == 'shp';
-    });
-  }
-
-  function turnOn() {
-    if (manifestFiles.length > 0) {
-      downloadFiles(manifestFiles, true);
-      manifestFiles = [];
-    } else if (model.isEmpty()) {
-      El('body').addClass('splash-screen');
-    }
-  }
-
-  function turnOff() {
-    var target;
-    if (catalog) catalog.reset(); // re-enable clickable catalog
-    if (importCount > 0) {
-      // display last layer of last imported dataset
-      target = model.getDefaultTargets()[0];
-      model.selectLayer(target.layers[target.layers.length-1], target.dataset);
-    }
-    gui.clearProgressMessage();
-    importCount = 0;
-    close();
-  }
-
-  function close() {
-    clearQueuedFiles();
-    cachedFiles = {};
-  }
-
-  function clearQueuedFiles() {
-    queuedFiles = [];
-    El('body').removeClass('queued-files');
-    El('#dropped-file-list').empty();
-  }
-
-  function addFilesToQueue(files) {
-    var index = {};
-    queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
-      // filter out unreadable types and dupes
-      if (gui.isReadableFileType(f.name) && f.name in index === false) {
-        index[f.name] = true;
-        memo.push(f);
-      }
-      return memo;
-    }, []);
-  }
-
-  // When a Shapefile component is at the head of the queue, move the entire
-  // Shapefile to the front of the queue, sorted in reverse alphabetical order,
-  // (a kludge), so .shp is read before .dbf and .prj
-  // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
-  // TODO: import Shapefile parts without relying on this kludge
-  function sortQueue(queue) {
-    var nextFile = queue[0];
-    var basename, parts;
-    if (!isShapefilePart(nextFile.name)) {
-      return queue;
-    }
-    basename = utils.getFileBase(nextFile.name).toLowerCase();
-    parts = [];
-    queue = queue.filter(function(file) {
-      if (utils.getFileBase(file.name).toLowerCase() == basename) {
-        parts.push(file);
-        return false;
-      }
-      return true;
-    });
-    parts.sort(function(a, b) {
-      // Sorting on LC filename so Shapefiles with mixed-case
-      // extensions are sorted correctly
-      return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
-    });
-    return parts.concat(queue);
-  }
-
-  function showQueuedFiles() {
-    var list = El('#dropped-file-list').empty();
-    queuedFiles.forEach(function(f) {
-      El('<p>').text(f.name).appendTo(El("#dropped-file-list"));
-    });
-  }
-
-  function receiveFilesQuickView(files) {
-    receiveFiles(files, true);
-  }
-
-  function receiveFiles(files, quickView) {
-    var prevSize = queuedFiles.length;
-    files = handleZipFiles(utils.toArray(files), quickView);
-    addFilesToQueue(files);
-    if (queuedFiles.length === 0) return;
-    gui.enterMode('import');
-
-    if (quickView === true) {
-      onSubmit(quickView);
-    } else {
-      El('body').addClass('queued-files');
-      El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
-      showQueuedFiles();
-    }
-  }
-
-  function filesMayContainPaths(files) {
-    return utils.some(files, function(f) {
-        var type = internal.guessInputFileType(f.name);
-        return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
-    });
-  }
-
-  function onSubmit(quickView) {
-    El('body').removeClass('queued-files');
-    El('body').removeClass('splash-screen');
-    _importOpts = quickView === true ? {} : readImportOpts();
-    procNextQueuedFile();
-  }
-
-  function addDataset(dataset) {
-    model.addDataset(dataset);
-    importCount++;
-    procNextQueuedFile();
-  }
-
-  function procNextQueuedFile() {
-    if (queuedFiles.length === 0) {
-      gui.clearMode();
-    } else {
-      queuedFiles = sortQueue(queuedFiles);
-      readFile(queuedFiles.shift());
-    }
-  }
-
-  // TODO: support .cpg
-  function isShapefilePart(name) {
-    return /\.(shp|shx|dbf|prj)$/i.test(name);
-  }
-
-  function readImportOpts() {
-    var freeform = El('#import-options .advanced-options').node().value,
-        opts = gui.parseFreeformOptions(freeform, 'i');
-    opts.no_repair = !El("#repair-intersections-opt").node().checked;
-    opts.snap = !!El("#snap-points-opt").node().checked;
-    return opts;
-  }
-
-  // @file a File object
-  function readFile(file) {
-    var name = file.name,
-        reader = new FileReader(),
-        useBinary = internal.isBinaryFile(name) ||
-          internal.guessInputFileType(name) == 'json' ||
-          internal.guessInputFileType(name) == 'text';
-
-    reader.addEventListener('loadend', function(e) {
-      if (!reader.result) {
-        handleImportError("Web browser was unable to load the file.", name);
-      } else {
-        importFileContent(name, reader.result);
-      }
-    });
-    if (useBinary) {
-      reader.readAsArrayBuffer(file);
-    } else {
-      // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
-      reader.readAsText(file, 'UTF-8');
-    }
-  }
-
-  function importFileContent(fileName, content) {
-    var fileType = internal.guessInputType(fileName, content),
-        importOpts = utils.extend({}, _importOpts),
-        matches = findMatchingShp(fileName),
-        dataset, lyr;
-
-    // Add dbf data to a previously imported .shp file with a matching name
-    // (.shp should have been queued before .dbf)
-    if (fileType == 'dbf' && matches.length > 0) {
-      // find an imported .shp layer that is missing attribute data
-      // (if multiple matches, try to use the most recently imported one)
-      dataset = matches.reduce(function(memo, d) {
-        if (!d.layers[0].data) {
-          memo = d;
-        }
-        return memo;
-      }, null);
-      if (dataset) {
-        lyr = dataset.layers[0];
-        lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
-        if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
-          stop("Different number of records in .shp and .dbf files");
-        }
-        if (!lyr.geometry_type) {
-          // kludge: trigger display of table cells if .shp has null geometry
-          model.updated({}, lyr, dataset);
-        }
-        procNextQueuedFile();
-        return;
-      }
-    }
-
-    if (fileType == 'shx') {
-      // save .shx for use when importing .shp
-      // (queue should be sorted so that .shx is processed before .shp)
-      cachedFiles[fileName.toLowerCase()] = {filename: fileName, content: content};
-      procNextQueuedFile();
-      return;
-    }
-
-    // Add .prj file to previously imported .shp file
-    if (fileType == 'prj') {
-      matches.forEach(function(d) {
-        if (!d.info.prj) {
-          d.info.prj = content;
-        }
-      });
-      procNextQueuedFile();
-      return;
-    }
-
-    importNewDataset(fileType, fileName, content, importOpts);
-  }
-
-  function importNewDataset(fileType, fileName, content, importOpts) {
-    var size = content.byteLength || content.length, // ArrayBuffer or string
-        delay = 0;
-
-    // show importing message if file is large
-    if (size > 4e7) {
-      gui.showProgressMessage('Importing');
-      delay = 35;
-    }
-    setTimeout(function() {
-      var dataset;
-      var input = {};
-      try {
-        input[fileType] = {filename: fileName, content: content};
-        if (fileType == 'shp') {
-          // shx file should already be cached, if it was added together with the shp
-          input.shx = cachedFiles[fileName.replace(/shp$/i, 'shx').toLowerCase()] || null;
-        }
-        dataset = internal.importContent(input, importOpts);
-        // save import options for use by repair control, etc.
-        dataset.info.import_options = importOpts;
-        addDataset(dataset);
-
-      } catch(e) {
-        handleImportError(e, fileName);
-      }
-    }, delay);
-  }
-
-  function handleImportError(e, fileName) {
-    var msg = utils.isString(e) ? e : e.message;
-    if (fileName) {
-      msg = "Error importing <i>" + fileName + "</i><br>" + msg;
-    }
-    clearQueuedFiles();
-    gui.alert(msg);
-    console.error(e);
-  }
-
-  function handleZipFiles(files, quickView) {
-    return files.filter(function(file) {
-      var isZip = internal.isZipFile(file.name);
-      if (isZip) {
-        readZipFile(file, quickView);
-      }
-      return !isZip;
-    });
-  }
-
-  function readZipFile(file, quickView) {
-    // gui.showProgressMessage('Importing');
-    setTimeout(function() {
-      gui.readZipFile(file, function(err, files) {
-        if (err) {
-          handleImportError(err, file.name);
-        } else {
-          // don't try to import .txt files from zip files
-          // (these would be parsed as dsv and throw errows)
-          files = files.filter(function(f) {
-            return !/\.txt$/i.test(f.name);
-          });
-          receiveFiles(files, quickView);
-        }
-      });
-    }, 35);
-  }
-
-  function prepFilesForDownload(names) {
-    var items = names.map(function(name) {
-      var isUrl = /:\/\//.test(name);
-      var item = {name: name};
-      if (isUrl) {
-        item.url = name;
-        item.basename = gui.getUrlFilename(name);
-
-      } else {
-        item.basename = name;
-        // Assume non-urls are local files loaded via mapshaper-gui
-        item.url = '/data/' + name;
-        item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
-      }
-      return gui.isReadableFileType(item.basename) ? item : null;
-    });
-    return items.filter(Boolean);
-  }
-
-  function downloadFiles(paths, quickView) {
-    var items = prepFilesForDownload(paths);
-    utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
-      if (err) {
-        gui.alert(err);
-      } else if (!files.length) {
-        gui.clearMode();
-      } else {
-        receiveFiles(files, quickView);
-      }
-    });
-  }
-
-  function downloadNextFile(memo, item, next) {
-    var req = new XMLHttpRequest();
-    var blob;
-    req.responseType = 'blob';
-    req.addEventListener('load', function(e) {
-      if (req.status == 200) {
-        blob = req.response;
-      }
-    });
-    req.addEventListener('progress', function(e) {
-      var pct = e.loaded / e.total;
-      if (catalog) catalog.progress(pct);
-    });
-    req.addEventListener('loadend', function() {
-      var err;
-      if (req.status == 404) {
-        err = "Not&nbsp;found:&nbsp;" + item.name;
-      } else if (!blob) {
-        // Errors like DNS lookup failure, no CORS headers, no network connection
-        // all are status 0 - it seems impossible to show a more specific message
-        // actual reason is displayed on the console
-        err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
-      } else {
-        blob.name = item.basename;
-        memo.push(blob);
-      }
-      next(err, memo);
-    });
-    req.open('GET', item.url);
-    req.send();
-  }
-}
-
-
-
-
-gui.exportIsSupported = function() {
-  return typeof URL != 'undefined' && URL.createObjectURL &&
-    typeof document.createElement("a").download != "undefined" ||
-    !!window.navigator.msSaveBlob;
-};
-
-function canSaveToServer() {
-  return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
-}
-
-// replaces function from mapshaper.js
-internal.writeFiles = function(files, opts, done) {
-  var filename;
-  if (!utils.isArray(files) || files.length === 0) {
-    done("Nothing to export");
-  } else if (canSaveToServer() && !opts.save_to_download_folder) {
-    saveFilesToServer(files, opts, function(err) {
-      var msg;
-      if (err) {
-        msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
-        msg += "<br>Saving to download folder instead.";
-        gui.alert(msg);
-        // fall back to standard method if saving to server fails
-        internal.writeFiles(files, {save_to_download_folder: true}, done);
-      } else {
-        done();
-      }
-    });
-  } else if (files.length == 1) {
-    saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
-  } else {
-    filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
-    saveZipFile(filename + ".zip", files, done);
-  }
-};
-
-function saveZipFile(zipfileName, files, done) {
-  var toAdd = files;
-  var zipWriter;
-  try {
-    zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
-      zipWriter = writer;
-      nextFile();
-    }, zipError);
-  } catch(e) {
-    done("This browser doesn't support Zip file creation.");
-  }
-
-  function zipError(msg) {
-    var str = "Error creating Zip file";
-    if (msg) {
-      str += ": " + (msg.message || msg);
-    }
-    done(str);
-  }
-
-  function nextFile() {
-    if (toAdd.length === 0) {
-      zipWriter.close(function(blob) {
-        saveBlobToDownloadFolder(zipfileName, blob, done);
-      });
-    } else {
-      var obj = toAdd.pop(),
-          blob = new Blob([obj.content]);
-      zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
-    }
-  }
-}
-
-function saveFilesToServer(exports, opts, done) {
-  var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
-  var data = utils.pluck(exports, 'content');
-  var i = -1;
-  next();
-  function next(err) {
-    i++;
-    if (err) return done(err);
-    if (i >= exports.length) {
-      gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
-      return done();
-    }
-    saveBlobToServer(paths[i], new Blob([data[i]]), next);
-  }
-}
-
-function saveBlobToServer(path, blob, done) {
-  var q = '?file=' + encodeURIComponent(path);
-  var url = window.location.origin + '/save' + q;
-  fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    body: blob
-  }).then(function(resp) {
-    if (resp.status == 400) {
-      return resp.text();
-    }
-  }).then(function(err) {
-    done(err);
-  }).catch(function(resp) {
-    done('connection to server was lost');
-  });
-}
-
-function saveBlobToDownloadFolder(filename, blob, done) {
-  var anchor, blobUrl;
-  if (window.navigator.msSaveBlob) {
-    window.navigator.msSaveBlob(blob, filename);
-    return done();
-  }
-  try {
-    blobUrl = URL.createObjectURL(blob);
-  } catch(e) {
-    done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
-    return;
-  }
-  anchor = El('a').attr('href', '#').appendTo('body').node();
-  anchor.href = blobUrl;
-  anchor.download = filename;
-  var clickEvent = document.createEvent("MouseEvent");
-  clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
-      false, false, false, 0, null);
-  anchor.dispatchEvent(clickEvent);
-  setTimeout(function() {
-    // Revoke blob url to release memory; timeout needed in firefox
-    URL.revokeObjectURL(blobUrl);
-    anchor.parentNode.removeChild(anchor);
-    done();
-  }, 400);
-}
-
-
-
-
-// Export buttons and their behavior
-var ExportControl = function(model) {
-  var unsupportedMsg = "Exporting is not supported in this browser";
-  var menu = El('#export-options').on('click', gui.handleDirectEvent(gui.clearMode));
-  var checkboxes = []; // array of layer checkboxes
-  new SimpleButton('#export-options .cancel-btn').on('click', gui.clearMode);
-
-  if (!gui.exportIsSupported()) {
-    El('#export-btn').on('click', function() {
-      gui.alert(unsupportedMsg);
-    });
-
-    internal.writeFiles = function() {
-      error(unsupportedMsg);
-    };
-  } else {
-    new SimpleButton('#save-btn').on('click', onExportClick);
-    gui.addMode('export', turnOn, turnOff);
-    new ModeButton('#export-btn', 'export');
-  }
-
-  function onExportClick() {
-    gui.showProgressMessage('Exporting');
-    gui.clearMode();
-    setTimeout(function() {
-      exportMenuSelection(function(err) {
-        if (err) {
-          if (utils.isString(err)) {
-            gui.alert(err);
-          } else {
-            // stack seems to change if Error is logged directly
-            console.error(err.stack);
-            gui.alert("Export failed for an unknown reason");
-          }
-        }
-        gui.clearProgressMessage();
-      });
-    }, 20);
-  }
-
-  // @done function(string|Error|null)
-  function exportMenuSelection(done) {
-    var opts, files;
-    try {
-      opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
-      if (!opts.format) opts.format = getSelectedFormat();
-      // ignoring command line "target" option
-      files = internal.exportTargetLayers(getTargetLayers(), opts);
-    } catch(e) {
-      return done(e);
-    }
-    internal.writeFiles(files, opts, done);
-  }
-
-  function initLayerMenu() {
-    var list = El('#export-layer-list').empty();
-    var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
-    var objects = model.getLayers().map(function(o, i) {
-      var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
-      return {layer: o.layer, html: html};
-    });
-    internal.sortLayersForMenuDisplay(objects);
-    checkboxes = objects.map(function(o) {
-      return El('div').html(o.html).appendTo(list).findChild('input').node();
-    });
-    El('#export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
-  }
-
-  function getInputFormats() {
-    return model.getDatasets().reduce(function(memo, d) {
-      var fmts = d.info && d.info.input_formats || [];
-      return memo.concat(fmts);
-    }, []);
-  }
-
-  function getDefaultExportFormat() {
-    var dataset = model.getActiveLayer().dataset;
-    return dataset.info && dataset.info.input_formats &&
-        dataset.info.input_formats[0] || 'geojson';
-  }
-
-  function initFormatMenu() {
-    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
-    var formats = utils.uniq(defaults.concat(getInputFormats()));
-    var items = formats.map(function(fmt) {
-      return utils.format('<div><label><input type="radio" name="format" value="%s"' +
-        ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
-    });
-    El('#export-formats').html(items.join('\n'));
-    El('#export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
-  }
-
-  function turnOn() {
-    initLayerMenu();
-    initFormatMenu();
-    menu.show();
-  }
-
-  function turnOff() {
-    menu.hide();
-  }
-
-  function getSelectedFormat() {
-    return El('#export-formats input:checked').node().value;
-  }
-
-  function getTargetLayers() {
-    var ids = checkboxes.reduce(function(memo, box, i) {
-      if (box.checked) memo.push(box.value);
-      return memo;
-    }, []).join(',');
-    return ids ? model.findCommandTargets(ids) : [];
-  }
-};
-
-
-
-
-function RepairControl(model, map) {
-  var el = El("#intersection-display"),
-      readout = el.findChild("#intersection-count"),
-      repairBtn = el.findChild("#repair-btn"),
-      // keeping a reference to current arcs and intersections, so intersections
-      // don't need to be recalculated when 'repair' button is pressed.
-      _currArcs,
-      _currXX;
-
-  gui.on('simplify_drag_start', hide);
-  gui.on('simplify_drag_end', updateAsync);
-
-  model.on('update', function(e) {
-    var flags = e.flags;
-    var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
-        flags.affine || flags.points || flags['merge-layers'] || flags.select;
-    if (needUpdate) {
-      if (flags.select) {
-        // preserve cached intersections
-      } else {
-        // delete any cached intersection data
-        e.dataset.info.intersections = null;
-      }
-      updateAsync();
-    }
-  });
-
-  repairBtn.on('click', function() {
-    var fixed = internal.repairIntersections(_currArcs, _currXX);
-    showIntersections(fixed, _currArcs);
-    repairBtn.addClass('disabled');
-    model.updated({repair: true});
-  });
-
-  function hide() {
-    el.hide();
-    map.setIntersectionLayer(null);
-  }
-
-  function enabledForDataset(dataset) {
-    var info = dataset.info || {};
-    var opts = info.import_options || {};
-    return !opts.no_repair && !info.no_intersections;
-  }
-
-  // Delay intersection calculation, so map can redraw after previous
-  // operation (e.g. layer load, simplification change)
-  function updateAsync() {
-    reset();
-    setTimeout(updateSync, 10);
-  }
-
-  function updateSync() {
-    var e = model.getActiveLayer();
-    var dataset = e.dataset;
-    var arcs = dataset && dataset.arcs;
-    var XX, showBtn;
-    if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
-    if (arcs.getRetainedInterval() > 0) {
-      // TODO: cache these intersections
-      XX = internal.findSegmentIntersections(arcs);
-      showBtn = XX.length > 0;
-    } else { // no simplification
-      XX = dataset.info.intersections;
-      if (!XX) {
-        // cache intersections at 0 simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs);
-      }
-      showBtn = false;
-    }
-    el.show();
-    showIntersections(XX, arcs);
-    repairBtn.classed('disabled', !showBtn);
-  }
-
-  function reset() {
-    _currArcs = null;
-    _currXX = null;
-    hide();
-  }
-
-  function dismiss() {
-    var dataset = model.getActiveLayer().dataset;
-    dataset.info.intersections = null;
-    dataset.info.no_intersections = true;
-    reset();
-  }
-
-  function showIntersections(XX, arcs) {
-    var n = XX.length, pointLyr;
-    _currXX = XX;
-    _currArcs = arcs;
-    if (n > 0) {
-      pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
-      map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-      readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
-      readout.findChild('.close-btn').on('click', dismiss);
-    } else {
-      map.setIntersectionLayer(null);
-      readout.html('');
-    }
-  }
-}
-
-utils.inherit(RepairControl, EventDispatcher);
-
-
-function DomCache() {
-  var cache = {};
-  var used = {};
-
-  this.contains = function(html) {
-    return html in cache;
-  };
-
-  this.use = function(html) {
-    var el = used[html] = cache[html];
-    return el;
-  };
-
-  this.cleanup = function() {
-    cache = used;
-    used = {};
-  };
-
-  this.add = function(html, el) {
-    used[html] = el;
-  };
-}
-
-
-
-
-
-internal.updateLayerStackOrder = function(layers) {
-  // 1. assign ascending ids to unassigned layers above the range of other layers
-  layers.forEach(function(o, i) {
-    if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
-  });
-  // 2. sort in ascending order
-  layers.sort(function(a, b) {
-    return a.layer.stack_id - b.layer.stack_id;
-  });
-  // 3. assign consecutve ids
-  layers.forEach(function(o, i) {
-    o.layer.stack_id = i + 1;
-  });
-  return layers;
-};
-
-internal.sortLayersForMenuDisplay = function(layers) {
-  layers = internal.updateLayerStackOrder(layers);
-  return layers.reverse();
-};
-
-
-
-
-
-function LayerControl(model, map) {
-  var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
-  var buttonLabel = El('#layer-control-btn .layer-name');
-  var isOpen = false;
-  var cache = new DomCache();
-  var pinAll = El('#pin-all'); // button for toggling layer visibility
-
-  // layer repositioning
-  var dragTargetId = null;
-  var dragging = false;
-  var layerOrderSlug;
-
-  new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
-  gui.addMode('layer_menu', turnOn, turnOff);
-  model.on('update', function(e) {
-    updateMenuBtn();
-    if (isOpen) render();
-  });
-
-  el.on('mouseup', stopDragging);
-  el.on('mouseleave', stopDragging);
-
-  // init layer visibility button
-  pinAll.on('click', function() {
-    var allOn = testAllLayersPinned();
-    model.forEachLayer(function(lyr, dataset) {
-      if (allOn) {
-        map.removeReferenceLayer(lyr);
-      } else {
-        map.addReferenceLayer(lyr, dataset);
-      }
-    });
-    El.findAll('.pinnable', el.node()).forEach(function(item) {
-      El(item).classed('pinned', !allOn);
-    });
-    map.redraw();
-  });
-
-
-  function updatePinAllButton() {
-    pinAll.classed('pinned', testAllLayersPinned());
-  }
-
-  function testAllLayersPinned() {
-    var yes = true;
-    model.forEachLayer(function(lyr, dataset) {
-      if (isPinnable(lyr) && !map.isReferenceLayer(lyr) && !map.isActiveLayer(lyr)) {
-        yes = false;
-      }
-    });
-    return yes;
-  }
-
-  function findLayerById(id) {
-    return model.findLayer(function(lyr, dataset) {
-      return lyr.menu_id == id;
-    });
-  }
-
-  function getLayerOrderSlug() {
-    return internal.sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
-      return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
-    }).join('');
-  }
-
-  function clearClass(name) {
-    var targ = el.findChild('.' + name);
-    if (targ) targ.removeClass(name);
-  }
-
-  function stopDragging() {
-    clearClass('dragging');
-    clearClass('drag-target');
-    clearClass('insert-above');
-    clearClass('insert-below');
-    dragTargetId = layerOrderSlug = null;
-    if (dragging) {
-      render(); // in case menu changed...
-      dragging = false;
-    }
-  }
-
-  function insertLayer(dragId, dropId, above) {
-    var dragLyr = findLayerById(dragId);
-    var dropLyr = findLayerById(dropId);
-    var slug;
-    if (dragId == dropId) return;
-    dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
-    slug = getLayerOrderSlug();
-    if (slug != layerOrderSlug) {
-      layerOrderSlug = slug;
-      map.redraw();
-    }
-  }
-
-  function turnOn() {
-    isOpen = true;
-    El('#layer-control div.info-box-scrolled').css('max-height', El('body').height() - 80);
-    render();
-    el.show();
-  }
-
-  function turnOff() {
-    isOpen = false;
-    el.hide();
-  }
-
-  function updateMenuBtn() {
-    var name = model.getActiveLayer().layer.name || "[unnamed layer]";
-    buttonLabel.html(name + " &nbsp;&#9660;");
-  }
-
-  function render() {
-    var list = El('#layer-control .layer-list');
-    var uniqIds = {};
-    var pinnableCount = 0;
-    list.empty();
-    model.forEachLayer(function(lyr, dataset) {
-      // Assign a unique id to each layer, so html strings
-      // can be used as unique identifiers for caching rendered HTML, and as
-      // an id for layer menu event handlers
-      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-        lyr.menu_id = utils.getUniqueName();
-      }
-      uniqIds[lyr.menu_id] = true;
-      if (isPinnable(lyr)) pinnableCount++;
-    });
-
-    if (pinnableCount < 2) {
-      pinAll.hide();
-    } else {
-      pinAll.show();
-      updatePinAllButton();
-    }
-
-    internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
-      var lyr = o.layer;
-      var pinnable = pinnableCount > 1 && isPinnable(lyr);
-      var html, element;
-      html = renderLayer(lyr, o.dataset, pinnable);
-      if (cache.contains(html)) {
-        element = cache.use(html);
-      } else {
-        element = El('div').html(html).firstChild();
-        initMouseEvents(element, lyr.menu_id, pinnable);
-        cache.add(html, element);
-      }
-      list.appendChild(element);
-    });
-  }
-
-  cache.cleanup();
-
-  function renderLayer(lyr, dataset, pinnable) {
-    var warnings = getWarnings(lyr, dataset);
-    var classes = 'layer-item';
-    var entry, html;
-
-    if (pinnable) classes += ' pinnable';
-    if (map.isActiveLayer(lyr)) classes += ' active';
-    if (map.isReferenceLayer(lyr)) classes += ' pinned';
-
-    html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
-    html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
-    html += rowHTML('contents', describeLyr(lyr));
-    if (warnings) {
-      html += rowHTML('problems', warnings, 'layer-problems');
-    }
-    html += '<img class="close-btn" draggable="false" src="images/close.png">';
-    if (pinnable) {
-      html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
-      html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function initMouseEvents(entry, id, pinnable) {
-    entry.on('mouseover', init);
-    function init() {
-      entry.removeEventListener('mouseover', init);
-      initMouseEvents2(entry, id, pinnable);
-    }
-  }
-
-  function initLayerDragging(entry, id) {
-
-    // support layer drag-drop
-    entry.on('mousemove', function(e) {
-      var rect, insertionClass;
-      if (!e.buttons && (dragging || dragTargetId)) { // button is up
-        stopDragging();
-      }
-      if (e.buttons && !dragTargetId) {
-        dragTargetId = id;
-        entry.addClass('drag-target');
-      }
-      if (!dragTargetId) {
-        return;
-      }
-      if (dragTargetId != id) {
-        // signal to redraw menu later; TODO: improve
-        dragging = true;
-      }
-      rect = entry.node().getBoundingClientRect();
-      insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
-      if (!entry.hasClass(insertionClass)) {
-        clearClass('dragging');
-        clearClass('insert-above');
-        clearClass('insert-below');
-        entry.addClass('dragging');
-        entry.addClass(insertionClass);
-        insertLayer(dragTargetId, id, insertionClass == 'insert-above');
-      }
-    });
-  }
-
-  function initMouseEvents2(entry, id, pinnable) {
-
-    initLayerDragging(entry, id);
-
-    // init delete button
-    gui.onClick(entry.findChild('img.close-btn'), function(e) {
-      var target = findLayerById(id);
-      e.stopPropagation();
-      if (map.isReferenceLayer(target.layer)) {
-        // TODO: check for double map refresh after model.deleteLayer() below
-        map.removeReferenceLayer(target.layer);
-      }
-      model.deleteLayer(target.layer, target.dataset);
-    });
-
-    if (pinnable) {
-      // init pin button
-      gui.onClick(entry.findChild('img.unpinned'), function(e) {
-        var target = findLayerById(id);
-        e.stopPropagation();
-        if (entry.hasClass('active')) {
-          return; // selected layer
-        }
-        if (map.isReferenceLayer(target.layer)) {
-          map.removeReferenceLayer(target.layer);
-          entry.removeClass('pinned');
-        } else {
-          map.addReferenceLayer(target.layer, target.dataset);
-          entry.addClass('pinned');
-        }
-        updatePinAllButton();
-        map.redraw();
-      });
-
-      // catch click event
-      gui.onClick(entry.findChild('img.unpinned'), function(e) {
-        e.stopPropagation();
-      });
-    }
-
-    // init name editor
-    new ClickText2(entry.findChild('.layer-name'))
-      .on('change', function(e) {
-        var target = findLayerById(id);
-        var str = cleanLayerName(this.value());
-        this.value(getDisplayName(str));
-        target.layer.name = str;
-        updateMenuBtn();
-      });
-
-    // init click-to-select
-    gui.onClick(entry, function() {
-      var target = findLayerById(id);
-      // don't select if user is typing or dragging
-      if (!gui.getInputElement() && !dragTargetId) {
-        gui.clearMode();
-        if (!map.isActiveLayer(target.layer)) {
-          model.updated({select: true}, target.layer, target.dataset);
-        }
-      }
-    });
-  }
-
-  function describeLyr(lyr) {
-    var n = internal.getFeatureCount(lyr),
-        str, type;
-    if (lyr.data && !lyr.shapes) {
-      type = 'data record';
-    } else if (lyr.geometry_type) {
-      type = lyr.geometry_type + ' feature';
-    }
-    if (type) {
-      str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
-    } else {
-      str = "[empty]";
-    }
-    return str;
-  }
-
-  function getWarnings(lyr, dataset) {
-    var file = getSourceFile(lyr, dataset);
-    var missing = [];
-    var msg;
-    if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
-      if (!lyr.data) {
-        missing.push('.dbf');
-      }
-      if (!dataset.info.prj && !dataset.info.crs) {
-        missing.push('.prj');
-      }
-    }
-    if (missing.length) {
-      msg = 'missing ' + missing.join(' and ') + ' data';
-    }
-    return msg;
-  }
-
-  function getSourceFile(lyr, dataset) {
-    var inputs = dataset.info.input_files;
-    return inputs && inputs[0] || '';
-  }
-
-  function describeSrc(lyr, dataset) {
-    return getSourceFile(lyr, dataset);
-  }
-
-  function getDisplayName(name) {
-    return name || '[unnamed]';
-  }
-
-  function isPinnable(lyr) {
-    return internal.layerHasGeometry(lyr);
-  }
-
-
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
-  }
-
-  function rowHTML(c1, c2, cname) {
-    return utils.format('<div class="row%s"><div class="col1">%s</div>' +
-      '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
-  }
-}
-
-
-
-
 // These functions could be called when validating i/o options; TODO: avoid this
 cli.isFile =
 cli.isDirectory = function(name) {return false;};
 
 cli.validateOutputDir = function() {};
 
+GUI.isActiveInstance = function(gui) {
+  return gui == GUI.__active;
+};
+
+GUI.setActiveInstance = function(gui) {
+  if (GUI.isActiveInstance(gui)) return;
+  GUI.__active = gui;
+
+  // replace api.importFile()
+  MessageProxy(gui);
+  ImportFileProxy(gui);
+  WriteFilesProxy(gui);
+};
+
+// manage switching between multiple gui instances, based on mouse events
+function GuiFocus(gui, mouse) {
+  mouse.on('enter', function() {
+    GUI.setActiveInstance(gui);
+  });
+}
+
+function MessageProxy(gui) {
+  // Replace error function in mapshaper lib
+  error = internal.error = function() {
+    stop.apply(null, utils.toArray(arguments));
+  };
+
+  // replace stop function
+  stop = internal.stop = function() {
+    // Show a popup error message, then throw an error
+    var msg = GUI.formatMessageArgs(arguments);
+    gui.alert(msg);
+    throw new Error(msg);
+  };
+
+  message = internal.message = function() {
+    internal.logArgs(arguments); // reset default
+  };
+}
+
+function WriteFilesProxy(gui) {
+  // replaces function from mapshaper.js
+  internal.writeFiles = function(files, opts, done) {
+    var filename;
+    if (!utils.isArray(files) || files.length === 0) {
+      done("Nothing to export");
+    } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
+      saveFilesToServer(files, opts, function(err) {
+        var msg;
+        if (err) {
+          msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
+          msg += "<br>Saving to download folder instead.";
+          gui.alert(msg);
+          // fall back to standard method if saving to server fails
+          internal.writeFiles(files, {save_to_download_folder: true}, done);
+        } else {
+          done();
+        }
+      });
+    } else if (files.length == 1) {
+      saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
+    } else {
+      filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+      saveZipFile(filename + ".zip", files, done);
+    }
+  };
+}
+
 // Replaces functions for reading from files with functions that try to match
 // already-loaded datasets.
 //
-function ImportFileProxy(model) {
+function ImportFileProxy(gui) {
+  var model = gui.model;
+
   // Try to match an imported dataset or layer.
   // TODO: think about handling import options
   function find(src) {
@@ -3266,7 +1297,93 @@ function loadProjLibs(libs, done) {
 
 
 
-gui.getPixelRatio = function() {
+function KeyboardEvents(gui) {
+  var self = this;
+  document.addEventListener('keydown', function(e) {
+    if (!GUI.isActiveInstance(gui)) return;
+    self.dispatchEvent('keydown', {originalEvent: e});
+  });
+
+  this.onMenuSubmit = function(menuEl, cb) {
+    gui.on('enter_key', function(e) {
+      if (menuEl.visible()) {
+        e.originalEvent.stopPropagation();
+        cb();
+      }
+    });
+  };
+}
+
+utils.inherit(KeyboardEvents, EventDispatcher);
+
+
+
+
+function Model() {
+  var self = new api.internal.Catalog();
+  var deleteLayer = self.deleteLayer;
+  utils.extend(self, EventDispatcher.prototype);
+
+  // override Catalog method (so -drop command will work in web console)
+  self.deleteLayer = function(lyr, dataset) {
+    var active, flags;
+    deleteLayer.call(self, lyr, dataset);
+    if (self.isEmpty()) {
+      // refresh browser if deleted layer was the last layer
+      window.location.href = window.location.href.toString();
+    } else {
+      // trigger event to update layer list and, if needed, the map view
+      flags = {};
+      active = self.getActiveLayer();
+      if (active.layer != lyr) {
+        flags.select = true;
+      }
+      internal.cleanupArcs(active.dataset);
+      if (internal.layerHasPaths(lyr)) {
+        flags.arc_count = true; // looks like a kludge, try to remove
+      }
+      self.updated(flags, active.layer, active.dataset);
+    }
+  };
+
+  self.updated = function(flags, lyr, dataset) {
+    var targ, active;
+    // if (lyr && dataset && (!active || active.layer != lyr)) {
+    if (lyr && dataset) {
+      self.setDefaultTarget([lyr], dataset);
+    }
+    targ = self.getDefaultTargets()[0];
+    if (lyr && targ.layers[0] != lyr) {
+      flags.select = true;
+    }
+    active = {layer: targ.layers[0], dataset: targ.dataset};
+    if (flags.select) {
+      self.dispatchEvent('select', active);
+    }
+    self.dispatchEvent('update', utils.extend({flags: flags}, active));
+  };
+
+  self.selectLayer = function(lyr, dataset) {
+    self.updated({select: true}, lyr, dataset);
+  };
+
+  self.selectNextLayer = function() {
+    var next = self.findNextLayer(self.getActiveLayer().layer);
+    if (next) self.selectLayer(next.layer, next.dataset);
+  };
+
+  self.selectPrevLayer = function() {
+    var prev = self.findPrevLayer(self.getActiveLayer().layer);
+    if (prev) self.selectLayer(prev.layer, prev.dataset);
+  };
+
+  return self;
+}
+
+
+
+
+GUI.getPixelRatio = function() {
   var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
   return deviceRatio > 1 ? 2 : 1;
 };
@@ -3370,7 +1487,7 @@ function DisplayCanvas() {
   _self.prep = function(extent) {
     var w = extent.width(),
         h = extent.height(),
-        pixRatio = gui.getPixelRatio();
+        pixRatio = GUI.getPixelRatio();
     _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
     _canvas.width = w * pixRatio;
     _canvas.height = h * pixRatio;
@@ -3398,7 +1515,7 @@ function DisplayCanvas() {
   _self.drawPathShapes = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
-    var startPath = getPathStart(_ext, getLineScale(_ext));
+    var startPath = getPathStart(_ext, getScaledLineScale(_ext));
     var draw = getShapePencil(arcs, _ext);
     var key, item;
     var styler = style.styler || null;
@@ -3467,7 +1584,7 @@ function DisplayCanvas() {
   // is bad if circles are graduated.
   _self.drawPoints = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        pixRatio = gui.getPixelRatio(),
+        scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
         startPath = getPathStart(_ext),
         styler = style.styler || null,
         shp, p;
@@ -3479,7 +1596,7 @@ function DisplayCanvas() {
       if (!shp || style.radius > 0 === false) continue;
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * pixRatio, _ctx);
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * scale, _ctx);
       }
       endPath(_ctx, style);
     }
@@ -3516,6 +1633,10 @@ function DisplayCanvas() {
   return _self;
 }
 
+function getScaledLineScale(ext) {
+  return ext.getSymbolScale() || getLineScale(ext);
+}
+
 // Vary line width according to zoom ratio.
 // For performance and clarity don't start widening until zoomed quite far in.
 function getLineScale(ext) {
@@ -3535,7 +1656,7 @@ function getDotScale(ext) {
 }
 
 function getDotScale2(shapes, ext) {
-  var pixRatio = gui.getPixelRatio();
+  var pixRatio = GUI.getPixelRatio();
   var scale = ext.scale();
   var side = Math.min(ext.width(), ext.height());
   var bounds = ext.getBounds();
@@ -3552,7 +1673,7 @@ function getDotScale2(shapes, ext) {
 }
 
 function getScaledTransform(ext) {
-  return ext.getTransform(gui.getPixelRatio());
+  return ext.getTransform(GUI.getPixelRatio());
 }
 
 function drawCircle(x, y, radius, ctx) {
@@ -3615,7 +1736,7 @@ function protectIterForDrawing(iter, ext) {
 }
 
 function getPathStart(ext, lineScale) {
-  var pixRatio = gui.getPixelRatio();
+  var pixRatio = GUI.getPixelRatio();
   if (!lineScale) lineScale = 1;
   return function(ctx, style) {
     var strokeWidth;
@@ -3704,7 +1825,7 @@ function FilteredArcCollection(unfilteredArcs) {
 
 
 
-gui.getDisplayLayerForTable = function(table) {
+function getDisplayLayerForTable(table) {
   var n = table.size(),
       cellWidth = 12,
       cellHeight = 5,
@@ -3761,7 +1882,7 @@ gui.getDisplayLayerForTable = function(table) {
     },
     arcs: arcs ? new internal.ArcCollection(arcs) : null
   };
-};
+}
 
 
 
@@ -3784,15 +1905,25 @@ function getMapLayer(layer, dataset) {
     dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
   }
 
-  if (obj.empty) return obj;
-
-  if (!layer.geometry_type) {
-    utils.extend(obj, gui.getDisplayLayerForTable(layer.data));
+  if (internal.layerHasFurniture(layer)) {
+    obj.furniture = true;
+    obj.furniture_type = internal.getFurnitureLayerType(layer);
+    obj.layer = layer;
+    // treating furniture layers (other than frame) as tabular for now,
+    // so there is something to show if they are selected
+    obj.tabular = obj.furniture_type != 'frame';
+  } else if (obj.empty) {
+    obj.layer = {shapes: []}; // ideally we should avoid empty layers
+  } else if (!layer.geometry_type) {
     obj.tabular = true;
   } else {
     obj.geographic = true;
     obj.layer = layer;
     obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence
+  }
+
+  if (obj.tabular) {
+    utils.extend(obj, getDisplayLayerForTable(layer.data));
   }
 
   obj.bounds = getDisplayBounds(obj.layer, obj.arcs, obj.tabular);
@@ -3816,6 +1947,10 @@ function getDisplayBounds(lyr, arcs, isTable) {
         bounds = arcBounds.mergeBounds(lyrBounds);
       }
     }
+  }
+
+  if (!bounds || !bounds.hasBounds()) { // empty layer
+    return new Bounds(); // may cause errors downstream
   }
 
   // If a layer has zero width or height (e.g. if it contains a single point),
@@ -3846,6 +1981,7 @@ function getVariableMargin(lyr) {
 
 
 
+
 function HighlightBox(el) {
   var stroke = 2,
       box = El('div').addClass('zoom-box').appendTo(el).hide();
@@ -3868,28 +2004,25 @@ function HighlightBox(el) {
 
 
 
-gui.addSidebarButton = function(iconId) {
-  var btn = El('div').addClass('nav-btn')
-    .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
-  btn.appendChild(iconId);
-  btn.appendTo('#nav-buttons');
-  return btn;
-};
-
-function MapNav(root, ext, mouse) {
+function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
-      buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
-      zoomScale = 2.5,
+      zoomScale = 1.5,
+      zoomScaleMultiplier = 1,
       inBtn, outBtn,
       dragStartEvt,
       _fx, _fy; // zoom foci, [0,1]
 
+  this.setZoomFactor = function(k) {
+    zoomScaleMultiplier = k || 1;
+  };
+
   gui.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
+
   inBtn = gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
   outBtn = gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
 
@@ -3898,15 +2031,15 @@ function MapNav(root, ext, mouse) {
   });
 
   gui.on('map_reset', function() {
-    ext.reset();
+    ext.home();
   });
 
   zoomTween.on('change', function(e) {
-    ext.rescale(e.value, _fx, _fy);
+    ext.zoomToExtent(e.value, _fx, _fy);
   });
 
   mouse.on('dblclick', function(e) {
-    zoomByPct(zoomScale, e.x / ext.width(), e.y / ext.height());
+    zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
@@ -3937,17 +2070,17 @@ function MapNav(root, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier),
+    var k = 1 + (0.11 * e.multiplier * zoomScaleMultiplier),
         delta = e.direction > 0 ? k : 1 / k;
-    ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
+    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
-    zoomByPct(zoomScale, 0.5, 0.5);
+    zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
   }
 
   function zoomOut() {
-    zoomByPct(1/zoomScale, 0.5, 0.5);
+    zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
   }
 
   // @box Bounds with pixels from t,l corner of map area.
@@ -3961,11 +2094,11 @@ function MapNav(root, ext, mouse) {
   // @pct Change in scale (2 = 2x zoom)
   // @fx, @fy zoom focus, [0, 1]
   function zoomByPct(pct, fx, fy) {
+    var w = ext.getBounds().width();
     _fx = fx;
     _fy = fy;
-    zoomTween.start(ext.scale(), ext.scale() * pct, 400);
+    zoomTween.start(w, w / pct, 400);
   }
-
 }
 
 
@@ -3974,41 +2107,36 @@ function MapNav(root, ext, mouse) {
 function MapExtent(_position) {
   var _scale = 1,
       _cx, _cy, // center in geographic units
-      _contentBounds;
+      _contentBounds,
+      _self = this,
+      _frame;
 
-  _position.on('resize', function() {
-    this.dispatchEvent('change');
-    // this.dispatchEvent('resize');
-  }, this);
+  _position.on('resize', function(e) {
+    onChange({resize: true});
+  });
 
-  this.reset = function(force) {
-    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
+  this.reset = function() {
+    recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
   };
 
-  this.recenter = function(cx, cy, scale, force) {
-    scale = scale ? limitScale(scale) : _scale;
-    if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx;
-      _cy = cy;
-      _scale = scale;
-      this.dispatchEvent('change');
-    }
+  this.home = function() {
+    recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
   };
 
   this.pan = function(xpix, ypix) {
     var t = this.getTransform();
-    this.recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
+    recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
   };
 
-  // Zoom to @scale (a multiple of the map's full scale)
+  // Zoom to @w (width of the map viewport in coordinates)
   // @xpct, @ypct: optional focus, [0-1]...
-  this.rescale = function(scale, xpct, ypct) {
-    scale = limitScale(scale);
+  this.zoomToExtent = function(w, xpct, ypct) {
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
     }
     var b = this.getBounds(),
+        scale = limitScale(b.width() / w * _scale),
         fx = b.xmin + xpct * b.width(),
         fy = b.ymax - ypct * b.height(),
         dx = b.centerX() - fx,
@@ -4018,7 +2146,11 @@ function MapExtent(_position) {
         dy2 = dy * ds,
         cx = fx + dx2,
         cy = fy + dy2;
-    this.recenter(cx, cy, scale);
+    recenter(cx, cy, scale);
+  };
+
+  this.zoomByPct = function(pct, xpct, ypct) {
+    this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);
   };
 
   this.resize = _position.resize;
@@ -4050,24 +2182,59 @@ function MapExtent(_position) {
 
   this.getBounds = function() {
     if (!_contentBounds) return new Bounds();
-    return centerAlign(calcBounds(_cx, _cy, _scale));
+    return calcBounds(_cx, _cy, _scale);
   };
 
   // Update the extent of 'full' zoom without navigating the current view
   this.setBounds = function(b) {
     var prev = _contentBounds;
-    _contentBounds = b;
+    if (!b.hasBounds()) return; // kludge
+    _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
     if (prev) {
-      _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
+      _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
     } else {
       _cx = b.centerX();
       _cy = b.centerY();
     }
   };
 
+  this.translateCoords = function(x, y) {
+    return this.getTransform().transform(x, y);
+  };
+
+  this.setFrame = function(frame) {
+    _frame = frame || null;
+  };
+
+  this.getFrame = function() {
+    return _frame || null;
+  };
+
+  this.getSymbolScale = function() {
+    if (!_frame) return 0;
+    var bounds = new Bounds(_frame.bbox);
+    var bounds2 = bounds.clone().transform(this.getTransform());
+    return bounds2.width() / _frame.width;
+  };
+
   this.translatePixelCoords = function(x, y) {
     return this.getTransform().invert().transform(x, y);
   };
+
+  function recenter(cx, cy, scale, data) {
+    scale = scale ? limitScale(scale) : _scale;
+    if (!(cx == _cx && cy == _cy && scale == _scale)) {
+      _cx = cx;
+      _cy = cy;
+      _scale = scale;
+      onChange(data);
+    }
+  }
+
+  function onChange(data) {
+    data = data || {};
+    _self.dispatchEvent('change', data);
+  }
 
   // stop zooming before rounding errors become too obvious
   function maxScale() {
@@ -4088,31 +2255,49 @@ function MapExtent(_position) {
   }
 
   function calcBounds(cx, cy, scale) {
-    var w = _contentBounds.width() / scale,
-        h = _contentBounds.height() / scale;
+    var bounds, w, h;
+    if (_frame) {
+      bounds = fillOutFrameBounds(_frame);
+    } else {
+      bounds = fillOut(_contentBounds);
+    }
+    w = bounds.width() / scale;
+    h = bounds.height() / scale;
     return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
   }
 
-  // Receive: Geographic bounds of content to be centered in the map
-  // Return: Geographic bounds of map window centered on @_contentBounds,
-  //    with padding applied
-  function centerAlign(_contentBounds) {
-    var bounds = _contentBounds.clone(),
-        wpix = _position.width(),
-        hpix = _position.height(),
-        xmarg = 4,
-        ymarg = 4,
-        xpad, ypad;
-    wpix -= 2 * xmarg;
-    hpix -= 2 * ymarg;
+  // Calculate viewport bounds from frame data
+  function fillOutFrameBounds(frame) {
+    var bounds = new Bounds(frame.bbox);
+    var kx = _position.width() / frame.width;
+    var ky = _position.height() / frame.height;
+    bounds.scale(kx, ky);
+    return bounds;
+  }
+
+  function padBounds(b, margin) {
+    var wpix = _position.width() - 2 * margin,
+        hpix = _position.height() - 2 * margin,
+        xpad, ypad, b2;
     if (wpix <= 0 || hpix <= 0) {
       return new Bounds(0, 0, 0, 0);
     }
-    bounds.fillOut(wpix / hpix);
-    xpad = bounds.width() / wpix * xmarg;
-    ypad = bounds.height() / hpix * ymarg;
-    bounds.padBounds(xpad, ypad, xpad, ypad);
-    return bounds;
+    b = b.clone();
+    b2 = b.clone();
+    b2.fillOut(wpix / hpix);
+    xpad = b2.width() / wpix * margin;
+    ypad = b2.height() / hpix * margin;
+    b.padBounds(xpad, ypad, xpad, ypad);
+    return b;
+  }
+
+  // Pad bounds vertically or horizontally to match viewport aspect ratio
+  function fillOut(b) {
+    var wpix = _position.width(),
+        hpix = _position.height();
+    b = b.clone();
+    b.fillOut(wpix / hpix);
+    return b;
   }
 }
 
@@ -4122,9 +2307,9 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 // @onNext: handler for switching between multiple records
-function Popup(onNext, onPrev) {
+function Popup(gui, onNext, onPrev) {
   var self = new EventDispatcher();
-  var parent = El('#mshp-main-map');
+  var parent = gui.container.findChild('.mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
   // multi-hit display and navigation
@@ -4157,7 +2342,7 @@ function Popup(onNext, onPrev) {
   self.hide = function() {
     // make sure any pending edits are made before re-rendering popup
     // TODO: only blur popup fields
-    gui.blurActiveElement();
+    GUI.blurActiveElement();
     content.empty();
     content.node().removeAttribute('style'); // remove inline height
     el.hide();
@@ -4303,7 +2488,7 @@ internal.getFieldType = function(val, key, table) {
 
 
 
-function HitControl(ext, mouse) {
+function HitControl(gui, ext, mouse) {
   var self = new EventDispatcher();
   var prevHits = [];
   var active = false;
@@ -4312,7 +2497,7 @@ function HitControl(ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
-  var readout = El('#coordinate-info').hide();
+  var readout = gui.container.findChild('.coordinate-info').hide();
   var bboxPoint;
   var target, test;
 
@@ -4332,15 +2517,16 @@ function HitControl(ext, mouse) {
   });
 
   self.setLayer = function(mapLayer) {
-    var layer = mapLayer.layer;
-    var style = mapLayer.style;
     target = mapLayer;
-    if (layer.geometry_type == 'point' && style.type == 'styled') {
-      test = getGraduatedCircleTest(getRadiusFunction(style));
-    } else {
-      test = tests[layer.geometry_type];
-    }
     readout.hide();
+    if (!mapLayer) {
+      test = null;
+      self.stop();
+    } else if (mapLayer.layer.geometry_type == 'point' && mapLayer.style.type == 'styled') {
+      test = getGraduatedCircleTest(getRadiusFunction(mapLayer.style));
+    } else {
+      test = tests[mapLayer.layer.geometry_type];
+    }
   };
 
   self.start = function() {
@@ -4350,7 +2536,6 @@ function HitControl(ext, mouse) {
   self.stop = function() {
     if (active) {
       hover([]);
-      // readout.text('').hide();
       active = false;
     }
   };
@@ -4361,7 +2546,7 @@ function HitControl(ext, mouse) {
       trigger('click', prevHits);
     }
     if (target.geographic) {
-      gui.selectElement(readout.node());
+      GUI.selectElement(readout.node());
       // don't save bbox point when inspector is active
       // clear bbox point if already present
       bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);
@@ -4588,7 +2773,7 @@ function HitControl(ext, mouse) {
   function hover(hits) {
     if (!sameIds(hits, prevHits)) {
       prevHits = hits;
-      El('#map-layers').classed('hover', hits.length > 0);
+      gui.container.findChild('.map-layers').classed('hover', hits.length > 0);
       trigger('hover', hits);
     }
   }
@@ -4623,9 +2808,9 @@ function HitControl(ext, mouse) {
 
 
 
-function InspectionControl(model, ext, mouse) {
-  var hit = new HitControl(ext, mouse);
-  var _popup = new Popup(getSwitchHandler(1), getSwitchHandler(-1));
+function InspectionControl(gui, ext, hit) {
+  var model = gui.model;
+  var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
@@ -4656,10 +2841,21 @@ function InspectionControl(model, ext, mouse) {
   });
 
   _self.updateLayer = function(mapLayer) {
-    var shapes = mapLayer.layer.shapes;
+    if (!mapLayer) {
+      if (_target) { // enabled to disabled
+        _target = _shapes = null;
+        btn.hide();
+        turnOff();
+        hit.setLayer(null);
+      }
+      return;
+    }
+    if (!_target) { // disabled to enabled
+      btn.show();
+    }
     _target = mapLayer;
     if (_inspecting) {
-      if (_shapes == shapes) {
+      if (_shapes == mapLayer.layer.shapes) {
         // shapes haven't changed -- refresh in case data has changed
         inspect(_highId, _pinned);
       } else {
@@ -4668,13 +2864,15 @@ function InspectionControl(model, ext, mouse) {
         inspect(-1, false);
       }
     }
-    _shapes = shapes;
+    _shapes = mapLayer.layer.shapes;
     hit.setLayer(mapLayer);
   };
 
   // replace cli inspect command
+  // TODO: support multiple editors on the page
   api.inspect = function(lyr, arcs, opts) {
     var ids;
+    if (!_target) return; // control is disabled (selected layer is hidden, etc)
     if (lyr != model.getActiveLayer().layer) {
       error("Only the active layer can be targeted");
     }
@@ -4688,9 +2886,10 @@ function InspectionControl(model, ext, mouse) {
     inspect(ids[0], true);
   };
 
-  document.addEventListener('keydown', function(e) {
+  gui.keyboard.on('keydown', function(evt) {
+    var e = evt.originalEvent;
     var kc = e.keyCode, n, id;
-    if (!_inspecting) return;
+    if (!_inspecting || !_target) return;
 
     // esc key closes (unless in an editing mode)
     if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
@@ -4698,8 +2897,7 @@ function InspectionControl(model, ext, mouse) {
       return;
     }
 
-
-    if (_pinned && !gui.getInputElement()) {
+    if (_pinned && !GUI.getInputElement()) {
       // an element is selected and user is not editing text
 
       if (kc == 37 || kc == 39) {
@@ -4749,6 +2947,7 @@ function InspectionControl(model, ext, mouse) {
   });
 
   function getSwitchHandler(diff) {
+    // function for switching between multiple hover shapes
     return function() {
       var i = (_hoverIds || []).indexOf(_highId);
       var nextId;
@@ -4810,6 +3009,25 @@ function InspectionControl(model, ext, mouse) {
   return _self;
 }
 
+
+
+
+function SidebarButtons(gui) {
+  var root = gui.container.findChild('.mshp-main-map');
+  var buttons = El('div').addClass('nav-buttons').appendTo(root);
+
+  // @iconRef: selector for an (svg) button icon
+  gui.addSidebarButton = function(iconRef) {
+    var icon = El('body').findChild(iconRef).node().cloneNode(true);
+    var btn = El('div').addClass('nav-btn')
+      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
+    btn.appendChild(icon);
+    if (icon.hasAttribute('id')) icon.removeAttribute('id');
+    btn.appendTo(buttons);
+    return btn;
+  };
+
+}
 
 
 
@@ -5053,17 +3271,6 @@ internal.layerHasCanvasDisplayStyle = function(lyr) {
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 
-internal.layerHasSvgSymbols = function(lyr) {
-  return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
-};
-
-internal.layerHasLabels = function(lyr) {
-  var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
-  if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
-    console.error('Multi-point labels are not fully supported');
-  }
-  return hasLabels;
-};
 
 internal.getCanvasStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
@@ -5073,28 +3280,27 @@ internal.getCanvasStyleFields = function(lyr) {
 
 
 
-function repositionLabels(container, layer, fwd) {
+function repositionLabels(container, layer, ext) {
+  var fwd = ext.getTransform();
   var texts = container.getElementsByTagName('text');
   var n = texts.length;
-  var text, xy, idx, p;
+  var text, idx, p;
   for (var i=0; i<n; i++) {
     text = texts[i];
     idx = +text.getAttribute('data-id');
     p = layer.shapes[idx];
     if (!p) continue;
-    xy = fwd.transform(p[0][0], p[0][1]);
-    setMultilineAttribute(text, 'x', xy[0]);
-    text.setAttribute('y', xy[1]);
+    text.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
   }
 }
 
-function renderLabels(lyr, fwd) {
+function renderLabels(lyr, ext) {
+  var fwd = ext.getTransform();
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var p = shp[0];
-    var p2 = fwd.transform(p[0], p[1]);
-    var obj = internal.svg.importLabel(p2, d);
+    var obj = internal.svg.importLabel(d);
+    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     internal.svg.applyStyleAttributes(obj, 'Point', d);
     obj.properties['data-id'] = i;
     return obj;
@@ -5122,28 +3328,31 @@ function setMultilineAttribute(textNode, name, value) {
 
 
 
+function getSvgSymbolTransform(xy, ext) {
+  var scale = ext.getSymbolScale();
+  var p = ext.translateCoords(xy[0], xy[1]);
+  return internal.svg.getTransform(p, scale);
+}
 
-function repositionSymbols(container, layer, fwd) {
+function repositionSymbols(container, layer, ext) {
   var symbols = El.findAll('.mapshaper-svg-symbol', container);
   var n = symbols.length;
-  var sym, xy, idx, p;
+  var sym, idx, p;
   for (var i=0; i<n; i++) {
     sym = symbols[i];
     idx = +sym.getAttribute('data-id');
     p = layer.shapes[idx];
     if (!p) continue;
-    xy = fwd.transform(p[0][0], p[0][1]);
-    sym.setAttribute('transform', internal.svg.getTransform(xy));
+    sym.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
   }
 }
 
-function renderSymbols(lyr, fwd) {
+function renderSymbols(lyr, ext) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var p = shp[0];
-    var p2 = fwd.transform(p[0], p[1]);
-    var obj = internal.svg.importSymbol(p2, d['svg-symbol']);
+    var obj = internal.svg.importSymbol(d['svg-symbol']);
+    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     obj.properties['data-id'] = i;
     return obj;
   });
@@ -5153,9 +3362,34 @@ function renderSymbols(lyr, fwd) {
 }
 
 
+function getSvgFurnitureTransform(ext) {
+  var scale = ext.getSymbolScale();
+  var frame = ext.getFrame();
+  var p = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
+  return internal.svg.getTransform(p, scale);
+}
+
+function repositionFurniture(container, layer, ext) {
+  var g = El.findAll('.mapshaper-svg-furniture', container)[0];
+  g.setAttribute('transform', getSvgFurnitureTransform(ext));
+}
+
+function renderFurniture(lyr, ext) {
+  var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
+  var obj = internal.getEmptyLayerForSVG(lyr, {});
+  if (!frame) {
+    stop('Missing map frame data');
+  }
+  obj.properties.transform = getSvgFurnitureTransform(ext);
+  obj.properties.class = 'mapshaper-svg-furniture';
+  obj.children = internal.svg.importFurniture(internal.getFurnitureLayerData(lyr), frame);
+  return internal.svg.stringify(obj);
+}
 
 
-function SvgDisplayLayer(ext, mouse) {
+
+
+function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   var el = El(svg);
   var editing = false;
@@ -5164,33 +3398,35 @@ function SvgDisplayLayer(ext, mouse) {
   var activeLayer;
   var activeRecord;
 
-  initDragging();
+  if (mouse) initDragging();
 
   el.clear = clear;
 
-  el.reposition = function(target) {
-    var transform = ext.getTransform();
+  el.reposition = function(target, type) {
     resize(ext);
-    reposition(target, transform);
+    reposition(target, type, ext);
   };
 
-  el.drawLayer = function(target) {
-    var transform = ext.getTransform();
+  el.drawLayer = function(target, type) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    // kludge to identify container when symbols are repositioned
-    var id = utils.getUniqueName();
     var html = '';
-    g.setAttribute('id', id);
+    // generate a unique id so layer can be identified when symbols are repositioned
+    // use it as a class name to avoid id collisions
+    var id = utils.getUniqueName();
+    g.setAttribute('class', id);
     target.svg_id = id;
     resize(ext);
-    if (internal.layerHasLabels(target.layer)) {
-      html = renderLabels(target.layer, transform);
-    } else if (internal.layerHasSvgSymbols(target.layer)) {
-      html = renderSymbols(target.layer, transform);
+    if (type == 'label') {
+      html = renderLabels(target.layer, ext);
+    } else if (type == 'symbol') {
+      html = renderSymbols(target.layer, ext);
+    } else if (type == 'furniture') {
+      html = renderFurniture(target.layer, ext);
     }
     g.innerHTML = html;
     svg.append(g);
-    if (target.active) {
+    // TODO: support mouse dragging on symbol layers
+    if (target.active && type == 'label') {
       activeLayer = target.layer;
     } else {
       g.style.pointerEvents = 'none';
@@ -5257,18 +3493,19 @@ function SvgDisplayLayer(ext, mouse) {
     }, null, eventPriority);
 
     mouse.on('drag', function(e) {
+      var scale = ext.getSymbolScale() || 1;
       onDrag(e);
       if (!dragging || !activeRecord) return;
-      applyDelta(activeRecord, 'dx', e.dx);
-      applyDelta(activeRecord, 'dy', e.dy);
+      applyDelta(activeRecord, 'dx', e.dx / scale);
+      applyDelta(activeRecord, 'dy', e.dy / scale);
       if (!isMultilineLabel(textNode)) {
         // update anchor position of single-line labels based on label position
         // relative to anchor point, for better placement when eventual display font is
         // different from mapshaper's font.
         updateTextAnchor(textNode, activeRecord);
       }
-      setMultilineAttribute(textNode, 'dx', activeRecord.dx);
-      textNode.setAttribute('dy', activeRecord.dy);
+      setMultilineAttribute(textNode, 'x', activeRecord.dx);
+      textNode.setAttribute('y', activeRecord.dy);
     }, null, eventPriority);
 
     mouse.on('dragend', function(e) {
@@ -5397,12 +3634,14 @@ function SvgDisplayLayer(ext, mouse) {
     return textNode.childNodes.length > 1;
   }
 
-  function reposition(target, fwd) {
-    var container = document.getElementById(target.svg_id);
-    if (internal.layerHasLabels(target.layer)) {
-      repositionLabels(container, target.layer, fwd);
-    } else if (internal.layerHasSvgSymbols(target.layer)) {
-      repositionSymbols(container, target.layer, fwd);
+  function reposition(target, type, ext) {
+    var container = el.findChild('.' + target.svg_id).node();
+    if (type == 'label') {
+      repositionLabels(container, target.layer, ext);
+    } else if (type == 'symbol') {
+      repositionSymbols(container, target.layer, ext);
+    } else if (type == 'furniture') {
+      repositionFurniture(container, target.layer, ext);
     }
   }
 
@@ -5425,13 +3664,17 @@ function SvgDisplayLayer(ext, mouse) {
 
 /* @requires mapshaper-svg-display, @mapshaper-canvas, mapshaper-map-style */
 
-function LayerStack(container, ext, mouse) {
+function LayerStack(gui, container, ext, mouse) {
   var el = El(container),
       _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
       _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
       _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
-      _svg = new SvgDisplayLayer(ext, mouse).appendTo(el), // labels, _ext;
+      _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el), // labels, _ext;
+      _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
       _ext = ext;
+
+  // don't let furniture countainer block events to symbol layers
+  _furniture.css('pointer-events', 'none');
 
   this.drawOverlay2Layer = function(lyr) {
     drawSingleCanvasLayer(lyr, _overlay2Canv);
@@ -5441,7 +3684,7 @@ function LayerStack(container, ext, mouse) {
     drawSingleCanvasLayer(lyr, _overlayCanv);
   };
 
-  this.drawLayers = function(layers, onlyNav) {
+  this.drawContentLayers = function(layers, onlyNav) {
     _activeCanv.prep(_ext);
     if (!onlyNav) {
       _svg.clear();
@@ -5456,6 +3699,18 @@ function LayerStack(container, ext, mouse) {
     });
   };
 
+  this.drawFurnitureLayers = function(layers, onlyNav) {
+    if (!onlyNav) {
+      _furniture.clear();
+    }
+    layers.forEach(function(target) {
+      if (onlyNav) {
+        _furniture.reposition(target, 'furniture');
+      } else {
+        _furniture.drawLayer(target, 'furniture');
+      }
+    });
+  };
 
   function layerUsesCanvas(layer) {
     // TODO: return false if a label layer does not have dots
@@ -5475,10 +3730,16 @@ function LayerStack(container, ext, mouse) {
   }
 
   function drawSvgLayer(target, onlyNav) {
+    var type;
+    if (internal.layerHasLabels(target.layer)) {
+      type = 'label';
+    } else if (internal.layerHasSvgSymbols(target.layer)) {
+      type = 'symbol';
+    }
     if (onlyNav) {
-      _svg.reposition(target);
+      _svg.reposition(target, type);
     } else {
-      _svg.drawLayer(target);
+      _svg.drawLayer(target, type);
     }
   }
 
@@ -5495,14 +3756,41 @@ function LayerStack(container, ext, mouse) {
 
 
 
+
+internal.updateLayerStackOrder = function(layers) {
+  // 1. assign ascending ids to unassigned layers above the range of other layers
+  layers.forEach(function(o, i) {
+    if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
+  });
+  // 2. sort in ascending order
+  layers.sort(function(a, b) {
+    return a.layer.stack_id - b.layer.stack_id;
+  });
+  // 3. assign consecutve ids
+  layers.forEach(function(o, i) {
+    o.layer.stack_id = i + 1;
+  });
+  return layers;
+};
+
+internal.sortLayersForMenuDisplay = function(layers) {
+  layers = internal.updateLayerStackOrder(layers);
+  return layers.reverse();
+};
+
+
+
+
+
 utils.inherit(MshpMap, EventDispatcher);
 
-function MshpMap(model) {
-  var _root = El('#mshp-main-map'),
-      _referenceLayers = [],
+function MshpMap(gui, opts) {
+  var el = gui.container.findChild('.map-layers').node();
+  var model = gui.model,
+      map = this,
+      _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _needReset = false,
-      _ext, _inspector, _stack;
+      _ext, _inspector, _stack, _nav, _hit;
 
   model.on('select', function(e) {
     _intersectionLyr = null;
@@ -5513,9 +3801,10 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var prevLyr = _activeLyr || null;
     var fullBounds;
+    var needReset;
 
     if (!prevLyr) {
-      initMap(); // wait until first layer is added to init map extent, resize events, etc.
+      initMap(); // init map extent, resize events, etc. on first call
     }
 
     if (arcsMayHaveChanged(e.flags)) {
@@ -5540,28 +3829,29 @@ function MshpMap(model) {
 
     _activeLyr = getMapLayer(e.layer, e.dataset);
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
-    _inspector.updateLayer(_activeLyr);
+    _activeLyr.active = true;
+    if (_inspector) _inspector.updateLayer(_activeLyr);
+    updateVisibleMapLayers();
+    fullBounds = getFullBounds();
 
-    fullBounds = getVisibleBounds(); // _activeLyr.bounds;
-
-    if (!prevLyr) {
-      _needReset = true;
-    } else if (prevLyr.tabular || _activeLyr.tabular) {
-      _needReset = true;
+    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+      needReset = true;
     } else {
-      _needReset = gui.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
+      needReset = GUI.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
     }
 
-    // set 'home' extent to match bounds of active group
-    _ext.setBounds(fullBounds);
-
-    if (_needReset) {
-      // zoom to full view of the active layer and redraw
-      _ext.reset(true);
+    if (isFrameView()) {
+      _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
+      _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
+      needReset = true; // snap to frame extent
     } else {
-      // refresh without navigating
-      drawLayers();
+      _nav.setZoomFactor(1);
     }
+    _ext.setBounds(fullBounds); // update 'home' button extent
+    if (needReset) {
+      _ext.reset();
+    }
+    drawLayers();
   });
 
   // Currently used to show dots at line intersections
@@ -5575,30 +3865,56 @@ function MshpMap(model) {
     _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
 
+  this.setLayerVisibility = function(target, isVisible) {
+    var lyr = target.layer;
+    lyr.visibility = isVisible ? 'visible' : 'hidden';
+    if (_inspector && isActiveLayer(lyr)) {
+      _inspector.updateLayer(isVisible ? _activeLyr : null);
+    }
+  };
+
+  this.getExtent = function() {return _ext;};
+  this.isActiveLayer = isActiveLayer;
+  this.isVisibleLayer = isVisibleLayer;
+
+  // called by layer menu after layer visibility is updated
+  this.redraw = function() {
+    updateVisibleMapLayers();
+    drawLayers();
+  };
+
   function initMap() {
-    var el = El('#map-layers').node();
     var position = new ElementPosition(el);
     var mouse = new MouseArea(el, position);
+    new SidebarButtons(gui);
+    new GuiFocus(gui, mouse);
     _ext = new MapExtent(position);
-    new MapNav(_root, _ext, mouse);
-    _stack = new LayerStack(el, _ext, mouse);
-    _inspector = new InspectionControl(model, _ext, mouse);
+    _nav = new MapNav(gui, _ext, mouse);
+    _stack = new LayerStack(gui, el, _ext, mouse);
+    _hit = new HitControl(gui, _ext, mouse);
 
-
-    _ext.on('change', function() {
-      drawLayers(!_needReset);
-      _needReset = false;
-    });
-    _inspector.on('change', function(e) {
-      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-      _stack.drawOverlayLayer(_overlayLyr);
-    });
-    _inspector.on('data_change', function(e) {
-      // refresh the display if a style variable has been changed interactively
-      if (internal.isSupportedSvgProperty(e.field)) {
-        drawLayers();
+    _ext.on('change', function(e) {
+      if (e.reset) return; // don't need to redraw map here if extent has been reset
+      if (isFrameView()) {
+        updateFrameExtent();
       }
+      drawLayers(true);
     });
+
+    if (opts.inspector) {
+      _inspector = new InspectionControl(gui, _ext, _hit);
+      _inspector.on('change', function(e) {
+        _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+        _stack.drawOverlayLayer(_overlayLyr);
+      });
+      _inspector.on('data_change', function(e) {
+        // refresh the display if a style variable has been changed interactively
+        if (internal.isSupportedSvgProperty(e.field)) {
+          drawLayers();
+        }
+      });
+    }
+
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
@@ -5612,66 +3928,113 @@ function MshpMap(model) {
       flags.slice || flags.affine || flags.rectangle || false;
   }
 
-  // Remove layers that have been deleted from the catalog
-  function updateReferenceLayers() {
-    _referenceLayers = _referenceLayers.filter(function(o) {
-      return !!model.findLayer(o.source.layer);
-    });
+  // Update map frame after user navigates the map in frame edit mode
+  function updateFrameExtent() {
+    var frameLyr = internal.findFrameLayer(model);
+    var rec = frameLyr.data.getRecordAt(0);
+    var viewBounds = _ext.getBounds();
+    var w = viewBounds.width() * rec.width / _ext.width();
+    var h = w * rec.height / rec.width;
+    var cx = viewBounds.centerX();
+    var cy = viewBounds.centerY();
+    rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
+    _ext.setFrame(getFrameData());
+    _ext.setBounds(new Bounds(rec.bbox));
+    _ext.reset();
   }
 
-  function getVisibleBounds() {
+  function getFullBounds() {
     var b = new Bounds();
-    getDrawableLayers().forEach(function(lyr) {
+    if (isPreviewView()) {
+      return internal.getFrameLayerBounds(internal.findFrameLayer(model));
+    }
+    getDrawableContentLayers().forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
     });
     return b;
   }
 
-  this.isVisibleLayer = function(lyr) {
-    return this.isActiveLayer(lyr) || this.isReferenceLayer(lyr);
-  };
+  function isActiveLayer(lyr) {
+    return _activeLyr && lyr == _activeLyr.source.layer || false;
+  }
 
-  this.isActiveLayer = function(lyr) {
-    return lyr == _activeLyr.source.layer;
-  };
+  function isVisibleLayer(lyr) {
+    if (isActiveLayer(lyr)) {
+      return lyr.visibility != 'hidden';
+    }
+    return lyr.visibility == 'visible';
+  }
 
-  this.isReferenceLayer = function(lyr) {
-    return _referenceLayers.filter(function(o) {
-      return o.source.layer == lyr;
-    }).length > 0;
-  };
+  function isVisibleDataLayer(lyr) {
+    return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
+  }
 
-  this.removeReferenceLayer = function(lyr) {
-    _referenceLayers = _referenceLayers.filter(function(o) {
-      return o.source.layer != lyr;
+  function isFrameLayer(lyr) {
+    return !!(lyr && lyr == internal.findFrameLayer(model));
+  }
+
+  function isTableView() {
+    return !isPreviewView() && !!_activeLyr.tabular;
+  }
+
+  function isPreviewView() {
+    var frameLyr = internal.findFrameLayer(model);
+    return !!frameLyr; //  && isVisibleLayer(frameLyr)
+  }
+
+  // Frame view means frame layer is visible and active (selected)
+  function isFrameView() {
+    var frameLyr = internal.findFrameLayer(model);
+    return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
+  }
+
+  function getFrameData() {
+    var frameLyr = internal.findFrameLayer(model);
+    return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+  }
+
+  function updateVisibleMapLayers() {
+    var layers = [];
+    model.getLayers().forEach(function(o) {
+      if (!isVisibleLayer(o.layer)) return;
+      if (isActiveLayer(o.layer)) {
+        layers.push(_activeLyr);
+      } else if (!isTableView()) {
+        layers.push(getMapLayer(o.layer, o.dataset));
+      }
     });
-  };
+    _visibleLayers = layers;
+  }
 
-  this.addReferenceLayer = function(lyr, dataset) {
-    if (this.isReferenceLayer(lyr)) return;
-    if (lyr && internal.layerHasGeometry(lyr)) {
-      _referenceLayers.push(getMapLayer(lyr, dataset));
-    }
-  };
+  function getVisibleMapLayers() {
+    return _visibleLayers;
+  }
 
-  this.redraw = drawLayers;
+  function findActiveLayer(layers) {
+    return layers.filter(function(o) {
+      return o == _activeLyr;
+    });
+  }
 
-  function getDrawableLayers() {
-    // delete any layers that have been dropped from the catalog
-    updateReferenceLayers();
-    if (_activeLyr.tabular) {
-       // don't show reference layers if active layer is displayed as a table
-      return [_activeLyr];
-    }
-    // concat active and reference layers, excluding dupes
-    return [_activeLyr].concat(_referenceLayers.filter(function(o) {
-      return o.source.layer != _activeLyr.source.layer && o.geographic;
-    }));
+  function getDrawableContentLayers() {
+    var layers = getVisibleMapLayers();
+    if (isTableView()) return findActiveLayer(layers);
+    return layers.filter(function(o) {
+      return !!o.geographic;
+    });
+  }
+
+  function getDrawableFurnitureLayers(layers) {
+    if (!isPreviewView()) return [];
+    return getVisibleMapLayers().filter(function(o) {
+      return internal.isFurnitureLayer(o);
+    });
   }
 
   function updateLayerStyles(layers) {
     layers.forEach(function(mapLayer, i) {
-      if (i === 0) {
+      if (mapLayer.active) {
+        // style is already assigned
         if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
@@ -5680,13 +4043,10 @@ function MshpMap(model) {
             strokeColors: [null, mapLayer.style.strokeColors[1]]
           }, mapLayer.style);
         }
-        mapLayer.active = true;
       } else {
         if (mapLayer.layer == _activeLyr.layer) {
           console.error("Error: shared map layer");
         }
-        mapLayer.active = false;
-        // reference style
         mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
       }
     });
@@ -5694,26 +4054,36 @@ function MshpMap(model) {
 
   function sortMapLayers(layers) {
     layers.sort(function(a, b) {
-      // assume that each layer has a stack_id (assigned by updateLayerStackOrde())
+      // assume that each layer has a stack_id (assigned by updateLayerStackOrder())
       return a.source.layer.stack_id - b.source.layer.stack_id;
     });
   }
 
   // onlyNav (bool): only map extent has changed, symbols are unchanged
   function drawLayers(onlyNav) {
-    // draw active and reference layers
-    var layers = getDrawableLayers();
+    var contentLayers = getDrawableContentLayers();
+    var furnitureLayers = getDrawableFurnitureLayers();
+    if (!(_ext.width() > 0 && _ext.height() > 0)) {
+      // TODO: track down source of these errors
+      console.error("[drawLayers()] Collapsed map container, unable to draw.");
+      return;
+    }
     if (!onlyNav) {
-      updateLayerStyles(layers);
+       // kludge to handle layer visibility toggling
+      _ext.setFrame(isPreviewView() ? getFrameData() : null);
+      _ext.setBounds(getFullBounds());
+      updateLayerStyles(contentLayers);
       // update stack_id property of all layers
       internal.updateLayerStackOrder(model.getLayers());
     }
-    sortMapLayers(layers);
-    _stack.drawLayers(layers, onlyNav);
+    sortMapLayers(contentLayers);
+    _stack.drawContentLayers(contentLayers, onlyNav);
     // draw intersection dots
     _stack.drawOverlay2Layer(_intersectionLyr);
     // draw hover & selection effects
     _stack.drawOverlayLayer(_overlayLyr);
+    // _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
+    _stack.drawFurnitureLayers(furnitureLayers); // re-render on nav, because scalebars
   }
 }
 
@@ -5737,9 +4107,9 @@ function filterLayerByIds(lyr, ids) {
 }
 
 // Test if map should be re-framed to show updated layer
-gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);
-  var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
+GUI.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
+  var viewportPct = GUI.getIntersectionPct(newBounds, mapBounds);
+  var contentPct = GUI.getIntersectionPct(mapBounds, newBounds);
   var boundsChanged = !prevBounds.equals(newBounds);
   var inView = newBounds.intersects(mapBounds);
   var areaChg = newBounds.area() / prevBounds.area();
@@ -5751,7 +4121,7 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 };
 
 // TODO: move to utilities file
-gui.getBoundsIntersection = function(a, b) {
+GUI.getBoundsIntersection = function(a, b) {
   var c = new Bounds();
   if (a.intersects(b)) {
     c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
@@ -5761,20 +4131,1936 @@ gui.getBoundsIntersection = function(a, b) {
 };
 
 // Returns proportion of bb2 occupied by bb1
-gui.getIntersectionPct = function(bb1, bb2) {
-  return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+GUI.getIntersectionPct = function(bb1, bb2) {
+  return GUI.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
 };
 
 
 
 
-function Console(model) {
+function GuiInstance(container, opts) {
+  var gui = new ModeSwitcher();
+  opts = utils.extend({
+    // defaults
+    inspector: true
+  }, opts);
+
+  gui.container = El(container);
+  gui.model = new Model();
+  gui.keyboard = new KeyboardEvents(gui);
+  gui.map = new MshpMap(gui, opts);
+
+  gui.showProgressMessage = function(msg) {
+    if (!gui.progressMessage) {
+      gui.progressMessage = El('div').addClass('progress-message')
+        .appendTo('body');
+    }
+    El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
+  };
+
+  gui.clearProgressMessage = function() {
+    if (gui.progressMessage) gui.progressMessage.hide();
+  };
+
+  gui.consoleIsOpen = function() {
+    return gui.container.hasClass('console-open');
+  };
+  GUI.setActiveInstance(gui);
+
+  return gui;
+}
+
+
+
+
+
+function AlertControl(gui) {
+  var el;
+  gui.addMode('alert', function() {}, turnOff);
+
+  gui.alert = function(str) {
+    var infoBox;
+    if (!el) {
+      el = El('div').appendTo('body').addClass('error-wrapper');
+      infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+      El('p').addClass('error-message').appendTo(infoBox);
+      El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
+    }
+    el.findChild('.error-message').html(str);
+    gui.enterMode('alert');
+  };
+
+  function turnOff() {
+    if (el) {
+      el.remove();
+      el = null;
+    }
+  }
+}
+
+
+
+
+// TODO: switch all ClickText to ClickText2
+
+// @ref Reference to an element containing a text node
+function ClickText2(ref) {
+  var self = this;
+  var selected = false;
+  var el = El(ref).on('mousedown', init);
+
+  function init() {
+    el.removeEventListener('mousedown', init);
+    el.attr('contentEditable', true)
+    .attr('spellcheck', false)
+    .attr('autocorrect', false)
+    .on('focus', function(e) {
+      el.addClass('editing');
+      selected = false;
+    }).on('blur', function(e) {
+      el.removeClass('editing');
+      self.dispatchEvent('change');
+      getSelection().removeAllRanges();
+    }).on('keydown', function(e) {
+      if (e.keyCode == 13) { // enter
+        e.stopPropagation();
+        e.preventDefault();
+        this.blur();
+      }
+    }).on('click', function(e) {
+      if (!selected && getSelection().isCollapsed) {
+        GUI.selectElement(el.node());
+      }
+      selected = true;
+      e.stopPropagation();
+    });
+  }
+
+  this.value = function(str) {
+    if (utils.isString(str)) {
+      el.node().textContent = str;
+    } else {
+      return el.node().textContent;
+    }
+  };
+}
+
+utils.inherit(ClickText2, EventDispatcher);
+
+// @ref reference to a text input element
+function ClickText(ref) {
+  var _el = El(ref);
+  var _self = this;
+  var _max = Infinity,
+      _min = -Infinity,
+      _formatter = function(v) {return String(v);},
+      _validator = function(v) {return !isNaN(v);},
+      _parser = function(s) {return parseFloat(s);},
+      _value = 0;
+
+  _el.on('blur', onblur);
+  _el.on('keydown', onpress);
+
+  function onpress(e) {
+    if (e.keyCode == 27) { // esc
+      _self.value(_value); // reset input field to current value
+      _el.el.blur();
+    } else if (e.keyCode == 13) { // enter
+      _el.el.blur();
+    }
+  }
+
+  // Validate input contents.
+  // Update internal value and fire 'change' if valid
+  //
+  function onblur() {
+    var val = _parser(_el.el.value);
+    if (val === _value) {
+      // return;
+    }
+    if (_validator(val)) {
+      _self.value(val);
+      _self.dispatchEvent('change', {value:_self.value()});
+    } else {
+      _self.value(_value);
+      _self.dispatchEvent('error'); // TODO: improve
+    }
+  }
+
+  this.bounds = function(min, max) {
+    _min = min;
+    _max = max;
+    return this;
+  };
+
+  this.validator = function(f) {
+    _validator = f;
+    return this;
+  };
+
+  this.formatter = function(f) {
+    _formatter = f;
+    return this;
+  };
+
+  this.parser = function(f) {
+    _parser = f;
+    return this;
+  };
+
+  this.text = function() {return _el.el.value;};
+
+  this.value = function(arg) {
+    if (arg == void 0) {
+      // var valStr = this.el.value;
+      // return _parser ? _parser(valStr) : parseFloat(valStr);
+      return _value;
+    }
+    var val = utils.clamp(arg, _min, _max);
+    if (!_validator(val)) {
+      error("ClickText#value() invalid value:", arg);
+    } else {
+      _value = val;
+    }
+    _el.el.value = _formatter(val);
+    return this;
+  };
+}
+
+utils.inherit(ClickText, EventDispatcher);
+
+
+function Checkbox(ref) {
+  var _el = El(ref);
+}
+
+utils.inherit(Checkbox, EventDispatcher);
+
+function SimpleButton(ref) {
+  var _el = El(ref),
+      _self = this,
+      _active = !_el.hasClass('disabled');
+
+  _el.on('click', function(e) {
+    if (_active) _self.dispatchEvent('click');
+    return false;
+  });
+
+  this.active = function(a) {
+    if (a === void 0) return _active;
+    if (a !== _active) {
+      _active = a;
+      _el.toggleClass('disabled');
+    }
+    return this;
+  };
+
+  function isVisible() {
+    var el = _el.node();
+    return el.offsetParent !== null;
+  }
+}
+
+utils.inherit(SimpleButton, EventDispatcher);
+
+
+
+
+function draggable(ref) {
+  var xdown, ydown;
+  var el = El(ref),
+      dragging = false,
+      obj = new EventDispatcher();
+  Browser.undraggable(el.node());
+  el.on('mousedown', function(e) {
+    xdown = e.pageX;
+    ydown = e.pageY;
+    window.addEventListener('mousemove', onmove);
+    window.addEventListener('mouseup', onrelease);
+  });
+
+  function onrelease(e) {
+    window.removeEventListener('mousemove', onmove);
+    window.removeEventListener('mouseup', onrelease);
+    if (dragging) {
+      dragging = false;
+      obj.dispatchEvent('dragend');
+    }
+  }
+
+  function onmove(e) {
+    if (!dragging) {
+      dragging = true;
+      obj.dispatchEvent('dragstart');
+    }
+    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
+  }
+  return obj;
+}
+
+function Slider(ref, opts) {
+  var _el = El(ref);
+  var _self = this;
+  var defaults = {
+    space: 7
+  };
+  opts = utils.extend(defaults, opts);
+
+  var _pct = 0;
+  var _track,
+      _handle,
+      _handleLeft = opts.space;
+
+  function size() {
+    return _track ? _track.width() - opts.space * 2 : 0;
+  }
+
+  this.track = function(ref) {
+    if (ref && !_track) {
+      _track = El(ref);
+      _handleLeft = _track.el.offsetLeft + opts.space;
+      updateHandlePos();
+    }
+    return _track;
+  };
+
+  this.handle = function(ref) {
+    var startX;
+    if (ref && !_handle) {
+      _handle = El(ref);
+      draggable(_handle)
+        .on('drag', function(e) {
+          setHandlePos(startX + e.dx, true);
+        })
+        .on('dragstart', function(e) {
+          startX = position();
+          _self.dispatchEvent('start');
+        })
+        .on('dragend', function(e) {
+          _self.dispatchEvent('end');
+        });
+      updateHandlePos();
+    }
+    return _handle;
+  };
+
+  function position() {
+    return Math.round(_pct * size());
+  }
+
+  this.pct = function(pct) {
+    if (pct >= 0 && pct <= 1) {
+      _pct = pct;
+      updateHandlePos();
+    }
+    return _pct;
+  };
+
+  function setHandlePos(x, fire) {
+    x = utils.clamp(x, 0, size());
+    var pct = x / size();
+    if (pct != _pct) {
+      _pct = pct;
+      _handle.css('left', _handleLeft + x);
+      _self.dispatchEvent('change', {pct: _pct});
+    }
+  }
+
+  function updateHandlePos() {
+    var x = _handleLeft + Math.round(position());
+    if (_handle) _handle.css('left', x);
+  }
+}
+
+utils.inherit(Slider, EventDispatcher);
+
+
+
+// Returns a function for converting simplification ratio [0-1] to an interval value.
+// If the dataset is large, the value is an approximation (for speed while using slider)
+internal.getThresholdFunction = function(arcs) {
+  var size = arcs.getPointCount(),
+      nth = Math.ceil(size / 5e5),
+      sortedThresholds = arcs.getRemovableThresholds(nth);
+      // Sort simplification thresholds for all non-endpoint vertices
+      // for quick conversion of simplification percentage to threshold value.
+      // For large datasets, use every nth point, for faster sorting.
+      utils.quicksort(sortedThresholds, false);
+
+  return function(pct) {
+    var n = sortedThresholds.length;
+    if (pct >= 1) return 0;
+    if (pct <= 0 || n === 0) return Infinity;
+    return sortedThresholds[Math.floor(pct * n)];
+  };
+};
+
+
+
+
+/*
+How changes in the simplify control should affect other components
+
+data calculated, 100% simplification
+ -> [map] filtered arcs update
+
+data calculated, <100% simplification
+ -> [map] filtered arcs update, redraw; [repair] intersection update
+
+change via text field
+ -> [map] redraw; [repair] intersection update
+
+slider drag start
+ -> [repair] hide display
+
+slider drag
+ -> [map] redraw
+
+slider drag end
+ -> [repair] intersection update
+
+*/
+
+var SimplifyControl = function(gui) {
+  var model = gui.model;
+  var control = {};
+  var _value = 1;
+  var el = gui.container.findChild('.simplify-control-wrapper');
+  var menu = gui.container.findChild('.simplify-options');
+  var slider, text, fromPct;
+
+  // init settings menu
+  new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
+  new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
+    if (el.visible()) {
+      // cancel just hides menu if slider is visible
+      menu.hide();
+    } else {
+      gui.clearMode();
+    }
+  });
+  new SimpleButton(el.findChild('.simplify-settings-btn')).on('click', function() {
+    if (menu.visible()) {
+      menu.hide();
+    } else {
+      showMenu();
+    }
+  });
+  gui.keyboard.onMenuSubmit(menu, onSubmit);
+
+  // init simplify button and mode
+  gui.addMode('simplify', turnOn, turnOff, gui.container.findChild('.simplify-btn'));
+  model.on('select', function() {
+    if (gui.getMode() == 'simplify') gui.clearMode();
+  });
+
+  // exit simplify mode when user clicks off the visible part of the menu
+  menu.on('click', GUI.handleDirectEvent(gui.clearMode));
+
+  // init slider
+  slider = new Slider(el.findChild(".simplify-control .slider"));
+  slider.handle(el.findChild(".simplify-control .handle"));
+  slider.track(el.findChild(".simplify-control .track"));
+  slider.on('change', function(e) {
+    var pct = fromSliderPct(e.pct);
+    text.value(pct);
+    pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
+    onChange(pct);
+  });
+  slider.on('start', function(e) {
+    gui.dispatchEvent('simplify_drag_start'); // trigger intersection control to hide
+  }).on('end', function(e) {
+    gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
+  });
+
+  // init text box showing simplify pct
+  text = new ClickText(el.findChild(".simplify-control .clicktext"));
+  text.bounds(0, 1);
+  text.formatter(function(val) {
+    if (isNaN(val)) return '-';
+    var pct = val * 100;
+    var decimals = 0;
+    if (pct <= 0) decimals = 1;
+    else if (pct < 0.001) decimals = 4;
+    else if (pct < 0.01) decimals = 3;
+    else if (pct < 1) decimals = 2;
+    else if (pct < 100) decimals = 1;
+    return utils.formatNumber(pct, decimals) + "%";
+  });
+
+  text.parser(function(s) {
+    return parseFloat(s) / 100;
+  });
+
+  text.value(0);
+  text.on('change', function(e) {
+    var pct = e.value;
+    slider.pct(toSliderPct(pct));
+    onChange(pct);
+    gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
+  });
+
+  control.reset = function() {
+    control.value(1);
+    el.hide();
+    menu.hide();
+    gui.container.removeClass('simplify');
+  };
+
+  control.value = function(val) {
+    if (!isNaN(val)) {
+      // TODO: validate
+      _value = val;
+      slider.pct(toSliderPct(val));
+      text.value(val);
+    }
+    return _value;
+  };
+
+  control.value(_value);
+
+  function turnOn() {
+    var target = model.getActiveLayer();
+    var arcs = target.dataset.arcs;
+    if (!internal.layerHasPaths(target.layer)) {
+      gui.alert("This layer can not be simplified");
+      return;
+    }
+    if (arcs.getVertexData().zz) {
+      // TODO: try to avoid calculating pct (slow);
+      showSlider(); // need to show slider before setting; TODO: fix
+      fromPct = internal.getThresholdFunction(arcs, false);
+      control.value(arcs.getRetainedPct());
+
+    } else {
+      showMenu();
+    }
+  }
+
+  function showMenu() {
+    var dataset = model.getActiveLayer().dataset;
+    var showPlanarOpt = !dataset.arcs.isPlanar();
+    var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
+    menu.findChild('.planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
+    menu.findChild('.planar-opt').node().checked = !opts.spherical;
+    menu.findChild('.import-retain-opt').node().checked = opts.keep_shapes;
+    menu.findChild('input[value=' + opts.method + ']').node().checked = true;
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
+    control.reset();
+  }
+
+  function onSubmit() {
+    var dataset = model.getActiveLayer().dataset;
+    var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
+    var delay = 0;
+    if (showMsg) {
+      delay = 35;
+      gui.showProgressMessage('Calculating');
+    }
+    menu.hide();
+    setTimeout(function() {
+      var opts = getSimplifyOptions();
+      mapshaper.simplify(dataset, opts);
+      model.updated({
+        // trigger filtered arc rebuild without redraw if pct is 1
+        simplify_method: opts.percentage == 1,
+        simplify: opts.percentage < 1
+      });
+      showSlider();
+      fromPct = internal.getThresholdFunction(dataset.arcs, false);
+      gui.clearProgressMessage();
+    }, delay);
+  }
+
+  function showSlider() {
+    el.show();
+    gui.container.addClass('simplify'); // for resizing, hiding layer label, etc.
+  }
+
+  function getSimplifyOptions() {
+    var method = menu.findChild('input[name=method]:checked').attr('value') || null;
+    return {
+      method: method,
+      percentage: _value,
+      no_repair: true,
+      keep_shapes: !!menu.findChild('.import-retain-opt').node().checked,
+      planar: !!menu.findChild('.planar-opt').node().checked
+    };
+  }
+
+  function toSliderPct(p) {
+    p = Math.sqrt(p);
+    var pct = 1 - p;
+    return pct;
+  }
+
+  function fromSliderPct(p) {
+    var pct = 1 - p;
+    return pct * pct;
+  }
+
+  function onChange(pct) {
+    if (_value != pct) {
+      _value = pct;
+      model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      model.updated({'simplify_amount': true});
+      updateSliderDisplay();
+    }
+  }
+
+  function updateSliderDisplay() {
+    // TODO: display resolution and vertex count
+    // var dataset = model.getActiveLayer().dataset;
+    // var interval = dataset.arcs.getRetainedInterval();
+  }
+};
+
+
+// Assume zip.js is loaded and zip is defined globally
+
+// @file: Zip file
+// @cb: function(err, <files>)
+//
+GUI.readZipFile = function(file, cb) {
+  var _files = [];
+  zip.createReader(new zip.BlobReader(file), importZipContent, onError);
+
+  function onError(err) {
+    cb(err);
+  }
+
+  function onDone() {
+    cb(null, _files);
+  }
+
+  function importZipContent(reader) {
+    var _entries;
+    reader.getEntries(readEntries);
+
+    function readEntries(entries) {
+      _entries = entries || [];
+      readNext();
+    }
+
+    function readNext() {
+      if (_entries.length > 0) {
+        readEntry(_entries.pop());
+      } else {
+        reader.close();
+        onDone();
+      }
+    }
+
+    function readEntry(entry) {
+      var filename = entry.filename,
+          isValid = !entry.directory && GUI.isReadableFileType(filename) &&
+              !/^__MACOSX/.test(filename); // ignore "resource-force" files
+      if (isValid) {
+        entry.getData(new zip.BlobWriter(), function(file) {
+          file.name = filename; // Give the Blob a name, like a File object
+          _files.push(file);
+          readNext();
+        });
+      } else {
+        readNext();
+      }
+    }
+  }
+};
+
+
+
+function CatalogControl(gui, catalog, onSelect) {
+  var self = this,
+      container = gui.container.findChild('.file-catalog'),
+      cols = catalog.cols,
+      enabled = true,
+      items = catalog.items,
+      n = items.length,
+      row = 0,
+      html;
+
+  this.reset = function() {
+    enabled = true;
+    container.removeClass('downloading');
+    this.progress(-1);
+  };
+
+  this.progress = function() {}; // set by click handler
+
+  if (n > 0 === false) {
+    console.error("Catalog is missing array of items");
+    return;
+  }
+
+ gui.container.addClass('catalog-mode');
+
+  if (!cols) {
+    cols = Math.ceil(Math.sqrt(n));
+  }
+  rows = Math.ceil(n / cols);
+
+  html = '<table>';
+  if (catalog.title) {
+    html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
+  }
+  while (row < rows) {
+    html += renderRow(items.slice(row * cols, row * cols + cols));
+    row++;
+  }
+  html += '</table>';
+  container.node().innerHTML = html;
+  gui.container.findChildren('.file-catalog td').forEach(function(el, i) {
+    el.on('click', function() {
+      selectItem(el, i);
+    });
+  });
+
+  // Generate onprogress callback to show a progress indicator
+  function getProgressFunction(el) {
+    var visible = false,
+        i = 0;
+    return function(pct) {
+      i++;
+      if (i == 2 && pct < 0.5) {
+        // only show progress bar if file will take a while to load
+        visible = true;
+      }
+      if (pct == -1) {
+        // kludge to reset progress bar
+        el.removeClass('downloading');
+        pct = 0;
+      }
+      if (visible) {
+        el.css('background-size', (Math.round(pct * 100) + '% 100%'));
+      }
+    };
+  }
+
+  function renderRow(items) {
+    var tds = items.map(function(o, col) {
+      var i = row * cols + col;
+      return renderCell(o, i);
+    });
+    return '<tr>' + tds.join('') + '</tr>';
+  }
+
+  function selectItem(el,i) {
+    var pageUrl = window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
+    var item = items[i];
+    var urls = item.files.map(function(file) {
+      var url = (item.url || '') + file;
+      if (/^http/.test(url) === false) {
+        // assume relative url
+        url = pageUrl + '/' + url;
+      }
+      return url;
+    });
+    if (enabled) { // only respond to first click
+      self.progress = getProgressFunction(el);
+      el.addClass('downloading');
+      container.addClass('downloading');
+      enabled = false;
+      onSelect(urls);
+    }
+  }
+
+  function renderCell(item, i) {
+    var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
+    return utils.format(template, i, item.title, item.subtitle || '');
+  }
+
+}
+
+
+
+
+// @cb function(<FileList>)
+function DropControl(el, cb) {
+  var area = El(el);
+  area.on('dragleave', ondragleave)
+      .on('dragover', ondragover)
+      .on('drop', ondrop);
+  function ondragleave(e) {
+    block(e);
+    out();
+  }
+  function ondragover(e) {
+    // blocking drag events enables drop event
+    block(e);
+    over();
+  }
+  function ondrop(e) {
+    block(e);
+    out();
+    cb(e.dataTransfer.files);
+  }
+  function over() {
+    area.addClass('dragover');
+  }
+  function out() {
+    area.removeClass('dragover');
+  }
+  function block(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+// @el DOM element for select button
+// @cb function(<FileList>)
+function FileChooser(el, cb) {
+  var btn = El(el).on('click', function() {
+    input.el.click();
+  });
+  var input = El('form')
+    .addClass('file-control').appendTo('body')
+    .newChild('input')
+    .attr('type', 'file')
+    .attr('multiple', 'multiple')
+    .on('change', onchange);
+
+  function onchange(e) {
+    var files = e.target.files;
+    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
+    if (files) {
+      // disable the button while files are being processed
+      btn.addClass('selected');
+      input.attr('disabled', true);
+      cb(files);
+      btn.removeClass('selected');
+      input.attr('disabled', false);
+    }
+  }
+}
+
+function ImportControl(gui, opts) {
+  var model = gui.model;
+  var importCount = 0;
+  var queuedFiles = [];
+  var manifestFiles = opts.files || [];
+  var _importOpts = {};
+  var cachedFiles = {};
+  var catalog;
+
+  if (opts.catalog) {
+    catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
+  }
+
+  new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
+  new DropControl('body', receiveFiles); // default drop area is entire page
+  new DropControl('#import-drop', receiveFiles);
+  new DropControl('#import-quick-drop', receiveFilesQuickView);
+  new FileChooser('#file-selection-btn', receiveFiles);
+  new FileChooser('#import-buttons .add-btn', receiveFiles);
+  new FileChooser('#add-file-btn', receiveFiles);
+
+  gui.keyboard.onMenuSubmit(El('#import-options'), onSubmit);
+
+  gui.addMode('import', turnOn, turnOff);
+  gui.enterMode('import');
+
+  gui.on('mode', function(e) {
+    // re-open import opts if leaving alert or console modes and nothing has been imported yet
+    if (!e.name && model.isEmpty()) {
+      gui.enterMode('import');
+    }
+  });
+
+  function findMatchingShp(filename) {
+    // use case-insensitive matching
+    var base = utils.getPathBase(filename).toLowerCase();
+    return model.getDatasets().filter(function(d) {
+      var fname = d.info.input_files && d.info.input_files[0] || "";
+      var ext = utils.getFileExtension(fname).toLowerCase();
+      var base2 = utils.getPathBase(fname).toLowerCase();
+      return base == base2 && ext == 'shp';
+    });
+  }
+
+  function turnOn() {
+    if (manifestFiles.length > 0) {
+      downloadFiles(manifestFiles, true);
+      manifestFiles = [];
+    } else if (model.isEmpty()) {
+      gui.container.addClass('splash-screen');
+    }
+  }
+
+  function turnOff() {
+    var target;
+    if (catalog) catalog.reset(); // re-enable clickable catalog
+    if (importCount > 0) {
+      // display last layer of last imported dataset
+      target = model.getDefaultTargets()[0];
+      model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+    }
+    gui.clearProgressMessage();
+    importCount = 0;
+    close();
+  }
+
+  function close() {
+    clearQueuedFiles();
+    cachedFiles = {};
+  }
+
+  function clearQueuedFiles() {
+    queuedFiles = [];
+    gui.container.removeClass('queued-files');
+    gui.container.findChild('.dropped-file-list').empty();
+  }
+
+  function addFilesToQueue(files) {
+    var index = {};
+    queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
+      // filter out unreadable types and dupes
+      if (GUI.isReadableFileType(f.name) && f.name in index === false) {
+        index[f.name] = true;
+        memo.push(f);
+      }
+      return memo;
+    }, []);
+  }
+
+  // When a Shapefile component is at the head of the queue, move the entire
+  // Shapefile to the front of the queue, sorted in reverse alphabetical order,
+  // (a kludge), so .shp is read before .dbf and .prj
+  // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
+  // TODO: import Shapefile parts without relying on this kludge
+  function sortQueue(queue) {
+    var nextFile = queue[0];
+    var basename, parts;
+    if (!isShapefilePart(nextFile.name)) {
+      return queue;
+    }
+    basename = utils.getFileBase(nextFile.name).toLowerCase();
+    parts = [];
+    queue = queue.filter(function(file) {
+      if (utils.getFileBase(file.name).toLowerCase() == basename) {
+        parts.push(file);
+        return false;
+      }
+      return true;
+    });
+    parts.sort(function(a, b) {
+      // Sorting on LC filename so Shapefiles with mixed-case
+      // extensions are sorted correctly
+      return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
+    });
+    return parts.concat(queue);
+  }
+
+  function showQueuedFiles() {
+    var list = gui.container.findChild('.dropped-file-list').empty();
+    queuedFiles.forEach(function(f) {
+      El('<p>').text(f.name).appendTo(list);
+    });
+  }
+
+  function receiveFilesQuickView(files) {
+    receiveFiles(files, true);
+  }
+
+  function receiveFiles(files, quickView) {
+    var prevSize = queuedFiles.length;
+    files = handleZipFiles(utils.toArray(files), quickView);
+    addFilesToQueue(files);
+    if (queuedFiles.length === 0) return;
+    gui.enterMode('import');
+
+    if (quickView === true) {
+      onSubmit(quickView);
+    } else {
+      gui.container.addClass('queued-files');
+      El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
+      showQueuedFiles();
+    }
+  }
+
+  function filesMayContainPaths(files) {
+    return utils.some(files, function(f) {
+        var type = internal.guessInputFileType(f.name);
+        return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
+    });
+  }
+
+  function onSubmit(quickView) {
+    gui.container.removeClass('queued-files');
+    gui.container.removeClass('splash-screen');
+    _importOpts = quickView === true ? {} : readImportOpts();
+    procNextQueuedFile();
+  }
+
+  function addDataset(dataset) {
+    if (!datasetIsEmpty(dataset)) {
+      model.addDataset(dataset);
+      importCount++;
+    }
+    procNextQueuedFile();
+  }
+
+  function datasetIsEmpty(dataset) {
+    return dataset.layers.every(function(lyr) {
+      return internal.getFeatureCount(lyr) === 0;
+    });
+  }
+
+  function procNextQueuedFile() {
+    if (queuedFiles.length === 0) {
+      gui.clearMode();
+    } else {
+      queuedFiles = sortQueue(queuedFiles);
+      readFile(queuedFiles.shift());
+    }
+  }
+
+  // TODO: support .cpg
+  function isShapefilePart(name) {
+    return /\.(shp|shx|dbf|prj)$/i.test(name);
+  }
+
+  function readImportOpts() {
+    var freeform = El('#import-options .advanced-options').node().value,
+        opts = GUI.parseFreeformOptions(freeform, 'i');
+    opts.no_repair = !El("#repair-intersections-opt").node().checked;
+    opts.snap = !!El("#snap-points-opt").node().checked;
+    return opts;
+  }
+
+  // @file a File object
+  function readFile(file) {
+    var name = file.name,
+        reader = new FileReader(),
+        useBinary = internal.isBinaryFile(name) ||
+          internal.guessInputFileType(name) == 'json' ||
+          internal.guessInputFileType(name) == 'text';
+
+    reader.addEventListener('loadend', function(e) {
+      if (!reader.result) {
+        handleImportError("Web browser was unable to load the file.", name);
+      } else {
+        importFileContent(name, reader.result);
+      }
+    });
+    if (useBinary) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
+      reader.readAsText(file, 'UTF-8');
+    }
+  }
+
+  function importFileContent(fileName, content) {
+    var fileType = internal.guessInputType(fileName, content),
+        importOpts = utils.extend({}, _importOpts),
+        matches = findMatchingShp(fileName),
+        dataset, lyr;
+
+    // Add dbf data to a previously imported .shp file with a matching name
+    // (.shp should have been queued before .dbf)
+    if (fileType == 'dbf' && matches.length > 0) {
+      // find an imported .shp layer that is missing attribute data
+      // (if multiple matches, try to use the most recently imported one)
+      dataset = matches.reduce(function(memo, d) {
+        if (!d.layers[0].data) {
+          memo = d;
+        }
+        return memo;
+      }, null);
+      if (dataset) {
+        lyr = dataset.layers[0];
+        lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
+        if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
+          stop("Different number of records in .shp and .dbf files");
+        }
+        if (!lyr.geometry_type) {
+          // kludge: trigger display of table cells if .shp has null geometry
+          model.updated({}, lyr, dataset);
+        }
+        procNextQueuedFile();
+        return;
+      }
+    }
+
+    if (fileType == 'shx') {
+      // save .shx for use when importing .shp
+      // (queue should be sorted so that .shx is processed before .shp)
+      cachedFiles[fileName.toLowerCase()] = {filename: fileName, content: content};
+      procNextQueuedFile();
+      return;
+    }
+
+    // Add .prj file to previously imported .shp file
+    if (fileType == 'prj') {
+      matches.forEach(function(d) {
+        if (!d.info.prj) {
+          d.info.prj = content;
+        }
+      });
+      procNextQueuedFile();
+      return;
+    }
+
+    importNewDataset(fileType, fileName, content, importOpts);
+  }
+
+  function importNewDataset(fileType, fileName, content, importOpts) {
+    var size = content.byteLength || content.length, // ArrayBuffer or string
+        delay = 0;
+
+    // show importing message if file is large
+    if (size > 4e7) {
+      gui.showProgressMessage('Importing');
+      delay = 35;
+    }
+    setTimeout(function() {
+      var dataset;
+      var input = {};
+      try {
+        input[fileType] = {filename: fileName, content: content};
+        if (fileType == 'shp') {
+          // shx file should already be cached, if it was added together with the shp
+          input.shx = cachedFiles[fileName.replace(/shp$/i, 'shx').toLowerCase()] || null;
+        }
+        dataset = internal.importContent(input, importOpts);
+        // save import options for use by repair control, etc.
+        dataset.info.import_options = importOpts;
+        addDataset(dataset);
+
+      } catch(e) {
+        handleImportError(e, fileName);
+      }
+    }, delay);
+  }
+
+  function handleImportError(e, fileName) {
+    var msg = utils.isString(e) ? e : e.message;
+    if (fileName) {
+      msg = "Error importing <i>" + fileName + "</i><br>" + msg;
+    }
+    clearQueuedFiles();
+    gui.alert(msg);
+    console.error(e);
+  }
+
+  function handleZipFiles(files, quickView) {
+    return files.filter(function(file) {
+      var isZip = internal.isZipFile(file.name);
+      if (isZip) {
+        importZipFile(file, quickView);
+      }
+      return !isZip;
+    });
+  }
+
+  function importZipFile(file, quickView) {
+    // gui.showProgressMessage('Importing');
+    setTimeout(function() {
+      GUI.readZipFile(file, function(err, files) {
+        if (err) {
+          handleImportError(err, file.name);
+        } else {
+          // don't try to import .txt files from zip files
+          // (these would be parsed as dsv and throw errows)
+          files = files.filter(function(f) {
+            return !/\.txt$/i.test(f.name);
+          });
+          receiveFiles(files, quickView);
+        }
+      });
+    }, 35);
+  }
+
+  function prepFilesForDownload(names) {
+    var items = names.map(function(name) {
+      var isUrl = /:\/\//.test(name);
+      var item = {name: name};
+      if (isUrl) {
+        item.url = name;
+        item.basename = GUI.getUrlFilename(name);
+
+      } else {
+        item.basename = name;
+        // Assume non-urls are local files loaded via mapshaper-gui
+        item.url = '/data/' + name;
+        item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
+      }
+      return GUI.isReadableFileType(item.basename) ? item : null;
+    });
+    return items.filter(Boolean);
+  }
+
+  function downloadFiles(paths, quickView) {
+    var items = prepFilesForDownload(paths);
+    utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
+      if (err) {
+        gui.alert(err);
+      } else if (!files.length) {
+        gui.clearMode();
+      } else {
+        receiveFiles(files, quickView);
+      }
+    });
+  }
+
+  function downloadNextFile(memo, item, next) {
+    var req = new XMLHttpRequest();
+    var blob;
+    req.responseType = 'blob';
+    req.addEventListener('load', function(e) {
+      if (req.status == 200) {
+        blob = req.response;
+      }
+    });
+    req.addEventListener('progress', function(e) {
+      var pct = e.loaded / e.total;
+      if (catalog) catalog.progress(pct);
+    });
+    req.addEventListener('loadend', function() {
+      var err;
+      if (req.status == 404) {
+        err = "Not&nbsp;found:&nbsp;" + item.name;
+      } else if (!blob) {
+        // Errors like DNS lookup failure, no CORS headers, no network connection
+        // all are status 0 - it seems impossible to show a more specific message
+        // actual reason is displayed on the console
+        err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
+      } else {
+        blob.name = item.basename;
+        memo.push(blob);
+      }
+      next(err, memo);
+    });
+    req.open('GET', item.url);
+    req.send();
+  }
+}
+
+
+
+
+function saveZipFile(zipfileName, files, done) {
+  var toAdd = files;
+  var zipWriter;
+  try {
+    zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
+      zipWriter = writer;
+      nextFile();
+    }, zipError);
+  } catch(e) {
+    done("This browser doesn't support Zip file creation.");
+  }
+
+  function zipError(err) {
+    var str = "Error creating Zip file";
+    var msg = '';
+    // error events thrown by Zip library seem to be missing a message
+    if (err && err.message) {
+      msg = err.message;
+    }
+    if (msg) {
+      str += ": " + msg;
+    }
+    done(str);
+  }
+
+  function nextFile() {
+    if (toAdd.length === 0) {
+      zipWriter.close(function(blob) {
+        saveBlobToDownloadFolder(zipfileName, blob, done);
+      });
+    } else {
+      var obj = toAdd.pop(),
+          blob = new Blob([obj.content]);
+      zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
+    }
+  }
+}
+
+function saveFilesToServer(exports, opts, done) {
+  var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
+  var data = utils.pluck(exports, 'content');
+  var i = -1;
+  next();
+  function next(err) {
+    i++;
+    if (err) return done(err);
+    if (i >= exports.length) {
+      gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+      return done();
+    }
+    saveBlobToServer(paths[i], new Blob([data[i]]), next);
+  }
+}
+
+function saveBlobToServer(path, blob, done) {
+  var q = '?file=' + encodeURIComponent(path);
+  var url = window.location.origin + '/save' + q;
+  fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    body: blob
+  }).then(function(resp) {
+    if (resp.status == 400) {
+      return resp.text();
+    }
+  }).then(function(err) {
+    done(err);
+  }).catch(function(resp) {
+    done('connection to server was lost');
+  });
+}
+
+function saveBlobToDownloadFolder(filename, blob, done) {
+  var anchor, blobUrl;
+  if (window.navigator.msSaveBlob) {
+    window.navigator.msSaveBlob(blob, filename);
+    return done();
+  }
+  try {
+    blobUrl = URL.createObjectURL(blob);
+  } catch(e) {
+    done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
+    return;
+  }
+  anchor = El('a').attr('href', '#').appendTo('body').node();
+  anchor.href = blobUrl;
+  anchor.download = filename;
+  var clickEvent = document.createEvent("MouseEvent");
+  clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
+      false, false, false, 0, null);
+  anchor.dispatchEvent(clickEvent);
+  setTimeout(function() {
+    // Revoke blob url to release memory; timeout needed in firefox
+    URL.revokeObjectURL(blobUrl);
+    anchor.parentNode.removeChild(anchor);
+    done();
+  }, 400);
+}
+
+
+
+
+// Export buttons and their behavior
+var ExportControl = function(gui) {
+  var model = gui.model;
+  var unsupportedMsg = "Exporting is not supported in this browser";
+  var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
+  var checkboxes = []; // array of layer checkboxes
+  var exportBtn = gui.container.findChild('.export-btn');
+  new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
+
+  if (!GUI.exportIsSupported()) {
+    exportBtn.on('click', function() {
+      gui.alert(unsupportedMsg);
+    });
+
+    internal.writeFiles = function() {
+      error(unsupportedMsg);
+    };
+  } else {
+    new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
+    gui.addMode('export', turnOn, turnOff, exportBtn);
+    gui.keyboard.onMenuSubmit(menu, onExportClick);
+  }
+
+  function onExportClick() {
+    gui.showProgressMessage('Exporting');
+    gui.clearMode();
+    setTimeout(function() {
+      exportMenuSelection(function(err) {
+        if (err) {
+          if (utils.isString(err)) {
+            gui.alert(err);
+          } else {
+            // stack seems to change if Error is logged directly
+            console.error(err.stack);
+            gui.alert("Export failed for an unknown reason");
+          }
+        }
+        gui.clearProgressMessage();
+      });
+    }, 20);
+  }
+
+  // @done function(string|Error|null)
+  function exportMenuSelection(done) {
+    var opts, files;
+    try {
+      opts = GUI.parseFreeformOptions(menu.findChild('.advanced-options').node().value, 'o');
+      if (!opts.format) opts.format = getSelectedFormat();
+      // ignoring command line "target" option
+      files = internal.exportTargetLayers(getTargetLayers(), opts);
+    } catch(e) {
+      return done(e);
+    }
+    internal.writeFiles(files, opts, done);
+  }
+
+  function initLayerMenu() {
+    var list = menu.findChild('.export-layer-list').empty();
+    var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
+    var objects = model.getLayers().map(function(o, i) {
+      var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
+      return {layer: o.layer, html: html};
+    });
+    internal.sortLayersForMenuDisplay(objects);
+    checkboxes = objects.map(function(o) {
+      return El('div').html(o.html).appendTo(list).findChild('input').node();
+    });
+    menu.findChild('.export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
+  }
+
+  function getInputFormats() {
+    return model.getDatasets().reduce(function(memo, d) {
+      var fmts = d.info && d.info.input_formats || [];
+      return memo.concat(fmts);
+    }, []);
+  }
+
+  function getDefaultExportFormat() {
+    var dataset = model.getActiveLayer().dataset;
+    return dataset.info && dataset.info.input_formats &&
+        dataset.info.input_formats[0] || 'geojson';
+  }
+
+  function initFormatMenu() {
+    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
+    var formats = utils.uniq(defaults.concat(getInputFormats()));
+    var items = formats.map(function(fmt) {
+      return utils.format('<div><label><input type="radio" name="format" value="%s"' +
+        ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
+    });
+    menu.findChild('.export-formats').html(items.join('\n'));
+    menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
+  }
+
+  function turnOn() {
+    initLayerMenu();
+    initFormatMenu();
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
+  }
+
+  function getSelectedFormat() {
+    return menu.findChild('.export-formats input:checked').node().value;
+  }
+
+  function getTargetLayers() {
+    var ids = checkboxes.reduce(function(memo, box, i) {
+      if (box.checked) memo.push(box.value);
+      return memo;
+    }, []).join(',');
+    return ids ? model.findCommandTargets(ids) : [];
+  }
+};
+
+
+
+
+function RepairControl(gui) {
+  var map = gui.map,
+      model = gui.model,
+      el = gui.container.findChild(".intersection-display"),
+      readout = el.findChild(".intersection-count"),
+      repairBtn = el.findChild(".repair-btn"),
+      // keeping a reference to current arcs and intersections, so intersections
+      // don't need to be recalculated when 'repair' button is pressed.
+      _currArcs,
+      _currXX;
+
+  gui.on('simplify_drag_start', hide);
+  gui.on('simplify_drag_end', updateAsync);
+
+  model.on('update', function(e) {
+    var flags = e.flags;
+    var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
+        flags.affine || flags.points || flags['merge-layers'] || flags.select;
+    if (needUpdate) {
+      if (flags.select) {
+        // preserve cached intersections
+      } else {
+        // delete any cached intersection data
+        e.dataset.info.intersections = null;
+      }
+      updateAsync();
+    }
+  });
+
+  repairBtn.on('click', function() {
+    var fixed = internal.repairIntersections(_currArcs, _currXX);
+    showIntersections(fixed, _currArcs);
+    repairBtn.addClass('disabled');
+    model.updated({repair: true});
+  });
+
+  function hide() {
+    el.hide();
+    map.setIntersectionLayer(null);
+  }
+
+  function enabledForDataset(dataset) {
+    var info = dataset.info || {};
+    var opts = info.import_options || {};
+    return !opts.no_repair && !info.no_intersections;
+  }
+
+  // Delay intersection calculation, so map can redraw after previous
+  // operation (e.g. layer load, simplification change)
+  function updateAsync() {
+    reset();
+    setTimeout(updateSync, 10);
+  }
+
+  function updateSync() {
+    var e = model.getActiveLayer();
+    var dataset = e.dataset;
+    var arcs = dataset && dataset.arcs;
+    var XX, showBtn;
+    if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
+    if (arcs.getRetainedInterval() > 0) {
+      // TODO: cache these intersections
+      XX = internal.findSegmentIntersections(arcs);
+      showBtn = XX.length > 0;
+    } else { // no simplification
+      XX = dataset.info.intersections;
+      if (!XX) {
+        // cache intersections at 0 simplification, to avoid recalculating
+        // every time the simplification slider is set to 100% or the layer is selected at 100%
+        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs);
+      }
+      showBtn = false;
+    }
+    el.show();
+    showIntersections(XX, arcs);
+    repairBtn.classed('disabled', !showBtn);
+  }
+
+  function reset() {
+    _currArcs = null;
+    _currXX = null;
+    hide();
+  }
+
+  function dismiss() {
+    var dataset = model.getActiveLayer().dataset;
+    dataset.info.intersections = null;
+    dataset.info.no_intersections = true;
+    reset();
+  }
+
+  function showIntersections(XX, arcs) {
+    var n = XX.length, pointLyr;
+    _currXX = XX;
+    _currArcs = arcs;
+    if (n > 0) {
+      pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
+      map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
+      readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
+      readout.findChild('.close-btn').on('click', dismiss);
+    } else {
+      map.setIntersectionLayer(null);
+      readout.html('');
+    }
+  }
+}
+
+utils.inherit(RepairControl, EventDispatcher);
+
+
+function DomCache() {
+  var cache = {};
+  var used = {};
+
+  this.contains = function(html) {
+    return html in cache;
+  };
+
+  this.use = function(html) {
+    var el = used[html] = cache[html];
+    return el;
+  };
+
+  this.cleanup = function() {
+    cache = used;
+    used = {};
+  };
+
+  this.add = function(html, el) {
+    used[html] = el;
+  };
+}
+
+
+
+
+function LayerControl(gui) {
+  var map = gui.map;
+  var model = gui.model;
+  var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
+  var btn = gui.container.findChild('.layer-control-btn');
+  var buttonLabel = btn.findChild('.layer-name');
+  var isOpen = false;
+  var cache = new DomCache();
+  var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
+
+  // layer repositioning
+  var dragTargetId = null;
+  var dragging = false;
+  var layerOrderSlug;
+
+  gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
+  model.on('update', function(e) {
+    updateMenuBtn();
+    if (isOpen) render();
+  });
+
+  el.on('mouseup', stopDragging);
+  el.on('mouseleave', stopDragging);
+
+  // init layer visibility button
+  pinAll.on('click', function() {
+    var allOn = testAllLayersPinned();
+    model.getLayers().forEach(function(target) {
+      map.setLayerVisibility(target, !allOn);
+    });
+    El.findAll('.pinnable', el.node()).forEach(function(item) {
+      El(item).classed('pinned', !allOn);
+    });
+    map.redraw();
+  });
+
+
+  function updatePinAllButton() {
+    pinAll.classed('pinned', testAllLayersPinned());
+  }
+
+  function testAllLayersPinned() {
+    var yes = true;
+    model.forEachLayer(function(lyr, dataset) {
+      if (isPinnable(lyr) && !map.isVisibleLayer(lyr)) {
+        yes = false;
+      }
+    });
+    return yes;
+  }
+
+  function findLayerById(id) {
+    return model.findLayer(function(lyr, dataset) {
+      return lyr.menu_id == id;
+    });
+  }
+
+  function getLayerOrderSlug() {
+    return internal.sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
+      return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
+    }).join('');
+  }
+
+  function clearClass(name) {
+    var targ = el.findChild('.' + name);
+    if (targ) targ.removeClass(name);
+  }
+
+  function stopDragging() {
+    clearClass('dragging');
+    clearClass('drag-target');
+    clearClass('insert-above');
+    clearClass('insert-below');
+    dragTargetId = layerOrderSlug = null;
+    if (dragging) {
+      render(); // in case menu changed...
+      dragging = false;
+    }
+  }
+
+  function insertLayer(dragId, dropId, above) {
+    var dragLyr = findLayerById(dragId);
+    var dropLyr = findLayerById(dropId);
+    var slug;
+    if (dragId == dropId) return;
+    dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
+    slug = getLayerOrderSlug();
+    if (slug != layerOrderSlug) {
+      layerOrderSlug = slug;
+      map.redraw();
+    }
+  }
+
+  function turnOn() {
+    isOpen = true;
+    el.findChild('div.info-box-scrolled').css('max-height', El('body').height() - 80);
+    render();
+    el.show();
+  }
+
+  function turnOff() {
+    stopDragging();
+    isOpen = false;
+    el.hide();
+  }
+
+  function updateMenuBtn() {
+    var name = model.getActiveLayer().layer.name || "[unnamed layer]";
+    buttonLabel.html(name + " &nbsp;&#9660;");
+  }
+
+  function render() {
+    var list = el.findChild('.layer-list');
+    var uniqIds = {};
+    var pinnableCount = 0;
+    var layerCount = 0;
+    list.empty();
+    model.forEachLayer(function(lyr, dataset) {
+      // Assign a unique id to each layer, so html strings
+      // can be used as unique identifiers for caching rendered HTML, and as
+      // an id for layer menu event handlers
+      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
+        lyr.menu_id = utils.getUniqueName();
+      }
+      uniqIds[lyr.menu_id] = true;
+      if (isPinnable(lyr)) pinnableCount++;
+      layerCount++;
+    });
+
+    if (pinnableCount < 2) {
+      pinAll.hide();
+    } else {
+      pinAll.show();
+      updatePinAllButton();
+    }
+
+    internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
+      var lyr = o.layer;
+      var opts = {
+        show_source: layerCount < 5,
+        pinnable: pinnableCount > 1 && isPinnable(lyr)
+      };
+      var html, element;
+      html = renderLayer(lyr, o.dataset, opts);
+      if (cache.contains(html)) {
+        element = cache.use(html);
+      } else {
+        element = El('div').html(html).firstChild();
+        initMouseEvents(element, lyr.menu_id, opts.pinnable);
+        cache.add(html, element);
+      }
+      list.appendChild(element);
+    });
+  }
+
+  cache.cleanup();
+
+  function renderLayer(lyr, dataset, opts) {
+    var warnings = getWarnings(lyr, dataset);
+    var classes = 'layer-item';
+    var entry, html;
+
+    if (opts.pinnable) classes += ' pinnable';
+    if (map.isActiveLayer(lyr)) classes += ' active';
+    if (map.isVisibleLayer(lyr)) classes += ' pinned';
+
+    html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
+    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
+    if (opts.show_source) {
+      html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
+    }
+    html += rowHTML('contents', describeLyr(lyr));
+    if (warnings) {
+      html += rowHTML('problems', warnings, 'layer-problems');
+    }
+    html += '<img class="close-btn" draggable="false" src="images/close.png">';
+    if (opts.pinnable) {
+      html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
+      html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function initMouseEvents(entry, id, pinnable) {
+    entry.on('mouseover', init);
+    function init() {
+      entry.removeEventListener('mouseover', init);
+      initMouseEvents2(entry, id, pinnable);
+    }
+  }
+
+  function initLayerDragging(entry, id) {
+
+    // support layer drag-drop
+    entry.on('mousemove', function(e) {
+      var rect, insertionClass;
+      if (!e.buttons && (dragging || dragTargetId)) { // button is up
+        stopDragging();
+      }
+      if (e.buttons && !dragTargetId) {
+        dragTargetId = id;
+        entry.addClass('drag-target');
+      }
+      if (!dragTargetId) {
+        return;
+      }
+      if (dragTargetId != id) {
+        // signal to redraw menu later; TODO: improve
+        dragging = true;
+      }
+      rect = entry.node().getBoundingClientRect();
+      insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+      if (!entry.hasClass(insertionClass)) {
+        clearClass('dragging');
+        clearClass('insert-above');
+        clearClass('insert-below');
+        entry.addClass('dragging');
+        entry.addClass(insertionClass);
+        insertLayer(dragTargetId, id, insertionClass == 'insert-above');
+      }
+    });
+  }
+
+  function initMouseEvents2(entry, id, pinnable) {
+
+    initLayerDragging(entry, id);
+
+    // init delete button
+    GUI.onClick(entry.findChild('img.close-btn'), function(e) {
+      var target = findLayerById(id);
+      e.stopPropagation();
+      if (map.isVisibleLayer(target.layer)) {
+        // TODO: check for double map refresh after model.deleteLayer() below
+        map.setLayerVisibility(target, false);
+      }
+      model.deleteLayer(target.layer, target.dataset);
+    });
+
+    if (pinnable) {
+      // init pin button
+      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+        var target = findLayerById(id);
+        e.stopPropagation();
+        if (map.isVisibleLayer(target.layer)) {
+          map.setLayerVisibility(target, false);
+          entry.removeClass('pinned');
+        } else {
+          map.setLayerVisibility(target, true);
+          entry.addClass('pinned');
+        }
+        updatePinAllButton();
+        map.redraw();
+      });
+
+      // catch click event on pin button
+      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+        e.stopPropagation();
+      });
+    }
+
+    // init name editor
+    new ClickText2(entry.findChild('.layer-name'))
+      .on('change', function(e) {
+        var target = findLayerById(id);
+        var str = cleanLayerName(this.value());
+        this.value(getDisplayName(str));
+        target.layer.name = str;
+        updateMenuBtn();
+      });
+
+    // init click-to-select
+    GUI.onClick(entry, function() {
+      var target = findLayerById(id);
+      // don't select if user is typing or dragging
+      if (!GUI.getInputElement() && !dragging) {
+        gui.clearMode();
+        if (!map.isActiveLayer(target.layer)) {
+          model.updated({select: true}, target.layer, target.dataset);
+        }
+      }
+    });
+  }
+
+  function describeLyr(lyr) {
+    var n = internal.getFeatureCount(lyr),
+        str, type;
+    if (lyr.data && !lyr.shapes) {
+      type = 'data record';
+    } else if (lyr.geometry_type) {
+      type = lyr.geometry_type + ' feature';
+    }
+    if (type) {
+      str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
+    } else {
+      str = "[empty]";
+    }
+    return str;
+  }
+
+  function getWarnings(lyr, dataset) {
+    var file = getSourceFile(lyr, dataset);
+    var missing = [];
+    var msg;
+    if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
+      if (!lyr.data) {
+        missing.push('.dbf');
+      }
+      if (!dataset.info.prj && !dataset.info.crs) {
+        missing.push('.prj');
+      }
+    }
+    if (missing.length) {
+      msg = 'missing ' + missing.join(' and ') + ' data';
+    }
+    return msg;
+  }
+
+  function getSourceFile(lyr, dataset) {
+    var inputs = dataset.info.input_files;
+    return inputs && inputs[0] || '';
+  }
+
+  function describeSrc(lyr, dataset) {
+    return getSourceFile(lyr, dataset);
+  }
+
+  function getDisplayName(name) {
+    return name || '[unnamed]';
+  }
+
+  function isPinnable(lyr) {
+    return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
+  }
+
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+  }
+
+  function rowHTML(c1, c2, cname) {
+    return utils.format('<div class="row%s"><div class="col1">%s</div>' +
+      '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
+  }
+}
+
+
+
+
+function Console(gui) {
+  var model = gui.model;
   var CURSOR = '$ ';
   var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
-  var el = El('#console').hide();
-  var content = El('#console-buffer');
-  var log = El('div').id('console-log').appendTo(content);
-  var line = El('div').id('command-line').appendTo(content);
+  var el = gui.container.findChild('.console').hide();
+  var content = el.findChild('.console-buffer');
+  var log = El('div').appendTo(content);
+  var line = El('div').addClass('command-line').appendTo(content);
   var cursor = El('span').appendTo(line).text(CURSOR);
   var input = El('span').appendTo(line)
     .addClass('input-field')
@@ -5786,25 +6072,20 @@ function Console(model) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
-  var _error = internal.error; // save default error functions...
-  var _stop = internal.stop;
-  var btn = El('#console-btn').on('click', toggle);
+  var btn = gui.container.findChild('.console-btn').on('click', toggle);
 
-  // capture all messages to this console, whether open or closed
-  message = internal.message = consoleMessage;
-  message(PROMPT);
-  document.addEventListener('keydown', onKeyDown);
-
+  consoleMessage(PROMPT);
+  gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
-  gui.onClick(content, function(e) {
-    if (gui.getInputElement() || e.target.id != 'command-line') {
+  GUI.onClick(content, function(e) {
+    if (GUI.getInputElement() || El(e.target).hasClass('command-line')) {
       // prevent click-to-focus when typing or clicking on content
       e.stopPropagation();
     }
   });
 
-  gui.onClick(el, function(e) {
+  GUI.onClick(el, function(e) {
     input.node().focus(); // focus if user clicks blank part of console
   });
 
@@ -5840,9 +6121,14 @@ function Console(model) {
     if (!_isOpen && !model.isEmpty()) {
       btn.addClass('active');
       _isOpen = true;
+      // use console for messages while open
+      // TODO: find a solution for logging problem when switching between multiple
+      // gui instances with the console open. E.g. console could close
+      // when an instance loses focus.
       stop = internal.stop = consoleStop;
       error = internal.error = consoleError;
-      El('body').addClass('console-open');
+      message = internal.message = consoleMessage;
+      gui.container.addClass('console-open');
       gui.dispatchEvent('resize');
       el.show();
       input.node().focus();
@@ -5854,12 +6140,13 @@ function Console(model) {
     if (_isOpen) {
       btn.removeClass('active');
       _isOpen = false;
-      stop = internal.stop = _stop; // restore original error functions
-      error = internal.error = _error;
+      if (GUI.isActiveInstance(gui)) {
+        MessageProxy(gui); // reset stop, message and error functions
+      }
       el.hide();
       input.node().blur();
       saveHistory(history);
-      El('body').removeClass('console-open');
+      gui.container.removeClass('console-open');
       gui.dispatchEvent('resize');
     }
   }
@@ -5898,10 +6185,15 @@ function Console(model) {
     return e.metaKey || e.ctrlKey || e.altKey;
   }
 
-  function onKeyDown(e) {
-    var kc = e.keyCode,
-        inputEl = gui.getInputElement(),
-        typing = !!inputEl,
+  function isTextInput(el) {
+    return el && el.type != 'radio' && el.type != 'checkbox';
+  }
+
+  function onKeyDown(evt) {
+    var e = evt.originalEvent,
+        kc = e.keyCode,
+        inputEl = GUI.getInputElement(),
+        typing = isTextInput(inputEl),
         typingInConsole = inputEl && inputEl == input.node(),
         inputText = readCommandLine(),
         capture = false;
@@ -5971,7 +6263,7 @@ function Console(model) {
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
       } else if (kc == 13) {
-        gui.dispatchEvent('enter_key'); // signal for default buttons on any open menus
+        gui.dispatchEvent('enter_key', evt); // signal for default buttons on any open menus
       }
     }
 
@@ -6157,37 +6449,37 @@ function Console(model) {
 
   function onError(err) {
     if (utils.isString(err)) {
-      stop(err);
+      consoleStop(err);
     } else if (err.name == 'UserError') {
       // stop() has already been called, don't need to log
     } else if (err.name) {
       // log stack trace to browser console
       console.error(err.stack);
       // log to console window
-      warning(err.message);
+      consoleWarning(err.message);
     }
   }
 
   function consoleStop() {
-    var msg = gui.formatMessageArgs(arguments);
-    warning(msg);
+    var msg = GUI.formatMessageArgs(arguments);
+    consoleWarning(msg);
     throw new UserError(msg);
   }
 
-  function warning() {
-    var msg = gui.formatMessageArgs(arguments);
+  function consoleWarning() {
+    var msg = GUI.formatMessageArgs(arguments);
     toLog(msg, 'console-error');
   }
 
   function consoleMessage() {
-    var msg = gui.formatMessageArgs(arguments);
+    var msg = GUI.formatMessageArgs(arguments);
     if (internal.LOGGING && !internal.getStateVar('QUIET')) {
       toLog(msg, 'console-message');
     }
   }
 
   function consoleError() {
-    var msg = gui.formatMessageArgs(arguments);
+    var msg = GUI.formatMessageArgs(arguments);
     throw new Error(msg);
   }
 
@@ -6209,76 +6501,12 @@ function Console(model) {
 
 
 
-function Model() {
-  var self = new api.internal.Catalog();
-  var deleteLayer = self.deleteLayer;
-  utils.extend(self, EventDispatcher.prototype);
-
-  // override Catalog method (so -drop command will work in web console)
-  self.deleteLayer = function(lyr, dataset) {
-    var active, flags;
-    deleteLayer.call(self, lyr, dataset);
-    if (self.isEmpty()) {
-      // refresh browser if deleted layer was the last layer
-      window.location.href = window.location.href.toString();
-    } else {
-      // trigger event to update layer list and, if needed, the map view
-      flags = {};
-      active = self.getActiveLayer();
-      if (active.layer != lyr) {
-        flags.select = true;
-      }
-      internal.cleanupArcs(active.dataset);
-      if (internal.layerHasPaths(lyr)) {
-        flags.arc_count = true; // looks like a kludge, try to remove
-      }
-      self.updated(flags, active.layer, active.dataset);
-    }
-  };
-
-  self.updated = function(flags, lyr, dataset) {
-    var targ, active;
-    // if (lyr && dataset && (!active || active.layer != lyr)) {
-    if (lyr && dataset) {
-      self.setDefaultTarget([lyr], dataset);
-    }
-    targ = self.getDefaultTargets()[0];
-    if (lyr && targ.layers[0] != lyr) {
-      flags.select = true;
-    }
-    active = {layer: targ.layers[0], dataset: targ.dataset};
-    if (flags.select) {
-      self.dispatchEvent('select', active);
-    }
-    self.dispatchEvent('update', utils.extend({flags: flags}, active));
-  };
-
-  self.selectLayer = function(lyr, dataset) {
-    self.updated({select: true}, lyr, dataset);
-  };
-
-  self.selectNextLayer = function() {
-    var next = self.findNextLayer(self.getActiveLayer().layer);
-    if (next) self.selectLayer(next.layer, next.dataset);
-  };
-
-  self.selectPrevLayer = function() {
-    var prev = self.findPrevLayer(self.getActiveLayer().layer);
-    if (prev) self.selectLayer(prev.layer, prev.dataset);
-  };
-
-  return self;
-}
-
-
-
-
 Browser.onload(function() {
-  if (!gui.browserIsSupported()) {
+  if (!GUI.browserIsSupported()) {
     El("#mshp-not-supported").show();
     return;
   }
-  gui.startEditing();
+  startEditing();
   if (window.location.hostname == 'localhost') {
     window.addEventListener('beforeunload', function() {
       // send termination signal for mapshaper-gui
@@ -6289,8 +6517,8 @@ Browser.onload(function() {
   }
 });
 
-gui.getImportOpts = function() {
-  var vars = gui.getUrlVars();
+function getImportOpts() {
+  var vars = GUI.getUrlVars();
   var manifest = mapshaper.manifest || {};
   var opts = {};
   if (Array.isArray(manifest)) {
@@ -6309,30 +6537,31 @@ gui.getImportOpts = function() {
   }
   opts.display_all = !!manifest.display_all;
   return opts;
-};
+}
 
-gui.startEditing = function() {
-  var model = new Model(),
-      dataLoaded = false,
-      importOpts = gui.getImportOpts(),
-      map, repair, simplify;
-  gui.startEditing = function() {};
-  map = new MshpMap(model);
-  repair = new RepairControl(model, map);
-  simplify = new SimplifyControl(model);
-  new AlertControl();
-  new ImportFileProxy(model);
-  new ImportControl(model, importOpts);
-  new ExportControl(model);
-  new LayerControl(model, map);
-  new Console(model);
+var startEditing = function() {
+  var dataLoaded = false,
+      importOpts = getImportOpts(),
+      gui = new GuiInstance('body');
 
-  model.on('select', function() {
+  new AlertControl(gui);
+  new RepairControl(gui);
+  new SimplifyControl(gui);
+  new ImportControl(gui, importOpts);
+  new ExportControl(gui);
+  new LayerControl(gui);
+  new Console(gui);
+
+  startEditing = function() {};
+
+  gui.model.on('select', function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
       if (importOpts.display_all) {
-        model.forEachLayer(map.addReferenceLayer.bind(map));
+        gui.model.getLayers().forEach(function(o) {
+          gui.map.setLayerVisibility(o, true);
+        });
       }
     }
   });

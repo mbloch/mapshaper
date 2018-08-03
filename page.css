@@ -166,7 +166,7 @@ body {
 	height: 32px;
 }
 
-#coordinate-info {
+.coordinate-info {
 	z-index: 1;
 	position: absolute;
 	bottom: 6px;
@@ -207,23 +207,23 @@ body {
 
 /* --- Export dialog --------- */
 
-#export-options .dialog-btn {
+.export-options .dialog-btn {
 	min-width: 20px;
 	padding: 4px 6px 5px 6px;
 }
 
-#export-layer-list {
+.export-layer-list {
 	max-height: 160px;
 	overflow: hidden;
 	overflow-y: auto;
 	margin-right: -13px;
 }
 
-#export-layer-list > div {
+.export-layer-list > div {
 	white-space: nowrap;
 }
 
-#export-options .option-menu .advanced-options {
+.export-options .option-menu .advanced-options {
 	width: 175px;
 }
 
@@ -265,15 +265,15 @@ div.error-box > div {
 
 /* --- Splash screen -------------- */
 
-body.splash-screen #splash-screen {
+.splash-screen #splash-screen {
 	display: block;
 }
 
-body.splash-screen #splash-buttons {
+.splash-screen #splash-buttons {
 	display: block;
 }
 
-body.queued-files.splash-screen #import-options-drop-area {
+.queued-files.splash-screen #import-options-drop-area {
 	display: block;
 	z-index: 2;
 }
@@ -297,11 +297,11 @@ body.queued-files.splash-screen #import-options-drop-area {
 	color: #777;
 }
 
-body.splash-screen #import-options .info-box {
+.splash-screen #import-options .info-box {
 	margin-top: 40px;
 }
 
-body.queued-files #import-options {
+.queued-files #import-options {
 	display: block;
 }
 
@@ -330,9 +330,9 @@ body.dragover #import-options-drop-area .drop-area {
 	padding: 16px 16px 15px 16px;
 }
 
-body.catalog-mode #import-drop,
-body.catalog-mode #import-quick-drop,
-body.catalog-mode #file-catalog {
+.catalog-mode #import-drop,
+.catalog-mode #import-quick-drop,
+.catalog-mode .file-catalog {
 	height: 32%;
 }
 
@@ -344,7 +344,7 @@ body.catalog-mode #file-catalog {
 	height: 37%;
 }
 
-body.queued-files #splash-screen {
+.queued-files #splash-screen {
 	display: none;
 }
 
@@ -371,8 +371,8 @@ body.queued-files #splash-screen {
 
 /* --- File catalog --------------- */
 
-body.catalog-mode #file-catalog,
-body.catalog-mode #file-catalog-spacer {
+.catalog-mode .file-catalog,
+.catalog-mode .file-catalog-spacer {
 	display: block;
 }
 
@@ -383,34 +383,34 @@ body.catalog-mode #file-catalog-spacer {
 	background-color: #f8fdff;
 }
 
-#file-catalog table {
+.file-catalog table {
 	margin: 0;
 	border-collapse: collapse;
 	height: 100%;
 	width: 100%;
 }
 
-#file-catalog th {
+.file-catalog th {
 	vertical-align: top;
 	height: 40px;
 }
 
-#file-catalog,
-#file-catalog-spacer {
+.file-catalog,
+.file-catalog-spacer {
 	display: none;
 }
 
-#file-catalog td {
+.file-catalog td {
 	margin: 0;
 	cursor: pointer;
 	vertical-align: top;
 }
 
-#file-catalog td:hover {
+.file-catalog td:hover {
 	background-color: #e2e2e2;
 }
 
-#file-catalog.downloading td.downloading {
+.file-catalog.downloading td.downloading {
 	background-color: #d5d5d5;
 	background-size: 0% 100%;
 	background-repeat: no-repeat;
@@ -436,13 +436,13 @@ body.catalog-mode #file-catalog-spacer {
 	text-align: center;
 }
 
-#dropped-file-list {
+.dropped-file-list {
 	margin-bottom: 8px;
 	max-height: 300px;
 	overflow-y: auto;
 }
 
-#dropped-file-list p {
+.dropped-file-list p {
 	line-height: 1;
 	margin-bottom: 5px;
 	font-size: 15px;
@@ -507,7 +507,7 @@ body.catalog-mode #file-catalog-spacer {
 
 /* --- Progress bar --------------- */
 
-#progress-message {
+.progress-message {
 	position: absolute;
 	width: 100%;
 	z-index: 90;
@@ -515,7 +515,7 @@ body.catalog-mode #file-catalog-spacer {
 	top: 52px;
 }
 
-#progress-message > div {
+.progress-message > div {
 	display: inline-block;
 	text-transform: uppercase;
 	padding: 3px 6px;
@@ -577,13 +577,13 @@ body.console-open .map-area {
 }
 
 
-#console {
+.console {
 	z-index: 30;
 	pointer-events: none;
 	display: none;
 }
 
-#console-window {
+.console-window {
 	pointer-events: auto;
 	background-color: black;
 	position: absolute;
@@ -593,7 +593,7 @@ body.console-open .map-area {
 	height: 100%;
 }
 
-#console-buffer {
+.console-buffer {
 	cursor: text;
 	width: 100%;
 	position: relative;
@@ -608,7 +608,7 @@ body.console-open .map-area {
 	white-space: pre; */
 }
 
-#console-buffer > div {
+.console-buffer > div {
 	text-align: left;
 	/* max-width: 640px; */
 	margin: 0 auto;
@@ -634,7 +634,7 @@ body.console-open .map-area {
 
 /* --- Layer menu ----------- */
 
-#layer-control-btn {
+.layer-control-btn {
 	top: 0;
 	position: absolute;
 	text-align: center;
@@ -642,17 +642,17 @@ body.console-open .map-area {
 	width: 100%;
 }
 
-body.simplify #layer-control-btn {
+body.simplify .layer-control-btn {
 	display: none;
 }
 
-#layer-control .info-box {
+.layer-control .info-box {
 	padding: 0;
 	pointer-events: none;
 	background-color: transparent;
 }
 
-#layer-control div.info-box-scrolled {
+.layer-control div.info-box-scrolled {
 	position: relative;
 	z-index: -1;
 	background-color: white;
@@ -664,12 +664,11 @@ body.simplify #layer-control-btn {
 	border-radius: 9px;
 }
 
-
-#layer-menu .layer-list {
+.layer-menu .layer-list {
 	margin: 6px 0 6px 0;
 }
 
-#layer-menu .layer-item {
+.layer-menu .layer-item {
 	position: relative;
 	margin-left: -14px;
 	margin-right: 6px;
@@ -678,7 +677,7 @@ body.simplify #layer-control-btn {
 	width: 100%;
 }
 
-#pin-all img,
+.pin-all img,
 .layer-item img {
 	position: absolute;
 	width: 16px;
@@ -691,7 +690,7 @@ img.close-btn {
 	opacity: 0.2;
 }
 
-#pin-all img {
+.pin-all img {
 	top: 11px;
 	cursor: pointer;
 }
@@ -716,7 +715,7 @@ img.pin-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.active):not(.pinned) img.unpinned {
+.pinnable:not(.pinned) img.unpinned {
 	opacity: 0.2;
 }
 
@@ -729,9 +728,9 @@ img.pin-btn {
 	opacity: 0;
 }
 
-.pinnable.active img.unpinned,
 img.close-btn:hover,
-.pinnable.pinned img.pinned {
+.pinnable.pinned.active img.unpinned,
+.pinnable.pinned:not(.active) img.pinned {
 	opacity: 1
 }
 
@@ -811,7 +810,7 @@ img.close-btn:hover,
 
 /* --- Intersection control ----------*/
 
-#intersection-display {
+.intersection-display {
 	cursor: default;
 	visibility: visible;
 	display: none;
@@ -821,11 +820,11 @@ img.close-btn:hover,
 	left: 13px;
 }
 
-#intersection-count {
+.intersection-count {
 	vertical-align: middle;
 }
 
-#intersection-count .icon {
+.intersection-count .icon {
 	background-color: #F24400;
 	display: inline-block;
 	width: 5px;
@@ -833,7 +832,7 @@ img.close-btn:hover,
 	margin: 0 5px 2px 0;
 }
 
-#intersection-count .close-btn {
+.intersection-count .close-btn {
 	width: 16px;
 	height: 16px;
 	cursor: pointer;
@@ -842,7 +841,7 @@ img.close-btn:hover,
 	margin-left: 2px;
 }
 
-#intersection-display .text-btn.disabled {
+.intersection-display .text-btn.disabled {
 	visibility: hidden;
 }
 
@@ -952,37 +951,37 @@ img.close-btn:hover,
 
 /* --- Map ---------------------- */
 
-#map-layers {
+.map-layers {
 	z-index: 0;
 	position: relative;
 	height: 100%;
 }
 
-#mshp-main-map {
+.mshp-main-map {
 	background-color: #fff;
 }
 
-#map-layers.hover {
+.map-layers.hover {
 	cursor: pointer;
 }
 
-#map-layers canvas {
+.map-layers canvas {
 	pointer-events: none;
 	position: absolute;
 }
 
-#map-layers canvas.retina {
+.map-layers canvas.retina {
 	transform-origin: top left;
 	-webkit-transform-origin: top left;
 	transform: scale3D(0.5, 0.5, 1);
 	-webkit-transform: scale3D(0.5, 0.5, 1);
 }
 
-#map-layers > svg {
+.map-layers > svg {
 	position: absolute;
 }
 
-#map-layers > svg text.selected {
+.map-layers > svg text.selected {
 	stroke: #FFC3FF;
 	stroke-width: 4;
 	paint-order: stroke;
@@ -990,12 +989,12 @@ img.close-btn:hover,
 	stroke-linejoin: round;
 }
 
-#map-layers > svg.dragging,
-#map-layers > svg text.selected {
+.map-layers > svg.dragging,
+.map-layers > svg text.selected {
 	cursor: pointer;
 }
 
-#nav-buttons {
+.nav-buttons {
 	z-index: 20;
 	position: absolute;
 	top: 6px;
@@ -1038,7 +1037,7 @@ img.close-btn:hover,
 /* Simplification control ------------ */
 
 @media (max-width: 765px) {
-	body.simplify  #simplify-control-wrapper {
+	body.simplify  .simplify-control-wrapper {
 		top: 22px;
 	}
 
@@ -1051,7 +1050,7 @@ img.close-btn:hover,
 	}
 }
 
-#simplify-control-wrapper {
+.simplify-control-wrapper {
 	display: none;
 	position: absolute;
 	width: 100%;
@@ -1060,39 +1059,39 @@ img.close-btn:hover,
 	top: 0px;
 }
 
-#simplify-control {
+.simplify-control {
 	text-align: center;
 	white-space: nowrap;
 	padding: 0 90px 0 12px;
 }
 
-#simplify-control .slider {
+.simplify-control .slider {
 	margin: 15px 5px 0 3px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;
 }
 
-#simplify-control .track {   	
-  	border-radius: 2px;
+.simplify-control .track {
+	border-radius: 2px;
 	width: 340px;
 	background-color: #fff;
 	height: 2px;
 }
 
-#simplify-control .handle {
+.simplify-control .handle {
 	position: absolute;
 	top: -3px;
 }
 
-#simplify-control .handle img {
+.simplify-control .handle img {
 	width: 20px;
 	height: 20px;
 	margin-left: -10px;
 	margin-top: -10px;
 }
 
-#simplify-control .clicktext {
+.simplify-control .clicktext {
 	width: 56px;
 	background: rgba(255, 255, 255, 0.5);
 	text-align: center;
@@ -1100,6 +1099,6 @@ img.close-btn:hover,
 	font-size: 13px;
 }
 
-#simplify-control .clicktext:focus {
+.simplify-control .clicktext:focus {
 	background: #fff;
 }
