@@ -163,12 +163,17 @@ Dbf.initDateField = function(info, arr, name) {
   };
 };
 
+Dbf.convertValueToString = function(s) {
+  return s === undefined || s === null ? '' : String(s);
+};
+
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
   var size = 0;
   var truncated = 0;
   var buffers = arr.map(function(rec) {
-    var buf = formatter(rec[name]);
+    var strval = Dbf.convertValueToString(rec[name]);
+    var buf = formatter(strval);
     if (buf.length > Dbf.MAX_STRING_LEN) {
       if (encoding == 'ascii') {
         buf = buf.subarray(0, Dbf.MAX_STRING_LEN);

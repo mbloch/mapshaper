@@ -1,3 +1,6 @@
+v0.4.89
+* Convert undefined and null values to empty strings when outputting a DBF string field.
+
 v0.4.88
 * Fix: convert non-alphameric characters in DBF field names to underscores.
 * Web UI updates to support putting more than one mapshaper instance on a single page.

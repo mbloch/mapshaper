@@ -15,6 +15,13 @@ describe('dbf-writer.js', function () {
     assert.equal(Dbf.MAX_STRING_LEN, 254);
   })
 
+  describe('convertValueToString()', function () {
+    it('null and undefined become empty strings', function () {
+      assert.strictEqual(Dbf.convertValueToString(undefined), '');
+      assert.strictEqual(Dbf.convertValueToString(null), '');
+    })
+  })
+
   describe('convertFieldNames()', function() {
     it ('changes non-alphanumeric characters and truncates', function() {
       var names = ['中国北京', 'brewery:kölsch'];
