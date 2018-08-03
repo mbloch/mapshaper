@@ -1,5 +1,6 @@
 v0.4.88
 * Fix: convert non-alphameric characters in DBF field names to underscores.
+* Web UI updates to support putting more than one mapshaper instance on a single page.
 
 v0.4.87
 * Added experimental -run command, for creating commands on-the-fly and running them.
