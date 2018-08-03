@@ -514,7 +514,7 @@ utils.extend(El.prototype, {
   },
 
   findChildren: function(sel) {
-    return El.__select(sel, this.el);
+    return El.__select(sel, this.el).map(El);
   },
 
   appendTo: function(ref) {

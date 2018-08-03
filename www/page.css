@@ -332,7 +332,7 @@ body.dragover #import-options-drop-area .drop-area {
 
 .catalog-mode #import-drop,
 .catalog-mode #import-quick-drop,
-.catalog-mode #file-catalog {
+.catalog-mode .file-catalog {
 	height: 32%;
 }
 
