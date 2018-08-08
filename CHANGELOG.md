@@ -1,3 +1,6 @@
+v0.4.90
+* Upgraded to v0.17 of mapshaper-proj, which includes the "Equal Earth" projection (+proj=eqearth).
+
 v0.4.89
 * Convert undefined and null values to empty strings when outputting a DBF string field.
 
