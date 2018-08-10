@@ -16108,12 +16108,12 @@ function pj_eqdc(P) {
  * was designed in 2018 by Bojan Savric, Tom Patterson and Bernhard Jenny.
  *
  * Publication:
- * Bojan ?avri?, Tom Patterson & Bernhard Jenny (2018). The Equal Earth map
+ * Bojan Savric, Tom Patterson & Bernhard Jenny (2018). The Equal Earth map
  * projection, International Journal of Geographical Information Science,
  * DOI: 10.1080/13658816.2018.1504949
  *
  * Code released August 2018
- * Ported to JavaScript and adapted for mapshaper-proj.js by Matthew Bloch August 2018
+ * Ported to JavaScript and adapted for mapshaper-proj by Matthew Bloch August 2018
  */
 pj_add(pj_eqearth, 'eqearth', 'Equal Earth', "\n\tPCyl., Sph.");
 
@@ -16129,9 +16129,9 @@ function pj_eqearth(P) {
   P.inv = s_inv;
 
   function s_fwd(lp, xy) {
-    var paramLat = Math.asin(M * Math.sin(lp.phi));
-    var paramLatSq = paramLat * paramLat;
-    var paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
+    var paramLat = Math.asin(M * Math.sin(lp.phi)),
+        paramLatSq = paramLat * paramLat,
+        paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
     xy.x = lp.lam * Math.cos(paramLat)
             / (M * (A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq)));
     xy.y = paramLat * (A1 + A2 * paramLatSq + paramLatPow6 * (A3 + A4 * paramLatSq));
@@ -16147,7 +16147,7 @@ function pj_eqearth(P) {
       paramLatSq = paramLat * paramLat;
       paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
       fy = paramLat * (A1 + A2 * paramLatSq + paramLatPow6 * (A3 + A4 * paramLatSq)) - xy.y;
-      fpy = A1 + A2 * paramLatSq + paramLatPow6 * (A3 + A4 * paramLatSq);
+      fpy = A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq);
       paramLat -= dlat = fy / fpy;
       if (Math.abs(dlat) < EPS) {
           break;

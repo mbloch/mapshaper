@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.90';
+VERSION = '0.4.91';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -8091,8 +8091,11 @@ internal.initFeatureProxy = function(lyr, arcs) {
       ctx = {},
       _bounds, _centroid, _innerXY, _xy, _ids, _id;
 
-  // all contexts have $.id
-  addGetters(ctx, {id: function() { return _id; }});
+  // all contexts have this.id and this.layer_name
+  addGetters(ctx, {
+    id: function() { return _id; },
+    layer_name: function() { return lyr.name || ''; }
+  });
 
   if (_records) {
     Object.defineProperty(ctx, 'properties',
@@ -16998,8 +17001,8 @@ SVG.furnitureRenderers.frame = function(d) {
         [d.width - off, off], [off, off]]]);
   utils.extend(obj.properties, {
       fill: 'none',
-      stroke: 'black',
-      'stroke-width': lineWidth
+      stroke: d.stroke || 'black',
+      'stroke-width': d['stroke-width'] || lineWidth
   });
   return [obj];
 };
