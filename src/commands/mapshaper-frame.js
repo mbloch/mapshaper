@@ -107,8 +107,8 @@ SVG.furnitureRenderers.frame = function(d) {
         [d.width - off, off], [off, off]]]);
   utils.extend(obj.properties, {
       fill: 'none',
-      stroke: 'black',
-      'stroke-width': lineWidth
+      stroke: d.stroke || 'black',
+      'stroke-width': d['stroke-width'] || lineWidth
   });
   return [obj];
 };
