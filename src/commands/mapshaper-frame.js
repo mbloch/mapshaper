@@ -16,6 +16,8 @@ api.frame = function(catalog, source, opts) {
       }
       return width / height;
     }).join(',');
+    // TODO: currently returns max,min aspect ratio, should return in min,max order
+    // (rectangle() function should handle max,min argument correctly now anyway)
   }
   tmp = api.rectangle(source, opts);
   bounds = internal.getDatasetBounds(tmp);

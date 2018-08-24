@@ -35,6 +35,13 @@ describe('mapshaper-rectangle.js', function () {
       applyAspectRatio('1,2', bounds);
       assert.deepEqual(bounds.toArray(), [0, -0.5, 4, 1.5]); // pad vertically
     })
+
+
+    it('Handle min and max ratio 3 -- min,max order reversed', function () {
+      var bounds = new Bounds(0, 0, 4, 1); // tall box
+      applyAspectRatio('2,1', bounds);
+      assert.deepEqual(bounds.toArray(), [0, -0.5, 4, 1.5]); // pad vertically
+    })
   })
 
   it('Rectangles created using -rectangle source= are assigned CRS of source', function(done) {

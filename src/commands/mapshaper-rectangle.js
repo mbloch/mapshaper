@@ -93,12 +93,18 @@ internal.applyRectangleOptions = function(bounds, crs, opts) {
   return bounds;
 };
 
+// opt: aspect ratio as a single number or a range (e.g. "1,2");
 internal.applyAspectRatio = function(opt, bounds) {
-  var range = String(opt).split(','),
+  var range = String(opt).split(',').map(parseFloat),
     aspectRatio = bounds.width() / bounds.height(),
     min, max; // min is height limit, max is width limit
-  min = Number(range[0]);
-  max = range.length > 1 ? Number(range[1]) : min;
+  if (range.length == 1) {
+    range.push(range[0]);
+  } else if (range[0] > range[1]) {
+    range.reverse();
+  }
+  min = range[0];
+  max = range[1];
   if (!min && !max) return bounds;
   if (!min) min = -Infinity;
   if (!max) max = Infinity;
