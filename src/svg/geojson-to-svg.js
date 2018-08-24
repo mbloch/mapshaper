@@ -87,6 +87,14 @@ SVG.importLineString = function(coords) {
   };
 };
 
+// Kludge for applying fill and other styles to a <text> element
+// (for rendering labels in the GUI with the dot in Canvas, not SVG)
+SVG.importStyledLabel = function(rec, p) {
+  var o = SVG.importLabel(rec, p);
+  SVG.applyStyleAttributes(o, 'Point', rec);
+  return o;
+};
+
 SVG.importLabel = function(rec, p) {
   var line = rec['label-text'] || '';
   var morelines, obj;

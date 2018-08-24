@@ -1187,7 +1187,7 @@ BinArray.prototype = {
     for (var i=0; i<charsToWrite; i++) {
       cval = str.charCodeAt(i);
       if (cval > 127) {
-        trace("#writeCString() Unicode value beyond ascii range");
+        // Unicode value beyond ascii range
         cval = '?'.charCodeAt(0);
       }
       this.writeUint8(cval);

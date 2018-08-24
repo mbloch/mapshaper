@@ -3,29 +3,7 @@
 // These functions could be called when validating i/o options; TODO: avoid this
 cli.isFile =
 cli.isDirectory = function(name) {return false;};
-
 cli.validateOutputDir = function() {};
-
-GUI.isActiveInstance = function(gui) {
-  return gui == GUI.__active;
-};
-
-GUI.setActiveInstance = function(gui) {
-  if (GUI.isActiveInstance(gui)) return;
-  GUI.__active = gui;
-
-  // replace api.importFile()
-  MessageProxy(gui);
-  ImportFileProxy(gui);
-  WriteFilesProxy(gui);
-};
-
-// manage switching between multiple gui instances, based on mouse events
-function GuiFocus(gui, mouse) {
-  mouse.on('enter', function() {
-    GUI.setActiveInstance(gui);
-  });
-}
 
 function MessageProxy(gui) {
   // Replace error function in mapshaper lib

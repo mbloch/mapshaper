@@ -8,7 +8,7 @@ function InspectionControl(gui, ext, hit) {
   var _highId = -1;
   var _hoverIds = null;
   var _selectionIds = null;
-  var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
+  var btn = gui.map.addSidebarButton("#info-icon2").on('click', function() {
     gui.dispatchEvent('inspector_toggle');
   });
   var _self = new EventDispatcher();

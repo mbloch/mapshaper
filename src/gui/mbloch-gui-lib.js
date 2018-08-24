@@ -300,7 +300,7 @@ El.fromCamelCase = function(str) {
 El.setStyle = function(el, name, val) {
   var jsName = El.toCamelCase(name);
   if (el.style[jsName] == void 0) {
-    trace("[Element.setStyle()] css property:", jsName);
+    console.error("[Element.setStyle()] css property:", jsName);
     return;
   }
   var cssVal = val;
@@ -453,25 +453,9 @@ utils.extend(El.prototype, {
     return style.display != 'none' && style.visibility != 'hidden';
   },
 
-  showCSS: function(css) {
-    if (!css) {
-      return this._showCSS || "display:block;";
-    }
-    this._showCSS = css;
-    return this;
-  },
-
-  hideCSS: function(css) {
-    if (!css) {
-      return this._hideCSS || "display:none;";
-    }
-    this._hideCSS = css;
-    return this;
-  },
-
   hide: function(css) {
     if (this.visible()) {
-      this.css(css || this.hideCSS());
+      this.css('display:none;');
       this._hidden = true;
     }
     return this;
@@ -479,7 +463,7 @@ utils.extend(El.prototype, {
 
   show: function(css) {
     if (!this.visible()) {
-      this.css(css || this.showCSS());
+      this.css('display:block;');
       this._hidden = false;
     }
     return this;
@@ -856,6 +840,7 @@ function MouseArea(element, pos) {
       _self = this,
       _dragging = false,
       _isOver = false,
+      _disabled = false,
       _prevEvt,
       _downEvt;
 
@@ -870,6 +855,35 @@ function MouseArea(element, pos) {
   element.addEventListener('mousedown', onAreaDown);
   element.addEventListener('dblclick', onAreaDblClick);
 
+  this.enable = function() {
+    if (!_disabled) return;
+    _disabled = false;
+    element.style.pointerEvents = 'auto';
+  };
+
+  this.disable = function() {
+    if (_disabled) return;
+    _disabled = true;
+    if (_isOver) onAreaOut();
+    if (_downEvt) {
+      if (_dragging) stopDragging(_downEvt);
+      _downEvt = null;
+    }
+    element.style.pointerEvents = 'none';
+  };
+
+  this.isOver = function() {
+    return _isOver;
+  };
+
+  this.isDown = function() {
+    return !!_downEvt;
+  };
+
+  this.mouseData = function() {
+    return utils.extend({}, _prevEvt);
+  };
+
   function onAreaDown(e) {
     e.preventDefault(); // prevent text selection cursor on drag
   }
@@ -881,7 +895,7 @@ function MouseArea(element, pos) {
     }
   }
 
-  function onAreaOut(e) {
+  function onAreaOut() {
     _isOver = false;
     _self.dispatchEvent('leave');
   }
@@ -890,8 +904,7 @@ function MouseArea(element, pos) {
     var evt = procMouseEvent(e),
         elapsed, dx, dy;
     if (_dragging) {
-      _dragging = false;
-      _self.dispatchEvent('dragend', evt);
+      stopDragging(evt);
     }
     if (_downEvt) {
       elapsed = evt.time - _downEvt.time;
@@ -902,6 +915,11 @@ function MouseArea(element, pos) {
       }
       _downEvt = null;
     }
+  }
+
+  function stopDragging(evt) {
+    _dragging = false;
+    _self.dispatchEvent('dragend', evt);
   }
 
   function onMouseDown(e) {
@@ -949,18 +967,6 @@ function MouseArea(element, pos) {
     };
     return _prevEvt;
   }
-
-  this.isOver = function() {
-    return _isOver;
-  };
-
-  this.isDown = function() {
-    return !!_downEvt;
-  };
-
-  this.mouseData = function() {
-    return utils.extend({}, _prevEvt);
-  };
 }
 
 utils.inherit(MouseArea, EventDispatcher);

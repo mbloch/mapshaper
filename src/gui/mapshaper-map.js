@@ -9,21 +9,36 @@ mapshaper-map-style
 mapshaper-svg-display
 mapshaper-layer-stack
 mapshaper-layer-sorting
+mapshaper-gui-proxy
 */
 
 utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(gui, opts) {
-  var el = gui.container.findChild('.map-layers').node();
-  var model = gui.model,
+  var el = gui.container.findChild('.map-layers').node(),
+      position = new ElementPosition(el),
+      model = gui.model,
       map = this,
+      buttons = new SidebarButtons(gui),
+      _mouse = new MouseArea(el, position),
+      _ext = new MapExtent(position),
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _ext, _inspector, _stack, _nav, _hit;
+      _inspector, _stack, _nav, _hit;
+
+  _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
     _intersectionLyr = null;
     _overlayLyr = null;
+  });
+
+  gui.on('active', function() {
+    _mouse.enable();
+  });
+
+  gui.on('inactive', function() {
+    _mouse.disable();
   });
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -94,6 +109,10 @@ function MshpMap(gui, opts) {
     _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
 
+  this.setInteractivity = function(toOn) {
+
+  };
+
   this.setLayerVisibility = function(target, isVisible) {
     var lyr = target.layer;
     lyr.visibility = isVisible ? 'visible' : 'hidden';
@@ -112,15 +131,13 @@ function MshpMap(gui, opts) {
     drawLayers();
   };
 
+  this.addSidebarButton = buttons.addButton;
+
   function initMap() {
-    var position = new ElementPosition(el);
-    var mouse = new MouseArea(el, position);
-    new SidebarButtons(gui);
-    new GuiFocus(gui, mouse);
-    _ext = new MapExtent(position);
-    _nav = new MapNav(gui, _ext, mouse);
-    _stack = new LayerStack(gui, el, _ext, mouse);
-    _hit = new HitControl(gui, _ext, mouse);
+    _ext.resize();
+    _nav = new MapNav(gui, _ext, _mouse);
+    _stack = new LayerStack(gui, el, _ext, _mouse);
+    _hit = new HitControl(gui, _ext, _mouse);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
