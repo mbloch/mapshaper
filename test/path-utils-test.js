@@ -3,6 +3,28 @@ var api = require('../'),
 
 describe('mapshaper-filename-utils.js', function () {
 
+  describe('getArcPresenceTest2()', function() {
+    it('handles point layer without error', function() {
+      var arcs = [[[0, 0], [1, 1]], [[1, 1], [2, 2]], [[2, 2], [3, 3]]]; // three arcs
+      var layers = [{
+        geometry_type: 'polyline',
+        shapes: [[[0, ~1]]]
+      }, {
+        geometry_type: 'point',
+        shapes: [[[3, 3]], [[1, 1]]]
+      }];
+      var test = api.internal.getArcPresenceTest2(layers, new api.internal.ArcCollection(arcs));
+      assert.strictEqual(test(0), true);
+      assert.strictEqual(test(~0), true);
+      assert.strictEqual(test(1), true);
+      assert.strictEqual(test(~1), true);
+      assert.strictEqual(test(2), false);
+      assert.strictEqual(test(~2), false);
+      assert.strictEqual(test(3), false);
+    })
+  })
+
+
   describe('parseLocalPath()', function () {
     var path1 = "shapefiles/usa.shp";
     it(path1, function () {

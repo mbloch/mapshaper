@@ -83,7 +83,7 @@ internal.countArcsInShapes = function(shapes, counts) {
 // Count arcs in a collection of layers
 internal.countArcsInLayers = function(layers, arcs) {
   var counts = new Uint32Array(arcs.size());
-  layers.forEach(function(lyr) {
+  layers.filter(internal.layerHasPaths).forEach(function(lyr) {
     internal.countArcsInShapes(lyr.shapes, counts);
   });
   return counts;
