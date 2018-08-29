@@ -1010,6 +1010,9 @@ internal.getOptionParser = function() {
     .option("height", {
       describe: "pixel height of output (may be a range)"
     })
+    .option("area", {
+      describe: "area of output in pixels (alternative to width and height)"
+    })
     .option("source", {
       describe: "name of layer to enclose"
     })

@@ -24,7 +24,6 @@ describe('mapshaper-filename-utils.js', function () {
     })
   })
 
-
   describe('parseLocalPath()', function () {
     var path1 = "shapefiles/usa.shp";
     it(path1, function () {
