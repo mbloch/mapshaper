@@ -2,7 +2,7 @@
 
 api.frame = function(catalog, source, opts) {
   var size, bounds, tmp, dataset;
-  if (+opts.width > 0 === false && +opts.area > 0 === false) {
+  if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
     stop("Missing a width or area");
   }
   if (opts.width && opts.height) {
@@ -55,8 +55,8 @@ internal.getAspectRatioArg = function(widthArg, heightArg) {
 internal.getFrameSize = function(bounds, opts) {
   var aspectRatio = bounds.width() / bounds.height();
   var height, width;
-  if (opts.area) {
-    width = Math.sqrt(+opts.area * aspectRatio);
+  if (opts.pixels) {
+    width = Math.sqrt(+opts.pixels * aspectRatio);
   } else {
     width = +opts.width;
   }

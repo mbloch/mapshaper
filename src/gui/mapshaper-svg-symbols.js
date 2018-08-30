@@ -22,6 +22,7 @@ function renderSymbols(lyr, ext, type) {
     var d = records[i];
     var obj = type == 'label' ? internal.svg.importStyledLabel(d) :
         internal.svg.importSymbol(d['svg-symbol']);
+    if (!obj || !shp) return null;
     obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     obj.properties['data-id'] = i;
     return obj;

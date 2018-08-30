@@ -251,6 +251,10 @@ internal.getOptionParser = function() {
     .option("margin", {
       describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)"
     })
+    .option("pixels", {
+      describe: "(SVG/TopoJSON) output area in pixels (alternative to width=)",
+      type: "number"
+    })
     .option("svg-scale", {
       describe: "(SVG) source units per pixel (alternative to width= option)",
       type: "number"
@@ -1010,8 +1014,9 @@ internal.getOptionParser = function() {
     .option("height", {
       describe: "pixel height of output (may be a range)"
     })
-    .option("area", {
-      describe: "area of output in pixels (alternative to width and height)"
+    .option("pixels", {
+      describe: "area of output in pixels (alternative to width and height)",
+      type: "number"
     })
     .option("source", {
       describe: "name of layer to enclose"

@@ -12,10 +12,10 @@ describe('mapshaper-frame.js', function () {
   });
 
   describe('getFrameSize()', function () {
-    it('works with area option', function () {
+    it('works with pixels option', function () {
       var bounds = new Bounds(0, 0, 4, 2);
       var opts = {
-        area: 200
+        pixels: 200
       };
       var out = api.internal.getFrameSize(bounds, opts);
       assert.deepEqual(out, [20, 10]);

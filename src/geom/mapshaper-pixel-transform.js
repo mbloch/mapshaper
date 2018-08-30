@@ -46,13 +46,17 @@ internal.calcOutputSizeInPixels = function(bounds, opts) {
       // TODO: add option to tweak alignment of content when both width and height are given
       wx = 0.5, // how padding is distributed horizontally (0: left aligned, 0.5: centered, 1: right aligned)
       wy = 0.5, // vertical padding distribution
-      widthPx, heightPx, kx, ky;
+      widthPx, heightPx, size, kx, ky;
 
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
     widthPx = width / opts.svg_scale + marginX;
     heightPx = 0;
+  } else if (+opts.pixels) {
+    size = internal.getFrameSize(bounds, opts);
+    widthPx = size[0];
+    heightPx = size[1];
   } else {
     heightPx = opts.height || 0;
     widthPx = opts.width || (heightPx > 0 ? 0 : 800); // 800 is default width

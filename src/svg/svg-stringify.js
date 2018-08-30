@@ -83,13 +83,15 @@ SVG.urlToId = function(url) {
 };
 
 SVG.stringify = function(obj) {
-  var svg = '<' + obj.tag;
+  var svg, joinStr;
+  if (!obj || !obj.tag) return '';
+  svg = '<' + obj.tag;
   // w.s. is significant in text elements
-  var joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
   if (obj.properties) {
     svg += SVG.stringifyProperties(obj.properties);
   }
   if (obj.children || obj.value) {
+    joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
     svg += '>' + joinStr;
     if (obj.value) {
       svg += obj.value;

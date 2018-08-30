@@ -1,3 +1,7 @@
+
+v0.4.92
+* Added '-o pixels=' and '-frame pixels=' options for scaling SVG output based on the number of pixels in the output image.
+
 v0.4.91
 * Upgraded to 0.0.18 of mapshaper-proj.
 
