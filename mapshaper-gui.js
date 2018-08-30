@@ -316,7 +316,7 @@ El.fromCamelCase = function(str) {
 El.setStyle = function(el, name, val) {
   var jsName = El.toCamelCase(name);
   if (el.style[jsName] == void 0) {
-    trace("[Element.setStyle()] css property:", jsName);
+    console.error("[Element.setStyle()] css property:", jsName);
     return;
   }
   var cssVal = val;
@@ -469,25 +469,9 @@ utils.extend(El.prototype, {
     return style.display != 'none' && style.visibility != 'hidden';
   },
 
-  showCSS: function(css) {
-    if (!css) {
-      return this._showCSS || "display:block;";
-    }
-    this._showCSS = css;
-    return this;
-  },
-
-  hideCSS: function(css) {
-    if (!css) {
-      return this._hideCSS || "display:none;";
-    }
-    this._hideCSS = css;
-    return this;
-  },
-
   hide: function(css) {
     if (this.visible()) {
-      this.css(css || this.hideCSS());
+      this.css('display:none;');
       this._hidden = true;
     }
     return this;
@@ -495,7 +479,7 @@ utils.extend(El.prototype, {
 
   show: function(css) {
     if (!this.visible()) {
-      this.css(css || this.showCSS());
+      this.css('display:block;');
       this._hidden = false;
     }
     return this;
@@ -872,6 +856,7 @@ function MouseArea(element, pos) {
       _self = this,
       _dragging = false,
       _isOver = false,
+      _disabled = false,
       _prevEvt,
       _downEvt;
 
@@ -886,6 +871,35 @@ function MouseArea(element, pos) {
   element.addEventListener('mousedown', onAreaDown);
   element.addEventListener('dblclick', onAreaDblClick);
 
+  this.enable = function() {
+    if (!_disabled) return;
+    _disabled = false;
+    element.style.pointerEvents = 'auto';
+  };
+
+  this.disable = function() {
+    if (_disabled) return;
+    _disabled = true;
+    if (_isOver) onAreaOut();
+    if (_downEvt) {
+      if (_dragging) stopDragging(_downEvt);
+      _downEvt = null;
+    }
+    element.style.pointerEvents = 'none';
+  };
+
+  this.isOver = function() {
+    return _isOver;
+  };
+
+  this.isDown = function() {
+    return !!_downEvt;
+  };
+
+  this.mouseData = function() {
+    return utils.extend({}, _prevEvt);
+  };
+
   function onAreaDown(e) {
     e.preventDefault(); // prevent text selection cursor on drag
   }
@@ -897,7 +911,7 @@ function MouseArea(element, pos) {
     }
   }
 
-  function onAreaOut(e) {
+  function onAreaOut() {
     _isOver = false;
     _self.dispatchEvent('leave');
   }
@@ -906,8 +920,7 @@ function MouseArea(element, pos) {
     var evt = procMouseEvent(e),
         elapsed, dx, dy;
     if (_dragging) {
-      _dragging = false;
-      _self.dispatchEvent('dragend', evt);
+      stopDragging(evt);
     }
     if (_downEvt) {
       elapsed = evt.time - _downEvt.time;
@@ -918,6 +931,11 @@ function MouseArea(element, pos) {
       }
       _downEvt = null;
     }
+  }
+
+  function stopDragging(evt) {
+    _dragging = false;
+    _self.dispatchEvent('dragend', evt);
   }
 
   function onMouseDown(e) {
@@ -965,18 +983,6 @@ function MouseArea(element, pos) {
     };
     return _prevEvt;
   }
-
-  this.isOver = function() {
-    return _isOver;
-  };
-
-  this.isDown = function() {
-    return !!_downEvt;
-  };
-
-  this.mouseData = function() {
-    return utils.extend({}, _prevEvt);
-  };
 }
 
 utils.inherit(MouseArea, EventDispatcher);
@@ -1151,29 +1157,7 @@ utils.inherit(ModeSwitcher, EventDispatcher);
 // These functions could be called when validating i/o options; TODO: avoid this
 cli.isFile =
 cli.isDirectory = function(name) {return false;};
-
 cli.validateOutputDir = function() {};
-
-GUI.isActiveInstance = function(gui) {
-  return gui == GUI.__active;
-};
-
-GUI.setActiveInstance = function(gui) {
-  if (GUI.isActiveInstance(gui)) return;
-  GUI.__active = gui;
-
-  // replace api.importFile()
-  MessageProxy(gui);
-  ImportFileProxy(gui);
-  WriteFilesProxy(gui);
-};
-
-// manage switching between multiple gui instances, based on mouse events
-function GuiFocus(gui, mouse) {
-  mouse.on('enter', function() {
-    GUI.setActiveInstance(gui);
-  });
-}
 
 function MessageProxy(gui) {
   // Replace error function in mapshaper lib
@@ -2019,12 +2003,12 @@ function MapNav(gui, ext, mouse) {
     zoomScaleMultiplier = k || 1;
   };
 
-  gui.addSidebarButton("#home-icon").on('click', function() {
+  gui.map.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
 
-  inBtn = gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
-  outBtn = gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+  inBtn = gui.map.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
+  outBtn = gui.map.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
 
   ext.on('change', function() {
     inBtn.classed('disabled', ext.scale() >= ext.maxScale());
@@ -2816,7 +2800,7 @@ function InspectionControl(gui, ext, hit) {
   var _highId = -1;
   var _hoverIds = null;
   var _selectionIds = null;
-  var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
+  var btn = gui.map.addSidebarButton("#info-icon2").on('click', function() {
     gui.dispatchEvent('inspector_toggle');
   });
   var _self = new EventDispatcher();
@@ -3011,13 +2995,15 @@ function InspectionControl(gui, ext, hit) {
 
 
 
-
 function SidebarButtons(gui) {
   var root = gui.container.findChild('.mshp-main-map');
-  var buttons = El('div').addClass('nav-buttons').appendTo(root);
+  var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
+
+  gui.on('active', buttons.show.bind(buttons));
+  gui.on('inactive', buttons.hide.bind(buttons));
 
   // @iconRef: selector for an (svg) button icon
-  gui.addSidebarButton = function(iconRef) {
+  this.addButton = function(iconRef) {
     var icon = El('body').findChild(iconRef).node().cloneNode(true);
     var btn = El('div').addClass('nav-btn')
       .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
@@ -3026,8 +3012,8 @@ function SidebarButtons(gui) {
     btn.appendTo(buttons);
     return btn;
   };
-
 }
+
 
 
 
@@ -3279,79 +3265,30 @@ internal.getCanvasStyleFields = function(lyr) {
 
 
 
-
-function repositionLabels(container, layer, ext) {
-  var fwd = ext.getTransform();
-  var texts = container.getElementsByTagName('text');
-  var n = texts.length;
-  var text, idx, p;
-  for (var i=0; i<n; i++) {
-    text = texts[i];
-    idx = +text.getAttribute('data-id');
-    p = layer.shapes[idx];
-    if (!p) continue;
-    text.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
-  }
-}
-
-function renderLabels(lyr, ext) {
-  var fwd = ext.getTransform();
-  var records = lyr.data.getRecords();
-  var symbols = lyr.shapes.map(function(shp, i) {
-    var d = records[i];
-    var obj = internal.svg.importLabel(d);
-    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
-    internal.svg.applyStyleAttributes(obj, 'Point', d);
-    obj.properties['data-id'] = i;
-    return obj;
-  });
-  var obj = internal.getEmptyLayerForSVG(lyr, {});
-  obj.children = symbols;
-  return internal.svg.stringify(obj);
-}
-
-// Set an attribute on a <text> node and any child <tspan> elements
-// (mapshaper's svg labels require tspans to have the same x and dx values
-//  as the enclosing text node)
-function setMultilineAttribute(textNode, name, value) {
-  var n = textNode.childNodes.length;
-  var i = -1;
-  var child;
-  textNode.setAttribute(name, value);
-  while (++i < n) {
-    child = textNode.childNodes[i];
-    if (child.tagName == 'tspan') {
-      child.setAttribute(name, value);
-    }
-  }
-}
-
-
-
 function getSvgSymbolTransform(xy, ext) {
   var scale = ext.getSymbolScale();
   var p = ext.translateCoords(xy[0], xy[1]);
   return internal.svg.getTransform(p, scale);
 }
 
-function repositionSymbols(container, layer, ext) {
-  var symbols = El.findAll('.mapshaper-svg-symbol', container);
-  var n = symbols.length;
-  var sym, idx, p;
-  for (var i=0; i<n; i++) {
-    sym = symbols[i];
-    idx = +sym.getAttribute('data-id');
+function repositionSymbols(elements, layer, ext) {
+  var el, idx, p;
+  for (var i=0, n=elements.length; i<n; i++) {
+    el = elements[i];
+    idx = +el.getAttribute('data-id');
     p = layer.shapes[idx];
     if (!p) continue;
-    sym.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
+    el.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
   }
 }
 
-function renderSymbols(lyr, ext) {
+function renderSymbols(lyr, ext, type) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var obj = internal.svg.importSymbol(d['svg-symbol']);
+    var obj = type == 'label' ? internal.svg.importStyledLabel(d) :
+        internal.svg.importSymbol(d['svg-symbol']);
+    if (!obj || !shp) return null;
     obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     obj.properties['data-id'] = i;
     return obj;
@@ -3389,49 +3326,119 @@ function renderFurniture(lyr, ext) {
 
 
 
-function SvgDisplayLayer(gui, ext, mouse) {
-  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+
+function isMultilineLabel(textNode) {
+  return textNode.childNodes.length > 1;
+}
+
+function toggleTextAlign(textNode, rec) {
+  var curr = rec['text-anchor'] || 'middle';
+  var targ = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+  updateTextAnchor(textNode, rec, targ);
+}
+
+// Set an attribute on a <text> node and any child <tspan> elements
+// (mapshaper's svg labels require tspans to have the same x and dx values
+//  as the enclosing text node)
+function setMultilineAttribute(textNode, name, value) {
+  var n = textNode.childNodes.length;
+  var i = -1;
+  var child;
+  textNode.setAttribute(name, value);
+  while (++i < n) {
+    child = textNode.childNodes[i];
+    if (child.tagName == 'tspan') {
+      child.setAttribute(name, value);
+    }
+  }
+}
+
+function findSvgRoot(el) {
+  while (el && el.tagName != 'html' && el.tagName != 'body') {
+    if (el.tagName == 'svg') return el;
+    el = el.parentNode;
+  }
+  return null;
+}
+
+// @value: optional position to set; if missing, auto-set
+function updateTextAnchor(textNode, rec, value) {
+  var rect = textNode.getBoundingClientRect();
+  var width = rect.width;
+  var anchorX = +textNode.getAttribute('x');
+  var labelCenterX = rect.left - findSvgRoot(textNode).getBoundingClientRect().left + width / 2;
+  var xpct = (labelCenterX - anchorX) / width; // offset of label center from anchor center
+  var curr = rec['text-anchor'] || 'middle';
+  var xshift = 0;
+  var targ = value || xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
+  if (curr == 'middle' && targ == 'end' || curr == 'start' && targ == 'middle') {
+    xshift = width / 2;
+  } else if (curr == 'middle' && targ == 'start' || curr == 'end' && targ == 'middle') {
+    xshift = -width / 2;
+  } else if (curr == 'start' && targ == 'end') {
+    xshift = width;
+  } else if (curr == 'end' && targ == 'start') {
+    xshift = -width;
+  }
+  if (xshift) {
+    rec['text-anchor'] = targ;
+    applyDelta(rec, 'dx', xshift);
+  }
+}
+
+// handle either numeric strings or numbers in fields
+function applyDelta(rec, key, delta) {
+  var currVal = rec[key];
+  var isString = utils.isString(currVal);
+  var newVal = (+currVal + delta) || 0;
+  rec[key] = isString ? String(newVal) : newVal;
+}
+
+
+
+function SymbolDragging(gui, ext, mouse, svg) {
   var el = El(svg);
   var editing = false;
   var dragging = false;
   var textNode;
   var activeLayer;
   var activeRecord;
+  var activeId = -1;
 
-  if (mouse) initDragging();
+  initDragging();
 
-  el.clear = clear;
-
-  el.reposition = function(target, type) {
-    resize(ext);
-    reposition(target, type, ext);
-  };
-
-  el.drawLayer = function(target, type) {
-    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    var html = '';
-    // generate a unique id so layer can be identified when symbols are repositioned
-    // use it as a class name to avoid id collisions
-    var id = utils.getUniqueName();
-    g.setAttribute('class', id);
-    target.svg_id = id;
-    resize(ext);
-    if (type == 'label') {
-      html = renderLabels(target.layer, ext);
-    } else if (type == 'symbol') {
-      html = renderSymbols(target.layer, ext);
-    } else if (type == 'furniture') {
-      html = renderFurniture(target.layer, ext);
-    }
-    g.innerHTML = html;
-    svg.append(g);
-    // TODO: support mouse dragging on symbol layers
-    if (target.active && type == 'label') {
+  return {
+    editLayer: function(target, type) {
       activeLayer = target.layer;
-    } else {
-      g.style.pointerEvents = 'none';
+    },
+    clear: function() {
+      if (editing) stopEditing();
+      activeLayer = null;
     }
   };
+
+  // update symbol by setting attributes
+  function updateSymbol(node, d) {
+    var a = d['text-anchor'];
+    if (a) node.setAttribute('text-anchor', a);
+    setMultilineAttribute(node, 'dx', d.dx || 0);
+    node.setAttribute('y', d.dy || 0);
+  }
+
+  // update symbol by re-rendering it
+  function updateSymbol2(node, d) {
+    var o = internal.svg.importStyledLabel(d); // TODO: symbol support
+    var xy = activeLayer.shapes[activeId][0];
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    var node2;
+    o.properties.transform = getSvgSymbolTransform(xy, ext);
+    o.properties['data-id'] = activeId;
+    o.properties['class'] = 'selected';
+    g.innerHTML = internal.svg.stringify(o);
+    node2 = g.firstChild;
+    node.parentNode.replaceChild(node2, node);
+    return node2;
+  }
 
   function initDragging() {
     var downEvt;
@@ -3475,6 +3482,7 @@ function SvgDisplayLayer(gui, ext, mouse) {
       if (isClick && textTarget && textTarget == textNode &&
           activeRecord && isMultilineLabel(textNode)) {
         toggleTextAlign(textNode, activeRecord);
+        updateSymbol();
       }
       if (dragging) {
         stopDragging();
@@ -3504,55 +3512,14 @@ function SvgDisplayLayer(gui, ext, mouse) {
         // different from mapshaper's font.
         updateTextAnchor(textNode, activeRecord);
       }
-      setMultilineAttribute(textNode, 'x', activeRecord.dx);
-      textNode.setAttribute('y', activeRecord.dy);
+      // updateSymbol(textNode, activeRecord);
+      textNode = updateSymbol2(textNode, activeRecord, activeId);
     }, null, eventPriority);
 
     mouse.on('dragend', function(e) {
       onDrag(e);
       stopDragging();
     }, null, eventPriority);
-
-    function toggleTextAlign(textNode, rec) {
-      var curr = rec['text-anchor'] || 'middle';
-      var targ = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
-      updateTextAnchor(textNode, rec, targ);
-      setMultilineAttribute(textNode, 'dx', rec.dx);
-    }
-
-    // @value: optional position to set; if missing, auto-set
-    function updateTextAnchor(textNode, rec, value) {
-      var rect = textNode.getBoundingClientRect();
-      var width = rect.width;
-      var anchorX = +textNode.getAttribute('x');
-      var labelCenterX = rect.left - svg.getBoundingClientRect().left + width / 2;
-      var xpct = (labelCenterX - anchorX) / width; // offset of label center from anchor center
-      var curr = rec['text-anchor'] || 'middle';
-      var xshift = 0;
-      var targ = value || xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
-      if (curr == 'middle' && targ == 'end' || curr == 'start' && targ == 'middle') {
-        xshift = width / 2;
-      } else if (curr == 'middle' && targ == 'start' || curr == 'end' && targ == 'middle') {
-        xshift = -width / 2;
-      } else if (curr == 'start' && targ == 'end') {
-        xshift = width;
-      } else if (curr == 'end' && targ == 'start') {
-        xshift = -width;
-      }
-      if (xshift) {
-        rec['text-anchor'] = targ;
-        applyDelta(rec, 'dx', xshift);
-        textNode.setAttribute('text-anchor', targ);
-      }
-    }
-
-    // handle either numeric strings or numbers in fields
-    function applyDelta(rec, key, delta) {
-      var currVal = rec[key];
-      var isString = utils.isString(currVal);
-      var newVal = (+currVal + delta) || 0;
-      rec[key] = isString ? String(newVal) : newVal;
-    }
 
     function startDragging() {
       dragging = true;
@@ -3609,6 +3576,7 @@ function SvgDisplayLayer(gui, ext, mouse) {
     table = activeLayer.data;
     i = +textNode.getAttribute('data-id');
     activeRecord = table.getRecords()[i];
+    activeId = i;
     // add dx and dy properties, if not available
     if (!table.fieldExists('dx')) {
       table.addField('dx', 0);
@@ -3630,27 +3598,64 @@ function SvgDisplayLayer(gui, ext, mouse) {
     return el.tagName == 'text' ? el : null;
   }
 
-  function isMultilineLabel(textNode) {
-    return textNode.childNodes.length > 1;
-  }
+}
 
-  function reposition(target, type, ext) {
-    var container = el.findChild('.' + target.svg_id).node();
-    if (type == 'label') {
-      repositionLabels(container, target.layer, ext);
-    } else if (type == 'symbol') {
-      repositionSymbols(container, target.layer, ext);
-    } else if (type == 'furniture') {
-      repositionFurniture(container, target.layer, ext);
-    }
-  }
 
-  function clear() {
-    if (editing) stopEditing();
+
+
+function SvgDisplayLayer(gui, ext, mouse) {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  var el = El(svg);
+  var editor;
+
+  if (mouse) editor = new SymbolDragging(gui, ext, mouse, svg);
+
+  el.clear = function() {
     while (svg.childNodes.length > 0) {
       svg.removeChild(svg.childNodes[0]);
     }
-    activeLayer = null;
+    if (editor) editor.clear();
+  };
+
+  el.reposition = function(target, type) {
+    resize(ext);
+    reposition(target, type, ext);
+  };
+
+  el.drawLayer = function(target, type) {
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    var html = '';
+    // generate a unique id so layer can be identified when symbols are repositioned
+    // use it as a class name to avoid id collisions
+    var id = utils.getUniqueName();
+    g.setAttribute('class', id);
+    target.svg_id = id;
+    resize(ext);
+    if (type == 'label' || type == 'symbol') {
+      html = renderSymbols(target.layer, ext, type);
+    } else if (type == 'furniture') {
+      html = renderFurniture(target.layer, ext);
+    }
+    g.innerHTML = html;
+    svg.append(g);
+    // TODO: support mouse dragging on symbol layers
+    if (editor && target.active && type == 'label') {
+      editor.editLayer(target, type);
+    } else {
+      g.style.pointerEvents = 'none';
+    }
+  };
+
+  function reposition(target, type, ext) {
+    var container = el.findChild('.' + target.svg_id).node();
+    var elements;
+    if (type == 'label' || type == 'symbol') {
+      elements = type == 'label' ? container.getElementsByTagName('text') :
+          El.findAll('.mapshaper-svg-symbol', container);
+      repositionSymbols(elements, target.layer, ext);
+    } else if (type == 'furniture') {
+      repositionFurniture(container, target.layer, ext);
+    }
   }
 
   function resize(ext) {
@@ -3662,7 +3667,7 @@ function SvgDisplayLayer(gui, ext, mouse) {
 }
 
 
-/* @requires mapshaper-svg-display, @mapshaper-canvas, mapshaper-map-style */
+
 
 function LayerStack(gui, container, ext, mouse) {
   var el = El(container),
@@ -3673,7 +3678,7 @@ function LayerStack(gui, container, ext, mouse) {
       _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
       _ext = ext;
 
-  // don't let furniture countainer block events to symbol layers
+  // don't let furniture container block events to symbol layers
   _furniture.css('pointer-events', 'none');
 
   this.drawOverlay2Layer = function(lyr) {
@@ -3785,16 +3790,30 @@ internal.sortLayersForMenuDisplay = function(layers) {
 utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(gui, opts) {
-  var el = gui.container.findChild('.map-layers').node();
-  var model = gui.model,
+  var el = gui.container.findChild('.map-layers').node(),
+      position = new ElementPosition(el),
+      model = gui.model,
       map = this,
+      buttons = new SidebarButtons(gui),
+      _mouse = new MouseArea(el, position),
+      _ext = new MapExtent(position),
       _visibleLayers = [], // cached visible map layers
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _ext, _inspector, _stack, _nav, _hit;
+      _inspector, _stack, _nav, _hit;
+
+  _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
     _intersectionLyr = null;
     _overlayLyr = null;
+  });
+
+  gui.on('active', function() {
+    _mouse.enable();
+  });
+
+  gui.on('inactive', function() {
+    _mouse.disable();
   });
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -3865,6 +3884,10 @@ function MshpMap(gui, opts) {
     _stack.drawOverlay2Layer(_intersectionLyr); // also hides
   };
 
+  this.setInteractivity = function(toOn) {
+
+  };
+
   this.setLayerVisibility = function(target, isVisible) {
     var lyr = target.layer;
     lyr.visibility = isVisible ? 'visible' : 'hidden';
@@ -3883,15 +3906,13 @@ function MshpMap(gui, opts) {
     drawLayers();
   };
 
+  this.addSidebarButton = buttons.addButton;
+
   function initMap() {
-    var position = new ElementPosition(el);
-    var mouse = new MouseArea(el, position);
-    new SidebarButtons(gui);
-    new GuiFocus(gui, mouse);
-    _ext = new MapExtent(position);
-    _nav = new MapNav(gui, _ext, mouse);
-    _stack = new LayerStack(gui, el, _ext, mouse);
-    _hit = new HitControl(gui, _ext, mouse);
+    _ext.resize();
+    _nav = new MapNav(gui, _ext, _mouse);
+    _stack = new LayerStack(gui, el, _ext, _mouse);
+    _hit = new HitControl(gui, _ext, _mouse);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -4138,11 +4159,16 @@ GUI.getIntersectionPct = function(bb1, bb2) {
 
 
 
+GUI.isActiveInstance = function(gui) {
+  return gui == GUI.__active;
+};
+
 function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
   opts = utils.extend({
     // defaults
-    inspector: true
+    inspector: true,
+    focus: true
   }, opts);
 
   gui.container = El(container);
@@ -4165,7 +4191,38 @@ function GuiInstance(container, opts) {
   gui.consoleIsOpen = function() {
     return gui.container.hasClass('console-open');
   };
-  GUI.setActiveInstance(gui);
+
+  // Make this instance interactive and editable
+  gui.focus = function() {
+    var curr = GUI.__active;
+    if (curr == gui) return;
+    if (curr) {
+      curr.blur();
+    }
+    GUI.__active = gui;
+    MessageProxy(gui);
+    ImportFileProxy(gui);
+    WriteFilesProxy(gui);
+    gui.dispatchEvent('active');
+  };
+
+  gui.blur = function() {
+    if (GUI.isActiveInstance(gui)) {
+      GUI.__active = null;
+      gui.dispatchEvent('inactive');
+    }
+  };
+
+  // switch between multiple gui instances on mouse click
+  gui.container.node().addEventListener('mouseup', function(e) {
+    if (GUI.isActiveInstance(gui)) return;
+    e.stopPropagation();
+    gui.focus();
+  }, true); // use capture
+
+  if (opts.focus) {
+    gui.focus();
+  }
 
   return gui;
 }

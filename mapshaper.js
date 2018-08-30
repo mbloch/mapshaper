@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.91';
+VERSION = '0.4.92';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1189,7 +1189,7 @@ BinArray.prototype = {
     for (var i=0; i<charsToWrite; i++) {
       cval = str.charCodeAt(i);
       if (cval > 127) {
-        trace("#writeCString() Unicode value beyond ascii range");
+        // Unicode value beyond ascii range
         cval = '?'.charCodeAt(0);
       }
       this.writeUint8(cval);
@@ -3010,7 +3010,7 @@ internal.countArcsInShapes = function(shapes, counts) {
 // Count arcs in a collection of layers
 internal.countArcsInLayers = function(layers, arcs) {
   var counts = new Uint32Array(arcs.size());
-  layers.forEach(function(lyr) {
+  layers.filter(internal.layerHasPaths).forEach(function(lyr) {
     internal.countArcsInShapes(lyr.shapes, counts);
   });
   return counts;
@@ -13777,13 +13777,17 @@ internal.calcOutputSizeInPixels = function(bounds, opts) {
       // TODO: add option to tweak alignment of content when both width and height are given
       wx = 0.5, // how padding is distributed horizontally (0: left aligned, 0.5: centered, 1: right aligned)
       wy = 0.5, // vertical padding distribution
-      widthPx, heightPx, kx, ky;
+      widthPx, heightPx, size, kx, ky;
 
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
     widthPx = width / opts.svg_scale + marginX;
     heightPx = 0;
+  } else if (+opts.pixels) {
+    size = internal.getFrameSize(bounds, opts);
+    widthPx = size[0];
+    heightPx = size[1];
   } else {
     heightPx = opts.height || 0;
     widthPx = opts.width || (heightPx > 0 ? 0 : 800); // 800 is default width
@@ -14949,8 +14953,7 @@ SVG.symbolRenderers.circle = function(d, x, y) {
 };
 
 SVG.symbolRenderers.label = function(d, x, y) {
-  var o = SVG.importLabel(d, [x, y]);
-  SVG.applyStyleAttributes(o, 'Point', d);
+  var o = SVG.importStyledLabel(d, [x, y]);
   return [o];
 };
 
@@ -15242,13 +15245,15 @@ SVG.urlToId = function(url) {
 };
 
 SVG.stringify = function(obj) {
-  var svg = '<' + obj.tag;
+  var svg, joinStr;
+  if (!obj || !obj.tag) return '';
+  svg = '<' + obj.tag;
   // w.s. is significant in text elements
-  var joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
   if (obj.properties) {
     svg += SVG.stringifyProperties(obj.properties);
   }
   if (obj.children || obj.value) {
+    joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
     svg += '>' + joinStr;
     if (obj.value) {
       svg += obj.value;
@@ -15381,6 +15386,14 @@ SVG.importLineString = function(coords) {
     tag: 'path',
     properties: {d: d}
   };
+};
+
+// Kludge for applying fill and other styles to a <text> element
+// (for rendering labels in the GUI with the dot in Canvas, not SVG)
+SVG.importStyledLabel = function(rec, p) {
+  var o = SVG.importLabel(rec, p);
+  SVG.applyStyleAttributes(o, 'Point', rec);
+  return o;
 };
 
 SVG.importLabel = function(rec, p) {
@@ -16859,12 +16872,18 @@ internal.applyRectangleOptions = function(bounds, crs, opts) {
   return bounds;
 };
 
+// opt: aspect ratio as a single number or a range (e.g. "1,2");
 internal.applyAspectRatio = function(opt, bounds) {
-  var range = String(opt).split(','),
+  var range = String(opt).split(',').map(parseFloat),
     aspectRatio = bounds.width() / bounds.height(),
     min, max; // min is height limit, max is width limit
-  min = Number(range[0]);
-  max = range.length > 1 ? Number(range[1]) : min;
+  if (range.length == 1) {
+    range.push(range[0]);
+  } else if (range[0] > range[1]) {
+    range.reverse();
+  }
+  min = range[0];
+  max = range[1];
   if (!min && !max) return bounds;
   if (!min) min = -Infinity;
   if (!max) max = Infinity;
@@ -16895,21 +16914,18 @@ internal.convertBboxToGeoJSON = function(bbox, opts) {
 
 
 api.frame = function(catalog, source, opts) {
-  var width = Number(opts.width);
-  var height, bounds, tmp, dataset;
-  if (width > 0 === false) {
-    stop("Missing a width");
+  var size, bounds, tmp, dataset;
+  if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
+    stop("Missing a width or area");
   }
-  if (opts.height) {
+  if (opts.width && opts.height) {
     opts = utils.extend({}, opts);
-    opts.aspect_ratio = opts.height.split(',').map(function(opt) {
-      var height = Number(opt);
-      if (!opt) return '';
-      if (height > 0 === false) {
-        stop('Missing a valid height');
-      }
-      return width / height;
-    }).join(',');
+    // Height is a string containing either a number or a
+    //   comma-sep. pair of numbers (range); here we convert height to
+    //   an aspect-ratio parameter for the rectangle() function
+    opts.aspect_ratio = internal.getAspectRatioArg(opts.width, opts.height);
+    // TODO: currently returns max,min aspect ratio, should return in min,max order
+    // (rectangle() function should handle max,min argument correctly now anyway)
   }
   tmp = api.rectangle(source, opts);
   bounds = internal.getDatasetBounds(tmp);
@@ -16918,20 +16934,48 @@ api.frame = function(catalog, source, opts) {
   } else if (!internal.getDatasetCRS(tmp)) {
     message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
   }
-  height = width * bounds.height() / bounds.width();
+  size = internal.getFrameSize(bounds, opts);
+  if (size[0] > 0 === false) {
+    stop('Missing a valid frame width');
+  }
+  if (size[1] > 0 === false) {
+    stop('Missing a valid frame height');
+  }
   dataset = {info: {}, layers:[{
     name: opts.name || 'frame',
     data: new DataTable([{
-      width: width,
-      height: height,
+      width: size[0],
+      height: size[1],
       bbox: bounds.toArray(),
       type: 'frame'
     }])
   }]};
-  // return dataset;
   catalog.addDataset(dataset);
 };
 
+// Convert width and height args to aspect ratio arg for the rectangle() function
+internal.getAspectRatioArg = function(widthArg, heightArg) {
+  // heightArg is a string containing either a number or a
+  // comma-sep. pair of numbers (range);
+  return heightArg.split(',').map(function(opt) {
+    var height = Number(opt),
+        width = Number(widthArg);
+    if (!opt) return '';
+    return width / height;
+  }).reverse().join(',');
+};
+
+internal.getFrameSize = function(bounds, opts) {
+  var aspectRatio = bounds.width() / bounds.height();
+  var height, width;
+  if (opts.pixels) {
+    width = Math.sqrt(+opts.pixels * aspectRatio);
+  } else {
+    width = +opts.width;
+  }
+  height = width / aspectRatio;
+  return [Math.round(width), Math.round(height)];
+};
 
 internal.getDatasetDisplayBounds = function(dataset) {
   var frameLyr = findFrameLayerInDataset(dataset);
@@ -22060,6 +22104,10 @@ internal.getOptionParser = function() {
     .option("margin", {
       describe: "(SVG/TopoJSON) space betw. data and viewport (default is 1)"
     })
+    .option("pixels", {
+      describe: "(SVG/TopoJSON) output area in pixels (alternative to width=)",
+      type: "number"
+    })
     .option("svg-scale", {
       describe: "(SVG) source units per pixel (alternative to width= option)",
       type: "number"
@@ -22818,6 +22866,10 @@ internal.getOptionParser = function() {
     })
     .option("height", {
       describe: "pixel height of output (may be a range)"
+    })
+    .option("pixels", {
+      describe: "area of output in pixels (alternative to width and height)",
+      type: "number"
     })
     .option("source", {
       describe: "name of layer to enclose"
