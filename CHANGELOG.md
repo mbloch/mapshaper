@@ -1,3 +1,6 @@
+v0.4.93
+* Improve CRS detection when merging datasets
+
 v0.4.92
 * Added '-o pixels=' and '-frame pixels=' options for scaling SVG output based on the number of pixels in the output image.
 
