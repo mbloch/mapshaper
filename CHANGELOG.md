@@ -1,3 +1,6 @@
+v0.4.94
+* Fix for problem importing GeoJSON with non-standard properties
+
 v0.4.93
 * Improve CRS detection when merging datasets
 
