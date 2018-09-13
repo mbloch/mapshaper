@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.92';
+VERSION = '0.4.93';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -12729,26 +12729,17 @@ internal.mergeDatasets = function(arr) {
       arcCount = 0,
       mergedLayers = [],
       mergedInfo = {},
-      mergedIsLatLng = null,
       mergedArcs;
 
+  // Error if incompatible CRS
+  internal.requireDatasetsHaveCompatibleCRS(arr);
+
   arr.forEach(function(dataset) {
-    var bounds = internal.getDatasetBounds(dataset);
     var n = dataset.arcs ? dataset.arcs.size() : 0;
-    var isLatLng;
     if (n > 0) {
       arcSources.push(dataset.arcs);
     }
-    // check for incompatible CRS
-    if (bounds.hasBounds()) {
-      isLatLng = internal.probablyDecimalDegreeBounds(bounds);
-      if (mergedIsLatLng === null) {
-        mergedIsLatLng = isLatLng;
-      } else if (mergedIsLatLng !== isLatLng) {
-        // TODO: consider stricter CRS rules
-        stop("Unable to combine projected and unprojected datasets");
-      }
-    }
+
     internal.mergeDatasetInfo(mergedInfo, dataset);
     dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
@@ -12771,6 +12762,18 @@ internal.mergeDatasets = function(arr) {
     arcs: mergedArcs,
     layers: mergedLayers
   };
+};
+
+internal.requireDatasetsHaveCompatibleCRS = function(arr) {
+  arr.reduce(function(memo, dataset) {
+    var P = internal.getDatasetCRS(dataset);
+    if (memo && P) {
+      if (internal.isLatLngCRS(memo) != internal.isLatLngCRS(P)) {
+        stop("Unable to combine projected and unprojected datasets");
+      }
+    }
+    return P || memo;
+  }, null);
 };
 
 internal.mergeDatasetInfo = function(merged, dataset) {
