@@ -366,8 +366,6 @@ var geom = {
   R: R,
   D2R: D2R,
   degreesToMeters: degreesToMeters,
-  segmentHit: segmentHit,
-  segmentIntersection: segmentIntersection,
   distanceSq: distanceSq,
   distance2D: distance2D,
   distance3D: distance3D,
