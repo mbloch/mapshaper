@@ -1,3 +1,6 @@
+v0.4.95
+* Fixed some clipping and dissolving errors caused by floating point inaccuracy.
+
 v0.4.94
 * Fix for problem importing GeoJSON with non-standard properties
 

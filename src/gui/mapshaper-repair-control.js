@@ -96,7 +96,7 @@ function RepairControl(gui) {
     _currXX = XX;
     _currArcs = arcs;
     if (n > 0) {
-      console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
+      // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
       pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
       map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
       readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
