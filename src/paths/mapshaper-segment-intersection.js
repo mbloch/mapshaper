@@ -190,7 +190,7 @@ internal.intersectSegments = function(ids, xx, yy) {
       }
 
       // test two candidate segments for intersection
-      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+      hit = geom.segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
           s2p1x, s2p1y, s2p2x, s2p2y);
       if (hit) {
         seg1 = [s1p1, s1p2];

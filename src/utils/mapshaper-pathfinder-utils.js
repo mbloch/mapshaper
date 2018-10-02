@@ -90,8 +90,8 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
   } else {
     // Equal angles: use fallback test that is less sensitive to rounding error
     code = internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-    debug("[chooseRighthandVector()] code:", code, 'angle:', angleA);
-    debug(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
+    debug('[chooseRighthandPath()] equal angles:', angleA, 'fallback test:', code);
+    // debug(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
   }
   return code;
 };

@@ -1,0 +1,8 @@
+{"type":"FeatureCollection", "features": [
+{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[
+[-87.683302,42.071478],
+[-87.68077699999999,42.073189],
+[-87.68074939887087,42.07315957615481],
+[-87.67969598493819,42.071478],
+[-87.683302,42.071478]]]},"properties":{"GEOID":"IL09","NYTID":"IL09","SEAT":"09","ST":"IL","STATEFP":"17"}}
+]}

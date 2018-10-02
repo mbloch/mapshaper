@@ -6,6 +6,18 @@ describe('mapshaper-clip-erase.js', function () {
 
   describe('Misc. clipping issues', function () {
 
+    describe('inner2.json test', function () {
+      it('polygon should not disappear after clipping', function (done) {
+        // previously, inner2.json disappeared after clipping
+        var cmd = '-i test/test_data/issues/clip_errors/inner2.json -clip test/test_data/issues/clip_errors/outer.json -o';
+        api.applyCommands(cmd, {}, function(err, output) {
+          var json = JSON.parse(output['inner2.json']);
+          assert.equal(json.features[0].geometry.coordinates.length, 1); //
+          done();
+        })
+      })
+    })
+
     describe('Issue: arcs of non-clipped layers in the clipped dataset should not be deleted', function() {
       it('test1', function(done) {
         var boxes = {

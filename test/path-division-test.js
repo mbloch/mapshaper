@@ -12,6 +12,13 @@ describe('mapshaper-path-division.js', function () {
       var map = insertCutPoints(points, arcs);
       assert.deepEqual(arcs.toArray(), [[[0, 0], [1, 0]]]);
     })
+
+    it('skip point at end of an arc', function () {
+      var arcs = new ArcCollection([[[0, 0], [1, 0]]]);
+      var points = [{x: 1, y: 0, i: 1}];
+      var map = insertCutPoints(points, arcs);
+      assert.deepEqual(arcs.toArray(), [[[0, 0], [1, 0]]]);
+    })
   })
 
   describe('getCutPoint()', function () {

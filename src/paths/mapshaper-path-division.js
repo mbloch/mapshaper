@@ -26,6 +26,7 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   } else {
     snapDist = internal.getHighPrecisionSnapInterval(arcs);
   }
+  debug('addIntersectionCuts() snap dist:', snapDist);
 
   // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
   // used to reset simplification)
@@ -190,7 +191,9 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
       yy1 = new Float64Array(destPointTotal),
       n0, n1, arcLen, p;
 
+
   points.reverse(); // reverse sorted order to use pop()
+
   p = points.pop();
 
   for (var srcArcId=0, destArcId=0; srcArcId < srcArcTotal; srcArcId++) {
@@ -255,6 +258,12 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
     debug("[getCutPoint()] Coordinate range error");
     return null;
   }
+  // if (x == ix && y == iy || x == jx && y == jy) {
+    // if point xy is at a vertex, don't insert a (duplicate) point
+    // TODO: investigate why this can cause pathfinding errors
+    //       e.g. when clipping cd115_districts
+    // return null;
+  // }
   return {x: x, y: y, i: i};
 };
 

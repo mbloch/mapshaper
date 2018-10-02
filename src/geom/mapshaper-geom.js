@@ -34,21 +34,6 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
-// Return id of nearest point to x, y, among x0, y0, x1, y1, ...
-function nearestPoint(x, y, x0, y0) {
-  var minIdx = -1,
-      minDist = Infinity,
-      dist;
-  for (var i = 0, j = 2, n = arguments.length; j < n; i++, j += 2) {
-    dist = distanceSq(x, y, arguments[j], arguments[j+1]);
-    if (dist < minDist) {
-      minDist = dist;
-      minIdx = i;
-    }
-  }
-  return minIdx;
-}
-
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 function innerAngle2(ax, ay, bx, by, cx, cy) {
