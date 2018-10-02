@@ -89,21 +89,6 @@ function findEndpointInRange(ax, ay, bx, by, cx, cy, dx, dy) {
   return p;
 }
 
-// Return id of nearest point to x, y, among x0, y0, x1, y1, ...
-function nearestPoint(x, y, x0, y0) {
-  var minIdx = -1,
-      minDist = Infinity,
-      dist;
-  for (var i = 0, j = 2, n = arguments.length; j < n; i++, j += 2) {
-    dist = distanceSq(x, y, arguments[j], arguments[j+1]);
-    if (dist < minDist) {
-      minDist = dist;
-      minIdx = i;
-    }
-  }
-  return minIdx;
-}
-
 function snapIfCloser(p, minDist, x, y, x2, y2) {
   var dist = distance2D(x, y, x2, y2);
   if (dist < minDist) {
@@ -287,4 +272,19 @@ function endpointHit(ax, ay, bx, by, cx, cy, dx, dy) {
 //     p = [ax + m * (bx - ax), ay + m * (by - ay)];
 //   }
 //   return p;
+// }
+
+// // Return id of nearest point to x, y, among x0, y0, x1, y1, ...
+// function nearestPoint(x, y, x0, y0) {
+//   var minIdx = -1,
+//       minDist = Infinity,
+//       dist;
+//   for (var i = 0, j = 2, n = arguments.length; j < n; i++, j += 2) {
+//     dist = distanceSq(x, y, arguments[j], arguments[j+1]);
+//     if (dist < minDist) {
+//       minDist = dist;
+//       minIdx = i;
+//     }
+//   }
+//   return minIdx;
 // }
