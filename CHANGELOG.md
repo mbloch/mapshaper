@@ -1,3 +1,6 @@
+v0.4.96
+* Fix for issue #304 (inaccurate centroids for some tiny polygons, caused by floating point rounding).
+
 v0.4.95
 * Fixed some clipping and dissolving errors caused by floating point inaccuracy.
 
