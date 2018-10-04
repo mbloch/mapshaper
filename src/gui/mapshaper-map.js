@@ -23,6 +23,7 @@ function MshpMap(gui, opts) {
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
       _visibleLayers = [], // cached visible map layers
+      _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
       _inspector, _stack, _nav, _hit;
 
@@ -78,10 +79,10 @@ function MshpMap(gui, opts) {
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
-    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+    if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
       needReset = true;
     } else {
-      needReset = GUI.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
+      needReset = GUI.mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds());
     }
 
     if (isFrameView()) {
@@ -92,6 +93,7 @@ function MshpMap(gui, opts) {
       _nav.setZoomFactor(1);
     }
     _ext.setBounds(fullBounds); // update 'home' button extent
+    _fullBounds = fullBounds;
     if (needReset) {
       _ext.reset();
     }

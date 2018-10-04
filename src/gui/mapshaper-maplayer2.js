@@ -47,6 +47,7 @@ function getDisplayBounds(lyr, arcs, isTable) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
       marginPct = isTable ? getVariableMargin(lyr) : 0.025,
       bounds = arcBounds, // default display extent: all arcs in the dataset
+      pad = 1e-4,
       lyrBounds;
 
   if (lyr.geometry_type == 'point') {
@@ -66,16 +67,10 @@ function getDisplayBounds(lyr, arcs, isTable) {
     return new Bounds(); // may cause errors downstream
   }
 
-  // If a layer has zero width or height (e.g. if it contains a single point),
-  // inflate its display bounding box by a default amount
-  if (bounds.width() === 0) {
-    bounds.xmin = (bounds.centerX() || 0) - 1;
-    bounds.xmax = bounds.xmin + 2;
-  }
-  if (bounds.height() === 0) {
-    bounds.ymin = (bounds.centerY() || 0) - 1;
-    bounds.ymax = bounds.ymin + 2;
-  }
+  // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+  // TODO: move this out of layer code -- now that display extent can include several layers
+  bounds.padBounds(pad,pad,pad,pad);
+
   bounds.scale(1 + marginPct * 2);
   return bounds;
 }
