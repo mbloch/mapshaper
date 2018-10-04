@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.95';
+VERSION = '0.4.96';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -7812,24 +7812,29 @@ geom.getPathCentroid = function(ids, arcs) {
       sum = 0,
       sumX = 0,
       sumY = 0,
-      ax, ay, tmp, area;
+      dx, dy, ax, ay, bx, by, tmp, area;
   if (!iter.hasNext()) return null;
-  ax = iter.x;
-  ay = iter.y;
+  // reduce effect of fp errors by shifting shape origin to 0,0 (issue #304)
+  ax = 0;
+  ay = 0;
+  dx = -iter.x;
+  dy = -iter.y;
   while (iter.hasNext()) {
-    tmp = ax * iter.y - ay * iter.x;
+    bx = ax;
+    by = ay;
+    ax = iter.x + dx;
+    ay = iter.y + dy;
+    tmp = bx * ay - by * ax;
     sum += tmp;
-    sumX += tmp * (iter.x + ax);
-    sumY += tmp * (iter.y + ay);
-    ax = iter.x;
-    ay = iter.y;
+    sumX += tmp * (bx + ax);
+    sumY += tmp * (by + ay);
   }
   area = sum / 2;
   if (area === 0) {
     return geom.getAvgPathXY(ids, arcs);
   } else return {
-    x: sumX / (6 * area),
-    y: sumY / (6 * area)
+    x: sumX / (6 * area) - dx,
+    y: sumY / (6 * area) - dy
   };
 };
 

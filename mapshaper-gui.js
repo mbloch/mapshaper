@@ -1918,6 +1918,7 @@ function getDisplayBounds(lyr, arcs, isTable) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
       marginPct = isTable ? getVariableMargin(lyr) : 0.025,
       bounds = arcBounds, // default display extent: all arcs in the dataset
+      pad = 1e-4,
       lyrBounds;
 
   if (lyr.geometry_type == 'point') {
@@ -1937,16 +1938,10 @@ function getDisplayBounds(lyr, arcs, isTable) {
     return new Bounds(); // may cause errors downstream
   }
 
-  // If a layer has zero width or height (e.g. if it contains a single point),
-  // inflate its display bounding box by a default amount
-  if (bounds.width() === 0) {
-    bounds.xmin = (bounds.centerX() || 0) - 1;
-    bounds.xmax = bounds.xmin + 2;
-  }
-  if (bounds.height() === 0) {
-    bounds.ymin = (bounds.centerY() || 0) - 1;
-    bounds.ymax = bounds.ymin + 2;
-  }
+  // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+  // TODO: move this out of layer code -- now that display extent can include several layers
+  bounds.padBounds(pad,pad,pad,pad);
+
   bounds.scale(1 + marginPct * 2);
   return bounds;
 }
@@ -3798,6 +3793,7 @@ function MshpMap(gui, opts) {
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
       _visibleLayers = [], // cached visible map layers
+      _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
       _inspector, _stack, _nav, _hit;
 
@@ -3853,10 +3849,10 @@ function MshpMap(gui, opts) {
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
-    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+    if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
       needReset = true;
     } else {
-      needReset = GUI.mapNeedsReset(fullBounds, prevLyr.bounds, _ext.getBounds());
+      needReset = GUI.mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds());
     }
 
     if (isFrameView()) {
@@ -3867,6 +3863,7 @@ function MshpMap(gui, opts) {
       _nav.setZoomFactor(1);
     }
     _ext.setBounds(fullBounds); // update 'home' button extent
+    _fullBounds = fullBounds;
     if (needReset) {
       _ext.reset();
     }
