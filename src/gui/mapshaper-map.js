@@ -193,13 +193,38 @@ function MshpMap(gui, opts) {
 
   function getFullBounds() {
     var b = new Bounds();
+    var marginPct = 0.025;
+    var pad = 1e-4;
     if (isPreviewView()) {
       return internal.getFrameLayerBounds(internal.findFrameLayer(model));
     }
     getDrawableContentLayers().forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
+      if (isTableView()) {
+        marginPct = getTableMargin(lyr.layer);
+      }
     });
+    if (!b.hasBounds()) {
+      // assign bounds to empty layers, to prevent rendering errors downstream
+      b.setBounds(0,0,0,0);
+    }
+    // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+    b.padBounds(pad,pad,pad,pad);
+    // add margin
+    b.scale(1 + marginPct * 2);
     return b;
+  }
+
+  // Calculate margin when displaying content at full zoom, as pct of screen size
+  function getTableMargin(lyr) {
+    var n = internal.getFeatureCount(lyr);
+    var pct = 0.04;
+    if (n < 5) {
+      pct = 0.2;
+    } else if (n < 100) {
+      pct = 0.1;
+    }
+    return pct;
   }
 
   function isActiveLayer(lyr) {
