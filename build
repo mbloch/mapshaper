@@ -7,7 +7,7 @@ var requiredModules = [
     'buffer',
     'iconv-lite',
     'fs',
-    'rbush',
+    'flatbush',
     'rw',
     'path',
     'd3-dsv'

@@ -262,7 +262,7 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
   var holes = [],
       groups = [],
       sign = reverseWinding ? -1 : 1,
-      ringIndex;
+      boundsQuery;
 
   (paths || []).forEach(function(path) {
     if (path.area * sign > 0) {
@@ -281,14 +281,9 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
   // Using a spatial index to improve performance when the current feature
   // contains many holes and space-filling rings.
   // (Thanks to @simonepri for providing an example implementation in PR #248)
-  ringIndex = require('rbush')();
-  ringIndex.load(groups.map(function(group, i) {
-    var bounds = group[0].bounds;
+  boundsQuery = internal.getBoundsSearchFunction(groups.map(function(group, i) {
     return {
-      minX: bounds.xmin,
-      minY: bounds.ymin,
-      maxX: bounds.xmax,
-      maxY: bounds.ymax,
+      bounds: group[0].bounds,
       idx: i
     };
   }));
@@ -298,13 +293,9 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
     var containerId = -1,
         containerArea = 0,
         holeArea = hole.area * -sign,
+        b = hole.bounds,
         // Find rings that might contain this hole
-        candidates = ringIndex.search({
-          minX: hole.bounds.xmin,
-          minY: hole.bounds.ymin,
-          maxX: hole.bounds.xmax,
-          maxY: hole.bounds.ymax
-        }),
+        candidates = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
         ring, ringId, ringArea, isContained;
     // Group this hole with the smallest-area ring that contains it.
     // (Assumes that if a ring's bbox contains a hole, then the ring also

@@ -34,7 +34,6 @@ describe('mapshaper-path-index.js', function () {
       assert.equal(index.findSmallestEnclosingPolygon([3]), 1);
     });
 
-
     it('Ignores congruent polygons', function () {
       var input = {
         type: 'GeometryCollection',

@@ -3,34 +3,26 @@ mapshaper-shape-utils
 mapshaper-dataset-utils
 mapshaper-shape-geom
 mapshaper-polygon-index
+mapshaper-bounds-search
 */
 
 function PathIndex(shapes, arcs) {
-  var _index;
+  var boundsQuery = internal.getBoundsSearchFunction(getRingData(shapes, arcs));
   var totalArea = internal.getPathBounds(shapes, arcs).area();
-  init(shapes);
 
-  function init(shapes) {
-    var boxes = [];
-
+  function getRingData(shapes, arcs) {
+    var arr = [];
     shapes.forEach(function(shp, shpId) {
       var n = shp ? shp.length : 0;
       for (var i=0; i<n; i++) {
-        addPath(shp[i], shpId);
+        arr.push({
+          ids: shp[i],
+          id: shpId,
+          bounds: arcs.getSimpleShapeBounds(shp[i])
+        });
       }
     });
-
-    _index = require('rbush')();
-    _index.load(boxes);
-
-    function addPath(ids, shpId) {
-      var bounds = arcs.getSimpleShapeBounds(ids);
-      var item = rbushBounds(bounds.toArray());
-      item.ids = ids;
-      item.bounds = bounds;
-      item.id = shpId;
-      boxes.push(item);
-    }
+    return arr;
   }
 
   // Returns shape ids of all polygons that intersect point p
@@ -107,8 +99,8 @@ function PathIndex(shapes, arcs) {
   // return array of paths that are contained within a path, or null if none
   // @pathIds Array of arc ids comprising a closed path
   this.findEnclosedPaths = function(pathIds) {
-    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
-        cands = _index.search(rbushBounds(pathBounds.toArray())),
+    var b = arcs.getSimpleShapeBounds(pathIds),
+        cands = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
         paths = [],
         index;
 
@@ -117,7 +109,7 @@ function PathIndex(shapes, arcs) {
     }
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids);
-      var isEnclosed = pathBounds.containsPoint(p[0], p[1]) && (index ?
+      var isEnclosed = b.containsPoint(p[0], p[1]) && (index ?
         index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
         paths.push(cand.ids);
@@ -164,15 +156,6 @@ function PathIndex(shapes, arcs) {
     return isOn || isIn;
   }
 
-  function rbushBounds(arr) {
-    return {
-      minX: arr[0],
-      minY: arr[1],
-      maxX: arr[2],
-      maxY: arr[3]
-    };
-  }
-
   function groupItemsByShapeId(items) {
     var groups = [],
         group, item;
@@ -192,7 +175,7 @@ function PathIndex(shapes, arcs) {
   function findPointHitCandidates(p, buffer) {
     var b = buffer > 0 ? buffer : 0;
     var x = p[0], y = p[1];
-    return _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
+    return boundsQuery([p[0] - b, p[1] - b, p[0] + b, p[1] + b]);
   }
 
   // Find a point on a ring to use for point-in-polygon testing
