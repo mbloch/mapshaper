@@ -1,3 +1,6 @@
+v0.4.97
+* Updated mproj version to include bertin1953 projection.
+
 v0.4.96
 * Fix for issue #304 (inaccurate centroids for some tiny polygons, caused by floating point rounding).
 

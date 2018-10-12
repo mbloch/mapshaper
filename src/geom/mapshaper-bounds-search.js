@@ -1,5 +1,8 @@
 /* @requires mapshaper-common */
 
+// Returns a search function
+// Receives array of objects to index; objects must have a 'bounds' member
+//    that is a Bounds object.
 internal.getBoundsSearchFunction = function(boxes) {
   var index, Flatbush;
   if (!boxes.length) {
@@ -14,6 +17,8 @@ internal.getBoundsSearchFunction = function(boxes) {
   });
   index.finish();
 
+  // Receives xmin, ymin, xmax, ymax parameters
+  // Returns subset of original @bounds array
   return function(a, b, c, d) {
     return index.search(a, b, c, d).map(function(i) {
       return boxes[i];
