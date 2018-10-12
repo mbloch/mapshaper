@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.96';
+VERSION = '0.4.97';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -3172,7 +3172,7 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
   var holes = [],
       groups = [],
       sign = reverseWinding ? -1 : 1,
-      ringIndex;
+      boundsQuery;
 
   (paths || []).forEach(function(path) {
     if (path.area * sign > 0) {
@@ -3191,14 +3191,9 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
   // Using a spatial index to improve performance when the current feature
   // contains many holes and space-filling rings.
   // (Thanks to @simonepri for providing an example implementation in PR #248)
-  ringIndex = require('rbush')();
-  ringIndex.load(groups.map(function(group, i) {
-    var bounds = group[0].bounds;
+  boundsQuery = internal.getBoundsSearchFunction(groups.map(function(group, i) {
     return {
-      minX: bounds.xmin,
-      minY: bounds.ymin,
-      maxX: bounds.xmax,
-      maxY: bounds.ymax,
+      bounds: group[0].bounds,
       idx: i
     };
   }));
@@ -3208,13 +3203,9 @@ internal.groupPolygonRings = function(paths, reverseWinding) {
     var containerId = -1,
         containerArea = 0,
         holeArea = hole.area * -sign,
+        b = hole.bounds,
         // Find rings that might contain this hole
-        candidates = ringIndex.search({
-          minX: hole.bounds.xmin,
-          minY: hole.bounds.ymin,
-          maxX: hole.bounds.xmax,
-          maxY: hole.bounds.ymax
-        }),
+        candidates = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
         ring, ringId, ringArea, isContained;
     // Group this hole with the smallest-area ring that contains it.
     // (Assumes that if a ring's bbox contains a hole, then the ring also
@@ -4532,32 +4523,52 @@ function PolygonIndex(shape, arcs, opts) {
 
 
 
+// Returns a search function
+// Receives array of objects to index; objects must have a 'bounds' member
+//    that is a Bounds object.
+internal.getBoundsSearchFunction = function(boxes) {
+  var index, Flatbush;
+  if (!boxes.length) {
+    // Unlike rbush, flatbush doesn't allow size 0 indexes; workaround
+    return function() {return [];};
+  }
+  Flatbush = require('flatbush');
+  index = new Flatbush(boxes.length);
+  boxes.forEach(function(ring) {
+    var b = ring.bounds;
+    index.add(b.xmin, b.ymin, b.xmax, b.ymax);
+  });
+  index.finish();
+
+  // Receives xmin, ymin, xmax, ymax parameters
+  // Returns subset of original @bounds array
+  return function(a, b, c, d) {
+    return index.search(a, b, c, d).map(function(i) {
+      return boxes[i];
+    });
+  };
+};
+
+
+
+
 function PathIndex(shapes, arcs) {
-  var _index;
+  var boundsQuery = internal.getBoundsSearchFunction(getRingData(shapes, arcs));
   var totalArea = internal.getPathBounds(shapes, arcs).area();
-  init(shapes);
 
-  function init(shapes) {
-    var boxes = [];
-
+  function getRingData(shapes, arcs) {
+    var arr = [];
     shapes.forEach(function(shp, shpId) {
       var n = shp ? shp.length : 0;
       for (var i=0; i<n; i++) {
-        addPath(shp[i], shpId);
+        arr.push({
+          ids: shp[i],
+          id: shpId,
+          bounds: arcs.getSimpleShapeBounds(shp[i])
+        });
       }
     });
-
-    _index = require('rbush')();
-    _index.load(boxes);
-
-    function addPath(ids, shpId) {
-      var bounds = arcs.getSimpleShapeBounds(ids);
-      var item = rbushBounds(bounds.toArray());
-      item.ids = ids;
-      item.bounds = bounds;
-      item.id = shpId;
-      boxes.push(item);
-    }
+    return arr;
   }
 
   // Returns shape ids of all polygons that intersect point p
@@ -4634,8 +4645,8 @@ function PathIndex(shapes, arcs) {
   // return array of paths that are contained within a path, or null if none
   // @pathIds Array of arc ids comprising a closed path
   this.findEnclosedPaths = function(pathIds) {
-    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
-        cands = _index.search(rbushBounds(pathBounds.toArray())),
+    var b = arcs.getSimpleShapeBounds(pathIds),
+        cands = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
         paths = [],
         index;
 
@@ -4644,7 +4655,7 @@ function PathIndex(shapes, arcs) {
     }
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids);
-      var isEnclosed = pathBounds.containsPoint(p[0], p[1]) && (index ?
+      var isEnclosed = b.containsPoint(p[0], p[1]) && (index ?
         index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
         paths.push(cand.ids);
@@ -4691,15 +4702,6 @@ function PathIndex(shapes, arcs) {
     return isOn || isIn;
   }
 
-  function rbushBounds(arr) {
-    return {
-      minX: arr[0],
-      minY: arr[1],
-      maxX: arr[2],
-      maxY: arr[3]
-    };
-  }
-
   function groupItemsByShapeId(items) {
     var groups = [],
         group, item;
@@ -4719,7 +4721,7 @@ function PathIndex(shapes, arcs) {
   function findPointHitCandidates(p, buffer) {
     var b = buffer > 0 ? buffer : 0;
     var x = p[0], y = p[1];
-    return _index.search(rbushBounds([p[0] - b, p[1] - b, p[0] + b, p[1] + b]));
+    return boundsQuery([p[0] - b, p[1] - b, p[0] + b, p[1] + b]);
   }
 
   // Find a point on a ring to use for point-in-polygon testing

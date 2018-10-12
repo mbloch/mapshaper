@@ -1910,15 +1910,13 @@ function getMapLayer(layer, dataset) {
     utils.extend(obj, getDisplayLayerForTable(layer.data));
   }
 
-  obj.bounds = getDisplayBounds(obj.layer, obj.arcs, obj.tabular);
+  obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
   return obj;
 }
 
-function getDisplayBounds(lyr, arcs, isTable) {
+function getDisplayBounds(lyr, arcs) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
-      marginPct = isTable ? getVariableMargin(lyr) : 0.025,
       bounds = arcBounds, // default display extent: all arcs in the dataset
-      pad = 1e-4,
       lyrBounds;
 
   if (lyr.geometry_type == 'point') {
@@ -1935,27 +1933,9 @@ function getDisplayBounds(lyr, arcs, isTable) {
   }
 
   if (!bounds || !bounds.hasBounds()) { // empty layer
-    return new Bounds(); // may cause errors downstream
+    bounds = new Bounds();
   }
-
-  // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
-  // TODO: move this out of layer code -- now that display extent can include several layers
-  bounds.padBounds(pad,pad,pad,pad);
-
-  bounds.scale(1 + marginPct * 2);
   return bounds;
-}
-
-// Calculate margin when displaying content at full zoom, as pct of screen size
-function getVariableMargin(lyr) {
-  var n = internal.getFeatureCount(lyr);
-  var pct = 0.04;
-  if (n < 5) {
-    pct = 0.2;
-  } else if (n < 100) {
-    pct = 0.1;
-  }
-  return pct;
 }
 
 
@@ -3963,13 +3943,38 @@ function MshpMap(gui, opts) {
 
   function getFullBounds() {
     var b = new Bounds();
+    var marginPct = 0.025;
+    var pad = 1e-4;
     if (isPreviewView()) {
       return internal.getFrameLayerBounds(internal.findFrameLayer(model));
     }
     getDrawableContentLayers().forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
+      if (isTableView()) {
+        marginPct = getTableMargin(lyr.layer);
+      }
     });
+    if (!b.hasBounds()) {
+      // assign bounds to empty layers, to prevent rendering errors downstream
+      b.setBounds(0,0,0,0);
+    }
+    // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+    b.padBounds(pad,pad,pad,pad);
+    // add margin
+    b.scale(1 + marginPct * 2);
     return b;
+  }
+
+  // Calculate margin when displaying content at full zoom, as pct of screen size
+  function getTableMargin(lyr) {
+    var n = internal.getFeatureCount(lyr);
+    var pct = 0.04;
+    if (n < 5) {
+      pct = 0.2;
+    } else if (n < 100) {
+      pct = 0.1;
+    }
+    return pct;
   }
 
   function isActiveLayer(lyr) {

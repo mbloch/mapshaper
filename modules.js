@@ -1480,7 +1480,7 @@ InternalDecoderCesu8.prototype.end = function() {
     return res;
 }
 
-},{"buffer":"buffer","string_decoder":55}],9:[function(require,module,exports){
+},{"buffer":"buffer","string_decoder":54}],9:[function(require,module,exports){
 "use strict";
 var Buffer = require("buffer").Buffer;
 
@@ -4134,7 +4134,7 @@ module.exports = function (iconv) {
     }
 }
 
-},{"buffer":"buffer","stream":54}],24:[function(require,module,exports){
+},{"buffer":"buffer","stream":53}],24:[function(require,module,exports){
 "use strict";
 
 var Buffer = require("buffer").Buffer,
@@ -4257,7 +4257,7 @@ IconvLiteDecoderStream.prototype.collect = function(cb) {
 }
 
 
-},{"buffer":"buffer","stream":54}],25:[function(require,module,exports){
+},{"buffer":"buffer","stream":53}],25:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -4628,69 +4628,9 @@ process.chdir = function (dir) {
 process.umask = function() { return 0; };
 
 },{}],31:[function(require,module,exports){
-'use strict';
-
-module.exports = quickselect;
-module.exports.default = quickselect;
-
-function quickselect(arr, k, left, right, compare) {
-    quickselectStep(arr, k, left || 0, right || (arr.length - 1), compare || defaultCompare);
-};
-
-function quickselectStep(arr, k, left, right, compare) {
-
-    while (right > left) {
-        if (right - left > 600) {
-            var n = right - left + 1;
-            var m = k - left + 1;
-            var z = Math.log(n);
-            var s = 0.5 * Math.exp(2 * z / 3);
-            var sd = 0.5 * Math.sqrt(z * s * (n - s) / n) * (m - n / 2 < 0 ? -1 : 1);
-            var newLeft = Math.max(left, Math.floor(k - m * s / n + sd));
-            var newRight = Math.min(right, Math.floor(k + (n - m) * s / n + sd));
-            quickselectStep(arr, k, newLeft, newRight, compare);
-        }
-
-        var t = arr[k];
-        var i = left;
-        var j = right;
-
-        swap(arr, left, k);
-        if (compare(arr[right], t) > 0) swap(arr, left, right);
-
-        while (i < j) {
-            swap(arr, i, j);
-            i++;
-            j--;
-            while (compare(arr[i], t) < 0) i++;
-            while (compare(arr[j], t) > 0) j--;
-        }
-
-        if (compare(arr[left], t) === 0) swap(arr, left, j);
-        else {
-            j++;
-            swap(arr, j, right);
-        }
-
-        if (j <= k) left = j + 1;
-        if (k <= j) right = j - 1;
-    }
-}
-
-function swap(arr, i, j) {
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-}
-
-function defaultCompare(a, b) {
-    return a < b ? -1 : a > b ? 1 : 0;
-}
-
-},{}],32:[function(require,module,exports){
 module.exports = require('./lib/_stream_duplex.js');
 
-},{"./lib/_stream_duplex.js":33}],33:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":32}],32:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4815,7 +4755,7 @@ function forEach(xs, f) {
     f(xs[i], i);
   }
 }
-},{"./_stream_readable":35,"./_stream_writable":37,"core-util-is":3,"inherits":41,"process-nextick-args":29}],34:[function(require,module,exports){
+},{"./_stream_readable":34,"./_stream_writable":36,"core-util-is":3,"inherits":40,"process-nextick-args":29}],33:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4863,7 +4803,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":36,"core-util-is":3,"inherits":41}],35:[function(require,module,exports){
+},{"./_stream_transform":35,"core-util-is":3,"inherits":40}],34:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5873,7 +5813,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":33,"./internal/streams/BufferList":38,"./internal/streams/destroy":39,"./internal/streams/stream":40,"_process":30,"core-util-is":3,"events":4,"inherits":41,"isarray":28,"process-nextick-args":29,"safe-buffer":53,"string_decoder/":55,"util":2}],36:[function(require,module,exports){
+},{"./_stream_duplex":32,"./internal/streams/BufferList":37,"./internal/streams/destroy":38,"./internal/streams/stream":39,"_process":30,"core-util-is":3,"events":4,"inherits":40,"isarray":28,"process-nextick-args":29,"safe-buffer":52,"string_decoder/":54,"util":2}],35:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6088,7 +6028,7 @@ function done(stream, er, data) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":33,"core-util-is":3,"inherits":41}],37:[function(require,module,exports){
+},{"./_stream_duplex":32,"core-util-is":3,"inherits":40}],36:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -6755,7 +6695,7 @@ Writable.prototype._destroy = function (err, cb) {
   cb(err);
 };
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":33,"./internal/streams/destroy":39,"./internal/streams/stream":40,"_process":30,"core-util-is":3,"inherits":41,"process-nextick-args":29,"safe-buffer":53,"util-deprecate":56}],38:[function(require,module,exports){
+},{"./_stream_duplex":32,"./internal/streams/destroy":38,"./internal/streams/stream":39,"_process":30,"core-util-is":3,"inherits":40,"process-nextick-args":29,"safe-buffer":52,"util-deprecate":55}],37:[function(require,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -6830,7 +6770,7 @@ module.exports = function () {
 
   return BufferList;
 }();
-},{"safe-buffer":53}],39:[function(require,module,exports){
+},{"safe-buffer":52}],38:[function(require,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -6903,15 +6843,15 @@ module.exports = {
   destroy: destroy,
   undestroy: undestroy
 };
-},{"process-nextick-args":29}],40:[function(require,module,exports){
+},{"process-nextick-args":29}],39:[function(require,module,exports){
 module.exports = require('events').EventEmitter;
 
-},{"events":4}],41:[function(require,module,exports){
+},{"events":4}],40:[function(require,module,exports){
 arguments[4][26][0].apply(exports,arguments)
-},{"dup":26}],42:[function(require,module,exports){
+},{"dup":26}],41:[function(require,module,exports){
 module.exports = require('./readable').PassThrough
 
-},{"./readable":43}],43:[function(require,module,exports){
+},{"./readable":42}],42:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -6920,13 +6860,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":33,"./lib/_stream_passthrough.js":34,"./lib/_stream_readable.js":35,"./lib/_stream_transform.js":36,"./lib/_stream_writable.js":37}],44:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":32,"./lib/_stream_passthrough.js":33,"./lib/_stream_readable.js":34,"./lib/_stream_transform.js":35,"./lib/_stream_writable.js":36}],43:[function(require,module,exports){
 module.exports = require('./readable').Transform
 
-},{"./readable":43}],45:[function(require,module,exports){
+},{"./readable":42}],44:[function(require,module,exports){
 module.exports = require('./lib/_stream_writable.js');
 
-},{"./lib/_stream_writable.js":37}],46:[function(require,module,exports){
+},{"./lib/_stream_writable.js":36}],45:[function(require,module,exports){
 var slice = Array.prototype.slice;
 
 function dashify(method, file) {
@@ -6942,7 +6882,7 @@ exports.readFileSync = dashify(require("./read-file-sync"), "/dev/stdin");
 exports.writeFile = dashify(require("./write-file"), "/dev/stdout");
 exports.writeFileSync = dashify(require("./write-file-sync"), "/dev/stdout");
 
-},{"./read-file":50,"./read-file-sync":49,"./write-file":52,"./write-file-sync":51}],47:[function(require,module,exports){
+},{"./read-file":49,"./read-file-sync":48,"./write-file":51,"./write-file-sync":50}],46:[function(require,module,exports){
 (function (Buffer){
 module.exports = function(options) {
   if (options) {
@@ -6969,7 +6909,7 @@ function encoding(encoding) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":"buffer"}],48:[function(require,module,exports){
+},{"buffer":"buffer"}],47:[function(require,module,exports){
 (function (Buffer){
 module.exports = function(data, options) {
   return typeof data === "string"
@@ -6980,7 +6920,7 @@ module.exports = function(data, options) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":"buffer"}],49:[function(require,module,exports){
+},{"buffer":"buffer"}],48:[function(require,module,exports){
 (function (Buffer){
 var fs = require("fs"),
     decode = require("./decode");
@@ -7013,7 +6953,7 @@ module.exports = function(filename, options) {
 var bufferSize = 1 << 16;
 
 }).call(this,require("buffer").Buffer)
-},{"./decode":47,"buffer":"buffer","fs":"fs"}],50:[function(require,module,exports){
+},{"./decode":46,"buffer":"buffer","fs":"fs"}],49:[function(require,module,exports){
 (function (process){
 var fs = require("fs"),
     decode = require("./decode");
@@ -7040,7 +6980,7 @@ function readStream(stream, options, callback) {
 }
 
 }).call(this,require('_process'))
-},{"./decode":47,"_process":30,"fs":"fs"}],51:[function(require,module,exports){
+},{"./decode":46,"_process":30,"fs":"fs"}],50:[function(require,module,exports){
 var fs = require("fs"),
     encode = require("./encode");
 
@@ -7074,7 +7014,7 @@ module.exports = function(filename, data, options) {
   }
 };
 
-},{"./encode":48,"fs":"fs"}],52:[function(require,module,exports){
+},{"./encode":47,"fs":"fs"}],51:[function(require,module,exports){
 (function (process){
 var fs = require("fs"),
     encode = require("./encode");
@@ -7100,7 +7040,7 @@ function writeStream(stream, send, data, options, callback) {
 }
 
 }).call(this,require('_process'))
-},{"./encode":48,"_process":30,"fs":"fs"}],53:[function(require,module,exports){
+},{"./encode":47,"_process":30,"fs":"fs"}],52:[function(require,module,exports){
 /* eslint-disable node/no-deprecated-api */
 var buffer = require('buffer')
 var Buffer = buffer.Buffer
@@ -7164,7 +7104,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   return buffer.SlowBuffer(size)
 }
 
-},{"buffer":"buffer"}],54:[function(require,module,exports){
+},{"buffer":"buffer"}],53:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7293,7 +7233,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":4,"inherits":26,"readable-stream/duplex.js":32,"readable-stream/passthrough.js":42,"readable-stream/readable.js":43,"readable-stream/transform.js":44,"readable-stream/writable.js":45}],55:[function(require,module,exports){
+},{"events":4,"inherits":26,"readable-stream/duplex.js":31,"readable-stream/passthrough.js":41,"readable-stream/readable.js":42,"readable-stream/transform.js":43,"readable-stream/writable.js":44}],54:[function(require,module,exports){
 'use strict';
 
 var Buffer = require('safe-buffer').Buffer;
@@ -7566,7 +7506,7 @@ function simpleWrite(buf) {
 function simpleEnd(buf) {
   return buf && buf.length ? this.write(buf) : '';
 }
-},{"safe-buffer":53}],56:[function(require,module,exports){
+},{"safe-buffer":52}],55:[function(require,module,exports){
 (function (global){
 
 /**
@@ -9514,6 +9454,478 @@ exports.tsvFormat = tsvFormat;
 exports.tsvFormatRows = tsvFormatRows;
 
 Object.defineProperty(exports, '__esModule', { value: true });
+
+})));
+
+},{}],"flatbush":[function(require,module,exports){
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global.Flatbush = factory());
+}(this, (function () { 'use strict';
+
+    var FlatQueue = function FlatQueue() {
+        this.ids = [];
+        this.values = [];
+        this.length = 0;
+    };
+
+    FlatQueue.prototype.clear = function clear () {
+        this.length = this.ids.length = this.values.length = 0;
+    };
+
+    FlatQueue.prototype.push = function push (id, value) {
+            var this$1 = this;
+
+        this.ids.push(id);
+        this.values.push(value);
+
+        var pos = this.length++;
+        while (pos > 0) {
+            var parent = (pos - 1) >> 1;
+            var parentValue = this$1.values[parent];
+            if (value >= parentValue) { break; }
+            this$1.ids[pos] = this$1.ids[parent];
+            this$1.values[pos] = parentValue;
+            pos = parent;
+        }
+
+        this.ids[pos] = id;
+        this.values[pos] = value;
+    };
+
+    FlatQueue.prototype.pop = function pop () {
+            var this$1 = this;
+
+        if (this.length === 0) { return undefined; }
+
+        var top = this.ids[0];
+        this.length--;
+
+        if (this.length > 0) {
+            var id = this.ids[0] = this.ids[this.length];
+            var value = this.values[0] = this.values[this.length];
+            var halfLength = this.length >> 1;
+            var pos = 0;
+
+            while (pos < halfLength) {
+                var left = (pos << 1) + 1;
+                var right = left + 1;
+                var bestIndex = this$1.ids[left];
+                var bestValue = this$1.values[left];
+                var rightValue = this$1.values[right];
+
+                if (right < this$1.length && rightValue < bestValue) {
+                    left = right;
+                    bestIndex = this$1.ids[right];
+                    bestValue = rightValue;
+                }
+                if (bestValue >= value) { break; }
+
+                this$1.ids[pos] = bestIndex;
+                this$1.values[pos] = bestValue;
+                pos = left;
+            }
+
+            this.ids[pos] = id;
+            this.values[pos] = value;
+        }
+
+        this.ids.pop();
+        this.values.pop();
+
+        return top;
+    };
+
+    FlatQueue.prototype.peek = function peek () {
+        return this.ids[0];
+    };
+
+    FlatQueue.prototype.peekValue = function peekValue () {
+        return this.values[0];
+    };
+
+    var ARRAY_TYPES = [
+        Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array,
+        Int32Array, Uint32Array, Float32Array, Float64Array
+    ];
+
+    var VERSION = 3; // serialized format version
+
+    var Flatbush = function Flatbush(numItems, nodeSize, ArrayType, data) {
+        var this$1 = this;
+        if ( nodeSize === void 0 ) nodeSize = 16;
+        if ( ArrayType === void 0 ) ArrayType = Float64Array;
+
+        if (numItems === undefined) { throw new Error('Missing required argument: numItems.'); }
+        if (isNaN(numItems) || numItems <= 0) { throw new Error(("Unpexpected numItems value: " + numItems + ".")); }
+
+        this.numItems = +numItems;
+        this.nodeSize = Math.min(Math.max(+nodeSize, 2), 65535);
+
+        // calculate the total number of nodes in the R-tree to allocate space for
+        // and the index of each tree level (used in search later)
+        var n = numItems;
+        var numNodes = n;
+        this._levelBounds = [n * 4];
+        do {
+            n = Math.ceil(n / this$1.nodeSize);
+            numNodes += n;
+            this$1._levelBounds.push(numNodes * 4);
+        } while (n !== 1);
+
+        this.ArrayType = ArrayType || Float64Array;
+        this.IndexArrayType = numNodes < 16384 ? Uint16Array : Uint32Array;
+
+        var arrayTypeIndex = ARRAY_TYPES.indexOf(this.ArrayType);
+        var nodesByteSize = numNodes * 4 * this.ArrayType.BYTES_PER_ELEMENT;
+
+        if (arrayTypeIndex < 0) {
+            throw new Error(("Unexpected typed array class: " + ArrayType + "."));
+        }
+
+        if (data && (data instanceof ArrayBuffer)) {
+            this.data = data;
+            this._boxes = new this.ArrayType(this.data, 8, numNodes * 4);
+            this._indices = new this.IndexArrayType(this.data, 8 + nodesByteSize, numNodes);
+
+            this._pos = numNodes * 4;
+            this.minX = this._boxes[this._pos - 4];
+            this.minY = this._boxes[this._pos - 3];
+            this.maxX = this._boxes[this._pos - 2];
+            this.maxY = this._boxes[this._pos - 1];
+
+        } else {
+            this.data = new ArrayBuffer(8 + nodesByteSize + numNodes * this.IndexArrayType.BYTES_PER_ELEMENT);
+            this._boxes = new this.ArrayType(this.data, 8, numNodes * 4);
+            this._indices = new this.IndexArrayType(this.data, 8 + nodesByteSize, numNodes);
+            this._pos = 0;
+            this.minX = Infinity;
+            this.minY = Infinity;
+            this.maxX = -Infinity;
+            this.maxY = -Infinity;
+
+            new Uint8Array(this.data, 0, 2).set([0xfb, (VERSION << 4) + arrayTypeIndex]);
+            new Uint16Array(this.data, 2, 1)[0] = nodeSize;
+            new Uint32Array(this.data, 4, 1)[0] = numItems;
+        }
+
+        // a priority queue for k-nearest-neighbors queries
+        this.queue = new FlatQueue();
+    };
+
+    Flatbush.from = function from (data) {
+        if (!(data instanceof ArrayBuffer)) {
+            throw new Error('Data must be an instance of ArrayBuffer.');
+        }
+        var ref = new Uint8Array(data, 0, 2);
+            var magic = ref[0];
+            var versionAndType = ref[1];
+        if (magic !== 0xfb) {
+            throw new Error('Data does not appear to be in a Flatbush format.');
+        }
+        if (versionAndType >> 4 !== VERSION) {
+            throw new Error(("Got v" + (versionAndType >> 4) + " data when expected v" + VERSION + "."));
+        }
+        var ref$1 = new Uint16Array(data, 2, 1);
+            var nodeSize = ref$1[0];
+        var ref$2 = new Uint32Array(data, 4, 1);
+            var numItems = ref$2[0];
+
+        return new Flatbush(numItems, nodeSize, ARRAY_TYPES[versionAndType & 0x0f], data);
+    };
+
+    Flatbush.prototype.add = function add (minX, minY, maxX, maxY) {
+        var index = this._pos >> 2;
+        this._indices[index] = index;
+        this._boxes[this._pos++] = minX;
+        this._boxes[this._pos++] = minY;
+        this._boxes[this._pos++] = maxX;
+        this._boxes[this._pos++] = maxY;
+
+        if (minX < this.minX) { this.minX = minX; }
+        if (minY < this.minY) { this.minY = minY; }
+        if (maxX > this.maxX) { this.maxX = maxX; }
+        if (maxY > this.maxY) { this.maxY = maxY; }
+    };
+
+    Flatbush.prototype.finish = function finish () {
+            var this$1 = this;
+
+        if (this._pos >> 2 !== this.numItems) {
+            throw new Error(("Added " + (this._pos >> 2) + " items when expected " + (this.numItems) + "."));
+        }
+
+        var width = this.maxX - this.minX;
+        var height = this.maxY - this.minY;
+        var hilbertValues = new Uint32Array(this.numItems);
+        var hilbertMax = (1 << 16) - 1;
+
+        // map item centers into Hilbert coordinate space and calculate Hilbert values
+        for (var i = 0; i < this.numItems; i++) {
+            var pos = 4 * i;
+            var minX = this$1._boxes[pos++];
+            var minY = this$1._boxes[pos++];
+            var maxX = this$1._boxes[pos++];
+            var maxY = this$1._boxes[pos++];
+            var x = Math.floor(hilbertMax * ((minX + maxX) / 2 - this$1.minX) / width);
+            var y = Math.floor(hilbertMax * ((minY + maxY) / 2 - this$1.minY) / height);
+            hilbertValues[i] = hilbert(x, y);
+        }
+
+        // sort items by their Hilbert value (for packing later)
+        sort(hilbertValues, this._boxes, this._indices, 0, this.numItems - 1);
+
+        // generate nodes at each tree level, bottom-up
+        for (var i$1 = 0, pos$1 = 0; i$1 < this._levelBounds.length - 1; i$1++) {
+            var end = this$1._levelBounds[i$1];
+
+            // generate a parent node for each block of consecutive <nodeSize> nodes
+            while (pos$1 < end) {
+                var nodeMinX = Infinity;
+                var nodeMinY = Infinity;
+                var nodeMaxX = -Infinity;
+                var nodeMaxY = -Infinity;
+                var nodeIndex = pos$1;
+
+                // calculate bbox for the new node
+                for (var i$2 = 0; i$2 < this.nodeSize && pos$1 < end; i$2++) {
+                    var minX$1 = this$1._boxes[pos$1++];
+                    var minY$1 = this$1._boxes[pos$1++];
+                    var maxX$1 = this$1._boxes[pos$1++];
+                    var maxY$1 = this$1._boxes[pos$1++];
+                    if (minX$1 < nodeMinX) { nodeMinX = minX$1; }
+                    if (minY$1 < nodeMinY) { nodeMinY = minY$1; }
+                    if (maxX$1 > nodeMaxX) { nodeMaxX = maxX$1; }
+                    if (maxY$1 > nodeMaxY) { nodeMaxY = maxY$1; }
+                }
+
+                // add the new node to the tree data
+                this$1._indices[this$1._pos >> 2] = nodeIndex;
+                this$1._boxes[this$1._pos++] = nodeMinX;
+                this$1._boxes[this$1._pos++] = nodeMinY;
+                this$1._boxes[this$1._pos++] = nodeMaxX;
+                this$1._boxes[this$1._pos++] = nodeMaxY;
+            }
+        }
+    };
+
+    Flatbush.prototype.search = function search (minX, minY, maxX, maxY, filterFn) {
+            var this$1 = this;
+
+        if (this._pos !== this._boxes.length) {
+            throw new Error('Data not yet indexed - call index.finish().');
+        }
+
+        var nodeIndex = this._boxes.length - 4;
+        var level = this._levelBounds.length - 1;
+        var queue = [];
+        var results = [];
+
+        while (nodeIndex !== undefined) {
+            // find the end index of the node
+            var end = Math.min(nodeIndex + this$1.nodeSize * 4, this$1._levelBounds[level]);
+
+            // search through child nodes
+            for (var pos = nodeIndex; pos < end; pos += 4) {
+                var index = this$1._indices[pos >> 2];
+
+                // check if node bbox intersects with query bbox
+                if (maxX < this$1._boxes[pos]) { continue; } // maxX < nodeMinX
+                if (maxY < this$1._boxes[pos + 1]) { continue; } // maxY < nodeMinY
+                if (minX > this$1._boxes[pos + 2]) { continue; } // minX > nodeMaxX
+                if (minY > this$1._boxes[pos + 3]) { continue; } // minY > nodeMaxY
+
+                if (nodeIndex < this$1.numItems * 4) {
+                    if (filterFn === undefined || filterFn(index)) {
+                        results.push(index); // leaf item
+                    }
+
+                } else {
+                    queue.push(index); // node; add it to the search queue
+                    queue.push(level - 1);
+                }
+            }
+
+            level = queue.pop();
+            nodeIndex = queue.pop();
+        }
+
+        return results;
+    };
+
+    Flatbush.prototype.neighbors = function neighbors (x, y, maxResults, maxDistance, filterFn) {
+            var this$1 = this;
+            if ( maxResults === void 0 ) maxResults = Infinity;
+            if ( maxDistance === void 0 ) maxDistance = Infinity;
+
+        if (this._pos !== this._boxes.length) {
+            throw new Error('Data not yet indexed - call index.finish().');
+        }
+
+        var nodeIndex = this._boxes.length - 4;
+        var q = this.queue;
+        var results = [];
+        var maxDistSquared = maxDistance * maxDistance;
+
+        while (nodeIndex !== undefined) {
+            // find the end index of the node
+            var end = Math.min(nodeIndex + this$1.nodeSize * 4, upperBound(nodeIndex, this$1._levelBounds));
+
+            // add child nodes to the queue
+            for (var pos = nodeIndex; pos < end; pos += 4) {
+                var index = this$1._indices[pos >> 2];
+
+                var dx = axisDist(x, this$1._boxes[pos], this$1._boxes[pos + 2]);
+                var dy = axisDist(y, this$1._boxes[pos + 1], this$1._boxes[pos + 3]);
+                var dist = dx * dx + dy * dy;
+
+                if (nodeIndex < this$1.numItems * 4) { // leaf node
+                    if (filterFn === undefined || filterFn(index)) {
+                        // put a negative index if it's an item rather than a node, to recognize later
+                        q.push(-index - 1, dist);
+                    }
+                } else {
+                    q.push(index, dist);
+                }
+            }
+
+            // pop items from the queue
+            while (q.length && q.peek() < 0) {
+                var dist$1 = q.peekValue();
+                if (dist$1 > maxDistSquared) {
+                    q.clear();
+                    return results;
+                }
+                results.push(-q.pop() - 1);
+
+                if (results.length === maxResults) {
+                    q.clear();
+                    return results;
+                }
+            }
+
+            nodeIndex = q.pop();
+        }
+
+        q.clear();
+        return results;
+    };
+
+    function axisDist(k, min, max) {
+        return k < min ? min - k : k <= max ? 0 : k - max;
+    }
+
+    // binary search for the first value in the array bigger than the given
+    function upperBound(value, arr) {
+        var i = 0;
+        var j = arr.length - 1;
+        while (i < j) {
+            var m = (i + j) >> 1;
+            if (arr[m] > value) {
+                j = m;
+            } else {
+                i = m + 1;
+            }
+        }
+        return arr[i];
+    }
+
+    // custom quicksort that sorts bbox data alongside the hilbert values
+    function sort(values, boxes, indices, left, right) {
+        if (left >= right) { return; }
+
+        var pivot = values[(left + right) >> 1];
+        var i = left - 1;
+        var j = right + 1;
+
+        while (true) {
+            do { i++; } while (values[i] < pivot);
+            do { j--; } while (values[j] > pivot);
+            if (i >= j) { break; }
+            swap(values, boxes, indices, i, j);
+        }
+
+        sort(values, boxes, indices, left, j);
+        sort(values, boxes, indices, j + 1, right);
+    }
+
+    // swap two values and two corresponding boxes
+    function swap(values, boxes, indices, i, j) {
+        var temp = values[i];
+        values[i] = values[j];
+        values[j] = temp;
+
+        var k = 4 * i;
+        var m = 4 * j;
+
+        var a = boxes[k];
+        var b = boxes[k + 1];
+        var c = boxes[k + 2];
+        var d = boxes[k + 3];
+        boxes[k] = boxes[m];
+        boxes[k + 1] = boxes[m + 1];
+        boxes[k + 2] = boxes[m + 2];
+        boxes[k + 3] = boxes[m + 3];
+        boxes[m] = a;
+        boxes[m + 1] = b;
+        boxes[m + 2] = c;
+        boxes[m + 3] = d;
+
+        var e = indices[i];
+        indices[i] = indices[j];
+        indices[j] = e;
+    }
+
+    // Fast Hilbert curve algorithm by http://threadlocalmutex.com/
+    // Ported from C++ https://github.com/rawrunprotected/hilbert_curves (public domain)
+    function hilbert(x, y) {
+        var a = x ^ y;
+        var b = 0xFFFF ^ a;
+        var c = 0xFFFF ^ (x | y);
+        var d = x & (y ^ 0xFFFF);
+
+        var A = a | (b >> 1);
+        var B = (a >> 1) ^ a;
+        var C = ((c >> 1) ^ (b & (d >> 1))) ^ c;
+        var D = ((a & (c >> 1)) ^ (d >> 1)) ^ d;
+
+        a = A; b = B; c = C; d = D;
+        A = ((a & (a >> 2)) ^ (b & (b >> 2)));
+        B = ((a & (b >> 2)) ^ (b & ((a ^ b) >> 2)));
+        C ^= ((a & (c >> 2)) ^ (b & (d >> 2)));
+        D ^= ((b & (c >> 2)) ^ ((a ^ b) & (d >> 2)));
+
+        a = A; b = B; c = C; d = D;
+        A = ((a & (a >> 4)) ^ (b & (b >> 4)));
+        B = ((a & (b >> 4)) ^ (b & ((a ^ b) >> 4)));
+        C ^= ((a & (c >> 4)) ^ (b & (d >> 4)));
+        D ^= ((b & (c >> 4)) ^ ((a ^ b) & (d >> 4)));
+
+        a = A; b = B; c = C; d = D;
+        C ^= ((a & (c >> 8)) ^ (b & (d >> 8)));
+        D ^= ((b & (c >> 8)) ^ ((a ^ b) & (d >> 8)));
+
+        a = C ^ (C >> 1);
+        b = D ^ (D >> 1);
+
+        var i0 = x ^ y;
+        var i1 = b | (0xFFFF ^ (i0 | a));
+
+        i0 = (i0 | (i0 << 8)) & 0x00FF00FF;
+        i0 = (i0 | (i0 << 4)) & 0x0F0F0F0F;
+        i0 = (i0 | (i0 << 2)) & 0x33333333;
+        i0 = (i0 | (i0 << 1)) & 0x55555555;
+
+        i1 = (i1 | (i1 << 8)) & 0x00FF00FF;
+        i1 = (i1 | (i1 << 4)) & 0x0F0F0F0F;
+        i1 = (i1 | (i1 << 2)) & 0x33333333;
+        i1 = (i1 | (i1 << 1)) & 0x55555555;
+
+        return ((i1 << 1) | i0) >>> 0;
+    }
+
+    return Flatbush;
 
 })));
 
@@ -15439,6 +15851,75 @@ function pj_bacon_init(P, bacn, ortl) {
 }
 
 
+
+/*
+  Created by Jacques Bertin in 1953, this projection was the go-to choice
+  of the French cartographic school when they wished to represent phenomena
+  on a global scale.
+
+  Formula designed by Philippe Rivière, 2017.
+  https://visionscarto.net/bertin-projection-1953
+  Port to PROJ by Philippe Rivière, 21 September 2018
+  Port to JavaScript by Matthew Bloch October 2018
+*/
+pj_add(pj_bertin1953, 'bertin1953', 'Bertin 1953', "\n\tMisc Sph no inv.");
+
+function pj_bertin1953(P) {
+  var cos_delta_phi, sin_delta_phi, cos_delta_gamma, sin_delta_gamma;
+
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.lam0 = 0;
+  P.phi0 = DEG_TO_RAD * -42;
+
+  cos_delta_phi = cos(P.phi0);
+  sin_delta_phi = sin(P.phi0);
+  cos_delta_gamma = 1;
+  sin_delta_gamma = 0;
+
+  function s_fwd(lp, xy) {
+    var fu = 1.4, k = 12, w = 1.68, d;
+    /* Rotate */
+    var cosphi, x, y, z, z0;
+    lp.lam += DEG_TO_RAD * -16.5;
+    cosphi = cos(lp.phi);
+    x = cos(lp.lam) * cosphi;
+    y = sin(lp.lam) * cosphi;
+    z = sin(lp.phi);
+    z0 = z * cos_delta_phi + x * sin_delta_phi;
+    lp.lam = atan2(y * cos_delta_gamma - z0 * sin_delta_gamma,
+       x * cos_delta_phi - z * sin_delta_phi);
+    z0 = z0 * cos_delta_gamma + y * sin_delta_gamma;
+    lp.phi = asin(z0);
+    lp.lam = adjlon(lp.lam);
+
+    /* Adjust pre-projection */
+    if (lp.lam + lp.phi < -fu) {
+      d = (lp.lam - lp.phi + 1.6) * (lp.lam + lp.phi + fu) / 8.;
+      lp.lam += d;
+      lp.phi -= 0.8 * d * sin(lp.phi + M_PI / 2.);
+    }
+
+    /* Project with Hammer (1.68,2) */
+    cosphi = cos(lp.phi);
+    d = sqrt(2/(1 + cosphi * cos(lp.lam / 2)));
+    xy.x = w * d * cosphi * sin(lp.lam / 2);
+    xy.y = d * sin(lp.phi);
+
+    /* Adjust post-projection */
+    d = (1 - cos(lp.lam * lp.phi)) / k;
+    if (xy.y < 0) {
+      xy.x *= 1 + d;
+    }
+    if (xy.y > 0) {
+      xy.x *= 1 + d / 1.5 * xy.x * xy.x;
+    }
+
+    return xy;
+  }
+}
+
+
 pj_add(pj_boggs, 'boggs', 'Boggs Eumorphic', '\n\tPCyl., no inv., Sph.');
 
 function pj_boggs(P) {
@@ -21346,575 +21827,11 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":30}],"rbush":[function(require,module,exports){
-'use strict';
-
-module.exports = rbush;
-module.exports.default = rbush;
-
-var quickselect = require('quickselect');
-
-function rbush(maxEntries, format) {
-    if (!(this instanceof rbush)) return new rbush(maxEntries, format);
-
-    // max entries in a node is 9 by default; min node fill is 40% for best performance
-    this._maxEntries = Math.max(4, maxEntries || 9);
-    this._minEntries = Math.max(2, Math.ceil(this._maxEntries * 0.4));
-
-    if (format) {
-        this._initFormat(format);
-    }
-
-    this.clear();
-}
-
-rbush.prototype = {
-
-    all: function () {
-        return this._all(this.data, []);
-    },
-
-    search: function (bbox) {
-
-        var node = this.data,
-            result = [],
-            toBBox = this.toBBox;
-
-        if (!intersects(bbox, node)) return result;
-
-        var nodesToSearch = [],
-            i, len, child, childBBox;
-
-        while (node) {
-            for (i = 0, len = node.children.length; i < len; i++) {
-
-                child = node.children[i];
-                childBBox = node.leaf ? toBBox(child) : child;
-
-                if (intersects(bbox, childBBox)) {
-                    if (node.leaf) result.push(child);
-                    else if (contains(bbox, childBBox)) this._all(child, result);
-                    else nodesToSearch.push(child);
-                }
-            }
-            node = nodesToSearch.pop();
-        }
-
-        return result;
-    },
-
-    collides: function (bbox) {
-
-        var node = this.data,
-            toBBox = this.toBBox;
-
-        if (!intersects(bbox, node)) return false;
-
-        var nodesToSearch = [],
-            i, len, child, childBBox;
-
-        while (node) {
-            for (i = 0, len = node.children.length; i < len; i++) {
-
-                child = node.children[i];
-                childBBox = node.leaf ? toBBox(child) : child;
-
-                if (intersects(bbox, childBBox)) {
-                    if (node.leaf || contains(bbox, childBBox)) return true;
-                    nodesToSearch.push(child);
-                }
-            }
-            node = nodesToSearch.pop();
-        }
-
-        return false;
-    },
-
-    load: function (data) {
-        if (!(data && data.length)) return this;
-
-        if (data.length < this._minEntries) {
-            for (var i = 0, len = data.length; i < len; i++) {
-                this.insert(data[i]);
-            }
-            return this;
-        }
-
-        // recursively build the tree with the given data from scratch using OMT algorithm
-        var node = this._build(data.slice(), 0, data.length - 1, 0);
-
-        if (!this.data.children.length) {
-            // save as is if tree is empty
-            this.data = node;
-
-        } else if (this.data.height === node.height) {
-            // split root if trees have the same height
-            this._splitRoot(this.data, node);
-
-        } else {
-            if (this.data.height < node.height) {
-                // swap trees if inserted one is bigger
-                var tmpNode = this.data;
-                this.data = node;
-                node = tmpNode;
-            }
-
-            // insert the small tree into the large tree at appropriate level
-            this._insert(node, this.data.height - node.height - 1, true);
-        }
-
-        return this;
-    },
-
-    insert: function (item) {
-        if (item) this._insert(item, this.data.height - 1);
-        return this;
-    },
-
-    clear: function () {
-        this.data = createNode([]);
-        return this;
-    },
-
-    remove: function (item, equalsFn) {
-        if (!item) return this;
-
-        var node = this.data,
-            bbox = this.toBBox(item),
-            path = [],
-            indexes = [],
-            i, parent, index, goingUp;
-
-        // depth-first iterative tree traversal
-        while (node || path.length) {
-
-            if (!node) { // go up
-                node = path.pop();
-                parent = path[path.length - 1];
-                i = indexes.pop();
-                goingUp = true;
-            }
-
-            if (node.leaf) { // check current node
-                index = findItem(item, node.children, equalsFn);
-
-                if (index !== -1) {
-                    // item found, remove the item and condense tree upwards
-                    node.children.splice(index, 1);
-                    path.push(node);
-                    this._condense(path);
-                    return this;
-                }
-            }
-
-            if (!goingUp && !node.leaf && contains(node, bbox)) { // go down
-                path.push(node);
-                indexes.push(i);
-                i = 0;
-                parent = node;
-                node = node.children[0];
-
-            } else if (parent) { // go right
-                i++;
-                node = parent.children[i];
-                goingUp = false;
-
-            } else node = null; // nothing found
-        }
-
-        return this;
-    },
-
-    toBBox: function (item) { return item; },
-
-    compareMinX: compareNodeMinX,
-    compareMinY: compareNodeMinY,
-
-    toJSON: function () { return this.data; },
-
-    fromJSON: function (data) {
-        this.data = data;
-        return this;
-    },
-
-    _all: function (node, result) {
-        var nodesToSearch = [];
-        while (node) {
-            if (node.leaf) result.push.apply(result, node.children);
-            else nodesToSearch.push.apply(nodesToSearch, node.children);
-
-            node = nodesToSearch.pop();
-        }
-        return result;
-    },
-
-    _build: function (items, left, right, height) {
-
-        var N = right - left + 1,
-            M = this._maxEntries,
-            node;
-
-        if (N <= M) {
-            // reached leaf level; return leaf
-            node = createNode(items.slice(left, right + 1));
-            calcBBox(node, this.toBBox);
-            return node;
-        }
-
-        if (!height) {
-            // target height of the bulk-loaded tree
-            height = Math.ceil(Math.log(N) / Math.log(M));
-
-            // target number of root entries to maximize storage utilization
-            M = Math.ceil(N / Math.pow(M, height - 1));
-        }
-
-        node = createNode([]);
-        node.leaf = false;
-        node.height = height;
-
-        // split the items into M mostly square tiles
-
-        var N2 = Math.ceil(N / M),
-            N1 = N2 * Math.ceil(Math.sqrt(M)),
-            i, j, right2, right3;
-
-        multiSelect(items, left, right, N1, this.compareMinX);
-
-        for (i = left; i <= right; i += N1) {
-
-            right2 = Math.min(i + N1 - 1, right);
-
-            multiSelect(items, i, right2, N2, this.compareMinY);
-
-            for (j = i; j <= right2; j += N2) {
-
-                right3 = Math.min(j + N2 - 1, right2);
-
-                // pack each entry recursively
-                node.children.push(this._build(items, j, right3, height - 1));
-            }
-        }
-
-        calcBBox(node, this.toBBox);
-
-        return node;
-    },
-
-    _chooseSubtree: function (bbox, node, level, path) {
-
-        var i, len, child, targetNode, area, enlargement, minArea, minEnlargement;
-
-        while (true) {
-            path.push(node);
-
-            if (node.leaf || path.length - 1 === level) break;
-
-            minArea = minEnlargement = Infinity;
-
-            for (i = 0, len = node.children.length; i < len; i++) {
-                child = node.children[i];
-                area = bboxArea(child);
-                enlargement = enlargedArea(bbox, child) - area;
-
-                // choose entry with the least area enlargement
-                if (enlargement < minEnlargement) {
-                    minEnlargement = enlargement;
-                    minArea = area < minArea ? area : minArea;
-                    targetNode = child;
-
-                } else if (enlargement === minEnlargement) {
-                    // otherwise choose one with the smallest area
-                    if (area < minArea) {
-                        minArea = area;
-                        targetNode = child;
-                    }
-                }
-            }
-
-            node = targetNode || node.children[0];
-        }
-
-        return node;
-    },
-
-    _insert: function (item, level, isNode) {
-
-        var toBBox = this.toBBox,
-            bbox = isNode ? item : toBBox(item),
-            insertPath = [];
-
-        // find the best node for accommodating the item, saving all nodes along the path too
-        var node = this._chooseSubtree(bbox, this.data, level, insertPath);
-
-        // put the item into the node
-        node.children.push(item);
-        extend(node, bbox);
-
-        // split on node overflow; propagate upwards if necessary
-        while (level >= 0) {
-            if (insertPath[level].children.length > this._maxEntries) {
-                this._split(insertPath, level);
-                level--;
-            } else break;
-        }
-
-        // adjust bboxes along the insertion path
-        this._adjustParentBBoxes(bbox, insertPath, level);
-    },
-
-    // split overflowed node into two
-    _split: function (insertPath, level) {
-
-        var node = insertPath[level],
-            M = node.children.length,
-            m = this._minEntries;
-
-        this._chooseSplitAxis(node, m, M);
-
-        var splitIndex = this._chooseSplitIndex(node, m, M);
-
-        var newNode = createNode(node.children.splice(splitIndex, node.children.length - splitIndex));
-        newNode.height = node.height;
-        newNode.leaf = node.leaf;
-
-        calcBBox(node, this.toBBox);
-        calcBBox(newNode, this.toBBox);
-
-        if (level) insertPath[level - 1].children.push(newNode);
-        else this._splitRoot(node, newNode);
-    },
-
-    _splitRoot: function (node, newNode) {
-        // split root node
-        this.data = createNode([node, newNode]);
-        this.data.height = node.height + 1;
-        this.data.leaf = false;
-        calcBBox(this.data, this.toBBox);
-    },
-
-    _chooseSplitIndex: function (node, m, M) {
-
-        var i, bbox1, bbox2, overlap, area, minOverlap, minArea, index;
-
-        minOverlap = minArea = Infinity;
-
-        for (i = m; i <= M - m; i++) {
-            bbox1 = distBBox(node, 0, i, this.toBBox);
-            bbox2 = distBBox(node, i, M, this.toBBox);
-
-            overlap = intersectionArea(bbox1, bbox2);
-            area = bboxArea(bbox1) + bboxArea(bbox2);
-
-            // choose distribution with minimum overlap
-            if (overlap < minOverlap) {
-                minOverlap = overlap;
-                index = i;
-
-                minArea = area < minArea ? area : minArea;
-
-            } else if (overlap === minOverlap) {
-                // otherwise choose distribution with minimum area
-                if (area < minArea) {
-                    minArea = area;
-                    index = i;
-                }
-            }
-        }
-
-        return index;
-    },
-
-    // sorts node children by the best axis for split
-    _chooseSplitAxis: function (node, m, M) {
-
-        var compareMinX = node.leaf ? this.compareMinX : compareNodeMinX,
-            compareMinY = node.leaf ? this.compareMinY : compareNodeMinY,
-            xMargin = this._allDistMargin(node, m, M, compareMinX),
-            yMargin = this._allDistMargin(node, m, M, compareMinY);
-
-        // if total distributions margin value is minimal for x, sort by minX,
-        // otherwise it's already sorted by minY
-        if (xMargin < yMargin) node.children.sort(compareMinX);
-    },
-
-    // total margin of all possible split distributions where each node is at least m full
-    _allDistMargin: function (node, m, M, compare) {
-
-        node.children.sort(compare);
-
-        var toBBox = this.toBBox,
-            leftBBox = distBBox(node, 0, m, toBBox),
-            rightBBox = distBBox(node, M - m, M, toBBox),
-            margin = bboxMargin(leftBBox) + bboxMargin(rightBBox),
-            i, child;
-
-        for (i = m; i < M - m; i++) {
-            child = node.children[i];
-            extend(leftBBox, node.leaf ? toBBox(child) : child);
-            margin += bboxMargin(leftBBox);
-        }
-
-        for (i = M - m - 1; i >= m; i--) {
-            child = node.children[i];
-            extend(rightBBox, node.leaf ? toBBox(child) : child);
-            margin += bboxMargin(rightBBox);
-        }
-
-        return margin;
-    },
-
-    _adjustParentBBoxes: function (bbox, path, level) {
-        // adjust bboxes along the given tree path
-        for (var i = level; i >= 0; i--) {
-            extend(path[i], bbox);
-        }
-    },
-
-    _condense: function (path) {
-        // go through the path, removing empty nodes and updating bboxes
-        for (var i = path.length - 1, siblings; i >= 0; i--) {
-            if (path[i].children.length === 0) {
-                if (i > 0) {
-                    siblings = path[i - 1].children;
-                    siblings.splice(siblings.indexOf(path[i]), 1);
-
-                } else this.clear();
-
-            } else calcBBox(path[i], this.toBBox);
-        }
-    },
-
-    _initFormat: function (format) {
-        // data format (minX, minY, maxX, maxY accessors)
-
-        // uses eval-type function compilation instead of just accepting a toBBox function
-        // because the algorithms are very sensitive to sorting functions performance,
-        // so they should be dead simple and without inner calls
-
-        var compareArr = ['return a', ' - b', ';'];
-
-        this.compareMinX = new Function('a', 'b', compareArr.join(format[0]));
-        this.compareMinY = new Function('a', 'b', compareArr.join(format[1]));
-
-        this.toBBox = new Function('a',
-            'return {minX: a' + format[0] +
-            ', minY: a' + format[1] +
-            ', maxX: a' + format[2] +
-            ', maxY: a' + format[3] + '};');
-    }
-};
-
-function findItem(item, items, equalsFn) {
-    if (!equalsFn) return items.indexOf(item);
-
-    for (var i = 0; i < items.length; i++) {
-        if (equalsFn(item, items[i])) return i;
-    }
-    return -1;
-}
-
-// calculate node's bbox from bboxes of its children
-function calcBBox(node, toBBox) {
-    distBBox(node, 0, node.children.length, toBBox, node);
-}
-
-// min bounding rectangle of node children from k to p-1
-function distBBox(node, k, p, toBBox, destNode) {
-    if (!destNode) destNode = createNode(null);
-    destNode.minX = Infinity;
-    destNode.minY = Infinity;
-    destNode.maxX = -Infinity;
-    destNode.maxY = -Infinity;
-
-    for (var i = k, child; i < p; i++) {
-        child = node.children[i];
-        extend(destNode, node.leaf ? toBBox(child) : child);
-    }
-
-    return destNode;
-}
-
-function extend(a, b) {
-    a.minX = Math.min(a.minX, b.minX);
-    a.minY = Math.min(a.minY, b.minY);
-    a.maxX = Math.max(a.maxX, b.maxX);
-    a.maxY = Math.max(a.maxY, b.maxY);
-    return a;
-}
-
-function compareNodeMinX(a, b) { return a.minX - b.minX; }
-function compareNodeMinY(a, b) { return a.minY - b.minY; }
-
-function bboxArea(a)   { return (a.maxX - a.minX) * (a.maxY - a.minY); }
-function bboxMargin(a) { return (a.maxX - a.minX) + (a.maxY - a.minY); }
-
-function enlargedArea(a, b) {
-    return (Math.max(b.maxX, a.maxX) - Math.min(b.minX, a.minX)) *
-           (Math.max(b.maxY, a.maxY) - Math.min(b.minY, a.minY));
-}
-
-function intersectionArea(a, b) {
-    var minX = Math.max(a.minX, b.minX),
-        minY = Math.max(a.minY, b.minY),
-        maxX = Math.min(a.maxX, b.maxX),
-        maxY = Math.min(a.maxY, b.maxY);
-
-    return Math.max(0, maxX - minX) *
-           Math.max(0, maxY - minY);
-}
-
-function contains(a, b) {
-    return a.minX <= b.minX &&
-           a.minY <= b.minY &&
-           b.maxX <= a.maxX &&
-           b.maxY <= a.maxY;
-}
-
-function intersects(a, b) {
-    return b.minX <= a.maxX &&
-           b.minY <= a.maxY &&
-           b.maxX >= a.minX &&
-           b.maxY >= a.minY;
-}
-
-function createNode(children) {
-    return {
-        children: children,
-        height: 1,
-        leaf: true,
-        minX: Infinity,
-        minY: Infinity,
-        maxX: -Infinity,
-        maxY: -Infinity
-    };
-}
-
-// sort an array so that items come in groups of n unsorted items, with groups sorted between each other;
-// combines selection algorithm with binary divide & conquer approach
-
-function multiSelect(arr, left, right, n, compare) {
-    var stack = [left, right],
-        mid;
-
-    while (stack.length) {
-        right = stack.pop();
-        left = stack.pop();
-
-        if (right - left <= n) continue;
-
-        mid = left + Math.ceil((right - left) / n / 2) * n;
-        quickselect(arr, mid, left, right, compare);
-
-        stack.push(left, mid, mid, right);
-    }
-}
-
-},{"quickselect":31}],"rw":[function(require,module,exports){
+},{"_process":30}],"rw":[function(require,module,exports){
 exports.dash = require("./lib/rw/dash");
 exports.readFile = require("./lib/rw/read-file");
 exports.readFileSync = require("./lib/rw/read-file-sync");
 exports.writeFile = require("./lib/rw/write-file");
 exports.writeFileSync = require("./lib/rw/write-file-sync");
 
-},{"./lib/rw/dash":46,"./lib/rw/read-file":50,"./lib/rw/read-file-sync":49,"./lib/rw/write-file":52,"./lib/rw/write-file-sync":51}]},{},[]);
+},{"./lib/rw/dash":45,"./lib/rw/read-file":49,"./lib/rw/read-file-sync":48,"./lib/rw/write-file":51,"./lib/rw/write-file-sync":50}]},{},[]);
