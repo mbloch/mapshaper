@@ -1,3 +1,6 @@
+v0.4.98
+* Fixed a performance regression.
+
 v0.4.97
 * Updated mproj version to include bertin1953 projection.
 
