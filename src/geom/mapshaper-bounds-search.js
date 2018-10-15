@@ -17,11 +17,13 @@ internal.getBoundsSearchFunction = function(boxes) {
   });
   index.finish();
 
+  function idxToObj(i) {
+    return boxes[i];
+  }
+
   // Receives xmin, ymin, xmax, ymax parameters
   // Returns subset of original @bounds array
   return function(a, b, c, d) {
-    return index.search(a, b, c, d).map(function(i) {
-      return boxes[i];
-    });
+    return index.search(a, b, c, d).map(idxToObj);
   };
 };

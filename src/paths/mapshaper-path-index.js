@@ -175,7 +175,7 @@ function PathIndex(shapes, arcs) {
   function findPointHitCandidates(p, buffer) {
     var b = buffer > 0 ? buffer : 0;
     var x = p[0], y = p[1];
-    return boundsQuery([p[0] - b, p[1] - b, p[0] + b, p[1] + b]);
+    return boundsQuery(p[0] - b, p[1] - b, p[0] + b, p[1] + b);
   }
 
   // Find a point on a ring to use for point-in-polygon testing
