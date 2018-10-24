@@ -374,6 +374,67 @@ describe('mapshaper-delim-import.js', function() {
 
   })
 
+
+  describe('importDelim2()', function () {
+    it('import from a file', function () {
+      var input = {
+        filename: 'test/test_data/text/states.csv'
+      };
+      var output = api.internal.importDelim2(input);
+      var records = output.layers[0].data.getRecords();
+      assert.equal(records.length, 52)
+      assert.deepEqual(records[0], {
+        STATE_NAME: 'Alabama',
+        STATE_FIPS: 1,
+        SUB_REGION: 'East South Central',
+        STATE_ABBR: 'AL',
+        POP2010: 4779736,
+        POP10_SQMI: 92.5
+      })
+    })
+
+    it('import file with filter', function () {
+      var input = {
+        filename: 'test/test_data/text/states.csv'
+      };
+      var opts = {
+        csv_filter: 'STATE_NAME == "Colorado"'
+      };
+      var output = api.internal.importDelim2(input, opts);
+      var records = output.layers[0].data.getRecords();
+      assert.equal(records.length, 1)
+      assert.deepEqual(records[0], {
+        STATE_NAME: 'Colorado',
+        STATE_FIPS: 8,
+        SUB_REGION: 'Mountain',
+        STATE_ABBR: 'CO',
+        POP2010: 5029196,
+        POP10_SQMI: 48.30
+      })
+    })
+
+    it('import string with filter', function () {
+      var str = require('fs').readFileSync('test/test_data/text/states.csv', 'utf8');
+      var input = {
+        content: str
+      };
+      var opts = {
+        csv_filter: 'STATE_NAME == "Colorado"',
+        csv_fields: 'STATE_NAME,SUB_REGION,POP2010,POP10_SQMI'.split(',')
+      };
+      var output = api.internal.importDelim2(input, opts);
+      var records = output.layers[0].data.getRecords();
+      assert.equal(records.length, 1)
+      assert.deepEqual(records[0], {
+        STATE_NAME: 'Colorado',
+        SUB_REGION: 'Mountain',
+        POP2010: 5029196,
+        POP10_SQMI: 48.30
+      })
+    })
+
+  })
+
   describe('importDelim()', function () {
     it('should detect tab delimiter', function () {
       var str = 'a\tb\n1\t"boo ya"'

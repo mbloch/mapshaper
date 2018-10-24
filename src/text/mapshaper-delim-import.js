@@ -1,4 +1,4 @@
-/* @requires mapshaper-data-table, mapshaper-data-utils, mapshaper-delim-reader */
+/* @requires mapshaper-data-table, mapshaper-data-utils, mapshaper-delim-reader, mapshaper-cli-utils */
 
 
 // Convert a string containing delimited text data into a dataset object
@@ -6,23 +6,33 @@ internal.importDelim = function(str, opts) {
   return internal.importDelim2({content: str}, opts);
 };
 
+// Convert a string, buffer or file containing delimited text into a dataset obj.
 internal.importDelim2 = function(data, opts) {
 
   // TODO: remove duplication with importJSON()
-  var content = data.content,
-      reader, records, delimiter, table;
+  var readFromFile = !data.content && data.content !== '',
+      content = data.content,
+      filter, reader, records, delimiter, table;
+  opts = opts || {};
+  filter = internal.getImportFilterFunction(opts);
 
-  if (content instanceof ArrayBuffer || content instanceof Buffer) {
+  // read content of all but very large files into a buffer
+  if (readFromFile && cli.fileSize(data.filename) < 2e9) {
+    content = cli.readFile(data.filename);
+    readFromFile = false;
+  }
+
+  if (readFromFile) {
+    // try to read data incrementally from file, if content is missing
+    reader = new FileReader(data.filename);
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
     // Web API may import as ArrayBuffer, to support larger files
     reader = new BufferReader(content);
     content = null;
   } else if (utils.isString(content)) {
     // import as string
-  } else if (content) {
-    error("Unexpected object type");
   } else {
-    // try to read data from file, if content is missing
-    reader = new FileReader(data.filename);
+    error("Unexpected object type");
   }
 
   if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
@@ -34,10 +44,10 @@ internal.importDelim2 = function(data, opts) {
 
   if (reader) {
     delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords(reader, delimiter, opts.encoding);
+    records = internal.readDelimRecords(reader, delimiter, opts.encoding, filter);
   } else {
     delimiter = internal.guessDelimiter(content);
-    records = require("d3-dsv").dsvFormat(delimiter).parse(content);
+    records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
     delete records.columns; // added by d3-dsv
   }
   if (records.length === 0) {
@@ -210,4 +220,27 @@ utils.parseNumber = function(raw) {
   var str = String(raw).trim();
   var parsed = str ? Number(utils.cleanNumericString(str)) : NaN;
   return isNaN(parsed) ? null : parsed;
+};
+
+// Returns a d3-dsv compatible function for filtering records and fields on import
+// TODO: look into using more code from standard expressions.
+internal.getImportFilterFunction = function(opts) {
+  var recordFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
+  var fieldFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
+  var ctx = internal.getBaseContext();
+  if (!recordFilter && !fieldFilter) return null;
+  return function(rec) {
+    var val;
+    try {
+      val = recordFilter ? recordFilter.call(null, rec, ctx) : true;
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val === false) {
+      return null;
+    } else if (val !== true) {
+      stop("Filter expression must return true or false");
+    }
+    return fieldFilter ? fieldFilter(rec) : rec;
+  };
 };

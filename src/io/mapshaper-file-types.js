@@ -8,7 +8,7 @@ internal.guessInputFileType = function(file) {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';
-  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt') {
+  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
     type = 'text';
   }
   return type;

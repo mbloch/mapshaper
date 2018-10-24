@@ -2,15 +2,17 @@
 
 // TODO: support other encodings than utf-8
 // (Need to update readDelimLines() to work with all encodings)
-internal.readDelimRecords = function(reader, delim, encoding) {
+internal.readDelimRecords = function(reader, delim, encoding, filter) {
   var dsv = require("d3-dsv").dsvFormat(delim),
       records = [],
       retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
-      header = internal.trimBOM(retn ? retn.text : '');
+      header = internal.trimBOM(retn ? retn.text : ''),
+      batch;
   if (!retn) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
-    records.push.apply(records, dsv.parse(header + retn.text));
+    batch = dsv.parse(header + retn.text, filter);
+    records.push.apply(records, batch);
   }
   return records;
 };

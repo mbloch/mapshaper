@@ -48,8 +48,8 @@ api.importFile = function(path, opts) {
     // postpone reading of JSON files, to support incremental parsing
     content = null;
   } else if (apparentType == 'text' && !cached) {
-    content = cli.readFile(path); // read from buffer, to support larger files
-    // content = null // read incrementally from file, to support largest files
+    // content = cli.readFile(path); // read from buffer
+    content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
     if (utils.isString(content)) {

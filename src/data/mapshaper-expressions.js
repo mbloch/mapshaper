@@ -137,9 +137,7 @@ internal.getAssignmentObjects = function(exp) {
   return utils.uniq(names);
 };
 
-internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
-  var getFeatureById = internal.initFeatureProxy(lyr, arcs);
-  var ctx = internal.getExpressionContext(lyr, opts.context);
+internal.compileExpressionToFunction = function(exp, opts) {
   var functionBody = "with(env){with(record){ " + (opts.returns ? 'return ' : '') +
         exp + "}}";
   var func;
@@ -148,6 +146,13 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
   } catch(e) {
     stop(e.name, "in expression [" + exp + "]");
   }
+  return func;
+};
+
+internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
+  var getFeatureById = internal.initFeatureProxy(lyr, arcs);
+  var ctx = internal.getExpressionContext(lyr, opts.context);
+  var func = internal.compileExpressionToFunction(exp, opts);
   return function(rec, i) {
     var val;
     // Assigning feature object to '$' -- this should maybe be removed, it is

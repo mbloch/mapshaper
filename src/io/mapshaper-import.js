@@ -27,6 +27,7 @@ internal.importContent = function(obj, opts) {
     fileFmt = 'dsv';
     data = obj.text;
     dataset = internal.importDelim2(data, opts);
+
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;
