@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.98';
+VERSION = '0.4.99';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -3272,10 +3272,11 @@ internal.countPointsInLayer = function(lyr) {
   return count;
 };
 
-internal.countPoints2 = function(shapes, test) {
+internal.countPoints2 = function(shapes, test, max) {
   var count = 0;
   var i, n, j, m, shp;
-  for (i=0, n=shapes.length; i<n; i++) {
+  max = max || Infinity;
+  for (i=0, n=shapes.length; i<n && count<=max; i++) {
     shp = shapes[i];
     for (j=0, m=shp ? shp.length : 0; j<m; j++) {
       if (!test || test(shp[j])) {
@@ -8445,9 +8446,7 @@ internal.getAssignmentObjects = function(exp) {
   return utils.uniq(names);
 };
 
-internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
-  var getFeatureById = internal.initFeatureProxy(lyr, arcs);
-  var ctx = internal.getExpressionContext(lyr, opts.context);
+internal.compileExpressionToFunction = function(exp, opts) {
   var functionBody = "with(env){with(record){ " + (opts.returns ? 'return ' : '') +
         exp + "}}";
   var func;
@@ -8456,6 +8455,13 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
   } catch(e) {
     stop(e.name, "in expression [" + exp + "]");
   }
+  return func;
+};
+
+internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
+  var getFeatureById = internal.initFeatureProxy(lyr, arcs);
+  var ctx = internal.getExpressionContext(lyr, opts.context);
+  var func = internal.compileExpressionToFunction(exp, opts);
   return function(rec, i) {
     var val;
     // Assigning feature object to '$' -- this should maybe be removed, it is
@@ -16236,15 +16242,17 @@ internal.importJSON = function(data, opts) {
 
 // TODO: support other encodings than utf-8
 // (Need to update readDelimLines() to work with all encodings)
-internal.readDelimRecords = function(reader, delim, encoding) {
+internal.readDelimRecords = function(reader, delim, encoding, filter) {
   var dsv = require("d3-dsv").dsvFormat(delim),
       records = [],
       retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
-      header = internal.trimBOM(retn ? retn.text : '');
+      header = internal.trimBOM(retn ? retn.text : ''),
+      batch;
   if (!retn) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
-    records.push.apply(records, dsv.parse(header + retn.text));
+    batch = dsv.parse(header + retn.text, filter);
+    records.push.apply(records, batch);
   }
   return records;
 };
@@ -16296,29 +16304,322 @@ internal.readDelimLines = function(reader, offs, delim, encoding, lines) {
 
 
 
+utils.replaceFileExtension = function(path, ext) {
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
+};
+
+utils.getPathSep = function(path) {
+  // TODO: improve
+  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
+};
+
+// Parse the path to a file without using Node
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      sep = utils.getPathSep(path),
+      parts = path.split(sep),
+      i;
+
+  if (parts.length == 1) {
+    obj.filename = parts[0];
+    obj.directory = "";
+  } else {
+    obj.filename = parts.pop();
+    obj.directory = parts.join(sep);
+  }
+  i = obj.filename.lastIndexOf('.');
+  if (i > -1) {
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
+  } else {
+    obj.extension = "";
+    obj.basename = obj.filename;
+    obj.pathbase = path;
+  }
+  return obj;
+};
+
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
+utils.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = utils.mergeNames(memo, name);
+    }
+    return memo;
+  }, "");
+};
+
+utils.getOutputFileBase = function(dataset) {
+  var inputFiles = dataset.info && dataset.info.input_files;
+  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
+};
+
+
+
+
+// Guess the type of a data file from file extension, or return null if not sure
+internal.guessInputFileType = function(file) {
+  var ext = utils.getFileExtension(file || '').toLowerCase(),
+      type = null;
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
+    type = ext;
+  } else if (/json$/.test(ext)) {
+    type = 'json';
+  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
+    type = 'text';
+  }
+  return type;
+};
+
+internal.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+    type = 'json';
+  }
+  return type;
+};
+
+internal.guessInputType = function(file, content) {
+  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
+};
+
+//
+internal.stringLooksLikeJSON = function(str) {
+  return /^\s*[{[]/.test(String(str));
+};
+
+internal.couldBeDsvFile = function(name) {
+  var ext = utils.getFileExtension(name).toLowerCase();
+  return /csv|tsv|txt$/.test(ext);
+};
+
+// Infer output format by considering file name and (optional) input format
+internal.inferOutputFormat = function(file, inputFormat) {
+  var ext = utils.getFileExtension(file).toLowerCase(),
+      format = null;
+  if (ext == 'shp') {
+    format = 'shapefile';
+  } else if (ext == 'dbf') {
+    format = 'dbf';
+  } else if (ext == 'svg') {
+    format = 'svg';
+  } else if (/json$/.test(ext)) {
+    format = 'geojson';
+    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
+      format = 'topojson';
+    } else if (ext == 'json' && inputFormat == 'json') {
+      format = 'json'; // JSON table
+    }
+  } else if (internal.couldBeDsvFile(file)) {
+    format = 'dsv';
+  } else if (inputFormat) {
+    format = inputFormat;
+  }
+  return format;
+};
+
+internal.isZipFile = function(file) {
+  return /\.zip$/i.test(file);
+};
+
+internal.isSupportedOutputFormat = function(fmt) {
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+  return types.indexOf(fmt) > -1;
+};
+
+internal.getFormatName = function(fmt) {
+  return {
+    geojson: 'GeoJSON',
+    topojson: 'TopoJSON',
+    json: 'JSON records',
+    dsv: 'CSV',
+    dbf: 'DBF',
+    shapefile: 'Shapefile',
+    svg: 'SVG'
+  }[fmt] || '';
+};
+
+// Assumes file at @path is one of Mapshaper's supported file types
+internal.isBinaryFile = function(path) {
+  var ext = utils.getFileExtension(path).toLowerCase();
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
+};
+
+// Detect extensions of some unsupported file types, for cmd line validation
+internal.filenameIsUnsupportedOutputType = function(file) {
+  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+  return rxp.test(file);
+};
+
+
+
+
+var cli = {};
+
+cli.isFile = function(path, cache) {
+  var ss = cli.statSync(path);
+  return cache && (path in cache) || ss && ss.isFile() || false;
+};
+
+cli.fileSize = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.size || 0;
+};
+
+cli.isDirectory = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
+
+// @encoding (optional) e.g. 'utf8'
+cli.readFile = function(fname, encoding, cache) {
+  var content;
+  if (cache && (fname in cache)) {
+    content = cache[fname];
+    delete cache[fname];
+  } else if (fname == '/dev/stdin') {
+    content = require('rw').readFileSync(fname);
+  } else {
+    internal.getStateVar('input_files').push(fname);
+    content = require('fs').readFileSync(fname);
+  }
+  if (encoding && Buffer.isBuffer(content)) {
+    content = internal.trimBOM(internal.decodeString(content, encoding));
+  }
+  return content;
+};
+
+// @content Buffer or string
+cli.writeFile = function(path, content, cb) {
+  var fs = require('rw');
+  if (cb) {
+    fs.writeFile(path, content, preserveContext(cb));
+  } else {
+    fs.writeFileSync(path, content);
+  }
+};
+
+// Returns Node Buffer
+cli.convertArrayBuffer = function(buf) {
+  var src = new Uint8Array(buf),
+      dest = utils.createBuffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
+
+// Expand any "*" wild cards in file name
+// (For the Windows command line; unix shells do this automatically)
+cli.expandFileName = function(name) {
+  var info = utils.parseLocalPath(name),
+      rxp = utils.wildcardToRegExp(info.filename),
+      dir = info.directory || '.',
+      files = [];
+
+  try {
+    require('fs').readdirSync(dir).forEach(function(item) {
+      var path = require('path').join(dir, item);
+      if (rxp.test(item) && cli.isFile(path)) {
+        files.push(path);
+      }
+    });
+  } catch(e) {}
+
+  if (files.length === 0) {
+    stop('No files matched (' + name + ')');
+  }
+  return files;
+};
+
+// Expand any wildcards.
+cli.expandInputFiles = function(files) {
+  return files.reduce(function(memo, name) {
+    if (name.indexOf('*') > -1) {
+      memo = memo.concat(cli.expandFileName(name));
+    } else {
+      memo.push(name);
+    }
+    return memo;
+  }, []);
+};
+
+cli.validateOutputDir = function(name) {
+  if (!cli.isDirectory(name)) {
+    error("Output directory not found:", name);
+  }
+};
+
+// TODO: rename and improve
+// Want to test if a path is something readable (e.g. file or stdin)
+cli.checkFileExists = function(path, cache) {
+  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
+    stop("File not found (" + path + ")");
+  }
+};
+
+cli.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  } catch(e) {}
+  return obj;
+};
+
+
+
+
 
 // Convert a string containing delimited text data into a dataset object
 internal.importDelim = function(str, opts) {
   return internal.importDelim2({content: str}, opts);
 };
 
+// Convert a string, buffer or file containing delimited text into a dataset obj.
 internal.importDelim2 = function(data, opts) {
 
   // TODO: remove duplication with importJSON()
-  var content = data.content,
-      reader, records, delimiter, table;
+  var readFromFile = !data.content && data.content !== '',
+      content = data.content,
+      filter, reader, records, delimiter, table;
+  opts = opts || {};
+  filter = internal.getImportFilterFunction(opts);
 
-  if (content instanceof ArrayBuffer || content instanceof Buffer) {
+  // read content of all but very large files into a buffer
+  if (readFromFile && cli.fileSize(data.filename) < 2e9) {
+    content = cli.readFile(data.filename);
+    readFromFile = false;
+  }
+
+  if (readFromFile) {
+    // try to read data incrementally from file, if content is missing
+    reader = new FileReader(data.filename);
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
     // Web API may import as ArrayBuffer, to support larger files
     reader = new BufferReader(content);
     content = null;
   } else if (utils.isString(content)) {
     // import as string
-  } else if (content) {
-    error("Unexpected object type");
   } else {
-    // try to read data from file, if content is missing
-    reader = new FileReader(data.filename);
+    error("Unexpected object type");
   }
 
   if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
@@ -16330,10 +16631,10 @@ internal.importDelim2 = function(data, opts) {
 
   if (reader) {
     delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords(reader, delimiter, opts.encoding);
+    records = internal.readDelimRecords(reader, delimiter, opts.encoding, filter);
   } else {
     delimiter = internal.guessDelimiter(content);
-    records = require("d3-dsv").dsvFormat(delimiter).parse(content);
+    records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
     delete records.columns; // added by d3-dsv
   }
   if (records.length === 0) {
@@ -16508,6 +16809,29 @@ utils.parseNumber = function(raw) {
   return isNaN(parsed) ? null : parsed;
 };
 
+// Returns a d3-dsv compatible function for filtering records and fields on import
+// TODO: look into using more code from standard expressions.
+internal.getImportFilterFunction = function(opts) {
+  var recordFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
+  var fieldFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
+  var ctx = internal.getBaseContext();
+  if (!recordFilter && !fieldFilter) return null;
+  return function(rec) {
+    var val;
+    try {
+      val = recordFilter ? recordFilter.call(null, rec, ctx) : true;
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val === false) {
+      return null;
+    } else if (val !== true) {
+      stop("Filter expression must return true or false");
+    }
+    return fieldFilter ? fieldFilter(rec) : rec;
+  };
+};
+
 
 
 
@@ -16530,6 +16854,7 @@ internal.importContent = function(obj, opts) {
     fileFmt = 'dsv';
     data = obj.text;
     dataset = internal.importDelim2(data, opts);
+
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;
@@ -16678,8 +17003,8 @@ api.importFile = function(path, opts) {
     // postpone reading of JSON files, to support incremental parsing
     content = null;
   } else if (apparentType == 'text' && !cached) {
-    content = cli.readFile(path); // read from buffer, to support larger files
-    // content = null // read incrementally from file, to support largest files
+    // content = cli.readFile(path); // read from buffer
+    content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
     if (utils.isString(content)) {
@@ -17190,289 +17515,6 @@ internal.createParallel = function(y, xmin, xmax, precision) {
   }
   coords.push([xmax, y]);
   return internal.graticuleFeature(coords, {type: 'parallel', value: y});
-};
-
-
-
-
-utils.replaceFileExtension = function(path, ext) {
-  var info = utils.parseLocalPath(path);
-  return info.pathbase + '.' + ext;
-};
-
-utils.getPathSep = function(path) {
-  // TODO: improve
-  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
-};
-
-// Parse the path to a file without using Node
-// Assumes: not a directory path
-utils.parseLocalPath = function(path) {
-  var obj = {},
-      sep = utils.getPathSep(path),
-      parts = path.split(sep),
-      i;
-
-  if (parts.length == 1) {
-    obj.filename = parts[0];
-    obj.directory = "";
-  } else {
-    obj.filename = parts.pop();
-    obj.directory = parts.join(sep);
-  }
-  i = obj.filename.lastIndexOf('.');
-  if (i > -1) {
-    obj.extension = obj.filename.substr(i + 1);
-    obj.basename = obj.filename.substr(0, i);
-    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
-  } else {
-    obj.extension = "";
-    obj.basename = obj.filename;
-    obj.pathbase = path;
-  }
-  return obj;
-};
-
-utils.getFileBase = function(path) {
-  return utils.parseLocalPath(path).basename;
-};
-
-utils.getFileExtension = function(path) {
-  return utils.parseLocalPath(path).extension;
-};
-
-utils.getPathBase = function(path) {
-  return utils.parseLocalPath(path).pathbase;
-};
-
-utils.getCommonFileBase = function(names) {
-  return names.reduce(function(memo, name, i) {
-    if (i === 0) {
-      memo = utils.getFileBase(name);
-    } else {
-      memo = utils.mergeNames(memo, name);
-    }
-    return memo;
-  }, "");
-};
-
-utils.getOutputFileBase = function(dataset) {
-  var inputFiles = dataset.info && dataset.info.input_files;
-  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
-};
-
-
-
-
-// Guess the type of a data file from file extension, or return null if not sure
-internal.guessInputFileType = function(file) {
-  var ext = utils.getFileExtension(file || '').toLowerCase(),
-      type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
-    type = ext;
-  } else if (/json$/.test(ext)) {
-    type = 'json';
-  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt') {
-    type = 'text';
-  }
-  return type;
-};
-
-internal.guessInputContentType = function(content) {
-  var type = null;
-  if (utils.isString(content)) {
-    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
-  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-    type = 'json';
-  }
-  return type;
-};
-
-internal.guessInputType = function(file, content) {
-  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
-};
-
-//
-internal.stringLooksLikeJSON = function(str) {
-  return /^\s*[{[]/.test(String(str));
-};
-
-internal.couldBeDsvFile = function(name) {
-  var ext = utils.getFileExtension(name).toLowerCase();
-  return /csv|tsv|txt$/.test(ext);
-};
-
-// Infer output format by considering file name and (optional) input format
-internal.inferOutputFormat = function(file, inputFormat) {
-  var ext = utils.getFileExtension(file).toLowerCase(),
-      format = null;
-  if (ext == 'shp') {
-    format = 'shapefile';
-  } else if (ext == 'dbf') {
-    format = 'dbf';
-  } else if (ext == 'svg') {
-    format = 'svg';
-  } else if (/json$/.test(ext)) {
-    format = 'geojson';
-    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
-      format = 'topojson';
-    } else if (ext == 'json' && inputFormat == 'json') {
-      format = 'json'; // JSON table
-    }
-  } else if (internal.couldBeDsvFile(file)) {
-    format = 'dsv';
-  } else if (inputFormat) {
-    format = inputFormat;
-  }
-  return format;
-};
-
-internal.isZipFile = function(file) {
-  return /\.zip$/i.test(file);
-};
-
-internal.isSupportedOutputFormat = function(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
-  return types.indexOf(fmt) > -1;
-};
-
-internal.getFormatName = function(fmt) {
-  return {
-    geojson: 'GeoJSON',
-    topojson: 'TopoJSON',
-    json: 'JSON records',
-    dsv: 'CSV',
-    dbf: 'DBF',
-    shapefile: 'Shapefile',
-    svg: 'SVG'
-  }[fmt] || '';
-};
-
-// Assumes file at @path is one of Mapshaper's supported file types
-internal.isBinaryFile = function(path) {
-  var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
-};
-
-// Detect extensions of some unsupported file types, for cmd line validation
-internal.filenameIsUnsupportedOutputType = function(file) {
-  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
-  return rxp.test(file);
-};
-
-
-
-
-var cli = {};
-
-cli.isFile = function(path, cache) {
-  var ss = cli.statSync(path);
-  return cache && (path in cache) || ss && ss.isFile() || false;
-};
-
-cli.fileSize = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.size || 0;
-};
-
-cli.isDirectory = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.isDirectory() || false;
-};
-
-// @encoding (optional) e.g. 'utf8'
-cli.readFile = function(fname, encoding, cache) {
-  var content;
-  if (cache && (fname in cache)) {
-    content = cache[fname];
-    delete cache[fname];
-  } else if (fname == '/dev/stdin') {
-    content = require('rw').readFileSync(fname);
-  } else {
-    internal.getStateVar('input_files').push(fname);
-    content = require('fs').readFileSync(fname);
-  }
-  if (encoding && Buffer.isBuffer(content)) {
-    content = internal.trimBOM(internal.decodeString(content, encoding));
-  }
-  return content;
-};
-
-// @content Buffer or string
-cli.writeFile = function(path, content, cb) {
-  var fs = require('rw');
-  if (cb) {
-    fs.writeFile(path, content, preserveContext(cb));
-  } else {
-    fs.writeFileSync(path, content);
-  }
-};
-
-// Returns Node Buffer
-cli.convertArrayBuffer = function(buf) {
-  var src = new Uint8Array(buf),
-      dest = utils.createBuffer(src.length);
-  for (var i = 0, n=src.length; i < n; i++) {
-    dest[i] = src[i];
-  }
-  return dest;
-};
-
-// Expand any "*" wild cards in file name
-// (For the Windows command line; unix shells do this automatically)
-cli.expandFileName = function(name) {
-  var info = utils.parseLocalPath(name),
-      rxp = utils.wildcardToRegExp(info.filename),
-      dir = info.directory || '.',
-      files = [];
-
-  try {
-    require('fs').readdirSync(dir).forEach(function(item) {
-      var path = require('path').join(dir, item);
-      if (rxp.test(item) && cli.isFile(path)) {
-        files.push(path);
-      }
-    });
-  } catch(e) {}
-
-  if (files.length === 0) {
-    stop('No files matched (' + name + ')');
-  }
-  return files;
-};
-
-// Expand any wildcards.
-cli.expandInputFiles = function(files) {
-  return files.reduce(function(memo, name) {
-    if (name.indexOf('*') > -1) {
-      memo = memo.concat(cli.expandFileName(name));
-    } else {
-      memo.push(name);
-    }
-    return memo;
-  }, []);
-};
-
-cli.validateOutputDir = function(name) {
-  if (!cli.isDirectory(name)) {
-    error("Output directory not found:", name);
-  }
-};
-
-// TODO: rename and improve
-// Want to test if a path is something readable (e.g. file or stdin)
-cli.checkFileExists = function(path, cache) {
-  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
-    stop("File not found (" + path + ")");
-  }
-};
-
-cli.statSync = function(fpath) {
-  var obj = null;
-  try {
-    obj = require('fs').statSync(fpath);
-  } catch(e) {}
-  return obj;
 };
 
 
@@ -22058,6 +22100,13 @@ internal.getOptionParser = function() {
     .option("field-types", fieldTypesOpt)
     .option("name", {
       describe: "Rename the imported layer(s)"
+    })
+    .option("csv-filter", {
+      // describe: "[CSV] JS expression for filtering records"
+    })
+    .option("csv-fields", {
+      type: 'strings'
+      // describe: "[CSV] comma-sep. list of fields to retain"
     });
 
   parser.command('o')
