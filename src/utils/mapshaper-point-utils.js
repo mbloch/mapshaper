@@ -8,10 +8,11 @@ internal.countPointsInLayer = function(lyr) {
   return count;
 };
 
-internal.countPoints2 = function(shapes, test) {
+internal.countPoints2 = function(shapes, test, max) {
   var count = 0;
   var i, n, j, m, shp;
-  for (i=0, n=shapes.length; i<n; i++) {
+  max = max || Infinity;
+  for (i=0, n=shapes.length; i<n && count<=max; i++) {
     shp = shapes[i];
     for (j=0, m=shp ? shp.length : 0; j<m; j++) {
       if (!test || test(shp[j])) {

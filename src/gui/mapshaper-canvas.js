@@ -95,10 +95,24 @@ function getShapeFilter(arcs, ext) {
   };
 }
 
+function getPixelColorFunction() {
+  var canv = El('canvas').node();
+  canv.width = canv.height = 1;
+  return function(col) {
+    var ctx = canv.getContext('2d');
+    var pixels;
+    ctx.fillStyle = col;
+    ctx.fillRect(0, 0, 1, 1);
+    pixels = new Uint32Array(ctx.getImageData(0, 0, 1, 1).data.buffer);
+    return pixels[0];
+  };
+}
+
 function DisplayCanvas() {
   var _self = El('canvas'),
       _canvas = _self.node(),
       _ctx = _canvas.getContext('2d'),
+      _pixelColor = getPixelColorFunction(),
       _ext;
 
   _self.prep = function(extent) {
@@ -127,6 +141,7 @@ function DisplayCanvas() {
     }
   };
   */
+
 
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
   _self.drawPathShapes = function(shapes, arcs, style, filter) {
@@ -172,13 +187,19 @@ function DisplayCanvas() {
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
         scaleRatio = getDotScale2(shapes, _ext),
-        size = (style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio,
+        size = Math.ceil((style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio),
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
+        color = style.dotColor || "black",
         shp, x, y, i, j, n, m;
     if (size === 0) return;
-    _ctx.fillStyle = style.dotColor || "black";
+    if (size <= 4 && !styler) {
+      // optimized drawing of many small same-colored dots
+      _self.drawSquareDotsFaster(shapes, color, size, t);
+      return;
+    }
+    _ctx.fillStyle = color;
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points
         styler(style, i);
@@ -195,6 +216,43 @@ function DisplayCanvas() {
       }
     }
   };
+
+  function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
+    var xmin = (x - size * 0.5) | 0;
+    var ymin = (y - size * 0.5) | 0;
+    var xmax = xmin + size - 1;
+    var ymax = ymin + size - 1;
+    var c, r;
+    for (c = xmin; c <= xmax; c++) {
+      if (c < 0 || c >= w) continue;
+      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
+        pixels[r * w + c] = rgba;
+      }
+    }
+  }
+
+
+  _self.drawSquareDotsFaster = function(shapes, color, size, t) {
+    var w = _canvas.width,
+        h = _canvas.height,
+        rgba = _pixelColor(color),
+        // imageData = _ctx.createImageData(w, h),
+        imageData = _ctx.getImageData(0, 0, w, h),
+        pixels = new Uint32Array(imageData.data.buffer),
+        shp, x, y, i, j, n, m;
+    for (i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+        x = shp[j][0] * t.mx + t.bx;
+        y = shp[j][1] * t.my + t.by;
+        if (x >= 0 && y >= 0 && x <= w && y <= h) {
+          drawSquareFaster(x, y, rgba, size, pixels, w, h);
+        }
+      }
+    }
+    _ctx.putImageData(imageData, 0, 0);
+  };
+
 
   // TODO: consider using drawPathShapes(), which draws paths in batches
   // for faster Canvas rendering. Downside: changes stacking order, which
@@ -277,14 +335,15 @@ function getDotScale2(shapes, ext) {
   var scale = ext.scale();
   var side = Math.min(ext.width(), ext.height());
   var bounds = ext.getBounds();
+  var topTier = 50000;
   var test, n, k, j;
   if (scale >= 2) {
     test = function(p) {
       return bounds.containsPoint(p[0], p[1]);
     };
   }
-  n = internal.countPoints2(shapes, test);
-  k = n > 100000 && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+  n = internal.countPoints2(shapes, test, topTier + 2); // short-circuit point counting above top threshold
+  k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
   j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
   return getDotScale(ext) * k * j * pixRatio;
 }
