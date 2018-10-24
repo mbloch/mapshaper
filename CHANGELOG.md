@@ -1,3 +1,9 @@
+v0.4.99
+* Support reading CSV files larger than 2GB.
+* Added (undocumented) -i command option csv-filter=, for filtering CSV records on import using a JS expression.
+* Added (undocumented) -i command option csv-fields=, for importing a subset of fields from a CSV file.
+* Faster rendering of many unstyled point symbols (which are drawn as little squares).
+
 v0.4.98
 * Fixed a performance regression.
 
