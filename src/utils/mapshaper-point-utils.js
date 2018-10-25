@@ -43,12 +43,13 @@ internal.getPointFeatureBounds = function(shape, bounds) {
 };
 
 internal.forEachPoint = function(shapes, cb) {
-  shapes.forEach(function(shape, id) {
-    var n = shape ? shape.length : 0;
-    for (var i=0; i<n; i++) {
-      cb(shape[i], id);
+  var i, n, j, m, shp;
+  for (i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+      cb(shp[j], i);
     }
-  });
+  }
 };
 
 internal.transformPointsInLayer = function(lyr, f) {

@@ -217,21 +217,6 @@ function DisplayCanvas() {
     }
   };
 
-  function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
-    var xmin = (x - size * 0.5) | 0;
-    var ymin = (y - size * 0.5) | 0;
-    var xmax = xmin + size - 1;
-    var ymax = ymin + size - 1;
-    var c, r;
-    for (c = xmin; c <= xmax; c++) {
-      if (c < 0 || c >= w) continue;
-      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
-        pixels[r * w + c] = rgba;
-      }
-    }
-  }
-
-
   _self.drawSquareDotsFaster = function(shapes, color, size, t) {
     var w = _canvas.width,
         h = _canvas.height,
@@ -253,6 +238,24 @@ function DisplayCanvas() {
     _ctx.putImageData(imageData, 0, 0);
   };
 
+  // color: 32-bit integer value containing rgba channel values
+  // size: pixels on a side (assume integer)
+  // x, y: non-integer center coordinates
+  // pixels: Uint32Array of pixel colors
+  // w, h: Size of canvas
+  function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
+    var xmin = (x - size * 0.5) | 0;
+    var ymin = (y - size * 0.5) | 0;
+    var xmax = xmin + size - 1;
+    var ymax = ymin + size - 1;
+    var c, r;
+    for (c = xmin; c <= xmax; c++) {
+      if (c < 0 || c >= w) continue;
+      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
+        pixels[r * w + c] = rgba;
+      }
+    }
+  }
 
   // TODO: consider using drawPathShapes(), which draws paths in batches
   // for faster Canvas rendering. Downside: changes stacking order, which
