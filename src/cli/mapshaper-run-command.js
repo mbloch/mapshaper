@@ -19,6 +19,7 @@ mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
 mapshaper-frame
+mapshaper-fuzzy-join
 mapshaper-graticule
 mapshaper-include
 mapshaper-info
@@ -179,6 +180,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'frame') {
       api.frame(catalog, source, opts);
+
+    } else if (name == 'fuzzy-join') {
+      internal.applyCommand(api.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));

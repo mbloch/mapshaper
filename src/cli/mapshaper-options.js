@@ -1037,6 +1037,21 @@ internal.getOptionParser = function() {
       describe: 'file containing a JS object with key:value pairs to import'
     });
 
+  parser.command("fuzzy-join")
+    .describe("join points to polygons, with data fill and fuzzy match")
+    .option("source", {
+      DEFAULT: true,
+      describe: "file or layer containing data records"
+    })
+    .option("field", {
+      describe: "field to join"
+    })
+    .option("dedup-points", {
+      describe: "uniqify points with the same location and field value",
+      type: "flag"
+    })
+    .option("target", targetOpt);
+
   parser.command("polygons")
     .describe("convert polylines to polygons")
     .option("gap-tolerance", {
