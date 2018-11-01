@@ -17,7 +17,8 @@ function Popup(gui, onNext, onPrev) {
   prevLink.on('click', onPrev);
 
   self.show = function(id, ids, table, pinned) {
-    var rec = table ? table.getRecordAt(id) : {};
+    var editable = pinned;
+    var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
     var maxHeight = parent.node().clientHeight - 36;
     self.hide(); // clean up if panel is already open
     render(content, rec, table, pinned);
@@ -31,7 +32,6 @@ function Popup(gui, onNext, onPrev) {
       content.css('height:' + maxHeight + 'px');
     }
   };
-
 
   self.hide = function() {
     // make sure any pending edits are made before re-rendering popup

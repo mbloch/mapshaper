@@ -15,12 +15,12 @@ internal.isFurnitureLayer = function(mapLayer) {
 
 // @lyr dataset layer
 internal.getFurnitureLayerType = function(lyr) {
-  var rec = lyr.data && lyr.data.getRecordAt(0);
+  var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
   return rec && rec.type || null;
 };
 
 internal.getFurnitureLayerData = function(lyr) {
-  return lyr.data && internal.copyRecord(lyr.data.getRecordAt(0));
+  return lyr.data && lyr.data.getReadOnlyRecordAt(0);
 };
 
 SVG.importFurniture = function(d, frame) {

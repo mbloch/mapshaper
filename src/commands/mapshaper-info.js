@@ -101,7 +101,7 @@ internal.getAttributeInfo = function(data, i) {
     return Math.max(memo, name.length);
   }, 5) + 2;
   var vals = fields.map(function(fname) {
-    return data.getRecordAt(featureId)[fname];
+    return data.getReadOnlyRecordAt(featureId)[fname];
   });
   var maxIntegralChars = vals.reduce(function(max, val) {
     if (utils.isNumber(val)) {

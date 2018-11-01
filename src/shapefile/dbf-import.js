@@ -35,8 +35,8 @@ function ShapefileTable(buf, encoding) {
     return useOriginal ? reader.getBuffer() : getTable().exportAsDbf(opts);
   };
 
-  this.getRecordAt = function(i) {
-    return reader ? reader.readRow(i) : table.getRecordAt(i);
+  this.getReadOnlyRecordAt = function(i) {
+    return reader ? reader.readRow(i) : table.getReadOnlyRecordAt(i);
   };
 
   this.deleteField = function(f) {

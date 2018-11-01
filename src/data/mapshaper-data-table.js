@@ -24,8 +24,9 @@ function DataTable(obj) {
     return records;
   };
 
-  this.getRecordAt = function(i) {
-    return records[i];
+  // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
+  this.getReadOnlyRecordAt = function(i) {
+    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
   };
 }
 
@@ -53,6 +54,10 @@ var dataTableProto = {
     this.getRecords().forEach(function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
+  },
+
+  getRecordAt: function(i) {
+    return this.getRecords()[i];
   },
 
   addIdField: function() {

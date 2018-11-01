@@ -263,10 +263,6 @@ function HitControl(gui, ext, mouse) {
     };
   }
 
-  function getProperties(id) {
-    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
-  }
-
   function sameIds(a, b) {
     if (a.length != b.length) return false;
     for (var i=0; i<a.length; i++) {
