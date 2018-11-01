@@ -907,6 +907,7 @@ img.close-btn:hover,
 	padding-right: 7px;
 	font-weight: normal;
 	min-width: 60px;
+	max-width: 260px;
 }
 
 .popup .value {
