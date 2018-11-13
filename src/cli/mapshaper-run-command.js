@@ -302,7 +302,11 @@ api.runCommand = function(cmd, catalog, cb) {
       catalog.addDataset(api.shape(opts));
 
     } else if (name == 'simplify') {
-      api.simplify(targetDataset, opts);
+      if (opts.variable) {
+        api.variableSimplify(targetLayers, targetDataset, opts);
+      } else {
+        api.simplify(targetDataset, opts);
+      }
 
     } else if (name == 'slice') {
       outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);

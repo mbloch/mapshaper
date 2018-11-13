@@ -17,6 +17,7 @@ api.simplify = function(dataset, opts) {
 
   internal.simplifyPaths(arcs, opts);
 
+  // uniform simplification
   if (utils.isNonNegNumber(opts.percentage)) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (opts.interval || opts.interval === 0) {

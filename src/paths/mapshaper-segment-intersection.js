@@ -28,16 +28,17 @@ internal.findSegmentIntersections = (function() {
     return new Uint32Array(buf, 0, count);
   }
 
-  return function(arcs) {
-    var bounds = arcs.getBounds(),
+  return function(arcs, arg2) {
+    var opts = arg2 || {},
+        bounds = arcs.getBounds(),
         // TODO: handle spherical bounds
         spherical = !arcs.isPlanar() &&
             containsBounds(internal.getWorldBounds(), bounds.toArray()),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
-        stripeCount = internal.calcSegmentIntersectionStripeCount(arcs),
+        stripeCount = opts.stripes || internal.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
-        stripeId = stripeCount > 1 ? multiStripeId : singleStripeId,
+        stripeId = stripeCount > 1 && yrange > 0 ? multiStripeId : singleStripeId,
         i, j;
 
     function multiStripeId(y) {
@@ -45,7 +46,6 @@ internal.findSegmentIntersections = (function() {
     }
 
     function singleStripeId(y) {return 0;}
-
     // Count segments in each stripe
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
@@ -94,6 +94,7 @@ internal.findSegmentIntersections = (function() {
         intersections.push(arr[j]);
       }
     }
+
     return internal.dedupIntersections(intersections);
   };
 })();
@@ -122,9 +123,25 @@ internal.getIntersectionKey = function(o) {
   return o.a.join(',') + ';' + o.b.join(',');
 };
 
+// Fast method
+// TODO: measure performance using a range of input data
+internal.calcSegmentIntersectionStripeCount2 = function(arcs) {
+  var segs = arcs.getFilteredPointCount() - arcs.size();
+  var stripes = Math.pow(segs, 0.4) * 2;
+  return Math.ceil(stripes) || 1;
+};
+
+// Alternate fast method
 internal.calcSegmentIntersectionStripeCount = function(arcs) {
+  var segs = arcs.getFilteredPointCount() - arcs.size();
+  var stripes = Math.ceil(Math.pow(segs * 10, 0.6) / 40);
+  return stripes > 0 ? stripes : 1;
+};
+
+// Old method calculates average segment length -- slow
+internal.calcSegmentIntersectionStripeCount_old = function(arcs) {
   var yrange = arcs.getBounds().height(),
-      segLen = internal.getAvgSegment2(arcs)[1],
+      segLen = internal.getAvgSegment2(arcs)[1], // slow
       count = 1;
   if (segLen > 0 && yrange > 0) {
     count = Math.ceil(yrange / segLen / 20);

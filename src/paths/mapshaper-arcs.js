@@ -214,12 +214,13 @@ function ArcCollection() {
         step = fw ? 1 : -1,
         v1 = fw ? _ii[absId] : _ii[absId] + n - 1,
         v2 = v1,
+        xx = _xx, yy = _yy, zz = _zz,
         count = 0;
 
     for (var j = 1; j < n; j++) {
       v2 += step;
-      if (zlim === 0 || _zz[v2] >= zlim) {
-        cb(v1, v2, _xx, _yy);
+      if (zlim === 0 || zz[v2] >= zlim) {
+        cb(v1, v2, xx, yy);
         v1 = v2;
         count++;
       }
@@ -587,6 +588,8 @@ function ArcCollection() {
   this.getPointCount = function() {
     return _xx && _xx.length || 0;
   };
+
+  this.getFilteredPointCount = getFilteredPointCount;
 
   this.getBounds = function() {
     return _allBounds.clone();

@@ -11,7 +11,10 @@ mapshaper-geom
 api.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
   var arcs = dataset.arcs;
-  if (opts.interpolated) {
+  if (opts.intersections) {
+    internal.testIntersections(arcs);
+    destLyr = srcLyr;
+  } else if (opts.interpolated) {
     // TODO: consider making attributed points, including distance from origin
     destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
@@ -41,6 +44,24 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
   }
   return destLyr;
+};
+
+// TODO: finish testing stripe count functions and remove
+internal.testIntersections = function(arcs) {
+  var pointCount =  arcs.getFilteredPointCount(),
+      arcCount = arcs.size(),
+      segCount = pointCount - arcCount,
+      stripes = internal.calcSegmentIntersectionStripeCount2(arcs),
+      stripes2 = Math.ceil(stripes / 10),
+      stripes3 = stripes * 10,
+      stripes4 = internal.calcSegmentIntersectionStripeCount(arcs);
+
+  console.log("points:", pointCount, "arcs:", arcCount, "segs:", segCount);
+  [stripes2, stripes, stripes3, stripes4].forEach(function(n) {
+    console.time(n + ' stripes');
+    internal.findSegmentIntersections(arcs, {stripes: n});
+    console.timeEnd(n + ' stripes');
+  });
 };
 
 internal.interpolatePoint2D = function(ax, ay, bx, by, k) {

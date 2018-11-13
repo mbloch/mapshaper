@@ -608,10 +608,11 @@ internal.getOptionParser = function() {
       describe: "capture unique endpoints of polygons and polylines",
       type: "flag"
     })
-    //.option("intersections", {
-    //  describe: "capture line segment intersections of polygons and polylines",
-    //  type: "flag"
-    //})
+    // WORK IN PROGRESS todo: create a point layer containing segment intersections
+    .option("intersections", {
+     // describe: "capture line segment intersections of polygons and polylines",
+     type: "flag"
+    })
     .option("interpolated", {
       describe: "interpolate points along polylines; requires interval=",
       type: "flag"
@@ -737,6 +738,10 @@ internal.getOptionParser = function() {
       type: "number"
     })
     */
+    .option("variable", {
+      describe: "expect an expression with interval=, percentage= or resolution=",
+      type: "flag"
+    })
     .option("planar", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)",
       type: "flag"
