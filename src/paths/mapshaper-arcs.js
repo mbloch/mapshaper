@@ -540,22 +540,7 @@ function ArcCollection() {
 
   // nth (optional): sample every nth threshold (use estimate for speed)
   this.getThresholdByPct = function(pct, nth) {
-    var tmp = this.getRemovableThresholds(nth),
-        rank, z;
-    if (tmp.length === 0) { // No removable points
-      rank = 0;
-    } else {
-      rank = Math.floor((1 - pct) * (tmp.length + 2));
-    }
-
-    if (rank <= 0) {
-      z = 0;
-    } else if (rank > tmp.length) {
-      z = Infinity;
-    } else {
-      z = utils.findValueByRank(tmp, rank);
-    }
-    return z;
+    return internal.getThresholdByPct(pct, this, nth);
   };
 
   this.arcIntersectsBBox = function(i, b1) {

@@ -8,12 +8,36 @@ internal.getThresholdFunction = function(arcs) {
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
       // For large datasets, use every nth point, for faster sorting.
-      utils.quicksort(sortedThresholds, false);
+      // utils.quicksort(sortedThresholds, false); // descending
+      utils.quicksort(sortedThresholds, true); // ascending
 
   return function(pct) {
     var n = sortedThresholds.length;
-    if (pct >= 1) return 0;
-    if (pct <= 0 || n === 0) return Infinity;
-    return sortedThresholds[Math.floor(pct * n)];
+    var rank = internal.retainedPctToRank(pct, sortedThresholds.length);
+    if (rank < 1) return 0;
+    if (rank > n) return Infinity;
+    return sortedThresholds[rank-1];
   };
+};
+
+// Return integer rank of n (1-indexed) or 0 if pct <= 0 or n+1 if pct >= 1
+internal.retainedPctToRank = function(pct, n) {
+  var rank;
+  if (n === 0 || pct >= 1) {
+    rank = 0;
+  } else if (pct <= 0) {
+    rank = n + 1;
+  } else {
+    rank = Math.floor((1 - pct) * (n + 2));
+  }
+  return rank;
+};
+
+// nth (optional): sample every nth threshold (use estimate for speed)
+internal.getThresholdByPct = function(pct, arcs, nth) {
+  var tmp = arcs.getRemovableThresholds(nth),
+      rank = internal.retainedPctToRank(pct, tmp.length);
+  if (rank < 1) return 0;
+  if (rank > tmp.length) return Infinity;
+  return utils.findValueByRank(tmp, rank);
 };

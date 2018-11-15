@@ -109,8 +109,8 @@ describe('mapshaper-options.js', function () {
   describe('simplify', function() {
     bad("-s") // no alias (add one?)
     bad("-simplify cartesian i 0.001")
-    good("-simplify visvalingam 10%", {method: "visvalingam", percentage: 0.1})
-    good("-simplify cartesian 1%", {planar: true, percentage: 0.01})
+    good("-simplify visvalingam 10%", {method: "visvalingam", percentage: '10%'})
+    good("-simplify cartesian 1%", {planar: true, percentage: '1%'})
 
     // invalid method names
     // now handled in simplify function
@@ -120,22 +120,23 @@ describe('mapshaper-options.js', function () {
     bad('-simplify 5% keep-shapes=true');
     bad('-simplify 5% dp=true');
 
-    good("-simplify 0%", {percentage: 0});
-    good("-simplify 0%", {percentage: 0});
-    good("-simplify 4%", {percentage: 0.04});
-    good("-simplify 0.04", {percentage: 0.04});
-    good("-simplify percentage=4%", {percentage: 0.04});
-    good("-simplify percentage=.04", {percentage: 0.04});
-    good("-simplify percentage 4%", {percentage: 0.04});
-    bad("-simplify 10");
-    bad("-simplify -5%");
-    bad("-simplify 101%");
-    bad("-simplify percentage=101%");
-    good("-simplify keep-shapes rdp 10%", {keep_shapes: true, method: "dp", percentage: 0.1});
-    bad("-simplify interval=10km"); // need integer
+    good("-simplify 0%", {percentage: '0%'});
+    good("-simplify 0%", {percentage: '0%'});
+    good("-simplify 4%", {percentage: '4%'});
+    good("-simplify 0.04", {percentage: '0.04'});
+    good("-simplify percentage=4%", {percentage: '4%'});
+    good("-simplify percentage=.04", {percentage: '.04'});
+    good("-simplify percentage 4%", {percentage: '4%'});
+    // percentage validation now occurs in -simplify command
+    // bad("-simplify 10");
+    // bad("-simplify -5%");
+    // bad("-simplify 101%");
+    // bad("-simplify percentage=101%");
+    // bad("-simplify 10km");
+    good("-simplify keep-shapes rdp 10%", {keep_shapes: true, method: "dp", percentage: '10%'});
+    // bad("-simplify interval=10km"); // need integer
     bad("-simplify percentage");
-    bad("-simplify 10km");
-    good("-simplify 3% no-repair", {percentage: 0.03, no_repair: true});
+    good("-simplify 3% no-repair", {percentage: '3%', no_repair: true});
   })
 
   describe('filter-fields', function () {

@@ -37,15 +37,15 @@ function validateSimplifyOpts(cmd) {
     }
   }
 
-  var intervalStr = o.interval;
-  if (intervalStr) {
-    o.interval = Number(intervalStr);
-    if (o.interval >= 0 === false) {
-      error(utils.format("Out-of-range interval value: %s", intervalStr));
-    }
-  }
+  // var intervalStr = o.interval;
+  // if (intervalStr) {
+  //   o.interval = Number(intervalStr);
+  //   if (o.interval >= 0 === false) {
+  //     error(utils.format("Out-of-range interval value: %s", intervalStr));
+  //   }
+  // }
 
-  if (isNaN(o.interval) && !utils.isNumber(o.percentage) && !o.resolution) {
+  if (!o.interval && !o.percentage && !o.resolution) {
     error("Command requires an interval, percentage or resolution parameter");
   }
 }

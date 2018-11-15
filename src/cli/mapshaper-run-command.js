@@ -40,6 +40,7 @@ mapshaper-run
 mapshaper-scalebar
 mapshaper-shape
 mapshaper-simplify
+mapshaper-variable-simplify
 mapshaper-split
 mapshaper-split-on-grid
 mapshaper-subdivide

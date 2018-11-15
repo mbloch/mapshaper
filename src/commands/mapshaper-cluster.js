@@ -23,7 +23,8 @@ api.cluster = function(lyr, arcs, opts) {
 internal.calcPolygonClusters = function(lyr, arcs, opts) {
   var calcScore = internal.getPolygonClusterCalculator(opts);
   var size = lyr.shapes.length;
-  var count = Math.round(size * (opts.pct || 1));
+  var pct = opts.pct ? utils.parsePercent(opts.pct) : 1;
+  var count = Math.round(size * pct);
   var groupField = opts.group_by || null;
 
   // working set of polygon records

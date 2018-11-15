@@ -12,13 +12,10 @@ api.simplify = function(dataset, opts) {
   if (!arcs) stop("Missing path data");
   // standardize options
   opts = internal.getStandardSimplifyOpts(dataset, opts);
-  // stash simplifcation options (used by gui settings dialog)
-  dataset.info = utils.defaults({simplify: opts}, dataset.info);
-
   internal.simplifyPaths(arcs, opts);
 
-  // uniform simplification
-  if (utils.isNonNegNumber(opts.percentage)) {
+  // calculate and apply simplification interval
+  if (opts.percentage || opts.percentage === 0) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (opts.interval || opts.interval === 0) {
     arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
@@ -28,6 +25,11 @@ api.simplify = function(dataset, opts) {
     stop("Missing a simplification amount");
   }
 
+  internal.finalizeSimplification(dataset, opts);
+};
+
+internal.finalizeSimplification = function(dataset, opts) {
+  var arcs = dataset.arcs;
   if (opts.keep_shapes) {
     api.keepEveryPolygon(arcs, dataset.layers);
   }
@@ -39,6 +41,9 @@ api.simplify = function(dataset, opts) {
   if (opts.stats) {
     internal.printSimplifyInfo(arcs, opts);
   }
+
+  // stash simplification options (used by gui settings dialog)
+  dataset.info = utils.defaults({simplify: opts}, dataset.info);
 };
 
 internal.getStandardSimplifyOpts = function(dataset, opts) {
