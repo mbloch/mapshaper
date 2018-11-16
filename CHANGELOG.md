@@ -1,3 +1,9 @@
+
+v0.4.100
+* Enable support for variable simplification amounts at the feature level using JS expressions. Adding the "variable" keyword to the -simplify command turns on variable simplification.
+* Document the csv-filter= and csv-fields= options of the import (-i) command.
+
+
 v0.4.99
 * Support reading CSV files larger than 2GB.
 * Added (undocumented) -i command option csv-filter=, for filtering CSV records on import using a JS expression.

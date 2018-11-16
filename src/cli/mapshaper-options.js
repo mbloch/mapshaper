@@ -141,11 +141,11 @@ internal.getOptionParser = function() {
       describe: "Rename the imported layer(s)"
     })
     .option("csv-filter", {
-      // describe: "[CSV] JS expression for filtering records"
+      describe: "[CSV] JS expression for filtering records"
     })
     .option("csv-fields", {
-      type: 'strings'
-      // describe: "[CSV] comma-sep. list of fields to retain"
+      type: 'strings',
+      describe: "[CSV] comma-sep. list of fields to import"
     });
 
   parser.command('o')
