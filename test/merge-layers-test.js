@@ -78,6 +78,35 @@ describe('mapshaper-merge-layers.js', function () {
       });
     });
 
+
+    it('identifies shared topology between layers', function(done) {
+
+      var line = {
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1], [2, 2]]
+      };
+      var target = {
+        type: 'Topology',
+        arcs: [[[0, 0], [1, 1], [2, 2]]],
+        objects: {layer: {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'LineString',
+            arcs: [0]
+          },{
+            type: 'LineString',
+            arcs: [0]
+          }]
+        }}
+      };
+      var cmd = '-i a.json -i b.json -merge-layers target=a,b -o ab.json format=topojson no-quantization';
+      api.applyCommands(cmd, {'a.json': line, 'b.json': line}, function(err, output) {
+        var json = JSON.parse(output['ab.json']);
+        assert.deepEqual(json, target);
+        done();
+      });
+    })
+
   })
 
   describe('mergeLayers()', function () {

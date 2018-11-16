@@ -14,12 +14,22 @@ internal.mergeDatasetsForExport = function(arr) {
 internal.mergeCommandTargets = function(targets, catalog) {
   var targetLayers = [];
   var targetDatasets = [];
+  var datasetsWithArcs = 0;
   var merged;
+
   targets.forEach(function(target) {
     targetLayers = targetLayers.concat(target.layers);
     targetDatasets = targetDatasets.concat(target.dataset);
+    if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
   });
+
   merged = internal.mergeDatasets(targetDatasets);
+
+  // Rebuild topology, if multiple datasets contain arcs
+  if (datasetsWithArcs > 1) {
+    api.buildTopology(merged);
+  }
+
   // remove old datasets after merging, so catalog is not affected if merge throws an error
   targetDatasets.forEach(catalog.removeDataset);
   catalog.addDataset(merged); // sets default target to all layers in merged dataset
@@ -30,6 +40,8 @@ internal.mergeCommandTargets = function(targets, catalog) {
   }];
 };
 
+// Combine multiple datasets into one using concatenation
+// (any shared topology is ignored)
 internal.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
