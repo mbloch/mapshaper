@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.99';
+VERSION = '0.4.100';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -2452,12 +2452,13 @@ function ArcCollection() {
         step = fw ? 1 : -1,
         v1 = fw ? _ii[absId] : _ii[absId] + n - 1,
         v2 = v1,
+        xx = _xx, yy = _yy, zz = _zz,
         count = 0;
 
     for (var j = 1; j < n; j++) {
       v2 += step;
-      if (zlim === 0 || _zz[v2] >= zlim) {
-        cb(v1, v2, _xx, _yy);
+      if (zlim === 0 || zz[v2] >= zlim) {
+        cb(v1, v2, xx, yy);
         v1 = v2;
         count++;
       }
@@ -2777,22 +2778,7 @@ function ArcCollection() {
 
   // nth (optional): sample every nth threshold (use estimate for speed)
   this.getThresholdByPct = function(pct, nth) {
-    var tmp = this.getRemovableThresholds(nth),
-        rank, z;
-    if (tmp.length === 0) { // No removable points
-      rank = 0;
-    } else {
-      rank = Math.floor((1 - pct) * (tmp.length + 2));
-    }
-
-    if (rank <= 0) {
-      z = 0;
-    } else if (rank > tmp.length) {
-      z = Infinity;
-    } else {
-      z = utils.findValueByRank(tmp, rank);
-    }
-    return z;
+    return internal.getThresholdByPct(pct, this, nth);
   };
 
   this.arcIntersectsBBox = function(i, b1) {
@@ -2825,6 +2811,8 @@ function ArcCollection() {
   this.getPointCount = function() {
     return _xx && _xx.length || 0;
   };
+
+  this.getFilteredPointCount = getFilteredPointCount;
 
   this.getBounds = function() {
     return _allBounds.clone();
@@ -3307,12 +3295,13 @@ internal.getPointFeatureBounds = function(shape, bounds) {
 };
 
 internal.forEachPoint = function(shapes, cb) {
-  shapes.forEach(function(shape, id) {
-    var n = shape ? shape.length : 0;
-    for (var i=0; i<n; i++) {
-      cb(shape[i], id);
+  var i, n, j, m, shp;
+  for (i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+      cb(shp[j], i);
     }
-  });
+  }
 };
 
 internal.transformPointsInLayer = function(lyr, f) {
@@ -5076,16 +5065,17 @@ internal.findSegmentIntersections = (function() {
     return new Uint32Array(buf, 0, count);
   }
 
-  return function(arcs) {
-    var bounds = arcs.getBounds(),
+  return function(arcs, arg2) {
+    var opts = arg2 || {},
+        bounds = arcs.getBounds(),
         // TODO: handle spherical bounds
         spherical = !arcs.isPlanar() &&
             containsBounds(internal.getWorldBounds(), bounds.toArray()),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
-        stripeCount = internal.calcSegmentIntersectionStripeCount(arcs),
+        stripeCount = opts.stripes || internal.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
-        stripeId = stripeCount > 1 ? multiStripeId : singleStripeId,
+        stripeId = stripeCount > 1 && yrange > 0 ? multiStripeId : singleStripeId,
         i, j;
 
     function multiStripeId(y) {
@@ -5093,7 +5083,6 @@ internal.findSegmentIntersections = (function() {
     }
 
     function singleStripeId(y) {return 0;}
-
     // Count segments in each stripe
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
@@ -5142,6 +5131,7 @@ internal.findSegmentIntersections = (function() {
         intersections.push(arr[j]);
       }
     }
+
     return internal.dedupIntersections(intersections);
   };
 })();
@@ -5170,9 +5160,25 @@ internal.getIntersectionKey = function(o) {
   return o.a.join(',') + ';' + o.b.join(',');
 };
 
+// Fast method
+// TODO: measure performance using a range of input data
+internal.calcSegmentIntersectionStripeCount2 = function(arcs) {
+  var segs = arcs.getFilteredPointCount() - arcs.size();
+  var stripes = Math.pow(segs, 0.4) * 2;
+  return Math.ceil(stripes) || 1;
+};
+
+// Alternate fast method
 internal.calcSegmentIntersectionStripeCount = function(arcs) {
+  var segs = arcs.getFilteredPointCount() - arcs.size();
+  var stripes = Math.ceil(Math.pow(segs * 10, 0.6) / 40);
+  return stripes > 0 ? stripes : 1;
+};
+
+// Old method calculates average segment length -- slow
+internal.calcSegmentIntersectionStripeCount_old = function(arcs) {
   var yrange = arcs.getBounds().height(),
-      segLen = internal.getAvgSegment2(arcs)[1],
+      segLen = internal.getAvgSegment2(arcs)[1], // slow
       count = 1;
   if (segLen > 0 && yrange > 0) {
     count = Math.ceil(yrange / segLen / 20);
@@ -7733,8 +7739,9 @@ function DataTable(obj) {
     return records;
   };
 
-  this.getRecordAt = function(i) {
-    return records[i];
+  // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
+  this.getReadOnlyRecordAt = function(i) {
+    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
   };
 }
 
@@ -7762,6 +7769,10 @@ var dataTableProto = {
     this.getRecords().forEach(function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
+  },
+
+  getRecordAt: function(i) {
+    return this.getRecords()[i];
   },
 
   addIdField: function() {
@@ -8597,41 +8608,66 @@ internal.getMode = function(values) {
   return data.modes[0];
 };
 
-internal.getModeData = function(values) {
-  var maxCount = 0, nextCount = 0,
-      uniq = [],
-      modes = [],
-      counts = {},
-      val, i, count, margin;
-  if (values.length == 1) {
-    return {modes: values, margin: 1};
-  }
-  // get max count and array of uniq values
+internal.getValueCountData = function(values) {
+  var uniqValues = [],
+      uniqIndex = {},
+      counts = [];
+  var i, val;
   for (i=0; i<values.length; i++) {
     val = values[i];
-    if (val in counts === false) {
-      count = 0;
-      uniq.push(val);
+    if (val in uniqIndex === false) {
+      uniqIndex[val] = uniqValues.length;
+      uniqValues.push(val);
+      counts.push(1);
     } else {
-      count = counts[val];
+      counts[uniqIndex[val]]++;
     }
-    counts[val] = ++count;
-    if (count > maxCount) maxCount = count;
   }
-  // get mode values (may be multiple) and margin
-  margin = maxCount;
-  for (i=0; i<uniq.length; i++) {
-    count = counts[uniq[i]];
+  return {
+    values: uniqValues,
+    counts: counts
+  };
+};
+
+internal.getMaxValue = function(values) {
+  var max = -Infinity;
+  var i;
+  for (i=0; i<values.length; i++) {
+    if (values[i] > max) max = values[i];
+  }
+  return max;
+};
+
+internal.getCountDataSummary = function(o) {
+  var counts = o.counts;
+  var values = o.values;
+  var maxCount = internal.getMaxValue(counts);
+  var nextCount = 0;
+  var modes = [];
+  var i, count;
+  for (i=0; i<counts.length; i++) {
+    count = counts[i];
     if (count === maxCount) {
-      modes.push(uniq[i]);
+      modes.push(values[i]);
     } else if (count > nextCount) {
       nextCount = count;
     }
   }
   return {
     modes: modes,
-    margin: modes.length > 1 ? 0 : maxCount - nextCount
+    margin: modes.length > 1 ? 0 : maxCount - nextCount,
+    count: maxCount
   };
+};
+
+internal.getModeData = function(values, verbose) {
+  var counts = internal.getValueCountData(values);
+  var modes = internal.getCountDataSummary(counts);
+  if (verbose) {
+    modes.counts = counts.counts;
+    modes.values = counts.values;
+  }
+  return modes;
 };
 
 
@@ -10862,7 +10898,8 @@ api.cluster = function(lyr, arcs, opts) {
 internal.calcPolygonClusters = function(lyr, arcs, opts) {
   var calcScore = internal.getPolygonClusterCalculator(opts);
   var size = lyr.shapes.length;
-  var count = Math.round(size * (opts.pct || 1));
+  var pct = opts.pct ? utils.parsePercent(opts.pct) : 1;
+  var count = Math.round(size * pct);
   var groupField = opts.group_by || null;
 
   // working set of polygon records
@@ -13784,12 +13821,12 @@ internal.isFurnitureLayer = function(mapLayer) {
 
 // @lyr dataset layer
 internal.getFurnitureLayerType = function(lyr) {
-  var rec = lyr.data && lyr.data.getRecordAt(0);
+  var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
   return rec && rec.type || null;
 };
 
 internal.getFurnitureLayerData = function(lyr) {
-  return lyr.data && internal.copyRecord(lyr.data.getRecordAt(0));
+  return lyr.data && lyr.data.getReadOnlyRecordAt(0);
 };
 
 SVG.importFurniture = function(d, frame) {
@@ -14950,8 +14987,8 @@ function ShapefileTable(buf, encoding) {
     return useOriginal ? reader.getBuffer() : getTable().exportAsDbf(opts);
   };
 
-  this.getRecordAt = function(i) {
-    return reader ? reader.readRow(i) : table.getRecordAt(i);
+  this.getReadOnlyRecordAt = function(i) {
+    return reader ? reader.readRow(i) : table.getReadOnlyRecordAt(i);
   };
 
   this.deleteField = function(f) {
@@ -17445,6 +17482,191 @@ SVG.furnitureRenderers.frame = function(d) {
 
 
 
+api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
+  var pointLyr = src ? src.layer : null;
+  if (!pointLyr || !internal.layerHasPoints(pointLyr)) {
+    stop('Missing a point layer to join from');
+  }
+  if (!pointLyr.data || !pointLyr.data.fieldExists(opts.field)) {
+    stop('Missing', opts.field ? '[' + opts.field + '] field' : 'a field parameter');
+  }
+  internal.requirePolygonLayer(polygonLyr);
+  if (opts.dedup_points) {
+    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + d["' + opts.field + '"]'});
+  }
+  internal.fuzzyJoin(polygonLyr, arcs, pointLyr, opts);
+};
+
+
+internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
+  var field = opts.field;
+  var getPointIds = internal.getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, opts);
+  var getFieldValues = internal.getFieldValuesFunction(pointLyr, field);
+  var getNeighbors = internal.getNeighborLookupFunction(polygonLyr, arcs);
+  var unassignedData = [];
+  var assignedValues = [];
+  var confidenceValues = [];
+  var neighborValues = [];
+  var lowDataIds = [];
+  var noDataIds = [];
+
+  // first pass: assign high-confidence values, retain low-confidence data
+  polygonLyr.shapes.forEach(function(shp, i) {
+    var pointIds = getPointIds(i) || []; // returns null if non found
+    var values = getFieldValues(pointIds);
+    var data = internal.getModeData(values, true);
+    var mode = internal.getHighConfidenceDataValue(data);
+    var isHighConfidence = mode !== null;
+    var isLowConfidence = !isHighConfidence && data.count > 1;  // using count, not margin
+    var isNoConfidence = !isHighConfidence && ~isLowConfidence;
+    neighborValues.push(null); // initialize to null
+    assignedValues.push(mode); // null or a field value
+    unassignedData.push(isHighConfidence ? null : data);
+    confidenceValues.push(isHighConfidence && 'high' || isLowConfidence && 'low' || 'none');
+    if (isLowConfidence) {
+      lowDataIds.push(i);
+    } else if (isNoConfidence) {
+      noDataIds.push(i);
+    }
+  });
+
+  // second pass: add strength to low-confidence counts that are bordered by high-confidence shapes
+  lowDataIds.forEach(function(shpId) {
+    var nabes = getNeighbors(shpId);
+    // console.log(shpId, '->', nabes)
+    // neighborValues[shpId] = nabes;
+    nabes.forEach(function(nabeId) {
+      borrowStrength(shpId, nabeId);
+    });
+    // update mode data
+    var countData = unassignedData[shpId];
+    var modeData = internal.getCountDataSummary(countData);
+    if (modeData.margin > 0) {
+      assignedValues[shpId] = modeData.modes[0];
+    } else {
+      // demote this shape to nodata group
+      noDataIds.push(shpId);
+    }
+    unassignedData[shpId] = null; // done with this data
+  });
+
+  internal.insertFieldValues(polygonLyr, field, assignedValues);
+  internal.insertFieldValues(polygonLyr, 'confidence', confidenceValues);
+  // internal.insertFieldValues(polygonLyr, 'neighbors', neighborValues);
+  if (noDataIds.length > 0) {
+    api.dataFill(polygonLyr, arcs, {field: field});
+  }
+
+  // shpA: id of a low-confidence shape
+  // shpB: id of a neighbor shape
+  function borrowStrength(shpA, shpB) {
+    var val = assignedValues[shpB];
+    var data = unassignedData[shpA];
+    var counts = data.counts;
+    var values = data.values;
+    var weight = 2;
+    var i;
+    if (val === null) return;
+    i = values.indexOf(val);
+    if (i == -1) {
+      values.push(val);
+      counts.push(weight);
+    } else {
+      counts[i] += weight;
+    }
+  }
+};
+
+internal.getNeighborLookupFunction = function(lyr, arcs) {
+  var classify = internal.getArcClassifier(lyr.shapes, arcs)(filter);
+  var index = {};  // maps shp ids to arrays of neighbor ids
+
+  function filter(a, b) {
+    return a > -1 ? [a, b] : null;  // edges are b == -1
+  }
+
+  function onArc(arcId) {
+    var ab = classify(arcId);
+    if (ab) {
+      // len = geom.calcPathLen([arcId], arcs, !arcs.isPlanar());
+      addArc(ab[0], ab[1]);
+      addArc(ab[1], ab[0]);
+    }
+  }
+
+  function addArc(shpA, shpB) {
+    var arr;
+    if (shpA == -1 || shpB == -1 || shpA == shpB) return;
+    if (shpA in index === false) {
+      index[shpA] = [];
+    }
+    arr = index[shpA];
+    if (arr.indexOf(shpB) == -1) {
+      arr.push(shpB);
+    }
+  }
+  internal.forEachArcId(lyr.shapes, onArc);
+  return function(shpId) {
+    return index[shpId] || [];
+  };
+};
+
+internal.getFieldValuesFunction = function(lyr, field) {
+  // receive array of feature ids, return mode data
+  var records = lyr.data.getRecords();
+  return function getFieldValues(ids) {
+    var values = [], rec;
+    for (var i=0; i<ids.length; i++) {
+      rec = records[ids[i]];
+      values.push(rec[field]);
+    }
+    return values;
+  };
+};
+
+internal.getHighConfidenceDataValue = function(o) {
+  if (o.margin > 2) {
+    return o.modes[0];
+  }
+  return null;
+};
+
+internal.getNeighborsFunction = function(lyr, arcs, opts) {
+  var index = internal.buildAssignmentIndex(lyr, field, arcs);
+  var minBorderPct = opts && opts.min_border_pct || 0;
+
+  return function(shpId) {
+    var nabes = index[shpId];
+    var emptyLen = 0;
+    var fieldLen = 0;
+    var fieldVal = null;
+    var nabe, val, len;
+
+    for (var i=0; i<nabes.length; i++) {
+      nabe = nabes[i];
+      val = nabe.value;
+      len = nabe.length;
+      if (internal.isEmptyValue(val)) {
+        emptyLen += len;
+      } else if (fieldVal === null || fieldVal == val) {
+        fieldVal = val;
+        fieldLen += len;
+      } else {
+        // this shape has neighbors with different field values
+        return null;
+      }
+    }
+
+    if (fieldLen / (fieldLen + emptyLen) < minBorderPct) return null;
+
+    return fieldLen > 0 ? fieldVal : null;
+  };
+};
+
+
+
+
+
 api.graticule = function(dataset, opts) {
   var graticule = internal.createGraticule(opts);
   var dest, src;
@@ -17651,7 +17873,7 @@ internal.getAttributeInfo = function(data, i) {
     return Math.max(memo, name.length);
   }, 5) + 2;
   var vals = fields.map(function(fname) {
-    return data.getRecordAt(featureId)[fname];
+    return data.getReadOnlyRecordAt(featureId)[fname];
   });
   var maxIntegralChars = vals.reduce(function(max, val) {
     if (utils.isNumber(val)) {
@@ -18692,7 +18914,10 @@ internal.findLongestPolylinePart = function(shp, arcs, spherical) {
 api.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
   var arcs = dataset.arcs;
-  if (opts.interpolated) {
+  if (opts.intersections) {
+    internal.testIntersections(arcs);
+    destLyr = srcLyr;
+  } else if (opts.interpolated) {
     // TODO: consider making attributed points, including distance from origin
     destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
@@ -18722,6 +18947,24 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
   }
   return destLyr;
+};
+
+// TODO: finish testing stripe count functions and remove
+internal.testIntersections = function(arcs) {
+  var pointCount =  arcs.getFilteredPointCount(),
+      arcCount = arcs.size(),
+      segCount = pointCount - arcCount,
+      stripes = internal.calcSegmentIntersectionStripeCount2(arcs),
+      stripes2 = Math.ceil(stripes / 10),
+      stripes3 = stripes * 10,
+      stripes4 = internal.calcSegmentIntersectionStripeCount(arcs);
+
+  console.log("points:", pointCount, "arcs:", arcCount, "segs:", segCount);
+  [stripes2, stripes, stripes3, stripes4].forEach(function(n) {
+    console.time(n + ' stripes');
+    internal.findSegmentIntersections(arcs, {stripes: n});
+    console.timeEnd(n + ' stripes');
+  });
 };
 
 internal.interpolatePoint2D = function(ax, ay, bx, by, k) {
@@ -20490,12 +20733,10 @@ api.simplify = function(dataset, opts) {
   if (!arcs) stop("Missing path data");
   // standardize options
   opts = internal.getStandardSimplifyOpts(dataset, opts);
-  // stash simplifcation options (used by gui settings dialog)
-  dataset.info = utils.defaults({simplify: opts}, dataset.info);
-
   internal.simplifyPaths(arcs, opts);
 
-  if (utils.isNonNegNumber(opts.percentage)) {
+  // calculate and apply simplification interval
+  if (opts.percentage || opts.percentage === 0) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (opts.interval || opts.interval === 0) {
     arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
@@ -20505,6 +20746,11 @@ api.simplify = function(dataset, opts) {
     stop("Missing a simplification amount");
   }
 
+  internal.finalizeSimplification(dataset, opts);
+};
+
+internal.finalizeSimplification = function(dataset, opts) {
+  var arcs = dataset.arcs;
   if (opts.keep_shapes) {
     api.keepEveryPolygon(arcs, dataset.layers);
   }
@@ -20516,6 +20762,9 @@ api.simplify = function(dataset, opts) {
   if (opts.stats) {
     internal.printSimplifyInfo(arcs, opts);
   }
+
+  // stash simplification options (used by gui settings dialog)
+  dataset.info = utils.defaults({simplify: opts}, dataset.info);
 };
 
 internal.getStandardSimplifyOpts = function(dataset, opts) {
@@ -20702,6 +20951,161 @@ internal.convertSimplifyResolution = function(param, arcs, opts) {
   //  visible artifacts)
   interval *= 0.5;
   return interval;
+};
+
+
+
+// Returns a function for converting simplification ratio [0-1] to an interval value.
+// If the dataset is large, the value is an approximation (for speed while using slider)
+internal.getThresholdFunction = function(arcs) {
+  var size = arcs.getPointCount(),
+      nth = Math.ceil(size / 5e5),
+      sortedThresholds = arcs.getRemovableThresholds(nth);
+      // Sort simplification thresholds for all non-endpoint vertices
+      // for quick conversion of simplification percentage to threshold value.
+      // For large datasets, use every nth point, for faster sorting.
+      // utils.quicksort(sortedThresholds, false); // descending
+      utils.quicksort(sortedThresholds, true); // ascending
+
+  return function(pct) {
+    var n = sortedThresholds.length;
+    var rank = internal.retainedPctToRank(pct, sortedThresholds.length);
+    if (rank < 1) return 0;
+    if (rank > n) return Infinity;
+    return sortedThresholds[rank-1];
+  };
+};
+
+// Return integer rank of n (1-indexed) or 0 if pct <= 0 or n+1 if pct >= 1
+internal.retainedPctToRank = function(pct, n) {
+  var rank;
+  if (n === 0 || pct >= 1) {
+    rank = 0;
+  } else if (pct <= 0) {
+    rank = n + 1;
+  } else {
+    rank = Math.floor((1 - pct) * (n + 2));
+  }
+  return rank;
+};
+
+// nth (optional): sample every nth threshold (use estimate for speed)
+internal.getThresholdByPct = function(pct, arcs, nth) {
+  var tmp = arcs.getRemovableThresholds(nth),
+      rank = internal.retainedPctToRank(pct, tmp.length);
+  if (rank < 1) return 0;
+  if (rank > tmp.length) return Infinity;
+  return utils.findValueByRank(tmp, rank);
+};
+
+
+
+
+api.variableSimplify = function(layers, dataset, opts) {
+  var lyr = layers[0];
+  var arcs = dataset.arcs;
+  var getShapeThreshold;
+  var arcThresholds;
+  if (layers.length != 1) {
+    stop('Variable simplification requires a single target layer');
+  }
+  if (!internal.layerHasPaths(lyr)) {
+    stop('Target layer is missing path data');
+  }
+
+  opts = internal.getStandardSimplifyOpts(dataset, opts);
+  internal.simplifyPaths(arcs, opts);
+
+  if (opts.interval) {
+    getShapeThreshold = internal.getVariableIntervalFunction(opts.interval, lyr, dataset, opts);
+  } else if (opts.percentage) {
+    getShapeThreshold = internal.getVariablePercentageFunction(opts.percentage, lyr, dataset, opts);
+  } else if (opts.resolution) {
+    getShapeThreshold = internal.getVariableResolutionFunction(opts.resolution, lyr, dataset, opts);
+  } else {
+    stop("Missing a simplification expression");
+  }
+
+  arcThresholds = internal.calculateVariableThresholds(lyr, arcs, getShapeThreshold);
+  internal.applyArcThresholds(arcs, arcThresholds);
+  arcs.setRetainedInterval(1e20); // set to a huge value
+  internal.finalizeSimplification(dataset, opts);
+  arcs.flatten(); // bake in simplification (different from standard -simplify)
+};
+
+internal.getVariableIntervalFunction = function(exp, lyr, dataset, opts) {
+  var compiled = internal.compileSimplifyExpression(exp, lyr, dataset.arcs);
+  return function(shpId) {
+    var val = compiled(shpId);
+    return internal.convertSimplifyInterval(val, dataset, opts);
+  };
+};
+
+internal.getVariableResolutionFunction = function(exp, lyr, dataset, opts) {
+  var compiled = internal.compileSimplifyExpression(exp, lyr, dataset.arcs);
+  return function(shpId) {
+    var val = compiled(shpId);
+    return internal.convertSimplifyResolution(val, dataset.arcs, opts);
+  };
+};
+
+internal.getVariablePercentageFunction = function(exp, lyr, dataset, opts) {
+  var compiled = internal.compileSimplifyExpression(exp, lyr, dataset.arcs);
+  var pctToInterval = internal.getThresholdFunction(dataset.arcs);
+  return function(shpId) {
+    var val = compiled(shpId);
+    var pct = utils.parsePercent(val);
+    return pctToInterval(pct);
+  };
+};
+
+// TODO: memoize?
+internal.compileSimplifyExpression = function(exp, lyr, arcs) {
+  return internal.compileValueExpression(exp, lyr, arcs);
+};
+
+// Filter arcs based on an array of thresholds
+internal.applyArcThresholds = function(arcs, thresholds) {
+  var zz = arcs.getVertexData().zz;
+  arcs.forEach2(function(start, n, xx, yy, zz, arcId) {
+    var arcZ = thresholds[arcId];
+    var z;
+    for (var i=1; i<n-1; i++) {
+      z = zz[start + i];
+      // if (z >= arcZ || arcZ === Infinity) { // Infinity test is a bug
+      if (z >= arcZ) {
+        // protect vertices with thresholds that are >= than the computed threshold
+        // for this arc
+        zz[start + i] = Infinity;
+      }
+    }
+  });
+};
+
+internal.calculateVariableThresholds = function(lyr, arcs, getShapeThreshold) {
+  var thresholds = new Float64Array(arcs.size()); // init to 0s
+  var UNUSED = -1;
+  var currThresh;
+  utils.initializeArray(thresholds, UNUSED);
+  lyr.shapes.forEach(function(shp, shpId) {
+    currThresh = getShapeThreshold(shpId);
+    internal.forEachArcId(shp || [], procArc);
+  });
+  // set unset arcs to 0 so they are not simplified
+  for (var i=0, n=thresholds.length; i<n; i++) {
+    if (thresholds[i] == UNUSED) {
+      thresholds[i] = 0;
+    }
+  }
+  return thresholds;
+
+  function procArc(arcId) {
+    var i = arcId < 0 ? ~arcId : arcId;
+    var savedThresh = thresholds[i];
+    if (savedThresh > currThresh || savedThresh == UNUSED) {
+      thresholds[i] = currThresh;
+    }
+  }
 };
 
 
@@ -21069,6 +21473,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'frame') {
       api.frame(catalog, source, opts);
 
+    } else if (name == 'fuzzy-join') {
+      internal.applyCommand(api.fuzzyJoin, targetLayers, arcs, source, opts);
+
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
 
@@ -21187,7 +21594,11 @@ api.runCommand = function(cmd, catalog, cb) {
       catalog.addDataset(api.shape(opts));
 
     } else if (name == 'simplify') {
-      api.simplify(targetDataset, opts);
+      if (opts.variable) {
+        api.variableSimplify(targetLayers, targetDataset, opts);
+      } else {
+        api.simplify(targetDataset, opts);
+      }
 
     } else if (name == 'slice') {
       outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
@@ -21512,7 +21923,8 @@ function CommandParser() {
       } else if (type == 'bbox' || type == 'numbers') {
         val = token.split(',').map(parseFloat);
       } else if (type == 'percent') {
-        val = utils.parsePercent(token);
+        // val = utils.parsePercent(token);
+        val = token; // string value is parsed by command function
       } else if (type == 'distance' || type == 'area') {
         val = token; // string value is parsed by command function
       } else {
@@ -21826,15 +22238,15 @@ function validateSimplifyOpts(cmd) {
     }
   }
 
-  var intervalStr = o.interval;
-  if (intervalStr) {
-    o.interval = Number(intervalStr);
-    if (o.interval >= 0 === false) {
-      error(utils.format("Out-of-range interval value: %s", intervalStr));
-    }
-  }
+  // var intervalStr = o.interval;
+  // if (intervalStr) {
+  //   o.interval = Number(intervalStr);
+  //   if (o.interval >= 0 === false) {
+  //     error(utils.format("Out-of-range interval value: %s", intervalStr));
+  //   }
+  // }
 
-  if (isNaN(o.interval) && !utils.isNumber(o.percentage) && !o.resolution) {
+  if (!o.interval && !o.percentage && !o.resolution) {
     error("Command requires an interval, percentage or resolution parameter");
   }
 }
@@ -22102,11 +22514,11 @@ internal.getOptionParser = function() {
       describe: "Rename the imported layer(s)"
     })
     .option("csv-filter", {
-      // describe: "[CSV] JS expression for filtering records"
+      describe: "[CSV] JS expression for filtering records"
     })
     .option("csv-fields", {
-      type: 'strings'
-      // describe: "[CSV] comma-sep. list of fields to retain"
+      type: 'strings',
+      describe: "[CSV] comma-sep. list of fields to import"
     });
 
   parser.command('o')
@@ -22569,10 +22981,11 @@ internal.getOptionParser = function() {
       describe: "capture unique endpoints of polygons and polylines",
       type: "flag"
     })
-    //.option("intersections", {
-    //  describe: "capture line segment intersections of polygons and polylines",
-    //  type: "flag"
-    //})
+    // WORK IN PROGRESS todo: create a point layer containing segment intersections
+    .option("intersections", {
+     // describe: "capture line segment intersections of polygons and polylines",
+     type: "flag"
+    })
     .option("interpolated", {
       describe: "interpolate points along polylines; requires interval=",
       type: "flag"
@@ -22698,6 +23111,10 @@ internal.getOptionParser = function() {
       type: "number"
     })
     */
+    .option("variable", {
+      describe: "expect an expression with interval=, percentage= or resolution=",
+      type: "flag"
+    })
     .option("planar", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)",
       type: "flag"
@@ -22997,6 +23414,21 @@ internal.getOptionParser = function() {
       DEFAULT: true,
       describe: 'file containing a JS object with key:value pairs to import'
     });
+
+  parser.command("fuzzy-join")
+    .describe("join points to polygons, with data fill and fuzzy match")
+    .option("source", {
+      DEFAULT: true,
+      describe: "file or layer containing data records"
+    })
+    .option("field", {
+      describe: "field to join"
+    })
+    .option("dedup-points", {
+      describe: "uniqify points with the same location and field value",
+      type: "flag"
+    })
+    .option("target", targetOpt);
 
   parser.command("polygons")
     .describe("convert polylines to polygons")

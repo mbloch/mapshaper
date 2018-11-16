@@ -1584,21 +1584,6 @@ function DisplayCanvas() {
     }
   };
 
-  function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
-    var xmin = (x - size * 0.5) | 0;
-    var ymin = (y - size * 0.5) | 0;
-    var xmax = xmin + size - 1;
-    var ymax = ymin + size - 1;
-    var c, r;
-    for (c = xmin; c <= xmax; c++) {
-      if (c < 0 || c >= w) continue;
-      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
-        pixels[r * w + c] = rgba;
-      }
-    }
-  }
-
-
   _self.drawSquareDotsFaster = function(shapes, color, size, t) {
     var w = _canvas.width,
         h = _canvas.height,
@@ -1620,6 +1605,24 @@ function DisplayCanvas() {
     _ctx.putImageData(imageData, 0, 0);
   };
 
+  // color: 32-bit integer value containing rgba channel values
+  // size: pixels on a side (assume integer)
+  // x, y: non-integer center coordinates
+  // pixels: Uint32Array of pixel colors
+  // w, h: Size of canvas
+  function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
+    var xmin = (x - size * 0.5) | 0;
+    var ymin = (y - size * 0.5) | 0;
+    var xmax = xmin + size - 1;
+    var ymax = ymin + size - 1;
+    var c, r;
+    for (c = xmin; c <= xmax; c++) {
+      if (c < 0 || c >= w) continue;
+      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
+        pixels[r * w + c] = rgba;
+      }
+    }
+  }
 
   // TODO: consider using drawPathShapes(), which draws paths in batches
   // for faster Canvas rendering. Downside: changes stacking order, which
@@ -2341,7 +2344,8 @@ function Popup(gui, onNext, onPrev) {
   prevLink.on('click', onPrev);
 
   self.show = function(id, ids, table, pinned) {
-    var rec = table ? table.getRecordAt(id) : {};
+    var editable = pinned;
+    var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
     var maxHeight = parent.node().clientHeight - 36;
     self.hide(); // clean up if panel is already open
     render(content, rec, table, pinned);
@@ -2355,7 +2359,6 @@ function Popup(gui, onNext, onPrev) {
       content.css('height:' + maxHeight + 'px');
     }
   };
-
 
   self.hide = function() {
     // make sure any pending edits are made before re-rendering popup
@@ -2767,10 +2770,6 @@ function HitControl(gui, ext, mouse) {
       });
       return hits;
     };
-  }
-
-  function getProperties(id) {
-    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
   }
 
   function sameIds(a, b) {
@@ -4603,14 +4602,38 @@ internal.getThresholdFunction = function(arcs) {
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
       // For large datasets, use every nth point, for faster sorting.
-      utils.quicksort(sortedThresholds, false);
+      // utils.quicksort(sortedThresholds, false); // descending
+      utils.quicksort(sortedThresholds, true); // ascending
 
   return function(pct) {
     var n = sortedThresholds.length;
-    if (pct >= 1) return 0;
-    if (pct <= 0 || n === 0) return Infinity;
-    return sortedThresholds[Math.floor(pct * n)];
+    var rank = internal.retainedPctToRank(pct, sortedThresholds.length);
+    if (rank < 1) return 0;
+    if (rank > n) return Infinity;
+    return sortedThresholds[rank-1];
   };
+};
+
+// Return integer rank of n (1-indexed) or 0 if pct <= 0 or n+1 if pct >= 1
+internal.retainedPctToRank = function(pct, n) {
+  var rank;
+  if (n === 0 || pct >= 1) {
+    rank = 0;
+  } else if (pct <= 0) {
+    rank = n + 1;
+  } else {
+    rank = Math.floor((1 - pct) * (n + 2));
+  }
+  return rank;
+};
+
+// nth (optional): sample every nth threshold (use estimate for speed)
+internal.getThresholdByPct = function(pct, arcs, nth) {
+  var tmp = arcs.getRemovableThresholds(nth),
+      rank = internal.retainedPctToRank(pct, tmp.length);
+  if (rank < 1) return 0;
+  if (rank > tmp.length) return Infinity;
+  return utils.findValueByRank(tmp, rank);
 };
 
 
