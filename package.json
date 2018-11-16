@@ -32,7 +32,7 @@
 		"cookies": "^0.7.1",
 		"d3-dsv": "~1.0.8",
 		"flatbush": "^3.1.0",
-		"iconv-lite": "0.4.19",
+		"iconv-lite": "0.4.24",
 		"mproj": "0.0.19",
 		"opn": "^5.3.0",
 		"optimist": "~0.6.0",
