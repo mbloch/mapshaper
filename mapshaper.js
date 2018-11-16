@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.100';
+VERSION = '0.4.101';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
