@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-var mapshaper = require("../");
+var mapshaper = require("../mapshaper");
 mapshaper.enableLogging();
 mapshaper.runCommands(process.argv.slice(2), done);
 
