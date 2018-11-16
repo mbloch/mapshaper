@@ -1,8 +1,9 @@
+v0.4.101
+* Re-publish to npm
 
 v0.4.100
 * Enable support for variable simplification amounts at the feature level using JS expressions. Adding the "variable" keyword to the -simplify command turns on variable simplification.
 * Document the csv-filter= and csv-fields= options of the import (-i) command.
-
 
 v0.4.99
 * Support reading CSV files larger than 2GB.
