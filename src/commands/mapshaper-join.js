@@ -259,16 +259,30 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
   return joinFields;
 };
 
+internal.validateJoinFieldType = function(field, type) {
+  if (!type || type == 'object') {
+    stop('[' + field + '] field has an unsupported data type. Expected string or number.');
+  }
+};
+
 // Return a function for translating a target id to an array of source ids based on values
 // of two key fields.
 internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
   var index = internal.createTableIndex(src.getRecords(), srcKey);
+  var srcType, destType;
   if (src.fieldExists(srcKey) === false) {
     stop("External table is missing a field named:", srcKey);
   }
   if (!dest || !dest.fieldExists(destKey)) {
     stop("Target layer is missing key field:", destKey);
+  }
+  srcType = internal.getColumnType(srcKey, src.getRecords());
+  destType = internal.getColumnType(destKey, destRecords);
+  internal.validateJoinFieldType(srcKey, srcType);
+  internal.validateJoinFieldType(destKey, destType);
+  if (srcType != destType) {
+    stop("Join keys have mismatched data types:", destType, "and", srcType);
   }
   return function(i) {
     var destRec = destRecords[i],

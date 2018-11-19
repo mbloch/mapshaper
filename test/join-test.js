@@ -23,6 +23,33 @@ describe('mapshaper-join.js', function () {
       });
     });
 
+    it('error if source and target key fields have different types', function(done) {
+      var a = 'id,name\n1,foo';
+      var b = 'key,score\n1,100';
+      api.applyCommands('a.csv string-fields=id -join b.csv keys=id,key fields=* -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert(err.message.indexOf('string and number') > -1);
+        done();
+      });
+    })
+
+    it('error if source key field has null values', function(done) {
+      var a = [{id: null, name: 'foo'}];
+      var b = [{key: 1, score: 100}];
+      api.applyCommands('a.json -join b.json keys=id,key fields=* -o', {'a.json': a, 'b.json': b}, function(err, out) {
+        assert(err.message.indexOf('unsupported data type') > -1);
+        done();
+      });
+    })
+
+    it('error if target key field has null values', function(done) {
+      var a = [{id: 1, name: 'foo'}];
+      var b = [{key: null, score: 100}];
+      api.applyCommands('a.json -join b.json keys=id,key fields=* -o', {'a.json': a, 'b.json': b}, function(err, out) {
+        assert(err.message.indexOf('unsupported data type') > -1);
+        done();
+      });
+    })
+
     it('excludes source key by default', function(done) {
       var a = 'id\n1';
       var b = 'key,score\n1,100';
