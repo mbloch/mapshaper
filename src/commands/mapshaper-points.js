@@ -19,6 +19,8 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.vertices2) {
+    destLyr.shapes = internal.pointsFromVertices2(srcLyr, arcs, opts);
   } else if (opts.endpoints) {
     destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
@@ -119,6 +121,7 @@ internal.interpolatedPointsFromVertices = function(lyr, dataset, opts) {
   }
 };
 
+// Unique vertices within each feature
 internal.pointsFromVertices = function(lyr, arcs, opts) {
   var coords, index;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
@@ -143,6 +146,27 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
     var iter = arcs.getShapeIter(ids);
     while (iter.hasNext()) {
       addPoint(iter);
+    }
+  }
+};
+
+// Simple conversion of path vertices to points (duplicate locations not removed)
+// TODO: Provide some way to rebuild paths from points (e.g. multipart features)
+internal.pointsFromVertices2 = function(lyr, arcs, opts) {
+  var coords;
+  if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
+    stop("Expected a polygon or polyline layer");
+  }
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    (shp || []).forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+
+  function nextPart(ids) {
+    var iter = arcs.getShapeIter(ids);
+    while (iter.hasNext()) {
+      coords.push([iter.x, iter.y]);
     }
   }
 };

@@ -604,6 +604,10 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
+    .option("vertices2", {
+      describe: "like vertices, but without removal of duplicate coordinates",
+      type: "flag"
+    })
     .option("endpoints", {
       describe: "capture unique endpoints of polygons and polylines",
       type: "flag"
