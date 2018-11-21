@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.102';
+VERSION = '0.4.103';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -3982,8 +3982,17 @@ internal.findNodeTopology = function(arcs, filter) {
 // Calculations for planar geometry of shapes
 // TODO: consider 3D versions of some of these
 
+// TODO: adjust for spherical/ellipsoidal
+geom.calcPolsbyPopperCompactness = function(area, perimeter) {
+  if (!perimeter) return 0;
+  return area * Math.PI * 4 / (perimeter * perimeter);
+};
+
 geom.getShapeArea = function(shp, arcs) {
-  return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
+  // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
+  return (shp || []).reduce(function(area, ids) {
+    return area + geom.getPathArea(ids, arcs);
+  }, 0);
 };
 
 geom.getPlanarShapeArea = function(shp, arcs) {
@@ -4201,6 +4210,10 @@ geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
   return hit;
 };
 
+geom.getPathArea = function(ids, arcs) {
+  return (arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea)(ids, arcs);
+};
+
 geom.getSphericalPathArea = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
@@ -4264,6 +4277,34 @@ geom.getPlanarPathArea = function(ids, arcs) {
     }
   }
   return sum / 2;
+};
+
+
+geom.getPathPerimeter = function(ids, arcs) {
+  return (arcs.isPlanar() ? geom.getPlanarPathPerimeter : geom.getSphericalPathPerimeter)(ids, arcs);
+};
+
+geom.getShapePerimeter = function(shp, arcs) {
+  return (shp || []).reduce(function(len, ids) {
+    return len + geom.getPathPerimeter(ids, arcs);
+  }, 0);
+};
+
+geom.getSphericalShapePerimeter = function(shp, arcs) {
+  if (arcs.isPlanar()) {
+    error("[getSphericalShapePerimeter()] Function requires decimal degree coordinates");
+  }
+  return (shp || []).reduce(function(len, ids) {
+    return len + geom.getSphericalPathPerimeter(ids, arcs);
+  }, 0);
+};
+
+geom.getPlanarPathPerimeter = function(ids, arcs) {
+  return geom.calcPathLen(ids, arcs, false);
+};
+
+geom.getSphericalPathPerimeter = function(ids, arcs) {
+  return geom.calcPathLen(ids, arcs, true);
 };
 
 geom.countVerticesInPath = function(ids, arcs) {
@@ -8212,10 +8253,17 @@ internal.initFeatureProxy = function(lyr, arcs) {
         area: function() {
           return _isPlanar ? ctx.planarArea : geom.getSphericalShapeArea(_ids, arcs);
         },
+        perimeter: function() {
+          return geom.getShapePerimeter(_ids, arcs);
+        },
+        compactness: function() {
+          return geom.calcPolsbyPopperCompactness(ctx.area, ctx.perimeter);
+        },
         planarArea: function() {
           return geom.getPlanarShapeArea(_ids, arcs);
         },
         originalArea: function() {
+          // Get area
           var i = arcs.getRetainedInterval(),
               area;
           arcs.setRetainedInterval(0);
@@ -10394,6 +10442,53 @@ function addSegmentBoundsIntersection(points, a, b, bounds) {
 
 
 
+internal.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
+  };
+};
+
+internal.getSliverTest = function(arcs) {
+  var maxSliverArea = internal.calcMaxSliverArea(arcs);
+  return function(path) {
+    // TODO: more sophisticated metric, perhaps considering shape
+    var area = geom.getPlanarPathArea(path, arcs);
+    return Math.abs(area) <= maxSliverArea;
+  };
+};
+
+internal.getMinAreaTest = function(areaParam, dataset, opts) {
+  var arcs = dataset.arcs;
+  var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
+  if (opts && opts.weighted) {
+    return internal.getWeightedMinAreaFilter(minArea, dataset.arcs);
+  }
+  return internal.getMinAreaFilter(minArea, dataset.arcs);
+};
+
+internal.getMinAreaFilter = function(minArea, arcs) {
+  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
+  };
+};
+
+internal.getWeightedMinAreaFilter = function(minArea, arcs) {
+  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  var pathPerimeter = arcs.isPlanar() ? geom.getPlanarPathPerimeter : geom.getSphericalPathPerimeter;
+  return function(path) {
+    var area = pathArea(path, arcs);
+    var perim = pathPerimeter(path, arcs);
+    var compactness = geom.calcPolsbyPopperCompactness(area, perim);
+    return Math.abs(area * compactness) < minArea;
+  };
+};
+
+
+
+
 api.filterIslands = function(lyr, dataset, opts) {
   var arcs = dataset.arcs;
   var removed = 0;
@@ -10403,7 +10498,7 @@ api.filterIslands = function(lyr, dataset, opts) {
 
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
-      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset));
+      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset, opts));
     }
     if (opts.min_vertices) {
       removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
@@ -10417,22 +10512,6 @@ api.filterIslands = function(lyr, dataset, opts) {
   }
 };
 
-internal.getVertexCountTest = function(minVertices, arcs) {
-  return function(path) {
-    // first and last vertex in ring count as one
-    return geom.countVerticesInPath(path, arcs) <= minVertices;
-  };
-};
-
-internal.getMinAreaTest = function(areaParam, dataset) {
-  var arcs = dataset.arcs;
-  var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(path) {
-    var area = pathArea(path, arcs);
-    return Math.abs(area) < minArea;
-  };
-};
 
 internal.filterIslands = function(lyr, arcs, ringTest) {
   var removed = 0;
@@ -10499,7 +10578,7 @@ api.filterSlivers = function(lyr, dataset, opts) {
 };
 
 internal.filterSlivers = function(lyr, dataset, opts) {
-  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset) :
+  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset, opts) :
     internal.getSliverTest(dataset.arcs);
   var removed = 0;
   var pathFilter = function(path, i, paths) {
@@ -10508,6 +10587,7 @@ internal.filterSlivers = function(lyr, dataset, opts) {
       return null;
     }
   };
+
 
   internal.editShapes(lyr.shapes, pathFilter);
   message(utils.format("Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
@@ -10539,15 +10619,6 @@ internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
   internal.countArcsInShapes(clipLyr.shapes, flags);
   internal.editShapes(lyr.shapes, pathFilter);
   return removed;
-};
-
-internal.getSliverTest = function(arcs) {
-  var maxSliverArea = internal.calcMaxSliverArea(arcs);
-  return function(path) {
-    // TODO: more sophisticated metric, perhaps considering shape
-    var area = geom.getPlanarPathArea(path, arcs);
-    return Math.abs(area) <= maxSliverArea;
-  };
 };
 
 
@@ -18661,16 +18732,30 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
   return joinFields;
 };
 
+internal.validateJoinFieldType = function(field, type) {
+  if (!type || type == 'object') {
+    stop('[' + field + '] field has an unsupported data type. Expected string or number.');
+  }
+};
+
 // Return a function for translating a target id to an array of source ids based on values
 // of two key fields.
 internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
   var index = internal.createTableIndex(src.getRecords(), srcKey);
+  var srcType, destType;
   if (src.fieldExists(srcKey) === false) {
     stop("External table is missing a field named:", srcKey);
   }
   if (!dest || !dest.fieldExists(destKey)) {
     stop("Target layer is missing key field:", destKey);
+  }
+  srcType = internal.getColumnType(srcKey, src.getRecords());
+  destType = internal.getColumnType(destKey, destRecords);
+  internal.validateJoinFieldType(srcKey, srcType);
+  internal.validateJoinFieldType(destKey, destType);
+  if (srcType != destType) {
+    stop("Join keys have mismatched data types:", destType, "and", srcType);
   }
   return function(i) {
     var destRec = destRecords[i],
@@ -18934,6 +19019,8 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.vertices2) {
+    destLyr.shapes = internal.pointsFromVertices2(srcLyr, arcs, opts);
   } else if (opts.endpoints) {
     destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
@@ -19034,6 +19121,7 @@ internal.interpolatedPointsFromVertices = function(lyr, dataset, opts) {
   }
 };
 
+// Unique vertices within each feature
 internal.pointsFromVertices = function(lyr, arcs, opts) {
   var coords, index;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
@@ -19058,6 +19146,27 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
     var iter = arcs.getShapeIter(ids);
     while (iter.hasNext()) {
       addPoint(iter);
+    }
+  }
+};
+
+// Simple conversion of path vertices to points (duplicate locations not removed)
+// TODO: Provide some way to rebuild paths from points (e.g. multipart features)
+internal.pointsFromVertices2 = function(lyr, arcs, opts) {
+  var coords;
+  if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
+    stop("Expected a polygon or polyline layer");
+  }
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    (shp || []).forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+
+  function nextPart(ids) {
+    var iter = arcs.getShapeIter(ids);
+    while (iter.hasNext()) {
+      coords.push([iter.x, iter.y]);
     }
   }
 };
@@ -22845,6 +22954,10 @@ internal.getOptionParser = function() {
       type: "area",
       describe: "remove small-area rings (sq meters or projected units)"
     })
+    .option("weighted", {
+      type: "flag",
+      describe: "multiply min-area by Polsby-Popper compactness (0-1)"
+    })
     /*
     .option("remove-empty", {
       type: "flag",
@@ -22987,6 +23100,10 @@ internal.getOptionParser = function() {
     })
     .option("vertices", {
       describe: "capture unique vertices of polygons and polylines",
+      type: "flag"
+    })
+    .option("vertices2", {
+      describe: "like vertices, but without removal of duplicate coordinates",
       type: "flag"
     })
     .option("endpoints", {
