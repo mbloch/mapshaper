@@ -13,7 +13,7 @@ api.filterSlivers = function(lyr, dataset, opts) {
 };
 
 internal.filterSlivers = function(lyr, dataset, opts) {
-  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset) :
+  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset, opts) :
     internal.getSliverTest(dataset.arcs);
   var removed = 0;
   var pathFilter = function(path, i, paths) {
@@ -22,6 +22,7 @@ internal.filterSlivers = function(lyr, dataset, opts) {
       return null;
     }
   };
+
 
   internal.editShapes(lyr.shapes, pathFilter);
   message(utils.format("Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
@@ -53,15 +54,6 @@ internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
   internal.countArcsInShapes(clipLyr.shapes, flags);
   internal.editShapes(lyr.shapes, pathFilter);
   return removed;
-};
-
-internal.getSliverTest = function(arcs) {
-  var maxSliverArea = internal.calcMaxSliverArea(arcs);
-  return function(path) {
-    // TODO: more sophisticated metric, perhaps considering shape
-    var area = geom.getPlanarPathArea(path, arcs);
-    return Math.abs(area) <= maxSliverArea;
-  };
 };
 
 

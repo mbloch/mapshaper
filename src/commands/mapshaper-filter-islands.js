@@ -1,4 +1,8 @@
-/* @requires mapshaper-shape-geom, mapshaper-filter, mapshaper-shape-utils */
+/* @requires
+mapshaper-filter,
+mapshaper-shape-utils
+mapshaper-path-filters
+*/
 
 api.filterIslands = function(lyr, dataset, opts) {
   var arcs = dataset.arcs;
@@ -9,7 +13,7 @@ api.filterIslands = function(lyr, dataset, opts) {
 
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
-      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset));
+      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset, opts));
     }
     if (opts.min_vertices) {
       removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
@@ -23,22 +27,6 @@ api.filterIslands = function(lyr, dataset, opts) {
   }
 };
 
-internal.getVertexCountTest = function(minVertices, arcs) {
-  return function(path) {
-    // first and last vertex in ring count as one
-    return geom.countVerticesInPath(path, arcs) <= minVertices;
-  };
-};
-
-internal.getMinAreaTest = function(areaParam, dataset) {
-  var arcs = dataset.arcs;
-  var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(path) {
-    var area = pathArea(path, arcs);
-    return Math.abs(area) < minArea;
-  };
-};
 
 internal.filterIslands = function(lyr, arcs, ringTest) {
   var removed = 0;

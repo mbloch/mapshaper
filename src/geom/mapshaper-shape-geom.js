@@ -3,8 +3,17 @@
 // Calculations for planar geometry of shapes
 // TODO: consider 3D versions of some of these
 
+// TODO: adjust for spherical/ellipsoidal
+geom.calcPolsbyPopperCompactness = function(area, perimeter) {
+  if (!perimeter) return 0;
+  return area * Math.PI * 4 / (perimeter * perimeter);
+};
+
 geom.getShapeArea = function(shp, arcs) {
-  return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
+  // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
+  return (shp || []).reduce(function(area, ids) {
+    return area + geom.getPathArea(ids, arcs);
+  }, 0);
 };
 
 geom.getPlanarShapeArea = function(shp, arcs) {
@@ -222,6 +231,10 @@ geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
   return hit;
 };
 
+geom.getPathArea = function(ids, arcs) {
+  return (arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea)(ids, arcs);
+};
+
 geom.getSphericalPathArea = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
@@ -285,6 +298,34 @@ geom.getPlanarPathArea = function(ids, arcs) {
     }
   }
   return sum / 2;
+};
+
+
+geom.getPathPerimeter = function(ids, arcs) {
+  return (arcs.isPlanar() ? geom.getPlanarPathPerimeter : geom.getSphericalPathPerimeter)(ids, arcs);
+};
+
+geom.getShapePerimeter = function(shp, arcs) {
+  return (shp || []).reduce(function(len, ids) {
+    return len + geom.getPathPerimeter(ids, arcs);
+  }, 0);
+};
+
+geom.getSphericalShapePerimeter = function(shp, arcs) {
+  if (arcs.isPlanar()) {
+    error("[getSphericalShapePerimeter()] Function requires decimal degree coordinates");
+  }
+  return (shp || []).reduce(function(len, ids) {
+    return len + geom.getSphericalPathPerimeter(ids, arcs);
+  }, 0);
+};
+
+geom.getPlanarPathPerimeter = function(ids, arcs) {
+  return geom.calcPathLen(ids, arcs, false);
+};
+
+geom.getSphericalPathPerimeter = function(ids, arcs) {
+  return geom.calcPathLen(ids, arcs, true);
 };
 
 geom.countVerticesInPath = function(ids, arcs) {

@@ -460,6 +460,10 @@ internal.getOptionParser = function() {
       type: "area",
       describe: "remove small-area rings (sq meters or projected units)"
     })
+    .option("weighted", {
+      type: "flag",
+      describe: "multiply min-area by Polsby-Popper compactness (0-1)"
+    })
     /*
     .option("remove-empty", {
       type: "flag",

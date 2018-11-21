@@ -68,10 +68,17 @@ internal.initFeatureProxy = function(lyr, arcs) {
         area: function() {
           return _isPlanar ? ctx.planarArea : geom.getSphericalShapeArea(_ids, arcs);
         },
+        perimeter: function() {
+          return geom.getShapePerimeter(_ids, arcs);
+        },
+        compactness: function() {
+          return geom.calcPolsbyPopperCompactness(ctx.area, ctx.perimeter);
+        },
         planarArea: function() {
           return geom.getPlanarShapeArea(_ids, arcs);
         },
         originalArea: function() {
+          // Get area
           var i = arcs.getRetainedInterval(),
               area;
           arcs.setRetainedInterval(0);
