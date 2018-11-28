@@ -1,3 +1,6 @@
+v0.4.104 unreleased
+* Added "-uniq invert" option, for retaining non-unique records (useful e.g. for troubleshooting many-to-one joins).
+
 v0.4.103
 * Added "weighted" option to the "-filter-slivers" command. When used with the "min-area=" option, the "weighted" flag multiplies the area of each polygon ring by the "Polsby-Popper" compactness metric, so sliver-shaped rings have a lower effective area.
 * Added "this.perimeter" to the JS expression context. Perimeter values are in meters for unprojected data or in projected units (usually meters) for projected data.
