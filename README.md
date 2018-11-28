@@ -81,6 +81,8 @@ This software is licensed under [MPL 2.0](http://www.mozilla.org/MPL/2.0/).
 
 According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL's ‘file-level’ copyleft is designed to encourage contributors to share modifications they make to your code, while still allowing them to combine your code with code under other licenses (open or proprietary) with minimal restrictions."
 
+
+
 ### Acknowledgements
 
 My colleagues at The New York Times, for countless suggestions, bug reports and general helpfulness.

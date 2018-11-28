@@ -2,7 +2,7 @@ v0.4.103
 * Added "weighted" option to the "-filter-slivers" command. When used with the "min-area=" option, the "weighted" flag multiplies the area of each polygon ring by the "Polsby-Popper" compactness metric, so sliver-shaped rings have a lower effective area.
 * Added "this.perimeter" to the JS expression context. Perimeter values are in meters for unprojected data or in projected units (usually meters) for projected data.
 * Added "this.compactness" to the JS expression context. Compactness is the "Polsby-Popper" score of each polygon feature.
-* Added "-points vertices2" option, which is like "-points vertices", but retains every vertex of the original polygon or polygon instead of removing duplicate vertices within each feature.
+* Added "-points vertices2" option, which is like "-points vertices", but retains every vertex of the original polygon or polyline instead of removing duplicate vertices within each feature.
 * Fix for issue #310.
 
 v0.4.102

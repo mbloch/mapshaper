@@ -131,14 +131,10 @@ internal.joinTables = function(dest, src, join, opts) {
       }
       internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
+  }
 
-  }
-  if (matchCount === 0) {
-    message("No records could be joined");
-  } else {
-    internal.printJoinMessage(matchCount, destRecords.length,
+  internal.printJoinMessage(matchCount, destRecords.length,
       internal.countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
-  }
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -214,9 +210,13 @@ internal.joinBySum = function(dest, src, fields) {
 };
 
 internal.printJoinMessage = function(matches, n, joins, m, skipped, collisions, collisionFields) {
-  // TODO: add tip for generating layer containing unmatched records, when
-  // this option is implemented.
-  message(utils.format("Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
+  // TODO: add tip for troubleshooting join problems, if join is less than perfect.
+  if (matches > 0 === false) {
+    message("No records could be joined");
+    return;
+  }
+  message(utils.format("Joined data from %'d source record%s to %'d target record%s",
+      joins, utils.pluralSuffix(joins), matches, utils.pluralSuffix(matches)));
   if (matches < n) {
     message(utils.format('%d/%d target records received no data', n-matches, n));
   }
