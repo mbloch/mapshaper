@@ -10,6 +10,7 @@ mapshaper-svg-display
 mapshaper-layer-stack
 mapshaper-layer-sorting
 mapshaper-gui-proxy
+mapshaper-coordinates-display
 */
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -22,11 +23,13 @@ function MshpMap(gui, opts) {
       buttons = new SidebarButtons(gui),
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
+      _hit = new HitControl(gui, _ext, _mouse),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav, _hit;
+      _inspector, _stack, _nav;
 
+  new CoordinatesDisplay(gui, _ext, _mouse);
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
@@ -139,7 +142,6 @@ function MshpMap(gui, opts) {
     _ext.resize();
     _nav = new MapNav(gui, _ext, _mouse);
     _stack = new LayerStack(gui, el, _ext, _mouse);
-    _hit = new HitControl(gui, _ext, _mouse);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset

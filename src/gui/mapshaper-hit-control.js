@@ -9,28 +9,10 @@ function HitControl(gui, ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
-  var readout = gui.container.findChild('.coordinate-info').hide();
-  var bboxPoint;
   var target, test;
-
-  readout.on('copy', function(e) {
-    // remove selection on copy (using timeout or else copy is cancelled)
-    setTimeout(function() {
-      getSelection().removeAllRanges();
-    }, 50);
-    // don't display bounding box if user copies coords
-    bboxPoint = null;
-  });
-
-  ext.on('change', function() {
-    clearCoords();
-    // shapes may change along with map scale
-    // target = lyr ? lyr.getDisplayLayer() : null;
-  });
 
   self.setLayer = function(mapLayer) {
     target = mapLayer;
-    readout.hide();
     if (!mapLayer) {
       test = null;
       self.stop();
@@ -53,30 +35,15 @@ function HitControl(gui, ext, mouse) {
   };
 
   mouse.on('click', function(e) {
-    if (!target) return;
-    if (active) {
+    if (target && active) {
       trigger('click', prevHits);
     }
-    if (target.geographic) {
-      GUI.selectElement(readout.node());
-      // don't save bbox point when inspector is active
-      // clear bbox point if already present
-      bboxPoint = bboxPoint || active ? null : ext.translatePixelCoords(e.x, e.y);
-    }
   });
-
-  mouse.on('leave', clearCoords);
 
   mouse.on('hover', function(e) {
     if (!target) return;
     var isOver = isOverMap(e);
     var p = ext.translatePixelCoords(e.x, e.y);
-    if (target.geographic && isOver) {
-      // update coordinate readout if displaying geographic shapes
-      displayCoords(p);
-    } else {
-      clearCoords();
-    }
     if (active && test) {
       if (!isOver) {
         // mouse is off of map viewport -- clear any current hit
@@ -95,27 +62,6 @@ function HitControl(gui, ext, mouse) {
     return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
   }
 
-  function displayCoords(p) {
-    var decimals = getCoordPrecision(ext.getBounds());
-    var coords = bboxPoint ? getBbox(p, bboxPoint) : p;
-    var str = coords.map(function(n) {return n.toFixed(decimals);}).join(',');
-    readout.text(str).show();
-  }
-
-  function getBbox(a, b) {
-    return [
-      Math.min(a[0], b[0]),
-      Math.min(a[1], b[1]),
-      Math.max(a[0], b[0]),
-      Math.max(a[1], b[1])
-    ];
-  }
-
-  function clearCoords() {
-    bboxPoint = null;
-    readout.hide();
-  }
-
   // Convert pixel distance to distance in coordinate units.
   function getHitBuffer(pix) {
     return pix / ext.getTransform().mx;
@@ -129,16 +75,6 @@ function HitControl(gui, ext, mouse) {
     }
     if (minPix > 0 && pix < minPix) pix = minPix;
     return getHitBuffer(pix);
-  }
-
-  function getCoordPrecision(bounds) {
-    var range = Math.min(bounds.width(), bounds.height()) + 1e-8;
-    var digits = 0;
-    while (range < 2000) {
-      range *= 10;
-      digits++;
-    }
-    return digits;
   }
 
   function polygonTest(x, y) {
@@ -261,6 +197,10 @@ function HitControl(gui, ext, mouse) {
       });
       return hits;
     };
+  }
+
+  function getProperties(id) {
+    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
   }
 
   function sameIds(a, b) {
