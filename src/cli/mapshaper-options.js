@@ -920,6 +920,10 @@ internal.getOptionParser = function() {
       type: "number",
       describe: "max features with the same id (default is 1)"
     })
+    .option("invert", {
+      type: "flag",
+      describe: "retain only features that would have been deleted"
+    })
     .option("verbose", {
       describe: "print each removed feature",
       type: "flag"

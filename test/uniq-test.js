@@ -21,4 +21,14 @@ describe('mapshaper-uniq.js', function () {
     assert.deepEqual(lyr.shapes, [[[1, 2]], [[3, 4]], [[5, 6]]]);
   })
 
+  it ('-uniq invert', function() {
+    var data = new api.internal.DataTable([{foo: 'a', id: 0}, {foo: 'b', id: 1},
+      {foo: 'a', id: 2}, {foo: 'a', id: 3}]),
+        shapes = [[[1, 2]], [[3, 4]], [[5, 6]], [[7, 8]]],
+        lyr = {data: data, shapes: shapes, geometry_type: 'point'};
+    api.uniq(lyr, null, {expression: 'foo', invert: true});
+    assert.deepEqual(lyr.data.getRecords(), [{foo: 'a', id: 2}, {foo: 'a', id: 3}]);
+    assert.deepEqual(lyr.shapes, [[[5, 6]], [[7, 8]]]);
+  })
+
 })
