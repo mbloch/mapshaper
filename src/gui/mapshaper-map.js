@@ -11,6 +11,9 @@ mapshaper-layer-stack
 mapshaper-layer-sorting
 mapshaper-gui-proxy
 mapshaper-coordinates-display
+mapshaper-hit-control
+mapshaper-hit-control2
+mapshaper-inspection-control2
 */
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -23,7 +26,8 @@ function MshpMap(gui, opts) {
       buttons = new SidebarButtons(gui),
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
-      _hit = new HitControl(gui, _ext, _mouse),
+      // _hit = new HitControl(gui, _ext, _mouse),
+      _hit = new HitControl2(gui, _ext, _mouse),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
@@ -78,7 +82,8 @@ function MshpMap(gui, opts) {
     _activeLyr = getMapLayer(e.layer, e.dataset);
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
-    if (_inspector) _inspector.updateLayer(_activeLyr);
+    // if (_inspector) _inspector.updateLayer(_activeLyr);
+    _hit.setLayer(_activeLayer);
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
@@ -121,8 +126,11 @@ function MshpMap(gui, opts) {
   this.setLayerVisibility = function(target, isVisible) {
     var lyr = target.layer;
     lyr.visibility = isVisible ? 'visible' : 'hidden';
-    if (_inspector && isActiveLayer(lyr)) {
-      _inspector.updateLayer(isVisible ? _activeLyr : null);
+    // if (_inspector && isActiveLayer(lyr)) {
+    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
+    // }
+    if (isActiveLayer(lyr)) {
+      hit.setLayer(isVisible ? _activeLyr : null);
     }
   };
 
@@ -141,7 +149,7 @@ function MshpMap(gui, opts) {
   function initMap() {
     _ext.resize();
     _nav = new MapNav(gui, _ext, _mouse);
-    _stack = new LayerStack(gui, el, _ext, _mouse);
+    _stack = new LayerStack(gui, el, _ext, _mouse, _hit);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -152,8 +160,8 @@ function MshpMap(gui, opts) {
     });
 
     if (opts.inspector) {
-      _inspector = new InspectionControl(gui, _ext, _hit);
-      _inspector.on('change', function(e) {
+      _inspector = new InspectionControl2(gui, _hit);
+      _hit.on('change', function(e) {
         _overlayLyr = getMapLayerOverlay(_activeLyr, e);
         _stack.drawOverlayLayer(_overlayLyr);
       });

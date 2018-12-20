@@ -4,14 +4,15 @@ mapshaper-canvas
 mapshaper-map-style
 */
 
-function LayerStack(gui, container, ext, mouse) {
+function LayerStack(gui, container, ext, mouse, hit) {
   var el = El(container),
       _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
       _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
       _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
-      _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el), // labels, _ext;
-      _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
+      _svg = new SvgDisplayLayer(gui, ext, mouse, hit).appendTo(el), // labels, _ext;
+      _furniture = new SvgDisplayLayer(gui, ext, null, null).appendTo(el),  // scalebar, etc
       _ext = ext;
+
 
   // don't let furniture container block events to symbol layers
   _furniture.css('pointer-events', 'none');

@@ -955,6 +955,7 @@ function MouseArea(element, pos) {
         pageY = e.pageY,
         prev = _prevEvt;
     _prevEvt = {
+      originalEvent: e,
       shiftKey: e.shiftKey,
       time: +new Date(),
       pageX: pageX,

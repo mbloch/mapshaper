@@ -1,13 +1,14 @@
 /* @requires mapshaper-gui-lib, mapshaper-popup */
 
-function InspectionControl(gui, hit) {
+function InspectionControl2(gui, hit) {
   var model = gui.model;
-  var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
+  // var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
+  var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
   var _hoverIds = null;
-  var _selectionIds = null;
+  // var _selectionIds = null;
   var btn = gui.map.addSidebarButton("#info-icon2").on('click', function() {
     gui.dispatchEvent('inspector_toggle');
   });
@@ -34,36 +35,38 @@ function InspectionControl(gui, hit) {
     _self.dispatchEvent('data_change', d);
   });
 
-  _self.updateLayer = function(mapLayer) {
-    if (!mapLayer) {
-      if (_target) { // enabled to disabled
-        _target = _shapes = null;
-        btn.hide();
-        turnOff();
-        hit.setLayer(null);
-      }
-      return;
-    }
-    if (!_target) { // disabled to enabled
-      btn.show();
-    }
-    _target = mapLayer;
-    if (_inspecting) {
-      if (_shapes == mapLayer.layer.shapes) {
-        // shapes haven't changed -- refresh in case data has changed
-        inspect(_highId, _pinned);
-      } else {
-        // shapes have changed -- clear any selected shapes
-        _selectionIds = null;
-        inspect(-1, false);
-      }
-    }
-    _shapes = mapLayer.layer.shapes;
-    hit.setLayer(mapLayer);
-  };
+  // _self.updateLayer = function(mapLayer) {
+  //   if (!mapLayer) {
+  //     if (_target) { // enabled to disabled
+  //       _target = _shapes = null;
+  //       btn.hide();
+  //       turnOff();
+  //       hit.setLayer(null);
+  //     }
+  //     return;
+  //   }
+  //   if (!_target) { // disabled to enabled
+  //     btn.show();
+  //   }
+  //   _target = mapLayer;
+  //   if (_inspecting) {
+  //     if (_shapes == mapLayer.layer.shapes) {
+  //       // shapes haven't changed -- refresh in case data has changed
+  //       inspect(_highId, _pinned);
+  //     } else {
+  //       // shapes have changed -- clear any selected shapes
+  //       // _selectionIds = null;
+  //       inspect(-1, false);
+  //     }
+  //   }
+  //   _shapes = mapLayer.layer.shapes;
+  //   hit.setLayer(mapLayer);
+  // };
 
   // replace cli inspect command
   // TODO: support multiple editors on the page
+  // REMOVING gui output for -inspect command
+  /*
   api.inspect = function(lyr, arcs, opts) {
     var ids;
     if (!_target) return; // control is disabled (selected layer is hidden, etc)
@@ -79,6 +82,7 @@ function InspectionControl(gui, hit) {
     turnOn();
     inspect(ids[0], true);
   };
+  */
 
   gui.keyboard.on('keydown', function(evt) {
     var e = evt.originalEvent;
@@ -117,40 +121,45 @@ function InspectionControl(gui, hit) {
     }
   }, !!'capture'); // preempt the layer control's arrow key handler
 
-  hit.on('click', function(e) {
-    var id = e.id;
-    var pin = false;
-    if (_pinned && id == _highId) {
-      // clicking on pinned shape: unpin
-    } else if (!_pinned && id > -1) {
-      // clicking on unpinned shape while unpinned: pin
-      pin = true;
-    } else if (_pinned && id > -1) {
-      // clicking on unpinned shape while pinned: pin new shape
-      pin = true;
-    } else if (!_pinned && id == -1) {
-      // clicking off the layer while pinned: unpin and deselect
-    }
-    inspect(id, pin, e.ids);
+  // hit.on('click', function(e) {
+  //   var id = e.id;
+  //   var pin = false;
+  //   if (_pinned && id == _highId) {
+  //     // clicking on pinned shape: unpin
+  //   } else if (!_pinned && id > -1) {
+  //     // clicking on unpinned shape while unpinned: pin
+  //     pin = true;
+  //   } else if (_pinned && id > -1) {
+  //     // clicking on unpinned shape while pinned: pin new shape
+  //     pin = true;
+  //   } else if (!_pinned && id == -1) {
+  //     // clicking off the layer while pinned: unpin and deselect
+  //   }
+  //   inspect(id, pin, e.ids);
+  // });
+
+  // hit.on('hover', function(e) {
+  //   var id = e.id;
+  //   if (!_inspecting || _pinned) return;
+  //   inspect(id, false, e.ids);
+  // });
+
+  hit.on('change', function(e) {
+    if (!_inspecting) return;
+    inspect(e.id, e.pinned, e.ids);
   });
 
-  hit.on('hover', function(e) {
-    var id = e.id;
-    if (!_inspecting || _pinned) return;
-    inspect(id, false, e.ids);
-  });
-
-  function getSwitchHandler(diff) {
-    // function for switching between multiple hover shapes
-    return function() {
-      var i = (_hoverIds || []).indexOf(_highId);
-      var nextId;
-      if (i > -1) {
-        nextId = _hoverIds[(i + diff + _hoverIds.length) % _hoverIds.length];
-        inspect(nextId, true, _hoverIds);
-      }
-    };
-  }
+  // function getSwitchHandler(diff) {
+  //   // function for switching between multiple hover shapes
+  //   return function() {
+  //     var i = (_hoverIds || []).indexOf(_highId);
+  //     var nextId;
+  //     if (i > -1) {
+  //       nextId = _hoverIds[(i + diff + _hoverIds.length) % _hoverIds.length];
+  //       inspect(nextId, true, _hoverIds);
+  //     }
+  //   };
+  // }
 
   function showInspector(id, ids, pinned) {
     var table = _target.layer.data || null;
@@ -165,6 +174,7 @@ function InspectionControl(gui, hit) {
     } else {
       _popup.hide();
     }
+    /*
     _highId = id;
     _hoverIds = ids;
     _pinned = pin;
@@ -174,6 +184,7 @@ function InspectionControl(gui, hit) {
       id: id,
       pinned: pin
     });
+    */
   }
 
   function turnOn() {
@@ -186,7 +197,7 @@ function InspectionControl(gui, hit) {
   function turnOff() {
     btn.removeClass('selected');
     hit.stop();
-    _selectionIds = null;
+    // _selectionIds = null;
     inspect(-1); // clear the map
     _inspecting = false;
   }

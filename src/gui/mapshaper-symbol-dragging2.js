@@ -3,7 +3,7 @@ mapshaper-gui-lib
 mapshaper-svg-labels
 */
 
-function SymbolDragging(gui, ext, mouse, svg) {
+function SymbolDragging2(gui, ext, hit) {
   var editing = false;
   var dragging = false;
   var textNode;
@@ -62,53 +62,29 @@ function SymbolDragging(gui, ext, mouse, svg) {
     //    1: not editing -> nop
     //    2: on selected text -> start dragging
     //    3: on other text -> stop dragging, select new text
-    svg.addEventListener('mousedown', function(e) {
-      var textTarget = getTextTarget(e);
+
+    hit.on('dragstart', function(e) {
+      var textTarget = getTextTarget2(e);
+      console.log("* dragstart", e, textTarget, textNode);
       downEvt = e;
-      if (!textTarget) {
+      if (dragging) {
+        error("Unexpected dragstart");
+      } else if (!textTarget) {
+        console.log("  dragstart -> stop editing");
         stopEditing();
       } else if (!editing) {
-        // nop
+        console.log("  dragstart -> should start dragging");
+        startDragging();
+        editTextNode(textTarget);
       } else if (textTarget == textNode) {
+        console.log("  dragstart -> unexpected");
         startDragging();
-      } else {
-        startDragging();
-        editTextNode(textTarget);
       }
     });
 
-    // up event on svg
-    // a: currently dragging text
-    //   -> stop dragging
-    // b: clicked on a text feature
-    //   -> start editing it
-    svg.addEventListener('mouseup', function(e) {
-      var textTarget = getTextTarget(e);
-      var isClick = isClickEvent(e, downEvt);
-      if (isClick && textTarget && textTarget == textNode &&
-          activeRecord && isMultilineLabel(textNode)) {
-        toggleTextAlign(textNode, activeRecord);
-        updateSymbol();
-      }
-      if (dragging) {
-        stopDragging();
-       } else if (isClick && textTarget) {
-        editTextNode(textTarget);
-      }
-    });
-
-    // block dbl-click navigation when editing
-    mouse.on('dblclick', function(e) {
-      if (editing) e.stopPropagation();
-    }, null, eventPriority);
-
-    mouse.on('dragstart', function(e) {
-      onDrag(e);
-    }, null, eventPriority);
-
-    mouse.on('drag', function(e) {
+    hit.on('drag', function(e) {
+      console.log("* drag:", dragging, activeRecord, e);
       var scale = ext.getSymbolScale() || 1;
-      onDrag(e);
       if (!dragging || !activeRecord) return;
       applyDelta(activeRecord, 'dx', e.dx / scale);
       applyDelta(activeRecord, 'dy', e.dy / scale);
@@ -120,28 +96,104 @@ function SymbolDragging(gui, ext, mouse, svg) {
       }
       // updateSymbol(textNode, activeRecord);
       textNode = updateSymbol2(textNode, activeRecord, activeId);
-    }, null, eventPriority);
+    });
 
-    mouse.on('dragend', function(e) {
-      onDrag(e);
+    hit.on('dragend', function(e) {
+      console.log("* dragend");
       stopDragging();
-    }, null, eventPriority);
+    });
+
+    function getTextTarget2(e) {
+      var el = e && e.targetSymbol || null;
+      if (el && el.tagName == 'tspan') {
+        el = el.parentNode;
+      }
+      return el && el.tagName == 'text' ? el : null;
+    }
+
+
+    // svg.addEventListener('mousedown', function(e) {
+    //   var textTarget = getTextTarget(e);
+    //   downEvt = e;
+    //   if (!textTarget) {
+    //     stopEditing();
+    //   } else if (!editing) {
+    //     // nop
+    //   } else if (textTarget == textNode) {
+    //     startDragging();
+    //   } else {
+    //     startDragging();
+    //     editTextNode(textTarget);
+    //   }
+    // });
+
+    // up event on svg
+    // a: currently dragging text
+    //   -> stop dragging
+    // b: clicked on a text feature
+    //   -> start editing it
+
+
+    // svg.addEventListener('mouseup', function(e) {
+    //   var textTarget = getTextTarget(e);
+    //   var isClick = isClickEvent(e, downEvt);
+    //   if (isClick && textTarget && textTarget == textNode &&
+    //       activeRecord && isMultilineLabel(textNode)) {
+    //     toggleTextAlign(textNode, activeRecord);
+    //     updateSymbol();
+    //   }
+    //   if (dragging) {
+    //     stopDragging();
+    //    } else if (isClick && textTarget) {
+    //     editTextNode(textTarget);
+    //   }
+    // });
+
+    // block dbl-click navigation when editing
+    // mouse.on('dblclick', function(e) {
+    //   if (editing) e.stopPropagation();
+    // }, null, eventPriority);
+
+    // mouse.on('dragstart', function(e) {
+    //   onDrag(e);
+    // }, null, eventPriority);
+
+    // mouse.on('drag', function(e) {
+    //   var scale = ext.getSymbolScale() || 1;
+    //   onDrag(e);
+    //   if (!dragging || !activeRecord) return;
+    //   applyDelta(activeRecord, 'dx', e.dx / scale);
+    //   applyDelta(activeRecord, 'dy', e.dy / scale);
+    //   if (!isMultilineLabel(textNode)) {
+    //     // update anchor position of single-line labels based on label position
+    //     // relative to anchor point, for better placement when eventual display font is
+    //     // different from mapshaper's font.
+    //     updateTextAnchor(textNode, activeRecord);
+    //   }
+    //   // updateSymbol(textNode, activeRecord);
+    //   textNode = updateSymbol2(textNode, activeRecord, activeId);
+    // }, null, eventPriority);
+
+    // mouse.on('dragend', function(e) {
+    //   onDrag(e);
+    //   stopDragging();
+    // }, null, eventPriority);
 
     function startDragging() {
       dragging = true;
-      svg.setAttribute('class', 'dragging');
+      // svg.setAttribute('class', 'dragging');
     }
 
     function stopDragging() {
       dragging = false;
-      svg.removeAttribute('class');
+      // svg.removeAttribute('class');
     }
 
-    function onDrag(e) {
-      if (dragging) {
-        e.stopPropagation();
-      }
-    }
+    // function onDrag(e) {
+    //   if (dragging) {
+    //     e.stopPropagation();
+    //   }
+    // }
   }
 
   function isClickEvent(up, down) {
@@ -193,6 +245,7 @@ function SymbolDragging(gui, ext, mouse, svg) {
     if (!table.fieldExists('text-anchor')) {
       table.addField('text-anchor', '');
     }
+    console.log("editTextNode() record:", activeRecord, activeId);
     // TODO: show editing panel
   }
 

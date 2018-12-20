@@ -128,24 +128,27 @@ var MapStyle = (function() {
       styler: styler
     };
     // first layer: features that were selected via the -inspect command
-    o.selection_ids.forEach(function(i) {
-      // skip features in a higher layer
-      if (i == topId || o.hover_ids.indexOf(i) > -1) return;
-      ids.push(i);
-      styles.push(selectionStyles[type]);
-    });
+    // DISABLED after hit control refactor
+    // o.selection_ids.forEach(function(i) {
+    //   // skip features in a higher layer
+    //   if (i == topId || o.hover_ids.indexOf(i) > -1) return;
+    //   ids.push(i);
+    //   styles.push(selectionStyles[type]);
+    // });
     // second layer: hover feature(s)
-    o.hover_ids.forEach(function(i) {
+    // o.hover_ids.forEach(function(i) {
+    o.ids.forEach(function(i) {
       var style;
       if (i == topId) return;
-      style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
+      style = hoverStyles[type];
+      // style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
       ids.push(i);
       styles.push(style);
     });
     // top layer: feature that was selected by clicking in inspection mode ([i])
     if (topId > -1) {
       var isPinned = o.pinned;
-      var inSelection = o.selection_ids.indexOf(topId) > -1;
+      var inSelection = false; // o.selection_ids.indexOf(topId) > -1;
       var style;
       if (isPinned) {
         style = pinnedStyles[type];
