@@ -227,14 +227,32 @@ internal.requireDataFields = function(table, fields) {
   }
 };
 
+internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
+  var msg;
+  if (customMsg && utils.isString(customMsg)) {
+    msg = customMsg;
+  } else {
+    msg = defaultMsg + ', ';
+    if (!lyr || !lyr.geometry_type) {
+      msg += 'received a layer with no geometry';
+    } else {
+      msg += 'received a ' + lyr.geometry_type + ' layer';
+    }
+  }
+  return msg;
+};
+
 internal.requirePolylineLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polyline') stop(msg || "Expected a polyline layer");
+  if (!lyr || lyr.geometry_type !== 'polyline')
+    stop(internal.layerTypeMessage(lyr, "Expected a polyline layer", msg));
 };
 
 internal.requirePolygonLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
+  if (!lyr || lyr.geometry_type !== 'polygon')
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon layer", msg));
 };
 
 internal.requirePathLayer = function(lyr, msg) {
-  if (!lyr || !internal.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
+  if (!lyr || !internal.layerHasPaths(lyr))
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
 };
