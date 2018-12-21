@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.103';
+VERSION = '0.4.104';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1688,16 +1688,34 @@ internal.requireDataFields = function(table, fields) {
   }
 };
 
+internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
+  var msg;
+  if (customMsg && utils.isString(customMsg)) {
+    msg = customMsg;
+  } else {
+    msg = defaultMsg + ', ';
+    if (!lyr || !lyr.geometry_type) {
+      msg += 'received a layer with no geometry';
+    } else {
+      msg += 'received a ' + lyr.geometry_type + ' layer';
+    }
+  }
+  return msg;
+};
+
 internal.requirePolylineLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polyline') stop(msg || "Expected a polyline layer");
+  if (!lyr || lyr.geometry_type !== 'polyline')
+    stop(internal.layerTypeMessage(lyr, "Expected a polyline layer", msg));
 };
 
 internal.requirePolygonLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
+  if (!lyr || lyr.geometry_type !== 'polygon')
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon layer", msg));
 };
 
 internal.requirePathLayer = function(lyr, msg) {
-  if (!lyr || !internal.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
+  if (!lyr || !internal.layerHasPaths(lyr))
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
 };
 
 
@@ -5624,6 +5642,28 @@ Matrix2D.prototype.scale = function(sx, sy) {
 
 
 
+
+function getAlbersUSA(opts) {
+  return function() {
+    return AlbersNYT(opts || {});
+  };
+}
+
+function AlbersNYT(opts) {
+  var mproj = require('mproj');
+  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
+  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
+  var mixed = new MixedProjection(aea)
+    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
+    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
+  if (opts.PR) {
+    mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -76.5, phi: 26.3 }, 1e6, 1e6, 1, -16); // PR
+    // mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -93, phi: 28.22 }, 1e6, 1e6, 1, -16) // PR
+  }
+  return mixed;
+}
+
+
 // A compound projection, consisting of a default projection and one or more rectangular frames
 // that are reprojected and/or affine transformed.
 // @proj Default projection.
@@ -5695,7 +5735,8 @@ internal.projectionIndex = {
   robinson: '+proj=robin +datum=WGS84',
   webmercator: '+proj=merc +a=6378137 +b=6378137',
   wgs84: '+proj=longlat +datum=WGS84',
-  albersusa: AlbersNYT
+  albersusa: getAlbersUSA(),
+  albersusa2: getAlbersUSA({PR: true}) // version with Puerto Rico
 };
 
 // This stub is replaced when loaded in GUI, which may need to load some files
@@ -5839,16 +5880,6 @@ internal.translatePrj = function(str) {
 internal.parsePrj = function(str) {
   return internal.getCRS(internal.translatePrj(str));
 };
-
-function AlbersNYT() {
-  var mproj = require('mproj');
-  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
-  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
-  var mixed = new MixedProjection(aea)
-    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
-    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
-  return mixed;
-}
 
 
 
@@ -18604,14 +18635,10 @@ internal.joinTables = function(dest, src, join, opts) {
       }
       internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
+  }
 
-  }
-  if (matchCount === 0) {
-    message("No records could be joined");
-  } else {
-    internal.printJoinMessage(matchCount, destRecords.length,
+  internal.printJoinMessage(matchCount, destRecords.length,
       internal.countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
-  }
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -18687,9 +18714,13 @@ internal.joinBySum = function(dest, src, fields) {
 };
 
 internal.printJoinMessage = function(matches, n, joins, m, skipped, collisions, collisionFields) {
-  // TODO: add tip for generating layer containing unmatched records, when
-  // this option is implemented.
-  message(utils.format("Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
+  // TODO: add tip for troubleshooting join problems, if join is less than perfect.
+  if (matches > 0 === false) {
+    message("No records could be joined");
+    return;
+  }
+  message(utils.format("Joined data from %'d source record%s to %'d target record%s",
+      joins, utils.pluralSuffix(joins), matches, utils.pluralSuffix(matches)));
   if (matches < n) {
     message(utils.format('%d/%d target records received no data', n-matches, n));
   }
@@ -21433,26 +21464,29 @@ api.uniq = function(lyr, arcs, opts) {
       compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
       maxCount = opts.max_count || 1,
       counts = {},
-      flags = [],
+      keepFlags = [],
       verbose = !!opts.verbose,
+      invert = !!opts.invert,
       records = lyr.data ? lyr.data.getRecords() : null,
-      f = function(d, i) {return !flags[i];};
+      filter = function(d, i) {return keepFlags[i];};
 
   utils.repeat(n, function(i) {
     var val = compiled(i);
     var count = val in counts ? counts[val] + 1 : 1;
-    flags[i] = count > maxCount;
+    var keep = count <= maxCount;
+    if (invert) keep = !keep;
+    keepFlags[i] = keep;
     counts[val] = count;
-    if (verbose && !flags[i]) {
+    if (verbose && !keep) {
       message(utils.format('Removing feature %i key: [%s]', i, val));
     }
   });
 
   if (lyr.shapes) {
-    lyr.shapes = lyr.shapes.filter(f);
+    lyr.shapes = lyr.shapes.filter(filter);
   }
   if (records) {
-    lyr.data = new DataTable(records.filter(f));
+    lyr.data = new DataTable(records.filter(filter));
   }
   if (opts.verbose !== false) {
     message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
@@ -23413,6 +23447,10 @@ internal.getOptionParser = function() {
     .option("max-count", {
       type: "number",
       describe: "max features with the same id (default is 1)"
+    })
+    .option("invert", {
+      type: "flag",
+      describe: "retain only features that would have been deleted"
     })
     .option("verbose", {
       describe: "print each removed feature",
