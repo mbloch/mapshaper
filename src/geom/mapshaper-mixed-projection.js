@@ -1,5 +1,27 @@
 /* @requires mapshaper-matrix2d */
 
+
+function getAlbersUSA(opts) {
+  return function() {
+    return AlbersNYT(opts || {});
+  };
+}
+
+function AlbersNYT(opts) {
+  var mproj = require('mproj');
+  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
+  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
+  var mixed = new MixedProjection(aea)
+    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
+    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
+  if (opts.PR) {
+    mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -76.5, phi: 26.3 }, 1e6, 1e6, 1, -16); // PR
+    // mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -93, phi: 28.22 }, 1e6, 1e6, 1, -16) // PR
+  }
+  return mixed;
+}
+
+
 // A compound projection, consisting of a default projection and one or more rectangular frames
 // that are reprojected and/or affine transformed.
 // @proj Default projection.
