@@ -22,6 +22,7 @@ function GeoJSONParser(opts) {
     } else if (o.type) {
       geom = o;
     }
+    // TODO: improve so geometry_type option skips features instead of creating null geometries
     importer.startShape(rec);
     if (geom) GeoJSON.importGeometry(geom, importer, opts);
   };

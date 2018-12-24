@@ -101,12 +101,12 @@ internal.getOptionParser = function() {
       type: "strings",
       describe: "one or more files to import, or - to use stdin"
     })
-    .option("merge-files", {
-      describe: "merge features from compatible files into the same layer",
-      type: "flag"
-    })
     .option("combine-files", {
       describe: "import files to separate layers with shared topology",
+      type: "flag"
+    })
+    .option("merge-files", {
+      // describe: "merge features from compatible files into the same layer",
       type: "flag"
     })
     .option("no-topology", {
@@ -132,13 +132,14 @@ internal.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
-    .option("geometry-type", {
-      // undocumented; GeoJSON import rejects all but one kind of geometry
-    })
     .option("string-fields", stringFieldsOpt)
     .option("field-types", fieldTypesOpt)
     .option("name", {
       describe: "Rename the imported layer(s)"
+    })
+    .option("geometry-type", {
+      // undocumented; GeoJSON import rejects all but one kind of geometry
+      // describe: "[GeoJSON] Import one kind of geometry (point|polygon|polyline)"
     })
     .option("csv-filter", {
       describe: "[CSV] JS expression for filtering records"
