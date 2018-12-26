@@ -83,7 +83,7 @@ function MshpMap(gui, opts) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
     // if (_inspector) _inspector.updateLayer(_activeLyr);
-    _hit.setLayer(_activeLayer);
+    _hit.setLayer(_activeLyr);
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
@@ -130,7 +130,7 @@ function MshpMap(gui, opts) {
     //   _inspector.updateLayer(isVisible ? _activeLyr : null);
     // }
     if (isActiveLayer(lyr)) {
-      hit.setLayer(isVisible ? _activeLyr : null);
+      _hit.setLayer(isVisible ? _activeLyr : null);
     }
   };
 
