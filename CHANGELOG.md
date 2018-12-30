@@ -1,3 +1,6 @@
+v0.4.105 unreleased
+* [cli] Improved error message when trying to read unsupported file types.
+
 v0.4.104
 * Added "-uniq invert" option, for retaining non-unique records (useful e.g. for troubleshooting many-to-one joins).
 * Improved some error messages.
