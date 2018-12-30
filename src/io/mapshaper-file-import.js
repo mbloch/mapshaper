@@ -32,46 +32,68 @@ api.importFiles = function(opts) {
 };
 
 api.importFile = function(path, opts) {
-  var isBinary = internal.isBinaryFile(path),
-      apparentType = internal.guessInputFileType(path),
+  var fileType = internal.guessInputFileType(path),
       input = {},
       encoding = opts && opts.encoding || null,
       cache = opts && opts.input || null,
       cached = cache && (path in cache),
-      type, content;
+      content;
 
   cli.checkFileExists(path, cache);
-  if (apparentType == 'shp' && !cached) {
+  if (fileType == 'shp' && !cached) {
     // let ShpReader read the file (supports larger files)
     content = null;
-  } else if (apparentType == 'json' && !cached) {
+
+  } else if (fileType == 'json' && !cached) {
     // postpone reading of JSON files, to support incremental parsing
     content = null;
-  } else if (apparentType == 'text' && !cached) {
+
+  } else if (fileType == 'text' && !cached) {
     // content = cli.readFile(path); // read from buffer
     content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
-  } else if (isBinary) {
+
+  } else if (fileType && internal.isSupportedBinaryInputType(path)) {
     content = cli.readFile(path, null, cache);
     if (utils.isString(content)) {
       // Fix for issue #264 (applyCommands() input is file path instead of binary content)
       stop('Expected binary content, received a string');
     }
-  } else { // assuming text file
+
+  } else if (fileType) { // string type
     content = cli.readFile(path, encoding || 'utf-8', cache);
+
+  } else { // type can't be inferred from filename -- try reading as text
+    content = cli.readFile(path, encoding || 'utf-8', cache);
+    fileType = internal.guessInputContentType(content);
+    if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+      // invalidate string data that contains the 'replacement character'
+      fileType = null;
+    }
   }
-  type = apparentType || internal.guessInputContentType(content);
-  if (!type) {
-    stop("Unable to import", path);
+
+  if (!fileType) {
+    stop(internal.getUnsupportedFileMessage(path));
   }
-  input[type] = {filename: path, content: content};
+  input[fileType] = {filename: path, content: content};
   content = null; // for g.c.
-  if (type == 'shp' || type == 'dbf') {
+  if (fileType == 'shp' || fileType == 'dbf') {
     internal.readShapefileAuxFiles(path, input, cache);
   }
-  if (type == 'shp' && !input.dbf) {
+  if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
   return internal.importContent(input, opts);
+};
+
+internal.getUnsupportedFileMessage = function(path) {
+  var ext = utils.getFileExtension(path);
+  var msg = 'Unable to import ' + path;
+  if (ext.toLowerCase() == 'zip') {
+    msg += ' (ZIP files must be unpacked before running mapshaper)';
+  } else {
+    msg += ' (unknown file type)';
+  }
+  return msg;
 };
 
 internal.readShapefileAuxFiles = function(path, obj, cache) {

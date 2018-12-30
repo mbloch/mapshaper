@@ -261,7 +261,8 @@ function ImportControl(gui, opts) {
   function readFile(file) {
     var name = file.name,
         reader = new FileReader(),
-        useBinary = internal.isBinaryFile(name) ||
+        useBinary = internal.isSupportedBinaryInputType(name) ||
+          internal.isZipFile(name) ||
           internal.guessInputFileType(name) == 'json' ||
           internal.guessInputFileType(name) == 'text';
 
