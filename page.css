@@ -71,7 +71,6 @@ body {
 	color: #0774a5;
 }
 
-
 .dot-underline {
 	border-bottom: 1px dotted #0774a5;
 }
@@ -1002,6 +1001,50 @@ img.close-btn:hover,
 	right: 9px;
 	padding: 2px;
 	background-color: rgba(255, 255, 255, 0.85);
+}
+
+.nav-btn-wrapper {
+	position: relative;
+}
+
+.nav-sub-btn {
+	position: absolute;
+	cursor: pointer;
+	top: 1px;
+	padding: 4px;
+	right: 19px;
+	z-index: 1;
+}
+
+.nav-sub-menu {
+	position: absolute;
+	top: 1px;
+	right: 22px;
+	white-space: nowrap;
+	background-color: rgba(255, 255, 255, 0.85);
+	padding: 3px 0px 3px 6px;
+}
+
+.nav-menu-item {
+	white-space: inherit;
+	display: inline-block;
+	padding-right: 6px;
+	color: #222;
+	font-weight: bold;
+}
+
+.nav-menu-link {
+	text-decoration: none;
+	cursor: pointer;
+	color: #0774a5; /* .colored-text color */
+	font-weight: normal;
+}
+
+.nav-menu-link.selected {
+	color: black;
+	font-weight: bold;
+	text-decoration: none;
+	/* pointer-events: none; */
 }
 
 .nav-btn {

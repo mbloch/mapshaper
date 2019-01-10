@@ -416,7 +416,8 @@ utils.extend(El.prototype, {
       if (arguments.length == 1) {
         return this.el.getAttribute(obj);
       }
-      this.el[obj] = value;
+      this.el.setAttribute(obj, value);
+      // this.el[obj] = value;
     }
     else if (!value) {
       Opts.copyAllParams(this.el, obj);
@@ -877,14 +878,18 @@ function MouseArea(element, pos) {
     element.style.pointerEvents = 'auto';
   };
 
-  this.disable = function() {
-    if (_disabled) return;
-    _disabled = true;
-    if (_isOver) onAreaOut();
+  this.stopDragging = function() {
     if (_downEvt) {
       if (_dragging) stopDragging(_downEvt);
       _downEvt = null;
     }
+  };
+
+  this.disable = function() {
+    if (_disabled) return;
+    _disabled = true;
+    if (_isOver) onAreaOut();
+    this.stopDragging();
     element.style.pointerEvents = 'none';
   };
 
@@ -950,7 +955,7 @@ function MouseArea(element, pos) {
       _dragging = true;
       _self.dispatchEvent('dragstart', evt);
     }
-
+    if (evt.dx === 0 && evt.dy === 0) return; // seen in Chrome
     if (_dragging) {
       var obj = {
         dragX: evt.pageX - _downEvt.pageX,
@@ -971,6 +976,7 @@ function MouseArea(element, pos) {
         pageY = e.pageY,
         prev = _prevEvt;
     _prevEvt = {
+      originalEvent: e,
       shiftKey: e.shiftKey,
       time: +new Date(),
       pageX: pageX,
@@ -2040,12 +2046,12 @@ function MapNav(gui, ext, mouse) {
     zoomScaleMultiplier = k || 1;
   };
 
-  gui.map.addSidebarButton("#home-icon").on('click', function() {
+  gui.buttons.addButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
 
-  inBtn = gui.map.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
-  outBtn = gui.map.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+  inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
+  outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
 
   ext.on('change', function() {
     inBtn.classed('disabled', ext.scale() >= ext.maxScale());
@@ -2327,669 +2333,6 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 
-// @onNext: handler for switching between multiple records
-function Popup(gui, onNext, onPrev) {
-  var self = new EventDispatcher();
-  var parent = gui.container.findChild('.mshp-main-map');
-  var el = El('div').addClass('popup').appendTo(parent).hide();
-  var content = El('div').addClass('popup-content').appendTo(el);
-  // multi-hit display and navigation
-  var tab = El('div').addClass('popup-tab').appendTo(el).hide();
-  var nav = El('div').addClass('popup-nav').appendTo(tab);
-  var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
-  var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
-  var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
-
-  nextLink.on('click', onNext);
-  prevLink.on('click', onPrev);
-
-  self.show = function(id, ids, table, pinned) {
-    var editable = pinned;
-    var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
-    var maxHeight = parent.node().clientHeight - 36;
-    self.hide(); // clean up if panel is already open
-    render(content, rec, table, pinned);
-    if (ids && ids.length > 1) {
-      showNav(id, ids, pinned);
-    } else {
-      tab.hide();
-    }
-    el.show();
-    if (content.node().clientHeight > maxHeight) {
-      content.css('height:' + maxHeight + 'px');
-    }
-  };
-
-  self.hide = function() {
-    // make sure any pending edits are made before re-rendering popup
-    // TODO: only blur popup fields
-    GUI.blurActiveElement();
-    content.empty();
-    content.node().removeAttribute('style'); // remove inline height
-    el.hide();
-  };
-
-  return self;
-
-  function showNav(id, ids, pinned) {
-    var num = ids.indexOf(id) + 1;
-    navInfo.text(' ' + num + ' / ' + ids.length + ' ');
-    nextLink.css('display', pinned ? 'inline-block' : 'none');
-    prevLink.css('display', pinned && ids.length > 2 ? 'inline-block' : 'none');
-    tab.show();
-  }
-
-  function render(el, rec, table, editable) {
-    var tableEl = El('table').addClass('selectable'),
-        rows = 0;
-    utils.forEachProperty(rec, function(v, k) {
-      var type;
-      // missing GeoJSON fields are set to undefined on import; skip these
-      if (v !== undefined) {
-        type = internal.getFieldType(v, k, table);
-        renderRow(tableEl, rec, k, type, editable);
-        rows++;
-      }
-    });
-    if (rows > 0) {
-      tableEl.appendTo(el);
-    } else {
-      // Some individual features can have undefined values for some or all of
-      // their data properties (properties are set to undefined when an input JSON file
-      // has inconsistent fields, or after force-merging layers with inconsistent fields).
-      el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
-          table && table.getFields().length > 0 ? 'feature': 'layer'));
-    }
-  }
-
-  function renderRow(table, rec, key, type, editable) {
-    var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
-    var val = rec[key];
-    var str = internal.formatInspectorValue(val, type);
-    var cell = El('tr')
-        .appendTo(table)
-        .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
-        .findChild('.value');
-    setFieldClass(cell, val, type);
-    if (editable) {
-      editItem(cell, rec, key, type);
-    }
-  }
-
-  function setFieldClass(el, val, type) {
-    var isNum = type ? type == 'number' : utils.isNumber(val);
-    var isNully = val === undefined || val === null || val !== val;
-    var isEmpty = val === '';
-    el.classed('num-field', isNum);
-    el.classed('object-field', type == 'object');
-    el.classed('null-value', isNully);
-    el.classed('empty', isEmpty);
-  }
-
-  function editItem(el, rec, key, type) {
-    var input = new ClickText2(el),
-        strval = internal.formatInspectorValue(rec[key], type),
-        parser = internal.getInputParser(type);
-    el.parent().addClass('editable-cell');
-    el.addClass('colored-text dot-underline');
-    input.on('change', function(e) {
-      var val2 = parser(input.value()),
-          strval2 = internal.formatInspectorValue(val2, type);
-      if (strval == strval2) {
-        // contents unchanged
-      } else if (val2 === null && type != 'object') { // allow null objects
-        // invalid value; revert to previous value
-        input.value(strval);
-      } else {
-        // field content has changed
-        strval = strval2;
-        rec[key] = val2;
-        input.value(strval);
-        setFieldClass(el, val2, type);
-        self.dispatchEvent('update', {field: key, value: val2});
-      }
-    });
-  }
-}
-
-internal.formatInspectorValue = function(val, type) {
-  var str;
-  if (type == 'object') {
-    str = val ? JSON.stringify(val) : "";
-  } else {
-    str = String(val);
-  }
-  return str;
-};
-
-internal.inputParsers = {
-  string: function(raw) {
-    return raw;
-  },
-  number: function(raw) {
-    var val = Number(raw);
-    if (raw == 'NaN') {
-      val = NaN;
-    } else if (isNaN(val)) {
-      val = null;
-    }
-    return val;
-  },
-  object: function(raw) {
-    var val = null;
-    try {
-      val = JSON.parse(raw);
-    } catch(e) {}
-    return val;
-  },
-  boolean: function(raw) {
-    var val = null;
-    if (raw == 'true') {
-      val = true;
-    } else if (raw == 'false') {
-      val = false;
-    }
-    return val;
-  },
-  multiple: function(raw) {
-    var val = Number(raw);
-    return isNaN(val) ? raw : val;
-  }
-};
-
-internal.getInputParser = function(type) {
-  return internal.inputParsers[type || 'multiple'];
-};
-
-internal.getFieldType = function(val, key, table) {
-  // if a field has a null value, look at entire column to identify type
-  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
-};
-
-
-
-
-function HitControl(gui, ext, mouse) {
-  var self = new EventDispatcher();
-  var prevHits = [];
-  var active = false;
-  var tests = {
-    polygon: polygonTest,
-    polyline: polylineTest,
-    point: pointTest
-  };
-  var target, test;
-
-  self.setLayer = function(mapLayer) {
-    target = mapLayer;
-    if (!mapLayer) {
-      test = null;
-      self.stop();
-    } else if (mapLayer.layer.geometry_type == 'point' && mapLayer.style.type == 'styled') {
-      test = getGraduatedCircleTest(getRadiusFunction(mapLayer.style));
-    } else {
-      test = tests[mapLayer.layer.geometry_type];
-    }
-  };
-
-  self.start = function() {
-    active = true;
-  };
-
-  self.stop = function() {
-    if (active) {
-      hover([]);
-      active = false;
-    }
-  };
-
-  mouse.on('click', function(e) {
-    if (target && active) {
-      trigger('click', prevHits);
-    }
-  });
-
-  mouse.on('hover', function(e) {
-    if (!target) return;
-    var isOver = isOverMap(e);
-    var p = ext.translatePixelCoords(e.x, e.y);
-    if (active && test) {
-      if (!isOver) {
-        // mouse is off of map viewport -- clear any current hit
-        hover([]);
-      } else if (e.hover) {
-        // mouse is hovering directly over map area -- update hit detection
-        hover(test(p[0], p[1]));
-      } else {
-        // mouse is over map viewport but not directly over map (e.g. hovering
-        // over popup) -- don't update hit detection
-      }
-    }
-  });
-
-  function isOverMap(e) {
-    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-  }
-
-  // Convert pixel distance to distance in coordinate units.
-  function getHitBuffer(pix) {
-    return pix / ext.getTransform().mx;
-  }
-
-  // reduce hit threshold when zoomed out
-  function getHitBuffer2(pix, minPix) {
-    var scale = ext.scale();
-    if (scale < 1) {
-      pix *= scale;
-    }
-    if (minPix > 0 && pix < minPix) pix = minPix;
-    return getHitBuffer(pix);
-  }
-
-  function polygonTest(x, y) {
-    var maxDist = getHitBuffer2(5, 1),
-        cands = findHitCandidates(x, y, maxDist),
-        hits = [],
-        cand, hitId;
-    for (var i=0; i<cands.length; i++) {
-      cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, target.arcs)) {
-        hits.push(cand.id);
-      }
-    }
-    if (cands.length > 0 && hits.length === 0) {
-      // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, target.arcs);
-      hits = pickNearestCandidates(cands, 0, maxDist);
-    }
-    return hits;
-  }
-
-  function pickNearestCandidates(sorted, bufDist, maxDist) {
-    var hits = [],
-        cand, minDist;
-    for (var i=0; i<sorted.length; i++) {
-      cand = sorted[i];
-      if (cand.dist < maxDist !== true) {
-        break;
-      } else if (i === 0) {
-        minDist = cand.dist;
-      } else if (cand.dist - minDist > bufDist) {
-        break;
-      }
-      hits.push(cand.id);
-    }
-    return hits;
-  }
-
-  function polylineTest(x, y) {
-    var maxDist = getHitBuffer2(15, 2),
-        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
-        cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, target.arcs);
-    return pickNearestCandidates(cands, bufDist, maxDist);
-  }
-
-  function sortByDistance(x, y, cands, arcs) {
-    for (var i=0; i<cands.length; i++) {
-      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
-    }
-    utils.sortOn(cands, 'dist');
-  }
-
-  function pointTest(x, y) {
-    var dist = getHitBuffer2(25, 4),
-        limitSq = dist * dist,
-        hits = [];
-    internal.forEachPoint(target.layer.shapes, function(p, id) {
-      var distSq = geom.distanceSq(x, y, p[0], p[1]);
-      if (distSq < limitSq) {
-        hits = [id];
-        limitSq = distSq;
-      } else if (distSq == limitSq) {
-        hits.push(id);
-      }
-    });
-    return hits;
-  }
-
-  function getRadiusFunction(style) {
-    var o = {};
-    if (style.styler) {
-      return function(i) {
-        style.styler(o, i);
-        return o.radius || 0;
-      };
-    }
-    return function() {return style.radius || 0;};
-  }
-
-  function getGraduatedCircleTest(radius) {
-    return function(x, y) {
-      var hits = [],
-          margin = getHitBuffer(12),
-          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
-          directHit = false,
-          hitRadius = 0,
-          hitDist;
-      internal.forEachPoint(target.layer.shapes, function(p, id) {
-        var distSq = geom.distanceSq(x, y, p[0], p[1]);
-        var isHit = false;
-        var isOver, isNear, r, d, rpix;
-        if (distSq > limit * limit) return;
-        rpix = radius(id);
-        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
-        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
-        isOver = d < 0;
-        isNear = d < margin;
-        if (!isNear || rpix > 0 === false) {
-          isHit = false;
-        } else if (hits.length === 0) {
-          isHit = isNear;
-        } else if (!directHit && isOver) {
-          isHit = true;
-        } else if (directHit && isOver) {
-          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
-        } else if (!directHit && !isOver) {
-          // closest to bubble edge wins
-          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
-        }
-        if (isHit) {
-          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
-            hits = [];
-          }
-          hitRadius = r;
-          hitDist = d;
-          directHit = isOver;
-          hits.push(id);
-        }
-      });
-      return hits;
-    };
-  }
-
-  function getProperties(id) {
-    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
-  }
-
-  function sameIds(a, b) {
-    if (a.length != b.length) return false;
-    for (var i=0; i<a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-
-  function trigger(event, hits) {
-    self.dispatchEvent(event, {
-      ids: hits,
-      id: hits.length > 0 ? hits[0] : -1
-    });
-  }
-
-  function hover(hits) {
-    if (!sameIds(hits, prevHits)) {
-      prevHits = hits;
-      gui.container.findChild('.map-layers').classed('hover', hits.length > 0);
-      trigger('hover', hits);
-    }
-  }
-
-  function findHitCandidates(x, y, dist) {
-    var arcs = target.arcs,
-        index = {},
-        cands = [],
-        bbox = [];
-    target.layer.shapes.forEach(function(shp, shpId) {
-      var cand;
-      for (var i = 0, n = shp && shp.length; i < n; i++) {
-        arcs.getSimpleShapeBounds2(shp[i], bbox);
-        if (x + dist < bbox[0] || x - dist > bbox[2] ||
-          y + dist < bbox[1] || y - dist > bbox[3]) {
-          continue; // bbox non-intersection
-        }
-        cand = index[shpId];
-        if (!cand) {
-          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
-          cands.push(cand);
-        }
-        cand.shape.push(shp[i]);
-      }
-    });
-    return cands;
-  }
-
-  return self;
-}
-
-
-
-
-function InspectionControl(gui, ext, hit) {
-  var model = gui.model;
-  var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
-  var _inspecting = false;
-  var _pinned = false;
-  var _highId = -1;
-  var _hoverIds = null;
-  var _selectionIds = null;
-  var btn = gui.map.addSidebarButton("#info-icon2").on('click', function() {
-    gui.dispatchEvent('inspector_toggle');
-  });
-  var _self = new EventDispatcher();
-  var _target;
-  // keep a reference to shapes array of current layer, to check if
-  // shapes have changed when layer is updated.
-  var _shapes;
-
-  gui.on('inspector_toggle', function() {
-    if (_inspecting) turnOff(); else turnOn();
-  });
-
-  // inspector and label editing aren't fully synced - stop inspecting if label editor starts
-  gui.on('label_editor_on', function() {
-    if (_inspecting) turnOff();
-  });
-
-  _popup.on('update', function(e) {
-    var d = e.data;
-    d.i = _highId; // need to add record id
-    _self.dispatchEvent('data_change', d);
-  });
-
-  _self.updateLayer = function(mapLayer) {
-    if (!mapLayer) {
-      if (_target) { // enabled to disabled
-        _target = _shapes = null;
-        btn.hide();
-        turnOff();
-        hit.setLayer(null);
-      }
-      return;
-    }
-    if (!_target) { // disabled to enabled
-      btn.show();
-    }
-    _target = mapLayer;
-    if (_inspecting) {
-      if (_shapes == mapLayer.layer.shapes) {
-        // shapes haven't changed -- refresh in case data has changed
-        inspect(_highId, _pinned);
-      } else {
-        // shapes have changed -- clear any selected shapes
-        _selectionIds = null;
-        inspect(-1, false);
-      }
-    }
-    _shapes = mapLayer.layer.shapes;
-    hit.setLayer(mapLayer);
-  };
-
-  // replace cli inspect command
-  // TODO: support multiple editors on the page
-  api.inspect = function(lyr, arcs, opts) {
-    var ids;
-    if (!_target) return; // control is disabled (selected layer is hidden, etc)
-    if (lyr != model.getActiveLayer().layer) {
-      error("Only the active layer can be targeted");
-    }
-    ids = internal.selectFeatures(lyr, arcs, opts);
-    if (ids.length === 0) {
-      message("No features were selected");
-      return;
-    }
-    _selectionIds = ids;
-    turnOn();
-    inspect(ids[0], true);
-  };
-
-  gui.keyboard.on('keydown', function(evt) {
-    var e = evt.originalEvent;
-    var kc = e.keyCode, n, id;
-    if (!_inspecting || !_target) return;
-
-    // esc key closes (unless in an editing mode)
-    if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
-      turnOff();
-      return;
-    }
-
-    if (_pinned && !GUI.getInputElement()) {
-      // an element is selected and user is not editing text
-
-      if (kc == 37 || kc == 39) {
-        // arrow keys advance pinned feature
-        n = internal.getFeatureCount(_target.layer);
-        if (n > 1) {
-          if (kc == 37) {
-            id = (_highId + n - 1) % n;
-          } else {
-            id = (_highId + 1) % n;
-          }
-          inspect(id, true);
-          e.stopPropagation();
-        }
-      } else if (kc == 8) {
-        // delete key
-        // to help protect against inadvertent deletion, don't delete
-        // when console is open or a popup menu is open
-        if (!gui.getMode() && !gui.consoleIsOpen()) {
-          deletePinnedFeature();
-        }
-      }
-    }
-  }, !!'capture'); // preempt the layer control's arrow key handler
-
-  hit.on('click', function(e) {
-    var id = e.id;
-    var pin = false;
-    if (_pinned && id == _highId) {
-      // clicking on pinned shape: unpin
-    } else if (!_pinned && id > -1) {
-      // clicking on unpinned shape while unpinned: pin
-      pin = true;
-    } else if (_pinned && id > -1) {
-      // clicking on unpinned shape while pinned: pin new shape
-      pin = true;
-    } else if (!_pinned && id == -1) {
-      // clicking off the layer while pinned: unpin and deselect
-    }
-    inspect(id, pin, e.ids);
-  });
-
-  hit.on('hover', function(e) {
-    var id = e.id;
-    if (!_inspecting || _pinned) return;
-    inspect(id, false, e.ids);
-  });
-
-  function getSwitchHandler(diff) {
-    // function for switching between multiple hover shapes
-    return function() {
-      var i = (_hoverIds || []).indexOf(_highId);
-      var nextId;
-      if (i > -1) {
-        nextId = _hoverIds[(i + diff + _hoverIds.length) % _hoverIds.length];
-        inspect(nextId, true, _hoverIds);
-      }
-    };
-  }
-
-  function showInspector(id, ids, pinned) {
-    var table = _target.layer.data || null;
-    _popup.show(id, ids, table, pinned);
-  }
-
-  // @id Id of a feature in the active layer, or -1
-  function inspect(id, pin, ids) {
-    if (!_inspecting) return;
-    if (id > -1) {
-      showInspector(id, ids, pin);
-    } else {
-      _popup.hide();
-    }
-    _highId = id;
-    _hoverIds = ids;
-    _pinned = pin;
-    _self.dispatchEvent('change', {
-      selection_ids: _selectionIds || [],
-      hover_ids: ids || [],
-      id: id,
-      pinned: pin
-    });
-  }
-
-  function turnOn() {
-    btn.addClass('selected');
-    _inspecting = true;
-    hit.start();
-    gui.dispatchEvent('inspector_on');
-  }
-
-  function turnOff() {
-    btn.removeClass('selected');
-    hit.stop();
-    _selectionIds = null;
-    inspect(-1); // clear the map
-    _inspecting = false;
-  }
-
-  function deletePinnedFeature() {
-    var lyr = model.getActiveLayer().layer;
-    if (!_pinned || _highId == -1) return;
-    lyr.shapes.splice(_highId, 1);
-    if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
-    inspect(-1);
-    model.updated({flags: 'filter'});
-  }
-
-  return _self;
-}
-
-
-
-function SidebarButtons(gui) {
-  var root = gui.container.findChild('.mshp-main-map');
-  var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
-
-  gui.on('active', buttons.show.bind(buttons));
-  gui.on('inactive', buttons.hide.bind(buttons));
-
-  // @iconRef: selector for an (svg) button icon
-  this.addButton = function(iconRef) {
-    var icon = El('body').findChild(iconRef).node().cloneNode(true);
-    var btn = El('div').addClass('nav-btn')
-      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
-    btn.appendChild(icon);
-    if (icon.hasAttribute('id')) icon.removeAttribute('id');
-    btn.appendTo(buttons);
-    return btn;
-  };
-}
-
-
-
-
 var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b7d9ea",
@@ -3118,24 +2461,27 @@ var MapStyle = (function() {
       styler: styler
     };
     // first layer: features that were selected via the -inspect command
-    o.selection_ids.forEach(function(i) {
-      // skip features in a higher layer
-      if (i == topId || o.hover_ids.indexOf(i) > -1) return;
-      ids.push(i);
-      styles.push(selectionStyles[type]);
-    });
+    // DISABLED after hit control refactor
+    // o.selection_ids.forEach(function(i) {
+    //   // skip features in a higher layer
+    //   if (i == topId || o.hover_ids.indexOf(i) > -1) return;
+    //   ids.push(i);
+    //   styles.push(selectionStyles[type]);
+    // });
     // second layer: hover feature(s)
-    o.hover_ids.forEach(function(i) {
+    // o.hover_ids.forEach(function(i) {
+    o.ids.forEach(function(i) {
       var style;
       if (i == topId) return;
-      style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
+      style = hoverStyles[type];
+      // style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
       ids.push(i);
       styles.push(style);
     });
     // top layer: feature that was selected by clicking in inspection mode ([i])
     if (topId > -1) {
       var isPinned = o.pinned;
-      var inSelection = o.selection_ids.indexOf(topId) > -1;
+      var inSelection = false; // o.selection_ids.indexOf(topId) > -1;
       var style;
       if (isPinned) {
         style = pinnedStyles[type];
@@ -3238,6 +2584,7 @@ internal.getCanvasStyleFields = function(lyr) {
 
 
 
+
 function getSvgSymbolTransform(xy, ext) {
   var scale = ext.getSymbolScale();
   var p = ext.translateCoords(xy[0], xy[1]);
@@ -3248,7 +2595,7 @@ function repositionSymbols(elements, layer, ext) {
   var el, idx, p;
   for (var i=0, n=elements.length; i<n; i++) {
     el = elements[i];
-    idx = +el.getAttribute('data-id');
+    idx = getSymbolNodeId(el);
     p = layer.shapes[idx];
     if (!p) continue;
     el.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
@@ -3299,295 +2646,14 @@ function renderFurniture(lyr, ext) {
 
 
 
-
-function isMultilineLabel(textNode) {
-  return textNode.childNodes.length > 1;
-}
-
-function toggleTextAlign(textNode, rec) {
-  var curr = rec['text-anchor'] || 'middle';
-  var targ = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
-  updateTextAnchor(textNode, rec, targ);
-}
-
-// Set an attribute on a <text> node and any child <tspan> elements
-// (mapshaper's svg labels require tspans to have the same x and dx values
-//  as the enclosing text node)
-function setMultilineAttribute(textNode, name, value) {
-  var n = textNode.childNodes.length;
-  var i = -1;
-  var child;
-  textNode.setAttribute(name, value);
-  while (++i < n) {
-    child = textNode.childNodes[i];
-    if (child.tagName == 'tspan') {
-      child.setAttribute(name, value);
-    }
-  }
-}
-
-function findSvgRoot(el) {
-  while (el && el.tagName != 'html' && el.tagName != 'body') {
-    if (el.tagName == 'svg') return el;
-    el = el.parentNode;
-  }
-  return null;
-}
-
-// @value: optional position to set; if missing, auto-set
-function updateTextAnchor(textNode, rec, value) {
-  var rect = textNode.getBoundingClientRect();
-  var width = rect.width;
-  var anchorX = +textNode.getAttribute('x');
-  var labelCenterX = rect.left - findSvgRoot(textNode).getBoundingClientRect().left + width / 2;
-  var xpct = (labelCenterX - anchorX) / width; // offset of label center from anchor center
-  var curr = rec['text-anchor'] || 'middle';
-  var xshift = 0;
-  var targ = value || xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
-  if (curr == 'middle' && targ == 'end' || curr == 'start' && targ == 'middle') {
-    xshift = width / 2;
-  } else if (curr == 'middle' && targ == 'start' || curr == 'end' && targ == 'middle') {
-    xshift = -width / 2;
-  } else if (curr == 'start' && targ == 'end') {
-    xshift = width;
-  } else if (curr == 'end' && targ == 'start') {
-    xshift = -width;
-  }
-  if (xshift) {
-    rec['text-anchor'] = targ;
-    applyDelta(rec, 'dx', xshift);
-  }
-}
-
-// handle either numeric strings or numbers in fields
-function applyDelta(rec, key, delta) {
-  var currVal = rec[key];
-  var isString = utils.isString(currVal);
-  var newVal = (+currVal + delta) || 0;
-  rec[key] = isString ? String(newVal) : newVal;
-}
-
-
-
-function SymbolDragging(gui, ext, mouse, svg) {
-  var el = El(svg);
-  var editing = false;
-  var dragging = false;
-  var textNode;
-  var activeLayer;
-  var activeRecord;
-  var activeId = -1;
-
-  initDragging();
-
-  return {
-    editLayer: function(target, type) {
-      activeLayer = target.layer;
-    },
-    clear: function() {
-      if (editing) stopEditing();
-      activeLayer = null;
-    }
-  };
-
-  // update symbol by setting attributes
-  function updateSymbol(node, d) {
-    var a = d['text-anchor'];
-    if (a) node.setAttribute('text-anchor', a);
-    setMultilineAttribute(node, 'dx', d.dx || 0);
-    node.setAttribute('y', d.dy || 0);
-  }
-
-  // update symbol by re-rendering it
-  function updateSymbol2(node, d) {
-    var o = internal.svg.importStyledLabel(d); // TODO: symbol support
-    var xy = activeLayer.shapes[activeId][0];
-    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    var node2;
-    o.properties.transform = getSvgSymbolTransform(xy, ext);
-    o.properties['data-id'] = activeId;
-    o.properties['class'] = 'selected';
-    g.innerHTML = internal.svg.stringify(o);
-    node2 = g.firstChild;
-    node.parentNode.replaceChild(node2, node);
-    return node2;
-  }
-
-  function initDragging() {
-    var downEvt;
-    var eventPriority = 1;
-
-    // inspector and label editing aren't fully synced - stop editing if inspector opens
-    gui.on('inspector_on', function() {
-      stopEditing();
-    });
-
-    // down event on svg
-    // a: off text
-    //    -> stop editing
-    // b: on text
-    //    1: not editing -> nop
-    //    2: on selected text -> start dragging
-    //    3: on other text -> stop dragging, select new text
-    svg.addEventListener('mousedown', function(e) {
-      var textTarget = getTextTarget(e);
-      downEvt = e;
-      if (!textTarget) {
-        stopEditing();
-      } else if (!editing) {
-        // nop
-      } else if (textTarget == textNode) {
-        startDragging();
-      } else {
-        startDragging();
-        editTextNode(textTarget);
-      }
-    });
-
-    // up event on svg
-    // a: currently dragging text
-    //   -> stop dragging
-    // b: clicked on a text feature
-    //   -> start editing it
-    svg.addEventListener('mouseup', function(e) {
-      var textTarget = getTextTarget(e);
-      var isClick = isClickEvent(e, downEvt);
-      if (isClick && textTarget && textTarget == textNode &&
-          activeRecord && isMultilineLabel(textNode)) {
-        toggleTextAlign(textNode, activeRecord);
-        updateSymbol();
-      }
-      if (dragging) {
-        stopDragging();
-       } else if (isClick && textTarget) {
-        editTextNode(textTarget);
-      }
-    });
-
-    // block dbl-click navigation when editing
-    mouse.on('dblclick', function(e) {
-      if (editing) e.stopPropagation();
-    }, null, eventPriority);
-
-    mouse.on('dragstart', function(e) {
-      onDrag(e);
-    }, null, eventPriority);
-
-    mouse.on('drag', function(e) {
-      var scale = ext.getSymbolScale() || 1;
-      onDrag(e);
-      if (!dragging || !activeRecord) return;
-      applyDelta(activeRecord, 'dx', e.dx / scale);
-      applyDelta(activeRecord, 'dy', e.dy / scale);
-      if (!isMultilineLabel(textNode)) {
-        // update anchor position of single-line labels based on label position
-        // relative to anchor point, for better placement when eventual display font is
-        // different from mapshaper's font.
-        updateTextAnchor(textNode, activeRecord);
-      }
-      // updateSymbol(textNode, activeRecord);
-      textNode = updateSymbol2(textNode, activeRecord, activeId);
-    }, null, eventPriority);
-
-    mouse.on('dragend', function(e) {
-      onDrag(e);
-      stopDragging();
-    }, null, eventPriority);
-
-    function startDragging() {
-      dragging = true;
-      svg.setAttribute('class', 'dragging');
-    }
-
-    function stopDragging() {
-      dragging = false;
-      svg.removeAttribute('class');
-    }
-
-    function onDrag(e) {
-      if (dragging) {
-        e.stopPropagation();
-      }
-    }
-  }
-
-  function isClickEvent(up, down) {
-    var elapsed = Math.abs(down.timeStamp - up.timeStamp);
-    var dx = up.screenX - down.screenX;
-    var dy = up.screenY - down.screenY;
-    var dist = Math.sqrt(dx * dx + dy * dy);
-    return dist <= 4 && elapsed < 300;
-  }
-
-  function stopEditing() {
-    if (dragging) {
-      stopDragging();
-    }
-    if (editing) {
-      // TODO: close editing panel
-      editing = false;
-    }
-    if (textNode) deselectText(textNode);
-    textNode = null;
-  }
-
-  function deselectText(el) {
-    el.removeAttribute('class');
-  }
-
-  function selectText(el) {
-    el.setAttribute('class', 'selected');
-  }
-
-  function editTextNode(el) {
-    var table, i;
-    if (textNode) deselectText(textNode);
-    textNode = el;
-    editing = true;
-    gui.dispatchEvent('label_editor_on'); // signal inspector to close
-    selectText(el);
-    table = activeLayer.data;
-    i = +textNode.getAttribute('data-id');
-    activeRecord = table.getRecords()[i];
-    activeId = i;
-    // add dx and dy properties, if not available
-    if (!table.fieldExists('dx')) {
-      table.addField('dx', 0);
-    }
-    if (!table.fieldExists('dy')) {
-      table.addField('dy', 0);
-    }
-    if (!table.fieldExists('text-anchor')) {
-      table.addField('text-anchor', '');
-    }
-    // TODO: show editing panel
-  }
-
-  function getTextTarget(e) {
-    var el = e.target;
-    if (el.tagName == 'tspan') {
-      el = el.parentNode;
-    }
-    return el.tagName == 'text' ? el : null;
-  }
-
-}
-
-
-
-
 function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   var el = El(svg);
-  var editor;
-
-  if (mouse) editor = new SymbolDragging(gui, ext, mouse, svg);
 
   el.clear = function() {
     while (svg.childNodes.length > 0) {
       svg.removeChild(svg.childNodes[0]);
     }
-    if (editor) editor.clear();
   };
 
   el.reposition = function(target, type) {
@@ -3601,7 +2667,8 @@ function SvgDisplayLayer(gui, ext, mouse) {
     // generate a unique id so layer can be identified when symbols are repositioned
     // use it as a class name to avoid id collisions
     var id = utils.getUniqueName();
-    g.setAttribute('class', id);
+    var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
+    g.setAttribute('class', classNames.join(' '));
     target.svg_id = id;
     resize(ext);
     if (type == 'label' || type == 'symbol') {
@@ -3611,10 +2678,9 @@ function SvgDisplayLayer(gui, ext, mouse) {
     }
     g.innerHTML = html;
     svg.append(g);
-    // TODO: support mouse dragging on symbol layers
-    if (editor && target.active && type == 'label') {
-      editor.editLayer(target, type);
-    } else {
+
+    // prevent svg hit detection on inactive layers
+    if (!target.active) {
       g.style.pointerEvents = 'none';
     }
   };
@@ -3777,6 +2843,7 @@ function CoordinatesDisplay(gui, ext, mouse) {
     bboxPoint = null;
   });
 
+  // clear coords when map pans
   ext.on('change', function() {
     clearCoords();
     // shapes may change along with map scale
@@ -3793,14 +2860,17 @@ function CoordinatesDisplay(gui, ext, mouse) {
     bboxPoint = bboxPoint ? null : ext.translatePixelCoords(e.x, e.y);
   });
 
-  mouse.on('hover', function(e) {
+  mouse.on('hover', onMouseChange);
+  mouse.on('drag', onMouseChange, null, 10); // high priority so editor doesn't block propagation
+
+  function onMouseChange(e) {
     if (!enabled) return;
     if (isOverMap(e)) {
       displayCoords(ext.translatePixelCoords(e.x, e.y));
     } else {
       clearCoords();
     }
-  });
+  }
 
   function displayCoords(p) {
     var decimals = getCoordPrecision(ext.getBounds());
@@ -3841,6 +2911,1213 @@ function CoordinatesDisplay(gui, ext, mouse) {
 
 
 
+function getShapeHitTest(displayLayer, ext) {
+  var geoType = displayLayer.layer.geometry_type;
+
+  if (geoType == 'point' && displayLayer.style.type == 'styled') {
+    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
+  } else if (geoType == 'point') {
+    test = pointTest;
+  } else if (geoType == 'polyline') {
+    test = polylineTest;
+  } else if (geoType == 'polygon') {
+    test = polygonTest;
+  } else {
+    error("Unexpected geometry type:", geoType);
+  }
+  return test;
+
+  // Convert pixel distance to distance in coordinate units.
+  function getHitBuffer(pix) {
+    return pix / ext.getTransform().mx;
+  }
+
+  // reduce hit threshold when zoomed out
+  function getHitBuffer2(pix, minPix) {
+    var scale = ext.scale();
+    if (scale < 1) {
+      pix *= scale;
+    }
+    if (minPix > 0 && pix < minPix) pix = minPix;
+    return getHitBuffer(pix);
+  }
+
+  function polygonTest(x, y) {
+    var maxDist = getHitBuffer2(5, 1),
+        cands = findHitCandidates(x, y, maxDist),
+        hits = [],
+        cand, hitId;
+    for (var i=0; i<cands.length; i++) {
+      cand = cands[i];
+      if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
+        hits.push(cand.id);
+      }
+    }
+    if (cands.length > 0 && hits.length === 0) {
+      // secondary detection: proximity, if not inside a polygon
+      sortByDistance(x, y, cands, displayLayer.arcs);
+      hits = pickNearestCandidates(cands, 0, maxDist);
+    }
+    return hits;
+  }
+
+  function pickNearestCandidates(sorted, bufDist, maxDist) {
+    var hits = [],
+        cand, minDist;
+    for (var i=0; i<sorted.length; i++) {
+      cand = sorted[i];
+      if (cand.dist < maxDist !== true) {
+        break;
+      } else if (i === 0) {
+        minDist = cand.dist;
+      } else if (cand.dist - minDist > bufDist) {
+        break;
+      }
+      hits.push(cand.id);
+    }
+    return hits;
+  }
+
+  function polylineTest(x, y) {
+    var maxDist = getHitBuffer2(15, 2),
+        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, displayLayer.arcs);
+    return pickNearestCandidates(cands, bufDist, maxDist);
+  }
+
+  function sortByDistance(x, y, cands, arcs) {
+    for (var i=0; i<cands.length; i++) {
+      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+    }
+    utils.sortOn(cands, 'dist');
+  }
+
+  function pointTest(x, y) {
+    var dist = getHitBuffer2(25, 4),
+        limitSq = dist * dist,
+        hits = [];
+    internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+      var distSq = geom.distanceSq(x, y, p[0], p[1]);
+      if (distSq < limitSq) {
+        hits = [id];
+        limitSq = distSq;
+      } else if (distSq == limitSq) {
+        hits.push(id);
+      }
+    });
+    return hits;
+  }
+
+  function getRadiusFunction(style) {
+    var o = {};
+    if (style.styler) {
+      return function(i) {
+        style.styler(o, i);
+        return o.radius || 0;
+      };
+    }
+    return function() {return style.radius || 0;};
+  }
+
+  function getGraduatedCircleTest(radius) {
+    return function(x, y) {
+      var hits = [],
+          margin = getHitBuffer(12),
+          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
+          directHit = false,
+          hitRadius = 0,
+          hitDist;
+      internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+        var distSq = geom.distanceSq(x, y, p[0], p[1]);
+        var isHit = false;
+        var isOver, isNear, r, d, rpix;
+        if (distSq > limit * limit) return;
+        rpix = radius(id);
+        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
+        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
+        isOver = d < 0;
+        isNear = d < margin;
+        if (!isNear || rpix > 0 === false) {
+          isHit = false;
+        } else if (hits.length === 0) {
+          isHit = isNear;
+        } else if (!directHit && isOver) {
+          isHit = true;
+        } else if (directHit && isOver) {
+          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
+        } else if (!directHit && !isOver) {
+          // closest to bubble edge wins
+          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
+        }
+        if (isHit) {
+          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
+            hits = [];
+          }
+          hitRadius = r;
+          hitDist = d;
+          directHit = isOver;
+          hits.push(id);
+        }
+      });
+      return hits;
+    };
+  }
+
+  function findHitCandidates(x, y, dist) {
+    var arcs = displayLayer.arcs,
+        index = {},
+        cands = [],
+        bbox = [];
+    displayLayer.layer.shapes.forEach(function(shp, shpId) {
+      var cand;
+      for (var i = 0, n = shp && shp.length; i < n; i++) {
+        arcs.getSimpleShapeBounds2(shp[i], bbox);
+        if (x + dist < bbox[0] || x - dist > bbox[2] ||
+          y + dist < bbox[1] || y - dist > bbox[3]) {
+          continue; // bbox non-intersection
+        }
+        cand = index[shpId];
+        if (!cand) {
+          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
+          cands.push(cand);
+        }
+        cand.shape.push(shp[i]);
+      }
+    });
+    return cands;
+  }
+}
+
+
+
+function getSymbolNodeId(node) {
+  return parseInt(node.getAttribute('data-id'));
+}
+
+function getSymbolNodeById(id, parent) {
+  // TODO: optimize selector
+  var sel = '[data-id="' + id + '"]';
+  return parent.querySelector(sel);
+}
+
+
+
+
+
+function getSvgHitTest(displayLayer) {
+
+  return function(pointerEvent) {
+    // target could be a part of an SVG symbol, or the SVG element, or something else
+    var target = pointerEvent.originalEvent.target;
+    var symbolNode = getSymbolNode(target);
+    var featureId;
+    if (!symbolNode) {
+      return null;
+    }
+    // TODO: some validation on feature id
+    featureId = getSymbolNodeId(symbolNode);
+    return {
+      id: featureId,
+      ids: [featureId],
+      targetSymbol: symbolNode,
+      targetNode: target,
+      container: symbolNode.parentNode
+    };
+  };
+
+  // target: event target (could be any DOM element)
+  function getSymbolNode(target) {
+    var node = target;
+    while (node && nodeHasSymbolTagType(node)) {
+      if (isSymbolNode(node)) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  // TODO: switch to attribute detection
+  function nodeHasSymbolTagType(node) {
+    var tag = node.tagName;
+    return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
+      tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
+  }
+
+  function isSymbolNode(node) {
+    return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
+  }
+
+  function isSymbolChildNode(node) {
+
+  }
+
+  function getChildId(childNode) {
+
+  }
+
+  function getSymbolId(symbolNode) {
+
+  }
+
+  function getFeatureId(symbolNode) {
+
+  }
+
+}
+
+
+
+
+function HitControl2(gui, ext, mouse) {
+  var self = new EventDispatcher();
+  var hitData = noData(); // may include additional data from SVG symbol hit (e.g. hit node)
+  var active = false;
+  var pinned = false;
+  var shapeTest;
+  var svgTest;
+  var targetLayer;
+  // event priority is higher than navigation, so stopping propagation disables
+  // pan navigation
+  var priority = 2;
+
+  self.setLayer = function(mapLayer) {
+    if (!mapLayer) {
+      shapeTest = null;
+      svgTest = null;
+      self.stop();
+    } else {
+      shapeTest = getShapeHitTest(mapLayer, ext);
+      svgTest = getSvgHitTest(mapLayer);
+    }
+    targetLayer = mapLayer;
+    // deselect any  selection
+    // TODO: maintain selection if layer & shapes have not changed
+    updateHitData(null, null);
+  };
+
+  self.start = function() {
+    active = true;
+  };
+
+  self.stop = function() {
+    if (active) {
+      updateHitData(null, null); // no hit data, no event
+      active = false;
+    }
+  };
+
+  self.getHitId = function() {return hitData.id;};
+
+  // Get a reference to the active layer, so listeners to hit events can interact
+  // with data and shapes
+  self.getHitTarget = function() {
+    return targetLayer;
+  };
+
+  self.getTargetDataTable = function() {
+    var targ = self.getHitTarget();
+    return targ && targ.layer.data || null;
+  };
+
+  self.getSwitchHandler = function(diff) {
+    return function() {
+      self.switchSelection(diff);
+    };
+  };
+
+  self.switchSelection = function(diff) {
+    var i = hitData.ids.indexOf(hitData.id);
+    var n = hitData.ids.length;
+    if (i < 0 || n < 2) return;
+    if (diff != 1 && diff != -1) {
+      diff = 1;
+    }
+    hitData.id = hitData.ids[(i + diff + n) % n];
+    triggerHitEvent('change');
+  };
+
+  // make sure popup is unpinned and turned off when switching editing modes
+  // (some modes do not support pinning)
+  gui.on('interaction_mode_change', function(e) {
+    updateHitData(null, null);
+  });
+
+  mouse.on('dblclick', handlePointerEvent, null, priority);
+  mouse.on('dragstart', handlePointerEvent, null, priority);
+  mouse.on('drag', handlePointerEvent, null, priority);
+  mouse.on('dragend', handlePointerEvent, null, priority);
+
+  mouse.on('click', function(e) {
+    if (!shapeTest || !active) return;
+    e.stopPropagation();
+
+    // TODO: move pinning to inspection control?
+    if (gui.interaction.modeUsesClick(gui.interaction.getMode())) {
+      togglePin();
+    }
+
+    triggerHitEvent('click', e.data);
+    triggerHitEvent('change');
+
+  }, null, priority);
+
+  // Hits are re-detected on 'hover' (if hit detection is active)
+  mouse.on('hover', function(e) {
+    if (!shapeTest || !active || pinned) return;
+    var isOver = isOverMap(e);
+    if (!isOver) {
+      // mouse is off of map viewport -- clear any current hit
+      updateHitData(null, e.data); // no hit data, have event data
+
+    } else if (e.hover) {
+      // mouse is hovering directly over map area -- update hit detection
+      hitTest(e);
+
+    } else {
+      // mouse is over map viewport but not directly over map (e.g. hovering
+      // over popup) -- don't update hit detection
+    }
+  }, null, priority);
+
+  function noData() {return {ids: [], id: -1};}
+
+  function togglePin() {
+    if (pinned) {
+      // TODO:
+      pinned = false;
+    } else if (hitData.id > -1) {
+      pinned = true;
+    } else {
+      pinned = false;
+    }
+  }
+
+  function hitTest(e) {
+    // Try SVG hit test first, fall through to shape-based hit test
+    var p = ext.translatePixelCoords(e.x, e.y);
+    var data = svgTest(e); // null or a data object
+    var shapeHitIds = shapeTest(p[0], p[1]);
+    if (shapeHitIds && data) {
+      // if both SVG hit and shape hit, use both
+      data.ids = utils.uniq(data.ids.concat(shapeHitIds));
+    } else if (shapeHitIds) {
+      // if only shape hit, use shape hit ids
+      data = {ids: shapeHitIds};
+    }
+    updateHitData(data, e.data);
+  }
+
+  // If hit ids have changed, update stored hit ids and fire 'hover' event
+  // evt: (optional) mouse event
+  function updateHitData(newData, evtData) {
+    if (!newData) {
+      newData = noData();
+    } else {
+      newData = utils.extend({}, newData); // make a copy
+    }
+    // if (sameIds(newData.ids, hitData.ids)) {
+    if (!testHitChange(hitData, newData)) {
+      return;
+    }
+    // update selected id
+    if (hitData.id > -1 && newData.ids.indexOf(hitData.id) > -1) {
+      newData.id = hitData.id;
+    } else if (newData.ids.length > 0) {
+      newData.id = newData.ids[0];
+    } else {
+      newData.id = -1;
+    }
+    hitData = newData;
+    pinned = false;
+    gui.container.findChild('.map-layers').classed('hover', newData.ids.length > 0);
+    if (active) {
+      triggerHitEvent('hover', evtData || {});
+      triggerHitEvent('change');
+    }
+  }
+
+  // check if an event is used in the current interaction mode
+  function eventIsEnabled(type) {
+    var mode = gui.interaction.getMode();
+    if (type == 'click' && !gui.interaction.modeUsesClick(mode)) {
+      return false;
+    }
+    if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !gui.interaction.modeUsesDrag(mode)) {
+      return false;
+    }
+    return true;
+  }
+
+  function isOverMap(e) {
+    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
+  }
+
+  function handlePointerEvent(e) {
+    if (!shapeTest || !active) return;
+    if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
+    // don't block pan and other navigation in modes when they are not being used
+    if (eventIsEnabled(e.type)) {
+      e.stopPropagation(); // block navigation
+      triggerHitEvent(e.type, e.data);
+    }
+  }
+
+  function refreshHitData(d) {
+    if (!d || !d.container || d.id > -1 == false) {
+      return;
+    }
+  }
+
+  // d: event data (may be a pointer event object, an ordinary object or empty)
+  function triggerHitEvent(type, d) {
+    // var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+    // Merge stored hit data into the event data
+    var eventData = utils.extend({pinned: pinned}, d || {}, hitData);
+    self.dispatchEvent(type, eventData);
+  }
+
+  function testHitChange(a, b) {
+    // check change in 'container', e.g. so moving from anchor hit to label hit
+    //   is detected
+    if (sameIds(a.ids, b.ids) && a.container == b.container) {
+      return false;
+    }
+    return true;
+  }
+
+  function sameIds(a, b) {
+    if (a.length != b.length) return false;
+    for (var i=0; i<a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  return self;
+}
+
+
+
+
+// @onNext: handler for switching between multiple records
+function Popup(gui, onNext, onPrev) {
+  var self = new EventDispatcher();
+  var parent = gui.container.findChild('.mshp-main-map');
+  var el = El('div').addClass('popup').appendTo(parent).hide();
+  var content = El('div').addClass('popup-content').appendTo(el);
+  // multi-hit display and navigation
+  var tab = El('div').addClass('popup-tab').appendTo(el).hide();
+  var nav = El('div').addClass('popup-nav').appendTo(tab);
+  var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
+  var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
+  var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
+
+  nextLink.on('click', onNext);
+  prevLink.on('click', onPrev);
+
+  self.show = function(id, ids, table, pinned, editable) {
+    var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
+    var maxHeight = parent.node().clientHeight - 36;
+    self.hide(); // clean up if panel is already open
+    render(content, rec, table, editable);
+    if (ids && ids.length > 1) {
+      showNav(id, ids, pinned);
+    } else {
+      tab.hide();
+    }
+    el.show();
+    if (content.node().clientHeight > maxHeight) {
+      content.css('height:' + maxHeight + 'px');
+    }
+  };
+
+  self.hide = function() {
+    // make sure any pending edits are made before re-rendering popup
+    // TODO: only blur popup fields
+    GUI.blurActiveElement();
+    content.empty();
+    content.node().removeAttribute('style'); // remove inline height
+    el.hide();
+  };
+
+  return self;
+
+  function showNav(id, ids, pinned) {
+    var num = ids.indexOf(id) + 1;
+    navInfo.text(' ' + num + ' / ' + ids.length + ' ');
+    nextLink.css('display', pinned ? 'inline-block' : 'none');
+    prevLink.css('display', pinned && ids.length > 2 ? 'inline-block' : 'none');
+    tab.show();
+  }
+
+  function render(el, rec, table, editable) {
+    var tableEl = El('table').addClass('selectable'),
+        rows = 0;
+    utils.forEachProperty(rec, function(v, k) {
+      var type;
+      // missing GeoJSON fields are set to undefined on import; skip these
+      if (v !== undefined) {
+        type = internal.getFieldType(v, k, table);
+        renderRow(tableEl, rec, k, type, editable);
+        rows++;
+      }
+    });
+    if (rows > 0) {
+      tableEl.appendTo(el);
+    } else {
+      // Some individual features can have undefined values for some or all of
+      // their data properties (properties are set to undefined when an input JSON file
+      // has inconsistent fields, or after force-merging layers with inconsistent fields).
+      el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
+          table && table.getFields().length > 0 ? 'feature': 'layer'));
+    }
+  }
+
+  function renderRow(table, rec, key, type, editable) {
+    var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
+    var val = rec[key];
+    var str = internal.formatInspectorValue(val, type);
+    var cell = El('tr')
+        .appendTo(table)
+        .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
+        .findChild('.value');
+    setFieldClass(cell, val, type);
+    if (editable) {
+      editItem(cell, rec, key, type);
+    }
+  }
+
+  function setFieldClass(el, val, type) {
+    var isNum = type ? type == 'number' : utils.isNumber(val);
+    var isNully = val === undefined || val === null || val !== val;
+    var isEmpty = val === '';
+    el.classed('num-field', isNum);
+    el.classed('object-field', type == 'object');
+    el.classed('null-value', isNully);
+    el.classed('empty', isEmpty);
+  }
+
+  function editItem(el, rec, key, type) {
+    var input = new ClickText2(el),
+        strval = internal.formatInspectorValue(rec[key], type),
+        parser = internal.getInputParser(type);
+    el.parent().addClass('editable-cell');
+    el.addClass('colored-text dot-underline');
+    input.on('change', function(e) {
+      var val2 = parser(input.value()),
+          strval2 = internal.formatInspectorValue(val2, type);
+      if (strval == strval2) {
+        // contents unchanged
+      } else if (val2 === null && type != 'object') { // allow null objects
+        // invalid value; revert to previous value
+        input.value(strval);
+      } else {
+        // field content has changed
+        strval = strval2;
+        rec[key] = val2;
+        input.value(strval);
+        setFieldClass(el, val2, type);
+        self.dispatchEvent('update', {field: key, value: val2});
+      }
+    });
+  }
+}
+
+internal.formatInspectorValue = function(val, type) {
+  var str;
+  if (type == 'object') {
+    str = val ? JSON.stringify(val) : "";
+  } else {
+    str = String(val);
+  }
+  return str;
+};
+
+internal.inputParsers = {
+  string: function(raw) {
+    return raw;
+  },
+  number: function(raw) {
+    var val = Number(raw);
+    if (raw == 'NaN') {
+      val = NaN;
+    } else if (isNaN(val)) {
+      val = null;
+    }
+    return val;
+  },
+  object: function(raw) {
+    var val = null;
+    try {
+      val = JSON.parse(raw);
+    } catch(e) {}
+    return val;
+  },
+  boolean: function(raw) {
+    var val = null;
+    if (raw == 'true') {
+      val = true;
+    } else if (raw == 'false') {
+      val = false;
+    }
+    return val;
+  },
+  multiple: function(raw) {
+    var val = Number(raw);
+    return isNaN(val) ? raw : val;
+  }
+};
+
+internal.getInputParser = function(type) {
+  return internal.inputParsers[type || 'multiple'];
+};
+
+internal.getFieldType = function(val, key, table) {
+  // if a field has a null value, look at entire column to identify type
+  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
+};
+
+
+
+
+function InspectionControl2(gui, hit) {
+  var model = gui.model;
+  var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
+  var _self = new EventDispatcher();
+
+  // state variables
+  var _pinned = false;
+  var _highId = -1;
+
+  gui.on('interaction_mode_change', function(e) {
+    if (e.mode == 'off') {
+      turnOff();
+    } else {
+      turnOn();
+    }
+    // TODO: update popup if currently pinned
+  });
+
+  // inspector and label editing aren't fully synced - stop inspecting if label editor starts
+  // REMOVED
+  // gui.on('label_editor_on', function() {
+  // });
+
+  _popup.on('update', function(e) {
+    var d = e.data;
+    d.i = _highId; // need to add record id
+    _self.dispatchEvent('data_change', d);
+  });
+
+  // replace cli inspect command
+  // TODO: support multiple editors on the page
+  // REMOVING gui output for -inspect command
+  /*
+  api.inspect = function(lyr, arcs, opts) {
+    var ids;
+    if (!_target) return; // control is disabled (selected layer is hidden, etc)
+    if (lyr != model.getActiveLayer().layer) {
+      error("Only the active layer can be targeted");
+    }
+    ids = internal.selectFeatures(lyr, arcs, opts);
+    if (ids.length === 0) {
+      message("No features were selected");
+      return;
+    }
+    _selectionIds = ids;
+    turnOn();
+    inspect(ids[0], true);
+  };
+  */
+
+  gui.keyboard.on('keydown', function(evt) {
+    var e = evt.originalEvent;
+    var kc = e.keyCode, n, id;
+    if (!inspecting() || !hit.getHitTarget()) return;
+
+    // esc key closes (unless in an editing mode)
+    if (e.keyCode == 27 && inspecting() && !gui.getMode()) {
+      turnOff();
+      return;
+    }
+
+    if (_pinned && !GUI.getInputElement()) {
+      // an element is selected and user is not editing text
+
+      if (kc == 37 || kc == 39) {
+        // arrow keys advance pinned feature
+        n = internal.getFeatureCount(hit.getHitTarget().layer);
+        if (n > 1) {
+          if (kc == 37) {
+            id = (_highId + n - 1) % n;
+          } else {
+            id = (_highId + 1) % n;
+          }
+          inspect(id, true);
+          e.stopPropagation();
+        }
+      } else if (kc == 8) {
+        // delete key
+        // to help protect against inadvertent deletion, don't delete
+        // when console is open or a popup menu is open
+        if (!gui.getMode() && !gui.consoleIsOpen()) {
+          deletePinnedFeature();
+        }
+      }
+    }
+  }, !!'capture'); // preempt the layer control's arrow key handler
+
+  hit.on('change', function(e) {
+    if (!inspecting()) return;
+    inspect(e.id, e.pinned, e.ids);
+  });
+
+  function showInspector(id, ids, pinned) {
+    var target = hit.getHitTarget();
+    var editable = pinned && gui.interaction.getMode() == 'data';
+    if (target && target.layer.data) {
+      _popup.show(id, ids, target.layer.data, pinned, editable);
+    }
+  }
+
+  // @id Id of a feature in the active layer, or -1
+  function inspect(id, pin, ids) {
+    _pinned = pin;
+    if (id > -1 && inspecting()) {
+      showInspector(id, ids, pin);
+    } else {
+      _popup.hide();
+    }
+  }
+
+  // does the attribute inspector appear on rollover
+  function inspecting() {
+    return gui.interaction && gui.interaction.getMode() != 'off';
+  }
+
+  function turnOn() {
+    hit.start();
+    // gui.dispatchEvent('inspector_on');
+  }
+
+  function turnOff() {
+    hit.stop();
+    inspect(-1); // clear the map
+    // gui.dispatchEvent('inspector_off');
+  }
+
+  function deletePinnedFeature() {
+    var lyr = model.getActiveLayer().layer;
+    console.log("delete; pinned?", _pinned, "id:", _highId);
+    if (!_pinned || _highId == -1) return;
+    lyr.shapes.splice(_highId, 1);
+    if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
+    inspect(-1);
+    model.updated({flags: 'filter'});
+  }
+
+  return _self;
+}
+
+
+
+
+
+function isMultilineLabel(textNode) {
+  return textNode.childNodes.length > 1;
+}
+
+function toggleTextAlign(textNode, rec) {
+  var curr = rec['text-anchor'] || 'middle';
+  var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+  updateTextAnchor(value, textNode, rec);
+}
+
+// Set an attribute on a <text> node and any child <tspan> elements
+// (mapshaper's svg labels require tspans to have the same x and dx values
+//  as the enclosing text node)
+function setMultilineAttribute(textNode, name, value) {
+  var n = textNode.childNodes.length;
+  var i = -1;
+  var child;
+  textNode.setAttribute(name, value);
+  while (++i < n) {
+    child = textNode.childNodes[i];
+    if (child.tagName == 'tspan') {
+      child.setAttribute(name, value);
+    }
+  }
+}
+
+function findSvgRoot(el) {
+  while (el && el.tagName != 'html' && el.tagName != 'body') {
+    if (el.tagName == 'svg') return el;
+    el = el.parentNode;
+  }
+  return null;
+}
+
+// p: pixel coordinates of label anchor
+function autoUpdateTextAnchor(textNode, rec, p) {
+  var svg = findSvgRoot(textNode);
+  var rect = textNode.getBoundingClientRect();
+  var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
+  var xpct = (labelCenterX - p[0]) / rect.width; // offset of label center from anchor center
+  var value = xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
+  updateTextAnchor(value, textNode, rec);
+}
+
+// @value: optional position to set; if missing, auto-set
+function updateTextAnchor(value, textNode, rec) {
+  var rect = textNode.getBoundingClientRect();
+  var width = rect.width;
+  var curr = rec['text-anchor'] || 'middle';
+  var xshift = 0;
+
+  // console.log("anchor() curr:", curr, "xpct:", xpct, "left:", rect.left, "anchorX:", anchorX, "targ:", targ, "dx:", xshift)
+  if (curr == 'middle' && value == 'end' || curr == 'start' && value == 'middle') {
+    xshift = width / 2;
+  } else if (curr == 'middle' && value == 'start' || curr == 'end' && value == 'middle') {
+    xshift = -width / 2;
+  } else if (curr == 'start' && value == 'end') {
+    xshift = width;
+  } else if (curr == 'end' && value == 'start') {
+    xshift = -width;
+  }
+  if (xshift) {
+    rec['text-anchor'] = value;
+    applyDelta(rec, 'dx', xshift);
+  }
+}
+
+
+// handle either numeric strings or numbers in fields
+function applyDelta(rec, key, delta) {
+  var currVal = rec[key];
+  var isString = utils.isString(currVal);
+  var newVal = (+currVal + delta) || 0;
+  rec[key] = isString ? String(newVal) : newVal;
+}
+
+
+function getDisplayCoordsById(id, layer, ext) {
+  var coords = getPointCoordsById(id, layer);
+  return ext.translateCoords(coords[0], coords[1]);
+}
+
+function getPointCoordsById(id, layer) {
+  var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
+  if (!coords || coords.length != 1) {
+    return null;
+  }
+  return coords[0];
+}
+
+function translateDeltaDisplayCoords(dx, dy, ext) {
+  var a = ext.translatePixelCoords(0, 0);
+  var b = ext.translatePixelCoords(dx, dy);
+  return [b[0] - a[0], b[1] - a[1]];
+}
+
+
+
+
+function SymbolDragging2(gui, ext, hit) {
+  // var targetTextNode; // text node currently being dragged
+  var dragging = false;
+  var activeRecord;
+  var activeId = -1;
+  var self = new EventDispatcher();
+
+  initDragging();
+
+  return self;
+
+  function labelEditingEnabled() {
+    return gui.interaction && gui.interaction.getMode() == 'labels' ? true : false;
+  }
+
+  function locationEditingEnabled() {
+    return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
+  }
+
+  // update symbol by setting attributes
+  function updateSymbol(node, d) {
+    var a = d['text-anchor'];
+    if (a) node.setAttribute('text-anchor', a);
+    setMultilineAttribute(node, 'dx', d.dx || 0);
+    node.setAttribute('y', d.dy || 0);
+  }
+
+  // update symbol by re-rendering it
+  function updateSymbol2(node, d, id) {
+    var o = internal.svg.importStyledLabel(d); // TODO: symbol support
+    var activeLayer = hit.getHitTarget().layer;
+    var xy = activeLayer.shapes[id][0];
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    var node2;
+    o.properties.transform = getSvgSymbolTransform(xy, ext);
+    o.properties['data-id'] = id;
+    // o.properties['class'] = 'selected';
+    g.innerHTML = internal.svg.stringify(o);
+    node2 = g.firstChild;
+    node.parentNode.replaceChild(node2, node);
+    return node2;
+  }
+
+  function initDragging() {
+    var downEvt;
+    var eventPriority = 1;
+
+    // inspector and label editing aren't fully synced - stop editing if inspector opens
+    // gui.on('inspector_on', function() {
+    //   stopEditing();
+    // });
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode != 'labels') {
+        stopDragging();
+      }
+    });
+
+    // down event on svg
+    // a: off text
+    //    -> stop editing
+    // b: on text
+    //    1: not editing -> nop
+    //    2: on selected text -> start dragging
+    //    3: on other text -> stop dragging, select new text
+
+    hit.on('dragstart', function(e) {
+      if (labelEditingEnabled()) {
+        onLabelDragStart(e);
+      } else if (locationEditingEnabled()) {
+        onLocationDragStart(e);
+      }
+    });
+
+    hit.on('drag', function(e) {
+      if (labelEditingEnabled()) {
+        onLabelDrag(e);
+      } else if (locationEditingEnabled()) {
+        onLocationDrag(e);
+      }
+    });
+
+    hit.on('dragend', function(e) {
+      if (labelEditingEnabled() || locationEditingEnabled()) {
+        stopDragging();
+      }
+    });
+
+    hit.on('click', function(e) {
+      if (labelEditingEnabled()) {
+        onLabelClick(e);
+      }
+    });
+
+    function onLocationDragStart(e) {
+      if (e.id >= 0) {
+        dragging = true;
+      }
+    }
+
+    function onLocationDrag(e) {
+      var lyr = hit.getHitTarget().layer;
+      // get reference to
+      var p = getPointCoordsById(e.id, hit.getHitTarget().layer);
+      if (!p) return;
+      var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
+      p[0] += diff[0];
+      p[1] += diff[1];
+      self.dispatchEvent('location_change'); // signal map to redraw
+    }
+
+    function onLabelClick(e) {
+      var textNode = getTextTarget3(e);
+      var rec = getLabelRecordById(e.id);
+      if (textNode && rec && isMultilineLabel(textNode)) {
+        toggleTextAlign(textNode, rec);
+        updateSymbol2(textNode, rec, e.id);
+        // e.stopPropagation(); // prevent pin/unpin on popup
+      }
+    }
+
+    function getLabelRecordById(id) {
+      var table = hit.getTargetDataTable();
+      if (id >= 0 === false || !table) return null;
+      // add dx and dy properties, if not available
+      if (!table.fieldExists('dx')) {
+        table.addField('dx', 0);
+      }
+      if (!table.fieldExists('dy')) {
+        table.addField('dy', 0);
+      }
+      if (!table.fieldExists('text-anchor')) {
+        table.addField('text-anchor', '');
+      }
+      return table.getRecordAt(id);
+    }
+
+    function onLabelDragStart(e) {
+      var textNode = getTextTarget3(e);
+      var table = hit.getTargetDataTable();
+      if (!textNode || !table) return;
+      activeId = e.id;
+      activeRecord = getLabelRecordById(activeId);
+      dragging = true;
+      downEvt = e;
+    }
+
+    function onLabelDrag(e) {
+      var scale = ext.getSymbolScale() || 1;
+      var textNode;
+      if (!dragging) return;
+      if (e.id != activeId) {
+        error("Mismatched hit ids:", e.id, activeId);
+      }
+      applyDelta(activeRecord, 'dx', e.dx / scale);
+      applyDelta(activeRecord, 'dy', e.dy / scale);
+      textNode = getTextTarget3(e);
+      if (!isMultilineLabel(textNode)) {
+        // update anchor position of single-line labels based on label position
+        // relative to anchor point, for better placement when eventual display font is
+        // different from mapshaper's font.
+        autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
+      }
+      // updateSymbol(targetTextNode, activeRecord);
+      updateSymbol2(textNode, activeRecord, activeId);
+    }
+
+    function getTextTarget3(e) {
+      if (e.id > -1 === false || !e.container) return null;
+      return getSymbolNodeById(e.id, e.container);
+    }
+
+    function getTextTarget2(e) {
+      var el = e && e.targetSymbol || null;
+      if (el && el.tagName == 'tspan') {
+        el = el.parentNode;
+      }
+      return el && el.tagName == 'text' ? el : null;
+    }
+
+    function getTextTarget(e) {
+      var el = e.target;
+      if (el.tagName == 'tspan') {
+        el = el.parentNode;
+      }
+      return el.tagName == 'text' ? el : null;
+    }
+
+    // svg.addEventListener('mousedown', function(e) {
+    //   var textTarget = getTextTarget(e);
+    //   downEvt = e;
+    //   if (!textTarget) {
+    //     stopEditing();
+    //   } else if (!editing) {
+    //     // nop
+    //   } else if (textTarget == targetTextNode) {
+    //     startDragging();
+    //   } else {
+    //     startDragging();
+    //     editTextNode(textTarget);
+    //   }
+    // });
+
+    // up event on svg
+    // a: currently dragging text
+    //   -> stop dragging
+    // b: clicked on a text feature
+    //   -> start editing it
+
+
+    // svg.addEventListener('mouseup', function(e) {
+    //   var textTarget = getTextTarget(e);
+    //   var isClick = isClickEvent(e, downEvt);
+    //   if (isClick && textTarget && textTarget == targetTextNode &&
+    //       activeRecord && isMultilineLabel(targetTextNode)) {
+    //     toggleTextAlign(targetTextNode, activeRecord);
+    //     updateSymbol();
+    //   }
+    //   if (dragging) {
+    //     stopDragging();
+    //    } else if (isClick && textTarget) {
+    //     editTextNode(textTarget);
+    //   }
+    // });
+
+    // block dbl-click navigation when editing
+    // mouse.on('dblclick', function(e) {
+    //   if (editing) e.stopPropagation();
+    // }, null, eventPriority);
+
+    // mouse.on('dragstart', function(e) {
+    //   onLabelDrag(e);
+    // }, null, eventPriority);
+
+    // mouse.on('drag', function(e) {
+    //   var scale = ext.getSymbolScale() || 1;
+    //   onLabelDrag(e);
+    //   if (!dragging || !activeRecord) return;
+    //   applyDelta(activeRecord, 'dx', e.dx / scale);
+    //   applyDelta(activeRecord, 'dy', e.dy / scale);
+    //   if (!isMultilineLabel(targetTextNode)) {
+    //     // update anchor position of single-line labels based on label position
+    //     // relative to anchor point, for better placement when eventual display font is
+    //     // different from mapshaper's font.
+    //     updateTextAnchor(targetTextNode, activeRecord);
+    //   }
+    //   // updateSymbol(targetTextNode, activeRecord);
+    //   targetTextNode = updateSymbol2(targetTextNode, activeRecord, activeId);
+    // }, null, eventPriority);
+
+    // mouse.on('dragend', function(e) {
+    //   onLabelDrag(e);
+    //   stopDragging();
+    // }, null, eventPriority);
+
+
+    // function onLabelDrag(e) {
+    //   if (dragging) {
+    //     e.stopPropagation();
+    //   }
+    // }
+  }
+
+  function stopDragging() {
+    dragging = false;
+    activeId = -1;
+    activeRecord = null;
+    // targetTextNode = null;
+    // svg.removeAttribute('class');
+  }
+
+  function isClickEvent(up, down) {
+    var elapsed = Math.abs(down.timeStamp - up.timeStamp);
+    var dx = up.screenX - down.screenX;
+    var dy = up.screenY - down.screenY;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    return dist <= 4 && elapsed < 300;
+  }
+
+
+  // function deselectText(el) {
+  //   el.removeAttribute('class');
+  // }
+
+  // function selectText(el) {
+  //   el.setAttribute('class', 'selected');
+  // }
+
+
+}
+
+
+
+
 utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(gui, opts) {
@@ -3848,15 +4125,16 @@ function MshpMap(gui, opts) {
       position = new ElementPosition(el),
       model = gui.model,
       map = this,
-      buttons = new SidebarButtons(gui),
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
-      _hit = new HitControl(gui, _ext, _mouse),
+      // _hit = new HitControl(gui, _ext, _mouse),
+      _hit = new HitControl2(gui, _ext, _mouse),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav;
+      _inspector, _stack, _nav, _editor;
 
+  _nav = new MapNav(gui, _ext, _mouse);
   new CoordinatesDisplay(gui, _ext, _mouse);
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
@@ -3906,7 +4184,8 @@ function MshpMap(gui, opts) {
     _activeLyr = getMapLayer(e.layer, e.dataset);
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
-    if (_inspector) _inspector.updateLayer(_activeLyr);
+    // if (_inspector) _inspector.updateLayer(_activeLyr);
+    _hit.setLayer(_activeLyr);
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
@@ -3929,6 +4208,7 @@ function MshpMap(gui, opts) {
       _ext.reset();
     }
     drawLayers();
+    map.dispatchEvent('updated');
   });
 
   // Currently used to show dots at line intersections
@@ -3949,8 +4229,11 @@ function MshpMap(gui, opts) {
   this.setLayerVisibility = function(target, isVisible) {
     var lyr = target.layer;
     lyr.visibility = isVisible ? 'visible' : 'hidden';
-    if (_inspector && isActiveLayer(lyr)) {
-      _inspector.updateLayer(isVisible ? _activeLyr : null);
+    // if (_inspector && isActiveLayer(lyr)) {
+    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
+    // }
+    if (isActiveLayer(lyr)) {
+      _hit.setLayer(isVisible ? _activeLyr : null);
     }
   };
 
@@ -3964,12 +4247,10 @@ function MshpMap(gui, opts) {
     drawLayers();
   };
 
-  this.addSidebarButton = buttons.addButton;
-
   function initMap() {
     _ext.resize();
-    _nav = new MapNav(gui, _ext, _mouse);
     _stack = new LayerStack(gui, el, _ext, _mouse);
+    gui.buttons.enable();
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -3980,8 +4261,9 @@ function MshpMap(gui, opts) {
     });
 
     if (opts.inspector) {
-      _inspector = new InspectionControl(gui, _ext, _hit);
-      _inspector.on('change', function(e) {
+      _inspector = new InspectionControl2(gui, _hit);
+      _hit.on('change', function(e) {
+        // draw highlight effect for hover and select
         _overlayLyr = getMapLayerOverlay(_activeLyr, e);
         _stack.drawOverlayLayer(_overlayLyr);
       });
@@ -3990,6 +4272,12 @@ function MshpMap(gui, opts) {
         if (internal.isSupportedSvgProperty(e.field)) {
           drawLayers();
         }
+      });
+
+      _editor = new SymbolDragging2(gui, _ext, _hit);
+      _editor.on('location_change', function(e) {
+        // TODO: optimize redrawing
+        drawLayers();
       });
     }
 
@@ -4172,7 +4460,7 @@ function MshpMap(gui, opts) {
       return;
     }
     if (!onlyNav) {
-       // kludge to handle layer visibility toggling
+      // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
       _ext.setBounds(getFullBounds());
       updateLayerStyles(contentLayers);
@@ -4241,6 +4529,222 @@ GUI.getIntersectionPct = function(bb1, bb2) {
 
 
 
+function InteractionMode(gui, opts) {
+  var buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
+  var btn1 = buttons[0]; // [i] button
+  var btn2 = buttons[1]; // submenu button
+  var menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+
+  // all possible menu contents
+  var menus = {
+    standard: ['info', 'data'],
+    labels: ['info', 'data', 'labels', 'location'],
+    points: ['info', 'data', 'location']
+  };
+
+  // mode name -> menu text lookup
+  var labels = {
+    info: 'off', // no data editing, just popup
+    data: 'data',
+    labels: 'labels',
+    location: 'coordinates'
+  };
+
+  // state variables
+  var _editMode = 'info'; // one of labels{} keys
+  var _active = false; // interaction on/off
+  var _menuOpen = false;
+
+  this.getMode = function() {
+    return getInteractionMode();
+  };
+
+  this.setMode = function(mode) {
+    // TODO: check that this mode is valid for the current dataset
+    if (mode in labels) {
+      setMode(mode);
+    }
+  };
+
+  this.modeUsesDrag = function(name) {
+    return name == 'location' || name == 'labels';
+  };
+
+  this.modeUsesClick = function(name) {
+    return name == 'data' || name == 'info'; // click used to pin popup
+  };
+
+  updateMenu();
+
+  btn1.on('click', function() {
+    gui.dispatchEvent('interaction_toggle');
+    updateVisibility();
+  });
+
+  btn2.on('click', function() {
+    _menuOpen = true;
+    updateVisibility();
+  });
+
+  gui.on('interaction_toggle', function() {
+    _active = !_active;
+    _menuOpen = false; // make sure menu does not stay open
+    updateVisibility();
+    onModeChange();
+  });
+
+  gui.model.on('select', function(e) {
+    // need to update mode if active layer doesn't support the current mode
+    updateMenu();
+
+  }, null, -1); // low priority?
+
+  function getAvailableModes() {
+    var o = gui.model.getActiveLayer();
+    if (!o || !o.layer) {
+      return menus.standard; // TODO: more sensible handling of missing layer
+    }
+    if (internal.layerHasLabels(o.layer)) {
+      return menus.labels;
+    }
+    if (internal.layerHasPoints(o.layer)) {
+      return menus.points;
+    }
+    return menus.standard;
+  }
+
+  function getInteractionMode() {
+    return _active ? _editMode : 'off';
+  }
+
+  function renderMenu(modes) {
+    menu.empty();
+    El('div').addClass('nav-menu-item').text('interactive editing:').appendTo(menu);
+    modes.forEach(function(mode) {
+      var link = El('div').addClass('nav-menu-item nav-menu-link').attr('data-name', mode).text(labels[mode]).appendTo(menu);
+      link.on('click', function() {
+        var delay = 0;
+        if (_editMode == mode) {
+          // selected link -> just close the menu
+        } else {
+          delay = 400;
+        }
+        setMode(mode);
+        closeMenu(delay);
+      });
+    });
+  }
+
+
+  function updateMenu() {
+    var modes = getAvailableModes();
+    renderMenu(modes);
+    updateModeDisplay();
+    updateVisibility();
+    // kludge: if current editing mode is not available, switch to another mode
+    if (modes.indexOf(_editMode) == -1) {
+      setMode(modes[0]);
+    }
+  }
+
+  function openMenu() {
+    _menuOpen = true;
+    updateVisibility();
+  }
+
+  function closeMenu(delay) {
+    setTimeout(function() {
+      _menuOpen = false;
+      updateVisibility();
+    }, delay || 0);
+  }
+
+  function setMode(mode) {
+    var changed = mode != _editMode;
+    _editMode = mode;
+    updateModeDisplay();
+    if (changed) {
+      onModeChange();
+    }
+  }
+
+  function onModeChange() {
+    gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
+  }
+
+  function updateVisibility() {
+    // menu
+    if (_menuOpen && _active) {
+      menu.show();
+    } else {
+      menu.hide();
+    }
+    // button
+    if (_menuOpen || !_active) {
+      btn2.hide();
+    } else {
+      btn2.show();
+    }
+    btn1.classed('selected', _active);
+  }
+
+  function updateModeDisplay() {
+    El.findAll('.nav-menu-item').forEach(function(el) {
+      el = El(el);
+      el.classed('selected', el.attr('data-name') == _editMode);
+    });
+  }
+
+  function initLink(label) {
+    return El('div').addClass('edit-mode-link').text(label);
+  }
+
+}
+
+
+
+function SidebarButtons(gui) {
+  var root = gui.container.findChild('.mshp-main-map');
+  var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
+
+  // @iconRef: selector for an (svg) button icon
+  this.addButton = function(iconRef) {
+    var btn = initButton(iconRef).addClass('nav-btn');
+    btn.appendTo(buttons);
+    return btn;
+  };
+
+  this.addDoubleButton = function(icon1Ref, icon2Ref) {
+    var btn1 = initButton(icon1Ref).addClass('nav-btn');
+    var btn2 = initButton(icon2Ref).addClass('nav-sub-btn');
+    var wrapper = El('div').addClass('nav-btn-wrapper');
+    btn1.appendTo(wrapper);
+    btn2.appendTo(wrapper);
+    wrapper.appendTo(buttons);
+    return [btn1, btn2];
+  };
+
+  this.enable = function() {
+    if (GUI.isActiveInstance(gui)) {
+      buttons.show();
+    }
+    gui.on('active', buttons.show.bind(buttons));
+    gui.on('inactive', buttons.hide.bind(buttons));
+  };
+
+  function initButton(iconRef) {
+    var icon = El('body').findChild(iconRef).node().cloneNode(true);
+    var btn = El('div')
+      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
+    btn.appendChild(icon);
+    if (icon.hasAttribute('id')) icon.removeAttribute('id');
+    return btn;
+  }
+}
+
+
+
+
 GUI.isActiveInstance = function(gui) {
   return gui == GUI.__active;
 };
@@ -4256,7 +4760,9 @@ function GuiInstance(container, opts) {
   gui.container = El(container);
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
+  gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui, opts);
+  gui.interaction = new InteractionMode(gui, opts);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {
@@ -5300,7 +5806,8 @@ function ImportControl(gui, opts) {
   function readFile(file) {
     var name = file.name,
         reader = new FileReader(),
-        useBinary = internal.isBinaryFile(name) ||
+        useBinary = internal.isSupportedBinaryInputType(name) ||
+          internal.isZipFile(name) ||
           internal.guessInputFileType(name) == 'json' ||
           internal.guessInputFileType(name) == 'text';
 
@@ -6423,7 +6930,7 @@ function Console(gui) {
         capture = true;
         turnOn();
       } else if (kc == 73) { // letter i opens inspector
-        gui.dispatchEvent('inspector_toggle');
+        gui.dispatchEvent('interaction_toggle');
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
       } else if (kc == 13) {

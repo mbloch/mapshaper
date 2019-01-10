@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.104';
+VERSION = '0.4.105';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -12699,6 +12699,7 @@ function GeoJSONParser(opts) {
     } else if (o.type) {
       geom = o;
     }
+    // TODO: improve so geometry_type option skips features instead of creating null geometries
     importer.startShape(rec);
     if (geom) GeoJSON.importGeometry(geom, importer, opts);
   };
@@ -16609,9 +16610,9 @@ internal.getFormatName = function(fmt) {
 };
 
 // Assumes file at @path is one of Mapshaper's supported file types
-internal.isBinaryFile = function(path) {
+internal.isSupportedBinaryInputType = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
@@ -17138,46 +17139,68 @@ api.importFiles = function(opts) {
 };
 
 api.importFile = function(path, opts) {
-  var isBinary = internal.isBinaryFile(path),
-      apparentType = internal.guessInputFileType(path),
+  var fileType = internal.guessInputFileType(path),
       input = {},
       encoding = opts && opts.encoding || null,
       cache = opts && opts.input || null,
       cached = cache && (path in cache),
-      type, content;
+      content;
 
   cli.checkFileExists(path, cache);
-  if (apparentType == 'shp' && !cached) {
+  if (fileType == 'shp' && !cached) {
     // let ShpReader read the file (supports larger files)
     content = null;
-  } else if (apparentType == 'json' && !cached) {
+
+  } else if (fileType == 'json' && !cached) {
     // postpone reading of JSON files, to support incremental parsing
     content = null;
-  } else if (apparentType == 'text' && !cached) {
+
+  } else if (fileType == 'text' && !cached) {
     // content = cli.readFile(path); // read from buffer
     content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
-  } else if (isBinary) {
+
+  } else if (fileType && internal.isSupportedBinaryInputType(path)) {
     content = cli.readFile(path, null, cache);
     if (utils.isString(content)) {
       // Fix for issue #264 (applyCommands() input is file path instead of binary content)
       stop('Expected binary content, received a string');
     }
-  } else { // assuming text file
+
+  } else if (fileType) { // string type
     content = cli.readFile(path, encoding || 'utf-8', cache);
+
+  } else { // type can't be inferred from filename -- try reading as text
+    content = cli.readFile(path, encoding || 'utf-8', cache);
+    fileType = internal.guessInputContentType(content);
+    if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+      // invalidate string data that contains the 'replacement character'
+      fileType = null;
+    }
   }
-  type = apparentType || internal.guessInputContentType(content);
-  if (!type) {
-    stop("Unable to import", path);
+
+  if (!fileType) {
+    stop(internal.getUnsupportedFileMessage(path));
   }
-  input[type] = {filename: path, content: content};
+  input[fileType] = {filename: path, content: content};
   content = null; // for g.c.
-  if (type == 'shp' || type == 'dbf') {
+  if (fileType == 'shp' || fileType == 'dbf') {
     internal.readShapefileAuxFiles(path, input, cache);
   }
-  if (type == 'shp' && !input.dbf) {
+  if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
   return internal.importContent(input, opts);
+};
+
+internal.getUnsupportedFileMessage = function(path) {
+  var ext = utils.getFileExtension(path);
+  var msg = 'Unable to import ' + path;
+  if (ext.toLowerCase() == 'zip') {
+    msg += ' (ZIP files must be unpacked before running mapshaper)';
+  } else {
+    msg += ' (unknown file type)';
+  }
+  return msg;
 };
 
 internal.readShapefileAuxFiles = function(path, obj, cache) {
@@ -22629,12 +22652,12 @@ internal.getOptionParser = function() {
       type: "strings",
       describe: "one or more files to import, or - to use stdin"
     })
-    .option("merge-files", {
-      describe: "merge features from compatible files into the same layer",
-      type: "flag"
-    })
     .option("combine-files", {
       describe: "import files to separate layers with shared topology",
+      type: "flag"
+    })
+    .option("merge-files", {
+      // describe: "merge features from compatible files into the same layer",
       type: "flag"
     })
     .option("no-topology", {
@@ -22660,13 +22683,14 @@ internal.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
-    .option("geometry-type", {
-      // undocumented; GeoJSON import rejects all but one kind of geometry
-    })
     .option("string-fields", stringFieldsOpt)
     .option("field-types", fieldTypesOpt)
     .option("name", {
       describe: "Rename the imported layer(s)"
+    })
+    .option("geometry-type", {
+      // undocumented; GeoJSON import rejects all but one kind of geometry
+      // describe: "[GeoJSON] Import one kind of geometry (point|polygon|polyline)"
     })
     .option("csv-filter", {
       describe: "[CSV] JS expression for filtering records"
