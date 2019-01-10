@@ -1,4 +1,5 @@
-v0.4.105 unreleased
+v0.4.105
+* [gui] Added separate interface modes for inspecting attributes, editing attributes, dragging labels to change offset from anchor, and dragging point symbols to change coordinates.
 * [cli] Improved error message when trying to read unsupported file types.
 
 v0.4.104
