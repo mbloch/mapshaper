@@ -1,5 +1,9 @@
-v0.4.104 unreleased
+v0.4.105 unreleased
+* [cli] Improved error message when trying to read unsupported file types.
+
+v0.4.104
 * Added "-uniq invert" option, for retaining non-unique records (useful e.g. for troubleshooting many-to-one joins).
+* Improved some error messages.
 
 v0.4.103
 * Added "weighted" option to the "-filter-slivers" command. When used with the "min-area=" option, the "weighted" flag multiplies the area of each polygon ring by the "Polsby-Popper" compactness metric, so sliver-shaped rings have a lower effective area.

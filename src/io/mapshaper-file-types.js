@@ -85,9 +85,9 @@ internal.getFormatName = function(fmt) {
 };
 
 // Assumes file at @path is one of Mapshaper's supported file types
-internal.isBinaryFile = function(path) {
+internal.isSupportedBinaryInputType = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
