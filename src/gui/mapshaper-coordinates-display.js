@@ -17,6 +17,7 @@ function CoordinatesDisplay(gui, ext, mouse) {
     bboxPoint = null;
   });
 
+  // clear coords when map pans
   ext.on('change', function() {
     clearCoords();
     // shapes may change along with map scale
@@ -33,14 +34,17 @@ function CoordinatesDisplay(gui, ext, mouse) {
     bboxPoint = bboxPoint ? null : ext.translatePixelCoords(e.x, e.y);
   });
 
-  mouse.on('hover', function(e) {
+  mouse.on('hover', onMouseChange);
+  mouse.on('drag', onMouseChange, null, 10); // high priority so editor doesn't block propagation
+
+  function onMouseChange(e) {
     if (!enabled) return;
     if (isOverMap(e)) {
       displayCoords(ext.translatePixelCoords(e.x, e.y));
     } else {
       clearCoords();
     }
-  });
+  }
 
   function displayCoords(p) {
     var decimals = getCoordPrecision(ext.getBounds());
