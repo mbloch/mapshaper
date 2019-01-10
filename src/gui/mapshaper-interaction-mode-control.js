@@ -26,6 +26,10 @@ function InteractionMode(gui, opts) {
   var _active = false; // interaction on/off
   var _menuOpen = false;
 
+  menu.on('click', function() {
+    closeMenu(0); // dismiss menu by clicking off an active link
+  });
+
   this.getMode = function() {
     return getInteractionMode();
   };
@@ -93,15 +97,12 @@ function InteractionMode(gui, opts) {
     El('div').addClass('nav-menu-item').text('interactive editing:').appendTo(menu);
     modes.forEach(function(mode) {
       var link = El('div').addClass('nav-menu-item nav-menu-link').attr('data-name', mode).text(labels[mode]).appendTo(menu);
-      link.on('click', function() {
-        var delay = 0;
-        if (_editMode == mode) {
-          // selected link -> just close the menu
-        } else {
-          delay = 400;
+      link.on('click', function(e) {
+        if (_editMode != mode) {
+          setMode(mode);
+          closeMenu(500);
+          e.stopPropagation();
         }
-        setMode(mode);
-        closeMenu(delay);
       });
     });
   }
