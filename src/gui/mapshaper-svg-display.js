@@ -2,32 +2,16 @@
 mapshaper-gui-lib
 mapshaper-svg-symbols
 mapshaper-svg-furniture
-mapshaper-symbol-dragging
-mapshaper-symbol-dragging2
-mapshaper-svg-layer-events
 */
 
-function SvgDisplayLayer(gui, ext, mouse, hit) {
+function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   var el = El(svg);
-  var editor;
-  var events, editor2;
-
-  if (mouse) {
-    // TESTING
-    events = new SvgLayerEvents(svg, mouse);
-    // editor = new SymbolDragging(gui, ext, mouse, svg);
-  }
-
-  if (hit) {
-    editor = new SymbolDragging2(gui, ext, hit);
-  }
 
   el.clear = function() {
     while (svg.childNodes.length > 0) {
       svg.removeChild(svg.childNodes[0]);
     }
-    if (editor) editor.clear();
   };
 
   el.reposition = function(target, type) {
@@ -53,16 +37,8 @@ function SvgDisplayLayer(gui, ext, mouse, hit) {
     g.innerHTML = html;
     svg.append(g);
 
-    // TODO: support mouse dragging on symbol layers
-    if (editor && target.active) {
-      if (type == 'label') {
-        editor.editLayer(target, type);
-
-      } else if (type == 'symbol') {
-        // TODO: support editing
-      }
-    } else {
-      // prevent svg hit detection on inactive layers
+    // prevent svg hit detection on inactive layers
+    if (!target.active) {
       g.style.pointerEvents = 'none';
     }
   };

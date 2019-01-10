@@ -1,4 +1,5 @@
 
+
 function getSvgSymbolTransform(xy, ext) {
   var scale = ext.getSymbolScale();
   var p = ext.translateCoords(xy[0], xy[1]);
@@ -9,7 +10,7 @@ function repositionSymbols(elements, layer, ext) {
   var el, idx, p;
   for (var i=0, n=elements.length; i<n; i++) {
     el = elements[i];
-    idx = +el.getAttribute('data-id');
+    idx = getSymbolNodeId(el);
     p = layer.shapes[idx];
     if (!p) continue;
     el.setAttribute('transform', getSvgSymbolTransform(p[0], ext));

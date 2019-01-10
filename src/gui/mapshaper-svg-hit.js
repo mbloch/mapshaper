@@ -1,3 +1,4 @@
+/* @requires mapshaper-svg-symbol-utils */
 
 function getSvgHitTest(displayLayer) {
 
@@ -10,12 +11,13 @@ function getSvgHitTest(displayLayer) {
       return null;
     }
     // TODO: some validation on feature id
-    featureId = parseInt(symbolNode.getAttribute('data-id'));
+    featureId = getSymbolNodeId(symbolNode);
     return {
       id: featureId,
       ids: [featureId],
       targetSymbol: symbolNode,
-      targetNode: target
+      targetNode: target,
+      container: symbolNode.parentNode
     };
   };
 

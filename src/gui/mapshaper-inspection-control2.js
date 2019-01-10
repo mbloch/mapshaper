@@ -2,66 +2,32 @@
 
 function InspectionControl2(gui, hit) {
   var model = gui.model;
-  // var _popup = new Popup(gui, getSwitchHandler(1), getSwitchHandler(-1));
   var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
-  var _inspecting = false;
+  var _self = new EventDispatcher();
+
+  // state variables
   var _pinned = false;
   var _highId = -1;
-  var _hoverIds = null;
-  // var _selectionIds = null;
-  var btn = gui.map.addSidebarButton("#info-icon2").on('click', function() {
-    gui.dispatchEvent('inspector_toggle');
-  });
-  var _self = new EventDispatcher();
-  var _target;
-  // keep a reference to shapes array of current layer, to check if
-  // shapes have changed when layer is updated.
-  var _shapes;
 
-  gui.on('inspector_toggle', function() {
-    if (_inspecting) turnOff(); else turnOn();
+  gui.on('interaction_mode_change', function(e) {
+    if (e.mode == 'off') {
+      turnOff();
+    } else {
+      turnOn();
+    }
+    // TODO: update popup if currently pinned
   });
 
   // inspector and label editing aren't fully synced - stop inspecting if label editor starts
-  gui.on('label_editor_on', function() {
-    if (_inspecting) {
-      // turnOff();
-    }
-  });
+  // REMOVED
+  // gui.on('label_editor_on', function() {
+  // });
 
   _popup.on('update', function(e) {
     var d = e.data;
     d.i = _highId; // need to add record id
     _self.dispatchEvent('data_change', d);
   });
-
-  // _self.updateLayer = function(mapLayer) {
-  //   if (!mapLayer) {
-  //     if (_target) { // enabled to disabled
-  //       _target = _shapes = null;
-  //       btn.hide();
-  //       turnOff();
-  //       hit.setLayer(null);
-  //     }
-  //     return;
-  //   }
-  //   if (!_target) { // disabled to enabled
-  //     btn.show();
-  //   }
-  //   _target = mapLayer;
-  //   if (_inspecting) {
-  //     if (_shapes == mapLayer.layer.shapes) {
-  //       // shapes haven't changed -- refresh in case data has changed
-  //       inspect(_highId, _pinned);
-  //     } else {
-  //       // shapes have changed -- clear any selected shapes
-  //       // _selectionIds = null;
-  //       inspect(-1, false);
-  //     }
-  //   }
-  //   _shapes = mapLayer.layer.shapes;
-  //   hit.setLayer(mapLayer);
-  // };
 
   // replace cli inspect command
   // TODO: support multiple editors on the page
@@ -87,10 +53,10 @@ function InspectionControl2(gui, hit) {
   gui.keyboard.on('keydown', function(evt) {
     var e = evt.originalEvent;
     var kc = e.keyCode, n, id;
-    if (!_inspecting || !_target) return;
+    if (!inspecting() || !hit.getHitTarget()) return;
 
     // esc key closes (unless in an editing mode)
-    if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
+    if (e.keyCode == 27 && inspecting() && !gui.getMode()) {
       turnOff();
       return;
     }
@@ -100,7 +66,7 @@ function InspectionControl2(gui, hit) {
 
       if (kc == 37 || kc == 39) {
         // arrow keys advance pinned feature
-        n = internal.getFeatureCount(_target.layer);
+        n = internal.getFeatureCount(hit.getHitTarget().layer);
         if (n > 1) {
           if (kc == 37) {
             id = (_highId + n - 1) % n;
@@ -121,89 +87,48 @@ function InspectionControl2(gui, hit) {
     }
   }, !!'capture'); // preempt the layer control's arrow key handler
 
-  // hit.on('click', function(e) {
-  //   var id = e.id;
-  //   var pin = false;
-  //   if (_pinned && id == _highId) {
-  //     // clicking on pinned shape: unpin
-  //   } else if (!_pinned && id > -1) {
-  //     // clicking on unpinned shape while unpinned: pin
-  //     pin = true;
-  //   } else if (_pinned && id > -1) {
-  //     // clicking on unpinned shape while pinned: pin new shape
-  //     pin = true;
-  //   } else if (!_pinned && id == -1) {
-  //     // clicking off the layer while pinned: unpin and deselect
-  //   }
-  //   inspect(id, pin, e.ids);
-  // });
-
-  // hit.on('hover', function(e) {
-  //   var id = e.id;
-  //   if (!_inspecting || _pinned) return;
-  //   inspect(id, false, e.ids);
-  // });
-
   hit.on('change', function(e) {
-    if (!_inspecting) return;
+    if (!inspecting()) return;
     inspect(e.id, e.pinned, e.ids);
   });
 
-  // function getSwitchHandler(diff) {
-  //   // function for switching between multiple hover shapes
-  //   return function() {
-  //     var i = (_hoverIds || []).indexOf(_highId);
-  //     var nextId;
-  //     if (i > -1) {
-  //       nextId = _hoverIds[(i + diff + _hoverIds.length) % _hoverIds.length];
-  //       inspect(nextId, true, _hoverIds);
-  //     }
-  //   };
-  // }
-
   function showInspector(id, ids, pinned) {
-    var table = _target.layer.data || null;
-    _popup.show(id, ids, table, pinned);
+    var target = hit.getHitTarget();
+    var editable = pinned && gui.interaction.getMode() == 'data';
+    if (target && target.layer.data) {
+      _popup.show(id, ids, target.layer.data, pinned, editable);
+    }
   }
 
   // @id Id of a feature in the active layer, or -1
   function inspect(id, pin, ids) {
-    if (!_inspecting) return;
-    if (id > -1) {
+    _pinned = pin;
+    if (id > -1 && inspecting()) {
       showInspector(id, ids, pin);
     } else {
       _popup.hide();
     }
-    /*
-    _highId = id;
-    _hoverIds = ids;
-    _pinned = pin;
-    _self.dispatchEvent('change', {
-      selection_ids: _selectionIds || [],
-      hover_ids: ids || [],
-      id: id,
-      pinned: pin
-    });
-    */
+  }
+
+  // does the attribute inspector appear on rollover
+  function inspecting() {
+    return gui.interaction && gui.interaction.getMode() != 'off';
   }
 
   function turnOn() {
-    btn.addClass('selected');
-    _inspecting = true;
     hit.start();
-    gui.dispatchEvent('inspector_on');
+    // gui.dispatchEvent('inspector_on');
   }
 
   function turnOff() {
-    btn.removeClass('selected');
     hit.stop();
-    // _selectionIds = null;
     inspect(-1); // clear the map
-    _inspecting = false;
+    // gui.dispatchEvent('inspector_off');
   }
 
   function deletePinnedFeature() {
     var lyr = model.getActiveLayer().layer;
+    console.log("delete; pinned?", _pinned, "id:", _highId);
     if (!_pinned || _highId == -1) return;
     lyr.shapes.splice(_highId, 1);
     if (lyr.data) lyr.data.getRecords().splice(_highId, 1);

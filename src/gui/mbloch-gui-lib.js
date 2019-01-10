@@ -400,7 +400,8 @@ utils.extend(El.prototype, {
       if (arguments.length == 1) {
         return this.el.getAttribute(obj);
       }
-      this.el[obj] = value;
+      this.el.setAttribute(obj, value);
+      // this.el[obj] = value;
     }
     else if (!value) {
       Opts.copyAllParams(this.el, obj);
@@ -861,14 +862,18 @@ function MouseArea(element, pos) {
     element.style.pointerEvents = 'auto';
   };
 
-  this.disable = function() {
-    if (_disabled) return;
-    _disabled = true;
-    if (_isOver) onAreaOut();
+  this.stopDragging = function() {
     if (_downEvt) {
       if (_dragging) stopDragging(_downEvt);
       _downEvt = null;
     }
+  };
+
+  this.disable = function() {
+    if (_disabled) return;
+    _disabled = true;
+    if (_isOver) onAreaOut();
+    this.stopDragging();
     element.style.pointerEvents = 'none';
   };
 
@@ -934,7 +939,7 @@ function MouseArea(element, pos) {
       _dragging = true;
       _self.dispatchEvent('dragstart', evt);
     }
-
+    if (evt.dx === 0 && evt.dy === 0) return; // seen in Chrome
     if (_dragging) {
       var obj = {
         dragX: evt.pageX - _downEvt.pageX,

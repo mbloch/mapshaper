@@ -4,6 +4,8 @@ mapshaper-gui-proxy
 mapshaper-keyboard
 mapshaper-gui-model
 mapshaper-map
+mapshaper-interaction-mode-control
+mapshaper-sidebar-buttons
 */
 
 GUI.isActiveInstance = function(gui) {
@@ -21,7 +23,9 @@ function GuiInstance(container, opts) {
   gui.container = El(container);
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
+  gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui, opts);
+  gui.interaction = new InteractionMode(gui, opts);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

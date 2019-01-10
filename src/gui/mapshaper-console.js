@@ -206,7 +206,7 @@ function Console(gui) {
         capture = true;
         turnOn();
       } else if (kc == 73) { // letter i opens inspector
-        gui.dispatchEvent('inspector_toggle');
+        gui.dispatchEvent('interaction_toggle');
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
       } else if (kc == 13) {

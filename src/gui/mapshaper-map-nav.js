@@ -18,12 +18,12 @@ function MapNav(gui, ext, mouse) {
     zoomScaleMultiplier = k || 1;
   };
 
-  gui.map.addSidebarButton("#home-icon").on('click', function() {
+  gui.buttons.addButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
 
-  inBtn = gui.map.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
-  outBtn = gui.map.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+  inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
+  outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
 
   ext.on('change', function() {
     inBtn.classed('disabled', ext.scale() >= ext.maxScale());

@@ -16,12 +16,11 @@ function Popup(gui, onNext, onPrev) {
   nextLink.on('click', onNext);
   prevLink.on('click', onPrev);
 
-  self.show = function(id, ids, table, pinned) {
-    var editable = pinned;
+  self.show = function(id, ids, table, pinned, editable) {
     var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
     var maxHeight = parent.node().clientHeight - 36;
     self.hide(); // clean up if panel is already open
-    render(content, rec, table, pinned);
+    render(content, rec, table, editable);
     if (ids && ids.length > 1) {
       showNav(id, ids, pinned);
     } else {

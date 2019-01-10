@@ -1,27 +1,28 @@
 /* @requires
 mapshaper-gui-lib
 mapshaper-svg-labels
+mapshaper-svg-symbol-utils
+mapshaper-map-utils
 */
 
 function SymbolDragging2(gui, ext, hit) {
-  var editing = false;
+  // var targetTextNode; // text node currently being dragged
   var dragging = false;
-  var textNode;
-  var activeLayer;
   var activeRecord;
   var activeId = -1;
+  var self = new EventDispatcher();
 
   initDragging();
 
-  return {
-    editLayer: function(target, type) {
-      activeLayer = target.layer;
-    },
-    clear: function() {
-      if (editing) stopEditing();
-      activeLayer = null;
-    }
-  };
+  return self;
+
+  function labelEditingEnabled() {
+    return gui.interaction && gui.interaction.getMode() == 'labels' ? true : false;
+  }
+
+  function locationEditingEnabled() {
+    return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
+  }
 
   // update symbol by setting attributes
   function updateSymbol(node, d) {
@@ -32,14 +33,15 @@ function SymbolDragging2(gui, ext, hit) {
   }
 
   // update symbol by re-rendering it
-  function updateSymbol2(node, d) {
+  function updateSymbol2(node, d, id) {
     var o = internal.svg.importStyledLabel(d); // TODO: symbol support
-    var xy = activeLayer.shapes[activeId][0];
+    var activeLayer = hit.getHitTarget().layer;
+    var xy = activeLayer.shapes[id][0];
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var node2;
     o.properties.transform = getSvgSymbolTransform(xy, ext);
-    o.properties['data-id'] = activeId;
-    o.properties['class'] = 'selected';
+    o.properties['data-id'] = id;
+    // o.properties['class'] = 'selected';
     g.innerHTML = internal.svg.stringify(o);
     node2 = g.firstChild;
     node.parentNode.replaceChild(node2, node);
@@ -51,8 +53,14 @@ function SymbolDragging2(gui, ext, hit) {
     var eventPriority = 1;
 
     // inspector and label editing aren't fully synced - stop editing if inspector opens
-    gui.on('inspector_on', function() {
-      stopEditing();
+    // gui.on('inspector_on', function() {
+    //   stopEditing();
+    // });
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode != 'labels') {
+        stopDragging();
+      }
     });
 
     // down event on svg
@@ -64,44 +72,110 @@ function SymbolDragging2(gui, ext, hit) {
     //    3: on other text -> stop dragging, select new text
 
     hit.on('dragstart', function(e) {
-      var textTarget = getTextTarget2(e);
-      console.log("* dragstart", e, textTarget, textNode);
-      downEvt = e;
-      if (dragging) {
-        error("Unexpected dragstart");
-      } else if (!textTarget) {
-        console.log("  dragstart -> stop editing");
-        stopEditing();
-      } else if (!editing) {
-        console.log("  dragstart -> should start dragging");
-        startDragging();
-        editTextNode(textTarget);
-      } else if (textTarget == textNode) {
-        console.log("  dragstart -> unexpected");
-        startDragging();
+      if (labelEditingEnabled()) {
+        onLabelDragStart(e);
+      } else if (locationEditingEnabled()) {
+        onLocationDragStart(e);
       }
     });
 
     hit.on('drag', function(e) {
-      console.log("* drag:", dragging, activeRecord, e);
+      if (labelEditingEnabled()) {
+        onLabelDrag(e);
+      } else if (locationEditingEnabled()) {
+        onLocationDrag(e);
+      }
+    });
+
+    hit.on('dragend', function(e) {
+      if (labelEditingEnabled() || locationEditingEnabled()) {
+        stopDragging();
+      }
+    });
+
+    hit.on('click', function(e) {
+      if (labelEditingEnabled()) {
+        onLabelClick(e);
+      }
+    });
+
+    function onLocationDragStart(e) {
+      if (e.id >= 0) {
+        dragging = true;
+      }
+    }
+
+    function onLocationDrag(e) {
+      var lyr = hit.getHitTarget().layer;
+      // get reference to
+      var p = getPointCoordsById(e.id, hit.getHitTarget().layer);
+      if (!p) return;
+      var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
+      p[0] += diff[0];
+      p[1] += diff[1];
+      self.dispatchEvent('location_change'); // signal map to redraw
+    }
+
+    function onLabelClick(e) {
+      var textNode = getTextTarget3(e);
+      var rec = getLabelRecordById(e.id);
+      if (textNode && rec && isMultilineLabel(textNode)) {
+        toggleTextAlign(textNode, rec);
+        updateSymbol2(textNode, rec, e.id);
+        // e.stopPropagation(); // prevent pin/unpin on popup
+      }
+    }
+
+    function getLabelRecordById(id) {
+      var table = hit.getTargetDataTable();
+      if (id >= 0 === false || !table) return null;
+      // add dx and dy properties, if not available
+      if (!table.fieldExists('dx')) {
+        table.addField('dx', 0);
+      }
+      if (!table.fieldExists('dy')) {
+        table.addField('dy', 0);
+      }
+      if (!table.fieldExists('text-anchor')) {
+        table.addField('text-anchor', '');
+      }
+      return table.getRecordAt(id);
+    }
+
+    function onLabelDragStart(e) {
+      var textNode = getTextTarget3(e);
+      var table = hit.getTargetDataTable();
+      if (!textNode || !table) return;
+      activeId = e.id;
+      activeRecord = getLabelRecordById(activeId);
+      dragging = true;
+      downEvt = e;
+    }
+
+    function onLabelDrag(e) {
       var scale = ext.getSymbolScale() || 1;
-      if (!dragging || !activeRecord) return;
+      var textNode;
+      if (!dragging) return;
+      if (e.id != activeId) {
+        error("Mismatched hit ids:", e.id, activeId);
+      }
       applyDelta(activeRecord, 'dx', e.dx / scale);
       applyDelta(activeRecord, 'dy', e.dy / scale);
+      textNode = getTextTarget3(e);
       if (!isMultilineLabel(textNode)) {
         // update anchor position of single-line labels based on label position
         // relative to anchor point, for better placement when eventual display font is
         // different from mapshaper's font.
-        updateTextAnchor(textNode, activeRecord);
+        autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
       }
-      // updateSymbol(textNode, activeRecord);
-      textNode = updateSymbol2(textNode, activeRecord, activeId);
-    });
+      // updateSymbol(targetTextNode, activeRecord);
+      updateSymbol2(textNode, activeRecord, activeId);
+    }
 
-    hit.on('dragend', function(e) {
-      console.log("* dragend");
-      stopDragging();
-    });
+    function getTextTarget3(e) {
+      if (e.id > -1 === false || !e.container) return null;
+      return getSymbolNodeById(e.id, e.container);
+    }
 
     function getTextTarget2(e) {
       var el = e && e.targetSymbol || null;
@@ -111,6 +185,13 @@ function SymbolDragging2(gui, ext, hit) {
       return el && el.tagName == 'text' ? el : null;
     }
 
+    function getTextTarget(e) {
+      var el = e.target;
+      if (el.tagName == 'tspan') {
+        el = el.parentNode;
+      }
+      return el.tagName == 'text' ? el : null;
+    }
 
     // svg.addEventListener('mousedown', function(e) {
     //   var textTarget = getTextTarget(e);
@@ -119,7 +200,7 @@ function SymbolDragging2(gui, ext, hit) {
     //     stopEditing();
     //   } else if (!editing) {
     //     // nop
-    //   } else if (textTarget == textNode) {
+    //   } else if (textTarget == targetTextNode) {
     //     startDragging();
     //   } else {
     //     startDragging();
@@ -137,9 +218,9 @@ function SymbolDragging2(gui, ext, hit) {
     // svg.addEventListener('mouseup', function(e) {
     //   var textTarget = getTextTarget(e);
     //   var isClick = isClickEvent(e, downEvt);
-    //   if (isClick && textTarget && textTarget == textNode &&
-    //       activeRecord && isMultilineLabel(textNode)) {
-    //     toggleTextAlign(textNode, activeRecord);
+    //   if (isClick && textTarget && textTarget == targetTextNode &&
+    //       activeRecord && isMultilineLabel(targetTextNode)) {
+    //     toggleTextAlign(targetTextNode, activeRecord);
     //     updateSymbol();
     //   }
     //   if (dragging) {
@@ -155,45 +236,44 @@ function SymbolDragging2(gui, ext, hit) {
     // }, null, eventPriority);
 
     // mouse.on('dragstart', function(e) {
-    //   onDrag(e);
+    //   onLabelDrag(e);
     // }, null, eventPriority);
 
     // mouse.on('drag', function(e) {
     //   var scale = ext.getSymbolScale() || 1;
-    //   onDrag(e);
+    //   onLabelDrag(e);
     //   if (!dragging || !activeRecord) return;
     //   applyDelta(activeRecord, 'dx', e.dx / scale);
     //   applyDelta(activeRecord, 'dy', e.dy / scale);
-    //   if (!isMultilineLabel(textNode)) {
+    //   if (!isMultilineLabel(targetTextNode)) {
     //     // update anchor position of single-line labels based on label position
     //     // relative to anchor point, for better placement when eventual display font is
     //     // different from mapshaper's font.
-    //     updateTextAnchor(textNode, activeRecord);
+    //     updateTextAnchor(targetTextNode, activeRecord);
     //   }
-    //   // updateSymbol(textNode, activeRecord);
-    //   textNode = updateSymbol2(textNode, activeRecord, activeId);
+    //   // updateSymbol(targetTextNode, activeRecord);
+    //   targetTextNode = updateSymbol2(targetTextNode, activeRecord, activeId);
     // }, null, eventPriority);
 
     // mouse.on('dragend', function(e) {
-    //   onDrag(e);
+    //   onLabelDrag(e);
     //   stopDragging();
     // }, null, eventPriority);
 
-    function startDragging() {
-      dragging = true;
-      // svg.setAttribute('class', 'dragging');
-    }
 
-    function stopDragging() {
-      dragging = false;
-      // svg.removeAttribute('class');
-    }
-
-    // function onDrag(e) {
+    // function onLabelDrag(e) {
     //   if (dragging) {
     //     e.stopPropagation();
     //   }
     // }
+  }
+
+  function stopDragging() {
+    dragging = false;
+    activeId = -1;
+    activeRecord = null;
+    // targetTextNode = null;
+    // svg.removeAttribute('class');
   }
 
   function isClickEvent(up, down) {
@@ -204,57 +284,14 @@ function SymbolDragging2(gui, ext, hit) {
     return dist <= 4 && elapsed < 300;
   }
 
-  function stopEditing() {
-    if (dragging) {
-      stopDragging();
-    }
-    if (editing) {
-      // TODO: close editing panel
-      editing = false;
-    }
-    if (textNode) deselectText(textNode);
-    textNode = null;
-  }
 
-  function deselectText(el) {
-    el.removeAttribute('class');
-  }
+  // function deselectText(el) {
+  //   el.removeAttribute('class');
+  // }
 
-  function selectText(el) {
-    el.setAttribute('class', 'selected');
-  }
+  // function selectText(el) {
+  //   el.setAttribute('class', 'selected');
+  // }
 
-  function editTextNode(el) {
-    var table, i;
-    if (textNode) deselectText(textNode);
-    textNode = el;
-    editing = true;
-    gui.dispatchEvent('label_editor_on'); // signal inspector to close
-    selectText(el);
-    table = activeLayer.data;
-    i = +textNode.getAttribute('data-id');
-    activeRecord = table.getRecords()[i];
-    activeId = i;
-    // add dx and dy properties, if not available
-    if (!table.fieldExists('dx')) {
-      table.addField('dx', 0);
-    }
-    if (!table.fieldExists('dy')) {
-      table.addField('dy', 0);
-    }
-    if (!table.fieldExists('text-anchor')) {
-      table.addField('text-anchor', '');
-    }
-    console.log("editTextNode() record:", activeRecord, activeId);
-    // TODO: show editing panel
-  }
-
-  function getTextTarget(e) {
-    var el = e.target;
-    if (el.tagName == 'tspan') {
-      el = el.parentNode;
-    }
-    return el.tagName == 'text' ? el : null;
-  }
 
 }

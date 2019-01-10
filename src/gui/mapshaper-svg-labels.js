@@ -7,8 +7,8 @@ function isMultilineLabel(textNode) {
 
 function toggleTextAlign(textNode, rec) {
   var curr = rec['text-anchor'] || 'middle';
-  var targ = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
-  updateTextAnchor(textNode, rec, targ);
+  var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+  updateTextAnchor(value, textNode, rec);
 }
 
 // Set an attribute on a <text> node and any child <tspan> elements
@@ -35,30 +35,39 @@ function findSvgRoot(el) {
   return null;
 }
 
+// p: pixel coordinates of label anchor
+function autoUpdateTextAnchor(textNode, rec, p) {
+  var svg = findSvgRoot(textNode);
+  var rect = textNode.getBoundingClientRect();
+  var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
+  var xpct = (labelCenterX - p[0]) / rect.width; // offset of label center from anchor center
+  var value = xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
+  updateTextAnchor(value, textNode, rec);
+}
+
 // @value: optional position to set; if missing, auto-set
-function updateTextAnchor(textNode, rec, value) {
+function updateTextAnchor(value, textNode, rec) {
   var rect = textNode.getBoundingClientRect();
   var width = rect.width;
-  var anchorX = +textNode.getAttribute('x');
-  var labelCenterX = rect.left - findSvgRoot(textNode).getBoundingClientRect().left + width / 2;
-  var xpct = (labelCenterX - anchorX) / width; // offset of label center from anchor center
   var curr = rec['text-anchor'] || 'middle';
   var xshift = 0;
-  var targ = value || xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
-  if (curr == 'middle' && targ == 'end' || curr == 'start' && targ == 'middle') {
+
+  // console.log("anchor() curr:", curr, "xpct:", xpct, "left:", rect.left, "anchorX:", anchorX, "targ:", targ, "dx:", xshift)
+  if (curr == 'middle' && value == 'end' || curr == 'start' && value == 'middle') {
     xshift = width / 2;
-  } else if (curr == 'middle' && targ == 'start' || curr == 'end' && targ == 'middle') {
+  } else if (curr == 'middle' && value == 'start' || curr == 'end' && value == 'middle') {
     xshift = -width / 2;
-  } else if (curr == 'start' && targ == 'end') {
+  } else if (curr == 'start' && value == 'end') {
     xshift = width;
-  } else if (curr == 'end' && targ == 'start') {
+  } else if (curr == 'end' && value == 'start') {
     xshift = -width;
   }
   if (xshift) {
-    rec['text-anchor'] = targ;
+    rec['text-anchor'] = value;
     applyDelta(rec, 'dx', xshift);
   }
 }
+
 
 // handle either numeric strings or numbers in fields
 function applyDelta(rec, key, delta) {

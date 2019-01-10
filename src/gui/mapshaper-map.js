@@ -3,17 +3,15 @@ mapshaper-gui-lib
 mapshaper-maplayer2
 mapshaper-map-nav
 mapshaper-map-extent
-mapshaper-inspection-control
-mapshaper-sidebar-buttons
 mapshaper-map-style
 mapshaper-svg-display
 mapshaper-layer-stack
 mapshaper-layer-sorting
 mapshaper-gui-proxy
 mapshaper-coordinates-display
-mapshaper-hit-control
 mapshaper-hit-control2
 mapshaper-inspection-control2
+mapshaper-symbol-dragging2
 */
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -23,7 +21,6 @@ function MshpMap(gui, opts) {
       position = new ElementPosition(el),
       model = gui.model,
       map = this,
-      buttons = new SidebarButtons(gui),
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
       // _hit = new HitControl(gui, _ext, _mouse),
@@ -31,8 +28,9 @@ function MshpMap(gui, opts) {
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav;
+      _inspector, _stack, _nav, _editor;
 
+  _nav = new MapNav(gui, _ext, _mouse);
   new CoordinatesDisplay(gui, _ext, _mouse);
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
@@ -106,6 +104,7 @@ function MshpMap(gui, opts) {
       _ext.reset();
     }
     drawLayers();
+    map.dispatchEvent('updated');
   });
 
   // Currently used to show dots at line intersections
@@ -144,12 +143,10 @@ function MshpMap(gui, opts) {
     drawLayers();
   };
 
-  this.addSidebarButton = buttons.addButton;
-
   function initMap() {
     _ext.resize();
-    _nav = new MapNav(gui, _ext, _mouse);
-    _stack = new LayerStack(gui, el, _ext, _mouse, _hit);
+    _stack = new LayerStack(gui, el, _ext, _mouse);
+    gui.buttons.enable();
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -162,6 +159,7 @@ function MshpMap(gui, opts) {
     if (opts.inspector) {
       _inspector = new InspectionControl2(gui, _hit);
       _hit.on('change', function(e) {
+        // draw highlight effect for hover and select
         _overlayLyr = getMapLayerOverlay(_activeLyr, e);
         _stack.drawOverlayLayer(_overlayLyr);
       });
@@ -170,6 +168,12 @@ function MshpMap(gui, opts) {
         if (internal.isSupportedSvgProperty(e.field)) {
           drawLayers();
         }
+      });
+
+      _editor = new SymbolDragging2(gui, _ext, _hit);
+      _editor.on('location_change', function(e) {
+        // TODO: optimize redrawing
+        drawLayers();
       });
     }
 
@@ -352,7 +356,7 @@ function MshpMap(gui, opts) {
       return;
     }
     if (!onlyNav) {
-       // kludge to handle layer visibility toggling
+      // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
       _ext.setBounds(getFullBounds());
       updateLayerStyles(contentLayers);

@@ -42,6 +42,17 @@ function HitControl2(gui, ext, mouse) {
 
   self.getHitId = function() {return hitData.id;};
 
+  // Get a reference to the active layer, so listeners to hit events can interact
+  // with data and shapes
+  self.getHitTarget = function() {
+    return targetLayer;
+  };
+
+  self.getTargetDataTable = function() {
+    var targ = self.getHitTarget();
+    return targ && targ.layer.data || null;
+  };
+
   self.getSwitchHandler = function(diff) {
     return function() {
       self.switchSelection(diff);
@@ -59,6 +70,15 @@ function HitControl2(gui, ext, mouse) {
     triggerHitEvent('change');
   };
 
+  // make sure popup is unpinned when switching editing modes
+  // (some modes do not support pinning)
+  gui.on('interaction_mode_change', function(e) {
+    if (pinned) {
+      pinned = false;
+      triggerHitEvent('change');
+    }
+  });
+
   mouse.on('dblclick', handlePointerEvent, null, priority);
   mouse.on('dragstart', handlePointerEvent, null, priority);
   mouse.on('drag', handlePointerEvent, null, priority);
@@ -69,16 +89,12 @@ function HitControl2(gui, ext, mouse) {
     if (!shapeTest || !active) return;
     e.stopPropagation();
 
-    if (pinned) {
-      // TODO:
-      pinned = false;
-    } else if (hitData.id > -1) {
-      pinned = true;
-    } else {
-      pinned = false;
+    // TODO: move pinning to inspection control?
+    if (gui.interaction.modeUsesClick(gui.interaction.getMode())) {
+      togglePin();
     }
 
-    triggerHitEvent('click', e);
+    triggerHitEvent('click', e.data);
     triggerHitEvent('change');
 
   }, null, priority);
@@ -89,7 +105,7 @@ function HitControl2(gui, ext, mouse) {
     var isOver = isOverMap(e);
     if (!isOver) {
       // mouse is off of map viewport -- clear any current hit
-      updateHitData(null, e); // no hit data, have event
+      updateHitData(null, e.data); // no hit data, have event data
 
     } else if (e.hover) {
       // mouse is hovering directly over map area -- update hit detection
@@ -103,6 +119,17 @@ function HitControl2(gui, ext, mouse) {
 
   function noData() {return {ids: [], id: -1};}
 
+  function togglePin() {
+    if (pinned) {
+      // TODO:
+      pinned = false;
+    } else if (hitData.id > -1) {
+      pinned = true;
+    } else {
+      pinned = false;
+    }
+  }
+
   function hitTest(e) {
     // Try SVG hit test first, fall through to shape-based hit test
     var p = ext.translatePixelCoords(e.x, e.y);
@@ -115,12 +142,12 @@ function HitControl2(gui, ext, mouse) {
       // if only shape hit, use shape hit ids
       data = {ids: shapeHitIds};
     }
-    updateHitData(data, e);
+    updateHitData(data, e.data);
   }
 
   // If hit ids have changed, update stored hit ids and fire 'hover' event
   // evt: (optional) mouse event
-  function updateHitData(newData, evt) {
+  function updateHitData(newData, evtData) {
     if (!newData) {
       newData = noData();
     } else {
@@ -141,9 +168,21 @@ function HitControl2(gui, ext, mouse) {
     pinned = false;
     gui.container.findChild('.map-layers').classed('hover', newData.ids.length > 0);
     if (active) {
-      triggerHitEvent('hover', evt || {});
+      triggerHitEvent('hover', evtData || {});
       triggerHitEvent('change');
     }
+  }
+
+  // check if an event is used in the current interaction mode
+  function eventIsEnabled(type) {
+    var mode = gui.interaction.getMode();
+    if (type == 'click' && !gui.interaction.modeUsesClick(mode)) {
+      return false;
+    }
+    if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !gui.interaction.modeUsesDrag(mode)) {
+      return false;
+    }
+    return true;
   }
 
   function isOverMap(e) {
@@ -152,8 +191,18 @@ function HitControl2(gui, ext, mouse) {
 
   function handlePointerEvent(e) {
     if (!shapeTest || !active) return;
-    e.stopPropagation(); // block navigation
-    triggerHitEvent(e.type, e);
+    if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
+    // don't block pan and other navigation in modes when they are not being used
+    if (eventIsEnabled(e.type)) {
+      e.stopPropagation(); // block navigation
+      triggerHitEvent(e.type, e.data);
+    }
+  }
+
+  function refreshHitData(d) {
+    if (!d || !d.container || d.id > -1 == false) {
+      return;
+    }
   }
 
   // d: event data (may be a pointer event object, an ordinary object or empty)
