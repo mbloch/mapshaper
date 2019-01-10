@@ -4,15 +4,15 @@
 
 function HitControl2(gui, ext, mouse) {
   var self = new EventDispatcher();
-  // var hitIds = []; // ids of shapes that are currently selected by mouse hover
   var hitData = noData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var active = false;
   var pinned = false;
   var shapeTest;
   var svgTest;
   var targetLayer;
-
-  var priority = 2; // higher than navigation, to allow stopping propagation
+  // event priority is higher than navigation, so stopping propagation disables
+  // pan navigation
+  var priority = 2;
 
   self.setLayer = function(mapLayer) {
     if (!mapLayer) {
@@ -80,7 +80,6 @@ function HitControl2(gui, ext, mouse) {
   mouse.on('dragstart', handlePointerEvent, null, priority);
   mouse.on('drag', handlePointerEvent, null, priority);
   mouse.on('dragend', handlePointerEvent, null, priority);
-  // mouse.on('click', handlePointerEvent, null, priority);
 
   mouse.on('click', function(e) {
     if (!shapeTest || !active) return;
@@ -150,7 +149,8 @@ function HitControl2(gui, ext, mouse) {
     } else {
       newData = utils.extend({}, newData); // make a copy
     }
-    if (sameIds(newData.ids, hitData.ids)) {
+    // if (sameIds(newData.ids, hitData.ids)) {
+    if (!testHitChange(hitData, newData)) {
       return;
     }
     // update selected id
@@ -208,6 +208,15 @@ function HitControl2(gui, ext, mouse) {
     // Merge stored hit data into the event data
     var eventData = utils.extend({pinned: pinned}, d || {}, hitData);
     self.dispatchEvent(type, eventData);
+  }
+
+  function testHitChange(a, b) {
+    // check change in 'container', e.g. so moving from anchor hit to label hit
+    //   is detected
+    if (sameIds(a.ids, b.ids) && a.container == b.container) {
+      return false;
+    }
+    return true;
   }
 
   function sameIds(a, b) {
