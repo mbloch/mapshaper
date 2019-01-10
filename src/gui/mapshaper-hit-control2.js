@@ -70,13 +70,10 @@ function HitControl2(gui, ext, mouse) {
     triggerHitEvent('change');
   };
 
-  // make sure popup is unpinned when switching editing modes
+  // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
-    if (pinned) {
-      pinned = false;
-      triggerHitEvent('change');
-    }
+    updateHitData(null, null);
   });
 
   mouse.on('dblclick', handlePointerEvent, null, priority);

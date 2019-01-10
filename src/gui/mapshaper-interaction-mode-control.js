@@ -98,7 +98,6 @@ function InteractionMode(gui, opts) {
         if (_editMode == mode) {
           // selected link -> just close the menu
         } else {
-          _editMode = mode;
           delay = 400;
         }
         setMode(mode);
