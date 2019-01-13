@@ -53,12 +53,11 @@ function InteractionMode(gui, opts) {
 
   btn1.on('click', function() {
     gui.dispatchEvent('interaction_toggle');
-    updateVisibility();
   });
 
   btn2.on('click', function() {
     _menuOpen = true;
-    updateVisibility();
+    updateMenu();
   });
 
   gui.on('interaction_toggle', function() {
@@ -68,10 +67,11 @@ function InteractionMode(gui, opts) {
     onModeChange();
   });
 
-  gui.model.on('select', function(e) {
+  gui.model.on('update', function(e) {
     // need to update mode if active layer doesn't support the current mode
-    updateMenu();
-
+    if (_menuOpen) {
+      updateMenu();
+    }
   }, null, -1); // low priority?
 
   function getAvailableModes() {
@@ -107,7 +107,6 @@ function InteractionMode(gui, opts) {
     });
   }
 
-
   function updateMenu() {
     var modes = getAvailableModes();
     renderMenu(modes);
@@ -133,9 +132,9 @@ function InteractionMode(gui, opts) {
 
   function setMode(mode) {
     var changed = mode != _editMode;
-    _editMode = mode;
-    updateModeDisplay();
     if (changed) {
+      _editMode = mode;
+      updateMenu();
       onModeChange();
     }
   }
