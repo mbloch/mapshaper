@@ -16,16 +16,19 @@ function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
   opts = utils.extend({
     // defaults
-    inspector: true,
+    homeControl: true,
+    zoomControl: true,
+    inspectorControl: true,
     focus: true
   }, opts);
 
+  gui.options = opts;
   gui.container = El(container);
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui, opts);
-  gui.interaction = new InteractionMode(gui, opts);
+  gui.interaction = new InteractionMode(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

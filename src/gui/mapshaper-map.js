@@ -156,26 +156,26 @@ function MshpMap(gui, opts) {
       drawLayers(true);
     });
 
-    if (opts.inspector) {
+    if (opts.inspectorControl) {
       _inspector = new InspectionControl2(gui, _hit);
-      _hit.on('change', function(e) {
-        // draw highlight effect for hover and select
-        _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-        _stack.drawOverlayLayer(_overlayLyr);
-      });
       _inspector.on('data_change', function(e) {
         // refresh the display if a style variable has been changed interactively
         if (internal.isSupportedSvgProperty(e.field)) {
           drawLayers();
         }
       });
-
-      _editor = new SymbolDragging2(gui, _ext, _hit);
-      _editor.on('location_change', function(e) {
-        // TODO: optimize redrawing
-        drawLayers();
-      });
     }
+
+    _hit.on('change', function(e) {
+      // draw highlight effect for hover and select
+      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+      _stack.drawOverlayLayer(_overlayLyr);
+    });
+    _editor = new SymbolDragging2(gui, _ext, _hit);
+    _editor.on('location_change', function(e) {
+      // TODO: optimize redrawing
+      drawLayers();
+    });
 
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle

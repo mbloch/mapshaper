@@ -15,7 +15,7 @@ function HitControl2(gui, ext, mouse) {
   var priority = 2;
 
   self.setLayer = function(mapLayer) {
-    if (!mapLayer) {
+    if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
       shapeTest = null;
       svgTest = null;
       self.stop();

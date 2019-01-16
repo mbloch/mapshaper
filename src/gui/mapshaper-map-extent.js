@@ -8,7 +8,9 @@ function MapExtent(_position) {
       _frame;
 
   _position.on('resize', function(e) {
-    onChange({resize: true});
+    if (_contentBounds) {
+      onChange({resize: true});
+    }
   });
 
   this.reset = function() {

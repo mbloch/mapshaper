@@ -1,10 +1,7 @@
 /* @require mapshaper-gui-lib */
 
-function InteractionMode(gui, opts) {
-  var buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
-  var btn1 = buttons[0]; // [i] button
-  var btn2 = buttons[1]; // submenu button
-  var menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+function InteractionMode(gui) {
+  var buttons, btn1, btn2, menu;
 
   // all possible menu contents
   var menus = {
@@ -26,9 +23,36 @@ function InteractionMode(gui, opts) {
   var _active = false; // interaction on/off
   var _menuOpen = false;
 
-  menu.on('click', function() {
-    closeMenu(0); // dismiss menu by clicking off an active link
-  });
+  // Only render edit mode button/menu if this option is present
+  if (gui.options.inspectorControl) {
+    buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
+    btn1 = buttons[0]; // [i] button
+    btn2 = buttons[1]; // submenu button
+    menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+
+    menu.on('click', function() {
+      closeMenu(0); // dismiss menu by clicking off an active link
+    });
+
+    btn1.on('click', function() {
+      gui.dispatchEvent('interaction_toggle');
+    });
+
+    btn2.on('click', function() {
+      _menuOpen = true;
+      updateMenu();
+    });
+
+    // triggered by a keyboard shortcut
+    gui.on('interaction_toggle', function() {
+      _active = !_active;
+      _menuOpen = false; // make sure menu does not stay open
+      updateVisibility();
+      onModeChange();
+    });
+
+    updateVisibility();
+  }
 
   this.getMode = function() {
     return getInteractionMode();
@@ -49,26 +73,9 @@ function InteractionMode(gui, opts) {
     return name == 'data' || name == 'info'; // click used to pin popup
   };
 
-  updateMenu();
-
-  btn1.on('click', function() {
-    gui.dispatchEvent('interaction_toggle');
-  });
-
-  btn2.on('click', function() {
-    _menuOpen = true;
-    updateMenu();
-  });
-
-  gui.on('interaction_toggle', function() {
-    _active = !_active;
-    _menuOpen = false; // make sure menu does not stay open
-    updateVisibility();
-    onModeChange();
-  });
-
   gui.model.on('update', function(e) {
-    // need to update mode if active layer doesn't support the current mode
+    // change mode if active layer doesn't support the current mode
+    updateCurrentMode();
     if (_menuOpen) {
       updateMenu();
     }
@@ -107,14 +114,19 @@ function InteractionMode(gui, opts) {
     });
   }
 
-  function updateMenu() {
+  // if current editing mode is not available, switch to another mode
+  function updateCurrentMode() {
     var modes = getAvailableModes();
-    renderMenu(modes);
-    updateModeDisplay();
-    updateVisibility();
-    // kludge: if current editing mode is not available, switch to another mode
     if (modes.indexOf(_editMode) == -1) {
       setMode(modes[0]);
+    }
+  }
+
+  function updateMenu() {
+    if (menu) {
+      renderMenu(getAvailableModes());
+      updateModeDisplay();
+      updateVisibility();
     }
   }
 
@@ -144,6 +156,7 @@ function InteractionMode(gui, opts) {
   }
 
   function updateVisibility() {
+    if (!menu) return;
     // menu
     if (_menuOpen && _active) {
       menu.show();

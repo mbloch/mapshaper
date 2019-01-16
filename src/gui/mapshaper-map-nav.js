@@ -18,16 +18,20 @@ function MapNav(gui, ext, mouse) {
     zoomScaleMultiplier = k || 1;
   };
 
-  gui.buttons.addButton("#home-icon").on('click', function() {
-    gui.dispatchEvent('map_reset');
-  });
+  if (gui.options.homeControl) {
+    gui.buttons.addButton("#home-icon").on('click', function() {
+      gui.dispatchEvent('map_reset');
+    });
+  }
 
-  inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
-  outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
+  if (gui.options.zoomControl) {
+    inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
+    outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
+    ext.on('change', function() {
+      inBtn.classed('disabled', ext.scale() >= ext.maxScale());
+    });
+  }
 
-  ext.on('change', function() {
-    inBtn.classed('disabled', ext.scale() >= ext.maxScale());
-  });
 
   gui.on('map_reset', function() {
     ext.home();
