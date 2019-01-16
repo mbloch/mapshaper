@@ -146,7 +146,7 @@ function MshpMap(gui, opts) {
   function initMap() {
     _ext.resize();
     _stack = new LayerStack(gui, el, _ext, _mouse);
-    gui.buttons.enable();
+    gui.buttons.show();
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset

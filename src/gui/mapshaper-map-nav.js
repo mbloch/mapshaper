@@ -20,6 +20,7 @@ function MapNav(gui, ext, mouse) {
 
   if (gui.options.homeControl) {
     gui.buttons.addButton("#home-icon").on('click', function() {
+      if (disabled()) return;
       gui.dispatchEvent('map_reset');
     });
   }
@@ -32,7 +33,6 @@ function MapNav(gui, ext, mouse) {
     });
   }
 
-
   gui.on('map_reset', function() {
     ext.home();
   });
@@ -42,10 +42,12 @@ function MapNav(gui, ext, mouse) {
   });
 
   mouse.on('dblclick', function(e) {
+    if (disabled()) return;
     zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
+    if (disabled()) return;
     shiftDrag = !!e.shiftKey;
     if (shiftDrag) {
       dragStartEvt = e;
@@ -53,6 +55,7 @@ function MapNav(gui, ext, mouse) {
   });
 
   mouse.on('drag', function(e) {
+    if (disabled()) return;
     if (shiftDrag) {
       zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
     } else {
@@ -62,6 +65,7 @@ function MapNav(gui, ext, mouse) {
 
   mouse.on('dragend', function(e) {
     var bounds;
+    if (disabled()) return;
     if (shiftDrag) {
       shiftDrag = false;
       bounds = new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y);
@@ -75,14 +79,21 @@ function MapNav(gui, ext, mouse) {
   wheel.on('mousewheel', function(e) {
     var k = 1 + (0.11 * e.multiplier * zoomScaleMultiplier),
         delta = e.direction > 0 ? k : 1 / k;
+    if (disabled()) return;
     ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
+  function disabled() {
+    return !!gui.options.disableNavigation;
+  }
+
   function zoomIn() {
+    if (disabled()) return;
     zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
   }
 
   function zoomOut() {
+    if (disabled()) return;
     zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
   }
 

@@ -19,6 +19,7 @@ function GuiInstance(container, opts) {
     homeControl: true,
     zoomControl: true,
     inspectorControl: true,
+    disableNavigation: false,
     focus: true
   }, opts);
 

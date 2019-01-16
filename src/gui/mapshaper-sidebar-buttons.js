@@ -2,6 +2,9 @@
 function SidebarButtons(gui) {
   var root = gui.container.findChild('.mshp-main-map');
   var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
+  var _hidden = false;
+  gui.on('active', updateVisibility);
+  gui.on('inactive', updateVisibility);
 
   // @iconRef: selector for an (svg) button icon
   this.addButton = function(iconRef) {
@@ -20,13 +23,23 @@ function SidebarButtons(gui) {
     return [btn1, btn2];
   };
 
-  this.enable = function() {
-    if (GUI.isActiveInstance(gui)) {
-      buttons.show();
-    }
-    gui.on('active', buttons.show.bind(buttons));
-    gui.on('inactive', buttons.hide.bind(buttons));
+  this.show = function() {
+    _hidden = false;
+    updateVisibility();
   };
+
+  this.hide = function() {
+    _hidden = true;
+    updateVisibility();
+  };
+
+  function updateVisibility() {
+    if (GUI.isActiveInstance(gui) && !_hidden) {
+      buttons.show();
+    } else {
+      buttons.hide();
+    }
+  }
 
   function initButton(iconRef) {
     var icon = El('body').findChild(iconRef).node().cloneNode(true);
