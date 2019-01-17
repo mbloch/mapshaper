@@ -20,6 +20,7 @@ function GuiInstance(container, opts) {
     zoomControl: true,
     inspectorControl: true,
     disableNavigation: false,
+    showMouseCoordinates: true,
     focus: true
   }, opts);
 
@@ -28,7 +29,7 @@ function GuiInstance(container, opts) {
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
-  gui.map = new MshpMap(gui, opts);
+  gui.map = new MshpMap(gui);
   gui.interaction = new InteractionMode(gui);
 
   gui.showProgressMessage = function(msg) {

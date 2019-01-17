@@ -16,8 +16,9 @@ mapshaper-symbol-dragging2
 
 utils.inherit(MshpMap, EventDispatcher);
 
-function MshpMap(gui, opts) {
-  var el = gui.container.findChild('.map-layers').node(),
+function MshpMap(gui) {
+  var opts = gui.options,
+      el = gui.container.findChild('.map-layers').node(),
       position = new ElementPosition(el),
       model = gui.model,
       map = this,
@@ -31,7 +32,9 @@ function MshpMap(gui, opts) {
       _inspector, _stack, _nav, _editor;
 
   _nav = new MapNav(gui, _ext, _mouse);
-  new CoordinatesDisplay(gui, _ext, _mouse);
+  if (gui.options.showMouseCoordinates) {
+    new CoordinatesDisplay(gui, _ext, _mouse);
+  }
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
