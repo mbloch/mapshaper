@@ -1,4 +1,10 @@
-/* @requires topojson-common, mapshaper-point-utils, mapshaper-shape-geom, mapshaper-rounding */
+/* @requires
+topojson-common
+mapshaper-point-utils
+mapshaper-shape-geom
+mapshaper-rounding
+mapshaper-metadata
+*/
 
 // Convert a TopoJSON topology into mapshaper's internal format
 // Side-effect: data in topology is modified
@@ -52,6 +58,9 @@ internal.importTopoJSON = function(topology, opts) {
     info: {}
   };
   internal.importCRS(dataset, topology);
+  if (topology.metadata) {
+    internal.importMetadata(dataset, topology.metadata);
+  }
   return dataset;
 };
 

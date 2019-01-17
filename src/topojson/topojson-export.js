@@ -8,6 +8,7 @@ mapshaper-stringify
 mapshaper-dataset-utils
 mapshaper-segment-geom
 mapshaper-pixel-transform
+mapshaper-metadata
 */
 
 internal.exportTopoJSON = function(dataset, opts) {
@@ -83,6 +84,9 @@ TopoJSON.exportTopology = function(dataset, opts) {
 
   // retain crs data if relevant
   internal.exportCRS(dataset, topology);
+  if (opts.metadata) {
+    topology.metadata = internal.exportMetadata(dataset);
+  }
   return topology;
 };
 

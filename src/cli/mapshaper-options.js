@@ -278,6 +278,10 @@ internal.getOptionParser = function() {
     })
     .option("final", {
       type: "flag" // for testing
+    })
+    .option("metadata", {
+      // describe: "(TopoJSON) add a metadata object",
+      type: "flag"
     });
 
   parser.section("Editing commands");
