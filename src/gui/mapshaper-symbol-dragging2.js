@@ -88,7 +88,10 @@ function SymbolDragging2(gui, ext, hit) {
     });
 
     hit.on('dragend', function(e) {
-      if (labelEditingEnabled() || locationEditingEnabled()) {
+      if (locationEditingEnabled()) {
+        onLocationDragEnd(e);
+        stopDragging();
+      } else if (labelEditingEnabled()) {
         stopDragging();
       }
     });
@@ -114,6 +117,13 @@ function SymbolDragging2(gui, ext, hit) {
       p[0] += diff[0];
       p[1] += diff[1];
       self.dispatchEvent('location_change'); // signal map to redraw
+    }
+
+    function onLocationDragEnd(e) {
+      if (e.id >= 0) {
+        // fire event to signal external editor that symbol coords have changed
+        gui.dispatchEvent('symbol_dragend', {FID: e.id, layer_name: hit.getHitTarget().layer.name});
+      }
     }
 
     function onLabelClick(e) {

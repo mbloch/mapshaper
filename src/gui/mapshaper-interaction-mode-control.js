@@ -45,18 +45,15 @@ function InteractionMode(gui) {
 
     // triggered by a keyboard shortcut
     gui.on('interaction_toggle', function() {
-      _active = !_active;
-      _menuOpen = false; // make sure menu does not stay open
-      updateVisibility();
-      onModeChange();
+      setActive(!_active);
     });
 
     updateVisibility();
   }
 
-  this.getMode = function() {
-    return getInteractionMode();
-  };
+  this.getMode = getInteractionMode;
+
+  this.setActive = setActive;
 
   this.setMode = function(mode) {
     // TODO: check that this mode is valid for the current dataset
@@ -147,6 +144,15 @@ function InteractionMode(gui) {
     if (changed) {
       _editMode = mode;
       updateMenu();
+      onModeChange();
+    }
+  }
+
+  function setActive(active) {
+    if (active != _active) {
+      _active = !!active;
+      _menuOpen = false; // make sure menu does not stay open when button toggles off
+      updateVisibility();
       onModeChange();
     }
   }

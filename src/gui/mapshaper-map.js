@@ -75,7 +75,7 @@ function MshpMap(gui) {
       return false;
     }
 
-    if (e.flags.simplify_amount) { // only redraw (slider drag)
+    if (e.flags.simplify_amount || e.flags.redraw_only) { // only redraw (slider drag)
       drawLayers();
       return;
     }
@@ -387,6 +387,7 @@ function getMapLayerOverlay(obj, e) {
 }
 
 function filterLayerByIds(lyr, ids) {
+  var shapes;
   if (lyr.shapes) {
     shapes = ids.map(function(id) {
       return lyr.shapes[id];

@@ -12,8 +12,6 @@ function InspectionControl2(gui, hit) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode == 'off') {
       turnOff();
-    } else {
-      turnOn();
     }
     // TODO: update popup if currently pinned
   });
@@ -115,15 +113,8 @@ function InspectionControl2(gui, hit) {
     return gui.interaction && gui.interaction.getMode() != 'off';
   }
 
-  function turnOn() {
-    hit.start();
-    // gui.dispatchEvent('inspector_on');
-  }
-
   function turnOff() {
-    hit.stop();
     inspect(-1); // clear the map
-    // gui.dispatchEvent('inspector_off');
   }
 
   function deletePinnedFeature() {

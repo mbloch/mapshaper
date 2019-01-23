@@ -2,7 +2,7 @@
 
 function getShapeHitTest(displayLayer, ext) {
   var geoType = displayLayer.layer.geometry_type;
-
+  var test;
   if (geoType == 'point' && displayLayer.style.type == 'styled') {
     test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
   } else if (geoType == 'point') {
