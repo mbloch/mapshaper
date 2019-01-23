@@ -105,6 +105,7 @@ function SymbolDragging2(gui, ext, hit) {
     function onLocationDragStart(e) {
       if (e.id >= 0) {
         dragging = true;
+        triggerGlobalEvent('symbol_dragstart', e);
       }
     }
 
@@ -117,13 +118,11 @@ function SymbolDragging2(gui, ext, hit) {
       p[0] += diff[0];
       p[1] += diff[1];
       self.dispatchEvent('location_change'); // signal map to redraw
+      triggerGlobalEvent('symbol_drag', e);
     }
 
     function onLocationDragEnd(e) {
-      if (e.id >= 0) {
-        // fire event to signal external editor that symbol coords have changed
-        gui.dispatchEvent('symbol_dragend', {FID: e.id, layer_name: hit.getHitTarget().layer.name});
-      }
+      triggerGlobalEvent('symbol_dragend', e);
     }
 
     function onLabelClick(e) {
@@ -133,6 +132,13 @@ function SymbolDragging2(gui, ext, hit) {
         toggleTextAlign(textNode, rec);
         updateSymbol2(textNode, rec, e.id);
         // e.stopPropagation(); // prevent pin/unpin on popup
+      }
+    }
+
+    function triggerGlobalEvent(type, e) {
+      if (e.id >= 0) {
+        // fire event to signal external editor that symbol coords have changed
+        gui.dispatchEvent(type, {FID: e.id, layer_name: hit.getHitTarget().layer.name});
       }
     }
 
