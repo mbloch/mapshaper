@@ -1,13 +1,15 @@
 /* @requires mapshaper-common */
 
 // Identify JSON type from the initial subset of a JSON string
-internal.identifyJSONString = function(str) {
+internal.identifyJSONString = function(str, opts) {
   var maxChars = 1000;
   var fmt = null;
   if (str.length > maxChars) str = str.substr(0, maxChars);
   str = str.replace(/\s/g, '');
-  if (/^\[[{\]]/.test(str)) {
-    // empty array of array of objects
+  if (opts && opts.json_path) {
+    fmt = 'json'; // TODO: make json_path compatible with other types
+  } else if (/^\[[{\]]/.test(str)) {
+    // empty array or array of objects
     fmt = 'json';
   } else if (/"arcs":\[|"objects":\{|"transform":\{/.test(str)) {
     fmt =  'topojson';
@@ -19,7 +21,9 @@ internal.identifyJSONString = function(str) {
 
 internal.identifyJSONObject = function(o) {
   var fmt = null;
-  if (o.type == 'Topology') {
+  if (!o) {
+    //
+  } else if (o.type == 'Topology') {
     fmt = 'topojson';
   } else if (o.type) {
     fmt = 'geojson';
@@ -37,7 +41,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 
 internal.importJSONFile = function(reader, opts) {
   var str = internal.readFirstChars(reader, 1000);
-  var type = internal.identifyJSONString(str);
+  var type = internal.identifyJSONString(str, opts);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
     dataset = internal.importGeoJSONFile(reader, opts);
@@ -92,7 +96,10 @@ internal.importJSON = function(data, opts) {
         stop("Unable to parse JSON");
       }
     }
-    retn.format = internal.identifyJSONObject(content);
+    if (opts.json_path) {
+      content = internal.selectFromObject(content, opts.json_path);
+    }
+    retn.format = internal.identifyJSONObject(content, opts);
     if (retn.format == 'topojson') {
       retn.dataset = internal.importTopoJSON(content, opts);
     } else if (retn.format == 'geojson') {
@@ -105,4 +112,15 @@ internal.importJSON = function(data, opts) {
   }
 
   return retn;
+};
+
+// path: path from top-level to the target object, as a list of property
+//   names separated by '.'
+internal.selectFromObject = function(o, path) {
+  var parts = path.split('.');
+  var value = o && o[parts[0]];
+  if (parts > 1) {
+    return internal.selectFromObject(value, parts.slice(1).join(''));
+  }
+  return value;
 };

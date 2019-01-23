@@ -141,6 +141,9 @@ internal.getOptionParser = function() {
       // undocumented; GeoJSON import rejects all but one kind of geometry
       // describe: "[GeoJSON] Import one kind of geometry (point|polygon|polyline)"
     })
+    .option("json-path", {
+      // describe: path to an array of data values
+    })
     .option("csv-filter", {
       describe: "[CSV] JS expression for filtering records"
     })
