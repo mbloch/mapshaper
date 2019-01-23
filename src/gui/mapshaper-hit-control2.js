@@ -4,9 +4,8 @@
 
 function HitControl2(gui, ext, mouse) {
   var self = new EventDispatcher();
-  var hitData = noData(); // may include additional data from SVG symbol hit (e.g. hit node)
+  var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var active = false;
-  var pinned = false;
   var shapeTest;
   var svgTest;
   var targetLayer;
@@ -26,7 +25,7 @@ function HitControl2(gui, ext, mouse) {
     targetLayer = mapLayer;
     // deselect any  selection
     // TODO: maintain selection if layer & shapes have not changed
-    updateHitData(null, null);
+    updateHitData(null);
   };
 
   self.start = function() {
@@ -35,12 +34,12 @@ function HitControl2(gui, ext, mouse) {
 
   self.stop = function() {
     if (active) {
-      updateHitData(null, null); // no hit data, no event
+      updateHitData(null); // no hit data, no event
       active = false;
     }
   };
 
-  self.getHitId = function() {return hitData.id;};
+  self.getHitId = function() {return storedData.id;};
 
   // Get a reference to the active layer, so listeners to hit events can interact
   // with data and shapes
@@ -60,20 +59,25 @@ function HitControl2(gui, ext, mouse) {
   };
 
   self.switchSelection = function(diff) {
-    var i = hitData.ids.indexOf(hitData.id);
-    var n = hitData.ids.length;
+    var i = storedData.ids.indexOf(storedData.id);
+    var n = storedData.ids.length;
     if (i < 0 || n < 2) return;
     if (diff != 1 && diff != -1) {
       diff = 1;
     }
-    hitData.id = hitData.ids[(i + diff + n) % n];
+    storedData.id = storedData.ids[(i + diff + n) % n];
     triggerHitEvent('change');
   };
 
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
-    updateHitData(null, null);
+    updateHitData(null);
+    if (e.mode == 'off') {
+      self.stop();
+    } else {
+      self.start();
+    }
   });
 
   mouse.on('dblclick', handlePointerEvent, null, priority);
@@ -82,90 +86,87 @@ function HitControl2(gui, ext, mouse) {
   mouse.on('dragend', handlePointerEvent, null, priority);
 
   mouse.on('click', function(e) {
+    var hitData;
     if (!shapeTest || !active) return;
     e.stopPropagation();
 
     // TODO: move pinning to inspection control?
     if (gui.interaction.modeUsesClick(gui.interaction.getMode())) {
-      togglePin();
+      hitData = hitTest(e);
+      // TOGGLE pinned state under some conditions
+      if (!hitData.pinned && hitData.id > -1) {
+        hitData.pinned = true;
+      } else if (hitData.pinned && hitData.id == storedData.id) {
+        hitData.pinned = false;
+      }
+      updateHitData(hitData);
     }
 
     triggerHitEvent('click', e.data);
-    triggerHitEvent('change');
 
   }, null, priority);
 
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
-    if (!shapeTest || !active || pinned) return;
-    var isOver = isOverMap(e);
-    if (!isOver) {
+    if (storedData.pinned || !shapeTest || !active) return;
+    if (!isOverMap(e)) {
       // mouse is off of map viewport -- clear any current hit
-      updateHitData(null, e.data); // no hit data, have event data
-
+      updateHitData(null);
     } else if (e.hover) {
       // mouse is hovering directly over map area -- update hit detection
-      hitTest(e);
-
+      updateHitData(hitTest(e));
     } else {
       // mouse is over map viewport but not directly over map (e.g. hovering
       // over popup) -- don't update hit detection
     }
+
   }, null, priority);
 
-  function noData() {return {ids: [], id: -1};}
-
-  function togglePin() {
-    if (pinned) {
-      // TODO:
-      pinned = false;
-    } else if (hitData.id > -1) {
-      pinned = true;
-    } else {
-      pinned = false;
-    }
-  }
+  function noHitData() {return {ids: [], id: -1, pinned: false};}
 
   function hitTest(e) {
-    // Try SVG hit test first, fall through to shape-based hit test
     var p = ext.translatePixelCoords(e.x, e.y);
-    var data = svgTest(e); // null or a data object
     var shapeHitIds = shapeTest(p[0], p[1]);
-    if (shapeHitIds && data) {
-      // if both SVG hit and shape hit, use both
-      data.ids = utils.uniq(data.ids.concat(shapeHitIds));
+    var svgData = svgTest(e); // null or a data object
+    var data = noHitData();
+    if (svgData) { // mouse is over an SVG symbol
+      utils.extend(data, svgData);
+      if (shapeHitIds) {
+        // if both SVG hit and shape hit, merge hit ids
+        data.ids = utils.uniq(data.ids.concat(shapeHitIds));
+      }
     } else if (shapeHitIds) {
-      // if only shape hit, use shape hit ids
-      data = {ids: shapeHitIds};
+      data.ids = shapeHitIds;
     }
-    updateHitData(data, e.data);
+
+    // update selected id
+    if (data.id > -1) {
+      // svg hit takes precedence over any prior hit
+    } else if (storedData.id > -1 && data.ids.indexOf(storedData.id) > -1) {
+      data.id = storedData.id;
+    } else if (data.ids.length > 0) {
+      data.id = data.ids[0];
+    }
+
+    // update pinned property
+    if (storedData.pinned && data.id > -1) {
+      data.pinned = true;
+    }
+    return data;
   }
 
   // If hit ids have changed, update stored hit ids and fire 'hover' event
   // evt: (optional) mouse event
-  function updateHitData(newData, evtData) {
+  function updateHitData(newData) {
     if (!newData) {
-      newData = noData();
-    } else {
-      newData = utils.extend({}, newData); // make a copy
+      newData = noHitData();
     }
-    // if (sameIds(newData.ids, hitData.ids)) {
-    if (!testHitChange(hitData, newData)) {
+    if (!testHitChange(storedData, newData)) {
       return;
     }
-    // update selected id
-    if (hitData.id > -1 && newData.ids.indexOf(hitData.id) > -1) {
-      newData.id = hitData.id;
-    } else if (newData.ids.length > 0) {
-      newData.id = newData.ids[0];
-    } else {
-      newData.id = -1;
-    }
-    hitData = newData;
-    pinned = false;
-    gui.container.findChild('.map-layers').classed('hover', newData.ids.length > 0);
+    storedData = newData;
+    gui.container.findChild('.map-layers').classed('symbol-hit', newData.ids.length > 0);
     if (active) {
-      triggerHitEvent('hover', evtData || {});
       triggerHitEvent('change');
     }
   }
@@ -196,24 +197,18 @@ function HitControl2(gui, ext, mouse) {
     }
   }
 
-  function refreshHitData(d) {
-    if (!d || !d.container || d.id > -1 == false) {
-      return;
-    }
-  }
-
-  // d: event data (may be a pointer event object, an ordinary object or empty)
+  // d: event data (may be a pointer event object, an ordinary object or null)
   function triggerHitEvent(type, d) {
-    // var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
     // Merge stored hit data into the event data
-    var eventData = utils.extend({pinned: pinned}, d || {}, hitData);
+    var eventData = utils.extend({}, d || {}, storedData);
     self.dispatchEvent(type, eventData);
   }
 
+  // Test if two hit data objects are equivalent
   function testHitChange(a, b) {
     // check change in 'container', e.g. so moving from anchor hit to label hit
     //   is detected
-    if (sameIds(a.ids, b.ids) && a.container == b.container) {
+    if (sameIds(a.ids, b.ids) && a.container == b.container && a.pinned == b.pinned && a.id == b.id) {
       return false;
     }
     return true;
