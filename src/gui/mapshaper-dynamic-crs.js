@@ -21,7 +21,7 @@ function projectPointsForDisplay(lyr, src, dest) {
   var copy = utils.extend({}, lyr);
   var proj = internal.getProjTransform(src, dest);
   copy.shapes = internal.cloneShapes(lyr.shapes);
-  internal.projectPointLayers(copy, proj);
+  internal.projectPointLayer(copy, proj);
   return copy;
 }
 
