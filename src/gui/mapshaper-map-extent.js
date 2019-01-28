@@ -55,6 +55,7 @@ function MapExtent(_position) {
   this.width = _position.width;
   this.height = _position.height;
   this.position = _position.position;
+  this.recenter = recenter;
 
   // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
   this.scale = function() {

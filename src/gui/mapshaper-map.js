@@ -29,7 +29,8 @@ function MshpMap(gui) {
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav, _editor;
+      _inspector, _stack, _nav, _editor,
+      _dynamicCRS;
 
   _nav = new MapNav(gui, _ext, _mouse);
   if (gui.options.showMouseCoordinates) {
@@ -62,7 +63,7 @@ function MshpMap(gui) {
 
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs the next time they are needed for rendering
-      delete e.dataset.filteredArcs;
+      delete e.dataset.displayArcs;
 
       // reset simplification after projection (thresholds have changed)
       // TODO: preserve simplification pct (need to record pct before change)
@@ -80,7 +81,7 @@ function MshpMap(gui) {
       return;
     }
 
-    _activeLyr = getMapLayer(e.layer, e.dataset);
+    _activeLyr = getMapLayer(e.layer, e.dataset, getDisplayOptions());
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
     // if (_inspector) _inspector.updateLayer(_activeLyr);
@@ -113,7 +114,7 @@ function MshpMap(gui) {
   // Currently used to show dots at line intersections
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr) {
-      _intersectionLyr = getMapLayer(lyr, dataset);
+      _intersectionLyr = getMapLayer(lyr, dataset, getDisplayOptions());
       _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
     } else {
       _intersectionLyr = null;
@@ -136,6 +137,24 @@ function MshpMap(gui) {
     }
   };
 
+  this.getCenterLngLat = function() {
+    var bounds = _ext.getBounds();
+    var crs = this.getDisplayCRS();
+    // TODO: handle case where active layer is a frame layer
+    if (!bounds.hasBounds() || !crs) {
+      return null;
+    }
+    return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+  };
+
+  this.getDisplayCRS = function() {
+    var crs;
+    if (_activeLyr && _activeLyr.geographic) {
+      crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
+    }
+    return crs || null;
+  };
+
   this.getExtent = function() {return _ext;};
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
@@ -144,6 +163,31 @@ function MshpMap(gui) {
   this.redraw = function() {
     updateVisibleMapLayers();
     drawLayers();
+  };
+
+  // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
+  // crs: a CRS object or string, or null to clear the current setting
+  this.setDisplayCRS = function(crs) {
+    // TODO: update bounds of frame layer, if there is a frame layer
+    var oldCRS = this.getDisplayCRS();
+    var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+    // TODO: handle case that old and new CRS are the same
+    _dynamicCRS = newCRS;
+    // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
+    gui.model.getDatasets().forEach(function(dataset) {
+      delete dataset.displayArcs;
+    });
+
+    // Reproject all visible map layers
+    if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
+    if (_intersectionLyr) _intersectionLyr = projectDisplayLayer(_intersectionLyr, newCRS);
+    if (_overlayLyr) {
+      _overlayLyr = projectDisplayLayer(_overlayLyr, newCRS);
+    }
+    updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
+
+    // Update map extent (also triggers redraw)
+    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
   };
 
   function initMap() {
@@ -183,6 +227,12 @@ function MshpMap(gui) {
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
+  }
+
+  function getDisplayOptions() {
+    return {
+      crs: _dynamicCRS
+    };
   }
 
   // Test if an update may have affected the visible shape of arcs
@@ -290,7 +340,7 @@ function MshpMap(gui) {
       if (isActiveLayer(o.layer)) {
         layers.push(_activeLyr);
       } else if (!isTableView()) {
-        layers.push(getMapLayer(o.layer, o.dataset));
+        layers.push(getMapLayer(o.layer, o.dataset, getDisplayOptions()));
       }
     });
     _visibleLayers = layers;

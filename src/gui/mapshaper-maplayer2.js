@@ -1,10 +1,11 @@
-/* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table */
+/* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table, mapshaper-dynamic-crs */
 
 // Wrap a layer in an object along with information needed for rendering
-function getMapLayer(layer, dataset) {
+function getMapLayer(layer, dataset, opts) {
   var obj = {
     layer: null,
     arcs: null,
+    // display_arcs: null,
     style: null,
     source: {
       layer: layer,
@@ -13,9 +14,20 @@ function getMapLayer(layer, dataset) {
     empty: internal.getFeatureCount(layer) === 0
   };
 
-  // init filtered arcs, if needed
-  if (internal.layerHasPaths(layer) && !dataset.filteredArcs) {
-    dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
+  var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
+  var displayCRS = opts.crs || null;
+  var arcs = dataset.arcs;
+
+  // Assume that dataset.displayArcs is in the display CRS
+  // (it should have been deleted upstream if reprojected is needed)
+  if (arcs && !dataset.displayArcs) {
+    // project arcs, if needed
+    if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+      arcs = projectArcsForDisplay(arcs, sourceCRS, displayCRS);
+    }
+
+    // init filtered arcs, if needed
+    dataset.displayArcs = new FilteredArcCollection(arcs);
   }
 
   if (internal.layerHasFurniture(layer)) {
@@ -32,16 +44,25 @@ function getMapLayer(layer, dataset) {
   } else {
     obj.geographic = true;
     obj.layer = layer;
-    obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence
+    obj.arcs = arcs; // replaced by filtered arcs during render sequence
   }
 
   if (obj.tabular) {
     utils.extend(obj, getDisplayLayerForTable(layer.data));
   }
 
+  // dynamic reprojection (arcs were already reprojected above)
+  if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
+    obj.dynamic_crs = displayCRS;
+    if (internal.layerHasPoints(layer)) {
+      obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+    }
+  }
+
   obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
   return obj;
 }
+
 
 function getDisplayBounds(lyr, arcs) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),

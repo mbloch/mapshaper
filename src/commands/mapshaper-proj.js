@@ -108,22 +108,6 @@ internal.projectDataset = function(dataset, src, dest, opts) {
   }
 };
 
-internal.getProjTransform = function(src, dest) {
-  var mproj = require('mproj');
-  var clampSrc = internal.isLatLngCRS(src);
-  return function(x, y) {
-    var xy;
-    if (clampSrc) {
-      // snap lng to bounds
-      if (x < -180) x = -180;
-      else if (x > 180) x = 180;
-    }
-    xy = [x, y];
-    mproj.pj_transform_point(src, dest, xy);
-    return xy;
-  };
-};
-
 internal.projectPointLayer = function(lyr, proj) {
   internal.forEachPoint(lyr.shapes, function(p) {
     var p2 = proj(p[0], p[1]);

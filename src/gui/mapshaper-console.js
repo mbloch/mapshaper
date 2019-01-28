@@ -336,6 +336,9 @@ function Console(gui) {
           internal.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
+      } else if (/^projd/.test(cmd)) {
+        // set the display CRS (for testing)
+        setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
         runMapshaperCommands(cmd, function() {

@@ -7,9 +7,10 @@ GUI.getPixelRatio = function() {
 
 // TODO: consider moving this upstream
 function getArcsForRendering(obj, ext) {
-  var sourceArcs = obj.source.dataset.arcs;
-  if (obj.geographic && sourceArcs.filteredArcs) {
-    return sourceArcs.filteredArcs.getArcCollection(ext);
+  var dataset = obj.source.dataset;
+  var sourceArcs = dataset.arcs;
+  if (obj.geographic && dataset.displayArcs) {
+    return dataset.displayArcs.getArcCollection(ext);
   }
   return obj.arcs;
 }

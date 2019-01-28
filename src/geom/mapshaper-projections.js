@@ -19,6 +19,32 @@ internal.findProjLibs = function(str) {
   return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
 };
 
+// src, dest: proj4 objects
+internal.getProjTransform = function(src, dest) {
+  var mproj = require('mproj');
+  var clampSrc = internal.isLatLngCRS(src);
+  return function(x, y) {
+    var xy;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xy = [x, y];
+    mproj.pj_transform_point(src, dest, xy);
+    return xy;
+  };
+};
+
+internal.toLngLat = function(xy, P) {
+  var proj;
+  if (isLatLngCRS(P)) {
+    return xy.concat();
+  }
+  proj = internal.getProjInfo(P, internal.getCRS('wgs84'));
+  return proj(xy);
+};
+
 internal.getProjInfo = function(dataset) {
   var P, info;
   try {
