@@ -2,7 +2,7 @@
 function SidebarButtons(gui) {
   var root = gui.container.findChild('.mshp-main-map');
   var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
-  var _hidden = false;
+  var _hidden = true;
   gui.on('active', updateVisibility);
   gui.on('inactive', updateVisibility);
 
