@@ -179,6 +179,7 @@ internal.nullifyUnsetProperties = function(vars, obj) {
 
 internal.getExpressionContext = function(lyr, mixins) {
   var env = internal.getBaseContext();
+  var ctx = {};
   utils.extend(env, internal.expressionUtils); // mix in utils
   if (lyr.data) {
     // default to null values when a data field is missing
@@ -187,16 +188,28 @@ internal.getExpressionContext = function(lyr, mixins) {
   if (mixins) {
     Object.keys(mixins).forEach(function(key) {
       // Catch name collisions between data fields and user-defined functions
-      if (key in env) message('Warning: "' + key + '" has multiple definitions');
-      env[key] = mixins[key];
+      var d = Object.getOwnPropertyDescriptor(mixins, key);
+      if (key in env) {
+      }
+      if (d.get) {
+        // copy accessor function from mixins to context
+        Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
+      } else {
+        // copy regular property from mixins to context, but make it non-writable
+        Object.defineProperty(ctx, key, {value: mixins[key]});
+      }
     });
-    // utils.extend(env, mixins);
   }
   // make context properties non-writable, so they can't be replaced by an expression
   return Object.keys(env).reduce(function(memo, key) {
-    Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
+    if (key in memo) {
+      // property has already been set (probably by a mixin, above): skip
+      message('Warning: "' + key + '" has multiple definitions');
+    } else {
+      Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
+    }
     return memo;
-  }, {});
+  }, ctx);
 };
 
 internal.getBaseContext = function() {

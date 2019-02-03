@@ -1,5 +1,7 @@
 /* @requires mapshaper-expressions, mapshaper-calc-utils */
 
+// Returns a function for filtering multiple source-table records
+// (used by -join command)
 internal.getJoinFilter = function(data, exp) {
   var test = internal.getJoinFilterTestFunction(exp, data);
   var calc = null;
@@ -7,14 +9,14 @@ internal.getJoinFilter = function(data, exp) {
     calc = internal.getJoinFilterCalcFunction(exp, data);
   }
 
-  return function(ids) {
-    var d = calc ? calc(ids) : null;
+  return function(srcIds, destRec) {
+    var d = calc ? calc(srcIds) : null;
     var filtered = [],
         retn, i;
-    for (i=0; i<ids.length; i++) {
-      retn = test(ids[i], d);
+    for (i=0; i<srcIds.length; i++) {
+      retn = test(srcIds[i], destRec, d);
       if (retn === true) {
-        filtered.push(ids[i]);
+        filtered.push(srcIds[i]);
       } else if (retn !== false) {
         stop('"where" expression must return true or false');
       }
@@ -74,22 +76,33 @@ internal.getJoinFilterCalcFunction = function(exp, data) {
 
 
 internal.getJoinFilterTestFunction = function(exp, data) {
-  var context, test, d;
-  context = {
+  var test, calcRec, destRec;
+  var context = {
     isMax: function(val) {
-      return val === d.max;
+      return val === calcRec.max;
     },
     isMin: function(val) {
-      return val === d.min;
+      return val === calcRec.min;
     },
     isMode: function(val) {
-      return d.modes.indexOf(val) > -1;
+      return calcRec.modes.indexOf(val) > -1;
     }
   };
+  // 'target' property is an accessor function,
+  // so the object it references can be updated.
+  Object.defineProperty(context, 'target', {
+    get: function() {
+      return destRec;
+    },
+    enumerable: true // so it can be mixed-in to the actual expression context
+  });
+
   test = internal.compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
-  // @datum  results from calculation phase
-  return function(i, datum) {
-    d = datum;
-    return test(i);
+
+  // calcR: results from calculation phase, or null
+  return function(srcId, destR, calcR) {
+    calcRec = calcR;
+    destRec = destR;
+    return test(srcId);
   };
 };

@@ -29,6 +29,13 @@ describe('mapshaper-join-filter.js', function() {
       var f = api.internal.getJoinFilter(data, 'isMode(fips)');
       assert.deepEqual(f([1, 2, 3, 4]), [2, 3, 4])
     })
+
+    it('"target" is a reference to a record', function() {
+      var f = api.internal.getJoinFilter(data, 'area > target.area');
+      var destRec = {area: 400};
+      assert.deepEqual(f([0, 1, 3, 4], destRec), [0, 3]);
+    })
+
   })
 
 

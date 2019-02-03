@@ -95,7 +95,7 @@ internal.joinTables = function(dest, src, join, opts) {
     joins = join(i);
     if (joins && filter) {
       skipCount += joins.length;
-      joins = filter(joins);
+      joins = filter(joins, destRec);
       skipCount -= joins.length;
     }
     for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
