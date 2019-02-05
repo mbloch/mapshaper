@@ -2,7 +2,7 @@
 
 // Create low-detail versions of large arc collections for faster rendering
 // at zoomed-out scales.
-function FilteredArcCollection(unfilteredArcs) {
+function MultiScaleArcCollection(unfilteredArcs) {
   var size = unfilteredArcs.getPointCount(),
       filteredArcs, filteredSegLen;
 
@@ -29,7 +29,7 @@ function FilteredArcCollection(unfilteredArcs) {
     return filteredArcs;
   }
 
-  this.getArcCollection = function(ext) {
+  unfilteredArcs.getScaledArcs = function(ext) {
     if (filteredArcs) {
       // match simplification of unfiltered arcs
       filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
@@ -39,4 +39,6 @@ function FilteredArcCollection(unfilteredArcs) {
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
   };
+
+  return unfilteredArcs;
 }

@@ -51,14 +51,94 @@ function MshpMap(gui) {
     _mouse.disable();
   });
 
+  model.on('update', onUpdate);
+
+  // Currently used to show dots at line intersections
+  this.setIntersectionLayer = function(lyr, dataset) {
+    if (lyr) {
+      _intersectionLyr = getMapLayer(lyr, dataset, getDisplayOptions());
+      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
+    } else {
+      _intersectionLyr = null;
+    }
+    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
+  };
+
+  this.setLayerVisibility = function(target, isVisible) {
+    var lyr = target.layer;
+    lyr.visibility = isVisible ? 'visible' : 'hidden';
+    // if (_inspector && isActiveLayer(lyr)) {
+    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
+    // }
+    if (isActiveLayer(lyr)) {
+      _hit.setLayer(isVisible ? _activeLyr : null);
+    }
+  };
+
+  this.getCenterLngLat = function() {
+    var bounds = _ext.getBounds();
+    var crs = this.getDisplayCRS();
+    // TODO: handle case where active layer is a frame layer
+    if (!bounds.hasBounds() || !crs) {
+      return null;
+    }
+    return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+  };
+
+  this.getDisplayCRS = function() {
+    var crs;
+    if (_activeLyr && _activeLyr.geographic) {
+      crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
+    }
+    return crs || null;
+  };
+
+  this.getExtent = function() {return _ext;};
+  this.isActiveLayer = isActiveLayer;
+  this.isVisibleLayer = isVisibleLayer;
+
+  // called by layer menu after layer visibility is updated
+  this.redraw = function() {
+    updateVisibleMapLayers();
+    drawLayers();
+  };
+
+  // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
+  // crs: a CRS object or string, or null to clear the current setting
+  this.setDisplayCRS = function(crs) {
+    // TODO: update bounds of frame layer, if there is a frame layer
+    var oldCRS = this.getDisplayCRS();
+    var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+    // TODO: handle case that old and new CRS are the same
+    _dynamicCRS = newCRS;
+    if (!_activeLyr) return; // stop here if no layers have been selected
+
+    // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
+    gui.model.getDatasets().forEach(function(dataset) {
+      delete dataset.displayArcs;
+    });
+
+    // Reproject all visible map layers
+    if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
+    if (_intersectionLyr) _intersectionLyr = projectDisplayLayer(_intersectionLyr, newCRS);
+    if (_overlayLyr) {
+      _overlayLyr = projectDisplayLayer(_overlayLyr, newCRS);
+    }
+    updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
+    updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
+
+    // Update map extent (also triggers redraw)
+    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
+  };
+
   // Refresh map display in response to data changes, layer selection, etc.
-  model.on('update', function(e) {
+  function onUpdate(e) {
     var prevLyr = _activeLyr || null;
     var fullBounds;
     var needReset;
 
     if (!prevLyr) {
-      initMap(); // init map extent, resize events, etc. on first call
+      initMap(); // first call
     }
 
     if (arcsMayHaveChanged(e.flags)) {
@@ -109,99 +189,14 @@ function MshpMap(gui) {
     }
     drawLayers();
     map.dispatchEvent('updated');
-  });
+  }
 
-  // Currently used to show dots at line intersections
-  this.setIntersectionLayer = function(lyr, dataset) {
-    if (lyr) {
-      _intersectionLyr = getMapLayer(lyr, dataset, getDisplayOptions());
-      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
-    } else {
-      _intersectionLyr = null;
-    }
-    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
-  };
 
-  this.setInteractivity = function(toOn) {
-
-  };
-
-  this.setLayerVisibility = function(target, isVisible) {
-    var lyr = target.layer;
-    lyr.visibility = isVisible ? 'visible' : 'hidden';
-    // if (_inspector && isActiveLayer(lyr)) {
-    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
-    // }
-    if (isActiveLayer(lyr)) {
-      _hit.setLayer(isVisible ? _activeLyr : null);
-    }
-  };
-
-  this.getCenterLngLat = function() {
-    var bounds = _ext.getBounds();
-    var crs = this.getDisplayCRS();
-    // TODO: handle case where active layer is a frame layer
-    if (!bounds.hasBounds() || !crs) {
-      return null;
-    }
-    return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
-  };
-
-  this.getDisplayCRS = function() {
-    var crs;
-    if (_activeLyr && _activeLyr.geographic) {
-      crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
-    }
-    return crs || null;
-  };
-
-  this.getExtent = function() {return _ext;};
-  this.isActiveLayer = isActiveLayer;
-  this.isVisibleLayer = isVisibleLayer;
-
-  // called by layer menu after layer visibility is updated
-  this.redraw = function() {
-    updateVisibleMapLayers();
-    drawLayers();
-  };
-
-  // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
-  // crs: a CRS object or string, or null to clear the current setting
-  this.setDisplayCRS = function(crs) {
-    // TODO: update bounds of frame layer, if there is a frame layer
-    var oldCRS = this.getDisplayCRS();
-    var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
-    // TODO: handle case that old and new CRS are the same
-    _dynamicCRS = newCRS;
-    // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
-    gui.model.getDatasets().forEach(function(dataset) {
-      delete dataset.displayArcs;
-    });
-
-    // Reproject all visible map layers
-    if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
-    if (_intersectionLyr) _intersectionLyr = projectDisplayLayer(_intersectionLyr, newCRS);
-    if (_overlayLyr) {
-      _overlayLyr = projectDisplayLayer(_overlayLyr, newCRS);
-    }
-    updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
-
-    // Update map extent (also triggers redraw)
-    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
-  };
-
+  // Initialization just before displaying the map for the first time
   function initMap() {
     _ext.resize();
     _stack = new LayerStack(gui, el, _ext, _mouse);
     gui.buttons.show();
-
-    _ext.on('change', function(e) {
-      if (e.reset) return; // don't need to redraw map here if extent has been reset
-      if (isFrameView()) {
-        updateFrameExtent();
-      }
-      drawLayers(true);
-    });
 
     if (opts.inspectorControl) {
       _inspector = new InspectionControl2(gui, _hit);
@@ -213,15 +208,26 @@ function MshpMap(gui) {
       });
     }
 
+    if (true) { // TODO: add option to disable?
+      _editor = new SymbolDragging2(gui, _ext, _hit);
+      _editor.on('location_change', function(e) {
+        // TODO: optimize redrawing
+        drawLayers();
+      });
+    }
+
+    _ext.on('change', function(e) {
+      if (e.reset) return; // don't need to redraw map here if extent has been reset
+      if (isFrameView()) {
+        updateFrameExtent();
+      }
+      drawLayers(true);
+    });
+
     _hit.on('change', function(e) {
       // draw highlight effect for hover and select
       _overlayLyr = getMapLayerOverlay(_activeLyr, e);
       _stack.drawOverlayLayer(_overlayLyr);
-    });
-    _editor = new SymbolDragging2(gui, _ext, _hit);
-    _editor.on('location_change', function(e) {
-      // TODO: optimize redrawing
-      drawLayers();
     });
 
     gui.on('resize', function() {

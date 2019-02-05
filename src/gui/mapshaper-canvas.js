@@ -10,7 +10,7 @@ function getArcsForRendering(obj, ext) {
   var dataset = obj.source.dataset;
   var sourceArcs = dataset.arcs;
   if (obj.geographic && dataset.displayArcs) {
-    return dataset.displayArcs.getArcCollection(ext);
+    return dataset.displayArcs.getScaledArcs(ext);
   }
   return obj.arcs;
 }

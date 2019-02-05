@@ -12,25 +12,47 @@ internal.editArcs = function(arcs, onPoint) {
   arcs.updateVertexData(nn2, xx2, yy2);
 
   function append(p) {
-    xx2.push(p[0]);
-    yy2.push(p[1]);
-    n++;
+    if (p) {
+      xx2.push(p[0]);
+      yy2.push(p[1]);
+      n++;
+    }
   }
 
   function editArc(arc, cb) {
-    var x, y, xp, yp;
+    var x, y, xp, yp, retn;
+    var valid = true;
     var i = 0;
     n = 0;
     while (arc.hasNext()) {
       x = arc.x;
       y = arc.y;
-      cb(append, x, y, xp, yp, i++);
+      retn = cb(append, x, y, xp, yp, i++);
+      if (retn === false) {
+        valid = false;
+        // assumes that it's ok for the arc iterator to be interupted.
+        break;
+      }
       xp = x;
       yp = y;
     }
-    if (n == 1) { // invalid arc len
-      error("An invalid arc was created");
+    if (valid && n == 1) {
+      // only one valid point was added to this arc (invalid)
+      // e.g. this could happen during reprojection.
+      // making this arc empty
+      // error("An invalid arc was created");
+      message("An invalid arc was created");
+      valid = false;
     }
-    nn2.push(n);
+    if (valid) {
+      nn2.push(n);
+    } else {
+      // remove any points that were added for an invalid arc
+      while (n-- > 0) {
+        xx2.pop();
+        yy2.pop();
+      }
+      nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+    }
   }
 };

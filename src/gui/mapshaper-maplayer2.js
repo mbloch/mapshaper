@@ -16,18 +16,21 @@ function getMapLayer(layer, dataset, opts) {
 
   var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
   var displayCRS = opts.crs || null;
-  var arcs = dataset.arcs;
+  var displayArcs = dataset.displayArcs;
+  var emptyArcs;
 
   // Assume that dataset.displayArcs is in the display CRS
-  // (it should have been deleted upstream if reprojected is needed)
-  if (arcs && !dataset.displayArcs) {
+  // (it should have been deleted upstream if reprojection is needed)
+  if (dataset.arcs && !displayArcs) {
     // project arcs, if needed
     if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
-      arcs = projectArcsForDisplay(arcs, sourceCRS, displayCRS);
+      displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
+    } else {
+      displayArcs = dataset.arcs;
     }
 
-    // init filtered arcs, if needed
-    dataset.displayArcs = new FilteredArcCollection(arcs);
+    // init filtered arcs
+    dataset.displayArcs = new MultiScaleArcCollection(displayArcs);
   }
 
   if (internal.layerHasFurniture(layer)) {
@@ -44,7 +47,7 @@ function getMapLayer(layer, dataset, opts) {
   } else {
     obj.geographic = true;
     obj.layer = layer;
-    obj.arcs = arcs; // replaced by filtered arcs during render sequence
+    obj.arcs = displayArcs;
   }
 
   if (obj.tabular) {
@@ -56,6 +59,12 @@ function getMapLayer(layer, dataset, opts) {
     obj.dynamic_crs = displayCRS;
     if (internal.layerHasPoints(layer)) {
       obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+    } else if (internal.layerHasPaths(layer)) {
+      emptyArcs = findEmptyArcs(displayArcs);
+      if (emptyArcs.length > 0) {
+        // Don't try to draw paths containing coordinates that failed to project
+        obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
+      }
     }
   }
 

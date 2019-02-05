@@ -19,7 +19,8 @@ internal.forEachShapePart = function(paths, cb) {
   internal.editShapeParts(paths, cb);
 };
 
-//
+// Updates shapes array in-place.
+// editPart: callback function
 internal.editShapes = function(shapes, editPart) {
   for (var i=0, n=shapes.length; i<n; i++) {
     shapes[i] = internal.editShapeParts(shapes[i], editPart);

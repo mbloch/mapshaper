@@ -108,11 +108,12 @@ internal.projectDataset = function(dataset, src, dest, opts) {
   }
 };
 
+
+// proj: function to project [x, y] point; should return null if projection fails
+// TODO: fatal error if no points project?
 internal.projectPointLayer = function(lyr, proj) {
-  internal.forEachPoint(lyr.shapes, function(p) {
-    var p2 = proj(p[0], p[1]);
-    p[0] = p2[0];
-    p[1] = p2[1];
+  internal.editShapes(lyr.shapes, function(p) {
+    return proj(p[0], p[1]); // removes points that fail to project
   });
 };
 
@@ -131,6 +132,37 @@ internal.projectArcs = function(arcs, proj) {
     yy[i] = p[1];
   }
   arcs.updateVertexData(data.nn, xx, yy, zz);
+};
+
+internal.projectArcs2 = function(arcs, proj) {
+  internal.editArcs(arcs, onPoint);
+  function onPoint(append, x, y, prevX, prevY, i) {
+    var p = proj(x, y);
+    // TODO: prevent arcs with just one point
+    if (p) {
+      append(p);
+    } else {
+      return false; // signal that the arc is invalid (no more points will be projected in this arc)
+    }
+  }
+};
+
+internal.projectAndDensifyArcs = function(arcs, proj) {
+  var interval = internal.getDefaultDensifyInterval(arcs, proj);
+  var p = [0, 0];
+  internal.editArcs(arcs, onPoint);
+
+  function onPoint(append, lng, lat, prevLng, prevLat, i) {
+    var prevX = p[0],
+        prevY = p[1];
+    p = proj(lng, lat);
+    // Don't try to optimize shorter segments (optimization)
+    if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
+      internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
+        .forEach(append);
+    }
+    append(p);
+  }
 };
 
 internal.getDefaultDensifyInterval = function(arcs, proj) {
@@ -163,22 +195,4 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
     internal.densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
   }
   return points;
-};
-
-internal.projectAndDensifyArcs = function(arcs, proj) {
-  var interval = internal.getDefaultDensifyInterval(arcs, proj);
-  var p = [0, 0];
-  internal.editArcs(arcs, onPoint);
-
-  function onPoint(append, lng, lat, prevLng, prevLat, i) {
-    var prevX = p[0],
-        prevY = p[1];
-    p = proj(lng, lat);
-    // Don't try to optimize shorter segments (optimization)
-    if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
-      internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
-        .forEach(append);
-    }
-    append(p);
-  }
 };

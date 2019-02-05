@@ -81,6 +81,29 @@ internal.copyLayer = function(lyr) {
   return copy;
 };
 
+// Make a shallow copy of a path layer; replace layer.shapes with an array that is
+// filtered to exclude paths containing any of the arc ids contained in arcIds.
+// arcIds: an array of (non-negative) arc ids to exclude
+internal.filterPathLayerByArcIds = function(pathLyr, arcIds) {
+  var index = arcIds.reduce(function(memo, id) {
+    memo[id] = true;
+    return memo;
+  }, {});
+  // deep copy shapes; this could be optimized to only copy shapes that are modified
+  var shapes = internal.cloneShapes(pathLyr.shapes);
+  internal.editShapes(shapes, onPath); // remove paths that are missing shapes
+  return utils.defaults({shapes: shapes}, pathLyr);
+
+  function onPath(path) {
+    for (var i=0; i<path.length; i++) {
+      if (absArcId(path[i]) in index) {
+        return null;
+      }
+    }
+    return path;
+  }
+};
+
 internal.copyLayerShapes = function(lyr) {
   var copy = utils.extend({}, lyr);
   if (lyr.shapes) {

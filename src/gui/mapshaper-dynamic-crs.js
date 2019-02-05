@@ -10,16 +10,23 @@ function needReprojectionForDisplay(sourceCRS, displayCRS) {
   return true;
 }
 
-function projectArcsForDisplay(arcs, src, dest) {
+function projectArcsForDisplay_v1(arcs, src, dest) {
   var copy = arcs.getCopy(); // need to flatten first?
   var proj = internal.getProjTransform(src, dest);
   internal.projectArcs(copy, proj); // need to densify arcs?
   return copy;
 }
 
+function projectArcsForDisplay(arcs, src, dest) {
+  var copy = arcs.getCopy(); // need to flatten first?
+  var proj = internal.getProjTransform2(src, dest);
+  internal.projectArcs2(copy, proj); // need to densify arcs?
+  return copy;
+}
+
 function projectPointsForDisplay(lyr, src, dest) {
   var copy = utils.extend({}, lyr);
-  var proj = internal.getProjTransform(src, dest);
+  var proj = internal.getProjTransform2(src, dest);
   copy.shapes = internal.cloneShapes(lyr.shapes);
   internal.projectPointLayer(copy, proj);
   return copy;
@@ -62,9 +69,14 @@ function projectMapExtent(ext, src, dest, newBounds) {
     ext.home(); // sets full extent and triggers redraw
   } else {
     // if map is zoomed, stay centered on the same geographic location, at the same relative scale
-    proj = internal.getProjTransform(src, dest);
+    proj = internal.getProjTransform2(src, dest);
     newCP = proj(oldBounds.centerX(), oldBounds.centerY());
     ext.setBounds(newBounds);
+    if (!newCP) {
+      // projection of center point failed; use center of bounds
+      // (also consider just resetting the view using ext.home())
+      newCP = [newBounds.centerX(), newBounds.centerY()];
+    }
     ext.recenter(newCP[0], newCP[1], oldScale);
   }
 }
@@ -77,4 +89,16 @@ function setDisplayProjection(gui, cmd) {
   } else {
     gui.map.setDisplayCRS(null);
   }
+}
+
+// Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
+function findEmptyArcs(arcs) {
+  var nn = arcs.getVertexData().nn;
+  var ids = [];
+  for (var i=0, n=nn.length; i<n; i++) {
+    if (nn[i] === 0) {
+      ids.push(i);
+    }
+  }
+  return ids;
 }

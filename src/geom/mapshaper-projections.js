@@ -19,6 +19,8 @@ internal.findProjLibs = function(str) {
   return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
 };
 
+// Returns a function for reprojecting [x, y] points; function throws an error
+// if the transformation fails
 // src, dest: proj4 objects
 internal.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
@@ -33,6 +35,35 @@ internal.getProjTransform = function(src, dest) {
     xy = [x, y];
     mproj.pj_transform_point(src, dest, xy);
     return xy;
+  };
+};
+
+// Same as getProjTransform(), but return null if projection fails
+// (also faster)
+internal.getProjTransform2 = function(src, dest) {
+  var mproj = require('mproj'),
+      xx = [0],
+      yy = [0],
+      preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
+      postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
+      clampSrc = internal.isLatLngCRS(src);
+
+  return function(x, y) {
+    var fail;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xx[0] = x * preK;
+    yy[0] = y * preK;
+    try {
+      mproj.pj_transform(src, dest, xx, yy);
+      fail = xx[0] == Infinity; // mproj invalid coord value
+    } catch(e) {
+      fail = true;
+    }
+    return fail ? null : [xx[0] * postK, yy[0] * postK];
   };
 };
 
