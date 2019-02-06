@@ -188,7 +188,7 @@ SVG.importStandardPoint = function(coords, rec, layerOpts) {
         }
       };
     } else if (symbolType == 'line') {
-      var lineLength = halfSize ** 2 //
+      var lineLength = Math.pow(halfSize, 2) //
       p = {
         tag: 'line',
         properties: {
