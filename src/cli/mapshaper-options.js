@@ -903,6 +903,9 @@ internal.getOptionParser = function() {
      .option("line-height", {
       describe: 'line spacing of multi-line labels (default is 1.1em)'
     })
+    .option("rotate", {
+      describe: "(SVG) rotation in degrees applied on symbol (default is 0, clockwise)"
+    })
    .option("target", targetOpt);
 
   parser.command("target")

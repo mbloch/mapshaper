@@ -163,19 +163,40 @@ SVG.importStandardPoint = function(coords, rec, layerOpts) {
   var symbolType = layerOpts.point_symbol || '';
   var children = [];
   var halfSize = rec.r || 0; // radius or half of symbol size
+  var deg2rad = Math.PI / 180;
+  var symbolRotate = (+rec.rotate || 0) * deg2rad; // rotation applied on symbol around point's center
   var p;
   // if not a label, create a symbol even without a size
   // (circle radius can be set via CSS)
   if (halfSize > 0 || !isLabel) {
     if (symbolType == 'square') {
+      var squareRotate = symbolRotate + Math.PI * .25 // Rotate by 45 degrees to make the square sit straight
+      var squareLength = halfSize * Math.sqrt(2) // From the half-diagonal, get square's length
       p = {
-        tag: 'rect',
+        tag: 'polygon',
         properties: {
-          x: coords[0] - halfSize,
-          y: coords[1] - halfSize,
-          width: halfSize * 2,
-          height: halfSize * 2
-        }};
+          points: [
+            [coords[0] + squareLength * Math.cos(squareRotate), coords[1] + squareLength * Math.sin(squareRotate)],
+            [coords[0] + squareLength * Math.cos(squareRotate + Math.PI * .5), coords[1] + squareLength * Math.sin(squareRotate + Math.PI * .5)],
+            [coords[0] + squareLength * Math.cos(squareRotate + Math.PI), coords[1] + squareLength * Math.sin(squareRotate + Math.PI)],
+            [coords[0] + squareLength * Math.cos(squareRotate + Math.PI * -.5), coords[1] + squareLength * Math.sin(squareRotate + Math.PI * -.5)]
+          ]
+          .map(function(pt) {
+            return pt.join(',') // joining two dimensions of point
+          })
+          .join(',') // join each point string coordinates
+        }
+      };
+    } else if (symbolType == 'line') {
+      var lineLength = halfSize ** 2 //
+      p = {
+        tag: 'line',
+        properties: {
+          x1: coords[0],
+          y1: coords[1],
+          x2: coords[0] + lineLength * Math.cos(symbolRotate),
+          y2: coords[1] + lineLength * Math.sin(symbolRotate)
+      }};
     } else { // default is circle
       p = {
         tag: 'circle',
