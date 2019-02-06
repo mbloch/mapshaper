@@ -30,7 +30,7 @@ api.svgStyle = function(lyr, dataset, opts) {
 };
 
 internal.isSupportedSvgProperty = function(name) {
-  return SVG.supportedProperties.indexOf(name) > -1 || name == 'label-text';
+  return SVG.supportedProperties.indexOf(name) > -1 || name == 'label-text' || name == 'point-text';
 };
 
 // returns parsed value or null if @strVal is not recognized as a valid literal value

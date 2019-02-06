@@ -167,7 +167,20 @@ SVG.importStandardPoint = function(coords, rec, layerOpts) {
   // if not a label, create a symbol even without a size
   // (circle radius can be set via CSS)
   if (halfSize > 0 || !isLabel) {
-    if (symbolType == 'square') {
+    if (symbolType == 'text') {
+      p = {
+        tag: 'text',
+        properties: {
+          x: coords[0],
+          y: coords[1],
+          dx: 0,
+          dy: rec['font-size'] ? rec['font-size'] / 4 : 7,
+          'font-size': rec['font-size'] ? rec['font-size'] - 2 : 10,
+          'text-anchor': 'middle'
+        },
+        value: rec['point-text'] ? rec['point-text'] : '●'
+      }
+    } else if (symbolType == 'square') {
       p = {
         tag: 'rect',
         properties: {
