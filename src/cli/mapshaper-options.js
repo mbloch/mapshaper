@@ -876,6 +876,9 @@ internal.getOptionParser = function() {
     .option("label-text", {
       describe: 'label text (set this to export points as labels)'
     })
+    .option("point-text", {
+      describe: 'point symbol text (a text symbol replaces path or circle)'
+    })
     .option("text-anchor", {
       describe: 'label alignment; one of: start, end, middle (default)'
     })
