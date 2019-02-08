@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.105';
+VERSION = '0.4.106';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -3354,7 +3354,8 @@ internal.forEachShapePart = function(paths, cb) {
   internal.editShapeParts(paths, cb);
 };
 
-//
+// Updates shapes array in-place.
+// editPart: callback function
 internal.editShapes = function(shapes, editPart) {
   for (var i=0, n=shapes.length; i<n; i++) {
     shapes[i] = internal.editShapeParts(shapes[i], editPart);
@@ -3612,6 +3613,29 @@ internal.copyLayer = function(lyr) {
     copy.data = copy.data.clone();
   }
   return copy;
+};
+
+// Make a shallow copy of a path layer; replace layer.shapes with an array that is
+// filtered to exclude paths containing any of the arc ids contained in arcIds.
+// arcIds: an array of (non-negative) arc ids to exclude
+internal.filterPathLayerByArcIds = function(pathLyr, arcIds) {
+  var index = arcIds.reduce(function(memo, id) {
+    memo[id] = true;
+    return memo;
+  }, {});
+  // deep copy shapes; this could be optimized to only copy shapes that are modified
+  var shapes = internal.cloneShapes(pathLyr.shapes);
+  internal.editShapes(shapes, onPath); // remove paths that are missing shapes
+  return utils.defaults({shapes: shapes}, pathLyr);
+
+  function onPath(path) {
+    for (var i=0; i<path.length; i++) {
+      if (absArcId(path[i]) in index) {
+        return null;
+      }
+    }
+    return path;
+  }
 };
 
 internal.copyLayerShapes = function(lyr) {
@@ -5747,6 +5771,63 @@ internal.initProjLibrary = function(opts, done) {done();};
 internal.findProjLibs = function(str) {
   var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
   return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
+};
+
+// Returns a function for reprojecting [x, y] points; function throws an error
+// if the transformation fails
+// src, dest: proj4 objects
+internal.getProjTransform = function(src, dest) {
+  var mproj = require('mproj');
+  var clampSrc = internal.isLatLngCRS(src);
+  return function(x, y) {
+    var xy;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xy = [x, y];
+    mproj.pj_transform_point(src, dest, xy);
+    return xy;
+  };
+};
+
+// Same as getProjTransform(), but return null if projection fails
+// (also faster)
+internal.getProjTransform2 = function(src, dest) {
+  var mproj = require('mproj'),
+      xx = [0],
+      yy = [0],
+      preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
+      postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
+      clampSrc = internal.isLatLngCRS(src);
+
+  return function(x, y) {
+    var fail;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xx[0] = x * preK;
+    yy[0] = y * preK;
+    try {
+      mproj.pj_transform(src, dest, xx, yy);
+      fail = xx[0] == Infinity; // mproj invalid coord value
+    } catch(e) {
+      fail = true;
+    }
+    return fail ? null : [xx[0] * postK, yy[0] * postK];
+  };
+};
+
+internal.toLngLat = function(xy, P) {
+  var proj;
+  if (isLatLngCRS(P)) {
+    return xy.concat();
+  }
+  proj = internal.getProjInfo(P, internal.getCRS('wgs84'));
+  return proj(xy);
 };
 
 internal.getProjInfo = function(dataset) {
@@ -8578,6 +8659,7 @@ internal.nullifyUnsetProperties = function(vars, obj) {
 
 internal.getExpressionContext = function(lyr, mixins) {
   var env = internal.getBaseContext();
+  var ctx = {};
   utils.extend(env, internal.expressionUtils); // mix in utils
   if (lyr.data) {
     // default to null values when a data field is missing
@@ -8586,16 +8668,28 @@ internal.getExpressionContext = function(lyr, mixins) {
   if (mixins) {
     Object.keys(mixins).forEach(function(key) {
       // Catch name collisions between data fields and user-defined functions
-      if (key in env) message('Warning: "' + key + '" has multiple definitions');
-      env[key] = mixins[key];
+      var d = Object.getOwnPropertyDescriptor(mixins, key);
+      if (key in env) {
+      }
+      if (d.get) {
+        // copy accessor function from mixins to context
+        Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
+      } else {
+        // copy regular property from mixins to context, but make it non-writable
+        Object.defineProperty(ctx, key, {value: mixins[key]});
+      }
     });
-    // utils.extend(env, mixins);
   }
   // make context properties non-writable, so they can't be replaced by an expression
   return Object.keys(env).reduce(function(memo, key) {
-    Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
+    if (key in memo) {
+      // property has already been set (probably by a mixin, above): skip
+      message('Warning: "' + key + '" has multiple definitions');
+    } else {
+      Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
+    }
     return memo;
-  }, {});
+  }, ctx);
 };
 
 internal.getBaseContext = function() {
@@ -13547,6 +13641,26 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 
 
 
+internal.importMetadata = function(dataset, obj) {
+  if (obj.proj4) {
+    dataset.info.crs = internal.getCRS(obj.proj4);
+  }
+};
+
+internal.exportMetadata = function(dataset) {
+  var crs = internal.getDatasetCRS(dataset);
+  var proj4 = null;
+  if (crs) {
+    proj4 = internal.crsToProj4(crs);
+  }
+  return {
+    proj4: proj4
+  };
+};
+
+
+
+
 // Convert a TopoJSON topology into mapshaper's internal format
 // Side-effect: data in topology is modified
 //
@@ -13599,6 +13713,9 @@ internal.importTopoJSON = function(topology, opts) {
     info: {}
   };
   internal.importCRS(dataset, topology);
+  if (topology.metadata) {
+    internal.importMetadata(dataset, topology.metadata);
+  }
   return dataset;
 };
 
@@ -14139,6 +14256,9 @@ TopoJSON.exportTopology = function(dataset, opts) {
 
   // retain crs data if relevant
   internal.exportCRS(dataset, topology);
+  if (opts.metadata) {
+    topology.metadata = internal.exportMetadata(dataset);
+  }
   return topology;
 };
 
@@ -16284,13 +16404,15 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
 
 
 // Identify JSON type from the initial subset of a JSON string
-internal.identifyJSONString = function(str) {
+internal.identifyJSONString = function(str, opts) {
   var maxChars = 1000;
   var fmt = null;
   if (str.length > maxChars) str = str.substr(0, maxChars);
   str = str.replace(/\s/g, '');
-  if (/^\[[{\]]/.test(str)) {
-    // empty array of array of objects
+  if (opts && opts.json_path) {
+    fmt = 'json'; // TODO: make json_path compatible with other types
+  } else if (/^\[[{\]]/.test(str)) {
+    // empty array or array of objects
     fmt = 'json';
   } else if (/"arcs":\[|"objects":\{|"transform":\{/.test(str)) {
     fmt =  'topojson';
@@ -16302,7 +16424,9 @@ internal.identifyJSONString = function(str) {
 
 internal.identifyJSONObject = function(o) {
   var fmt = null;
-  if (o.type == 'Topology') {
+  if (!o) {
+    //
+  } else if (o.type == 'Topology') {
     fmt = 'topojson';
   } else if (o.type) {
     fmt = 'geojson';
@@ -16320,7 +16444,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 
 internal.importJSONFile = function(reader, opts) {
   var str = internal.readFirstChars(reader, 1000);
-  var type = internal.identifyJSONString(str);
+  var type = internal.identifyJSONString(str, opts);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
     dataset = internal.importGeoJSONFile(reader, opts);
@@ -16375,7 +16499,10 @@ internal.importJSON = function(data, opts) {
         stop("Unable to parse JSON");
       }
     }
-    retn.format = internal.identifyJSONObject(content);
+    if (opts.json_path) {
+      content = internal.selectFromObject(content, opts.json_path);
+    }
+    retn.format = internal.identifyJSONObject(content, opts);
     if (retn.format == 'topojson') {
       retn.dataset = internal.importTopoJSON(content, opts);
     } else if (retn.format == 'geojson') {
@@ -16389,6 +16516,18 @@ internal.importJSON = function(data, opts) {
 
   return retn;
 };
+
+// path: path from top-level to the target object, as a list of property
+//   names separated by '.'
+internal.selectFromObject = function(o, path) {
+  var parts = path.split('.');
+  var value = o && o[parts[0]];
+  if (parts > 1) {
+    return internal.selectFromObject(value, parts.slice(1).join(''));
+  }
+  return value;
+};
+
 
 
 
@@ -18438,6 +18577,8 @@ internal.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) 
 
 
 
+// Returns a function for filtering multiple source-table records
+// (used by -join command)
 internal.getJoinFilter = function(data, exp) {
   var test = internal.getJoinFilterTestFunction(exp, data);
   var calc = null;
@@ -18445,14 +18586,14 @@ internal.getJoinFilter = function(data, exp) {
     calc = internal.getJoinFilterCalcFunction(exp, data);
   }
 
-  return function(ids) {
-    var d = calc ? calc(ids) : null;
+  return function(srcIds, destRec) {
+    var d = calc ? calc(srcIds) : null;
     var filtered = [],
         retn, i;
-    for (i=0; i<ids.length; i++) {
-      retn = test(ids[i], d);
+    for (i=0; i<srcIds.length; i++) {
+      retn = test(srcIds[i], destRec, d);
       if (retn === true) {
-        filtered.push(ids[i]);
+        filtered.push(srcIds[i]);
       } else if (retn !== false) {
         stop('"where" expression must return true or false');
       }
@@ -18512,23 +18653,34 @@ internal.getJoinFilterCalcFunction = function(exp, data) {
 
 
 internal.getJoinFilterTestFunction = function(exp, data) {
-  var context, test, d;
-  context = {
+  var test, calcRec, destRec;
+  var context = {
     isMax: function(val) {
-      return val === d.max;
+      return val === calcRec.max;
     },
     isMin: function(val) {
-      return val === d.min;
+      return val === calcRec.min;
     },
     isMode: function(val) {
-      return d.modes.indexOf(val) > -1;
+      return calcRec.modes.indexOf(val) > -1;
     }
   };
+  // 'target' property is an accessor function,
+  // so the object it references can be updated.
+  Object.defineProperty(context, 'target', {
+    get: function() {
+      return destRec;
+    },
+    enumerable: true // so it can be mixed-in to the actual expression context
+  });
+
   test = internal.compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
-  // @datum  results from calculation phase
-  return function(i, datum) {
-    d = datum;
-    return test(i);
+
+  // calcR: results from calculation phase, or null
+  return function(srcId, destR, calcR) {
+    calcRec = calcR;
+    destRec = destR;
+    return test(srcId);
   };
 };
 
@@ -18622,7 +18774,7 @@ internal.joinTables = function(dest, src, join, opts) {
     joins = join(i);
     if (joins && filter) {
       skipCount += joins.length;
-      joins = filter(joins);
+      joins = filter(joins, destRec);
       skipCount -= joins.length;
     }
     for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
@@ -19061,6 +19213,27 @@ internal.findLongestPolylinePart = function(shp, arcs, spherical) {
 
 
 
+// Parse a formatted value in DMS DM or D to a numeric value. Returns NaN if unparsable.
+// Delimiters: degrees: D|d|°; minutes: '; seconds: "
+internal.parseDMS = function(str) {
+  var rxp = /^([nsew+-]?)([0-9.]+)[d°]? ?([0-9.]*)['′]? ?([0-9.]*)["″]? ?([nsew]?)$/i;
+  var match = rxp.exec(str.trim());
+  var d = NaN;
+  var deg, min, sec, inv;
+  if (match) {
+    deg = match[2] || '0';
+    min = match[3] || '0';
+    sec = match[4] || '0';
+    d = (+deg) + (+min) / 60 + (+sec) / 3600;
+    if (/[sw-]/i.test(match[1]) || /[sw]/i.test(match[5])) {
+      d = -d;
+    }
+  }
+  return d;
+};
+
+
+
 
 api.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
@@ -19268,6 +19441,25 @@ internal.pointsFromPolygons = function(lyr, arcs, opts) {
   });
 };
 
+internal.coordinateFromValue = function(val) {
+  var tmp;
+  if (utils.isFiniteNumber(val)) {
+    return val;
+  }
+  // exclude empty string (not a valid coordinate, but would get coerced to 0)
+  if (utils.isString(val) && val !== '') {
+    tmp = +val;
+    if (utils.isFiniteNumber(tmp)) {
+      return tmp;
+    }
+    tmp = internal.parseDMS(val); // try to parse as DMS
+    if (utils.isFiniteNumber(tmp)) {
+      return tmp;
+    }
+  }
+  return NaN;
+};
+
 internal.pointsFromDataTable = function(data, opts) {
   if (!data) stop("Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
@@ -19275,14 +19467,13 @@ internal.pointsFromDataTable = function(data, opts) {
   }
 
   return data.getRecords().map(function(rec) {
-    var x = rec[opts.x],
-        y = rec[opts.y];
-    if (!utils.isFiniteNumber(x) || !utils.isFiniteNumber(y)) {
+    var x = internal.coordinateFromValue(rec[opts.x]),
+        y = internal.coordinateFromValue(rec[opts.y]);
+    if (isNaN(x) || isNaN(y)) {
       return null;
     }
     return [[x, y]];
   });
-
 };
 
 
@@ -19416,26 +19607,48 @@ internal.editArcs = function(arcs, onPoint) {
   arcs.updateVertexData(nn2, xx2, yy2);
 
   function append(p) {
-    xx2.push(p[0]);
-    yy2.push(p[1]);
-    n++;
+    if (p) {
+      xx2.push(p[0]);
+      yy2.push(p[1]);
+      n++;
+    }
   }
 
   function editArc(arc, cb) {
-    var x, y, xp, yp;
+    var x, y, xp, yp, retn;
+    var valid = true;
     var i = 0;
     n = 0;
     while (arc.hasNext()) {
       x = arc.x;
       y = arc.y;
-      cb(append, x, y, xp, yp, i++);
+      retn = cb(append, x, y, xp, yp, i++);
+      if (retn === false) {
+        valid = false;
+        // assumes that it's ok for the arc iterator to be interupted.
+        break;
+      }
       xp = x;
       yp = y;
     }
-    if (n == 1) { // invalid arc len
-      error("An invalid arc was created");
+    if (valid && n == 1) {
+      // only one valid point was added to this arc (invalid)
+      // e.g. this could happen during reprojection.
+      // making this arc empty
+      // error("An invalid arc was created");
+      message("An invalid arc was created");
+      valid = false;
     }
-    nn2.push(n);
+    if (valid) {
+      nn2.push(n);
+    } else {
+      // remove any points that were added for an invalid arc
+      while (n-- > 0) {
+        xx2.pop();
+        yy2.pop();
+      }
+      nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+    }
   }
 };
 
@@ -19545,27 +19758,12 @@ internal.projectDataset = function(dataset, src, dest, opts) {
   }
 };
 
-internal.getProjTransform = function(src, dest) {
-  var mproj = require('mproj');
-  var clampSrc = internal.isLatLngCRS(src);
-  return function(x, y) {
-    var xy;
-    if (clampSrc) {
-      // snap lng to bounds
-      if (x < -180) x = -180;
-      else if (x > 180) x = 180;
-    }
-    xy = [x, y];
-    mproj.pj_transform_point(src, dest, xy);
-    return xy;
-  };
-};
 
+// proj: function to project [x, y] point; should return null if projection fails
+// TODO: fatal error if no points project?
 internal.projectPointLayer = function(lyr, proj) {
-  internal.forEachPoint(lyr.shapes, function(p) {
-    var p2 = proj(p[0], p[1]);
-    p[0] = p2[0];
-    p[1] = p2[1];
+  internal.editShapes(lyr.shapes, function(p) {
+    return proj(p[0], p[1]); // removes points that fail to project
   });
 };
 
@@ -19584,6 +19782,37 @@ internal.projectArcs = function(arcs, proj) {
     yy[i] = p[1];
   }
   arcs.updateVertexData(data.nn, xx, yy, zz);
+};
+
+internal.projectArcs2 = function(arcs, proj) {
+  internal.editArcs(arcs, onPoint);
+  function onPoint(append, x, y, prevX, prevY, i) {
+    var p = proj(x, y);
+    // TODO: prevent arcs with just one point
+    if (p) {
+      append(p);
+    } else {
+      return false; // signal that the arc is invalid (no more points will be projected in this arc)
+    }
+  }
+};
+
+internal.projectAndDensifyArcs = function(arcs, proj) {
+  var interval = internal.getDefaultDensifyInterval(arcs, proj);
+  var p = [0, 0];
+  internal.editArcs(arcs, onPoint);
+
+  function onPoint(append, lng, lat, prevLng, prevLat, i) {
+    var prevX = p[0],
+        prevY = p[1];
+    p = proj(lng, lat);
+    // Don't try to optimize shorter segments (optimization)
+    if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
+      internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
+        .forEach(append);
+    }
+    append(p);
+  }
 };
 
 internal.getDefaultDensifyInterval = function(arcs, proj) {
@@ -19616,24 +19845,6 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
     internal.densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
   }
   return points;
-};
-
-internal.projectAndDensifyArcs = function(arcs, proj) {
-  var interval = internal.getDefaultDensifyInterval(arcs, proj);
-  var p = [0, 0];
-  internal.editArcs(arcs, onPoint);
-
-  function onPoint(append, lng, lat, prevLng, prevLat, i) {
-    var prevX = p[0],
-        prevY = p[1];
-    p = proj(lng, lat);
-    // Don't try to optimize shorter segments (optimization)
-    if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
-      internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
-        .forEach(append);
-    }
-    append(p);
-  }
 };
 
 
@@ -22692,6 +22903,9 @@ internal.getOptionParser = function() {
       // undocumented; GeoJSON import rejects all but one kind of geometry
       // describe: "[GeoJSON] Import one kind of geometry (point|polygon|polyline)"
     })
+    .option("json-path", {
+      // describe: path to an array of data values
+    })
     .option("csv-filter", {
       describe: "[CSV] JS expression for filtering records"
     })
@@ -22829,6 +23043,10 @@ internal.getOptionParser = function() {
     })
     .option("final", {
       type: "flag" // for testing
+    })
+    .option("metadata", {
+      // describe: "(TopoJSON) add a metadata object",
+      type: "flag"
     });
 
   parser.section("Editing commands");

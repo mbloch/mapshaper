@@ -961,7 +961,7 @@ img.close-btn:hover,
 	background-color: #fff;
 }
 
-.map-layers.hover {
+.map-layers.symbol-hit {
 	cursor: pointer;
 }
 

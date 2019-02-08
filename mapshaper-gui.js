@@ -1380,9 +1380,10 @@ GUI.getPixelRatio = function() {
 
 // TODO: consider moving this upstream
 function getArcsForRendering(obj, ext) {
-  var sourceArcs = obj.source.dataset.arcs;
-  if (obj.geographic && sourceArcs.filteredArcs) {
-    return sourceArcs.filteredArcs.getArcCollection(ext);
+  var dataset = obj.source.dataset;
+  var sourceArcs = dataset.arcs;
+  if (obj.geographic && dataset.displayArcs) {
+    return dataset.displayArcs.getScaledArcs(ext);
   }
   return obj.arcs;
 }
@@ -1835,7 +1836,7 @@ function endPath(ctx, style) {
 
 // Create low-detail versions of large arc collections for faster rendering
 // at zoomed-out scales.
-function FilteredArcCollection(unfilteredArcs) {
+function MultiScaleArcCollection(unfilteredArcs) {
   var size = unfilteredArcs.getPointCount(),
       filteredArcs, filteredSegLen;
 
@@ -1862,7 +1863,7 @@ function FilteredArcCollection(unfilteredArcs) {
     return filteredArcs;
   }
 
-  this.getArcCollection = function(ext) {
+  unfilteredArcs.getScaledArcs = function(ext) {
     if (filteredArcs) {
       // match simplification of unfiltered arcs
       filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
@@ -1872,6 +1873,8 @@ function FilteredArcCollection(unfilteredArcs) {
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
   };
+
+  return unfilteredArcs;
 }
 
 
@@ -1937,13 +1940,120 @@ function getDisplayLayerForTable(table) {
 }
 
 
+// Assumes projections are available
+
+function needReprojectionForDisplay(sourceCRS, displayCRS) {
+  if (!sourceCRS || !displayCRS) {
+    return false;
+  }
+  if (internal.crsAreEqual(sourceCRS, displayCRS)) {
+    return false;
+  }
+  return true;
+}
+
+function projectArcsForDisplay_v1(arcs, src, dest) {
+  var copy = arcs.getCopy(); // need to flatten first?
+  var proj = internal.getProjTransform(src, dest);
+  internal.projectArcs(copy, proj); // need to densify arcs?
+  return copy;
+}
+
+function projectArcsForDisplay(arcs, src, dest) {
+  var copy = arcs.getCopy(); // need to flatten first?
+  var proj = internal.getProjTransform2(src, dest);
+  internal.projectArcs2(copy, proj); // need to densify arcs?
+  return copy;
+}
+
+function projectPointsForDisplay(lyr, src, dest) {
+  var copy = utils.extend({}, lyr);
+  var proj = internal.getProjTransform2(src, dest);
+  copy.shapes = internal.cloneShapes(lyr.shapes);
+  internal.projectPointLayer(copy, proj);
+  return copy;
+}
+
+// displayCRS: CRS to use for display, or null (which clears any current display CRS)
+function projectDisplayLayer(lyr, displayCRS) {
+  var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
+  var lyr2;
+  if (!lyr.geographic || !sourceCRS) {
+    return lyr;
+  }
+  if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
+    return lyr;
+  }
+  lyr2 = getMapLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
+  // kludge: copy projection-related properties to original layer
+  lyr.dynamic_crs = lyr2.dynamic_crs;
+  lyr.layer = lyr2.layer;
+  if (lyr.style && lyr.style.ids) {
+    // re-apply layer filter
+    lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
+  }
+  lyr.bounds = lyr2.bounds;
+  lyr.arcs = lyr2.arcs;
+  return lyr;
+}
+
+// Update map extent and trigger redraw, after a new display CRS has been applied
+function projectMapExtent(ext, src, dest, newBounds) {
+  var oldBounds = ext.getBounds();
+  var oldScale = ext.scale();
+  var newCP, proj;
+
+  // if source or destination CRS is unknown, show full extent
+  // if map is at full extent, show full extent
+  // TODO: handle case that scale is 1 and map is panned away from center
+  if (ext.scale() == 1 || !dest) {
+    ext.setBounds(newBounds);
+    ext.home(); // sets full extent and triggers redraw
+  } else {
+    // if map is zoomed, stay centered on the same geographic location, at the same relative scale
+    proj = internal.getProjTransform2(src, dest);
+    newCP = proj(oldBounds.centerX(), oldBounds.centerY());
+    ext.setBounds(newBounds);
+    if (!newCP) {
+      // projection of center point failed; use center of bounds
+      // (also consider just resetting the view using ext.home())
+      newCP = [newBounds.centerX(), newBounds.centerY()];
+    }
+    ext.recenter(newCP[0], newCP[1], oldScale);
+  }
+}
+
+// Called from console; for testing dynamic crs
+function setDisplayProjection(gui, cmd) {
+  var arg = cmd.replace(/^projd[ ]*/, '');
+  if (arg) {
+    gui.map.setDisplayCRS(internal.getCRS(arg));
+  } else {
+    gui.map.setDisplayCRS(null);
+  }
+}
+
+// Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
+function findEmptyArcs(arcs) {
+  var nn = arcs.getVertexData().nn;
+  var ids = [];
+  for (var i=0, n=nn.length; i<n; i++) {
+    if (nn[i] === 0) {
+      ids.push(i);
+    }
+  }
+  return ids;
+}
+
+
 
 
 // Wrap a layer in an object along with information needed for rendering
-function getMapLayer(layer, dataset) {
+function getMapLayer(layer, dataset, opts) {
   var obj = {
     layer: null,
     arcs: null,
+    // display_arcs: null,
     style: null,
     source: {
       layer: layer,
@@ -1952,9 +2062,23 @@ function getMapLayer(layer, dataset) {
     empty: internal.getFeatureCount(layer) === 0
   };
 
-  // init filtered arcs, if needed
-  if (internal.layerHasPaths(layer) && !dataset.filteredArcs) {
-    dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
+  var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
+  var displayCRS = opts.crs || null;
+  var displayArcs = dataset.displayArcs;
+  var emptyArcs;
+
+  // Assume that dataset.displayArcs is in the display CRS
+  // (it should have been deleted upstream if reprojection is needed)
+  if (dataset.arcs && !displayArcs) {
+    // project arcs, if needed
+    if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+      displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
+    } else {
+      displayArcs = dataset.arcs;
+    }
+
+    // init filtered arcs
+    dataset.displayArcs = new MultiScaleArcCollection(displayArcs);
   }
 
   if (internal.layerHasFurniture(layer)) {
@@ -1971,16 +2095,31 @@ function getMapLayer(layer, dataset) {
   } else {
     obj.geographic = true;
     obj.layer = layer;
-    obj.arcs = dataset.arcs; // replaced by filtered arcs during render sequence
+    obj.arcs = displayArcs;
   }
 
   if (obj.tabular) {
     utils.extend(obj, getDisplayLayerForTable(layer.data));
   }
 
+  // dynamic reprojection (arcs were already reprojected above)
+  if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
+    obj.dynamic_crs = displayCRS;
+    if (internal.layerHasPoints(layer)) {
+      obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+    } else if (internal.layerHasPaths(layer)) {
+      emptyArcs = findEmptyArcs(displayArcs);
+      if (emptyArcs.length > 0) {
+        // Don't try to draw paths containing coordinates that failed to project
+        obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
+      }
+    }
+  }
+
   obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
   return obj;
 }
+
 
 function getDisplayBounds(lyr, arcs) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
@@ -2046,16 +2185,20 @@ function MapNav(gui, ext, mouse) {
     zoomScaleMultiplier = k || 1;
   };
 
-  gui.buttons.addButton("#home-icon").on('click', function() {
-    gui.dispatchEvent('map_reset');
-  });
+  if (gui.options.homeControl) {
+    gui.buttons.addButton("#home-icon").on('click', function() {
+      if (disabled()) return;
+      gui.dispatchEvent('map_reset');
+    });
+  }
 
-  inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
-  outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
-
-  ext.on('change', function() {
-    inBtn.classed('disabled', ext.scale() >= ext.maxScale());
-  });
+  if (gui.options.zoomControl) {
+    inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
+    outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
+    ext.on('change', function() {
+      inBtn.classed('disabled', ext.scale() >= ext.maxScale());
+    });
+  }
 
   gui.on('map_reset', function() {
     ext.home();
@@ -2066,10 +2209,12 @@ function MapNav(gui, ext, mouse) {
   });
 
   mouse.on('dblclick', function(e) {
+    if (disabled()) return;
     zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
+    if (disabled()) return;
     shiftDrag = !!e.shiftKey;
     if (shiftDrag) {
       dragStartEvt = e;
@@ -2077,6 +2222,7 @@ function MapNav(gui, ext, mouse) {
   });
 
   mouse.on('drag', function(e) {
+    if (disabled()) return;
     if (shiftDrag) {
       zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
     } else {
@@ -2086,6 +2232,7 @@ function MapNav(gui, ext, mouse) {
 
   mouse.on('dragend', function(e) {
     var bounds;
+    if (disabled()) return;
     if (shiftDrag) {
       shiftDrag = false;
       bounds = new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y);
@@ -2099,14 +2246,21 @@ function MapNav(gui, ext, mouse) {
   wheel.on('mousewheel', function(e) {
     var k = 1 + (0.11 * e.multiplier * zoomScaleMultiplier),
         delta = e.direction > 0 ? k : 1 / k;
+    if (disabled()) return;
     ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
+  function disabled() {
+    return !!gui.options.disableNavigation;
+  }
+
   function zoomIn() {
+    if (disabled()) return;
     zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
   }
 
   function zoomOut() {
+    if (disabled()) return;
     zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
   }
 
@@ -2139,7 +2293,9 @@ function MapExtent(_position) {
       _frame;
 
   _position.on('resize', function(e) {
-    onChange({resize: true});
+    if (_contentBounds) {
+      onChange({resize: true});
+    }
   });
 
   this.reset = function() {
@@ -2184,6 +2340,7 @@ function MapExtent(_position) {
   this.width = _position.width;
   this.height = _position.height;
   this.position = _position.position;
+  this.recenter = recenter;
 
   // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
   this.scale = function() {
@@ -2913,7 +3070,7 @@ function CoordinatesDisplay(gui, ext, mouse) {
 
 function getShapeHitTest(displayLayer, ext) {
   var geoType = displayLayer.layer.geometry_type;
-
+  var test;
   if (geoType == 'point' && displayLayer.style.type == 'styled') {
     test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
   } else if (geoType == 'point') {
@@ -3172,9 +3329,8 @@ function getSvgHitTest(displayLayer) {
 
 function HitControl2(gui, ext, mouse) {
   var self = new EventDispatcher();
-  var hitData = noData(); // may include additional data from SVG symbol hit (e.g. hit node)
+  var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var active = false;
-  var pinned = false;
   var shapeTest;
   var svgTest;
   var targetLayer;
@@ -3183,7 +3339,7 @@ function HitControl2(gui, ext, mouse) {
   var priority = 2;
 
   self.setLayer = function(mapLayer) {
-    if (!mapLayer) {
+    if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
       shapeTest = null;
       svgTest = null;
       self.stop();
@@ -3194,7 +3350,7 @@ function HitControl2(gui, ext, mouse) {
     targetLayer = mapLayer;
     // deselect any  selection
     // TODO: maintain selection if layer & shapes have not changed
-    updateHitData(null, null);
+    updateHitData(null);
   };
 
   self.start = function() {
@@ -3203,12 +3359,12 @@ function HitControl2(gui, ext, mouse) {
 
   self.stop = function() {
     if (active) {
-      updateHitData(null, null); // no hit data, no event
+      updateHitData(null); // no hit data, no event
       active = false;
     }
   };
 
-  self.getHitId = function() {return hitData.id;};
+  self.getHitId = function() {return storedData.id;};
 
   // Get a reference to the active layer, so listeners to hit events can interact
   // with data and shapes
@@ -3228,20 +3384,25 @@ function HitControl2(gui, ext, mouse) {
   };
 
   self.switchSelection = function(diff) {
-    var i = hitData.ids.indexOf(hitData.id);
-    var n = hitData.ids.length;
+    var i = storedData.ids.indexOf(storedData.id);
+    var n = storedData.ids.length;
     if (i < 0 || n < 2) return;
     if (diff != 1 && diff != -1) {
       diff = 1;
     }
-    hitData.id = hitData.ids[(i + diff + n) % n];
+    storedData.id = storedData.ids[(i + diff + n) % n];
     triggerHitEvent('change');
   };
 
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
-    updateHitData(null, null);
+    updateHitData(null);
+    if (e.mode == 'off') {
+      self.stop();
+    } else {
+      self.start();
+    }
   });
 
   mouse.on('dblclick', handlePointerEvent, null, priority);
@@ -3250,90 +3411,87 @@ function HitControl2(gui, ext, mouse) {
   mouse.on('dragend', handlePointerEvent, null, priority);
 
   mouse.on('click', function(e) {
+    var hitData;
     if (!shapeTest || !active) return;
     e.stopPropagation();
 
     // TODO: move pinning to inspection control?
     if (gui.interaction.modeUsesClick(gui.interaction.getMode())) {
-      togglePin();
+      hitData = hitTest(e);
+      // TOGGLE pinned state under some conditions
+      if (!hitData.pinned && hitData.id > -1) {
+        hitData.pinned = true;
+      } else if (hitData.pinned && hitData.id == storedData.id) {
+        hitData.pinned = false;
+      }
+      updateHitData(hitData);
     }
 
     triggerHitEvent('click', e.data);
-    triggerHitEvent('change');
 
   }, null, priority);
 
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
-    if (!shapeTest || !active || pinned) return;
-    var isOver = isOverMap(e);
-    if (!isOver) {
+    if (storedData.pinned || !shapeTest || !active) return;
+    if (!isOverMap(e)) {
       // mouse is off of map viewport -- clear any current hit
-      updateHitData(null, e.data); // no hit data, have event data
-
+      updateHitData(null);
     } else if (e.hover) {
       // mouse is hovering directly over map area -- update hit detection
-      hitTest(e);
-
+      updateHitData(hitTest(e));
     } else {
       // mouse is over map viewport but not directly over map (e.g. hovering
       // over popup) -- don't update hit detection
     }
+
   }, null, priority);
 
-  function noData() {return {ids: [], id: -1};}
-
-  function togglePin() {
-    if (pinned) {
-      // TODO:
-      pinned = false;
-    } else if (hitData.id > -1) {
-      pinned = true;
-    } else {
-      pinned = false;
-    }
-  }
+  function noHitData() {return {ids: [], id: -1, pinned: false};}
 
   function hitTest(e) {
-    // Try SVG hit test first, fall through to shape-based hit test
     var p = ext.translatePixelCoords(e.x, e.y);
-    var data = svgTest(e); // null or a data object
     var shapeHitIds = shapeTest(p[0], p[1]);
-    if (shapeHitIds && data) {
-      // if both SVG hit and shape hit, use both
-      data.ids = utils.uniq(data.ids.concat(shapeHitIds));
+    var svgData = svgTest(e); // null or a data object
+    var data = noHitData();
+    if (svgData) { // mouse is over an SVG symbol
+      utils.extend(data, svgData);
+      if (shapeHitIds) {
+        // if both SVG hit and shape hit, merge hit ids
+        data.ids = utils.uniq(data.ids.concat(shapeHitIds));
+      }
     } else if (shapeHitIds) {
-      // if only shape hit, use shape hit ids
-      data = {ids: shapeHitIds};
+      data.ids = shapeHitIds;
     }
-    updateHitData(data, e.data);
+
+    // update selected id
+    if (data.id > -1) {
+      // svg hit takes precedence over any prior hit
+    } else if (storedData.id > -1 && data.ids.indexOf(storedData.id) > -1) {
+      data.id = storedData.id;
+    } else if (data.ids.length > 0) {
+      data.id = data.ids[0];
+    }
+
+    // update pinned property
+    if (storedData.pinned && data.id > -1) {
+      data.pinned = true;
+    }
+    return data;
   }
 
   // If hit ids have changed, update stored hit ids and fire 'hover' event
   // evt: (optional) mouse event
-  function updateHitData(newData, evtData) {
+  function updateHitData(newData) {
     if (!newData) {
-      newData = noData();
-    } else {
-      newData = utils.extend({}, newData); // make a copy
+      newData = noHitData();
     }
-    // if (sameIds(newData.ids, hitData.ids)) {
-    if (!testHitChange(hitData, newData)) {
+    if (!testHitChange(storedData, newData)) {
       return;
     }
-    // update selected id
-    if (hitData.id > -1 && newData.ids.indexOf(hitData.id) > -1) {
-      newData.id = hitData.id;
-    } else if (newData.ids.length > 0) {
-      newData.id = newData.ids[0];
-    } else {
-      newData.id = -1;
-    }
-    hitData = newData;
-    pinned = false;
-    gui.container.findChild('.map-layers').classed('hover', newData.ids.length > 0);
+    storedData = newData;
+    gui.container.findChild('.map-layers').classed('symbol-hit', newData.ids.length > 0);
     if (active) {
-      triggerHitEvent('hover', evtData || {});
       triggerHitEvent('change');
     }
   }
@@ -3364,24 +3522,18 @@ function HitControl2(gui, ext, mouse) {
     }
   }
 
-  function refreshHitData(d) {
-    if (!d || !d.container || d.id > -1 == false) {
-      return;
-    }
-  }
-
-  // d: event data (may be a pointer event object, an ordinary object or empty)
+  // d: event data (may be a pointer event object, an ordinary object or null)
   function triggerHitEvent(type, d) {
-    // var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
     // Merge stored hit data into the event data
-    var eventData = utils.extend({pinned: pinned}, d || {}, hitData);
+    var eventData = utils.extend({}, d || {}, storedData);
     self.dispatchEvent(type, eventData);
   }
 
+  // Test if two hit data objects are equivalent
   function testHitChange(a, b) {
     // check change in 'container', e.g. so moving from anchor hit to label hit
     //   is detected
-    if (sameIds(a.ids, b.ids) && a.container == b.container) {
+    if (sameIds(a.ids, b.ids) && a.container == b.container && a.pinned == b.pinned && a.id == b.id) {
       return false;
     }
     return true;
@@ -3594,8 +3746,6 @@ function InspectionControl2(gui, hit) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode == 'off') {
       turnOff();
-    } else {
-      turnOn();
     }
     // TODO: update popup if currently pinned
   });
@@ -3697,15 +3847,8 @@ function InspectionControl2(gui, hit) {
     return gui.interaction && gui.interaction.getMode() != 'off';
   }
 
-  function turnOn() {
-    hit.start();
-    // gui.dispatchEvent('inspector_on');
-  }
-
   function turnOff() {
-    hit.stop();
     inspect(-1); // clear the map
-    // gui.dispatchEvent('inspector_off');
   }
 
   function deletePinnedFeature() {
@@ -3907,7 +4050,10 @@ function SymbolDragging2(gui, ext, hit) {
     });
 
     hit.on('dragend', function(e) {
-      if (labelEditingEnabled() || locationEditingEnabled()) {
+      if (locationEditingEnabled()) {
+        onLocationDragEnd(e);
+        stopDragging();
+      } else if (labelEditingEnabled()) {
         stopDragging();
       }
     });
@@ -3921,6 +4067,7 @@ function SymbolDragging2(gui, ext, hit) {
     function onLocationDragStart(e) {
       if (e.id >= 0) {
         dragging = true;
+        triggerGlobalEvent('symbol_dragstart', e);
       }
     }
 
@@ -3933,6 +4080,11 @@ function SymbolDragging2(gui, ext, hit) {
       p[0] += diff[0];
       p[1] += diff[1];
       self.dispatchEvent('location_change'); // signal map to redraw
+      triggerGlobalEvent('symbol_drag', e);
+    }
+
+    function onLocationDragEnd(e) {
+      triggerGlobalEvent('symbol_dragend', e);
     }
 
     function onLabelClick(e) {
@@ -3942,6 +4094,13 @@ function SymbolDragging2(gui, ext, hit) {
         toggleTextAlign(textNode, rec);
         updateSymbol2(textNode, rec, e.id);
         // e.stopPropagation(); // prevent pin/unpin on popup
+      }
+    }
+
+    function triggerGlobalEvent(type, e) {
+      if (e.id >= 0) {
+        // fire event to signal external editor that symbol coords have changed
+        gui.dispatchEvent(type, {FID: e.id, layer_name: hit.getHitTarget().layer.name});
       }
     }
 
@@ -4120,8 +4279,9 @@ function SymbolDragging2(gui, ext, hit) {
 
 utils.inherit(MshpMap, EventDispatcher);
 
-function MshpMap(gui, opts) {
-  var el = gui.container.findChild('.map-layers').node(),
+function MshpMap(gui) {
+  var opts = gui.options,
+      el = gui.container.findChild('.map-layers').node(),
       position = new ElementPosition(el),
       model = gui.model,
       map = this,
@@ -4132,10 +4292,13 @@ function MshpMap(gui, opts) {
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav, _editor;
+      _inspector, _stack, _nav, _editor,
+      _dynamicCRS;
 
   _nav = new MapNav(gui, _ext, _mouse);
-  new CoordinatesDisplay(gui, _ext, _mouse);
+  if (gui.options.showMouseCoordinates) {
+    new CoordinatesDisplay(gui, _ext, _mouse);
+  }
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
@@ -4151,19 +4314,99 @@ function MshpMap(gui, opts) {
     _mouse.disable();
   });
 
+  model.on('update', onUpdate);
+
+  // Currently used to show dots at line intersections
+  this.setIntersectionLayer = function(lyr, dataset) {
+    if (lyr) {
+      _intersectionLyr = getMapLayer(lyr, dataset, getDisplayOptions());
+      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
+    } else {
+      _intersectionLyr = null;
+    }
+    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
+  };
+
+  this.setLayerVisibility = function(target, isVisible) {
+    var lyr = target.layer;
+    lyr.visibility = isVisible ? 'visible' : 'hidden';
+    // if (_inspector && isActiveLayer(lyr)) {
+    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
+    // }
+    if (isActiveLayer(lyr)) {
+      _hit.setLayer(isVisible ? _activeLyr : null);
+    }
+  };
+
+  this.getCenterLngLat = function() {
+    var bounds = _ext.getBounds();
+    var crs = this.getDisplayCRS();
+    // TODO: handle case where active layer is a frame layer
+    if (!bounds.hasBounds() || !crs) {
+      return null;
+    }
+    return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+  };
+
+  this.getDisplayCRS = function() {
+    var crs;
+    if (_activeLyr && _activeLyr.geographic) {
+      crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
+    }
+    return crs || null;
+  };
+
+  this.getExtent = function() {return _ext;};
+  this.isActiveLayer = isActiveLayer;
+  this.isVisibleLayer = isVisibleLayer;
+
+  // called by layer menu after layer visibility is updated
+  this.redraw = function() {
+    updateVisibleMapLayers();
+    drawLayers();
+  };
+
+  // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
+  // crs: a CRS object or string, or null to clear the current setting
+  this.setDisplayCRS = function(crs) {
+    // TODO: update bounds of frame layer, if there is a frame layer
+    var oldCRS = this.getDisplayCRS();
+    var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+    // TODO: handle case that old and new CRS are the same
+    _dynamicCRS = newCRS;
+    if (!_activeLyr) return; // stop here if no layers have been selected
+
+    // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
+    gui.model.getDatasets().forEach(function(dataset) {
+      delete dataset.displayArcs;
+    });
+
+    // Reproject all visible map layers
+    if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
+    if (_intersectionLyr) _intersectionLyr = projectDisplayLayer(_intersectionLyr, newCRS);
+    if (_overlayLyr) {
+      _overlayLyr = projectDisplayLayer(_overlayLyr, newCRS);
+    }
+    updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
+    updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
+
+    // Update map extent (also triggers redraw)
+    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
+  };
+
   // Refresh map display in response to data changes, layer selection, etc.
-  model.on('update', function(e) {
+  function onUpdate(e) {
     var prevLyr = _activeLyr || null;
     var fullBounds;
     var needReset;
 
     if (!prevLyr) {
-      initMap(); // init map extent, resize events, etc. on first call
+      initMap(); // first call
     }
 
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs the next time they are needed for rendering
-      delete e.dataset.filteredArcs;
+      delete e.dataset.displayArcs;
 
       // reset simplification after projection (thresholds have changed)
       // TODO: preserve simplification pct (need to record pct before change)
@@ -4176,12 +4419,12 @@ function MshpMap(gui, opts) {
       return false;
     }
 
-    if (e.flags.simplify_amount) { // only redraw (slider drag)
+    if (e.flags.simplify_amount || e.flags.redraw_only) { // only redraw (slider drag)
       drawLayers();
       return;
     }
 
-    _activeLyr = getMapLayer(e.layer, e.dataset);
+    _activeLyr = getMapLayer(e.layer, e.dataset, getDisplayOptions());
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
     // if (_inspector) _inspector.updateLayer(_activeLyr);
@@ -4209,48 +4452,32 @@ function MshpMap(gui, opts) {
     }
     drawLayers();
     map.dispatchEvent('updated');
-  });
+  }
 
-  // Currently used to show dots at line intersections
-  this.setIntersectionLayer = function(lyr, dataset) {
-    if (lyr) {
-      _intersectionLyr = getMapLayer(lyr, dataset);
-      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
-    } else {
-      _intersectionLyr = null;
-    }
-    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
-  };
 
-  this.setInteractivity = function(toOn) {
-
-  };
-
-  this.setLayerVisibility = function(target, isVisible) {
-    var lyr = target.layer;
-    lyr.visibility = isVisible ? 'visible' : 'hidden';
-    // if (_inspector && isActiveLayer(lyr)) {
-    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
-    // }
-    if (isActiveLayer(lyr)) {
-      _hit.setLayer(isVisible ? _activeLyr : null);
-    }
-  };
-
-  this.getExtent = function() {return _ext;};
-  this.isActiveLayer = isActiveLayer;
-  this.isVisibleLayer = isVisibleLayer;
-
-  // called by layer menu after layer visibility is updated
-  this.redraw = function() {
-    updateVisibleMapLayers();
-    drawLayers();
-  };
-
+  // Initialization just before displaying the map for the first time
   function initMap() {
     _ext.resize();
     _stack = new LayerStack(gui, el, _ext, _mouse);
-    gui.buttons.enable();
+    gui.buttons.show();
+
+    if (opts.inspectorControl) {
+      _inspector = new InspectionControl2(gui, _hit);
+      _inspector.on('data_change', function(e) {
+        // refresh the display if a style variable has been changed interactively
+        if (internal.isSupportedSvgProperty(e.field)) {
+          drawLayers();
+        }
+      });
+    }
+
+    if (true) { // TODO: add option to disable?
+      _editor = new SymbolDragging2(gui, _ext, _hit);
+      _editor.on('location_change', function(e) {
+        // TODO: optimize redrawing
+        drawLayers();
+      });
+    }
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -4260,30 +4487,21 @@ function MshpMap(gui, opts) {
       drawLayers(true);
     });
 
-    if (opts.inspector) {
-      _inspector = new InspectionControl2(gui, _hit);
-      _hit.on('change', function(e) {
-        // draw highlight effect for hover and select
-        _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-        _stack.drawOverlayLayer(_overlayLyr);
-      });
-      _inspector.on('data_change', function(e) {
-        // refresh the display if a style variable has been changed interactively
-        if (internal.isSupportedSvgProperty(e.field)) {
-          drawLayers();
-        }
-      });
-
-      _editor = new SymbolDragging2(gui, _ext, _hit);
-      _editor.on('location_change', function(e) {
-        // TODO: optimize redrawing
-        drawLayers();
-      });
-    }
+    _hit.on('change', function(e) {
+      // draw highlight effect for hover and select
+      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+      _stack.drawOverlayLayer(_overlayLyr);
+    });
 
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
+  }
+
+  function getDisplayOptions() {
+    return {
+      crs: _dynamicCRS
+    };
   }
 
   // Test if an update may have affected the visible shape of arcs
@@ -4391,7 +4609,7 @@ function MshpMap(gui, opts) {
       if (isActiveLayer(o.layer)) {
         layers.push(_activeLyr);
       } else if (!isTableView()) {
-        layers.push(getMapLayer(o.layer, o.dataset));
+        layers.push(getMapLayer(o.layer, o.dataset, getDisplayOptions()));
       }
     });
     _visibleLayers = layers;
@@ -4488,6 +4706,7 @@ function getMapLayerOverlay(obj, e) {
 }
 
 function filterLayerByIds(lyr, ids) {
+  var shapes;
   if (lyr.shapes) {
     shapes = ids.map(function(id) {
       return lyr.shapes[id];
@@ -4529,11 +4748,8 @@ GUI.getIntersectionPct = function(bb1, bb2) {
 
 
 
-function InteractionMode(gui, opts) {
-  var buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
-  var btn1 = buttons[0]; // [i] button
-  var btn2 = buttons[1]; // submenu button
-  var menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+function InteractionMode(gui) {
+  var buttons, btn1, btn2, menu;
 
   // all possible menu contents
   var menus = {
@@ -4555,9 +4771,37 @@ function InteractionMode(gui, opts) {
   var _active = false; // interaction on/off
   var _menuOpen = false;
 
-  this.getMode = function() {
-    return getInteractionMode();
-  };
+  // Only render edit mode button/menu if this option is present
+  if (gui.options.inspectorControl) {
+    buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
+    btn1 = buttons[0]; // [i] button
+    btn2 = buttons[1]; // submenu button
+    menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+
+    menu.on('click', function() {
+      closeMenu(0); // dismiss menu by clicking off an active link
+    });
+
+    btn1.on('click', function() {
+      gui.dispatchEvent('interaction_toggle');
+    });
+
+    btn2.on('click', function() {
+      _menuOpen = true;
+      updateMenu();
+    });
+
+    // triggered by a keyboard shortcut
+    gui.on('interaction_toggle', function() {
+      setActive(!_active);
+    });
+
+    updateVisibility();
+  }
+
+  this.getMode = getInteractionMode;
+
+  this.setActive = setActive;
 
   this.setMode = function(mode) {
     // TODO: check that this mode is valid for the current dataset
@@ -4574,29 +4818,12 @@ function InteractionMode(gui, opts) {
     return name == 'data' || name == 'info'; // click used to pin popup
   };
 
-  updateMenu();
-
-  btn1.on('click', function() {
-    gui.dispatchEvent('interaction_toggle');
-    updateVisibility();
-  });
-
-  btn2.on('click', function() {
-    _menuOpen = true;
-    updateVisibility();
-  });
-
-  gui.on('interaction_toggle', function() {
-    _active = !_active;
-    _menuOpen = false; // make sure menu does not stay open
-    updateVisibility();
-    onModeChange();
-  });
-
-  gui.model.on('select', function(e) {
-    // need to update mode if active layer doesn't support the current mode
-    updateMenu();
-
+  gui.model.on('update', function(e) {
+    // change mode if active layer doesn't support the current mode
+    updateCurrentMode();
+    if (_menuOpen) {
+      updateMenu();
+    }
   }, null, -1); // low priority?
 
   function getAvailableModes() {
@@ -4622,28 +4849,29 @@ function InteractionMode(gui, opts) {
     El('div').addClass('nav-menu-item').text('interactive editing:').appendTo(menu);
     modes.forEach(function(mode) {
       var link = El('div').addClass('nav-menu-item nav-menu-link').attr('data-name', mode).text(labels[mode]).appendTo(menu);
-      link.on('click', function() {
-        var delay = 0;
-        if (_editMode == mode) {
-          // selected link -> just close the menu
-        } else {
-          delay = 400;
+      link.on('click', function(e) {
+        if (_editMode != mode) {
+          setMode(mode);
+          closeMenu(500);
+          e.stopPropagation();
         }
-        setMode(mode);
-        closeMenu(delay);
       });
     });
   }
 
-
-  function updateMenu() {
+  // if current editing mode is not available, switch to another mode
+  function updateCurrentMode() {
     var modes = getAvailableModes();
-    renderMenu(modes);
-    updateModeDisplay();
-    updateVisibility();
-    // kludge: if current editing mode is not available, switch to another mode
     if (modes.indexOf(_editMode) == -1) {
       setMode(modes[0]);
+    }
+  }
+
+  function updateMenu() {
+    if (menu) {
+      renderMenu(getAvailableModes());
+      updateModeDisplay();
+      updateVisibility();
     }
   }
 
@@ -4661,9 +4889,18 @@ function InteractionMode(gui, opts) {
 
   function setMode(mode) {
     var changed = mode != _editMode;
-    _editMode = mode;
-    updateModeDisplay();
     if (changed) {
+      _editMode = mode;
+      updateMenu();
+      onModeChange();
+    }
+  }
+
+  function setActive(active) {
+    if (active != _active) {
+      _active = !!active;
+      _menuOpen = false; // make sure menu does not stay open when button toggles off
+      updateVisibility();
       onModeChange();
     }
   }
@@ -4673,6 +4910,7 @@ function InteractionMode(gui, opts) {
   }
 
   function updateVisibility() {
+    if (!menu) return;
     // menu
     if (_menuOpen && _active) {
       menu.show();
@@ -4706,6 +4944,9 @@ function InteractionMode(gui, opts) {
 function SidebarButtons(gui) {
   var root = gui.container.findChild('.mshp-main-map');
   var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
+  var _hidden = true;
+  gui.on('active', updateVisibility);
+  gui.on('inactive', updateVisibility);
 
   // @iconRef: selector for an (svg) button icon
   this.addButton = function(iconRef) {
@@ -4724,13 +4965,23 @@ function SidebarButtons(gui) {
     return [btn1, btn2];
   };
 
-  this.enable = function() {
-    if (GUI.isActiveInstance(gui)) {
-      buttons.show();
-    }
-    gui.on('active', buttons.show.bind(buttons));
-    gui.on('inactive', buttons.hide.bind(buttons));
+  this.show = function() {
+    _hidden = false;
+    updateVisibility();
   };
+
+  this.hide = function() {
+    _hidden = true;
+    updateVisibility();
+  };
+
+  function updateVisibility() {
+    if (GUI.isActiveInstance(gui) && !_hidden) {
+      buttons.show();
+    } else {
+      buttons.hide();
+    }
+  }
 
   function initButton(iconRef) {
     var icon = El('body').findChild(iconRef).node().cloneNode(true);
@@ -4753,16 +5004,21 @@ function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
   opts = utils.extend({
     // defaults
-    inspector: true,
+    homeControl: true,
+    zoomControl: true,
+    inspectorControl: true,
+    disableNavigation: false,
+    showMouseCoordinates: true,
     focus: true
   }, opts);
 
+  gui.options = opts;
   gui.container = El(container);
   gui.model = new Model();
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
-  gui.map = new MshpMap(gui, opts);
-  gui.interaction = new InteractionMode(gui, opts);
+  gui.map = new MshpMap(gui);
+  gui.interaction = new InteractionMode(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {
@@ -7060,6 +7316,9 @@ function Console(gui) {
           internal.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
+      } else if (/^projd/.test(cmd)) {
+        // set the display CRS (for testing)
+        setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
         runMapshaperCommands(cmd, function() {
