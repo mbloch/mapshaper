@@ -6,6 +6,7 @@ mapshaper-anchor-points
 mapshaper-inner-points
 mapshaper-polyline-to-point
 mapshaper-geom
+mapshaper-dms
 */
 
 api.createPointLayer = function(srcLyr, dataset, opts) {
@@ -214,6 +215,25 @@ internal.pointsFromPolygons = function(lyr, arcs, opts) {
   });
 };
 
+internal.coordinateFromValue = function(val) {
+  var tmp;
+  if (utils.isFiniteNumber(val)) {
+    return val;
+  }
+  // exclude empty string (not a valid coordinate, but would get coerced to 0)
+  if (utils.isString(val) && val !== '') {
+    tmp = +val;
+    if (utils.isFiniteNumber(tmp)) {
+      return tmp;
+    }
+    tmp = internal.parseDMS(val); // try to parse as DMS
+    if (utils.isFiniteNumber(tmp)) {
+      return tmp;
+    }
+  }
+  return NaN;
+};
+
 internal.pointsFromDataTable = function(data, opts) {
   if (!data) stop("Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
@@ -221,12 +241,11 @@ internal.pointsFromDataTable = function(data, opts) {
   }
 
   return data.getRecords().map(function(rec) {
-    var x = rec[opts.x],
-        y = rec[opts.y];
-    if (!utils.isFiniteNumber(x) || !utils.isFiniteNumber(y)) {
+    var x = internal.coordinateFromValue(rec[opts.x]),
+        y = internal.coordinateFromValue(rec[opts.y]);
+    if (isNaN(x) || isNaN(y)) {
       return null;
     }
     return [[x, y]];
   });
-
 };

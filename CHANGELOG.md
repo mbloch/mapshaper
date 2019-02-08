@@ -1,3 +1,7 @@
+v0.4.106
+* Automatic DMS parsing in -points x= y=.
+* Added a reference to the target record to -join where= expressions, named "target".
+
 v0.4.105
 * [gui] Added separate interface modes for inspecting attributes, editing attributes, dragging labels to change offset from anchor, and dragging point symbols to change coordinates.
 * [cli] Improved error message when trying to read unsupported file types.

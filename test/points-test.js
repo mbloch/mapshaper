@@ -72,4 +72,30 @@ describe('mapshaper-points.js', function () {
     })
   })
 
+  describe('coordinateFromValue()', function () {
+    var coordinateFromValue = api.internal.coordinateFromValue;
+    it('numbers are unchanged', function () {
+      assert.strictEqual(coordinateFromValue(0), 0);
+      assert.strictEqual(coordinateFromValue(0.1), 0.1);
+    });
+
+    it('DMS is parsed', function() {
+      // more tests in dms-test.js
+      assert.strictEqual(coordinateFromValue('90°30\'S'), -90.5);
+    })
+
+    it('numeric strings are parsed', function() {
+      assert.strictEqual(coordinateFromValue('-12.9'), -12.9);
+      assert.strictEqual(coordinateFromValue('+12.9'), 12.9);
+    })
+
+    it('non-numeric and non-finite values become NaN', function() {
+      assert(isNaN(coordinateFromValue('abc')));
+      assert(isNaN(coordinateFromValue(null)));
+      assert(isNaN(coordinateFromValue('')));
+      assert(isNaN(coordinateFromValue(Infinity)));
+      assert(isNaN(coordinateFromValue(undefined)));
+    })
+  })
+
 })
