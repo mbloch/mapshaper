@@ -915,7 +915,9 @@ internal.getOptionParser = function() {
     .option("fill", {})
     .option("length", {})
     .option("rotation", {})
-    .option("where", whereOpt);
+    .option("where", whereOpt)
+    .option("target", targetOpt);
+    // .option("name", nameOpt);
 
   parser.command("target")
     .describe("set active layer (or layers)")
