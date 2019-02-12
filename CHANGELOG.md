@@ -1,3 +1,6 @@
+v0.4.107
+* Preliminary work on new -symbols command.
+
 v0.4.106
 * Automatic DMS parsing in -points x= y=.
 * Added a reference to the target record to -join where= expressions, named "target".

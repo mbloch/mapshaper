@@ -2,6 +2,7 @@
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
+// (in which case a heuristic is used for distinguishing a string literal from an expression)
 SVG.stylePropertyTypes = {
   class: 'classname',
   dx: 'measure',
@@ -31,7 +32,6 @@ SVG.symbolPropertyTypes = utils.extend({
 
 }, SVG.stylePropertyTypes);
 
-// SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
 
 SVG.propertiesBySymbolType = {
