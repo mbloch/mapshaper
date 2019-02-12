@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.106';
+VERSION = '0.4.107';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1701,6 +1701,11 @@ internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
     }
   }
   return msg;
+};
+
+internal.requirePointLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'point')
+    stop(internal.layerTypeMessage(lyr, "Expected a point layer", msg));
 };
 
 internal.requirePolylineLayer = function(lyr, msg) {
@@ -6748,6 +6753,16 @@ internal.debugFlags = function(flags) {
 };
 
 
+
+
+
+internal.getLayerDataTable = function(lyr) {
+  var data = lyr.data;
+  if (!data) {
+    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
+  }
+  return data;
+};
 
 
 // Not a general-purpose deep copy function
@@ -13992,40 +14007,10 @@ internal.cloneProperties = function(obj) {
 
 var SVG = {};
 
-SVG.propertyTypes = {
-  class: 'classname',
-  opacity: 'number',
-  r: 'number',
-  dx: 'measure',
-  dy: 'measure',
-  fill: 'color',
-  stroke: 'color',
-  'line-height': 'measure',
-  'letter-spacing': 'measure',
-  'stroke-width': 'number',
-  'stroke-dasharray': 'dasharray'
-};
-
 SVG.symbolRenderers = {};
+SVG.symbolBuilders = {};
 SVG.furnitureRenderers = {};
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style,line-height,letter-spacing'.split(',');
-SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
-
-SVG.propertiesBySymbolType = {
-  polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),
-  polyline: utils.arrayToIndex(SVG.commonProperties),
-  point: utils.arrayToIndex(SVG.commonProperties.concat('fill', 'r')),
-  label: utils.arrayToIndex(SVG.commonProperties.concat(
-    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
-};
-
-SVG.findPropertiesBySymbolGeom = function(fields, type) {
-  var index = SVG.propertiesBySymbolType[type] || {};
-  return fields.filter(function(name) {
-    return name in index;
-  });
-};
 
 SVG.getTransform = function(xy, scale) {
   var str = 'translate(' + xy[0] + ' ' + xy[1] + ')';
@@ -15331,6 +15316,13 @@ SVG.symbolRenderers.line = function(d, x, y) {
   return [o];
 };
 
+SVG.symbolRenderers.polyline = function(d, x, y) {
+  var coords = d.coordinates || [];
+  var o = SVG.importMultiLineString(coords);
+  SVG.applyStyleAttributes(o, 'LineString', d);
+  return [o];
+};
+
 SVG.symbolRenderers.group = function(d, x, y) {
   return (d.parts || []).reduce(function(memo, o) {
     var sym = SVG.renderSymbol(o, x, y);
@@ -15376,42 +15368,100 @@ SVG.importSymbol = function(d, xy) {
 
 
 
-api.svgStyle = function(lyr, dataset, opts) {
-  var filter;
-  if (!lyr.data) {
-    internal.initDataTable(lyr);
-  }
-  if (opts.where) {
-    filter = internal.compileValueExpression(opts.where, lyr, dataset.arcs);
-  }
-  Object.keys(opts).forEach(function(optName) {
-    var svgName = optName.replace('_', '-'); // undo cli parser name conversion
-    var strVal, literalVal, func;
-    if (!internal.isSupportedSvgProperty(svgName)) return;
-    strVal = opts[optName].trim();
-    literalVal = internal.parseSvgValue(svgName, strVal, lyr.data.getFields());
-    if (literalVal === null) {
-      // if value was not parsed as a literal, assume it is a JS expression
-      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
-    }
-    lyr.data.getRecords().forEach(function(rec, i) {
-      if (filter && !filter(i)) {
-        // make sure field exists if record is excluded by filter
-        if (svgName in rec === false) rec[svgName] = undefined;
-      } else {
-        rec[svgName] = func ? func(i) : literalVal;
-      }
-    });
+// parsing hints for -style command cli options
+// null values indicate the lack of a function for parsing/identifying this property
+// (in which case a heuristic is used for distinguishing a string literal from an expression)
+SVG.stylePropertyTypes = {
+  class: 'classname',
+  dx: 'measure',
+  dy: 'measure',
+  fill: 'color',
+  'font-family': null,
+  'font-size': null,
+  'font-style': null,
+  'font-weight': null,
+  'label-text': null,  // not a CSS property
+  'letter-spacing': 'measure',
+  'line-height': 'measure',
+  opacity: 'number',
+  r: 'number',
+  stroke: 'color',
+  'stroke-dasharray': 'dasharray',
+  'stroke-width': 'number',
+  'text-anchor': null
+};
+
+// The -symbols command accepts some options that are not supported by -style
+// (different symbol types accept different combinations of properties...)
+SVG.symbolPropertyTypes = utils.extend({
+  type: null,
+  length: 'number', // e.g. arrow length
+  rotation: 'number'
+
+}, SVG.stylePropertyTypes);
+
+SVG.commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
+
+SVG.propertiesBySymbolType = {
+  polygon: utils.arrayToIndex(SVG.commonProperties.concat('fill')),
+  polyline: utils.arrayToIndex(SVG.commonProperties),
+  point: utils.arrayToIndex(SVG.commonProperties.concat('fill', 'r')),
+  label: utils.arrayToIndex(SVG.commonProperties.concat(
+    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
+};
+
+SVG.isSupportedSvgStyleProperty = function(name) {
+  return name in SVG.stylePropertyTypes;
+};
+
+SVG.isSupportedSvgSymbolProperty = function(name) {
+  return name in SVG.symbolPropertyTypes;
+};
+
+SVG.findPropertiesBySymbolGeom = function(fields, type) {
+  var index = SVG.propertiesBySymbolType[type] || {};
+  return fields.filter(function(name) {
+    return name in index;
   });
 };
 
-internal.isSupportedSvgProperty = function(name) {
-  return SVG.supportedProperties.indexOf(name) > -1 || name == 'label-text';
+// Returns a function that returns an object containing property values for a single record
+// opts: parsed command line options for the -symbols command
+//
+internal.getSymbolPropertyAccessor = function(lyr, opts) {
+  var literals = {};
+  var functions = {};
+  var properties = [];
+
+  Object.keys(opts).forEach(function(optName) {
+    var literalVal, strVal, dataType;
+    var svgName = optName.replace('_', '-');
+    if (!SVG.isSupportedSvgSymbolProperty(svgName)) {
+      return;
+    }
+    dataType = SVG.symbolPropertyTypes[svgName];
+    strVal = opts[optName].trim();
+    literalVal = internal.parseSvgLiteralValue(strVal, dataType, lyr.data.getFields());
+    if (literalVal === null) { // not parsed as a literal value, assuming JS expression
+      functions[svgName] = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
+    } else {
+      literals[svgName] = literalVal;
+    }
+    properties.push(svgName);
+  });
+
+  return function(id) {
+    var d = {}, name;
+    for (var i=0; i<properties.length; i++) {
+      name = properties[i];
+      d[name] = name in functions ? functions[name](id) : literals[name];
+    }
+    return d;
+  };
 };
 
 // returns parsed value or null if @strVal is not recognized as a valid literal value
-internal.parseSvgValue = function(name, strVal, fields) {
-  var type = SVG.propertyTypes[name];
+internal.parseSvgLiteralValue = function(strVal, type, fields) {
   var val;
   if (fields.indexOf(strVal) > -1) {
     val = null; // field names are valid expressions
@@ -15458,6 +15508,43 @@ internal.parseSvgMeasure = function(str) {
 internal.isSvgColor = function(str) {
   return /^[a-z]+$/i.test(str) ||
     /^#[0-9a-f]+$/i.test(str) || /^rgba?\([0-9,. ]+\)$/.test(str);
+};
+
+
+
+
+api.svgStyle = function(lyr, dataset, opts) {
+  var filter;
+  if (!lyr.data) {
+    internal.initDataTable(lyr);
+  }
+  if (opts.where) {
+    filter = internal.compileValueExpression(opts.where, lyr, dataset.arcs);
+  }
+  Object.keys(opts).forEach(function(optName) {
+    var svgName = optName.replace('_', '-'); // undo cli parser name conversion
+    var strVal, literalVal, func, dataType;
+    if (!SVG.isSupportedSvgStyleProperty(svgName)) {
+      return;
+    }
+    dataType = SVG.stylePropertyTypes[svgName];
+    strVal = opts[optName].trim();
+    literalVal = internal.parseSvgLiteralValue(strVal, dataType, lyr.data.getFields());
+    if (literalVal === null) {
+      // if value was not parsed as a literal, assume it is a JS expression
+      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
+    }
+    internal.getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
+      if (filter && !filter(i)) {
+        // make sure field exists if record is excluded by filter
+        if (svgName in rec === false) {
+          rec[svgName] = undefined;
+        }
+      } else {
+        rec[svgName] = func ? func(i) : literalVal;
+      }
+    });
+  });
 };
 
 
@@ -15724,8 +15811,20 @@ SVG.mapVertex = function(p) {
   return p[0] + ' ' + p[1];
 };
 
+SVG.importLineStringCoords = function(coords) {
+  return 'M ' + coords.map(SVG.mapVertex).join(' ');
+};
+
 SVG.importLineString = function(coords) {
-  var d = 'M ' + coords.map(SVG.mapVertex).join(' ');
+  var d = SVG.importLineStringCoords(coords);
+  return {
+    tag: 'path',
+    properties: {d: d}
+  };
+};
+
+SVG.importMultiLineString = function(coords) {
+  var d = coords.map(SVG.importLineStringCoords).join(' ');
   return {
     tag: 'path',
     properties: {d: d}
@@ -21673,6 +21772,86 @@ api.sortFeatures = function(lyr, arcs, opts) {
 
 
 
+SVG.rotateSymbolCoords = function(coords, rotation) {
+  var f;
+  if (!rotation) return;
+  // invert sign of rotation, because y-axis is flipped in SVG/HTML screen coords.
+  f = internal.getAffineTransform(-rotation, 1, [0, 0], [0, 0]);
+  // TODO: avoid re-instantiating function on every call
+  internal.forEachPoint(coords, function(p) {
+    var p2 = f(p[0], p[1]);
+    p[0] = p2[0];
+    p[1] = p2[1];
+  });
+};
+
+
+
+
+SVG.symbolBuilders.arrow = function(d) {
+  var len = 'length' in d ? d.length : 10;
+  var stroke = d.stroke || 'magenta';
+  var strokeWidth = 'stroke-width' in d ? d['stroke-width'] : 1;
+  var coords = SVG.getStrokeArrowCoords(len);
+  if (d.rotation) {
+    SVG.rotateSymbolCoords(coords, d.rotation);
+  }
+  return {
+    type: 'polyline',
+    coordinates: coords,
+    stroke: stroke,
+    'stroke-width': strokeWidth
+  };
+};
+
+SVG.getStrokeArrowCoords = function(len) {
+  var stalk = [[0, 0], [0, -len]];
+  return [stalk];
+};
+
+SVG.getFilledArrowCoords = function(d) {
+  // TODO
+};
+
+
+
+
+
+// TODO: refactor to remove duplication in mapshaper-svg-style.js
+api.symbols = function(lyr, opts) {
+  var f, filter;
+  // console.log("-symbols opts", opts)
+  internal.requirePointLayer(lyr);
+  f = internal.getSymbolPropertyAccessor(lyr, opts);
+  if (opts.where) {
+    filter = internal.compileValueExpression(opts.where, lyr, null);
+  }
+  internal.getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
+    if (filter && filter(i)) {
+      if ('svg-symbol' in rec === false) {
+        rec['svg-symbol'] = undefined;
+      }
+    } else {
+      rec['svg-symbol'] = internal.buildSymbol(f(i));
+    }
+  });
+};
+
+// Returns an svg-symbol data object for one symbol
+internal.buildSymbol = function(properties) {
+  var type = properties.type;
+  var f = SVG.symbolBuilders[type];
+  if (!type) {
+    stop('Missing required "type" parameter');
+  } else if (!f) {
+    stop('Unknown symbol type:', type);
+  }
+  return f(properties);
+};
+
+
+
+
 internal.target = function(catalog, opts) {
   var type = (opts.type || '').toLowerCase().replace('linestring', 'polyline');
   var pattern = opts.target || '*';
@@ -22006,6 +22185,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'style') {
       internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
+
+    } else if (name == 'symbols') {
+      internal.applyCommand(api.symbols, targetLayers, opts);
 
     } else if (name == 'subdivide') {
       outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
@@ -23666,6 +23848,20 @@ internal.getOptionParser = function() {
       describe: 'line spacing of multi-line labels (default is 1.1em)'
     })
    .option("target", targetOpt);
+
+  parser.command("symbols")
+    // .describe("generate a variety of SVG symbols")
+    .option("type", {
+      describe: "symbol type"
+    })
+    .option("stroke", {})
+    .option("stroke-width", {})
+    .option("fill", {})
+    .option("length", {})
+    .option("rotation", {})
+    .option("where", whereOpt)
+    .option("target", targetOpt);
+    // .option("name", nameOpt);
 
   parser.command("target")
     .describe("set active layer (or layers)")
