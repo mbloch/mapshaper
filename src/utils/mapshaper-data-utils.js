@@ -1,5 +1,15 @@
 /* @requires mapshaper-common */
 
+
+internal.getLayerDataTable = function(lyr) {
+  var data = lyr.data;
+  if (!data) {
+    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
+  }
+  return data;
+};
+
+
 // Not a general-purpose deep copy function
 internal.copyRecord = function(o) {
   var o2 = {}, key, val;

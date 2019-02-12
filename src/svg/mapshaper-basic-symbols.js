@@ -41,6 +41,13 @@ SVG.symbolRenderers.line = function(d, x, y) {
   return [o];
 };
 
+SVG.symbolRenderers.polyline = function(d, x, y) {
+  var coords = d.coordinates || [];
+  var o = SVG.importMultiLineString(coords);
+  SVG.applyStyleAttributes(o, 'LineString', d);
+  return [o];
+};
+
 SVG.symbolRenderers.group = function(d, x, y) {
   return (d.parts || []).reduce(function(memo, o) {
     var sym = SVG.renderSymbol(o, x, y);

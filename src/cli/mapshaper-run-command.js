@@ -46,6 +46,7 @@ mapshaper-split-on-grid
 mapshaper-subdivide
 mapshaper-sort
 mapshaper-svg-style
+mapshaper-symbols
 mapshaper-target
 mapshaper-uniq
 */
@@ -326,6 +327,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'style') {
       internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
+
+    } else if (name == 'symbols') {
+      internal.applyCommand(api.symbols, targetLayers, opts);
 
     } else if (name == 'subdivide') {
       outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);

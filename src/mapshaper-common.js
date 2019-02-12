@@ -242,6 +242,11 @@ internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
   return msg;
 };
 
+internal.requirePointLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'point')
+    stop(internal.layerTypeMessage(lyr, "Expected a point layer", msg));
+};
+
 internal.requirePolylineLayer = function(lyr, msg) {
   if (!lyr || lyr.geometry_type !== 'polyline')
     stop(internal.layerTypeMessage(lyr, "Expected a polyline layer", msg));

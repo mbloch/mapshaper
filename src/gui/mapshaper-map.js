@@ -191,7 +191,6 @@ function MshpMap(gui) {
     map.dispatchEvent('updated');
   }
 
-
   // Initialization just before displaying the map for the first time
   function initMap() {
     _ext.resize();
@@ -202,7 +201,7 @@ function MshpMap(gui) {
       _inspector = new InspectionControl2(gui, _hit);
       _inspector.on('data_change', function(e) {
         // refresh the display if a style variable has been changed interactively
-        if (internal.isSupportedSvgProperty(e.field)) {
+        if (internal.isSupportedSvgStyleProperty(e.field)) {
           drawLayers();
         }
       });

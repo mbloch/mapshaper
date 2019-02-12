@@ -905,6 +905,18 @@ internal.getOptionParser = function() {
     })
    .option("target", targetOpt);
 
+  parser.command("symbols")
+    // .describe("generate a variety of SVG symbols")
+    .option("type", {
+      describe: "symbol type"
+    })
+    .option("stroke", {})
+    .option("stroke-width", {})
+    .option("fill", {})
+    .option("length", {})
+    .option("rotation", {})
+    .option("where", whereOpt);
+
   parser.command("target")
     .describe("set active layer (or layers)")
     .option("target", {
