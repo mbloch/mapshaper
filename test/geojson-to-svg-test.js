@@ -78,8 +78,8 @@ describe('geojson-to-svg.js', function () {
         geometry: {type: 'Point', coordinates: [5, 5]}
       };
       var expected = [{
-        tag: 'rect',
-        properties: {x: 3, y: 3, width: 4, height: 4}
+        tag: 'polygon',
+        properties: {points: "7,7,3,7,2.9999999999999996,3,7,3"}
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
 
@@ -94,8 +94,8 @@ describe('geojson-to-svg.js', function () {
       var expected = [{
         tag: 'g',
         children: [{
-          tag: 'rect',
-          properties: {x: 3, y: 3, width: 4, height: 4}
+          tag: 'polygon',
+          properties: {points: "7,7,3,7,2.9999999999999996,3,7,3"}
         }, {
           tag: 'text',
           value: 'foo',
