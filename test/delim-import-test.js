@@ -358,11 +358,18 @@ describe('mapshaper-delim-import.js', function() {
       stringifyEqual(records, [{foo:"001", bar:1}])
     })
 
-    it('protect string-format numbers with type hints 2', function() {
+    it('protect string-format numbers with string-fields= option', function() {
       var records = [{foo:"001", bar:"001"}],
           opts = {string_fields: ['foo']};
       api.internal.adjustRecordTypes(records, opts);
       stringifyEqual(records, [{foo:"001", bar:1}])
+    })
+
+    it('string-fields=* matches all fields', function() {
+      var records = [{foo:"001", bar:"001"}],
+          opts = {string_fields: ['*']};
+      api.internal.adjustRecordTypes(records, opts);
+      stringifyEqual(records, [{foo:"001", bar:"001"}])
     })
 
     it('bugfix 1: handle numeric data (e.g. from dbf)', function() {

@@ -118,15 +118,16 @@ internal.getFieldTypeHints = function(opts) {
 //    currently assumes tabular data
 internal.adjustRecordTypes = function(records, opts) {
   var typeIndex = internal.getFieldTypeHints(opts),
+      singleType = typeIndex['*'], // support for setting all fields to a single type
       fields = Object.keys(records[0] || []),
       detectedNumFields = [],
       replacements = {};
   fields.forEach(function(key) {
     var typeHint = typeIndex[key];
     var values = null;
-    if (typeHint == 'number') {
+    if (typeHint == 'number' || singleType == 'number') {
       values = internal.convertDataField(key, records, utils.parseNumber);
-    } else if (typeHint == 'string') {
+    } else if (typeHint == 'string' || singleType == 'string') {
       values = internal.convertDataField(key, records, utils.parseString);
     } else {
       values = internal.tryNumericField(key, records);
