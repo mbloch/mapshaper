@@ -83,13 +83,18 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
     children: []
   };
 
+  // override default black fill for layers that might have open paths
+  if (lyr.geometry_type == 'polyline' || internal.layerHasSvgSymbols(lyr)) {
+    layerObj.properties.fill = 'none';
+  }
+
   // add default display properties to line layers
   // (these are overridden by feature-level styles set via -style)
   if (lyr.geometry_type == 'polyline') {
-    layerObj.properties.fill = 'none';
     layerObj.properties.stroke = 'black';
     layerObj.properties['stroke-width'] = 1;
   }
+
 
   // add default text properties to layers with labels
   if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr) || internal.layerHasFurniture(lyr)) {

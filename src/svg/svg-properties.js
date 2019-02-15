@@ -28,7 +28,9 @@ SVG.stylePropertyTypes = {
 SVG.symbolPropertyTypes = utils.extend({
   type: null,
   length: 'number', // e.g. arrow length
-  rotation: 'number'
+  rotation: 'number',
+  curve: 'number', // degrees of arc
+  effect: null // e.g. "fade"
 
 }, SVG.stylePropertyTypes);
 

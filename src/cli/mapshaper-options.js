@@ -915,6 +915,8 @@ internal.getOptionParser = function() {
     .option("fill", {})
     .option("length", {})
     .option("rotation", {})
+    .option("curve", {})
+    .option("effect", {})
     .option("where", whereOpt)
     .option("target", targetOpt);
     // .option("name", nameOpt);

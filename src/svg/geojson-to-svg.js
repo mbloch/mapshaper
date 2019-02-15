@@ -1,4 +1,4 @@
-/* @requires geojson-common, svg-common, mapshaper-svg-style, svg-stringify */
+/* @requires geojson-common, svg-common, mapshaper-svg-style, svg-stringify, svg-path-utils */
 
 SVG.importGeoJSONFeatures = function(features, opts) {
   opts = opts || {};
@@ -75,24 +75,17 @@ SVG.importMultiPath = function(coords, importer) {
   return o;
 };
 
-SVG.mapVertex = function(p) {
-  return p[0] + ' ' + p[1];
-};
-
-SVG.importLineStringCoords = function(coords) {
-  return 'M ' + coords.map(SVG.mapVertex).join(' ');
-};
-
 SVG.importLineString = function(coords) {
-  var d = SVG.importLineStringCoords(coords);
+  var d = SVG.stringifyLineStringCoords(coords);
   return {
     tag: 'path',
     properties: {d: d}
   };
 };
 
+
 SVG.importMultiLineString = function(coords) {
-  var d = coords.map(SVG.importLineStringCoords).join(' ');
+  var d = coords.map(SVG.stringifyLineStringCoords).join(' ');
   return {
     tag: 'path',
     properties: {d: d}
