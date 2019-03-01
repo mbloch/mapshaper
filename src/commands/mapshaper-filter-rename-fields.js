@@ -36,3 +36,11 @@ internal.getRecordMapper = function(map) {
     return dest;
   };
 };
+
+// internal.getRecordMapper = function(map) {
+//   var fields = Object.keys(map);
+//   return new Function("rec", "return {" + fields.map(function(name, i) {
+//     var key = JSON.stringify(name);
+//     return key + ": rec[" + key + "]";
+//   }).join(",") + "}");
+// };

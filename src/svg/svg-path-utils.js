@@ -30,10 +30,9 @@ SVG.stringifyBezierArc = function(coords) {
 };
 
 SVG.findArcCenter = function(p1, p2, degrees) {
-  var mx = (p1[0] + p2[0]) / 2,
-      my = (p1[1] + p2[1]) / 2,
+  var p3 = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2], // midpoint betw. p1, p2
       tan = 1 / Math.tan(degrees / 180 * Math.PI / 2),
-      cp = internal.getAffineTransform(90, tan, [0, 0], [mx, my])(p2[0], p2[1]);
+      cp = internal.getAffineTransform(90, tan, [0, 0], p3)(p2[0], p2[1]);
   return cp;
 };
 
