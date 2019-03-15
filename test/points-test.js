@@ -72,6 +72,72 @@ describe('mapshaper-points.js', function () {
     })
   })
 
+  describe('-points command with automatic x,y field detection', function () {
+    it('identifies lat lng fields', function (done) {
+      var csv = 'lat,lng\n10,10\n2,5';
+      var target = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [10, 10]
+        }, {
+          type: 'Point',
+          coordinates: [5, 2]
+        }]
+      };
+      api.applyCommands('-i data.csv -points -filter-fields -o data.json', {'data.csv': csv}, function(err, data) {
+        var output = JSON.parse(data['data.json']);
+        assert.deepEqual(output, target);
+        done();
+      });
+    });
+
+    it('identifies X Y fields', function (done) {
+      var csv = 'Y,X\n10,10\n2,5';
+      var target = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [10, 10]
+        }, {
+          type: 'Point',
+          coordinates: [5, 2]
+        }]
+      };
+      api.applyCommands('-i data.csv -points -filter-fields -o data.json', {'data.csv': csv}, function(err, data) {
+        var output = JSON.parse(data['data.json']);
+        assert.deepEqual(output, target);
+        done();
+      });
+    });
+
+
+    it('error if lat and/or lng not found', function (done) {
+      var csv = 'lat\n10\n2';
+      api.applyCommands('-i data.csv -points -o data.json', {'data.csv': csv}, function(err, data) {
+        assert(!!err);
+        assert(/Missing/.test(err.message));
+        done();
+      });
+    });
+
+  })
+
+  describe('findXField() and findYField()', function() {
+    it('findXField()', function() {
+      'LNG,LON,lon,lng,long,longitude,X,x'.split(',').forEach(function(name) {
+        assert.equal(api.internal.findXField([name]), name);
+      });
+    });
+
+    it('findYField()', function() {
+      'LATITUDE,latitude,lat,y,Y'.split(',').forEach(function(name) {
+        assert.equal(api.internal.findYField([name]), name);
+      });
+    });
+
+  });
+
   describe('coordinateFromValue()', function () {
     var coordinateFromValue = api.internal.coordinateFromValue;
     it('numbers are unchanged', function () {

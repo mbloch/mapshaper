@@ -94,6 +94,10 @@ internal.getTableInfo = function(lyr, i) {
 };
 
 internal.getAttributeInfo = function(data, i) {
+  return "Attribute data\n" + internal.formatAttributeTable(data, i);
+};
+
+internal.formatAttributeTable = function(data, i) {
   var featureId = i || 0;
   var featureLabel = i >= 0 ? 'Value' : 'First value';
   var fields = internal.applyFieldOrder(data.getFields(), 'ascending');
@@ -112,8 +116,7 @@ internal.getAttributeInfo = function(data, i) {
   var table = vals.map(function(val, i) {
     return '  ' + internal.formatTableItem(fields[i], val, col1Chars, maxIntegralChars);
   }).join('\n');
-  return "Attribute data\n  " +
-      utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
+  return '  ' + utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
 };
 
 internal.formatNumber = function(val) {

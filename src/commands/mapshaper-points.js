@@ -30,6 +30,8 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
   } else if (srcLyr.geometry_type == 'polyline') {
     destLyr.shapes = internal.pointsFromPolylines(srcLyr, arcs, opts);
+  } else if (!srcLyr.geometry_type) {
+    destLyr.shapes = internal.pointsFromDataTableAuto(srcLyr.data);
   } else {
     stop("Expected a polygon or polyline layer");
   }
@@ -232,6 +234,29 @@ internal.coordinateFromValue = function(val) {
     }
   }
   return NaN;
+};
+
+internal.findXField = function(fields) {
+  var rxp = /^(lng|long?|longitude|x)$/i;
+  return utils.find(fields, function(name) {
+    return rxp.test(name);
+  });
+};
+
+internal.findYField = function(fields) {
+  var rxp = /^(lat|latitude|y)$/i;
+  return utils.find(fields, function(name) {
+    return rxp.test(name);
+  });
+};
+
+internal.pointsFromDataTableAuto = function(data) {
+  var fields = data ? data.getFields() : [];
+  var opts = {
+    x: internal.findXField(fields),
+    y: internal.findYField(fields)
+  };
+  return internal.pointsFromDataTable(data, opts);
 };
 
 internal.pointsFromDataTable = function(data, opts) {

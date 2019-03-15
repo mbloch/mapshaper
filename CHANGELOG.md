@@ -1,3 +1,7 @@
+v0.4.108
+* Now you can import all CSV fields as string data using '-i string-fields=\*' option.
+* Now the -points command auto-detects commonly used names for x and y coordinates (e.g. longitude,latitude,lon,lng,lat,x,y) when converting tabular data to points. It is no longer necessary to add x= and y= parameters to the -points command.
+
 v0.4.107
 * Preliminary work on new -symbols command.
 
