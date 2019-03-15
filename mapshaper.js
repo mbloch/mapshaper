@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.107';
+VERSION = '0.4.108';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -15396,7 +15396,9 @@ SVG.stylePropertyTypes = {
 SVG.symbolPropertyTypes = utils.extend({
   type: null,
   length: 'number', // e.g. arrow length
-  rotation: 'number'
+  rotation: 'number',
+  curve: 'number', // degrees of arc
+  effect: null // e.g. "fade"
 
 }, SVG.stylePropertyTypes);
 
@@ -15732,6 +15734,64 @@ SVG.stringifyProperties = function(o) {
 
 
 
+SVG.stringifyVertex = function(p) {
+  return p[0] + ' ' + p[1]; // TODO: round coords by default?
+};
+
+SVG.stringifyCP = function(p) {
+  return p[2].toFixed(2) + ' ' + p[3].toFixed(2);
+};
+
+SVG.stringifyLineStringCoords = function(coords) {
+  var p1 = coords[0];
+  var d;
+  if (coords.length === 0) {
+    d = '';
+  } else if (coords.length == 2 && coords[0].length == 4 && coords[1].length == 4) {
+    // cubic bezier control point coordinates are appended to [x, y] vertex coordinates.
+    d = SVG.stringifyBezierArc(coords);
+  } else {
+    d = 'M ' + coords.map(SVG.stringifyVertex).join(' ');
+  }
+  return d;
+};
+
+SVG.stringifyBezierArc = function(coords) {
+  var p1 = coords[0],
+      p2 = coords[1];
+  return 'M ' + SVG.stringifyVertex(p1) + ' C ' + SVG.stringifyCP(p1) + ' ' +
+          SVG.stringifyCP(p2) + ' ' + SVG.stringifyVertex(p2);
+};
+
+SVG.findArcCenter = function(p1, p2, degrees) {
+  var p3 = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2], // midpoint betw. p1, p2
+      tan = 1 / Math.tan(degrees / 180 * Math.PI / 2),
+      cp = internal.getAffineTransform(90, tan, [0, 0], p3)(p2[0], p2[1]);
+  return cp;
+};
+
+SVG.addBezierArcControlPoints = function(p1, p2, degrees) {
+  // source: https://stackoverflow.com/questions/734076/how-to-best-approximate-a-geometrical-arc-with-a-bezier-curve
+  var cp = SVG.findArcCenter(p1, p2, degrees),
+      xc = cp[0],
+      yc = cp[1],
+      ax = p1[0] - xc,
+      ay = p1[1] - yc,
+      bx = p2[0] - xc,
+      by = p2[1] - yc,
+      q1 = ax * ax + ay * ay,
+      q2 = q1 + ax * bx + ay * by;
+      k2 = 4/3 * (Math.sqrt(2 * q1 * q2) - q2) / (ax * by - ay * bx);
+
+  p1.push(xc + ax - k2 * ay);
+  p1.push(yc + ay + k2 * ax);
+  p2.push(xc + bx + k2 * by);
+  p2.push(yc + by - k2 * bx);
+};
+
+
+
+
 SVG.importGeoJSONFeatures = function(features, opts) {
   opts = opts || {};
   return features.map(function(obj, i) {
@@ -15807,24 +15867,17 @@ SVG.importMultiPath = function(coords, importer) {
   return o;
 };
 
-SVG.mapVertex = function(p) {
-  return p[0] + ' ' + p[1];
-};
-
-SVG.importLineStringCoords = function(coords) {
-  return 'M ' + coords.map(SVG.mapVertex).join(' ');
-};
-
 SVG.importLineString = function(coords) {
-  var d = SVG.importLineStringCoords(coords);
+  var d = SVG.stringifyLineStringCoords(coords);
   return {
     tag: 'path',
     properties: {d: d}
   };
 };
 
+
 SVG.importMultiLineString = function(coords) {
-  var d = coords.map(SVG.importLineStringCoords).join(' ');
+  var d = coords.map(SVG.stringifyLineStringCoords).join(' ');
   return {
     tag: 'path',
     properties: {d: d}
@@ -16032,13 +16085,18 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
     children: []
   };
 
+  // override default black fill for layers that might have open paths
+  if (lyr.geometry_type == 'polyline' || internal.layerHasSvgSymbols(lyr)) {
+    layerObj.properties.fill = 'none';
+  }
+
   // add default display properties to line layers
   // (these are overridden by feature-level styles set via -style)
   if (lyr.geometry_type == 'polyline') {
-    layerObj.properties.fill = 'none';
     layerObj.properties.stroke = 'black';
     layerObj.properties['stroke-width'] = 1;
   }
+
 
   // add default text properties to layers with labels
   if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr) || internal.layerHasFurniture(lyr)) {
@@ -17095,15 +17153,16 @@ internal.getFieldTypeHints = function(opts) {
 //    currently assumes tabular data
 internal.adjustRecordTypes = function(records, opts) {
   var typeIndex = internal.getFieldTypeHints(opts),
+      singleType = typeIndex['*'], // support for setting all fields to a single type
       fields = Object.keys(records[0] || []),
       detectedNumFields = [],
       replacements = {};
   fields.forEach(function(key) {
     var typeHint = typeIndex[key];
     var values = null;
-    if (typeHint == 'number') {
+    if (typeHint == 'number' || singleType == 'number') {
       values = internal.convertDataField(key, records, utils.parseNumber);
-    } else if (typeHint == 'string') {
+    } else if (typeHint == 'string' || singleType == 'string') {
       values = internal.convertDataField(key, records, utils.parseString);
     } else {
       values = internal.tryNumericField(key, records);
@@ -17578,6 +17637,14 @@ internal.getRecordMapper = function(map) {
     return dest;
   };
 };
+
+// internal.getRecordMapper = function(map) {
+//   var fields = Object.keys(map);
+//   return new Function("rec", "return {" + fields.map(function(name, i) {
+//     var key = JSON.stringify(name);
+//     return key + ": rec[" + key + "]";
+//   }).join(",") + "}");
+// };
 
 
 
@@ -18241,6 +18308,10 @@ internal.getTableInfo = function(lyr, i) {
 };
 
 internal.getAttributeInfo = function(data, i) {
+  return "Attribute data\n" + internal.formatAttributeTable(data, i);
+};
+
+internal.formatAttributeTable = function(data, i) {
   var featureId = i || 0;
   var featureLabel = i >= 0 ? 'Value' : 'First value';
   var fields = internal.applyFieldOrder(data.getFields(), 'ascending');
@@ -18259,8 +18330,7 @@ internal.getAttributeInfo = function(data, i) {
   var table = vals.map(function(val, i) {
     return '  ' + internal.formatTableItem(fields[i], val, col1Chars, maxIntegralChars);
   }).join('\n');
-  return "Attribute data\n  " +
-      utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
+  return '  ' + utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
 };
 
 internal.formatNumber = function(val) {
@@ -19355,6 +19425,8 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
   } else if (srcLyr.geometry_type == 'polyline') {
     destLyr.shapes = internal.pointsFromPolylines(srcLyr, arcs, opts);
+  } else if (!srcLyr.geometry_type) {
+    destLyr.shapes = internal.pointsFromDataTableAuto(srcLyr.data);
   } else {
     stop("Expected a polygon or polyline layer");
   }
@@ -19557,6 +19629,29 @@ internal.coordinateFromValue = function(val) {
     }
   }
   return NaN;
+};
+
+internal.findXField = function(fields) {
+  var rxp = /^(lng|long?|longitude|x)$/i;
+  return utils.find(fields, function(name) {
+    return rxp.test(name);
+  });
+};
+
+internal.findYField = function(fields) {
+  var rxp = /^(lat|latitude|y)$/i;
+  return utils.find(fields, function(name) {
+    return rxp.test(name);
+  });
+};
+
+internal.pointsFromDataTableAuto = function(data) {
+  var fields = data ? data.getFields() : [];
+  var opts = {
+    x: internal.findXField(fields),
+    y: internal.findYField(fields)
+  };
+  return internal.pointsFromDataTable(data, opts);
 };
 
 internal.pointsFromDataTable = function(data, opts) {
@@ -21793,15 +21888,32 @@ SVG.symbolBuilders.arrow = function(d) {
   var stroke = d.stroke || 'magenta';
   var strokeWidth = 'stroke-width' in d ? d['stroke-width'] : 1;
   var coords = SVG.getStrokeArrowCoords(len);
-  if (d.rotation) {
-    SVG.rotateSymbolCoords(coords, d.rotation);
-  }
-  return {
+  var curve = d.curve || 0;
+  var obj = {
     type: 'polyline',
     coordinates: coords,
     stroke: stroke,
     'stroke-width': strokeWidth
   };
+
+  if (d.rotation) {
+    SVG.rotateSymbolCoords(coords, d.rotation);
+  }
+
+  if (curve && coords[0].length == 2) { // curve arrow stem
+    curve = SVG.adjustArrowCurve(coords[0], curve);
+    SVG.addBezierArcControlPoints(coords[0][0], coords[0][1], curve);
+  }
+
+  if (d.effect == "fade") {
+    // TODO
+  }
+  return obj;
+};
+
+SVG.adjustArrowCurve = function(stem, curve) {
+  var dx = stem[1][0] - stem[0][0];
+  return dx < 0 ? -curve : curve;
 };
 
 SVG.getStrokeArrowCoords = function(len) {
@@ -23859,6 +23971,8 @@ internal.getOptionParser = function() {
     .option("fill", {})
     .option("length", {})
     .option("rotation", {})
+    .option("curve", {})
+    .option("effect", {})
     .option("where", whereOpt)
     .option("target", targetOpt);
     // .option("name", nameOpt);
