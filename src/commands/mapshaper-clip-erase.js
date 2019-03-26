@@ -81,9 +81,6 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
   internal.requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
   return targetLayers.reduce(function(memo, targetLyr) {
-    if (opts.no_replace) {
-      memo.push(targetLyr);
-    }
     if (type == 'slice') {
       memo = memo.concat(internal.sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
     } else {

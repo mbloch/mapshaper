@@ -6,6 +6,31 @@ describe('mapshaper-clip-erase.js', function () {
 
   describe('Misc. clipping issues', function () {
 
+    describe('Bug fix: using -clip command with no-replace and name= options', function() {
+      it('should not duplicate input layer', function(done) {
+        // Tests a fix for a bug affecting the -clip command when using '+ name=' arguments
+        var poly = {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+        };
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[0.5, 0.5], [1.5, 1.5]]
+        };
+        api.applyCommands('-i poly.json points.json combine-files -target points -clip poly + name=clipped -o target=*',
+            {'poly.json': poly, 'points.json': input},
+            function(err, output) {
+              var clipped = JSON.parse(output['clipped.json']);
+              var points = JSON.parse(output['points.json']);
+              assert.deepEqual(points.geometries[0], input);
+              assert.deepEqual(clipped.geometries[0], {
+                type: 'Point', coordinates: [0.5, 0.5]
+              });
+              done();
+            });
+      });
+    })
+
     describe('inner2.json test', function () {
       it('polygon should not disappear after clipping', function (done) {
         // previously, inner2.json disappeared after clipping

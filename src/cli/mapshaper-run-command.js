@@ -360,6 +360,11 @@ api.runCommand = function(cmd, catalog, cb) {
     // integrate output layers into the target dataset
     if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       if (opts.no_replace) {
+        // make sure commands do not return input layers with 'no_replace' option
+        if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
+          error('Command returned invalid output');
+        }
+
         targetDataset.layers = targetDataset.layers.concat(outputLayers);
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
@@ -383,6 +388,12 @@ api.runCommand = function(cmd, catalog, cb) {
     T.stop('-');
     cb(err, err ? null : catalog);
   }
+};
+
+internal.outputLayersAreDifferent = function(output, input) {
+  return !utils.some(input, function(lyr) {
+    return output.indexOf(lyr) > -1;
+  });
 };
 
 // Apply a command to an array of target layers
