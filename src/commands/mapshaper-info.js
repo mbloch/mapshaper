@@ -11,7 +11,7 @@ internal.printInfo = function(layers, targetLayers) {
     var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
     var targStr = isTarget ? ' *' : '';
     str += '\n';
-    str += utils.lpad('', 25, '-') + '\n';
+    str += utils.lpad('', 25, '=') + '\n';
     str += 'Layer ' + (i + 1) + targStr + '\n';
     str += utils.lpad('', 25, '-') + '\n';
     str += internal.getLayerInfo(o.layer, o.dataset);
