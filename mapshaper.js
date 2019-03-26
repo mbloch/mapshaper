@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.108';
+VERSION = '0.4.109';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -10912,9 +10912,6 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
   internal.requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
   return targetLayers.reduce(function(memo, targetLyr) {
-    if (opts.no_replace) {
-      memo.push(targetLyr);
-    }
     if (type == 'slice') {
       memo = memo.concat(internal.sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
     } else {
@@ -18225,8 +18222,10 @@ internal.printInfo = function(layers, targetLayers) {
     var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
     var targStr = isTarget ? ' *' : '';
     str += '\n';
-    str += 'Layer ' + (i + 1) + targStr + '\n' + internal.getLayerInfo(o.layer, o.dataset);
-    str += '\n';
+    str += utils.lpad('', 25, '=') + '\n';
+    str += 'Layer ' + (i + 1) + targStr + '\n';
+    str += utils.lpad('', 25, '-') + '\n';
+    str += internal.getLayerInfo(o.layer, o.dataset);
   });
   message(str);
 };
@@ -18276,50 +18275,31 @@ internal.countRings = function(shapes, arcs) {
 
 internal.getLayerInfo = function(lyr, dataset) {
   var data = internal.getLayerData(lyr, dataset);
-  var str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
-  str += utils.format("Records: %,d\n",data.feature_count);
-  str += internal.getGeometryInfo(data);
-  str += internal.getTableInfo(lyr);
+  var str = "Name:     " + (lyr.name || "[unnamed]") + "\n";
+  str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
+  str += utils.format("Records:  %,d\n",data.feature_count);
+  if (data.null_shape_count > 0) {
+    str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
+  }
+  if (data.geometry_type && data.feature_count > data.null_shape_count) {
+    str += "Bounds:   " + data.bbox.join(',') + "\n";
+    str += "CRS:      " + data.proj4 + "\n";
+  }
+  str += internal.getAttributeTableInfo(lyr);
   return str;
 };
 
-internal.getGeometryInfo = function(data) {
-  var lines;
-  if (!data.geometry_type) {
-    lines = ["Geometry: [none]"];
-  } else {
-    lines = ["Geometry", "Type: " + data.geometry_type];
-    if (data.null_shape_count > 0) {
-      lines.push(utils.format("Null shapes: %'d", data.null_shape_count));
-    }
-    if (data.feature_count > data.null_shape_count) {
-      lines.push("Bounds: " + data.bbox.join(' '));
-      lines.push("Proj.4: " + data.proj4);
-    }
-  }
-  return lines.join('\n  ') + '\n';
-};
-
-internal.getTableInfo = function(lyr, i) {
+internal.getAttributeTableInfo = function(lyr, i) {
   if (!lyr.data || lyr.data.size() === 0 || lyr.data.getFields().length === 0) {
-    return "Attribute data: [none]";
+    return "Attribute data: [none]\n";
   }
-  return internal.getAttributeInfo(lyr.data, i);
-};
-
-internal.getAttributeInfo = function(data, i) {
-  return "Attribute data\n" + internal.formatAttributeTable(data, i);
+  return "\nAttribute data\n" + internal.formatAttributeTable(lyr.data, i);
 };
 
 internal.formatAttributeTable = function(data, i) {
-  var featureId = i || 0;
-  var featureLabel = i >= 0 ? 'Value' : 'First value';
   var fields = internal.applyFieldOrder(data.getFields(), 'ascending');
-  var col1Chars = fields.reduce(function(memo, name) {
-    return Math.max(memo, name.length);
-  }, 5) + 2;
   var vals = fields.map(function(fname) {
-    return data.getReadOnlyRecordAt(featureId)[fname];
+    return data.getReadOnlyRecordAt(i || 0)[fname];
   });
   var maxIntegralChars = vals.reduce(function(max, val) {
     if (utils.isNumber(val)) {
@@ -18327,14 +18307,36 @@ internal.formatAttributeTable = function(data, i) {
     }
     return max;
   }, 0);
-  var table = vals.map(function(val, i) {
-    return '  ' + internal.formatTableItem(fields[i], val, col1Chars, maxIntegralChars);
-  }).join('\n');
-  return '  ' + utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
+  var col1Arr = ['Field'].concat(fields);
+  var col2Arr = vals.reduce(function(memo, val) {
+    memo.push(internal.formatTableValue(val, maxIntegralChars));
+    return memo;
+  }, [i >= 0 ? 'Value' : 'First value']);
+  var col1Chars = internal.maxChars(col1Arr);
+  var col2Chars = internal.maxChars(col2Arr);
+  var sepLine = utils.rpad('', col1Chars + 2, '-') + '+' +
+      utils.rpad('', col2Chars + 2, '-') + '\n';
+  var table = sepLine;
+  col1Arr.forEach(function(col1, i) {
+    table += ' ' + utils.rpad(col1, col1Chars, ' ') + ' | ' +
+      col2Arr[i] + '\n';
+    if (i === 0) table += sepLine; // separator after first line
+  });
+  return table + sepLine;
+};
+
+internal.getTableBorder = function(col1, col2) {
+  return utils.rpad('', col1 + 2, '-') + '+' + utils.rpad('', col2 + 2, '-');
 };
 
 internal.formatNumber = function(val) {
   return val + '';
+};
+
+internal.maxChars = function(arr) {
+  return arr.reduce(function(memo, str) {
+    return str.length > memo ? str.length : memo;
+  }, 0);
 };
 
 internal.formatString = function(str) {
@@ -18356,17 +18358,17 @@ internal.countIntegralChars = function(val) {
   return utils.isNumber(val) ? (internal.formatNumber(val) + '.').indexOf('.') : 0;
 };
 
-internal.formatTableItem = function(name, val, col1Chars, integralChars) {
-  var str = utils.rpad(name, col1Chars, ' ');
+internal.formatTableValue = function(val, integralChars) {
+  var str;
   if (utils.isNumber(val)) {
-    str += utils.lpad("", integralChars - internal.countIntegralChars(val), ' ') +
+    str = utils.lpad("", integralChars - internal.countIntegralChars(val), ' ') +
       internal.formatNumber(val);
   } else if (utils.isString(val)) {
-    str += internal.formatString(val);
+    str = internal.formatString(val);
   } else if (utils.isObject(val)) { // if {} or [], display JSON
-    str += JSON.stringify(val);
+    str = JSON.stringify(val);
   } else {
-    str += String(val);
+    str = String(val);
   }
   return str;
 };
@@ -22330,6 +22332,11 @@ api.runCommand = function(cmd, catalog, cb) {
     // integrate output layers into the target dataset
     if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       if (opts.no_replace) {
+        // make sure commands do not return input layers with 'no_replace' option
+        if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
+          error('Command returned invalid output');
+        }
+
         targetDataset.layers = targetDataset.layers.concat(outputLayers);
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
@@ -22353,6 +22360,12 @@ api.runCommand = function(cmd, catalog, cb) {
     T.stop('-');
     cb(err, err ? null : catalog);
   }
+};
+
+internal.outputLayersAreDifferent = function(output, input) {
+  return !utils.some(input, function(lyr) {
+    return output.indexOf(lyr) > -1;
+  });
 };
 
 // Apply a command to an array of target layers
