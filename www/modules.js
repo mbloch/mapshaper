@@ -7185,6 +7185,8 @@ function fatal(msg, o) {
   if (!o) o = {};
   if (!o.code) o.code = ctx.last_errno || 0;
   if (!msg) msg = error_msg(o.code);
+  // reset error code, so processing can continue after this error is handled
+  ctx.last_errno = 0;
   throw new ProjError(msg, o);
 }
 
@@ -8707,9 +8709,12 @@ function get_dtodms(decimals, fixedWidth, pos, neg) {
 //    proj4(fromProjection[, toProjection, coordinates])
 
 function proj4js(arg1, arg2, arg3) {
-  var oneArg = typeof arg2 !== 'string';
   var p, fromStr, toStr, P1, P2, transform;
-  if (oneArg) {
+  if (typeof arg1 != 'string') {
+    // E.g. Webpack's require function tries to initialize mproj by calling
+    // the module function.
+    return api;
+  } else if (typeof arg2 != 'string') {
     fromStr = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'; // '+datum=WGS84 +proj=lonlat';
     toStr = arg1;
     p = arg2;
@@ -12817,9 +12822,9 @@ function pj_bertin1953(P) {
 
     /* Adjust pre-projection */
     if (lp.lam + lp.phi < -fu) {
-      d = (lp.lam - lp.phi + 1.6) * (lp.lam + lp.phi + fu) / 8.;
+      d = (lp.lam - lp.phi + 1.6) * (lp.lam + lp.phi + fu) / 8;
       lp.lam += d;
-      lp.phi -= 0.8 * d * sin(lp.phi + M_PI / 2.);
+      lp.phi -= 0.8 * d * sin(lp.phi + M_PI / 2);
     }
 
     /* Project with Hammer (1.68,2) */
@@ -13535,8 +13540,8 @@ function pj_eqearth(P) {
     var paramLat = Math.asin(M * Math.sin(lp.phi)),
         paramLatSq = paramLat * paramLat,
         paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
-    xy.x = lp.lam * Math.cos(paramLat)
-            / (M * (A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq)));
+    xy.x = lp.lam * Math.cos(paramLat) /
+            (M * (A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq)));
     xy.y = paramLat * (A1 + A2 * paramLatSq + paramLatPow6 * (A3 + A4 * paramLatSq));
   }
 
@@ -13558,8 +13563,8 @@ function pj_eqearth(P) {
     }
     paramLatSq = paramLat * paramLat;
     paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
-    lp.lam = M * xy.x * (A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq))
-            / Math.cos(paramLat);
+    lp.lam = M * xy.x * (A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq)) /
+            Math.cos(paramLat);
     lp.phi = Math.asin(Math.sin(paramLat) / M);
   }
 }
@@ -16542,6 +16547,63 @@ function pj_ortho(P) {
         lp.lam = (xy.y == 0 && (Q.mode == OBLIQ || Q.mode == EQUIT)) ?
           (xy.x == 0 ? 0 : xy.x < 0 ? -M_HALFPI : M_HALFPI) : atan2(xy.x, xy.y);
     }
+  }
+}
+
+
+pj_add(pj_patterson, 'patterson', 'Patterson Cylindrical', '\n\tCyl., Sph.');
+
+function pj_patterson(P) {
+  var K1 = 1.0148,
+    K2 = 0.23185,
+    K3 = -0.14499,
+    K4 = 0.02406,
+    C1 = K1,
+    C2 = (5.0 * K2),
+    C3 = (7.0 * K3),
+    C4 = (9.0 * K4),
+    EPS = 1e-11,
+    MAX_Y =  908571831.7;
+
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+
+  function s_fwd(lp, xy) {
+    var phi2 = lp.phi * lp.phi;
+    xy.x = lp.lam;
+    xy.y = lp.phi * (K1 + phi2 * phi2 * (K2 + phi2 * (K3 + K4 * phi2)));
+  }
+
+  function s_inv(xy, lp) {
+    var MAX_ITER = 100;
+    var yc, tol, y2, f, fder;
+    var i;
+
+    yc = xy.y;
+
+    /* make sure y is inside valid range */
+    if (xy.y > MAX_Y) {
+      xy.y = MAX_Y;
+    } else if (xy.y < -MAX_Y) {
+      xy.y = -MAX_Y;
+    }
+
+    for (i = MAX_ITER; i ; --i) { /* Newton-Raphson */
+      y2 = yc * yc;
+      f = (yc * (K1 + y2 * y2 * (K2 + y2 * (K3 + K4 * y2)))) - xy.y;
+      fder = C1 + y2 * y2 * (C2 + y2 * (C3 + C4 * y2));
+      yc -= tol = f / fder;
+      if (fabs(tol) < EPS) {
+        break;
+      }
+    }
+    // other projections don't error if non-convergent
+    // if (i === 0) error(PJD_ERR_NON_CONVERGENT);
+    lp.phi = yc;
+
+    /* longitude */
+    lp.lam = xy.x;
   }
 }
 

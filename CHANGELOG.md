@@ -1,6 +1,8 @@
+v0.4.110
+* Added +proj=patterson projection
+
 v0.4.109
 * Updated format of -info command output, for better legibility.
-* Use string-fields=* when loading CSV files (-i and -join commands) to import all fields as strings.
 * Fixed layer duplication bug when running -clip/-erase with the "+" option.
 
 v0.4.108
