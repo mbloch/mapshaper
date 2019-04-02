@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.110';
+VERSION = '0.4.111';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -8374,6 +8374,14 @@ internal.initFeatureProxy = function(lyr, arcs) {
         return shapeBounds().width();
       }
     });
+
+    if (lyr.geometry_type == 'polyline') {
+      addGetters(ctx, {
+        'length': function() {
+          return geom.getShapePerimeter(_ids, arcs);
+        }
+      });
+    }
 
     if (lyr.geometry_type == 'polygon') {
       addGetters(ctx, {
