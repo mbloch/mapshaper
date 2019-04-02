@@ -1,3 +1,6 @@
+v0.4.111
+* Added $.length accessor to -each expressions with polyline features
+
 v0.4.110
 * Added +proj=patterson projection
 

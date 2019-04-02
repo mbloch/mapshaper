@@ -199,6 +199,21 @@ describe('mapshaper-each-calc.js', function () {
       })
     });
 
+    describe('$.length for polygons', function() {
+      it ('polygon perimeter and polyline length are the same', function(done) {
+        // bit of a kludge to copy polygon perimeter to generated line features
+        var cmd = '-i test/test_data/two_states.json no-topology -each "perimeter = this.perimeter" ' +
+          '-lines each="perimeter = A.perimeter" -each "length = this.length" -o';
+        api.applyCommands(cmd, function(err, out) {
+          var features = JSON.parse(out['two_states.json']).features;
+          assert.equal(features[0].properties.perimeter, features[0].properties.length);
+          assert.equal(features[1].properties.perimeter, features[1].properties.length);
+          done();
+        });
+      });
+
+    });
+
     describe('Shape geometry', function() {
       //
       //  a -- b -- c

@@ -63,6 +63,14 @@ internal.initFeatureProxy = function(lyr, arcs) {
       }
     });
 
+    if (lyr.geometry_type == 'polyline') {
+      addGetters(ctx, {
+        'length': function() {
+          return geom.getShapePerimeter(_ids, arcs);
+        }
+      });
+    }
+
     if (lyr.geometry_type == 'polygon') {
       addGetters(ctx, {
         area: function() {
