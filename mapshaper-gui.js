@@ -4464,7 +4464,7 @@ function MshpMap(gui) {
       _inspector = new InspectionControl2(gui, _hit);
       _inspector.on('data_change', function(e) {
         // refresh the display if a style variable has been changed interactively
-        if (internal.isSupportedSvgStyleProperty(e.field)) {
+        if (internal.svg.isSupportedSvgStyleProperty(e.field)) {
           drawLayers();
         }
       });

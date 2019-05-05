@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.111';
+VERSION = '0.4.112';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1444,6 +1444,38 @@ utils.parsePercent = function(o) {
   return pct;
 };
 
+utils.formatVersionedName = function(name, i) {
+  var suffix = String(i);
+  if (/[0-9]$/.test(name)) {
+    suffix = '-' + suffix;
+  }
+  return name + suffix;
+};
+
+utils.uniqifyNames = function(names, formatter) {
+  var counts = utils.countValues(names),
+      format = formatter || utils.formatVersionedName,
+      blacklist = {};
+
+  Object.keys(counts).forEach(function(name) {
+    if (counts[name] > 1) blacklist[name] = true; // uniqify all instances of a name
+  });
+  return names.map(function(name) {
+    var i = 1, // first version id
+        candidate = name,
+        versionedName;
+    while (candidate in blacklist) {
+      versionedName = format(name, i);
+      if (!versionedName || versionedName == candidate) {
+        throw new Error("Naming error"); // catch buggy versioning function
+      }
+      candidate = versionedName;
+      i++;
+    }
+    blacklist[candidate] = true;
+    return candidate;
+  });
+};
 
 
 
@@ -4745,10 +4777,12 @@ function PathIndex(shapes, arcs) {
   };
 
   this.findPathsInsideShape = function(shape) {
-    var paths = [];
+    var paths = []; // list of enclosed paths
     shape.forEach(function(ids) {
       var enclosed = this.findEnclosedPaths(ids);
       if (enclosed) {
+        // any paths that are enclosed by an even number of rings are removed from list
+        // (given normal topology, such paths are inside holes)
         paths = xorArrays(paths, enclosed);
       }
     }, this);
@@ -4818,14 +4852,15 @@ function PathIndex(shapes, arcs) {
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
 
+  // concatenate arrays, removing elements that are in both
   function xorArrays(a, b) {
-    var xor = [];
-    a.forEach(function(el) {
-      if (b.indexOf(el) == -1) xor.push(el);
-    });
-    b.forEach(function(el) {
-      if (xor.indexOf(el) == -1) xor.push(el);
-    });
+    var xor = [], i;
+    for (i=0; i<a.length; i++) {
+      if (b.indexOf(a[i]) == -1) xor.push(a[i]);
+    }
+    for (i=0; i<b.length; i++) {
+      if (a.indexOf(b[i]) == -1) xor.push(b[i]);
+    }
     return xor;
   }
 }
@@ -10076,8 +10111,13 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   // clean each target polygon by dissolving its rings
   targetShapes = targetShapes.map(dissolvePolygon);
 
-  // merge rings of clip/erase polygons and dissolve them all
-  clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
+  // NOTE: commenting out dissolve of clipping shapes, because the dissolve function
+  //   does not tolerate overlapping shapes and some other topology errors.
+  //   Dissolving was an optimization intended to improve performance when using a
+  //   mosaic (e.g. counties, states) to clip or erase another layer. The user
+  //   can optimize this case by dissolving as a separate step.
+  // // merge rings of clip/erase polygons and dissolve them all
+  // clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
 
   // Open pathways in the clip/erase layer
   // Need to expose clip/erase routes in both directions by setting route
@@ -10096,12 +10136,15 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   // add clip/erase polygons that are fully contained in a target polygon
   // need to index only non-intersecting clip shapes
   // (Intersecting shapes have one or more arcs that have been scanned)
-  //
+
+  // first, find shapes that do not intersect the target layer
+  // (these could be inside or outside the target polygons)
   var undividedClipShapes = findUndividedClipShapes(clipShapes);
 
   internal.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
   index = new PathIndex(undividedClipShapes, arcs);
   targetShapes.forEach(function(shape, shapeId) {
+    // find clipping paths that are internal to this target polygon
     var paths = shape ? findInteriorPaths(shape, type, index) : null;
     if (paths) {
       clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
@@ -16080,7 +16123,59 @@ internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  return SVG.importGeoJSONFeatures(features, opts);
+  var children = SVG.importGeoJSONFeatures(features, opts);
+  var data;
+  if (opts.svg_data) {
+    data = internal.exportDataAttributesForSVG(lyr.data, opts.svg_data);
+    if (data.length != children.length) {
+      // error
+    }
+    children.forEach(function(obj, i) {
+      if (obj.properties) {
+        utils.extend(obj.properties, data[i]);
+      }
+    });
+  }
+  return children;
+};
+
+internal.exportDataAttributesForSVG = function(table, fields) {
+  var records = table.getRecords();
+  var names = internal.validDataAttributeNames(fields);
+  var dataNames = names.map(function(name) {return 'data-' + name;});
+  names.forEach(function(name, i) {
+    if (name != fields[i]) {
+      message(utils.format('Exporting %s field as %s', fields[i], dataNames[i]));
+    }
+  });
+  return records.map(function(rec) {
+    var obj = {};
+    for (var i=0; i<fields.length; i++) {
+      obj[dataNames[i]] = internal.validDataAttributeValue(rec[fields[i]]);
+    }
+    return obj;
+  });
+};
+
+internal.validDataAttributeValue = function(val) {
+  return String(val);
+};
+
+internal.validDataAttributeNames = function(names) {
+  return utils.uniqifyNames(names.map(internal.validDataAttributeName));
+};
+
+// There are restrictions on data-* attribute names
+// See: https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/data-*
+//
+internal.validDataAttributeName = function(name) {
+  // Mapshaper is a bit more restrictive than the xml spec
+  name = name.toLowerCase();
+  name = name.replace(/[^a-z0-9_-]/g, ''); // accept only these letters
+  if (/^([0-9-]|xml)/.test(name) || name === '') {
+    name = '_' + name;
+  }
+  return name;
 };
 
 internal.getEmptyLayerForSVG = function(lyr, opts) {
@@ -16454,7 +16549,7 @@ internal.assignUniqueLayerNames = function(layers) {
   var names = layers.map(function(lyr) {
     return lyr.name || "layer";
   });
-  var uniqueNames = internal.uniqifyNames(names);
+  var uniqueNames = utils.uniqifyNames(names);
   layers.forEach(function(lyr, i) {
     lyr.name = uniqueNames[i];
   });
@@ -16470,7 +16565,7 @@ internal.assignUniqueLayerNames2 = function(datasets) {
 
 internal.assignUniqueFileNames = function(output) {
   var names = output.map(function(o) {return o.filename;});
-  var uniqnames = internal.uniqifyNames(names, internal.formatVersionedFileName);
+  var uniqnames = utils.uniqifyNames(names, internal.formatVersionedFileName);
   output.forEach(function(o, i) {o.filename = uniqnames[i];});
 };
 
@@ -16490,53 +16585,20 @@ internal.exportDataTables = function(layers, opts) {
   return tables;
 };
 
-internal.formatVersionedName = function(name, i) {
-  var suffix = String(i);
-  if (/[0-9]$/.test(name)) {
-    suffix = '-' + suffix;
-  }
-  return name + suffix;
-};
-
 internal.formatVersionedFileName = function(filename, i) {
   var parts = filename.split('.');
   var ext, base;
   if (parts.length < 2) {
-    return internal.formatVersionedName(filename, i);
+    return utils.formatVersionedName(filename, i);
   }
   ext = parts.pop();
   base = parts.join('.');
-  return internal.formatVersionedName(base, i) + '.' + ext;
+  return utils.formatVersionedName(base, i) + '.' + ext;
 };
 
 internal.fixFileExtension = function(ext, fmt) {
   // TODO: use fmt to validate
   return ext.replace(/^\.+/, '');
-};
-
-internal.uniqifyNames = function(names, formatter) {
-  var counts = utils.countValues(names),
-      format = formatter || internal.formatVersionedName,
-      blacklist = {};
-
-  Object.keys(counts).forEach(function(name) {
-    if (counts[name] > 1) blacklist[name] = true; // uniqify all instances of a name
-  });
-  return names.map(function(name) {
-    var i = 1, // first version id
-        candidate = name,
-        versionedName;
-    while (candidate in blacklist) {
-      versionedName = format(name, i);
-      if (!versionedName || versionedName == candidate) {
-        throw new Error("Naming error"); // catch buggy versioning function
-      }
-      candidate = versionedName;
-      i++;
-    }
-    blacklist[candidate] = true;
-    return candidate;
-  });
 };
 
 
@@ -23350,6 +23412,10 @@ internal.getOptionParser = function() {
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
     })
+    // .option("svg-data", {
+    //   type: "strings",
+    //   describe: "(SVG) fields to export as data attributes"
+    // })
     .option("id-prefix", {
       describe: "(SVG) prefix for namespacing layer and feature ids"
     })
