@@ -119,10 +119,12 @@ function PathIndex(shapes, arcs) {
   };
 
   this.findPathsInsideShape = function(shape) {
-    var paths = [];
+    var paths = []; // list of enclosed paths
     shape.forEach(function(ids) {
       var enclosed = this.findEnclosedPaths(ids);
       if (enclosed) {
+        // any paths that are enclosed by an even number of rings are removed from list
+        // (given normal topology, such paths are inside holes)
         paths = xorArrays(paths, enclosed);
       }
     }, this);
@@ -192,14 +194,15 @@ function PathIndex(shapes, arcs) {
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
 
+  // concatenate arrays, removing elements that are in both
   function xorArrays(a, b) {
-    var xor = [];
-    a.forEach(function(el) {
-      if (b.indexOf(el) == -1) xor.push(el);
-    });
-    b.forEach(function(el) {
-      if (xor.indexOf(el) == -1) xor.push(el);
-    });
+    var xor = [], i;
+    for (i=0; i<a.length; i++) {
+      if (b.indexOf(a[i]) == -1) xor.push(a[i]);
+    }
+    for (i=0; i<b.length; i++) {
+      if (a.indexOf(b[i]) == -1) xor.push(b[i]);
+    }
     return xor;
   }
 }

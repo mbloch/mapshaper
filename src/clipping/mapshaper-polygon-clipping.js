@@ -20,8 +20,13 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   // clean each target polygon by dissolving its rings
   targetShapes = targetShapes.map(dissolvePolygon);
 
-  // merge rings of clip/erase polygons and dissolve them all
-  clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
+  // NOTE: commenting out dissolve of clipping shapes, because the dissolve function
+  //   does not tolerate overlapping shapes and some other topology errors.
+  //   Dissolving was an optimization intended to improve performance when using a
+  //   mosaic (e.g. counties, states) to clip or erase another layer. The user
+  //   can optimize this case by dissolving as a separate step.
+  // // merge rings of clip/erase polygons and dissolve them all
+  // clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
 
   // Open pathways in the clip/erase layer
   // Need to expose clip/erase routes in both directions by setting route
@@ -40,12 +45,15 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   // add clip/erase polygons that are fully contained in a target polygon
   // need to index only non-intersecting clip shapes
   // (Intersecting shapes have one or more arcs that have been scanned)
-  //
+
+  // first, find shapes that do not intersect the target layer
+  // (these could be inside or outside the target polygons)
   var undividedClipShapes = findUndividedClipShapes(clipShapes);
 
   internal.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
   index = new PathIndex(undividedClipShapes, arcs);
   targetShapes.forEach(function(shape, shapeId) {
+    // find clipping paths that are internal to this target polygon
     var paths = shape ? findInteriorPaths(shape, type, index) : null;
     if (paths) {
       clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
