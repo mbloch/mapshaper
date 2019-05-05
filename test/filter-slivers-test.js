@@ -67,7 +67,7 @@ describe('mapshaper-filter-slivers.js', function () {
         }
       };
 
-      assert.deepEqual(obj.target);
+      assert.deepEqual(obj, target);
       done();
     });
 

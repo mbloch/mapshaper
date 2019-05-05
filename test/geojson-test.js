@@ -355,7 +355,6 @@ describe('mapshaper-geojson.js', function () {
           assert.deepEqual(geom, expect)
           done();
         });
-        assert.equal()
       })
     })
 
