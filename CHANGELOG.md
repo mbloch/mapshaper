@@ -1,3 +1,6 @@
+v0.4.112
+* Fix for issue #337 (error when clipping or erasing polygon rings inside holes)
+
 v0.4.111
 * Added $.length accessor to -each expressions with polyline features
 
