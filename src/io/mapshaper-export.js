@@ -197,7 +197,7 @@ internal.assignUniqueLayerNames = function(layers) {
   var names = layers.map(function(lyr) {
     return lyr.name || "layer";
   });
-  var uniqueNames = internal.uniqifyNames(names);
+  var uniqueNames = utils.uniqifyNames(names);
   layers.forEach(function(lyr, i) {
     lyr.name = uniqueNames[i];
   });
@@ -213,7 +213,7 @@ internal.assignUniqueLayerNames2 = function(datasets) {
 
 internal.assignUniqueFileNames = function(output) {
   var names = output.map(function(o) {return o.filename;});
-  var uniqnames = internal.uniqifyNames(names, internal.formatVersionedFileName);
+  var uniqnames = utils.uniqifyNames(names, internal.formatVersionedFileName);
   output.forEach(function(o, i) {o.filename = uniqnames[i];});
 };
 
@@ -233,51 +233,18 @@ internal.exportDataTables = function(layers, opts) {
   return tables;
 };
 
-internal.formatVersionedName = function(name, i) {
-  var suffix = String(i);
-  if (/[0-9]$/.test(name)) {
-    suffix = '-' + suffix;
-  }
-  return name + suffix;
-};
-
 internal.formatVersionedFileName = function(filename, i) {
   var parts = filename.split('.');
   var ext, base;
   if (parts.length < 2) {
-    return internal.formatVersionedName(filename, i);
+    return utils.formatVersionedName(filename, i);
   }
   ext = parts.pop();
   base = parts.join('.');
-  return internal.formatVersionedName(base, i) + '.' + ext;
+  return utils.formatVersionedName(base, i) + '.' + ext;
 };
 
 internal.fixFileExtension = function(ext, fmt) {
   // TODO: use fmt to validate
   return ext.replace(/^\.+/, '');
-};
-
-internal.uniqifyNames = function(names, formatter) {
-  var counts = utils.countValues(names),
-      format = formatter || internal.formatVersionedName,
-      blacklist = {};
-
-  Object.keys(counts).forEach(function(name) {
-    if (counts[name] > 1) blacklist[name] = true; // uniqify all instances of a name
-  });
-  return names.map(function(name) {
-    var i = 1, // first version id
-        candidate = name,
-        versionedName;
-    while (candidate in blacklist) {
-      versionedName = format(name, i);
-      if (!versionedName || versionedName == candidate) {
-        throw new Error("Naming error"); // catch buggy versioning function
-      }
-      candidate = versionedName;
-      i++;
-    }
-    blacklist[candidate] = true;
-    return candidate;
-  });
 };

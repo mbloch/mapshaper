@@ -73,7 +73,59 @@ internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = internal.exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  return SVG.importGeoJSONFeatures(features, opts);
+  var children = SVG.importGeoJSONFeatures(features, opts);
+  var data;
+  if (opts.svg_data) {
+    data = internal.exportDataAttributesForSVG(lyr.data, opts.svg_data);
+    if (data.length != children.length) {
+      // error
+    }
+    children.forEach(function(obj, i) {
+      if (obj.properties) {
+        utils.extend(obj.properties, data[i]);
+      }
+    });
+  }
+  return children;
+};
+
+internal.exportDataAttributesForSVG = function(table, fields) {
+  var records = table.getRecords();
+  var names = internal.validDataAttributeNames(fields);
+  var dataNames = names.map(function(name) {return 'data-' + name;});
+  names.forEach(function(name, i) {
+    if (name != fields[i]) {
+      message(utils.format('Exporting %s field as %s', fields[i], dataNames[i]));
+    }
+  });
+  return records.map(function(rec) {
+    var obj = {};
+    for (var i=0; i<fields.length; i++) {
+      obj[dataNames[i]] = internal.validDataAttributeValue(rec[fields[i]]);
+    }
+    return obj;
+  });
+};
+
+internal.validDataAttributeValue = function(val) {
+  return String(val);
+};
+
+internal.validDataAttributeNames = function(names) {
+  return utils.uniqifyNames(names.map(internal.validDataAttributeName));
+};
+
+// There are restrictions on data-* attribute names
+// See: https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/data-*
+//
+internal.validDataAttributeName = function(name) {
+  // Mapshaper is a bit more restrictive than the xml spec
+  name = name.toLowerCase();
+  name = name.replace(/[^a-z0-9_-]/g, ''); // accept only these letters
+  if (/^([0-9-]|xml)/.test(name) || name === '') {
+    name = '_' + name;
+  }
+  return name;
 };
 
 internal.getEmptyLayerForSVG = function(lyr, opts) {

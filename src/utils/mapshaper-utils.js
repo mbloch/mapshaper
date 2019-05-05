@@ -81,3 +81,35 @@ utils.parsePercent = function(o) {
   return pct;
 };
 
+utils.formatVersionedName = function(name, i) {
+  var suffix = String(i);
+  if (/[0-9]$/.test(name)) {
+    suffix = '-' + suffix;
+  }
+  return name + suffix;
+};
+
+utils.uniqifyNames = function(names, formatter) {
+  var counts = utils.countValues(names),
+      format = formatter || utils.formatVersionedName,
+      blacklist = {};
+
+  Object.keys(counts).forEach(function(name) {
+    if (counts[name] > 1) blacklist[name] = true; // uniqify all instances of a name
+  });
+  return names.map(function(name) {
+    var i = 1, // first version id
+        candidate = name,
+        versionedName;
+    while (candidate in blacklist) {
+      versionedName = format(name, i);
+      if (!versionedName || versionedName == candidate) {
+        throw new Error("Naming error"); // catch buggy versioning function
+      }
+      candidate = versionedName;
+      i++;
+    }
+    blacklist[candidate] = true;
+    return candidate;
+  });
+};

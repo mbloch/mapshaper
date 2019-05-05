@@ -273,6 +273,10 @@ internal.getOptionParser = function() {
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
     })
+    // .option("svg-data", {
+    //   type: "strings",
+    //   describe: "(SVG) fields to export as data attributes"
+    // })
     .option("id-prefix", {
       describe: "(SVG) prefix for namespacing layer and feature ids"
     })

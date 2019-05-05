@@ -4,6 +4,28 @@ var api = require('../'),
 
 describe('mapshaper-svg.js', function () {
 
+  describe('validDataAttributeNames()', function() {
+    it('lowercase letters only', function() {
+      var names = 'State,FIPS'.split(',');
+      assert.deepEqual(api.internal.validDataAttributeNames(names), ['state', 'fips']);
+    });
+
+    it('use underscore as prefix for invalid first chars', function() {
+      var names = '0,xml'.split(',');
+      assert.deepEqual(api.internal.validDataAttributeNames(names), ['_0', '_xml']);
+    });
+
+    it('remove some characters', function() {
+      var names = 'a我,😊b, c '.split(',');
+      assert.deepEqual(api.internal.validDataAttributeNames(names), ['a','b','c']);
+    });
+
+    it('export unique names', function() {
+      var names = '_,_我,'.split(',');
+      assert.deepEqual(api.internal.validDataAttributeNames(names), ['_1', '_2', '_3']);
+    });
+  });
+
   describe('exportDatasetForSVG()', function () {
     it('export label properties', function () {
       var lyr = {
