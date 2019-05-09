@@ -1,3 +1,6 @@
+v0.4.113
+* Fix for issue #339 (no .prj output after projecting to +proj=stere)
+
 v0.4.112
 * Fix for issue #337 (error when clipping or erasing polygon rings inside holes)
 

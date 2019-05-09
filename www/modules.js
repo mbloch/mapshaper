@@ -9606,13 +9606,15 @@ function wkt_convert_stere_params(projcs) {
 }
 
 function wkt_make_stere_projection(P) {
-  return wkt_proj4_is_stere_polar(P) ? 'Polar_Stereographic' : 'Oblique_Stereographic';
+  // switching to stere -> Stereographic, to match ogr2ogr output
+  // return wkt_proj4_is_stere_polar(P) ? 'Polar_Stereographic' : 'Oblique_Stereographic';
+  return wkt_proj4_is_stere_polar(P) ? 'Polar_Stereographic' : 'Stereographic';
 }
 
 function wkt_make_stere_params(P) {
   return wkt_proj4_is_stere_polar(P) ?
     wkt_parameter_maker('lat_tsb,lat_0c')(P) : // lat_ts -> latitude_of_origin, lat_0 -> null
-    wkt_parameter_maker('lat_0b');      // lat_0 -> latitude_of_origin
+    wkt_parameter_maker('lat_0b')(P);      // lat_0 -> latitude_of_origin
 }
 
 function wkt_proj4_is_stere_polar(P) {

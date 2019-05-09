@@ -96,7 +96,7 @@ internal.crsToPrj = function(P) {
   try {
     wkt = require('mproj').internal.wkt_from_proj4(P);
   } catch(e) {
-
+    // console.log(e)
   }
   return wkt;
 };

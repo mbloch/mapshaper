@@ -1,7 +1,7 @@
 var api = require('..'),
     assert = require('assert');
 
-describe('Issue #304 (incorrect polygon erasure)', function () {
+describe('Issue #337 (incorrect polygon erasure)', function () {
 
     //
     //  a ----------------- b
