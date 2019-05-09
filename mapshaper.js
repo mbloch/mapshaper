@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.112';
+VERSION = '0.4.113';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -5890,7 +5890,7 @@ internal.crsToPrj = function(P) {
   try {
     wkt = require('mproj').internal.wkt_from_proj4(P);
   } catch(e) {
-
+    // console.log(e)
   }
   return wkt;
 };
