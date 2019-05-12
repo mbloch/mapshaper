@@ -1,3 +1,7 @@
+v0.4.114
+* Fix: using -join with the "unjoined" and "unmatched" flags no longer adds debugging layers to the next command's default target layer(s).
+* Added layer names to tab completion in the web UI console.
+
 v0.4.113
 * Fix for issue #339 (no .prj output after projecting to +proj=stere)
 
