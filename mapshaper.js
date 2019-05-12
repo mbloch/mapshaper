@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.113';
+VERSION = '0.4.114';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -24590,7 +24590,6 @@ function Catalog() {
 
   this.getDefaultTargets = function() {
     if (defaultTargets.length === 0 && !this.isEmpty()) {
-      // defaultTargets = [{dataset: datasets[0], layers: datasets[0].layers.slice(0, 1)}];
       defaultTargets = [{dataset: datasets[0], layers: datasets[0].layers.slice(0, 1)}];
     }
     return defaultTargets;
@@ -24601,7 +24600,11 @@ function Catalog() {
       datasets.push(dataset);
     }
     defaultTargets = [{
-      layers: layers,
+      // Copy layers array, in case layers is a reference to dataset.layers.
+      // This prevents layers that are added to the dataset inside a command from
+      //  being added to the next command's target, e.g. debugging layers added
+      //  by '-join unmatched unjoined'.
+      layers: layers.concat(),
       dataset: dataset
     }];
   };

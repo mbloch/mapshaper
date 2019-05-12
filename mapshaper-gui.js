@@ -7198,28 +7198,40 @@ function Console(gui) {
     }
   }
 
-  // tab-completion for field names
   function tabComplete() {
     var line = readCommandLine(),
         match = /\w+$/.exec(line),
         stub = match ? match[0] : '',
-        lyr = model.getActiveLayer().layer,
         names, name;
-    if (stub && lyr.data) {
-      names = findCompletions(stub, lyr.data.getFields());
-      if (names.length > 0) {
-        name = utils.getCommonFileBase(names);
-        if (name.length > stub.length) {
-          toCommandLine(line.substring(0, match.index) + name);
-        }
+    if (!stub) return;
+    names = getCompletionWords();
+    names = names.filter(function(name) {
+      return name.indexOf(stub) === 0;
+    });
+    if (names.length > 0) {
+      name = utils.getCommonFileBase(names);
+      if (name.length > stub.length) {
+        toCommandLine(line.substring(0, match.index) + name);
       }
     }
   }
 
-  function findCompletions(str, fields) {
-    return fields.filter(function(name) {
-      return name.indexOf(str) === 0;
-    });
+  // get active layer field names and other layer names
+  function getCompletionWords() {
+    var lyr = model.getActiveLayer().layer;
+    var fieldNames = lyr.data ? lyr.data.getFields() : [];
+    var lyrNames = findOtherLayerNames(lyr);
+    return fieldNames.concat(lyrNames).concat(fieldNames);
+  }
+
+  function findOtherLayerNames(lyr) {
+    return model.getLayers().reduce(function(memo, o) {
+      var name = o.layer.name;
+      if (name && name != lyr.name) {
+        memo.push(name);
+      }
+      return memo;
+    }, []);
   }
 
   function readCommandLine() {
