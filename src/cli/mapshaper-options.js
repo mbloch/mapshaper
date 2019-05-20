@@ -351,8 +351,8 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("dissolve2")
-    .describe("merge adjacent polygons (repairs overlaps and gaps)")
+  parser.command("dissolve2_v1")
+    // .describe("merge adjacent polygons (repairs overlaps and gaps)")
     .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
     .option("calc", {
@@ -367,12 +367,12 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   // for testing replacement for dissolve2
-  parser.command("dissolve3")
-    // .describe("merge adjacent polygons (repairs overlaps and gaps)")
+  parser.command("dissolve2")
+    .describe("merge adjacent polygons (repairs overlaps and gaps)")
     .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
-    .option("mosaic", {type: "flag"})
-    .option("tiles", {type: "flag"})
+    .option("mosaic", {type: "flag"}) // debugging option
+    .option("tiles", {type: "flag"}) // debugging option
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })

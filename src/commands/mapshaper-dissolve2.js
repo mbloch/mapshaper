@@ -1,7 +1,10 @@
-/* @requires mapshaper-polygon-dissolve2 */
+/* @requires
+mapshaper-polygon-dissolve2
+mapshaper-mosaic-index
+*/
 
 
-// Newest version, with gap and overlap repair
+// Removes small gaps and all overlaps
 api.dissolve2 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
   T.start();

@@ -2,7 +2,7 @@ var api = require('../'),
     assert = require('assert'),
     ArcCollection = api.internal.ArcCollection;
 
-describe('mapshaper-gaps.js', function () {
+describe('mapshaper-undershoots.js', function () {
 
   describe('getDirectedArcPresenceTest()', function () {
     it('test 1', function () {

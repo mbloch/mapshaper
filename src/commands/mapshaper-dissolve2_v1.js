@@ -1,17 +1,13 @@
-/* @requires
-mapshaper-polygon-dissolve2
-mapshaper-polygon-dissolve3
-mapshaper-mosaic-index
-*/
+/* @requires mapshaper-polygon-dissolve2_v1 */
 
 
 // Newest version, with gap and overlap repair
-api.dissolve3 = function(layers, dataset, opts) {
+api.dissolve2_v1 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
   T.start();
   var nodes = internal.addIntersectionCuts(dataset, opts);
   T.stop('Add cuts');
   return layers.map(function(lyr) {
-    return internal.dissolvePolygonLayer3(lyr, dataset, opts);
+    return internal.dissolvePolygonLayer2_v1(lyr, dataset, opts);
   });
 };

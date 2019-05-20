@@ -1,4 +1,4 @@
-/* @requires mapshaper-dissolve2, mapshaper-polygon-mosaic, mapshaper-gaps */
+/* @requires mapshaper-path-division, mapshaper-polygon-mosaic, mapshaper-undershoots */
 
 api.polygons = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolylineLayer);
@@ -15,7 +15,7 @@ api.polygons = function(layers, dataset, opts) {
 };
 
 internal.createPolygonLayer = function(lyr, dataset, opts) {
-  var nodes = internal.closeGaps(lyr, dataset, opts);
+  var nodes = internal.closeUndershoots(lyr, dataset, opts);
   var data = internal.buildPolygonMosaic(nodes);
   return {
     geometry_type: 'polygon',

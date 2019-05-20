@@ -52,7 +52,7 @@ function findSegmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
   return p;
 }
 
-// Used by mapshaper-gaps.js
+// Used by mapshaper-undershoots.js
 // TODO: make more robust, make sure result is compatible with segmentIntersection()
 // (rounding errors currently must be handled downstream)
 function findClosestPointOnSeg(px, py, ax, ay, bx, by) {

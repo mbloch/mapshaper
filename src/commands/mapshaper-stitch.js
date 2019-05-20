@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-dissolve2
+mapshaper-polygon-dissolver
 mapshaper-shape-utils
 mapshaper-path-division
 */

@@ -6,7 +6,7 @@ mapshaper-segment-geom
 mapshaper-units
 */
 
-internal.closeGaps = function(lyr, dataset, opts) {
+internal.closeUndershoots = function(lyr, dataset, opts) {
   var maxGapLen = opts.gap_tolerance ? internal.convertIntervalParam(opts.gap_tolerance, internal.getDatasetCRS(dataset)) : 0;
   var arcs = dataset.arcs;
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, arcs);

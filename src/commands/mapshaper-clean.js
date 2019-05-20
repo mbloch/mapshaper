@@ -1,4 +1,4 @@
-/* @requires mapshaper-polygon-dissolve2, mapshaper-arc-dissolve, mapshaper-filter */
+/* @requires mapshaper-polygon-dissolve2_v1, mapshaper-arc-dissolve, mapshaper-filter */
 
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
@@ -7,7 +7,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   nodes = internal.addIntersectionCuts(dataset, opts);
   layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon') {
-      lyr.shapes = internal.dissolvePolygons2(lyr.shapes, dataset, opts);
+      lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
     }
     if (!opts.allow_empty) {
       api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});

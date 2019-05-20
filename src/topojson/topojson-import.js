@@ -42,6 +42,8 @@ internal.importTopoJSON = function(topology, opts) {
 
   layers.forEach(function(lyr) {
     if (internal.layerHasPaths(lyr)) {
+      // Cleaning here may be unnecessary
+      // (internal.cleanPathsAfterImport() is called in mapshaper-import.js)
       internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
     if (lyr.geometry_type == 'point' && topology.transform) {
