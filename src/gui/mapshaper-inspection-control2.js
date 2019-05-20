@@ -93,7 +93,8 @@ function InspectionControl2(gui, hit) {
   function showInspector(id, ids, pinned) {
     var target = hit.getHitTarget();
     var editable = pinned && gui.interaction.getMode() == 'data';
-    if (target && target.layer.data) {
+    // if (target && target.layer.data) {
+    if (target && target.layer) { // show popup even if layer has no attribute data
       _popup.show(id, ids, target.layer.data, pinned, editable);
     }
   }

@@ -16,6 +16,7 @@ function Popup(gui, onNext, onPrev) {
   nextLink.on('click', onNext);
   prevLink.on('click', onPrev);
 
+  // table can be null (if layer has no attribute data) or a DataTable
   self.show = function(id, ids, table, pinned, editable) {
     var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
     var maxHeight = parent.node().clientHeight - 36;
