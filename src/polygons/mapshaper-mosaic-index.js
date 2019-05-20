@@ -116,7 +116,8 @@ function PolygonTiler(mosaic, arcTileIndex, nodes) {
     currHoles = [];
     currShapeId = shapeId;
     // divide shape into rings and holes (splits self-intersecting rings)
-    // question: does a figure-eight path turn into two rings or a ring and a hole?
+    // TODO: rewrite divide() -- it is a performance bottleneck and can convert
+    //   space-filling areas into ccw holes
     divide(shp, cw, ccw);
     if (ccw.length > 0) {
       ccw.forEach(procShapeHole);

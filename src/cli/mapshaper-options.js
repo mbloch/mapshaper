@@ -355,6 +355,7 @@ internal.getOptionParser = function() {
     // .describe("merge adjacent polygons (repairs overlaps and gaps)")
     .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
+    .option("arcs", {type: "flag"}) // debugging option
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
     })
@@ -372,6 +373,7 @@ internal.getOptionParser = function() {
     .option("field", {}) // old arg handled by dissolve function
     .option("fields", dissolveFieldsOpt)
     .option("mosaic", {type: "flag"}) // debugging option
+    .option("arcs", {type: "flag"}) // debugging option
     .option("tiles", {type: "flag"}) // debugging option
     .option("calc", {
       describe: "use a JS expression to aggregate data values"

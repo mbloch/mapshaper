@@ -3,7 +3,6 @@ mapshaper-polygon-dissolve2
 mapshaper-mosaic-index
 */
 
-
 // Removes small gaps and all overlaps
 api.dissolve2 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);

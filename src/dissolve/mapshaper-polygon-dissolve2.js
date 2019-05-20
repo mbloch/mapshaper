@@ -21,9 +21,27 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   if (opts.mosaic) {
     return internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
   }
+  if (opts.arcs) {
+    return internal.getArcLayer(mosaicIndex.nodes.arcs, lyr.name);
+  }
   mosaicIndex.removeGaps();
   var shapes2 = internal.dissolvePolygonGroups2(groups, mosaicIndex, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
+};
+
+internal.getArcLayer = function(arcs, name) {
+  var records = [];
+  var lyr = {
+    geometry_type: 'polyline',
+    shapes: [],
+    name: name
+  };
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    lyr.shapes.push([[i]]);
+    records.push({arc_id: i});
+  }
+  lyr.data = new DataTable(records);
+  return lyr;
 };
 
 internal.composeMosaicLayer = function(lyr, shapes2) {
