@@ -14,7 +14,7 @@ api.inspect = function(lyr, arcs, opts) {
 internal.getFeatureInfo = function(id, lyr, arcs) {
     var msg = "Feature " + id + '\n';
     msg += internal.getShapeInfo(id, lyr, arcs);
-    msg += internal.getTableInfo(lyr, id);
+    msg += internal.getAttributeTableInfo(lyr, id);
     return msg;
 };
 

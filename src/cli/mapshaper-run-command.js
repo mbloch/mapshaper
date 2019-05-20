@@ -7,6 +7,7 @@ mapshaper-colorizer
 mapshaper-data-fill
 mapshaper-dissolve
 mapshaper-dissolve2
+mapshaper-dissolve3
 mapshaper-drop
 mapshaper-export
 mapshaper-each
@@ -151,6 +152,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
+
+    } else if (name == 'dissolve3') {
+      outputLayers = api.dissolve3(targetLayers, targetDataset, opts);
 
     } else if (name == 'drop') {
       api.drop2(catalog, targets, opts);

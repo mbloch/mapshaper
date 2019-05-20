@@ -1,4 +1,4 @@
-/* @requires mapshaper-polygon-dissolve3, mapshaper-arc-dissolve, mapshaper-filter */
+/* @requires mapshaper-polygon-dissolve2, mapshaper-arc-dissolve, mapshaper-filter */
 
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;

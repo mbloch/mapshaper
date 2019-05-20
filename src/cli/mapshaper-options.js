@@ -366,6 +366,24 @@ internal.getOptionParser = function() {
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
+  // for testing replacement for dissolve2
+  parser.command("dissolve3")
+    // .describe("merge adjacent polygons (repairs overlaps and gaps)")
+    .option("field", {}) // old arg handled by dissolve function
+    .option("fields", dissolveFieldsOpt)
+    .option("mosaic", {type: "flag"})
+    .option("tiles", {type: "flag"})
+    .option("calc", {
+      describe: "use a JS expression to aggregate data values"
+    })
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
+    .option("min-gap-area", minGapAreaOpt)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("no-snap", noSnapOpt)
+    .option("target", targetOpt);
+
   parser.command("drop")
     .describe("delete layer(s) or elements within the target layer(s)")
     .flag('no_arg') // prevent trying to pass a list of layer names as default option

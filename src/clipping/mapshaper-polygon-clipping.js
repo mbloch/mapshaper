@@ -1,6 +1,6 @@
 /* @requires
 mapshaper-pathfinder
-mapshaper-polygon-dissolve2
+mapshaper-polygon-dissolver
 mapshaper-path-index
 */
 
