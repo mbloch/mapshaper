@@ -3569,6 +3569,7 @@ function Popup(gui, onNext, onPrev) {
   nextLink.on('click', onNext);
   prevLink.on('click', onPrev);
 
+  // table can be null (if layer has no attribute data) or a DataTable
   self.show = function(id, ids, table, pinned, editable) {
     var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
     var maxHeight = parent.node().clientHeight - 36;
@@ -3827,7 +3828,8 @@ function InspectionControl2(gui, hit) {
   function showInspector(id, ids, pinned) {
     var target = hit.getHitTarget();
     var editable = pinned && gui.interaction.getMode() == 'data';
-    if (target && target.layer.data) {
+    // if (target && target.layer.data) {
+    if (target && target.layer) { // show popup even if layer has no attribute data
       _popup.show(id, ids, target.layer.data, pinned, editable);
     }
   }
