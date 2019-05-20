@@ -1,3 +1,6 @@
+v0.4.115
+* Improved -dissolve2 to handle polygons that overlap each other in complex ways.
+
 v0.4.114
 * Fix: using -join with the "unjoined" and "unmatched" flags no longer adds debugging layers to the next command's default target layer(s).
 * Added layer names to tab completion in the web UI console.
