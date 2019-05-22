@@ -1,3 +1,6 @@
+v0.4.116
+* Bug fixes
+
 v0.4.115
 * Improved -dissolve2 to handle polygons that overlap each other in complex ways.
 
