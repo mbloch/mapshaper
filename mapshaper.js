@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.115';
+VERSION = '0.4.116';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -4728,13 +4728,15 @@ function PathIndex(shapes, arcs) {
     var bounds = arcs.getSimpleShapeBounds(ring);
     var p = getTestPoint(ring);
     var smallest;
-    findPointHitCandidates(p).forEach(function(cand) {
+    var cands = findPointHitCandidates(p);
+    cands.forEach(function(cand) {
       if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
-          !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
-          !(smallest && smallest.bounds.area() < cand.bounds.area()) &&
-          testPointInRing(p, cand)) {
-        smallest = cand;
-      }
+        !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
+        !(smallest && smallest.bounds.area() < cand.bounds.area())) {
+            if (testPointInRing(p, cand)) {
+              smallest = cand;
+            }
+          }
     });
 
     return smallest ? smallest.id : -1;
@@ -6807,6 +6809,11 @@ internal.copyRecord = function(o) {
   for (key in o) {
     if (o.hasOwnProperty(key)) {
       val = o[key];
+      if (val == o) {
+        // avoid infinite recursion if val is a circular reference, by copying all properties except key
+        val = utils.extend({}, val);
+        delete val[key];
+      }
       o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
     }
   }
@@ -8562,11 +8569,11 @@ internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
   var A = getProxyFactory(lyr, arcs);
   var B = getProxyFactory(lyr, arcs);
   var vars = internal.getAssignedVars(exp);
-  var functionBody = "with(env){with(record){return " + exp + "}}";
+  var functionBody = "with($$env){with($$record){return " + exp + "}}";
   var func;
 
   try {
-    func = new Function("record,env", functionBody);
+    func = new Function("$$record,$$env", functionBody);
   } catch(e) {
     console.error(e);
     stop(e.name, "in expression [" + exp + "]");
@@ -8676,11 +8683,12 @@ internal.getAssignmentObjects = function(exp) {
 };
 
 internal.compileExpressionToFunction = function(exp, opts) {
-  var functionBody = "with(env){with(record){ " + (opts.returns ? 'return ' : '') +
+  // $$ added to avoid duplication with data field variables (an error condition)
+  var functionBody = "with($$env){with($$record){ " + (opts.returns ? 'return ' : '') +
         exp + "}}";
   var func;
   try {
-    func = new Function("record,env",  functionBody);
+    func = new Function("$$record,$$env",  functionBody);
   } catch(e) {
     stop(e.name, "in expression [" + exp + "]");
   }
@@ -8689,7 +8697,7 @@ internal.compileExpressionToFunction = function(exp, opts) {
 
 internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
   var getFeatureById = internal.initFeatureProxy(lyr, arcs);
-  var ctx = internal.getExpressionContext(lyr, opts.context);
+  var ctx = internal.getExpressionContext(lyr, opts.context, opts);
   var func = internal.compileExpressionToFunction(exp, opts);
   return function(rec, i) {
     var val;
@@ -8715,13 +8723,15 @@ internal.nullifyUnsetProperties = function(vars, obj) {
   }
 };
 
-internal.getExpressionContext = function(lyr, mixins) {
+internal.getExpressionContext = function(lyr, mixins, opts) {
   var env = internal.getBaseContext();
   var ctx = {};
-  utils.extend(env, internal.expressionUtils); // mix in utils
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  opts = opts || {};
+  utils.extend(env, internal.expressionUtils); // mix in round(), sprintf()
   if (lyr.data) {
     // default to null values when a data field is missing
-    internal.nullifyUnsetProperties(lyr.data.getFields(), env);
+    internal.nullifyUnsetProperties(fields, env);
   }
   if (mixins) {
     Object.keys(mixins).forEach(function(key) {
@@ -8742,7 +8752,14 @@ internal.getExpressionContext = function(lyr, mixins) {
   return Object.keys(env).reduce(function(memo, key) {
     if (key in memo) {
       // property has already been set (probably by a mixin, above): skip
-      message('Warning: "' + key + '" has multiple definitions');
+      // "quiet" option used in calc= expressions
+      if (!opts.quiet) {
+        if (typeof memo[key] == 'function' && fields.indexOf(key) > -1) {
+          message('Warning: ' + key + '() function is hiding a data field with the same name');
+        } else {
+          message('Warning: "' + key + '" has multiple definitions');
+        }
+      }
     } else {
       Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
     }
@@ -8973,9 +8990,9 @@ internal.compileCalcExpression = function(lyr, arcs, exp) {
   }
 
   calc1 = internal.compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
-      no_assign: true});
+      no_assign: true, quiet: true});
   calc2 = internal.compileFeatureExpression(exp, {data: lyr.data}, null,
-      {returns: true, context: ctx2});
+      {returns: true, context: ctx2, quiet: true});
 
   // @destRec: optional destination record for assignments
   return function(ids, destRec) {
