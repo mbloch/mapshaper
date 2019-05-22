@@ -74,9 +74,9 @@ internal.compileCalcExpression = function(lyr, arcs, exp) {
   }
 
   calc1 = internal.compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
-      no_assign: true});
+      no_assign: true, quiet: true});
   calc2 = internal.compileFeatureExpression(exp, {data: lyr.data}, null,
-      {returns: true, context: ctx2});
+      {returns: true, context: ctx2, quiet: true});
 
   // @destRec: optional destination record for assignments
   return function(ids, destRec) {

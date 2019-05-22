@@ -17,6 +17,11 @@ internal.copyRecord = function(o) {
   for (key in o) {
     if (o.hasOwnProperty(key)) {
       val = o[key];
+      if (val == o) {
+        // avoid infinite recursion if val is a circular reference, by copying all properties except key
+        val = utils.extend({}, val);
+        delete val[key];
+      }
       o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
     }
   }
