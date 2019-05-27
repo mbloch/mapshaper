@@ -107,7 +107,8 @@ SVG.stringify = function(obj) {
 };
 
 SVG.stringEscape = (function() {
-  // See http://commons.oreilly.com/wiki/index.php/SVG_Essentials/The_XML_You_Need_for_SVG
+  // Replace some chars with XML "predefined entities" to avoid parsing errors
+  // https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references#Predefined_entities_in_XML
   var rxp = /[&<>"']/g,
       map = {
         '&': '&amp;',
