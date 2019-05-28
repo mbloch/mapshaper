@@ -1,3 +1,6 @@
+v0.4.117
+* Added -o svg-data= option for exporting data fields as SVG data-* attributes.
+
 v0.4.116
 * Bug fixes
 

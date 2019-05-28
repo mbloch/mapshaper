@@ -16,7 +16,8 @@ describe('svg-data (mapshaper-svg.js)', function () {
         properties: {
           id: 'r5w',
           value: 32,
-          name: 'Sullivan'
+          name: 'Sullivan',
+          CODE: 32 // skipped
         }
       };
       var cmd = "-i point.json -o svg-data=* format=svg";
