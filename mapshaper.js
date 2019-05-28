@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.116';
+VERSION = '0.4.117';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -16398,7 +16398,8 @@ SVG.stringify = function(obj) {
 };
 
 SVG.stringEscape = (function() {
-  // See http://commons.oreilly.com/wiki/index.php/SVG_Essentials/The_XML_You_Need_for_SVG
+  // Replace some chars with XML "predefined entities" to avoid parsing errors
+  // https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references#Predefined_entities_in_XML
   var rxp = /[&<>"']/g,
       map = {
         '&': '&amp;',
@@ -16773,58 +16774,74 @@ internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var children = SVG.importGeoJSONFeatures(features, opts);
   var data;
-  if (opts.svg_data) {
-    data = internal.exportDataAttributesForSVG(lyr.data, opts.svg_data);
-    if (data.length != children.length) {
-      // error
-    }
-    children.forEach(function(obj, i) {
-      if (obj.properties) {
-        utils.extend(obj.properties, data[i]);
-      }
-    });
+  if (opts.svg_data && lyr.data) {
+    internal.addDataAttributesToSVG(children, lyr.data, opts.svg_data);
   }
   return children;
 };
 
-internal.exportDataAttributesForSVG = function(table, fields) {
+internal.addDataAttributesToSVG = function(children, table, fieldsArg) {
+  var allFields = table.getFields();
+  var dataFields = fieldsArg.indexOf('*') > -1 ? allFields.concat() : fieldsArg;
+  var missingFields = utils.difference(dataFields, allFields);
+  if (missingFields.length > 0) {
+    stop("Missing data field(s):", missingFields.join(', '));
+  }
   var records = table.getRecords();
-  var names = internal.validDataAttributeNames(fields);
-  var dataNames = names.map(function(name) {return 'data-' + name;});
-  names.forEach(function(name, i) {
-    if (name != fields[i]) {
-      message(utils.format('Exporting %s field as %s', fields[i], dataNames[i]));
-    }
+  var data = internal.exportDataAttributesForSVG(records, dataFields);
+  if (children.length != data.length) {
+    error("Mismatch between number of SVG symbols and data attributes");
+  }
+  children.forEach(function(child, i) {
+    utils.extend(child.properties || {}, data[i]);
   });
+};
+
+internal.exportDataAttributesForSVG = function(records, fields) {
+  var validRxp = /^[a-z_][a-z0-9_-]*$/;
+  var invalidRxp = /^xml/;
+  var validFields = fields.filter(function(name) {
+    return validRxp.test(name) && !invalidRxp.test(name);
+  });
+  var invalidFields = utils.difference(fields, validFields);
+  if (invalidFields.length > 0) {
+    message("Unable to add data-* attributes for field(s):", invalidFields.join(', '));
+    message("data-* names should match pattern [a-z_][a-z0-9_-]*");
+    fields = utils.difference(fields, invalidFields);
+  }
   return records.map(function(rec) {
     var obj = {};
-    for (var i=0; i<fields.length; i++) {
-      obj[dataNames[i]] = internal.validDataAttributeValue(rec[fields[i]]);
+    for (var i=0; i<validFields.length; i++) {
+      obj['data-' + validFields[i]] = internal.validDataAttributeValue(rec[validFields[i]]);
     }
     return obj;
   });
 };
 
 internal.validDataAttributeValue = function(val) {
+  // TODO: consider converting some falsy values to empty strings
+  // (e.g. null, undefined, NaN)
   return String(val);
 };
 
-internal.validDataAttributeNames = function(names) {
-  return utils.uniqifyNames(names.map(internal.validDataAttributeName));
-};
+// internal.validDataAttributeNames = function(names) {
+//   return utils.uniqifyNames(names.map(internal.validDataAttributeName));
+// };
 
 // There are restrictions on data-* attribute names
+// This function modifies names so they can be used
 // See: https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/data-*
+// Mapshaper's rules are a bit more restrictive than the spec -- e.g.
+//   the first character after "data-" is restricted to "_" | [a-z]
 //
-internal.validDataAttributeName = function(name) {
-  // Mapshaper is a bit more restrictive than the xml spec
-  name = name.toLowerCase();
-  name = name.replace(/[^a-z0-9_-]/g, ''); // accept only these letters
-  if (/^([0-9-]|xml)/.test(name) || name === '') {
-    name = '_' + name;
-  }
-  return name;
-};
+// internal.validDataAttributeName = function(name) {
+//   name = name.toLowerCase();
+//   name = name.replace(/[^a-z0-9_-]/g, ''); // accept only these letters
+//   if (/^([0-9-]|xml)/.test(name) || name === '') {
+//     name = '_' + name; // prepend underscore if needed
+//   }
+//   return name;
+// };
 
 internal.getEmptyLayerForSVG = function(lyr, opts) {
   var layerObj = {
@@ -23914,10 +23931,10 @@ internal.getOptionParser = function() {
     .option("point-symbol", {
       describe: "(SVG) circle or square (default is circle)"
     })
-    // .option("svg-data", {
-    //   type: "strings",
-    //   describe: "(SVG) fields to export as data attributes"
-    // })
+    .option("svg-data", {
+      type: "strings",
+      describe: "(SVG) fields to export as data-* attributes"
+    })
     .option("id-prefix", {
       describe: "(SVG) prefix for namespacing layer and feature ids"
     })
