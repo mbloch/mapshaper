@@ -108,7 +108,6 @@ internal.exportDataAttributesForSVG = function(records, fields) {
   if (invalidFields.length > 0) {
     message("Unable to add data-* attributes for field(s):", invalidFields.join(', '));
     message("data-* names should match pattern [a-z_][a-z0-9_-]*");
-    fields = utils.difference(fields, invalidFields);
   }
   return records.map(function(rec) {
     var obj = {};
