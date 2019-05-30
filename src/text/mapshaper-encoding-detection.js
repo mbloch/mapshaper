@@ -39,7 +39,7 @@ internal.looksLikeWin1252 = function(samples) {
       str = internal.decodeSamples('win1252', samples),
       asciiScore = internal.getCharScore(str, ascii),
       totalScore = internal.getCharScore(str, extended + ascii);
-  return totalScore > 0.97 && asciiScore > 0.7;
+  return totalScore > 0.97 && asciiScore >= 0.6; // mostly unaccented ascii chars
 };
 
 // Reject string if it contains the "replacement character" after decoding to UTF-8
