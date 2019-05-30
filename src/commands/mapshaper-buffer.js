@@ -41,7 +41,8 @@ internal.getBufferDistanceFunction = function(lyr, dataset, opts) {
 internal.makePointBufferGeoJSON = function(lyr, dataset, opts) {
   var vertices = opts.vertices || 72;
   var distanceFn = internal.getBufferDistanceFunction(lyr, dataset, opts);
-  var geod = internal.getDatasetCRS(dataset) ? internal.getGeodesic(dataset) : null;
+  // var geod = internal.getDatasetCRS(dataset) ? internal.getGeodesic(dataset) : null;
+  var geod = internal.getGeodeticSegmentFunction(dataset);
   var geometries = lyr.shapes.map(function(shape, i) {
     var dist = distanceFn(i);
     if (!dist) return null;
@@ -71,11 +72,9 @@ internal.getPointBufferGeometry = function(points, distance, vertices, geod) {
 
 internal.getPointBufferPolygonCoordinates = function(p, meterDist, vertices, geod) {
   var coords = [],
-      angle = 360 / vertices,
-      tmp;
+      angle = 360 / vertices;
   for (var i=0; i<vertices; i++) {
-    tmp = geod.Direct(p[1], p[0], i * angle, meterDist);
-    coords.push([tmp.lon2, tmp.lat2]);
+    coords.push(geod(p[0], p[1], i * angle, meterDist));
   }
   coords.push(coords[0].concat());
   return [coords]; // return vertices as the first (space-enclosing) ring of a Polygon geometry
