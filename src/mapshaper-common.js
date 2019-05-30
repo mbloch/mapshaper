@@ -1,4 +1,4 @@
-/* @requires mapshaper-utils, mapshaper-buffer */
+/* @requires mapshaper-utils */
 
 var api = {};
 var VERSION; // set by build script

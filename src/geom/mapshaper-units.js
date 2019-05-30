@@ -60,7 +60,17 @@ internal.getIntervalConversionFactor = function(paramUnits, crs) {
   return k;
 };
 
+// throws an error if measure is non-parsable
 internal.parseMeasure = function(m) {
+  var o = internal.parseMeasure2(m);
+  if (isNaN(o.value)) {
+    stop('Invalid parameter:', m);
+  }
+  return o;
+};
+
+// returns NaN value if value is non-parsable
+internal.parseMeasure2 = function(m) {
   var s = utils.isString(m) ? m : '';
   var match = /(sq|)([a-z]+)(2|)$/i.exec(s); // units rxp
   var o = {};
@@ -70,16 +80,14 @@ internal.parseMeasure = function(m) {
     o.value = NaN;
   } else if (match) {
     o.units = UNITS_LOOKUP[match[2].toLowerCase()];
-    if (!o.units) {
-      stop('Unknown units:', match[0]);
-    }
     o.areal = !!(match[1] || match[3]);
     o.value = Number(s.substring(0, s.length - match[0].length));
+    if (!o.units && !isNaN(o.value)) {
+      // throw error if string contains a number followed by unrecognized units string
+      stop('Unknown units: ' + match[0]);
+    }
   } else {
     o.value = Number(s);
-  }
-  if (isNaN(o.value)) {
-    stop('Invalid parameter:', m);
   }
   return o;
 };
