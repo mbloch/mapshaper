@@ -17,14 +17,16 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   }
   var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   var groups = internal.groupPolygons2(lyr, getGroupId);
-  var mosaicIndex = new MosaicIndex(lyr, dataset, opts);
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
   if (opts.mosaic) {
     return internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
   }
   if (opts.arcs) {
-    return internal.getArcLayer(mosaicIndex.nodes.arcs, lyr.name);
+    return internal.getArcLayer(nodes.arcs, lyr.name);
   }
-  mosaicIndex.removeGaps();
+  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
   var shapes2 = internal.dissolvePolygonGroups2(groups, mosaicIndex, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };

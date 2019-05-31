@@ -2,19 +2,17 @@
 mapshaper-polygon-mosaic
 */
 
-function MosaicIndex(lyr, dataset, opts) {
+function MosaicIndex(lyr, nodes, opts) {
   var shapes = lyr.shapes;
-  var arcFilter = internal.getArcPresenceTest(shapes, dataset.arcs);
-  var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var divide = internal.getHoleDivider(nodes);
   var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
 
   // map arc ids to tile ids
-  var arcTileIndex = new ShapeArcIndex(mosaic, dataset.arcs);
+  var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
   var usedTileIndex = new IndexIndex(mosaic.length);
   // bidirection index of tile ids <=> shape ids
-  var tileShapeIndex = new TileShapeIndex(mosaic);
+  var tileShapeIndex = new TileShapeIndex(mosaic, opts || {});
   // assign tiles to shapes
   var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes);
 
@@ -32,8 +30,7 @@ function MosaicIndex(lyr, dataset, opts) {
 
   // fill gaps
   // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
-  this.removeGaps = function() {
-    var gapTest = internal.getGapFillTest(dataset, opts);
+  this.removeGaps = function(gapTest) {
     var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
       var tile = mosaic[tileId];
       return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
@@ -50,9 +47,17 @@ function MosaicIndex(lyr, dataset, opts) {
     return getTileIdsByShapeIds(shapeIds).map(tileIdToTile);
   };
 
+  this.overlayShapes = function(shapes) {
+
+  };
+
+  function tileIdToTile(id, i) {
+    return mosaic[id];
+  }
+
   function assignTileToAdjacentShape(tileId) {
     var ring = mosaic[tileId][0];
-    var arcs = dataset.arcs;
+    var arcs = nodes.arcs;
     var arcId, neighborShapeId, neighborTileId, arcLen;
     var shapeId = -1, maxArcLen = 0;
     for (var i=0; i<ring.length; i++) {
@@ -72,9 +77,6 @@ function MosaicIndex(lyr, dataset, opts) {
     }
   }
 
-  function tileIdToTile(id) {
-    return mosaic[id];
-  }
 
   function getTileIdsByShapeIds(shapeIds) {
     var uniqIds = [];
@@ -139,71 +141,57 @@ function PolygonTiler(mosaic, arcTileIndex, nodes) {
 
   function procShapeRing(path) {
     ringIndex.setIds(path);
-    for (var i=0; i<path.length; i++) {
-      procRingArc(path[i], true);
-      // TODO: only add first arc?
-      //   .. might cause problems, if shape contains overlapping rings
-    }
+    procArcIds(path);
     ringIndex.clearIds(path);
   }
 
-  function procRingArc(arcId, fromTileId, fromHole) {
+  // ids: an array of arcIds
+  function procArcIds(ids) {
+    var tileIds = [], tileId;
+    for (var i=0, n=ids.length; i<n; i++) {
+      tileId = procRingArc(ids[i]);
+      if (tileId > -1) tileIds.push(tileId);
+    }
+    if (tileIds.length > 0) traverseFromTiles(tileIds);
+  }
+
+  function traverseFromTiles(tileIds) {
+    // breadth-first traversal, to prevent call stack overflow when there is
+    // a large number of tiles within a ring (due to many partially overlapping rings)
+    var arcIds = [];
+    for (var i=0, n=tileIds.length; i<n; i++) {
+      accumulateTraversibleArcIds(arcIds, mosaic[tileIds[i]]);
+    }
+    if (arcIds.length > 0) procArcIds(arcIds);
+  }
+
+  function accumulateTraversibleArcIds(ids, tile) {
+    var arcId, ring;
+    for (var j=0; j<tile.length; j++) {
+      ring = tile[j];
+      for (var i=0; i<ring.length; i++) {
+        arcId = ring[i];
+        if (arcIsTraversible(arcId)) {
+          ids.push(~arcId);
+        }
+      }
+    }
+  }
+
+  function arcIsTraversible(tileArc) {
+    var neighborArc = ~tileArc;
+    // don't cross boundary of the current ring or of any hole in the current shape
+    return !(holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc)  ||
+      ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc));
+  }
+
+  function procRingArc(arcId) {
     var tileId = arcTileIndex.getShapeIdByArcId(arcId);
-    if (tileId == -1 || usedTileIndex.hasId(tileId)) return;
+    if (tileId == -1 || usedTileIndex.hasId(tileId)) return -1;
     usedTileIndex.setId(tileId);
     tilesInShape.push(tileId);
-    traverseToTileNeighbors(mosaic[tileId], tileId);
+    return tileId;
   }
-
-  function traverseToTileNeighbors(tile, fromTileId) {
-    traverseToTileRingNeighbors(tile[0], fromTileId);
-    for (var i=1; i<tile.length; i++) {
-      traverseToTileHoleNeighbors(tile[i], fromTileId);
-    }
-  }
-
-  function traverseToTileHoleNeighbors(tileHole, fromTileId) {
-    var neighborArc, tileArc;
-    for (var i=0, n=tileHole.length; i<n; i++) {
-      tileArc = tileHole[i];
-      neighborArc = ~tileArc;
-      if (holeIndex.hasId(tileArc)) {
-        // don't cross inner boundary of any hole
-        continue;
-      }
-      if (ringIndex.hasId(neighborArc)) {
-       // don't cross the (inner) boundary of a hole
-        continue;
-      }
-      if (ringIndex.hasId(tileArc)) {
-        // error condition indicating invalid mosaic topology
-        continue;
-      }
-      procRingArc(neighborArc, fromTileId, true);
-    }
-  }
-
-  function traverseToTileRingNeighbors(tileRing, fromTileId) {
-    var neighborArc, tileArc;
-    for (var i=0, n=tileRing.length; i<n; i++) {
-      tileArc = tileRing[i];
-      neighborArc = ~tileArc;
-      if (ringIndex.hasId(tileArc)) {
-        // don't cross outer boundary of the current ring
-        continue;
-      }
-      if (holeIndex.hasId(neighborArc)) {
-        // from inside to outside of the boundary of a hole (seems like it shouldn't happen)
-        continue;
-      }
-      if (holeIndex.hasId(tileArc)) {
-        // from outside to inside of the boundary of a hole
-        continue;
-      }
-      procRingArc(neighborArc, fromTileId);
-    }
-  }
-
 }
 
 // Map arc ids to shape ids, assuming perfect topology
@@ -248,7 +236,7 @@ function ShapeArcIndex(shapes, arcs) {
 // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
 //    removing all but one shape from a tile.
 // Supports one-to-many mapping
-function TileShapeIndex(mosaic) {
+function TileShapeIndex(mosaic, opts) {
   // indexes for mapping tile ids to shape ids
   var singleIndex = new Int32Array(mosaic.length);
   utils.initializeArray(singleIndex, -1);
@@ -267,7 +255,8 @@ function TileShapeIndex(mosaic) {
   };
 
   this.indexTileIdsByShapeId = function(shapeId, tileIds) {
-    shapeIndex[shapeId] = tileIds;
+    // shapeIndex[shapeId] = tileIds;
+    shapeIndex[shapeId] = [];
     for (var i=0; i<tileIds.length; i++) {
       indexShapeIdByTileId(shapeId, tileIds[i]);
     }
@@ -275,6 +264,7 @@ function TileShapeIndex(mosaic) {
 
   // remove many-to-one tile=>shape mappings
   this.flatten = function() {
+    var c = 0;
     multipleIndex.forEach(function(shapeIds, tileId) {
       flattenStackedTile(tileId);
     });
@@ -301,7 +291,9 @@ function TileShapeIndex(mosaic) {
   // add a shape id to a tile
   function indexShapeIdByTileId(shapeId, tileId) {
     var val = singleIndex[tileId];
-    if (val >= -2 === false) error("tile index error");
+    if (val != -1 && opts.flat) {
+      return;
+    }
     if (val == -1) {
       singleIndex[tileId] = shapeId;
     } else if (val == -2) {
@@ -310,6 +302,7 @@ function TileShapeIndex(mosaic) {
       multipleIndex[tileId] = [val, shapeId];
       singleIndex[tileId] = -2;
     }
+    shapeIndex[shapeId].push(tileId);
   }
 
   function flattenStackedTile(tileId) {
