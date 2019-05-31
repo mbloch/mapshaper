@@ -113,6 +113,7 @@ internal.reversePath = function(ids) {
   for (var i=0, n=ids.length; i<n; i++) {
     ids[i] = ~ids[i];
   }
+  return ids;
 };
 
 internal.clampIntervalByPct = function(z, pct) {

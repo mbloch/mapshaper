@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-affine
+mapshaper-buffer
 mapshaper-clean
 mapshaper-clip-erase
 mapshaper-cluster
@@ -30,6 +31,7 @@ mapshaper-join
 mapshaper-keep-shapes
 mapshaper-merge-files
 mapshaper-merge-layers
+mapshaper-overlay
 mapshaper-points
 mapshaper-point-grid
 mapshaper-proj
@@ -128,6 +130,10 @@ api.runCommand = function(cmd, catalog, cb) {
 
     if (name == 'affine') {
       api.affine(targetLayers, targetDataset, opts);
+
+    } else if (name == 'buffer') {
+      // internal.applyCommand(api.buffer, targetLayers, targetDataset, opts);
+      catalog.addDataset(api.buffer(targetLayers, targetDataset, opts));
 
     } else if (name == 'data-fill') {
       internal.applyCommand(api.dataFill, targetLayers, arcs, opts);
@@ -238,6 +244,9 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog = null;
       }
       return internal.writeFiles(outputFiles, opts, done);
+
+    } else if (name == 'overlay') {
+      outputFiles = internal.overlay(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'point-grid') {
       outputLayers = [api.pointGrid(targetDataset, opts)];

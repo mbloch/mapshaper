@@ -293,6 +293,16 @@ internal.getOptionParser = function() {
 
   parser.section("Editing commands");
 
+  parser.command("buffer")
+    // .describe("")
+    .option("radius", {
+      describe: "radius of buffer, as an expression or a constant"
+    })
+    .option("units", {
+      describe: "distance units (meters|miles|km|feet) (default is meters)"
+    })
+    .option("target", targetOpt);
+
   parser.command("clean")
     .describe("repairs overlaps and small gaps in polygon layers")
     .option("min-gap-area", minGapAreaOpt)
@@ -516,11 +526,6 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("intersect")
-    // .describe("convert polygons to polylines along shared edges")
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
   parser.command("join")
     .describe("join data records from a file or layer to a layer")
     .example("Join a csv table to a Shapefile (don't auto-convert FIPS column to numbers)\n" +
@@ -594,6 +599,15 @@ internal.getOptionParser = function() {
 
   parser.command("mosaic")
     .option("debug", {type: "flag"})
+    .option("target", targetOpt);
+
+  parser.command("overlay")
+    // .describe("convert polygons to polylines along shared edges")
+    .option("source", {
+      DEFAULT: true,
+      describe: "file or layer containing overlay polygons"
+    })
+    .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("point-grid")
@@ -807,7 +821,6 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("target", targetOpt);
-
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")

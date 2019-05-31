@@ -90,6 +90,10 @@ function signedAngle(ax, ay, bx, by, cx, cy) {
   return standardAngle(a);
 }
 
+function bearing2D(x1, y1, x2, y2) {
+  return Math.atan2(y2 - y1, x2 - x1);
+}
+
 // Calc bearing in radians at lng1, lat1
 function bearing(lng1, lat1, lng2, lat2) {
   var D2R = Math.PI / 180;
@@ -357,6 +361,7 @@ var geom = {
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,
   signedAngle: signedAngle,
+  bearing2D: bearing2D,
   bearing: bearing,
   signedAngleSph: signedAngleSph,
   standardAngle: standardAngle,
