@@ -25,7 +25,7 @@ internal.overlayLayer = function(targetLyr, sourceLyr, dataset, opts) {
   // build nodes from arcs in both layers
   var arcFilter = internal.getArcPresenceTest(targetLyr.shapes.concat(sourceLyr.shapes), dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
-  var mosaicIndex = new MosaicIndex(targetLyr, nodes);
+  var mosaicIndex = new MosaicIndex(targetLyr, nodes); // TODO: add flat opt
   var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
 
   mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));

@@ -1,4 +1,4 @@
-/* @requires mapshaper-buffer-common */
+/* @requires mapshaper-buffer-common， mapshaper-geodesic, mapshaper-geojson */
 
 internal.makePointBuffer = function(lyr, dataset, opts) {
   var geojson = internal.makePointBufferGeoJSON(lyr, dataset, opts);
@@ -14,7 +14,7 @@ internal.makePointBufferGeoJSON = function(lyr, dataset, opts) {
     if (!dist || !shape) return null;
     return internal.getPointBufferGeometry(shape, dist, vertices, geod);
   });
-  // TODO: make sure that importer supports null geometries (not standard GeoJSON);
+  // TODO: make sure that importer supports null geometries (nonstandard GeoJSON);
   return {
     type: 'GeometryCollection',
     geometries: geometries

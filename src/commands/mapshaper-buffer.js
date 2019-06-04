@@ -1,8 +1,4 @@
 /* @require
-mapshaper-geodesic
-mapshaper-projections
-mapshaper-geojson
-mapshaper-buffer-common
 mapshaper-point-buffer
 mapshaper-polyline-buffer
 mapshaper-polygon-buffer

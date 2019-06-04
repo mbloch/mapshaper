@@ -48,7 +48,7 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
     var nextIds;
     while (testArc(nextId)) {
       part.push(nextId);
-      nextIds = nodes.getConnectedArcs(nextId, testArc);
+      nextIds = testArc(nextId) ? nodes.getConnectedArcs(nextId, testArc) : [];
       useArc(nextId); // use (unset) arc after connections have been found
       if (nextIds.length > 0) {
         nextId = ~nextIds[0]; // switch arc direction to lead away from node

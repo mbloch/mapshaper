@@ -16,27 +16,30 @@ internal.getPlanarSegmentEndpoint = function(x, y, bearing, meterDist) {
 };
 
 // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
-internal.getFastGeodeticSegmentFunction = function(crs) {
-  var R = crs.a; // consider using an average axis rather than semi-major
-  var D2R = geom.D2R;
-  return function(lng, lat, bearing, meterDist) {
-    var lng1 = lng * D2R;
-    var lat1 = lat * D2R;
-    var distRad = meterDist / R;
-    var bearingRad = bearing * D2R;
-    var lat2 = lat1 + Math.cos(bearingRad) * distRad;
-    var lng2 = lng1 + Math.sin(bearingRad) * distRad;
-    return [lng2 / D2R, lat2 / D2R];
-  };
+internal.fastGeodeticSegmentFunction = function(lng, lat, bearing, meterDist) {
+  var D2R = Math.PI / 180;
+  var cos = Math.cos(lat * D2R);
+  var cos2 = 2 * cos * cos - 1;
+  var cos3 = 2 * cos * cos2 - cos;
+  var cos4 = 2 * cos * cos3 - cos2;
+  var cos5 = 2 * cos * cos4 - cos3;
+  var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
+  var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
+  var bearingRad = bearing * D2R;
+  var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
+  var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
+  return [lng2, lat2];
 };
 
-internal.getGeodeticSegmentFunction = function(dataset, fast) {
+internal.getGeodeticSegmentFunction = function(dataset, highPrecision) {
   var P = internal.getDatasetCRS(dataset);
   if (!internal.isLatLngCRS(P)) {
     return internal.getPlanarSegmentEndpoint;
   }
-  if (fast) {
-    return internal.getFastGeodeticSegmentFunction(P);
+  if (!highPrecision) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return internal.fastGeodeticSegmentFunction;
   }
   var g = internal.getGeodesic(dataset);
   return function(lng, lat, bearing, meterDist) {

@@ -89,16 +89,22 @@ function NodeCollection(arcs, filter) {
     }
   };
 
-  // @filter (optional) only includes arc ids that return positive
-  //    Filter function receives the forward (positive) id of each connected arc
+  // Receives an arc id for an arc that enters a node.
+  // Returns an array of ids of all other arcs that are connected to the same node.
+  //    Returned ids lead into the node (as opposed to outwards from it)
+  // An optional filter function receives the directed id (positive or negative)
+  //    of each connected arc and excludes arcs for which the filter returns false.
+  //    The filter is also applied to the initial arc; if false, no arcs are returned.
+  //
   this.getConnectedArcs = function(arcId, filter) {
     var ids = [];
+    var filtered = !!filter;
     var nextId = nextConnectedArc(arcId);
-    if (filter && !filter(absArcId(arcId))) {
-      return ids;
+    if (filtered && !filter(arcId)) {
+      // return ids;
     }
     while (nextId != arcId) {
-      if (!filter || filter(absArcId(nextId))) {
+      if (!filtered || filter(nextId)) {
         ids.push(nextId);
       }
       nextId = nextConnectedArc(nextId);

@@ -45,21 +45,29 @@ describe('mapshaper-nodes.js', function () {
         coordinates: [3, 1],
         arcs: [1, 2]
       }]);
-
-    })
+    });
 
     it('#getConnectedArcs() takes an optional filter function argument', function() {
-      var filter = function(id) {
-        return id != 0;}; // exclude arc 0
+      var filter = function(id) { // exclude arc 0 in either direction
+        var absId = id < 0 ? ~id : id;
+        return absId != 0;
+      }
+      var filter2 = function(id) {return id != 0;}; // exclude arc 0 in forward direction
       var nodes = new NodeCollection(new ArcCollection(arcs));
-      assert.deepEqual(nodes.getConnectedArcs(0, filter), []);
+
+      // filter is no longer applied to input arc, only output arcs
+      assert.deepEqual(nodes.getConnectedArcs(0, filter), [~1, ~2]);
+      assert.deepEqual(nodes.getConnectedArcs(~0, filter), [1, 2]);
+
+      // non-directional filter
       assert.deepEqual(nodes.getConnectedArcs(1, filter), [2]);
       assert.deepEqual(nodes.getConnectedArcs(2, filter), [1]);
-      assert.deepEqual(nodes.getConnectedArcs(~0, filter), []);
       assert.deepEqual(nodes.getConnectedArcs(~1, filter), [~2]);
       assert.deepEqual(nodes.getConnectedArcs(~2, filter), [~1]);
-    })
 
+      // directional filter
+      assert.deepEqual(nodes.getConnectedArcs(1, filter2), [2, ~0]);
+    })
 
   })
 

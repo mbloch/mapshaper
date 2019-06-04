@@ -1,8 +1,9 @@
-/* @require
+/* @requires
 mapshaper-polygon-mosaic
 */
 
-function MosaicIndex(lyr, nodes, opts) {
+function MosaicIndex(lyr, nodes, optsArg) {
+  var opts = optsArg || {};
   var shapes = lyr.shapes;
   var divide = internal.getHoleDivider(nodes);
   var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
@@ -12,9 +13,9 @@ function MosaicIndex(lyr, nodes, opts) {
   // keep track of which tiles have been assigned to shapes
   var usedTileIndex = new IndexIndex(mosaic.length);
   // bidirection index of tile ids <=> shape ids
-  var tileShapeIndex = new TileShapeIndex(mosaic, opts || {});
+  var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
-  var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes);
+  var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
 
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
@@ -26,11 +27,16 @@ function MosaicIndex(lyr, nodes, opts) {
   });
 
   // ensure each tile is assigned to only one shape
-  tileShapeIndex.flatten();
+  if (opts.flat) {
+    tileShapeIndex.flatten();
+  }
 
   // fill gaps
   // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
   this.removeGaps = function(gapTest) {
+    if (!opts.flat) {
+      error('MosaicIndex#removeGaps() should only be called with flat mosaic');
+    }
     var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
       var tile = mosaic[tileId];
       return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
@@ -101,7 +107,7 @@ function MosaicIndex(lyr, nodes, opts) {
 
 // Convert polygon shapes to tiles
 //
-function PolygonTiler(mosaic, arcTileIndex, nodes) {
+function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   var usedTileIndex = new IndexIndex(mosaic.length);
   var divide = internal.getHoleDivider(nodes);
   // temp vars
@@ -117,11 +123,16 @@ function PolygonTiler(mosaic, arcTileIndex, nodes) {
     tilesInShape = [];
     currHoles = [];
     currShapeId = shapeId;
-    // divide shape into rings and holes (splits self-intersecting rings)
-    // TODO: rewrite divide() -- it is a performance bottleneck and can convert
-    //   space-filling areas into ccw holes
-    divide(shp, cw, ccw);
-    if (ccw.length > 0) {
+    if (opts.no_holes) {
+      // cw = shp;
+      //ccw.forEach(internal.reversePath);
+      // cw = cw.concat(ccw);
+      divide(shp, cw, ccw);
+    } else {
+      // divide shape into rings and holes (splits self-intersecting rings)
+      // TODO: rewrite divide() -- it is a performance bottleneck and can convert
+      //   space-filling areas into ccw holes
+      divide(shp, cw, ccw);
       ccw.forEach(procShapeHole);
       holeIndex.setIds(currHoles);
     }
@@ -349,9 +360,19 @@ function IndexIndex(n) {
     return id < 0 ? (index[~id] & 2) == 2 : (index[id] & 1) == 1;
   };
 
+  // clear a signed id
+  this.clearId = function(id) {
+    if (id < 0) {
+      index[~id] &= 1; // clear reverse arc, preserve fwd arc
+    } else {
+      index[id] &= 2; // clear fwd arc, preserve rev arc
+    }
+  };
+
+  // clear pos. and neg. ids in ids array
   this.clearIds = function(ids) {
     for (var i=0; i<ids.length; i++) {
-      index[absArcId(ids[i])] = 0;
+      this.clearId(ids[i]);
     }
   };
 

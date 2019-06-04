@@ -1,4 +1,6 @@
-/* @require mapshaper-self-intersection */
+/* @require
+mapshaper-self-intersection
+*/
 
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
