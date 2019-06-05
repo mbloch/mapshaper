@@ -3,13 +3,13 @@
 internal.makePolylineBuffer = function(lyr, dataset, opts) {
   var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
   var dataset2 = internal.importGeoJSON(geojson, {});
-  internal.dissolveBufferDataset(dataset2);
+  internal.dissolveBufferDataset(dataset2, opts);
   return dataset2;
 };
 
 internal.makeShapeBufferGeoJSON = function(lyr, dataset, opts) {
   var distanceFn = internal.getBufferDistanceFunction(lyr, dataset, opts);
-  var geod = internal.getGeodeticSegmentFunction(dataset);
+  var geod = internal.getGeodeticSegmentFunction(dataset, true);
   var getBearing = internal.getBearingFunction(dataset);
   var makerOpts = utils.extend({geometry_type: lyr.geometry_type}, opts);
   var makeShapeBuffer = internal.getPolylineBufferMaker(dataset.arcs, geod, getBearing, makerOpts);
@@ -43,7 +43,8 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
   // Test if two points are within a snapping tolerance
   // TODO: calculate the tolerance more sensibly
   function veryClose(x1, y1, x2, y2) {
-    var tol = 0.0001;
+    // return false;
+    var tol = 0.00001;
     var dist = geom.distance2D(x1, y1, x2, y2);
     return dist < tol;
   }
@@ -54,7 +55,7 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
   }
 
   function addVertex(arr, d) {
-    var maxBacktrack = 10;
+    var maxBacktrack = opts.backtrack >= 0 ? opts.backtrack : 10;
     var pointsToRemove = 0;
     var len = arr.length;
     var a, b, c, idx, hit;
@@ -193,6 +194,10 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
 internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
   var maker = internal.getPathBufferMaker(arcs, geod, getBearing, opts);
   var geomType = opts.geometry_type;
+  // polyline output could be used for debugging
+  var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
+  var singleType = outputGeom == 'polyline' ? 'LineString' : 'Polygon';
+  var multiType = outputGeom == 'polyline' ? 'MultiLineString' : 'MultiPolygon';
 
   function bufferPath(path, dist) {
     var coords = maker(path, dist);
@@ -202,27 +207,26 @@ internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
       coords = coords.concat(maker(revPath, dist));
     }
     coords.push(coords[0].concat()); // close path
-    return [coords];
+    return coords;
   }
 
   return function(shape, dist) {
     var coords = [], part, geom;
     for (var i=0; i<shape.length; i++) {
       part = bufferPath(shape[i], dist);
-      if (part) {
-        coords.push(part);
-      }
+      if (!part) continue;
+      coords.push(outputGeom == 'polyline' ? part : [part]);
     }
     if (coords.length === 0) {
       geom = null;
     } else if (coords.length == 1) {
       geom = {
-        type: 'Polygon',
+        type: singleType,
         coordinates: coords[0]
       };
     } else {
       geom = {
-        type: 'MultiPolygon',
+        type: multiType,
         coordinates: coords
       };
     }

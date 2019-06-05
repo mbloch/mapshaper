@@ -1,4 +1,4 @@
-/* @requires mapshaper-projections */
+/* @requires mapshaper-projections, mapshaper-geom */
 
 internal.getGeodesic = function(dataset) {
   var P = internal.getDatasetCRS(dataset);
@@ -49,11 +49,18 @@ internal.getGeodeticSegmentFunction = function(dataset, highPrecision) {
   };
 };
 
+
+
+internal.bearingDegrees = function(a, b, c, d) {
+  return geom.bearing(a, b, c, d) * 180 / Math.PI;
+};
+
+internal.bearingDegrees2D = function(a, b, c, d) {
+  return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
+};
+
 // return function to calculate bearing of a segment in degrees
 internal.getBearingFunction = function(dataset) {
   var P = internal.getDatasetCRS(dataset);
-  var f = internal.isLatLngCRS(P) ? geom.bearing : geom.bearing2D;
-  return function(a, b, c, d) {
-    return f(a, b, c, d) * 180 / Math.PI;
-  };
+  return internal.isLatLngCRS(P) ? internal.bearingDegrees : internal.bearingDegrees2D;
 };

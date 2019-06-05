@@ -296,7 +296,14 @@ internal.getOptionParser = function() {
   parser.command("buffer")
     // .describe("")
     .option("radius", {
-      describe: "radius of buffer, as an expression or a constant"
+      describe: "radius of buffer, as an expression or a constant",
+      DEFAULT: true
+    })
+    .option("backtrack", {
+      type: 'integer'
+    })
+    .option("debug-division", {
+      type: 'flag'
     })
     .option("units", {
       describe: "distance units (meters|miles|km|feet) (default is meters)"

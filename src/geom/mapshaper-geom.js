@@ -34,7 +34,6 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
-
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 function innerAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
@@ -91,7 +90,8 @@ function signedAngle(ax, ay, bx, by, cx, cy) {
 }
 
 function bearing2D(x1, y1, x2, y2) {
-  return Math.atan2(y2 - y1, x2 - x1);
+  var val = Math.PI/2 - Math.atan2(y2 - y1, x2 - x1);
+  return val > Math.PI ? val - 2 * Math.PI : val;
 }
 
 // Calc bearing in radians at lng1, lat1

@@ -1,9 +1,15 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-index-index */
 
-// Return function for splitting self-intersecting polygon rings
-// Splitter function receives a single path, returns an array of paths
-// Intersections are assumed to occur at vertices, not along segments
-// (requires that internal.addIntersectionCuts() has already been run)
+// Returns a function for splitting self-intersecting polygon rings
+// The splitter function receives a single polygon ring represented as an array
+// of arc ids, and returns an array of split-apart rings.
+//
+// Self-intersections in the input ring are assumed to occur at vertices, not along segments.
+// This requires that internal.addIntersectionCuts() has already been run.
+//
+// The rings output by this function may overlap each other, but each ring will
+// be non-self-intersecting. For example, a figure-eight shaped ring will be
+// split into two rings that touch each other where the original ring crossed itself.
 //
 internal.getSelfIntersectionSplitter = function(nodes) {
   var pathIndex = new IndexIndex(nodes.arcs.size());

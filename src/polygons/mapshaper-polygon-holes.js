@@ -1,12 +1,14 @@
 /* @require
 mapshaper-self-intersection
 */
+// __mapshaper-self-intersection-v1
 
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
 //
 internal.getHoleDivider = function(nodes, spherical) {
   var split = internal.getSelfIntersectionSplitter(nodes);
+  // var split = internal.getSelfIntersectionSplitter_v1(nodes); console.log('split')
 
   return function(rings, cw, ccw) {
     var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
