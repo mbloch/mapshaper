@@ -4,11 +4,18 @@
 internal.dissolveBufferDataset = function(dataset, optsArg) {
   var opts = optsArg || {};
   var lyr = dataset.layers[0];
+  var tmp;
   var nodes = internal.addIntersectionCuts(dataset, {});
   if (opts.debug_division) {
     return internal.debugBufferDivision(lyr, nodes);
   }
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: true});
+  if (opts.debug_mosaic) {
+    tmp = internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
+    lyr.shapes = tmp.shapes;
+    lyr.data = tmp.data;
+    return;
+  }
   var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
   // var dissolve = internal.getBufferTileDissolver(); // alternate dissolve (same as -dissolve command)
   var shapes2 = lyr.shapes.map(function(shp, shapeId) {

@@ -305,6 +305,9 @@ internal.getOptionParser = function() {
     .option("debug-division", {
       type: 'flag'
     })
+    .option("debug-mosaic", {
+      type: 'flag'
+    })
     .option("units", {
       describe: "distance units (meters|miles|km|feet) (default is meters)"
     })

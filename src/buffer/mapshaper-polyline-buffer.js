@@ -89,6 +89,9 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
     arr.push(d); // add new point
   }
 
+  // Exclude segments with non-intersecting bounding boxes before
+  // calling intersection function
+  // NOT FASTER -- so not using
   function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
     if (ax < cx && ax < dx && bx < cx && bx < dx) return null;
     if (ax > cx && ax > dx && bx > cx && bx > dx) return null;

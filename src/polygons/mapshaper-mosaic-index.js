@@ -12,7 +12,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
-  var usedTileIndex = new IndexIndex(mosaic.length);
+  var fetchedTileIndex = new IndexIndex(mosaic.length);
   // bidirection index of tile ids <=> shape ids
   var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
@@ -93,14 +93,14 @@ function MosaicIndex(lyr, nodes, optsArg) {
       for (j=0; j<tileIds.length; j++) {
         tileId = tileIds[j];
         // uniqify tile ids (in case the shape contains overlapping rings)
-        if (usedTileIndex.hasId(tileId)) continue;
-        usedTileIndex.setId(tileId);
+        if (fetchedTileIndex.hasId(tileId)) continue;
+        fetchedTileIndex.setId(tileId);
         uniqIds.push(tileId);
       }
     }
     // clearing this index allows duplicate tile ids between calls to this function
     // (should not happen in a typical dissolve)
-    usedTileIndex.clearIds(uniqIds);
+    fetchedTileIndex.clearIds(uniqIds);
     return uniqIds;
   }
 
@@ -109,7 +109,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
 // Convert polygon shapes to tiles
 //
 function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
-  var usedTileIndex = new IndexIndex(mosaic.length);
+  var visitedTileIndex = new IndexIndex(mosaic.length);
   var divide = internal.getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
@@ -125,10 +125,9 @@ function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     currHoles = [];
     currShapeId = shapeId;
     if (opts.no_holes) {
-      // cw = shp;
       divide(shp, cw, ccw);
-      ccw.forEach(internal.reversePath);
-      cw = cw.concat(ccw);
+      // ccw.forEach(internal.reversePath);
+      // cw = cw.concat(ccw);
     } else {
       // divide shape into rings and holes (splits self-intersecting rings)
       // TODO: rewrite divide() -- it is a performance bottleneck and can convert
@@ -140,7 +139,6 @@ function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     cw.forEach(procShapeRing);
     retn = tilesInShape;
     // reset tmp vars, etc
-    usedTileIndex.clearIds(tilesInShape);
     tilesInShape = null;
     holeIndex.clearIds(currHoles);
     currHoles = null;
@@ -155,6 +153,8 @@ function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     ringIndex.setIds(path);
     procArcIds(path);
     ringIndex.clearIds(path);
+    // allow overlapping rings to visit the same tiles
+    visitedTileIndex.clearIds(tilesInShape);
   }
 
   // ids: an array of arcIds
@@ -199,8 +199,8 @@ function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
 
   function procRingArc(arcId) {
     var tileId = arcTileIndex.getShapeIdByArcId(arcId);
-    if (tileId == -1 || usedTileIndex.hasId(tileId)) return -1;
-    usedTileIndex.setId(tileId);
+    if (tileId == -1 || visitedTileIndex.hasId(tileId)) return -1;
+    visitedTileIndex.setId(tileId);
     tilesInShape.push(tileId);
     return tileId;
   }
