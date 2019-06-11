@@ -4644,8 +4644,9 @@ function MshpMap(gui) {
   function updateLayerStyles(layers) {
     layers.forEach(function(mapLayer, i) {
       if (mapLayer.active) {
-        // style is already assigned
+        // assume: style is already assigned
         if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
+        // if (false) { // always show ghosted arcs
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
           // commands like dissolve and filter).

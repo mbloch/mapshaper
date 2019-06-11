@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.117';
+VERSION = '0.4.118';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1363,6 +1363,17 @@ utils.formatter = function(fmt) {
 
 
 
+var Buffer = require('buffer').Buffer; // works with browserify
+
+utils.createBuffer = function(arg, arg2) {
+  if (utils.isInteger(arg)) {
+    return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
+  } else {
+    // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
+    return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
+  }
+};
+
 utils.wildcardToRegExp = function(name) {
   var rxp = name.split('*').map(function(str) {
     return utils.regexEscape(str);
@@ -1475,19 +1486,6 @@ utils.uniqifyNames = function(names, formatter) {
     blacklist[candidate] = true;
     return candidate;
   });
-};
-
-
-
-var Buffer = require('buffer').Buffer; // works with browserify
-
-utils.createBuffer = function(arg, arg2) {
-  if (utils.isInteger(arg)) {
-    return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
-  } else {
-    // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
-    return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
-  }
 };
 
 
@@ -1792,7 +1790,6 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
-
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 function innerAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
@@ -1846,6 +1843,11 @@ function signedAngle(ax, ay, bx, by, cx, cy) {
       crossp = abx * cby - aby * cbx,
       a = Math.atan2(crossp, dotp);
   return standardAngle(a);
+}
+
+function bearing2D(x1, y1, x2, y2) {
+  var val = Math.PI/2 - Math.atan2(y2 - y1, x2 - x1);
+  return val > Math.PI ? val - 2 * Math.PI : val;
 }
 
 // Calc bearing in radians at lng1, lat1
@@ -2115,6 +2117,7 @@ var geom = {
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,
   signedAngle: signedAngle,
+  bearing2D: bearing2D,
   bearing: bearing,
   signedAngleSph: signedAngleSph,
   standardAngle: standardAngle,
@@ -2917,16 +2920,6 @@ function ArcCollection() {
   };
 }
 
-ArcCollection.prototype.inspect = function() {
-  var n = this.getPointCount(), str;
-  if (n < 50) {
-    str = JSON.stringify(this.toArray());
-  } else {
-    str = '[ArcCollection (' + this.size() + ')]';
-  }
-  return str;
-};
-
 // Remove duplicate coords and NaNs
 internal.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
   var n = 0, n2 = 0; // counters
@@ -3066,6 +3059,7 @@ internal.reversePath = function(ids) {
   for (var i=0, n=ids.length; i<n; i++) {
     ids[i] = ~ids[i];
   }
+  return ids;
 };
 
 internal.clampIntervalByPct = function(z, pct) {
@@ -3569,6 +3563,1070 @@ internal.duplicateSelectedArcs = function(shapes, arcs, flags) {
 };
 
 
+/* @requires mapshaper-buffer-common， mapshaper-geodesic, mapshaper-geojson */
+
+internal.makePointBuffer = function(lyr, dataset, opts) {
+  var geojson = internal.makePointBufferGeoJSON(lyr, dataset, opts);
+  return internal.importGeoJSON(geojson, {});
+};
+
+internal.makePointBufferGeoJSON = function(lyr, dataset, opts) {
+  var vertices = opts.vertices || 72;
+  var distanceFn = internal.getBufferDistanceFunction(lyr, dataset, opts);
+  var geod = internal.getGeodeticSegmentFunction(dataset);
+  var geometries = lyr.shapes.map(function(shape, i) {
+    var dist = distanceFn(i);
+    if (!dist || !shape) return null;
+    return internal.getPointBufferGeometry(shape, dist, vertices, geod);
+  });
+  // TODO: make sure that importer supports null geometries (nonstandard GeoJSON);
+  return {
+    type: 'GeometryCollection',
+    geometries: geometries
+  };
+};
+
+internal.getPointBufferGeometry = function(points, distance, vertices, geod) {
+  var coordinates = [];
+  if (!points || !points.length) return null;
+  for (var i=0; i<points.length; i++) {
+    coordinates.push(internal.getPointBufferPolygonCoordinates(points[i], distance, vertices, geod));
+  }
+  return coordinates.length == 1 ? {
+    type: 'Polygon',
+    coordinates: coordinates[0]
+  } : {
+    type: 'MultiPolygon',
+    coordinates: coordinates
+  };
+};
+
+internal.getPointBufferPolygonCoordinates = function(p, meterDist, vertices, geod) {
+  var coords = [],
+      angle = 360 / vertices;
+  for (var i=0; i<vertices; i++) {
+    coords.push(geod(p[0], p[1], i * angle, meterDist));
+  }
+  coords.push(coords[0].concat());
+  return [coords]; // return vertices as the first (space-enclosing) ring of a Polygon geometry
+};
+
+
+
+// A matrix class that supports affine transformations (scaling, translation, rotation).
+// Elements:
+//   a  c  tx
+//   b  d  ty
+//   0  0  1  (u v w are not used)
+//
+function Matrix2D() {
+  this.a = 1;
+  this.c = 0;
+  this.tx = 0;
+  this.b = 0;
+  this.d = 1;
+  this.ty = 0;
+}
+
+Matrix2D.prototype.transformXY = function(x, y, p) {
+  p = p || {};
+  p.x = x * this.a + y * this.c + this.tx;
+  p.y = x * this.b + y * this.d + this.ty;
+  return p;
+};
+
+Matrix2D.prototype.translate = function(dx, dy) {
+  this.tx += dx;
+  this.ty += dy;
+};
+
+Matrix2D.prototype.rotate = function(q, x, y) {
+  var cos = Math.cos(q);
+  var sin = Math.sin(q);
+  x = x || 0;
+  y = y || 0;
+  this.a = cos;
+  this.c = -sin;
+  this.b = sin;
+  this.d = cos;
+  this.tx += x - x * cos + y * sin;
+  this.ty += y - x * sin - y * cos;
+};
+
+Matrix2D.prototype.scale = function(sx, sy) {
+  this.a *= sx;
+  this.c *= sx;
+  this.b *= sy;
+  this.d *= sy;
+};
+
+
+
+
+
+function getAlbersUSA(opts) {
+  return function() {
+    return AlbersNYT(opts || {});
+  };
+}
+
+function AlbersNYT(opts) {
+  var mproj = require('mproj');
+  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
+  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
+  var mixed = new MixedProjection(aea)
+    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
+    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
+  if (opts.PR) {
+    mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -76.5, phi: 26.3 }, 1e6, 1e6, 1, -16); // PR
+    // mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -93, phi: 28.22 }, 1e6, 1e6, 1, -16) // PR
+  }
+  return mixed;
+}
+
+
+// A compound projection, consisting of a default projection and one or more rectangular frames
+// that are reprojected and/or affine transformed.
+// @proj Default projection.
+function MixedProjection(proj) {
+  var frames = [];
+  var mixed = utils.extend({}, proj);
+  var mproj = require('mproj');
+
+  // @proj2 projection to use.
+  // @ctr1 {lam, phi} center of the frame contents.
+  // @ctr2 {lam, phi} geo location to move the frame center
+  // @frameWidth Width of the frame in base projection units
+  // @frameHeight Height of the frame in base projection units
+  // @scale Scale factor; 1 = no scaling.
+  // @rotation Rotation in degrees; 0 = no rotation.
+  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
+    var m = new Matrix2D(),
+        a2 = proj.a * 2,
+        xy1 = toRawXY(ctr1, proj),
+        xy2 = toRawXY(ctr2, proj),
+        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
+            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
+    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
+    m.scale(scale, scale);
+    m.transformXY(xy1.x, xy1.y, xy1);
+    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
+    frames.push({
+      bbox: bbox,
+      matrix: m,
+      projection: proj2
+    });
+    return this;
+  };
+
+  // convert a latlon position to x,y in earth radii relative to datum origin
+  function toRawXY(lp, P) {
+    var xy = mproj.pj_fwd_deg(lp, P);
+    return {
+      x: (xy.x / P.fr_meter - P.x0) / P.a,
+      y: (xy.y / P.fr_meter - P.y0) / P.a
+    };
+  }
+
+  mixed.fwd = function(lp, xy) {
+    var lam = lp.lam,
+        phi = lp.phi,
+        frame, bbox;
+    proj.fwd(lp, xy);
+    for (var i=0, n=frames.length; i<n; i++) {
+      frame = frames[i];
+      bbox = frame.bbox;
+      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
+        // copy lp (some proj functions may modify it)
+        frame.projection.fwd({lam: lam, phi: phi}, xy);
+        frame.matrix.transformXY(xy.x, xy.y, xy);
+        break;
+      }
+    }
+  };
+
+  return mixed;
+}
+
+
+
+
+// some aliases
+internal.projectionIndex = {
+  robinson: '+proj=robin +datum=WGS84',
+  webmercator: '+proj=merc +a=6378137 +b=6378137',
+  wgs84: '+proj=longlat +datum=WGS84',
+  albersusa: getAlbersUSA(),
+  albersusa2: getAlbersUSA({PR: true}) // version with Puerto Rico
+};
+
+// This stub is replaced when loaded in GUI, which may need to load some files
+internal.initProjLibrary = function(opts, done) {done();};
+
+// Find Proj.4 definition file names in strings like "+init=epsg:3000"
+// (Used by GUI, defined here for testing)
+internal.findProjLibs = function(str) {
+  var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
+  return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
+};
+
+// Returns a function for reprojecting [x, y] points; function throws an error
+// if the transformation fails
+// src, dest: proj4 objects
+internal.getProjTransform = function(src, dest) {
+  var mproj = require('mproj');
+  var clampSrc = internal.isLatLngCRS(src);
+  return function(x, y) {
+    var xy;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xy = [x, y];
+    mproj.pj_transform_point(src, dest, xy);
+    return xy;
+  };
+};
+
+// Same as getProjTransform(), but return null if projection fails
+// (also faster)
+internal.getProjTransform2 = function(src, dest) {
+  var mproj = require('mproj'),
+      xx = [0],
+      yy = [0],
+      preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
+      postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
+      clampSrc = internal.isLatLngCRS(src);
+
+  return function(x, y) {
+    var fail;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xx[0] = x * preK;
+    yy[0] = y * preK;
+    try {
+      mproj.pj_transform(src, dest, xx, yy);
+      fail = xx[0] == Infinity; // mproj invalid coord value
+    } catch(e) {
+      fail = true;
+    }
+    return fail ? null : [xx[0] * postK, yy[0] * postK];
+  };
+};
+
+internal.toLngLat = function(xy, P) {
+  var proj;
+  if (isLatLngCRS(P)) {
+    return xy.concat();
+  }
+  proj = internal.getProjInfo(P, internal.getCRS('wgs84'));
+  return proj(xy);
+};
+
+internal.getProjInfo = function(dataset) {
+  var P, info;
+  try {
+    P = internal.getDatasetCRS(dataset);
+    if (P) {
+      info = internal.crsToProj4(P);
+    }
+  } catch(e) {}
+  return info || "[unknown]";
+};
+
+internal.crsToProj4 = function(P) {
+  return require('mproj').internal.get_proj_defn(P);
+};
+
+internal.crsToPrj = function(P) {
+  var wkt;
+  try {
+    wkt = require('mproj').internal.wkt_from_proj4(P);
+  } catch(e) {
+    // console.log(e)
+  }
+  return wkt;
+};
+
+internal.crsAreEqual = function(a, b) {
+  var str = internal.crsToProj4(a);
+  return !!str && str == internal.crsToProj4(b);
+};
+
+internal.getProjDefn = function(str) {
+  var mproj = require('mproj');
+  var defn;
+  if (str in internal.projectionIndex) {
+    defn = internal.projectionIndex[str];
+  } else if (str in mproj.internal.pj_list) {
+    defn = '+proj=' + str;
+  } else if (/^\+/.test(str)) {
+    defn = str;
+  } else {
+    stop("Unknown projection definition:", str);
+  }
+  return defn;
+};
+
+internal.getCRS = function(str) {
+  var defn = internal.getProjDefn(str);
+  var P;
+  if (typeof defn == 'function') {
+    P = defn();
+  } else {
+    try {
+      P = require('mproj').pj_init(defn);
+    } catch(e) {
+      stop('Unable to use projection', defn, '(' + e.message + ')');
+    }
+  }
+  return P || null;
+};
+
+// @info: info property of source dataset (instead of crs object, so wkt string
+//        can be preserved if present)
+internal.setDatasetCRS = function(dataset, info) {
+  dataset.info = dataset.info || {};
+  // Assumes that proj4 object is never mutated.
+  // TODO: assign a copy of crs (if present)
+  dataset.info.crs = info.crs;
+  dataset.info.prj = info.prj;
+};
+
+internal.getDatasetCRS = function(dataset) {
+  var info = dataset.info || {},
+      P = info.crs;
+  if (!P && info.prj) {
+    P = internal.parsePrj(info.prj);
+  }
+  if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
+    // use wgs84 for probable latlong datasets with unknown datums
+    P = internal.getCRS('wgs84');
+  }
+  return P;
+};
+
+// Assumes conformal projections; consider returning average of vertical and
+// horizontal scale factors.
+// x, y: a point location in projected coordinates
+// Returns k, the ratio of coordinate distance to distance on the ground
+internal.getScaleFactorAtXY = function(x, y, crs) {
+  var proj = require('mproj');
+  var dist = 1;
+  var lp = proj.pj_inv_deg({x: x, y: y}, crs);
+  var lp2 = proj.pj_inv_deg({x: x + dist, y: y}, crs);
+  var k = dist / greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+  return k;
+};
+
+internal.isProjectedCRS = function(P) {
+  return P && P.is_latlong || false;
+};
+
+internal.isLatLngCRS = function(P) {
+  return P && P.is_latlong || false;
+};
+
+internal.printProjections = function() {
+  var index = require('mproj').internal.pj_list;
+  var msg = 'Proj4 projections\n';
+  Object.keys(index).sort().forEach(function(id) {
+    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
+  });
+  msg += '\nAliases';
+  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
+    msg += '\n  ' + n;
+  });
+  message(msg);
+};
+
+internal.translatePrj = function(str) {
+  var proj4;
+  try {
+    proj4 = require('mproj').internal.wkt_to_proj4(str);
+  } catch(e) {
+    stop('Unusable .prj file (' + e.message + ')');
+  }
+  return proj4;
+};
+
+// Convert contents of a .prj file to a projection object
+internal.parsePrj = function(str) {
+  return internal.getCRS(internal.translatePrj(str));
+};
+
+
+
+
+var UNITS_LOOKUP = {
+  m: 'meters',
+  meter: 'meters',
+  meters: 'meters',
+  mi: 'miles',
+  mile: 'miles',
+  miles: 'miles',
+  km: 'kilometers',
+  ft: 'feet',
+  feet: 'feet'
+};
+
+// From pj_units.js in mapshaper-proj
+var TO_METERS = {
+  meters: 1,
+  kilometers: 1000,
+  feet: 0.3048, // International Standard Foot
+  miles: 1609.344 // International Statute Mile
+};
+
+// Return coeff. for converting a distance measure to dataset coordinates
+// @paramUnits: units code of distance param, or null if units are not specified
+// @crs: Proj.4 CRS object, or null (unknown latlong CRS);
+//
+internal.getIntervalConversionFactor = function(paramUnits, crs) {
+  var fromParam = 0,
+      fromCRS = 0,
+      k;
+
+  if (crs) {
+    if (crs.is_latlong) {
+      // calculations on latlong coordinates typically use meters
+      fromCRS = 1;
+    } else if (crs.to_meter > 0) {
+      fromCRS = crs.to_meter;
+    } else {
+      error('Invalid CRS');
+    }
+  }
+  if (paramUnits) {
+    fromParam = TO_METERS[paramUnits];
+    if (!fromParam) error('Unknown units:', paramUnits);
+  }
+
+  if (fromParam && fromCRS) {
+    // known param units, known CRS conversion
+    k = fromParam / fromCRS;
+  } else if (!fromParam && !fromCRS) {
+    // unknown param units, unknown (projected) CRS -- no scaling
+    k = 1;
+  } else if (fromParam && !fromCRS) {
+    // known param units, unknown CRS -- error condition, not convertible
+    stop('Unable to convert', paramUnits, 'to unknown coordinates');
+  } else if (!fromParam && fromCRS) {
+    // unknown param units, known CRS -- assume param in meters (bw compatibility)
+    k = 1 / fromCRS;
+  }
+  return k;
+};
+
+// throws an error if measure is non-parsable
+internal.parseMeasure = function(m) {
+  var o = internal.parseMeasure2(m);
+  if (isNaN(o.value)) {
+    stop('Invalid parameter:', m);
+  }
+  return o;
+};
+
+// returns NaN value if value is non-parsable
+internal.parseMeasure2 = function(m) {
+  var s = utils.isString(m) ? m : '';
+  var match = /(sq|)([a-z]+)(2|)$/i.exec(s); // units rxp
+  var o = {};
+  if (utils.isNumber(m)) {
+    o.value = m;
+  } else if (s === '') {
+    o.value = NaN;
+  } else if (match) {
+    o.units = UNITS_LOOKUP[match[2].toLowerCase()];
+    o.areal = !!(match[1] || match[3]);
+    o.value = Number(s.substring(0, s.length - match[0].length));
+    if (!o.units && !isNaN(o.value)) {
+      // throw error if string contains a number followed by unrecognized units string
+      stop('Unknown units: ' + match[0]);
+    }
+  } else {
+    o.value = Number(s);
+  }
+  return o;
+};
+
+internal.convertAreaParam = function(opt, crs) {
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, crs);
+  return o.value * k * k;
+};
+
+internal.convertDistanceParam = function(opt, crs) {
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, crs);
+  if (o.areal) {
+    stop('Expected a distance, received an area:', opt);
+  }
+  return o.value * k;
+};
+
+// Same as convertDistanceParam(), except:
+//   in the case of latlong datasets, coordinates are unitless (instead of meters),
+//   and parameters with units trigger an error
+internal.convertIntervalParam = function(opt, crs) {
+  var o = internal.parseMeasure(opt);
+  var k = internal.getIntervalConversionFactor(o.units, crs);
+  if (o.units && crs && crs.is_latlong) {
+    stop('Parameter does not support distance units with latlong datasets');
+  }
+  if (o.areal) {
+    stop('Expected a distance, received an area:', opt);
+  }
+  return o.value * k;
+};
+
+internal.convertIntervalPair = function(opt, crs) {
+  var a, b;
+  if (!Array.isArray(opt) || opt.length != 2) {
+    stop('Expected two distance parameters, received', opt);
+  }
+  a = internal.parseMeasure(opt[0]);
+  b = internal.parseMeasure(opt[1]);
+  if (a.units && !b.units || b.units && !a.units) {
+    stop('Both parameters should have units:', opt);
+  }
+  return [internal.convertIntervalParam(opt[0], crs),
+          internal.convertIntervalParam(opt[1], crs)];
+};
+
+// Accepts a single value or a list of four values. List order is l,b,t,r
+internal.convertFourSides = function(opt, crs, bounds) {
+  var arr = opt.split(',');
+  if (arr.length == 1) {
+    arr = [arr[0], arr[0], arr[0], arr[0]];
+  } else if (arr.length != 4) {
+    stop("Expected a distance parameter or a list of four params");
+  }
+  return arr.map(function(param, i) {
+    var tmp;
+    if (param.indexOf('%') > 0) {
+      tmp = parseFloat(param) / 100 || 0;
+      return tmp * (i == 1 || i == 3 ? bounds.height() : bounds.width());
+    }
+    return internal.convertIntervalParam(opt, crs);
+  });
+};
+
+
+
+
+function dissolvePolygonGeometry(shapes, getGroupId) {
+  var segments = dissolveFirstPass(shapes, getGroupId);
+  return dissolveSecondPass(segments, shapes, getGroupId);
+}
+
+// First pass -- identify pairs of segments that can be dissolved
+function dissolveFirstPass(shapes, getGroupId) {
+  var groups = [],
+      largeGroups = [],
+      segments = [],
+      ids = shapes.map(function(shp, i) {
+        return getGroupId(i);
+      });
+
+  internal.traversePaths(shapes, procArc);
+  largeGroups.forEach(splitGroup);
+  return segments;
+
+  function procArc(obj) {
+    var arcId = obj.arcId,
+        idx = arcId < 0 ? ~arcId : arcId,
+        segId = segments.length,
+        group = groups[idx];
+    if (!group) {
+      group = [];
+      groups[idx] = group;
+    }
+    group.push(segId);
+    obj.group = group;
+    segments.push(obj);
+
+    // Three or more segments sharing the same arc is abnormal topology...
+    // Need to try to identify pairs of matching segments in each of these
+    // groups.
+    //
+    if (group.length == 3) {
+      largeGroups.push(group);
+    }
+  }
+
+  function findMatchingPair(group, cb) {
+    var arc1, arc2;
+    for (var i=0; i<group.length - 1; i++) {
+      arc1 = segments[group[i]];
+      for (var j=i+1; j<group.length; j++) {
+        arc2 = segments[group[j]];
+        if (cb(arc1, arc2)) {
+          return [arc1.segId, arc2.segId];
+        }
+      }
+    }
+    return null;
+  }
+
+  function checkFwExtension(arc1, arc2) {
+    return getNextSegment(arc1, segments, shapes).arcId ===
+        ~getNextSegment(arc2, segments, shapes).arcId;
+  }
+
+  function checkBwExtension(arc1, arc2) {
+    return getPrevSegment(arc1, segments, shapes).arcId ===
+        ~getPrevSegment(arc2, segments, shapes).arcId;
+  }
+
+  function checkDoubleExtension(arc1, arc2) {
+    return checkPairwiseMatch(arc1, arc2) &&
+        checkFwExtension(arc1, arc2) &&
+        checkBwExtension(arc1, arc2);
+  }
+
+  function checkSingleExtension(arc1, arc2) {
+    return checkPairwiseMatch(arc1, arc2) &&
+        (checkFwExtension(arc1, arc2) ||
+        checkBwExtension(arc1, arc2));
+  }
+
+  function checkPairwiseMatch(arc1, arc2) {
+    return arc1.arcId === ~arc2.arcId && ids[arc1.shapeId] ===
+        ids[arc2.shapeId];
+  }
+
+  function updateGroupIds(ids) {
+    ids.forEach(function(id) {
+      segments[id].group = ids;
+    });
+  }
+
+  // split a group of segments into pairs of matching segments + a residual group
+  // @group Array of segment ids
+  //
+  function splitGroup(group) {
+    // find best-match segment pair
+    var group2 = findMatchingPair(group, checkDoubleExtension) ||
+        findMatchingPair(group, checkSingleExtension) ||
+        findMatchingPair(group, checkPairwiseMatch);
+    if (group2) {
+      group = group.filter(function(i) {
+        return !utils.contains(group2, i);
+      });
+      updateGroupIds(group);
+      updateGroupIds(group2);
+      // Split again if reduced group is still large
+      if (group.length > 2) splitGroup(group);
+    }
+  }
+}
+
+// Second pass -- generate dissolved shapes
+//
+function dissolveSecondPass(segments, shapes, getGroupId) {
+  var dissolveShapes = [];
+  segments.forEach(procSegment);
+  return dissolveShapes;
+
+  // @obj is an arc instance
+  function procSegment(obj) {
+    if (obj.used) return;
+    var match = findDissolveArc(obj);
+    if (!match) buildRing(obj);
+  }
+
+  function addRing(arcs, i) {
+    if (i in dissolveShapes === false) {
+      dissolveShapes[i] = [];
+    }
+    dissolveShapes[i].push(arcs);
+  }
+
+  // Generate a dissolved ring
+  // @firstArc the first arc instance in the ring
+  //
+  function buildRing(firstArc) {
+    var newArcs = [firstArc.arcId],
+        nextArc = getNextArc(firstArc);
+        firstArc.used = true;
+
+    while (nextArc && nextArc != firstArc) {
+      newArcs.push(nextArc.arcId);
+      nextArc.used = true;
+      nextArc = getNextArc(nextArc);
+      if (nextArc && nextArc != firstArc && nextArc.used) error("buildRing() topology error");
+    }
+
+    if (!nextArc) error("buildRing() traversal error");
+    firstArc.used = true;
+    addRing(newArcs, getGroupId(firstArc.shapeId));
+  }
+
+  // Get the next arc in a dissolved polygon ring
+  // @obj an undissolvable arc instance
+  //
+  function getNextArc(obj, depth) {
+    var next = getNextSegment(obj, segments, shapes),
+        match;
+    depth = depth || 0;
+    if (next != obj) {
+      match = findDissolveArc(next);
+      if (match) {
+        if (depth > 100) {
+          error ('deep recursion -- unhandled topology problem');
+        }
+        // if (match.part.arcs.length == 1) {
+        if (shapes[match.shapeId][match.partId].length == 1) {
+          // case: @obj has an island inclusion -- keep traversing @obj
+          // TODO: test case if @next is first arc in the ring
+          next = getNextArc(next, depth + 1);
+        } else {
+          next = getNextArc(match, depth + 1);
+        }
+      }
+    }
+    return next;
+  }
+
+  // Look for an arc instance that can be dissolved with segment @obj
+  // (must be going the opposite direction and have same dissolve key, etc)
+  // Return matching segment or null if no match
+  //
+  function findDissolveArc(obj) {
+    var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
+        match, matchId;
+    matchId = utils.find(obj.group, function(i) {
+      var a = obj,
+          b = segments[i];
+      if (a == b ||
+          b.used ||
+          getGroupId(b.shapeId) !== dissolveId ||
+          // don't prevent rings from dissolving with themselves (risky?)
+          // a.shapeId == b.shapeId && a.partId == b.partId ||
+          a.arcId != ~b.arcId) return false;
+      return true;
+    });
+    match = matchId === null ? null : segments[matchId];
+    return match;
+  }
+}
+
+function getNextSegment(seg, segments, shapes) {
+  return getSegmentByOffs(seg, segments, shapes, 1);
+}
+
+function getPrevSegment(seg, segments, shapes) {
+  return getSegmentByOffs(seg, segments, shapes, -1);
+}
+
+function getSegmentByOffs(seg, segments, shapes, offs) {
+  var arcs = shapes[seg.shapeId][seg.partId],
+      partLen = arcs.length,
+      nextOffs = (seg.i + offs) % partLen,
+      nextSeg;
+  if (nextOffs < 0) nextOffs += partLen;
+  nextSeg = segments[seg.segId - seg.i + nextOffs];
+  if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
+  return nextSeg;
+}
+
+
+
+
+// @arcs ArcCollection
+// @filter Optional filter function, arcIds that return false are excluded
+//
+function NodeCollection(arcs, filter) {
+  if (utils.isArray(arcs)) {
+    arcs = new ArcCollection(arcs);
+  }
+  var arcData = arcs.getVertexData(),
+      nn = arcData.nn,
+      xx = arcData.xx,
+      yy = arcData.yy,
+      nodeData;
+
+  // Accessor function for arcs
+  Object.defineProperty(this, 'arcs', {value: arcs});
+
+  var toArray = this.toArray = function() {
+    var chains = getNodeChains(),
+        flags = new Uint8Array(chains.length),
+        arr = [];
+    utils.forEach(chains, function(nextIdx, thisIdx) {
+      var node, x, y, p;
+      if (flags[thisIdx] == 1) return;
+      p = getEndpoint(thisIdx);
+      if (!p) return; // endpoints of an excluded arc
+      node = {coordinates: p, arcs: []};
+      arr.push(node);
+      while (flags[thisIdx] != 1) {
+        node.arcs.push(chainToArcId(thisIdx));
+        flags[thisIdx] = 1;
+        thisIdx = chains[thisIdx];
+      }
+    });
+    return arr;
+  };
+
+  this.size = function() {
+    return this.toArray().length;
+  };
+
+  this.findDanglingEndpoints = function() {
+    var chains = getNodeChains(),
+        arr = [], p;
+    for (var i=0, n=chains.length; i<n; i++) {
+      if (chains[i] != i) continue; // endpoint attaches to a node
+      p = getEndpoint(i);
+      if (!p) continue; // endpoint belongs to an excluded arc
+      arr.push({
+        point: p,
+        arc: chainToArcId(i)
+      });
+    }
+    return arr;
+  };
+
+  this.detachAcyclicArcs = function() {
+    var chains = getNodeChains(),
+        count = 0,
+        fwd, rev;
+    for (var i=0, n=chains.length; i<n; i+= 2) {
+      fwd = i == chains[i];
+      rev = i + 1 == chains[i + 1];
+      // detach arcs that are disconnected at one end or the other
+      if ((fwd || rev) && !linkIsDetached(i)) {
+        this.detachArc(chainToArcId(i));
+        count++;
+      }
+    }
+    if (count > 0) {
+      // removing one acyclic arc could expose another -- need another pass
+      count += this.detachAcyclicArcs();
+    }
+    return count;
+  };
+
+  this.detachArc = function(arcId) {
+    unlinkDirectedArc(arcId);
+    unlinkDirectedArc(~arcId);
+  };
+
+  this.forEachConnectedArc = function(arcId, cb) {
+    var nextId = nextConnectedArc(arcId),
+        i = 0;
+    while (nextId != arcId) {
+      cb(nextId, i++);
+      nextId = nextConnectedArc(nextId);
+    }
+  };
+
+  // Receives an arc id for an arc that enters a node.
+  // Returns an array of ids of all other arcs that are connected to the same node.
+  //    Returned ids lead into the node (as opposed to outwards from it)
+  // An optional filter function receives the directed id (positive or negative)
+  //    of each connected arc and excludes arcs for which the filter returns false.
+  //    The filter is also applied to the initial arc; if false, no arcs are returned.
+  //
+  this.getConnectedArcs = function(arcId, filter) {
+    var ids = [];
+    var filtered = !!filter;
+    var nextId = nextConnectedArc(arcId);
+    if (filtered && !filter(arcId)) {
+      // return ids;
+    }
+    while (nextId != arcId) {
+      if (!filtered || filter(nextId)) {
+        ids.push(nextId);
+      }
+      nextId = nextConnectedArc(nextId);
+    }
+    return ids;
+  };
+
+  // Returns the id of the first identical arc or @arcId if none found
+  // TODO: find a better function name
+  this.findDuplicateArc = function(arcId) {
+    var nextId = nextConnectedArc(arcId),
+        match = arcId;
+    while (nextId != arcId) {
+      if (testArcMatch(arcId, nextId)) {
+        if (absArcId(nextId) < absArcId(match)) match = nextId;
+      }
+      nextId = nextConnectedArc(nextId);
+    }
+    return match;
+  };
+
+  // returns null if link has been removed from node collection
+  function getEndpoint(chainId) {
+    return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
+  }
+
+  function linkIsDetached(chainId) {
+    return isNaN(nodeData.xx[chainId]);
+  }
+
+  function unlinkDirectedArc(arcId) {
+    var chainId = arcToChainId(arcId),
+        chains = getNodeChains(),
+        nextId = chains[chainId],
+        prevId = prevChainId(chainId);
+    nodeData.xx[chainId] = NaN;
+    nodeData.yy[chainId] = NaN;
+    chains[chainId] = chainId;
+    chains[prevId] = nextId;
+  }
+
+  function chainToArcId(chainId) {
+    var absId = chainId >> 1;
+    return chainId & 1 == 1 ? absId : ~absId;
+  }
+
+  function arcToChainId(arcId) {
+    var fw = arcId >= 0;
+    return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
+  }
+
+  function getNodeChains() {
+    if (!nodeData) {
+      nodeData = internal.findNodeTopology(arcs, filter);
+      if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
+    }
+    return nodeData.chains;
+  }
+
+  function testArcMatch(a, b) {
+    var absA = a >= 0 ? a : ~a,
+        absB = b >= 0 ? b : ~b,
+        lenA = nn[absA];
+    if (lenA < 2) {
+      // Don't throw error on collapsed arcs -- assume they will be handled
+      //   appropriately downstream.
+      // error("[testArcMatch() defective arc; len:", lenA);
+      return false;
+    }
+    if (lenA != nn[absB]) return false;
+    if (testVertexMatch(a, b, -1) &&
+        testVertexMatch(a, b, 1) &&
+        testVertexMatch(a, b, -2)) {
+      return true;
+    }
+    return false;
+  }
+
+  function testVertexMatch(a, b, i) {
+    var ai = arcs.indexOfVertex(a, i),
+        bi = arcs.indexOfVertex(b, i);
+    return xx[ai] == xx[bi] && yy[ai] == yy[bi];
+  }
+
+  // return arcId of next arc in the chain, pointed towards the shared vertex
+  function nextConnectedArc(arcId) {
+    var chainId = arcToChainId(arcId),
+        chains =  getNodeChains(),
+        nextChainId = chains[chainId];
+    if (!(nextChainId >= 0 && nextChainId < chains.length)) error("out-of-range chain id");
+    return chainToArcId(nextChainId);
+  }
+
+  function prevChainId(chainId) {
+    var chains = getNodeChains(),
+        prevId = chainId,
+        nextId = chains[chainId];
+    while (nextId != chainId) {
+      prevId = nextId;
+      nextId = chains[nextId];
+      if (nextId == prevId) error("Node indexing error");
+    }
+    return prevId;
+  }
+
+  // expose functions for testing
+  this.internal = {
+    testArcMatch: testArcMatch,
+    testVertexMatch: testVertexMatch
+  };
+}
+
+internal.findNodeTopology = function(arcs, filter) {
+  var n = arcs.size() * 2,
+      xx2 = new Float64Array(n),
+      yy2 = new Float64Array(n),
+      ids2 = new Int32Array(n);
+
+  arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+    var start = i,
+        end = i + n - 1,
+        start2 = arcId * 2,
+        end2 = start2 + 1,
+        ax = xx[start],
+        ay = yy[start],
+        bx = xx[end],
+        by = yy[end];
+    if (filter && !filter(arcId)) {
+      ax = ay = bx = by = NaN;
+    }
+
+    xx2[start2] = ax;
+    yy2[start2] = ay;
+    ids2[start2] = arcId;
+    xx2[end2] = bx;
+    yy2[end2] = by;
+    ids2[end2] = arcId;
+  });
+
+  var chains = initPointChains(xx2, yy2);
+  return {
+    xx: xx2,
+    yy: yy2,
+    ids: ids2,
+    chains: chains
+  };
+};
+
+
+
+
+// Test if the second endpoint of an arc is the endpoint of any path in any layer
+internal.getPathEndpointTest = function(layers, arcs) {
+  var index = new Uint8Array(arcs.size());
+  layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      lyr.shapes.forEach(addShape);
+    }
+  });
+
+  function addShape(shape) {
+    internal.forEachShapePart(shape, addPath);
+  }
+
+  function addPath(path) {
+    addEndpoint(~path[0]);
+    addEndpoint(path[path.length - 1]);
+  }
+
+  function addEndpoint(arcId) {
+    var absId = absArcId(arcId);
+    var fwd = absId == arcId;
+    index[absId] |= fwd ? 1 : 2;
+  }
+
+  return function(arcId) {
+    var absId = absArcId(arcId);
+    var fwd = absId == arcId;
+    var code = index[absId];
+    return fwd ? (code & 1) == 1 : (code & 2) == 2;
+  };
+};
+
+
 
 
 // utility functions for datasets and layers
@@ -3808,250 +4866,775 @@ internal.initDataTable = function(lyr) {
 
 
 
-// @arcs ArcCollection
-// @filter Optional filter function, arcIds that return false are excluded
-//
-function NodeCollection(arcs, filter) {
-  if (utils.isArray(arcs)) {
-    arcs = new ArcCollection(arcs);
+// Dissolve arcs that can be merged without affecting topology of layers
+// remove arcs that are not referenced by any layer; remap arc ids
+// in layers. (dataset.arcs is replaced).
+internal.dissolveArcs = function(dataset) {
+  var arcs = dataset.arcs,
+      layers = dataset.layers.filter(internal.layerHasPaths);
+
+  if (!arcs || !layers.length) {
+    dataset.arcs = null;
+    return;
   }
-  var arcData = arcs.getVertexData(),
-      nn = arcData.nn,
-      xx = arcData.xx,
-      yy = arcData.yy,
-      nodeData;
 
-  // Accessor function for arcs
-  Object.defineProperty(this, 'arcs', {value: arcs});
-
-  var toArray = this.toArray = function() {
-    var chains = getNodeChains(),
-        flags = new Uint8Array(chains.length),
-        arr = [];
-    utils.forEach(chains, function(nextIdx, thisIdx) {
-      var node, x, y, p;
-      if (flags[thisIdx] == 1) return;
-      p = getEndpoint(thisIdx);
-      if (!p) return; // endpoints of an excluded arc
-      node = {coordinates: p, arcs: []};
-      arr.push(node);
-      while (flags[thisIdx] != 1) {
-        node.arcs.push(chainToArcId(thisIdx));
-        flags[thisIdx] = 1;
-        thisIdx = chains[thisIdx];
-      }
+  var arcsCanDissolve = internal.getArcDissolveTest(layers, arcs),
+      newArcs = [],
+      totalPoints = 0,
+      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
+      arcStatus = new Uint8Array(arcs.size());
+      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
+  layers.forEach(function(lyr) {
+    // modify copies of the original shapes; original shapes should be unmodified
+    // (need to test this)
+    lyr.shapes = lyr.shapes.map(function(shape) {
+      return internal.editShapeParts(shape && shape.concat(), translatePath);
     });
-    return arr;
+  });
+  dataset.arcs = internal.dissolveArcCollection(arcs, newArcs, totalPoints);
+
+  function translatePath(path) {
+    var pointCount = 0;
+    var newPath = [];
+    var newArc, arcId, absId, arcLen, fw, newArcId;
+
+    for (var i=0, n=path.length; i<n; i++) {
+      arcId = path[i];
+      absId = absArcId(arcId);
+      fw = arcId === absId;
+
+      if (arcs.arcIsDegenerate(arcId)) {
+        // arc has collapsed -- skip
+      } else if (arcStatus[absId] !== 0) {
+        // arc has already been translated -- skip
+        newArc = null;
+      } else {
+        arcLen = arcs.getArcLength(arcId);
+
+        if (newArc && arcsCanDissolve(path[i-1], arcId)) {
+          if (arcLen > 0) {
+            arcLen--; // shared endpoint not counted;
+          }
+          newArc.push(arcId);  // arc data is appended to previous arc
+          arcStatus[absId] = 1; // arc is dropped from output
+        } else {
+          // start a new dissolved arc
+          newArc = [arcId];
+          arcIndex[absId] = newArcs.length;
+          newArcs.push(newArc);
+          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
+        }
+        pointCount += arcLen;
+      }
+
+      if (arcStatus[absId] > 1) {
+        // arc is retained (and renumbered) in the dissolved path -- add to path
+        newArcId = arcIndex[absId];
+        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
+          newArcId = ~newArcId;
+        }
+        newPath.push(newArcId);
+      }
+    }
+    totalPoints += pointCount;
+    return newPath;
+  }
+};
+
+internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
+  var nn2 = new Uint32Array(newArcs.length),
+      xx2 = new Float64Array(newLen),
+      yy2 = new Float64Array(newLen),
+      src = arcs.getVertexData(),
+      zz2 = src.zz ? new Float64Array(newLen) : null,
+      interval = arcs.getRetainedInterval(),
+      offs = 0;
+
+  newArcs.forEach(function(newArc, newId) {
+    newArc.forEach(function(oldId, i) {
+      extendDissolvedArc(oldId, newId);
+    });
+  });
+
+  return new ArcCollection(nn2, xx2, yy2).setThresholds(zz2).setRetainedInterval(interval);
+
+  function extendDissolvedArc(oldId, newId) {
+    var absId = absArcId(oldId),
+        rev = oldId < 0,
+        n = src.nn[absId],
+        i = src.ii[absId],
+        n2 = nn2[newId];
+
+    if (n > 0) {
+      if (n2 > 0) {
+        n--;
+        if (!rev) i++;
+      }
+      utils.copyElements(src.xx, i, xx2, offs, n, rev);
+      utils.copyElements(src.yy, i, yy2, offs, n, rev);
+      if (zz2) utils.copyElements(src.zz, i, zz2, offs, n, rev);
+      nn2[newId] += n;
+      offs += n;
+    }
+  }
+};
+
+// Test whether two arcs can be merged together
+internal.getArcDissolveTest = function(layers, arcs) {
+  var nodes = new NodeCollection(arcs, internal.getArcPresenceTest2(layers, arcs)),
+      // don't allow dissolving through endpoints of polyline paths
+      lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
+      testLineEndpoint = internal.getPathEndpointTest(lineLayers, arcs),
+      linkCount, lastId;
+
+  return function(id1, id2) {
+    if (id1 == id2 || id1 == ~id2) {
+      verbose("Unexpected arc sequence:", id1, id2);
+      return false; // This is unexpected; don't try to dissolve, anyway
+    }
+    linkCount = 0;
+    nodes.forEachConnectedArc(id1, countLink);
+    return linkCount == 1 && lastId == ~id2 && !testLineEndpoint(id1) && !testLineEndpoint(~id2);
+  };
+
+  function countLink(arcId, i) {
+    linkCount++;
+    lastId = arcId;
+  }
+};
+
+
+
+
+
+internal.dissolveBufferDataset = function(dataset, optsArg) {
+  var opts = optsArg || {};
+  var lyr = dataset.layers[0];
+  var tmp;
+  var nodes = internal.addIntersectionCuts(dataset, {});
+  if (opts.debug_division) {
+    return internal.debugBufferDivision(lyr, nodes);
+  }
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
+  if (opts.debug_mosaic) {
+    tmp = internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
+    lyr.shapes = tmp.shapes;
+    lyr.data = tmp.data;
+    return;
+  }
+  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
+  // var dissolve = internal.getBufferTileDissolver(); // alternate dissolve (same as -dissolve command)
+  var shapes2 = lyr.shapes.map(function(shp, shapeId) {
+    var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
+    var rings = [];
+    for (var i=0; i<tiles.length; i++) {
+      rings.push(tiles[i][0]);
+    }
+    // return rings;
+    return dissolve(rings);
+  });
+  // shapes2 = mosaicIndex.mosaic
+  lyr.shapes = shapes2;
+  if (!opts.no_dissolve) {
+    internal.dissolveArcs(dataset);
+  }
+};
+
+internal.debugBufferDivision = function(lyr, nodes) {
+  var divide = internal.getHoleDivider(nodes);
+  var shapes2 = [];
+  var records = [];
+  lyr.shapes.forEach(divideShape);
+  lyr.shapes = shapes2;
+  lyr.data = new DataTable(records);
+  return lyr;
+
+  function divideShape(shp) {
+    var cw = [], ccw = [];
+    divide(shp, cw, ccw);
+    cw.forEach(function(ring) {
+      shapes2.push([ring]);
+      records.push({type: 'ring'});
+    });
+    ccw.forEach(function(hole) {
+      shapes2.push([internal.reversePath(hole)]);
+      records.push({type: 'hole'});
+    });
+  }
+};
+
+internal.getBufferTileDissolver = function() {
+  return function(rings) {
+    return dissolvePolygonGeometry([rings], function(i) {return 0;})[0];
+  };
+};
+
+// n = number of segments used to approximate a circle
+// Returns tolerance as a percent of circle radius
+internal.getBufferToleranceFromCircleSegments = function(n) {
+  return 1 - Math.cos(Math.PI / n);
+};
+
+internal.getArcDegreesFromTolerancePct = function(pct) {
+  return 360 * Math.acos(1 - pct) / Math.PI;
+};
+
+// n = number of segments used to approximate a circle
+// Returns tolerance as a percent of circle radius
+internal.getBufferToleranceFromCircleSegments2 = function(n) {
+  return 1 / Math.cos(Math.PI / n) - 1;
+};
+
+internal.getArcDegreesFromTolerancePct2 = function(pct) {
+  return 360 * Math.acos(1 / (pct + 1)) / Math.PI;
+};
+
+// return constant distance in meters, or return null if unparsable
+internal.parseConstantBufferDistance = function(str, crs) {
+  var parsed = internal.parseMeasure2(str);
+  if (!parsed.value) return null;
+  return internal.convertDistanceParam(str, crs) || null;
+};
+
+internal.getBufferToleranceFunction = function(dataset, opts) {
+  var crs = internal.getDatasetCRS(dataset);
+  var constTol = opts.tolerance ? internal.parseConstantBufferDistance(opts.tolerance, crs) : 0;
+  var pctOfRadius = 1/100;
+  return function(meterDist) {
+    if (constTol) return constTol;
+    return constTol ? constTol : meterDist * pctOfRadius;
+  };
+
+};
+
+internal.getBufferDistanceFunction = function(lyr, dataset, opts) {
+  if (!opts.radius) {
+    stop('Missing expected radius parameter');
+  }
+  var unitStr = opts.units || '';
+  var crs = internal.getDatasetCRS(dataset);
+  var constDist = internal.parseConstantBufferDistance(opts.radius + unitStr, crs);
+  if (constDist) return function() {return constDist;};
+  var expr = internal.compileValueExpression(opts.radius, lyr, null, {}); // no arcs
+  return function(shpId) {
+    var val = expr(shpId);
+    if (!val) return 0;
+    // TODO: optimize common case that expression returns a number
+    var dist = internal.parseConstantBufferDistance(val + unitStr, crs);
+    return dist || 0;
+  };
+};
+
+
+
+
+internal.getGeodesic = function(dataset) {
+  var P = internal.getDatasetCRS(dataset);
+  if (!internal.isLatLngCRS(P)) error('Expected an unprojected CRS');
+  var f = P.es / (1 + Math.sqrt(P.one_es));
+  var GeographicLib = require('mproj').internal.GeographicLib;
+  return new GeographicLib.Geodesic.Geodesic(P.a, f);
+};
+
+internal.getPlanarSegmentEndpoint = function(x, y, bearing, meterDist) {
+  var rad = bearing / 180 * Math.PI;
+  var dx = Math.sin(rad) * meterDist;
+  var dy = Math.cos(rad) * meterDist;
+  return [x + dx, y + dy];
+};
+
+// source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
+internal.fastGeodeticSegmentFunction = function(lng, lat, bearing, meterDist) {
+  var D2R = Math.PI / 180;
+  var cos = Math.cos(lat * D2R);
+  var cos2 = 2 * cos * cos - 1;
+  var cos3 = 2 * cos * cos2 - cos;
+  var cos4 = 2 * cos * cos3 - cos2;
+  var cos5 = 2 * cos * cos4 - cos3;
+  var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
+  var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
+  var bearingRad = bearing * D2R;
+  var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
+  var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
+  return [lng2, lat2];
+};
+
+internal.getGeodeticSegmentFunction = function(dataset, highPrecision) {
+  var P = internal.getDatasetCRS(dataset);
+  if (!internal.isLatLngCRS(P)) {
+    return internal.getPlanarSegmentEndpoint;
+  }
+  if (!highPrecision) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return internal.fastGeodeticSegmentFunction;
+  }
+  var g = internal.getGeodesic(dataset);
+  return function(lng, lat, bearing, meterDist) {
+    var o = g.Direct(lat, lng, bearing, meterDist);
+    var p = [o.lon2, o.lat2];
+    return p;
+  };
+};
+
+internal.getGeodeticDistanceFunction = function(dataset, highPrecision) {
+  var P = internal.getDatasetCRS(dataset);
+  if (!internal.isLatLngCRS(P)) {
+    return internal.getPlanarSegmentEndpoint;
+  }
+};
+
+internal.bearingDegrees = function(a, b, c, d) {
+  return geom.bearing(a, b, c, d) * 180 / Math.PI;
+};
+
+internal.bearingDegrees2D = function(a, b, c, d) {
+  return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
+};
+
+// return function to calculate bearing of a segment in degrees
+internal.getBearingFunction = function(dataset) {
+  var P = internal.getDatasetCRS(dataset);
+  return internal.isLatLngCRS(P) ? internal.bearingDegrees : internal.bearingDegrees2D;
+};
+
+
+
+
+var GeoJSON = {};
+GeoJSON.ID_FIELD = "FID"; // default field name of imported *JSON feature ids
+
+GeoJSON.typeLookup = {
+  LineString: 'polyline',
+  MultiLineString: 'polyline',
+  Polygon: 'polygon',
+  MultiPolygon: 'polygon',
+  Point: 'point',
+  MultiPoint: 'point'
+};
+
+GeoJSON.translateGeoJSONType = function(type) {
+  return GeoJSON.typeLookup[type] || null;
+};
+
+GeoJSON.pathIsRing = function(coords) {
+  var first = coords[0],
+      last = coords[coords.length - 1];
+  // TODO: consider detecting collapsed rings
+  return coords.length >= 4 && first[0] == last[0] && first[1] == last[1];
+};
+
+
+
+
+// List of encodings supported by iconv-lite:
+// https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
+
+// Return list of supported encodings
+internal.getEncodings = function() {
+  var iconv = require('iconv-lite');
+  iconv.encodingExists('ascii'); // make iconv load its encodings
+  return Object.keys(iconv.encodings);
+};
+
+internal.validateEncoding = function(enc) {
+  if (!internal.encodingIsSupported(enc)) {
+    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
+  }
+  return enc;
+};
+
+internal.encodingIsUtf8 = function(enc) {
+  // treating utf-8 as default
+  return !enc || /^utf-?8$/i.test(String(enc));
+};
+
+// Identify the most common encodings that are supersets of ascii at the
+// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
+// (this allows identifying line breaks and other ascii patterns in buffers)
+internal.encodingIsAsciiCompat = function(enc) {
+  enc = internal.standardizeEncodingName(enc);
+  // gb.* selects the Guo Biao encodings
+  // big5 in not compatible -- second byte starts at 0x40
+  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
+};
+
+// Ex. convert UTF-8 to utf8
+internal.standardizeEncodingName = function(enc) {
+  return (enc || '').toLowerCase().replace(/[_-]/g, '');
+};
+
+// Similar to Buffer#toString(); tries to speed up utf8 conversion in
+// web browser (when using browserify Buffer shim)
+internal.bufferToString = function(buf, enc, start, end) {
+  if (start >= 0) {
+    buf = buf.slice(start, end);
+  }
+  return internal.decodeString(buf, enc);
+};
+
+internal.getNativeEncoder = function(enc) {
+  var encoder = null;
+  enc = internal.standardizeEncodingName(enc);
+  if (enc != 'utf8') {
+    // TODO: support more encodings if TextEncoder is available
+    return null;
+  }
+  if (typeof TextEncoder != 'undefined') {
+    encoder = new TextEncoder(enc);
+  }
+  return function(str) {
+    // Convert Uint8Array from encoder to Buffer (fix for issue #216)
+    return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
+  };
+};
+
+internal.encodeString = (function() {
+  var iconv = require('iconv-lite');
+  var toUtf8 = internal.getNativeEncoder('utf8');
+  return function(str, enc) {
+    // TODO: faster ascii encoding?
+    var buf;
+    if (internal.encodingIsUtf8(enc)) {
+      buf = toUtf8(str);
+    } else {
+      buf = iconv.encode(str, enc);
+    }
+    return buf;
+  };
+}());
+
+internal.getNativeDecoder = function(enc) {
+  var decoder = null;
+  enc = internal.standardizeEncodingName(enc);
+  if (enc != 'utf8') {
+    // TODO: support more encodings if TextDecoder is available
+    return null;
+  }
+  if (typeof TextDecoder != 'undefined') {
+    decoder = new TextDecoder(enc);
+  }
+  return function(buf) {
+    return decoder ? decoder.decode(buf) : buf.toString(enc);
+  };
+};
+
+internal.decodeString = (function() {
+  var iconv = require('iconv-lite');
+  var fromUtf8 = internal.getNativeDecoder('utf8');
+  // @buf a Node Buffer
+  return function(buf, enc) {
+    var str;
+    if (internal.encodingIsUtf8(enc)) {
+      str = fromUtf8(buf);
+    } else {
+      str = iconv.decode(buf, enc);
+    }
+    return str;
+  };
+}());
+
+internal.encodingIsSupported = function(raw) {
+  var enc = internal.standardizeEncodingName(raw);
+  return utils.contains(internal.getEncodings(), enc);
+};
+
+internal.trimBOM = function(str) {
+  // remove BOM if present
+  if (str.charCodeAt(0) == 0xfeff) {
+    str = str.substr(1);
+  }
+  return str;
+};
+
+internal.printEncodings = function() {
+  var encodings = internal.getEncodings().filter(function(name) {
+    // filter out some aliases and non-applicable encodings
+    return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
+  });
+  encodings.sort();
+  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
+};
+
+
+
+
+internal.FileReader = FileReader;
+internal.BufferReader = BufferReader;
+
+internal.readFirstChars = function(reader, n) {
+  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
+};
+
+// Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
+function BufferReader(src) {
+  var bufSize = src.byteLength || src.length,
+      binArr, buf;
+
+  this.readToBinArray = function(start, length) {
+    if (bufSize < start + length) error("Out-of-range error");
+    if (!binArr) binArr = new BinArray(src);
+    binArr.position(start);
+    return binArr;
+  };
+
+  this.toString = function(enc) {
+    return internal.bufferToString(buffer(), enc);
+  };
+
+  this.readSync = function(start, length) {
+    // TODO: consider using a default length like FileReader
+    return buffer().slice(start, length || bufSize);
+  };
+
+  function buffer() {
+    if (!buf) {
+      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
+    }
+    return buf;
+  }
+
+  this.findString = FileReader.prototype.findString;
+  this.expandBuffer = function() {return this;};
+  this.size = function() {return bufSize;};
+  this.close = function() {};
+}
+
+function FileReader(path, opts) {
+  var fs = require('fs'),
+      fileLen = fs.statSync(path).size,
+      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
+      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
+      fd, cacheOffs, cache, binArr;
+
+  internal.getStateVar('input_files').push(path); // bit of a kludge
+
+  this.expandBuffer = function() {
+    DEFAULT_BUFFER_LEN *= 2;
+    return this;
+  };
+
+  // Read to BinArray (for compatibility with ShpReader)
+  this.readToBinArray = function(start, length) {
+    if (updateCache(start, length)) {
+      binArr = new BinArray(cache);
+    }
+    binArr.position(start - cacheOffs);
+    return binArr;
+  };
+
+  // Read to Buffer
+  this.readSync = function(start, length) {
+    if (length > 0 === false) {
+      // use default (but variable) size if length is not specified
+      length = DEFAULT_BUFFER_LEN;
+      if (start + length > fileLen) {
+        length = fileLen - start; // truncate at eof
+      }
+      if (length === 0) {
+        return utils.createBuffer(0); // kludge to allow reading up to eof
+      }
+    }
+    updateCache(start, length);
+    return cache.slice(start - cacheOffs, start - cacheOffs + length);
   };
 
   this.size = function() {
-    return this.toArray().length;
+    return fileLen;
   };
 
-  this.findDanglingEndpoints = function() {
-    var chains = getNodeChains(),
-        arr = [], p;
-    for (var i=0, n=chains.length; i<n; i++) {
-      if (chains[i] != i) continue; // endpoint attaches to a node
-      p = getEndpoint(i);
-      if (!p) continue; // endpoint belongs to an excluded arc
-      arr.push({
-        point: p,
-        arc: chainToArcId(i)
-      });
-    }
-    return arr;
+  this.toString = function(enc) {
+    // TODO: use fd
+    return cli.readFile(path, enc || 'utf8');
   };
 
-  this.detachAcyclicArcs = function() {
-    var chains = getNodeChains(),
-        count = 0,
-        fwd, rev;
-    for (var i=0, n=chains.length; i<n; i+= 2) {
-      fwd = i == chains[i];
-      rev = i + 1 == chains[i + 1];
-      // detach arcs that are disconnected at one end or the other
-      if ((fwd || rev) && !linkIsDetached(i)) {
-        this.detachArc(chainToArcId(i));
-        count++;
-      }
-    }
-    if (count > 0) {
-      // removing one acyclic arc could expose another -- need another pass
-      count += this.detachAcyclicArcs();
-    }
-    return count;
-  };
-
-  this.detachArc = function(arcId) {
-    unlinkDirectedArc(arcId);
-    unlinkDirectedArc(~arcId);
-  };
-
-  this.forEachConnectedArc = function(arcId, cb) {
-    var nextId = nextConnectedArc(arcId),
-        i = 0;
-    while (nextId != arcId) {
-      cb(nextId, i++);
-      nextId = nextConnectedArc(nextId);
+  this.close = function() {
+    if (fd) {
+      fs.closeSync(fd);
+      fd = null;
+      cache = null;
     }
   };
 
-  // @filter (optional) only includes arc ids that return positive
-  //    Filter function receives the forward (positive) id of each connected arc
-  this.getConnectedArcs = function(arcId, filter) {
-    var ids = [];
-    var nextId = nextConnectedArc(arcId);
-    if (filter && !filter(absArcId(arcId))) {
-      return ids;
+  // Receive offset and length of byte string that must be read
+  // Return true if cache was updated, or false
+  function updateCache(fileOffs, bufLen) {
+    var headroom = fileLen - fileOffs,
+        bytesRead, bytesToRead;
+    if (headroom < bufLen || headroom < 0) {
+      error("Tried to read past end-of-file");
     }
-    while (nextId != arcId) {
-      if (!filter || filter(absArcId(nextId))) {
-        ids.push(nextId);
-      }
-      nextId = nextConnectedArc(nextId);
-    }
-    return ids;
-  };
-
-  // Returns the id of the first identical arc or @arcId if none found
-  // TODO: find a better function name
-  this.findDuplicateArc = function(arcId) {
-    var nextId = nextConnectedArc(arcId),
-        match = arcId;
-    while (nextId != arcId) {
-      if (testArcMatch(arcId, nextId)) {
-        if (absArcId(nextId) < absArcId(match)) match = nextId;
-      }
-      nextId = nextConnectedArc(nextId);
-    }
-    return match;
-  };
-
-  // returns null if link has been removed from node collection
-  function getEndpoint(chainId) {
-    return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
-  }
-
-  function linkIsDetached(chainId) {
-    return isNaN(nodeData.xx[chainId]);
-  }
-
-  function unlinkDirectedArc(arcId) {
-    var chainId = arcToChainId(arcId),
-        chains = getNodeChains(),
-        nextId = chains[chainId],
-        prevId = prevChainId(chainId);
-    nodeData.xx[chainId] = NaN;
-    nodeData.yy[chainId] = NaN;
-    chains[chainId] = chainId;
-    chains[prevId] = nextId;
-  }
-
-  function chainToArcId(chainId) {
-    var absId = chainId >> 1;
-    return chainId & 1 == 1 ? absId : ~absId;
-  }
-
-  function arcToChainId(arcId) {
-    var fw = arcId >= 0;
-    return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
-  }
-
-  function getNodeChains() {
-    if (!nodeData) {
-      nodeData = internal.findNodeTopology(arcs, filter);
-      if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
-    }
-    return nodeData.chains;
-  }
-
-  function testArcMatch(a, b) {
-    var absA = a >= 0 ? a : ~a,
-        absB = b >= 0 ? b : ~b,
-        lenA = nn[absA];
-    if (lenA < 2) {
-      // Don't throw error on collapsed arcs -- assume they will be handled
-      //   appropriately downstream.
-      // error("[testArcMatch() defective arc; len:", lenA);
+    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bufLen) {
       return false;
     }
-    if (lenA != nn[absB]) return false;
-    if (testVertexMatch(a, b, -1) &&
-        testVertexMatch(a, b, 1) &&
-        testVertexMatch(a, b, -2)) {
-      return true;
+    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bufLen);
+    if (headroom < bytesToRead) {
+      bytesToRead = headroom;
     }
-    return false;
-  }
-
-  function testVertexMatch(a, b, i) {
-    var ai = arcs.indexOfVertex(a, i),
-        bi = arcs.indexOfVertex(b, i);
-    return xx[ai] == xx[bi] && yy[ai] == yy[bi];
-  }
-
-  // return arcId of next arc in the chain, pointed towards the shared vertex
-  function nextConnectedArc(arcId) {
-    var chainId = arcToChainId(arcId),
-        chains =  getNodeChains(),
-        nextChainId = chains[chainId];
-    if (!(nextChainId >= 0 && nextChainId < chains.length)) error("out-of-range chain id");
-    return chainToArcId(nextChainId);
-  }
-
-  function prevChainId(chainId) {
-    var chains = getNodeChains(),
-        prevId = chainId,
-        nextId = chains[chainId];
-    while (nextId != chainId) {
-      prevId = nextId;
-      nextId = chains[nextId];
-      if (nextId == prevId) error("Node indexing error");
+    if (!cache || bytesToRead != cache.length) {
+      cache = utils.createBuffer(bytesToRead);
     }
-    return prevId;
+    if (!fd) {
+      fd = fs.openSync(path, 'r');
+    }
+    bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
+    cacheOffs = fileOffs;
+    if (bytesRead != bytesToRead) error("Error reading file");
+    return true;
   }
-
-  // expose functions for testing
-  this.internal = {
-    testArcMatch: testArcMatch,
-    testVertexMatch: testVertexMatch
-  };
 }
 
-internal.findNodeTopology = function(arcs, filter) {
-  var n = arcs.size() * 2,
-      xx2 = new Float64Array(n),
-      yy2 = new Float64Array(n),
-      ids2 = new Int32Array(n);
-
-  arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
-    var start = i,
-        end = i + n - 1,
-        start2 = arcId * 2,
-        end2 = start2 + 1,
-        ax = xx[start],
-        ay = yy[start],
-        bx = xx[end],
-        by = yy[end];
-    if (filter && !filter(arcId)) {
-      ax = ay = bx = by = NaN;
+FileReader.prototype.findString = function (str, maxLen) {
+  var len = Math.min(this.size(), maxLen || this.size());
+  var buf = this.readSync(0, len);
+  var strLen = str.length;
+  var n = buf.length - strLen;
+  var firstByte = str.charCodeAt(0);
+  var i;
+  for (i=0; i < n; i++) {
+    if (buf[i] == firstByte && buf.toString('utf8', i, i + strLen) == str) {
+      return {
+        offset: i + strLen,
+        text: buf.toString('utf8', 0, i)
+      };
     }
+  }
+  return null;
+};
 
-    xx2[start2] = ax;
-    yy2[start2] = ay;
-    ids2[start2] = arcId;
-    xx2[end2] = bx;
-    yy2[end2] = by;
-    ids2[end2] = arcId;
+
+
+
+internal.GeoJSONReader = GeoJSONReader;
+
+// Read GeoJSON Features or geometry objects from a file
+// @reader: a FileReader
+function GeoJSONReader(reader) {
+
+  // Read objects synchronously, with callback
+  this.readObjects = function(onObject) {
+    // Search first x bytes of file for features|geometries key
+    // 300 bytes not enough... GeoJSON files can have additional non-standard properties, e.g. 'metadata'
+    // var bytesToSearch = 300;
+    var bytesToSearch = 5000;
+    var start = reader.findString('"features"', bytesToSearch) ||
+        reader.findString('"geometries"', bytesToSearch);
+    // Assume single Feature or geometry if collection not found
+    var offset = start ? start.offset : 0;
+    readObjects(offset, onObject);
+  };
+
+  this.readObject = readObject;
+
+  function readObjects(start, cb) {
+    var obj = readObject(start);
+    while (obj) {
+      cb(JSON.parse(obj.text)); // Use JSON.parse to parse object
+      obj = readObject(obj.offset);
+    }
+  }
+
+  // Search for a JSON object starting at position @offs
+  // Returns {text: "<object>", offset: <offset>} or null
+  //   <offset> is the file position directly after the object's closing brace
+  // Skips characters in front of first left curly brace
+  function readObject(offs) {
+    var LBRACE = 123,
+        RBRACE = 125,
+        RBRACK = 93,
+        BSLASH = 92,
+        DQUOTE = 34,
+        level = 0,
+        inString = false,
+        escapeNext = false,
+        buf = reader.readSync(offs),
+        retn = null,
+        startPos, i, n, c;
+    for (i=0, n=buf.length; i<n; i++) {
+      c = buf[i];
+      if (inString) {
+        if (escapeNext) {
+          escapeNext = false;
+        } else if (c == DQUOTE) {
+          inString = false;
+        } else if (c == BSLASH) {
+          escapeNext = true;
+        }
+      } else if (c == DQUOTE) {
+        inString = true;
+      } else if (c == LBRACE) {
+        if (level === 0) {
+          startPos = i;
+        }
+        level++;
+      } else if (c == RBRACE) {
+        level--;
+        if (level === 0) {
+          retn = {
+            text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
+            offset: offs + i + 1
+          };
+          break;
+        } else if (level == -1) {
+          break; // error -- "}" encountered before "{"
+        }
+      } else if (c == RBRACK && level === 0) {
+        break; // end of collection
+      }
+      if (i == n-1) {
+        buf = reader.expandBuffer().readSync(offs);
+        n = buf.length;
+      }
+    }
+    return retn;
+  }
+}
+
+
+
+
+internal.roundPoints = function(lyr, round) {
+  internal.forEachPoint(lyr.shapes, function(p) {
+    p[0] = round(p[0]);
+    p[1] = round(p[1]);
   });
+};
 
-  var chains = initPointChains(xx2, yy2);
-  return {
-    xx: xx2,
-    yy: yy2,
-    ids: ids2,
-    chains: chains
+internal.setCoordinatePrecision = function(dataset, precision) {
+  var round = utils.getRoundingFunction(precision);
+  // var dissolvePolygon, nodes;
+  internal.transformPoints(dataset, function(x, y) {
+    return [round(x), round(y)];
+  });
+  // v0.4.52 removing polygon dissolve - see issue #219
+  /*
+  if (dataset.arcs) {
+    nodes = internal.addIntersectionCuts(dataset);
+    dissolvePolygon = internal.getPolygonDissolver(nodes);
+  }
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polygon' && dissolvePolygon) {
+      // clean each polygon -- use dissolve function to remove spikes
+      // TODO: better handling of corrupted polygons
+      lyr.shapes = lyr.shapes.map(dissolvePolygon);
+    }
+  });
+  */
+  return dataset;
+};
+
+utils.getRoundingFunction = function(inc) {
+  if (!utils.isNumber(inc) || inc === 0) {
+    error("Rounding increment must be a non-zero number.");
+  }
+  var inv = 1 / inc;
+  if (inv > 1) inv = Math.round(inv);
+  return function(x) {
+    return Math.round(x * inv) / inv;
+    // these alternatives show rounding error after JSON.stringify()
+    // return Math.round(x / inc) / inv;
+    // return Math.round(x / inc) * inc;
+    // return Math.round(x * inv) * inc;
   };
 };
 
@@ -4428,6 +6011,3436 @@ geom.calcPathLen = (function() {
     return len;
   };
 }());
+
+
+
+
+// Get function to Hash an x, y point to a non-negative integer
+function getXYHash(size) {
+  var buf = new ArrayBuffer(16),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf),
+      lim = size | 0;
+  if (lim > 0 === false) {
+    throw new Error("Invalid size param: " + size);
+  }
+
+  return function(x, y) {
+    var u = uints, h;
+    floats[0] = x;
+    floats[1] = y;
+    h = u[0] ^ u[1];
+    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+    return (h & 0x7fffffff) % lim;
+  };
+}
+
+// Get function to Hash a single coordinate to a non-negative integer
+function getXHash(size) {
+  var buf = new ArrayBuffer(8),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf),
+      lim = size | 0;
+  if (lim > 0 === false) {
+    throw new Error("Invalid size param: " + size);
+  }
+
+  return function(x) {
+    var h;
+    floats[0] = x;
+    h = uints[0] ^ uints[1];
+    h = h << 5 ^ h >> 7;
+    return (h & 0x7fffffff) % lim;
+  };
+}
+
+
+
+
+// Used for building topology
+//
+function ArcIndex(pointCount) {
+  var hashTableSize = Math.floor(pointCount * 0.25 + 1),
+      hash = getXYHash(hashTableSize),
+      hashTable = new Int32Array(hashTableSize),
+      chainIds = [],
+      arcs = [],
+      arcPoints = 0;
+
+  utils.initializeArray(hashTable, -1);
+
+  this.addArc = function(xx, yy) {
+    var end = xx.length - 1,
+        key = hash(xx[end], yy[end]),
+        chainId = hashTable[key],
+        arcId = arcs.length;
+    hashTable[key] = arcId;
+    arcs.push([xx, yy]);
+    arcPoints += xx.length;
+    chainIds.push(chainId);
+    return arcId;
+  };
+
+  // Look for a previously generated arc with the same sequence of coords, but in the
+  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
+  // so coincident boundaries should contain the same points in reverse sequence).
+  //
+  this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
+    // First, look for a reverse match
+    var arcId = findArcNeighbor(xx, yy, start, end, getNext);
+    if (arcId === null) {
+      // Look for forward match
+      // (Abnormal topology, but we're accepting it because in-the-wild
+      // Shapefiles sometimes have duplicate paths)
+      arcId = findArcNeighbor(xx, yy, end, start, getPrev);
+    } else {
+      arcId = ~arcId;
+    }
+    return arcId;
+  };
+
+  function findArcNeighbor(xx, yy, start, end, getNext) {
+    var next = getNext(start),
+        key = hash(xx[start], yy[start]),
+        arcId = hashTable[key],
+        arcX, arcY, len;
+
+    while (arcId != -1) {
+      // check endpoints and one segment...
+      // it would be more rigorous but slower to identify a match
+      // by comparing all segments in the coordinate sequence
+      arcX = arcs[arcId][0];
+      arcY = arcs[arcId][1];
+      len = arcX.length;
+      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
+          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+        return arcId;
+      }
+      arcId = chainIds[arcId];
+    }
+    return null;
+  }
+
+  this.getVertexData = function() {
+    var xx = new Float64Array(arcPoints),
+        yy = new Float64Array(arcPoints),
+        nn = new Uint32Array(arcs.length),
+        copied = 0,
+        arc, len;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      arc = arcs[i];
+      len = arc[0].length;
+      utils.copyElements(arc[0], 0, xx, copied, len);
+      utils.copyElements(arc[1], 0, yy, copied, len);
+      nn[i] = len;
+      copied += len;
+    }
+    return {
+      xx: xx,
+      yy: yy,
+      nn: nn
+    };
+  };
+}
+
+
+
+
+function initHashChains(xx, yy) {
+  // Performance doesn't improve much above ~1.3 * point count
+  var n = xx.length,
+      m = Math.floor(n * 1.3) || 1,
+      hash = getXYHash(m),
+      hashTable = new Int32Array(m),
+      chainIds = new Int32Array(n), // Array to be filled with chain data
+      key, j, i, x, y;
+
+  for (i=0; i<n; i++) {
+    x = xx[i];
+    y = yy[i];
+    if (x != x || y != y) {
+      j = -1; // NaN coord: no hash entry, one-link chain
+    } else {
+      key = hash(x, y);
+      j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
+      hashTable[key] = i + 1;
+    }
+    chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
+  }
+  return chainIds;
+}
+
+function initPointChains(xx, yy) {
+  var chainIds = initHashChains(xx, yy),
+      j, next, prevMatchId, prevUnmatchId;
+
+  // disentangle, reverse and close the chains created by initHashChains()
+  for (var i = xx.length-1; i>=0; i--) {
+    next = chainIds[i];
+    if (next >= i) continue;
+    prevMatchId = i;
+    prevUnmatchId = -1;
+    do {
+      j = next;
+      next = chainIds[j];
+      if (yy[j] == yy[i] && xx[j] == xx[i]) {
+        chainIds[j] = prevMatchId;
+        prevMatchId = j;
+      } else {
+        if (prevUnmatchId > -1) {
+          chainIds[prevUnmatchId] = j;
+        }
+        prevUnmatchId = j;
+      }
+    } while (next < j);
+    if (prevUnmatchId > -1) {
+      // Make sure last unmatched entry is terminated
+      chainIds[prevUnmatchId] = prevUnmatchId;
+    }
+    chainIds[i] = prevMatchId; // close the chain
+  }
+  return chainIds;
+}
+
+
+
+
+// Converts all polygon and polyline paths in a dataset to a topological format,
+// (in-place);
+api.buildTopology = function(dataset) {
+  if (!dataset.arcs) return;
+  var raw = dataset.arcs.getVertexData(),
+      cooked = internal.buildPathTopology(raw.nn, raw.xx, raw.yy);
+  dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      lyr.shapes = internal.replaceArcIds(lyr.shapes, cooked.paths);
+    }
+  });
+};
+
+// buildPathTopology() converts non-topological paths into
+// a topological format
+//
+// Arguments:
+//    xx: [Array|Float64Array],   // x coords of each point in the dataset
+//    yy: [Array|Float64Array],   // y coords ...
+//    nn: [Array]  // length of each path
+//
+// (x- and y-coords of all paths are concatenated into two arrays)
+//
+// Returns:
+// {
+//    xx, yy (array)   // coordinate data
+//    nn: (array)      // points in each arc
+//    paths: (array)   // Paths are arrays of one or more arc id.
+// }
+//
+// Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
+//
+internal.buildPathTopology = function(nn, xx, yy) {
+  var pointCount = xx.length,
+      chainIds = initPointChains(xx, yy),
+      pathIds = initPathIds(pointCount, nn),
+      index = new ArcIndex(pointCount),
+      slice = usingTypedArrays() ? xx.subarray : Array.prototype.slice,
+      paths, retn;
+  paths = convertPaths(nn);
+  retn = index.getVertexData();
+  retn.paths = paths;
+  return retn;
+
+  function usingTypedArrays() {
+    return !!(xx.subarray && yy.subarray);
+  }
+
+  function convertPaths(nn) {
+    var paths = [],
+        pointId = 0,
+        pathLen;
+    for (var i=0, len=nn.length; i<len; i++) {
+      pathLen = nn[i];
+      paths.push(pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1));
+      pointId += pathLen;
+    }
+    return paths;
+  }
+
+  function nextPoint(id) {
+    var partId = pathIds[id],
+        nextId = id + 1;
+    if (nextId < pointCount && pathIds[nextId] === partId) {
+      return id + 1;
+    }
+    var len = nn[partId];
+    return sameXY(id, id - len + 1) ? id - len + 2 : -1;
+  }
+
+  function prevPoint(id) {
+    var partId = pathIds[id],
+        prevId = id - 1;
+    if (prevId >= 0 && pathIds[prevId] === partId) {
+      return id - 1;
+    }
+    var len = nn[partId];
+    return sameXY(id, id + len - 1) ? id + len - 2 : -1;
+  }
+
+  function sameXY(a, b) {
+    return xx[a] == xx[b] && yy[a] == yy[b];
+  }
+
+  // Convert a non-topological path to one or more topological arcs
+  // @start, @end are ids of first and last points in the path
+  // TODO: don't allow id ~id pairs
+  //
+  function convertPath(start, end) {
+    var arcIds = [],
+        firstNodeId = -1,
+        arcStartId;
+
+    // Visit each point in the path, up to but not including the last point
+    for (var i = start; i < end; i++) {
+      if (pointIsArcEndpoint(i)) {
+        if (firstNodeId > -1) {
+          arcIds.push(addEdge(arcStartId, i));
+        } else {
+          firstNodeId = i;
+        }
+        arcStartId = i;
+      }
+    }
+
+    // Identify the final arc in the path
+    if (firstNodeId == -1) {
+      // Not in an arc, i.e. no nodes have been found...
+      // Assuming that path is either an island or is congruent with one or more rings
+      arcIds.push(addRing(start, end));
+    }
+    else if (firstNodeId == start) {
+      // path endpoint is a node;
+      if (!pointIsArcEndpoint(end)) {
+        error("Topology error"); // TODO: better error handling
+      }
+      arcIds.push(addEdge(arcStartId, i));
+    } else {
+      // final arc wraps around
+      arcIds.push(addSplitEdge(arcStartId, end, start + 1, firstNodeId));
+    }
+    return arcIds;
+  }
+
+  // Test if a point @id is an endpoint of a topological path
+  function pointIsArcEndpoint(id) {
+    var id2 = chainIds[id],
+        prev = prevPoint(id),
+        next = nextPoint(id),
+        prev2, next2;
+    if (prev == -1 || next == -1) {
+      // @id is an endpoint if it is the start or end of an open path
+      return true;
+    }
+    while (id != id2) {
+      prev2 = prevPoint(id2);
+      next2 = nextPoint(id2);
+      if (prev2 == -1 || next2 == -1 || brokenEdge(prev, next, prev2, next2)) {
+        // there is a discontinuity at @id -- point is arc endpoint
+        return true;
+      }
+      id2 = chainIds[id2];
+    }
+    return false;
+  }
+
+  // a and b are two vertices with the same x, y coordinates
+  // test if the segments on either side of them are also identical
+  function brokenEdge(aprev, anext, bprev, bnext) {
+    var apx = xx[aprev],
+        anx = xx[anext],
+        bpx = xx[bprev],
+        bnx = xx[bnext],
+        apy = yy[aprev],
+        any = yy[anext],
+        bpy = yy[bprev],
+        bny = yy[bnext];
+    if (apx == bnx && anx == bpx && apy == bny && any == bpy ||
+        apx == bpx && anx == bnx && apy == bpy && any == bny) {
+      return false;
+    }
+    return true;
+  }
+
+  function mergeArcParts(src, startId, endId, startId2, endId2) {
+    var len = endId - startId + endId2 - startId2 + 2,
+        ArrayClass = usingTypedArrays() ? Float64Array : Array,
+        dest = new ArrayClass(len),
+        j = 0, i;
+    for (i=startId; i <= endId; i++) {
+      dest[j++] = src[i];
+    }
+    for (i=startId2; i <= endId2; i++) {
+      dest[j++] = src[i];
+    }
+    return dest;
+  }
+
+  function addSplitEdge(start1, end1, start2, end2) {
+    var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
+    if (arcId === null) {
+      arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
+          mergeArcParts(yy, start1, end1, start2, end2));
+    }
+    return arcId;
+  }
+
+  function addEdge(start, end) {
+    // search for a matching edge that has already been generated
+    var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
+    if (arcId === null) {
+      arcId = index.addArc(slice.call(xx, start, end + 1),
+          slice.call(yy, start, end + 1));
+    }
+    return arcId;
+  }
+
+  function addRing(startId, endId) {
+    var chainId = chainIds[startId],
+        pathId = pathIds[startId],
+        arcId;
+
+    while (chainId != startId) {
+      if (pathIds[chainId] < pathId) {
+        break;
+      }
+      chainId = chainIds[chainId];
+    }
+
+    if (chainId == startId) {
+      return addEdge(startId, endId);
+    }
+
+    for (var i=startId; i<endId; i++) {
+      arcId = index.findDuplicateArc(xx, yy, i, i, nextPoint, prevPoint);
+      if (arcId !== null) return arcId;
+    }
+    error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
+  }
+};
+
+
+// Create a lookup table for path ids; path ids are indexed by point id
+//
+function initPathIds(size, pathSizes) {
+  var pathIds = new Int32Array(size),
+      j = 0;
+  for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
+    for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
+      pathIds[j] = pathId;
+    }
+  }
+  return pathIds;
+}
+
+internal.replaceArcIds = function(src, replacements) {
+  return src.map(function(shape) {
+    return replaceArcsInShape(shape, replacements);
+  });
+
+  function replaceArcsInShape(shape, replacements) {
+    if (!shape) return null;
+    return shape.map(function(path) {
+      return replaceArcsInPath(path, replacements);
+    });
+  }
+
+  function replaceArcsInPath(path, replacements) {
+    return path.reduce(function(memo, id) {
+      var abs = absArcId(id);
+      var topoPath = replacements[abs];
+      if (topoPath) {
+        if (id < 0) {
+          topoPath = topoPath.concat(); // TODO: need to copy?
+          internal.reversePath(topoPath);
+        }
+        for (var i=0, n=topoPath.length; i<n; i++) {
+          memo.push(topoPath[i]);
+        }
+      }
+      return memo;
+    }, []);
+  }
+};
+
+
+
+
+internal.getHighPrecisionSnapInterval = function(arcs) {
+  var bb = arcs.getBounds();
+  if (!bb.hasBounds()) return 0;
+  var maxCoord = Math.max(Math.abs(bb.xmin), Math.abs(bb.ymin),
+      Math.abs(bb.xmax), Math.abs(bb.ymax));
+  return maxCoord * 1e-14;
+};
+
+internal.snapCoords = function(arcs, threshold) {
+    var avgDist = internal.getAvgSegment(arcs),
+        autoSnapDist = avgDist * 0.0025,
+        snapDist = autoSnapDist;
+
+  if (threshold > 0) {
+    snapDist = threshold;
+    message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+  }
+  var snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+  if (snapCount > 0) arcs.dedupCoords();
+  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
+};
+
+// Snap together points within a small threshold
+//
+internal.snapCoordsByInterval = function(arcs, snapDist) {
+  var snapCount = 0,
+      data = arcs.getVertexData();
+
+  // Get sorted coordinate ids
+  // Consider: speed up sorting -- try bucket sort as first pass.
+  //
+  var ids = utils.sortCoordinateIds(data.xx);
+  for (var i=0, n=ids.length; i<n; i++) {
+    snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
+  }
+  return snapCount;
+
+  function snapPoint(i, limit, ids, xx, yy) {
+    var j = i,
+        n = ids.length,
+        x = xx[ids[i]],
+        y = yy[ids[i]],
+        snaps = 0,
+        id2, dx, dy;
+
+    while (++j < n) {
+      id2 = ids[j];
+      dx = xx[id2] - x;
+      if (dx > limit) break;
+      dy = yy[id2] - y;
+      if (dx === 0 && dy === 0 || dx * dx + dy * dy > limit * limit) continue;
+      xx[id2] = x;
+      yy[id2] = y;
+      snaps++;
+    }
+    return snaps;
+  }
+};
+
+utils.sortCoordinateIds = function(a) {
+  var n = a.length,
+      ids = new Uint32Array(n);
+  for (var i=0; i<n; i++) {
+    ids[i] = i;
+  }
+  utils.quicksortIds(a, ids, 0, ids.length-1);
+  return ids;
+};
+
+/*
+// Returns array of array ids, in ascending order.
+// @a array of numbers
+//
+utils.sortCoordinateIds = function(a) {
+  return utils.bucketSortIds(a);
+};
+
+// This speeds up sorting of large datasets (~2x faster for 1e7 values)
+// worth the additional code?
+utils.bucketSortIds = function(a, n) {
+  var len = a.length,
+      ids = new Uint32Array(len),
+      bounds = utils.getArrayBounds(a),
+      buckets = Math.ceil(n > 0 ? n : len / 10),
+      counts = new Uint32Array(buckets),
+      offsets = new Uint32Array(buckets),
+      i, j, offs, count;
+
+  // get bucket sizes
+  for (i=0; i<len; i++) {
+    j = bucketId(a[i], bounds.min, bounds.max, buckets);
+    counts[j]++;
+  }
+
+  // convert counts to offsets
+  offs = 0;
+  for (i=0; i<buckets; i++) {
+    offsets[i] = offs;
+    offs += counts[i];
+  }
+
+  // assign ids to buckets
+  for (i=0; i<len; i++) {
+    j = bucketId(a[i], bounds.min, bounds.max, buckets);
+    offs = offsets[j]++;
+    ids[offs] = i;
+  }
+
+  // sort each bucket with quicksort
+  for (i = 0; i<buckets; i++) {
+    count = counts[i];
+    if (count > 1) {
+      offs = offsets[i] - count;
+      utils.quicksortIds(a, ids, offs, offs + count - 1);
+    }
+  }
+  return ids;
+
+  function bucketId(val, min, max, buckets) {
+    var id = (buckets * (val - min) / (max - min)) | 0;
+    return id < buckets ? id : buckets - 1;
+  }
+};
+*/
+
+utils.quicksortIds = function (a, ids, lo, hi) {
+  if (hi - lo > 24) {
+    var pivot = a[ids[lo + hi >> 1]],
+        i = lo,
+        j = hi,
+        tmp;
+    while (i <= j) {
+      while (a[ids[i]] < pivot) i++;
+      while (a[ids[j]] > pivot) j--;
+      if (i <= j) {
+        tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+        i++;
+        j--;
+      }
+    }
+    if (j > lo) utils.quicksortIds(a, ids, lo, j);
+    if (i < hi) utils.quicksortIds(a, ids, i, hi);
+  } else {
+    utils.insertionSortIds(a, ids, lo, hi);
+  }
+};
+
+utils.insertionSortIds = function(arr, ids, start, end) {
+  var id, i, j;
+  for (j = start + 1; j <= end; j++) {
+    id = ids[j];
+    for (i = j - 1; i >= start && arr[id] < arr[ids[i]]; i--) {
+      ids[i+1] = ids[i];
+    }
+    ids[i+1] = id;
+  }
+};
+
+
+// Keep track of whether integer ids (indexes) are 'used' or not.
+// Accepts positive and negative ids.
+function IndexIndex(n) {
+  var index = new Uint8Array(n);
+
+  this.setId = function(id) {
+    if (id < 0) {
+      index[~id] |= 2;
+    } else {
+      index[id] |= 1;
+    }
+  };
+
+  this.hasId = function(id) {
+    return id < 0 ? (index[~id] & 2) == 2 : (index[id] & 1) == 1;
+  };
+
+  // clear a signed id
+  this.clearId = function(id) {
+    if (id < 0) {
+      index[~id] &= 1; // clear reverse arc, preserve fwd arc
+    } else {
+      index[id] &= 2; // clear fwd arc, preserve rev arc
+    }
+  };
+
+  // clear pos. and neg. ids in ids array
+  this.clearIds = function(ids) {
+    for (var i=0; i<ids.length; i++) {
+      this.clearId(ids[i]);
+    }
+  };
+
+  this.setIds = function(ids) {
+    for (var i=0; i<ids.length; i++) {
+      this.setId(ids[i]);
+    }
+  };
+}
+
+
+
+
+// Returns a function for splitting self-intersecting polygon rings
+// The splitter function receives a single polygon ring represented as an array
+// of arc ids, and returns an array of split-apart rings.
+//
+// Self-intersections in the input ring are assumed to occur at vertices, not along segments.
+// This requires that internal.addIntersectionCuts() has already been run.
+//
+// The rings output by this function may overlap each other, but each ring will
+// be non-self-intersecting. For example, a figure-eight shaped ring will be
+// split into two rings that touch each other where the original ring crossed itself.
+//
+internal.getSelfIntersectionSplitter = function(nodes) {
+  var pathIndex = new IndexIndex(nodes.arcs.size());
+  var filter = function(arcId) {
+    return pathIndex.hasId(~arcId);
+  };
+  return function(path) {
+    pathIndex.setIds(path);
+    var paths = dividePath(path);
+    pathIndex.clearIds(path);
+    return paths;
+  };
+
+  // Returns array of 0 or more divided paths
+  function dividePath(path) {
+    var subPaths = null;
+    for (var i=0, n=path.length; i < n - 1; i++) { // don't need to check last arc
+      subPaths = dividePathAtNode(path, path[i]);
+      if (subPaths !== null) {
+        return subPaths;
+      }
+    }
+    // indivisible path -- clean it by removing any spikes
+    internal.removeSpikesInPath(path);
+    return path.length > 0 ? [path] : [];
+  }
+
+  // If arc @enterId enters a node with more than one open routes leading out:
+  //   return array of sub-paths
+  // else return null
+  function dividePathAtNode(path, enterId) {
+    var nodeIds = nodes.getConnectedArcs(enterId, filter),
+        exitArcIndexes, exitArcId, idx;
+    if (nodeIds.length < 2) return null;
+    exitArcIndexes = [];
+    for (var i=0; i<nodeIds.length; i++) {
+      exitArcId = ~nodeIds[i];
+      idx = indexOf(path, exitArcId);
+      if (idx > -1) { // repeated scanning may be bottleneck
+        // important optimization (TODO: explain this)
+        // TODO: test edge case: exitArcId occurs twice in the path
+        pathIndex.clearId(exitArcId);
+        exitArcIndexes.push(idx);
+      } else {
+        // TODO: investigate why this happens
+      }
+    }
+    if (exitArcIndexes.length < 2) {
+      return null;
+    }
+    // path forks -- recursively subdivide
+    var subPaths = internal.splitPathByIds(path, exitArcIndexes);
+    return subPaths.reduce(accumulatePaths, null);
+  }
+
+  function accumulatePaths(memo, path) {
+    var subPaths = dividePath(path);
+    if (memo === null) {
+      return subPaths;
+    }
+    memo.push.apply(memo, subPaths);
+    return memo;
+  }
+
+  // Added as an optimization -- faster than using Array#indexOf()
+  function indexOf(arr, el) {
+    for (var i=0, n=arr.length; i<n; i++) {
+      if (arr[i] === el) return i;
+    }
+    return -1;
+  }
+
+};
+
+// Function returns an array of split-apart rings
+// @path An array of arc ids describing a self-intersecting polygon ring
+// @ids An array of two or more indexes of arcs that originate from a single vertex
+//      where @path intersects itself -- assumes indexes are in ascending sequence
+internal.splitPathByIds = function(path, indexes) {
+  var subPaths = [];
+  utils.genericSort(indexes, true); // sort ascending
+  if (indexes[0] > 0) {
+    subPaths.push(path.slice(0, indexes[0]));
+  }
+  for (var i=0, n=indexes.length; i<n; i++) {
+    if (i < n-1) {
+      subPaths.push(path.slice(indexes[i], indexes[i+1]));
+    } else {
+      subPaths.push(path.slice(indexes[i]));
+    }
+  }
+  // handle case where first subring is split across endpoint of @path
+  if (subPaths.length > indexes.length) {
+    utils.merge(subPaths[0], subPaths.pop());
+  }
+  return subPaths;
+};
+
+
+
+// __mapshaper-self-intersection-v1
+
+// Returns a function that separates rings in a polygon into space-enclosing rings
+// and holes. Also fixes self-intersections.
+//
+internal.getHoleDivider = function(nodes, spherical) {
+  var split = internal.getSelfIntersectionSplitter(nodes);
+  // var split = internal.getSelfIntersectionSplitter_v1(nodes); console.log('split')
+
+  return function(rings, cw, ccw) {
+    var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
+    internal.forEachShapePart(rings, function(ringIds) {
+      var splitRings = split(ringIds);
+      if (splitRings.length === 0) {
+        debug("[getRingDivider()] Defective path:", ringIds);
+      }
+      splitRings.forEach(function(ringIds, i) {
+        var ringArea = pathArea(ringIds, nodes.arcs);
+        if (ringArea > 0) {
+          cw.push(ringIds);
+        } else if (ringArea < 0) {
+          ccw.push(ringIds);
+        }
+      });
+    });
+  };
+};
+
+
+
+
+// Clean polygon or polyline shapes (in-place)
+//
+internal.cleanShapes = function(shapes, arcs, type) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = internal.cleanShape(shapes[i], arcs, type);
+  }
+};
+
+// Remove defective arcs and zero-area polygon rings
+// Remove simple polygon spikes of form: [..., id, ~id, ...]
+// Don't remove duplicate points
+// Don't check winding order of polygon rings
+internal.cleanShape = function(shape, arcs, type) {
+  return internal.editShapeParts(shape, function(path) {
+    var cleaned = internal.cleanPath(path, arcs);
+    if (type == 'polygon' && cleaned) {
+      internal.removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
+      if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
+        cleaned = null;
+      }
+    }
+    return cleaned;
+  });
+};
+
+internal.cleanPath = function(path, arcs) {
+  var nulls = 0;
+  for (var i=0, n=path.length; i<n; i++) {
+    if (arcs.arcIsDegenerate(path[i])) {
+      nulls++;
+      path[i] = null;
+    }
+  }
+  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
+};
+
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+// (in place)
+internal.removeSpikesInPath = function(ids) {
+  var n = ids.length;
+  if (n >= 2) {
+    if (ids[0] == ~ids[n-1]) {
+      ids.pop();
+      ids.shift();
+    } else {
+      for (var i=1; i<n; i++) {
+        if (ids[i-1] == ~ids[i]) {
+          ids.splice(i-1, 2);
+          break;
+        }
+      }
+    }
+    if (ids.length < n) {
+      internal.removeSpikesInPath(ids);
+    }
+  }
+};
+
+
+// TODO: Need to rethink polygon repair: these function can cause problems
+// when part of a self-intersecting polygon is removed
+//
+internal.repairPolygonGeometry = function(layers, dataset, opts) {
+  var nodes = internal.addIntersectionCuts(dataset);
+  layers.forEach(function(lyr) {
+    internal.repairSelfIntersections(lyr, nodes);
+  });
+  return layers;
+};
+
+// Remove any small shapes formed by twists in each ring
+// // OOPS, NO // Retain only the part with largest area
+// // this causes problems when a cut-off hole has a matching ring in another polygon
+// TODO: consider cases where cut-off parts should be retained
+//
+internal.repairSelfIntersections = function(lyr, nodes) {
+  var splitter = internal.getSelfIntersectionSplitter(nodes);
+
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    return cleanPolygon(shp);
+  });
+
+  function cleanPolygon(shp) {
+    var cleanedPolygon = [];
+    internal.forEachShapePart(shp, function(ids) {
+      // TODO: consider returning null if path can't be split
+      var splitIds = splitter(ids);
+      if (splitIds.length === 0) {
+        error("[cleanPolygon()] Defective path:", ids);
+      } else if (splitIds.length == 1) {
+        cleanedPolygon.push(splitIds[0]);
+      } else {
+        var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
+            sign = shapeArea > 0 ? 1 : -1,
+            mainRing;
+
+        var maxArea = splitIds.reduce(function(max, ringIds, i) {
+          var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
+          if (pathArea > max) {
+            mainRing = ringIds;
+            max = pathArea;
+          }
+          return max;
+        }, 0);
+
+        if (mainRing) {
+          cleanedPolygon.push(mainRing);
+        }
+      }
+    });
+    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+  }
+};
+
+
+
+
+// Apply snapping, remove duplicate coords and clean up defective paths in a dataset
+// Assumes that any CRS info has been added to the dataset
+// @opts: import options
+internal.cleanPathsAfterImport = function(dataset, opts) {
+  var arcs = dataset.arcs;
+  var snapDist;
+  if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
+    if (opts.snap_interval) {
+      snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+    }
+    if (arcs) {
+      internal.snapCoords(arcs, snapDist);
+    }
+  }
+  dataset.layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    }
+  });
+};
+
+// Accumulates points in buffers until #endPath() is called
+// @drain callback: function(xarr, yarr, size) {}
+//
+function PathImportStream(drain) {
+  var buflen = 10000,
+      xx = new Float64Array(buflen),
+      yy = new Float64Array(buflen),
+      i = 0;
+
+  this.endPath = function() {
+    drain(xx, yy, i);
+    i = 0;
+  };
+
+  this.addPoint = function(x, y) {
+    if (i >= buflen) {
+      buflen = Math.ceil(buflen * 1.3);
+      xx = utils.extendBuffer(xx, buflen);
+      yy = utils.extendBuffer(yy, buflen);
+    }
+    xx[i] = x;
+    yy[i] = y;
+    i++;
+  };
+}
+
+// Import path data from a non-topological source (Shapefile, GeoJSON, etc)
+// in preparation for identifying topology.
+// @opts.reserved_points -- estimate of points in dataset, for pre-allocating buffers
+//
+function PathImporter(opts) {
+  var bufSize = opts.reserved_points > 0 ? opts.reserved_points : 20000,
+      xx = new Float64Array(bufSize),
+      yy = new Float64Array(bufSize),
+      shapes = [],
+      properties = [],
+      nn = [],
+      types = [],
+      collectionType = opts.type || null, // possible values: polygon, polyline, point
+      round = null,
+      pathId = -1,
+      shapeId = -1,
+      pointId = 0,
+      dupeCount = 0,
+      openRingCount = 0;
+
+  if (opts.precision) {
+    round = utils.getRoundingFunction(opts.precision);
+  }
+
+  // mix in #addPoint() and #endPath() methods
+  utils.extend(this, new PathImportStream(importPathCoords));
+
+  this.startShape = function(d) {
+    shapes[++shapeId] = null;
+    if (d) properties[shapeId] = d;
+  };
+
+  this.importLine = function(points) {
+    setShapeType('polyline');
+    this.importPath(points);
+  };
+
+  this.importPoints = function(points) {
+    setShapeType('point');
+    if (round) {
+      points.forEach(function(p) {
+        p[0] = round(p[0]);
+        p[1] = round(p[1]);
+      });
+    }
+    points.forEach(appendToShape);
+  };
+
+  this.importRing = function(points, isHole) {
+    var area = geom.getPlanarPathArea2(points);
+    setShapeType('polygon');
+    if (isHole === true && area > 0 || isHole === false && area < 0) {
+      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+      points.reverse();
+    }
+    this.importPath(points);
+  };
+
+  // Import an array of [x, y] Points
+  this.importPath = function importPath(points) {
+    var p;
+    for (var i=0, n=points.length; i<n; i++) {
+      p = points[i];
+      this.addPoint(p[0], p[1]);
+    }
+    this.endPath();
+  };
+
+  // Return imported dataset
+  // Apply any requested snapping and rounding
+  // Remove duplicate points, check for ring inversions
+  //
+  this.done = function() {
+    var arcs;
+    var layers;
+    var lyr = {name: ''};
+    var snapDist;
+
+    if (dupeCount > 0) {
+      verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
+    }
+    if (openRingCount > 0) {
+      message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
+    }
+    if (pointId > 0) {
+       if (pointId < xx.length) {
+        xx = xx.subarray(0, pointId);
+        yy = yy.subarray(0, pointId);
+      }
+      arcs = new ArcCollection(nn, xx, yy);
+
+      //if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
+      //  internal.snapCoords(arcs, opts.snap_interval);
+      //}
+    }
+
+    if (collectionType == 'mixed') {
+      layers = internal.divideFeaturesByType(shapes, properties, types);
+
+    } else {
+      lyr = {geometry_type: collectionType};
+      if (collectionType) {
+        lyr.shapes = shapes;
+      }
+      if (properties.length > 0) {
+        lyr.data = new DataTable(properties);
+      }
+      layers = [lyr];
+    }
+
+    layers.forEach(function(lyr) {
+      //if (internal.layerHasPaths(lyr)) {
+        //internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+      //}
+      if (lyr.data) {
+        internal.fixInconsistentFields(lyr.data.getRecords());
+      }
+    });
+
+    return {
+      arcs: arcs || null,
+      info: {},
+      layers: layers
+    };
+  };
+
+  function setShapeType(t) {
+    var currType = shapeId < types.length ? types[shapeId] : null;
+    if (!currType) {
+      types[shapeId] = t;
+      if (!collectionType) {
+        collectionType = t;
+      } else if (t != collectionType) {
+        collectionType = 'mixed';
+      }
+    } else if (currType != t) {
+      stop("Unable to import mixed-geometry GeoJSON features");
+    }
+  }
+
+  function checkBuffers(needed) {
+    if (needed > xx.length) {
+      var newLen = Math.max(needed, Math.ceil(xx.length * 1.5));
+      xx = utils.extendBuffer(xx, newLen, pointId);
+      yy = utils.extendBuffer(yy, newLen, pointId);
+    }
+  }
+
+  function appendToShape(part) {
+    var currShape = shapes[shapeId] || (shapes[shapeId] = []);
+    currShape.push(part);
+  }
+
+  function appendPath(n) {
+    pathId++;
+    nn[pathId] = n;
+    appendToShape([pathId]);
+  }
+
+  function importPathCoords(xsrc, ysrc, n) {
+    var count = 0;
+    var x, y, prevX, prevY;
+    checkBuffers(pointId + n);
+    for (var i=0; i<n; i++) {
+      x = xsrc[i];
+      y = ysrc[i];
+      if (round) {
+        x = round(x);
+        y = round(y);
+      }
+      if (i > 0 && x == prevX && y == prevY) {
+        dupeCount++;
+      } else {
+        xx[pointId] = x;
+        yy[pointId] = y;
+        pointId++;
+        count++;
+      }
+      prevY = y;
+      prevX = x;
+    }
+
+    // check for open rings
+    if (collectionType == 'polygon' && count > 0) {
+      if (xsrc[0] != xsrc[n-1] || ysrc[0] != ysrc[n-1]) {
+        checkBuffers(pointId + 1);
+        xx[pointId] = xsrc[0];
+        yy[pointId] = ysrc[0];
+        openRingCount++;
+        pointId++;
+        count++;
+      }
+    }
+
+    appendPath(count);
+  }
+}
+
+
+
+
+
+internal.getLayerDataTable = function(lyr) {
+  var data = lyr.data;
+  if (!data) {
+    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
+  }
+  return data;
+};
+
+
+// Not a general-purpose deep copy function
+internal.copyRecord = function(o) {
+  var o2 = {}, key, val;
+  if (!o) return null;
+  for (key in o) {
+    if (o.hasOwnProperty(key)) {
+      val = o[key];
+      if (val == o) {
+        // avoid infinite recursion if val is a circular reference, by copying all properties except key
+        val = utils.extend({}, val);
+        delete val[key];
+      }
+      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
+    }
+  }
+  return o2;
+};
+
+
+// Insert a column of values into a (new or existing) data field
+internal.insertFieldValues = function(lyr, fieldName, values) {
+  var size = internal.getFeatureCount(lyr) || values.length,
+      table = lyr.data = (lyr.data || new DataTable(size)),
+      records = table.getRecords();
+  internal.insertFieldValues2(fieldName, table.getRecords(), values);
+};
+
+internal.insertFieldValues2 = function(key, records, values) {
+  var n = records.length,
+      i, rec, val;
+  for (i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    val = values[i];
+    if (!rec) rec = records[i] = {};
+    rec[key] = val === undefined ? null : val;
+  }
+};
+
+internal.getValueType = function(val) {
+  var type = null;
+  if (utils.isString(val)) {
+    type = 'string';
+  } else if (utils.isNumber(val)) {
+    type = 'number';
+  } else if (utils.isBoolean(val)) {
+    type = 'boolean';
+  } else if (utils.isObject(val)) {
+    type = 'object';
+  }
+  return type;
+};
+
+// Fill out a data table with undefined values
+// The undefined members will disappear when records are exported as JSON,
+// but will show up when fields are listed using Object.keys()
+internal.fixInconsistentFields = function(records) {
+  var fields = internal.findIncompleteFields(records);
+  internal.patchMissingFields(records, fields);
+};
+
+internal.findIncompleteFields = function(records) {
+  var counts = {},
+      i, j, keys;
+  for (i=0; i<records.length; i++) {
+    keys = Object.keys(records[i] || {});
+    for (j=0; j<keys.length; j++) {
+      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
+    }
+  }
+  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
+};
+
+internal.patchMissingFields = function(records, fields) {
+  var rec, i, j, f;
+  for (i=0; i<records.length; i++) {
+    rec = records[i] || (records[i] = {});
+    for (j=0; j<fields.length; j++) {
+      f = fields[j];
+      if (f in rec === false) {
+        rec[f] = undefined;
+      }
+    }
+  }
+};
+
+internal.fieldListContainsAll = function(list, fields) {
+  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
+};
+
+internal.getColumnType = function(key, records) {
+  var type = null,
+      rec;
+  for (var i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    type = rec ? internal.getValueType(rec[key]) : null;
+    if (type) break;
+  }
+  return type;
+};
+
+internal.deleteFields = function(table, test) {
+  table.getFields().forEach(function(name) {
+    if (test(name)) {
+      table.deleteField(name);
+    }
+  });
+};
+
+internal.isInvalidFieldName = function(f) {
+  // Reject empty and all-whitespace strings. TODO: consider other criteria
+  return /^\s*$/.test(f);
+};
+
+// Resolve name conflicts in field names by appending numbers
+// @fields Array of field names
+// @maxLen (optional) Maximum chars in name
+//
+internal.getUniqFieldNames = function(fields, maxLen) {
+  var used = {};
+  return fields.map(function(name) {
+    var i = 0,
+        validName;
+    do {
+      validName = internal.adjustFieldName(name, maxLen, i);
+      i++;
+    } while ((validName in used) ||
+      // don't replace an existing valid field name with a truncated name
+      name != validName && utils.contains(fields, validName));
+    used[validName] = true;
+    return validName;
+  });
+};
+
+// Truncate and/or uniqify a name (if relevant params are present)
+internal.adjustFieldName = function(name, maxLen, i) {
+  var name2, suff;
+  maxLen = maxLen || 256;
+  if (!i) {
+    name2 = name.substr(0, maxLen);
+  } else {
+    suff = String(i);
+    if (suff.length == 1) {
+      suff = '_' + suff;
+    }
+    name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+};
+
+internal.applyFieldOrder = function(arr, option) {
+  if (option == 'ascending') {
+    arr.sort(function(a, b) {
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+  }
+  return arr;
+};
+
+internal.findFieldNames = function(records, order) {
+  var first = records[0];
+  var names = first ? Object.keys(first) : [];
+  return internal.applyFieldOrder(names, order);
+};
+
+
+
+
+// Try to detect the encoding of some sample text.
+// Returns an encoding name or null.
+// @samples Array of buffers containing sample text fields
+// TODO: Improve reliability and number of detectable encodings.
+internal.detectEncoding = function(samples) {
+  var encoding = null;
+  if (internal.looksLikeUtf8(samples)) {
+    encoding = 'utf8';
+  } else if (internal.looksLikeWin1252(samples)) {
+    // Win1252 is the same as Latin1, except it replaces a block of control
+    // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
+    // in Natural Earth (airports.dbf uses n-dash).
+    encoding = 'win1252';
+  }
+  return encoding;
+};
+
+// Convert an array of text samples to a single string using a given encoding
+internal.decodeSamples = function(enc, samples) {
+  return samples.map(function(buf) {
+    return internal.decodeString(buf, enc).trim();
+  }).join('\n');
+};
+
+internal.formatSamples = function(str) {
+  return internal.formatStringsAsGrid(str.split('\n'));
+};
+
+// Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
+// chars and almost no chars other than word chars + punctuation.
+// This excludes encodings like Greek, Cyrillic or Thai, but
+// is susceptible to false positives with encodings like codepage 1250 ("Eastern
+// European").
+internal.looksLikeWin1252 = function(samples) {
+  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘', // common extended
+      str = internal.decodeSamples('win1252', samples),
+      asciiScore = internal.getCharScore(str, ascii),
+      totalScore = internal.getCharScore(str, extended + ascii);
+  return totalScore > 0.97 && asciiScore >= 0.6; // mostly unaccented ascii chars
+};
+
+// Reject string if it contains the "replacement character" after decoding to UTF-8
+internal.looksLikeUtf8 = function(samples) {
+  // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
+  // in case the file is in utf-8, but contains some previously corrupted text.
+  // samples = samples.map(internal.replaceUtf8ReplacementChar);
+  var str = internal.decodeSamples('utf8', samples);
+  return str.indexOf('\ufffd') == -1;
+};
+
+internal.replaceUtf8ReplacementChar = function(buf) {
+  var isCopy = false;
+  for (var i=0, n=buf.length; i<n; i++) {
+    // Check for UTF-8 encoded replacement char (0xEF 0xBF 0xBD)
+    if (buf[i] == 0xef && i + 2 < n && buf[i+1] == 0xbf && buf[i+2] == 0xbd) {
+      if (!isCopy) {
+        buf = utils.createBuffer(buf);
+        isCopy = true;
+      }
+      buf[i] = buf[i+1] = buf[i+2] = 63; // ascii question mark
+    }
+  }
+  return buf;
+};
+
+// Calc percentage of chars in a string that are present in a second string
+// @chars String of chars to look for in @str
+internal.getCharScore = function(str, chars) {
+  var index = {},
+      count = 0,
+      score;
+  str = str.toLowerCase();
+  for (var i=0, n=chars.length; i<n; i++) {
+    index[chars[i]] = 1;
+  }
+  for (i=0, n=str.length; i<n; i++) {
+    count += index[str[i]] || 0;
+  }
+  return count / str.length;
+};
+
+
+
+
+// DBF format references:
+// http://www.dbf2002.com/dbf-file-format.html
+// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
+// http://www.clicketyclick.dk/databases/xbase/format/index.html
+// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
+
+var Dbf = {};
+
+// source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
+Dbf.languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
+
+// Language & Language family names for some code pages
+Dbf.encodingNames = {
+  '932': "Japanese",
+  '936': "Simplified Chinese",
+  '950': "Traditional Chinese",
+  '1252': "Western European",
+  '949': "Korean",
+  '874': "Thai",
+  '1250': "Eastern European",
+  '1251': "Russian",
+  '1254': "Turkish",
+  '1253': "Greek",
+  '1257': "Baltic"
+};
+
+Dbf.ENCODING_PROMPT =
+  "To avoid corrupted text, re-import using the \"encoding=\" option.\n" +
+  "To see a list of supported encodings, run the \"encodings\" command.";
+
+Dbf.lookupCodePage = function(lid) {
+  var i = Dbf.languageIds.indexOf(lid);
+  return i == -1 ? null : Dbf.languageIds[i+1];
+};
+
+Dbf.readAsciiString = function(bin, size) {
+  var require7bit = true;
+  var str = bin.readCString(size, require7bit);
+  if (str === null) {
+    stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
+  }
+  return utils.trim(str);
+};
+
+Dbf.readStringBytes = function(bin, size, buf) {
+  var count = 0, c;
+  for (var i=0; i<size; i++) {
+    c = bin.readUint8();
+    // treating 0 as C-style string terminator (observed in-the-wild)
+    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
+    //   characters than the NULL character (ascii 0). The following code
+    //   should be changed to support non-ascii-compatible encodings
+    if (c === 0) break;
+    if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
+      buf[count++] = c;
+    }
+  }
+  // ignore trailing spaces (DBF string fields are typically r-padded w/ spaces)
+  while (count > 0 && buf[count-1] == 32) {
+    count--;
+  }
+  return count;
+};
+
+
+Dbf.getStringReader = function(arg) {
+  var encoding = arg || 'ascii';
+  var slug = internal.standardizeEncodingName(encoding);
+  var buf = utils.createBuffer(256);
+  var inNode = typeof module == 'object';
+
+  // optimization -- use (fast) native Node conversion if available
+  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
+    return function(bin, size) {
+      var n = Dbf.readStringBytes(bin, size, buf);
+      return buf.toString(slug, 0, n);
+    };
+  }
+
+  return function readEncodedString(bin, size) {
+    var n = Dbf.readStringBytes(bin, size, buf),
+        str = '', i, c;
+    // optimization: fall back to text decoder only if string contains non-ascii bytes
+    // (data files of any encoding typically contain mostly ascii fields)
+    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
+    for (i=0; i<n; i++) {
+      c = buf[i];
+      if (c > 127) {
+        return internal.bufferToString(buf, encoding, 0, n);
+      }
+      str += String.fromCharCode(c);
+    }
+    return str;
+  };
+};
+
+Dbf.bufferContainsHighBit = function(buf, n) {
+  for (var i=0; i<n; i++) {
+    if (buf[i] >= 128) return true;
+  }
+  return false;
+};
+
+Dbf.getNumberReader = function() {
+  var read = Dbf.getStringReader('ascii');
+  return function readNumber(bin, size) {
+    var str = read(bin, size);
+    var val;
+    if (str.indexOf(',') >= 0) {
+      str = str.replace(',', '.'); // handle comma decimal separator
+    }
+    val = parseFloat(str);
+    return isNaN(val) ? null : val;
+  };
+};
+
+Dbf.readInt = function(bin, size) {
+  return bin.readInt32();
+};
+
+Dbf.readBool = function(bin, size) {
+  var c = bin.readCString(size),
+      val = null;
+  if (/[ty]/i.test(c)) val = true;
+  else if (/[fn]/i.test(c)) val = false;
+  return val;
+};
+
+Dbf.readDate = function(bin, size) {
+  var str = bin.readCString(size),
+      yr = str.substr(0, 4),
+      mo = str.substr(4, 2),
+      day = str.substr(6, 2);
+  return new Date(Date.UTC(+yr, +mo - 1, +day));
+};
+
+// cf. http://code.google.com/p/stringencoding/
+//
+// @src is a Buffer or ArrayBuffer or filename
+//
+function DbfReader(src, encodingArg) {
+  if (utils.isString(src)) {
+    error("[DbfReader] Expected a buffer, not a string");
+  }
+  var bin = new BinArray(src);
+  var header = readHeader(bin);
+  var encoding = encodingArg || null;
+
+  this.size = function() {return header.recordCount;};
+
+  this.readRow = function(i) {
+    // create record reader on-the-fly
+    // (delays encoding detection until we need to read data)
+    return getRecordReader(header.fields)(i);
+  };
+
+  this.getFields = getFieldNames;
+
+  this.getBuffer = function() {return bin.buffer();};
+
+  this.deleteField = function(f) {
+    header.fields = header.fields.filter(function(field) {
+      return field.name != f;
+    });
+  };
+
+  this.readRows = function() {
+    var reader = getRecordReader(header.fields);
+    var data = [];
+    for (var r=0, n=this.size(); r<n; r++) {
+      data.push(reader(r));
+    }
+    return data;
+  };
+
+  function readHeader(bin) {
+    bin.position(0).littleEndian();
+    var header = {
+      version: bin.readInt8(),
+      updateYear: bin.readUint8(),
+      updateMonth: bin.readUint8(),
+      updateDay: bin.readUint8(),
+      recordCount: bin.readUint32(),
+      dataOffset: bin.readUint16(),
+      recordSize: bin.readUint16(),
+      incompleteTransaction: bin.skipBytes(2).readUint8(),
+      encrypted: bin.readUint8(),
+      mdx: bin.skipBytes(12).readUint8(),
+      ldid: bin.readUint8()
+    };
+    var colOffs = 1; // first column starts on second byte of record
+    var field;
+    bin.skipBytes(2);
+    header.fields = [];
+
+    // Detect header terminator (LF is standard, CR has been seen in the wild)
+    while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
+      field = readFieldHeader(bin);
+      field.columnOffset = colOffs;
+      header.fields.push(field);
+      colOffs += field.size;
+    }
+    if (colOffs != header.recordSize) {
+      error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
+    }
+    if (bin.peek() != 0x0D) {
+      message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
+    }
+
+    // Uniqify header names
+    internal.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
+      header.fields[i].name = name2;
+    });
+
+    return header;
+  }
+
+  function readFieldHeader(bin) {
+    return {
+      name: bin.readCString(11),
+      type: String.fromCharCode(bin.readUint8()),
+      address: bin.readUint32(),
+      size: bin.readUint8(),
+      decimals: bin.readUint8(),
+      id: bin.skipBytes(2).readUint8(),
+      position: bin.skipBytes(2).readUint8(),
+      indexFlag: bin.skipBytes(7).readUint8()
+    };
+  }
+
+  function getFieldNames() {
+    return utils.pluck(header.fields, 'name');
+  }
+
+  function getRowOffset(r) {
+    return header.dataOffset + header.recordSize * r;
+  }
+
+  function getEncoding() {
+    if (!encoding) {
+      encoding = findStringEncoding();
+      if (!encoding) {
+        // fall back to utf8 if detection fails (so GUI can continue without further errors)
+        encoding = 'utf8';
+        stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
+      }
+    }
+    return encoding;
+  }
+
+  // Create new record objects using object literal syntax
+  // (Much faster in v8 and other engines than assigning a series of properties
+  //  to an object)
+  function getRecordConstructor() {
+    var args = getFieldNames().map(function(name, i) {
+          return JSON.stringify(name) + ': arguments[' + i + ']';
+        });
+    return new Function('return {' + args.join(',') + '};');
+  }
+
+  function findEofPos(bin) {
+    var pos = bin.size() - 1;
+    if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
+      pos++;
+    }
+    return pos;
+  }
+
+  function getRecordReader(fields) {
+    var readers = fields.map(getFieldReader),
+        eofOffs = findEofPos(bin),
+        create = getRecordConstructor(),
+        values = [];
+
+    return function readRow(r) {
+      var offs = getRowOffset(r),
+          fieldOffs, field;
+      for (var c=0, cols=fields.length; c<cols; c++) {
+        field = fields[c];
+        fieldOffs = offs + field.columnOffset;
+        if (fieldOffs + field.size > eofOffs) {
+          stop('Invalid DBF file: encountered end-of-file while reading data');
+        }
+        bin.position(fieldOffs);
+        values[c] = readers[c](bin, field.size);
+      }
+      return create.apply(null, values);
+    };
+  }
+
+  // @f Field metadata from dbf header
+  function getFieldReader(f) {
+    var type = f.type,
+        r = null;
+    if (type == 'I') {
+      r = Dbf.readInt;
+    } else if (type == 'F' || type == 'N') {
+      r = Dbf.getNumberReader();
+    } else if (type == 'L') {
+      r = Dbf.readBool;
+    } else if (type == 'D') {
+      r = Dbf.readDate;
+    } else if (type == 'C') {
+      r = Dbf.getStringReader(getEncoding());
+    } else {
+      message("Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
+      r = function() {return null;};
+    }
+    return r;
+  }
+
+  function findStringEncoding() {
+    var ldid = header.ldid,
+        codepage = Dbf.lookupCodePage(ldid),
+        samples = getNonAsciiSamples(50),
+        only7bit = samples.length === 0,
+        encoding, msg;
+
+    // First, check the ldid (language driver id) (an obsolete way to specify which
+    // codepage to use for text encoding.)
+    // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
+    // user's Windows system :P
+    //
+    if (codepage && ldid != 87) {
+      // if 8-bit data is found and codepage is detected, use the codepage,
+      // except ldid 87, which some GIS software uses regardless of encoding.
+      encoding = codepage;
+    } else if (only7bit) {
+      // Text with no 8-bit chars should be compatible with 7-bit ascii
+      // (Most encodings are supersets of ascii)
+      encoding = 'ascii';
+    }
+
+    // As a last resort, try to guess the encoding:
+    if (!encoding) {
+      encoding = internal.detectEncoding(samples);
+    }
+
+    // Show a sample of decoded text if non-ascii-range text has been found
+    if (encoding && samples.length > 0) {
+      msg = internal.decodeSamples(encoding, samples);
+      msg = internal.formatStringsAsGrid(msg.split('\n'));
+      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
+      msg = "Detected DBF text encoding: " + encoding + (encoding in Dbf.encodingNames ? " (" + Dbf.encodingNames[encoding] + ")" : "") + msg;
+      message(msg);
+    }
+    return encoding;
+  }
+
+  // Return up to @size buffers containing text samples
+  // with at least one byte outside the 7-bit ascii range.
+  function getNonAsciiSamples(size) {
+    var samples = [];
+    var stringFields = header.fields.filter(function(f) {
+      return f.type == 'C';
+    });
+    var buf = utils.createBuffer(256);
+    var index = {};
+    var f, chars, sample, hash;
+    for (var r=0, rows=header.recordCount; r<rows; r++) {
+      for (var c=0, cols=stringFields.length; c<cols; c++) {
+        if (samples.length >= size) break;
+        f = stringFields[c];
+        bin.position(getRowOffset(r) + f.columnOffset);
+        chars = Dbf.readStringBytes(bin, f.size, buf);
+        if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
+          sample = utils.createBuffer(buf.slice(0, chars)); //
+          hash = sample.toString('hex');
+          if (hash in index === false) { // avoid duplicate samples
+            index[hash] = true;
+            samples.push(sample);
+          }
+        }
+      }
+    }
+    return samples;
+  }
+
+}
+
+
+
+
+Dbf.MAX_STRING_LEN = 254;
+
+function BufferPool() {
+  var n = 5000,
+      pool, i;
+  newPool();
+
+  function newPool() {
+    pool = new Uint8Array(n);
+    i = 0;
+  }
+
+  return {
+    reserve: function(bytes) {
+      if (i + bytes > n) newPool();
+      i += bytes;
+      return pool.subarray(i - bytes, i);
+    },
+    putBack: function(bytes) {
+      i -= bytes;
+    }
+  };
+}
+
+Dbf.bufferPool = new BufferPool();
+
+Dbf.exportRecords = function(records, encoding, fieldOrder) {
+  var rows = records.length;
+  var fields = internal.findFieldNames(records, fieldOrder);
+  var dbfFields = Dbf.convertFieldNames(fields);
+  var fieldData = fields.map(function(name, i) {
+    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
+    var name2 = dbfFields[i];
+    info.name = name2;
+    if (name != name2) {
+      message('Changed field name from "' + name + '" to "' + name2 + '"');
+    }
+    if (info.warning) {
+      message('[' + name + '] ' + info.warning);
+    }
+    return info;
+  });
+
+  var headerBytes = Dbf.getHeaderSize(fieldData.length),
+      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
+      fileBytes = headerBytes + rows * recordBytes + 1;
+
+  var buffer = new ArrayBuffer(fileBytes);
+  var bin = new BinArray(buffer).littleEndian();
+  var now = new Date();
+
+  // write header
+  bin.writeUint8(3);
+  bin.writeUint8(now.getFullYear() - 1900);
+  bin.writeUint8(now.getMonth() + 1);
+  bin.writeUint8(now.getDate());
+  bin.writeUint32(rows);
+  bin.writeUint16(headerBytes);
+  bin.writeUint16(recordBytes);
+  bin.skipBytes(17);
+  bin.writeUint8(0); // language flag; TODO: improve this
+  bin.skipBytes(2);
+
+
+  // field subrecords
+  fieldData.reduce(function(recordOffset, obj) {
+    bin.writeCString(obj.name, 11);
+    bin.writeUint8(obj.type.charCodeAt(0));
+    bin.writeUint32(recordOffset);
+    bin.writeUint8(obj.size);
+    bin.writeUint8(obj.decimals);
+    bin.skipBytes(14);
+    return recordOffset + obj.size;
+  }, 1);
+
+  bin.writeUint8(0x0d); // "field descriptor terminator"
+  if (bin.position() != headerBytes) {
+    error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
+  }
+
+  records.forEach(function(rec, i) {
+    var start = bin.position();
+    bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
+    for (var j=0, n=fieldData.length; j<n; j++) {
+      fieldData[j].write(i, bin);
+    }
+    if (bin.position() - start != recordBytes) {
+      error("#exportRecords() Error exporting record:", rec);
+    }
+  });
+
+  bin.writeUint8(0x1a); // end-of-file
+
+  if (bin.position() != fileBytes) {
+    error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
+  }
+  return buffer;
+};
+
+Dbf.getHeaderSize = function(numFields) {
+  return 33 + numFields * 32;
+};
+
+Dbf.getRecordSize = function(fieldSizes) {
+  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
+};
+
+Dbf.initNumericField = function(info, arr, name) {
+  var MAX_FIELD_SIZE = 18,
+      data, size;
+
+  data = this.getNumericFieldInfo(arr, name);
+  info.decimals = data.decimals;
+  size = Math.max(data.max.toFixed(info.decimals).length,
+      data.min.toFixed(info.decimals).length);
+  if (size > MAX_FIELD_SIZE) {
+    size = MAX_FIELD_SIZE;
+    info.decimals -= size - MAX_FIELD_SIZE;
+    if (info.decimals < 0) {
+      error ("Dbf#getFieldInfo() Out-of-range error.");
+    }
+  }
+  info.size = size;
+
+  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
+  info.write = function(i, bin) {
+    var rec = arr[i],
+        str = formatter(rec[name]);
+    if (str.length < size) {
+      str = utils.lpad(str, size, ' ');
+    }
+    bin.writeString(str, size);
+  };
+};
+
+Dbf.initBooleanField = function(info, arr, name) {
+  info.size = 1;
+  info.write = function(i, bin) {
+    var val = arr[i][name],
+        c;
+    if (val === true) c = 'T';
+    else if (val === false) c = 'F';
+    else c = '?';
+    bin.writeString(c);
+  };
+};
+
+Dbf.initDateField = function(info, arr, name) {
+  info.size = 8;
+  info.write = function(i, bin) {
+    var d = arr[i][name],
+        str;
+    if (d instanceof Date === false) {
+      str = '00000000';
+    } else {
+      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
+            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
+            utils.lpad(d.getUTCDate(), 2, '0');
+    }
+    bin.writeString(str);
+  };
+};
+
+Dbf.convertValueToString = function(s) {
+  return s === undefined || s === null ? '' : String(s);
+};
+
+Dbf.initStringField = function(info, arr, name, encoding) {
+  var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
+  var size = 0;
+  var truncated = 0;
+  var buffers = arr.map(function(rec) {
+    var strval = Dbf.convertValueToString(rec[name]);
+    var buf = formatter(strval);
+    if (buf.length > Dbf.MAX_STRING_LEN) {
+      if (encoding == 'ascii') {
+        buf = buf.subarray(0, Dbf.MAX_STRING_LEN);
+      } else {
+        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      }
+      truncated++;
+    }
+    size = Math.max(size, buf.length);
+    return buf;
+  });
+  info.size = size;
+  info.write = function(i, bin) {
+    var buf = buffers[i],
+        n = Math.min(size, buf.length),
+        dest = bin._bytes,
+        pos = bin.position(),
+        j;
+    for (j=0; j<n; j++) {
+      dest[j + pos] = buf[j];
+    }
+    bin.position(pos + size);
+  };
+  if (truncated > 0) {
+    info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
+  }
+};
+
+Dbf.convertFieldNames = function(names) {
+  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
+};
+
+// Replace non-alphanumeric characters with _ and merge adjacent _
+// See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
+// TODO: decide whether or not to avoid initial numerals
+Dbf.cleanFieldName = function(name) {
+  return name.replace(/[^A-Za-z0-9]+/g, '_');
+};
+
+Dbf.getFieldInfo = function(arr, name, encoding) {
+  var type = this.discoverFieldType(arr, name),
+      info = {
+        type: type,
+        decimals: 0
+      };
+  if (type == 'N') {
+    Dbf.initNumericField(info, arr, name);
+  } else if (type == 'C') {
+    Dbf.initStringField(info, arr, name, encoding);
+  } else if (type == 'L') {
+    Dbf.initBooleanField(info, arr, name);
+  } else if (type == 'D') {
+    Dbf.initDateField(info, arr, name);
+  } else {
+    // Treat null fields as empty numeric fields; this way, they will be imported
+    // again as nulls.
+    info.size = 0;
+    info.type = 'N';
+    if (type) {
+      info.warning = 'Unable to export ' + type + '-type data, writing null values';
+    }
+    info.write = function() {};
+  }
+  return info;
+};
+
+Dbf.discoverFieldType = function(arr, name) {
+  var val;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i][name];
+    if (utils.isString(val)) return "C";
+    if (utils.isNumber(val)) return "N";
+    if (utils.isBoolean(val)) return "L";
+    if (val instanceof Date) return "D";
+    if (val) return (typeof val);
+  }
+  return null;
+};
+
+Dbf.getDecimalFormatter = function(size, decimals) {
+  // TODO: find better way to handle nulls
+  var nullValue = ' '; // ArcGIS may use 0
+  return function(val) {
+    // TODO: handle invalid values better
+    var valid = utils.isFiniteNumber(val),
+        strval = valid ? val.toFixed(decimals) : String(nullValue);
+    return utils.lpad(strval, size, ' ');
+  };
+};
+
+Dbf.getNumericFieldInfo = function(arr, name) {
+  var min = 0,
+      max = 0,
+      k = 1,
+      power = 1,
+      decimals = 0,
+      eps = 1e-15,
+      val;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i][name];
+    if (!utils.isFiniteNumber(val)) {
+      continue;
+    }
+    if (val < min || val > max) {
+      if (val < min) min = val;
+      if (val > max) max = val;
+      while (Math.abs(val) >= power) {
+        power *= 10;
+        eps *= 10;
+      }
+    }
+    while (Math.abs(Math.round(val * k) - val * k) > eps) {
+      if (decimals == 15) { // dbf limit
+        // TODO: round overflowing values ?
+        break;
+      }
+      decimals++;
+      eps *= 10;
+      k *= 10;
+    }
+  }
+  return {
+    decimals: decimals,
+    min: min,
+    max: max
+  };
+};
+
+// return an array buffer or null if value contains non-ascii chars
+Dbf.encodeValueAsAscii = function(val, strict) {
+  var str = String(val),
+      n = str.length,
+      view = Dbf.bufferPool.reserve(n),
+      i, c;
+  for (i=0; i<n; i++) {
+    c = str.charCodeAt(i);
+    if (c > 127) {
+      if (strict) {
+        view = null;
+        i = 0; // return all bytes to pool
+        break;
+      }
+      c = '?'.charCodeAt(0);
+    }
+    view[i] = c;
+  }
+  Dbf.bufferPool.putBack(n-i);
+  return view ? view.subarray(0, i) : null;
+};
+
+Dbf.getStringWriterEncoded = function(encoding) {
+  return function(val) {
+    // optimization -- large majority of strings in real-world datasets are
+    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
+    var buf = Dbf.encodeValueAsAscii(val, true);
+    if (buf === null) {
+      buf = internal.encodeString(String(val), encoding);
+    }
+    return buf;
+  };
+};
+
+// try to remove partial multi-byte characters from the end of an encoded string.
+Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
+  var truncated = buf.slice(0, maxLen);
+  var len = maxLen;
+  var tmp, str;
+  while (len > 0 && len >= maxLen - 3) {
+    tmp = len == maxLen ? truncated : buf.slice(0, len);
+    str = internal.decodeString(tmp, encoding);
+    if (str.charAt(str.length-1) != '\ufffd') {
+      truncated = tmp;
+      break;
+    }
+    len--;
+  }
+  return truncated;
+};
+
+
+
+
+function DataTable(obj) {
+  var records;
+  if (utils.isArray(obj)) {
+    records = obj;
+  } else {
+    records = [];
+    // integer object: create empty records
+    if (utils.isInteger(obj)) {
+      for (var i=0; i<obj; i++) {
+        records.push({});
+      }
+    } else if (obj) {
+      error("Invalid DataTable constructor argument:", obj);
+    }
+  }
+
+  this.exportAsDbf = function(opts) {
+    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
+  };
+
+  this.getRecords = function() {
+    return records;
+  };
+
+  // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
+  this.getReadOnlyRecordAt = function(i) {
+    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
+  };
+}
+
+var dataTableProto = {
+
+  fieldExists: function(name) {
+    return utils.contains(this.getFields(), name);
+  },
+
+  toString: function() {return JSON.stringify(this);},
+
+  toJSON: function() {
+    return this.getRecords();
+  },
+
+  addField: function(name, init) {
+    var useFunction = utils.isFunction(init);
+    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
+      error("DataTable#addField() requires a string, number or function for initialization");
+    }
+    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
+    // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
+    // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
+
+    this.getRecords().forEach(function(obj, i) {
+      obj[name] = useFunction ? init(obj, i) : init;
+    });
+  },
+
+  getRecordAt: function(i) {
+    return this.getRecords()[i];
+  },
+
+  addIdField: function() {
+    this.addField('FID', function(obj, i) {
+      return i;
+    });
+  },
+
+  deleteField: function(f) {
+    this.getRecords().forEach(function(o) {
+      delete o[f];
+    });
+  },
+
+  getFields: function() {
+    return internal.findFieldNames(this.getRecords());
+  },
+
+  update: function(f) {
+    var records = this.getRecords();
+    for (var i=0, n=records.length; i<n; i++) {
+      records[i] = f(records[i], i);
+    }
+  },
+
+  clone: function() {
+    // TODO: this could be sped up using a record constructor function
+    // (see getRecordConstructor() in DbfReader)
+    var records2 = this.getRecords().map(internal.copyRecord);
+    return new DataTable(records2);
+  },
+
+  size: function() {
+    return this.getRecords().length;
+  }
+};
+
+utils.extend(DataTable.prototype, dataTableProto);
+
+
+
+
+function GeoJSONParser(opts) {
+  var idField = opts.id_field || GeoJSON.ID_FIELD,
+      importer = new PathImporter(opts),
+      dataset;
+
+  this.parseObject = function(o) {
+    var geom, rec;
+    if (o.type == 'Feature') {
+      geom = o.geometry;
+      rec = o.properties || {};
+      if ('id' in o) {
+        rec[idField] = o.id;
+      }
+    } else if (o.type) {
+      geom = o;
+    }
+    // TODO: improve so geometry_type option skips features instead of creating null geometries
+    importer.startShape(rec);
+    if (geom) GeoJSON.importGeometry(geom, importer, opts);
+  };
+
+  this.done = function() {
+    return importer.done();
+  };
+}
+
+internal.importGeoJSON = function(src, opts) {
+  var supportedGeometries = Object.keys(GeoJSON.pathImporters),
+      srcObj = utils.isString(src) ? JSON.parse(src) : src,
+      importer = new GeoJSONParser(opts),
+      srcCollection, dataset;
+
+  // Convert single feature or geometry into a collection with one member
+  if (srcObj.type == 'Feature') {
+    srcCollection = {
+      type: 'FeatureCollection',
+      features: [srcObj]
+    };
+  } else if (utils.contains(supportedGeometries, srcObj.type)) {
+    srcCollection = {
+      type: 'GeometryCollection',
+      geometries: [srcObj]
+    };
+  } else {
+    srcCollection = srcObj;
+  }
+  (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
+  dataset = importer.done();
+  internal.importCRS(dataset, srcObj); // TODO: remove this
+  return dataset;
+};
+
+GeoJSON.importGeometry = function(geom, importer, opts) {
+  var type = geom.type;
+  if (type in GeoJSON.pathImporters) {
+    if (opts.geometry_type && opts.geometry_type != GeoJSON.translateGeoJSONType(type)) {
+      // kludge to filter out all but one type of geometry
+      return;
+    }
+    GeoJSON.pathImporters[type](geom.coordinates, importer);
+  } else if (type == 'GeometryCollection') {
+    geom.geometries.forEach(function(geom) {
+      GeoJSON.importGeometry(geom, importer, opts);
+    });
+  } else {
+    verbose("GeoJSON.importGeometry() Unsupported geometry type:", geom.type);
+  }
+};
+
+// Functions for importing geometry coordinates using a PathImporter
+//
+GeoJSON.pathImporters = {
+  LineString: function(coords, importer) {
+    importer.importLine(coords);
+  },
+  MultiLineString: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      GeoJSON.pathImporters.LineString(coords[i], importer);
+    }
+  },
+  Polygon: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      importer.importRing(coords[i], i > 0);
+    }
+  },
+  MultiPolygon: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      GeoJSON.pathImporters.Polygon(coords[i], importer);
+    }
+  },
+  Point: function(coord, importer) {
+    importer.importPoints([coord]);
+  },
+  MultiPoint: function(coords, importer) {
+    importer.importPoints(coords);
+  }
+};
+
+internal.importCRS = function(dataset, jsonObj) {
+  if ('crs' in jsonObj) {
+    dataset.info.input_geojson_crs = jsonObj.crs;
+  }
+};
+
+
+
+
+internal.getFormattedStringify = function(numArrayKeys) {
+  var keyIndex = utils.arrayToIndex(numArrayKeys);
+  var sentinel = '\u1000\u2FD5\u0310';
+  var stripRxp = new RegExp('"' + sentinel + '|' + sentinel + '"', 'g');
+  var indentChars = '  ';
+
+  function replace(key, val) {
+    // We want to format numerical arrays like [1, 2, 3] instead of
+    // the way JSON.stringify() behaves when applying indentation.
+    // This kludge converts arrays to strings with sentinel strings inside the
+    // surrounding quotes. At the end, the sentinel strings and quotes
+    // are replaced by array brackets.
+    if (key in keyIndex && utils.isArray(val)) {
+      var str = JSON.stringify(val);
+      // make sure the array does not contain any strings
+      if (str.indexOf('"' == -1)) {
+        return sentinel + str.replace(/,/g, ', ') + sentinel;
+      }
+    }
+    return val;
+  }
+
+  return function(obj) {
+    var json = JSON.stringify(obj, replace, indentChars);
+    return json.replace(stripRxp, '');
+  };
+};
+
+
+
+
+internal.exportPointData = function(points) {
+  var data, path;
+  if (!points || points.length === 0) {
+    data = {partCount: 0, pointCount: 0};
+  } else {
+    path = {
+      points: points,
+      pointCount: points.length,
+      bounds: geom.getPathBounds(points)
+    };
+    data = {
+      bounds: path.bounds,
+      pathData: [path],
+      partCount: 1,
+      pointCount: path.pointCount
+    };
+  }
+  return data;
+};
+
+// TODO: remove duplication with internal.getPathMetadata()
+internal.exportPathData = function(shape, arcs, type) {
+  // kludge until Shapefile exporting is refactored
+  if (type == 'point') return internal.exportPointData(shape);
+
+  var pointCount = 0,
+      bounds = new Bounds(),
+      paths = [];
+
+  if (shape && (type == 'polyline' || type == 'polygon')) {
+    shape.forEach(function(arcIds, i) {
+      var iter = arcs.getShapeIter(arcIds),
+          path = internal.exportPathCoords(iter),
+          valid = true;
+      if (type == 'polygon') {
+        path.area = geom.getPlanarPathArea2(path.points);
+        valid = path.pointCount > 3 && path.area !== 0;
+      } else if (type == 'polyline') {
+        valid = path.pointCount > 1;
+      }
+      if (valid) {
+        pointCount += path.pointCount;
+        path.bounds = geom.getPathBounds(path.points);
+        bounds.mergeBounds(path.bounds);
+        paths.push(path);
+      } else {
+        verbose("Skipping a collapsed", type, "path");
+      }
+    });
+  }
+
+  return {
+    pointCount: pointCount,
+    pathData: paths,
+    pathCount: paths.length,
+    bounds: bounds
+  };
+};
+
+internal.exportPathCoords = function(iter) {
+  var points = [],
+      i = 0,
+      x, y, prevX, prevY;
+  while (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    if (i === 0 || prevX != x || prevY != y) {
+      points.push([x, y]);
+      i++;
+    }
+    prevX = x;
+    prevY = y;
+  }
+  return {
+    points: points,
+    pointCount: points.length
+  };
+};
+
+
+
+
+// Don't modify input layers (mergeDatasets() updates arc ids in-place)
+internal.mergeDatasetsForExport = function(arr) {
+  // copy layers but not arcs, which get copied in mergeDatasets()
+  var copy = arr.map(function(dataset) {
+    return utils.defaults({
+      layers: dataset.layers.map(internal.copyLayerShapes)
+    }, dataset);
+  });
+  return internal.mergeDatasets(copy);
+};
+
+internal.mergeCommandTargets = function(targets, catalog) {
+  var targetLayers = [];
+  var targetDatasets = [];
+  var datasetsWithArcs = 0;
+  var merged;
+
+  targets.forEach(function(target) {
+    targetLayers = targetLayers.concat(target.layers);
+    targetDatasets = targetDatasets.concat(target.dataset);
+    if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
+  });
+
+  merged = internal.mergeDatasets(targetDatasets);
+
+  // Rebuild topology, if multiple datasets contain arcs
+  if (datasetsWithArcs > 1) {
+    api.buildTopology(merged);
+  }
+
+  // remove old datasets after merging, so catalog is not affected if merge throws an error
+  targetDatasets.forEach(catalog.removeDataset);
+  catalog.addDataset(merged); // sets default target to all layers in merged dataset
+  catalog.setDefaultTarget(targetLayers, merged); // reset default target
+  return [{
+    layers: targetLayers,
+    dataset: merged
+  }];
+};
+
+// Combine multiple datasets into one using concatenation
+// (any shared topology is ignored)
+internal.mergeDatasets = function(arr) {
+  var arcSources = [],
+      arcCount = 0,
+      mergedLayers = [],
+      mergedInfo = {},
+      mergedArcs;
+
+  // Error if incompatible CRS
+  internal.requireDatasetsHaveCompatibleCRS(arr);
+
+  arr.forEach(function(dataset) {
+    var n = dataset.arcs ? dataset.arcs.size() : 0;
+    if (n > 0) {
+      arcSources.push(dataset.arcs);
+    }
+
+    internal.mergeDatasetInfo(mergedInfo, dataset);
+    dataset.layers.forEach(function(lyr) {
+      if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
+        internal.forEachArcId(lyr.shapes, function(id) {
+          return id < 0 ? id - arcCount : id + arcCount;
+        });
+      }
+      mergedLayers.push(lyr);
+    });
+    arcCount += n;
+  });
+
+  mergedArcs = internal.mergeArcs(arcSources);
+  if (mergedArcs.size() != arcCount) {
+    error("[mergeDatasets()] Arc indexing error");
+  }
+
+  return {
+    info: mergedInfo,
+    arcs: mergedArcs,
+    layers: mergedLayers
+  };
+};
+
+internal.requireDatasetsHaveCompatibleCRS = function(arr) {
+  arr.reduce(function(memo, dataset) {
+    var P = internal.getDatasetCRS(dataset);
+    if (memo && P) {
+      if (internal.isLatLngCRS(memo) != internal.isLatLngCRS(P)) {
+        stop("Unable to combine projected and unprojected datasets");
+      }
+    }
+    return P || memo;
+  }, null);
+};
+
+internal.mergeDatasetInfo = function(merged, dataset) {
+  var info = dataset.info || {};
+  merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
+  merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
+  // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
+  utils.defaults(merged, info);
+};
+
+internal.mergeArcs = function(arr) {
+  var dataArr = arr.map(function(arcs) {
+    if (arcs.getRetainedInterval() > 0) {
+      verbose("Baking-in simplification setting.");
+      arcs.flatten();
+    }
+    return arcs.getVertexData();
+  });
+  var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+      yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
+      nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
+
+  return new ArcCollection(nn, xx, yy);
+};
+
+utils.countElements = function(arrays) {
+  return arrays.reduce(function(memo, arr) {
+    return memo + (arr.length || 0);
+  }, 0);
+};
+
+utils.mergeArrays = function(arrays, TypedArr) {
+  var size = utils.countElements(arrays),
+      Arr = TypedArr || Array,
+      merged = new Arr(size),
+      offs = 0;
+  arrays.forEach(function(src) {
+    var n = src.length;
+    for (var i = 0; i<n; i++) {
+      merged[i + offs] = src[i];
+    }
+    offs += n;
+  });
+  return merged;
+};
+
+
+
+
+// Merge layers, checking for incompatible geometries and data fields.
+api.mergeLayers = function(layersArg, opts) {
+  var layers = layersArg.filter(internal.getFeatureCount); // ignore empty layers
+  var merged = {};
+  opts = opts || {};
+  if (!layers.length) return null;
+  if (layers.length == 1) {
+    message('Use the target= option to specify multiple layers for merging');
+    return layers.concat();
+  }
+  merged.data = internal.mergeDataFromLayers(layers, opts.force);
+  merged.name = internal.mergeLayerNames(layers);
+  merged.geometry_type = internal.getMergedLayersGeometryType(layers);
+  if (merged.geometry_type) {
+    merged.shapes = internal.mergeShapesFromLayers(layers);
+  }
+  if (merged.shapes && merged.data && merged.shapes.length != merged.data.size()) {
+    error("Mismatch between geometry and attribute data");
+  }
+  return [merged];
+};
+
+internal.getMergedLayersGeometryType = function(layers) {
+  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'));
+  if (geoTypes.length > 1) {
+    stop("Incompatible geometry types:",
+      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
+  }
+  return geoTypes[0] || null;
+};
+
+internal.mergeShapesFromLayers = function(layers) {
+  return layers.reduce(function(memo, lyr) {
+    return memo.concat(lyr.shapes);
+  }, []);
+};
+
+internal.mergeDataFromLayers = function(layers, force) {
+  var allFields = utils.uniq(layers.reduce(function(memo, lyr) {
+    return memo.concat(lyr.data ? lyr.data.getFields() : []);
+  }, []));
+  if (allFields.length === 0) return null; // no data in any fields
+  var missingFields = internal.checkMergeLayersInconsistentFields(allFields, layers, force);
+  var mergedRecords = layers.reduce(function(memo, lyr) {
+    var records = lyr.data ? lyr.data.getRecords() : new DataTable(internal.getFeatureCount(lyr)).getRecords();
+    return memo.concat(records);
+  }, []);
+  if (missingFields.length > 0) {
+    internal.fixInconsistentFields(mergedRecords);
+  }
+  return new DataTable(mergedRecords);
+};
+
+internal.checkMergeLayersInconsistentFields = function(allFields, layers, force) {
+  var msg;
+  // handle fields that are missing from one or more layers
+  // (warn if force-merging, else error)
+  var missingFields = utils.uniq(layers.reduce(function(memo, lyr) {
+    return memo.concat(utils.difference(allFields, lyr.data ? lyr.data.getFields() : []));
+  }, []));
+  if (missingFields.length > 0) {
+    msg = '[' + missingFields.join(', ') + ']';
+    msg = (missingFields.length == 1 ? 'Field ' + msg + ' is missing' : 'Fields ' + msg + ' are missing') + ' from one or more layers';
+    if (force) {
+      message('Warning: ' + msg);
+    } else {
+      stop(msg);
+    }
+  }
+  // check for fields with incompatible data types (e.g. number, string)
+  internal.checkMergeLayersFieldTypes(allFields, layers);
+  return missingFields;
+};
+
+internal.checkMergeLayersFieldTypes = function(fields, layers) {
+  fields.forEach(function(key) {
+    var types = internal.checkFieldTypes(key, layers);
+    if (types.length > 1) {
+      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+    }
+  });
+};
+
+internal.checkFieldTypes = function(key, layers) {
+  // ignores empty-type fields
+  return layers.reduce(function(memo, lyr) {
+    var type = lyr.data ? internal.getColumnType(key, lyr.data.getRecords()) : null;
+    if (type && memo.indexOf(type) == -1) {
+      memo.push(type);
+    }
+    return memo;
+  }, []);
+};
+
+internal.mergeLayerNames = function(layers) {
+  return layers.reduce(function(memo, lyr) {
+    if (memo === null) {
+      memo = lyr.name || null;
+    } else if (memo && lyr.name) {
+      memo = utils.mergeNames(memo, lyr.name);
+    }
+    return memo;
+  }, null) || '';
+};
+
+
+
+
+internal.exportGeoJSON = function(dataset, opts) {
+  opts = opts || {};
+  var extension = opts.extension || "json";
+  var layerGroups, warn;
+
+  // Apply coordinate precision, if relevant
+  if (opts.precision || opts.rfc7946) {
+    dataset = internal.copyDatasetForExport(dataset);
+    // using 6 decimals as default RFC 7946 precision
+    internal.setCoordinatePrecision(dataset, opts.precision || 0.000001);
+  }
+
+  if (opts.rfc7946) {
+    warn = internal.getRFC7946Warnings(dataset);
+    if (warn) message(warn);
+  }
+
+  if (opts.file) {
+    // Override default output extension if output filename is given
+    extension = utils.getFileExtension(opts.file);
+  }
+  if (opts.combine_layers) {
+    layerGroups = [dataset.layers];
+  } else {
+    layerGroups = dataset.layers.map(function(lyr) {
+      return [lyr];
+    });
+  }
+  return layerGroups.map(function(layers) {
+    // Use common part of layer names if multiple layers are being merged
+    var name = internal.mergeLayerNames(layers) || 'output';
+    var d = utils.defaults({layers: layers}, dataset);
+    return {
+      content: internal.exportDatasetAsGeoJSON(d, opts, 'buffer'),
+      filename: name + '.' + extension
+    };
+  });
+};
+
+// Return an array of Features or Geometries as objects or strings
+//
+internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
+  var properties = internal.exportProperties(lyr.data, opts),
+      shapes = lyr.shapes,
+      ids = internal.exportIds(lyr.data, opts),
+      items, stringify;
+
+  if (ofmt) {
+    stringify = opts.prettify ?
+      internal.getFormattedStringify(['bbox', 'coordinates']) :
+      JSON.stringify;
+  }
+
+  if (properties && shapes && properties.length !== shapes.length) {
+    error("Mismatch between number of properties and number of shapes");
+  }
+
+  return (shapes || properties || []).reduce(function(memo, o, i) {
+    var shape = shapes ? shapes[i] : null,
+        exporter = GeoJSON.exporters[lyr.geometry_type],
+        obj = shape ? exporter(shape, dataset.arcs, opts) : null;
+    if (asFeatures) {
+      obj = {
+        type: 'Feature',
+        geometry: obj,
+        properties: properties ? properties[i] : null
+      };
+      if (ids) {
+        obj.id = ids[i];
+      }
+    } else if (!obj) {
+      return memo; // don't add null objects to GeometryCollection
+    }
+    if (ofmt) {
+      // stringify features as soon as they are generated, to reduce the
+      // number of JS objects in memory (so larger files can be exported)
+      obj = stringify(obj);
+      if (ofmt == 'buffer') {
+        obj = internal.encodeString(obj, 'utf8');
+        // obj = internal.stringToBuffer(obj);
+        // obj = new Buffer(obj, 'utf8');
+      }
+    }
+    memo.push(obj);
+    return memo;
+  }, []);
+};
+
+
+internal.getRFC7946Warnings = function(dataset) {
+  var P = internal.getDatasetCRS(dataset);
+  var str;
+  if (!P || !internal.isLatLngCRS(P)) {
+    str = 'RFC 7946 warning: non-WGS84 coordinates.';
+    if (P) str += ' Use "-proj wgs84" to convert.';
+  }
+  return str;
+};
+
+internal.getDatasetBbox = function(dataset, rfc7946) {
+  var P = internal.getDatasetCRS(dataset),
+      wrapped = rfc7946 && P && internal.isLatLngCRS(P),
+      westBounds = new Bounds(),
+      eastBounds = new Bounds(),
+      mergedBounds, gutter, margins, bbox;
+
+  dataset.layers.forEach(function(lyr) {
+    if (internal.layerHasPaths(lyr)) {
+      internal.traversePaths(lyr.shapes, null, function(o) {
+        var bounds = dataset.arcs.getSimpleShapeBounds(o.arcs);
+        (bounds.centerX() < 0 ? westBounds : eastBounds).mergeBounds(bounds);
+      });
+    } else if (internal.layerHasPoints(lyr)) {
+      internal.forEachPoint(lyr.shapes, function(p) {
+        (p[0] < 0 ? westBounds : eastBounds).mergePoint(p[0], p[1]);
+      });
+    }
+  });
+  mergedBounds = (new Bounds()).mergeBounds(eastBounds).mergeBounds(westBounds);
+  if (mergedBounds.hasBounds()) {
+    bbox = mergedBounds.toArray();
+  }
+  if (wrapped && eastBounds.hasBounds() && westBounds.hasBounds()) {
+    gutter = eastBounds.xmin - westBounds.xmax;
+    margins = 360 + westBounds.xmin - eastBounds.xmax;
+    if (gutter > 0 && gutter > margins) {
+      bbox[0] = eastBounds.xmin;
+      bbox[2] = westBounds.xmax;
+    }
+  }
+  return bbox || null;
+};
+
+internal.exportDatasetAsGeoJSON = function(dataset, opts, ofmt) {
+  var geojson = {};
+  var layers = dataset.layers;
+  var useFeatures = internal.useFeatureCollection(layers, opts);
+  var parts, collection, bbox, collname;
+
+  if (useFeatures) {
+    geojson.type = 'FeatureCollection';
+    collname = 'features';
+  } else {
+    geojson.type = 'GeometryCollection';
+    collname = 'geometries';
+  }
+
+  if (!opts.rfc7946) {
+    // partial support for crs property (eliminated in RFC 7946)
+    internal.exportCRS(dataset, geojson);
+  }
+
+  if (opts.bbox) {
+    bbox = internal.getDatasetBbox(dataset, opts.rfc7946);
+    if (bbox) {
+      geojson.bbox = bbox;
+    }
+  }
+
+  collection = layers.reduce(function(memo, lyr, i) {
+    var items = internal.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, ofmt);
+    return memo.length > 0 ? memo.concat(items) : items;
+  }, []);
+
+  if (opts.geojson_type == 'Feature' && collection.length == 1) {
+    return collection[0];
+  } else if (ofmt) {
+    return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
+  } else {
+    geojson[collname] = collection;
+    return geojson;
+  }
+};
+
+GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
+  // collection is an array of individual GeoJSON Feature|geometry strings or buffers
+  var head = JSON.stringify(container).replace(/\}$/, ', "' + collType + '": [\n');
+  var tail = '\n]}';
+  if (ofmt == 'buffer') {
+    return GeoJSON.joinOutputBuffers(head, tail, collection);
+  }
+  return head + collection.join(',\n') + tail;
+};
+
+GeoJSON.joinOutputBuffers = function(head, tail, collection) {
+  var comma = utils.createBuffer(',\n', 'utf8');
+  var parts = collection.reduce(function(memo, buf, i) {
+    if (i > 0) memo.push(comma);
+    memo.push(buf);
+    return memo;
+  }, [utils.createBuffer(head, 'utf8')]);
+  parts.push(utils.createBuffer(tail, 'utf8'));
+  return Buffer.concat(parts);
+};
+
+// export GeoJSON or TopoJSON point geometry
+GeoJSON.exportPointGeom = function(points, arcs) {
+  var geom = null;
+  if (points.length == 1) {
+    geom = {
+      type: "Point",
+      coordinates: points[0]
+    };
+  } else if (points.length > 1) {
+    geom = {
+      type: "MultiPoint",
+      coordinates: points
+    };
+  }
+  return geom;
+};
+
+GeoJSON.exportLineGeom = function(ids, arcs) {
+  var obj = internal.exportPathData(ids, arcs, "polyline");
+  if (obj.pointCount === 0) return null;
+  var coords = obj.pathData.map(function(path) {
+    return path.points;
+  });
+  return coords.length == 1 ? {
+    type: "LineString",
+    coordinates: coords[0]
+  } : {
+    type: "MultiLineString",
+    coordinates: coords
+  };
+};
+
+GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
+  var obj = internal.exportPathData(ids, arcs, "polygon");
+  if (obj.pointCount === 0) return null;
+  var groups = internal.groupPolygonRings(obj.pathData, opts.invert_y);
+  var reverse = opts.rfc7946 && !opts.invert_y;
+  var coords = groups.map(function(paths) {
+    return paths.map(function(path) {
+      if (reverse) path.points.reverse();
+      return path.points;
+    });
+  });
+  return coords.length == 1 ? {
+    type: "Polygon",
+    coordinates: coords[0]
+  } : {
+    type: "MultiPolygon",
+    coordinates: coords
+  };
+};
+
+GeoJSON.exporters = {
+  polygon: GeoJSON.exportPolygonGeom,
+  polyline: GeoJSON.exportLineGeom,
+  point: GeoJSON.exportPointGeom
+};
+
+// @jsonObj is a top-level GeoJSON or TopoJSON object
+// TODO: generate crs if projection is known
+// TODO: handle case of non-WGS84 geodetic coordinates
+internal.exportCRS = function(dataset, jsonObj) {
+  var info = dataset.info || {};
+  if (!info.crs && 'input_geojson_crs' in info) {
+    // use input geojson crs if available and coords have not changed
+    jsonObj.crs = info.input_geojson_crs;
+  } else if (info.crs && !internal.isLatLngCRS(info.crs)) {
+    // Setting output crs to null if coords have been projected
+    // "If the value of CRS is null, no CRS can be assumed"
+    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
+    jsonObj.crs = null;
+  } else {
+    // crs property not set: assuming WGS84
+  }
+};
+
+internal.useFeatureCollection = function(layers, opts) {
+  var type = opts.geojson_type || '';
+  if (type == 'Feature' || type == 'FeatureCollection') {
+    return true;
+  } else if (type == 'GeometryCollection') {
+    return false;
+  } else if (type) {
+    stop("Unsupported GeoJSON type:", opts.geojson_type);
+  }
+  // default is true iff layers contain attributes
+  return utils.some(layers, function(lyr) {
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    var haveData = internal.useFeatureProperties(fields, opts);
+    var haveId = !!internal.getIdField(fields, opts);
+    return haveData || haveId;
+  });
+};
+
+internal.useFeatureProperties = function(fields, opts) {
+  return !(opts.drop_table || opts.cut_table || fields.length === 0 ||
+      fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
+};
+
+internal.exportProperties = function(table, opts) {
+  var fields = table ? table.getFields() : [],
+      idField = internal.getIdField(fields, opts),
+      properties, records;
+  if (!internal.useFeatureProperties(fields, opts)) {
+    return null;
+  }
+  records = table.getRecords();
+  if (idField == GeoJSON.ID_FIELD) {// delete default id field, not user-set fields
+    properties = records.map(function(rec) {
+      rec = utils.extend({}, rec); // copy rec;
+      delete rec[idField];
+      return rec;
+    });
+  } else {
+    properties = records;
+  }
+  return properties;
+};
+
+// @opt value of id-field option (empty, string or array of strings)
+// @fields array
+internal.getIdField = function(fields, opts) {
+  var ids = [];
+  var opt = opts.id_field;
+  if (utils.isString(opt)) {
+    ids.push(opt);
+  } else if (utils.isArray(opt)) {
+    ids = opt;
+  }
+  ids.push(GeoJSON.ID_FIELD); // default id field
+  return utils.find(ids, function(name) {
+    return utils.contains(fields, name);
+  });
+};
+
+internal.exportIds = function(table, opts) {
+  var fields = table ? table.getFields() : [],
+      idField = internal.getIdField(fields, opts);
+  if (!idField) return null;
+  return table.getRecords().map(function(rec) {
+    return idField in rec ? rec[idField] : null;
+  });
+};
+
+
+
+
+
+
+
+internal.makePolylineBuffer = function(lyr, dataset, opts) {
+  var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
+  var dataset2 = internal.importGeoJSON(geojson, {});
+  internal.dissolveBufferDataset(dataset2, opts);
+  return dataset2;
+};
+
+internal.makeShapeBufferGeoJSON = function(lyr, dataset, opts) {
+  var distanceFn = internal.getBufferDistanceFunction(lyr, dataset, opts);
+  var toleranceFn = internal.getBufferToleranceFunction(dataset, opts);
+  var geod = internal.getGeodeticSegmentFunction(dataset, false);
+  var getBearing = internal.getBearingFunction(dataset);
+  var makerOpts = utils.extend({geometry_type: lyr.geometry_type}, opts);
+  var makeShapeBuffer = internal.getPolylineBufferMaker(dataset.arcs, geod, getBearing, makerOpts);
+  var geometries = lyr.shapes.map(function(shape, i) {
+    var dist = distanceFn(i);
+    if (!dist || !shape) return null;
+    return makeShapeBuffer(shape, dist, lyr.geometry_type);
+  });
+  // TODO: make sure that importer supports null geometries (not standard GeoJSON);
+  return {
+    type: 'GeometryCollection',
+    geometries: geometries
+  };
+};
+
+
+
+internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
+  var maker = internal.getPathBufferMaker(arcs, geod, getBearing, opts);
+  var geomType = opts.geometry_type;
+  // polyline output could be used for debugging
+  var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
+  var singleType = outputGeom == 'polyline' ? 'LineString' : 'Polygon';
+  var multiType = outputGeom == 'polyline' ? 'MultiLineString' : 'MultiPolygon';
+
+  function bufferPath(path, dist) {
+    var coords = maker(path, dist);
+    var revPath;
+    if (geomType == 'polyline') {
+      revPath = internal.reversePath(path.concat());
+      coords = coords.concat(maker(revPath, dist));
+    }
+    coords.push(coords[0].concat()); // close path
+    return coords;
+  }
+
+  return function(shape, dist) {
+    var coords = [], part, geom;
+    for (var i=0; i<shape.length; i++) {
+      part = bufferPath(shape[i], dist);
+      if (!part) continue;
+      coords.push(outputGeom == 'polyline' ? part : [part]);
+    }
+    if (coords.length === 0) {
+      geom = null;
+    } else if (coords.length == 1) {
+      geom = {
+        type: singleType,
+        coordinates: coords[0]
+      };
+    } else {
+      geom = {
+        type: multiType,
+        coordinates: coords
+      };
+    }
+    return geom;
+  };
+};
+
+
+internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
+  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 10;
+  var pathIter = new ShapeIter(arcs);
+  var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
+  var tolerance;
+  // TODO: implement other join styles than round
+
+  function updateTolerance(dist) {
+
+  }
+
+  function addRoundJoin(arr, x, y, startDir, angle, dist) {
+    var increment = 10;
+    var endDir = startDir + angle;
+    var dir = startDir + increment;
+    while (dir < endDir) {
+      addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+      dir += increment;
+    }
+  }
+
+  function addRoundJoin2(arr, x, y, startDir, angle, dist) {
+    var increment = 10;
+    var endDir = startDir + angle;
+    var dir = startDir + increment;
+    while (dir < endDir) {
+      addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+      dir += increment;
+    }
+  }
+
+  // Test if two points are within a snapping tolerance
+  // TODO: calculate the tolerance more sensibly
+  function veryClose(x1, y1, x2, y2, tol) {
+    var dist = geom.distance2D(x1, y1, x2, y2);
+    return dist < tol;
+  }
+
+  function veryCloseToPrevPoint(arr, x, y) {
+    var prev = arr[arr.length - 1];
+    return veryClose(prev[0], prev[1], x, y, 0.000001);
+  }
+
+  function appendPoint(arr, p) {
+    var prev = arr[arr.length - 1];
+    if (!veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
+      arr.push(p);
+    } else {
+      //var dist = geom.distance2D(prev[0], prev[1], p[0], p[1]);
+      //console.log(dist)
+    }
+  }
+
+  function makeCap(x, y, direction, dist) {
+    if (capStyle == 'flat') {
+      return [[x, y]];
+    }
+    return makeRoundCap(x, y, direction, dist);
+  }
+
+  function makeRoundCap(x, y, segmentDir, dist) {
+    var points = [];
+    var increment = 10;
+    var startDir = segmentDir - 90;
+    var angle = increment;
+    while (angle < 180) {
+      points.push(geod(x, y, startDir + angle, dist));
+      angle += increment;
+    }
+    return points;
+  }
+
+  // get angle between two extruded segments in degrees
+  // positive angle means join in convex (range: 0-180 degrees)
+  // negative angle means join is concave (range: -180-0 degrees)
+  function getJoinAngle(direction1, direction2) {
+    var delta = direction2 - direction1;
+    if (delta > 180) {
+      delta -= 360;
+    }
+    if (delta < -180) {
+      delta += 360;
+    }
+    return delta;
+  }
+
+  function addBufferVertex(arr, d, maxBacktrack) {
+    var a, b, c, hit;
+    for (var i=0, idx = arr.length - 3; i<maxBacktrack && idx >= 0; i++, idx--) {
+      c = arr[arr.length - 1];
+      a = arr[idx];
+      b = arr[idx + 1];
+      // TODO: consider using a geodetic intersection function for lat-long datasets
+      hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+      if (hit) {
+        // TODO: handle collinear segments
+        // if (hit.length != 2) console.log('COLLINEAR', hit)
+        // segments intersect -- replace two internal segment endpoints with xx point
+        while (arr.length > idx + 1) arr.pop();
+        appendPoint(arr, hit);
+      }
+    }
+
+    appendPoint(arr, d);
+  }
+
+  return function(path, dist) {
+    var left = [];
+    var x0, y0, x1, y1, x2, y2;
+    var p1, p2;
+    var bearing, prevBearing, firstBearing, joinAngle;
+    var i = 0;
+    pathIter.init(path);
+
+    while (pathIter.hasNext()) {
+      // TODO: use a tolerance
+      if (pathIter.x === x2 && pathIter.y === y2) continue; // skip duplicate points
+      x1 = x2;
+      y1 = y2;
+      x2 = pathIter.x;
+      y2 = pathIter.y;
+      if (i >= 1) {
+        prevBearing = bearing;
+        bearing = getBearing(x1, y1, x2, y2);
+        p1 = geod(x1, y1, bearing - 90, dist);
+        p2 = geod(x2, y2, bearing - 90, dist);
+        // left.push([x1, y1], p1) // debug extrusion lines
+        // left.push([x2, y2], p2) // debug extrusion lines
+      }
+      if (i == 1) {
+        firstBearing = bearing;
+        x0 = x1;
+        y0 = y1;
+        left.push(p1, p2);
+      }
+      if (i > 1) {
+        joinAngle = getJoinAngle(prevBearing, bearing);
+        if (veryCloseToPrevPoint(left, p1[0], p1[1])) {
+          // skip first point
+          addBufferVertex(left, p2, backtrackSteps);
+        } else if (joinAngle > 0) {
+          addRoundJoin(left, x1, y1, prevBearing - 90, joinAngle, dist);
+          addBufferVertex(left, p1, backtrackSteps);
+          addBufferVertex(left, p2, backtrackSteps);
+        } else {
+          addBufferVertex(left, p1, backtrackSteps);
+          addBufferVertex(left, p2, backtrackSteps);
+        }
+      }
+      i++;
+    }
+    // TODO: handle defective polylines
+
+    if (x2 == x0 && y2 == y0) {
+      // add join to finish closed path
+      joinAngle = getJoinAngle(bearing, firstBearing);
+      if (joinAngle > 0) {
+        addRoundJoin(left, x2, y2, bearing - 90, joinAngle, dist);
+      }
+    } else {
+      // add a cap to finish open path
+      left.push.apply(left, makeCap(x2, y2, bearing, dist));
+    }
+    return left;
+  };
+};
+
+internal.addBufferVertex_v1 = function(arr, d, maxBacktrack) {
+  // TODO: handle case where a new segment intersects multiple other segments.
+  var pointsToRemove = 0;
+  var len = arr.length;
+  var a, b, c, idx, hit;
+  if (len < 3) {
+    arr.push(d);
+    return;
+  }
+  c = arr[len - 1];
+  for (var i=0; i<maxBacktrack; i++) {
+    idx = len - 3 - i;
+    if (idx < 0) break; // reached beginning of the line
+    a = arr[idx];
+    b = arr[idx + 1];
+    // TODO: consider using a geodetic intersection function for lat-long datasets
+    hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+    if (hit) {
+      // TODO: handle collinear segments
+      // if (hit.length != 2) console.log('COLLINEAR')
+      pointsToRemove = i + 2; // remove interior points
+      break;
+    }
+  }
+  if (hit && pointsToRemove > 0) {
+    // segments intersect -- replace two internal segment endpoints with xx point
+    while (pointsToRemove--) arr.pop();
+    // TODO: check proximity of hit to several points
+    arr.push(hit);
+  }
+
+  // TODO: check proximity to previous point
+  arr.push(d); // add new point
+};
+
+internal.addBufferVertex = function(arr, d, maxBacktrack) {
+  var a, b, c, hit;
+  for (var i=0, idx = arr.length - 3; i<maxBacktrack && idx >= 0; i++, idx--) {
+    c = arr[arr.length - 1];
+    a = arr[idx];
+    b = arr[idx + 1];
+    // TODO: consider using a geodetic intersection function for lat-long datasets
+    hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+    if (hit) {
+      // TODO: handle collinear segments
+      if (hit.length != 2) {
+        // console.log("COLLINEAR", hit)
+      }
+      // segments intersect -- replace two internal segment endpoints with xx point
+      while (arr.length > idx + 1) arr.pop();
+      // TODO: check proximity of hit to several points
+      arr.push(hit);
+    }
+  }
+
+  // TODO: check proximity to previous point
+  arr.push(d); // add new point
+};
+
+// Exclude segments with non-intersecting bounding boxes before
+// calling intersection function
+// Possibly slightly faster than direct call... not worth it?
+internal.bufferIntersection = function(ax, ay, bx, by, cx, cy, dx, dy) {
+  if (ax < cx && ax < dx && bx < cx && bx < dx ||
+      ax > cx && ax > dx && bx > cx && bx > dx ||
+      ay < cy && ay < dy && by < cy && by < dy ||
+      ay > cy && ay > dy && by > cy && by > dy) return null;
+  return geom.segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+};
+
+
+
+
+internal.makePolygonBuffer = function(lyr, dataset, opts) {
+  var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
+  var dataset2 = internal.importGeoJSON(geojson, {});
+  internal.dissolveBufferDataset(dataset2);
+  return dataset2;
+};
+
+
+
+
+// returns a dataset
+api.buffer = function(layers, dataset, opts) {
+  return internal.makeBufferLayer(layers[0], dataset, opts);
+};
+
+internal.makeBufferLayer = function(lyr, dataset, opts) {
+  var dataset2;
+  if (lyr.geometry_type == 'point') {
+    dataset2 = internal.makePointBuffer(lyr, dataset, opts);
+  } else if (lyr.geometry_type == 'polyline') {
+    dataset2 = internal.makePolylineBuffer(lyr, dataset, opts);
+  } else if (lyr.geometry_type == 'polygon') {
+    dataset2 = internal.makePolygonBuffer(lyr, dataset, opts);
+  } else {
+    stop("Unsupported geometry type");
+  }
+  dataset2.layers[0].name = opts.name || lyr.name;
+  return dataset2;
+};
+
 
 
 
@@ -5425,737 +10438,6 @@ internal.formatIntersectingSegment = function(x, y, id1, id2, xx, yy) {
 
 
 
-// Return function for splitting self-intersecting polygon rings
-// Splitter function receives a single path, returns an array of paths
-// Intersections are assumed to occur at vertices, not along segments
-// (requires that internal.addIntersectionCuts() has already been run)
-//
-internal.getSelfIntersectionSplitter = function(nodes) {
-  return dividePath;
-
-  // Returns array of 0 or more divided paths
-  function dividePath(path) {
-    var subPaths = null;
-    for (var i=0; i<path.length - 1; i++) { // don't need to check last arc
-      subPaths = dividePathAtNode(path, path[i]);
-      if (subPaths) {
-        return subPaths;
-      }
-    }
-    // indivisible path -- clean it by removing any spikes
-    internal.removeSpikesInPath(path);
-    return path.length > 0 ? [path] : [];
-  }
-
-  // If arc @enterId enters a node with more than one open routes leading out:
-  //   return array of sub-paths
-  // else return null
-  function dividePathAtNode(path, enterId) {
-    var nodeIds = nodes.getConnectedArcs(enterId),
-        exitIds = [],
-        outId;
-    for (var i=0; i<nodeIds.length; i++) {
-      outId = ~nodeIds[i];
-      if (contains(path, outId)) { // repeated scanning may be bottleneck
-        exitIds.push(outId);
-      }
-    }
-    if (exitIds.length > 1) {
-      // path forks -- recursively subdivide
-      return internal.splitPathByIds(path, exitIds).reduce(accumulatePaths, null);
-    }
-    return null;
-  }
-
-  function accumulatePaths(memo, path) {
-    var subPaths = dividePath(path);
-    return memo ? memo.concat(subPaths) : subPaths;
-  }
-
-  // Added as an optimization -- tested faster than using Array#indexOf()
-  function contains(arr, el) {
-    for (var i=0, n=arr.length; i<n; i++) {
-      if (arr[i] === el) return true;
-    }
-    return false;
-  }
-};
-
-// Function returns an array of split-apart rings
-// @path An array of arc ids describing a self-intersecting polygon ring
-// @ids An array of two or more ids of arcs that originate from a single vertex
-//      where @path intersects itself.
-internal.splitPathByIds = function(path, ids) {
-  var subPaths = [];
-  // Find array indexes in @path of each split id
-  var indexes = ids.map(function(id) {
-    var i = path.indexOf(id);
-    if (i == -1) error("[splitPathByIds()] missing arc:", id);
-    return i;
-  });
-  utils.genericSort(indexes, true); // sort ascending
-  if (indexes[0] > 0) {
-    subPaths.push(path.slice(0, indexes[0]));
-  }
-  for (var i=0, n=indexes.length; i<n; i++) {
-    if (i < n-1) {
-      subPaths.push(path.slice(indexes[i], indexes[i+1]));
-    } else {
-      subPaths.push(path.slice(indexes[i]));
-    }
-  }
-  // handle case where first subring is split across endpoint of @path
-  if (subPaths.length > ids.length) {
-    subPaths[0] = subPaths[0].concat(subPaths.pop());
-  }
-  return subPaths;
-};
-
-
-
-
-// Returns a function that separates rings in a polygon into space-enclosing rings
-// and holes. Also fixes self-intersections.
-//
-internal.getHoleDivider = function(nodes, spherical) {
-  var split = internal.getSelfIntersectionSplitter(nodes);
-
-  return function(rings, cw, ccw) {
-    var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
-    internal.forEachShapePart(rings, function(ringIds) {
-      var splitRings = split(ringIds);
-      if (splitRings.length === 0) {
-        debug("[getRingDivider()] Defective path:", ringIds);
-      }
-      splitRings.forEach(function(ringIds, i) {
-        var ringArea = pathArea(ringIds, nodes.arcs);
-        if (ringArea > 0) {
-          cw.push(ringIds);
-        } else if (ringArea < 0) {
-          ccw.push(ringIds);
-        }
-      });
-    });
-  };
-};
-
-
-
-
-// Clean polygon or polyline shapes (in-place)
-//
-internal.cleanShapes = function(shapes, arcs, type) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = internal.cleanShape(shapes[i], arcs, type);
-  }
-};
-
-// Remove defective arcs and zero-area polygon rings
-// Remove simple polygon spikes of form: [..., id, ~id, ...]
-// Don't remove duplicate points
-// Don't check winding order of polygon rings
-internal.cleanShape = function(shape, arcs, type) {
-  return internal.editShapeParts(shape, function(path) {
-    var cleaned = internal.cleanPath(path, arcs);
-    if (type == 'polygon' && cleaned) {
-      internal.removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
-      if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
-        cleaned = null;
-      }
-    }
-    return cleaned;
-  });
-};
-
-internal.cleanPath = function(path, arcs) {
-  var nulls = 0;
-  for (var i=0, n=path.length; i<n; i++) {
-    if (arcs.arcIsDegenerate(path[i])) {
-      nulls++;
-      path[i] = null;
-    }
-  }
-  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
-};
-
-// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
-// (in place)
-internal.removeSpikesInPath = function(ids) {
-  var n = ids.length;
-  if (n >= 2) {
-    if (ids[0] == ~ids[n-1]) {
-      ids.pop();
-      ids.shift();
-    } else {
-      for (var i=1; i<n; i++) {
-        if (ids[i-1] == ~ids[i]) {
-          ids.splice(i-1, 2);
-          break;
-        }
-      }
-    }
-    if (ids.length < n) {
-      internal.removeSpikesInPath(ids);
-    }
-  }
-};
-
-
-// TODO: Need to rethink polygon repair: these function can cause problems
-// when part of a self-intersecting polygon is removed
-//
-internal.repairPolygonGeometry = function(layers, dataset, opts) {
-  var nodes = internal.addIntersectionCuts(dataset);
-  layers.forEach(function(lyr) {
-    internal.repairSelfIntersections(lyr, nodes);
-  });
-  return layers;
-};
-
-// Remove any small shapes formed by twists in each ring
-// // OOPS, NO // Retain only the part with largest area
-// // this causes problems when a cut-off hole has a matching ring in another polygon
-// TODO: consider cases where cut-off parts should be retained
-//
-internal.repairSelfIntersections = function(lyr, nodes) {
-  var splitter = internal.getSelfIntersectionSplitter(nodes);
-
-  lyr.shapes = lyr.shapes.map(function(shp, i) {
-    return cleanPolygon(shp);
-  });
-
-  function cleanPolygon(shp) {
-    var cleanedPolygon = [];
-    internal.forEachShapePart(shp, function(ids) {
-      // TODO: consider returning null if path can't be split
-      var splitIds = splitter(ids);
-      if (splitIds.length === 0) {
-        error("[cleanPolygon()] Defective path:", ids);
-      } else if (splitIds.length == 1) {
-        cleanedPolygon.push(splitIds[0]);
-      } else {
-        var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
-            sign = shapeArea > 0 ? 1 : -1,
-            mainRing;
-
-        var maxArea = splitIds.reduce(function(max, ringIds, i) {
-          var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
-          if (pathArea > max) {
-            mainRing = ringIds;
-            max = pathArea;
-          }
-          return max;
-        }, 0);
-
-        if (mainRing) {
-          cleanedPolygon.push(mainRing);
-        }
-      }
-    });
-    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
-  }
-};
-
-
-
-// A matrix class that supports affine transformations (scaling, translation, rotation).
-// Elements:
-//   a  c  tx
-//   b  d  ty
-//   0  0  1  (u v w are not used)
-//
-function Matrix2D() {
-  this.a = 1;
-  this.c = 0;
-  this.tx = 0;
-  this.b = 0;
-  this.d = 1;
-  this.ty = 0;
-}
-
-Matrix2D.prototype.transformXY = function(x, y, p) {
-  p = p || {};
-  p.x = x * this.a + y * this.c + this.tx;
-  p.y = x * this.b + y * this.d + this.ty;
-  return p;
-};
-
-Matrix2D.prototype.translate = function(dx, dy) {
-  this.tx += dx;
-  this.ty += dy;
-};
-
-Matrix2D.prototype.rotate = function(q, x, y) {
-  var cos = Math.cos(q);
-  var sin = Math.sin(q);
-  x = x || 0;
-  y = y || 0;
-  this.a = cos;
-  this.c = -sin;
-  this.b = sin;
-  this.d = cos;
-  this.tx += x - x * cos + y * sin;
-  this.ty += y - x * sin - y * cos;
-};
-
-Matrix2D.prototype.scale = function(sx, sy) {
-  this.a *= sx;
-  this.c *= sx;
-  this.b *= sy;
-  this.d *= sy;
-};
-
-
-
-
-
-function getAlbersUSA(opts) {
-  return function() {
-    return AlbersNYT(opts || {});
-  };
-}
-
-function AlbersNYT(opts) {
-  var mproj = require('mproj');
-  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
-  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
-  var mixed = new MixedProjection(aea)
-    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
-    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
-  if (opts.PR) {
-    mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -76.5, phi: 26.3 }, 1e6, 1e6, 1, -16); // PR
-    // mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -93, phi: 28.22 }, 1e6, 1e6, 1, -16) // PR
-  }
-  return mixed;
-}
-
-
-// A compound projection, consisting of a default projection and one or more rectangular frames
-// that are reprojected and/or affine transformed.
-// @proj Default projection.
-function MixedProjection(proj) {
-  var frames = [];
-  var mixed = utils.extend({}, proj);
-  var mproj = require('mproj');
-
-  // @proj2 projection to use.
-  // @ctr1 {lam, phi} center of the frame contents.
-  // @ctr2 {lam, phi} geo location to move the frame center
-  // @frameWidth Width of the frame in base projection units
-  // @frameHeight Height of the frame in base projection units
-  // @scale Scale factor; 1 = no scaling.
-  // @rotation Rotation in degrees; 0 = no rotation.
-  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
-    var m = new Matrix2D(),
-        a2 = proj.a * 2,
-        xy1 = toRawXY(ctr1, proj),
-        xy2 = toRawXY(ctr2, proj),
-        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
-            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
-    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
-    m.scale(scale, scale);
-    m.transformXY(xy1.x, xy1.y, xy1);
-    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
-    frames.push({
-      bbox: bbox,
-      matrix: m,
-      projection: proj2
-    });
-    return this;
-  };
-
-  // convert a latlon position to x,y in earth radii relative to datum origin
-  function toRawXY(lp, P) {
-    var xy = mproj.pj_fwd_deg(lp, P);
-    return {
-      x: (xy.x / P.fr_meter - P.x0) / P.a,
-      y: (xy.y / P.fr_meter - P.y0) / P.a
-    };
-  }
-
-  mixed.fwd = function(lp, xy) {
-    var lam = lp.lam,
-        phi = lp.phi,
-        frame, bbox;
-    proj.fwd(lp, xy);
-    for (var i=0, n=frames.length; i<n; i++) {
-      frame = frames[i];
-      bbox = frame.bbox;
-      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
-        // copy lp (some proj functions may modify it)
-        frame.projection.fwd({lam: lam, phi: phi}, xy);
-        frame.matrix.transformXY(xy.x, xy.y, xy);
-        break;
-      }
-    }
-  };
-
-  return mixed;
-}
-
-
-
-
-// some aliases
-internal.projectionIndex = {
-  robinson: '+proj=robin +datum=WGS84',
-  webmercator: '+proj=merc +a=6378137 +b=6378137',
-  wgs84: '+proj=longlat +datum=WGS84',
-  albersusa: getAlbersUSA(),
-  albersusa2: getAlbersUSA({PR: true}) // version with Puerto Rico
-};
-
-// This stub is replaced when loaded in GUI, which may need to load some files
-internal.initProjLibrary = function(opts, done) {done();};
-
-// Find Proj.4 definition file names in strings like "+init=epsg:3000"
-// (Used by GUI, defined here for testing)
-internal.findProjLibs = function(str) {
-  var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
-  return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
-};
-
-// Returns a function for reprojecting [x, y] points; function throws an error
-// if the transformation fails
-// src, dest: proj4 objects
-internal.getProjTransform = function(src, dest) {
-  var mproj = require('mproj');
-  var clampSrc = internal.isLatLngCRS(src);
-  return function(x, y) {
-    var xy;
-    if (clampSrc) {
-      // snap lng to bounds
-      if (x < -180) x = -180;
-      else if (x > 180) x = 180;
-    }
-    xy = [x, y];
-    mproj.pj_transform_point(src, dest, xy);
-    return xy;
-  };
-};
-
-// Same as getProjTransform(), but return null if projection fails
-// (also faster)
-internal.getProjTransform2 = function(src, dest) {
-  var mproj = require('mproj'),
-      xx = [0],
-      yy = [0],
-      preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
-      postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
-      clampSrc = internal.isLatLngCRS(src);
-
-  return function(x, y) {
-    var fail;
-    if (clampSrc) {
-      // snap lng to bounds
-      if (x < -180) x = -180;
-      else if (x > 180) x = 180;
-    }
-    xx[0] = x * preK;
-    yy[0] = y * preK;
-    try {
-      mproj.pj_transform(src, dest, xx, yy);
-      fail = xx[0] == Infinity; // mproj invalid coord value
-    } catch(e) {
-      fail = true;
-    }
-    return fail ? null : [xx[0] * postK, yy[0] * postK];
-  };
-};
-
-internal.toLngLat = function(xy, P) {
-  var proj;
-  if (isLatLngCRS(P)) {
-    return xy.concat();
-  }
-  proj = internal.getProjInfo(P, internal.getCRS('wgs84'));
-  return proj(xy);
-};
-
-internal.getProjInfo = function(dataset) {
-  var P, info;
-  try {
-    P = internal.getDatasetCRS(dataset);
-    if (P) {
-      info = internal.crsToProj4(P);
-    }
-  } catch(e) {}
-  return info || "[unknown]";
-};
-
-internal.crsToProj4 = function(P) {
-  return require('mproj').internal.get_proj_defn(P);
-};
-
-internal.crsToPrj = function(P) {
-  var wkt;
-  try {
-    wkt = require('mproj').internal.wkt_from_proj4(P);
-  } catch(e) {
-    // console.log(e)
-  }
-  return wkt;
-};
-
-internal.crsAreEqual = function(a, b) {
-  var str = internal.crsToProj4(a);
-  return !!str && str == internal.crsToProj4(b);
-};
-
-internal.getProjDefn = function(str) {
-  var mproj = require('mproj');
-  var defn;
-  if (str in internal.projectionIndex) {
-    defn = internal.projectionIndex[str];
-  } else if (str in mproj.internal.pj_list) {
-    defn = '+proj=' + str;
-  } else if (/^\+/.test(str)) {
-    defn = str;
-  } else {
-    stop("Unknown projection definition:", str);
-  }
-  return defn;
-};
-
-internal.getCRS = function(str) {
-  var defn = internal.getProjDefn(str);
-  var P;
-  if (typeof defn == 'function') {
-    P = defn();
-  } else {
-    try {
-      P = require('mproj').pj_init(defn);
-    } catch(e) {
-      stop('Unable to use projection', defn, '(' + e.message + ')');
-    }
-  }
-  return P || null;
-};
-
-// @info: info property of source dataset (instead of crs object, so wkt string
-//        can be preserved if present)
-internal.setDatasetCRS = function(dataset, info) {
-  dataset.info = dataset.info || {};
-  // Assumes that proj4 object is never mutated.
-  // TODO: assign a copy of crs (if present)
-  dataset.info.crs = info.crs;
-  dataset.info.prj = info.prj;
-};
-
-internal.getDatasetCRS = function(dataset) {
-  var info = dataset.info || {},
-      P = info.crs;
-  if (!P && info.prj) {
-    P = internal.parsePrj(info.prj);
-  }
-  if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
-    // use wgs84 for probable latlong datasets with unknown datums
-    P = internal.getCRS('wgs84');
-  }
-  return P;
-};
-
-// Assumes conformal projections; consider returning average of vertical and
-// horizontal scale factors.
-// x, y: a point location in projected coordinates
-// Returns k, the ratio of coordinate distance to distance on the ground
-internal.getScaleFactorAtXY = function(x, y, crs) {
-  var proj = require('mproj');
-  var dist = 1;
-  var lp = proj.pj_inv_deg({x: x, y: y}, crs);
-  var lp2 = proj.pj_inv_deg({x: x + dist, y: y}, crs);
-  var k = dist / greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
-  return k;
-};
-
-internal.isProjectedCRS = function(P) {
-  return P && P.is_latlong || false;
-};
-
-internal.isLatLngCRS = function(P) {
-  return P && P.is_latlong || false;
-};
-
-internal.printProjections = function() {
-  var index = require('mproj').internal.pj_list;
-  var msg = 'Proj4 projections\n';
-  Object.keys(index).sort().forEach(function(id) {
-    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
-  });
-  msg += '\nAliases';
-  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
-    msg += '\n  ' + n;
-  });
-  message(msg);
-};
-
-internal.translatePrj = function(str) {
-  var proj4;
-  try {
-    proj4 = require('mproj').internal.wkt_to_proj4(str);
-  } catch(e) {
-    stop('Unusable .prj file (' + e.message + ')');
-  }
-  return proj4;
-};
-
-// Convert contents of a .prj file to a projection object
-internal.parsePrj = function(str) {
-  return internal.getCRS(internal.translatePrj(str));
-};
-
-
-
-
-var UNITS_LOOKUP = {
-  m: 'meters',
-  meter: 'meters',
-  meters: 'meters',
-  mi: 'miles',
-  mile: 'miles',
-  miles: 'miles',
-  km: 'kilometers',
-  ft: 'feet',
-  feet: 'feet'
-};
-
-// From pj_units.js in mapshaper-proj
-var TO_METERS = {
-  meters: 1,
-  kilometers: 1000,
-  feet: 0.3048, // International Standard Foot
-  miles: 1609.344 // International Statute Mile
-};
-
-// Return coeff. for converting a distance measure to dataset coordinates
-// @paramUnits: units code of distance param, or null if units are not specified
-// @crs: Proj.4 CRS object, or null (unknown latlong CRS);
-//
-internal.getIntervalConversionFactor = function(paramUnits, crs) {
-  var fromParam = 0,
-      fromCRS = 0,
-      k;
-
-  if (crs) {
-    if (crs.is_latlong) {
-      // calculations on latlong coordinates typically use meters
-      fromCRS = 1;
-    } else if (crs.to_meter > 0) {
-      fromCRS = crs.to_meter;
-    } else {
-      error('Invalid CRS');
-    }
-  }
-  if (paramUnits) {
-    fromParam = TO_METERS[paramUnits];
-    if (!fromParam) error('Unknown units:', paramUnits);
-  }
-
-  if (fromParam && fromCRS) {
-    // known param units, known CRS conversion
-    k = fromParam / fromCRS;
-  } else if (!fromParam && !fromCRS) {
-    // unknown param units, unknown (projected) CRS -- no scaling
-    k = 1;
-  } else if (fromParam && !fromCRS) {
-    // known param units, unknown CRS -- error condition, not convertible
-    stop('Unable to convert', paramUnits, 'to unknown coordinates');
-  } else if (!fromParam && fromCRS) {
-    // unknown param units, known CRS -- assume param in meters (bw compatibility)
-    k = 1 / fromCRS;
-  }
-  return k;
-};
-
-internal.parseMeasure = function(m) {
-  var s = utils.isString(m) ? m : '';
-  var match = /(sq|)([a-z]+)(2|)$/i.exec(s); // units rxp
-  var o = {};
-  if (utils.isNumber(m)) {
-    o.value = m;
-  } else if (s === '') {
-    o.value = NaN;
-  } else if (match) {
-    o.units = UNITS_LOOKUP[match[2].toLowerCase()];
-    if (!o.units) {
-      stop('Unknown units:', match[0]);
-    }
-    o.areal = !!(match[1] || match[3]);
-    o.value = Number(s.substring(0, s.length - match[0].length));
-  } else {
-    o.value = Number(s);
-  }
-  if (isNaN(o.value)) {
-    stop('Invalid parameter:', m);
-  }
-  return o;
-};
-
-internal.convertAreaParam = function(opt, crs) {
-  var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, crs);
-  return o.value * k * k;
-};
-
-internal.convertDistanceParam = function(opt, crs) {
-  var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, crs);
-  if (o.areal) {
-    stop('Expected a distance, received an area:', opt);
-  }
-  return o.value * k;
-};
-
-// Same as convertDistanceParam(), except:
-//   in the case of latlong datasets, coordinates are unitless (instead of meters),
-//   and parameters with units trigger an error
-internal.convertIntervalParam = function(opt, crs) {
-  var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, crs);
-  if (o.units && crs && crs.is_latlong) {
-    stop('Parameter does not support distance units with latlong datasets');
-  }
-  if (o.areal) {
-    stop('Expected a distance, received an area:', opt);
-  }
-  return o.value * k;
-};
-
-internal.convertIntervalPair = function(opt, crs) {
-  var a, b;
-  if (!Array.isArray(opt) || opt.length != 2) {
-    stop('Expected two distance parameters, received', opt);
-  }
-  a = internal.parseMeasure(opt[0]);
-  b = internal.parseMeasure(opt[1]);
-  if (a.units && !b.units || b.units && !a.units) {
-    stop('Both parameters should have units:', opt);
-  }
-  return [internal.convertIntervalParam(opt[0], crs),
-          internal.convertIntervalParam(opt[1], crs)];
-};
-
-// Accepts a single value or a list of four values. List order is l,b,t,r
-internal.convertFourSides = function(opt, crs, bounds) {
-  var arr = opt.split(',');
-  if (arr.length == 1) {
-    arr = [arr[0], arr[0], arr[0], arr[0]];
-  } else if (arr.length != 4) {
-    stop("Expected a distance parameter or a list of four params");
-  }
-  return arr.map(function(param, i) {
-    var tmp;
-    if (param.indexOf('%') > 0) {
-      tmp = parseFloat(param) / 100 || 0;
-      return tmp * (i == 1 || i == 3 ? bounds.height() : bounds.width());
-    }
-    return internal.convertIntervalParam(opt, crs);
-  });
-};
-
-
-
-
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
 // TODO: rename this function to something like repairTopology
@@ -6788,1239 +11070,6 @@ internal.debugFlags = function(flags) {
     return str;
   }
 };
-
-
-
-
-
-internal.getLayerDataTable = function(lyr) {
-  var data = lyr.data;
-  if (!data) {
-    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
-  }
-  return data;
-};
-
-
-// Not a general-purpose deep copy function
-internal.copyRecord = function(o) {
-  var o2 = {}, key, val;
-  if (!o) return null;
-  for (key in o) {
-    if (o.hasOwnProperty(key)) {
-      val = o[key];
-      if (val == o) {
-        // avoid infinite recursion if val is a circular reference, by copying all properties except key
-        val = utils.extend({}, val);
-        delete val[key];
-      }
-      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
-    }
-  }
-  return o2;
-};
-
-
-// Insert a column of values into a (new or existing) data field
-internal.insertFieldValues = function(lyr, fieldName, values) {
-  var size = internal.getFeatureCount(lyr) || values.length,
-      table = lyr.data = (lyr.data || new DataTable(size)),
-      records = table.getRecords();
-  internal.insertFieldValues2(fieldName, table.getRecords(), values);
-};
-
-internal.insertFieldValues2 = function(key, records, values) {
-  var n = records.length,
-      i, rec, val;
-  for (i=0, n=records.length; i<n; i++) {
-    rec = records[i];
-    val = values[i];
-    if (!rec) rec = records[i] = {};
-    rec[key] = val === undefined ? null : val;
-  }
-};
-
-internal.getValueType = function(val) {
-  var type = null;
-  if (utils.isString(val)) {
-    type = 'string';
-  } else if (utils.isNumber(val)) {
-    type = 'number';
-  } else if (utils.isBoolean(val)) {
-    type = 'boolean';
-  } else if (utils.isObject(val)) {
-    type = 'object';
-  }
-  return type;
-};
-
-// Fill out a data table with undefined values
-// The undefined members will disappear when records are exported as JSON,
-// but will show up when fields are listed using Object.keys()
-internal.fixInconsistentFields = function(records) {
-  var fields = internal.findIncompleteFields(records);
-  internal.patchMissingFields(records, fields);
-};
-
-internal.findIncompleteFields = function(records) {
-  var counts = {},
-      i, j, keys;
-  for (i=0; i<records.length; i++) {
-    keys = Object.keys(records[i] || {});
-    for (j=0; j<keys.length; j++) {
-      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
-    }
-  }
-  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
-};
-
-internal.patchMissingFields = function(records, fields) {
-  var rec, i, j, f;
-  for (i=0; i<records.length; i++) {
-    rec = records[i] || (records[i] = {});
-    for (j=0; j<fields.length; j++) {
-      f = fields[j];
-      if (f in rec === false) {
-        rec[f] = undefined;
-      }
-    }
-  }
-};
-
-internal.fieldListContainsAll = function(list, fields) {
-  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
-};
-
-internal.getColumnType = function(key, records) {
-  var type = null,
-      rec;
-  for (var i=0, n=records.length; i<n; i++) {
-    rec = records[i];
-    type = rec ? internal.getValueType(rec[key]) : null;
-    if (type) break;
-  }
-  return type;
-};
-
-internal.deleteFields = function(table, test) {
-  table.getFields().forEach(function(name) {
-    if (test(name)) {
-      table.deleteField(name);
-    }
-  });
-};
-
-internal.isInvalidFieldName = function(f) {
-  // Reject empty and all-whitespace strings. TODO: consider other criteria
-  return /^\s*$/.test(f);
-};
-
-// Resolve name conflicts in field names by appending numbers
-// @fields Array of field names
-// @maxLen (optional) Maximum chars in name
-//
-internal.getUniqFieldNames = function(fields, maxLen) {
-  var used = {};
-  return fields.map(function(name) {
-    var i = 0,
-        validName;
-    do {
-      validName = internal.adjustFieldName(name, maxLen, i);
-      i++;
-    } while ((validName in used) ||
-      // don't replace an existing valid field name with a truncated name
-      name != validName && utils.contains(fields, validName));
-    used[validName] = true;
-    return validName;
-  });
-};
-
-// Truncate and/or uniqify a name (if relevant params are present)
-internal.adjustFieldName = function(name, maxLen, i) {
-  var name2, suff;
-  maxLen = maxLen || 256;
-  if (!i) {
-    name2 = name.substr(0, maxLen);
-  } else {
-    suff = String(i);
-    if (suff.length == 1) {
-      suff = '_' + suff;
-    }
-    name2 = name.substr(0, maxLen - suff.length) + suff;
-  }
-  return name2;
-};
-
-internal.applyFieldOrder = function(arr, option) {
-  if (option == 'ascending') {
-    arr.sort(function(a, b) {
-      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-    });
-  }
-  return arr;
-};
-
-internal.findFieldNames = function(records, order) {
-  var first = records[0];
-  var names = first ? Object.keys(first) : [];
-  return internal.applyFieldOrder(names, order);
-};
-
-
-
-
-// List of encodings supported by iconv-lite:
-// https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
-
-// Return list of supported encodings
-internal.getEncodings = function() {
-  var iconv = require('iconv-lite');
-  iconv.encodingExists('ascii'); // make iconv load its encodings
-  return Object.keys(iconv.encodings);
-};
-
-internal.validateEncoding = function(enc) {
-  if (!internal.encodingIsSupported(enc)) {
-    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
-  }
-  return enc;
-};
-
-internal.encodingIsUtf8 = function(enc) {
-  // treating utf-8 as default
-  return !enc || /^utf-?8$/i.test(String(enc));
-};
-
-// Identify the most common encodings that are supersets of ascii at the
-// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
-// (this allows identifying line breaks and other ascii patterns in buffers)
-internal.encodingIsAsciiCompat = function(enc) {
-  enc = internal.standardizeEncodingName(enc);
-  // gb.* selects the Guo Biao encodings
-  // big5 in not compatible -- second byte starts at 0x40
-  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
-};
-
-// Ex. convert UTF-8 to utf8
-internal.standardizeEncodingName = function(enc) {
-  return (enc || '').toLowerCase().replace(/[_-]/g, '');
-};
-
-// Similar to Buffer#toString(); tries to speed up utf8 conversion in
-// web browser (when using browserify Buffer shim)
-internal.bufferToString = function(buf, enc, start, end) {
-  if (start >= 0) {
-    buf = buf.slice(start, end);
-  }
-  return internal.decodeString(buf, enc);
-};
-
-internal.getNativeEncoder = function(enc) {
-  var encoder = null;
-  enc = internal.standardizeEncodingName(enc);
-  if (enc != 'utf8') {
-    // TODO: support more encodings if TextEncoder is available
-    return null;
-  }
-  if (typeof TextEncoder != 'undefined') {
-    encoder = new TextEncoder(enc);
-  }
-  return function(str) {
-    // Convert Uint8Array from encoder to Buffer (fix for issue #216)
-    return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
-  };
-};
-
-internal.encodeString = (function() {
-  var iconv = require('iconv-lite');
-  var toUtf8 = internal.getNativeEncoder('utf8');
-  return function(str, enc) {
-    // TODO: faster ascii encoding?
-    var buf;
-    if (internal.encodingIsUtf8(enc)) {
-      buf = toUtf8(str);
-    } else {
-      buf = iconv.encode(str, enc);
-    }
-    return buf;
-  };
-}());
-
-internal.getNativeDecoder = function(enc) {
-  var decoder = null;
-  enc = internal.standardizeEncodingName(enc);
-  if (enc != 'utf8') {
-    // TODO: support more encodings if TextDecoder is available
-    return null;
-  }
-  if (typeof TextDecoder != 'undefined') {
-    decoder = new TextDecoder(enc);
-  }
-  return function(buf) {
-    return decoder ? decoder.decode(buf) : buf.toString(enc);
-  };
-};
-
-internal.decodeString = (function() {
-  var iconv = require('iconv-lite');
-  var fromUtf8 = internal.getNativeDecoder('utf8');
-  // @buf a Node Buffer
-  return function(buf, enc) {
-    var str;
-    if (internal.encodingIsUtf8(enc)) {
-      str = fromUtf8(buf);
-    } else {
-      str = iconv.decode(buf, enc);
-    }
-    return str;
-  };
-}());
-
-internal.encodingIsSupported = function(raw) {
-  var enc = internal.standardizeEncodingName(raw);
-  return utils.contains(internal.getEncodings(), enc);
-};
-
-internal.trimBOM = function(str) {
-  // remove BOM if present
-  if (str.charCodeAt(0) == 0xfeff) {
-    str = str.substr(1);
-  }
-  return str;
-};
-
-internal.printEncodings = function() {
-  var encodings = internal.getEncodings().filter(function(name) {
-    // filter out some aliases and non-applicable encodings
-    return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
-  });
-  encodings.sort();
-  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
-};
-
-
-
-
-// Try to detect the encoding of some sample text.
-// Returns an encoding name or null.
-// @samples Array of buffers containing sample text fields
-// TODO: Improve reliability and number of detectable encodings.
-internal.detectEncoding = function(samples) {
-  var encoding = null;
-  if (internal.looksLikeUtf8(samples)) {
-    encoding = 'utf8';
-  } else if (internal.looksLikeWin1252(samples)) {
-    // Win1252 is the same as Latin1, except it replaces a block of control
-    // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
-    // in Natural Earth (airports.dbf uses n-dash).
-    encoding = 'win1252';
-  }
-  return encoding;
-};
-
-// Convert an array of text samples to a single string using a given encoding
-internal.decodeSamples = function(enc, samples) {
-  return samples.map(function(buf) {
-    return internal.decodeString(buf, enc).trim();
-  }).join('\n');
-};
-
-internal.formatSamples = function(str) {
-  return internal.formatStringsAsGrid(str.split('\n'));
-};
-
-// Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
-// chars and almost no chars other than word chars + punctuation.
-// This excludes encodings like Greek, Cyrillic or Thai, but
-// is susceptible to false positives with encodings like codepage 1250 ("Eastern
-// European").
-internal.looksLikeWin1252 = function(samples) {
-  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘', // common extended
-      str = internal.decodeSamples('win1252', samples),
-      asciiScore = internal.getCharScore(str, ascii),
-      totalScore = internal.getCharScore(str, extended + ascii);
-  return totalScore > 0.97 && asciiScore > 0.7;
-};
-
-// Reject string if it contains the "replacement character" after decoding to UTF-8
-internal.looksLikeUtf8 = function(samples) {
-  // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
-  // in case the file is in utf-8, but contains some previously corrupted text.
-  // samples = samples.map(internal.replaceUtf8ReplacementChar);
-  var str = internal.decodeSamples('utf8', samples);
-  return str.indexOf('\ufffd') == -1;
-};
-
-internal.replaceUtf8ReplacementChar = function(buf) {
-  var isCopy = false;
-  for (var i=0, n=buf.length; i<n; i++) {
-    // Check for UTF-8 encoded replacement char (0xEF 0xBF 0xBD)
-    if (buf[i] == 0xef && i + 2 < n && buf[i+1] == 0xbf && buf[i+2] == 0xbd) {
-      if (!isCopy) {
-        buf = utils.createBuffer(buf);
-        isCopy = true;
-      }
-      buf[i] = buf[i+1] = buf[i+2] = 63; // ascii question mark
-    }
-  }
-  return buf;
-};
-
-// Calc percentage of chars in a string that are present in a second string
-// @chars String of chars to look for in @str
-internal.getCharScore = function(str, chars) {
-  var index = {},
-      count = 0,
-      score;
-  str = str.toLowerCase();
-  for (var i=0, n=chars.length; i<n; i++) {
-    index[chars[i]] = 1;
-  }
-  for (i=0, n=str.length; i<n; i++) {
-    count += index[str[i]] || 0;
-  }
-  return count / str.length;
-};
-
-
-
-
-// DBF format references:
-// http://www.dbf2002.com/dbf-file-format.html
-// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
-// http://www.clicketyclick.dk/databases/xbase/format/index.html
-// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
-
-var Dbf = {};
-
-// source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
-Dbf.languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
-
-// Language & Language family names for some code pages
-Dbf.encodingNames = {
-  '932': "Japanese",
-  '936': "Simplified Chinese",
-  '950': "Traditional Chinese",
-  '1252': "Western European",
-  '949': "Korean",
-  '874': "Thai",
-  '1250': "Eastern European",
-  '1251': "Russian",
-  '1254': "Turkish",
-  '1253': "Greek",
-  '1257': "Baltic"
-};
-
-Dbf.ENCODING_PROMPT =
-  "To avoid corrupted text, re-import using the \"encoding=\" option.\n" +
-  "To see a list of supported encodings, run the \"encodings\" command.";
-
-Dbf.lookupCodePage = function(lid) {
-  var i = Dbf.languageIds.indexOf(lid);
-  return i == -1 ? null : Dbf.languageIds[i+1];
-};
-
-Dbf.readAsciiString = function(bin, size) {
-  var require7bit = true;
-  var str = bin.readCString(size, require7bit);
-  if (str === null) {
-    stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
-  }
-  return utils.trim(str);
-};
-
-Dbf.readStringBytes = function(bin, size, buf) {
-  var count = 0, c;
-  for (var i=0; i<size; i++) {
-    c = bin.readUint8();
-    // treating 0 as C-style string terminator (observed in-the-wild)
-    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
-    //   characters than the NULL character (ascii 0). The following code
-    //   should be changed to support non-ascii-compatible encodings
-    if (c === 0) break;
-    if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
-      buf[count++] = c;
-    }
-  }
-  // ignore trailing spaces (DBF string fields are typically r-padded w/ spaces)
-  while (count > 0 && buf[count-1] == 32) {
-    count--;
-  }
-  return count;
-};
-
-
-Dbf.getStringReader = function(arg) {
-  var encoding = arg || 'ascii';
-  var slug = internal.standardizeEncodingName(encoding);
-  var buf = utils.createBuffer(256);
-  var inNode = typeof module == 'object';
-
-  // optimization -- use (fast) native Node conversion if available
-  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
-    return function(bin, size) {
-      var n = Dbf.readStringBytes(bin, size, buf);
-      return buf.toString(slug, 0, n);
-    };
-  }
-
-  return function readEncodedString(bin, size) {
-    var n = Dbf.readStringBytes(bin, size, buf),
-        str = '', i, c;
-    // optimization: fall back to text decoder only if string contains non-ascii bytes
-    // (data files of any encoding typically contain mostly ascii fields)
-    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
-    for (i=0; i<n; i++) {
-      c = buf[i];
-      if (c > 127) {
-        return internal.bufferToString(buf, encoding, 0, n);
-      }
-      str += String.fromCharCode(c);
-    }
-    return str;
-  };
-};
-
-Dbf.bufferContainsHighBit = function(buf, n) {
-  for (var i=0; i<n; i++) {
-    if (buf[i] >= 128) return true;
-  }
-  return false;
-};
-
-Dbf.getNumberReader = function() {
-  var read = Dbf.getStringReader('ascii');
-  return function readNumber(bin, size) {
-    var str = read(bin, size);
-    var val;
-    if (str.indexOf(',') >= 0) {
-      str = str.replace(',', '.'); // handle comma decimal separator
-    }
-    val = parseFloat(str);
-    return isNaN(val) ? null : val;
-  };
-};
-
-Dbf.readInt = function(bin, size) {
-  return bin.readInt32();
-};
-
-Dbf.readBool = function(bin, size) {
-  var c = bin.readCString(size),
-      val = null;
-  if (/[ty]/i.test(c)) val = true;
-  else if (/[fn]/i.test(c)) val = false;
-  return val;
-};
-
-Dbf.readDate = function(bin, size) {
-  var str = bin.readCString(size),
-      yr = str.substr(0, 4),
-      mo = str.substr(4, 2),
-      day = str.substr(6, 2);
-  return new Date(Date.UTC(+yr, +mo - 1, +day));
-};
-
-// cf. http://code.google.com/p/stringencoding/
-//
-// @src is a Buffer or ArrayBuffer or filename
-//
-function DbfReader(src, encodingArg) {
-  if (utils.isString(src)) {
-    error("[DbfReader] Expected a buffer, not a string");
-  }
-  var bin = new BinArray(src);
-  var header = readHeader(bin);
-  var encoding = encodingArg || null;
-
-  this.size = function() {return header.recordCount;};
-
-  this.readRow = function(i) {
-    // create record reader on-the-fly
-    // (delays encoding detection until we need to read data)
-    return getRecordReader(header.fields)(i);
-  };
-
-  this.getFields = getFieldNames;
-
-  this.getBuffer = function() {return bin.buffer();};
-
-  this.deleteField = function(f) {
-    header.fields = header.fields.filter(function(field) {
-      return field.name != f;
-    });
-  };
-
-  this.readRows = function() {
-    var reader = getRecordReader(header.fields);
-    var data = [];
-    for (var r=0, n=this.size(); r<n; r++) {
-      data.push(reader(r));
-    }
-    return data;
-  };
-
-  function readHeader(bin) {
-    bin.position(0).littleEndian();
-    var header = {
-      version: bin.readInt8(),
-      updateYear: bin.readUint8(),
-      updateMonth: bin.readUint8(),
-      updateDay: bin.readUint8(),
-      recordCount: bin.readUint32(),
-      dataOffset: bin.readUint16(),
-      recordSize: bin.readUint16(),
-      incompleteTransaction: bin.skipBytes(2).readUint8(),
-      encrypted: bin.readUint8(),
-      mdx: bin.skipBytes(12).readUint8(),
-      ldid: bin.readUint8()
-    };
-    var colOffs = 1; // first column starts on second byte of record
-    var field;
-    bin.skipBytes(2);
-    header.fields = [];
-
-    // Detect header terminator (LF is standard, CR has been seen in the wild)
-    while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
-      field = readFieldHeader(bin);
-      field.columnOffset = colOffs;
-      header.fields.push(field);
-      colOffs += field.size;
-    }
-    if (colOffs != header.recordSize) {
-      error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
-    }
-    if (bin.peek() != 0x0D) {
-      message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
-    }
-
-    // Uniqify header names
-    internal.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
-      header.fields[i].name = name2;
-    });
-
-    return header;
-  }
-
-  function readFieldHeader(bin) {
-    return {
-      name: bin.readCString(11),
-      type: String.fromCharCode(bin.readUint8()),
-      address: bin.readUint32(),
-      size: bin.readUint8(),
-      decimals: bin.readUint8(),
-      id: bin.skipBytes(2).readUint8(),
-      position: bin.skipBytes(2).readUint8(),
-      indexFlag: bin.skipBytes(7).readUint8()
-    };
-  }
-
-  function getFieldNames() {
-    return utils.pluck(header.fields, 'name');
-  }
-
-  function getRowOffset(r) {
-    return header.dataOffset + header.recordSize * r;
-  }
-
-  function getEncoding() {
-    if (!encoding) {
-      encoding = findStringEncoding();
-      if (!encoding) {
-        // fall back to utf8 if detection fails (so GUI can continue without further errors)
-        encoding = 'utf8';
-        stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
-      }
-    }
-    return encoding;
-  }
-
-  // Create new record objects using object literal syntax
-  // (Much faster in v8 and other engines than assigning a series of properties
-  //  to an object)
-  function getRecordConstructor() {
-    var args = getFieldNames().map(function(name, i) {
-          return JSON.stringify(name) + ': arguments[' + i + ']';
-        });
-    return new Function('return {' + args.join(',') + '};');
-  }
-
-  function findEofPos(bin) {
-    var pos = bin.size() - 1;
-    if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
-      pos++;
-    }
-    return pos;
-  }
-
-  function getRecordReader(fields) {
-    var readers = fields.map(getFieldReader),
-        eofOffs = findEofPos(bin),
-        create = getRecordConstructor(),
-        values = [];
-
-    return function readRow(r) {
-      var offs = getRowOffset(r),
-          fieldOffs, field;
-      for (var c=0, cols=fields.length; c<cols; c++) {
-        field = fields[c];
-        fieldOffs = offs + field.columnOffset;
-        if (fieldOffs + field.size > eofOffs) {
-          stop('Invalid DBF file: encountered end-of-file while reading data');
-        }
-        bin.position(fieldOffs);
-        values[c] = readers[c](bin, field.size);
-      }
-      return create.apply(null, values);
-    };
-  }
-
-  // @f Field metadata from dbf header
-  function getFieldReader(f) {
-    var type = f.type,
-        r = null;
-    if (type == 'I') {
-      r = Dbf.readInt;
-    } else if (type == 'F' || type == 'N') {
-      r = Dbf.getNumberReader();
-    } else if (type == 'L') {
-      r = Dbf.readBool;
-    } else if (type == 'D') {
-      r = Dbf.readDate;
-    } else if (type == 'C') {
-      r = Dbf.getStringReader(getEncoding());
-    } else {
-      message("Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
-      r = function() {return null;};
-    }
-    return r;
-  }
-
-  function findStringEncoding() {
-    var ldid = header.ldid,
-        codepage = Dbf.lookupCodePage(ldid),
-        samples = getNonAsciiSamples(50),
-        only7bit = samples.length === 0,
-        encoding, msg;
-
-    // First, check the ldid (language driver id) (an obsolete way to specify which
-    // codepage to use for text encoding.)
-    // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
-    // user's Windows system :P
-    //
-    if (codepage && ldid != 87) {
-      // if 8-bit data is found and codepage is detected, use the codepage,
-      // except ldid 87, which some GIS software uses regardless of encoding.
-      encoding = codepage;
-    } else if (only7bit) {
-      // Text with no 8-bit chars should be compatible with 7-bit ascii
-      // (Most encodings are supersets of ascii)
-      encoding = 'ascii';
-    }
-
-    // As a last resort, try to guess the encoding:
-    if (!encoding) {
-      encoding = internal.detectEncoding(samples);
-    }
-
-    // Show a sample of decoded text if non-ascii-range text has been found
-    if (encoding && samples.length > 0) {
-      msg = internal.decodeSamples(encoding, samples);
-      msg = internal.formatStringsAsGrid(msg.split('\n'));
-      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
-      msg = "Detected DBF text encoding: " + encoding + (encoding in Dbf.encodingNames ? " (" + Dbf.encodingNames[encoding] + ")" : "") + msg;
-      message(msg);
-    }
-    return encoding;
-  }
-
-  // Return up to @size buffers containing text samples
-  // with at least one byte outside the 7-bit ascii range.
-  function getNonAsciiSamples(size) {
-    var samples = [];
-    var stringFields = header.fields.filter(function(f) {
-      return f.type == 'C';
-    });
-    var buf = utils.createBuffer(256);
-    var index = {};
-    var f, chars, sample, hash;
-    for (var r=0, rows=header.recordCount; r<rows; r++) {
-      for (var c=0, cols=stringFields.length; c<cols; c++) {
-        if (samples.length >= size) break;
-        f = stringFields[c];
-        bin.position(getRowOffset(r) + f.columnOffset);
-        chars = Dbf.readStringBytes(bin, f.size, buf);
-        if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-          sample = utils.createBuffer(buf.slice(0, chars)); //
-          hash = sample.toString('hex');
-          if (hash in index === false) { // avoid duplicate samples
-            index[hash] = true;
-            samples.push(sample);
-          }
-        }
-      }
-    }
-    return samples;
-  }
-
-}
-
-
-
-
-Dbf.MAX_STRING_LEN = 254;
-
-function BufferPool() {
-  var n = 5000,
-      pool, i;
-  newPool();
-
-  function newPool() {
-    pool = new Uint8Array(n);
-    i = 0;
-  }
-
-  return {
-    reserve: function(bytes) {
-      if (i + bytes > n) newPool();
-      i += bytes;
-      return pool.subarray(i - bytes, i);
-    },
-    putBack: function(bytes) {
-      i -= bytes;
-    }
-  };
-}
-
-Dbf.bufferPool = new BufferPool();
-
-Dbf.exportRecords = function(records, encoding, fieldOrder) {
-  var rows = records.length;
-  var fields = internal.findFieldNames(records, fieldOrder);
-  var dbfFields = Dbf.convertFieldNames(fields);
-  var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
-    var name2 = dbfFields[i];
-    info.name = name2;
-    if (name != name2) {
-      message('Changed field name from "' + name + '" to "' + name2 + '"');
-    }
-    if (info.warning) {
-      message('[' + name + '] ' + info.warning);
-    }
-    return info;
-  });
-
-  var headerBytes = Dbf.getHeaderSize(fieldData.length),
-      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
-      fileBytes = headerBytes + rows * recordBytes + 1;
-
-  var buffer = new ArrayBuffer(fileBytes);
-  var bin = new BinArray(buffer).littleEndian();
-  var now = new Date();
-
-  // write header
-  bin.writeUint8(3);
-  bin.writeUint8(now.getFullYear() - 1900);
-  bin.writeUint8(now.getMonth() + 1);
-  bin.writeUint8(now.getDate());
-  bin.writeUint32(rows);
-  bin.writeUint16(headerBytes);
-  bin.writeUint16(recordBytes);
-  bin.skipBytes(17);
-  bin.writeUint8(0); // language flag; TODO: improve this
-  bin.skipBytes(2);
-
-
-  // field subrecords
-  fieldData.reduce(function(recordOffset, obj) {
-    bin.writeCString(obj.name, 11);
-    bin.writeUint8(obj.type.charCodeAt(0));
-    bin.writeUint32(recordOffset);
-    bin.writeUint8(obj.size);
-    bin.writeUint8(obj.decimals);
-    bin.skipBytes(14);
-    return recordOffset + obj.size;
-  }, 1);
-
-  bin.writeUint8(0x0d); // "field descriptor terminator"
-  if (bin.position() != headerBytes) {
-    error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
-  }
-
-  records.forEach(function(rec, i) {
-    var start = bin.position();
-    bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
-    for (var j=0, n=fieldData.length; j<n; j++) {
-      fieldData[j].write(i, bin);
-    }
-    if (bin.position() - start != recordBytes) {
-      error("#exportRecords() Error exporting record:", rec);
-    }
-  });
-
-  bin.writeUint8(0x1a); // end-of-file
-
-  if (bin.position() != fileBytes) {
-    error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
-  }
-  return buffer;
-};
-
-Dbf.getHeaderSize = function(numFields) {
-  return 33 + numFields * 32;
-};
-
-Dbf.getRecordSize = function(fieldSizes) {
-  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
-};
-
-Dbf.initNumericField = function(info, arr, name) {
-  var MAX_FIELD_SIZE = 18,
-      data, size;
-
-  data = this.getNumericFieldInfo(arr, name);
-  info.decimals = data.decimals;
-  size = Math.max(data.max.toFixed(info.decimals).length,
-      data.min.toFixed(info.decimals).length);
-  if (size > MAX_FIELD_SIZE) {
-    size = MAX_FIELD_SIZE;
-    info.decimals -= size - MAX_FIELD_SIZE;
-    if (info.decimals < 0) {
-      error ("Dbf#getFieldInfo() Out-of-range error.");
-    }
-  }
-  info.size = size;
-
-  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
-  info.write = function(i, bin) {
-    var rec = arr[i],
-        str = formatter(rec[name]);
-    if (str.length < size) {
-      str = utils.lpad(str, size, ' ');
-    }
-    bin.writeString(str, size);
-  };
-};
-
-Dbf.initBooleanField = function(info, arr, name) {
-  info.size = 1;
-  info.write = function(i, bin) {
-    var val = arr[i][name],
-        c;
-    if (val === true) c = 'T';
-    else if (val === false) c = 'F';
-    else c = '?';
-    bin.writeString(c);
-  };
-};
-
-Dbf.initDateField = function(info, arr, name) {
-  info.size = 8;
-  info.write = function(i, bin) {
-    var d = arr[i][name],
-        str;
-    if (d instanceof Date === false) {
-      str = '00000000';
-    } else {
-      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
-            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
-            utils.lpad(d.getUTCDate(), 2, '0');
-    }
-    bin.writeString(str);
-  };
-};
-
-Dbf.convertValueToString = function(s) {
-  return s === undefined || s === null ? '' : String(s);
-};
-
-Dbf.initStringField = function(info, arr, name, encoding) {
-  var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
-  var size = 0;
-  var truncated = 0;
-  var buffers = arr.map(function(rec) {
-    var strval = Dbf.convertValueToString(rec[name]);
-    var buf = formatter(strval);
-    if (buf.length > Dbf.MAX_STRING_LEN) {
-      if (encoding == 'ascii') {
-        buf = buf.subarray(0, Dbf.MAX_STRING_LEN);
-      } else {
-        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
-      }
-      truncated++;
-    }
-    size = Math.max(size, buf.length);
-    return buf;
-  });
-  info.size = size;
-  info.write = function(i, bin) {
-    var buf = buffers[i],
-        n = Math.min(size, buf.length),
-        dest = bin._bytes,
-        pos = bin.position(),
-        j;
-    for (j=0; j<n; j++) {
-      dest[j + pos] = buf[j];
-    }
-    bin.position(pos + size);
-  };
-  if (truncated > 0) {
-    info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
-  }
-};
-
-Dbf.convertFieldNames = function(names) {
-  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
-};
-
-// Replace non-alphanumeric characters with _ and merge adjacent _
-// See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
-// TODO: decide whether or not to avoid initial numerals
-Dbf.cleanFieldName = function(name) {
-  return name.replace(/[^A-Za-z0-9]+/g, '_');
-};
-
-Dbf.getFieldInfo = function(arr, name, encoding) {
-  var type = this.discoverFieldType(arr, name),
-      info = {
-        type: type,
-        decimals: 0
-      };
-  if (type == 'N') {
-    Dbf.initNumericField(info, arr, name);
-  } else if (type == 'C') {
-    Dbf.initStringField(info, arr, name, encoding);
-  } else if (type == 'L') {
-    Dbf.initBooleanField(info, arr, name);
-  } else if (type == 'D') {
-    Dbf.initDateField(info, arr, name);
-  } else {
-    // Treat null fields as empty numeric fields; this way, they will be imported
-    // again as nulls.
-    info.size = 0;
-    info.type = 'N';
-    if (type) {
-      info.warning = 'Unable to export ' + type + '-type data, writing null values';
-    }
-    info.write = function() {};
-  }
-  return info;
-};
-
-Dbf.discoverFieldType = function(arr, name) {
-  var val;
-  for (var i=0, n=arr.length; i<n; i++) {
-    val = arr[i][name];
-    if (utils.isString(val)) return "C";
-    if (utils.isNumber(val)) return "N";
-    if (utils.isBoolean(val)) return "L";
-    if (val instanceof Date) return "D";
-    if (val) return (typeof val);
-  }
-  return null;
-};
-
-Dbf.getDecimalFormatter = function(size, decimals) {
-  // TODO: find better way to handle nulls
-  var nullValue = ' '; // ArcGIS may use 0
-  return function(val) {
-    // TODO: handle invalid values better
-    var valid = utils.isFiniteNumber(val),
-        strval = valid ? val.toFixed(decimals) : String(nullValue);
-    return utils.lpad(strval, size, ' ');
-  };
-};
-
-Dbf.getNumericFieldInfo = function(arr, name) {
-  var min = 0,
-      max = 0,
-      k = 1,
-      power = 1,
-      decimals = 0,
-      eps = 1e-15,
-      val;
-  for (var i=0, n=arr.length; i<n; i++) {
-    val = arr[i][name];
-    if (!utils.isFiniteNumber(val)) {
-      continue;
-    }
-    if (val < min || val > max) {
-      if (val < min) min = val;
-      if (val > max) max = val;
-      while (Math.abs(val) >= power) {
-        power *= 10;
-        eps *= 10;
-      }
-    }
-    while (Math.abs(Math.round(val * k) - val * k) > eps) {
-      if (decimals == 15) { // dbf limit
-        // TODO: round overflowing values ?
-        break;
-      }
-      decimals++;
-      eps *= 10;
-      k *= 10;
-    }
-  }
-  return {
-    decimals: decimals,
-    min: min,
-    max: max
-  };
-};
-
-// return an array buffer or null if value contains non-ascii chars
-Dbf.encodeValueAsAscii = function(val, strict) {
-  var str = String(val),
-      n = str.length,
-      view = Dbf.bufferPool.reserve(n),
-      i, c;
-  for (i=0; i<n; i++) {
-    c = str.charCodeAt(i);
-    if (c > 127) {
-      if (strict) {
-        view = null;
-        i = 0; // return all bytes to pool
-        break;
-      }
-      c = '?'.charCodeAt(0);
-    }
-    view[i] = c;
-  }
-  Dbf.bufferPool.putBack(n-i);
-  return view ? view.subarray(0, i) : null;
-};
-
-Dbf.getStringWriterEncoded = function(encoding) {
-  return function(val) {
-    // optimization -- large majority of strings in real-world datasets are
-    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
-    var buf = Dbf.encodeValueAsAscii(val, true);
-    if (buf === null) {
-      buf = internal.encodeString(String(val), encoding);
-    }
-    return buf;
-  };
-};
-
-// try to remove partial multi-byte characters from the end of an encoded string.
-Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
-  var truncated = buf.slice(0, maxLen);
-  var len = maxLen;
-  var tmp, str;
-  while (len > 0 && len >= maxLen - 3) {
-    tmp = len == maxLen ? truncated : buf.slice(0, len);
-    str = internal.decodeString(tmp, encoding);
-    if (str.charAt(str.length-1) != '\ufffd') {
-      truncated = tmp;
-      break;
-    }
-    len--;
-  }
-  return truncated;
-};
-
-
-
-
-function DataTable(obj) {
-  var records;
-  if (utils.isArray(obj)) {
-    records = obj;
-  } else {
-    records = [];
-    // integer object: create empty records
-    if (utils.isInteger(obj)) {
-      for (var i=0; i<obj; i++) {
-        records.push({});
-      }
-    } else if (obj) {
-      error("Invalid DataTable constructor argument:", obj);
-    }
-  }
-
-  this.exportAsDbf = function(opts) {
-    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
-  };
-
-  this.getRecords = function() {
-    return records;
-  };
-
-  // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
-  this.getReadOnlyRecordAt = function(i) {
-    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
-  };
-}
-
-var dataTableProto = {
-
-  fieldExists: function(name) {
-    return utils.contains(this.getFields(), name);
-  },
-
-  toString: function() {return JSON.stringify(this);},
-
-  toJSON: function() {
-    return this.getRecords();
-  },
-
-  addField: function(name, init) {
-    var useFunction = utils.isFunction(init);
-    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
-      error("DataTable#addField() requires a string, number or function for initialization");
-    }
-    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
-    // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
-    // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
-
-    this.getRecords().forEach(function(obj, i) {
-      obj[name] = useFunction ? init(obj, i) : init;
-    });
-  },
-
-  getRecordAt: function(i) {
-    return this.getRecords()[i];
-  },
-
-  addIdField: function() {
-    this.addField('FID', function(obj, i) {
-      return i;
-    });
-  },
-
-  deleteField: function(f) {
-    this.getRecords().forEach(function(o) {
-      delete o[f];
-    });
-  },
-
-  getFields: function() {
-    return internal.findFieldNames(this.getRecords());
-  },
-
-  update: function(f) {
-    var records = this.getRecords();
-    for (var i=0, n=records.length; i<n; i++) {
-      records[i] = f(records[i], i);
-    }
-  },
-
-  clone: function() {
-    // TODO: this could be sped up using a record constructor function
-    // (see getRecordConstructor() in DbfReader)
-    var records2 = this.getRecords().map(internal.copyRecord);
-    return new DataTable(records2);
-  },
-
-  size: function() {
-    return this.getRecords().length;
-  }
-};
-
-utils.extend(DataTable.prototype, dataTableProto);
 
 
 
@@ -9267,225 +12316,6 @@ function reducePointCentroid(memo, p, weight) {
 
 
 
-function dissolvePolygonGeometry(shapes, getGroupId) {
-  var segments = dissolveFirstPass(shapes, getGroupId);
-  return dissolveSecondPass(segments, shapes, getGroupId);
-}
-
-// First pass -- identify pairs of segments that can be dissolved
-function dissolveFirstPass(shapes, getGroupId) {
-  var groups = [],
-      largeGroups = [],
-      segments = [],
-      ids = shapes.map(function(shp, i) {
-        return getGroupId(i);
-      });
-
-  internal.traversePaths(shapes, procArc);
-  largeGroups.forEach(splitGroup);
-  return segments;
-
-  function procArc(obj) {
-    var arcId = obj.arcId,
-        idx = arcId < 0 ? ~arcId : arcId,
-        segId = segments.length,
-        group = groups[idx];
-    if (!group) {
-      group = [];
-      groups[idx] = group;
-    }
-    group.push(segId);
-    obj.group = group;
-    segments.push(obj);
-
-    // Three or more segments sharing the same arc is abnormal topology...
-    // Need to try to identify pairs of matching segments in each of these
-    // groups.
-    //
-    if (group.length == 3) {
-      largeGroups.push(group);
-    }
-  }
-
-  function findMatchingPair(group, cb) {
-    var arc1, arc2;
-    for (var i=0; i<group.length - 1; i++) {
-      arc1 = segments[group[i]];
-      for (var j=i+1; j<group.length; j++) {
-        arc2 = segments[group[j]];
-        if (cb(arc1, arc2)) {
-          return [arc1.segId, arc2.segId];
-        }
-      }
-    }
-    return null;
-  }
-
-  function checkFwExtension(arc1, arc2) {
-    return getNextSegment(arc1, segments, shapes).arcId ===
-        ~getNextSegment(arc2, segments, shapes).arcId;
-  }
-
-  function checkBwExtension(arc1, arc2) {
-    return getPrevSegment(arc1, segments, shapes).arcId ===
-        ~getPrevSegment(arc2, segments, shapes).arcId;
-  }
-
-  function checkDoubleExtension(arc1, arc2) {
-    return checkPairwiseMatch(arc1, arc2) &&
-        checkFwExtension(arc1, arc2) &&
-        checkBwExtension(arc1, arc2);
-  }
-
-  function checkSingleExtension(arc1, arc2) {
-    return checkPairwiseMatch(arc1, arc2) &&
-        (checkFwExtension(arc1, arc2) ||
-        checkBwExtension(arc1, arc2));
-  }
-
-  function checkPairwiseMatch(arc1, arc2) {
-    return arc1.arcId === ~arc2.arcId && ids[arc1.shapeId] ===
-        ids[arc2.shapeId];
-  }
-
-  function updateGroupIds(ids) {
-    ids.forEach(function(id) {
-      segments[id].group = ids;
-    });
-  }
-
-  // split a group of segments into pairs of matching segments + a residual group
-  // @group Array of segment ids
-  //
-  function splitGroup(group) {
-    // find best-match segment pair
-    var group2 = findMatchingPair(group, checkDoubleExtension) ||
-        findMatchingPair(group, checkSingleExtension) ||
-        findMatchingPair(group, checkPairwiseMatch);
-    if (group2) {
-      group = group.filter(function(i) {
-        return !utils.contains(group2, i);
-      });
-      updateGroupIds(group);
-      updateGroupIds(group2);
-      // Split again if reduced group is still large
-      if (group.length > 2) splitGroup(group);
-    }
-  }
-}
-
-// Second pass -- generate dissolved shapes
-//
-function dissolveSecondPass(segments, shapes, getGroupId) {
-  var dissolveShapes = [];
-  segments.forEach(procSegment);
-  return dissolveShapes;
-
-  // @obj is an arc instance
-  function procSegment(obj) {
-    if (obj.used) return;
-    var match = findDissolveArc(obj);
-    if (!match) buildRing(obj);
-  }
-
-  function addRing(arcs, i) {
-    if (i in dissolveShapes === false) {
-      dissolveShapes[i] = [];
-    }
-    dissolveShapes[i].push(arcs);
-  }
-
-  // Generate a dissolved ring
-  // @firstArc the first arc instance in the ring
-  //
-  function buildRing(firstArc) {
-    var newArcs = [firstArc.arcId],
-        nextArc = getNextArc(firstArc);
-        firstArc.used = true;
-
-    while (nextArc && nextArc != firstArc) {
-      newArcs.push(nextArc.arcId);
-      nextArc.used = true;
-      nextArc = getNextArc(nextArc);
-      if (nextArc && nextArc != firstArc && nextArc.used) error("buildRing() topology error");
-    }
-
-    if (!nextArc) error("buildRing() traversal error");
-    firstArc.used = true;
-    addRing(newArcs, getGroupId(firstArc.shapeId));
-  }
-
-  // Get the next arc in a dissolved polygon ring
-  // @obj an undissolvable arc instance
-  //
-  function getNextArc(obj, depth) {
-    var next = getNextSegment(obj, segments, shapes),
-        match;
-    depth = depth || 0;
-    if (next != obj) {
-      match = findDissolveArc(next);
-      if (match) {
-        if (depth > 100) {
-          error ('deep recursion -- unhandled topology problem');
-        }
-        // if (match.part.arcs.length == 1) {
-        if (shapes[match.shapeId][match.partId].length == 1) {
-          // case: @obj has an island inclusion -- keep traversing @obj
-          // TODO: test case if @next is first arc in the ring
-          next = getNextArc(next, depth + 1);
-        } else {
-          next = getNextArc(match, depth + 1);
-        }
-      }
-    }
-    return next;
-  }
-
-  // Look for an arc instance that can be dissolved with segment @obj
-  // (must be going the opposite direction and have same dissolve key, etc)
-  // Return matching segment or null if no match
-  //
-  function findDissolveArc(obj) {
-    var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
-        match, matchId;
-    matchId = utils.find(obj.group, function(i) {
-      var a = obj,
-          b = segments[i];
-      if (a == b ||
-          b.used ||
-          getGroupId(b.shapeId) !== dissolveId ||
-          // don't prevent rings from dissolving with themselves (risky?)
-          // a.shapeId == b.shapeId && a.partId == b.partId ||
-          a.arcId != ~b.arcId) return false;
-      return true;
-    });
-    match = matchId === null ? null : segments[matchId];
-    return match;
-  }
-}
-
-function getNextSegment(seg, segments, shapes) {
-  return getSegmentByOffs(seg, segments, shapes, 1);
-}
-
-function getPrevSegment(seg, segments, shapes) {
-  return getSegmentByOffs(seg, segments, shapes, -1);
-}
-
-function getSegmentByOffs(seg, segments, shapes, offs) {
-  var arcs = shapes[seg.shapeId][seg.partId],
-      partLen = arcs.length,
-      nextOffs = (seg.i + offs) % partLen,
-      nextSeg;
-  if (nextOffs < 0) nextOffs += partLen;
-  nextSeg = segments[seg.segId - seg.i + nextOffs];
-  if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
-  return nextSeg;
-}
-
-
-
-
 // Dissolve polyline features, but also organize arcs into as few parts as possible,
 // with the arcs in each part laid out in connected sequence
 internal.dissolvePolylineGeometry = function(lyr, getGroupId, arcs, opts) {
@@ -9532,7 +12362,7 @@ internal.collectPolylineArcs = function(ids, nodes, testArc, useArc) {
     var nextIds;
     while (testArc(nextId)) {
       part.push(nextId);
-      nextIds = nodes.getConnectedArcs(nextId, testArc);
+      nextIds = testArc(nextId) ? nodes.getConnectedArcs(nextId, testArc) : [];
       useArc(nextId); // use (unset) arc after connections have been found
       if (nextIds.length > 0) {
         nextId = ~nextIds[0]; // switch arc direction to lead away from node
@@ -10057,194 +12887,21 @@ internal.extendShape = function(dest, src) {
 
 
 
-// Test if the second endpoint of an arc is the endpoint of any path in any layer
-internal.getPathEndpointTest = function(layers, arcs) {
-  var index = new Uint8Array(arcs.size());
-  layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      lyr.shapes.forEach(addShape);
-    }
-  });
-
-  function addShape(shape) {
-    internal.forEachShapePart(shape, addPath);
-  }
-
-  function addPath(path) {
-    addEndpoint(~path[0]);
-    addEndpoint(path[path.length - 1]);
-  }
-
-  function addEndpoint(arcId) {
-    var absId = absArcId(arcId);
-    var fwd = absId == arcId;
-    index[absId] |= fwd ? 1 : 2;
-  }
-
-  return function(arcId) {
-    var absId = absArcId(arcId);
-    var fwd = absId == arcId;
-    var code = index[absId];
-    return fwd ? (code & 1) == 1 : (code & 2) == 2;
-  };
-};
-
-
-
-
-// Dissolve arcs that can be merged without affecting topology of layers
-// remove arcs that are not referenced by any layer; remap arc ids
-// in layers. (dataset.arcs is replaced).
-internal.dissolveArcs = function(dataset) {
-  var arcs = dataset.arcs,
-      layers = dataset.layers.filter(internal.layerHasPaths);
-
-  if (!arcs || !layers.length) {
-    dataset.arcs = null;
-    return;
-  }
-
-  var arcsCanDissolve = internal.getArcDissolveTest(layers, arcs),
-      newArcs = [],
-      totalPoints = 0,
-      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
-      arcStatus = new Uint8Array(arcs.size());
-      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
-  layers.forEach(function(lyr) {
-    // modify copies of the original shapes; original shapes should be unmodified
-    // (need to test this)
-    lyr.shapes = lyr.shapes.map(function(shape) {
-      return internal.editShapeParts(shape && shape.concat(), translatePath);
-    });
-  });
-  dataset.arcs = internal.dissolveArcCollection(arcs, newArcs, totalPoints);
-
-  function translatePath(path) {
-    var pointCount = 0;
-    var newPath = [];
-    var newArc, arcId, absId, arcLen, fw, newArcId;
-
-    for (var i=0, n=path.length; i<n; i++) {
-      arcId = path[i];
-      absId = absArcId(arcId);
-      fw = arcId === absId;
-
-      if (arcs.arcIsDegenerate(arcId)) {
-        // arc has collapsed -- skip
-      } else if (arcStatus[absId] !== 0) {
-        // arc has already been translated -- skip
-        newArc = null;
-      } else {
-        arcLen = arcs.getArcLength(arcId);
-
-        if (newArc && arcsCanDissolve(path[i-1], arcId)) {
-          if (arcLen > 0) {
-            arcLen--; // shared endpoint not counted;
-          }
-          newArc.push(arcId);  // arc data is appended to previous arc
-          arcStatus[absId] = 1; // arc is dropped from output
-        } else {
-          // start a new dissolved arc
-          newArc = [arcId];
-          arcIndex[absId] = newArcs.length;
-          newArcs.push(newArc);
-          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
-        }
-        pointCount += arcLen;
-      }
-
-      if (arcStatus[absId] > 1) {
-        // arc is retained (and renumbered) in the dissolved path -- add to path
-        newArcId = arcIndex[absId];
-        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
-          newArcId = ~newArcId;
-        }
-        newPath.push(newArcId);
-      }
-    }
-    totalPoints += pointCount;
-    return newPath;
-  }
-};
-
-internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
-  var nn2 = new Uint32Array(newArcs.length),
-      xx2 = new Float64Array(newLen),
-      yy2 = new Float64Array(newLen),
-      src = arcs.getVertexData(),
-      zz2 = src.zz ? new Float64Array(newLen) : null,
-      interval = arcs.getRetainedInterval(),
-      offs = 0;
-
-  newArcs.forEach(function(newArc, newId) {
-    newArc.forEach(function(oldId, i) {
-      extendDissolvedArc(oldId, newId);
-    });
-  });
-
-  return new ArcCollection(nn2, xx2, yy2).setThresholds(zz2).setRetainedInterval(interval);
-
-  function extendDissolvedArc(oldId, newId) {
-    var absId = absArcId(oldId),
-        rev = oldId < 0,
-        n = src.nn[absId],
-        i = src.ii[absId],
-        n2 = nn2[newId];
-
-    if (n > 0) {
-      if (n2 > 0) {
-        n--;
-        if (!rev) i++;
-      }
-      utils.copyElements(src.xx, i, xx2, offs, n, rev);
-      utils.copyElements(src.yy, i, yy2, offs, n, rev);
-      if (zz2) utils.copyElements(src.zz, i, zz2, offs, n, rev);
-      nn2[newId] += n;
-      offs += n;
-    }
-  }
-};
-
-// Test whether two arcs can be merged together
-internal.getArcDissolveTest = function(layers, arcs) {
-  var nodes = new NodeCollection(arcs, internal.getArcPresenceTest2(layers, arcs)),
-      // don't allow dissolving through endpoints of polyline paths
-      lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
-      testLineEndpoint = internal.getPathEndpointTest(lineLayers, arcs),
-      linkCount, lastId;
-
-  return function(id1, id2) {
-    if (id1 == id2 || id1 == ~id2) {
-      verbose("Unexpected arc sequence:", id1, id2);
-      return false; // This is unexpected; don't try to dissolve, anyway
-    }
-    linkCount = 0;
-    nodes.forEachConnectedArc(id1, countLink);
-    return linkCount == 1 && lastId == ~id2 && !testLineEndpoint(id1) && !testLineEndpoint(~id2);
-  };
-
-  function countLink(arcId, i) {
-    linkCount++;
-    lastId = arcId;
-  }
-};
-
-
-
-
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
-  // layers.forEach(internal.requirePolygonLayer);
-  nodes = internal.addIntersectionCuts(dataset, opts);
-  layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polygon') {
-      lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
-    }
-    if (!opts.allow_empty) {
-      api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
-    }
-  });
+  if (!opts.arcs) { // arcs option only removes unused arcs
+    nodes = internal.addIntersectionCuts(dataset, opts);
+    layers.forEach(function(lyr) {
+      if (lyr.geometry_type == 'polygon') {
+        lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
+      }
+      if (!opts.allow_empty) {
+        api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+      }
+    });
+  }
+
   if (!opts.no_arc_dissolve && dataset.arcs) {
     internal.dissolveArcs(dataset); // remove leftover endpoints within contiguous lines
   }
@@ -11512,54 +14169,6 @@ internal.getPolygonClusterCalculator = function(opts) {
 
 
 
-internal.roundPoints = function(lyr, round) {
-  internal.forEachPoint(lyr.shapes, function(p) {
-    p[0] = round(p[0]);
-    p[1] = round(p[1]);
-  });
-};
-
-internal.setCoordinatePrecision = function(dataset, precision) {
-  var round = utils.getRoundingFunction(precision);
-  // var dissolvePolygon, nodes;
-  internal.transformPoints(dataset, function(x, y) {
-    return [round(x), round(y)];
-  });
-  // v0.4.52 removing polygon dissolve - see issue #219
-  /*
-  if (dataset.arcs) {
-    nodes = internal.addIntersectionCuts(dataset);
-    dissolvePolygon = internal.getPolygonDissolver(nodes);
-  }
-  dataset.layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polygon' && dissolvePolygon) {
-      // clean each polygon -- use dissolve function to remove spikes
-      // TODO: better handling of corrupted polygons
-      lyr.shapes = lyr.shapes.map(dissolvePolygon);
-    }
-  });
-  */
-  return dataset;
-};
-
-utils.getRoundingFunction = function(inc) {
-  if (!utils.isNumber(inc) || inc === 0) {
-    error("Rounding increment must be a non-zero number.");
-  }
-  var inv = 1 / inc;
-  if (inv > 1) inv = Math.round(inv);
-  return function(x) {
-    return Math.round(x * inv) / inv;
-    // these alternatives show rounding error after JSON.stringify()
-    // return Math.round(x / inc) / inv;
-    // return Math.round(x / inc) * inc;
-    // return Math.round(x * inv) * inc;
-  };
-};
-
-
-
-
 api.colorizer = function(opts) {
   if (!opts.name) {
     stop("Missing required name= parameter");
@@ -11828,21 +14437,20 @@ internal.buildAssignmentIndex = function(lyr, field, arcs) {
 
 
 
-function MosaicIndex(lyr, dataset, opts) {
+function MosaicIndex(lyr, nodes, optsArg) {
+  var opts = optsArg || {};
   var shapes = lyr.shapes;
-  var arcFilter = internal.getArcPresenceTest(shapes, dataset.arcs);
-  var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var divide = internal.getHoleDivider(nodes);
   var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
 
   // map arc ids to tile ids
-  var arcTileIndex = new ShapeArcIndex(mosaic, dataset.arcs);
+  var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
-  var usedTileIndex = new IndexIndex(mosaic.length);
+  var fetchedTileIndex = new IndexIndex(mosaic.length);
   // bidirection index of tile ids <=> shape ids
-  var tileShapeIndex = new TileShapeIndex(mosaic);
+  var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
-  var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes);
+  var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
 
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
@@ -11854,12 +14462,16 @@ function MosaicIndex(lyr, dataset, opts) {
   });
 
   // ensure each tile is assigned to only one shape
-  tileShapeIndex.flatten();
+  if (opts.flat) {
+    tileShapeIndex.flatten();
+  }
 
   // fill gaps
   // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
-  this.removeGaps = function() {
-    var gapTest = internal.getGapFillTest(dataset, opts);
+  this.removeGaps = function(gapTest) {
+    if (!opts.flat) {
+      error('MosaicIndex#removeGaps() should only be called with flat mosaic');
+    }
     var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
       var tile = mosaic[tileId];
       return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
@@ -11876,9 +14488,17 @@ function MosaicIndex(lyr, dataset, opts) {
     return getTileIdsByShapeIds(shapeIds).map(tileIdToTile);
   };
 
+  this.overlayShapes = function(shapes) {
+
+  };
+
+  function tileIdToTile(id, i) {
+    return mosaic[id];
+  }
+
   function assignTileToAdjacentShape(tileId) {
     var ring = mosaic[tileId][0];
-    var arcs = dataset.arcs;
+    var arcs = nodes.arcs;
     var arcId, neighborShapeId, neighborTileId, arcLen;
     var shapeId = -1, maxArcLen = 0;
     for (var i=0; i<ring.length; i++) {
@@ -11898,10 +14518,6 @@ function MosaicIndex(lyr, dataset, opts) {
     }
   }
 
-  function tileIdToTile(id) {
-    return mosaic[id];
-  }
-
   function getTileIdsByShapeIds(shapeIds) {
     var uniqIds = [];
     var tileId, tileIds, i, j;
@@ -11910,23 +14526,22 @@ function MosaicIndex(lyr, dataset, opts) {
       for (j=0; j<tileIds.length; j++) {
         tileId = tileIds[j];
         // uniqify tile ids (in case the shape contains overlapping rings)
-        if (usedTileIndex.hasId(tileId)) continue;
-        usedTileIndex.setId(tileId);
+        if (fetchedTileIndex.hasId(tileId)) continue;
+        fetchedTileIndex.setId(tileId);
         uniqIds.push(tileId);
       }
     }
     // clearing this index allows duplicate tile ids between calls to this function
     // (should not happen in a typical dissolve)
-    usedTileIndex.clearIds(uniqIds);
+    fetchedTileIndex.clearIds(uniqIds);
     return uniqIds;
   }
-
 }
 
 // Convert polygon shapes to tiles
 //
-function PolygonTiler(mosaic, arcTileIndex, nodes) {
-  var usedTileIndex = new IndexIndex(mosaic.length);
+function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
+  var visitedTileIndex = new IndexIndex(mosaic.length);
   var divide = internal.getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
@@ -11941,18 +14556,21 @@ function PolygonTiler(mosaic, arcTileIndex, nodes) {
     tilesInShape = [];
     currHoles = [];
     currShapeId = shapeId;
-    // divide shape into rings and holes (splits self-intersecting rings)
-    // TODO: rewrite divide() -- it is a performance bottleneck and can convert
-    //   space-filling areas into ccw holes
-    divide(shp, cw, ccw);
-    if (ccw.length > 0) {
+    if (opts.no_holes) {
+      divide(shp, cw, ccw);
+      // ccw.forEach(internal.reversePath);
+      // cw = cw.concat(ccw);
+    } else {
+      // divide shape into rings and holes (splits self-intersecting rings)
+      // TODO: rewrite divide() -- it is a performance bottleneck and can convert
+      //   space-filling areas into ccw holes
+      divide(shp, cw, ccw);
       ccw.forEach(procShapeHole);
       holeIndex.setIds(currHoles);
     }
     cw.forEach(procShapeRing);
     retn = tilesInShape;
     // reset tmp vars, etc
-    usedTileIndex.clearIds(tilesInShape);
     tilesInShape = null;
     holeIndex.clearIds(currHoles);
     currHoles = null;
@@ -11965,71 +14583,59 @@ function PolygonTiler(mosaic, arcTileIndex, nodes) {
 
   function procShapeRing(path) {
     ringIndex.setIds(path);
-    for (var i=0; i<path.length; i++) {
-      procRingArc(path[i], true);
-      // TODO: only add first arc?
-      //   .. might cause problems, if shape contains overlapping rings
-    }
+    procArcIds(path);
     ringIndex.clearIds(path);
+    // allow overlapping rings to visit the same tiles
+    visitedTileIndex.clearIds(tilesInShape);
   }
 
-  function procRingArc(arcId, fromTileId, fromHole) {
+  // ids: an array of arcIds
+  function procArcIds(ids) {
+    var tileIds = [], tileId;
+    for (var i=0, n=ids.length; i<n; i++) {
+      tileId = procRingArc(ids[i]);
+      if (tileId > -1) tileIds.push(tileId);
+    }
+    if (tileIds.length > 0) traverseFromTiles(tileIds);
+  }
+
+  function traverseFromTiles(tileIds) {
+    // breadth-first traversal, to prevent call stack overflow when there is
+    // a large number of tiles within a ring (due to many partially overlapping rings)
+    var arcIds = [];
+    for (var i=0, n=tileIds.length; i<n; i++) {
+      accumulateTraversibleArcIds(arcIds, mosaic[tileIds[i]]);
+    }
+    if (arcIds.length > 0) procArcIds(arcIds);
+  }
+
+  function accumulateTraversibleArcIds(ids, tile) {
+    var arcId, ring;
+    for (var j=0; j<tile.length; j++) {
+      ring = tile[j];
+      for (var i=0; i<ring.length; i++) {
+        arcId = ring[i];
+        if (arcIsTraversible(arcId)) {
+          ids.push(~arcId);
+        }
+      }
+    }
+  }
+
+  function arcIsTraversible(tileArc) {
+    var neighborArc = ~tileArc;
+    // don't cross boundary of the current ring or of any hole in the current shape
+    return !(holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc)  ||
+      ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc));
+  }
+
+  function procRingArc(arcId) {
     var tileId = arcTileIndex.getShapeIdByArcId(arcId);
-    if (tileId == -1 || usedTileIndex.hasId(tileId)) return;
-    usedTileIndex.setId(tileId);
+    if (tileId == -1 || visitedTileIndex.hasId(tileId)) return -1;
+    visitedTileIndex.setId(tileId);
     tilesInShape.push(tileId);
-    traverseToTileNeighbors(mosaic[tileId], tileId);
+    return tileId;
   }
-
-  function traverseToTileNeighbors(tile, fromTileId) {
-    traverseToTileRingNeighbors(tile[0], fromTileId);
-    for (var i=1; i<tile.length; i++) {
-      traverseToTileHoleNeighbors(tile[i], fromTileId);
-    }
-  }
-
-  function traverseToTileHoleNeighbors(tileHole, fromTileId) {
-    var neighborArc, tileArc;
-    for (var i=0, n=tileHole.length; i<n; i++) {
-      tileArc = tileHole[i];
-      neighborArc = ~tileArc;
-      if (holeIndex.hasId(tileArc)) {
-        // don't cross inner boundary of any hole
-        continue;
-      }
-      if (ringIndex.hasId(neighborArc)) {
-       // don't cross the (inner) boundary of a hole
-        continue;
-      }
-      if (ringIndex.hasId(tileArc)) {
-        // error condition indicating invalid mosaic topology
-        continue;
-      }
-      procRingArc(neighborArc, fromTileId, true);
-    }
-  }
-
-  function traverseToTileRingNeighbors(tileRing, fromTileId) {
-    var neighborArc, tileArc;
-    for (var i=0, n=tileRing.length; i<n; i++) {
-      tileArc = tileRing[i];
-      neighborArc = ~tileArc;
-      if (ringIndex.hasId(tileArc)) {
-        // don't cross outer boundary of the current ring
-        continue;
-      }
-      if (holeIndex.hasId(neighborArc)) {
-        // from inside to outside of the boundary of a hole (seems like it shouldn't happen)
-        continue;
-      }
-      if (holeIndex.hasId(tileArc)) {
-        // from outside to inside of the boundary of a hole
-        continue;
-      }
-      procRingArc(neighborArc, fromTileId);
-    }
-  }
-
 }
 
 // Map arc ids to shape ids, assuming perfect topology
@@ -12074,7 +14680,7 @@ function ShapeArcIndex(shapes, arcs) {
 // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
 //    removing all but one shape from a tile.
 // Supports one-to-many mapping
-function TileShapeIndex(mosaic) {
+function TileShapeIndex(mosaic, opts) {
   // indexes for mapping tile ids to shape ids
   var singleIndex = new Int32Array(mosaic.length);
   utils.initializeArray(singleIndex, -1);
@@ -12093,7 +14699,8 @@ function TileShapeIndex(mosaic) {
   };
 
   this.indexTileIdsByShapeId = function(shapeId, tileIds) {
-    shapeIndex[shapeId] = tileIds;
+    // shapeIndex[shapeId] = tileIds;
+    shapeIndex[shapeId] = [];
     for (var i=0; i<tileIds.length; i++) {
       indexShapeIdByTileId(shapeId, tileIds[i]);
     }
@@ -12101,6 +14708,7 @@ function TileShapeIndex(mosaic) {
 
   // remove many-to-one tile=>shape mappings
   this.flatten = function() {
+    var c = 0;
     multipleIndex.forEach(function(shapeIds, tileId) {
       flattenStackedTile(tileId);
     });
@@ -12127,7 +14735,9 @@ function TileShapeIndex(mosaic) {
   // add a shape id to a tile
   function indexShapeIdByTileId(shapeId, tileId) {
     var val = singleIndex[tileId];
-    if (val >= -2 === false) error("tile index error");
+    if (val != -1 && opts.flat) {
+      return;
+    }
     if (val == -1) {
       singleIndex[tileId] = shapeId;
     } else if (val == -2) {
@@ -12136,6 +14746,7 @@ function TileShapeIndex(mosaic) {
       multipleIndex[tileId] = [val, shapeId];
       singleIndex[tileId] = -2;
     }
+    shapeIndex[shapeId].push(tileId);
   }
 
   function flattenStackedTile(tileId) {
@@ -12165,37 +14776,6 @@ function TileShapeIndex(mosaic) {
 }
 
 
-// Keep track of whether integer ids (indexes) are 'used' or not.
-// Accepts positive and negative ids.
-function IndexIndex(n) {
-  var index = new Uint8Array(n);
-
-  this.setId = function(id) {
-    if (id < 0) {
-      index[~id] |= 2;
-    } else {
-      index[id] |= 1;
-    }
-  };
-
-  this.hasId = function(id) {
-    return id < 0 ? (index[~id] & 2) == 2 : (index[id] & 1) == 1;
-  };
-
-  this.clearIds = function(ids) {
-    for (var i=0; i<ids.length; i++) {
-      index[absArcId(ids[i])] = 0;
-    }
-  };
-
-  this.setIds = function(ids) {
-    for (var i=0; i<ids.length; i++) {
-      this.setId(ids[i]);
-    }
-  };
-}
-
-
 
 
 
@@ -12207,14 +14787,16 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   }
   var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   var groups = internal.groupPolygons2(lyr, getGroupId);
-  var mosaicIndex = new MosaicIndex(lyr, dataset, opts);
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
   if (opts.mosaic) {
     return internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
   }
   if (opts.arcs) {
-    return internal.getArcLayer(mosaicIndex.nodes.arcs, lyr.name);
+    return internal.getArcLayer(nodes.arcs, lyr.name);
   }
-  mosaicIndex.removeGaps();
+  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
   var shapes2 = internal.dissolvePolygonGroups2(groups, mosaicIndex, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
@@ -12352,1950 +14934,6 @@ api.drop = function(catalog, layers, dataset, opts) {
     internal.pruneArcs(dataset);
   }
 };
-
-
-
-
-var GeoJSON = {};
-GeoJSON.ID_FIELD = "FID"; // default field name of imported *JSON feature ids
-
-GeoJSON.typeLookup = {
-  LineString: 'polyline',
-  MultiLineString: 'polyline',
-  Polygon: 'polygon',
-  MultiPolygon: 'polygon',
-  Point: 'point',
-  MultiPoint: 'point'
-};
-
-GeoJSON.translateGeoJSONType = function(type) {
-  return GeoJSON.typeLookup[type] || null;
-};
-
-GeoJSON.pathIsRing = function(coords) {
-  var first = coords[0],
-      last = coords[coords.length - 1];
-  // TODO: consider detecting collapsed rings
-  return coords.length >= 4 && first[0] == last[0] && first[1] == last[1];
-};
-
-
-
-
-internal.FileReader = FileReader;
-internal.BufferReader = BufferReader;
-
-internal.readFirstChars = function(reader, n) {
-  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
-};
-
-// Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
-function BufferReader(src) {
-  var bufSize = src.byteLength || src.length,
-      binArr, buf;
-
-  this.readToBinArray = function(start, length) {
-    if (bufSize < start + length) error("Out-of-range error");
-    if (!binArr) binArr = new BinArray(src);
-    binArr.position(start);
-    return binArr;
-  };
-
-  this.toString = function(enc) {
-    return internal.bufferToString(buffer(), enc);
-  };
-
-  this.readSync = function(start, length) {
-    // TODO: consider using a default length like FileReader
-    return buffer().slice(start, length || bufSize);
-  };
-
-  function buffer() {
-    if (!buf) {
-      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
-    }
-    return buf;
-  }
-
-  this.findString = FileReader.prototype.findString;
-  this.expandBuffer = function() {return this;};
-  this.size = function() {return bufSize;};
-  this.close = function() {};
-}
-
-function FileReader(path, opts) {
-  var fs = require('fs'),
-      fileLen = fs.statSync(path).size,
-      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
-      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
-      fd, cacheOffs, cache, binArr;
-
-  internal.getStateVar('input_files').push(path); // bit of a kludge
-
-  this.expandBuffer = function() {
-    DEFAULT_BUFFER_LEN *= 2;
-    return this;
-  };
-
-  // Read to BinArray (for compatibility with ShpReader)
-  this.readToBinArray = function(start, length) {
-    if (updateCache(start, length)) {
-      binArr = new BinArray(cache);
-    }
-    binArr.position(start - cacheOffs);
-    return binArr;
-  };
-
-  // Read to Buffer
-  this.readSync = function(start, length) {
-    if (length > 0 === false) {
-      // use default (but variable) size if length is not specified
-      length = DEFAULT_BUFFER_LEN;
-      if (start + length > fileLen) {
-        length = fileLen - start; // truncate at eof
-      }
-      if (length === 0) {
-        return utils.createBuffer(0); // kludge to allow reading up to eof
-      }
-    }
-    updateCache(start, length);
-    return cache.slice(start - cacheOffs, start - cacheOffs + length);
-  };
-
-  this.size = function() {
-    return fileLen;
-  };
-
-  this.toString = function(enc) {
-    // TODO: use fd
-    return cli.readFile(path, enc || 'utf8');
-  };
-
-  this.close = function() {
-    if (fd) {
-      fs.closeSync(fd);
-      fd = null;
-      cache = null;
-    }
-  };
-
-  // Receive offset and length of byte string that must be read
-  // Return true if cache was updated, or false
-  function updateCache(fileOffs, bufLen) {
-    var headroom = fileLen - fileOffs,
-        bytesRead, bytesToRead;
-    if (headroom < bufLen || headroom < 0) {
-      error("Tried to read past end-of-file");
-    }
-    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bufLen) {
-      return false;
-    }
-    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bufLen);
-    if (headroom < bytesToRead) {
-      bytesToRead = headroom;
-    }
-    if (!cache || bytesToRead != cache.length) {
-      cache = utils.createBuffer(bytesToRead);
-    }
-    if (!fd) {
-      fd = fs.openSync(path, 'r');
-    }
-    bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
-    cacheOffs = fileOffs;
-    if (bytesRead != bytesToRead) error("Error reading file");
-    return true;
-  }
-}
-
-FileReader.prototype.findString = function (str, maxLen) {
-  var len = Math.min(this.size(), maxLen || this.size());
-  var buf = this.readSync(0, len);
-  var strLen = str.length;
-  var n = buf.length - strLen;
-  var firstByte = str.charCodeAt(0);
-  var i;
-  for (i=0; i < n; i++) {
-    if (buf[i] == firstByte && buf.toString('utf8', i, i + strLen) == str) {
-      return {
-        offset: i + strLen,
-        text: buf.toString('utf8', 0, i)
-      };
-    }
-  }
-  return null;
-};
-
-
-
-
-internal.GeoJSONReader = GeoJSONReader;
-
-// Read GeoJSON Features or geometry objects from a file
-// @reader: a FileReader
-function GeoJSONReader(reader) {
-
-  // Read objects synchronously, with callback
-  this.readObjects = function(onObject) {
-    // Search first x bytes of file for features|geometries key
-    // 300 bytes not enough... GeoJSON files can have additional non-standard properties, e.g. 'metadata'
-    // var bytesToSearch = 300;
-    var bytesToSearch = 5000;
-    var start = reader.findString('"features"', bytesToSearch) ||
-        reader.findString('"geometries"', bytesToSearch);
-    // Assume single Feature or geometry if collection not found
-    var offset = start ? start.offset : 0;
-    readObjects(offset, onObject);
-  };
-
-  this.readObject = readObject;
-
-  function readObjects(start, cb) {
-    var obj = readObject(start);
-    while (obj) {
-      cb(JSON.parse(obj.text)); // Use JSON.parse to parse object
-      obj = readObject(obj.offset);
-    }
-  }
-
-  // Search for a JSON object starting at position @offs
-  // Returns {text: "<object>", offset: <offset>} or null
-  //   <offset> is the file position directly after the object's closing brace
-  // Skips characters in front of first left curly brace
-  function readObject(offs) {
-    var LBRACE = 123,
-        RBRACE = 125,
-        RBRACK = 93,
-        BSLASH = 92,
-        DQUOTE = 34,
-        level = 0,
-        inString = false,
-        escapeNext = false,
-        buf = reader.readSync(offs),
-        retn = null,
-        startPos, i, n, c;
-    for (i=0, n=buf.length; i<n; i++) {
-      c = buf[i];
-      if (inString) {
-        if (escapeNext) {
-          escapeNext = false;
-        } else if (c == DQUOTE) {
-          inString = false;
-        } else if (c == BSLASH) {
-          escapeNext = true;
-        }
-      } else if (c == DQUOTE) {
-        inString = true;
-      } else if (c == LBRACE) {
-        if (level === 0) {
-          startPos = i;
-        }
-        level++;
-      } else if (c == RBRACE) {
-        level--;
-        if (level === 0) {
-          retn = {
-            text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
-            offset: offs + i + 1
-          };
-          break;
-        } else if (level == -1) {
-          break; // error -- "}" encountered before "{"
-        }
-      } else if (c == RBRACK && level === 0) {
-        break; // end of collection
-      }
-      if (i == n-1) {
-        buf = reader.expandBuffer().readSync(offs);
-        n = buf.length;
-      }
-    }
-    return retn;
-  }
-}
-
-
-
-
-// Get function to Hash an x, y point to a non-negative integer
-function getXYHash(size) {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf),
-      lim = size | 0;
-  if (lim > 0 === false) {
-    throw new Error("Invalid size param: " + size);
-  }
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return (h & 0x7fffffff) % lim;
-  };
-}
-
-// Get function to Hash a single coordinate to a non-negative integer
-function getXHash(size) {
-  var buf = new ArrayBuffer(8),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf),
-      lim = size | 0;
-  if (lim > 0 === false) {
-    throw new Error("Invalid size param: " + size);
-  }
-
-  return function(x) {
-    var h;
-    floats[0] = x;
-    h = uints[0] ^ uints[1];
-    h = h << 5 ^ h >> 7;
-    return (h & 0x7fffffff) % lim;
-  };
-}
-
-
-
-
-// Used for building topology
-//
-function ArcIndex(pointCount) {
-  var hashTableSize = Math.floor(pointCount * 0.25 + 1),
-      hash = getXYHash(hashTableSize),
-      hashTable = new Int32Array(hashTableSize),
-      chainIds = [],
-      arcs = [],
-      arcPoints = 0;
-
-  utils.initializeArray(hashTable, -1);
-
-  this.addArc = function(xx, yy) {
-    var end = xx.length - 1,
-        key = hash(xx[end], yy[end]),
-        chainId = hashTable[key],
-        arcId = arcs.length;
-    hashTable[key] = arcId;
-    arcs.push([xx, yy]);
-    arcPoints += xx.length;
-    chainIds.push(chainId);
-    return arcId;
-  };
-
-  // Look for a previously generated arc with the same sequence of coords, but in the
-  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-  // so coincident boundaries should contain the same points in reverse sequence).
-  //
-  this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
-    // First, look for a reverse match
-    var arcId = findArcNeighbor(xx, yy, start, end, getNext);
-    if (arcId === null) {
-      // Look for forward match
-      // (Abnormal topology, but we're accepting it because in-the-wild
-      // Shapefiles sometimes have duplicate paths)
-      arcId = findArcNeighbor(xx, yy, end, start, getPrev);
-    } else {
-      arcId = ~arcId;
-    }
-    return arcId;
-  };
-
-  function findArcNeighbor(xx, yy, start, end, getNext) {
-    var next = getNext(start),
-        key = hash(xx[start], yy[start]),
-        arcId = hashTable[key],
-        arcX, arcY, len;
-
-    while (arcId != -1) {
-      // check endpoints and one segment...
-      // it would be more rigorous but slower to identify a match
-      // by comparing all segments in the coordinate sequence
-      arcX = arcs[arcId][0];
-      arcY = arcs[arcId][1];
-      len = arcX.length;
-      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
-        return arcId;
-      }
-      arcId = chainIds[arcId];
-    }
-    return null;
-  }
-
-  this.getVertexData = function() {
-    var xx = new Float64Array(arcPoints),
-        yy = new Float64Array(arcPoints),
-        nn = new Uint32Array(arcs.length),
-        copied = 0,
-        arc, len;
-    for (var i=0, n=arcs.length; i<n; i++) {
-      arc = arcs[i];
-      len = arc[0].length;
-      utils.copyElements(arc[0], 0, xx, copied, len);
-      utils.copyElements(arc[1], 0, yy, copied, len);
-      nn[i] = len;
-      copied += len;
-    }
-    return {
-      xx: xx,
-      yy: yy,
-      nn: nn
-    };
-  };
-}
-
-
-
-
-function initHashChains(xx, yy) {
-  // Performance doesn't improve much above ~1.3 * point count
-  var n = xx.length,
-      m = Math.floor(n * 1.3) || 1,
-      hash = getXYHash(m),
-      hashTable = new Int32Array(m),
-      chainIds = new Int32Array(n), // Array to be filled with chain data
-      key, j, i, x, y;
-
-  for (i=0; i<n; i++) {
-    x = xx[i];
-    y = yy[i];
-    if (x != x || y != y) {
-      j = -1; // NaN coord: no hash entry, one-link chain
-    } else {
-      key = hash(x, y);
-      j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
-      hashTable[key] = i + 1;
-    }
-    chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
-  }
-  return chainIds;
-}
-
-function initPointChains(xx, yy) {
-  var chainIds = initHashChains(xx, yy),
-      j, next, prevMatchId, prevUnmatchId;
-
-  // disentangle, reverse and close the chains created by initHashChains()
-  for (var i = xx.length-1; i>=0; i--) {
-    next = chainIds[i];
-    if (next >= i) continue;
-    prevMatchId = i;
-    prevUnmatchId = -1;
-    do {
-      j = next;
-      next = chainIds[j];
-      if (yy[j] == yy[i] && xx[j] == xx[i]) {
-        chainIds[j] = prevMatchId;
-        prevMatchId = j;
-      } else {
-        if (prevUnmatchId > -1) {
-          chainIds[prevUnmatchId] = j;
-        }
-        prevUnmatchId = j;
-      }
-    } while (next < j);
-    if (prevUnmatchId > -1) {
-      // Make sure last unmatched entry is terminated
-      chainIds[prevUnmatchId] = prevUnmatchId;
-    }
-    chainIds[i] = prevMatchId; // close the chain
-  }
-  return chainIds;
-}
-
-
-
-
-// Converts all polygon and polyline paths in a dataset to a topological format,
-// (in-place);
-api.buildTopology = function(dataset) {
-  if (!dataset.arcs) return;
-  var raw = dataset.arcs.getVertexData(),
-      cooked = internal.buildPathTopology(raw.nn, raw.xx, raw.yy);
-  dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
-  dataset.layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      lyr.shapes = internal.replaceArcIds(lyr.shapes, cooked.paths);
-    }
-  });
-};
-
-// buildPathTopology() converts non-topological paths into
-// a topological format
-//
-// Arguments:
-//    xx: [Array|Float64Array],   // x coords of each point in the dataset
-//    yy: [Array|Float64Array],   // y coords ...
-//    nn: [Array]  // length of each path
-//
-// (x- and y-coords of all paths are concatenated into two arrays)
-//
-// Returns:
-// {
-//    xx, yy (array)   // coordinate data
-//    nn: (array)      // points in each arc
-//    paths: (array)   // Paths are arrays of one or more arc id.
-// }
-//
-// Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
-//
-internal.buildPathTopology = function(nn, xx, yy) {
-  var pointCount = xx.length,
-      chainIds = initPointChains(xx, yy),
-      pathIds = initPathIds(pointCount, nn),
-      index = new ArcIndex(pointCount),
-      slice = usingTypedArrays() ? xx.subarray : Array.prototype.slice,
-      paths, retn;
-  paths = convertPaths(nn);
-  retn = index.getVertexData();
-  retn.paths = paths;
-  return retn;
-
-  function usingTypedArrays() {
-    return !!(xx.subarray && yy.subarray);
-  }
-
-  function convertPaths(nn) {
-    var paths = [],
-        pointId = 0,
-        pathLen;
-    for (var i=0, len=nn.length; i<len; i++) {
-      pathLen = nn[i];
-      paths.push(pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1));
-      pointId += pathLen;
-    }
-    return paths;
-  }
-
-  function nextPoint(id) {
-    var partId = pathIds[id],
-        nextId = id + 1;
-    if (nextId < pointCount && pathIds[nextId] === partId) {
-      return id + 1;
-    }
-    var len = nn[partId];
-    return sameXY(id, id - len + 1) ? id - len + 2 : -1;
-  }
-
-  function prevPoint(id) {
-    var partId = pathIds[id],
-        prevId = id - 1;
-    if (prevId >= 0 && pathIds[prevId] === partId) {
-      return id - 1;
-    }
-    var len = nn[partId];
-    return sameXY(id, id + len - 1) ? id + len - 2 : -1;
-  }
-
-  function sameXY(a, b) {
-    return xx[a] == xx[b] && yy[a] == yy[b];
-  }
-
-  // Convert a non-topological path to one or more topological arcs
-  // @start, @end are ids of first and last points in the path
-  // TODO: don't allow id ~id pairs
-  //
-  function convertPath(start, end) {
-    var arcIds = [],
-        firstNodeId = -1,
-        arcStartId;
-
-    // Visit each point in the path, up to but not including the last point
-    for (var i = start; i < end; i++) {
-      if (pointIsArcEndpoint(i)) {
-        if (firstNodeId > -1) {
-          arcIds.push(addEdge(arcStartId, i));
-        } else {
-          firstNodeId = i;
-        }
-        arcStartId = i;
-      }
-    }
-
-    // Identify the final arc in the path
-    if (firstNodeId == -1) {
-      // Not in an arc, i.e. no nodes have been found...
-      // Assuming that path is either an island or is congruent with one or more rings
-      arcIds.push(addRing(start, end));
-    }
-    else if (firstNodeId == start) {
-      // path endpoint is a node;
-      if (!pointIsArcEndpoint(end)) {
-        error("Topology error"); // TODO: better error handling
-      }
-      arcIds.push(addEdge(arcStartId, i));
-    } else {
-      // final arc wraps around
-      arcIds.push(addSplitEdge(arcStartId, end, start + 1, firstNodeId));
-    }
-    return arcIds;
-  }
-
-  // Test if a point @id is an endpoint of a topological path
-  function pointIsArcEndpoint(id) {
-    var id2 = chainIds[id],
-        prev = prevPoint(id),
-        next = nextPoint(id),
-        prev2, next2;
-    if (prev == -1 || next == -1) {
-      // @id is an endpoint if it is the start or end of an open path
-      return true;
-    }
-    while (id != id2) {
-      prev2 = prevPoint(id2);
-      next2 = nextPoint(id2);
-      if (prev2 == -1 || next2 == -1 || brokenEdge(prev, next, prev2, next2)) {
-        // there is a discontinuity at @id -- point is arc endpoint
-        return true;
-      }
-      id2 = chainIds[id2];
-    }
-    return false;
-  }
-
-  // a and b are two vertices with the same x, y coordinates
-  // test if the segments on either side of them are also identical
-  function brokenEdge(aprev, anext, bprev, bnext) {
-    var apx = xx[aprev],
-        anx = xx[anext],
-        bpx = xx[bprev],
-        bnx = xx[bnext],
-        apy = yy[aprev],
-        any = yy[anext],
-        bpy = yy[bprev],
-        bny = yy[bnext];
-    if (apx == bnx && anx == bpx && apy == bny && any == bpy ||
-        apx == bpx && anx == bnx && apy == bpy && any == bny) {
-      return false;
-    }
-    return true;
-  }
-
-  function mergeArcParts(src, startId, endId, startId2, endId2) {
-    var len = endId - startId + endId2 - startId2 + 2,
-        ArrayClass = usingTypedArrays() ? Float64Array : Array,
-        dest = new ArrayClass(len),
-        j = 0, i;
-    for (i=startId; i <= endId; i++) {
-      dest[j++] = src[i];
-    }
-    for (i=startId2; i <= endId2; i++) {
-      dest[j++] = src[i];
-    }
-    return dest;
-  }
-
-  function addSplitEdge(start1, end1, start2, end2) {
-    var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
-    if (arcId === null) {
-      arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
-          mergeArcParts(yy, start1, end1, start2, end2));
-    }
-    return arcId;
-  }
-
-  function addEdge(start, end) {
-    // search for a matching edge that has already been generated
-    var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
-    if (arcId === null) {
-      arcId = index.addArc(slice.call(xx, start, end + 1),
-          slice.call(yy, start, end + 1));
-    }
-    return arcId;
-  }
-
-  function addRing(startId, endId) {
-    var chainId = chainIds[startId],
-        pathId = pathIds[startId],
-        arcId;
-
-    while (chainId != startId) {
-      if (pathIds[chainId] < pathId) {
-        break;
-      }
-      chainId = chainIds[chainId];
-    }
-
-    if (chainId == startId) {
-      return addEdge(startId, endId);
-    }
-
-    for (var i=startId; i<endId; i++) {
-      arcId = index.findDuplicateArc(xx, yy, i, i, nextPoint, prevPoint);
-      if (arcId !== null) return arcId;
-    }
-    error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
-  }
-};
-
-
-// Create a lookup table for path ids; path ids are indexed by point id
-//
-function initPathIds(size, pathSizes) {
-  var pathIds = new Int32Array(size),
-      j = 0;
-  for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
-    for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
-      pathIds[j] = pathId;
-    }
-  }
-  return pathIds;
-}
-
-internal.replaceArcIds = function(src, replacements) {
-  return src.map(function(shape) {
-    return replaceArcsInShape(shape, replacements);
-  });
-
-  function replaceArcsInShape(shape, replacements) {
-    if (!shape) return null;
-    return shape.map(function(path) {
-      return replaceArcsInPath(path, replacements);
-    });
-  }
-
-  function replaceArcsInPath(path, replacements) {
-    return path.reduce(function(memo, id) {
-      var abs = absArcId(id);
-      var topoPath = replacements[abs];
-      if (topoPath) {
-        if (id < 0) {
-          topoPath = topoPath.concat(); // TODO: need to copy?
-          internal.reversePath(topoPath);
-        }
-        for (var i=0, n=topoPath.length; i<n; i++) {
-          memo.push(topoPath[i]);
-        }
-      }
-      return memo;
-    }, []);
-  }
-};
-
-
-
-
-internal.getHighPrecisionSnapInterval = function(arcs) {
-  var bb = arcs.getBounds();
-  if (!bb.hasBounds()) return 0;
-  var maxCoord = Math.max(Math.abs(bb.xmin), Math.abs(bb.ymin),
-      Math.abs(bb.xmax), Math.abs(bb.ymax));
-  return maxCoord * 1e-14;
-};
-
-internal.snapCoords = function(arcs, threshold) {
-    var avgDist = internal.getAvgSegment(arcs),
-        autoSnapDist = avgDist * 0.0025,
-        snapDist = autoSnapDist;
-
-  if (threshold > 0) {
-    snapDist = threshold;
-    message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
-  }
-  var snapCount = internal.snapCoordsByInterval(arcs, snapDist);
-  if (snapCount > 0) arcs.dedupCoords();
-  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
-};
-
-// Snap together points within a small threshold
-//
-internal.snapCoordsByInterval = function(arcs, snapDist) {
-  var snapCount = 0,
-      data = arcs.getVertexData();
-
-  // Get sorted coordinate ids
-  // Consider: speed up sorting -- try bucket sort as first pass.
-  //
-  var ids = utils.sortCoordinateIds(data.xx);
-  for (var i=0, n=ids.length; i<n; i++) {
-    snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
-  }
-  return snapCount;
-
-  function snapPoint(i, limit, ids, xx, yy) {
-    var j = i,
-        n = ids.length,
-        x = xx[ids[i]],
-        y = yy[ids[i]],
-        snaps = 0,
-        id2, dx, dy;
-
-    while (++j < n) {
-      id2 = ids[j];
-      dx = xx[id2] - x;
-      if (dx > limit) break;
-      dy = yy[id2] - y;
-      if (dx === 0 && dy === 0 || dx * dx + dy * dy > limit * limit) continue;
-      xx[id2] = x;
-      yy[id2] = y;
-      snaps++;
-    }
-    return snaps;
-  }
-};
-
-utils.sortCoordinateIds = function(a) {
-  var n = a.length,
-      ids = new Uint32Array(n);
-  for (var i=0; i<n; i++) {
-    ids[i] = i;
-  }
-  utils.quicksortIds(a, ids, 0, ids.length-1);
-  return ids;
-};
-
-/*
-// Returns array of array ids, in ascending order.
-// @a array of numbers
-//
-utils.sortCoordinateIds = function(a) {
-  return utils.bucketSortIds(a);
-};
-
-// This speeds up sorting of large datasets (~2x faster for 1e7 values)
-// worth the additional code?
-utils.bucketSortIds = function(a, n) {
-  var len = a.length,
-      ids = new Uint32Array(len),
-      bounds = utils.getArrayBounds(a),
-      buckets = Math.ceil(n > 0 ? n : len / 10),
-      counts = new Uint32Array(buckets),
-      offsets = new Uint32Array(buckets),
-      i, j, offs, count;
-
-  // get bucket sizes
-  for (i=0; i<len; i++) {
-    j = bucketId(a[i], bounds.min, bounds.max, buckets);
-    counts[j]++;
-  }
-
-  // convert counts to offsets
-  offs = 0;
-  for (i=0; i<buckets; i++) {
-    offsets[i] = offs;
-    offs += counts[i];
-  }
-
-  // assign ids to buckets
-  for (i=0; i<len; i++) {
-    j = bucketId(a[i], bounds.min, bounds.max, buckets);
-    offs = offsets[j]++;
-    ids[offs] = i;
-  }
-
-  // sort each bucket with quicksort
-  for (i = 0; i<buckets; i++) {
-    count = counts[i];
-    if (count > 1) {
-      offs = offsets[i] - count;
-      utils.quicksortIds(a, ids, offs, offs + count - 1);
-    }
-  }
-  return ids;
-
-  function bucketId(val, min, max, buckets) {
-    var id = (buckets * (val - min) / (max - min)) | 0;
-    return id < buckets ? id : buckets - 1;
-  }
-};
-*/
-
-utils.quicksortIds = function (a, ids, lo, hi) {
-  if (hi - lo > 24) {
-    var pivot = a[ids[lo + hi >> 1]],
-        i = lo,
-        j = hi,
-        tmp;
-    while (i <= j) {
-      while (a[ids[i]] < pivot) i++;
-      while (a[ids[j]] > pivot) j--;
-      if (i <= j) {
-        tmp = ids[i];
-        ids[i] = ids[j];
-        ids[j] = tmp;
-        i++;
-        j--;
-      }
-    }
-    if (j > lo) utils.quicksortIds(a, ids, lo, j);
-    if (i < hi) utils.quicksortIds(a, ids, i, hi);
-  } else {
-    utils.insertionSortIds(a, ids, lo, hi);
-  }
-};
-
-utils.insertionSortIds = function(arr, ids, start, end) {
-  var id, i, j;
-  for (j = start + 1; j <= end; j++) {
-    id = ids[j];
-    for (i = j - 1; i >= start && arr[id] < arr[ids[i]]; i--) {
-      ids[i+1] = ids[i];
-    }
-    ids[i+1] = id;
-  }
-};
-
-
-
-
-// Apply snapping, remove duplicate coords and clean up defective paths in a dataset
-// Assumes that any CRS info has been added to the dataset
-// @opts: import options
-internal.cleanPathsAfterImport = function(dataset, opts) {
-  var arcs = dataset.arcs;
-  var snapDist;
-  if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
-    if (opts.snap_interval) {
-      snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
-    }
-    if (arcs) {
-      internal.snapCoords(arcs, snapDist);
-    }
-  }
-  dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
-    }
-  });
-};
-
-// Accumulates points in buffers until #endPath() is called
-// @drain callback: function(xarr, yarr, size) {}
-//
-function PathImportStream(drain) {
-  var buflen = 10000,
-      xx = new Float64Array(buflen),
-      yy = new Float64Array(buflen),
-      i = 0;
-
-  this.endPath = function() {
-    drain(xx, yy, i);
-    i = 0;
-  };
-
-  this.addPoint = function(x, y) {
-    if (i >= buflen) {
-      buflen = Math.ceil(buflen * 1.3);
-      xx = utils.extendBuffer(xx, buflen);
-      yy = utils.extendBuffer(yy, buflen);
-    }
-    xx[i] = x;
-    yy[i] = y;
-    i++;
-  };
-}
-
-// Import path data from a non-topological source (Shapefile, GeoJSON, etc)
-// in preparation for identifying topology.
-// @opts.reserved_points -- estimate of points in dataset, for pre-allocating buffers
-//
-function PathImporter(opts) {
-  var bufSize = opts.reserved_points > 0 ? opts.reserved_points : 20000,
-      xx = new Float64Array(bufSize),
-      yy = new Float64Array(bufSize),
-      shapes = [],
-      properties = [],
-      nn = [],
-      types = [],
-      collectionType = opts.type || null, // possible values: polygon, polyline, point
-      round = null,
-      pathId = -1,
-      shapeId = -1,
-      pointId = 0,
-      dupeCount = 0,
-      openRingCount = 0;
-
-  if (opts.precision) {
-    round = utils.getRoundingFunction(opts.precision);
-  }
-
-  // mix in #addPoint() and #endPath() methods
-  utils.extend(this, new PathImportStream(importPathCoords));
-
-  this.startShape = function(d) {
-    shapes[++shapeId] = null;
-    if (d) properties[shapeId] = d;
-  };
-
-  this.importLine = function(points) {
-    setShapeType('polyline');
-    this.importPath(points);
-  };
-
-  this.importPoints = function(points) {
-    setShapeType('point');
-    if (round) {
-      points.forEach(function(p) {
-        p[0] = round(p[0]);
-        p[1] = round(p[1]);
-      });
-    }
-    points.forEach(appendToShape);
-  };
-
-  this.importRing = function(points, isHole) {
-    var area = geom.getPlanarPathArea2(points);
-    setShapeType('polygon');
-    if (isHole === true && area > 0 || isHole === false && area < 0) {
-      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
-      points.reverse();
-    }
-    this.importPath(points);
-  };
-
-  // Import an array of [x, y] Points
-  this.importPath = function importPath(points) {
-    var p;
-    for (var i=0, n=points.length; i<n; i++) {
-      p = points[i];
-      this.addPoint(p[0], p[1]);
-    }
-    this.endPath();
-  };
-
-  // Return imported dataset
-  // Apply any requested snapping and rounding
-  // Remove duplicate points, check for ring inversions
-  //
-  this.done = function() {
-    var arcs;
-    var layers;
-    var lyr = {name: ''};
-    var snapDist;
-
-    if (dupeCount > 0) {
-      verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
-    }
-    if (openRingCount > 0) {
-      message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
-    }
-    if (pointId > 0) {
-       if (pointId < xx.length) {
-        xx = xx.subarray(0, pointId);
-        yy = yy.subarray(0, pointId);
-      }
-      arcs = new ArcCollection(nn, xx, yy);
-
-      //if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
-      //  internal.snapCoords(arcs, opts.snap_interval);
-      //}
-    }
-
-    if (collectionType == 'mixed') {
-      layers = internal.divideFeaturesByType(shapes, properties, types);
-
-    } else {
-      lyr = {geometry_type: collectionType};
-      if (collectionType) {
-        lyr.shapes = shapes;
-      }
-      if (properties.length > 0) {
-        lyr.data = new DataTable(properties);
-      }
-      layers = [lyr];
-    }
-
-    layers.forEach(function(lyr) {
-      //if (internal.layerHasPaths(lyr)) {
-        //internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
-      //}
-      if (lyr.data) {
-        internal.fixInconsistentFields(lyr.data.getRecords());
-      }
-    });
-
-    return {
-      arcs: arcs || null,
-      info: {},
-      layers: layers
-    };
-  };
-
-  function setShapeType(t) {
-    var currType = shapeId < types.length ? types[shapeId] : null;
-    if (!currType) {
-      types[shapeId] = t;
-      if (!collectionType) {
-        collectionType = t;
-      } else if (t != collectionType) {
-        collectionType = 'mixed';
-      }
-    } else if (currType != t) {
-      stop("Unable to import mixed-geometry GeoJSON features");
-    }
-  }
-
-  function checkBuffers(needed) {
-    if (needed > xx.length) {
-      var newLen = Math.max(needed, Math.ceil(xx.length * 1.5));
-      xx = utils.extendBuffer(xx, newLen, pointId);
-      yy = utils.extendBuffer(yy, newLen, pointId);
-    }
-  }
-
-  function appendToShape(part) {
-    var currShape = shapes[shapeId] || (shapes[shapeId] = []);
-    currShape.push(part);
-  }
-
-  function appendPath(n) {
-    pathId++;
-    nn[pathId] = n;
-    appendToShape([pathId]);
-  }
-
-  function importPathCoords(xsrc, ysrc, n) {
-    var count = 0;
-    var x, y, prevX, prevY;
-    checkBuffers(pointId + n);
-    for (var i=0; i<n; i++) {
-      x = xsrc[i];
-      y = ysrc[i];
-      if (round) {
-        x = round(x);
-        y = round(y);
-      }
-      if (i > 0 && x == prevX && y == prevY) {
-        dupeCount++;
-      } else {
-        xx[pointId] = x;
-        yy[pointId] = y;
-        pointId++;
-        count++;
-      }
-      prevY = y;
-      prevX = x;
-    }
-
-    // check for open rings
-    if (collectionType == 'polygon' && count > 0) {
-      if (xsrc[0] != xsrc[n-1] || ysrc[0] != ysrc[n-1]) {
-        checkBuffers(pointId + 1);
-        xx[pointId] = xsrc[0];
-        yy[pointId] = ysrc[0];
-        openRingCount++;
-        pointId++;
-        count++;
-      }
-    }
-
-    appendPath(count);
-  }
-}
-
-
-
-
-function GeoJSONParser(opts) {
-  var idField = opts.id_field || GeoJSON.ID_FIELD,
-      importer = new PathImporter(opts),
-      dataset;
-
-  this.parseObject = function(o) {
-    var geom, rec;
-    if (o.type == 'Feature') {
-      geom = o.geometry;
-      rec = o.properties || {};
-      if ('id' in o) {
-        rec[idField] = o.id;
-      }
-    } else if (o.type) {
-      geom = o;
-    }
-    // TODO: improve so geometry_type option skips features instead of creating null geometries
-    importer.startShape(rec);
-    if (geom) GeoJSON.importGeometry(geom, importer, opts);
-  };
-
-  this.done = function() {
-    return importer.done();
-  };
-}
-
-internal.importGeoJSON = function(src, opts) {
-  var supportedGeometries = Object.keys(GeoJSON.pathImporters),
-      srcObj = utils.isString(src) ? JSON.parse(src) : src,
-      importer = new GeoJSONParser(opts),
-      srcCollection, dataset;
-
-  // Convert single feature or geometry into a collection with one member
-  if (srcObj.type == 'Feature') {
-    srcCollection = {
-      type: 'FeatureCollection',
-      features: [srcObj]
-    };
-  } else if (utils.contains(supportedGeometries, srcObj.type)) {
-    srcCollection = {
-      type: 'GeometryCollection',
-      geometries: [srcObj]
-    };
-  } else {
-    srcCollection = srcObj;
-  }
-  (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
-  dataset = importer.done();
-  internal.importCRS(dataset, srcObj); // TODO: remove this
-  return dataset;
-};
-
-GeoJSON.importGeometry = function(geom, importer, opts) {
-  var type = geom.type;
-  if (type in GeoJSON.pathImporters) {
-    if (opts.geometry_type && opts.geometry_type != GeoJSON.translateGeoJSONType(type)) {
-      // kludge to filter out all but one type of geometry
-      return;
-    }
-    GeoJSON.pathImporters[type](geom.coordinates, importer);
-  } else if (type == 'GeometryCollection') {
-    geom.geometries.forEach(function(geom) {
-      GeoJSON.importGeometry(geom, importer, opts);
-    });
-  } else {
-    verbose("GeoJSON.importGeometry() Unsupported geometry type:", geom.type);
-  }
-};
-
-// Functions for importing geometry coordinates using a PathImporter
-//
-GeoJSON.pathImporters = {
-  LineString: function(coords, importer) {
-    importer.importLine(coords);
-  },
-  MultiLineString: function(coords, importer) {
-    for (var i=0; i<coords.length; i++) {
-      GeoJSON.pathImporters.LineString(coords[i], importer);
-    }
-  },
-  Polygon: function(coords, importer) {
-    for (var i=0; i<coords.length; i++) {
-      importer.importRing(coords[i], i > 0);
-    }
-  },
-  MultiPolygon: function(coords, importer) {
-    for (var i=0; i<coords.length; i++) {
-      GeoJSON.pathImporters.Polygon(coords[i], importer);
-    }
-  },
-  Point: function(coord, importer) {
-    importer.importPoints([coord]);
-  },
-  MultiPoint: function(coords, importer) {
-    importer.importPoints(coords);
-  }
-};
-
-internal.importCRS = function(dataset, jsonObj) {
-  if ('crs' in jsonObj) {
-    dataset.info.input_geojson_crs = jsonObj.crs;
-  }
-};
-
-
-
-
-internal.getFormattedStringify = function(numArrayKeys) {
-  var keyIndex = utils.arrayToIndex(numArrayKeys);
-  var sentinel = '\u1000\u2FD5\u0310';
-  var stripRxp = new RegExp('"' + sentinel + '|' + sentinel + '"', 'g');
-  var indentChars = '  ';
-
-  function replace(key, val) {
-    // We want to format numerical arrays like [1, 2, 3] instead of
-    // the way JSON.stringify() behaves when applying indentation.
-    // This kludge converts arrays to strings with sentinel strings inside the
-    // surrounding quotes. At the end, the sentinel strings and quotes
-    // are replaced by array brackets.
-    if (key in keyIndex && utils.isArray(val)) {
-      var str = JSON.stringify(val);
-      // make sure the array does not contain any strings
-      if (str.indexOf('"' == -1)) {
-        return sentinel + str.replace(/,/g, ', ') + sentinel;
-      }
-    }
-    return val;
-  }
-
-  return function(obj) {
-    var json = JSON.stringify(obj, replace, indentChars);
-    return json.replace(stripRxp, '');
-  };
-};
-
-
-
-
-internal.exportPointData = function(points) {
-  var data, path;
-  if (!points || points.length === 0) {
-    data = {partCount: 0, pointCount: 0};
-  } else {
-    path = {
-      points: points,
-      pointCount: points.length,
-      bounds: geom.getPathBounds(points)
-    };
-    data = {
-      bounds: path.bounds,
-      pathData: [path],
-      partCount: 1,
-      pointCount: path.pointCount
-    };
-  }
-  return data;
-};
-
-// TODO: remove duplication with internal.getPathMetadata()
-internal.exportPathData = function(shape, arcs, type) {
-  // kludge until Shapefile exporting is refactored
-  if (type == 'point') return internal.exportPointData(shape);
-
-  var pointCount = 0,
-      bounds = new Bounds(),
-      paths = [];
-
-  if (shape && (type == 'polyline' || type == 'polygon')) {
-    shape.forEach(function(arcIds, i) {
-      var iter = arcs.getShapeIter(arcIds),
-          path = internal.exportPathCoords(iter),
-          valid = true;
-      if (type == 'polygon') {
-        path.area = geom.getPlanarPathArea2(path.points);
-        valid = path.pointCount > 3 && path.area !== 0;
-      } else if (type == 'polyline') {
-        valid = path.pointCount > 1;
-      }
-      if (valid) {
-        pointCount += path.pointCount;
-        path.bounds = geom.getPathBounds(path.points);
-        bounds.mergeBounds(path.bounds);
-        paths.push(path);
-      } else {
-        verbose("Skipping a collapsed", type, "path");
-      }
-    });
-  }
-
-  return {
-    pointCount: pointCount,
-    pathData: paths,
-    pathCount: paths.length,
-    bounds: bounds
-  };
-};
-
-internal.exportPathCoords = function(iter) {
-  var points = [],
-      i = 0,
-      x, y, prevX, prevY;
-  while (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    if (i === 0 || prevX != x || prevY != y) {
-      points.push([x, y]);
-      i++;
-    }
-    prevX = x;
-    prevY = y;
-  }
-  return {
-    points: points,
-    pointCount: points.length
-  };
-};
-
-
-
-
-// Don't modify input layers (mergeDatasets() updates arc ids in-place)
-internal.mergeDatasetsForExport = function(arr) {
-  // copy layers but not arcs, which get copied in mergeDatasets()
-  var copy = arr.map(function(dataset) {
-    return utils.defaults({
-      layers: dataset.layers.map(internal.copyLayerShapes)
-    }, dataset);
-  });
-  return internal.mergeDatasets(copy);
-};
-
-internal.mergeCommandTargets = function(targets, catalog) {
-  var targetLayers = [];
-  var targetDatasets = [];
-  var datasetsWithArcs = 0;
-  var merged;
-
-  targets.forEach(function(target) {
-    targetLayers = targetLayers.concat(target.layers);
-    targetDatasets = targetDatasets.concat(target.dataset);
-    if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
-  });
-
-  merged = internal.mergeDatasets(targetDatasets);
-
-  // Rebuild topology, if multiple datasets contain arcs
-  if (datasetsWithArcs > 1) {
-    api.buildTopology(merged);
-  }
-
-  // remove old datasets after merging, so catalog is not affected if merge throws an error
-  targetDatasets.forEach(catalog.removeDataset);
-  catalog.addDataset(merged); // sets default target to all layers in merged dataset
-  catalog.setDefaultTarget(targetLayers, merged); // reset default target
-  return [{
-    layers: targetLayers,
-    dataset: merged
-  }];
-};
-
-// Combine multiple datasets into one using concatenation
-// (any shared topology is ignored)
-internal.mergeDatasets = function(arr) {
-  var arcSources = [],
-      arcCount = 0,
-      mergedLayers = [],
-      mergedInfo = {},
-      mergedArcs;
-
-  // Error if incompatible CRS
-  internal.requireDatasetsHaveCompatibleCRS(arr);
-
-  arr.forEach(function(dataset) {
-    var n = dataset.arcs ? dataset.arcs.size() : 0;
-    if (n > 0) {
-      arcSources.push(dataset.arcs);
-    }
-
-    internal.mergeDatasetInfo(mergedInfo, dataset);
-    dataset.layers.forEach(function(lyr) {
-      if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-        internal.forEachArcId(lyr.shapes, function(id) {
-          return id < 0 ? id - arcCount : id + arcCount;
-        });
-      }
-      mergedLayers.push(lyr);
-    });
-    arcCount += n;
-  });
-
-  mergedArcs = internal.mergeArcs(arcSources);
-  if (mergedArcs.size() != arcCount) {
-    error("[mergeDatasets()] Arc indexing error");
-  }
-
-  return {
-    info: mergedInfo,
-    arcs: mergedArcs,
-    layers: mergedLayers
-  };
-};
-
-internal.requireDatasetsHaveCompatibleCRS = function(arr) {
-  arr.reduce(function(memo, dataset) {
-    var P = internal.getDatasetCRS(dataset);
-    if (memo && P) {
-      if (internal.isLatLngCRS(memo) != internal.isLatLngCRS(P)) {
-        stop("Unable to combine projected and unprojected datasets");
-      }
-    }
-    return P || memo;
-  }, null);
-};
-
-internal.mergeDatasetInfo = function(merged, dataset) {
-  var info = dataset.info || {};
-  merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
-  merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
-  // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
-  utils.defaults(merged, info);
-};
-
-internal.mergeArcs = function(arr) {
-  var dataArr = arr.map(function(arcs) {
-    if (arcs.getRetainedInterval() > 0) {
-      verbose("Baking-in simplification setting.");
-      arcs.flatten();
-    }
-    return arcs.getVertexData();
-  });
-  var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
-      yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
-      nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
-
-  return new ArcCollection(nn, xx, yy);
-};
-
-utils.countElements = function(arrays) {
-  return arrays.reduce(function(memo, arr) {
-    return memo + (arr.length || 0);
-  }, 0);
-};
-
-utils.mergeArrays = function(arrays, TypedArr) {
-  var size = utils.countElements(arrays),
-      Arr = TypedArr || Array,
-      merged = new Arr(size),
-      offs = 0;
-  arrays.forEach(function(src) {
-    var n = src.length;
-    for (var i = 0; i<n; i++) {
-      merged[i + offs] = src[i];
-    }
-    offs += n;
-  });
-  return merged;
-};
-
-
-
-
-// Merge layers, checking for incompatible geometries and data fields.
-api.mergeLayers = function(layersArg, opts) {
-  var layers = layersArg.filter(internal.getFeatureCount); // ignore empty layers
-  var merged = {};
-  opts = opts || {};
-  if (!layers.length) return null;
-  if (layers.length == 1) {
-    message('Use the target= option to specify multiple layers for merging');
-    return layers.concat();
-  }
-  merged.data = internal.mergeDataFromLayers(layers, opts.force);
-  merged.name = internal.mergeLayerNames(layers);
-  merged.geometry_type = internal.getMergedLayersGeometryType(layers);
-  if (merged.geometry_type) {
-    merged.shapes = internal.mergeShapesFromLayers(layers);
-  }
-  if (merged.shapes && merged.data && merged.shapes.length != merged.data.size()) {
-    error("Mismatch between geometry and attribute data");
-  }
-  return [merged];
-};
-
-internal.getMergedLayersGeometryType = function(layers) {
-  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'));
-  if (geoTypes.length > 1) {
-    stop("Incompatible geometry types:",
-      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
-  }
-  return geoTypes[0] || null;
-};
-
-internal.mergeShapesFromLayers = function(layers) {
-  return layers.reduce(function(memo, lyr) {
-    return memo.concat(lyr.shapes);
-  }, []);
-};
-
-internal.mergeDataFromLayers = function(layers, force) {
-  var allFields = utils.uniq(layers.reduce(function(memo, lyr) {
-    return memo.concat(lyr.data ? lyr.data.getFields() : []);
-  }, []));
-  if (allFields.length === 0) return null; // no data in any fields
-  var missingFields = internal.checkMergeLayersInconsistentFields(allFields, layers, force);
-  var mergedRecords = layers.reduce(function(memo, lyr) {
-    var records = lyr.data ? lyr.data.getRecords() : new DataTable(internal.getFeatureCount(lyr)).getRecords();
-    return memo.concat(records);
-  }, []);
-  if (missingFields.length > 0) {
-    internal.fixInconsistentFields(mergedRecords);
-  }
-  return new DataTable(mergedRecords);
-};
-
-internal.checkMergeLayersInconsistentFields = function(allFields, layers, force) {
-  var msg;
-  // handle fields that are missing from one or more layers
-  // (warn if force-merging, else error)
-  var missingFields = utils.uniq(layers.reduce(function(memo, lyr) {
-    return memo.concat(utils.difference(allFields, lyr.data ? lyr.data.getFields() : []));
-  }, []));
-  if (missingFields.length > 0) {
-    msg = '[' + missingFields.join(', ') + ']';
-    msg = (missingFields.length == 1 ? 'Field ' + msg + ' is missing' : 'Fields ' + msg + ' are missing') + ' from one or more layers';
-    if (force) {
-      message('Warning: ' + msg);
-    } else {
-      stop(msg);
-    }
-  }
-  // check for fields with incompatible data types (e.g. number, string)
-  internal.checkMergeLayersFieldTypes(allFields, layers);
-  return missingFields;
-};
-
-internal.checkMergeLayersFieldTypes = function(fields, layers) {
-  fields.forEach(function(key) {
-    var types = internal.checkFieldTypes(key, layers);
-    if (types.length > 1) {
-      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
-    }
-  });
-};
-
-internal.checkFieldTypes = function(key, layers) {
-  // ignores empty-type fields
-  return layers.reduce(function(memo, lyr) {
-    var type = lyr.data ? internal.getColumnType(key, lyr.data.getRecords()) : null;
-    if (type && memo.indexOf(type) == -1) {
-      memo.push(type);
-    }
-    return memo;
-  }, []);
-};
-
-internal.mergeLayerNames = function(layers) {
-  return layers.reduce(function(memo, lyr) {
-    if (memo === null) {
-      memo = lyr.name || null;
-    } else if (memo && lyr.name) {
-      memo = utils.mergeNames(memo, lyr.name);
-    }
-    return memo;
-  }, null) || '';
-};
-
-
-
-
-internal.exportGeoJSON = function(dataset, opts) {
-  opts = opts || {};
-  var extension = opts.extension || "json";
-  var layerGroups, warn;
-
-  // Apply coordinate precision, if relevant
-  if (opts.precision || opts.rfc7946) {
-    dataset = internal.copyDatasetForExport(dataset);
-    // using 6 decimals as default RFC 7946 precision
-    internal.setCoordinatePrecision(dataset, opts.precision || 0.000001);
-  }
-
-  if (opts.rfc7946) {
-    warn = internal.getRFC7946Warnings(dataset);
-    if (warn) message(warn);
-  }
-
-  if (opts.file) {
-    // Override default output extension if output filename is given
-    extension = utils.getFileExtension(opts.file);
-  }
-  if (opts.combine_layers) {
-    layerGroups = [dataset.layers];
-  } else {
-    layerGroups = dataset.layers.map(function(lyr) {
-      return [lyr];
-    });
-  }
-  return layerGroups.map(function(layers) {
-    // Use common part of layer names if multiple layers are being merged
-    var name = internal.mergeLayerNames(layers) || 'output';
-    var d = utils.defaults({layers: layers}, dataset);
-    return {
-      content: internal.exportDatasetAsGeoJSON(d, opts, 'buffer'),
-      filename: name + '.' + extension
-    };
-  });
-};
-
-// Return an array of Features or Geometries as objects or strings
-//
-internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
-  var properties = internal.exportProperties(lyr.data, opts),
-      shapes = lyr.shapes,
-      ids = internal.exportIds(lyr.data, opts),
-      items, stringify;
-
-  if (ofmt) {
-    stringify = opts.prettify ?
-      internal.getFormattedStringify(['bbox', 'coordinates']) :
-      JSON.stringify;
-  }
-
-  if (properties && shapes && properties.length !== shapes.length) {
-    error("Mismatch between number of properties and number of shapes");
-  }
-
-  return (shapes || properties || []).reduce(function(memo, o, i) {
-    var shape = shapes ? shapes[i] : null,
-        exporter = GeoJSON.exporters[lyr.geometry_type],
-        obj = shape ? exporter(shape, dataset.arcs, opts) : null;
-    if (asFeatures) {
-      obj = {
-        type: 'Feature',
-        geometry: obj,
-        properties: properties ? properties[i] : null
-      };
-      if (ids) {
-        obj.id = ids[i];
-      }
-    } else if (!obj) {
-      return memo; // don't add null objects to GeometryCollection
-    }
-    if (ofmt) {
-      // stringify features as soon as they are generated, to reduce the
-      // number of JS objects in memory (so larger files can be exported)
-      obj = stringify(obj);
-      if (ofmt == 'buffer') {
-        obj = internal.encodeString(obj, 'utf8');
-        // obj = internal.stringToBuffer(obj);
-        // obj = new Buffer(obj, 'utf8');
-      }
-    }
-    memo.push(obj);
-    return memo;
-  }, []);
-};
-
-
-internal.getRFC7946Warnings = function(dataset) {
-  var P = internal.getDatasetCRS(dataset);
-  var str;
-  if (!P || !internal.isLatLngCRS(P)) {
-    str = 'RFC 7946 warning: non-WGS84 coordinates.';
-    if (P) str += ' Use "-proj wgs84" to convert.';
-  }
-  return str;
-};
-
-internal.getDatasetBbox = function(dataset, rfc7946) {
-  var P = internal.getDatasetCRS(dataset),
-      wrapped = rfc7946 && P && internal.isLatLngCRS(P),
-      westBounds = new Bounds(),
-      eastBounds = new Bounds(),
-      mergedBounds, gutter, margins, bbox;
-
-  dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      internal.traversePaths(lyr.shapes, null, function(o) {
-        var bounds = dataset.arcs.getSimpleShapeBounds(o.arcs);
-        (bounds.centerX() < 0 ? westBounds : eastBounds).mergeBounds(bounds);
-      });
-    } else if (internal.layerHasPoints(lyr)) {
-      internal.forEachPoint(lyr.shapes, function(p) {
-        (p[0] < 0 ? westBounds : eastBounds).mergePoint(p[0], p[1]);
-      });
-    }
-  });
-  mergedBounds = (new Bounds()).mergeBounds(eastBounds).mergeBounds(westBounds);
-  if (mergedBounds.hasBounds()) {
-    bbox = mergedBounds.toArray();
-  }
-  if (wrapped && eastBounds.hasBounds() && westBounds.hasBounds()) {
-    gutter = eastBounds.xmin - westBounds.xmax;
-    margins = 360 + westBounds.xmin - eastBounds.xmax;
-    if (gutter > 0 && gutter > margins) {
-      bbox[0] = eastBounds.xmin;
-      bbox[2] = westBounds.xmax;
-    }
-  }
-  return bbox || null;
-};
-
-internal.exportDatasetAsGeoJSON = function(dataset, opts, ofmt) {
-  var geojson = {};
-  var layers = dataset.layers;
-  var useFeatures = internal.useFeatureCollection(layers, opts);
-  var parts, collection, bbox, collname;
-
-  if (useFeatures) {
-    geojson.type = 'FeatureCollection';
-    collname = 'features';
-  } else {
-    geojson.type = 'GeometryCollection';
-    collname = 'geometries';
-  }
-
-  if (!opts.rfc7946) {
-    // partial support for crs property (eliminated in RFC 7946)
-    internal.exportCRS(dataset, geojson);
-  }
-
-  if (opts.bbox) {
-    bbox = internal.getDatasetBbox(dataset, opts.rfc7946);
-    if (bbox) {
-      geojson.bbox = bbox;
-    }
-  }
-
-  collection = layers.reduce(function(memo, lyr, i) {
-    var items = internal.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, ofmt);
-    return memo.length > 0 ? memo.concat(items) : items;
-  }, []);
-
-  if (opts.geojson_type == 'Feature' && collection.length == 1) {
-    return collection[0];
-  } else if (ofmt) {
-    return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
-  } else {
-    geojson[collname] = collection;
-    return geojson;
-  }
-};
-
-GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
-  // collection is an array of individual GeoJSON Feature|geometry strings or buffers
-  var head = JSON.stringify(container).replace(/\}$/, ', "' + collType + '": [\n');
-  var tail = '\n]}';
-  if (ofmt == 'buffer') {
-    return GeoJSON.joinOutputBuffers(head, tail, collection);
-  }
-  return head + collection.join(',\n') + tail;
-};
-
-GeoJSON.joinOutputBuffers = function(head, tail, collection) {
-  var comma = utils.createBuffer(',\n', 'utf8');
-  var parts = collection.reduce(function(memo, buf, i) {
-    if (i > 0) memo.push(comma);
-    memo.push(buf);
-    return memo;
-  }, [utils.createBuffer(head, 'utf8')]);
-  parts.push(utils.createBuffer(tail, 'utf8'));
-  return Buffer.concat(parts);
-};
-
-// export GeoJSON or TopoJSON point geometry
-GeoJSON.exportPointGeom = function(points, arcs) {
-  var geom = null;
-  if (points.length == 1) {
-    geom = {
-      type: "Point",
-      coordinates: points[0]
-    };
-  } else if (points.length > 1) {
-    geom = {
-      type: "MultiPoint",
-      coordinates: points
-    };
-  }
-  return geom;
-};
-
-GeoJSON.exportLineGeom = function(ids, arcs) {
-  var obj = internal.exportPathData(ids, arcs, "polyline");
-  if (obj.pointCount === 0) return null;
-  var coords = obj.pathData.map(function(path) {
-    return path.points;
-  });
-  return coords.length == 1 ? {
-    type: "LineString",
-    coordinates: coords[0]
-  } : {
-    type: "MultiLineString",
-    coordinates: coords
-  };
-};
-
-GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
-  var obj = internal.exportPathData(ids, arcs, "polygon");
-  if (obj.pointCount === 0) return null;
-  var groups = internal.groupPolygonRings(obj.pathData, opts.invert_y);
-  var reverse = opts.rfc7946 && !opts.invert_y;
-  var coords = groups.map(function(paths) {
-    return paths.map(function(path) {
-      if (reverse) path.points.reverse();
-      return path.points;
-    });
-  });
-  return coords.length == 1 ? {
-    type: "Polygon",
-    coordinates: coords[0]
-  } : {
-    type: "MultiPolygon",
-    coordinates: coords
-  };
-};
-
-GeoJSON.exporters = {
-  polygon: GeoJSON.exportPolygonGeom,
-  polyline: GeoJSON.exportLineGeom,
-  point: GeoJSON.exportPointGeom
-};
-
-// @jsonObj is a top-level GeoJSON or TopoJSON object
-// TODO: generate crs if projection is known
-// TODO: handle case of non-WGS84 geodetic coordinates
-internal.exportCRS = function(dataset, jsonObj) {
-  var info = dataset.info || {};
-  if (!info.crs && 'input_geojson_crs' in info) {
-    // use input geojson crs if available and coords have not changed
-    jsonObj.crs = info.input_geojson_crs;
-  } else if (info.crs && !internal.isLatLngCRS(info.crs)) {
-    // Setting output crs to null if coords have been projected
-    // "If the value of CRS is null, no CRS can be assumed"
-    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
-    jsonObj.crs = null;
-  } else {
-    // crs property not set: assuming WGS84
-  }
-};
-
-internal.useFeatureCollection = function(layers, opts) {
-  var type = opts.geojson_type || '';
-  if (type == 'Feature' || type == 'FeatureCollection') {
-    return true;
-  } else if (type == 'GeometryCollection') {
-    return false;
-  } else if (type) {
-    stop("Unsupported GeoJSON type:", opts.geojson_type);
-  }
-  // default is true iff layers contain attributes
-  return utils.some(layers, function(lyr) {
-    var fields = lyr.data ? lyr.data.getFields() : [];
-    var haveData = internal.useFeatureProperties(fields, opts);
-    var haveId = !!internal.getIdField(fields, opts);
-    return haveData || haveId;
-  });
-};
-
-internal.useFeatureProperties = function(fields, opts) {
-  return !(opts.drop_table || opts.cut_table || fields.length === 0 ||
-      fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
-};
-
-internal.exportProperties = function(table, opts) {
-  var fields = table ? table.getFields() : [],
-      idField = internal.getIdField(fields, opts),
-      properties, records;
-  if (!internal.useFeatureProperties(fields, opts)) {
-    return null;
-  }
-  records = table.getRecords();
-  if (idField == GeoJSON.ID_FIELD) {// delete default id field, not user-set fields
-    properties = records.map(function(rec) {
-      rec = utils.extend({}, rec); // copy rec;
-      delete rec[idField];
-      return rec;
-    });
-  } else {
-    properties = records;
-  }
-  return properties;
-};
-
-// @opt value of id-field option (empty, string or array of strings)
-// @fields array
-internal.getIdField = function(fields, opts) {
-  var ids = [];
-  var opt = opts.id_field;
-  if (utils.isString(opt)) {
-    ids.push(opt);
-  } else if (utils.isArray(opt)) {
-    ids = opt;
-  }
-  ids.push(GeoJSON.ID_FIELD); // default id field
-  return utils.find(ids, function(name) {
-    return utils.contains(fields, name);
-  });
-};
-
-internal.exportIds = function(table, opts) {
-  var fields = table ? table.getFields() : [],
-      idField = internal.getIdField(fields, opts);
-  if (!idField) return null;
-  return table.getRecords().map(function(rec) {
-    return idField in rec ? rec[idField] : null;
-  });
-};
-
-
-
 
 
 
@@ -16807,7 +17445,6 @@ internal.exportDataAttributesForSVG = function(records, fields) {
   if (invalidFields.length > 0) {
     message("Unable to add data-* attributes for field(s):", invalidFields.join(', '));
     message("data-* names should match pattern [a-z_][a-z0-9_-]*");
-    fields = utils.difference(fields, invalidFields);
   }
   return records.map(function(rec) {
     var obj = {};
@@ -20035,6 +20672,42 @@ internal.importFiles = function(files, opts) {
 
 
 
+api.overlay = function(targetLyr, src, targetDataset, opts) {
+  var sourceLyr, sourceDataset, mergedDataset;
+  if (!src || !src.layer || !src.dataset) {
+    error("Unexpected source layer argument");
+  }
+  sourceLyr = src.layer;
+  sourceDataset = src.dataset;
+  if (targetDataset.arcs != sourceDataset.arcs) {
+    // see mapshaper-clip-erase.js
+    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
+    api.buildTopology(mergedDataset);
+  } else {
+    mergedDataset = targetDataset;
+  }
+
+  internal.overlayLayer(targetLyr, sourceLyr, mergedDataset, opts);
+};
+
+
+internal.overlayLayer = function(targetLyr, sourceLyr, dataset, opts) {
+  // TODO: don't build nodes twice (consider adding filter option to addIntersectionCuts())
+  internal.addIntersectionCuts(dataset, opts); // returns a NodeCollection
+  // build nodes from arcs in both layers
+  var arcFilter = internal.getArcPresenceTest(targetLyr.shapes.concat(sourceLyr.shapes), dataset.arcs);
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var mosaicIndex = new MosaicIndex(targetLyr, nodes); // TODO: add flat opt
+  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
+
+  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
+
+
+};
+
+
+
+
 // Return an interior point for each space-containing ring
 internal.findInnerPoints = function(shp, arcs) {
   var groups, points;
@@ -22608,6 +23281,57 @@ api.uniq = function(lyr, arcs, opts) {
 
 
 
+internal.convertSourceName = function(name, targets) {
+  if (!internal.nameIsInterpolated(name)) return name;
+  if (targets.length > 1 || targets[0].layers.length != 1) {
+    stop("Interpolated names are not compatible with multiple targets.");
+  }
+  return internal.convertInterpolatedName(name, targets[0].layers[0]);
+};
+
+internal.convertInterpolatedName = function(name, lyr) {
+  var ctx = {target: lyr.name || ''};
+  var body = 'with($$ctx) { return `' + name + '`; }';
+  var func;
+  try {
+    func = new Function("$$ctx", body);
+    name = func(ctx);
+  } catch(e) {
+    stop("Unable to interpolate [" + name + "]");
+  }
+  return name;
+};
+
+internal.nameIsInterpolated = function(name) {
+  return /[$][{]/.test(name);
+};
+
+internal.findCommandSource = function(sourceName, catalog, opts) {
+  var sources = catalog.findCommandTargets(sourceName);
+  var sourceDataset, source;
+  if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
+    stop(utils.format('Source [%s] matched multiple layers', sourceName));
+  } else if (sources.length == 1) {
+    source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
+  } else {
+    // assuming opts.source is a filename
+    // don't need to build topology, because:
+    //    join -- don't need topology
+    //    clip/erase -- topology is built later, when datasets are combined
+    sourceDataset = api.importFile(sourceName, utils.defaults({no_topology: true}, opts));
+    if (!sourceDataset) {
+      stop(utils.format('Unable to find source [%s]', sourceName));
+    } else if (sourceDataset.layers.length > 1) {
+      stop('Multiple-layer sources are not supported');
+    }
+    // mark as disposable to indicate that data can be mutated
+    source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
+  }
+  return source;
+};
+
+
+
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
@@ -22680,11 +23404,15 @@ api.runCommand = function(cmd, catalog, cb) {
     }
 
     if (opts.source) {
-      source = internal.findCommandSource(opts.source, catalog, opts);
+      source = internal.findCommandSource(internal.convertSourceName(opts.source, targets), catalog, opts);
     }
 
     if (name == 'affine') {
       api.affine(targetLayers, targetDataset, opts);
+
+    } else if (name == 'buffer') {
+      // internal.applyCommand(api.buffer, targetLayers, targetDataset, opts);
+      catalog.addDataset(api.buffer(targetLayers, targetDataset, opts));
 
     } else if (name == 'data-fill') {
       internal.applyCommand(api.dataFill, targetLayers, arcs, opts);
@@ -22795,6 +23523,9 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog = null;
       }
       return internal.writeFiles(outputFiles, opts, done);
+
+    } else if (name == 'overlay') {
+      outputFiles = internal.overlay(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'point-grid') {
       outputLayers = [api.pointGrid(targetDataset, opts)];
@@ -22971,29 +23702,6 @@ internal.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-internal.findCommandSource = function(sourceName, catalog, opts) {
-  var sources = catalog.findCommandTargets(sourceName);
-  var sourceDataset, source;
-  if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-    stop(utils.format('Source [%s] matched multiple layers', sourceName));
-  } else if (sources.length == 1) {
-    source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
-  } else {
-    // assuming opts.source is a filename
-    // don't need to build topology, because:
-    //    join -- don't need topology
-    //    clip/erase -- topology is built later, when datasets are combined
-    sourceDataset = api.importFile(sourceName, utils.defaults({no_topology: true}, opts));
-    if (!sourceDataset) {
-      stop(utils.format('Unable to find source [%s]', sourceName));
-    } else if (sourceDataset.layers.length > 1) {
-      stop('Multiple-layer sources are not supported');
-    }
-    // mark as disposable to indicate that data can be mutated
-    source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
-  }
-  return source;
-};
 
 
 
@@ -23951,6 +24659,32 @@ internal.getOptionParser = function() {
 
   parser.section("Editing commands");
 
+  parser.command("buffer")
+    // .describe("")
+    .option("radius", {
+      describe: "radius of buffer, as an expression or a constant",
+      DEFAULT: true
+    })
+    .option("tolerance", {
+      // describe: "acceptable deviation for approximating curves"
+    })
+    .option("backtrack", {
+      type: 'integer'
+    })
+    .option("debug-division", {
+      type: 'flag'
+    })
+    .option("debug-mosaic", {
+      type: 'flag'
+    })
+    .option("no-cleanup", {
+      type: 'flag'
+    })
+    .option("units", {
+      describe: "distance units (meters|miles|km|feet) (default is meters)"
+    })
+    .option("target", targetOpt);
+
   parser.command("clean")
     .describe("repairs overlaps and small gaps in polygon layers")
     .option("min-gap-area", minGapAreaOpt)
@@ -23958,6 +24692,16 @@ internal.getOptionParser = function() {
     .option("no-snap", noSnapOpt)
     .option("allow-empty", {
       describe: 'allow null geometries (removed by default)',
+      type: 'flag'
+    })
+    // TODO: consider making this the standard way of removing null geometry
+    // (currently there's -filter remove-empty)
+    // .option('empty', {
+    //   describe: 'remove features with null geometry',
+    //   type: 'flag'
+    // })
+    .option("arcs", {
+      describe: 'remove unused arcs',
       type: 'flag'
     })
     .option("no-arc-dissolve", {
@@ -24174,11 +24918,6 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("intersect")
-    // .describe("convert polygons to polylines along shared edges")
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
   parser.command("join")
     .describe("join data records from a file or layer to a layer")
     .example("Join a csv table to a Shapefile (don't auto-convert FIPS column to numbers)\n" +
@@ -24252,6 +24991,15 @@ internal.getOptionParser = function() {
 
   parser.command("mosaic")
     .option("debug", {type: "flag"})
+    .option("target", targetOpt);
+
+  parser.command("overlay")
+    // .describe("convert polygons to polylines along shared edges")
+    .option("source", {
+      DEFAULT: true,
+      describe: "file or layer containing overlay polygons"
+    })
+    .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("point-grid")
@@ -24465,7 +25213,6 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("target", targetOpt);
-
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")

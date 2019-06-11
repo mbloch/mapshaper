@@ -9579,7 +9579,6 @@ function wkt_proj4_is_omerc_B(P) {
   http://geotiff.maptools.org/proj_list/polar_stereographic.html
   http://geotiff.maptools.org/proj_list/stereographic.html
   http://geotiff.maptools.org/proj_list/random_issues.html#stereographic
-
 */
 
 add_wkt_parser(get_simple_parser_test('Stereographic,Polar_Stereographic,Stereographic_North_Pole,Stereographic_South_Pole'),
@@ -9868,219 +9867,6 @@ function wkt_to_proj4(str) {
   return proj4;
 }
 
-
-
-function pj_qsfn(sinphi, e, one_es) {
-  var EPS = 1e-7;
-  var con;
-  if (e >= EPS) {
-    con = e * sinphi;
-    // Proj.4 check for div0 and returns HUGE_VAL
-    // this returns +/- Infinity; effect should be same
-    return (one_es * (sinphi / (1 - con * con) -
-       (0.5 / e) * log ((1 - con) / (1 + con))));
-  } else
-    return (sinphi + sinphi);
-}
-
-
-function pj_msfn(sinphi, cosphi, es) {
-  return (cosphi / sqrt (1 - es * sinphi * sinphi));
-}
-
-
-pj_add(pj_aea, 'aea', 'Albers Equal Area', '\n\tConic Sph&Ell\n\tlat_1= lat_2=');
-pj_add(pj_leac, 'leac', 'Lambert Equal Area Conic', '\n\tConic, Sph&Ell\n\tlat_1= south');
-
-function pj_aea(P) {
-  var phi1 = pj_param(P.params, "rlat_1");
-  var phi2 = pj_param(P.params, "rlat_2");
-  pj_aea_init(P, phi1, phi2);
-}
-
-function pj_leac(P) {
-  var phi1 = pj_param(P.params, "rlat_1");
-  var phi2 = pj_param(P.params, "bsouth") ? -M_HALFPI : M_HALFPI;
-  pj_aea_init(P, phi1, phi2);
-}
-
-function pj_aea_init(P, phi1, phi2) {
-  var ec, n, c, dd, n2, rho0, rho, en, ellips,
-      cosphi, sinphi, secant, ml2, m2, ml1, m1;
-
-  P.fwd = e_fwd;
-  P.inv = e_inv;
-
-  if (fabs(phi1 + phi2) < EPS10) e_error(-21);
-  n = sinphi = sin(phi1);
-  cosphi = cos(phi1);
-  secant = fabs(phi1 - phi2) >= EPS10;
-  if ((ellips = (P.es > 0))) {
-    en = pj_enfn(P.es);
-    m1 = pj_msfn(sinphi, cosphi, P.es);
-    ml1 = pj_qsfn(sinphi, P.e, P.one_es);
-    if (secant) { /* secant cone */
-      sinphi = sin(phi2);
-      cosphi = cos(phi2);
-      m2 = pj_msfn(sinphi, cosphi, P.es);
-      ml2 = pj_qsfn(sinphi, P.e, P.one_es);
-      // Ignoring Proj.4 div0 check (above checks should prevent this)
-      n = (m1 * m1 - m2 * m2) / (ml2 - ml1);
-    }
-    ec = 1 - 0.5 * P.one_es * log((1 - P.e) / (1 + P.e)) / P.e;
-    c = m1 * m1 + n * ml1;
-    dd = 1 / n;
-    rho0 = dd * sqrt(c - n * pj_qsfn(sin(P.phi0), P.e, P.one_es));
-  } else {
-    if (secant) n = 0.5 * (n + sin(phi2));
-    n2 = n + n;
-    c = cosphi * cosphi + n2 * sinphi;
-    dd = 1 / n;
-    rho0 = dd * sqrt(c - n2 * sin(P.phi0));
-  }
-
-  function e_fwd(lp, xy) {
-    var lam = lp.lam;
-    var rho;
-    if ((rho = c - (ellips ? n * pj_qsfn(sin(lp.phi),
-      P.e, P.one_es) : n2 * sin(lp.phi))) < 0) f_error();
-    rho = dd * sqrt(rho);
-    xy.x = rho * sin(lam *= n);
-    xy.y = rho0 - rho * cos(lam);
-  }
-
-  function e_inv(xy, lp) {
-    var TOL7 = 1e-7,
-        x = xy.x,
-        y = rho0 - xy.y,
-        rho = hypot(x, y);
-    if (rho != 0) {
-      if (n < 0) {
-        rho = -rho;
-        x = -x;
-        y = -y;
-      }
-      lp.phi = rho / dd;
-      if (ellips) {
-        lp.phi = (c - lp.phi * lp.phi) / n;
-        if (fabs(ec - fabs(lp.phi)) > TOL7) {
-          if ((lp.phi = phi1_(lp.phi, P.e, P.one_es)) == HUGE_VAL)
-            i_error();
-        } else
-          lp.phi = lp.phi < 0 ? -M_HALFPI : M_HALFPI;
-      } else if (fabs(lp.phi = (c - lp.phi * lp.phi) / n2) <= 1)
-        lp.phi = asin(lp.phi);
-      else
-        lp.phi = lp.phi < 0 ? -M_HALFPI : M_HALFPI;
-      lp.lam = atan2(x, y) / n;
-    } else {
-      lp.lam = 0;
-      lp.phi = n > 0 ? M_HALFPI : -M_HALFPI;
-    }
-  }
-
-  /* determine latitude angle phi-1 */
-  function phi1_(qs, Te, Tone_es) {
-    var N_ITER = 15,
-        EPSILON = 1e-7,
-        TOL = 1e-10;
-    var Phi, sinpi, cospi, con, com, dphi, i;
-    Phi = asin (0.5 * qs);
-    if (Te < EPSILON)
-      return Phi;
-    i = N_ITER;
-    do {
-      sinpi = sin(Phi);
-      cospi = cos(Phi);
-      con = Te * sinpi;
-      com = 1 - con * con;
-      dphi = 0.5 * com * com / cospi * (qs / Tone_es -
-         sinpi / com + 0.5 / Te * log ((1 - con) / (1 + con)));
-      Phi += dphi;
-    } while (fabs(dphi) > TOL && --i);
-    return i ? Phi : HUGE_VAL;
-  }
-}
-
-
-
-function pj_enfn(es) {
-  var C00 = 1,
-      C02 = 0.25,
-      C04 = 0.046875,
-      C06 = 0.01953125,
-      C08 = 0.01068115234375,
-      C22 = 0.75,
-      C44 = 0.46875,
-      C46 = 0.01302083333333333333,
-      C48 = 0.00712076822916666666,
-      C66 = 0.36458333333333333333,
-      C68 = 0.00569661458333333333,
-      C88 = 0.3076171875;
-  var en = [], t;
-  en[0] = C00 - es * (C02 + es * (C04 + es * (C06 + es * C08)));
-  en[1] = es * (C22 - es * (C04 + es * (C06 + es * C08)));
-  en[2] = (t = es * es) * (C44 - es * (C46 + es * C48));
-  en[3] = (t *= es) * (C66 - es * C68);
-  en[4] = t * es * C88;
-  return en;
-}
-
-function pj_mlfn(phi, sphi, cphi, en) {
-  cphi *= sphi;
-  sphi *= sphi;
-  return (en[0] * phi - cphi * (en[1] + sphi*(en[2] + sphi*(en[3] + sphi*en[4]))));
-}
-
-function pj_inv_mlfn(arg, es, en) {
-  var EPS = 1e-11,
-      MAX_ITER = 10,
-      EN_SIZE = 5;
-
-  var k = 1 / (1 - es),
-      s, t, phi;
-
-  phi = arg;
-  for (var i = MAX_ITER; i>0; --i) { /* rarely goes over 2 iterations */
-    s = sin(phi);
-    t = 1 - es * s * s;
-    phi -= t = (pj_mlfn(phi, s, cos(phi), en) - arg) * (t * sqrt(t)) * k;
-    if (fabs(t) < EPS) {
-      return phi;
-    }
-  }
-  pj_ctx_set_errno( ctx, -17 );
-  return phi;
-}
-
-
-
-function aasin(v) {
-  var ONE_TOL = 1.00000000000001;
-  var av = fabs(v);
-  if (av >= 1) {
-    if (av > ONE_TOL) pj_ctx_set_errno(-19);
-    return v < 0 ? -M_HALFPI : M_HALFPI;
-  }
-  return asin(v);
-}
-
-function aacos(v) {
-  var ONE_TOL = 1.00000000000001;
-  var av = fabs(v);
-  if (av >= 1) {
-    if (av > ONE_TOL) pj_ctx_set_errno(-19);
-    return (v < 0 ? M_PI : 0);
-  }
-  return acos(v);
-}
-
-function asqrt(v) { return ((v <= 0) ? 0 : sqrt(v)); }
-
-function aatan2(n, d) {
-  var ATOL = 1e-50;
-  return ((fabs(n) < ATOL && fabs(d) < ATOL) ? 0 : atan2(n,d));
-}
 
 
 /*
@@ -12318,6 +12104,542 @@ GeographicLib.PolygonArea = {};
   };
 
 })(GeographicLib.Geodesic, GeographicLib.GeodesicLine, GeographicLib.Math);
+
+
+/*
+ * PolygonArea.js
+ * Transcription of PolygonArea.[ch]pp into JavaScript.
+ *
+ * See the documentation for the C++ class.  The conversion is a literal
+ * conversion from C++.
+ *
+ * The algorithms are derived in
+ *
+ *    Charles F. F. Karney,
+ *    Algorithms for geodesics, J. Geodesy 87, 43-55 (2013);
+ *    https://doi.org/10.1007/s00190-012-0578-z
+ *    Addenda: https://geographiclib.sourceforge.io/geod-addenda.html
+ *
+ * Copyright (c) Charles Karney (2011-2017) <charles@karney.com> and licensed
+ * under the MIT/X11 License.  For more information, see
+ * https://geographiclib.sourceforge.io/
+ */
+
+// Load AFTER GeographicLib/Math.js and GeographicLib/Geodesic.js
+
+(function(
+  /**
+   * @exports GeographicLib/PolygonArea
+   * @description Compute the area of geodesic polygons via the
+   *   {@link module:GeographicLib/PolygonArea.PolygonArea PolygonArea}
+   *   class.
+   */
+  p, g, m, a) {
+
+  var transit, transitdirect;
+  transit = function(lon1, lon2) {
+    // Return 1 or -1 if crossing prime meridian in east or west direction.
+    // Otherwise return zero.
+    var lon12, cross;
+    // Compute lon12 the same way as Geodesic::Inverse.
+    lon1 = m.AngNormalize(lon1);
+    lon2 = m.AngNormalize(lon2);
+    lon12 = m.AngDiff(lon1, lon2).s;
+    cross = lon1 <= 0 && lon2 > 0 && lon12 > 0 ? 1 :
+      (lon2 <= 0 && lon1 > 0 && lon12 < 0 ? -1 : 0);
+    return cross;
+  };
+
+  // an alternate version of transit to deal with longitudes in the direct
+  // problem.
+  transitdirect = function(lon1, lon2) {
+    // We want to compute exactly
+    //   int(floor(lon2 / 360)) - int(floor(lon1 / 360))
+    // Since we only need the parity of the result we can use std::remquo but
+    // this is buggy with g++ 4.8.3 and requires C++11.  So instead we do
+    lon1 = lon1 % 720.0; lon2 = lon2 % 720.0;
+    return ( ((lon2 >= 0 && lon2 < 360) || lon2 < -360 ? 0 : 1) -
+             ((lon1 >= 0 && lon1 < 360) || lon1 < -360 ? 0 : 1) );
+  };
+
+  /**
+   * @class
+   * @property {number} a the equatorial radius (meters).
+   * @property {number} f the flattening.
+   * @property {bool} polyline whether the PolygonArea object describes a
+   *   polyline or a polygon.
+   * @property {number} num the number of vertices so far.
+   * @property {number} lat the current latitude (degrees).
+   * @property {number} lon the current longitude (degrees).
+   * @summary Initialize a PolygonArea object.
+   * @classdesc Computes the area and perimeter of a geodesic polygon.
+   *   This object is usually instantiated by
+   *   {@link module:GeographicLib/Geodesic.Geodesic#Polygon Geodesic.Polygon}.
+   * @param {object} geod a {@link module:GeographicLib/Geodesic.Geodesic
+   *   Geodesic} object.
+   * @param {bool} [polyline = false] if true the new PolygonArea object
+   *   describes a polyline instead of a polygon.
+   */
+  p.PolygonArea = function(geod, polyline) {
+    this._geod = geod;
+    this.a = this._geod.a;
+    this.f = this._geod.f;
+    this._area0 = 4 * Math.PI * geod._c2;
+    this.polyline = !polyline ? false : polyline;
+    this._mask = g.LATITUDE | g.LONGITUDE | g.DISTANCE |
+          (this.polyline ? g.NONE : g.AREA | g.LONG_UNROLL);
+    if (!this.polyline)
+      this._areasum = new a.Accumulator(0);
+    this._perimetersum = new a.Accumulator(0);
+    this.Clear();
+  };
+
+  /**
+   * @summary Clear the PolygonArea object, setting the number of vertices to
+   *   0.
+   */
+  p.PolygonArea.prototype.Clear = function() {
+    this.num = 0;
+    this._crossings = 0;
+    if (!this.polyline)
+      this._areasum.Set(0);
+    this._perimetersum.Set(0);
+    this._lat0 = this._lon0 = this.lat = this.lon = Number.NaN;
+  };
+
+  /**
+   * @summary Add the next vertex to the polygon.
+   * @param {number} lat the latitude of the point (degrees).
+   * @param {number} lon the longitude of the point (degrees).
+   * @description This adds an edge from the current vertex to the new vertex.
+   */
+  p.PolygonArea.prototype.AddPoint = function(lat, lon) {
+    var t;
+    if (this.num === 0) {
+      this._lat0 = this.lat = lat;
+      this._lon0 = this.lon = lon;
+    } else {
+      t = this._geod.Inverse(this.lat, this.lon, lat, lon, this._mask);
+      this._perimetersum.Add(t.s12);
+      if (!this.polyline) {
+        this._areasum.Add(t.S12);
+        this._crossings += transit(this.lon, lon);
+      }
+      this.lat = lat;
+      this.lon = lon;
+    }
+    ++this.num;
+  };
+
+  /**
+   * @summary Add the next edge to the polygon.
+   * @param {number} azi the azimuth at the current the point (degrees).
+   * @param {number} s the length of the edge (meters).
+   * @description This specifies the new vertex in terms of the edge from the
+   *   current vertex.
+   */
+  p.PolygonArea.prototype.AddEdge = function(azi, s) {
+    var t;
+    if (this.num) {
+      t = this._geod.Direct(this.lat, this.lon, azi, s, this._mask);
+      this._perimetersum.Add(s);
+      if (!this.polyline) {
+        this._areasum.Add(t.S12);
+        this._crossings += transitdirect(this.lon, t.lon2);
+      }
+      this.lat = t.lat2;
+      this.lon = t.lon2;
+    }
+    ++this.num;
+  };
+
+  /**
+   * @summary Compute the perimeter and area of the polygon.
+   * @param {bool} reverse if true then clockwise (instead of
+   *   counter-clockwise) traversal counts as a positive area.
+   * @param {bool} sign if true then return a signed result for the area if the
+   *   polygon is traversed in the "wrong" direction instead of returning the
+   *   area for the rest of the earth.
+   * @returns {object} r where r.number is the number of vertices, r.perimeter
+   *   is the perimeter (meters), and r.area (only returned if polyline is
+   *   false) is the area (meters<sup>2</sup>).
+   * @description If the object is a polygon (and not a polygon), the perimeter
+   *   includes the length of a final edge connecting the current point to the
+   *   initial point.  If the object is a polyline, then area is nan.  More
+   *   points can be added to the polygon after this call.
+   */
+  p.PolygonArea.prototype.Compute = function(reverse, sign) {
+    var vals = {number: this.num}, t, tempsum, crossings;
+    if (this.num < 2) {
+      vals.perimeter = 0;
+      if (!this.polyline)
+        vals.area = 0;
+      return vals;
+    }
+    if (this.polyline) {
+      vals.perimeter = this._perimetersum.Sum();
+      return vals;
+    }
+    t = this._geod.Inverse(this.lat, this.lon, this._lat0, this._lon0,
+                           this._mask);
+    vals.perimeter = this._perimetersum.Sum(t.s12);
+    tempsum = new a.Accumulator(this._areasum);
+    tempsum.Add(t.S12);
+    crossings = this._crossings + transit(this.lon, this._lon0);
+    if (crossings & 1)
+      tempsum.Add( (tempsum.Sum() < 0 ? 1 : -1) * this._area0/2 );
+    // area is with the clockwise sense.  If !reverse convert to
+    // counter-clockwise convention.
+    if (!reverse)
+      tempsum.Negate();
+    // If sign put area in (-area0/2, area0/2], else put area in [0, area0)
+    if (sign) {
+      if (tempsum.Sum() > this._area0/2)
+        tempsum.Add( -this._area0 );
+      else if (tempsum.Sum() <= -this._area0/2)
+        tempsum.Add( +this._area0 );
+    } else {
+      if (tempsum.Sum() >= this._area0)
+        tempsum.Add( -this._area0 );
+      else if (tempsum < 0)
+        tempsum.Add( -this._area0 );
+    }
+    vals.area = tempsum.Sum();
+    return vals;
+  };
+
+  /**
+   * @summary Compute the perimeter and area of the polygon with a tentative
+   *   new vertex.
+   * @param {number} lat the latitude of the point (degrees).
+   * @param {number} lon the longitude of the point (degrees).
+   * @param {bool} reverse if true then clockwise (instead of
+   *   counter-clockwise) traversal counts as a positive area.
+   * @param {bool} sign if true then return a signed result for the area if the
+   *   polygon is traversed in the "wrong" direction instead of returning the
+   * @returns {object} r where r.number is the number of vertices, r.perimeter
+   *   is the perimeter (meters), and r.area (only returned if polyline is
+   *   false) is the area (meters<sup>2</sup>).
+   * @description A new vertex is *not* added to the polygon.
+   */
+  p.PolygonArea.prototype.TestPoint = function(lat, lon, reverse, sign) {
+    var vals = {number: this.num + 1}, t, tempsum, crossings, i;
+    if (this.num === 0) {
+      vals.perimeter = 0;
+      if (!this.polyline)
+        vals.area = 0;
+      return vals;
+    }
+    vals.perimeter = this._perimetersum.Sum();
+    tempsum = this.polyline ? 0 : this._areasum.Sum();
+    crossings = this._crossings;
+    for (i = 0; i < (this.polyline ? 1 : 2); ++i) {
+      t = this._geod.Inverse(
+       i === 0 ? this.lat : lat, i === 0 ? this.lon : lon,
+       i !== 0 ? this._lat0 : lat, i !== 0 ? this._lon0 : lon,
+       this._mask);
+      vals.perimeter += t.s12;
+      if (!this.polyline) {
+        tempsum += t.S12;
+        crossings += transit(i === 0 ? this.lon : lon,
+                               i !== 0 ? this._lon0 : lon);
+      }
+    }
+
+    if (this.polyline)
+      return vals;
+
+    if (crossings & 1)
+      tempsum += (tempsum < 0 ? 1 : -1) * this._area0/2;
+    // area is with the clockwise sense.  If !reverse convert to
+    // counter-clockwise convention.
+    if (!reverse)
+      tempsum *= -1;
+    // If sign put area in (-area0/2, area0/2], else put area in [0, area0)
+    if (sign) {
+      if (tempsum > this._area0/2)
+        tempsum -= this._area0;
+      else if (tempsum <= -this._area0/2)
+        tempsum += this._area0;
+    } else {
+      if (tempsum >= this._area0)
+        tempsum -= this._area0;
+      else if (tempsum < 0)
+        tempsum += this._area0;
+    }
+    vals.area = tempsum;
+    return vals;
+  };
+
+  /**
+   * @summary Compute the perimeter and area of the polygon with a tentative
+   *   new edge.
+   * @param {number} azi the azimuth of the edge (degrees).
+   * @param {number} s the length of the edge (meters).
+   * @param {bool} reverse if true then clockwise (instead of
+   *   counter-clockwise) traversal counts as a positive area.
+   * @param {bool} sign if true then return a signed result for the area if the
+   *   polygon is traversed in the "wrong" direction instead of returning the
+   * @returns {object} r where r.number is the number of vertices, r.perimeter
+   *   is the perimeter (meters), and r.area (only returned if polyline is
+   *   false) is the area (meters<sup>2</sup>).
+   * @description A new vertex is *not* added to the polygon.
+   */
+  p.PolygonArea.prototype.TestEdge = function(azi, s, reverse, sign) {
+    var vals = {number: this.num ? this.num + 1 : 0}, t, tempsum, crossings;
+    if (this.num === 0)
+      return vals;
+    vals.perimeter = this._perimetersum.Sum() + s;
+    if (this.polyline)
+      return vals;
+
+    tempsum = this._areasum.Sum();
+    crossings = this._crossings;
+    t = this._geod.Direct(this.lat, this.lon, azi, s, this._mask);
+    tempsum += t.S12;
+    crossings += transitdirect(this.lon, t.lon2);
+    t = this._geod.Inverse(t.lat2, t.lon2, this._lat0, this._lon0, this._mask);
+    vals.perimeter += t.s12;
+    tempsum += t.S12;
+    crossings += transit(t.lon2, this._lon0);
+
+    if (crossings & 1)
+      tempsum += (tempsum < 0 ? 1 : -1) * this._area0/2;
+    // area is with the clockwise sense.  If !reverse convert to
+    // counter-clockwise convention.
+    if (!reverse)
+      tempsum *= -1;
+    // If sign put area in (-area0/2, area0/2], else put area in [0, area0)
+    if (sign) {
+      if (tempsum > this._area0/2)
+        tempsum -= this._area0;
+      else if (tempsum <= -this._area0/2)
+        tempsum += this._area0;
+    } else {
+      if (tempsum >= this._area0)
+        tempsum -= this._area0;
+      else if (tempsum < 0)
+        tempsum += this._area0;
+    }
+    vals.area = tempsum;
+    return vals;
+  };
+
+})(GeographicLib.PolygonArea, GeographicLib.Geodesic,
+   GeographicLib.Math, GeographicLib.Accumulator);
+
+
+function pj_qsfn(sinphi, e, one_es) {
+  var EPS = 1e-7;
+  var con;
+  if (e >= EPS) {
+    con = e * sinphi;
+    // Proj.4 check for div0 and returns HUGE_VAL
+    // this returns +/- Infinity; effect should be same
+    return (one_es * (sinphi / (1 - con * con) -
+       (0.5 / e) * log ((1 - con) / (1 + con))));
+  } else
+    return (sinphi + sinphi);
+}
+
+
+function pj_msfn(sinphi, cosphi, es) {
+  return (cosphi / sqrt (1 - es * sinphi * sinphi));
+}
+
+
+pj_add(pj_aea, 'aea', 'Albers Equal Area', '\n\tConic Sph&Ell\n\tlat_1= lat_2=');
+pj_add(pj_leac, 'leac', 'Lambert Equal Area Conic', '\n\tConic, Sph&Ell\n\tlat_1= south');
+
+function pj_aea(P) {
+  var phi1 = pj_param(P.params, "rlat_1");
+  var phi2 = pj_param(P.params, "rlat_2");
+  pj_aea_init(P, phi1, phi2);
+}
+
+function pj_leac(P) {
+  var phi1 = pj_param(P.params, "rlat_1");
+  var phi2 = pj_param(P.params, "bsouth") ? -M_HALFPI : M_HALFPI;
+  pj_aea_init(P, phi1, phi2);
+}
+
+function pj_aea_init(P, phi1, phi2) {
+  var ec, n, c, dd, n2, rho0, rho, en, ellips,
+      cosphi, sinphi, secant, ml2, m2, ml1, m1;
+
+  P.fwd = e_fwd;
+  P.inv = e_inv;
+
+  if (fabs(phi1 + phi2) < EPS10) e_error(-21);
+  n = sinphi = sin(phi1);
+  cosphi = cos(phi1);
+  secant = fabs(phi1 - phi2) >= EPS10;
+  if ((ellips = (P.es > 0))) {
+    en = pj_enfn(P.es);
+    m1 = pj_msfn(sinphi, cosphi, P.es);
+    ml1 = pj_qsfn(sinphi, P.e, P.one_es);
+    if (secant) { /* secant cone */
+      sinphi = sin(phi2);
+      cosphi = cos(phi2);
+      m2 = pj_msfn(sinphi, cosphi, P.es);
+      ml2 = pj_qsfn(sinphi, P.e, P.one_es);
+      // Ignoring Proj.4 div0 check (above checks should prevent this)
+      n = (m1 * m1 - m2 * m2) / (ml2 - ml1);
+    }
+    ec = 1 - 0.5 * P.one_es * log((1 - P.e) / (1 + P.e)) / P.e;
+    c = m1 * m1 + n * ml1;
+    dd = 1 / n;
+    rho0 = dd * sqrt(c - n * pj_qsfn(sin(P.phi0), P.e, P.one_es));
+  } else {
+    if (secant) n = 0.5 * (n + sin(phi2));
+    n2 = n + n;
+    c = cosphi * cosphi + n2 * sinphi;
+    dd = 1 / n;
+    rho0 = dd * sqrt(c - n2 * sin(P.phi0));
+  }
+
+  function e_fwd(lp, xy) {
+    var lam = lp.lam;
+    var rho;
+    if ((rho = c - (ellips ? n * pj_qsfn(sin(lp.phi),
+      P.e, P.one_es) : n2 * sin(lp.phi))) < 0) f_error();
+    rho = dd * sqrt(rho);
+    xy.x = rho * sin(lam *= n);
+    xy.y = rho0 - rho * cos(lam);
+  }
+
+  function e_inv(xy, lp) {
+    var TOL7 = 1e-7,
+        x = xy.x,
+        y = rho0 - xy.y,
+        rho = hypot(x, y);
+    if (rho != 0) {
+      if (n < 0) {
+        rho = -rho;
+        x = -x;
+        y = -y;
+      }
+      lp.phi = rho / dd;
+      if (ellips) {
+        lp.phi = (c - lp.phi * lp.phi) / n;
+        if (fabs(ec - fabs(lp.phi)) > TOL7) {
+          if ((lp.phi = phi1_(lp.phi, P.e, P.one_es)) == HUGE_VAL)
+            i_error();
+        } else
+          lp.phi = lp.phi < 0 ? -M_HALFPI : M_HALFPI;
+      } else if (fabs(lp.phi = (c - lp.phi * lp.phi) / n2) <= 1)
+        lp.phi = asin(lp.phi);
+      else
+        lp.phi = lp.phi < 0 ? -M_HALFPI : M_HALFPI;
+      lp.lam = atan2(x, y) / n;
+    } else {
+      lp.lam = 0;
+      lp.phi = n > 0 ? M_HALFPI : -M_HALFPI;
+    }
+  }
+
+  /* determine latitude angle phi-1 */
+  function phi1_(qs, Te, Tone_es) {
+    var N_ITER = 15,
+        EPSILON = 1e-7,
+        TOL = 1e-10;
+    var Phi, sinpi, cospi, con, com, dphi, i;
+    Phi = asin (0.5 * qs);
+    if (Te < EPSILON)
+      return Phi;
+    i = N_ITER;
+    do {
+      sinpi = sin(Phi);
+      cospi = cos(Phi);
+      con = Te * sinpi;
+      com = 1 - con * con;
+      dphi = 0.5 * com * com / cospi * (qs / Tone_es -
+         sinpi / com + 0.5 / Te * log ((1 - con) / (1 + con)));
+      Phi += dphi;
+    } while (fabs(dphi) > TOL && --i);
+    return i ? Phi : HUGE_VAL;
+  }
+}
+
+
+
+function pj_enfn(es) {
+  var C00 = 1,
+      C02 = 0.25,
+      C04 = 0.046875,
+      C06 = 0.01953125,
+      C08 = 0.01068115234375,
+      C22 = 0.75,
+      C44 = 0.46875,
+      C46 = 0.01302083333333333333,
+      C48 = 0.00712076822916666666,
+      C66 = 0.36458333333333333333,
+      C68 = 0.00569661458333333333,
+      C88 = 0.3076171875;
+  var en = [], t;
+  en[0] = C00 - es * (C02 + es * (C04 + es * (C06 + es * C08)));
+  en[1] = es * (C22 - es * (C04 + es * (C06 + es * C08)));
+  en[2] = (t = es * es) * (C44 - es * (C46 + es * C48));
+  en[3] = (t *= es) * (C66 - es * C68);
+  en[4] = t * es * C88;
+  return en;
+}
+
+function pj_mlfn(phi, sphi, cphi, en) {
+  cphi *= sphi;
+  sphi *= sphi;
+  return (en[0] * phi - cphi * (en[1] + sphi*(en[2] + sphi*(en[3] + sphi*en[4]))));
+}
+
+function pj_inv_mlfn(arg, es, en) {
+  var EPS = 1e-11,
+      MAX_ITER = 10,
+      EN_SIZE = 5;
+
+  var k = 1 / (1 - es),
+      s, t, phi;
+
+  phi = arg;
+  for (var i = MAX_ITER; i>0; --i) { /* rarely goes over 2 iterations */
+    s = sin(phi);
+    t = 1 - es * s * s;
+    phi -= t = (pj_mlfn(phi, s, cos(phi), en) - arg) * (t * sqrt(t)) * k;
+    if (fabs(t) < EPS) {
+      return phi;
+    }
+  }
+  pj_ctx_set_errno( ctx, -17 );
+  return phi;
+}
+
+
+
+function aasin(v) {
+  var ONE_TOL = 1.00000000000001;
+  var av = fabs(v);
+  if (av >= 1) {
+    if (av > ONE_TOL) pj_ctx_set_errno(-19);
+    return v < 0 ? -M_HALFPI : M_HALFPI;
+  }
+  return asin(v);
+}
+
+function aacos(v) {
+  var ONE_TOL = 1.00000000000001;
+  var av = fabs(v);
+  if (av >= 1) {
+    if (av > ONE_TOL) pj_ctx_set_errno(-19);
+    return (v < 0 ? M_PI : 0);
+  }
+  return acos(v);
+}
+
+function asqrt(v) { return ((v <= 0) ? 0 : sqrt(v)); }
+
+function aatan2(n, d) {
+  var ATOL = 1e-50;
+  return ((fabs(n) < ATOL && fabs(d) < ATOL) ? 0 : atan2(n,d));
+}
 
 
 pj_add(pj_aeqd, 'aeqd', 'Azimuthal Equidistant', '\n\tAzi, Sph&Ell\n\tlat_0 guam');
@@ -18565,7 +18887,8 @@ api.internal = {
   wkt_get_geogcs_name: wkt_get_geogcs_name,
   wkt_stringify: wkt_stringify,
   mproj_insert_libcache: mproj_insert_libcache,
-  mproj_search_libcache: mproj_search_libcache
+  mproj_search_libcache: mproj_search_libcache,
+  GeographicLib: GeographicLib
 };
 
 if (typeof define == 'function' && define.amd) {
