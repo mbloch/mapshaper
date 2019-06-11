@@ -52,6 +52,7 @@ mapshaper-svg-style
 mapshaper-symbols
 mapshaper-target
 mapshaper-uniq
+mapshaper-source-utils
 */
 
 // TODO: consider refactoring to allow modules
@@ -125,7 +126,7 @@ api.runCommand = function(cmd, catalog, cb) {
     }
 
     if (opts.source) {
-      source = internal.findCommandSource(opts.source, catalog, opts);
+      source = internal.findCommandSource(internal.convertSourceName(opts.source, targets), catalog, opts);
     }
 
     if (name == 'affine') {
@@ -423,26 +424,3 @@ internal.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-internal.findCommandSource = function(sourceName, catalog, opts) {
-  var sources = catalog.findCommandTargets(sourceName);
-  var sourceDataset, source;
-  if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-    stop(utils.format('Source [%s] matched multiple layers', sourceName));
-  } else if (sources.length == 1) {
-    source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
-  } else {
-    // assuming opts.source is a filename
-    // don't need to build topology, because:
-    //    join -- don't need topology
-    //    clip/erase -- topology is built later, when datasets are combined
-    sourceDataset = api.importFile(sourceName, utils.defaults({no_topology: true}, opts));
-    if (!sourceDataset) {
-      stop(utils.format('Unable to find source [%s]', sourceName));
-    } else if (sourceDataset.layers.length > 1) {
-      stop('Multiple-layer sources are not supported');
-    }
-    // mark as disposable to indicate that data can be mutated
-    source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
-  }
-  return source;
-};
