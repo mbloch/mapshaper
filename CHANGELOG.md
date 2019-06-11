@@ -1,3 +1,6 @@
+v0.4.119
+* Fix Travis build error
+
 v0.4.118
 * Added string interpolation to source layer name in -clip/-erase, using template literal syntax (e.g. -clip source='${target}-clip')
 
