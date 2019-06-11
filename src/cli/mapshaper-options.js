@@ -299,6 +299,9 @@ internal.getOptionParser = function() {
       describe: "radius of buffer, as an expression or a constant",
       DEFAULT: true
     })
+    .option("tolerance", {
+      // describe: "acceptable deviation for approximating curves"
+    })
     .option("backtrack", {
       type: 'integer'
     })
@@ -306,6 +309,9 @@ internal.getOptionParser = function() {
       type: 'flag'
     })
     .option("debug-mosaic", {
+      type: 'flag'
+    })
+    .option("no-cleanup", {
       type: 'flag'
     })
     .option("units", {
@@ -320,6 +326,16 @@ internal.getOptionParser = function() {
     .option("no-snap", noSnapOpt)
     .option("allow-empty", {
       describe: 'allow null geometries (removed by default)',
+      type: 'flag'
+    })
+    // TODO: consider making this the standard way of removing null geometry
+    // (currently there's -filter remove-empty)
+    // .option('empty', {
+    //   describe: 'remove features with null geometry',
+    //   type: 'flag'
+    // })
+    .option("arcs", {
+      describe: 'remove unused arcs',
       type: 'flag'
     })
     .option("no-arc-dissolve", {

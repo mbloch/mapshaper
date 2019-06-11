@@ -49,7 +49,12 @@ internal.getGeodeticSegmentFunction = function(dataset, highPrecision) {
   };
 };
 
-
+internal.getGeodeticDistanceFunction = function(dataset, highPrecision) {
+  var P = internal.getDatasetCRS(dataset);
+  if (!internal.isLatLngCRS(P)) {
+    return internal.getPlanarSegmentEndpoint;
+  }
+};
 
 internal.bearingDegrees = function(a, b, c, d) {
   return geom.bearing(a, b, c, d) * 180 / Math.PI;

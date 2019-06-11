@@ -84,7 +84,6 @@ function MosaicIndex(lyr, nodes, optsArg) {
     }
   }
 
-
   function getTileIdsByShapeIds(shapeIds) {
     var uniqIds = [];
     var tileId, tileIds, i, j;
@@ -103,7 +102,6 @@ function MosaicIndex(lyr, nodes, optsArg) {
     fetchedTileIndex.clearIds(uniqIds);
     return uniqIds;
   }
-
 }
 
 // Convert polygon shapes to tiles

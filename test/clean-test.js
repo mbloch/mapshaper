@@ -14,7 +14,30 @@ function clean(shapes, arcs) {
   return dataset.layers[0].shapes;
 }
 
+function cleanArcs(dataset) {
+  api.cleanLayers(dataset.layers, dataset, {arcs: true});
+}
+
+
 describe('mapshaper-clean.js', function () {
+
+  describe('clean arcs', function () {
+    it('removes unused arcs', function () {
+      var arcs = [[[0, 0], [1, 0]], [[0, 1], [1, 1]], [[0, 2], [1, 2]], [[0, 3], [1, 3]]];
+      var dataset = {
+        layers: [{
+          geometry_type: 'polyline',
+          shapes: [[[0, 1], [3]]]
+        }],
+        arcs: new ArcCollection(arcs)
+      };
+      cleanArcs(dataset);
+      var expectedShapes = [[[0, 1], [2]]];
+      var expectedArcs = [[[0, 0], [1, 0]], [[0, 1], [1, 1]], [[0, 3], [1, 3]]];
+      assert.deepEqual(dataset.arcs.toArray(), expectedArcs)
+      assert.deepEqual(dataset.layers[0].shapes, expectedShapes)
+    })
+  })
 
   describe('-clean command', function () {
 
