@@ -624,16 +624,6 @@ function ArcCollection() {
   };
 }
 
-ArcCollection.prototype.inspect = function() {
-  var n = this.getPointCount(), str;
-  if (n < 50) {
-    str = JSON.stringify(this.toArray());
-  } else {
-    str = '[ArcCollection (' + this.size() + ')]';
-  }
-  return str;
-};
-
 // Remove duplicate coords and NaNs
 internal.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
   var n = 0, n2 = 0; // counters
