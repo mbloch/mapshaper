@@ -1,3 +1,6 @@
+v0.4.120
+* Fix for several GUI glitches
+
 v0.4.119
 * Fix Travis build error
 

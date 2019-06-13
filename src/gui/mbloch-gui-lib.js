@@ -780,7 +780,7 @@ function MouseWheel(mouse) {
       wheelDirection;
 
   if (window.onmousewheel !== undefined) { // ie, webkit
-    window.addEventListener('mousewheel', handleWheel);
+    window.addEventListener('mousewheel', handleWheel, {passive: false});
   } else { // firefox
     window.addEventListener('DOMMouseScroll', handleWheel);
   }
