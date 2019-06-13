@@ -796,7 +796,7 @@ function MouseWheel(mouse) {
       wheelDirection;
 
   if (window.onmousewheel !== undefined) { // ie, webkit
-    window.addEventListener('mousewheel', handleWheel);
+    window.addEventListener('mousewheel', handleWheel, {passive: false});
   } else { // firefox
     window.addEventListener('DOMMouseScroll', handleWheel);
   }
@@ -4379,9 +4379,7 @@ function MshpMap(gui) {
     if (!_activeLyr) return; // stop here if no layers have been selected
 
     // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
-    gui.model.getDatasets().forEach(function(dataset) {
-      delete dataset.displayArcs;
-    });
+    clearAllDisplayArcs();
 
     // Reproject all visible map layers
     if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
@@ -4408,7 +4406,8 @@ function MshpMap(gui) {
 
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs the next time they are needed for rendering
-      delete e.dataset.displayArcs;
+      // delete e.dataset.displayArcs;
+      clearAllDisplayArcs();
 
       // reset simplification after projection (thresholds have changed)
       // TODO: preserve simplification pct (need to record pct before change)
@@ -4601,6 +4600,12 @@ function MshpMap(gui) {
   function getFrameData() {
     var frameLyr = internal.findFrameLayer(model);
     return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+  }
+
+  function clearAllDisplayArcs() {
+    model.getDatasets().forEach(function(o) {
+      delete o.displayArcs;
+    });
   }
 
   function updateVisibleMapLayers() {
