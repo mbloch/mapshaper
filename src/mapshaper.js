@@ -1,6 +1,7 @@
 /* @requires
 mapshaper-commands
 mapshaper-cli-utils
+mapshaper-bbox-clipping
 */
 
 api.cli = cli;

@@ -4,7 +4,6 @@ mapshaper-path-division
 mapshaper-polygon-clipping
 mapshaper-polyline-clipping
 mapshaper-point-clipping
-mapshaper-bbox-clipping
 mapshaper-arc-dissolve
 mapshaper-filter-slivers
 mapshaper-split

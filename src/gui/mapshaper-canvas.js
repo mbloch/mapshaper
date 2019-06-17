@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib */
+/* @requires mapshaper-gui-lib mapshaper-bbox-clipping */
 
 GUI.getPixelRatio = function() {
   var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
