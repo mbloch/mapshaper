@@ -29,30 +29,24 @@ api.rectangles = function(targetLyr, targetDataset, opts) {
     })
   };
   var dataset = internal.importGeoJSON(geojson, {});
-  var merged = internal.mergeDatasets([targetDataset, dataset]);
-  var outputLyr = dataset.layers[0];
-  targetDataset.arcs = merged.arcs;
+  var outputLayers = internal.mergeDatasetsIntoDataset(targetDataset, [dataset]);
   if (!opts.no_replace) {
-    outputLyr.name = targetLyr.name || outputLyr.name;
+    outputLayers[0].name = targetLyr.name || outputLayers[0].name;
   }
-  return [outputLyr];
+  return outputLayers;
 };
 
 // Create rectangles around one or more target layers
 //
 api.rectangle2 = function(target, opts) {
-  var outputLayers = [];
   var datasets = target.layers.map(function(lyr) {
     var dataset = api.rectangle({layer: lyr, dataset: target.dataset}, opts);
-    outputLayers.push(dataset.layers[0]);
     if (!opts.no_replace) {
       dataset.layers[0].name = lyr.name || dataset.layers[0].name;
     }
     return dataset;
   });
-  var merged = internal.mergeDatasets([target.dataset].concat(datasets));
-  target.dataset.arcs = merged.arcs;
-  return outputLayers;
+  return internal.mergeDatasetsIntoDataset(target.dataset, datasets);
 };
 
 api.rectangle = function(source, opts) {

@@ -134,7 +134,7 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'buffer') {
       // internal.applyCommand(api.buffer, targetLayers, targetDataset, opts);
-      catalog.addDataset(api.buffer(targetLayers, targetDataset, opts));
+      outputLayers = api.buffer(targetLayers, targetDataset, opts);
 
     } else if (name == 'data-fill') {
       internal.applyCommand(api.dataFill, targetLayers, arcs, opts);

@@ -24,7 +24,7 @@
 	"scripts": {
 		"test": "node node_modules/mocha/bin/mocha --check-leaks -R dot",
 		"pretest": "./build",
-		"prepublish": "npm test",
+		"prepublishOnly": "npm test",
 		"postpublish": "./release"
 	},
 	"main": "./mapshaper.js",

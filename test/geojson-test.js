@@ -94,6 +94,19 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(Utils.pluck(data.layers[0].data.getRecords(), 'NAME'), ["District of Columbia", "Arlington", "Fairfax County", "Alexandria", "Fairfax City", "Manassas"]);
     })
 
+    it('Able to import GeometryCollection containing null geometry (non-standard)', function() {
+      var geojson = {
+        type: 'GeometryCollection',
+        geometries: [
+          null,
+          {type: 'Point', coordinates: [1, 1]}
+        ]
+      };
+      var dataset = api.internal.importGeoJSON(geojson, {});
+      assert.deepEqual(dataset.layers[0].shapes, [null, [[1, 1]]]);
+
+    })
+
     it('Able to import Feature containing GeometryCollection of same-type objects', function() {
       var json = {
           "type": "Feature",

@@ -1,30 +1,20 @@
-/* @requires mapshaper-common, mapshaper-shape-utils, mapshaper-point-utils */
+/* @requires
+mapshaper-common
+mapshaper-shape-utils
+mapshaper-point-utils
+mapshaper-layer-utils
+mapshaper-merging
+*/
 
-// utility functions for datasets and layers
+// utility functions for datasets
 
-// Divide a collection of features with mixed types into layers of a single type
-// (Used for importing TopoJSON and GeoJSON features)
-internal.divideFeaturesByType = function(shapes, properties, types) {
-  var typeSet = utils.uniq(types);
-  var layers = typeSet.map(function(geoType) {
-    var p = [],
-        s = [],
-        dataNulls = 0,
-        rec;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      if (types[i] != geoType) continue;
-      if (geoType) s.push(shapes[i]);
-      rec = properties[i];
-      p.push(rec);
-      if (!rec) dataNulls++;
-    }
-    return {
-      geometry_type: geoType,
-      shapes: s,
-      data: dataNulls < s.length ? new DataTable(p) : null
-    };
-  });
-  return layers;
+internal.mergeDatasetsIntoDataset = function(dataset, datasets) {
+  var merged = internal.mergeDatasets([dataset].concat(datasets));
+  var mergedLayers = datasets.reduce(function(memo, dataset) {
+    return memo.concat(dataset.layers);
+  }, []);
+  dataset.arcs = merged.arcs;
+  return mergedLayers;
 };
 
 // Split into datasets with one layer each
@@ -67,51 +57,6 @@ internal.copyDatasetForRenaming = function(dataset) {
   }, dataset);
 };
 
-// make a stub copy if the no_replace option is given, else pass thru src layer
-internal.getOutputLayer = function(src, opts) {
-  return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
-};
-
-// Make a deep copy of a layer
-internal.copyLayer = function(lyr) {
-  var copy = internal.copyLayerShapes(lyr);
-  if (copy.data) {
-    copy.data = copy.data.clone();
-  }
-  return copy;
-};
-
-// Make a shallow copy of a path layer; replace layer.shapes with an array that is
-// filtered to exclude paths containing any of the arc ids contained in arcIds.
-// arcIds: an array of (non-negative) arc ids to exclude
-internal.filterPathLayerByArcIds = function(pathLyr, arcIds) {
-  var index = arcIds.reduce(function(memo, id) {
-    memo[id] = true;
-    return memo;
-  }, {});
-  // deep copy shapes; this could be optimized to only copy shapes that are modified
-  var shapes = internal.cloneShapes(pathLyr.shapes);
-  internal.editShapes(shapes, onPath); // remove paths that are missing shapes
-  return utils.defaults({shapes: shapes}, pathLyr);
-
-  function onPath(path) {
-    for (var i=0; i<path.length; i++) {
-      if (absArcId(path[i]) in index) {
-        return null;
-      }
-    }
-    return path;
-  }
-};
-
-internal.copyLayerShapes = function(lyr) {
-  var copy = utils.extend({}, lyr);
-  if (lyr.shapes) {
-    copy.shapes = internal.cloneShapes(lyr.shapes);
-  }
-  return copy;
-};
-
 internal.getDatasetBounds = function(dataset) {
   var bounds = new Bounds();
   dataset.layers.forEach(function(lyr) {
@@ -152,46 +97,6 @@ internal.pruneArcs = function(dataset) {
   }
 };
 
-internal.countMultiPartFeatures = function(shapes) {
-  var count = 0;
-  for (var i=0, n=shapes.length; i<n; i++) {
-    if (shapes[i] && shapes[i].length > 1) count++;
-  }
-  return count;
-};
-
-internal.getFeatureCount = function(lyr) {
-  var count = 0;
-  if (lyr.data) {
-    count = lyr.data.size();
-  } else if (lyr.shapes) {
-    count = lyr.shapes.length;
-  }
-  return count;
-};
-
-internal.getLayerBounds = function(lyr, arcs) {
-  var bounds = null;
-  if (lyr.geometry_type == 'point') {
-    bounds = internal.getPointBounds(lyr.shapes);
-  } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    bounds = internal.getPathBounds(lyr.shapes, arcs);
-  } else {
-    // just return null if layer has no bounds
-    // error("Layer is missing a valid geometry type");
-  }
-  return bounds;
-};
-
-
-internal.getPathBounds = function(shapes, arcs) {
-  var bounds = new Bounds();
-  internal.forEachArcId(shapes, function(id) {
-    arcs.mergeArcBounds(id, bounds);
-  });
-  return bounds;
-};
-
 // replace cut layers in-sequence (to maintain layer indexes)
 // append any additional new layers
 internal.replaceLayers = function(dataset, cutLayers, newLayers) {
@@ -212,12 +117,6 @@ internal.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
-internal.isolateLayer = function(layer, dataset) {
-  return utils.defaults({
-    layers: dataset.layers.filter(function(lyr) {return lyr == layer;})
-  }, dataset);
-};
-
 // Transform the points in a dataset in-place; don't clean up corrupted shapes
 internal.transformPoints = function(dataset, f) {
   if (dataset.arcs) {
@@ -228,8 +127,4 @@ internal.transformPoints = function(dataset, f) {
       internal.transformPointsInLayer(lyr, f);
     }
   });
-};
-
-internal.initDataTable = function(lyr) {
-  lyr.data = new DataTable(internal.getFeatureCount(lyr));
 };

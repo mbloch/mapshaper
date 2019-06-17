@@ -317,6 +317,8 @@ internal.getOptionParser = function() {
     .option('units', {
       describe: 'distance units (meters|miles|km|feet) (default is meters)'
     })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
   parser.command('clean')

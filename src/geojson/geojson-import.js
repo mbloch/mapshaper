@@ -13,13 +13,17 @@ function GeoJSONParser(opts) {
 
   this.parseObject = function(o) {
     var geom, rec;
-    if (o.type == 'Feature') {
+    if (!o || !o.type) {
+      // not standard GeoJSON -- importing as null record
+      // (useful when parsing GeoJSON generated internally)
+      geom = null;
+    } else if (o.type == 'Feature') {
       geom = o.geometry;
       rec = o.properties || {};
       if ('id' in o) {
         rec[idField] = o.id;
       }
-    } else if (o.type) {
+    } else {
       geom = o;
     }
     // TODO: improve so geometry_type option skips features instead of creating null geometries
