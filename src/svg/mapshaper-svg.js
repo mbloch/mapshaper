@@ -26,6 +26,10 @@ internal.exportSVG = function(dataset, opts) {
   // invert_y setting for screen coordinates and geojson polygon generation
   utils.extend(opts, {invert_y: true});
   size = internal.transformCoordsForSVG(dataset, opts);
+
+  // error if one or more svg_data fields are not present in any layers
+  if (opts.svg_data) internal.validateSvgDataFields(dataset.layers, opts.svg_data);
+
   svg = dataset.layers.map(function(lyr) {
     var obj = internal.exportLayerForSVG(lyr, dataset, opts);
     SVG.embedImages(obj, symbols);
@@ -81,12 +85,32 @@ internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
   return children;
 };
 
+internal.validateSvgDataFields = function(layers, fieldsArg) {
+  var missingFields = fieldsArg.reduce(function(memo, field) {
+    if (!fieldExists(layers, field)) {
+      memo.push(field);
+    }
+    return memo;
+  }, []);
+
+  if (missingFields.length && missingFields.indexOf('*') == -1) {
+    stop("Missing data field(s):", missingFields.join(', '));
+  }
+
+  function fieldExists(layers, field) {
+    return utils.some(layers, function(lyr) {
+      return lyr.data && lyr.data.fieldExists(field) || false;
+    });
+  }
+};
+
 internal.addDataAttributesToSVG = function(children, table, fieldsArg) {
   var allFields = table.getFields();
   var dataFields = fieldsArg.indexOf('*') > -1 ? allFields.concat() : fieldsArg;
   var missingFields = utils.difference(dataFields, allFields);
   if (missingFields.length > 0) {
-    stop("Missing data field(s):", missingFields.join(', '));
+    dataFields = utils.difference(dataFields, missingFields);
+    // stop("Missing data field(s):", missingFields.join(', '));
   }
   var records = table.getRecords();
   var data = internal.exportDataAttributesForSVG(records, dataFields);
@@ -99,7 +123,7 @@ internal.addDataAttributesToSVG = function(children, table, fieldsArg) {
 };
 
 internal.exportDataAttributesForSVG = function(records, fields) {
-  var validRxp = /^[a-z_][a-z0-9_-]*$/;
+  var validRxp = /^[a-z_][a-z0-9_-]*$/i;
   var invalidRxp = /^xml/;
   var validFields = fields.filter(function(name) {
     return validRxp.test(name) && !invalidRxp.test(name);
@@ -112,7 +136,8 @@ internal.exportDataAttributesForSVG = function(records, fields) {
   return records.map(function(rec) {
     var obj = {};
     for (var i=0; i<validFields.length; i++) {
-      obj['data-' + validFields[i]] = internal.validDataAttributeValue(rec[validFields[i]]);
+      obj['data-' + validFields[i].toLowerCase()] =
+        internal.validDataAttributeValue(rec[validFields[i]]);
     }
     return obj;
   });

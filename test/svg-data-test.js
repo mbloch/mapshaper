@@ -1,6 +1,7 @@
 var api = require('../'),
     SVG = api.internal.svg,
-    assert = require('assert');
+    assert = require('assert'),
+    internal = api.internal;
 
 
 describe('svg-data (mapshaper-svg.js)', function () {
@@ -31,6 +32,26 @@ describe('svg-data (mapshaper-svg.js)', function () {
     })
   })
 
+  describe('validateSvgDataFields()', function () {
+    it('error if one or more fields are missing from all layers', function () {
+      var layer = {
+        data: new internal.DataTable([{foo: 'bar'}])
+      }
+      assert.throws(function() {
+        internal.validateSvgDataFields([layer], ['baz'])
+      })
+    })
+    it('no error if one or more layer contains all fields', function () {
+      var layers = [{
+        data: new internal.DataTable([{foo: 'bar'}])
+      }, {
+        data: new internal.DataTable([{bar: 'foo'}])
+      }]
+      internal.validateSvgDataFields(layers, ['foo', 'bar']);
+      assert(true); // no error was thrown
+    })
+  })
+
   describe('exportDataAttributesForSVG()', function () {
 
     it('invalid data-* attribute names are removed', function () {
@@ -41,7 +62,7 @@ describe('svg-data (mapshaper-svg.js)', function () {
         "CODE": 'd',
         "👍ok": 'e'
       }];
-      var expect = [{}];
+      var expect = [{'data-code': 'd'}]; // UC names are lowercased
       var fields = Object.keys(records[0]);
       var out = api.internal.exportDataAttributesForSVG(records, fields);
       assert.deepEqual(out, expect)
