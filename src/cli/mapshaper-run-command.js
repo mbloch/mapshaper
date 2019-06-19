@@ -366,11 +366,6 @@ api.runCommand = function(cmd, catalog, cb) {
       });
     }
 
-    // delete arcs if no longer needed (e.g. after -points command)
-    if (targetDataset) {
-      internal.cleanupArcs(targetDataset);
-    }
-
     // integrate output layers into the target dataset
     if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       if (opts.no_replace) {
@@ -391,6 +386,12 @@ api.runCommand = function(cmd, catalog, cb) {
       }
       // use command output as new default target
       catalog.setDefaultTarget(outputLayers, targetDataset);
+    }
+
+    // delete arcs if no longer needed (e.g. after -points command)
+    // (after output layers have been integrated)
+    if (targetDataset) {
+      internal.cleanupArcs(targetDataset);
     }
   } catch(e) {
     return done(e);

@@ -1,8 +1,5 @@
-
-
-// Returns a function for generating GeoJSON geometries (MultiLineString or MultiPolygon)
-internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
-  var maker = internal.getPathBufferMaker(arcs, geod, getBearing, opts);
+internal.getPolylineBufferMaker2 = function(arcs, geod, getBearing, opts) {
+  var maker = internal.getPathBufferMaker2(arcs, geod, getBearing, opts);
   var geomType = opts.geometry_type;
   // polyline output could be used for debugging
   var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
@@ -12,32 +9,31 @@ internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
   }
 
   function pathBufferCoords(pathArcs, dist) {
-    var pathCoords = maker(pathArcs, dist);
-    var revPathArcs;
+    var partialRings = maker(pathArcs, dist);
+    var coords, revPathArcs;
     if (geomType == 'polyline') {
       revPathArcs = internal.reversePath(pathArcs.concat());
-      pathCoords = pathCoords.concat(maker(revPathArcs, dist));
+      partialRings = partialRings.concat(maker(revPathArcs, dist));
     }
-    pathCoords.push(pathCoords[0]); // close path
-    return outputGeom == 'polyline' ? pathCoords : [pathCoords];
+    return outputGeom == 'polyline' ? coords : coords.map(polygonCoords);
   }
 
+  // Returns a GeoJSON Geometry (MultiLineString or MultiPolygon) or null
   return function(shape, dist) {
     var geom = {
       type: outputGeom == 'polyline' ? 'MultiLineString' : 'MultiPolygon',
       coordinates: []
     };
     for (var i=0; i<shape.length; i++) {
-      geom.coordinates.push(pathBufferCoords(shape[i], dist));
+      geom.coordinates = geom.coordinates.concat(pathBufferCoords(shape[i], dist));
     }
     return geom.coordinates.length == 0 ? null : geom;
   };
 };
 
 
-internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
-
-  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 10;
+internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
+  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var tolerance;
@@ -52,7 +48,7 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
     var endDir = startDir + angle;
     var dir = startDir + increment;
     while (dir < endDir) {
-      addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+      addBufferVertex(arr, geod(x, y, dir, dist));
       dir += increment;
     }
   }
@@ -62,7 +58,7 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
     var endDir = startDir + angle;
     var dir = startDir + increment;
     while (dir < endDir) {
-      addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+      addBufferVertex(arr, geod(x, y, dir, dist));
       dir += increment;
     }
   }
@@ -122,15 +118,17 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
     return delta;
   }
 
-  function addBufferVertex(arr, d, maxBacktrack) {
+  function addBufferVertex(arr, d) {
     var a, b, c, hit;
-    for (var i=0, idx = arr.length - 3; i<maxBacktrack && idx >= 0; i++, idx--) {
+    for (var i=0, idx = arr.length - 3; i<backtrackSteps && idx >= 0; i++, idx--) {
       c = arr[arr.length - 1];
       a = arr[idx];
       b = arr[idx + 1];
       // TODO: consider using a geodetic intersection function for lat-long datasets
       hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
       if (hit) {
+        // if (internal.segmentTurn(a, b, c, d) == 1) console.log('enter')
+
         // TODO: handle collinear segments
         // if (hit.length != 2) console.log('COLLINEAR', hit)
         // segments intersect -- replace two internal segment endpoints with xx point
@@ -143,11 +141,14 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
   }
 
   return function(path, dist) {
+    var rings = [];
     var left = [];
+    var right = [];
     var x0, y0, x1, y1, x2, y2;
     var p1, p2;
     var bearing, prevBearing, firstBearing, joinAngle;
     var i = 0;
+    var inside = false;
     pathIter.init(path);
 
     while (pathIter.hasNext()) {
@@ -160,6 +161,7 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
       if (i >= 1) {
         prevBearing = bearing;
         bearing = getBearing(x1, y1, x2, y2);
+        // shift original polyline segment to the left by buffer distance
         p1 = geod(x1, y1, bearing - 90, dist);
         p2 = geod(x2, y2, bearing - 90, dist);
         // left.push([x1, y1], p1) // debug extrusion lines
@@ -175,14 +177,14 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
         joinAngle = getJoinAngle(prevBearing, bearing);
         if (veryCloseToPrevPoint(left, p1[0], p1[1])) {
           // skip first point
-          addBufferVertex(left, p2, backtrackSteps);
+          addBufferVertex(left, p2);
         } else if (joinAngle > 0) {
           addRoundJoin(left, x1, y1, prevBearing - 90, joinAngle, dist);
-          addBufferVertex(left, p1, backtrackSteps);
-          addBufferVertex(left, p2, backtrackSteps);
+          addBufferVertex(left, p1);
+          addBufferVertex(left, p2);
         } else {
-          addBufferVertex(left, p1, backtrackSteps);
-          addBufferVertex(left, p2, backtrackSteps);
+          addBufferVertex(left, p1);
+          addBufferVertex(left, p2);
         }
       }
       i++;
@@ -199,41 +201,7 @@ internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
       // add a cap to finish open path
       left.push.apply(left, makeCap(x2, y2, bearing, dist));
     }
-    return left;
+
+    return rings;
   };
-};
-
-internal.addBufferVertex = function(arr, d, maxBacktrack) {
-  var a, b, c, hit;
-  for (var i=0, idx = arr.length - 3; i<maxBacktrack && idx >= 0; i++, idx--) {
-    c = arr[arr.length - 1];
-    a = arr[idx];
-    b = arr[idx + 1];
-    // TODO: consider using a geodetic intersection function for lat-long datasets
-    hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
-    if (hit) {
-      // TODO: handle collinear segments
-      if (hit.length != 2) {
-        // console.log("COLLINEAR", hit)
-      }
-      // segments intersect -- replace two internal segment endpoints with xx point
-      while (arr.length > idx + 1) arr.pop();
-      // TODO: check proximity of hit to several points
-      arr.push(hit);
-    }
-  }
-
-  // TODO: check proximity to previous point
-  arr.push(d); // add new point
-};
-
-// Exclude segments with non-intersecting bounding boxes before
-// calling intersection function
-// Possibly slightly faster than direct call... not worth it?
-internal.bufferIntersection = function(ax, ay, bx, by, cx, cy, dx, dy) {
-  if (ax < cx && ax < dx && bx < cx && bx < dx ||
-      ax > cx && ax > dx && bx > cx && bx > dx ||
-      ay < cy && ay < dy && by < cy && by < dy ||
-      ay > cy && ay > dy && by > cy && by > dy) return null;
-  return geom.segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
 };

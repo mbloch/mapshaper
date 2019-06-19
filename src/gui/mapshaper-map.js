@@ -244,7 +244,7 @@ function MshpMap(gui) {
   function arcsMayHaveChanged(flags) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
-      flags.slice || flags.affine || flags.rectangle || false;
+      flags.slice || flags.affine || flags.rectangle || flags.buffer || false;
   }
 
   // Update map frame after user navigates the map in frame edit mode

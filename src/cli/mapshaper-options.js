@@ -305,6 +305,9 @@ internal.getOptionParser = function() {
     .option('backtrack', {
       type: 'integer'
     })
+    .option('v2', { // use v2 method
+      type: 'flag'
+    })
     .option('debug-division', {
       type: 'flag'
     })

@@ -73,7 +73,7 @@ internal.segmentTurn = function(p1, p2, p3, p4) {
       cy = p4[1] + dy,
       orientation = geom.orient2D(ax, ay, bx, by, cx, cy);
     if (!orientation) return 0;
-    return orientation < 1 ? -1 : 1;
+    return orientation < 0 ? 1 : -1;
 };
 
 internal.bearingDegrees = function(a, b, c, d) {

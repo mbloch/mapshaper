@@ -24,7 +24,7 @@ internal.makeBufferLayer = function(lyr, dataset, opts) {
   var outputLayers = internal.mergeDatasetsIntoDataset(dataset, [dataset2]);
   lyr2 = outputLayers[0];
   lyr2.name = lyr.name;
-  if (lyr.data) {
+  if (lyr.data && !lyr2.data) {
     lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
   }
   return outputLayers;
