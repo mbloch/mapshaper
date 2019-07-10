@@ -1,3 +1,6 @@
+v0.4.121
+* Added -drop holes option, for removing holes from polygons.
+
 v0.4.120
 * Fix for several GUI glitches
 
