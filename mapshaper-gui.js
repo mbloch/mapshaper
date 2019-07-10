@@ -3571,7 +3571,7 @@ function Popup(gui, onNext, onPrev) {
 
   // table can be null (if layer has no attribute data) or a DataTable
   self.show = function(id, ids, table, pinned, editable) {
-    var rec = table ? (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) : {};
+    var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
     var maxHeight = parent.node().clientHeight - 36;
     self.hide(); // clean up if panel is already open
     render(content, rec, table, editable);
@@ -4509,7 +4509,7 @@ function MshpMap(gui) {
   function arcsMayHaveChanged(flags) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
-      flags.slice || flags.affine || flags.rectangle || false;
+      flags.slice || flags.affine || flags.rectangle || flags.buffer || false;
   }
 
   // Update map frame after user navigates the map in frame edit mode
