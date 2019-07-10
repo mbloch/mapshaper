@@ -1,4 +1,4 @@
-v0.4.121
+v0.4.122
 * Added -drop holes option, for removing holes from polygons.
 
 v0.4.120
