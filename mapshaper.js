@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.121';
+VERSION = '0.4.122';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -6962,6 +6962,15 @@ internal.splitPathByIds = function(path, indexes) {
 
 
 // __mapshaper-self-intersection-v1
+
+// TODO: also delete positive-space rings nested inside holes
+internal.deleteHoles = function(lyr, arcs) {
+  internal.editShapes(lyr.shapes, function(path) {
+    if (geom.getPathArea(path, arcs) <= 0) {
+      return null; // null deletes the path
+    }
+  });
+};
 
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
@@ -14884,11 +14893,14 @@ api.drop = function(catalog, layers, dataset, opts) {
   layers.forEach(function(lyr) {
     var fields = lyr.data && opts.fields;
     var allFields = fields && internal.fieldListContainsAll(fields, lyr.data.getFields());
-    var deletion = !fields && !opts.geometry || allFields && opts.geometry;
+    var deletion = !fields && !opts.geometry && !opts.holes || allFields && opts.geometry;
     if (opts.geometry) {
       updateArcs |= internal.layerHasPaths(lyr);
       delete lyr.shapes;
       delete lyr.geometry_type;
+    }
+    if (opts.holes && lyr.geometry_type == 'polygon') {
+      internal.deleteHoles(lyr, dataset.arcs);
     }
     if (deletion) {
       catalog.deleteLayer(lyr, dataset);
@@ -24660,6 +24672,12 @@ internal.getOptionParser = function() {
     .option('backtrack', {
       type: 'integer'
     })
+    .option('type', {
+      // left, right, outer, inner (default is full buffer)
+    })
+    .option('planar', {
+      type: 'flag'
+    })
     .option('v2', { // use v2 method
       type: 'flag'
     })
@@ -24787,6 +24805,10 @@ internal.getOptionParser = function() {
     .flag('no_arg') // prevent trying to pass a list of layer names as default option
     .option('geometry', {
       describe: 'delete all geometry from the target layer(s)',
+      type: 'flag'
+    })
+    .option('holes', {
+      describe: 'delete holes from polygons',
       type: 'flag'
     })
     .option('fields', {
