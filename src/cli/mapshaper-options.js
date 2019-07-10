@@ -305,6 +305,12 @@ internal.getOptionParser = function() {
     .option('backtrack', {
       type: 'integer'
     })
+    .option('type', {
+      // left, right, outer, inner (default is full buffer)
+    })
+    .option('planar', {
+      type: 'flag'
+    })
     .option('v2', { // use v2 method
       type: 'flag'
     })
@@ -432,6 +438,10 @@ internal.getOptionParser = function() {
     .flag('no_arg') // prevent trying to pass a list of layer names as default option
     .option('geometry', {
       describe: 'delete all geometry from the target layer(s)',
+      type: 'flag'
+    })
+    .option('holes', {
+      describe: 'delete holes from polygons',
       type: 'flag'
     })
     .option('fields', {

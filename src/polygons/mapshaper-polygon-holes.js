@@ -1,7 +1,18 @@
 /* @require
 mapshaper-self-intersection
+mapshaper-shape-utils
+mapshaper-shape-geom
 */
 // __mapshaper-self-intersection-v1
+
+// TODO: also delete positive-space rings nested inside holes
+internal.deleteHoles = function(lyr, arcs) {
+  internal.editShapes(lyr.shapes, function(path) {
+    if (geom.getPathArea(path, arcs) <= 0) {
+      return null; // null deletes the path
+    }
+  });
+};
 
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
