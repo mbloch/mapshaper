@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.122';
+VERSION = '0.4.123';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -8497,7 +8497,8 @@ function GeoJSONParser(opts) {
   };
 }
 
-internal.importGeoJSON = function(src, opts) {
+internal.importGeoJSON = function(src, optsArg) {
+  var opts = optsArg || {};
   var supportedGeometries = Object.keys(GeoJSON.pathImporters),
       srcObj = utils.isString(src) ? JSON.parse(src) : src,
       importer = new GeoJSONParser(opts),
@@ -17670,6 +17671,205 @@ internal.exportJSONTable = function(lyr) {
 
 
 
+utils.replaceFileExtension = function(path, ext) {
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
+};
+
+utils.getPathSep = function(path) {
+  // TODO: improve
+  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
+};
+
+// Parse the path to a file without using Node
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      sep = utils.getPathSep(path),
+      parts = path.split(sep),
+      i;
+
+  if (parts.length == 1) {
+    obj.filename = parts[0];
+    obj.directory = "";
+  } else {
+    obj.filename = parts.pop();
+    obj.directory = parts.join(sep);
+  }
+  i = obj.filename.lastIndexOf('.');
+  if (i > -1) {
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
+  } else {
+    obj.extension = "";
+    obj.basename = obj.filename;
+    obj.pathbase = path;
+  }
+  return obj;
+};
+
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
+utils.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = utils.mergeNames(memo, name);
+    }
+    return memo;
+  }, "");
+};
+
+utils.getOutputFileBase = function(dataset) {
+  var inputFiles = dataset.info && dataset.info.input_files;
+  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
+};
+
+
+
+
+// Guess the type of a data file from file extension, or return null if not sure
+internal.guessInputFileType = function(file) {
+  var ext = utils.getFileExtension(file || '').toLowerCase(),
+      type = null;
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
+    type = ext;
+  } else if (/json$/.test(ext)) {
+    type = 'json';
+  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
+    type = 'text';
+  }
+  return type;
+};
+
+internal.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+    type = 'json';
+  }
+  return type;
+};
+
+internal.guessInputType = function(file, content) {
+  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
+};
+
+//
+internal.stringLooksLikeJSON = function(str) {
+  return /^\s*[{[]/.test(String(str));
+};
+
+internal.couldBeDsvFile = function(name) {
+  var ext = utils.getFileExtension(name).toLowerCase();
+  return /csv|tsv|txt$/.test(ext);
+};
+
+internal.isZipFile = function(file) {
+  return /\.zip$/i.test(file);
+};
+
+internal.isSupportedOutputFormat = function(fmt) {
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+  return types.indexOf(fmt) > -1;
+};
+
+internal.getFormatName = function(fmt) {
+  return {
+    geojson: 'GeoJSON',
+    topojson: 'TopoJSON',
+    json: 'JSON records',
+    dsv: 'CSV',
+    dbf: 'DBF',
+    shapefile: 'Shapefile',
+    svg: 'SVG'
+  }[fmt] || '';
+};
+
+// Assumes file at @path is one of Mapshaper's supported file types
+internal.isSupportedBinaryInputType = function(path) {
+  var ext = utils.getFileExtension(path).toLowerCase();
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
+};
+
+// Detect extensions of some unsupported file types, for cmd line validation
+internal.filenameIsUnsupportedOutputType = function(file) {
+  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+  return rxp.test(file);
+};
+
+
+
+internal.getOutputFormat = function(dataset, opts) {
+  var outFile = opts.file || null,
+      inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
+      outFmt = null;
+
+  // if user has specified a format, use that
+  if (opts.format) {
+    return opts.format;
+  }
+
+  // if an output filename is given, try to infer format from filename etc.
+  if (outFile) {
+    outFmt = internal.inferOutputFormat(outFile, inFmt);
+  } else if (inFmt) {
+    outFmt = inFmt;
+  }
+
+  if (outFmt == 'json' && internal.datasetHasGeometry(dataset)) {
+    // special case: inferred output format is a json table (either because
+    // the output file has a .json extension or because the input file was a
+    // json table), but the output dataset contains shapes
+    outFmt = 'geojson';
+  }
+
+  return outFmt || null;
+};
+
+// Infer output format by considering file name and (optional) input format
+internal.inferOutputFormat = function(file, inputFormat) {
+  var ext = utils.getFileExtension(file).toLowerCase(),
+      format = null;
+  if (ext == 'shp') {
+    format = 'shapefile';
+  } else if (ext == 'dbf') {
+    format = 'dbf';
+  } else if (ext == 'svg') {
+    format = 'svg';
+  } else if (/json$/.test(ext)) {
+    format = 'geojson';
+    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
+      format = 'topojson';
+    } else if (ext == 'json' && inputFormat == 'json') {
+      // .json -> json table is not always the best inference...
+      // additional logic should be applied downstream
+      format = 'json'; // JSON table
+    }
+  } else if (internal.couldBeDsvFile(file)) {
+    format = 'dsv';
+  } else if (inputFormat) {
+    format = inputFormat;
+  }
+  return format;
+};
+
+
+
+
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
@@ -17789,20 +17989,6 @@ internal.exporters = {
   svg: internal.exportSVG
 };
 
-internal.getOutputFormat = function(dataset, opts) {
-  var outFile = opts.file || null,
-      inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
-      outFmt = null;
-
-  if (opts.format) {
-    outFmt = opts.format;
-  } else if (outFile) {
-    outFmt = internal.inferOutputFormat(outFile, inFmt);
-  } else if (inFmt) {
-    outFmt = inFmt;
-  }
-  return outFmt;
-};
 
 // Generate json file with bounding boxes and names of each export layer
 // TODO: consider making this a command, or at least make format settable
@@ -18122,174 +18308,6 @@ internal.readDelimLines = function(reader, offs, delim, encoding, lines) {
     offset: i + offs,
     text: internal.bufferToString(buf, encoding, 0, i)
   };
-};
-
-
-
-
-utils.replaceFileExtension = function(path, ext) {
-  var info = utils.parseLocalPath(path);
-  return info.pathbase + '.' + ext;
-};
-
-utils.getPathSep = function(path) {
-  // TODO: improve
-  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
-};
-
-// Parse the path to a file without using Node
-// Assumes: not a directory path
-utils.parseLocalPath = function(path) {
-  var obj = {},
-      sep = utils.getPathSep(path),
-      parts = path.split(sep),
-      i;
-
-  if (parts.length == 1) {
-    obj.filename = parts[0];
-    obj.directory = "";
-  } else {
-    obj.filename = parts.pop();
-    obj.directory = parts.join(sep);
-  }
-  i = obj.filename.lastIndexOf('.');
-  if (i > -1) {
-    obj.extension = obj.filename.substr(i + 1);
-    obj.basename = obj.filename.substr(0, i);
-    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
-  } else {
-    obj.extension = "";
-    obj.basename = obj.filename;
-    obj.pathbase = path;
-  }
-  return obj;
-};
-
-utils.getFileBase = function(path) {
-  return utils.parseLocalPath(path).basename;
-};
-
-utils.getFileExtension = function(path) {
-  return utils.parseLocalPath(path).extension;
-};
-
-utils.getPathBase = function(path) {
-  return utils.parseLocalPath(path).pathbase;
-};
-
-utils.getCommonFileBase = function(names) {
-  return names.reduce(function(memo, name, i) {
-    if (i === 0) {
-      memo = utils.getFileBase(name);
-    } else {
-      memo = utils.mergeNames(memo, name);
-    }
-    return memo;
-  }, "");
-};
-
-utils.getOutputFileBase = function(dataset) {
-  var inputFiles = dataset.info && dataset.info.input_files;
-  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
-};
-
-
-
-
-// Guess the type of a data file from file extension, or return null if not sure
-internal.guessInputFileType = function(file) {
-  var ext = utils.getFileExtension(file || '').toLowerCase(),
-      type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
-    type = ext;
-  } else if (/json$/.test(ext)) {
-    type = 'json';
-  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
-    type = 'text';
-  }
-  return type;
-};
-
-internal.guessInputContentType = function(content) {
-  var type = null;
-  if (utils.isString(content)) {
-    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
-  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-    type = 'json';
-  }
-  return type;
-};
-
-internal.guessInputType = function(file, content) {
-  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
-};
-
-//
-internal.stringLooksLikeJSON = function(str) {
-  return /^\s*[{[]/.test(String(str));
-};
-
-internal.couldBeDsvFile = function(name) {
-  var ext = utils.getFileExtension(name).toLowerCase();
-  return /csv|tsv|txt$/.test(ext);
-};
-
-// Infer output format by considering file name and (optional) input format
-internal.inferOutputFormat = function(file, inputFormat) {
-  var ext = utils.getFileExtension(file).toLowerCase(),
-      format = null;
-  if (ext == 'shp') {
-    format = 'shapefile';
-  } else if (ext == 'dbf') {
-    format = 'dbf';
-  } else if (ext == 'svg') {
-    format = 'svg';
-  } else if (/json$/.test(ext)) {
-    format = 'geojson';
-    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
-      format = 'topojson';
-    } else if (ext == 'json' && inputFormat == 'json') {
-      format = 'json'; // JSON table
-    }
-  } else if (internal.couldBeDsvFile(file)) {
-    format = 'dsv';
-  } else if (inputFormat) {
-    format = inputFormat;
-  }
-  return format;
-};
-
-internal.isZipFile = function(file) {
-  return /\.zip$/i.test(file);
-};
-
-internal.isSupportedOutputFormat = function(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
-  return types.indexOf(fmt) > -1;
-};
-
-internal.getFormatName = function(fmt) {
-  return {
-    geojson: 'GeoJSON',
-    topojson: 'TopoJSON',
-    json: 'JSON records',
-    dsv: 'CSV',
-    dbf: 'DBF',
-    shapefile: 'Shapefile',
-    svg: 'SVG'
-  }[fmt] || '';
-};
-
-// Assumes file at @path is one of Mapshaper's supported file types
-internal.isSupportedBinaryInputType = function(path) {
-  var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
-};
-
-// Detect extensions of some unsupported file types, for cmd line validation
-internal.filenameIsUnsupportedOutputType = function(file) {
-  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
-  return rxp.test(file);
 };
 
 
@@ -19764,22 +19782,39 @@ internal.countInteriorVertices = function(arcs) {
 
 
 
-api.innerlines = function(lyr, arcs, opts) {
+api.lines = function(lyr, dataset, opts) {
   opts = opts || {};
-  internal.requirePolygonLayer(lyr);
-  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null;
-  var classifier = internal.getArcClassifier(lyr.shapes, arcs, filter);
-  var lines = internal.extractInnerLines(lyr.shapes, classifier);
-  var outputLyr = internal.createLineLayer(lines, null);
-
-  if (lines.length === 0) {
-    message("No shared boundaries were found");
+  if (lyr.geometry_type == 'point') {
+    return internal.pointsToLines(lyr, dataset, opts);
+  } else if (lyr.geometry_type == 'polygon') {
+    return internal.polygonsToLines(lyr, dataset.arcs, opts);
+  } else {
+    internal.requirePolygonLayer(lyr, "Command requires a polygon or point layer");
   }
-  outputLyr.name = opts.no_replace ? null : lyr.name;
-  return outputLyr;
 };
 
-api.lines = function(lyr, arcs, opts) {
+// TODO: add option to make multiple line features by grouping points
+// TOOD: automatically convert rings into separate shape parts
+internal.pointsToLines = function(lyr, dataset, opts) {
+  var coords = internal.pointCoordsToLineCoords(lyr.shapes);
+  var geojson = {type: 'LineString', coordinates: coords};
+  var dataset2 = internal.importGeoJSON(geojson);
+  var outputLayers = internal.mergeDatasetsIntoDataset(dataset, [dataset2]);
+  if (!opts.no_replace) {
+    outputLayers[0].name = lyr.name || outputLayers[0].name;
+  }
+  return outputLayers;
+};
+
+internal.pointCoordsToLineCoords = function(shapes) {
+  var coords = [];
+  internal.forEachPoint(shapes, function(p) {
+    coords.push(p.concat());
+  });
+  return coords;
+};
+
+internal.polygonsToLines = function(lyr, arcs, opts) {
   opts = opts || {};
   var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
       decorateRecord = opts.each ? internal.getLineRecordDecorator(opts.each, lyr, arcs) : null,
@@ -19790,7 +19825,6 @@ api.lines = function(lyr, arcs, opts) {
       records = [],
       outputLyr;
 
-  internal.requirePolygonLayer(lyr, "Command requires a polygon layer");
   if (fields.length > 0 && !lyr.data) {
     stop("Missing a data table");
   }
@@ -19831,6 +19865,7 @@ api.lines = function(lyr, arcs, opts) {
   }
 };
 
+
 // kludgy way to implement each= option of -lines command
 internal.getLineRecordDecorator = function(exp, lyr, arcs) {
   // repurpose arc classifier function to convert arc ids to shape ids of original polygons
@@ -19848,6 +19883,7 @@ internal.getLineRecordDecorator = function(exp, lyr, arcs) {
     return rec;
   };
 };
+
 
 internal.createLineLayer = function(lines, records) {
   return {
@@ -19909,6 +19945,24 @@ internal.extractLines = function(shapes, classify) {
   }
 
   return lines;
+};
+
+
+
+
+api.innerlines = function(lyr, arcs, opts) {
+  opts = opts || {};
+  internal.requirePolygonLayer(lyr);
+  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null;
+  var classifier = internal.getArcClassifier(lyr.shapes, arcs, filter);
+  var lines = internal.extractInnerLines(lyr.shapes, classifier);
+  var outputLyr = internal.createLineLayer(lines, null);
+
+  if (lines.length === 0) {
+    message("No shared boundaries were found");
+  }
+  outputLyr.name = opts.no_replace ? null : lyr.name;
+  return outputLyr;
 };
 
 
@@ -23411,17 +23465,17 @@ api.runCommand = function(cmd, catalog, cb) {
       api.affine(targetLayers, targetDataset, opts);
 
     } else if (name == 'buffer') {
-      // internal.applyCommand(api.buffer, targetLayers, targetDataset, opts);
+      // applyCommandToEachLayer(api.buffer, targetLayers, targetDataset, opts);
       outputLayers = api.buffer(targetLayers, targetDataset, opts);
 
     } else if (name == 'data-fill') {
-      internal.applyCommand(api.dataFill, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.dataFill, targetLayers, arcs, opts);
 
     } else if (name == 'cluster') {
-      internal.applyCommand(api.cluster, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.cluster, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {
-      internal.applyCommand(api.calc, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clean') {
       api.cleanLayers(targetLayers, targetDataset, opts);
@@ -23433,7 +23487,7 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.colorizer(opts);
 
     } else if (name == 'dissolve') {
-      outputLayers = internal.applyCommand(api.dissolve, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
@@ -23446,34 +23500,34 @@ api.runCommand = function(cmd, catalog, cb) {
       // api.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
-      internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
+      applyCommandToEachLayer(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
     } else if (name == 'erase') {
       outputLayers = api.eraseLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'explode') {
-      outputLayers = internal.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter') {
-      outputLayers = internal.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
-      internal.applyCommand(api.filterFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(api.filterFields, targetLayers, opts.fields);
 
     } else if (name == 'filter-geom') {
-      internal.applyCommand(api.filterGeom, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.filterGeom, targetLayers, arcs, opts);
 
     } else if (name == 'filter-islands') {
-      internal.applyCommand(api.filterIslands, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-slivers') {
-      internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'frame') {
       api.frame(catalog, source, opts);
 
     } else if (name == 'fuzzy-join') {
-      internal.applyCommand(api.fuzzyJoin, targetLayers, arcs, source, opts);
+      applyCommandToEachLayer(api.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
@@ -23496,16 +23550,16 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.printInfo(catalog.getLayers(), targetLayers);
 
     } else if (name == 'inspect') {
-      internal.applyCommand(api.inspect, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
 
     } else if (name == 'innerlines') {
-      outputLayers = internal.applyCommand(api.innerlines, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
-      internal.applyCommand(api.join, targetLayers, targetDataset, source, opts);
+      applyCommandToEachLayer(api.join, targetLayers, targetDataset, source, opts);
 
     } else if (name == 'lines') {
-      outputLayers = internal.applyCommand(api.lines, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.lines, targetLayers, targetDataset, opts);
 
     } else if (name == 'merge-layers') {
       // returned layers are modified input layers
@@ -23537,7 +23591,7 @@ api.runCommand = function(cmd, catalog, cb) {
       catalog.addDataset(api.polygonGrid(targetDataset, opts));
 
     } else if (name == 'points') {
-      outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
 
     } else if (name == 'polygons') {
       outputLayers = api.polygons(targetLayers, targetDataset, opts);
@@ -23574,10 +23628,10 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'rectangles') {
-      outputLayers = internal.applyCommand(api.rectangles, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(api.rectangles, targetLayers, targetDataset, opts);
 
     } else if (name == 'rename-fields') {
-      internal.applyCommand(api.renameFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(api.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
@@ -23606,31 +23660,31 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'sort') {
-      internal.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      outputLayers = internal.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
 
     } else if (name == 'split-on-grid') {
-      outputLayers = internal.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
       api.stitch(targetDataset);
 
     } else if (name == 'style') {
-      internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(api.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'symbols') {
-      internal.applyCommand(api.symbols, targetLayers, opts);
+      applyCommandToEachLayer(api.symbols, targetLayers, opts);
 
     } else if (name == 'subdivide') {
-      outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+      outputLayers = applyCommandToEachLayer(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'target') {
       internal.target(catalog, opts);
 
     } else if (name == 'uniq') {
-      internal.applyCommand(api.uniq, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");
@@ -23690,7 +23744,7 @@ internal.outputLayersAreDifferent = function(output, input) {
 };
 
 // Apply a command to an array of target layers
-internal.applyCommand = function(func, targetLayers) {
+function applyCommandToEachLayer(func, targetLayers) {
   var args = utils.toArray(arguments).slice(2);
   return targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
@@ -23701,7 +23755,7 @@ internal.applyCommand = function(func, targetLayers) {
     }
     return memo;
   }, []);
-};
+}
 
 
 
@@ -24983,7 +25037,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('lines')
-    .describe('convert polygons to polylines, classified by edge type')
+    .describe('convert a polygon or point layer to a polyline layer')
     .option('fields', {
       DEFAULT: true,
       describe: 'optional comma-sep. list of fields to create a hierarchy',
