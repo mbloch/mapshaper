@@ -7,6 +7,7 @@ mapshaper-dataset-utils
 mapshaper-rounding
 mapshaper-delim-export
 mapshaper-json-table
+mapshaper-output-format
 dbf-export
 */
 
@@ -129,20 +130,6 @@ internal.exporters = {
   svg: internal.exportSVG
 };
 
-internal.getOutputFormat = function(dataset, opts) {
-  var outFile = opts.file || null,
-      inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
-      outFmt = null;
-
-  if (opts.format) {
-    outFmt = opts.format;
-  } else if (outFile) {
-    outFmt = internal.inferOutputFormat(outFile, inFmt);
-  } else if (inFmt) {
-    outFmt = inFmt;
-  }
-  return outFmt;
-};
 
 // Generate json file with bounding boxes and names of each export layer
 // TODO: consider making this a command, or at least make format settable

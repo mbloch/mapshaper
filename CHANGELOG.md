@@ -1,3 +1,6 @@
+v0.4.123
+* Now, -lines command converts a layer of points to a single polyline
+
 v0.4.122
 * Added -drop holes option, for removing holes from polygons.
 

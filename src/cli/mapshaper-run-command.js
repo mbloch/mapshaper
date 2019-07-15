@@ -29,6 +29,7 @@ mapshaper-innerlines
 mapshaper-inspect
 mapshaper-join
 mapshaper-keep-shapes
+mapshaper-lines
 mapshaper-merge-files
 mapshaper-merge-layers
 mapshaper-overlay
@@ -133,17 +134,17 @@ api.runCommand = function(cmd, catalog, cb) {
       api.affine(targetLayers, targetDataset, opts);
 
     } else if (name == 'buffer') {
-      // internal.applyCommand(api.buffer, targetLayers, targetDataset, opts);
+      // applyCommandToEachLayer(api.buffer, targetLayers, targetDataset, opts);
       outputLayers = api.buffer(targetLayers, targetDataset, opts);
 
     } else if (name == 'data-fill') {
-      internal.applyCommand(api.dataFill, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.dataFill, targetLayers, arcs, opts);
 
     } else if (name == 'cluster') {
-      internal.applyCommand(api.cluster, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.cluster, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {
-      internal.applyCommand(api.calc, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clean') {
       api.cleanLayers(targetLayers, targetDataset, opts);
@@ -155,7 +156,7 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.colorizer(opts);
 
     } else if (name == 'dissolve') {
-      outputLayers = internal.applyCommand(api.dissolve, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
@@ -168,34 +169,34 @@ api.runCommand = function(cmd, catalog, cb) {
       // api.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
-      internal.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
+      applyCommandToEachLayer(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
     } else if (name == 'erase') {
       outputLayers = api.eraseLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'explode') {
-      outputLayers = internal.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter') {
-      outputLayers = internal.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
-      internal.applyCommand(api.filterFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(api.filterFields, targetLayers, opts.fields);
 
     } else if (name == 'filter-geom') {
-      internal.applyCommand(api.filterGeom, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.filterGeom, targetLayers, arcs, opts);
 
     } else if (name == 'filter-islands') {
-      internal.applyCommand(api.filterIslands, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-slivers') {
-      internal.applyCommand(api.filterSlivers, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'frame') {
       api.frame(catalog, source, opts);
 
     } else if (name == 'fuzzy-join') {
-      internal.applyCommand(api.fuzzyJoin, targetLayers, arcs, source, opts);
+      applyCommandToEachLayer(api.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
@@ -218,16 +219,16 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.printInfo(catalog.getLayers(), targetLayers);
 
     } else if (name == 'inspect') {
-      internal.applyCommand(api.inspect, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
 
     } else if (name == 'innerlines') {
-      outputLayers = internal.applyCommand(api.innerlines, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
-      internal.applyCommand(api.join, targetLayers, targetDataset, source, opts);
+      applyCommandToEachLayer(api.join, targetLayers, targetDataset, source, opts);
 
     } else if (name == 'lines') {
-      outputLayers = internal.applyCommand(api.lines, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.lines, targetLayers, targetDataset, opts);
 
     } else if (name == 'merge-layers') {
       // returned layers are modified input layers
@@ -259,7 +260,7 @@ api.runCommand = function(cmd, catalog, cb) {
       catalog.addDataset(api.polygonGrid(targetDataset, opts));
 
     } else if (name == 'points') {
-      outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
 
     } else if (name == 'polygons') {
       outputLayers = api.polygons(targetLayers, targetDataset, opts);
@@ -296,10 +297,10 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'rectangles') {
-      outputLayers = internal.applyCommand(api.rectangles, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(api.rectangles, targetLayers, targetDataset, opts);
 
     } else if (name == 'rename-fields') {
-      internal.applyCommand(api.renameFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(api.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
@@ -328,31 +329,31 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'sort') {
-      internal.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      outputLayers = internal.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
 
     } else if (name == 'split-on-grid') {
-      outputLayers = internal.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
       api.stitch(targetDataset);
 
     } else if (name == 'style') {
-      internal.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(api.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'symbols') {
-      internal.applyCommand(api.symbols, targetLayers, opts);
+      applyCommandToEachLayer(api.symbols, targetLayers, opts);
 
     } else if (name == 'subdivide') {
-      outputLayers = internal.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+      outputLayers = applyCommandToEachLayer(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'target') {
       internal.target(catalog, opts);
 
     } else if (name == 'uniq') {
-      internal.applyCommand(api.uniq, targetLayers, arcs, opts);
+      applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");
@@ -412,7 +413,7 @@ internal.outputLayersAreDifferent = function(output, input) {
 };
 
 // Apply a command to an array of target layers
-internal.applyCommand = function(func, targetLayers) {
+function applyCommandToEachLayer(func, targetLayers) {
   var args = utils.toArray(arguments).slice(2);
   return targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
@@ -423,5 +424,5 @@ internal.applyCommand = function(func, targetLayers) {
     }
     return memo;
   }, []);
-};
+}
 

@@ -38,31 +38,6 @@ internal.couldBeDsvFile = function(name) {
   return /csv|tsv|txt$/.test(ext);
 };
 
-// Infer output format by considering file name and (optional) input format
-internal.inferOutputFormat = function(file, inputFormat) {
-  var ext = utils.getFileExtension(file).toLowerCase(),
-      format = null;
-  if (ext == 'shp') {
-    format = 'shapefile';
-  } else if (ext == 'dbf') {
-    format = 'dbf';
-  } else if (ext == 'svg') {
-    format = 'svg';
-  } else if (/json$/.test(ext)) {
-    format = 'geojson';
-    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
-      format = 'topojson';
-    } else if (ext == 'json' && inputFormat == 'json') {
-      format = 'json'; // JSON table
-    }
-  } else if (internal.couldBeDsvFile(file)) {
-    format = 'dsv';
-  } else if (inputFormat) {
-    format = inputFormat;
-  }
-  return format;
-};
-
 internal.isZipFile = function(file) {
   return /\.zip$/i.test(file);
 };

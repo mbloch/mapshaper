@@ -616,7 +616,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('lines')
-    .describe('convert polygons to polylines, classified by edge type')
+    .describe('convert a polygon or point layer to a polyline layer')
     .option('fields', {
       DEFAULT: true,
       describe: 'optional comma-sep. list of fields to create a hierarchy',

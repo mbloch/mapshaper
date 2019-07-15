@@ -36,7 +36,8 @@ function GeoJSONParser(opts) {
   };
 }
 
-internal.importGeoJSON = function(src, opts) {
+internal.importGeoJSON = function(src, optsArg) {
+  var opts = optsArg || {};
   var supportedGeometries = Object.keys(GeoJSON.pathImporters),
       srcObj = utils.isString(src) ? JSON.parse(src) : src,
       importer = new GeoJSONParser(opts),
