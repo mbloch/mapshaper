@@ -62,7 +62,7 @@ internal.getOptionParser = function() {
         describe: 'use a JS expression to select a subset of features'
       },
       whereOpt2 = {
-        describe: 'Filter polygon boundaries using a JS expression (with A and B)'
+        describe: 'filter polygon boundaries using a JS expression (with A and B)'
       },
       eachOpt2 = {
         describe: 'apply a JS expression to each polygon boundary (with A and B)'
@@ -619,7 +619,7 @@ internal.getOptionParser = function() {
     .describe('convert a polygon or point layer to a polyline layer')
     .option('fields', {
       DEFAULT: true,
-      describe: 'field(s) to create a hierarchy of boundaries',
+      describe: 'field(s) to create a hierarchy of boundary lines',
       type: 'strings'
     })
     .option('where', whereOpt2)
