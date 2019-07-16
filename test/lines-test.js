@@ -39,6 +39,34 @@ describe('mapshaper-lines.js', function () {
       });
     });
 
+    it('-lines groupby=<field> works', function (done) {
+      var points = [{x: 0, y: 0, group:'a'}, {x: 0, y: 1, group:'a'}, {x: 1, y: 2, group:'b'}, {x: 2, y: 2, group:'b'}, {x: 3, y: 3, group:'c'}];
+      var cmd = '-i points.json -points -lines groupby=group -o lines.json';
+      var target = [{
+        type: 'Feature',
+        properties: {group: 'a'},
+        geometry: {
+          type: 'LineString',
+          coordinates: [[0, 0], [0, 1]]
+        }
+      }, {
+        type: 'Feature',
+        properties: {group: 'b'},
+        geometry: {
+          type: 'LineString',
+          coordinates: [[1, 2], [2, 2]]
+        }
+      }, {
+        type: 'Feature',
+        properties: {group: 'c'},
+        geometry: null
+      }];
+      api.applyCommands(cmd, {'points.json': points}, function(err, out) {
+        var lines = JSON.parse(out['lines.json']);
+        assert.deepEqual(lines.features, target)
+        done();
+      });
+    });
   });
 
   //  TEST DATASETS

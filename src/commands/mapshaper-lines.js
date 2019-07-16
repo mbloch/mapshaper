@@ -11,11 +11,10 @@ api.lines = function(lyr, dataset, opts) {
   }
 };
 
-// TODO: add option to make multiple line features by grouping points
-// TOOD: automatically convert rings into separate shape parts
 internal.pointsToLines = function(lyr, dataset, opts) {
-  var coords = internal.pointCoordsToLineCoords(lyr.shapes);
-  var geojson = {type: 'LineString', coordinates: coords};
+  var geojson = opts.groupby ?
+    internal.groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
+    internal.pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
   var dataset2 = internal.importGeoJSON(geojson);
   var outputLayers = internal.mergeDatasetsIntoDataset(dataset, [dataset2]);
   if (!opts.no_replace) {
@@ -24,12 +23,39 @@ internal.pointsToLines = function(lyr, dataset, opts) {
   return outputLayers;
 };
 
-internal.pointCoordsToLineCoords = function(shapes) {
+internal.groupedPointsToLineGeoJSON = function(lyr, field, opts) {
+  var groups = [];
+  var getGroupId = internal.getCategoryClassifier([field], lyr.data);
+  var dataOpts = utils.defaults({fields: [field]}, opts);
+  var records = internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
+  var features;
+  lyr.shapes.forEach(function(shape, i) {
+    var groupId = getGroupId(i);
+    if (groupId in groups === false) {
+      groups[groupId] = [];
+    }
+    groups[groupId].push(shape);
+  });
+  features = groups.map(function(shapes, i) {
+    return {
+      type: 'Feature',
+      properties: records[i],
+      geometry: shapes.length > 1 ? internal.pointShapesToLineGeometry(shapes) : null
+    };
+  });
+  return {
+    type: 'FeatureCollection',
+    features: features
+  };
+};
+
+// TOOD: automatically convert rings into separate shape parts
+internal.pointShapesToLineGeometry = function(shapes) {
   var coords = [];
   internal.forEachPoint(shapes, function(p) {
     coords.push(p.concat());
   });
-  return coords;
+  return {type: 'LineString', coordinates: coords};
 };
 
 internal.polygonsToLines = function(lyr, arcs, opts) {

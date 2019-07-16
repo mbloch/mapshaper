@@ -62,10 +62,10 @@ internal.getOptionParser = function() {
         describe: 'use a JS expression to select a subset of features'
       },
       whereOpt2 = {
-        describe: 'use a JS expression to filter lines (using A and B)'
+        describe: 'Filter polygon boundaries using a JS expression (with A and B)'
       },
       eachOpt2 = {
-        describe: 'apply a JS expression to each line (using A and B)'
+        describe: 'apply a JS expression to each polygon boundary (with A and B)'
       },
       aspectRatioOpt = {
         describe: 'aspect ratio as a number or range (e.g. 2 0.8,1.6 ,2)'
@@ -619,11 +619,14 @@ internal.getOptionParser = function() {
     .describe('convert a polygon or point layer to a polyline layer')
     .option('fields', {
       DEFAULT: true,
-      describe: 'optional comma-sep. list of fields to create a hierarchy',
+      describe: 'field(s) to create a hierarchy of boundaries',
       type: 'strings'
     })
     .option('where', whereOpt2)
     .option('each', eachOpt2)
+    .option('groupby', {
+      describe: 'field for grouping point input into multiple lines'
+    })
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);

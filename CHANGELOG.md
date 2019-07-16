@@ -1,3 +1,6 @@
+v0.4.124 (unreleased)
+* Added -lines groupby=[field] option, for converting points into multiple lines.
+
 v0.4.123
 * Now, -lines command converts a layer of points to a single polyline
 
