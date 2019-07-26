@@ -357,7 +357,6 @@ internal.getOptionParser = function() {
   parser.command('clip')
     .describe('use a polygon layer to clip another layer')
     .example('$ mapshaper states.shp -clip land_area.shp -o clipped.shp')
-    .validate(validateClipOpts)
     .option('source', {
       DEFAULT: true,
       describe: 'file or layer containing clip polygons'
@@ -366,8 +365,11 @@ internal.getOptionParser = function() {
       describe: 'remove sliver polygons created by clipping',
       type: 'flag'
     })
-    .option('cleanup', {type: 'flag'}) // obsolete; renamed in validation func.
     .option('bbox', bboxOpt)
+    .option('bbox2', {
+        type: 'bbox',
+        describe: 'experimental fast bbox clipping'
+      })
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
@@ -465,7 +467,6 @@ internal.getOptionParser = function() {
   parser.command('erase')
     .describe('use a polygon layer to erase another layer')
     .example('$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp')
-    .validate(validateClipOpts)
     .option('source', {
       DEFAULT: true,
       describe: 'file or layer containing erase polygons'
@@ -474,7 +475,6 @@ internal.getOptionParser = function() {
       describe: 'remove sliver polygons created by erasing',
       type: 'flag'
     })
-    .option('cleanup', {type: 'flag'})
     .option('bbox', bboxOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)

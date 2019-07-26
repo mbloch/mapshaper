@@ -249,13 +249,18 @@ internal.formatIntersection = function(xy, s1, s2, xx, yy) {
   return {x: x, y: y, a: a, b: b};
 };
 
-internal.formatIntersectingSegment = function(x, y, id1, id2, xx, yy) {
-  var i = id1 < id2 ? id1 : id2,
-      j = i === id1 ? id2 : id1;
+// Receives:
+//   x, y: coordinates of intersection
+//   i, j: two segment endpoints, as indexes in xx and yy arrays
+// Returns:
+//   if x,y falls within the segment, returns ascending indexes
+//   if x,y coincides with an endpoint, returns the id of that endpoint twice
+internal.formatIntersectingSegment = function(x, y, i, j, xx, yy) {
   if (xx[i] == x && yy[i] == y) {
-    j = i;
-  } else if (xx[j] == x && yy[j] == y) {
-    i = j;
+    return [i, i];
   }
-  return [i, j];
+  if (xx[j] == x && yy[j] == y) {
+    return [j, j];
+  }
+  return i < j ? [i, j] : [j, i];
 };

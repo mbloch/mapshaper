@@ -7,6 +7,7 @@ mapshaper-point-clipping
 mapshaper-arc-dissolve
 mapshaper-filter-slivers
 mapshaper-split
+mapshaper-bbox2-clipping
 */
 
 api.clipLayers = function(target, src, dataset, opts) {
@@ -39,6 +40,11 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
   var clipDataset, mergedDataset, clipLyr, nodes, tmp;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
+
+  if (opts.bbox2) {
+    return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
+  }
+
   if (clipSrc && clipSrc.geometry_type) {
     // TODO: update tests to remove this case (clipSrc is a layer)
     clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
@@ -50,7 +56,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
     clipLyr = clipSrc.layer;
     clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
   } else {
-    stop("Missing clipping data");
+    stop("Command requires a source file, layer id or bbox");
   }
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs
@@ -116,10 +122,11 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
     stop('Can\'t clip a layer with itself');
   }
 
+  // TODO: optimize some of these functions for bbox clipping
   if (targetLyr.geometry_type == 'point') {
     clippedShapes = internal.clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
   } else if (targetLyr.geometry_type == 'polygon') {
-    clippedShapes = internal.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    clippedShapes = internal.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
   } else if (targetLyr.geometry_type == 'polyline') {
     clippedShapes = internal.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
   } else {

@@ -245,6 +245,9 @@ internal.convertIntersectionsToCutPoints = function(intersections, xx, yy) {
   return points;
 };
 
+// i, j: indexes of segment endpoints in xx, yy, or of a single endpoint
+//   if point x,y falls on an endpoint
+// Assumes: i <= j
 internal.getCutPoint = function(x, y, i, j, xx, yy) {
   var ix = xx[i],
       iy = yy[i],

@@ -78,19 +78,6 @@ function validateProjOpts(cmd) {
   }
 }
 
-
-function validateClipOpts(cmd) {
-  var opts = cmd.options;
-  // rename old option
-  if (opts.cleanup) {
-    delete opts.cleanup;
-    opts.remove_slivers = true;
-  }
-  if (!opts.source && !opts.bbox) {
-    error("Command requires a source file, layer id or bbox");
-  }
-}
-
 function validateGridOpts(cmd) {
   var o = cmd.options;
   if (cmd._.length == 1) {

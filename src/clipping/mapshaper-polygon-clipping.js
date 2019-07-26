@@ -7,8 +7,9 @@ mapshaper-path-index
 // TODO: remove dependency on old polygon dissolve function
 
 // assumes layers and arcs have been prepared for clipping
-internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
+internal.clipPolygons = function(targetShapes, clipShapes, nodes, type, optsArg) {
   var arcs = nodes.arcs;
+  var opts = optsArg || {};
   var clipFlags = new Uint8Array(arcs.size());
   var routeFlags = new Uint8Array(arcs.size());
   var clipArcTouches = 0;
@@ -17,10 +18,18 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var dividePath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = internal.getPolygonDissolver(nodes);
 
-  // clean each target polygon by dissolving its rings
-  targetShapes = targetShapes.map(dissolvePolygon);
+  // The following cleanup step is a performance bottleneck (it often takes longer than
+  // other clipping operations) and is usually not needed. Furthermore, it only
+  // eliminates a few kinds of problems, like target polygons with abnormal winding
+  // or overlapping rings. TODO: try to optimize or remove it for all cases
 
-  // NOTE: commenting out dissolve of clipping shapes, because the dissolve function
+  // skipping shape cleanup when using the experimental fast bbox clipping option
+  if (!opts.bbox2) {
+    // clean each target polygon by dissolving its rings
+    targetShapes = targetShapes.map(dissolvePolygon);
+  }
+
+  // NOTE: commenting-out dissolve of clipping shapes, because the dissolve function
   //   does not tolerate overlapping shapes and some other topology errors.
   //   Dissolving was an optimization intended to improve performance when using a
   //   mosaic (e.g. counties, states) to clip or erase another layer. The user
@@ -33,7 +42,6 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   // in both directions to visible -- this is how cut-out shapes are detected
   // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
   internal.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
-
   var index = new PathIndex(clipShapes, arcs);
   var clippedShapes = targetShapes.map(function(shape, i) {
     if (shape) {

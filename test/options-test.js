@@ -165,8 +165,8 @@ describe('mapshaper-options.js', function () {
   describe('clip', function () {
     good("-clip bbox=0,-23.1,1,1.2e6)", {bbox: [0, -23.1, 1, 1.2e6]});
     good("-clip polys.shp remove-slivers", {source: 'polys.shp', remove_slivers: true})
-    good("-clip polys.shp cleanup", {source: 'polys.shp', remove_slivers: true}) // rename old option
-    bad("-clip");
+    // good("-clip polys.shp cleanup", {source: 'polys.shp', remove_slivers: true}) // rename old option
+    // bad("-clip"); // no longer doing validation in option parsing
   })
 
   describe('lines', function () {
