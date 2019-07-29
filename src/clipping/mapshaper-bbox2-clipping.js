@@ -107,7 +107,7 @@ internal.segmentInsideBBox = function(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
       ay > ymin && by > ymin && ay < ymax && by < ymax;
 };
 
-// Returns an array of point representing the vertices in
+// Returns an array of points representing the vertices in
 // the bbox with cutting points inserted.
 internal.getDividedBBoxPoints = function(bbox, ll, tt, rr, bb) {
   var bl = {x: bbox[0], y: bbox[1]},

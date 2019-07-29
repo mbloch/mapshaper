@@ -141,6 +141,11 @@ internal.runParsedCommands = function(commands, catalog, cb) {
   if (commands.length === 0) {
     return done(null);
   }
+  if (!api.gui && commands[commands.length-1].name == 'o') {
+    // in CLI, set 'final' flag on final -o command, so the export function knows
+    // that it can modify the output dataset in-place instead of making a copy.
+    commands[commands.length-1].options.final = true;
+  }
   commands = internal.divideImportCommand(commands);
   utils.reduceAsync(commands, catalog, nextCommand, done);
 
@@ -163,14 +168,7 @@ internal.runParsedCommands = function(commands, catalog, cb) {
 //
 internal.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
-      lastCmd = commands[commands.length-1],
       opts = firstCmd.options;
-
-  if (lastCmd.name == 'o') {
-    // final output -- ok to modify dataset in-place during export, avoids
-    //   having to copy entire dataset
-    lastCmd.options.final = true;
-  }
 
   if (firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
     opts.combine_files || !opts.files || opts.files.length < 2) {
