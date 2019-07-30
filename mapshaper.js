@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.123';
+VERSION = '0.4.124';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -10645,15 +10645,20 @@ internal.formatIntersection = function(xy, s1, s2, xx, yy) {
   return {x: x, y: y, a: a, b: b};
 };
 
-internal.formatIntersectingSegment = function(x, y, id1, id2, xx, yy) {
-  var i = id1 < id2 ? id1 : id2,
-      j = i === id1 ? id2 : id1;
+// Receives:
+//   x, y: coordinates of intersection
+//   i, j: two segment endpoints, as indexes in xx and yy arrays
+// Returns:
+//   if x,y falls within the segment, returns ascending indexes
+//   if x,y coincides with an endpoint, returns the id of that endpoint twice
+internal.formatIntersectingSegment = function(x, y, i, j, xx, yy) {
   if (xx[i] == x && yy[i] == y) {
-    j = i;
-  } else if (xx[j] == x && yy[j] == y) {
-    i = j;
+    return [i, i];
   }
-  return [i, j];
+  if (xx[j] == x && yy[j] == y) {
+    return [j, j];
+  }
+  return i < j ? [i, j] : [j, i];
 };
 
 
@@ -10898,6 +10903,9 @@ internal.convertIntersectionsToCutPoints = function(intersections, xx, yy) {
   return points;
 };
 
+// i, j: indexes of segment endpoints in xx, yy, or of a single endpoint
+//   if point x,y falls on an endpoint
+// Assumes: i <= j
 internal.getCutPoint = function(x, y, i, j, xx, yy) {
   var ix = xx[i],
       iy = yy[i],
@@ -13192,8 +13200,9 @@ internal.getPolygonDissolver = function(nodes, spherical) {
 // TODO: remove dependency on old polygon dissolve function
 
 // assumes layers and arcs have been prepared for clipping
-internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
+internal.clipPolygons = function(targetShapes, clipShapes, nodes, type, optsArg) {
   var arcs = nodes.arcs;
+  var opts = optsArg || {};
   var clipFlags = new Uint8Array(arcs.size());
   var routeFlags = new Uint8Array(arcs.size());
   var clipArcTouches = 0;
@@ -13202,10 +13211,18 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var dividePath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = internal.getPolygonDissolver(nodes);
 
-  // clean each target polygon by dissolving its rings
-  targetShapes = targetShapes.map(dissolvePolygon);
+  // The following cleanup step is a performance bottleneck (it often takes longer than
+  // other clipping operations) and is usually not needed. Furthermore, it only
+  // eliminates a few kinds of problems, like target polygons with abnormal winding
+  // or overlapping rings. TODO: try to optimize or remove it for all cases
 
-  // NOTE: commenting out dissolve of clipping shapes, because the dissolve function
+  // skipping shape cleanup when using the experimental fast bbox clipping option
+  if (!opts.bbox2) {
+    // clean each target polygon by dissolving its rings
+    targetShapes = targetShapes.map(dissolvePolygon);
+  }
+
+  // NOTE: commenting-out dissolve of clipping shapes, because the dissolve function
   //   does not tolerate overlapping shapes and some other topology errors.
   //   Dissolving was an optimization intended to improve performance when using a
   //   mosaic (e.g. counties, states) to clip or erase another layer. The user
@@ -13218,7 +13235,6 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   // in both directions to visible -- this is how cut-out shapes are detected
   // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
   internal.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
-
   var index = new PathIndex(clipShapes, arcs);
   var clippedShapes = targetShapes.map(function(shape, i) {
     if (shape) {
@@ -13696,6 +13712,134 @@ internal.getSplitLayerName = function(base, key) {
 
 
 
+internal.clipLayersByBBox = function(layers, dataset, opts) {
+  var bbox = opts.bbox2;
+  var clipLyr = internal.divideDatasetByBBox(dataset, bbox);
+  var nodes = new NodeCollection(dataset.arcs);
+  var retn = internal.clipLayersByLayer(dataset.layers, clipLyr, nodes, 'clip', opts);
+  return retn;
+};
+
+// Insert cutting points in arcs, where bbox intersects other shapes
+// Return a polygon layer containing the bounding box vectors, divided at cutting points.
+internal.divideDatasetByBBox = function(dataset, bbox) {
+  var arcs = dataset.arcs;
+  var data = internal.findBBoxCutPoints(arcs, bbox);
+  var map = internal.insertCutPoints(data.cutPoints, arcs);
+  arcs.dedupCoords();
+  internal.remapDividedArcs(dataset, map);
+  // merge bbox dataset with target dataset,
+  // so arcs are shared between target layers and bbox layer
+  var clipDataset = internal.bboxPointsToClipDataset(data.bboxPoints);
+  var mergedDataset = internal.mergeDatasets([dataset, clipDataset]);
+  // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
+  // api.buildTopology(mergedDataset);
+  var clipLyr = mergedDataset.layers.pop();
+  dataset.arcs = mergedDataset.arcs;
+  dataset.layers = mergedDataset.layers;
+  return clipLyr;
+};
+
+internal.bboxPointsToClipDataset = function(arr) {
+  var arcs = [];
+  var shape = [];
+  var layer = {geometry_type: 'polygon', shapes: [[shape]]};
+  var p1, p2;
+  for (var i=0, n=arr.length - 1; i<n; i++) {
+    p1 = arr[i];
+    p2 = arr[i+1];
+    arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
+    shape.push(i);
+  }
+  return {
+    arcs: new ArcCollection(arcs),
+    layers: [layer]
+  };
+};
+
+internal.findBBoxCutPoints = function(arcs, bbox) {
+  var left = bbox[0],
+      bottom = bbox[1],
+      right = bbox[2],
+      top = bbox[3];
+
+  // arrays of intersection points along each bbox edge
+  var tt = [],
+      rr = [],
+      bb = [],
+      ll = [];
+
+  arcs.forEachSegment(function(i, j, xx, yy) {
+    var ax = xx[i],
+        ay = yy[i],
+        bx = xx[j],
+        by = yy[j];
+    var hit;
+    if (internal.segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+    if (internal.segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+
+    hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
+    if (hit) addHit(tt, hit, i, j, xx, yy);
+
+    hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
+    if (hit) addHit(bb, hit, i, j, xx, yy);
+
+    hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
+    if (hit) addHit(ll, hit, i, j, xx, yy);
+
+    hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
+    if (hit) addHit(rr, hit, i, j, xx, yy);
+  });
+
+  return {
+    cutPoints: ll.concat(bb, rr, tt),
+    bboxPoints: internal.getDividedBBoxPoints(bbox, ll, tt, rr, bb)
+  };
+
+  function addHit(arr, hit, i, j, xx, yy) {
+    if (!hit) return;
+    arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
+    if (hit.length == 4) {
+      arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
+    }
+  }
+
+  function formatHit(x, y, i, j, xx, yy) {
+    var ids = internal.formatIntersectingSegment(x, y, i, j, xx, yy);
+    return internal.getCutPoint(x, y, ids[0], ids[1], xx, yy);
+  }
+};
+
+internal.segmentOutsideBBox = function(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+  return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
+      ay < ymin && by < ymin || ay > ymax && by > ymax;
+};
+
+internal.segmentInsideBBox = function(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+  return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
+      ay > ymin && by > ymin && ay < ymax && by < ymax;
+};
+
+// Returns an array of points representing the vertices in
+// the bbox with cutting points inserted.
+internal.getDividedBBoxPoints = function(bbox, ll, tt, rr, bb) {
+  var bl = {x: bbox[0], y: bbox[1]},
+      tl = {x: bbox[0], y: bbox[3]},
+      tr = {x: bbox[2], y: bbox[3]},
+      br = {x: bbox[2], y: bbox[1]};
+  ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
+  tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
+  rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
+  bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
+  return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
+    var p1 = memo.length > 0 ? memo[memo.length-1] : null;
+    if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
+    return memo;
+  }, []);
+};
+
+
+
 
 api.clipLayers = function(target, src, dataset, opts) {
   return internal.clipLayers(target, src, dataset, "clip", opts);
@@ -13727,6 +13871,11 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
   var clipDataset, mergedDataset, clipLyr, nodes, tmp;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
+
+  if (opts.bbox2) {
+    return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
+  }
+
   if (clipSrc && clipSrc.geometry_type) {
     // TODO: update tests to remove this case (clipSrc is a layer)
     clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
@@ -13738,7 +13887,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
     clipLyr = clipSrc.layer;
     clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
   } else {
-    stop("Missing clipping data");
+    stop("Command requires a source file, layer id or bbox");
   }
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs
@@ -13804,10 +13953,11 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
     stop('Can\'t clip a layer with itself');
   }
 
+  // TODO: optimize some of these functions for bbox clipping
   if (targetLyr.geometry_type == 'point') {
     clippedShapes = internal.clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
   } else if (targetLyr.geometry_type == 'polygon') {
-    clippedShapes = internal.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    clippedShapes = internal.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
   } else if (targetLyr.geometry_type == 'polyline') {
     clippedShapes = internal.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
   } else {
@@ -19793,11 +19943,10 @@ api.lines = function(lyr, dataset, opts) {
   }
 };
 
-// TODO: add option to make multiple line features by grouping points
-// TOOD: automatically convert rings into separate shape parts
 internal.pointsToLines = function(lyr, dataset, opts) {
-  var coords = internal.pointCoordsToLineCoords(lyr.shapes);
-  var geojson = {type: 'LineString', coordinates: coords};
+  var geojson = opts.groupby ?
+    internal.groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
+    internal.pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
   var dataset2 = internal.importGeoJSON(geojson);
   var outputLayers = internal.mergeDatasetsIntoDataset(dataset, [dataset2]);
   if (!opts.no_replace) {
@@ -19806,12 +19955,39 @@ internal.pointsToLines = function(lyr, dataset, opts) {
   return outputLayers;
 };
 
-internal.pointCoordsToLineCoords = function(shapes) {
+internal.groupedPointsToLineGeoJSON = function(lyr, field, opts) {
+  var groups = [];
+  var getGroupId = internal.getCategoryClassifier([field], lyr.data);
+  var dataOpts = utils.defaults({fields: [field]}, opts);
+  var records = internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
+  var features;
+  lyr.shapes.forEach(function(shape, i) {
+    var groupId = getGroupId(i);
+    if (groupId in groups === false) {
+      groups[groupId] = [];
+    }
+    groups[groupId].push(shape);
+  });
+  features = groups.map(function(shapes, i) {
+    return {
+      type: 'Feature',
+      properties: records[i],
+      geometry: shapes.length > 1 ? internal.pointShapesToLineGeometry(shapes) : null
+    };
+  });
+  return {
+    type: 'FeatureCollection',
+    features: features
+  };
+};
+
+// TOOD: automatically convert rings into separate shape parts
+internal.pointShapesToLineGeometry = function(shapes) {
   var coords = [];
   internal.forEachPoint(shapes, function(p) {
     coords.push(p.concat());
   });
-  return coords;
+  return {type: 'LineString', coordinates: coords};
 };
 
 internal.polygonsToLines = function(lyr, arcs, opts) {
@@ -24327,19 +24503,6 @@ function validateProjOpts(cmd) {
   }
 }
 
-
-function validateClipOpts(cmd) {
-  var opts = cmd.options;
-  // rename old option
-  if (opts.cleanup) {
-    delete opts.cleanup;
-    opts.remove_slivers = true;
-  }
-  if (!opts.source && !opts.bbox) {
-    error("Command requires a source file, layer id or bbox");
-  }
-}
-
 function validateGridOpts(cmd) {
   var o = cmd.options;
   if (cmd._.length == 1) {
@@ -24483,10 +24646,10 @@ internal.getOptionParser = function() {
         describe: 'use a JS expression to select a subset of features'
       },
       whereOpt2 = {
-        describe: 'use a JS expression to filter lines (using A and B)'
+        describe: 'filter polygon boundaries using a JS expression (with A and B)'
       },
       eachOpt2 = {
-        describe: 'apply a JS expression to each line (using A and B)'
+        describe: 'apply a JS expression to each polygon boundary (with A and B)'
       },
       aspectRatioOpt = {
         describe: 'aspect ratio as a number or range (e.g. 2 0.8,1.6 ,2)'
@@ -24778,7 +24941,6 @@ internal.getOptionParser = function() {
   parser.command('clip')
     .describe('use a polygon layer to clip another layer')
     .example('$ mapshaper states.shp -clip land_area.shp -o clipped.shp')
-    .validate(validateClipOpts)
     .option('source', {
       DEFAULT: true,
       describe: 'file or layer containing clip polygons'
@@ -24787,8 +24949,11 @@ internal.getOptionParser = function() {
       describe: 'remove sliver polygons created by clipping',
       type: 'flag'
     })
-    .option('cleanup', {type: 'flag'}) // obsolete; renamed in validation func.
     .option('bbox', bboxOpt)
+    .option('bbox2', {
+        type: 'bbox',
+        describe: 'experimental fast bbox clipping'
+      })
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
@@ -24886,7 +25051,6 @@ internal.getOptionParser = function() {
   parser.command('erase')
     .describe('use a polygon layer to erase another layer')
     .example('$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp')
-    .validate(validateClipOpts)
     .option('source', {
       DEFAULT: true,
       describe: 'file or layer containing erase polygons'
@@ -24895,7 +25059,6 @@ internal.getOptionParser = function() {
       describe: 'remove sliver polygons created by erasing',
       type: 'flag'
     })
-    .option('cleanup', {type: 'flag'})
     .option('bbox', bboxOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
@@ -25040,11 +25203,14 @@ internal.getOptionParser = function() {
     .describe('convert a polygon or point layer to a polyline layer')
     .option('fields', {
       DEFAULT: true,
-      describe: 'optional comma-sep. list of fields to create a hierarchy',
+      describe: 'field(s) to create a hierarchy of boundary lines',
       type: 'strings'
     })
     .option('where', whereOpt2)
     .option('each', eachOpt2)
+    .option('groupby', {
+      describe: 'field for grouping point input into multiple lines'
+    })
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
@@ -26003,47 +26169,82 @@ internal.getFormattedLayerList = function(catalog) {
 
 
 // Parse command line args into commands and run them
-// @argv String or array of command line args, or array of parsed commands
-// @input (optional) Object containing file contents indexed by filename
 // Two signatures:
 //   function(argv, input, callback)
 //   function(argv, callback)
-api.runCommands = function() {
-  internal.unifiedRun(arguments, 'run');
+// argv: String or array of command line args, or array of parsed commands
+// input: (optional) Object containing file contents indexed by filename
+//
+api.runCommands = function(argv) {
+  var opts = internal.importRunArgs(arguments);
+  internal.runCommands(argv, opts, function(err) {
+    opts.callback(err);
+  });
 };
 
 // Similar to runCommands(), but returns output files to the callback, instead of using file I/O.
 // Callback: function(<error>, <output>), where output is an object
 //           containing output from -o command(s) indexed by filename
-api.applyCommands = function() {
-  internal.unifiedRun(arguments, 'apply');
+api.applyCommands = function(argv) {
+  var opts = internal.importRunArgs(arguments);
+  var done = opts.callback;
+  var outputArr = opts.output = [];
+  internal.runCommands(argv, opts, function(err) {
+    var outputObj;
+    if (err) return done(err);
+    if (opts.legacy) return done(null, internal.toLegacyOutput(outputArr));
+    // Return an object containing content of zero or more output
+    // files, indexed by filename.
+    outputObj = outputArr.reduce(function(memo, o) {
+        memo[o.filename] = o.content;
+        return memo;
+      }, {});
+    return done(null, outputObj);
+  });
 };
 
-internal.unifiedRun = function(args, mode) {
-  var outputArr = mode == 'apply' ? [] : null;
-  var inputObj, inputType, done, commands;
+internal.importRunArgs = function(args) {
+  var opts = {};
   if (utils.isFunction(args[1])) {
-    done = args[1];
+    opts.callback = args[1];
   } else if (utils.isFunction(args[2])) {
-    done = args[2];
-    inputObj = args[1];
-    inputType = internal.guessInputContentType(inputObj);
+    opts.callback = args[2];
+    opts.input = args[1];
+    opts.legacy = opts.input && internal.guessInputContentType(opts.input) != null;
   } else {
-    error('Expected an optional input object and a callback');
+    error('Expected a callback function');
   }
+  return opts;
+};
 
+internal.toLegacyOutput = function(arr) {
+  if (arr.length > 1) {
+    // Return an array if multiple files are output
+    return utils.pluck(arr, 'content');
+  }
+  if (arr.length == 1) {
+    // Return content if a single file is output
+    return arr[0].content;
+  }
+  return null;
+};
+
+internal.runCommands = function(argv, opts, callback) {
+  var outputArr = opts.output || null,
+      inputObj = opts.input,
+      commands;
   try {
-    commands = internal.parseCommands(args[0]);
+    commands = internal.parseCommands(argv);
   } catch(e) {
-    return done(e);
+    return callback(e);
   }
 
-  if (inputType == 'text' || inputType == 'json') {
-    // old api: input is the content of a CSV or JSON file
-    // return done(new UserError('applyCommands() has changed, see v0.4 docs'));
+  if (opts.legacy) {
     message("Warning: deprecated input format");
-    return internal.applyCommandsOld(commands, inputObj, done);
+    commands = internal.convertLegacyCommands(commands, inputObj);
+    inputObj = null;
   }
+
   // add options to -i -o -join -clip -erase commands to bypass file i/o
   // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
   commands.forEach(function(cmd) {
@@ -26055,56 +26256,31 @@ internal.unifiedRun = function(args, mode) {
     }
   });
 
-  internal.runParsedCommands(commands, null, function(err) {
-    var outputObj;
-    if (err || !outputArr) {
-      return done(err);
-    }
-    outputObj = outputArr.reduce(function(memo, o) {
-        memo[o.filename] = o.content;
-        return memo;
-      }, {});
-    done(null, outputObj);
-  });
+  internal.runParsedCommands(commands, null, callback);
 };
 
 internal.commandTakesFileInput = function(name) {
   return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
 };
 
-// TODO: rewrite applyCommands() tests and remove this function
-// @commands array of parsed commands
-// @content a JSON or CSV dataset
-// @done callback: function(err, <data>) where <data> is the content of a
-//     single output file or an array if multiple files are output
-//
-internal.applyCommandsOld = function(commands, content, done) {
-  var output = [], lastCmd;
-  commands = internal.runAndRemoveInfoCommands(commands);
-  if (commands.length === 0 || commands[0].name != 'i') {
-    commands.unshift({name: 'i', options: {}});
+internal.convertLegacyCommands = function(arr, inputObj) {
+  var i = utils.find(arr, function(cmd) {return cmd.name == 'i';});
+  var o = utils.find(arr, function(cmd) {return cmd.name == 'o';});
+  if (!i) {
+    i = {name: 'i', options: {}};
+    arr.unshift(i);
   }
-  commands[0].options.input = {input: content};
-  commands[0].options.files = ['input'];
-  lastCmd = commands.pop();
-  if (lastCmd.name != 'o') {
-    commands.push(lastCmd);
-    lastCmd = {name: 'o', options: {}};
+  i.options.files = ['__input__'];
+  i.options.input = {__input__: inputObj};
+  if (!o) {
+    arr.push({name: 'o', options: {}});
   }
-  commands.push(lastCmd);
-  lastCmd.options.output = output;
-  internal.runParsedCommands(commands, null, function(err) {
-    var data = output.map(function(o) {return o.content;});
-    if (data.length == 1) {
-      data = data[0];
-    }
-    done(err, data);
-  });
+  return arr;
 };
 
 // TODO: rewrite tests and remove this function
 internal.testCommands = function(argv, done) {
-  internal.runParsedCommands(internal.parseCommands(argv), null, function(err, catalog) {
+  internal.runCommands(argv, {}, function(err, catalog) {
     var targets = catalog ? catalog.getDefaultTargets() : [];
     var output;
     if (!err && targets.length > 0) {
@@ -26143,6 +26319,11 @@ internal.runParsedCommands = function(commands, catalog, cb) {
   if (commands.length === 0) {
     return done(null);
   }
+  if (!api.gui && commands[commands.length-1].name == 'o') {
+    // in CLI, set 'final' flag on final -o command, so the export function knows
+    // that it can modify the output dataset in-place instead of making a copy.
+    commands[commands.length-1].options.final = true;
+  }
   commands = internal.divideImportCommand(commands);
   utils.reduceAsync(commands, catalog, nextCommand, done);
 
@@ -26165,14 +26346,7 @@ internal.runParsedCommands = function(commands, catalog, cb) {
 //
 internal.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
-      lastCmd = commands[commands.length-1],
       opts = firstCmd.options;
-
-  if (lastCmd.name == 'o') {
-    // final output -- ok to modify dataset in-place during export, avoids
-    //   having to copy entire dataset
-    lastCmd.options.final = true;
-  }
 
   if (firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
     opts.combine_files || !opts.files || opts.files.length < 2) {
