@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.124';
+VERSION = '0.4.125';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -26180,6 +26180,7 @@ api.runCommands = function(argv) {
   internal.runCommands(argv, opts, function(err) {
     opts.callback(err);
   });
+  if (opts.promise) return opts.promise;
 };
 
 // Similar to runCommands(), but returns output files to the callback, instead of using file I/O.
@@ -26188,21 +26189,16 @@ api.runCommands = function(argv) {
 api.applyCommands = function(argv) {
   var opts = internal.importRunArgs(arguments);
   var done = opts.callback;
-  var outputArr = opts.output = [];
+  var outputArr = opts.output = []; // output gets added to this array
   internal.runCommands(argv, opts, function(err) {
-    var outputObj;
     if (err) return done(err);
-    if (opts.legacy) return done(null, internal.toLegacyOutput(outputArr));
-    // Return an object containing content of zero or more output
-    // files, indexed by filename.
-    outputObj = outputArr.reduce(function(memo, o) {
-        memo[o.filename] = o.content;
-        return memo;
-      }, {});
-    return done(null, outputObj);
+    if (opts.legacy) return done(null, internal.toLegacyOutputFormat(outputArr));
+    return done(null, internal.toOutputFormat(outputArr));
   });
+  if (opts.promise) return opts.promise;
 };
 
+// Receive args: the "arguments" object from runCommands() or applyCommands()
 internal.importRunArgs = function(args) {
   var opts = {};
   if (utils.isFunction(args[1])) {
@@ -26212,12 +26208,28 @@ internal.importRunArgs = function(args) {
     opts.input = args[1];
     opts.legacy = opts.input && internal.guessInputContentType(opts.input) != null;
   } else {
-    error('Expected a callback function');
+    // New: if no callback, create a promise and a callback
+    opts.input = args[1] || null;
+    opts.promise = new Promise(function(resolve, reject) {
+      opts.callback = function(err, data) {
+        if (err) reject(err);
+        else resolve(data);
+      };
+    });
   }
   return opts;
 };
 
-internal.toLegacyOutput = function(arr) {
+// Return an object containing content of zero or more output
+// files, indexed by filename.
+internal.toOutputFormat = function(arr) {
+  return arr.reduce(function(memo, o) {
+    memo[o.filename] = o.content;
+    return memo;
+  }, {});
+};
+
+internal.toLegacyOutputFormat = function(arr) {
   if (arr.length > 1) {
     // Return an array if multiple files are output
     return utils.pluck(arr, 'content');
@@ -26255,7 +26267,6 @@ internal.runCommands = function(argv, opts, callback) {
       cmd.options.output = outputArr;
     }
   });
-
   internal.runParsedCommands(commands, null, callback);
 };
 
