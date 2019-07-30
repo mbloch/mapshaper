@@ -142,7 +142,27 @@ describe('mapshaper-commands.js', function () {
     });
   });
 
-  describe('applyCommands() (v0.4 API)', function () {
+  describe('applyCommands()', function () {
+    it('Returns a Promise if no callback is passed', function() {
+      var promise = mapshaper.applyCommands('-v');
+      assert(!!promise.then);
+    });
+
+    it('Promise errors on invalid syntax', function(done) {
+      mapshaper.applyCommands('foo').then(function() {
+        done(new Error('expected an error'));
+      }).catch(function(e) {
+        done();
+      });
+    });
+
+    it('Promise returns data', function() {
+      var input = [{foo: 'bar'}];
+      return mapshaper.applyCommands('-i foo.json -o', {'foo.json': input}).then(function(data) {
+        var output = JSON.parse(data['foo.json']);
+        assert.deepEqual(output, input);
+      });
+    });
 
     it('works with -clip command', function(done) {
 
@@ -404,6 +424,18 @@ describe('mapshaper-commands.js', function () {
   })
 
   describe('runCommands()', function () {
+    it('Returns a Promise if no callback is passed', function() {
+      var promise = mapshaper.runCommands('-v');
+      assert(promise.then);
+    });
+
+    it('Promise errors on invalid syntax', function(done) {
+      mapshaper.runCommands('foo').then(function() {
+        done(new Error('expected an error'));
+      }).catch(function(e) {
+        done();
+      });
+    });
 
     it('Error: empty command string', function(done) {
       mapshaper.runCommands("", function(err) {
@@ -427,11 +459,7 @@ describe('mapshaper-commands.js', function () {
       });
     });
 
-    it('Error: no callback', function() {
-      assert.throws(function() {
-        mapshaper.runCommands("-v");
-      });
-    });
+
 
     it('Error: -i missing a file', function(done) {
       mapshaper.runCommands("-i oops.shp", function(err) {

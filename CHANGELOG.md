@@ -1,6 +1,9 @@
+v0.4.125
+* API functions applyCommands() and runCommands() return a Promise if called without a callback argument.
+
 v0.4.124
 * Added -lines groupby=[field] option, for converting points into multiple lines.
-* Added -clip bbox2= option, to use an experimental, higher-performance bounding box clip function.
+* Added -clip bbox2=[bbox] option, which uses a higher-performance (but experimental) bounding box clip function.
 
 v0.4.123
 * Now, -lines command converts a layer of points to a single polyline.
