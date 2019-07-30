@@ -1,47 +1,82 @@
 /* @requires mapshaper-run-command, mapshaper-parse-commands, mapshaper-catalog */
 
 // Parse command line args into commands and run them
-// @argv String or array of command line args, or array of parsed commands
-// @input (optional) Object containing file contents indexed by filename
 // Two signatures:
 //   function(argv, input, callback)
 //   function(argv, callback)
-api.runCommands = function() {
-  internal.unifiedRun(arguments, 'run');
+// argv: String or array of command line args, or array of parsed commands
+// input: (optional) Object containing file contents indexed by filename
+//
+api.runCommands = function(argv) {
+  var opts = internal.importRunArgs(arguments);
+  internal.runCommands(argv, opts, function(err) {
+    opts.callback(err);
+  });
 };
 
 // Similar to runCommands(), but returns output files to the callback, instead of using file I/O.
 // Callback: function(<error>, <output>), where output is an object
 //           containing output from -o command(s) indexed by filename
-api.applyCommands = function() {
-  internal.unifiedRun(arguments, 'apply');
+api.applyCommands = function(argv) {
+  var opts = internal.importRunArgs(arguments);
+  var done = opts.callback;
+  var outputArr = opts.output = [];
+  internal.runCommands(argv, opts, function(err) {
+    var outputObj;
+    if (err) return done(err);
+    if (opts.legacy) return done(null, internal.toLegacyOutput(outputArr));
+    // Return an object containing content of zero or more output
+    // files, indexed by filename.
+    outputObj = outputArr.reduce(function(memo, o) {
+        memo[o.filename] = o.content;
+        return memo;
+      }, {});
+    return done(null, outputObj);
+  });
 };
 
-internal.unifiedRun = function(args, mode) {
-  var outputArr = mode == 'apply' ? [] : null;
-  var inputObj, inputType, done, commands;
+internal.importRunArgs = function(args) {
+  var opts = {};
   if (utils.isFunction(args[1])) {
-    done = args[1];
+    opts.callback = args[1];
   } else if (utils.isFunction(args[2])) {
-    done = args[2];
-    inputObj = args[1];
-    inputType = internal.guessInputContentType(inputObj);
+    opts.callback = args[2];
+    opts.input = args[1];
+    opts.legacy = opts.input && internal.guessInputContentType(opts.input) != null;
   } else {
-    error('Expected an optional input object and a callback');
+    error('Expected a callback function');
   }
+  return opts;
+};
 
+internal.toLegacyOutput = function(arr) {
+  if (arr.length > 1) {
+    // Return an array if multiple files are output
+    return utils.pluck(arr, 'content');
+  }
+  if (arr.length == 1) {
+    // Return content if a single file is output
+    return arr[0].content;
+  }
+  return null;
+};
+
+internal.runCommands = function(argv, opts, callback) {
+  var outputArr = opts.output || null,
+      inputObj = opts.input,
+      commands;
   try {
-    commands = internal.parseCommands(args[0]);
+    commands = internal.parseCommands(argv);
   } catch(e) {
-    return done(e);
+    return callback(e);
   }
 
-  if (inputType == 'text' || inputType == 'json') {
-    // old api: input is the content of a CSV or JSON file
-    // return done(new UserError('applyCommands() has changed, see v0.4 docs'));
+  if (opts.legacy) {
     message("Warning: deprecated input format");
-    return internal.applyCommandsOld(commands, inputObj, done);
+    commands = internal.convertLegacyCommands(commands, inputObj);
+    inputObj = null;
   }
+
   // add options to -i -o -join -clip -erase commands to bypass file i/o
   // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
   commands.forEach(function(cmd) {
@@ -53,56 +88,31 @@ internal.unifiedRun = function(args, mode) {
     }
   });
 
-  internal.runParsedCommands(commands, null, function(err) {
-    var outputObj;
-    if (err || !outputArr) {
-      return done(err);
-    }
-    outputObj = outputArr.reduce(function(memo, o) {
-        memo[o.filename] = o.content;
-        return memo;
-      }, {});
-    done(null, outputObj);
-  });
+  internal.runParsedCommands(commands, null, callback);
 };
 
 internal.commandTakesFileInput = function(name) {
   return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
 };
 
-// TODO: rewrite applyCommands() tests and remove this function
-// @commands array of parsed commands
-// @content a JSON or CSV dataset
-// @done callback: function(err, <data>) where <data> is the content of a
-//     single output file or an array if multiple files are output
-//
-internal.applyCommandsOld = function(commands, content, done) {
-  var output = [], lastCmd;
-  commands = internal.runAndRemoveInfoCommands(commands);
-  if (commands.length === 0 || commands[0].name != 'i') {
-    commands.unshift({name: 'i', options: {}});
+internal.convertLegacyCommands = function(arr, inputObj) {
+  var i = utils.find(arr, function(cmd) {return cmd.name == 'i';});
+  var o = utils.find(arr, function(cmd) {return cmd.name == 'o';});
+  if (!i) {
+    i = {name: 'i', options: {}};
+    arr.unshift(i);
   }
-  commands[0].options.input = {input: content};
-  commands[0].options.files = ['input'];
-  lastCmd = commands.pop();
-  if (lastCmd.name != 'o') {
-    commands.push(lastCmd);
-    lastCmd = {name: 'o', options: {}};
+  i.options.files = ['__input__'];
+  i.options.input = {__input__: inputObj};
+  if (!o) {
+    arr.push({name: 'o', options: {}});
   }
-  commands.push(lastCmd);
-  lastCmd.options.output = output;
-  internal.runParsedCommands(commands, null, function(err) {
-    var data = output.map(function(o) {return o.content;});
-    if (data.length == 1) {
-      data = data[0];
-    }
-    done(err, data);
-  });
+  return arr;
 };
 
 // TODO: rewrite tests and remove this function
 internal.testCommands = function(argv, done) {
-  internal.runParsedCommands(internal.parseCommands(argv), null, function(err, catalog) {
+  internal.runCommands(argv, {}, function(err, catalog) {
     var targets = catalog ? catalog.getDefaultTargets() : [];
     var output;
     if (!err && targets.length > 0) {
