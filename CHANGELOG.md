@@ -1,8 +1,9 @@
-v0.4.124 (unreleased)
+v0.4.124
 * Added -lines groupby=[field] option, for converting points into multiple lines.
+* Added -clip bbox2= option, to use an experimental, higher-performance bounding box clip function.
 
 v0.4.123
-* Now, -lines command converts a layer of points to a single polyline
+* Now, -lines command converts a layer of points to a single polyline.
 
 v0.4.122
 * Added -drop holes option, for removing holes from polygons.
