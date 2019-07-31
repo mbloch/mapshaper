@@ -1,10 +1,10 @@
 /* @requires mapshaper-run-command, mapshaper-parse-commands, mapshaper-catalog */
 
 // Parse command line args into commands and run them
-// Two signatures:
-//   function(argv, input, callback)
-//   function(argv, callback)
-// argv: String or array of command line args, or array of parsed commands
+// Function takes an optional Node-style callback. A Promise is returned if no callback is given.
+//   function(argv[, input], callback)
+//   function(argv[, input])  (returns Promise)
+// argv: String or array containing command line args.
 // input: (optional) Object containing file contents indexed by filename
 //
 api.runCommands = function(argv) {
@@ -15,9 +15,11 @@ api.runCommands = function(argv) {
   if (opts.promise) return opts.promise;
 };
 
-// Similar to runCommands(), but returns output files to the callback, instead of using file I/O.
-// Callback: function(<error>, <output>), where output is an object
-//           containing output from -o command(s) indexed by filename
+// Similar to runCommands(), but returns output files to the callback or Promise
+//   instead of using file I/O.
+// Callback signature: function(<error>, <data>) -- data is an object
+//   containing output from any -o commands, indexed by filename.
+//
 api.applyCommands = function(argv) {
   var opts = internal.importRunArgs(arguments);
   var done = opts.callback;
@@ -30,7 +32,7 @@ api.applyCommands = function(argv) {
   if (opts.promise) return opts.promise;
 };
 
-// Receive args: the "arguments" object from runCommands() or applyCommands()
+// Parse the "arguments" object from runCommands() or applyCommands()
 internal.importRunArgs = function(args) {
   var opts = {};
   if (utils.isFunction(args[1])) {
@@ -52,8 +54,7 @@ internal.importRunArgs = function(args) {
   return opts;
 };
 
-// Return an object containing content of zero or more output
-// files, indexed by filename.
+// Return an object containing content of zero or more output files, indexed by filename.
 internal.toOutputFormat = function(arr) {
   return arr.reduce(function(memo, o) {
     memo[o.filename] = o.content;
@@ -61,18 +62,7 @@ internal.toOutputFormat = function(arr) {
   }, {});
 };
 
-internal.toLegacyOutputFormat = function(arr) {
-  if (arr.length > 1) {
-    // Return an array if multiple files are output
-    return utils.pluck(arr, 'content');
-  }
-  if (arr.length == 1) {
-    // Return content if a single file is output
-    return arr[0].content;
-  }
-  return null;
-};
-
+// Unified function for processing calls to runCommands() and applyCommands()
 internal.runCommands = function(argv, opts, callback) {
   var outputArr = opts.output || null,
       inputObj = opts.input,
@@ -106,6 +96,18 @@ internal.commandTakesFileInput = function(name) {
   return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
 };
 
+internal.toLegacyOutputFormat = function(arr) {
+  if (arr.length > 1) {
+    // Return an array if multiple files are output
+    return utils.pluck(arr, 'content');
+  }
+  if (arr.length == 1) {
+    // Return content if a single file is output
+    return arr[0].content;
+  }
+  return null;
+};
+
 internal.convertLegacyCommands = function(arr, inputObj) {
   var i = utils.find(arr, function(cmd) {return cmd.name == 'i';});
   var o = utils.find(arr, function(cmd) {return cmd.name == 'o';});
@@ -134,7 +136,7 @@ internal.testCommands = function(argv, done) {
   });
 };
 
-// Execute a sequence of commands
+// Execute a sequence of parsed commands
 // @commands Array of parsed commands
 // @catalog: Optional Catalog object containing previously imported data
 // @cb: function(<error>, <catalog>)
@@ -239,7 +241,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
   }
 };
 
-// Handle information commands and remove them from the list
+// Run informational commands and remove them from the array of parsed commands
 internal.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
