@@ -1,3 +1,6 @@
+v0.4.126
+* The -simplify now ignores datasets containing no paths instead of stopping with an error. This is useful in scripts, when clipping creates an empty layer.
+
 v0.4.125
 * API functions applyCommands() and runCommands() return a Promise if called without a callback argument.
 

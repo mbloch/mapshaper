@@ -4,6 +4,23 @@ var assert = require('assert'),
 
 describe("mapshaper-simplify.js", function() {
 
+  describe('Change: -simplify ignores targets with no paths instead of erroring', function () {
+    it('-simplify 10%', function (done) {
+      var input = {
+        type: 'Feature',
+        geometry: null,
+        properties: {id: 'foo'}
+      };
+      api.applyCommands('-i in.json -simplify 10% -o out.json', {'in.json': input}, function(err, output) {
+        var json = JSON.parse(output['out.json']);
+        assert(!err)
+        assert.deepEqual(json.features, [input]);
+        done();
+      })
+    })
+  });
+
+
   describe('convertSimplifyInterval', function () {
     it('wgs84 / km', function () {
       var input = {

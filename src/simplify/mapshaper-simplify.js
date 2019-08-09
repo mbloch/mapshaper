@@ -9,9 +9,8 @@ mapshaper-simplify-info
 
 api.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
-  if (!arcs) stop("Missing path data");
-  // standardize options
-  opts = internal.getStandardSimplifyOpts(dataset, opts);
+  if (!arcs || arcs.size() === 0) return; // removed in v0.4.125: stop("Missing path data");
+  opts = internal.getStandardSimplifyOpts(dataset, opts); // standardize options
   internal.simplifyPaths(arcs, opts);
 
   // calculate and apply simplification interval
