@@ -1,3 +1,6 @@
+v0.4.128
+* Fix Travis build.
+
 v0.4.127
 * Updates to albersusa hybrid projection: new Alaska projection (lon_0 is at 148W) and support for customization. Customization examples: "albersusa +PR" "albersusa +AK.lon_0=-141 +AK.scale=0.4 +AK.dx=10000".
 * "-proj" command no longer throws an error if one or more coordinates fail to project. Instead, the points or arcs containing projection errors are removed.
