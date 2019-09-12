@@ -1,86 +1,123 @@
 /* @requires mapshaper-matrix2d */
 
-
-function getAlbersUSA(opts) {
-  return function() {
-    return AlbersNYT(opts || {});
-  };
-}
-
-function AlbersNYT(opts) {
-  var mproj = require('mproj');
-  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
-  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
-  var mixed = new MixedProjection(aea)
-    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
-    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
-  if (opts.PR) {
-    mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -76.5, phi: 26.3 }, 1e6, 1e6, 1, -16); // PR
-    // mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -93, phi: 28.22 }, 1e6, 1e6, 1, -16) // PR
-  }
-  return mixed;
-}
-
-
 // A compound projection, consisting of a default projection and one or more rectangular frames
-// that are reprojected and/or affine transformed.
-// @proj Default projection.
-function MixedProjection(proj) {
-  var frames = [];
-  var mixed = utils.extend({}, proj);
+// that are projected separately and affine transformed.
+// @projStr Default projection
+// @bbox  lat-lon bounding box of main projection
+function MixedProjection(mainParams, options) {
   var mproj = require('mproj');
+  var mainFrame = initFrame(mainParams);
+  var mainP = mainFrame.crs;
+  var frames = [mainFrame];
+  var mixedP = initMixedProjection(mproj);
 
-  // @proj2 projection to use.
-  // @ctr1 {lam, phi} center of the frame contents.
-  // @ctr2 {lam, phi} geo location to move the frame center
-  // @frameWidth Width of the frame in base projection units
-  // @frameHeight Height of the frame in base projection units
-  // @scale Scale factor; 1 = no scaling.
-  // @rotation Rotation in degrees; 0 = no rotation.
-  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
-    var m = new Matrix2D(),
-        a2 = proj.a * 2,
-        xy1 = toRawXY(ctr1, proj),
-        xy2 = toRawXY(ctr2, proj),
-        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
-            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
-    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
-    m.scale(scale, scale);
-    m.transformXY(xy1.x, xy1.y, xy1);
-    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
-    frames.push({
-      bbox: bbox,
-      matrix: m,
-      projection: proj2
-    });
+  // This CRS masquerades as the main projection... the version with
+  // custom insets is exposed to savvy users
+  mainP.__mixed_crs = mixedP;
+
+  // required opts:
+  //    origin: [lng, lat] origin of frame (unprojected)
+  //    placement: [x, y] location (in projected coordinates) to shift the origin
+  //    proj: Proj.4 string for projecting data within the frame
+  //    bbox: Lat-long bounding box of frame area
+  //
+  // optional:
+  //    dx: x shift (meters)
+  //    dy: y shift (meters)
+  //    scale: scale factor (1 = no scaling)
+  //    rotation: rotation in degrees (0 = no rotation)
+  //
+  mainP.addFrame = function(paramsArg) {
+    var params = internal.getFrameParams(paramsArg, options); // apply defaults and overrides
+    var frame = initFrame(params);
+    var m = new Matrix2D();
+    //  originXY: the projected coordinates of the frame origin
+    var originXY = params.origin ? projectFrameOrigin(params.origin, frame.crs) : [0, 0];
+    var placementXY = params.placement || [0, 0];
+    var dx = placementXY[0] - originXY[0] + (+params.dx || 0);
+    var dy = placementXY[1] - originXY[1] + (+params.dy || 0);
+
+    if (params.rotation) {
+      m.rotate(params.rotation * Math.PI / 180.0, originXY[0], originXY[1]);
+    }
+    if (params.scale) {
+      m.scale(params.scale, params.scale, originXY[0], originXY[1]);
+    }
+    m.translate(dx, dy);
+
+    frame.matrix = m;
+    frames.push(frame);
     return this;
   };
 
-  // convert a latlon position to x,y in earth radii relative to datum origin
-  function toRawXY(lp, P) {
-    var xy = mproj.pj_fwd_deg(lp, P);
+  function initFrame(params) {
     return {
-      x: (xy.x / P.fr_meter - P.x0) / P.a,
-      y: (xy.y / P.fr_meter - P.y0) / P.a
+      bounds: new Bounds(bboxToRadians(params.bbox)),
+      crs:  mproj.pj_init(params.proj)
     };
   }
 
-  mixed.fwd = function(lp, xy) {
-    var lam = lp.lam,
-        phi = lp.phi,
-        frame, bbox;
-    proj.fwd(lp, xy);
+  function bboxToRadians(bbox) {
+    var D2R = Math.PI / 180;
+    return bbox.map(function(deg) {
+      return deg * D2R;
+    });
+  }
+
+  function projectFrameOrigin(origin, P) {
+    var xy = mproj.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
+    return [xy.x, xy.y];
+  }
+
+  mixedP.fwd = function(lp, xy) {
+    var frame, xy2;
     for (var i=0, n=frames.length; i<n; i++) {
       frame = frames[i];
-      bbox = frame.bbox;
-      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
-        // copy lp (some proj functions may modify it)
-        frame.projection.fwd({lam: lam, phi: phi}, xy);
-        frame.matrix.transformXY(xy.x, xy.y, xy);
+      if (frame.bounds.containsPoint(lp.lam, lp.phi)) {
+        xy2 = mproj.pj_fwd(lp, frame.crs);
+        if (frame.matrix) {
+          frame.matrix.transformXY(xy2.x, xy2.y, xy2);
+        }
         break;
       }
     }
+    xy.x = xy2 ? xy2.x : Infinity;
+    xy.y = xy2 ? xy2.y : Infinity;
   };
 
-  return mixed;
+  return mainP;
 }
+
+function initMixedProjection(mproj) {
+  if (!mproj.internal.pj_list.mixed) {
+    mproj.pj_add(function(P) {
+      P.a = 1;
+    }, 'mixed', 'Mapshaper Mixed Projection');
+  }
+  return mproj.pj_init('+proj=mixed');
+}
+
+internal.getFrameParams = function(params, options) {
+  var opts = options[params.name];
+  utils.defaults(params, {scale: 1, dx: 0, dy: 0, rotation: 0}); // add defaults
+  if (!opts) return params;
+  Object.keys(opts).forEach(function(key) {
+    var val = opts[key];
+    if (key in params) {
+      params[key] = opts[key];
+    } else {
+      params.proj = internal.replaceProjParam(params.proj, key, val);
+    }
+  });
+  return params;
+};
+
+internal.replaceProjParam = function(proj, key, val) {
+  var param = '+' + key + '=';
+  return proj.split(' ').map(function(str) {
+    if (str.indexOf(param) === 0) {
+      str = str.substr(0, param.length) + val;
+    }
+    return str;
+  }).join(' ');
+};

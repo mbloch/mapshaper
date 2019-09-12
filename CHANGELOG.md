@@ -1,5 +1,11 @@
+v0.4.127
+* Updates to albersusa hybrid projection: new Alaska projection (lon_0 is at 148W) and support for customization. Customization examples: "albersusa +PR" "albersusa +AK.lon_0=-141 +AK.scale=0.4 +AK.dx=10000".
+* "-proj" command no longer throws an error if one or more coordinates fail to project. Instead, the points or arcs containing projection errors are removed.
+* Added an npm "prepare" script for users who are installing mapshaper from source code.
+* Added an "npm run build" script
+
 v0.4.126
-* The -simplify now ignores datasets containing no paths instead of stopping with an error. This is useful in scripts, when clipping creates an empty layer.
+* The -simplify command now ignores datasets containing no paths instead of stopping with an error. This is useful in scripts, when clipping creates an empty layer.
 
 v0.4.125
 * API functions applyCommands() and runCommands() return a Promise if called without a callback argument.

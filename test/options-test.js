@@ -237,7 +237,7 @@ describe('mapshaper-options.js', function () {
     });
 
     bad("-proj");
-    bad("-proj merc +ellps=sphere")
+    // bad("-proj merc +ellps=sphere") // this kind of error is now caught elsequere
   })
 
   describe('syntax rules', function () {

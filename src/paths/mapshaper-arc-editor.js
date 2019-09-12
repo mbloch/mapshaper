@@ -4,12 +4,14 @@ internal.editArcs = function(arcs, onPoint) {
   var nn2 = [],
       xx2 = [],
       yy2 = [],
+      errors = 0,
       n;
 
   arcs.forEach(function(arc, i) {
     editArc(arc, onPoint);
   });
   arcs.updateVertexData(nn2, xx2, yy2);
+  return errors;
 
   function append(p) {
     if (p) {
@@ -53,6 +55,7 @@ internal.editArcs = function(arcs, onPoint) {
         yy2.pop();
       }
       nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+      errors++;
     }
   }
 };

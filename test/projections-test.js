@@ -27,8 +27,12 @@ function invalid(proj) {
   })
 }
 
-
 describe('mapshaper-projections.js', function() {
+
+  describe('getCRS()', function () {
+    invalid('-proj merc +ellps=sphere');
+  })
+
 
   describe('findProjLibs()', function() {
     it('tests', function() {
@@ -42,7 +46,31 @@ describe('mapshaper-projections.js', function() {
     })
   });
 
+  describe('looksLikeProj4String()', function() {
+    [
+      '+init=EPSG:4236',
+      '+proj=utm +zone=11 +datum=WGS84'
+    ].forEach(yes);
 
+    [
+      'wgs84',
+      'albersusa',
+      '+AK.lon_0=-141 albersusa'
+    ].forEach(no);
+
+    function yes(str) {
+      it(str, function() {
+        assert(api.internal.looksLikeProj4String(str));
+      });
+    }
+
+    function no(str) {
+      it(str, function() {
+        assert(!api.internal.looksLikeProj4String(str));
+      });
+    }
+
+  })
 
   describe('roundtrip tests', function () {
     roundtrip('albersusa', [-96, 40]);

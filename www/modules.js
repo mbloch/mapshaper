@@ -9732,7 +9732,6 @@ function wkt_keys(o) {
   });
 }
 
-
 // Rearrange a generated WKT object for easier string conversion
 // inverse of wkt_parse_reorder()
 function wkt_stringify_reorder(o, depth) {
@@ -18856,6 +18855,7 @@ api.pj_init = pj_init;
 api.pj_fwd = pj_fwd;
 api.pj_inv = pj_inv;
 api.pj_transform = pj_transform;
+api.pj_add = pj_add;
 
 // Convenience functions not in Proj.4
 api.pj_fwd_deg = pj_fwd_deg;

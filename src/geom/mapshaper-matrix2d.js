@@ -26,6 +26,7 @@ Matrix2D.prototype.translate = function(dx, dy) {
   this.ty += dy;
 };
 
+// x, y: optional origin
 Matrix2D.prototype.rotate = function(q, x, y) {
   var cos = Math.cos(q);
   var sin = Math.sin(q);
@@ -39,9 +40,14 @@ Matrix2D.prototype.rotate = function(q, x, y) {
   this.ty += y - x * sin - y * cos;
 };
 
-Matrix2D.prototype.scale = function(sx, sy) {
+// cx, cy: optional origin
+Matrix2D.prototype.scale = function(sx, sy, cx, cy) {
+  cx = cx || 0;
+  cy = cy || 0;
   this.a *= sx;
   this.c *= sx;
   this.b *= sy;
   this.d *= sy;
+  this.tx -= cx * (sx - 1);
+  this.ty -= cy * (sy - 1);
 };

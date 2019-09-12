@@ -52,6 +52,7 @@ api.proj = function(dataset, destInfo, opts) {
   try {
     internal.projectDataset(target, src, dest, opts || {});
   } catch(e) {
+    console.error(e);
     stop(utils.format("Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
@@ -93,17 +94,22 @@ internal.getCrsInfo = function(name, catalog) {
 };
 
 internal.projectDataset = function(dataset, src, dest, opts) {
-  var proj = internal.getProjTransform(src, dest);
+  var proj = internal.getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
+  var errors;
   dataset.layers.forEach(function(lyr) {
     if (internal.layerHasPoints(lyr)) {
-      internal.projectPointLayer(lyr, proj);
+      internal.projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
     }
   });
   if (dataset.arcs) {
     if (opts.densify) {
-      internal.projectAndDensifyArcs(dataset.arcs, proj);
+      errors = internal.projectAndDensifyArcs(dataset.arcs, proj);
     } else {
-      internal.projectArcs(dataset.arcs, proj);
+      errors = internal.projectArcs2(dataset.arcs, proj);
+    }
+    if (errors > 0) {
+      // TODO: implement this (null arcs have zero length)
+      // internal.removeShapesWithNullArcs(dataset);
     }
   }
 };
@@ -135,7 +141,7 @@ internal.projectArcs = function(arcs, proj) {
 };
 
 internal.projectArcs2 = function(arcs, proj) {
-  internal.editArcs(arcs, onPoint);
+  return internal.editArcs(arcs, onPoint);
   function onPoint(append, x, y, prevX, prevY, i) {
     var p = proj(x, y);
     // TODO: prevent arcs with just one point
@@ -150,12 +156,14 @@ internal.projectArcs2 = function(arcs, proj) {
 internal.projectAndDensifyArcs = function(arcs, proj) {
   var interval = internal.getDefaultDensifyInterval(arcs, proj);
   var p = [0, 0];
-  internal.editArcs(arcs, onPoint);
+  return internal.editArcs(arcs, onPoint);
 
   function onPoint(append, lng, lat, prevLng, prevLat, i) {
     var prevX = p[0],
         prevY = p[1];
     p = proj(lng, lat);
+    if (!p) return false; // signal that current arc contains an error
+
     // Don't try to optimize shorter segments (optimization)
     if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
       internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
@@ -183,7 +191,9 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
   var lng1 = (lng0 + lng2) / 2,
       lat1 = (lat0 + lat2) / 2,
       p = proj(lng1, lat1),
-      distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
+      distSq;
+  if (!p) return; // TODO: consider if this is adequate for handling proj. errors
+  distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
   points = points || [];
   // Bisect current segment if the projected midpoint deviates from original
   //   segment by more than the @interval parameter.

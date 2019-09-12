@@ -1,12 +1,10 @@
-/* @requires mapshaper-mixed-projection */
+/* @requires mapshaper-custom-projections */
 
-// some aliases
-internal.projectionIndex = {
+internal.projectionAliases = {
   robinson: '+proj=robin +datum=WGS84',
   webmercator: '+proj=merc +a=6378137 +b=6378137',
   wgs84: '+proj=longlat +datum=WGS84',
-  albersusa: getAlbersUSA(),
-  albersusa2: getAlbersUSA({PR: true}) // version with Puerto Rico
+  albersusa: new AlbersUSA() // with default parameters
 };
 
 // This stub is replaced when loaded in GUI, which may need to load some files
@@ -25,6 +23,7 @@ internal.findProjLibs = function(str) {
 internal.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
   var clampSrc = internal.isLatLngCRS(src);
+  dest = dest.__mixed_crs || dest;
   return function(x, y) {
     var xy;
     if (clampSrc) {
@@ -58,6 +57,7 @@ internal.getProjTransform2 = function(src, dest) {
     xx[0] = x * preK;
     yy[0] = y * preK;
     try {
+      dest = dest.__mixed_crs || dest;
       mproj.pj_transform(src, dest, xx, yy);
       fail = xx[0] == Infinity; // mproj invalid coord value
     } catch(e) {
@@ -109,23 +109,30 @@ internal.crsAreEqual = function(a, b) {
 internal.getProjDefn = function(str) {
   var mproj = require('mproj');
   var defn;
-  if (str in internal.projectionIndex) {
-    defn = internal.projectionIndex[str];
+  if (internal.looksLikeProj4String(str)) {
+    defn = str;
   } else if (str in mproj.internal.pj_list) {
     defn = '+proj=' + str;
-  } else if (/^\+/.test(str)) {
-    defn = str;
+  } else if (str in internal.projectionAliases) {
+    defn = internal.projectionAliases[str];  // defn is a function
   } else {
+    defn = internal.parseCustomProjection(str);
+  }
+  if (!defn) {
     stop("Unknown projection definition:", str);
   }
   return defn;
 };
 
+internal.looksLikeProj4String = function(str) {
+  return /^(\+[^ ]+ *)+$/.test(str);
+};
+
 internal.getCRS = function(str) {
-  var defn = internal.getProjDefn(str);
+  var defn = internal.getProjDefn(str);  // defn is a string or a Proj object
   var P;
-  if (typeof defn == 'function') {
-    P = defn();
+  if (!utils.isString(defn)) {
+    P = defn;
   } else {
     try {
       P = require('mproj').pj_init(defn);
@@ -187,7 +194,7 @@ internal.printProjections = function() {
     msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
   });
   msg += '\nAliases';
-  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
+  Object.keys(internal.projectionAliases).sort().forEach(function(n) {
     msg += '\n  ' + n;
   });
   message(msg);
