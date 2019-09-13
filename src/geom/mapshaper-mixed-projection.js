@@ -2,8 +2,9 @@
 
 // A compound projection, consisting of a default projection and one or more rectangular frames
 // that are projected separately and affine transformed.
-// @projStr Default projection
-// @bbox  lat-lon bounding box of main projection
+// @mainParams: parameters for main projection, including:
+//    proj: Proj string
+//    bbox: lat-lon bounding box
 function MixedProjection(mainParams, options) {
   var mproj = require('mproj');
   var mainFrame = initFrame(mainParams);

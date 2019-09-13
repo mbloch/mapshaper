@@ -4,33 +4,34 @@
 
 Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.com/mbostock/topojson/wiki), CSV and several other data formats, written in JavaScript.
 
-The `mapshaper` command line program supports essential map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
+Mapshaper supports essential map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
-The web UI supports interactive simplification, attribute data editing, and running cli commands in a built-in console. Visit the public website at [www.mapshaper.org](http://www.mapshaper.org) or use the web UI locally via the `mapshaper-gui` script.
-
-See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for more documentation on how to use mapshaper.
+See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentation on how to use mapshaper.
 
 To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
 
-To learn about recent updates, read the [changelog](https://github.com/mbloch/mapshaper/releases).
 
-### Command line tool
+### Command line tools
 
-The `mapshaper` command line program has been used successfully under Mac OS X, Linux and Windows.
+Mapshaper includes several command line programs, which can be run under Mac OS X, Linux and Windows.
+
+* `mapshaper` Runs mapshaper commands.
+* `mapshaper-xl` Works the same as `mapshaper`, but runs with more RAM to support larger files.
+* `mapshaper-gui` Runs the mapshaper Web interface locally.
 
 The project wiki has an [introduction](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) to using the command line tool that includes many simple examples.
 
 For a detailed reference, see the [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference).
 
 
-
 ### Interactive web interface
+
+Visit the public website at [www.mapshaper.org](http://www.mapshaper.org) or use the web UI locally via the `mapshaper-gui` script. 
+
+All processing is done in the browser, so your data stays private, even when using the public website.
 
 The web UI works in recent desktop versions of Chrome, Firefox, Safari and Internet Explorer. Safari before v10.1 and IE before v10 are not supported.
 
-The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
-
-All processing is done in the browser, so your data stays private, even when using the public website.
 
 ### Large file support
 
@@ -42,11 +43,11 @@ Firefox is able to load Shapefiles and GeoJSON files larger than 1GB. Chrome has
 
 When working with very large files, mapshaper may become unresponsive or crash with the message "JavaScript heap out of memory."
 
-One option is to run `mapshaper-xl` (added in v0.4.63), which allocates more memory than the standard `mapshaper` program.
+One option is to run `mapshaper-xl`, which allocates more memory than the standard `mapshaper` program.
 
-Another solution is to run Node directly with the `--max-old-space-size` option. The following example (Mac or Linux) allocates 8GB of memory:
+Another solution is to run Node directly with the `--max-old-space-size` option. The following example (Mac or Linux) allocates 16GB of memory:
 ```bash
-$ node  --max-old-space-size=8192 `which mapshaper` <mapshaper commands>
+$ node  --max-old-space-size=16000 `which mapshaper` <mapshaper commands>
 ```
 
 ### Installation
@@ -66,8 +67,7 @@ git clone git@github.com:mbloch/mapshaper.git
 cd mapshaper
 npm install       # install dependencies
 npm run build     # bundle source code files
-bin/mapshaper     # run the command line program
-bin/mapshaper-gui # use the web UI locally
+npm link          # (optional) add global symlinks so scripts are available systemwide
 ```
 
 ### Building and testing
