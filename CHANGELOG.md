@@ -1,3 +1,6 @@
+v0.4.129
+* Work around layer menu issue caused by Chrome update.
+
 v0.4.128
 * Fix Travis build.
 

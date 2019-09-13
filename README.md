@@ -64,7 +64,8 @@ To install and run the latest development code from github:
 ```bash
 git clone git@github.com:mbloch/mapshaper.git
 cd mapshaper
-npm install
+npm install       # install dependencies
+npm run build     # bundle source code files
 bin/mapshaper     # run the command line program
 bin/mapshaper-gui # use the web UI locally
 ```
