@@ -1,6 +1,6 @@
 # mapshaper
 
-### Introduction
+## Introduction
 
 Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.com/mbostock/topojson/wiki), CSV and several other data formats, written in JavaScript.
 
@@ -11,7 +11,7 @@ See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentati
 To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
 
 
-### Command line tools
+## Command line tools
 
 Mapshaper includes several command line programs, which can be run under Mac OS X, Linux and Windows.
 
@@ -24,7 +24,7 @@ The project wiki has an [introduction](https://github.com/mbloch/mapshaper/wiki/
 For a detailed reference, see the [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference).
 
 
-### Interactive web interface
+## Interactive web interface
 
 Visit the public website at [www.mapshaper.org](http://www.mapshaper.org) or use the web UI locally via the `mapshaper-gui` script. 
 
@@ -33,7 +33,7 @@ All processing is done in the browser, so your data stays private, even when usi
 The web UI works in recent desktop versions of Chrome, Firefox, Safari and Internet Explorer. Safari before v10.1 and IE before v10 are not supported.
 
 
-### Large file support
+## Large file support
 
 **Web interface**
 
@@ -50,7 +50,7 @@ Another solution is to run Node directly with the `--max-old-space-size` option.
 $ node  --max-old-space-size=16000 `which mapshaper` <mapshaper commands>
 ```
 
-### Installation
+## Installation
 
 Mapshaper requires [Node.js](http://nodejs.org).
 
@@ -70,13 +70,13 @@ npm run build     # bundle source code files
 npm link          # (optional) add global symlinks so scripts are available systemwide
 ```
 
-### Building and testing
+## Building and testing
 
-Run the `build` script to build both the cli and web UI modules.
+From the project directory, run `npm run build` to build both the cli and web UI modules.
 
-Run `npm test` in the project directory to run mapshaper's tests.
+Run `npm test` to run mapshaper's tests.
 
-### License
+## License
 
 This software is licensed under [MPL 2.0](http://www.mozilla.org/MPL/2.0/).
 
@@ -84,7 +84,7 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 
 
-### Acknowledgements
+## Acknowledgements
 
 My colleagues at The New York Times, for countless suggestions, bug reports and general helpfulness.
 
