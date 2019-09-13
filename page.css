@@ -663,6 +663,12 @@ body.simplify .layer-control-btn {
 	border-radius: 9px;
 }
 
+.layer-control .info-box {
+	/* (Chrome fix) raise layer menu above container to catch events */ 
+	position: relative;
+	z-index: 90;
+}
+
 .layer-menu .layer-list {
 	margin: 6px 0 6px 0;
 }

@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.126';
+VERSION = '0.4.129';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -3640,6 +3640,7 @@ Matrix2D.prototype.translate = function(dx, dy) {
   this.ty += dy;
 };
 
+// x, y: optional origin
 Matrix2D.prototype.rotate = function(q, x, y) {
   var cos = Math.cos(q);
   var sin = Math.sin(q);
@@ -3653,111 +3654,2221 @@ Matrix2D.prototype.rotate = function(q, x, y) {
   this.ty += y - x * sin - y * cos;
 };
 
-Matrix2D.prototype.scale = function(sx, sy) {
+// cx, cy: optional origin
+Matrix2D.prototype.scale = function(sx, sy, cx, cy) {
+  cx = cx || 0;
+  cy = cy || 0;
   this.a *= sx;
   this.c *= sx;
   this.b *= sy;
   this.d *= sy;
+  this.tx -= cx * (sx - 1);
+  this.ty -= cy * (sy - 1);
+};
+
+
+
+
+// A compound projection, consisting of a default projection and one or more rectangular frames
+// that are projected separately and affine transformed.
+// @projStr Default projection
+// @bbox  lat-lon bounding box of main projection
+function MixedProjection(mainParams, options) {
+  var mproj = require('mproj');
+  var mainFrame = initFrame(mainParams);
+  var mainP = mainFrame.crs;
+  var frames = [mainFrame];
+  var mixedP = initMixedProjection(mproj);
+
+  // This CRS masquerades as the main projection... the version with
+  // custom insets is exposed to savvy users
+  mainP.__mixed_crs = mixedP;
+
+  // required opts:
+  //    origin: [lng, lat] origin of frame (unprojected)
+  //    placement: [x, y] location (in projected coordinates) to shift the origin
+  //    proj: Proj.4 string for projecting data within the frame
+  //    bbox: Lat-long bounding box of frame area
+  //
+  // optional:
+  //    dx: x shift (meters)
+  //    dy: y shift (meters)
+  //    scale: scale factor (1 = no scaling)
+  //    rotation: rotation in degrees (0 = no rotation)
+  //
+  mainP.addFrame = function(paramsArg) {
+    var params = internal.getFrameParams(paramsArg, options); // apply defaults and overrides
+    var frame = initFrame(params);
+    var m = new Matrix2D();
+    //  originXY: the projected coordinates of the frame origin
+    var originXY = params.origin ? projectFrameOrigin(params.origin, frame.crs) : [0, 0];
+    var placementXY = params.placement || [0, 0];
+    var dx = placementXY[0] - originXY[0] + (+params.dx || 0);
+    var dy = placementXY[1] - originXY[1] + (+params.dy || 0);
+
+    if (params.rotation) {
+      m.rotate(params.rotation * Math.PI / 180.0, originXY[0], originXY[1]);
+    }
+    if (params.scale) {
+      m.scale(params.scale, params.scale, originXY[0], originXY[1]);
+    }
+    m.translate(dx, dy);
+
+    frame.matrix = m;
+    frames.push(frame);
+    return this;
+  };
+
+  function initFrame(params) {
+    return {
+      bounds: new Bounds(bboxToRadians(params.bbox)),
+      crs:  mproj.pj_init(params.proj)
+    };
+  }
+
+  function bboxToRadians(bbox) {
+    var D2R = Math.PI / 180;
+    return bbox.map(function(deg) {
+      return deg * D2R;
+    });
+  }
+
+  function projectFrameOrigin(origin, P) {
+    var xy = mproj.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
+    return [xy.x, xy.y];
+  }
+
+  mixedP.fwd = function(lp, xy) {
+    var frame, xy2;
+    for (var i=0, n=frames.length; i<n; i++) {
+      frame = frames[i];
+      if (frame.bounds.containsPoint(lp.lam, lp.phi)) {
+        xy2 = mproj.pj_fwd(lp, frame.crs);
+        if (frame.matrix) {
+          frame.matrix.transformXY(xy2.x, xy2.y, xy2);
+        }
+        break;
+      }
+    }
+    xy.x = xy2 ? xy2.x : Infinity;
+    xy.y = xy2 ? xy2.y : Infinity;
+  };
+
+  return mainP;
+}
+
+function initMixedProjection(mproj) {
+  if (!mproj.internal.pj_list.mixed) {
+    mproj.pj_add(function(P) {
+      P.a = 1;
+    }, 'mixed', 'Mapshaper Mixed Projection');
+  }
+  return mproj.pj_init('+proj=mixed');
+}
+
+internal.getFrameParams = function(params, options) {
+  var opts = options[params.name];
+  utils.defaults(params, {scale: 1, dx: 0, dy: 0, rotation: 0}); // add defaults
+  if (!opts) return params;
+  Object.keys(opts).forEach(function(key) {
+    var val = opts[key];
+    if (key in params) {
+      params[key] = opts[key];
+    } else {
+      params.proj = internal.replaceProjParam(params.proj, key, val);
+    }
+  });
+  return params;
+};
+
+internal.replaceProjParam = function(proj, key, val) {
+  var param = '+' + key + '=';
+  return proj.split(' ').map(function(str) {
+    if (str.indexOf(param) === 0) {
+      str = str.substr(0, param.length) + val;
+    }
+    return str;
+  }).join(' ');
 };
 
 
 
 
 
-function getAlbersUSA(opts) {
-  return function() {
-    return AlbersNYT(opts || {});
-  };
-}
-
-function AlbersNYT(opts) {
-  var mproj = require('mproj');
-  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
-  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
-  var mixed = new MixedProjection(aea)
-    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
-    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
-  if (opts.PR) {
-    mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -76.5, phi: 26.3 }, 1e6, 1e6, 1, -16); // PR
-    // mixed.addFrame(lcc, {lam: -66.431, phi: 18.228}, {lam: -93, phi: 28.22 }, 1e6, 1e6, 1, -16) // PR
+internal.getLayerDataTable = function(lyr) {
+  var data = lyr.data;
+  if (!data) {
+    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
   }
-  return mixed;
-}
+  return data;
+};
 
 
-// A compound projection, consisting of a default projection and one or more rectangular frames
-// that are reprojected and/or affine transformed.
-// @proj Default projection.
-function MixedProjection(proj) {
-  var frames = [];
-  var mixed = utils.extend({}, proj);
-  var mproj = require('mproj');
+// Not a general-purpose deep copy function
+internal.copyRecord = function(o) {
+  var o2 = {}, key, val;
+  if (!o) return null;
+  for (key in o) {
+    if (o.hasOwnProperty(key)) {
+      val = o[key];
+      if (val == o) {
+        // avoid infinite recursion if val is a circular reference, by copying all properties except key
+        val = utils.extend({}, val);
+        delete val[key];
+      }
+      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
+    }
+  }
+  return o2;
+};
 
-  // @proj2 projection to use.
-  // @ctr1 {lam, phi} center of the frame contents.
-  // @ctr2 {lam, phi} geo location to move the frame center
-  // @frameWidth Width of the frame in base projection units
-  // @frameHeight Height of the frame in base projection units
-  // @scale Scale factor; 1 = no scaling.
-  // @rotation Rotation in degrees; 0 = no rotation.
-  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
-    var m = new Matrix2D(),
-        a2 = proj.a * 2,
-        xy1 = toRawXY(ctr1, proj),
-        xy2 = toRawXY(ctr2, proj),
-        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
-            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
-    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
-    m.scale(scale, scale);
-    m.transformXY(xy1.x, xy1.y, xy1);
-    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
-    frames.push({
-      bbox: bbox,
-      matrix: m,
-      projection: proj2
+
+// Insert a column of values into a (new or existing) data field
+internal.insertFieldValues = function(lyr, fieldName, values) {
+  var size = internal.getFeatureCount(lyr) || values.length,
+      table = lyr.data = (lyr.data || new DataTable(size)),
+      records = table.getRecords();
+  internal.insertFieldValues2(fieldName, table.getRecords(), values);
+};
+
+internal.insertFieldValues2 = function(key, records, values) {
+  var n = records.length,
+      i, rec, val;
+  for (i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    val = values[i];
+    if (!rec) rec = records[i] = {};
+    rec[key] = val === undefined ? null : val;
+  }
+};
+
+internal.getValueType = function(val) {
+  var type = null;
+  if (utils.isString(val)) {
+    type = 'string';
+  } else if (utils.isNumber(val)) {
+    type = 'number';
+  } else if (utils.isBoolean(val)) {
+    type = 'boolean';
+  } else if (utils.isObject(val)) {
+    type = 'object';
+  }
+  return type;
+};
+
+// Fill out a data table with undefined values
+// The undefined members will disappear when records are exported as JSON,
+// but will show up when fields are listed using Object.keys()
+internal.fixInconsistentFields = function(records) {
+  var fields = internal.findIncompleteFields(records);
+  internal.patchMissingFields(records, fields);
+};
+
+internal.findIncompleteFields = function(records) {
+  var counts = {},
+      i, j, keys;
+  for (i=0; i<records.length; i++) {
+    keys = Object.keys(records[i] || {});
+    for (j=0; j<keys.length; j++) {
+      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
+    }
+  }
+  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
+};
+
+internal.patchMissingFields = function(records, fields) {
+  var rec, i, j, f;
+  for (i=0; i<records.length; i++) {
+    rec = records[i] || (records[i] = {});
+    for (j=0; j<fields.length; j++) {
+      f = fields[j];
+      if (f in rec === false) {
+        rec[f] = undefined;
+      }
+    }
+  }
+};
+
+internal.fieldListContainsAll = function(list, fields) {
+  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
+};
+
+internal.getColumnType = function(key, records) {
+  var type = null,
+      rec;
+  for (var i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    type = rec ? internal.getValueType(rec[key]) : null;
+    if (type) break;
+  }
+  return type;
+};
+
+internal.deleteFields = function(table, test) {
+  table.getFields().forEach(function(name) {
+    if (test(name)) {
+      table.deleteField(name);
+    }
+  });
+};
+
+internal.isInvalidFieldName = function(f) {
+  // Reject empty and all-whitespace strings. TODO: consider other criteria
+  return /^\s*$/.test(f);
+};
+
+// Resolve name conflicts in field names by appending numbers
+// @fields Array of field names
+// @maxLen (optional) Maximum chars in name
+//
+internal.getUniqFieldNames = function(fields, maxLen) {
+  var used = {};
+  return fields.map(function(name) {
+    var i = 0,
+        validName;
+    do {
+      validName = internal.adjustFieldName(name, maxLen, i);
+      i++;
+    } while ((validName in used) ||
+      // don't replace an existing valid field name with a truncated name
+      name != validName && utils.contains(fields, validName));
+    used[validName] = true;
+    return validName;
+  });
+};
+
+// Truncate and/or uniqify a name (if relevant params are present)
+internal.adjustFieldName = function(name, maxLen, i) {
+  var name2, suff;
+  maxLen = maxLen || 256;
+  if (!i) {
+    name2 = name.substr(0, maxLen);
+  } else {
+    suff = String(i);
+    if (suff.length == 1) {
+      suff = '_' + suff;
+    }
+    name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+};
+
+internal.applyFieldOrder = function(arr, option) {
+  if (option == 'ascending') {
+    arr.sort(function(a, b) {
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
     });
-    return this;
-  };
+  }
+  return arr;
+};
 
-  // convert a latlon position to x,y in earth radii relative to datum origin
-  function toRawXY(lp, P) {
-    var xy = mproj.pj_fwd_deg(lp, P);
-    return {
-      x: (xy.x / P.fr_meter - P.x0) / P.a,
-      y: (xy.y / P.fr_meter - P.y0) / P.a
+internal.findFieldNames = function(records, order) {
+  var first = records[0];
+  var names = first ? Object.keys(first) : [];
+  return internal.applyFieldOrder(names, order);
+};
+
+
+
+
+// List of encodings supported by iconv-lite:
+// https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
+
+// Return list of supported encodings
+internal.getEncodings = function() {
+  var iconv = require('iconv-lite');
+  iconv.encodingExists('ascii'); // make iconv load its encodings
+  return Object.keys(iconv.encodings);
+};
+
+internal.validateEncoding = function(enc) {
+  if (!internal.encodingIsSupported(enc)) {
+    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
+  }
+  return enc;
+};
+
+internal.encodingIsUtf8 = function(enc) {
+  // treating utf-8 as default
+  return !enc || /^utf-?8$/i.test(String(enc));
+};
+
+// Identify the most common encodings that are supersets of ascii at the
+// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
+// (this allows identifying line breaks and other ascii patterns in buffers)
+internal.encodingIsAsciiCompat = function(enc) {
+  enc = internal.standardizeEncodingName(enc);
+  // gb.* selects the Guo Biao encodings
+  // big5 in not compatible -- second byte starts at 0x40
+  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
+};
+
+// Ex. convert UTF-8 to utf8
+internal.standardizeEncodingName = function(enc) {
+  return (enc || '').toLowerCase().replace(/[_-]/g, '');
+};
+
+// Similar to Buffer#toString(); tries to speed up utf8 conversion in
+// web browser (when using browserify Buffer shim)
+internal.bufferToString = function(buf, enc, start, end) {
+  if (start >= 0) {
+    buf = buf.slice(start, end);
+  }
+  return internal.decodeString(buf, enc);
+};
+
+internal.getNativeEncoder = function(enc) {
+  var encoder = null;
+  enc = internal.standardizeEncodingName(enc);
+  if (enc != 'utf8') {
+    // TODO: support more encodings if TextEncoder is available
+    return null;
+  }
+  if (typeof TextEncoder != 'undefined') {
+    encoder = new TextEncoder(enc);
+  }
+  return function(str) {
+    // Convert Uint8Array from encoder to Buffer (fix for issue #216)
+    return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
+  };
+};
+
+internal.encodeString = (function() {
+  var iconv = require('iconv-lite');
+  var toUtf8 = internal.getNativeEncoder('utf8');
+  return function(str, enc) {
+    // TODO: faster ascii encoding?
+    var buf;
+    if (internal.encodingIsUtf8(enc)) {
+      buf = toUtf8(str);
+    } else {
+      buf = iconv.encode(str, enc);
+    }
+    return buf;
+  };
+}());
+
+internal.getNativeDecoder = function(enc) {
+  var decoder = null;
+  enc = internal.standardizeEncodingName(enc);
+  if (enc != 'utf8') {
+    // TODO: support more encodings if TextDecoder is available
+    return null;
+  }
+  if (typeof TextDecoder != 'undefined') {
+    decoder = new TextDecoder(enc);
+  }
+  return function(buf) {
+    return decoder ? decoder.decode(buf) : buf.toString(enc);
+  };
+};
+
+internal.decodeString = (function() {
+  var iconv = require('iconv-lite');
+  var fromUtf8 = internal.getNativeDecoder('utf8');
+  // @buf a Node Buffer
+  return function(buf, enc) {
+    var str;
+    if (internal.encodingIsUtf8(enc)) {
+      str = fromUtf8(buf);
+    } else {
+      str = iconv.decode(buf, enc);
+    }
+    return str;
+  };
+}());
+
+internal.encodingIsSupported = function(raw) {
+  var enc = internal.standardizeEncodingName(raw);
+  return utils.contains(internal.getEncodings(), enc);
+};
+
+internal.trimBOM = function(str) {
+  // remove BOM if present
+  if (str.charCodeAt(0) == 0xfeff) {
+    str = str.substr(1);
+  }
+  return str;
+};
+
+internal.printEncodings = function() {
+  var encodings = internal.getEncodings().filter(function(name) {
+    // filter out some aliases and non-applicable encodings
+    return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
+  });
+  encodings.sort();
+  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
+};
+
+
+
+
+// Try to detect the encoding of some sample text.
+// Returns an encoding name or null.
+// @samples Array of buffers containing sample text fields
+// TODO: Improve reliability and number of detectable encodings.
+internal.detectEncoding = function(samples) {
+  var encoding = null;
+  if (internal.looksLikeUtf8(samples)) {
+    encoding = 'utf8';
+  } else if (internal.looksLikeWin1252(samples)) {
+    // Win1252 is the same as Latin1, except it replaces a block of control
+    // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
+    // in Natural Earth (airports.dbf uses n-dash).
+    encoding = 'win1252';
+  }
+  return encoding;
+};
+
+// Convert an array of text samples to a single string using a given encoding
+internal.decodeSamples = function(enc, samples) {
+  return samples.map(function(buf) {
+    return internal.decodeString(buf, enc).trim();
+  }).join('\n');
+};
+
+internal.formatSamples = function(str) {
+  return internal.formatStringsAsGrid(str.split('\n'));
+};
+
+// Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
+// chars and almost no chars other than word chars + punctuation.
+// This excludes encodings like Greek, Cyrillic or Thai, but
+// is susceptible to false positives with encodings like codepage 1250 ("Eastern
+// European").
+internal.looksLikeWin1252 = function(samples) {
+  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘', // common extended
+      str = internal.decodeSamples('win1252', samples),
+      asciiScore = internal.getCharScore(str, ascii),
+      totalScore = internal.getCharScore(str, extended + ascii);
+  return totalScore > 0.97 && asciiScore >= 0.6; // mostly unaccented ascii chars
+};
+
+// Reject string if it contains the "replacement character" after decoding to UTF-8
+internal.looksLikeUtf8 = function(samples) {
+  // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
+  // in case the file is in utf-8, but contains some previously corrupted text.
+  // samples = samples.map(internal.replaceUtf8ReplacementChar);
+  var str = internal.decodeSamples('utf8', samples);
+  return str.indexOf('\ufffd') == -1;
+};
+
+internal.replaceUtf8ReplacementChar = function(buf) {
+  var isCopy = false;
+  for (var i=0, n=buf.length; i<n; i++) {
+    // Check for UTF-8 encoded replacement char (0xEF 0xBF 0xBD)
+    if (buf[i] == 0xef && i + 2 < n && buf[i+1] == 0xbf && buf[i+2] == 0xbd) {
+      if (!isCopy) {
+        buf = utils.createBuffer(buf);
+        isCopy = true;
+      }
+      buf[i] = buf[i+1] = buf[i+2] = 63; // ascii question mark
+    }
+  }
+  return buf;
+};
+
+// Calc percentage of chars in a string that are present in a second string
+// @chars String of chars to look for in @str
+internal.getCharScore = function(str, chars) {
+  var index = {},
+      count = 0,
+      score;
+  str = str.toLowerCase();
+  for (var i=0, n=chars.length; i<n; i++) {
+    index[chars[i]] = 1;
+  }
+  for (i=0, n=str.length; i<n; i++) {
+    count += index[str[i]] || 0;
+  }
+  return count / str.length;
+};
+
+
+
+
+// DBF format references:
+// http://www.dbf2002.com/dbf-file-format.html
+// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
+// http://www.clicketyclick.dk/databases/xbase/format/index.html
+// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
+
+var Dbf = {};
+
+// source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
+Dbf.languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
+
+// Language & Language family names for some code pages
+Dbf.encodingNames = {
+  '932': "Japanese",
+  '936': "Simplified Chinese",
+  '950': "Traditional Chinese",
+  '1252': "Western European",
+  '949': "Korean",
+  '874': "Thai",
+  '1250': "Eastern European",
+  '1251': "Russian",
+  '1254': "Turkish",
+  '1253': "Greek",
+  '1257': "Baltic"
+};
+
+Dbf.ENCODING_PROMPT =
+  "To avoid corrupted text, re-import using the \"encoding=\" option.\n" +
+  "To see a list of supported encodings, run the \"encodings\" command.";
+
+Dbf.lookupCodePage = function(lid) {
+  var i = Dbf.languageIds.indexOf(lid);
+  return i == -1 ? null : Dbf.languageIds[i+1];
+};
+
+Dbf.readAsciiString = function(bin, size) {
+  var require7bit = true;
+  var str = bin.readCString(size, require7bit);
+  if (str === null) {
+    stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
+  }
+  return utils.trim(str);
+};
+
+Dbf.readStringBytes = function(bin, size, buf) {
+  var count = 0, c;
+  for (var i=0; i<size; i++) {
+    c = bin.readUint8();
+    // treating 0 as C-style string terminator (observed in-the-wild)
+    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
+    //   characters than the NULL character (ascii 0). The following code
+    //   should be changed to support non-ascii-compatible encodings
+    if (c === 0) break;
+    if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
+      buf[count++] = c;
+    }
+  }
+  // ignore trailing spaces (DBF string fields are typically r-padded w/ spaces)
+  while (count > 0 && buf[count-1] == 32) {
+    count--;
+  }
+  return count;
+};
+
+
+Dbf.getStringReader = function(arg) {
+  var encoding = arg || 'ascii';
+  var slug = internal.standardizeEncodingName(encoding);
+  var buf = utils.createBuffer(256);
+  var inNode = typeof module == 'object';
+
+  // optimization -- use (fast) native Node conversion if available
+  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
+    return function(bin, size) {
+      var n = Dbf.readStringBytes(bin, size, buf);
+      return buf.toString(slug, 0, n);
     };
   }
 
-  mixed.fwd = function(lp, xy) {
-    var lam = lp.lam,
-        phi = lp.phi,
-        frame, bbox;
-    proj.fwd(lp, xy);
-    for (var i=0, n=frames.length; i<n; i++) {
-      frame = frames[i];
-      bbox = frame.bbox;
-      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
-        // copy lp (some proj functions may modify it)
-        frame.projection.fwd({lam: lam, phi: phi}, xy);
-        frame.matrix.transformXY(xy.x, xy.y, xy);
-        break;
+  return function readEncodedString(bin, size) {
+    var n = Dbf.readStringBytes(bin, size, buf),
+        str = '', i, c;
+    // optimization: fall back to text decoder only if string contains non-ascii bytes
+    // (data files of any encoding typically contain mostly ascii fields)
+    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
+    for (i=0; i<n; i++) {
+      c = buf[i];
+      if (c > 127) {
+        return internal.bufferToString(buf, encoding, 0, n);
       }
+      str += String.fromCharCode(c);
     }
+    return str;
+  };
+};
+
+Dbf.bufferContainsHighBit = function(buf, n) {
+  for (var i=0; i<n; i++) {
+    if (buf[i] >= 128) return true;
+  }
+  return false;
+};
+
+Dbf.getNumberReader = function() {
+  var read = Dbf.getStringReader('ascii');
+  return function readNumber(bin, size) {
+    var str = read(bin, size);
+    var val;
+    if (str.indexOf(',') >= 0) {
+      str = str.replace(',', '.'); // handle comma decimal separator
+    }
+    val = parseFloat(str);
+    return isNaN(val) ? null : val;
+  };
+};
+
+Dbf.readInt = function(bin, size) {
+  return bin.readInt32();
+};
+
+Dbf.readBool = function(bin, size) {
+  var c = bin.readCString(size),
+      val = null;
+  if (/[ty]/i.test(c)) val = true;
+  else if (/[fn]/i.test(c)) val = false;
+  return val;
+};
+
+Dbf.readDate = function(bin, size) {
+  var str = bin.readCString(size),
+      yr = str.substr(0, 4),
+      mo = str.substr(4, 2),
+      day = str.substr(6, 2);
+  return new Date(Date.UTC(+yr, +mo - 1, +day));
+};
+
+// cf. http://code.google.com/p/stringencoding/
+//
+// @src is a Buffer or ArrayBuffer or filename
+//
+function DbfReader(src, encodingArg) {
+  if (utils.isString(src)) {
+    error("[DbfReader] Expected a buffer, not a string");
+  }
+  var bin = new BinArray(src);
+  var header = readHeader(bin);
+  var encoding = encodingArg || null;
+
+  this.size = function() {return header.recordCount;};
+
+  this.readRow = function(i) {
+    // create record reader on-the-fly
+    // (delays encoding detection until we need to read data)
+    return getRecordReader(header.fields)(i);
   };
 
-  return mixed;
+  this.getFields = getFieldNames;
+
+  this.getBuffer = function() {return bin.buffer();};
+
+  this.deleteField = function(f) {
+    header.fields = header.fields.filter(function(field) {
+      return field.name != f;
+    });
+  };
+
+  this.readRows = function() {
+    var reader = getRecordReader(header.fields);
+    var data = [];
+    for (var r=0, n=this.size(); r<n; r++) {
+      data.push(reader(r));
+    }
+    return data;
+  };
+
+  function readHeader(bin) {
+    bin.position(0).littleEndian();
+    var header = {
+      version: bin.readInt8(),
+      updateYear: bin.readUint8(),
+      updateMonth: bin.readUint8(),
+      updateDay: bin.readUint8(),
+      recordCount: bin.readUint32(),
+      dataOffset: bin.readUint16(),
+      recordSize: bin.readUint16(),
+      incompleteTransaction: bin.skipBytes(2).readUint8(),
+      encrypted: bin.readUint8(),
+      mdx: bin.skipBytes(12).readUint8(),
+      ldid: bin.readUint8()
+    };
+    var colOffs = 1; // first column starts on second byte of record
+    var field;
+    bin.skipBytes(2);
+    header.fields = [];
+
+    // Detect header terminator (LF is standard, CR has been seen in the wild)
+    while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
+      field = readFieldHeader(bin);
+      field.columnOffset = colOffs;
+      header.fields.push(field);
+      colOffs += field.size;
+    }
+    if (colOffs != header.recordSize) {
+      error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
+    }
+    if (bin.peek() != 0x0D) {
+      message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
+    }
+
+    // Uniqify header names
+    internal.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
+      header.fields[i].name = name2;
+    });
+
+    return header;
+  }
+
+  function readFieldHeader(bin) {
+    return {
+      name: bin.readCString(11),
+      type: String.fromCharCode(bin.readUint8()),
+      address: bin.readUint32(),
+      size: bin.readUint8(),
+      decimals: bin.readUint8(),
+      id: bin.skipBytes(2).readUint8(),
+      position: bin.skipBytes(2).readUint8(),
+      indexFlag: bin.skipBytes(7).readUint8()
+    };
+  }
+
+  function getFieldNames() {
+    return utils.pluck(header.fields, 'name');
+  }
+
+  function getRowOffset(r) {
+    return header.dataOffset + header.recordSize * r;
+  }
+
+  function getEncoding() {
+    if (!encoding) {
+      encoding = findStringEncoding();
+      if (!encoding) {
+        // fall back to utf8 if detection fails (so GUI can continue without further errors)
+        encoding = 'utf8';
+        stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
+      }
+    }
+    return encoding;
+  }
+
+  // Create new record objects using object literal syntax
+  // (Much faster in v8 and other engines than assigning a series of properties
+  //  to an object)
+  function getRecordConstructor() {
+    var args = getFieldNames().map(function(name, i) {
+          return JSON.stringify(name) + ': arguments[' + i + ']';
+        });
+    return new Function('return {' + args.join(',') + '};');
+  }
+
+  function findEofPos(bin) {
+    var pos = bin.size() - 1;
+    if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
+      pos++;
+    }
+    return pos;
+  }
+
+  function getRecordReader(fields) {
+    var readers = fields.map(getFieldReader),
+        eofOffs = findEofPos(bin),
+        create = getRecordConstructor(),
+        values = [];
+
+    return function readRow(r) {
+      var offs = getRowOffset(r),
+          fieldOffs, field;
+      for (var c=0, cols=fields.length; c<cols; c++) {
+        field = fields[c];
+        fieldOffs = offs + field.columnOffset;
+        if (fieldOffs + field.size > eofOffs) {
+          stop('Invalid DBF file: encountered end-of-file while reading data');
+        }
+        bin.position(fieldOffs);
+        values[c] = readers[c](bin, field.size);
+      }
+      return create.apply(null, values);
+    };
+  }
+
+  // @f Field metadata from dbf header
+  function getFieldReader(f) {
+    var type = f.type,
+        r = null;
+    if (type == 'I') {
+      r = Dbf.readInt;
+    } else if (type == 'F' || type == 'N') {
+      r = Dbf.getNumberReader();
+    } else if (type == 'L') {
+      r = Dbf.readBool;
+    } else if (type == 'D') {
+      r = Dbf.readDate;
+    } else if (type == 'C') {
+      r = Dbf.getStringReader(getEncoding());
+    } else {
+      message("Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
+      r = function() {return null;};
+    }
+    return r;
+  }
+
+  function findStringEncoding() {
+    var ldid = header.ldid,
+        codepage = Dbf.lookupCodePage(ldid),
+        samples = getNonAsciiSamples(50),
+        only7bit = samples.length === 0,
+        encoding, msg;
+
+    // First, check the ldid (language driver id) (an obsolete way to specify which
+    // codepage to use for text encoding.)
+    // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
+    // user's Windows system :P
+    //
+    if (codepage && ldid != 87) {
+      // if 8-bit data is found and codepage is detected, use the codepage,
+      // except ldid 87, which some GIS software uses regardless of encoding.
+      encoding = codepage;
+    } else if (only7bit) {
+      // Text with no 8-bit chars should be compatible with 7-bit ascii
+      // (Most encodings are supersets of ascii)
+      encoding = 'ascii';
+    }
+
+    // As a last resort, try to guess the encoding:
+    if (!encoding) {
+      encoding = internal.detectEncoding(samples);
+    }
+
+    // Show a sample of decoded text if non-ascii-range text has been found
+    if (encoding && samples.length > 0) {
+      msg = internal.decodeSamples(encoding, samples);
+      msg = internal.formatStringsAsGrid(msg.split('\n'));
+      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
+      msg = "Detected DBF text encoding: " + encoding + (encoding in Dbf.encodingNames ? " (" + Dbf.encodingNames[encoding] + ")" : "") + msg;
+      message(msg);
+    }
+    return encoding;
+  }
+
+  // Return up to @size buffers containing text samples
+  // with at least one byte outside the 7-bit ascii range.
+  function getNonAsciiSamples(size) {
+    var samples = [];
+    var stringFields = header.fields.filter(function(f) {
+      return f.type == 'C';
+    });
+    var buf = utils.createBuffer(256);
+    var index = {};
+    var f, chars, sample, hash;
+    for (var r=0, rows=header.recordCount; r<rows; r++) {
+      for (var c=0, cols=stringFields.length; c<cols; c++) {
+        if (samples.length >= size) break;
+        f = stringFields[c];
+        bin.position(getRowOffset(r) + f.columnOffset);
+        chars = Dbf.readStringBytes(bin, f.size, buf);
+        if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
+          sample = utils.createBuffer(buf.slice(0, chars)); //
+          hash = sample.toString('hex');
+          if (hash in index === false) { // avoid duplicate samples
+            index[hash] = true;
+            samples.push(sample);
+          }
+        }
+      }
+    }
+    return samples;
+  }
+
 }
 
 
 
 
-// some aliases
-internal.projectionIndex = {
+Dbf.MAX_STRING_LEN = 254;
+
+function BufferPool() {
+  var n = 5000,
+      pool, i;
+  newPool();
+
+  function newPool() {
+    pool = new Uint8Array(n);
+    i = 0;
+  }
+
+  return {
+    reserve: function(bytes) {
+      if (i + bytes > n) newPool();
+      i += bytes;
+      return pool.subarray(i - bytes, i);
+    },
+    putBack: function(bytes) {
+      i -= bytes;
+    }
+  };
+}
+
+Dbf.bufferPool = new BufferPool();
+
+Dbf.exportRecords = function(records, encoding, fieldOrder) {
+  var rows = records.length;
+  var fields = internal.findFieldNames(records, fieldOrder);
+  var dbfFields = Dbf.convertFieldNames(fields);
+  var fieldData = fields.map(function(name, i) {
+    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
+    var name2 = dbfFields[i];
+    info.name = name2;
+    if (name != name2) {
+      message('Changed field name from "' + name + '" to "' + name2 + '"');
+    }
+    if (info.warning) {
+      message('[' + name + '] ' + info.warning);
+    }
+    return info;
+  });
+
+  var headerBytes = Dbf.getHeaderSize(fieldData.length),
+      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
+      fileBytes = headerBytes + rows * recordBytes + 1;
+
+  var buffer = new ArrayBuffer(fileBytes);
+  var bin = new BinArray(buffer).littleEndian();
+  var now = new Date();
+
+  // write header
+  bin.writeUint8(3);
+  bin.writeUint8(now.getFullYear() - 1900);
+  bin.writeUint8(now.getMonth() + 1);
+  bin.writeUint8(now.getDate());
+  bin.writeUint32(rows);
+  bin.writeUint16(headerBytes);
+  bin.writeUint16(recordBytes);
+  bin.skipBytes(17);
+  bin.writeUint8(0); // language flag; TODO: improve this
+  bin.skipBytes(2);
+
+
+  // field subrecords
+  fieldData.reduce(function(recordOffset, obj) {
+    bin.writeCString(obj.name, 11);
+    bin.writeUint8(obj.type.charCodeAt(0));
+    bin.writeUint32(recordOffset);
+    bin.writeUint8(obj.size);
+    bin.writeUint8(obj.decimals);
+    bin.skipBytes(14);
+    return recordOffset + obj.size;
+  }, 1);
+
+  bin.writeUint8(0x0d); // "field descriptor terminator"
+  if (bin.position() != headerBytes) {
+    error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
+  }
+
+  records.forEach(function(rec, i) {
+    var start = bin.position();
+    bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
+    for (var j=0, n=fieldData.length; j<n; j++) {
+      fieldData[j].write(i, bin);
+    }
+    if (bin.position() - start != recordBytes) {
+      error("#exportRecords() Error exporting record:", rec);
+    }
+  });
+
+  bin.writeUint8(0x1a); // end-of-file
+
+  if (bin.position() != fileBytes) {
+    error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
+  }
+  return buffer;
+};
+
+Dbf.getHeaderSize = function(numFields) {
+  return 33 + numFields * 32;
+};
+
+Dbf.getRecordSize = function(fieldSizes) {
+  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
+};
+
+Dbf.initNumericField = function(info, arr, name) {
+  var MAX_FIELD_SIZE = 18,
+      data, size;
+
+  data = this.getNumericFieldInfo(arr, name);
+  info.decimals = data.decimals;
+  size = Math.max(data.max.toFixed(info.decimals).length,
+      data.min.toFixed(info.decimals).length);
+  if (size > MAX_FIELD_SIZE) {
+    size = MAX_FIELD_SIZE;
+    info.decimals -= size - MAX_FIELD_SIZE;
+    if (info.decimals < 0) {
+      error ("Dbf#getFieldInfo() Out-of-range error.");
+    }
+  }
+  info.size = size;
+
+  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
+  info.write = function(i, bin) {
+    var rec = arr[i],
+        str = formatter(rec[name]);
+    if (str.length < size) {
+      str = utils.lpad(str, size, ' ');
+    }
+    bin.writeString(str, size);
+  };
+};
+
+Dbf.initBooleanField = function(info, arr, name) {
+  info.size = 1;
+  info.write = function(i, bin) {
+    var val = arr[i][name],
+        c;
+    if (val === true) c = 'T';
+    else if (val === false) c = 'F';
+    else c = '?';
+    bin.writeString(c);
+  };
+};
+
+Dbf.initDateField = function(info, arr, name) {
+  info.size = 8;
+  info.write = function(i, bin) {
+    var d = arr[i][name],
+        str;
+    if (d instanceof Date === false) {
+      str = '00000000';
+    } else {
+      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
+            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
+            utils.lpad(d.getUTCDate(), 2, '0');
+    }
+    bin.writeString(str);
+  };
+};
+
+Dbf.convertValueToString = function(s) {
+  return s === undefined || s === null ? '' : String(s);
+};
+
+Dbf.initStringField = function(info, arr, name, encoding) {
+  var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
+  var size = 0;
+  var truncated = 0;
+  var buffers = arr.map(function(rec) {
+    var strval = Dbf.convertValueToString(rec[name]);
+    var buf = formatter(strval);
+    if (buf.length > Dbf.MAX_STRING_LEN) {
+      if (encoding == 'ascii') {
+        buf = buf.subarray(0, Dbf.MAX_STRING_LEN);
+      } else {
+        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+      }
+      truncated++;
+    }
+    size = Math.max(size, buf.length);
+    return buf;
+  });
+  info.size = size;
+  info.write = function(i, bin) {
+    var buf = buffers[i],
+        n = Math.min(size, buf.length),
+        dest = bin._bytes,
+        pos = bin.position(),
+        j;
+    for (j=0; j<n; j++) {
+      dest[j + pos] = buf[j];
+    }
+    bin.position(pos + size);
+  };
+  if (truncated > 0) {
+    info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
+  }
+};
+
+Dbf.convertFieldNames = function(names) {
+  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
+};
+
+// Replace non-alphanumeric characters with _ and merge adjacent _
+// See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
+// TODO: decide whether or not to avoid initial numerals
+Dbf.cleanFieldName = function(name) {
+  return name.replace(/[^A-Za-z0-9]+/g, '_');
+};
+
+Dbf.getFieldInfo = function(arr, name, encoding) {
+  var type = this.discoverFieldType(arr, name),
+      info = {
+        type: type,
+        decimals: 0
+      };
+  if (type == 'N') {
+    Dbf.initNumericField(info, arr, name);
+  } else if (type == 'C') {
+    Dbf.initStringField(info, arr, name, encoding);
+  } else if (type == 'L') {
+    Dbf.initBooleanField(info, arr, name);
+  } else if (type == 'D') {
+    Dbf.initDateField(info, arr, name);
+  } else {
+    // Treat null fields as empty numeric fields; this way, they will be imported
+    // again as nulls.
+    info.size = 0;
+    info.type = 'N';
+    if (type) {
+      info.warning = 'Unable to export ' + type + '-type data, writing null values';
+    }
+    info.write = function() {};
+  }
+  return info;
+};
+
+Dbf.discoverFieldType = function(arr, name) {
+  var val;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i][name];
+    if (utils.isString(val)) return "C";
+    if (utils.isNumber(val)) return "N";
+    if (utils.isBoolean(val)) return "L";
+    if (val instanceof Date) return "D";
+    if (val) return (typeof val);
+  }
+  return null;
+};
+
+Dbf.getDecimalFormatter = function(size, decimals) {
+  // TODO: find better way to handle nulls
+  var nullValue = ' '; // ArcGIS may use 0
+  return function(val) {
+    // TODO: handle invalid values better
+    var valid = utils.isFiniteNumber(val),
+        strval = valid ? val.toFixed(decimals) : String(nullValue);
+    return utils.lpad(strval, size, ' ');
+  };
+};
+
+Dbf.getNumericFieldInfo = function(arr, name) {
+  var min = 0,
+      max = 0,
+      k = 1,
+      power = 1,
+      decimals = 0,
+      eps = 1e-15,
+      val;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i][name];
+    if (!utils.isFiniteNumber(val)) {
+      continue;
+    }
+    if (val < min || val > max) {
+      if (val < min) min = val;
+      if (val > max) max = val;
+      while (Math.abs(val) >= power) {
+        power *= 10;
+        eps *= 10;
+      }
+    }
+    while (Math.abs(Math.round(val * k) - val * k) > eps) {
+      if (decimals == 15) { // dbf limit
+        // TODO: round overflowing values ?
+        break;
+      }
+      decimals++;
+      eps *= 10;
+      k *= 10;
+    }
+  }
+  return {
+    decimals: decimals,
+    min: min,
+    max: max
+  };
+};
+
+// return an array buffer or null if value contains non-ascii chars
+Dbf.encodeValueAsAscii = function(val, strict) {
+  var str = String(val),
+      n = str.length,
+      view = Dbf.bufferPool.reserve(n),
+      i, c;
+  for (i=0; i<n; i++) {
+    c = str.charCodeAt(i);
+    if (c > 127) {
+      if (strict) {
+        view = null;
+        i = 0; // return all bytes to pool
+        break;
+      }
+      c = '?'.charCodeAt(0);
+    }
+    view[i] = c;
+  }
+  Dbf.bufferPool.putBack(n-i);
+  return view ? view.subarray(0, i) : null;
+};
+
+Dbf.getStringWriterEncoded = function(encoding) {
+  return function(val) {
+    // optimization -- large majority of strings in real-world datasets are
+    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
+    var buf = Dbf.encodeValueAsAscii(val, true);
+    if (buf === null) {
+      buf = internal.encodeString(String(val), encoding);
+    }
+    return buf;
+  };
+};
+
+// try to remove partial multi-byte characters from the end of an encoded string.
+Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
+  var truncated = buf.slice(0, maxLen);
+  var len = maxLen;
+  var tmp, str;
+  while (len > 0 && len >= maxLen - 3) {
+    tmp = len == maxLen ? truncated : buf.slice(0, len);
+    str = internal.decodeString(tmp, encoding);
+    if (str.charAt(str.length-1) != '\ufffd') {
+      truncated = tmp;
+      break;
+    }
+    len--;
+  }
+  return truncated;
+};
+
+
+
+
+function DataTable(obj) {
+  var records;
+  if (utils.isArray(obj)) {
+    records = obj;
+  } else {
+    records = [];
+    // integer object: create empty records
+    if (utils.isInteger(obj)) {
+      for (var i=0; i<obj; i++) {
+        records.push({});
+      }
+    } else if (obj) {
+      error("Invalid DataTable constructor argument:", obj);
+    }
+  }
+
+  this.exportAsDbf = function(opts) {
+    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
+  };
+
+  this.getRecords = function() {
+    return records;
+  };
+
+  // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
+  this.getReadOnlyRecordAt = function(i) {
+    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
+  };
+}
+
+var dataTableProto = {
+
+  fieldExists: function(name) {
+    return utils.contains(this.getFields(), name);
+  },
+
+  toString: function() {return JSON.stringify(this);},
+
+  toJSON: function() {
+    return this.getRecords();
+  },
+
+  addField: function(name, init) {
+    var useFunction = utils.isFunction(init);
+    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
+      error("DataTable#addField() requires a string, number or function for initialization");
+    }
+    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
+    // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
+    // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
+
+    this.getRecords().forEach(function(obj, i) {
+      obj[name] = useFunction ? init(obj, i) : init;
+    });
+  },
+
+  getRecordAt: function(i) {
+    return this.getRecords()[i];
+  },
+
+  addIdField: function() {
+    this.addField('FID', function(obj, i) {
+      return i;
+    });
+  },
+
+  deleteField: function(f) {
+    this.getRecords().forEach(function(o) {
+      delete o[f];
+    });
+  },
+
+  getFields: function() {
+    return internal.findFieldNames(this.getRecords());
+  },
+
+  update: function(f) {
+    var records = this.getRecords();
+    for (var i=0, n=records.length; i<n; i++) {
+      records[i] = f(records[i], i);
+    }
+  },
+
+  clone: function() {
+    // TODO: this could be sped up using a record constructor function
+    // (see getRecordConstructor() in DbfReader)
+    var records2 = this.getRecords().map(internal.copyRecord);
+    return new DataTable(records2);
+  },
+
+  size: function() {
+    return this.getRecords().length;
+  }
+};
+
+utils.extend(DataTable.prototype, dataTableProto);
+
+
+
+
+internal.FileReader = FileReader;
+internal.BufferReader = BufferReader;
+
+internal.readFirstChars = function(reader, n) {
+  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
+};
+
+// Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
+function BufferReader(src) {
+  var bufSize = src.byteLength || src.length,
+      binArr, buf;
+
+  this.readToBinArray = function(start, length) {
+    if (bufSize < start + length) error("Out-of-range error");
+    if (!binArr) binArr = new BinArray(src);
+    binArr.position(start);
+    return binArr;
+  };
+
+  this.toString = function(enc) {
+    return internal.bufferToString(buffer(), enc);
+  };
+
+  this.readSync = function(start, length) {
+    // TODO: consider using a default length like FileReader
+    return buffer().slice(start, length || bufSize);
+  };
+
+  function buffer() {
+    if (!buf) {
+      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
+    }
+    return buf;
+  }
+
+  this.findString = FileReader.prototype.findString;
+  this.expandBuffer = function() {return this;};
+  this.size = function() {return bufSize;};
+  this.close = function() {};
+}
+
+function FileReader(path, opts) {
+  var fs = require('fs'),
+      fileLen = fs.statSync(path).size,
+      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
+      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
+      fd, cacheOffs, cache, binArr;
+
+  internal.getStateVar('input_files').push(path); // bit of a kludge
+
+  this.expandBuffer = function() {
+    DEFAULT_BUFFER_LEN *= 2;
+    return this;
+  };
+
+  // Read to BinArray (for compatibility with ShpReader)
+  this.readToBinArray = function(start, length) {
+    if (updateCache(start, length)) {
+      binArr = new BinArray(cache);
+    }
+    binArr.position(start - cacheOffs);
+    return binArr;
+  };
+
+  // Read to Buffer
+  this.readSync = function(start, length) {
+    if (length > 0 === false) {
+      // use default (but variable) size if length is not specified
+      length = DEFAULT_BUFFER_LEN;
+      if (start + length > fileLen) {
+        length = fileLen - start; // truncate at eof
+      }
+      if (length === 0) {
+        return utils.createBuffer(0); // kludge to allow reading up to eof
+      }
+    }
+    updateCache(start, length);
+    return cache.slice(start - cacheOffs, start - cacheOffs + length);
+  };
+
+  this.size = function() {
+    return fileLen;
+  };
+
+  this.toString = function(enc) {
+    // TODO: use fd
+    return cli.readFile(path, enc || 'utf8');
+  };
+
+  this.close = function() {
+    if (fd) {
+      fs.closeSync(fd);
+      fd = null;
+      cache = null;
+    }
+  };
+
+  // Receive offset and length of byte string that must be read
+  // Return true if cache was updated, or false
+  function updateCache(fileOffs, bufLen) {
+    var headroom = fileLen - fileOffs,
+        bytesRead, bytesToRead;
+    if (headroom < bufLen || headroom < 0) {
+      error("Tried to read past end-of-file");
+    }
+    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bufLen) {
+      return false;
+    }
+    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bufLen);
+    if (headroom < bytesToRead) {
+      bytesToRead = headroom;
+    }
+    if (!cache || bytesToRead != cache.length) {
+      cache = utils.createBuffer(bytesToRead);
+    }
+    if (!fd) {
+      fd = fs.openSync(path, 'r');
+    }
+    bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
+    cacheOffs = fileOffs;
+    if (bytesRead != bytesToRead) error("Error reading file");
+    return true;
+  }
+}
+
+FileReader.prototype.findString = function (str, maxLen) {
+  var len = Math.min(this.size(), maxLen || this.size());
+  var buf = this.readSync(0, len);
+  var strLen = str.length;
+  var n = buf.length - strLen;
+  var firstByte = str.charCodeAt(0);
+  var i;
+  for (i=0; i < n; i++) {
+    if (buf[i] == firstByte && buf.toString('utf8', i, i + strLen) == str) {
+      return {
+        offset: i + strLen,
+        text: buf.toString('utf8', 0, i)
+      };
+    }
+  }
+  return null;
+};
+
+
+
+
+// TODO: support other encodings than utf-8
+// (Need to update readDelimLines() to work with all encodings)
+internal.readDelimRecords = function(reader, delim, encoding, filter) {
+  var dsv = require("d3-dsv").dsvFormat(delim),
+      records = [],
+      retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
+      header = internal.trimBOM(retn ? retn.text : ''),
+      batch;
+  if (!retn) return []; // e.g. empty file
+  // read in batches (faster than line-by-line)
+  while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
+    batch = dsv.parse(header + retn.text, filter);
+    records.push.apply(records, batch);
+  }
+  return records;
+};
+
+internal.readDelimLines = function(reader, offs, delim, encoding, lines) {
+  var CR = 13,
+      LF = 10,
+      DQUOTE = 34,
+      DELIM = delim.charCodeAt(0),
+      inQuotedField = false,
+      buf = reader.readSync(offs),
+      eol = false,
+      linesLeft = lines > 0 ? lines : 1,
+      i, n, c, prev;
+
+  for (i=0, n=buf.length; i<n; i++) {
+    c = buf[i];
+    if (eol) {
+      if (prev == CR && c == LF) {
+        // consume LF
+      } else {
+        eol = false;
+        linesLeft--;
+      }
+      if (linesLeft <= 0) break;
+    }
+    if (c == DQUOTE) {
+      // according to spec, double quotes either enclose a field or are
+      // paired inside a quoted field
+      // https://tools.ietf.org/html/rfc4180
+      // the following handles both cases (no error checking though)
+      inQuotedField = !inQuotedField;
+    } else if (!inQuotedField && (c == CR || c == LF)) {
+      eol = true;
+    }
+
+    if (i == n-1) {
+      buf = reader.expandBuffer().readSync(offs);
+      n = buf.length;
+    }
+    prev = c;
+  }
+  return i === 0 ? null : {
+    offset: i + offs,
+    text: internal.bufferToString(buf, encoding, 0, i)
+  };
+};
+
+
+
+
+utils.replaceFileExtension = function(path, ext) {
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
+};
+
+utils.getPathSep = function(path) {
+  // TODO: improve
+  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
+};
+
+// Parse the path to a file without using Node
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      sep = utils.getPathSep(path),
+      parts = path.split(sep),
+      i;
+
+  if (parts.length == 1) {
+    obj.filename = parts[0];
+    obj.directory = "";
+  } else {
+    obj.filename = parts.pop();
+    obj.directory = parts.join(sep);
+  }
+  i = obj.filename.lastIndexOf('.');
+  if (i > -1) {
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
+  } else {
+    obj.extension = "";
+    obj.basename = obj.filename;
+    obj.pathbase = path;
+  }
+  return obj;
+};
+
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
+utils.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = utils.mergeNames(memo, name);
+    }
+    return memo;
+  }, "");
+};
+
+utils.getOutputFileBase = function(dataset) {
+  var inputFiles = dataset.info && dataset.info.input_files;
+  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
+};
+
+
+
+
+// Guess the type of a data file from file extension, or return null if not sure
+internal.guessInputFileType = function(file) {
+  var ext = utils.getFileExtension(file || '').toLowerCase(),
+      type = null;
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
+    type = ext;
+  } else if (/json$/.test(ext)) {
+    type = 'json';
+  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
+    type = 'text';
+  }
+  return type;
+};
+
+internal.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+    type = 'json';
+  }
+  return type;
+};
+
+internal.guessInputType = function(file, content) {
+  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
+};
+
+//
+internal.stringLooksLikeJSON = function(str) {
+  return /^\s*[{[]/.test(String(str));
+};
+
+internal.couldBeDsvFile = function(name) {
+  var ext = utils.getFileExtension(name).toLowerCase();
+  return /csv|tsv|txt$/.test(ext);
+};
+
+internal.isZipFile = function(file) {
+  return /\.zip$/i.test(file);
+};
+
+internal.isSupportedOutputFormat = function(fmt) {
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+  return types.indexOf(fmt) > -1;
+};
+
+internal.getFormatName = function(fmt) {
+  return {
+    geojson: 'GeoJSON',
+    topojson: 'TopoJSON',
+    json: 'JSON records',
+    dsv: 'CSV',
+    dbf: 'DBF',
+    shapefile: 'Shapefile',
+    svg: 'SVG'
+  }[fmt] || '';
+};
+
+// Assumes file at @path is one of Mapshaper's supported file types
+internal.isSupportedBinaryInputType = function(path) {
+  var ext = utils.getFileExtension(path).toLowerCase();
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
+};
+
+// Detect extensions of some unsupported file types, for cmd line validation
+internal.filenameIsUnsupportedOutputType = function(file) {
+  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+  return rxp.test(file);
+};
+
+
+
+
+var cli = {};
+
+cli.isFile = function(path, cache) {
+  var ss = cli.statSync(path);
+  return cache && (path in cache) || ss && ss.isFile() || false;
+};
+
+cli.fileSize = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.size || 0;
+};
+
+cli.isDirectory = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
+
+// @encoding (optional) e.g. 'utf8'
+cli.readFile = function(fname, encoding, cache) {
+  var content;
+  if (cache && (fname in cache)) {
+    content = cache[fname];
+    delete cache[fname];
+  } else if (fname == '/dev/stdin') {
+    content = require('rw').readFileSync(fname);
+  } else {
+    internal.getStateVar('input_files').push(fname);
+    content = require('fs').readFileSync(fname);
+  }
+  if (encoding && Buffer.isBuffer(content)) {
+    content = internal.trimBOM(internal.decodeString(content, encoding));
+  }
+  return content;
+};
+
+// @content Buffer or string
+cli.writeFile = function(path, content, cb) {
+  var fs = require('rw');
+  if (cb) {
+    fs.writeFile(path, content, preserveContext(cb));
+  } else {
+    fs.writeFileSync(path, content);
+  }
+};
+
+// Returns Node Buffer
+cli.convertArrayBuffer = function(buf) {
+  var src = new Uint8Array(buf),
+      dest = utils.createBuffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
+
+// Expand any "*" wild cards in file name
+// (For the Windows command line; unix shells do this automatically)
+cli.expandFileName = function(name) {
+  var info = utils.parseLocalPath(name),
+      rxp = utils.wildcardToRegExp(info.filename),
+      dir = info.directory || '.',
+      files = [];
+
+  try {
+    require('fs').readdirSync(dir).forEach(function(item) {
+      var path = require('path').join(dir, item);
+      if (rxp.test(item) && cli.isFile(path)) {
+        files.push(path);
+      }
+    });
+  } catch(e) {}
+
+  if (files.length === 0) {
+    stop('No files matched (' + name + ')');
+  }
+  return files;
+};
+
+// Expand any wildcards.
+cli.expandInputFiles = function(files) {
+  return files.reduce(function(memo, name) {
+    if (name.indexOf('*') > -1) {
+      memo = memo.concat(cli.expandFileName(name));
+    } else {
+      memo.push(name);
+    }
+    return memo;
+  }, []);
+};
+
+cli.validateOutputDir = function(name) {
+  if (!cli.isDirectory(name)) {
+    error("Output directory not found:", name);
+  }
+};
+
+// TODO: rename and improve
+// Want to test if a path is something readable (e.g. file or stdin)
+cli.checkFileExists = function(path, cache) {
+  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
+    stop("File not found (" + path + ")");
+  }
+};
+
+cli.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  } catch(e) {}
+  return obj;
+};
+
+
+
+
+
+// Convert a string containing delimited text data into a dataset object
+internal.importDelim = function(str, opts) {
+  return internal.importDelim2({content: str}, opts);
+};
+
+// Convert a string, buffer or file containing delimited text into a dataset obj.
+internal.importDelim2 = function(data, opts) {
+
+  // TODO: remove duplication with importJSON()
+  var readFromFile = !data.content && data.content !== '',
+      content = data.content,
+      filter, reader, records, delimiter, table;
+  opts = opts || {};
+  filter = internal.getImportFilterFunction(opts);
+
+  // read content of all but very large files into a buffer
+  if (readFromFile && cli.fileSize(data.filename) < 2e9) {
+    content = cli.readFile(data.filename);
+    readFromFile = false;
+  }
+
+  if (readFromFile) {
+    // try to read data incrementally from file, if content is missing
+    reader = new FileReader(data.filename);
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
+    // Web API may import as ArrayBuffer, to support larger files
+    reader = new BufferReader(content);
+    content = null;
+  } else if (utils.isString(content)) {
+    // import as string
+  } else {
+    error("Unexpected object type");
+  }
+
+  if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
+    // Currently, incremental reading assumes ascii-compatible data.
+    // Incompatible encodings must be parsed as strings.
+    content = reader.toString(opts.encoding);
+    reader = null;
+  }
+
+  if (reader) {
+    delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
+    records = internal.readDelimRecords(reader, delimiter, opts.encoding, filter);
+  } else {
+    delimiter = internal.guessDelimiter(content);
+    records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
+    delete records.columns; // added by d3-dsv
+  }
+  if (records.length === 0) {
+    message("Unable to read any data records");
+  }
+  internal.adjustRecordTypes(records, opts);
+  table = new DataTable(records);
+  internal.deleteFields(table, internal.isInvalidFieldName);
+  return {
+    layers: [{data: table}],
+    info: {input_delimiter: delimiter}
+  };
+};
+
+internal.supportedDelimiters = ['|', '\t', ',', ';'];
+
+internal.isSupportedDelimiter = function(d) {
+  return utils.contains(internal.supportedDelimiters, d);
+};
+
+internal.guessDelimiter = function(content) {
+  return utils.find(internal.supportedDelimiters, function(delim) {
+    var rxp = internal.getDelimiterRxp(delim);
+    return rxp.test(content);
+  }) || ',';
+};
+
+// Get RegExp to test for a delimiter before first line break of a string
+// Assumes that the first line does not contain alternate delim chars (this will
+// be true if the first line has field headers composed of word characters).
+internal.getDelimiterRxp = function(delim) {
+  var rxp = "^[^\\n\\r]+" + utils.regexEscape(delim);
+  return new RegExp(rxp);
+};
+
+internal.getFieldTypeHints = function(opts) {
+  var hints = {};
+  opts = opts || {};
+  if (opts.string_fields) {
+    opts.string_fields.forEach(function(f) {
+      hints[f] = 'string';
+    });
+  }
+  if (opts.field_types) {
+    opts.field_types.forEach(function(raw) {
+      var parts, name, type;
+      if (raw.indexOf(':') != -1) {
+        parts = raw.split(':');
+        name = parts[0];
+        type = internal.validateFieldType(parts[1]);
+      } else if (raw[0] === '+') { // d3-style type hint: unary plus
+        name = raw.substr(1);
+        type = 'number';
+      }
+      if (type) {
+        hints[name] = type;
+      } else {
+        message("Invalid type hint (expected :str or :num) [" + raw + "]");
+      }
+    });
+  }
+  return hints;
+};
+
+
+// Detect and convert data types of data from csv files.
+// TODO: decide how to handle records with inconstent properties. Mapshaper
+//    currently assumes tabular data
+internal.adjustRecordTypes = function(records, opts) {
+  var typeIndex = internal.getFieldTypeHints(opts),
+      singleType = typeIndex['*'], // support for setting all fields to a single type
+      fields = Object.keys(records[0] || []),
+      detectedNumFields = [],
+      replacements = {};
+  fields.forEach(function(key) {
+    var typeHint = typeIndex[key];
+    var values = null;
+    if (typeHint == 'number' || singleType == 'number') {
+      values = internal.convertDataField(key, records, utils.parseNumber);
+    } else if (typeHint == 'string' || singleType == 'string') {
+      values = internal.convertDataField(key, records, utils.parseString);
+    } else {
+      values = internal.tryNumericField(key, records);
+      if (values) detectedNumFields.push(key);
+    }
+    if (values) replacements[key] = values;
+  });
+  if (Object.keys(replacements).length > 0) {
+    internal.updateFieldsInRecords(fields, records, replacements);
+  }
+  if (detectedNumFields.length > 0) {
+    message(utils.format("Auto-detected number field%s: %s",
+        detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
+  }
+};
+
+// Copy original data properties and replacements to a new set of records
+// (Better performance in v8 than making in-place replacements)
+internal.updateFieldsInRecords = function(fields, records, replacements) {
+  records.forEach(function(rec, recId) {
+    var rec2 = {}, n, i, f;
+    for (i=0, n=fields.length; i<n; i++) {
+      f = fields[i];
+      if (f in replacements) {
+        rec2[f] = replacements[f][recId];
+      } else {
+        rec2[f] = rec[f];
+      }
+    }
+    records[recId] = rec2;
+  });
+};
+
+internal.tryNumericField = function(key, records) {
+  var arr = [],
+      count = 0,
+      raw, str, num;
+  for (var i=0, n=records.length; i<n; i++) {
+    raw = records[i][key];
+    num = utils.parseNumber(raw);
+    if (num === null) {
+      str = raw ? raw.trim() : '';
+      if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
+        return null; // unparseable value -- fail
+      }
+    } else {
+      count++;
+    }
+    arr.push(num);
+  }
+  return count > 0 ? arr : null;
+};
+
+internal.convertDataField = function(name, records, f) {
+  var values = [];
+  for (var i=0, n=records.length; i<n; i++) {
+    values.push(f(records[i][name]));
+  }
+  return values;
+};
+
+// Accept a type hint from a header like "FIPS:str"
+// Return standard type name (number|string) or null if hint is not recognized
+internal.validateFieldType = function(hint) {
+  var str = hint.toLowerCase(),
+      type = null;
+  if (str[0] == 'n') {
+    type = 'number';
+  } else if (str[0] == 's') {
+    type = 'string';
+  }
+  return type;
+};
+
+// Remove comma separators from strings
+// TODO: accept European-style numbers?
+utils.cleanNumericString = function(raw) {
+  return raw.replace(/,/g, '');
+};
+
+// Assume: @raw is string, undefined or null
+utils.parseString = function(raw) {
+  return raw ? raw : "";
+};
+
+// Assume: @raw is string, undefined or null
+// Use null instead of NaN for unparsable values
+// (in part because if NaN is used, empty strings get converted to "NaN"
+// when re-exported).
+utils.parseNumber = function(raw) {
+  var str = String(raw).trim();
+  var parsed = str ? Number(utils.cleanNumericString(str)) : NaN;
+  return isNaN(parsed) ? null : parsed;
+};
+
+// Returns a d3-dsv compatible function for filtering records and fields on import
+// TODO: look into using more code from standard expressions.
+internal.getImportFilterFunction = function(opts) {
+  var recordFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
+  var fieldFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
+  var ctx = internal.getBaseContext();
+  if (!recordFilter && !fieldFilter) return null;
+  return function(rec) {
+    var val;
+    try {
+      val = recordFilter ? recordFilter.call(null, rec, ctx) : true;
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val === false) {
+      return null;
+    } else if (val !== true) {
+      stop("Filter expression must return true or false");
+    }
+    return fieldFilter ? fieldFilter(rec) : rec;
+  };
+};
+
+
+
+
+// str: a custom projection string, e.g.: "albersusa +PR"
+internal.parseCustomProjection = function(str) {
+  var parts = str.trim().split(/ +/);
+  var params = [];
+  var names = parts.filter(function(part) {
+    if (/^\+/.test(part)) {
+      params.push(part.substr(1)); // strip '+'
+      return false;
+    }
+    return true;
+  });
+  var name = names[0];
+  var opts = internal.parseCustomParams(params);
+  if (names.length != 1) return null; // parse error if other than one name found
+  return internal.getCustomProjection(name, opts);
+};
+
+// returns a custom projection object
+internal.getCustomProjection = function(name, opts) {
+  if (name == 'albersusa') {
+    return new AlbersUSA(opts);
+  }
+  return null;
+};
+
+function AlbersUSA(optsArg) {
+  var opts = optsArg || {};
+  var main = {
+    proj: '+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5',
+    bbox: [-129,23,-62,52]
+  };
+  var AK = {
+    name: 'AK',
+    proj: '+proj=aea +lat_1=55 +lat_2=70 +lat_0=65 +lon_0=-148 +x_0=0 +y_0=0',
+    bbox: [-172.26,50.89,-127.00,73.21],
+    origin: [-152, 63],
+    placement: [-1882782,-969242],
+    scale: 0.37
+  };
+  var HI = {
+    name: 'HI',
+    proj: '+proj=aea +lat_1=19 +lat_2=24 +lat_0=20.9 +lon_0=-156.5 +x_0=0 +y_0=0',
+    bbox: [-160.50,18.72,-154.57,22.58],
+    origin: [-157, 21],
+    placement: [-1050326,-1055362]
+  };
+  var PR = {
+    name: 'PR',
+    proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
+    bbox: [-68.092,17.824,-65.151,18.787],
+    origin: [-66.431, 18.228],
+    placement: [1993101,-1254517]
+  };
+  var VI = {
+    name: 'VI',
+    // same projection and origin as PR, so they maintain their true geographical relationship
+    proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
+    bbox: [-65.104,17.665,-64.454,18.505],
+    origin: [-66.431, 18.228],
+    placement: [1993101,-1254517]
+  };
+  var mixed = new MixedProjection(main, opts)
+    .addFrame(AK)
+    .addFrame(HI);
+  if (opts.PR) {
+    mixed.addFrame(PR);
+  }
+  if (opts.VI) {
+    mixed.addFrame(VI);
+  }
+  return mixed;
+}
+
+
+internal.parseCustomParams = function(arr) {
+  var opts = {};
+  arr.forEach(function(str) {
+    internal.parseCustomParam(str, opts);
+  });
+  return opts;
+};
+
+internal.parseCustomParam = function(str, opts) {
+  var parts = str.split('=');
+  var path = parts[0].split('.');
+  var key = path.pop();
+  var obj = path.reduce(function(memo, name) {
+    if (name in memo === false) {
+      memo[name] = {};
+    } else if (!utils.isObject(memo[name])) {
+      return {};// error condition, could display a warning
+    }
+    return memo[name];
+  }, opts);
+  if (parts.length > 1) {
+    obj[key] = internal.parseCustomParamValue(parts[1]);
+  } else if (key in obj === false && !path.length) {
+    // e.g. convert string 'PR' into {PR: {}} (empty object),
+    // to show PR with default properties
+    obj[key] = {};
+  }
+};
+
+internal.parseCustomParamValue = function(str) {
+  var val;
+  if (str.indexOf(',') > 0) {
+    val = str.split(',').map(parseFloat);
+    // TODO: validate
+    return val;
+  }
+  val = utils.parseNumber(str);
+  if (val === null) {
+    val = str;
+  }
+  return val;
+};
+
+
+
+
+internal.projectionAliases = {
   robinson: '+proj=robin +datum=WGS84',
   webmercator: '+proj=merc +a=6378137 +b=6378137',
   wgs84: '+proj=longlat +datum=WGS84',
-  albersusa: getAlbersUSA(),
-  albersusa2: getAlbersUSA({PR: true}) // version with Puerto Rico
+  albersusa: new AlbersUSA() // with default parameters
 };
 
 // This stub is replaced when loaded in GUI, which may need to load some files
@@ -3776,6 +5887,7 @@ internal.findProjLibs = function(str) {
 internal.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
   var clampSrc = internal.isLatLngCRS(src);
+  dest = dest.__mixed_crs || dest;
   return function(x, y) {
     var xy;
     if (clampSrc) {
@@ -3809,6 +5921,7 @@ internal.getProjTransform2 = function(src, dest) {
     xx[0] = x * preK;
     yy[0] = y * preK;
     try {
+      dest = dest.__mixed_crs || dest;
       mproj.pj_transform(src, dest, xx, yy);
       fail = xx[0] == Infinity; // mproj invalid coord value
     } catch(e) {
@@ -3860,23 +5973,30 @@ internal.crsAreEqual = function(a, b) {
 internal.getProjDefn = function(str) {
   var mproj = require('mproj');
   var defn;
-  if (str in internal.projectionIndex) {
-    defn = internal.projectionIndex[str];
+  if (internal.looksLikeProj4String(str)) {
+    defn = str;
   } else if (str in mproj.internal.pj_list) {
     defn = '+proj=' + str;
-  } else if (/^\+/.test(str)) {
-    defn = str;
+  } else if (str in internal.projectionAliases) {
+    defn = internal.projectionAliases[str];  // defn is a function
   } else {
+    defn = internal.parseCustomProjection(str);
+  }
+  if (!defn) {
     stop("Unknown projection definition:", str);
   }
   return defn;
 };
 
+internal.looksLikeProj4String = function(str) {
+  return /^(\+[^ ]+ *)+$/.test(str);
+};
+
 internal.getCRS = function(str) {
-  var defn = internal.getProjDefn(str);
+  var defn = internal.getProjDefn(str);  // defn is a string or a Proj object
   var P;
-  if (typeof defn == 'function') {
-    P = defn();
+  if (!utils.isString(defn)) {
+    P = defn;
   } else {
     try {
       P = require('mproj').pj_init(defn);
@@ -3938,7 +6058,7 @@ internal.printProjections = function() {
     msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
   });
   msg += '\nAliases';
-  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
+  Object.keys(internal.projectionAliases).sort().forEach(function(n) {
     msg += '\n  ' + n;
   });
   message(msg);
@@ -5395,284 +7515,6 @@ GeoJSON.pathIsRing = function(coords) {
       last = coords[coords.length - 1];
   // TODO: consider detecting collapsed rings
   return coords.length >= 4 && first[0] == last[0] && first[1] == last[1];
-};
-
-
-
-
-// List of encodings supported by iconv-lite:
-// https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
-
-// Return list of supported encodings
-internal.getEncodings = function() {
-  var iconv = require('iconv-lite');
-  iconv.encodingExists('ascii'); // make iconv load its encodings
-  return Object.keys(iconv.encodings);
-};
-
-internal.validateEncoding = function(enc) {
-  if (!internal.encodingIsSupported(enc)) {
-    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
-  }
-  return enc;
-};
-
-internal.encodingIsUtf8 = function(enc) {
-  // treating utf-8 as default
-  return !enc || /^utf-?8$/i.test(String(enc));
-};
-
-// Identify the most common encodings that are supersets of ascii at the
-// single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
-// (this allows identifying line breaks and other ascii patterns in buffers)
-internal.encodingIsAsciiCompat = function(enc) {
-  enc = internal.standardizeEncodingName(enc);
-  // gb.* selects the Guo Biao encodings
-  // big5 in not compatible -- second byte starts at 0x40
-  return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
-};
-
-// Ex. convert UTF-8 to utf8
-internal.standardizeEncodingName = function(enc) {
-  return (enc || '').toLowerCase().replace(/[_-]/g, '');
-};
-
-// Similar to Buffer#toString(); tries to speed up utf8 conversion in
-// web browser (when using browserify Buffer shim)
-internal.bufferToString = function(buf, enc, start, end) {
-  if (start >= 0) {
-    buf = buf.slice(start, end);
-  }
-  return internal.decodeString(buf, enc);
-};
-
-internal.getNativeEncoder = function(enc) {
-  var encoder = null;
-  enc = internal.standardizeEncodingName(enc);
-  if (enc != 'utf8') {
-    // TODO: support more encodings if TextEncoder is available
-    return null;
-  }
-  if (typeof TextEncoder != 'undefined') {
-    encoder = new TextEncoder(enc);
-  }
-  return function(str) {
-    // Convert Uint8Array from encoder to Buffer (fix for issue #216)
-    return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
-  };
-};
-
-internal.encodeString = (function() {
-  var iconv = require('iconv-lite');
-  var toUtf8 = internal.getNativeEncoder('utf8');
-  return function(str, enc) {
-    // TODO: faster ascii encoding?
-    var buf;
-    if (internal.encodingIsUtf8(enc)) {
-      buf = toUtf8(str);
-    } else {
-      buf = iconv.encode(str, enc);
-    }
-    return buf;
-  };
-}());
-
-internal.getNativeDecoder = function(enc) {
-  var decoder = null;
-  enc = internal.standardizeEncodingName(enc);
-  if (enc != 'utf8') {
-    // TODO: support more encodings if TextDecoder is available
-    return null;
-  }
-  if (typeof TextDecoder != 'undefined') {
-    decoder = new TextDecoder(enc);
-  }
-  return function(buf) {
-    return decoder ? decoder.decode(buf) : buf.toString(enc);
-  };
-};
-
-internal.decodeString = (function() {
-  var iconv = require('iconv-lite');
-  var fromUtf8 = internal.getNativeDecoder('utf8');
-  // @buf a Node Buffer
-  return function(buf, enc) {
-    var str;
-    if (internal.encodingIsUtf8(enc)) {
-      str = fromUtf8(buf);
-    } else {
-      str = iconv.decode(buf, enc);
-    }
-    return str;
-  };
-}());
-
-internal.encodingIsSupported = function(raw) {
-  var enc = internal.standardizeEncodingName(raw);
-  return utils.contains(internal.getEncodings(), enc);
-};
-
-internal.trimBOM = function(str) {
-  // remove BOM if present
-  if (str.charCodeAt(0) == 0xfeff) {
-    str = str.substr(1);
-  }
-  return str;
-};
-
-internal.printEncodings = function() {
-  var encodings = internal.getEncodings().filter(function(name) {
-    // filter out some aliases and non-applicable encodings
-    return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
-  });
-  encodings.sort();
-  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
-};
-
-
-
-
-internal.FileReader = FileReader;
-internal.BufferReader = BufferReader;
-
-internal.readFirstChars = function(reader, n) {
-  return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
-};
-
-// Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
-function BufferReader(src) {
-  var bufSize = src.byteLength || src.length,
-      binArr, buf;
-
-  this.readToBinArray = function(start, length) {
-    if (bufSize < start + length) error("Out-of-range error");
-    if (!binArr) binArr = new BinArray(src);
-    binArr.position(start);
-    return binArr;
-  };
-
-  this.toString = function(enc) {
-    return internal.bufferToString(buffer(), enc);
-  };
-
-  this.readSync = function(start, length) {
-    // TODO: consider using a default length like FileReader
-    return buffer().slice(start, length || bufSize);
-  };
-
-  function buffer() {
-    if (!buf) {
-      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
-    }
-    return buf;
-  }
-
-  this.findString = FileReader.prototype.findString;
-  this.expandBuffer = function() {return this;};
-  this.size = function() {return bufSize;};
-  this.close = function() {};
-}
-
-function FileReader(path, opts) {
-  var fs = require('fs'),
-      fileLen = fs.statSync(path).size,
-      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
-      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
-      fd, cacheOffs, cache, binArr;
-
-  internal.getStateVar('input_files').push(path); // bit of a kludge
-
-  this.expandBuffer = function() {
-    DEFAULT_BUFFER_LEN *= 2;
-    return this;
-  };
-
-  // Read to BinArray (for compatibility with ShpReader)
-  this.readToBinArray = function(start, length) {
-    if (updateCache(start, length)) {
-      binArr = new BinArray(cache);
-    }
-    binArr.position(start - cacheOffs);
-    return binArr;
-  };
-
-  // Read to Buffer
-  this.readSync = function(start, length) {
-    if (length > 0 === false) {
-      // use default (but variable) size if length is not specified
-      length = DEFAULT_BUFFER_LEN;
-      if (start + length > fileLen) {
-        length = fileLen - start; // truncate at eof
-      }
-      if (length === 0) {
-        return utils.createBuffer(0); // kludge to allow reading up to eof
-      }
-    }
-    updateCache(start, length);
-    return cache.slice(start - cacheOffs, start - cacheOffs + length);
-  };
-
-  this.size = function() {
-    return fileLen;
-  };
-
-  this.toString = function(enc) {
-    // TODO: use fd
-    return cli.readFile(path, enc || 'utf8');
-  };
-
-  this.close = function() {
-    if (fd) {
-      fs.closeSync(fd);
-      fd = null;
-      cache = null;
-    }
-  };
-
-  // Receive offset and length of byte string that must be read
-  // Return true if cache was updated, or false
-  function updateCache(fileOffs, bufLen) {
-    var headroom = fileLen - fileOffs,
-        bytesRead, bytesToRead;
-    if (headroom < bufLen || headroom < 0) {
-      error("Tried to read past end-of-file");
-    }
-    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bufLen) {
-      return false;
-    }
-    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bufLen);
-    if (headroom < bytesToRead) {
-      bytesToRead = headroom;
-    }
-    if (!cache || bytesToRead != cache.length) {
-      cache = utils.createBuffer(bytesToRead);
-    }
-    if (!fd) {
-      fd = fs.openSync(path, 'r');
-    }
-    bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
-    cacheOffs = fileOffs;
-    if (bytesRead != bytesToRead) error("Error reading file");
-    return true;
-  }
-}
-
-FileReader.prototype.findString = function (str, maxLen) {
-  var len = Math.min(this.size(), maxLen || this.size());
-  var buf = this.readSync(0, len);
-  var strLen = str.length;
-  var n = buf.length - strLen;
-  var firstByte = str.charCodeAt(0);
-  var i;
-  for (i=0; i < n; i++) {
-    if (buf[i] == firstByte && buf.toString('utf8', i, i + strLen) == str) {
-      return {
-        offset: i + strLen,
-        text: buf.toString('utf8', 0, i)
-      };
-    }
-  }
-  return null;
 };
 
 
@@ -7362,1107 +9204,6 @@ function PathImporter(opts) {
     appendPath(count);
   }
 }
-
-
-
-
-
-internal.getLayerDataTable = function(lyr) {
-  var data = lyr.data;
-  if (!data) {
-    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
-  }
-  return data;
-};
-
-
-// Not a general-purpose deep copy function
-internal.copyRecord = function(o) {
-  var o2 = {}, key, val;
-  if (!o) return null;
-  for (key in o) {
-    if (o.hasOwnProperty(key)) {
-      val = o[key];
-      if (val == o) {
-        // avoid infinite recursion if val is a circular reference, by copying all properties except key
-        val = utils.extend({}, val);
-        delete val[key];
-      }
-      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
-    }
-  }
-  return o2;
-};
-
-
-// Insert a column of values into a (new or existing) data field
-internal.insertFieldValues = function(lyr, fieldName, values) {
-  var size = internal.getFeatureCount(lyr) || values.length,
-      table = lyr.data = (lyr.data || new DataTable(size)),
-      records = table.getRecords();
-  internal.insertFieldValues2(fieldName, table.getRecords(), values);
-};
-
-internal.insertFieldValues2 = function(key, records, values) {
-  var n = records.length,
-      i, rec, val;
-  for (i=0, n=records.length; i<n; i++) {
-    rec = records[i];
-    val = values[i];
-    if (!rec) rec = records[i] = {};
-    rec[key] = val === undefined ? null : val;
-  }
-};
-
-internal.getValueType = function(val) {
-  var type = null;
-  if (utils.isString(val)) {
-    type = 'string';
-  } else if (utils.isNumber(val)) {
-    type = 'number';
-  } else if (utils.isBoolean(val)) {
-    type = 'boolean';
-  } else if (utils.isObject(val)) {
-    type = 'object';
-  }
-  return type;
-};
-
-// Fill out a data table with undefined values
-// The undefined members will disappear when records are exported as JSON,
-// but will show up when fields are listed using Object.keys()
-internal.fixInconsistentFields = function(records) {
-  var fields = internal.findIncompleteFields(records);
-  internal.patchMissingFields(records, fields);
-};
-
-internal.findIncompleteFields = function(records) {
-  var counts = {},
-      i, j, keys;
-  for (i=0; i<records.length; i++) {
-    keys = Object.keys(records[i] || {});
-    for (j=0; j<keys.length; j++) {
-      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
-    }
-  }
-  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
-};
-
-internal.patchMissingFields = function(records, fields) {
-  var rec, i, j, f;
-  for (i=0; i<records.length; i++) {
-    rec = records[i] || (records[i] = {});
-    for (j=0; j<fields.length; j++) {
-      f = fields[j];
-      if (f in rec === false) {
-        rec[f] = undefined;
-      }
-    }
-  }
-};
-
-internal.fieldListContainsAll = function(list, fields) {
-  return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
-};
-
-internal.getColumnType = function(key, records) {
-  var type = null,
-      rec;
-  for (var i=0, n=records.length; i<n; i++) {
-    rec = records[i];
-    type = rec ? internal.getValueType(rec[key]) : null;
-    if (type) break;
-  }
-  return type;
-};
-
-internal.deleteFields = function(table, test) {
-  table.getFields().forEach(function(name) {
-    if (test(name)) {
-      table.deleteField(name);
-    }
-  });
-};
-
-internal.isInvalidFieldName = function(f) {
-  // Reject empty and all-whitespace strings. TODO: consider other criteria
-  return /^\s*$/.test(f);
-};
-
-// Resolve name conflicts in field names by appending numbers
-// @fields Array of field names
-// @maxLen (optional) Maximum chars in name
-//
-internal.getUniqFieldNames = function(fields, maxLen) {
-  var used = {};
-  return fields.map(function(name) {
-    var i = 0,
-        validName;
-    do {
-      validName = internal.adjustFieldName(name, maxLen, i);
-      i++;
-    } while ((validName in used) ||
-      // don't replace an existing valid field name with a truncated name
-      name != validName && utils.contains(fields, validName));
-    used[validName] = true;
-    return validName;
-  });
-};
-
-// Truncate and/or uniqify a name (if relevant params are present)
-internal.adjustFieldName = function(name, maxLen, i) {
-  var name2, suff;
-  maxLen = maxLen || 256;
-  if (!i) {
-    name2 = name.substr(0, maxLen);
-  } else {
-    suff = String(i);
-    if (suff.length == 1) {
-      suff = '_' + suff;
-    }
-    name2 = name.substr(0, maxLen - suff.length) + suff;
-  }
-  return name2;
-};
-
-internal.applyFieldOrder = function(arr, option) {
-  if (option == 'ascending') {
-    arr.sort(function(a, b) {
-      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-    });
-  }
-  return arr;
-};
-
-internal.findFieldNames = function(records, order) {
-  var first = records[0];
-  var names = first ? Object.keys(first) : [];
-  return internal.applyFieldOrder(names, order);
-};
-
-
-
-
-// Try to detect the encoding of some sample text.
-// Returns an encoding name or null.
-// @samples Array of buffers containing sample text fields
-// TODO: Improve reliability and number of detectable encodings.
-internal.detectEncoding = function(samples) {
-  var encoding = null;
-  if (internal.looksLikeUtf8(samples)) {
-    encoding = 'utf8';
-  } else if (internal.looksLikeWin1252(samples)) {
-    // Win1252 is the same as Latin1, except it replaces a block of control
-    // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
-    // in Natural Earth (airports.dbf uses n-dash).
-    encoding = 'win1252';
-  }
-  return encoding;
-};
-
-// Convert an array of text samples to a single string using a given encoding
-internal.decodeSamples = function(enc, samples) {
-  return samples.map(function(buf) {
-    return internal.decodeString(buf, enc).trim();
-  }).join('\n');
-};
-
-internal.formatSamples = function(str) {
-  return internal.formatStringsAsGrid(str.split('\n'));
-};
-
-// Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
-// chars and almost no chars other than word chars + punctuation.
-// This excludes encodings like Greek, Cyrillic or Thai, but
-// is susceptible to false positives with encodings like codepage 1250 ("Eastern
-// European").
-internal.looksLikeWin1252 = function(samples) {
-  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘', // common extended
-      str = internal.decodeSamples('win1252', samples),
-      asciiScore = internal.getCharScore(str, ascii),
-      totalScore = internal.getCharScore(str, extended + ascii);
-  return totalScore > 0.97 && asciiScore >= 0.6; // mostly unaccented ascii chars
-};
-
-// Reject string if it contains the "replacement character" after decoding to UTF-8
-internal.looksLikeUtf8 = function(samples) {
-  // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
-  // in case the file is in utf-8, but contains some previously corrupted text.
-  // samples = samples.map(internal.replaceUtf8ReplacementChar);
-  var str = internal.decodeSamples('utf8', samples);
-  return str.indexOf('\ufffd') == -1;
-};
-
-internal.replaceUtf8ReplacementChar = function(buf) {
-  var isCopy = false;
-  for (var i=0, n=buf.length; i<n; i++) {
-    // Check for UTF-8 encoded replacement char (0xEF 0xBF 0xBD)
-    if (buf[i] == 0xef && i + 2 < n && buf[i+1] == 0xbf && buf[i+2] == 0xbd) {
-      if (!isCopy) {
-        buf = utils.createBuffer(buf);
-        isCopy = true;
-      }
-      buf[i] = buf[i+1] = buf[i+2] = 63; // ascii question mark
-    }
-  }
-  return buf;
-};
-
-// Calc percentage of chars in a string that are present in a second string
-// @chars String of chars to look for in @str
-internal.getCharScore = function(str, chars) {
-  var index = {},
-      count = 0,
-      score;
-  str = str.toLowerCase();
-  for (var i=0, n=chars.length; i<n; i++) {
-    index[chars[i]] = 1;
-  }
-  for (i=0, n=str.length; i<n; i++) {
-    count += index[str[i]] || 0;
-  }
-  return count / str.length;
-};
-
-
-
-
-// DBF format references:
-// http://www.dbf2002.com/dbf-file-format.html
-// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
-// http://www.clicketyclick.dk/databases/xbase/format/index.html
-// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
-
-var Dbf = {};
-
-// source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
-Dbf.languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
-
-// Language & Language family names for some code pages
-Dbf.encodingNames = {
-  '932': "Japanese",
-  '936': "Simplified Chinese",
-  '950': "Traditional Chinese",
-  '1252': "Western European",
-  '949': "Korean",
-  '874': "Thai",
-  '1250': "Eastern European",
-  '1251': "Russian",
-  '1254': "Turkish",
-  '1253': "Greek",
-  '1257': "Baltic"
-};
-
-Dbf.ENCODING_PROMPT =
-  "To avoid corrupted text, re-import using the \"encoding=\" option.\n" +
-  "To see a list of supported encodings, run the \"encodings\" command.";
-
-Dbf.lookupCodePage = function(lid) {
-  var i = Dbf.languageIds.indexOf(lid);
-  return i == -1 ? null : Dbf.languageIds[i+1];
-};
-
-Dbf.readAsciiString = function(bin, size) {
-  var require7bit = true;
-  var str = bin.readCString(size, require7bit);
-  if (str === null) {
-    stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
-  }
-  return utils.trim(str);
-};
-
-Dbf.readStringBytes = function(bin, size, buf) {
-  var count = 0, c;
-  for (var i=0; i<size; i++) {
-    c = bin.readUint8();
-    // treating 0 as C-style string terminator (observed in-the-wild)
-    // TODO: in some encodings (e.g. utf-16) the 0-byte occurs in other
-    //   characters than the NULL character (ascii 0). The following code
-    //   should be changed to support non-ascii-compatible encodings
-    if (c === 0) break;
-    if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
-      buf[count++] = c;
-    }
-  }
-  // ignore trailing spaces (DBF string fields are typically r-padded w/ spaces)
-  while (count > 0 && buf[count-1] == 32) {
-    count--;
-  }
-  return count;
-};
-
-
-Dbf.getStringReader = function(arg) {
-  var encoding = arg || 'ascii';
-  var slug = internal.standardizeEncodingName(encoding);
-  var buf = utils.createBuffer(256);
-  var inNode = typeof module == 'object';
-
-  // optimization -- use (fast) native Node conversion if available
-  if (inNode && (slug == 'utf8' || slug == 'ascii')) {
-    return function(bin, size) {
-      var n = Dbf.readStringBytes(bin, size, buf);
-      return buf.toString(slug, 0, n);
-    };
-  }
-
-  return function readEncodedString(bin, size) {
-    var n = Dbf.readStringBytes(bin, size, buf),
-        str = '', i, c;
-    // optimization: fall back to text decoder only if string contains non-ascii bytes
-    // (data files of any encoding typically contain mostly ascii fields)
-    // TODO: verify this assumption - some supported encodings may not be ascii-compatible
-    for (i=0; i<n; i++) {
-      c = buf[i];
-      if (c > 127) {
-        return internal.bufferToString(buf, encoding, 0, n);
-      }
-      str += String.fromCharCode(c);
-    }
-    return str;
-  };
-};
-
-Dbf.bufferContainsHighBit = function(buf, n) {
-  for (var i=0; i<n; i++) {
-    if (buf[i] >= 128) return true;
-  }
-  return false;
-};
-
-Dbf.getNumberReader = function() {
-  var read = Dbf.getStringReader('ascii');
-  return function readNumber(bin, size) {
-    var str = read(bin, size);
-    var val;
-    if (str.indexOf(',') >= 0) {
-      str = str.replace(',', '.'); // handle comma decimal separator
-    }
-    val = parseFloat(str);
-    return isNaN(val) ? null : val;
-  };
-};
-
-Dbf.readInt = function(bin, size) {
-  return bin.readInt32();
-};
-
-Dbf.readBool = function(bin, size) {
-  var c = bin.readCString(size),
-      val = null;
-  if (/[ty]/i.test(c)) val = true;
-  else if (/[fn]/i.test(c)) val = false;
-  return val;
-};
-
-Dbf.readDate = function(bin, size) {
-  var str = bin.readCString(size),
-      yr = str.substr(0, 4),
-      mo = str.substr(4, 2),
-      day = str.substr(6, 2);
-  return new Date(Date.UTC(+yr, +mo - 1, +day));
-};
-
-// cf. http://code.google.com/p/stringencoding/
-//
-// @src is a Buffer or ArrayBuffer or filename
-//
-function DbfReader(src, encodingArg) {
-  if (utils.isString(src)) {
-    error("[DbfReader] Expected a buffer, not a string");
-  }
-  var bin = new BinArray(src);
-  var header = readHeader(bin);
-  var encoding = encodingArg || null;
-
-  this.size = function() {return header.recordCount;};
-
-  this.readRow = function(i) {
-    // create record reader on-the-fly
-    // (delays encoding detection until we need to read data)
-    return getRecordReader(header.fields)(i);
-  };
-
-  this.getFields = getFieldNames;
-
-  this.getBuffer = function() {return bin.buffer();};
-
-  this.deleteField = function(f) {
-    header.fields = header.fields.filter(function(field) {
-      return field.name != f;
-    });
-  };
-
-  this.readRows = function() {
-    var reader = getRecordReader(header.fields);
-    var data = [];
-    for (var r=0, n=this.size(); r<n; r++) {
-      data.push(reader(r));
-    }
-    return data;
-  };
-
-  function readHeader(bin) {
-    bin.position(0).littleEndian();
-    var header = {
-      version: bin.readInt8(),
-      updateYear: bin.readUint8(),
-      updateMonth: bin.readUint8(),
-      updateDay: bin.readUint8(),
-      recordCount: bin.readUint32(),
-      dataOffset: bin.readUint16(),
-      recordSize: bin.readUint16(),
-      incompleteTransaction: bin.skipBytes(2).readUint8(),
-      encrypted: bin.readUint8(),
-      mdx: bin.skipBytes(12).readUint8(),
-      ldid: bin.readUint8()
-    };
-    var colOffs = 1; // first column starts on second byte of record
-    var field;
-    bin.skipBytes(2);
-    header.fields = [];
-
-    // Detect header terminator (LF is standard, CR has been seen in the wild)
-    while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
-      field = readFieldHeader(bin);
-      field.columnOffset = colOffs;
-      header.fields.push(field);
-      colOffs += field.size;
-    }
-    if (colOffs != header.recordSize) {
-      error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
-    }
-    if (bin.peek() != 0x0D) {
-      message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
-    }
-
-    // Uniqify header names
-    internal.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
-      header.fields[i].name = name2;
-    });
-
-    return header;
-  }
-
-  function readFieldHeader(bin) {
-    return {
-      name: bin.readCString(11),
-      type: String.fromCharCode(bin.readUint8()),
-      address: bin.readUint32(),
-      size: bin.readUint8(),
-      decimals: bin.readUint8(),
-      id: bin.skipBytes(2).readUint8(),
-      position: bin.skipBytes(2).readUint8(),
-      indexFlag: bin.skipBytes(7).readUint8()
-    };
-  }
-
-  function getFieldNames() {
-    return utils.pluck(header.fields, 'name');
-  }
-
-  function getRowOffset(r) {
-    return header.dataOffset + header.recordSize * r;
-  }
-
-  function getEncoding() {
-    if (!encoding) {
-      encoding = findStringEncoding();
-      if (!encoding) {
-        // fall back to utf8 if detection fails (so GUI can continue without further errors)
-        encoding = 'utf8';
-        stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
-      }
-    }
-    return encoding;
-  }
-
-  // Create new record objects using object literal syntax
-  // (Much faster in v8 and other engines than assigning a series of properties
-  //  to an object)
-  function getRecordConstructor() {
-    var args = getFieldNames().map(function(name, i) {
-          return JSON.stringify(name) + ': arguments[' + i + ']';
-        });
-    return new Function('return {' + args.join(',') + '};');
-  }
-
-  function findEofPos(bin) {
-    var pos = bin.size() - 1;
-    if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
-      pos++;
-    }
-    return pos;
-  }
-
-  function getRecordReader(fields) {
-    var readers = fields.map(getFieldReader),
-        eofOffs = findEofPos(bin),
-        create = getRecordConstructor(),
-        values = [];
-
-    return function readRow(r) {
-      var offs = getRowOffset(r),
-          fieldOffs, field;
-      for (var c=0, cols=fields.length; c<cols; c++) {
-        field = fields[c];
-        fieldOffs = offs + field.columnOffset;
-        if (fieldOffs + field.size > eofOffs) {
-          stop('Invalid DBF file: encountered end-of-file while reading data');
-        }
-        bin.position(fieldOffs);
-        values[c] = readers[c](bin, field.size);
-      }
-      return create.apply(null, values);
-    };
-  }
-
-  // @f Field metadata from dbf header
-  function getFieldReader(f) {
-    var type = f.type,
-        r = null;
-    if (type == 'I') {
-      r = Dbf.readInt;
-    } else if (type == 'F' || type == 'N') {
-      r = Dbf.getNumberReader();
-    } else if (type == 'L') {
-      r = Dbf.readBool;
-    } else if (type == 'D') {
-      r = Dbf.readDate;
-    } else if (type == 'C') {
-      r = Dbf.getStringReader(getEncoding());
-    } else {
-      message("Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
-      r = function() {return null;};
-    }
-    return r;
-  }
-
-  function findStringEncoding() {
-    var ldid = header.ldid,
-        codepage = Dbf.lookupCodePage(ldid),
-        samples = getNonAsciiSamples(50),
-        only7bit = samples.length === 0,
-        encoding, msg;
-
-    // First, check the ldid (language driver id) (an obsolete way to specify which
-    // codepage to use for text encoding.)
-    // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
-    // user's Windows system :P
-    //
-    if (codepage && ldid != 87) {
-      // if 8-bit data is found and codepage is detected, use the codepage,
-      // except ldid 87, which some GIS software uses regardless of encoding.
-      encoding = codepage;
-    } else if (only7bit) {
-      // Text with no 8-bit chars should be compatible with 7-bit ascii
-      // (Most encodings are supersets of ascii)
-      encoding = 'ascii';
-    }
-
-    // As a last resort, try to guess the encoding:
-    if (!encoding) {
-      encoding = internal.detectEncoding(samples);
-    }
-
-    // Show a sample of decoded text if non-ascii-range text has been found
-    if (encoding && samples.length > 0) {
-      msg = internal.decodeSamples(encoding, samples);
-      msg = internal.formatStringsAsGrid(msg.split('\n'));
-      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
-      msg = "Detected DBF text encoding: " + encoding + (encoding in Dbf.encodingNames ? " (" + Dbf.encodingNames[encoding] + ")" : "") + msg;
-      message(msg);
-    }
-    return encoding;
-  }
-
-  // Return up to @size buffers containing text samples
-  // with at least one byte outside the 7-bit ascii range.
-  function getNonAsciiSamples(size) {
-    var samples = [];
-    var stringFields = header.fields.filter(function(f) {
-      return f.type == 'C';
-    });
-    var buf = utils.createBuffer(256);
-    var index = {};
-    var f, chars, sample, hash;
-    for (var r=0, rows=header.recordCount; r<rows; r++) {
-      for (var c=0, cols=stringFields.length; c<cols; c++) {
-        if (samples.length >= size) break;
-        f = stringFields[c];
-        bin.position(getRowOffset(r) + f.columnOffset);
-        chars = Dbf.readStringBytes(bin, f.size, buf);
-        if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-          sample = utils.createBuffer(buf.slice(0, chars)); //
-          hash = sample.toString('hex');
-          if (hash in index === false) { // avoid duplicate samples
-            index[hash] = true;
-            samples.push(sample);
-          }
-        }
-      }
-    }
-    return samples;
-  }
-
-}
-
-
-
-
-Dbf.MAX_STRING_LEN = 254;
-
-function BufferPool() {
-  var n = 5000,
-      pool, i;
-  newPool();
-
-  function newPool() {
-    pool = new Uint8Array(n);
-    i = 0;
-  }
-
-  return {
-    reserve: function(bytes) {
-      if (i + bytes > n) newPool();
-      i += bytes;
-      return pool.subarray(i - bytes, i);
-    },
-    putBack: function(bytes) {
-      i -= bytes;
-    }
-  };
-}
-
-Dbf.bufferPool = new BufferPool();
-
-Dbf.exportRecords = function(records, encoding, fieldOrder) {
-  var rows = records.length;
-  var fields = internal.findFieldNames(records, fieldOrder);
-  var dbfFields = Dbf.convertFieldNames(fields);
-  var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
-    var name2 = dbfFields[i];
-    info.name = name2;
-    if (name != name2) {
-      message('Changed field name from "' + name + '" to "' + name2 + '"');
-    }
-    if (info.warning) {
-      message('[' + name + '] ' + info.warning);
-    }
-    return info;
-  });
-
-  var headerBytes = Dbf.getHeaderSize(fieldData.length),
-      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
-      fileBytes = headerBytes + rows * recordBytes + 1;
-
-  var buffer = new ArrayBuffer(fileBytes);
-  var bin = new BinArray(buffer).littleEndian();
-  var now = new Date();
-
-  // write header
-  bin.writeUint8(3);
-  bin.writeUint8(now.getFullYear() - 1900);
-  bin.writeUint8(now.getMonth() + 1);
-  bin.writeUint8(now.getDate());
-  bin.writeUint32(rows);
-  bin.writeUint16(headerBytes);
-  bin.writeUint16(recordBytes);
-  bin.skipBytes(17);
-  bin.writeUint8(0); // language flag; TODO: improve this
-  bin.skipBytes(2);
-
-
-  // field subrecords
-  fieldData.reduce(function(recordOffset, obj) {
-    bin.writeCString(obj.name, 11);
-    bin.writeUint8(obj.type.charCodeAt(0));
-    bin.writeUint32(recordOffset);
-    bin.writeUint8(obj.size);
-    bin.writeUint8(obj.decimals);
-    bin.skipBytes(14);
-    return recordOffset + obj.size;
-  }, 1);
-
-  bin.writeUint8(0x0d); // "field descriptor terminator"
-  if (bin.position() != headerBytes) {
-    error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
-  }
-
-  records.forEach(function(rec, i) {
-    var start = bin.position();
-    bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
-    for (var j=0, n=fieldData.length; j<n; j++) {
-      fieldData[j].write(i, bin);
-    }
-    if (bin.position() - start != recordBytes) {
-      error("#exportRecords() Error exporting record:", rec);
-    }
-  });
-
-  bin.writeUint8(0x1a); // end-of-file
-
-  if (bin.position() != fileBytes) {
-    error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
-  }
-  return buffer;
-};
-
-Dbf.getHeaderSize = function(numFields) {
-  return 33 + numFields * 32;
-};
-
-Dbf.getRecordSize = function(fieldSizes) {
-  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
-};
-
-Dbf.initNumericField = function(info, arr, name) {
-  var MAX_FIELD_SIZE = 18,
-      data, size;
-
-  data = this.getNumericFieldInfo(arr, name);
-  info.decimals = data.decimals;
-  size = Math.max(data.max.toFixed(info.decimals).length,
-      data.min.toFixed(info.decimals).length);
-  if (size > MAX_FIELD_SIZE) {
-    size = MAX_FIELD_SIZE;
-    info.decimals -= size - MAX_FIELD_SIZE;
-    if (info.decimals < 0) {
-      error ("Dbf#getFieldInfo() Out-of-range error.");
-    }
-  }
-  info.size = size;
-
-  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
-  info.write = function(i, bin) {
-    var rec = arr[i],
-        str = formatter(rec[name]);
-    if (str.length < size) {
-      str = utils.lpad(str, size, ' ');
-    }
-    bin.writeString(str, size);
-  };
-};
-
-Dbf.initBooleanField = function(info, arr, name) {
-  info.size = 1;
-  info.write = function(i, bin) {
-    var val = arr[i][name],
-        c;
-    if (val === true) c = 'T';
-    else if (val === false) c = 'F';
-    else c = '?';
-    bin.writeString(c);
-  };
-};
-
-Dbf.initDateField = function(info, arr, name) {
-  info.size = 8;
-  info.write = function(i, bin) {
-    var d = arr[i][name],
-        str;
-    if (d instanceof Date === false) {
-      str = '00000000';
-    } else {
-      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
-            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
-            utils.lpad(d.getUTCDate(), 2, '0');
-    }
-    bin.writeString(str);
-  };
-};
-
-Dbf.convertValueToString = function(s) {
-  return s === undefined || s === null ? '' : String(s);
-};
-
-Dbf.initStringField = function(info, arr, name, encoding) {
-  var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
-  var size = 0;
-  var truncated = 0;
-  var buffers = arr.map(function(rec) {
-    var strval = Dbf.convertValueToString(rec[name]);
-    var buf = formatter(strval);
-    if (buf.length > Dbf.MAX_STRING_LEN) {
-      if (encoding == 'ascii') {
-        buf = buf.subarray(0, Dbf.MAX_STRING_LEN);
-      } else {
-        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
-      }
-      truncated++;
-    }
-    size = Math.max(size, buf.length);
-    return buf;
-  });
-  info.size = size;
-  info.write = function(i, bin) {
-    var buf = buffers[i],
-        n = Math.min(size, buf.length),
-        dest = bin._bytes,
-        pos = bin.position(),
-        j;
-    for (j=0; j<n; j++) {
-      dest[j + pos] = buf[j];
-    }
-    bin.position(pos + size);
-  };
-  if (truncated > 0) {
-    info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
-  }
-};
-
-Dbf.convertFieldNames = function(names) {
-  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
-};
-
-// Replace non-alphanumeric characters with _ and merge adjacent _
-// See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
-// TODO: decide whether or not to avoid initial numerals
-Dbf.cleanFieldName = function(name) {
-  return name.replace(/[^A-Za-z0-9]+/g, '_');
-};
-
-Dbf.getFieldInfo = function(arr, name, encoding) {
-  var type = this.discoverFieldType(arr, name),
-      info = {
-        type: type,
-        decimals: 0
-      };
-  if (type == 'N') {
-    Dbf.initNumericField(info, arr, name);
-  } else if (type == 'C') {
-    Dbf.initStringField(info, arr, name, encoding);
-  } else if (type == 'L') {
-    Dbf.initBooleanField(info, arr, name);
-  } else if (type == 'D') {
-    Dbf.initDateField(info, arr, name);
-  } else {
-    // Treat null fields as empty numeric fields; this way, they will be imported
-    // again as nulls.
-    info.size = 0;
-    info.type = 'N';
-    if (type) {
-      info.warning = 'Unable to export ' + type + '-type data, writing null values';
-    }
-    info.write = function() {};
-  }
-  return info;
-};
-
-Dbf.discoverFieldType = function(arr, name) {
-  var val;
-  for (var i=0, n=arr.length; i<n; i++) {
-    val = arr[i][name];
-    if (utils.isString(val)) return "C";
-    if (utils.isNumber(val)) return "N";
-    if (utils.isBoolean(val)) return "L";
-    if (val instanceof Date) return "D";
-    if (val) return (typeof val);
-  }
-  return null;
-};
-
-Dbf.getDecimalFormatter = function(size, decimals) {
-  // TODO: find better way to handle nulls
-  var nullValue = ' '; // ArcGIS may use 0
-  return function(val) {
-    // TODO: handle invalid values better
-    var valid = utils.isFiniteNumber(val),
-        strval = valid ? val.toFixed(decimals) : String(nullValue);
-    return utils.lpad(strval, size, ' ');
-  };
-};
-
-Dbf.getNumericFieldInfo = function(arr, name) {
-  var min = 0,
-      max = 0,
-      k = 1,
-      power = 1,
-      decimals = 0,
-      eps = 1e-15,
-      val;
-  for (var i=0, n=arr.length; i<n; i++) {
-    val = arr[i][name];
-    if (!utils.isFiniteNumber(val)) {
-      continue;
-    }
-    if (val < min || val > max) {
-      if (val < min) min = val;
-      if (val > max) max = val;
-      while (Math.abs(val) >= power) {
-        power *= 10;
-        eps *= 10;
-      }
-    }
-    while (Math.abs(Math.round(val * k) - val * k) > eps) {
-      if (decimals == 15) { // dbf limit
-        // TODO: round overflowing values ?
-        break;
-      }
-      decimals++;
-      eps *= 10;
-      k *= 10;
-    }
-  }
-  return {
-    decimals: decimals,
-    min: min,
-    max: max
-  };
-};
-
-// return an array buffer or null if value contains non-ascii chars
-Dbf.encodeValueAsAscii = function(val, strict) {
-  var str = String(val),
-      n = str.length,
-      view = Dbf.bufferPool.reserve(n),
-      i, c;
-  for (i=0; i<n; i++) {
-    c = str.charCodeAt(i);
-    if (c > 127) {
-      if (strict) {
-        view = null;
-        i = 0; // return all bytes to pool
-        break;
-      }
-      c = '?'.charCodeAt(0);
-    }
-    view[i] = c;
-  }
-  Dbf.bufferPool.putBack(n-i);
-  return view ? view.subarray(0, i) : null;
-};
-
-Dbf.getStringWriterEncoded = function(encoding) {
-  return function(val) {
-    // optimization -- large majority of strings in real-world datasets are
-    // ascii. Try (faster) ascii encoding first, fall back to text encoder.
-    var buf = Dbf.encodeValueAsAscii(val, true);
-    if (buf === null) {
-      buf = internal.encodeString(String(val), encoding);
-    }
-    return buf;
-  };
-};
-
-// try to remove partial multi-byte characters from the end of an encoded string.
-Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
-  var truncated = buf.slice(0, maxLen);
-  var len = maxLen;
-  var tmp, str;
-  while (len > 0 && len >= maxLen - 3) {
-    tmp = len == maxLen ? truncated : buf.slice(0, len);
-    str = internal.decodeString(tmp, encoding);
-    if (str.charAt(str.length-1) != '\ufffd') {
-      truncated = tmp;
-      break;
-    }
-    len--;
-  }
-  return truncated;
-};
-
-
-
-
-function DataTable(obj) {
-  var records;
-  if (utils.isArray(obj)) {
-    records = obj;
-  } else {
-    records = [];
-    // integer object: create empty records
-    if (utils.isInteger(obj)) {
-      for (var i=0; i<obj; i++) {
-        records.push({});
-      }
-    } else if (obj) {
-      error("Invalid DataTable constructor argument:", obj);
-    }
-  }
-
-  this.exportAsDbf = function(opts) {
-    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
-  };
-
-  this.getRecords = function() {
-    return records;
-  };
-
-  // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
-  this.getReadOnlyRecordAt = function(i) {
-    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
-  };
-}
-
-var dataTableProto = {
-
-  fieldExists: function(name) {
-    return utils.contains(this.getFields(), name);
-  },
-
-  toString: function() {return JSON.stringify(this);},
-
-  toJSON: function() {
-    return this.getRecords();
-  },
-
-  addField: function(name, init) {
-    var useFunction = utils.isFunction(init);
-    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
-      error("DataTable#addField() requires a string, number or function for initialization");
-    }
-    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
-    // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
-    // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
-
-    this.getRecords().forEach(function(obj, i) {
-      obj[name] = useFunction ? init(obj, i) : init;
-    });
-  },
-
-  getRecordAt: function(i) {
-    return this.getRecords()[i];
-  },
-
-  addIdField: function() {
-    this.addField('FID', function(obj, i) {
-      return i;
-    });
-  },
-
-  deleteField: function(f) {
-    this.getRecords().forEach(function(o) {
-      delete o[f];
-    });
-  },
-
-  getFields: function() {
-    return internal.findFieldNames(this.getRecords());
-  },
-
-  update: function(f) {
-    var records = this.getRecords();
-    for (var i=0, n=records.length; i<n; i++) {
-      records[i] = f(records[i], i);
-    }
-  },
-
-  clone: function() {
-    // TODO: this could be sped up using a record constructor function
-    // (see getRecordConstructor() in DbfReader)
-    var records2 = this.getRecords().map(internal.copyRecord);
-    return new DataTable(records2);
-  },
-
-  size: function() {
-    return this.getRecords().length;
-  }
-};
-
-utils.extend(DataTable.prototype, dataTableProto);
 
 
 
@@ -17820,149 +18561,6 @@ internal.exportJSONTable = function(lyr) {
 
 
 
-
-utils.replaceFileExtension = function(path, ext) {
-  var info = utils.parseLocalPath(path);
-  return info.pathbase + '.' + ext;
-};
-
-utils.getPathSep = function(path) {
-  // TODO: improve
-  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
-};
-
-// Parse the path to a file without using Node
-// Assumes: not a directory path
-utils.parseLocalPath = function(path) {
-  var obj = {},
-      sep = utils.getPathSep(path),
-      parts = path.split(sep),
-      i;
-
-  if (parts.length == 1) {
-    obj.filename = parts[0];
-    obj.directory = "";
-  } else {
-    obj.filename = parts.pop();
-    obj.directory = parts.join(sep);
-  }
-  i = obj.filename.lastIndexOf('.');
-  if (i > -1) {
-    obj.extension = obj.filename.substr(i + 1);
-    obj.basename = obj.filename.substr(0, i);
-    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
-  } else {
-    obj.extension = "";
-    obj.basename = obj.filename;
-    obj.pathbase = path;
-  }
-  return obj;
-};
-
-utils.getFileBase = function(path) {
-  return utils.parseLocalPath(path).basename;
-};
-
-utils.getFileExtension = function(path) {
-  return utils.parseLocalPath(path).extension;
-};
-
-utils.getPathBase = function(path) {
-  return utils.parseLocalPath(path).pathbase;
-};
-
-utils.getCommonFileBase = function(names) {
-  return names.reduce(function(memo, name, i) {
-    if (i === 0) {
-      memo = utils.getFileBase(name);
-    } else {
-      memo = utils.mergeNames(memo, name);
-    }
-    return memo;
-  }, "");
-};
-
-utils.getOutputFileBase = function(dataset) {
-  var inputFiles = dataset.info && dataset.info.input_files;
-  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
-};
-
-
-
-
-// Guess the type of a data file from file extension, or return null if not sure
-internal.guessInputFileType = function(file) {
-  var ext = utils.getFileExtension(file || '').toLowerCase(),
-      type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
-    type = ext;
-  } else if (/json$/.test(ext)) {
-    type = 'json';
-  } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
-    type = 'text';
-  }
-  return type;
-};
-
-internal.guessInputContentType = function(content) {
-  var type = null;
-  if (utils.isString(content)) {
-    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
-  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-    type = 'json';
-  }
-  return type;
-};
-
-internal.guessInputType = function(file, content) {
-  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
-};
-
-//
-internal.stringLooksLikeJSON = function(str) {
-  return /^\s*[{[]/.test(String(str));
-};
-
-internal.couldBeDsvFile = function(name) {
-  var ext = utils.getFileExtension(name).toLowerCase();
-  return /csv|tsv|txt$/.test(ext);
-};
-
-internal.isZipFile = function(file) {
-  return /\.zip$/i.test(file);
-};
-
-internal.isSupportedOutputFormat = function(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
-  return types.indexOf(fmt) > -1;
-};
-
-internal.getFormatName = function(fmt) {
-  return {
-    geojson: 'GeoJSON',
-    topojson: 'TopoJSON',
-    json: 'JSON records',
-    dsv: 'CSV',
-    dbf: 'DBF',
-    shapefile: 'Shapefile',
-    svg: 'SVG'
-  }[fmt] || '';
-};
-
-// Assumes file at @path is one of Mapshaper's supported file types
-internal.isSupportedBinaryInputType = function(path) {
-  var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
-};
-
-// Detect extensions of some unsupported file types, for cmd line validation
-internal.filenameIsUnsupportedOutputType = function(file) {
-  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
-  return rxp.test(file);
-};
-
-
-
 internal.getOutputFormat = function(dataset, opts) {
   var outFile = opts.file || null,
       inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
@@ -18394,434 +18992,6 @@ internal.selectFromObject = function(o, path) {
     return internal.selectFromObject(value, parts.slice(1).join(''));
   }
   return value;
-};
-
-
-
-
-// TODO: support other encodings than utf-8
-// (Need to update readDelimLines() to work with all encodings)
-internal.readDelimRecords = function(reader, delim, encoding, filter) {
-  var dsv = require("d3-dsv").dsvFormat(delim),
-      records = [],
-      retn = internal.readDelimLines(reader, 0, delim, encoding, 1),
-      header = internal.trimBOM(retn ? retn.text : ''),
-      batch;
-  if (!retn) return []; // e.g. empty file
-  // read in batches (faster than line-by-line)
-  while ((retn = internal.readDelimLines(reader, retn.offset, delim, encoding, 500))) {
-    batch = dsv.parse(header + retn.text, filter);
-    records.push.apply(records, batch);
-  }
-  return records;
-};
-
-internal.readDelimLines = function(reader, offs, delim, encoding, lines) {
-  var CR = 13,
-      LF = 10,
-      DQUOTE = 34,
-      DELIM = delim.charCodeAt(0),
-      inQuotedField = false,
-      buf = reader.readSync(offs),
-      eol = false,
-      linesLeft = lines > 0 ? lines : 1,
-      i, n, c, prev;
-
-  for (i=0, n=buf.length; i<n; i++) {
-    c = buf[i];
-    if (eol) {
-      if (prev == CR && c == LF) {
-        // consume LF
-      } else {
-        eol = false;
-        linesLeft--;
-      }
-      if (linesLeft <= 0) break;
-    }
-    if (c == DQUOTE) {
-      // according to spec, double quotes either enclose a field or are
-      // paired inside a quoted field
-      // https://tools.ietf.org/html/rfc4180
-      // the following handles both cases (no error checking though)
-      inQuotedField = !inQuotedField;
-    } else if (!inQuotedField && (c == CR || c == LF)) {
-      eol = true;
-    }
-
-    if (i == n-1) {
-      buf = reader.expandBuffer().readSync(offs);
-      n = buf.length;
-    }
-    prev = c;
-  }
-  return i === 0 ? null : {
-    offset: i + offs,
-    text: internal.bufferToString(buf, encoding, 0, i)
-  };
-};
-
-
-
-
-var cli = {};
-
-cli.isFile = function(path, cache) {
-  var ss = cli.statSync(path);
-  return cache && (path in cache) || ss && ss.isFile() || false;
-};
-
-cli.fileSize = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.size || 0;
-};
-
-cli.isDirectory = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.isDirectory() || false;
-};
-
-// @encoding (optional) e.g. 'utf8'
-cli.readFile = function(fname, encoding, cache) {
-  var content;
-  if (cache && (fname in cache)) {
-    content = cache[fname];
-    delete cache[fname];
-  } else if (fname == '/dev/stdin') {
-    content = require('rw').readFileSync(fname);
-  } else {
-    internal.getStateVar('input_files').push(fname);
-    content = require('fs').readFileSync(fname);
-  }
-  if (encoding && Buffer.isBuffer(content)) {
-    content = internal.trimBOM(internal.decodeString(content, encoding));
-  }
-  return content;
-};
-
-// @content Buffer or string
-cli.writeFile = function(path, content, cb) {
-  var fs = require('rw');
-  if (cb) {
-    fs.writeFile(path, content, preserveContext(cb));
-  } else {
-    fs.writeFileSync(path, content);
-  }
-};
-
-// Returns Node Buffer
-cli.convertArrayBuffer = function(buf) {
-  var src = new Uint8Array(buf),
-      dest = utils.createBuffer(src.length);
-  for (var i = 0, n=src.length; i < n; i++) {
-    dest[i] = src[i];
-  }
-  return dest;
-};
-
-// Expand any "*" wild cards in file name
-// (For the Windows command line; unix shells do this automatically)
-cli.expandFileName = function(name) {
-  var info = utils.parseLocalPath(name),
-      rxp = utils.wildcardToRegExp(info.filename),
-      dir = info.directory || '.',
-      files = [];
-
-  try {
-    require('fs').readdirSync(dir).forEach(function(item) {
-      var path = require('path').join(dir, item);
-      if (rxp.test(item) && cli.isFile(path)) {
-        files.push(path);
-      }
-    });
-  } catch(e) {}
-
-  if (files.length === 0) {
-    stop('No files matched (' + name + ')');
-  }
-  return files;
-};
-
-// Expand any wildcards.
-cli.expandInputFiles = function(files) {
-  return files.reduce(function(memo, name) {
-    if (name.indexOf('*') > -1) {
-      memo = memo.concat(cli.expandFileName(name));
-    } else {
-      memo.push(name);
-    }
-    return memo;
-  }, []);
-};
-
-cli.validateOutputDir = function(name) {
-  if (!cli.isDirectory(name)) {
-    error("Output directory not found:", name);
-  }
-};
-
-// TODO: rename and improve
-// Want to test if a path is something readable (e.g. file or stdin)
-cli.checkFileExists = function(path, cache) {
-  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
-    stop("File not found (" + path + ")");
-  }
-};
-
-cli.statSync = function(fpath) {
-  var obj = null;
-  try {
-    obj = require('fs').statSync(fpath);
-  } catch(e) {}
-  return obj;
-};
-
-
-
-
-
-// Convert a string containing delimited text data into a dataset object
-internal.importDelim = function(str, opts) {
-  return internal.importDelim2({content: str}, opts);
-};
-
-// Convert a string, buffer or file containing delimited text into a dataset obj.
-internal.importDelim2 = function(data, opts) {
-
-  // TODO: remove duplication with importJSON()
-  var readFromFile = !data.content && data.content !== '',
-      content = data.content,
-      filter, reader, records, delimiter, table;
-  opts = opts || {};
-  filter = internal.getImportFilterFunction(opts);
-
-  // read content of all but very large files into a buffer
-  if (readFromFile && cli.fileSize(data.filename) < 2e9) {
-    content = cli.readFile(data.filename);
-    readFromFile = false;
-  }
-
-  if (readFromFile) {
-    // try to read data incrementally from file, if content is missing
-    reader = new FileReader(data.filename);
-  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
-    // Web API may import as ArrayBuffer, to support larger files
-    reader = new BufferReader(content);
-    content = null;
-  } else if (utils.isString(content)) {
-    // import as string
-  } else {
-    error("Unexpected object type");
-  }
-
-  if (reader && !internal.encodingIsAsciiCompat(opts.encoding)) {
-    // Currently, incremental reading assumes ascii-compatible data.
-    // Incompatible encodings must be parsed as strings.
-    content = reader.toString(opts.encoding);
-    reader = null;
-  }
-
-  if (reader) {
-    delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords(reader, delimiter, opts.encoding, filter);
-  } else {
-    delimiter = internal.guessDelimiter(content);
-    records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
-    delete records.columns; // added by d3-dsv
-  }
-  if (records.length === 0) {
-    message("Unable to read any data records");
-  }
-  internal.adjustRecordTypes(records, opts);
-  table = new DataTable(records);
-  internal.deleteFields(table, internal.isInvalidFieldName);
-  return {
-    layers: [{data: table}],
-    info: {input_delimiter: delimiter}
-  };
-};
-
-internal.supportedDelimiters = ['|', '\t', ',', ';'];
-
-internal.isSupportedDelimiter = function(d) {
-  return utils.contains(internal.supportedDelimiters, d);
-};
-
-internal.guessDelimiter = function(content) {
-  return utils.find(internal.supportedDelimiters, function(delim) {
-    var rxp = internal.getDelimiterRxp(delim);
-    return rxp.test(content);
-  }) || ',';
-};
-
-// Get RegExp to test for a delimiter before first line break of a string
-// Assumes that the first line does not contain alternate delim chars (this will
-// be true if the first line has field headers composed of word characters).
-internal.getDelimiterRxp = function(delim) {
-  var rxp = "^[^\\n\\r]+" + utils.regexEscape(delim);
-  return new RegExp(rxp);
-};
-
-internal.getFieldTypeHints = function(opts) {
-  var hints = {};
-  opts = opts || {};
-  if (opts.string_fields) {
-    opts.string_fields.forEach(function(f) {
-      hints[f] = 'string';
-    });
-  }
-  if (opts.field_types) {
-    opts.field_types.forEach(function(raw) {
-      var parts, name, type;
-      if (raw.indexOf(':') != -1) {
-        parts = raw.split(':');
-        name = parts[0];
-        type = internal.validateFieldType(parts[1]);
-      } else if (raw[0] === '+') { // d3-style type hint: unary plus
-        name = raw.substr(1);
-        type = 'number';
-      }
-      if (type) {
-        hints[name] = type;
-      } else {
-        message("Invalid type hint (expected :str or :num) [" + raw + "]");
-      }
-    });
-  }
-  return hints;
-};
-
-
-// Detect and convert data types of data from csv files.
-// TODO: decide how to handle records with inconstent properties. Mapshaper
-//    currently assumes tabular data
-internal.adjustRecordTypes = function(records, opts) {
-  var typeIndex = internal.getFieldTypeHints(opts),
-      singleType = typeIndex['*'], // support for setting all fields to a single type
-      fields = Object.keys(records[0] || []),
-      detectedNumFields = [],
-      replacements = {};
-  fields.forEach(function(key) {
-    var typeHint = typeIndex[key];
-    var values = null;
-    if (typeHint == 'number' || singleType == 'number') {
-      values = internal.convertDataField(key, records, utils.parseNumber);
-    } else if (typeHint == 'string' || singleType == 'string') {
-      values = internal.convertDataField(key, records, utils.parseString);
-    } else {
-      values = internal.tryNumericField(key, records);
-      if (values) detectedNumFields.push(key);
-    }
-    if (values) replacements[key] = values;
-  });
-  if (Object.keys(replacements).length > 0) {
-    internal.updateFieldsInRecords(fields, records, replacements);
-  }
-  if (detectedNumFields.length > 0) {
-    message(utils.format("Auto-detected number field%s: %s",
-        detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
-  }
-};
-
-// Copy original data properties and replacements to a new set of records
-// (Better performance in v8 than making in-place replacements)
-internal.updateFieldsInRecords = function(fields, records, replacements) {
-  records.forEach(function(rec, recId) {
-    var rec2 = {}, n, i, f;
-    for (i=0, n=fields.length; i<n; i++) {
-      f = fields[i];
-      if (f in replacements) {
-        rec2[f] = replacements[f][recId];
-      } else {
-        rec2[f] = rec[f];
-      }
-    }
-    records[recId] = rec2;
-  });
-};
-
-internal.tryNumericField = function(key, records) {
-  var arr = [],
-      count = 0,
-      raw, str, num;
-  for (var i=0, n=records.length; i<n; i++) {
-    raw = records[i][key];
-    num = utils.parseNumber(raw);
-    if (num === null) {
-      str = raw ? raw.trim() : '';
-      if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
-        return null; // unparseable value -- fail
-      }
-    } else {
-      count++;
-    }
-    arr.push(num);
-  }
-  return count > 0 ? arr : null;
-};
-
-internal.convertDataField = function(name, records, f) {
-  var values = [];
-  for (var i=0, n=records.length; i<n; i++) {
-    values.push(f(records[i][name]));
-  }
-  return values;
-};
-
-// Accept a type hint from a header like "FIPS:str"
-// Return standard type name (number|string) or null if hint is not recognized
-internal.validateFieldType = function(hint) {
-  var str = hint.toLowerCase(),
-      type = null;
-  if (str[0] == 'n') {
-    type = 'number';
-  } else if (str[0] == 's') {
-    type = 'string';
-  }
-  return type;
-};
-
-// Remove comma separators from strings
-// TODO: accept European-style numbers?
-utils.cleanNumericString = function(raw) {
-  return raw.replace(/,/g, '');
-};
-
-// Assume: @raw is string, undefined or null
-utils.parseString = function(raw) {
-  return raw ? raw : "";
-};
-
-// Assume: @raw is string, undefined or null
-// Use null instead of NaN for unparsable values
-// (in part because if NaN is used, empty strings get converted to "NaN"
-// when re-exported).
-utils.parseNumber = function(raw) {
-  var str = String(raw).trim();
-  var parsed = str ? Number(utils.cleanNumericString(str)) : NaN;
-  return isNaN(parsed) ? null : parsed;
-};
-
-// Returns a d3-dsv compatible function for filtering records and fields on import
-// TODO: look into using more code from standard expressions.
-internal.getImportFilterFunction = function(opts) {
-  var recordFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
-  var fieldFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
-  var ctx = internal.getBaseContext();
-  if (!recordFilter && !fieldFilter) return null;
-  return function(rec) {
-    var val;
-    try {
-      val = recordFilter ? recordFilter.call(null, rec, ctx) : true;
-    } catch(e) {
-      stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    if (val === false) {
-      return null;
-    } else if (val !== true) {
-      stop("Filter expression must return true or false");
-    }
-    return fieldFilter ? fieldFilter(rec) : rec;
-  };
 };
 
 
@@ -21433,12 +21603,14 @@ internal.editArcs = function(arcs, onPoint) {
   var nn2 = [],
       xx2 = [],
       yy2 = [],
+      errors = 0,
       n;
 
   arcs.forEach(function(arc, i) {
     editArc(arc, onPoint);
   });
   arcs.updateVertexData(nn2, xx2, yy2);
+  return errors;
 
   function append(p) {
     if (p) {
@@ -21482,6 +21654,7 @@ internal.editArcs = function(arcs, onPoint) {
         yy2.pop();
       }
       nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+      errors++;
     }
   }
 };
@@ -21536,6 +21709,7 @@ api.proj = function(dataset, destInfo, opts) {
   try {
     internal.projectDataset(target, src, dest, opts || {});
   } catch(e) {
+    console.error(e);
     stop(utils.format("Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
@@ -21577,17 +21751,22 @@ internal.getCrsInfo = function(name, catalog) {
 };
 
 internal.projectDataset = function(dataset, src, dest, opts) {
-  var proj = internal.getProjTransform(src, dest);
+  var proj = internal.getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
+  var errors;
   dataset.layers.forEach(function(lyr) {
     if (internal.layerHasPoints(lyr)) {
-      internal.projectPointLayer(lyr, proj);
+      internal.projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
     }
   });
   if (dataset.arcs) {
     if (opts.densify) {
-      internal.projectAndDensifyArcs(dataset.arcs, proj);
+      errors = internal.projectAndDensifyArcs(dataset.arcs, proj);
     } else {
-      internal.projectArcs(dataset.arcs, proj);
+      errors = internal.projectArcs2(dataset.arcs, proj);
+    }
+    if (errors > 0) {
+      // TODO: implement this (null arcs have zero length)
+      // internal.removeShapesWithNullArcs(dataset);
     }
   }
 };
@@ -21619,7 +21798,7 @@ internal.projectArcs = function(arcs, proj) {
 };
 
 internal.projectArcs2 = function(arcs, proj) {
-  internal.editArcs(arcs, onPoint);
+  return internal.editArcs(arcs, onPoint);
   function onPoint(append, x, y, prevX, prevY, i) {
     var p = proj(x, y);
     // TODO: prevent arcs with just one point
@@ -21634,12 +21813,14 @@ internal.projectArcs2 = function(arcs, proj) {
 internal.projectAndDensifyArcs = function(arcs, proj) {
   var interval = internal.getDefaultDensifyInterval(arcs, proj);
   var p = [0, 0];
-  internal.editArcs(arcs, onPoint);
+  return internal.editArcs(arcs, onPoint);
 
   function onPoint(append, lng, lat, prevLng, prevLat, i) {
     var prevX = p[0],
         prevY = p[1];
     p = proj(lng, lat);
+    if (!p) return false; // signal that current arc contains an error
+
     // Don't try to optimize shorter segments (optimization)
     if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
       internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
@@ -21667,7 +21848,9 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
   var lng1 = (lng0 + lng2) / 2,
       lat1 = (lat0 + lat2) / 2,
       p = proj(lng1, lat1),
-      distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
+      distSq;
+  if (!p) return; // TODO: consider if this is adequate for handling proj. errors
+  distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
   points = points || [];
   // Bisect current segment if the projected midpoint deviates from original
   //   segment by more than the @interval parameter.
@@ -24478,20 +24661,25 @@ function validateProjOpts(cmd) {
   var _ = cmd._,
       proj4 = [];
 
-  // separate proj4 options
-  _ = _.filter(function(arg) {
-    if (/^\+[a-z]/i.test(arg)) {
-      proj4.push(arg);
-      return false;
-    }
-    return true;
-  });
-
-  if (proj4.length > 0) {
-    cmd.options.crs = proj4.join(' ');
-  } else if (_.length > 0) {
-    cmd.options.crs = _.shift();
+  if (_.length > 0 && !cmd.options.crs) {
+    cmd.options.crs = _.join(' ');
+    _ = [];
   }
+
+  // separate proj4 options
+  // _ = _.filter(function(arg) {
+  //   if (/^\+[a-z]/i.test(arg)) {
+  //     proj4.push(arg);
+  //     return false;
+  //   }
+  //   return true;
+  // });
+
+  // if (proj4.length > 0) {
+  //   cmd.options.crs = proj4.join(' ');
+  // } else if (_.length > 0) {
+  //   cmd.options.crs = _.shift();
+  // }
 
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));
