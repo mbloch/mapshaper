@@ -1,3 +1,6 @@
+v0.4.130
+* Input of GeoJSON and TopoJSON is more fault-tolerant.
+
 v0.4.129
 * Work around layer menu issue caused by Chrome update.
 

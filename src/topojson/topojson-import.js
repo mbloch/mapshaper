@@ -206,7 +206,7 @@ TopoJSON.importPolygonArcs = function(rings, arcs) {
   var ring = rings[0],
       imported = null, area;
   if (!arcs) stop("Invalid TopoJSON file: missing arc data.");
-  area = geom.getPlanarPathArea(ring, arcs);
+  area = ring ? geom.getPlanarPathArea(ring, arcs) : null;
   if (!area) {
     return null;
   }

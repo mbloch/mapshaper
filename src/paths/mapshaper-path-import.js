@@ -87,6 +87,10 @@ function PathImporter(opts) {
   };
 
   this.importLine = function(points) {
+    if (points.length < 2) {
+      verbose("Skipping a defective line");
+      return;
+    }
     setShapeType('polyline');
     this.importPath(points);
   };
@@ -104,6 +108,10 @@ function PathImporter(opts) {
 
   this.importRing = function(points, isHole) {
     var area = geom.getPlanarPathArea2(points);
+    if (!area || points.length < 4) {
+      verbose("Skipping a defective ring");
+      return;
+    }
     setShapeType('polygon');
     if (isHole === true && area > 0 || isHole === false && area < 0) {
       verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
