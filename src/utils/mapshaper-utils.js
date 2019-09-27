@@ -25,7 +25,7 @@ utils.expandoBuffer = function(constructor, rate) {
   return function(size) {
     if (size > capacity) {
       capacity = Math.ceil(size * k);
-      buf = new constructor(capacity);
+      buf = constructor ? new constructor(capacity) : utils.createBuffer(capacity);
     }
     return buf;
   };

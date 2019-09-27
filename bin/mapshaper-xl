@@ -2,9 +2,17 @@
 
 // Run node in a child process with more memory
 // note: require('v8').getHeapStatistics().heap_size_limit seems to give the current limit
-var megabytes = 8000;
+var gb = 8;
 var args = process.argv.slice(2);
 var mapshaper = require('path').join(__dirname, 'mapshaper'); // path of mapshaper executable
-args = ['--max-old-space-size=' + megabytes, mapshaper].concat(args);
-console.error("Allocating", megabytes, "megabytes of heap memory");
+var memRxp = /^[0-9]+(gb?)?$/i;
+if (memRxp.test(args[0])) {
+  gb = parseFloat(args.shift());
+  if (gb < 1 || gb > 64) {
+    console.error('Unsupported heap size:', gb, 'GB');
+    process.exit(1);
+  }
+}
+console.error("Allocating", gb, "GB of heap memory");
+args = ['--max-old-space-size=' + Math.round(gb * 1000), mapshaper].concat(args);
 require('child_process').spawn(process.argv[0], args, {stdio: 'inherit'});

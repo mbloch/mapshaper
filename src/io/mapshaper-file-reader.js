@@ -44,8 +44,8 @@ function BufferReader(src) {
 function FileReader(path, opts) {
   var fs = require('fs'),
       fileLen = fs.statSync(path).size,
-      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
-      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
+      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x1000000, // 16MB
+      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x40000, // 256K
       fd, cacheOffs, cache, binArr;
 
   internal.getStateVar('input_files').push(path); // bit of a kludge

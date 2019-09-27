@@ -16,6 +16,39 @@ describe('mapshaper-delim-import.js', function() {
 
   describe('csv decoding with -i', function () {
 
+    it('handle missing values in numeric fields', function(done) {
+      var target = `Residence_Addresses_Latitude,Residence_Addresses_Longitude,Residence_Addresses_LatLongAccuracy,County,Voters_FIPS,Precinct
+38.25722,-119.226515,GeoMatch5Digit,MONO,051,BRIDGEPORT
+,,,MONO,051,BRIDGEPORT`;
+      api.applyCommands('-i test/test_data/text/empty_fields.csv string-fields=Voters_FIPS -info -o data.csv',  function(err, out) {
+        var output = out['data.csv'].toString();
+        assert.equal(output, target);
+        done();
+      });
+    })
+
+    it('handle missing values in numeric fields 2', function(done) {
+      var target = `County,Voters_FIPS,Precinct,Residence_Addresses_Latitude,Residence_Addresses_Longitude,Residence_Addresses_LatLongAccuracy
+LOS ANGELES,037,ALTADENA-0046,34.1911,-118.158,GeoMatchRooftop
+LOS ANGELES,037,ALTADENA-0048,,,`;
+      api.applyCommands('-i test/test_data/text/empty_fields2.csv string-fields=Voters_FIPS  -o data.csv',  function(err, out) {
+        var output = out['data.csv'].toString();
+        assert.equal(output, target);
+        done();
+      });
+    })
+
+    it('filter fields with csv-fields= option', function(done) {
+      var target = `County,Residence_Addresses_Latitude,Residence_Addresses_Longitude
+LOS ANGELES,34.1911,-118.158
+LOS ANGELES,,`;
+      api.applyCommands('-i test/test_data/text/empty_fields2.csv csv-fields=County,Residence_Addresses_Latitude,Residence_Addresses_Longitude  -o data.csv',  function(err, out) {
+        var output = out['data.csv'].toString();
+        assert.equal(output, target);
+        done();
+      });
+    })
+
     it('handle empty files', function(done) {
       api.applyCommands('-i empty.csv -o', {'empty.csv': ''}, function(err, out) {
         assert(!err);

@@ -14,13 +14,12 @@ internal.importDelim2 = function(data, opts) {
       content = data.content,
       filter, reader, records, delimiter, table;
   opts = opts || {};
-  filter = internal.getImportFilterFunction(opts);
 
-  // read content of all but very large files into a buffer
-  if (readFromFile && cli.fileSize(data.filename) < 2e9) {
-    content = cli.readFile(data.filename);
-    readFromFile = false;
-  }
+  // // read content of all but very large files into a buffer
+  // if (readFromFile && cli.fileSize(data.filename) < 2e9) {
+  //   content = cli.readFile(data.filename);
+  //   readFromFile = false;
+  // }
 
   if (readFromFile) {
     // try to read data incrementally from file, if content is missing
@@ -44,9 +43,10 @@ internal.importDelim2 = function(data, opts) {
 
   if (reader) {
     delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords(reader, delimiter, opts.encoding, filter);
+    records = internal.readDelimRecords2(reader, delimiter, opts);
   } else {
     delimiter = internal.guessDelimiter(content);
+    filter = internal.getImportFilterFunction(opts);
     records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
     delete records.columns; // added by d3-dsv
   }
@@ -226,22 +226,28 @@ utils.parseNumber = function(raw) {
 // Returns a d3-dsv compatible function for filtering records and fields on import
 // TODO: look into using more code from standard expressions.
 internal.getImportFilterFunction = function(opts) {
-  var recordFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
-  var fieldFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
+  var rowFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
+  var colFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
   var ctx = internal.getBaseContext();
-  if (!recordFilter && !fieldFilter) return null;
-  return function(rec) {
-    var val;
-    try {
-      val = recordFilter ? recordFilter.call(null, rec, ctx) : true;
-    } catch(e) {
-      stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    if (val === false) {
-      return null;
-    } else if (val !== true) {
-      stop("Filter expression must return true or false");
-    }
-    return fieldFilter ? fieldFilter(rec) : rec;
-  };
+  if (rowFilter) {
+    return function(rec) {
+      var val;
+      try {
+        val = rowFilter ? rowFilter.call(null, rec, ctx) : true;
+      } catch(e) {
+        stop(e.name, "in expression [" + exp + "]:", e.message);
+      }
+      if (val === false) {
+        return null;
+      } else if (val !== true) {
+        stop("Filter expression must return true or false");
+      }
+      // use in conjunction with column filter if present
+      return colFilter ? colFilter(rec) : rec;
+    };
+  } else if (colFilter) {
+    return colFilter;
+  } else {
+    return null;
+  }
 };
