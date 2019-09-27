@@ -1,3 +1,7 @@
+v0.4.131
+* Add optional size parameter to mapshaper-xl (e.g. mapshaper-xl 16gb)
+* Improve performance of -i csv-fields=  option.
+
 v0.4.130
 * Input of GeoJSON and TopoJSON is more fault-tolerant.
 
