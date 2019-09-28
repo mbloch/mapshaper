@@ -1,5 +1,10 @@
+v0.4.132
+* Added -i csv-lines=[integer] option, for importing the first n records from a CSV file
+* Added -i csv-skip-lines=[integer] option, for skipping lines at the top of a CSV file
+* Added -i csv-field-names=[list] option, for assigning field names to the columns of a CSV file.
+
 v0.4.131
-* Add optional size parameter to mapshaper-xl (e.g. mapshaper-xl 16gb)
+* Added optional size parameter to mapshaper-xl (e.g. mapshaper-xl 16gb)
 * Improve performance of -i csv-fields=  option.
 
 v0.4.130
