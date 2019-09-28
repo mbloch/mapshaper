@@ -148,6 +148,10 @@ internal.getOptionParser = function() {
       type: 'integer',
       describe: '[CSV] number of lines to skip at the beginning of the file'
     })
+    .option('csv-lines', {
+      type: 'integer',
+      describe: '[CSV] number of data records to read'
+    })
     .option('csv-field-names', {
       type: 'strings',
       describe: '[CSV] comma-sep. list of field names to assign each column'

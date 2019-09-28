@@ -22,6 +22,9 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
     batch = internal.parseDelimText(str, delim, convertRowArr, colFilter);
     if (rowFilter) batch = batch.filter(rowFilter);
     records.push.apply(records, batch);
+    if (opts.csv_lines && records.length >= opts.csv_lines) {
+      return records.slice(0, opts.csv_lines);
+    }
   }
   return records;
 };

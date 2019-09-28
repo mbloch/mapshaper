@@ -16,6 +16,26 @@ describe('mapshaper-delim-import.js', function() {
 
   describe('csv decoding with -i', function () {
 
+    it('-i csv-lines= csv-field-names= csv-fields= options', function(done) {
+      var cmd = '-i test/test_data/text/states.csv csv-fields=A,D ' +
+        'csv-field-names=A,B,C,D,E,F csv-skip-lines=1 csv-lines=2 -o format=json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['states.json']);
+        assert.deepEqual(json, [{ A: 'Alabama', D: 'AL' }, { A: 'Alaska', D: 'AK' }]);
+        done();
+      })
+    });
+
+    it('-i field-types= works with :str type hint', function (done) {
+      var input = "fips\n00001";
+      api.applyCommands('-i field-types=fips:str', input, function(err, output) {
+        if (err) throw err;
+        assert.equal(err, null);
+        assert.equal(output, "fips\n00001");
+        done();
+      });
+    })
+
     it('handle missing values in numeric fields', function(done) {
       var target = `Residence_Addresses_Latitude,Residence_Addresses_Longitude,Residence_Addresses_LatLongAccuracy,County,Voters_FIPS,Precinct
 38.25722,-119.226515,GeoMatch5Digit,MONO,051,BRIDGEPORT
@@ -256,17 +276,6 @@ LOS ANGELES,,`;
 
   })
 
-  describe('Importing dsv with -i command', function () {
-    it('-i field-types= works with :str type hint', function (done) {
-      var input = "fips\n00001";
-      api.applyCommands('-i field-types=fips:str', input, function(err, output) {
-        if (err) throw err;
-        assert.equal(err, null);
-        assert.equal(output, "fips\n00001");
-        done();
-      });
-    })
-  })
 
   describe('parseNumber()', function() {
     it('undefined -> null', function() {
