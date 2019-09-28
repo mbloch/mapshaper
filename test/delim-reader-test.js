@@ -29,6 +29,25 @@ describe('mapshaper-delim-reader.js', function () {
   describe('readDelimRecords()', function () {
     var read = api.internal.readDelimRecords;
 
+    it('csv_file_names option', function() {
+      var str = 'a,b\n1,2';
+      var records = read(new StringReader(str), ',', {csv_field_names: ['foo', 'bar']});
+      assert.deepEqual(records, [{foo: 'a', bar: 'b'}, {foo: '1', bar: '2'}])
+    });
+
+    it('csv_skip_lines option', function() {
+      var str = '\nSome text\n\na,b\n1,2'; // lines of junk
+      var records = read(new StringReader(str), ',', {csv_skip_lines: 3});
+      assert.deepEqual(records, [{a: '1', b: '2'}])
+    });
+
+    it('csv_skip_lines and csv_file_names options', function() {
+      // assign new field names by skipping the existing names and assigning names
+      var str = 'a,b\n1,2';
+      var records = read(new StringReader(str), ',', {csv_field_names: ['foo', 'bar'], csv_skip_lines: 1});
+      assert.deepEqual(records, [{foo: '1', bar: '2'}])
+    });
+
     it('parse test 1: missing and extra fields', function () {
       var str = 'foo,bar\r\na,b,c\r\n,\r\n\r\ncd'; // various issues: extra field, missing fields
       var records = read(new StringReader(str), ',');

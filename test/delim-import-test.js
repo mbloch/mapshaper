@@ -43,11 +43,11 @@ LOS ANGELES,037,ALTADENA-0048,,,`;
 LOS ANGELES,34.1911,-118.158
 LOS ANGELES,,`;
       api.applyCommands('-i test/test_data/text/empty_fields2.csv csv-fields=County,Residence_Addresses_Latitude,Residence_Addresses_Longitude  -o data.csv',  function(err, out) {
-        var output = out['data.csv'].toString();
-        assert.equal(output, target);
-        done();
-      });
-    })
+          var output = out['data.csv'].toString();
+          assert.equal(output, target);
+          done();
+        });
+      })
 
     it('handle empty files', function(done) {
       api.applyCommands('-i empty.csv -o', {'empty.csv': ''}, function(err, out) {

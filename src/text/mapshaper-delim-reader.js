@@ -8,24 +8,36 @@
 internal.readDelimRecords = function(reader, delim, optsArg) {
   var reader2 = new Reader2(reader),
       opts = optsArg || {},
-      filter = internal.getImportFilterFunction(opts),
-      header = internal.trimBOM(internal.readLinesAsString(reader2, 1, opts.encoding)),
-      allFields = internal.parseDelimText(header, delim)[0] || [],
+      allFields = internal.readDelimHeader(reader2, delim, opts),
       rowFilter = opts.csv_filter ? internal.getImportFilterFunction({csv_filter: opts.csv_filter}) : null,
       colFilter = opts.csv_fields ? internal.getDelimFieldFilter(allFields, opts.csv_fields) : null,
-      headerArr = colFilter ? internal.parseDelimText(header, delim, null, colFilter)[0] : allFields,
+      headerArr = colFilter ? allFields.filter(function(name, i) {return colFilter(i);}) : allFields,
+      convertRowArr = internal.getRowConverter(headerArr),
       batchSize = opts.batch_size || 1000,
-      convert = internal.getRowConverter(headerArr),
       records = [],
       str, batch;
-  if (!header) return []; // e.g. empty file
+  if (headerArr.length === 0) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((str = internal.readLinesAsString(reader2, batchSize, opts.encoding))) {
-    batch = internal.parseDelimText(str, delim, convert, colFilter);
+    batch = internal.parseDelimText(str, delim, convertRowArr, colFilter);
     if (rowFilter) batch = batch.filter(rowFilter);
     records.push.apply(records, batch);
   }
   return records;
+};
+
+internal.readDelimHeader = function(reader, delim, opts) {
+  var header, fields;
+  if (opts.csv_skip_lines > 0) {
+    internal.skipDelimLines(reader, opts.csv_skip_lines);
+  }
+  if (Array.isArray(opts.csv_field_names)) {
+    fields = opts.csv_field_names;
+  } else {
+    header = internal.readLinesAsString(reader, 1, opts.encoding);
+    fields = internal.parseDelimText(header, delim)[0] || [];
+  }
+  return fields;
 };
 
 // Returns a function for filtering fields by column index
@@ -40,16 +52,32 @@ internal.getDelimFieldFilter = function(header, fieldsToKeep) {
   };
 };
 
+internal.skipDelimLines = function(reader, lines) {
+  // TODO: divide many lines into batches, to prevent exceeding maximum buffer size
+  var buf = reader.readSync();
+  var retn = internal.readLinesFromBuffer(buf, lines);
+  if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
+    reader.expandBuffer(); // buffer oflo, grow the buffer and try again
+    return internal.skipDelimLines(reader, lines);
+  }
+  reader.advance(retn.bytesRead);
+};
+
 internal.readLinesAsString = function(reader, lines, encoding) {
   var buf = reader.readSync();
   var retn = internal.readLinesFromBuffer(buf, lines);
+  var str;
   if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
     // buffer overflow -- enlarge buffer and read lines again
     reader.expandBuffer();
     return internal.readLinesAsString(reader, lines, encoding);
   }
+  str = retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
+  if (reader.position() === 0) {
+    str = internal.trimBOM(str);
+  }
   reader.advance(retn.bytesRead);
-  return retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
+  return str;
 };
 
 internal.readLinesFromBuffer = function(buf, linesToRead) {
@@ -138,7 +166,7 @@ internal.parseDelimText = function(text, delim, convert, colFilter) {
       captureField(fieldStart, i);
       endLine();
       if (c == CR && text.charCodeAt(i+1) == LF) {
-        i++; // first half of CRLF pair; skip a char (todo: check oflo)
+        i++; // first half of CRLF pair; skip a char
       }
       if (i + 1 < len) startFieldAt(i+1);
     }

@@ -9,12 +9,9 @@ internal.readFirstChars = function(reader, n) {
 
 // Wraps a BufferReader or FileReader with an API that keeps track of position in the file
 function Reader2(reader) {
-  var offs = 0; // byte offset
+  var offs = 0; // read-head position in bytes
 
-  // this.position = function(i) {
-  //   if (i >= 0 === false) return offs;
-  //   offs = i;
-  // };
+  this.position = function() {return offs;};
 
   this.remaining = function() {
     return Math.max(reader.size() - offs, 0);

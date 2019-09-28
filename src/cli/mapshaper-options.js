@@ -144,6 +144,14 @@ internal.getOptionParser = function() {
     .option('json-path', {
       // describe: path to an array of data values
     })
+    .option('csv-skip-lines', {
+      type: 'integer',
+      describe: '[CSV] number of lines to skip at the beginning of the file'
+    })
+    .option('csv-field-names', {
+      type: 'strings',
+      describe: '[CSV] comma-sep. list of field names to assign each column'
+    })
     .option('csv-filter', {
       describe: '[CSV] JS expression for filtering records'
     })
