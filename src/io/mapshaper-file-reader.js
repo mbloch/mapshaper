@@ -7,6 +7,32 @@ internal.readFirstChars = function(reader, n) {
   return internal.bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
 };
 
+// Wraps a BufferReader or FileReader with an API that keeps track of position in the file
+function Reader2(reader) {
+  var offs = 0; // byte offset
+
+  // this.position = function(i) {
+  //   if (i >= 0 === false) return offs;
+  //   offs = i;
+  // };
+
+  this.remaining = function() {
+    return Math.max(reader.size() - offs, 0);
+  };
+
+  this.advance = function(i) {
+    offs += i;
+  };
+
+  this.readSync = function() {
+    return reader.readSync(offs);
+  };
+
+  this.expandBuffer = function() {
+    reader.expandBuffer();
+  };
+}
+
 // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
 function BufferReader(src) {
   var bufSize = src.byteLength || src.length,

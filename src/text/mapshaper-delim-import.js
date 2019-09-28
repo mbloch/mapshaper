@@ -43,7 +43,7 @@ internal.importDelim2 = function(data, opts) {
 
   if (reader) {
     delimiter = internal.guessDelimiter(internal.readFirstChars(reader, 2000));
-    records = internal.readDelimRecords2(reader, delimiter, opts);
+    records = internal.readDelimRecords(reader, delimiter, opts);
   } else {
     delimiter = internal.guessDelimiter(content);
     filter = internal.getImportFilterFunction(opts);

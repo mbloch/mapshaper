@@ -36,7 +36,6 @@ function LayerControl(gui) {
     map.redraw();
   });
 
-
   function updatePinAllButton() {
     pinAll.classed('pinned', testAllLayersPinned());
   }
