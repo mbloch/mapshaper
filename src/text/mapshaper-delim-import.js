@@ -203,7 +203,7 @@ internal.validateFieldType = function(hint) {
 // Remove comma separators from strings
 // TODO: accept European-style numbers?
 utils.cleanNumericString = function(raw) {
-  return raw.replace(/,/g, '');
+  return raw.replace(/,([0-9]{3})/g, '$1');
 };
 
 // Assume: @raw is string, undefined or null

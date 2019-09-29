@@ -290,6 +290,18 @@ LOS ANGELES,,`;
       assert.equal(utils.parseNumber('1e3'), 1000);
     })
 
+    it (',, -> null', function() {
+      assert.strictEqual(utils.parseNumber(',,'), null);
+    })
+
+    it (', -> null', function() {
+      assert.strictEqual(utils.parseNumber(','), null);
+    })
+
+    it ('. -> null', function() {
+      assert.strictEqual(utils.parseNumber('.'), null);
+    })
+
     it('parses decimal numbers', function() {
       assert.equal(utils.parseNumber('-43.2'), -43.2)
     })
