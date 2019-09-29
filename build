@@ -9,8 +9,7 @@ var requiredModules = [
     'fs',
     'flatbush',
     'rw',
-    'path',
-    'd3-dsv'
+    'path'
   ];
 
 

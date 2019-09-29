@@ -31,7 +31,6 @@
 	"main": "./mapshaper.js",
 	"dependencies": {
 		"cookies": "^0.7.1",
-		"d3-dsv": "~1.0.8",
 		"flatbush": "^3.1.0",
 		"iconv-lite": "0.4.24",
 		"mproj": "0.0.24",

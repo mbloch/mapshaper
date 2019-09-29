@@ -46,9 +46,7 @@ internal.importDelim2 = function(data, opts) {
     records = internal.readDelimRecords(reader, delimiter, opts);
   } else {
     delimiter = internal.guessDelimiter(content);
-    filter = internal.getImportFilterFunction(opts);
-    records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
-    delete records.columns; // added by d3-dsv
+    records = internal.readDelimRecordsFromString(content, delimiter, opts);
   }
   if (records.length === 0) {
     message("Unable to read any data records");
@@ -221,33 +219,4 @@ utils.parseNumber = function(raw) {
   var str = String(raw).trim();
   var parsed = str ? Number(utils.cleanNumericString(str)) : NaN;
   return isNaN(parsed) ? null : parsed;
-};
-
-// Returns a d3-dsv compatible function for filtering records and fields on import
-// TODO: look into using more code from standard expressions.
-internal.getImportFilterFunction = function(opts) {
-  var rowFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
-  var colFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
-  var ctx = internal.getBaseContext();
-  if (rowFilter) {
-    return function(rec) {
-      var val;
-      try {
-        val = rowFilter ? rowFilter.call(null, rec, ctx) : true;
-      } catch(e) {
-        stop(e.name, "in expression [" + exp + "]:", e.message);
-      }
-      if (val === false) {
-        return null;
-      } else if (val !== true) {
-        stop("Filter expression must return true or false");
-      }
-      // use in conjunction with column filter if present
-      return colFilter ? colFilter(rec) : rec;
-    };
-  } else if (colFilter) {
-    return colFilter;
-  } else {
-    return null;
-  }
 };

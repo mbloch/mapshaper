@@ -5,6 +5,20 @@ var assert = require('assert'),
 
 describe('mapshaper-delim-reader.js', function () {
 
+  describe('readDelimRecordsFromString()', function () {
+    var read = api.internal.readDelimRecordsFromString;
+    it('simple test', function () {
+      var output = read('a,b,c\n1,2,3', ',', {});
+      assert.deepEqual(output, [{a: '1', b: '2', c: '3'}]);
+    })
+
+    it('simple test', function () {
+      var output = read('a,b,c\n1,2,3', ',', {});
+      assert.deepEqual(output, [{a: '1', b: '2', c: '3'}]);
+    })
+  })
+
+
   describe('readDelimRecords()', function () {
     var readDelimRecords = api.internal.readDelimRecords;
     it('read several lines', function () {

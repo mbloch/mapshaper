@@ -9,7 +9,7 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
   var reader2 = new Reader2(reader),
       opts = optsArg || {},
       allFields = internal.readDelimHeader(reader2, delim, opts),
-      rowFilter = opts.csv_filter ? internal.getImportFilterFunction({csv_filter: opts.csv_filter}) : null,
+      rowFilter = opts.csv_filter ? internal.getDelimRecordFilterFunction(opts.csv_filter) : null,
       colFilter = opts.csv_fields ? internal.getDelimFieldFilter(allFields, opts.csv_fields) : null,
       headerArr = colFilter ? allFields.filter(function(name, i) {return colFilter(i);}) : allFields,
       convertRowArr = internal.getRowConverter(headerArr),
@@ -25,6 +25,35 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
     if (opts.csv_lines && records.length >= opts.csv_lines) {
       return records.slice(0, opts.csv_lines);
     }
+  }
+  return records;
+};
+
+// Fallback for readDelimRecords(), for encodings that do not use ascii values
+// for delimiter characters and newlines. Input size is limited by the maximum
+// string size. This function is also slower when using certain options.
+internal.readDelimRecordsFromString = function(str, delim, opts) {
+  var records = internal.parseDelimText(str, delim);
+  var inputFields, colFilter;
+  if (opts.csv_skip_lines > 0) {
+    records.splice(0, opts.csv_skip_lines);
+  }
+  if (Array.isArray(opts.csv_field_names)) {
+    inputFields = opts.csv_field_names;
+  } else {
+    inputFields = records.shift();
+  }
+  if (opts.csv_lines > 0) {
+    records = records.splice(0, opts.csv_lines);
+  }
+  if (opts.csv_fields) {
+    colFilter = internal.getFieldFilterMapFunction(inputFields, opts.csv_fields);
+    inputFields = colFilter(inputFields);
+    records = records.map(colFilter);
+  }
+  records = records.map(internal.getRowConverter(inputFields));
+  if (opts.csv_filter) {
+    records = records.filter(internal.getDelimRecordFilterFunction(opts.csv_filter));
   }
   return records;
 };
@@ -50,13 +79,24 @@ internal.getDelimFieldFilter = function(header, fieldsToKeep) {
   var map = header.map(function(name) {
     return name in index;
   });
-  return function(col) {
-    return map[col];
+  return function(colIdx) {
+    return map[colIdx];
+  };
+};
+
+// Returns a function for filtering fields of an array-type record
+internal.getFieldFilterMapFunction = function(header, fieldsToKeep) {
+  var colFilter = internal.getDelimFieldFilter(header, fieldsToKeep);
+  function filter(val, i) {
+    return colFilter(i);
+  }
+  return function(columns) {
+    return columns.filter(filter);
   };
 };
 
 internal.skipDelimLines = function(reader, lines) {
-  // TODO: divide many lines into batches, to prevent exceeding maximum buffer size
+  // TODO: divide lines into batches, to prevent exceeding maximum buffer size
   var buf = reader.readSync();
   var retn = internal.readLinesFromBuffer(buf, lines);
   if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
@@ -181,4 +221,23 @@ internal.parseDelimText = function(text, delim, convert, colFilter) {
   }
 
   return records;
+};
+
+// Returns a function for filtering records
+// TODO: look into using more code from standard expressions.
+internal.getDelimRecordFilterFunction = function(expression) {
+  var rowFilter = internal.compileExpressionToFunction(expression, {returns: true});
+  var ctx = internal.getBaseContext();
+  return function(rec) {
+    var val;
+    try {
+      val = rowFilter.call(null, rec, ctx);
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val !== true && val !== false) {
+      stop("Filter expression must return true or false");
+    }
+    return val;
+  };
 };

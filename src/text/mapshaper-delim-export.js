@@ -19,28 +19,28 @@ internal.exportDelim = function(dataset, opts) {
 internal.exportLayerAsDSV = function(lyr, delim, optsArg) {
   var opts = optsArg || {};
   var encoding = opts.encoding || 'utf8';
-  var formatRows = require("d3-dsv").dsvFormat(delim).formatRows;
   var records = lyr.data.getRecords();
   var fields = internal.findFieldNames(records, opts.field_order);
   // exporting utf8 and ascii text as string by default (for now)
   var exportAsString = internal.encodingIsUtf8(encoding) && !opts.to_buffer &&
       (records.length < 10000 || opts.to_string);
   if (exportAsString) {
-    return internal.exportRecordsAsString(fields, records, formatRows);
+    return internal.exportRecordsAsString(fields, records, delim);
   } else {
-    return internal.exportRecordsAsBuffer(fields, records, formatRows, encoding);
+    return internal.exportRecordsAsBuffer(fields, records, delim, encoding);
   }
 };
 
-internal.exportRecordsAsString = function(fields, records, formatRows) {
-  var formatRow = internal.getDelimRowFormatter(fields, records);
-  var rows = [fields].concat(records.map(formatRow));
-  return formatRows(rows);
+internal.exportRecordsAsString = function(fields, records, delim) {
+  var formatRow = internal.getDelimRowFormatter(fields, delim);
+  var header = internal.formatDelimHeader(fields, delim);
+  if (!records.length) return header;
+  return header + '\n' + records.map(formatRow).join('\n');
 };
 
-internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding) {
-  var formatRow = internal.getDelimRowFormatter(fields, records);
-  var str = formatRows([fields]); // header
+internal.exportRecordsAsBuffer = function(fields, records, delim, encoding) {
+  var formatRow = internal.getDelimRowFormatter(fields, delim);
+  var str = internal.formatDelimHeader(fields, delim);
   var buffers = [internal.encodeString(str, encoding)];
   var tmp = [];
   var n = records.length;
@@ -49,7 +49,7 @@ internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding)
     tmp.push(formatRow(records[i]));
     i++;
     if (i % 1000 === 0 || i == n) {
-      str = '\n' + formatRows(tmp);
+      str = '\n' + tmp.join('\n');
       tmp = [];
       buffers.push(internal.encodeString(str, encoding));
     }
@@ -57,24 +57,42 @@ internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding)
   return Buffer.concat(buffers);
 };
 
-// Return a function for converting a record into an array of values
-// to pass to dsv.formatRows()
-internal.getDelimRowFormatter = function(fields, records) {
-  var formatters = fields.map(function(f) {
-    var type = internal.getColumnType(f, records);
-    return function(rec) {
-      if (type == 'object') {
-        return JSON.stringify(rec[f]);
-      }
-      return rec[f]; // use default d3-dsv formatting
-    };
-  });
+internal.formatDelimHeader = function(fields, delim) {
+  var formatValue = internal.getDelimValueFormatter(delim);
+  return fields.map(formatValue).join(delim);
+};
+
+internal.getDelimRowFormatter = function(fields, delim) {
+  var formatValue = internal.getDelimValueFormatter(delim);
   return function(rec) {
-    var values = [];
-    for (var i=0; i<formatters.length; i++) {
-      values.push(formatters[i](rec));
+    return fields.map(function(f) {
+      return formatValue(rec[f]);
+    }).join(delim);
+  };
+};
+
+internal.getDelimValueFormatter = function(delim) {
+  var dquoteRxp =  new RegExp('["\n\r' + delim + ']');
+  function formatString(s) {
+    if (dquoteRxp.test(s)) {
+      s = '"' + s.replace(/"/g, '""') + '"';
     }
-    return values;
+    return s;
+  }
+  return function(val) {
+    var s;
+    if (val == null) {
+      s = '';
+    } else if (utils.isString(val)) {
+      s = formatString(val);
+    } else if (utils.isNumber(val)) {
+      s = val + '';
+    } else if (utils.isObject(val)) {
+      s = formatString(JSON.stringify(val));
+    } else {
+      s = s + '';
+    }
+    return s;
   };
 };
 
