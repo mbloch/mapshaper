@@ -35,9 +35,9 @@ internal.readDelimRecordsFromString = function(str, delim, opts) {
   var convert = internal.getRowConverter(header.import_fields);
   var records = internal.parseDelimText(header.remainder, delim, convert, header.column_filter, header.row_filter);
   if (opts.csv_lines > 0) {
-    records = records.slice(0, opts.csv_lines); // TODO: don't parse unneeded rows
+    // TODO: don't parse unneeded rows
+    records = records.slice(0, opts.csv_lines);
   }
-
   return records;
 };
 

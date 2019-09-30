@@ -1,3 +1,6 @@
+v0.4.133
+* Performance improvements for CSV importing
+
 v0.4.132
 * Added -i csv-lines=[integer] option, for importing the first n records from a CSV file
 * Added -i csv-skip-lines=[integer] option, for skipping lines at the top of a CSV file
