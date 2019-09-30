@@ -15,7 +15,6 @@ function fixPath(p) {
 describe('mapshaper-delim-import.js', function() {
 
   describe('csv decoding with -i', function () {
-
     it('-i csv-lines= csv-field-names= csv-fields= options', function(done) {
       var cmd = '-i test/test_data/text/states.csv csv-fields=A,D ' +
         'csv-field-names=A,B,C,D,E,F csv-skip-lines=1 csv-lines=2 -o format=json';
@@ -509,6 +508,18 @@ LOS ANGELES,,`;
       var data = api.internal.importDelim(str);
       stringifyEqual(data.layers[0].data.getRecords(), [{a: 1, b: 2}]);
     })
+
+    it('missing string field is imported as empty string', function() {
+      var str = 'a,b\nc,d\ne';
+      var data = api.internal.importDelim(str);
+      assert.deepStrictEqual(data.layers[0].data.getRecords(), [{a: 'c', b: 'd'}, {a: 'e', b: ''}])
+    });
+
+    it('missing number is imported as null', function() {
+      var str = 'a,b\n,1\n2,3';
+      var data = api.internal.importDelim(str);
+      assert.deepStrictEqual(data.layers[0].data.getRecords(), [{a: null, b: 1}, {a: 2, b: 3}])
+    });
 
     it('parse csv with quoted field including comma', function () {
       var str = 'a,b\n1,"foo, bar"'
