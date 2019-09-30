@@ -202,8 +202,8 @@ internal.validateFieldType = function(hint) {
 
 // Remove comma separators from strings
 // TODO: accept European-style numbers?
-utils.cleanNumericString = function(raw) {
-  return raw.replace(/,([0-9]{3})/g, '$1');
+utils.cleanNumericString = function(str) {
+  return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
 };
 
 // Assume: @raw is string, undefined or null
