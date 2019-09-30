@@ -1,6 +1,5 @@
 /* @requires mapshaper-data-table, mapshaper-data-utils, mapshaper-delim-reader, mapshaper-cli-utils */
 
-
 // Convert a string containing delimited text data into a dataset object
 internal.importDelim = function(str, opts) {
   return internal.importDelim2({content: str}, opts);
@@ -126,7 +125,10 @@ internal.adjustRecordTypes = function(records, opts) {
     if (typeHint == 'number' || singleType == 'number') {
       values = internal.convertDataField(key, records, utils.parseNumber);
     } else if (typeHint == 'string' || singleType == 'string') {
-      values = internal.convertDataField(key, records, utils.parseString);
+      // We should be able to assume that imported CSV fields are strings,
+      //   so parsing + replacement is not required
+      // values = internal.convertDataField(key, records, utils.parseString);
+      values = null;
     } else {
       values = internal.tryNumericField(key, records);
       if (values) detectedNumFields.push(key);
@@ -145,17 +147,14 @@ internal.adjustRecordTypes = function(records, opts) {
 // Copy original data properties and replacements to a new set of records
 // (Better performance in v8 than making in-place replacements)
 internal.updateFieldsInRecords = function(fields, records, replacements) {
-  records.forEach(function(rec, recId) {
-    var rec2 = {}, n, i, f;
-    for (i=0, n=fields.length; i<n; i++) {
-      f = fields[i];
-      if (f in replacements) {
-        rec2[f] = replacements[f][recId];
-      } else {
-        rec2[f] = rec[f];
-      }
-    }
-    records[recId] = rec2;
+  // Use object-literal syntax (faster than alternative)
+  var convertBody = 'return {' + fields.map(function(name) {
+      var key = JSON.stringify(name);
+      return key + ': ' + (replacements[name] ? 'replacements[' + key + '][i]' : 'rec[' + key + ']');
+    }).join(', ') + '}';
+  var convert = new Function('rec', 'replacements', 'i', convertBody);
+  records.forEach(function(rec, i) {
+    records[i] = convert(rec, replacements, i);
   });
 };
 
