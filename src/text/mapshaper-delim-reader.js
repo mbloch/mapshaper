@@ -17,8 +17,7 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
   if (header.import_fields.length === 0) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((str = internal.readLinesAsString(reader2, batchSize, opts.encoding))) {
-    batch = internal.parseDelimText(str, delim, convertRowArr, header.column_filter || false);
-    if (header.row_filter) batch = batch.filter(header.row_filter);
+    batch = internal.parseDelimText(str, delim, convertRowArr, header.column_filter || false, header.row_filter || false);
     records.push.apply(records, batch);
     if (opts.csv_lines && records.length >= opts.csv_lines) {
       return records.slice(0, opts.csv_lines);
@@ -33,14 +32,12 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
 internal.readDelimRecordsFromString = function(str, delim, opts) {
   var header = internal.parseDelimHeaderSection(str, delim, opts);
   if (header.import_fields.length === 0 || !header.remainder) return [];
-  str = header.remainder;
-  if (opts.csv_lines > 0) {
-    var i = internal.indexOfLine(opts.csv_lines + 1);
-    str = i > -1 ? str.substr(0, i) : str;
-  }
   var convert = internal.getRowConverter(header.import_fields);
-  var records = internal.parseDelimText(str, delim, convert, header.column_filter);
-  if (header.row_filter) records = records.filter(header.row_filter);
+  var records = internal.parseDelimText(header.remainder, delim, convert, header.column_filter, header.row_filter);
+  if (opts.csv_lines > 0) {
+    records = records.slice(0, opts.csv_lines); // TODO: don't parse unneeded rows
+  }
+
   return records;
 };
 
@@ -154,6 +151,7 @@ internal.readLinesAsString = function(reader, lines, encoding) {
     reader.expandBuffer();
     return internal.readLinesAsString(reader, lines, encoding);
   }
+  // str = retn.bytesRead > 0 ? retn.buffer.toString('ascii', 0, retn.bytesRead) : '';
   str = retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
   if (reader.position() === 0) {
     str = internal.trimBOM(str);
@@ -188,7 +186,11 @@ internal.readLinesFromBuffer = function(buf, linesToRead) {
   };
 };
 
-internal.parseDelimText = function(text, delim, convert, colFilter) {
+// Convert a string of CSV data into an array of data records
+// convert: optional function for converting an array record to an object record (values indexed by field names)
+// colFilter: optional function for filtering columns by numerical column id (0-based); accepts an array record and an id
+// rowFilter: optional function for filtering rows; accepts a record in object format
+internal.parseDelimText = function(text, delim, convert, colFilter, rowFilter) {
   var CR = 13, LF = 10, DQUOTE = 34,
       DELIM = delim.charCodeAt(0),
       inQuotedText = false,
@@ -200,7 +202,8 @@ internal.parseDelimText = function(text, delim, convert, colFilter) {
   if (!convert) convert = function(d) {return d;};
 
   function endLine() {
-    records.push(convert(record));
+    var rec = convert ? convert(record) : record;
+    if (!rowFilter || rowFilter(rec)) records.push(rec);
     srcCol = -1;
   }
 

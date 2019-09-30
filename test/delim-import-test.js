@@ -496,6 +496,13 @@ LOS ANGELES,,`;
   })
 
   describe('importDelim()', function () {
+    it('apply row filter before counting lines', function() {
+      var str = 'foo\na\nb\nc\nd\ne\nf';
+      var dataset = api.internal.importDelim(str, {csv_lines: 2, csv_filter:'foo != "a" && foo != "c"'});
+      var arr = dataset.layers[0].data.getRecords();
+      assert.deepEqual(arr, [{foo: 'b'}, {foo: 'd'}])
+    })
+
     it('should detect tab delimiter', function () {
       var str = 'a\tb\n1\t"boo ya"'
       var dataset = api.internal.importDelim(str);
