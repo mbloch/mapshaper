@@ -1,5 +1,6 @@
 var assert = require('assert'),
     api = require('..'),
+    internal = api.internal,
     csv_spectrum = require('csv-spectrum'),
     StringReader = require('./helpers.js').Reader;
 
@@ -15,6 +16,52 @@ describe('mapshaper-delim-reader.js', function () {
     it('simple test', function () {
       var output = read('a,b,c\n1,2,3', ',', {});
       assert.deepEqual(output, [{a: '1', b: '2', c: '3'}]);
+    })
+  })
+
+
+  describe('parseDelimHeaderSection()', function () {
+    var parse = internal.parseDelimHeaderSection;
+    it('simple example', function () {
+      var str = 'a,b,c\n1,2,3';
+      var retn = parse(str, ',', {});
+      assert.deepEqual(retn, {headers: ['a', 'b', 'c'], import_fields: ['a', 'b', 'c'], remainder: '1,2,3'})
+    })
+
+    it('only header', function () {
+      var str = 'a,b,c\n';
+      var retn = parse(str, ',', {});
+      assert.deepEqual(retn, {headers: ['a', 'b', 'c'], import_fields: ['a', 'b', 'c'], remainder: ''})
+    })
+
+    it('only header 2', function () {
+      var str = 'a,b,c';
+      var retn = parse(str, ',', {});
+      assert.deepEqual(retn, {headers: ['a', 'b', 'c'], import_fields: ['a', 'b', 'c'], remainder: ''})
+    })
+
+    it('skip lines', function () {
+      var str = ' \n\nHeader\na,b,c\n1,2,3';
+      var retn = parse(str, ',', {csv_skip_lines: 3});
+      assert.deepEqual(retn, {headers: ['a', 'b', 'c'], import_fields: ['a', 'b', 'c'], remainder: '1,2,3'})
+    })
+
+    it('csv_field_names', function () {
+      var str = 'a,b,c\n1,2,3';
+      var retn = parse(str, ',', {csv_field_names: ['d', 'e', 'f']});
+      assert.deepEqual(retn, {headers: ['d', 'e', 'f'], import_fields: ['d', 'e', 'f'], remainder: str})
+    })
+
+  })
+
+  describe('indexOfLine()', function () {
+    it('tests', function () {
+      assert.equal(internal.indexOfLine('a\nb\n', 2), 2)
+      assert.equal(internal.indexOfLine('a\r\nb\r\n', 2), 3)
+      assert.equal(internal.indexOfLine('a\nb\n', 3), 4)
+      assert.equal(internal.indexOfLine('a\nb\n', 4), -1)
+      assert.equal(internal.indexOfLine('a\nb\n', 1), 0)
+      assert.equal(internal.indexOfLine('a\nb\n', 0), -1)
     })
   })
 

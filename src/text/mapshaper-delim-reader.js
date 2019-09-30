@@ -8,19 +8,17 @@
 internal.readDelimRecords = function(reader, delim, optsArg) {
   var reader2 = new Reader2(reader),
       opts = optsArg || {},
-      allFields = internal.readDelimHeader(reader2, delim, opts),
-      rowFilter = opts.csv_filter ? internal.getDelimRecordFilterFunction(opts.csv_filter) : null,
-      colFilter = opts.csv_fields ? internal.getDelimFieldFilter(allFields, opts.csv_fields) : null,
-      headerArr = colFilter ? allFields.filter(function(name, i) {return colFilter(i);}) : allFields,
-      convertRowArr = internal.getRowConverter(headerArr),
+      headerStr = internal.readLinesAsString(reader2, internal.getDelimHeaderLines(opts), opts.encoding),
+      header = internal.parseDelimHeaderSection(headerStr, delim, opts),
+      convertRowArr = internal.getRowConverter(header.import_fields),
       batchSize = opts.batch_size || 1000,
       records = [],
       str, batch;
-  if (headerArr.length === 0) return []; // e.g. empty file
+  if (header.import_fields.length === 0) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((str = internal.readLinesAsString(reader2, batchSize, opts.encoding))) {
-    batch = internal.parseDelimText(str, delim, convertRowArr, colFilter);
-    if (rowFilter) batch = batch.filter(rowFilter);
+    batch = internal.parseDelimText(str, delim, convertRowArr, header.column_filter || false);
+    if (header.row_filter) batch = batch.filter(header.row_filter);
     records.push.apply(records, batch);
     if (opts.csv_lines && records.length >= opts.csv_lines) {
       return records.slice(0, opts.csv_lines);
@@ -31,45 +29,96 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
 
 // Fallback for readDelimRecords(), for encodings that do not use ascii values
 // for delimiter characters and newlines. Input size is limited by the maximum
-// string size. This function is also slower when using certain options.
+// string size.
 internal.readDelimRecordsFromString = function(str, delim, opts) {
-  var records = internal.parseDelimText(str, delim);
-  var inputFields, colFilter;
-  if (opts.csv_skip_lines > 0) {
-    records.splice(0, opts.csv_skip_lines);
-  }
-  if (Array.isArray(opts.csv_field_names)) {
-    inputFields = opts.csv_field_names;
-  } else {
-    inputFields = records.shift();
-  }
+  var header = internal.parseDelimHeaderSection(str, delim, opts);
+  if (header.import_fields.length === 0 || !header.remainder) return [];
+  str = header.remainder;
   if (opts.csv_lines > 0) {
-    records = records.splice(0, opts.csv_lines);
+    var i = internal.indexOfLine(opts.csv_lines + 1);
+    str = i > -1 ? str.substr(0, i) : str;
   }
-  if (opts.csv_fields) {
-    colFilter = internal.getFieldFilterMapFunction(inputFields, opts.csv_fields);
-    inputFields = colFilter(inputFields);
-    records = records.map(colFilter);
-  }
-  records = records.map(internal.getRowConverter(inputFields));
-  if (opts.csv_filter) {
-    records = records.filter(internal.getDelimRecordFilterFunction(opts.csv_filter));
-  }
+  var convert = internal.getRowConverter(header.import_fields);
+  var records = internal.parseDelimText(str, delim, convert, header.column_filter);
+  if (header.row_filter) records = records.filter(header.row_filter);
   return records;
 };
 
-internal.readDelimHeader = function(reader, delim, opts) {
-  var header, fields;
+// Get index in string of the nth line
+// line numbers are 1-based (first line is 1)
+internal.indexOfLine = function(str, nth) {
+  var rxp = /\r\n|[\r\n]|.$/g; // dot prevents matching end of string twice
+  var i = 1;
+  if (nth === 1) return 0;
+  if (nth > 1 === false) return -1;
+  while (rxp.exec(str)) {
+    i++;
+    if (i < nth === false) return rxp.lastIndex;
+  }
+  return -1;
+};
+
+internal.getDelimHeaderLines = function(opts) {
+  var skip = opts.csv_skip_lines || 0;
+  if (!opts.csv_field_names) skip++;
+  return skip;
+};
+
+// Adapted from https://github.com/d3/d3-dsv
+internal.getRowConverter = function(fields) {
+  return new Function('arr', 'return {' + fields.map(function(name, i) {
+    return JSON.stringify(name) + ': arr[' + i + '] || ""';
+  }).join(',') + '}');
+};
+
+internal.parseDelimHeaderSection = function(str, delim, opts) {
+  var nodata = {headers: [], import_fields: []},
+      retn = {},
+      i;
+  str = str || '';
   if (opts.csv_skip_lines > 0) {
-    internal.skipDelimLines(reader, opts.csv_skip_lines);
+    i = internal.indexOfLine(str, opts.csv_skip_lines + 1);
+    if (i === -1) return nodata;
+    str = str.substr(i);
   }
-  if (Array.isArray(opts.csv_field_names)) {
-    fields = opts.csv_field_names;
+  if (opts.csv_field_names) {
+    retn.headers = opts.csv_field_names;
   } else {
-    header = internal.readLinesAsString(reader, 1, opts.encoding);
-    fields = internal.parseDelimText(header, delim)[0] || [];
+    i = internal.indexOfLine(str, 2);
+    if (i === -1) return nodata;
+    retn.headers = internal.parseDelimText(str.slice(0, i), delim)[0];
+    str = str.substr(i);
   }
-  return fields;
+  if (opts.csv_filter) {
+    retn.row_filter = internal.getDelimRecordFilterFunction(opts.csv_filter);
+  }
+  if (opts.csv_fields) {
+    retn.column_filter = internal.getDelimFieldFilter(retn.headers, opts.csv_fields);
+    retn.import_fields = retn.headers.filter(function(name, i) {return retn.column_filter(i);});
+  } else {
+    retn.import_fields = retn.headers;
+  }
+  retn.remainder = str;
+  return retn;
+};
+
+// Returns a function for filtering records
+// TODO: look into using more code from standard expressions.
+internal.getDelimRecordFilterFunction = function(expression) {
+  var rowFilter = internal.compileExpressionToFunction(expression, {returns: true});
+  var ctx = internal.getBaseContext();
+  return function(rec) {
+    var val;
+    try {
+      val = rowFilter.call(null, rec, ctx);
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val !== true && val !== false) {
+      stop("Filter expression must return true or false");
+    }
+    return val;
+  };
 };
 
 // Returns a function for filtering fields by column index
@@ -84,17 +133,7 @@ internal.getDelimFieldFilter = function(header, fieldsToKeep) {
   };
 };
 
-// Returns a function for filtering fields of an array-type record
-internal.getFieldFilterMapFunction = function(header, fieldsToKeep) {
-  var colFilter = internal.getDelimFieldFilter(header, fieldsToKeep);
-  function filter(val, i) {
-    return colFilter(i);
-  }
-  return function(columns) {
-    return columns.filter(filter);
-  };
-};
-
+// May be useful in the future to implement reading a range of CSV records
 internal.skipDelimLines = function(reader, lines) {
   // TODO: divide lines into batches, to prevent exceeding maximum buffer size
   var buf = reader.readSync();
@@ -147,13 +186,6 @@ internal.readLinesFromBuffer = function(buf, linesToRead) {
     bytesRead: i,
     buffer: buf.slice(0, i)
   };
-};
-
-// Adapted from https://github.com/d3/d3-dsv
-internal.getRowConverter = function(fields) {
-  return new Function('arr', 'return {' + fields.map(function(name, i) {
-    return JSON.stringify(name) + ': arr[' + i + '] || ""';
-  }).join(',') + '}');
 };
 
 internal.parseDelimText = function(text, delim, convert, colFilter) {
@@ -221,23 +253,4 @@ internal.parseDelimText = function(text, delim, convert, colFilter) {
   }
 
   return records;
-};
-
-// Returns a function for filtering records
-// TODO: look into using more code from standard expressions.
-internal.getDelimRecordFilterFunction = function(expression) {
-  var rowFilter = internal.compileExpressionToFunction(expression, {returns: true});
-  var ctx = internal.getBaseContext();
-  return function(rec) {
-    var val;
-    try {
-      val = rowFilter.call(null, rec, ctx);
-    } catch(e) {
-      stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    if (val !== true && val !== false) {
-      stop("Filter expression must return true or false");
-    }
-    return val;
-  };
 };
