@@ -125,6 +125,12 @@ internal.getDelimFieldFilter = function(header, fieldsToKeep) {
   var map = header.map(function(name) {
     return name in index;
   });
+  var missing = utils.difference(fieldsToKeep, header);
+  if (missing.length > 0) {
+    var foundStr = [''].concat(header).join('\n  ');
+    var missingStr = [''].concat(missing).join('\n  ');
+    stop('csv-fields option has', missing.length == 1 ? 'a name' : missing.length + ' names',  'not found in the file\nFields:', foundStr, '\nMissing:', missingStr);
+  }
   return function(colIdx) {
     return map[colIdx];
   };
