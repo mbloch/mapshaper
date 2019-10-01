@@ -1,3 +1,6 @@
+v0.4.134
+* Fixed "npm run build" on Windows
+
 v0.4.133
 * Performance improvements for CSV importing
 
