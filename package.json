@@ -23,7 +23,7 @@
 	},
 	"scripts": {
 		"test": "node node_modules/mocha/bin/mocha --check-leaks -R dot",
-		"build": "./build",
+		"build": "node build",
 		"pretest": "npm run build",
 		"prepublishOnly": "npm test",
 		"postpublish": "./release"
