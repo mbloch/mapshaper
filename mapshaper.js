@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.132';
+VERSION = '0.4.133';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -5205,19 +5205,16 @@ FileReader.prototype.findString = function (str, maxLen) {
 internal.readDelimRecords = function(reader, delim, optsArg) {
   var reader2 = new Reader2(reader),
       opts = optsArg || {},
-      allFields = internal.readDelimHeader(reader2, delim, opts),
-      rowFilter = opts.csv_filter ? internal.getImportFilterFunction({csv_filter: opts.csv_filter}) : null,
-      colFilter = opts.csv_fields ? internal.getDelimFieldFilter(allFields, opts.csv_fields) : null,
-      headerArr = colFilter ? allFields.filter(function(name, i) {return colFilter(i);}) : allFields,
-      convertRowArr = internal.getRowConverter(headerArr),
+      headerStr = internal.readLinesAsString(reader2, internal.getDelimHeaderLines(opts), opts.encoding),
+      header = internal.parseDelimHeaderSection(headerStr, delim, opts),
+      convertRowArr = internal.getRowConverter(header.import_fields),
       batchSize = opts.batch_size || 1000,
       records = [],
       str, batch;
-  if (headerArr.length === 0) return []; // e.g. empty file
+  if (header.import_fields.length === 0) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
   while ((str = internal.readLinesAsString(reader2, batchSize, opts.encoding))) {
-    batch = internal.parseDelimText(str, delim, convertRowArr, colFilter);
-    if (rowFilter) batch = batch.filter(rowFilter);
+    batch = internal.parseDelimText(str, delim, convertRowArr, header.column_filter || false, header.row_filter || false);
     records.push.apply(records, batch);
     if (opts.csv_lines && records.length >= opts.csv_lines) {
       return records.slice(0, opts.csv_lines);
@@ -5226,18 +5223,96 @@ internal.readDelimRecords = function(reader, delim, optsArg) {
   return records;
 };
 
-internal.readDelimHeader = function(reader, delim, opts) {
-  var header, fields;
+// Fallback for readDelimRecords(), for encodings that do not use ascii values
+// for delimiter characters and newlines. Input size is limited by the maximum
+// string size.
+internal.readDelimRecordsFromString = function(str, delim, opts) {
+  var header = internal.parseDelimHeaderSection(str, delim, opts);
+  if (header.import_fields.length === 0 || !header.remainder) return [];
+  var convert = internal.getRowConverter(header.import_fields);
+  var records = internal.parseDelimText(header.remainder, delim, convert, header.column_filter, header.row_filter);
+  if (opts.csv_lines > 0) {
+    // TODO: don't parse unneeded rows
+    records = records.slice(0, opts.csv_lines);
+  }
+  return records;
+};
+
+// Get index in string of the nth line
+// line numbers are 1-based (first line is 1)
+internal.indexOfLine = function(str, nth) {
+  var rxp = /\r\n|[\r\n]|.$/g; // dot prevents matching end of string twice
+  var i = 1;
+  if (nth === 1) return 0;
+  if (nth > 1 === false) return -1;
+  while (rxp.exec(str)) {
+    i++;
+    if (i < nth === false) return rxp.lastIndex;
+  }
+  return -1;
+};
+
+internal.getDelimHeaderLines = function(opts) {
+  var skip = opts.csv_skip_lines || 0;
+  if (!opts.csv_field_names) skip++;
+  return skip;
+};
+
+// Adapted from https://github.com/d3/d3-dsv
+internal.getRowConverter = function(fields) {
+  return new Function('arr', 'return {' + fields.map(function(name, i) {
+    return JSON.stringify(name) + ': arr[' + i + '] || ""';
+  }).join(',') + '}');
+};
+
+internal.parseDelimHeaderSection = function(str, delim, opts) {
+  var nodata = {headers: [], import_fields: []},
+      retn = {},
+      i;
+  str = str || '';
   if (opts.csv_skip_lines > 0) {
-    internal.skipDelimLines(reader, opts.csv_skip_lines);
+    i = internal.indexOfLine(str, opts.csv_skip_lines + 1);
+    if (i === -1) return nodata;
+    str = str.substr(i);
   }
-  if (Array.isArray(opts.csv_field_names)) {
-    fields = opts.csv_field_names;
+  if (opts.csv_field_names) {
+    retn.headers = opts.csv_field_names;
   } else {
-    header = internal.readLinesAsString(reader, 1, opts.encoding);
-    fields = internal.parseDelimText(header, delim)[0] || [];
+    i = internal.indexOfLine(str, 2);
+    if (i === -1) return nodata;
+    retn.headers = internal.parseDelimText(str.slice(0, i), delim)[0];
+    str = str.substr(i);
   }
-  return fields;
+  if (opts.csv_filter) {
+    retn.row_filter = internal.getDelimRecordFilterFunction(opts.csv_filter);
+  }
+  if (opts.csv_fields) {
+    retn.column_filter = internal.getDelimFieldFilter(retn.headers, opts.csv_fields);
+    retn.import_fields = retn.headers.filter(function(name, i) {return retn.column_filter(i);});
+  } else {
+    retn.import_fields = retn.headers;
+  }
+  retn.remainder = str;
+  return retn;
+};
+
+// Returns a function for filtering records
+// TODO: look into using more code from standard expressions.
+internal.getDelimRecordFilterFunction = function(expression) {
+  var rowFilter = internal.compileExpressionToFunction(expression, {returns: true});
+  var ctx = internal.getBaseContext();
+  return function(rec) {
+    var val;
+    try {
+      val = rowFilter.call(null, rec, ctx);
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    if (val !== true && val !== false) {
+      stop("Filter expression must return true or false");
+    }
+    return val;
+  };
 };
 
 // Returns a function for filtering fields by column index
@@ -5247,13 +5322,14 @@ internal.getDelimFieldFilter = function(header, fieldsToKeep) {
   var map = header.map(function(name) {
     return name in index;
   });
-  return function(col) {
-    return map[col];
+  return function(colIdx) {
+    return map[colIdx];
   };
 };
 
+// May be useful in the future to implement reading a range of CSV records
 internal.skipDelimLines = function(reader, lines) {
-  // TODO: divide many lines into batches, to prevent exceeding maximum buffer size
+  // TODO: divide lines into batches, to prevent exceeding maximum buffer size
   var buf = reader.readSync();
   var retn = internal.readLinesFromBuffer(buf, lines);
   if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
@@ -5272,6 +5348,7 @@ internal.readLinesAsString = function(reader, lines, encoding) {
     reader.expandBuffer();
     return internal.readLinesAsString(reader, lines, encoding);
   }
+  // str = retn.bytesRead > 0 ? retn.buffer.toString('ascii', 0, retn.bytesRead) : '';
   str = retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
   if (reader.position() === 0) {
     str = internal.trimBOM(str);
@@ -5306,14 +5383,11 @@ internal.readLinesFromBuffer = function(buf, linesToRead) {
   };
 };
 
-// Adapted from https://github.com/d3/d3-dsv
-internal.getRowConverter = function(fields) {
-  return new Function('arr', 'return {' + fields.map(function(name, i) {
-    return JSON.stringify(name) + ': arr[' + i + '] || ""';
-  }).join(',') + '}');
-};
-
-internal.parseDelimText = function(text, delim, convert, colFilter) {
+// Convert a string of CSV data into an array of data records
+// convert: optional function for converting an array record to an object record (values indexed by field names)
+// colFilter: optional function for filtering columns by numerical column id (0-based); accepts an array record and an id
+// rowFilter: optional function for filtering rows; accepts a record in object format
+internal.parseDelimText = function(text, delim, convert, colFilter, rowFilter) {
   var CR = 13, LF = 10, DQUOTE = 34,
       DELIM = delim.charCodeAt(0),
       inQuotedText = false,
@@ -5325,7 +5399,8 @@ internal.parseDelimText = function(text, delim, convert, colFilter) {
   if (!convert) convert = function(d) {return d;};
 
   function endLine() {
-    records.push(convert(record));
+    var rec = convert ? convert(record) : record;
+    if (!rowFilter || rowFilter(rec)) records.push(rec);
     srcCol = -1;
   }
 
@@ -5641,7 +5716,6 @@ cli.statSync = function(fpath) {
 
 
 
-
 // Convert a string containing delimited text data into a dataset object
 internal.importDelim = function(str, opts) {
   return internal.importDelim2({content: str}, opts);
@@ -5687,9 +5761,7 @@ internal.importDelim2 = function(data, opts) {
     records = internal.readDelimRecords(reader, delimiter, opts);
   } else {
     delimiter = internal.guessDelimiter(content);
-    filter = internal.getImportFilterFunction(opts);
-    records = require("d3-dsv").dsvFormat(delimiter).parse(content, filter);
-    delete records.columns; // added by d3-dsv
+    records = internal.readDelimRecordsFromString(content, delimiter, opts);
   }
   if (records.length === 0) {
     message("Unable to read any data records");
@@ -5769,7 +5841,10 @@ internal.adjustRecordTypes = function(records, opts) {
     if (typeHint == 'number' || singleType == 'number') {
       values = internal.convertDataField(key, records, utils.parseNumber);
     } else if (typeHint == 'string' || singleType == 'string') {
-      values = internal.convertDataField(key, records, utils.parseString);
+      // We should be able to assume that imported CSV fields are strings,
+      //   so parsing + replacement is not required
+      // values = internal.convertDataField(key, records, utils.parseString);
+      values = null;
     } else {
       values = internal.tryNumericField(key, records);
       if (values) detectedNumFields.push(key);
@@ -5788,17 +5863,14 @@ internal.adjustRecordTypes = function(records, opts) {
 // Copy original data properties and replacements to a new set of records
 // (Better performance in v8 than making in-place replacements)
 internal.updateFieldsInRecords = function(fields, records, replacements) {
-  records.forEach(function(rec, recId) {
-    var rec2 = {}, n, i, f;
-    for (i=0, n=fields.length; i<n; i++) {
-      f = fields[i];
-      if (f in replacements) {
-        rec2[f] = replacements[f][recId];
-      } else {
-        rec2[f] = rec[f];
-      }
-    }
-    records[recId] = rec2;
+  // Use object-literal syntax (faster than alternative)
+  var convertBody = 'return {' + fields.map(function(name) {
+      var key = JSON.stringify(name);
+      return key + ': ' + (replacements[name] ? 'replacements[' + key + '][i]' : 'rec[' + key + ']');
+    }).join(', ') + '}';
+  var convert = new Function('rec', 'replacements', 'i', convertBody);
+  records.forEach(function(rec, i) {
+    records[i] = convert(rec, replacements, i);
   });
 };
 
@@ -5845,8 +5917,8 @@ internal.validateFieldType = function(hint) {
 
 // Remove comma separators from strings
 // TODO: accept European-style numbers?
-utils.cleanNumericString = function(raw) {
-  return raw.replace(/,/g, '');
+utils.cleanNumericString = function(str) {
+  return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
 };
 
 // Assume: @raw is string, undefined or null
@@ -5862,35 +5934,6 @@ utils.parseNumber = function(raw) {
   var str = String(raw).trim();
   var parsed = str ? Number(utils.cleanNumericString(str)) : NaN;
   return isNaN(parsed) ? null : parsed;
-};
-
-// Returns a d3-dsv compatible function for filtering records and fields on import
-// TODO: look into using more code from standard expressions.
-internal.getImportFilterFunction = function(opts) {
-  var rowFilter = opts.csv_filter ? internal.compileExpressionToFunction(opts.csv_filter, {returns: true}) : null;
-  var colFilter = opts.csv_fields ? internal.getRecordMapper(internal.mapFieldNames(opts.csv_fields)) : null;
-  var ctx = internal.getBaseContext();
-  if (rowFilter) {
-    return function(rec) {
-      var val;
-      try {
-        val = rowFilter ? rowFilter.call(null, rec, ctx) : true;
-      } catch(e) {
-        stop(e.name, "in expression [" + exp + "]:", e.message);
-      }
-      if (val === false) {
-        return null;
-      } else if (val !== true) {
-        stop("Filter expression must return true or false");
-      }
-      // use in conjunction with column filter if present
-      return colFilter ? colFilter(rec) : rec;
-    };
-  } else if (colFilter) {
-    return colFilter;
-  } else {
-    return null;
-  }
 };
 
 
@@ -18602,28 +18645,28 @@ internal.exportDelim = function(dataset, opts) {
 internal.exportLayerAsDSV = function(lyr, delim, optsArg) {
   var opts = optsArg || {};
   var encoding = opts.encoding || 'utf8';
-  var formatRows = require("d3-dsv").dsvFormat(delim).formatRows;
   var records = lyr.data.getRecords();
   var fields = internal.findFieldNames(records, opts.field_order);
   // exporting utf8 and ascii text as string by default (for now)
   var exportAsString = internal.encodingIsUtf8(encoding) && !opts.to_buffer &&
       (records.length < 10000 || opts.to_string);
   if (exportAsString) {
-    return internal.exportRecordsAsString(fields, records, formatRows);
+    return internal.exportRecordsAsString(fields, records, delim);
   } else {
-    return internal.exportRecordsAsBuffer(fields, records, formatRows, encoding);
+    return internal.exportRecordsAsBuffer(fields, records, delim, encoding);
   }
 };
 
-internal.exportRecordsAsString = function(fields, records, formatRows) {
-  var formatRow = internal.getDelimRowFormatter(fields, records);
-  var rows = [fields].concat(records.map(formatRow));
-  return formatRows(rows);
+internal.exportRecordsAsString = function(fields, records, delim) {
+  var formatRow = internal.getDelimRowFormatter(fields, delim);
+  var header = internal.formatDelimHeader(fields, delim);
+  if (!records.length) return header;
+  return header + '\n' + records.map(formatRow).join('\n');
 };
 
-internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding) {
-  var formatRow = internal.getDelimRowFormatter(fields, records);
-  var str = formatRows([fields]); // header
+internal.exportRecordsAsBuffer = function(fields, records, delim, encoding) {
+  var formatRow = internal.getDelimRowFormatter(fields, delim);
+  var str = internal.formatDelimHeader(fields, delim);
   var buffers = [internal.encodeString(str, encoding)];
   var tmp = [];
   var n = records.length;
@@ -18632,7 +18675,7 @@ internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding)
     tmp.push(formatRow(records[i]));
     i++;
     if (i % 1000 === 0 || i == n) {
-      str = '\n' + formatRows(tmp);
+      str = '\n' + tmp.join('\n');
       tmp = [];
       buffers.push(internal.encodeString(str, encoding));
     }
@@ -18640,24 +18683,42 @@ internal.exportRecordsAsBuffer = function(fields, records, formatRows, encoding)
   return Buffer.concat(buffers);
 };
 
-// Return a function for converting a record into an array of values
-// to pass to dsv.formatRows()
-internal.getDelimRowFormatter = function(fields, records) {
-  var formatters = fields.map(function(f) {
-    var type = internal.getColumnType(f, records);
-    return function(rec) {
-      if (type == 'object') {
-        return JSON.stringify(rec[f]);
-      }
-      return rec[f]; // use default d3-dsv formatting
-    };
-  });
+internal.formatDelimHeader = function(fields, delim) {
+  var formatValue = internal.getDelimValueFormatter(delim);
+  return fields.map(formatValue).join(delim);
+};
+
+internal.getDelimRowFormatter = function(fields, delim) {
+  var formatValue = internal.getDelimValueFormatter(delim);
   return function(rec) {
-    var values = [];
-    for (var i=0; i<formatters.length; i++) {
-      values.push(formatters[i](rec));
+    return fields.map(function(f) {
+      return formatValue(rec[f]);
+    }).join(delim);
+  };
+};
+
+internal.getDelimValueFormatter = function(delim) {
+  var dquoteRxp =  new RegExp('["\n\r' + delim + ']');
+  function formatString(s) {
+    if (dquoteRxp.test(s)) {
+      s = '"' + s.replace(/"/g, '""') + '"';
     }
-    return values;
+    return s;
+  }
+  return function(val) {
+    var s;
+    if (val == null) {
+      s = '';
+    } else if (utils.isString(val)) {
+      s = formatString(val);
+    } else if (utils.isNumber(val)) {
+      s = val + '';
+    } else if (utils.isObject(val)) {
+      s = formatString(JSON.stringify(val));
+    } else {
+      s = s + '';
+    }
+    return s;
   };
 };
 
