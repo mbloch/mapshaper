@@ -124,7 +124,7 @@ function Catalog() {
     defaultTargets = arr;
   };
 
-  // should be in mapshaper-gui-model.js, moved here for testing
+  // should be in gui-model.js, moved here for testing
   this.getActiveLayer = function() {
     var targ = (this.getDefaultTargets() || [])[0];
     return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
