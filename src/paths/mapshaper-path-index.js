@@ -6,6 +6,7 @@ mapshaper-polygon-index
 mapshaper-bounds-search
 */
 
+// PathIndex supports several kinds of spatial query on a layer of polyline or polygon shapes
 function PathIndex(shapes, arcs) {
   var boundsQuery = internal.getBoundsSearchFunction(getRingData(shapes, arcs));
   var totalArea = internal.getPathBounds(shapes, arcs).area();

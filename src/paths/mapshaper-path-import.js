@@ -28,6 +28,15 @@ internal.cleanPathsAfterImport = function(dataset, opts) {
   });
 };
 
+internal.pointHasValidCoords = function(p) {
+  // The Shapefile spec states that "measures" less then -1e38 indicate null values
+  // This should not apply to coordinate data, but in-the-wild Shapefiles have been
+  // seen with large negative values indicating null coordinates.
+  // This test catches these and also NaNs, but does not detect other kinds of
+  // invalid coords
+  return p[0] > -1e38 && p[1] > -1e38;
+};
+
 // Accumulates points in buffers until #endPath() is called
 // @drain callback: function(xarr, yarr, size) {}
 //
@@ -97,6 +106,7 @@ function PathImporter(opts) {
 
   this.importPoints = function(points) {
     setShapeType('point');
+    points = points.filter(internal.pointHasValidCoords);
     if (round) {
       points.forEach(function(p) {
         p[0] = round(p[0]);

@@ -214,6 +214,46 @@ describe('mapshaper-each-calc.js', function () {
 
     });
 
+    describe('test $.innerPct', function() {
+      //
+      //  a -- b -- c
+      //  |    |    |
+      //  d -- e -- f
+      //
+      //  h -- i
+      //  |    |
+      //  g--- j
+      //
+      var geojson = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Polygon',
+          coordinates: [[[1,3], [1, 4], [2, 4], [2, 3], [1, 3]]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[2,3], [2, 4], [3, 4], [3, 3], [2, 3]]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[1,1], [1, 2], [2, 2], [2, 1], [1, 1]]]
+        }]
+      };
+
+      it('test 1', function(done) {
+        var cmd = '-i in.json -each "pct = this.innerPct" -o out.json format=json';
+        api.applyCommands(cmd, {'in.json': geojson}, function(err, out) {
+          var json = JSON.parse(out['out.json']);
+          assert.equal(json.length, 3);
+          assert.deepEqual(json[2], {pct: 0})
+          // value of first two features is not exactly 0.25,
+          // because coordinates are interpreted as lat-long, so
+          // great circle distance is used
+          assert.equal(Math.round(json[0].pct * 100), 25);
+          assert.equal(Math.round(json[1].pct * 100), 25);
+          done();
+        })
+      })
+    });
+
     describe('Shape geometry', function() {
       //
       //  a -- b -- c

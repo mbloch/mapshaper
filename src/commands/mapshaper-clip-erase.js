@@ -1,6 +1,6 @@
 /* @requires
 mapshaper-dataset-utils
-mapshaper-path-division
+mapshaper-intersection-cuts
 mapshaper-polygon-clipping
 mapshaper-polyline-clipping
 mapshaper-point-clipping

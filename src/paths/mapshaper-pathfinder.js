@@ -3,7 +3,7 @@ mapshaper-dataset-utils
 mapshaper-nodes
 mapshaper-shape-geom
 mapshaper-path-index
-mapshaper-path-division
+mapshaper-intersection-cuts
 mapshaper-polygon-repair
 mapshaper-pathfinder-utils
 */

@@ -5,6 +5,7 @@ mapshaper-anchor-points
 mapshaper-arcs
 mapshaper-dataset-utils
 mapshaper-data-utils
+mapshaper-perimeter-calc
 */
 
 function addGetters(obj, getters) {
@@ -19,6 +20,7 @@ internal.initFeatureProxy = function(lyr, arcs) {
       _records = lyr.data ? lyr.data.getRecords() : null,
       _isPlanar = hasPaths && arcs.isPlanar(),
       ctx = {},
+      calcInnerPct,
       _bounds, _centroid, _innerXY, _xy, _ids, _id;
 
   // all contexts have this.id and this.layer_name
@@ -85,6 +87,10 @@ internal.initFeatureProxy = function(lyr, arcs) {
         },
         planarArea: function() {
           return geom.getPlanarShapeArea(_ids, arcs);
+        },
+        innerPct: function() {
+          if (!calcInnerPct) calcInnerPct = internal.getInnerPctCalcFunction(arcs, lyr.shapes);
+          return calcInnerPct(_ids);
         },
         originalArea: function() {
           // Get area

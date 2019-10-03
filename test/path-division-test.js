@@ -2,7 +2,7 @@ var api = require('../'),
     assert = require('assert'),
     ArcCollection = api.internal.ArcCollection;
 
-describe('mapshaper-path-division.js', function () {
+describe('mapshaper-intersection-cuts.js', function () {
 
   describe('insertCutPoints()', function () {
     var insertCutPoints = api.internal.insertCutPoints;

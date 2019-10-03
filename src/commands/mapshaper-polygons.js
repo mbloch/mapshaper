@@ -1,4 +1,4 @@
-/* @requires mapshaper-path-division, mapshaper-polygon-mosaic, mapshaper-undershoots */
+/* @requires mapshaper-intersection-cuts, mapshaper-polygon-mosaic, mapshaper-undershoots */
 
 api.polygons = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolylineLayer);
