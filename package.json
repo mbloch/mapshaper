@@ -29,6 +29,12 @@
 		"postpublish": "./release"
 	},
 	"main": "./mapshaper.js",
+	"files": [
+		"/bin/**",
+		"/www/**",
+		"!/www/nacis/",
+		"/mapshaper.js"
+	],
 	"dependencies": {
 		"cookies": "^0.7.1",
 		"flatbush": "^3.1.0",
