@@ -70,9 +70,14 @@ internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
 
   internal.insertFieldValues(polygonLyr, field, assignedValues);
   internal.insertFieldValues(polygonLyr, 'confidence', confidenceValues);
-  // internal.insertFieldValues(polygonLyr, 'neighbors', neighborValues);
   if (noDataIds.length > 0) {
     api.dataFill(polygonLyr, arcs, {field: field});
+  }
+  if (opts.postprocess) {
+    // TODO: add a max-area parameter, to make sure we're only changing the
+    // data in small inclusions
+    internal.fillDataIslands(polygonLyr, field, arcs);
+    internal.fillDataIslands(polygonLyr, field, arcs); // kludge: second pass removes flipped donut-holes
   }
 
   // shpA: id of a low-confidence shape

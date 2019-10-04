@@ -1184,6 +1184,10 @@ internal.getOptionParser = function() {
       describe: 'uniqify points with the same location and field value',
       type: 'flag'
     })
+    .option('postprocess', {
+      describe: 'try to clean up small data islands',
+      type: 'flag'
+    })
     .option('target', targetOpt);
 
   parser.command('polygons')

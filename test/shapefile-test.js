@@ -62,10 +62,11 @@ describe('mapshaper-shapefile.js', function () {
       });
     });
 
-    it('No prj is generated if CRS has no WKT equivalent', function(done) {
+    it('Fallback WKT (with custom_proj4 PROJECTION) is generated if CRS has no known WKT equivalent', function(done) {
       api.applyCommands('-i test/test_data/three_points.geojson -proj +proj=boggs -o format=shapefile', {}, function(err, output) {
         var prj = output['three_points.prj']
-        assert(!err && !prj);
+        assert(prj.indexOf('custom_proj4') > -1);
+        assert(prj.indexOf('EXTENSION["PROJ4","+proj=boggs') > -1);
         done();
       });
     });

@@ -7221,7 +7221,7 @@ function get_geod_defn(P) {
   return defn;
 }
 
-
+// Convert an initialized proj object back to a Proj.4 string
 function get_proj_defn(P) {
   // skip geodetic params and some initialization-related params
   var skip = 'datum,ellps,a,b,es,rf,f,towgs84,nadgrids,R,R_A,R_V,R_a,R_lat_a,R_lat_g,pm,init,no_defs'.split(',');
@@ -8599,6 +8599,47 @@ function get_proj4js_transform(P1, P2) {
 }
 
 
+
+// Fallback WKT definitions include a Proj.4 string in an EXTENSION property.
+// They should be readable by QGIS and gdal/ogr, but will not work
+// with most other GIS software.
+
+function get_fallback_wkt_maker(P) {
+  // TODO: validate P?
+  return make_fallback_wkt;
+}
+
+function make_fallback_wkt(P) {
+  // TODO: use projection name?
+  var projName = P.proj in pj_list ? pj_list[P.proj].name : '';
+  var proj4 = get_proj_defn(P);
+  var geogcs = wkt_make_geogcs(P);
+  var name = projName ? geogcs.NAME + ' / ' + projName : 'unnamed';
+  return {PROJCS: {
+    NAME: name,
+    GEOGCS: geogcs,
+    PROJECTION: 'custom_proj4',
+    PARAMETER: [],
+    UNIT: wkt_make_unit(P),
+    EXTENSION: ['PROJ4', proj4 + ' +wktext']
+  }};
+}
+
+function get_fallback_wkt_parser(projcs) {
+  var proj4 = get_proj4_from_extension(projcs);
+  // TODO: try parsing proj4 string to validate?
+  return proj4 ? get_proj4_from_extension : null;
+}
+
+function get_proj4_from_extension(projcs) {
+  var ext = projcs.EXTENSION;
+  if (ext && ext[0] == 'PROJ4') {
+    return (ext[1] || '').replace(' +wktext', '');
+  }
+  return null;
+}
+
+
 // Global collections of WKT parsers and makers
 // arr[0] is test function; arr[1] is conversion function
 var wkt_makers = [];
@@ -8616,22 +8657,30 @@ function wkt_is_string(val) {
 function find_wkt_parser(projcs) {
   var parser = find_wkt_conversion_function(projcs, wkt_parsers);
   if (!parser) {
+    parser = get_fallback_wkt_parser(projcs);
+  }
+  if (!parser) {
     wkt_error('unsupported WKT definition: ' + get_wkt_label(projcs));
   }
   return parser;
 }
 
 function find_wkt_maker(P) {
-  var marker = find_wkt_conversion_function(P, wkt_makers);
-  if (!marker) {
+  var maker = find_wkt_conversion_function(P, wkt_makers);
+  if (!maker) {
+    maker = get_fallback_wkt_maker(P);
+  }
+  if (!maker) {
     wkt_error('unsupported projection: ' + get_proj_label(P));
   }
-  return marker;
+  return maker;
 }
 
 function find_wkt_conversion_function(o, arr) {
+  var is_match;
   for (var i=0; i<arr.length; i++) {
-    if (arr[i][0](o)) return arr[i][1];
+    is_match = arr[i][0];
+    if (is_match(o)) return arr[i][1];
   }
   return null;
 }
@@ -8803,6 +8852,8 @@ function wkt_check_units(UNIT, expect) {
 }
 
 
+// Converts a PROJCS WKT in object format to a Proj.4 string
+// Throws an Error if unable to convert
 function wkt_convert_projcs(projcs) {
   return find_wkt_parser(projcs)(projcs);
 }
@@ -8908,6 +8959,7 @@ function wkt_get_ellps_id(P) {
 }
 
 
+// Converts a Proj object to a WKT in object format
 function wkt_make_projcs(P) {
   return find_wkt_maker(P)(P);
 }
@@ -8965,7 +9017,7 @@ function add_simple_wkt_maker(projId, wktProjection, params) {
 function get_simple_parser_test(wktNames) {
   var slugs = wkt_split_names(wktNames).map(wkt_name_to_slug);
   return function(obj) {
-    var wktName = obj.PROJECTION[0]; // TODO: handle unexected structure
+    var wktName = obj.PROJECTION[0]; // TODO: handle unexpected structure
     return slugs.indexOf(wkt_name_to_slug(wktName)) > -1;
   };
 }

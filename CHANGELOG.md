@@ -1,3 +1,6 @@
+v0.4.135
+* [shapefile] If a projection has no known WKT definition, generate a fallback .prj file with an embedded Proj.4 string (readable by QGIS and gdal but not ArcGIS).
+
 v0.4.134
 * Fixed "npm run build" on Windows
 

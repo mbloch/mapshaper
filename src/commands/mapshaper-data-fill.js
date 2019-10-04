@@ -47,6 +47,11 @@ internal.fillMissingValues = function(lyr, field, getValue) {
   return count;
 };
 
+// Return a function for querying the value of one data field from
+// a feature's neighbors. The function returns a data value if all neighbors have the
+// same value for the query field, or null if neighbors have multiple values.
+// Function also returns null if the option 'min_border_pct' is given and the target
+// shape has fewer than this percentage of shared borders, by distance.
 internal.getSingleAssignment = function(lyr, field, arcs, opts) {
   var index = internal.buildAssignmentIndex(lyr, field, arcs);
   var minBorderPct = opts && opts.min_border_pct || 0;
@@ -83,6 +88,10 @@ internal.isEmptyValue = function(val) {
   return !val && val !== 0;
 };
 
+// Return a function for querying the value of one data field from
+// a feature's neighbors. Returns the data value that is exposed along the
+// longest section of shared border. Returns null if the target shape has no neighbors
+//
 internal.getMultipleAssignment = function(lyr, field, arcs) {
   var index;
   return function(shpId) {
@@ -126,6 +135,7 @@ internal.getEmptyRecordIds = function(records, field) {
   return ids;
 };
 
+// Return a lookup table that indexes data about each shape's neighbors by shape id.
 internal.buildAssignmentIndex = function(lyr, field, arcs) {
   var shapes = lyr.shapes;
   var records = lyr.data.getRecords();
