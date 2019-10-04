@@ -9,7 +9,7 @@ var internal = api.internal;
 var Bounds = internal.Bounds;
 var UserError = internal.UserError;
 var message = internal.message;
-var stop = internal.stop; // stop and error are replaced in mapshaper-gui-proxy.js
+var stop = internal.stop; // stop and error are replaced in gui-proxy.js
 var error = internal.error;
 api.gui = true; // let the main library know we're running in the GUI
 api.enableLogging();
@@ -996,8 +996,6 @@ utils.inherit(MouseArea, EventDispatcher);
 
 
 
-
-
 GUI.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&
       typeof Blob != 'undefined' && typeof File != 'undefined';
@@ -1095,8 +1093,6 @@ GUI.parseFreeformOptions = function(raw, cmd) {
 };
 
 
-
-
 function ModeButton(modes, el, name) {
   var btn = El(el),
       active = false;
@@ -1113,8 +1109,6 @@ function ModeButton(modes, el, name) {
     modes.enterMode(active ? null : name);
   });
 }
-
-
 
 
 function ModeSwitcher() {
@@ -1156,8 +1150,6 @@ function ModeSwitcher() {
 }
 
 utils.inherit(ModeSwitcher, EventDispatcher);
-
-
 
 
 // These functions could be called when validating i/o options; TODO: avoid this
@@ -1307,8 +1299,6 @@ function KeyboardEvents(gui) {
 utils.inherit(KeyboardEvents, EventDispatcher);
 
 
-
-
 function Model() {
   var self = new api.internal.Catalog();
   var deleteLayer = self.deleteLayer;
@@ -1369,8 +1359,6 @@ function Model() {
 
   return self;
 }
-
-
 
 
 GUI.getPixelRatio = function() {
@@ -1832,8 +1820,6 @@ function endPath(ctx, style) {
 }
 
 
-
-
 // Create low-detail versions of large arc collections for faster rendering
 // at zoomed-out scales.
 function MultiScaleArcCollection(unfilteredArcs) {
@@ -1876,8 +1862,6 @@ function MultiScaleArcCollection(unfilteredArcs) {
 
   return unfilteredArcs;
 }
-
-
 
 
 function getDisplayLayerForTable(table) {
@@ -2046,8 +2030,6 @@ function findEmptyArcs(arcs) {
 }
 
 
-
-
 // Wrap a layer in an object along with information needed for rendering
 function getMapLayer(layer, dataset, opts) {
   var obj = {
@@ -2146,8 +2128,6 @@ function getDisplayBounds(lyr, arcs) {
 }
 
 
-
-
 function HighlightBox(el) {
   var stroke = 2,
       box = El('div').addClass('zoom-box').appendTo(el).hide();
@@ -2166,8 +2146,6 @@ function HighlightBox(el) {
     box.hide();
   };
 }
-
-
 
 
 function MapNav(gui, ext, mouse) {
@@ -2281,8 +2259,6 @@ function MapNav(gui, ext, mouse) {
     zoomTween.start(w, w / pct, 400);
   }
 }
-
-
 
 
 function MapExtent(_position) {
@@ -2486,8 +2462,6 @@ function MapExtent(_position) {
 }
 
 utils.inherit(MapExtent, EventDispatcher);
-
-
 
 
 var MapStyle = (function() {
@@ -2801,8 +2775,6 @@ function renderFurniture(lyr, ext) {
 }
 
 
-
-
 function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   var el = El(svg);
@@ -2861,8 +2833,6 @@ function SvgDisplayLayer(gui, ext, mouse) {
 
   return el;
 }
-
-
 
 
 function LayerStack(gui, container, ext, mouse) {
@@ -2953,9 +2923,6 @@ function LayerStack(gui, container, ext, mouse) {
     }
   }
 }
-
-
-
 
 
 internal.updateLayerStackOrder = function(layers) {
@@ -3260,8 +3227,6 @@ function getSymbolNodeById(id, parent) {
 
 
 
-
-
 function getSvgHitTest(displayLayer) {
 
   return function(pointerEvent) {
@@ -3323,8 +3288,6 @@ function getSvgHitTest(displayLayer) {
   }
 
 }
-
-
 
 
 function HitControl2(gui, ext, mouse) {
@@ -3551,8 +3514,6 @@ function HitControl2(gui, ext, mouse) {
 }
 
 
-
-
 // @onNext: handler for switching between multiple records
 function Popup(gui, onNext, onPrev) {
   var self = new EventDispatcher();
@@ -3733,8 +3694,6 @@ internal.getFieldType = function(val, key, table) {
 };
 
 
-
-
 function InspectionControl2(gui, hit) {
   var model = gui.model;
   var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
@@ -3867,9 +3826,6 @@ function InspectionControl2(gui, hit) {
 }
 
 
-
-
-
 function isMultilineLabel(textNode) {
   return textNode.childNodes.length > 1;
 }
@@ -3965,8 +3921,6 @@ function translateDeltaDisplayCoords(dx, dy, ext) {
   var b = ext.translatePixelCoords(dx, dy);
   return [b[0] - a[0], b[1] - a[1]];
 }
-
-
 
 
 function SymbolDragging2(gui, ext, hit) {
@@ -4275,8 +4229,6 @@ function SymbolDragging2(gui, ext, hit) {
 
 
 }
-
-
 
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -4753,8 +4705,6 @@ GUI.getIntersectionPct = function(bb1, bb2) {
 };
 
 
-
-
 function InteractionMode(gui) {
   var buttons, btn1, btn2, menu;
 
@@ -5001,8 +4951,6 @@ function SidebarButtons(gui) {
 }
 
 
-
-
 GUI.isActiveInstance = function(gui) {
   return gui == GUI.__active;
 };
@@ -5080,8 +5028,6 @@ function GuiInstance(container, opts) {
 
 
 
-
-
 function AlertControl(gui) {
   var el;
   gui.addMode('alert', function() {}, turnOff);
@@ -5105,8 +5051,6 @@ function AlertControl(gui) {
     }
   }
 }
-
-
 
 
 // TODO: switch all ClickText to ClickText2
@@ -5272,8 +5216,6 @@ function SimpleButton(ref) {
 utils.inherit(SimpleButton, EventDispatcher);
 
 
-
-
 function draggable(ref) {
   var xdown, ydown;
   var el = El(ref),
@@ -5426,8 +5368,6 @@ internal.getThresholdByPct = function(pct, arcs, nth) {
   if (rank > tmp.length) return Infinity;
   return utils.findValueByRank(tmp, rank);
 };
-
-
 
 
 /*
@@ -5807,8 +5747,6 @@ function CatalogControl(gui, catalog, onSelect) {
   }
 
 }
-
-
 
 
 // @cb function(<FileList>)
@@ -6220,7 +6158,7 @@ function ImportControl(gui, opts) {
 
       } else {
         item.basename = name;
-        // Assume non-urls are local files loaded via mapshaper-gui
+        // Assume non-urls are local files loaded via gui-gui
         item.url = '/data/' + name;
         item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
       }
@@ -6274,8 +6212,6 @@ function ImportControl(gui, opts) {
     req.send();
   }
 }
-
-
 
 
 function saveZipFile(zipfileName, files, done) {
@@ -6376,8 +6312,6 @@ function saveBlobToDownloadFolder(filename, blob, done) {
     done();
   }, 400);
 }
-
-
 
 
 // Export buttons and their behavior
@@ -6496,8 +6430,6 @@ var ExportControl = function(gui) {
     return ids ? model.findCommandTargets(ids) : [];
   }
 };
-
-
 
 
 function RepairControl(gui) {
@@ -6633,8 +6565,6 @@ function DomCache() {
     used[html] = el;
   };
 }
-
-
 
 
 function LayerControl(gui) {
@@ -6982,8 +6912,6 @@ function LayerControl(gui) {
       '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
   }
 }
-
-
 
 
 function Console(gui) {
@@ -7447,8 +7375,6 @@ function Console(gui) {
 }
 
 
-
-
 Browser.onload(function() {
   if (!GUI.browserIsSupported()) {
     El("#mshp-not-supported").show();
@@ -7457,7 +7383,7 @@ Browser.onload(function() {
   startEditing();
   if (window.location.hostname == 'localhost') {
     window.addEventListener('beforeunload', function() {
-      // send termination signal for mapshaper-gui
+      // send termination signal for gui.js
       var req = new XMLHttpRequest();
       req.open('GET', '/close');
       req.send();

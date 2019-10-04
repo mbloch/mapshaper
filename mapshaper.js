@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.134';
+VERSION = '0.4.135';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1361,8 +1361,6 @@ utils.formatter = function(fmt) {
 
 
 
-
-
 var Buffer = require('buffer').Buffer; // works with browserify
 
 utils.createBuffer = function(arg, arg2) {
@@ -1487,8 +1485,6 @@ utils.uniqifyNames = function(names, formatter) {
     return candidate;
   });
 };
-
-
 
 
 var api = {};
@@ -1752,8 +1748,6 @@ internal.requirePathLayer = function(lyr, msg) {
   if (!lyr || !internal.layerHasPaths(lyr))
     stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
 };
-
-
 
 
 var R = 6378137;
@@ -2292,8 +2286,6 @@ ShapeIter.prototype.reset = function() {
   this._i = -1;
   this.nextArc();
 };
-
-
 
 
 // An interface for managing a collection of paths.
@@ -2944,8 +2936,6 @@ internal.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
 };
 
 
-
-
 // Utility functions for working with ArcCollection and arrays of arc ids.
 
 // Return average segment length (with simplification)
@@ -3299,8 +3289,6 @@ internal.quantizeArcs = function(arcs, quanta) {
 };
 
 
-
-
 internal.countPointsInLayer = function(lyr) {
   var count = 0;
   if (internal.layerHasPoints(lyr)) {
@@ -3362,8 +3350,6 @@ internal.transformPointsInLayer = function(lyr, f) {
     });
   }
 };
-
-
 
 
 // Utility functions for both paths and points
@@ -3435,8 +3421,6 @@ internal.findMaxPartCount = function(shapes) {
   }
   return maxCount;
 };
-
-
 
 
 // Apply rotation, scale and/or shift to some or all of the features in a dataset
@@ -3667,8 +3651,6 @@ Matrix2D.prototype.scale = function(sx, sy, cx, cy) {
 };
 
 
-
-
 // A compound projection, consisting of a default projection and one or more rectangular frames
 // that are projected separately and affine transformed.
 // @mainParams: parameters for main projection, including:
@@ -3791,9 +3773,6 @@ internal.replaceProjParam = function(proj, key, val) {
     return str;
   }).join(' ');
 };
-
-
-
 
 
 internal.getLayerDataTable = function(lyr) {
@@ -3970,8 +3949,6 @@ internal.findFieldNames = function(records, order) {
 };
 
 
-
-
 // List of encodings supported by iconv-lite:
 // https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
 
@@ -4102,8 +4079,6 @@ internal.printEncodings = function() {
 };
 
 
-
-
 // Try to detect the encoding of some sample text.
 // Returns an encoding name or null.
 // @samples Array of buffers containing sample text fields
@@ -4185,8 +4160,6 @@ internal.getCharScore = function(str, chars) {
   }
   return count / str.length;
 };
-
-
 
 
 // DBF format references:
@@ -4570,8 +4543,6 @@ function DbfReader(src, encodingArg) {
 }
 
 
-
-
 Dbf.MAX_STRING_LEN = 254;
 
 function BufferPool() {
@@ -4926,8 +4897,6 @@ Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
 };
 
 
-
-
 function DataTable(obj) {
   var records;
   if (utils.isArray(obj)) {
@@ -5024,8 +4993,6 @@ var dataTableProto = {
 };
 
 utils.extend(DataTable.prototype, dataTableProto);
-
-
 
 
 internal.FileReader = FileReader;
@@ -5193,8 +5160,6 @@ FileReader.prototype.findString = function (str, maxLen) {
   }
   return null;
 };
-
-
 
 
 // Read and parse a DSV file
@@ -5462,8 +5427,6 @@ internal.parseDelimText = function(text, delim, convert, colFilter, rowFilter) {
 };
 
 
-
-
 utils.replaceFileExtension = function(path, ext) {
   var info = utils.parseLocalPath(path);
   return info.pathbase + '.' + ext;
@@ -5529,8 +5492,6 @@ utils.getOutputFileBase = function(dataset) {
   var inputFiles = dataset.info && dataset.info.input_files;
   return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
 };
-
-
 
 
 // Guess the type of a data file from file extension, or return null if not sure
@@ -5603,8 +5564,6 @@ internal.filenameIsUnsupportedOutputType = function(file) {
   var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
   return rxp.test(file);
 };
-
-
 
 
 var cli = {};
@@ -5718,8 +5677,6 @@ cli.statSync = function(fpath) {
   } catch(e) {}
   return obj;
 };
-
-
 
 
 // Convert a string containing delimited text data into a dataset object
@@ -5943,8 +5900,6 @@ utils.parseNumber = function(raw) {
 };
 
 
-
-
 // str: a custom projection string, e.g.: "albersusa +PR"
 internal.parseCustomProjection = function(str) {
   var parts = str.trim().split(/ +/);
@@ -6061,8 +6016,6 @@ internal.parseCustomParamValue = function(str) {
   }
   return val;
 };
-
-
 
 
 internal.projectionAliases = {
@@ -6281,8 +6234,6 @@ internal.parsePrj = function(str) {
 };
 
 
-
-
 var UNITS_LOOKUP = {
   m: 'meters',
   meter: 'meters',
@@ -6436,8 +6387,6 @@ internal.convertFourSides = function(opt, crs, bounds) {
     return internal.convertIntervalParam(opt, crs);
   });
 };
-
-
 
 
 function dissolvePolygonGeometry(shapes, getGroupId) {
@@ -6655,8 +6604,6 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
   if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
   return nextSeg;
 }
-
-
 
 
 // @arcs ArcCollection
@@ -6913,8 +6860,6 @@ internal.findNodeTopology = function(arcs, filter) {
 };
 
 
-
-
 // Test if the second endpoint of an arc is the endpoint of any path in any layer
 internal.getPathEndpointTest = function(layers, arcs) {
   var index = new Uint8Array(arcs.size());
@@ -7071,8 +7016,6 @@ internal.initDataTable = function(lyr) {
 };
 
 
-
-
 // Don't modify input layers (mergeDatasets() updates arc ids in-place)
 internal.mergeDatasetsForExport = function(arr) {
   // copy layers but not arcs, which get copied in mergeDatasets()
@@ -7212,8 +7155,6 @@ utils.mergeArrays = function(arrays, TypedArr) {
 };
 
 
-
-
 // utility functions for datasets
 
 internal.mergeDatasetsIntoDataset = function(dataset, datasets) {
@@ -7336,8 +7277,6 @@ internal.transformPoints = function(dataset, f) {
     }
   });
 };
-
-
 
 
 // Dissolve arcs that can be merged without affecting topology of layers
@@ -7479,8 +7418,6 @@ internal.getArcDissolveTest = function(layers, arcs) {
 
 
 
-
-
 internal.dissolveBufferDataset = function(dataset, optsArg) {
   var opts = optsArg || {};
   var lyr = dataset.layers[0];
@@ -7600,8 +7537,6 @@ internal.getBufferDistanceFunction = function(lyr, dataset, opts) {
 };
 
 
-
-
 internal.getGeodesic = function(dataset) {
   var P = internal.getDatasetCRS(dataset);
   if (!internal.isLatLngCRS(P)) error('Expected an unprojected CRS');
@@ -7693,8 +7628,6 @@ internal.getBearingFunction = function(dataset) {
 };
 
 
-
-
 var GeoJSON = {};
 GeoJSON.ID_FIELD = "FID"; // default field name of imported *JSON feature ids
 
@@ -7717,8 +7650,6 @@ GeoJSON.pathIsRing = function(coords) {
   // TODO: consider detecting collapsed rings
   return coords.length >= 4 && first[0] == last[0] && first[1] == last[1];
 };
-
-
 
 
 internal.GeoJSONReader = GeoJSONReader;
@@ -7807,8 +7738,6 @@ function GeoJSONReader(reader) {
 }
 
 
-
-
 internal.roundPoints = function(lyr, round) {
   internal.forEachPoint(lyr.shapes, function(p) {
     p[0] = round(p[0]);
@@ -7853,8 +7782,6 @@ utils.getRoundingFunction = function(inc) {
     // return Math.round(x * inv) * inc;
   };
 };
-
-
 
 
 // Calculations for planar geometry of shapes
@@ -8271,8 +8198,6 @@ function getXHash(size) {
 }
 
 
-
-
 // Used for building topology
 //
 function ArcIndex(pointCount) {
@@ -8360,8 +8285,6 @@ function ArcIndex(pointCount) {
 }
 
 
-
-
 function initHashChains(xx, yy) {
   // Performance doesn't improve much above ~1.3 * point count
   var n = xx.length,
@@ -8417,8 +8340,6 @@ function initPointChains(xx, yy) {
   }
   return chainIds;
 }
-
-
 
 
 // Converts all polygon and polyline paths in a dataset to a topological format,
@@ -8688,8 +8609,6 @@ internal.replaceArcIds = function(src, replacements) {
 };
 
 
-
-
 internal.getHighPrecisionSnapInterval = function(arcs) {
   var bb = arcs.getBounds();
   if (!bb.hasBounds()) return 0;
@@ -8892,8 +8811,6 @@ function IndexIndex(n) {
 }
 
 
-
-
 // Returns a function for splitting self-intersecting polygon rings
 // The splitter function receives a single polygon ring represented as an array
 // of arc ids, and returns an array of split-apart rings.
@@ -9003,7 +8920,6 @@ internal.splitPathByIds = function(path, indexes) {
 };
 
 
-
 // __mapshaper-self-intersection-v1
 
 // TODO: also delete positive-space rings nested inside holes
@@ -9040,8 +8956,6 @@ internal.getHoleDivider = function(nodes, spherical) {
     });
   };
 };
-
-
 
 
 // Clean polygon or polyline shapes (in-place)
@@ -9159,8 +9073,6 @@ internal.repairSelfIntersections = function(lyr, nodes) {
 };
 
 
-
-
 // Apply snapping, remove duplicate coords and clean up defective paths in a dataset
 // Assumes that any CRS info has been added to the dataset
 // @opts: import options
@@ -9180,6 +9092,15 @@ internal.cleanPathsAfterImport = function(dataset, opts) {
       internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
+};
+
+internal.pointHasValidCoords = function(p) {
+  // The Shapefile spec states that "measures" less then -1e38 indicate null values
+  // This should not apply to coordinate data, but in-the-wild Shapefiles have been
+  // seen with large negative values indicating null coordinates.
+  // This test catches these and also NaNs, but does not detect other kinds of
+  // invalid coords
+  return p[0] > -1e38 && p[1] > -1e38;
 };
 
 // Accumulates points in buffers until #endPath() is called
@@ -9251,6 +9172,7 @@ function PathImporter(opts) {
 
   this.importPoints = function(points) {
     setShapeType('point');
+    points = points.filter(internal.pointHasValidCoords);
     if (round) {
       points.forEach(function(p) {
         p[0] = round(p[0]);
@@ -9415,8 +9337,6 @@ function PathImporter(opts) {
 }
 
 
-
-
 function GeoJSONParser(opts) {
   var idField = opts.id_field || GeoJSON.ID_FIELD,
       importer = new PathImporter(opts),
@@ -9527,8 +9447,6 @@ internal.importCRS = function(dataset, jsonObj) {
 };
 
 
-
-
 internal.getFormattedStringify = function(numArrayKeys) {
   var keyIndex = utils.arrayToIndex(numArrayKeys);
   var sentinel = '\u1000\u2FD5\u0310';
@@ -9556,8 +9474,6 @@ internal.getFormattedStringify = function(numArrayKeys) {
     return json.replace(stripRxp, '');
   };
 };
-
-
 
 
 internal.exportPointData = function(points) {
@@ -9638,8 +9554,6 @@ internal.exportPathCoords = function(iter) {
     pointCount: points.length
   };
 };
-
-
 
 
 // Merge layers, checking for incompatible geometries and data fields.
@@ -9746,8 +9660,6 @@ internal.mergeLayerNames = function(layers) {
     return memo;
   }, null) || '';
 };
-
-
 
 
 internal.exportGeoJSON = function(dataset, opts) {
@@ -10088,11 +10000,6 @@ internal.exportIds = function(table, opts) {
     return idField in rec ? rec[idField] : null;
   });
 };
-
-
-
-
-
 
 
 // Returns a function for generating GeoJSON geometries (MultiLineString or MultiPolygon)
@@ -10543,8 +10450,6 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
 };
 
 
-
-
 internal.makePolylineBuffer = function(lyr, dataset, opts) {
   var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
   var dataset2 = internal.importGeoJSON(geojson, {});
@@ -10575,16 +10480,12 @@ internal.makeShapeBufferGeoJSON = function(lyr, dataset, opts) {
 
 
 
-
-
 internal.makePolygonBuffer = function(lyr, dataset, opts) {
   var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
   var dataset2 = internal.importGeoJSON(geojson, {});
   internal.dissolveBufferDataset(dataset2);
   return dataset2;
 };
-
-
 
 
 // returns a dataset
@@ -10611,8 +10512,6 @@ internal.makeBufferLayer = function(lyr, dataset, opts) {
   }
   return outputLayers;
 };
-
-
 
 
 
@@ -10682,8 +10581,6 @@ internal.quicksortSegmentIds = function (a, ids, lo, hi) {
     j = hi;
   }
 };
-
-
 
 
 // PolygonIndex indexes the coordinates in one polygon feature for efficient
@@ -10815,8 +10712,6 @@ function PolygonIndex(shape, arcs, opts) {
 }
 
 
-
-
 // Returns a search function
 // Receives array of objects to index; objects must have a 'bounds' member
 //    that is a Bounds object.
@@ -10846,8 +10741,7 @@ internal.getBoundsSearchFunction = function(boxes) {
 };
 
 
-
-
+// PathIndex supports several kinds of spatial query on a layer of polyline or polygon shapes
 function PathIndex(shapes, arcs) {
   var boundsQuery = internal.getBoundsSearchFunction(getRingData(shapes, arcs));
   var totalArea = internal.getPathBounds(shapes, arcs).area();
@@ -11050,8 +10944,6 @@ function PathIndex(shapes, arcs) {
     return xor;
   }
 }
-
-
 
 
 geom.segmentIntersection = segmentIntersection;
@@ -11344,8 +11236,6 @@ function endpointHit(ax, ay, bx, by, cx, cy, dx, dy) {
 // }
 
 
-
-
 // Convert an array of intersections into an ArcCollection (for display)
 //
 internal.getIntersectionPoints = function(intersections) {
@@ -11610,8 +11500,6 @@ internal.formatIntersectingSegment = function(x, y, i, j, xx, yy) {
   }
   return i < j ? [i, j] : [j, i];
 };
-
-
 
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
@@ -11925,9 +11813,6 @@ internal.findClippingPoints = function(arcs) {
 };
 
 
-
-
-
 internal.findAcyclicArcs = function(nodes) {
   var arcs = [];
 
@@ -12035,8 +11920,6 @@ internal.chooseRighthandVector = function(ax, ay, bx, by) {
   }
   return code;
 };
-
-
 
 
 // Functions for redrawing polygons for clipping / erasing / flattening / division
@@ -12251,8 +12134,6 @@ internal.debugFlags = function(flags) {
 };
 
 
-
-
 // Get the centroid of the largest ring of a polygon
 // TODO: Include holes in the calculation
 // TODO: Add option to find centroid of all rings, not just the largest
@@ -12291,8 +12172,6 @@ geom.getPathCentroid = function(ids, arcs) {
     y: sumY / (6 * area) - dy
   };
 };
-
-
 
 
 internal.simplifyArcsFast = function(arcs, dist) {
@@ -12359,9 +12238,6 @@ internal.simplifyPathFast = function(path, arcs, dist, xx, yy) {
   }
   return count;
 };
-
-
-
 
 
 // Find a point inside a polygon and located away from the polygon edge
@@ -12586,6 +12462,51 @@ internal.getInnerTics = function(min, max, steps) {
 };
 
 
+// Returns a function for calculating the percentage of a shape's perimeter by length that
+// is composed of inner (shared) boundaries
+internal.getInnerPctCalcFunction = function(arcs, shapes) {
+  var calcSegLen = arcs.isPlanar() ? distance2D : greatCircleDistance;
+  var arcIndex = new ArcTopologyIndex(arcs, shapes);
+  var outerLen, innerLen, arcLen; // temp variables
+
+  return function(shp) {
+    outerLen = 0;
+    innerLen = 0;
+    if (shp) shp.forEach(procRing);
+    return innerLen > 0 ? innerLen / (innerLen + outerLen) : 0;
+  };
+
+  function procRing(ids) {
+    ids.forEach(procArc);
+  }
+
+  function procArc(id) {
+    arcLen = 0;
+    arcs.forEachArcSegment(id, addSegLen);
+    if (arcIndex.isInnerArc(id)) {
+      innerLen += arcLen;
+    } else {
+      outerLen += arcLen;
+    }
+  }
+
+  function addSegLen(i, j, xx, yy) {
+    arcLen += calcSegLen(xx[i], yy[i], xx[j], yy[j]);
+  }
+};
+
+function ArcTopologyIndex(arcs, shapes) {
+  var index = new Uint8Array(arcs.size());
+  internal.forEachArcId(shapes, function(arcId) {
+    if (arcId < 0) index[~arcId] |= 2;
+    else (index[arcId] |= 1);
+  });
+
+  this.isInnerArc = function(arcId) {
+    var i = absArcId(arcId);
+    return index[i] == 3;
+  };
+}
 
 
 function addGetters(obj, getters) {
@@ -12600,6 +12521,7 @@ internal.initFeatureProxy = function(lyr, arcs) {
       _records = lyr.data ? lyr.data.getRecords() : null,
       _isPlanar = hasPaths && arcs.isPlanar(),
       ctx = {},
+      calcInnerPct,
       _bounds, _centroid, _innerXY, _xy, _ids, _id;
 
   // all contexts have this.id and this.layer_name
@@ -12666,6 +12588,10 @@ internal.initFeatureProxy = function(lyr, arcs) {
         },
         planarArea: function() {
           return geom.getPlanarShapeArea(_ids, arcs);
+        },
+        innerPct: function() {
+          if (!calcInnerPct) calcInnerPct = internal.getInnerPctCalcFunction(arcs, lyr.shapes);
+          return calcInnerPct(_ids);
         },
         originalArea: function() {
           // Get area
@@ -12758,8 +12684,6 @@ internal.initFeatureProxy = function(lyr, arcs) {
 };
 
 
-
-
 internal.expressionUtils = {
   round: function(val, dig) {
     var k = 1;
@@ -12769,8 +12693,6 @@ internal.expressionUtils = {
   },
   sprintf: utils.format
 };
-
-
 
 
 // Compiled expression returns a value
@@ -13008,8 +12930,6 @@ internal.getBaseContext = function() {
 };
 
 
-
-
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
@@ -13075,8 +12995,6 @@ internal.combineFilters = function(a, b) {
       return a(id) && b(id);
     }) || a || b;
 };
-
-
 
 
 internal.getMode = function(values) {
@@ -13145,8 +13063,6 @@ internal.getModeData = function(values, verbose) {
   }
   return modes;
 };
-
-
 
 
 // Calculate an expression across a group of features, print and return the result
@@ -13321,8 +13237,6 @@ internal.compileCalcExpression = function(lyr, arcs, exp) {
 };
 
 
-
-
 // get function that returns an object containing calculated values
 internal.getJoinCalc = function(src, exp) {
   var calc = internal.compileCalcExpression({data: src}, null, exp);
@@ -13331,8 +13245,6 @@ internal.getJoinCalc = function(src, exp) {
     calc(ids, destRec);
   };
 };
-
-
 
 
 // Return a function to convert indexes of original features into indexes of grouped features
@@ -13430,8 +13342,6 @@ internal.groupIds = function(getId, n) {
 };
 
 
-
-
 function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
   var useSph = !opts.planar && internal.probablyDecimalDegreeBounds(internal.getLayerBounds(lyr));
   var getWeight = opts.weight ? internal.compileValueExpression(opts.weight, lyr) : null;
@@ -13491,8 +13401,6 @@ function reducePointCentroid(memo, p, weight) {
   }
   return memo;
 }
-
-
 
 
 // Dissolve polyline features, but also organize arcs into as few parts as possible,
@@ -13569,8 +13477,6 @@ internal.findPolylineEnds = function(ids, nodes, filter) {
 };
 
 
-
-
 // Generate a dissolved layer
 // @opts.fields (optional) names of data fields (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
@@ -13627,8 +13533,6 @@ internal.printDissolveMessage = function(pre, post) {
 };
 
 
-
-
 // Delete rings that are nested directly inside an enclosing ring with the same winding direction
 // Does not remove unenclosed CCW rings (currently this causes problems when
 //   rounding coordinates for SVG and TopoJSON output)
@@ -13677,8 +13581,6 @@ internal.fixNestingErrors2 = function(rings, arcs) {
     }
   }
 };
-
-
 
 
 
@@ -13828,8 +13730,6 @@ internal.findMosaicRings = function(nodes) {
 };
 
 
-
-
 internal.getVertexCountTest = function(minVertices, arcs) {
   return function(path) {
     // first and last vertex in ring count as one
@@ -13875,8 +13775,6 @@ internal.getWeightedMinAreaFilter = function(minArea, arcs) {
 };
 
 
-
-
 internal.getGapFillTest = function(dataset, opts) {
   var test;
   if (opts.min_gap_area === 0) {
@@ -13888,8 +13786,6 @@ internal.getGapFillTest = function(dataset, opts) {
   }
   return test;
 };
-
-
 
 
 // Assumes that arcs do not intersect except at endpoints
@@ -14064,8 +13960,6 @@ internal.extendShape = function(dest, src) {
 };
 
 
-
-
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
@@ -14085,8 +13979,6 @@ api.cleanLayers = function(layers, dataset, opts) {
     internal.dissolveArcs(dataset); // remove leftover endpoints within contiguous lines
   }
 };
-
-
 
 
 // TODO: remove this obsolete dissolve code (still used by clip)
@@ -14143,8 +14035,6 @@ internal.getPolygonDissolver = function(nodes, spherical) {
     return dissolved.length > 0 ? dissolved : null;
   };
 };
-
-
 
 
 // TODO: remove dependency on old polygon dissolve function
@@ -14386,8 +14276,6 @@ internal.clipPolygons = function(targetShapes, clipShapes, nodes, type, optsArg)
 }; // end clipPolygons()
 
 
-
-
 // Assumes: Arcs have been divided
 //
 internal.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
@@ -14423,8 +14311,6 @@ internal.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
 };
 
 
-
-
 //
 internal.clipPoints = function(points, clipShapes, arcs, type) {
   var index = new PathIndex(clipShapes, arcs);
@@ -14447,8 +14333,6 @@ internal.clipPoints = function(points, clipShapes, arcs, type) {
 
   return points2;
 };
-
-
 
 
 api.filterIslands = function(lyr, dataset, opts) {
@@ -14523,8 +14407,6 @@ internal.ringHasHoles = function(ring, rings, arcs) {
   }
   return false;
 };
-
-
 
 
 // Remove small-area polygon rings (very simple implementation of sliver removal)
@@ -14605,8 +14487,6 @@ internal.calcMaxSliverArea = function(arcs) {
   });
   return mean * mean;
 };
-
-
 
 
 api.splitLayer = function(src, splitField, opts) {
@@ -14789,8 +14669,6 @@ internal.getDividedBBoxPoints = function(bbox, ll, tt, rr, bb) {
 };
 
 
-
-
 api.clipLayers = function(target, src, dataset, opts) {
   return internal.clipLayers(target, src, dataset, "clip", opts);
 };
@@ -14969,8 +14847,6 @@ internal.convertClipBounds = function(bb) {
 };
 
 
-
-
 // @filter  optional filter function; signature: function(idA, idB or -1):bool
 internal.getArcClassifier = function(shapes, arcs, filter) {
   var n = arcs.size(),
@@ -15017,8 +14893,6 @@ internal.getArcClassifier = function(shapes, arcs, filter) {
 };
 
 
-
-
 internal.findNeighbors = function(shapes, arcs) {
   var getKey = function(a, b) {
     return b > -1 && a > -1 ? [a, b] : null;
@@ -15040,8 +14914,6 @@ internal.findNeighbors = function(shapes, arcs) {
   internal.forEachArcId(shapes, onArc);
   return arr;
 };
-
-
 
 
 // Assign a cluster id to each polygon in a dataset, which can be used with
@@ -15246,8 +15118,6 @@ internal.getPolygonClusterCalculator = function(opts) {
 };
 
 
-
-
 api.colorizer = function(opts) {
   if (!opts.name) {
     stop("Missing required name= parameter");
@@ -15335,8 +15205,6 @@ utils.getClassId = function(val, breaks) {
 };
 
 
-
-
 api.dataFill = function(lyr, arcs, opts) {
 
   var field = opts.field;
@@ -15384,6 +15252,11 @@ internal.fillMissingValues = function(lyr, field, getValue) {
   return count;
 };
 
+// Return a function for querying the value of one data field from
+// a feature's neighbors. The function returns a data value if all neighbors have the
+// same value for the query field, or null if neighbors have multiple values.
+// Function also returns null if the option 'min_border_pct' is given and the target
+// shape has fewer than this percentage of shared borders, by distance.
 internal.getSingleAssignment = function(lyr, field, arcs, opts) {
   var index = internal.buildAssignmentIndex(lyr, field, arcs);
   var minBorderPct = opts && opts.min_border_pct || 0;
@@ -15420,6 +15293,10 @@ internal.isEmptyValue = function(val) {
   return !val && val !== 0;
 };
 
+// Return a function for querying the value of one data field from
+// a feature's neighbors. Returns the data value that is exposed along the
+// longest section of shared border. Returns null if the target shape has no neighbors
+//
 internal.getMultipleAssignment = function(lyr, field, arcs) {
   var index;
   return function(shpId) {
@@ -15463,6 +15340,7 @@ internal.getEmptyRecordIds = function(records, field) {
   return ids;
 };
 
+// Return a lookup table that indexes data about each shape's neighbors by shape id.
 internal.buildAssignmentIndex = function(lyr, field, arcs) {
   var shapes = lyr.shapes;
   var records = lyr.data.getRecords();
@@ -15512,8 +15390,6 @@ internal.buildAssignmentIndex = function(lyr, field, arcs) {
     o[shpB] = len + (o[shpB] || 0);
   }
 };
-
-
 
 
 function MosaicIndex(lyr, nodes, optsArg) {
@@ -15855,9 +15731,6 @@ function TileShapeIndex(mosaic, opts) {
 }
 
 
-
-
-
 // Assumes that arcs do not intersect except at endpoints
 internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   opts = utils.extend({}, opts);
@@ -15950,8 +15823,6 @@ internal.dissolveTileGroup2 = function(tiles, dissolve) {
 };
 
 
-
-
 // Removes small gaps and all overlaps
 api.dissolve2 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
@@ -15964,9 +15835,6 @@ api.dissolve2 = function(layers, dataset, opts) {
 };
 
 
-
-
-
 // Newest version, with gap and overlap repair
 api.dissolve2_v1 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
@@ -15977,8 +15845,6 @@ api.dissolve2_v1 = function(layers, dataset, opts) {
     return internal.dissolvePolygonLayer2_v1(lyr, dataset, opts);
   });
 };
-
-
 
 
 api.drop2 = function(catalog, targets, opts) {
@@ -16016,8 +15882,6 @@ api.drop = function(catalog, layers, dataset, opts) {
     internal.pruneArcs(dataset);
   }
 };
-
-
 
 
 var TopoJSON = {};
@@ -16068,8 +15932,6 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 };
 
 
-
-
 internal.importMetadata = function(dataset, obj) {
   if (obj.proj4) {
     dataset.info.crs = internal.getCRS(obj.proj4);
@@ -16086,8 +15948,6 @@ internal.exportMetadata = function(dataset) {
     proj4: proj4
   };
 };
-
-
 
 
 // Convert a TopoJSON topology into mapshaper's internal format
@@ -16334,8 +16194,6 @@ TopoJSON.shapeImporters = {
 };
 
 
-
-
 TopoJSON.getPresimplifyFunction = function(width) {
   var quanta = 10000,  // enough resolution for pixel-level detail at 1000px width and 10x zoom
       k = quanta / width;
@@ -16344,8 +16202,6 @@ TopoJSON.getPresimplifyFunction = function(width) {
     return z === Infinity ? 0 : Math.ceil(z * k);
   };
 };
-
-
 
 
 api.explodeFeatures = function(lyr, arcs, opts) {
@@ -16437,9 +16293,6 @@ SVG.getTransform = function(xy, scale) {
 };
 
 
-
-
-
 // @lyr a layer in a dataset
 internal.layerHasFurniture = function(lyr) {
   var type = internal.getFurnitureLayerType(lyr);
@@ -16469,8 +16322,6 @@ SVG.importFurniture = function(d, frame) {
   }
   return renderer(d, frame) || [];
 };
-
-
 
 
 internal.transformDatasetToPixels = function(dataset, opts) {
@@ -16580,8 +16431,6 @@ internal.calcOutputSizeInPixels = function(bounds, opts) {
 
   return new Bounds(0, 0, widthPx, heightPx);
 };
-
-
 
 
 internal.exportTopoJSON = function(dataset, opts) {
@@ -16835,9 +16684,6 @@ TopoJSON.exporters = {
 };
 
 
-
-
-
 var ShpType = {
   NULL: 0,
   POINT: 1,
@@ -16884,8 +16730,6 @@ ShpType.hasBounds = function(t) {
 };
 
 
-
-
 internal.translateShapefileType = function(shpType) {
   if (utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
     return 'polygon';
@@ -16901,9 +16745,6 @@ internal.translateShapefileType = function(shpType) {
 internal.isSupportedShapefileType = function(t) {
   return utils.contains([0,1,3,5,8,11,13,15,18,21,23,25,28], t);
 };
-
-
-
 
 
 var NullRecord = function() {
@@ -17160,8 +17001,6 @@ function ShpRecordClass(type) {
 }
 
 
-
-
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
 //
@@ -17368,8 +17207,6 @@ ShpReader.prototype.getCounts = function() {
 };
 
 
-
-
 // Read Shapefile data from a file, ArrayBuffer or Buffer
 // @shp, @shx: filename or buffer
 internal.importShp = function(shp, shx, opts) {
@@ -17406,8 +17243,6 @@ internal.importShp = function(shp, shx, opts) {
 
   return importer.done();
 };
-
-
 
 
 // Convert a dataset to Shapefile files
@@ -17589,8 +17424,6 @@ internal.exportShpRecord = function(data, id, shpType) {
 };
 
 
-
-
 internal.importDbfTable = function(buf, o) {
   var opts = o || {};
   return new ShapefileTable(buf, opts.encoding);
@@ -17652,8 +17485,6 @@ function ShapefileTable(buf, encoding) {
 utils.extend(ShapefileTable.prototype, dataTableProto);
 
 
-
-
 internal.exportDbf = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
     if (lyr.data) {
@@ -17684,11 +17515,6 @@ internal.exportDbfFile = function(lyr, dataset, opts) {
     filename: lyr.name + '.dbf'
   }];
 };
-
-
-
-
-
 
 
 SVG.symbolRenderers.circle = function(d, x, y) {
@@ -17780,8 +17606,6 @@ SVG.importSymbol = function(d, xy) {
     children: SVG.renderSymbol(d)
   };
 };
-
-
 
 
 // parsing hints for -style command cli options
@@ -17929,8 +17753,6 @@ internal.isSvgColor = function(str) {
 };
 
 
-
-
 api.svgStyle = function(lyr, dataset, opts) {
   var filter;
   if (!lyr.data) {
@@ -18007,8 +17829,6 @@ utils.sha1 = function(str1){
   for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
   return str1;
 };
-
-
 
 
 SVG.embedImages = function(obj, symbols) {
@@ -18149,8 +17969,6 @@ SVG.stringifyProperties = function(o) {
 };
 
 
-
-
 SVG.stringifyVertex = function(p) {
   return p[0] + ' ' + p[1]; // TODO: round coords by default?
 };
@@ -18205,8 +18023,6 @@ SVG.addBezierArcControlPoints = function(p1, p2, degrees) {
   p2.push(xc + bx + k2 * by);
   p2.push(yc + by - k2 * bx);
 };
-
-
 
 
 SVG.importGeoJSONFeatures = function(features, opts) {
@@ -18425,8 +18241,6 @@ SVG.geojsonImporters = {
 };
 
 
-
-
 //
 //
 internal.exportSVG = function(dataset, opts) {
@@ -18630,8 +18444,6 @@ internal.layerHasLabels = function(lyr) {
 };
 
 
-
-
 // Generate output content from a dataset object
 internal.exportDelim = function(dataset, opts) {
   var delim = internal.getExportDelimiter(dataset.info, opts),
@@ -18758,8 +18570,6 @@ internal.getDelimFileExtension = function(delim, opts) {
 };
 
 
-
-
 internal.importJSONTable = function(arr) {
   internal.fixInconsistentFields(arr);
   return {
@@ -18785,7 +18595,6 @@ internal.exportJSON = function(dataset, opts) {
 internal.exportJSONTable = function(lyr) {
   return JSON.stringify(lyr.data.getRecords());
 };
-
 
 
 internal.getOutputFormat = function(dataset, opts) {
@@ -18841,9 +18650,6 @@ internal.inferOutputFormat = function(file, inputFormat) {
   }
   return format;
 };
-
-
-
 
 
 // @targets - non-empty output from Catalog#findCommandTargets()
@@ -19071,8 +18877,6 @@ internal.fixFileExtension = function(ext, fmt) {
 };
 
 
-
-
 api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   var n = internal.getFeatureCount(lyr),
       compiled, filter;
@@ -19092,8 +18896,6 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
     }
   }
 };
-
-
 
 
 // Identify JSON type from the initial subset of a JSON string
@@ -19222,8 +19024,6 @@ internal.selectFromObject = function(o, path) {
 };
 
 
-
-
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
 // File data objects have two properties:
@@ -19345,8 +19145,6 @@ internal.setLayerName = function(lyr, path) {
 };
 
 
-
-
 api.importFiles = function(opts) {
   var files = opts.files || [],
       dataset;
@@ -19460,8 +19258,6 @@ internal.readShapefileAuxFiles = function(path, obj, cache) {
 };
 
 
-
-
 internal.writeFiles = function(exports, opts, cb) {
   if (exports.length > 0 === false) {
     message("No files to save");
@@ -19505,8 +19301,6 @@ internal.getOutputPaths = function(files, opts) {
 };
 
 
-
-
 api.filterGeom = function(lyr, arcs, opts) {
   if (!internal.layerHasGeometry(lyr)) {
     stop("Layer is missing geometry");
@@ -19537,8 +19331,6 @@ internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
     return bounds.intersects(arcs.getSimpleShapeBounds(path)) ? path : null;
   };
 };
-
-
 
 
 api.filterFields = function(lyr, names) {
@@ -19585,8 +19377,6 @@ internal.getRecordMapper = function(map) {
 //     return key + ": rec[" + key + "]";
 //   }).join(",") + "}");
 // };
-
-
 
 
 // Create rectangles around each feature in a layer
@@ -19713,8 +19503,6 @@ internal.convertBboxToGeoJSON = function(bbox, opts) {
     coordinates: [coords]
   };
 };
-
-
 
 
 api.frame = function(catalog, source, opts) {
@@ -19928,9 +19716,14 @@ internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
 
   internal.insertFieldValues(polygonLyr, field, assignedValues);
   internal.insertFieldValues(polygonLyr, 'confidence', confidenceValues);
-  // internal.insertFieldValues(polygonLyr, 'neighbors', neighborValues);
   if (noDataIds.length > 0) {
     api.dataFill(polygonLyr, arcs, {field: field});
+  }
+  if (opts.postprocess) {
+    // TODO: add a max-area parameter, to make sure we're only changing the
+    // data in small inclusions
+    internal.fillDataIslands(polygonLyr, field, arcs);
+    internal.fillDataIslands(polygonLyr, field, arcs); // kludge: second pass removes flipped donut-holes
   }
 
   // shpA: id of a low-confidence shape
@@ -20041,8 +19834,6 @@ internal.getNeighborsFunction = function(lyr, arcs, opts) {
 
 
 
-
-
 api.graticule = function(dataset, opts) {
   var graticule = internal.createGraticule(opts);
   var dest, src;
@@ -20116,8 +19907,6 @@ internal.createParallel = function(y, xmin, xmax, precision) {
 };
 
 
-
-
 internal.include = function(opts) {
   var content, obj, context;
   // TODO: handle web context
@@ -20149,8 +19938,6 @@ internal.include = function(opts) {
 
   utils.extend(internal.getStateVar('defs'), obj);
 };
-
-
 
 
 internal.printInfo = function(layers, targetLayers) {
@@ -20325,8 +20112,6 @@ internal.countInteriorVertices = function(arcs) {
   });
   return count;
 };
-
-
 
 
 api.lines = function(lyr, dataset, opts) {
@@ -20521,8 +20306,6 @@ internal.extractLines = function(shapes, classify) {
 };
 
 
-
-
 api.innerlines = function(lyr, arcs, opts) {
   opts = opts || {};
   internal.requirePolygonLayer(lyr);
@@ -20537,8 +20320,6 @@ api.innerlines = function(lyr, arcs, opts) {
   outputLyr.name = opts.no_replace ? null : lyr.name;
   return outputLyr;
 };
-
-
 
 
 api.inspect = function(lyr, arcs, opts) {
@@ -20620,8 +20401,6 @@ internal.selectFeatures = function(lyr, arcs, opts) {
 };
 
 
-
-
 // TODO: use an actual index instead of linear search
 function PointIndex(shapes, opts) {
   var buf = utils.isNonNegNumber(opts.buffer) ? opts.buffer : 1e-3;
@@ -20645,8 +20424,6 @@ function PointIndex(shapes, opts) {
     }
   }
 }
-
-
 
 
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
@@ -20743,8 +20520,6 @@ internal.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) 
     return shpId == -1 ? null : [shpId];
   };
 };
-
-
 
 
 // Returns a function for filtering multiple source-table records
@@ -20853,8 +20628,6 @@ internal.getJoinFilterTestFunction = function(exp, data) {
     return test(srcId);
   };
 };
-
-
 
 
 api.join = function(targetLyr, dataset, src, opts) {
@@ -21162,8 +20935,6 @@ internal.createTableIndex = function(records, f) {
 };
 
 
-
-
 api.keepEveryPolygon =
 internal.keepEveryPolygon = function(arcData, layers) {
   layers.forEach(function(lyr) {
@@ -21269,8 +21040,6 @@ internal.replaceInArray = function(zz, value, replacement, start, end) {
 };
 
 
-
-
 // Import multiple files to a single dataset
 internal.importFiles = function(files, opts) {
   var unbuiltTopology = false;
@@ -21333,8 +21102,6 @@ internal.overlayLayer = function(targetLyr, sourceLyr, dataset, opts) {
 };
 
 
-
-
 // Return an interior point for each space-containing ring
 internal.findInnerPoints = function(shp, arcs) {
   var groups, points;
@@ -21371,8 +21138,6 @@ internal.findPotentialRingGroups = function(shp, arcs) {
 // assume: shp[0] is outer ring
 internal.findInnerPoint = function(shp, arcs) {
 };
-
-
 
 
 // Returns x,y coordinates of the vertex that is closest to the bbox center point
@@ -21437,8 +21202,6 @@ internal.parseDMS = function(str) {
   }
   return d;
 };
-
-
 
 
 api.createPointLayer = function(srcLyr, dataset, opts) {
@@ -21708,8 +21471,6 @@ internal.pointsFromDataTable = function(data, opts) {
 };
 
 
-
-
 api.pointGrid = function(dataset, opts) {
   var gridOpts = internal.getPointGridParams(dataset, opts);
   return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
@@ -21824,8 +21585,6 @@ internal.createPointGrid = function(opts) {
 };
 
 
-
-
 internal.editArcs = function(arcs, onPoint) {
   var nn2 = [],
       xx2 = [],
@@ -21885,8 +21644,6 @@ internal.editArcs = function(arcs, onPoint) {
     }
   }
 };
-
-
 
 
 api.proj = function(dataset, destInfo, opts) {
@@ -22093,8 +21850,6 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
 
 
 
-
-
 internal.closeUndershoots = function(lyr, dataset, opts) {
   var maxGapLen = opts.gap_tolerance ? internal.convertIntervalParam(opts.gap_tolerance, internal.getDatasetCRS(dataset)) : 0;
   var arcs = dataset.arcs;
@@ -22205,8 +21960,6 @@ internal.getArcExtension = function(hit, arcId, arcs) {
 };
 
 
-
-
 api.polygons = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolylineLayer);
   // use larger-than-default snapping in addIntersectionCuts()
@@ -22232,8 +21985,6 @@ internal.createPolygonLayer = function(lyr, dataset, opts) {
 };
 
 
-
-
 api.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
   var name = 'layer';
@@ -22248,8 +21999,6 @@ api.renameLayers = function(layers, names) {
     lyr.name = name + suffix;
   });
 };
-
-
 
 
 
@@ -22297,8 +22046,6 @@ internal.getRunCommandData = function(target) {
 };
 
 
-
-
 api.require = function(targets, opts) {
   var defs = internal.getStateVar('defs');
   var moduleFile, moduleName, mod;
@@ -22329,8 +22076,6 @@ api.require = function(targets, opts) {
     internal.runGlobalExpression(opts.init, targets);
   }
 };
-
-
 
 
 api.scalebar = function(catalog, opts) {
@@ -22475,8 +22220,6 @@ internal.parseScalebarNumber = function(str) {
 };
 
 
-
-
 api.shape = function(opts) {
   var coords = opts.coordinates;
   var offsets = opts.offsets || [];
@@ -22512,8 +22255,6 @@ api.shape = function(opts) {
   dataset.layers[0].name = opts.name || 'shape';
   return dataset;
 };
-
-
 
 
 // A minheap data structure used for computing Visvalingam simplification data.
@@ -22635,8 +22376,6 @@ function Heap() {
     return idx;
   }
 }
-
-
 
 
 var Visvalingam = {};
@@ -22785,8 +22524,6 @@ Visvalingam.scaledSimplify = function(f) {
 };
 
 
-
-
 var DouglasPeucker = {};
 
 DouglasPeucker.metricSq3D = geom.pointSegDistSq3D;
@@ -22862,8 +22599,6 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
     return maxDistSq;
   }
 };
-
-
 
 
 // Remove line-segment intersections introduced by simplification by rolling
@@ -23048,8 +22783,6 @@ internal.getSegmentVertices = function(seg, zlim, xx, yy, zz) {
 };
 
 
-
-
 internal.calcSimplifyStats = function(arcs, use3D) {
   var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
       calcAngle = use3D ? geom.signedAngleSph : geom.signedAngle,
@@ -23161,9 +22894,6 @@ internal.countUniqueVertices = function(arcs) {
 };
 
 
-
-
-
 internal.getSimplifyMethodLabel = function(slug) {
   return {
     dp: "Ramer-Douglas-Peucker",
@@ -23205,8 +22935,6 @@ internal.printSimplifyInfo = function(arcs, opts) {
 
   message(lines.join('\n   '));
 };
-
-
 
 
 api.simplify = function(dataset, opts) {
@@ -23479,8 +23207,6 @@ internal.getThresholdByPct = function(pct, arcs, nth) {
 };
 
 
-
-
 api.variableSimplify = function(layers, dataset, opts) {
   var lyr = layers[0];
   var arcs = dataset.arcs;
@@ -23589,8 +23315,6 @@ internal.calculateVariableThresholds = function(lyr, arcs, getShapeThreshold) {
 };
 
 
-
-
 // Split the shapes in a layer according to a grid
 // Return array of layers. Use -o bbox-index option to create index
 //
@@ -23651,8 +23375,6 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
     };
   }
 };
-
-
 
 
 // Recursively divide a layer into two layers until a (compiled) expression
@@ -23743,8 +23465,6 @@ internal.divideLayer = function(lyr, arcs, bounds) {
 };
 
 
-
-
 api.sortFeatures = function(lyr, arcs, opts) {
   var n = internal.getFeatureCount(lyr),
       ascending = !opts.descending,
@@ -23765,8 +23485,6 @@ api.sortFeatures = function(lyr, arcs, opts) {
 };
 
 
-
-
 SVG.rotateSymbolCoords = function(coords, rotation) {
   var f;
   if (!rotation) return;
@@ -23779,8 +23497,6 @@ SVG.rotateSymbolCoords = function(coords, rotation) {
     p[1] = p2[1];
   });
 };
-
-
 
 
 SVG.symbolBuilders.arrow = function(d) {
@@ -23827,8 +23543,6 @@ SVG.getFilledArrowCoords = function(d) {
 
 
 
-
-
 // TODO: refactor to remove duplication in mapshaper-svg-style.js
 api.symbols = function(lyr, opts) {
   var f, filter;
@@ -23862,8 +23576,6 @@ internal.buildSymbol = function(properties) {
 };
 
 
-
-
 internal.target = function(catalog, opts) {
   var type = (opts.type || '').toLowerCase().replace('linestring', 'polyline');
   var pattern = opts.target || '*';
@@ -23880,8 +23592,6 @@ internal.target = function(catalog, opts) {
   }
   catalog.setDefaultTargets(targets);
 };
-
-
 
 
 api.uniq = function(lyr, arcs, opts) {
@@ -23968,8 +23678,6 @@ internal.findCommandSource = function(sourceName, catalog, opts) {
   }
   return source;
 };
-
-
 
 
 // TODO: consider refactoring to allow modules
@@ -24344,8 +24052,6 @@ function applyCommandToEachLayer(func, targetLayers) {
 
 
 
-
-
 internal.splitShellTokens = function(str) {
   return internal.splitTokens(str, '\\s');
 };
@@ -24374,8 +24080,6 @@ utils.trimQuotes = function(raw) {
   }
   return raw;
 };
-
-
 
 
 function CommandParser() {
@@ -24832,9 +24536,6 @@ internal.cleanArgv = function(argv) {
 };
 
 
-
-
-
 function validateInputOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
@@ -24999,8 +24700,6 @@ function validateOutputOpts(cmd) {
     error("topojson-precision= option should be a positive number");
   }
 }
-
-
 
 
 internal.getOptionParser = function() {
@@ -26182,6 +25881,10 @@ internal.getOptionParser = function() {
       describe: 'uniqify points with the same location and field value',
       type: 'flag'
     })
+    .option('postprocess', {
+      describe: 'try to clean up small data islands',
+      type: 'flag'
+    })
     .option('target', targetOpt);
 
   parser.command('polygons')
@@ -26345,8 +26048,6 @@ internal.getOptionParser = function() {
 };
 
 
-
-
 // Parse an array or a string of command line tokens into an array of
 // command objects.
 internal.parseCommands = function(tokens) {
@@ -26380,8 +26081,6 @@ internal.parseConsoleCommands = function(raw) {
   });
   return parsed;
 };
-
-
 
 
 internal.findCommandTargets = function(catalog, pattern, type) {
@@ -26433,8 +26132,6 @@ internal.getLayerMatch = function(pattern) {
     return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
   };
 };
-
-
 
 
 // Catalog contains zero or more multi-layer datasets
@@ -26561,7 +26258,7 @@ function Catalog() {
     defaultTargets = arr;
   };
 
-  // should be in mapshaper-gui-model.js, moved here for testing
+  // should be in gui-model.js, moved here for testing
   this.getActiveLayer = function() {
     var targ = (this.getDefaultTargets() || [])[0];
     return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
@@ -26590,8 +26287,6 @@ internal.getFormattedLayerList = function(catalog) {
   });
   return lines.length > 0 ? lines.join('\n') : '[none]';
 };
-
-
 
 
 // Parse command line args into commands and run them
@@ -26858,8 +26553,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
 };
 
 
-
-
 // Return an array containing points from a path iterator, clipped to a bounding box
 // Currently using this function for clipping styled polygons in the GUI to speed up layer rendering.
 // Artifacts along the edges make this unsuitable for clipping datasets
@@ -27099,8 +26792,6 @@ function addSegmentBoundsIntersection(points, a, b, bounds) {
   }
   return false;
 }
-
-
 
 
 api.cli = cli;
