@@ -1295,9 +1295,9 @@
 			}
 		},
 		"mproj": {
-			"version": "0.0.25",
-			"resolved": "https://registry.npmjs.org/mproj/-/mproj-0.0.25.tgz",
-			"integrity": "sha512-MH/hIcK363QERPNpBXRe7x0qBsKUufTnvvIZAIIG+ttlpDbeKc5JEbsJBwYLDDESOM0vBetq8+XAnUEfrc6kGA==",
+			"version": "0.0.26",
+			"resolved": "https://registry.npmjs.org/mproj/-/mproj-0.0.26.tgz",
+			"integrity": "sha512-8A0hXbhi3qzDAU5mRyc9XhqgF1v3OLR1SKa4sopRvyKZKQIouwKke5wyQ9ouz6UmpAYK05ZTwUD0gfDw2Ny9kA==",
 			"requires": {
 				"geographiclib": "1.48.0",
 				"rw": "~1.3.2"
