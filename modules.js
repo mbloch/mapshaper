@@ -8610,10 +8610,10 @@ function get_fallback_wkt_maker(P) {
 }
 
 function make_fallback_wkt(P) {
-  // TODO: use projection name?
   var projName = P.proj in pj_list ? pj_list[P.proj].name : '';
   var proj4 = get_proj_defn(P);
   var geogcs = wkt_make_geogcs(P);
+  // GDAL seems to use "unnamed" all the time
   var name = projName ? geogcs.NAME + ' / ' + projName : 'unnamed';
   return {PROJCS: {
     NAME: name,
