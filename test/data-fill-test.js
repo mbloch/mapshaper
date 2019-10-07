@@ -41,7 +41,7 @@ describe('mapshaper-data-fill.js', function () {
 
   })
 
-  it('postprocess to remove data islands', function(done) {
+  it('postprocess does not remove ordinary islands', function(done) {
     //
     //  . --------- .
     //  |           |
@@ -74,14 +74,14 @@ describe('mapshaper-data-fill.js', function () {
       {'polygons.json': input}, function(err, output) {
         var features = JSON.parse(output['polygons.json']).features;
         assert.equal(features[0].properties.state, 'outer');
-        assert.equal(features[1].properties.state, 'outer');
+        assert.equal(features[1].properties.state, 'inner');
         done();
       });
 
   });
 
 
-  it('postprocess to remove donuts', function(done) {
+  it('postprocess removes breakaway islands', function(done) {
     //
     // . --------------- .
     // |                 |
@@ -125,8 +125,8 @@ describe('mapshaper-data-fill.js', function () {
       {'polygons.json': input}, function(err, output) {
         var features = JSON.parse(output['polygons.json']).features;
         assert.equal(features[0].properties.state, 'a');
-        assert.equal(features[1].properties.state, 'a');
-        assert.equal(features[2].properties.state, 'a');
+        assert.equal(features[1].properties.state, 'b');
+        assert.equal(features[2].properties.state, 'b');
        done();
       });
 

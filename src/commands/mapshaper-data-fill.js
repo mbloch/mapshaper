@@ -1,187 +1,203 @@
 /* @require mapshaper-common, mapshaper-polygon-neighbors */
 
+// This function creates a continuous mosaic of data values in a
+// given field by assigning data from adjacent polygon features to polygons
+// that contain null values.
+// The 'postprocess' option tries to smooth the output by removing data islands
+// that are likely to be the result of unreliable data (e.g. faulty geocodes).
+
 api.dataFill = function(lyr, arcs, opts) {
-
   var field = opts.field;
-  var count;
   if (!field) stop("Missing required field= parameter");
+  if (!lyr.data || !lyr.data.fieldExists(field)) stop("Layer is missing field:", field);
   if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
+  var getNeighbors = internal.getNeighborLookupFunction(lyr, arcs);
+  var loopCount = 0;
+  var fillCount;
 
-  // first, fill some holes?
-  count = internal.fillMissingValues(lyr, field, internal.getSingleAssignment(lyr, field, arcs));
-  verbose("first pass:", count);
+  // get function to check if a shape was initially empty
+  var initiallyEmpty = (function() {
+    var flags = lyr.data.getRecords().map(function(rec) {
+      return internal.isEmptyValue(rec[field]);
+    });
+    return function(i) {return flags[i];};
+  }());
+
+  // step one: fill empty units
   do {
-    count = internal.fillMissingValues(lyr, field, internal.getMultipleAssignment(lyr, field, arcs));
-    verbose("count:", count);
-  } while (count > 0);
+    fillCount = internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
+  } while (fillCount > 0 && ++loopCount < 10);
 
+  // step two: smooth perimeters
+  internal.dataFillSmooth(field, lyr, arcs, getNeighbors, initiallyEmpty);
+
+  // step three: remove data inclusions
   if (opts.postprocess) {
-    internal.fillDataIslands(lyr, field, arcs);
-    internal.fillDataIslands(lyr, field, arcs); // kludge: second pass removes flipped donut-holes
+    internal.dataFillIslands(field, lyr, arcs, getNeighbors);
   }
 };
 
-internal.fillDataIslands = function(lyr, field, arcs) {
+// TODO: think of edge cases where this might now work well... e.g. donut shapes
+internal.dataFillIslands = function(field, lyr, arcs, getNeighbors) {
+  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
+  var areas = {}; // total area of each group
+  var islands = [];
   var records = lyr.data.getRecords();
-  var getValue = internal.getSingleAssignment(lyr, field, arcs, {min_border_pct: 0.5});
-  records.forEach(function(rec, shpId) {
-    var val = rec[field];
-    var nabe = getValue(shpId);
-    if (nabe && nabe != val) {
-      rec[field] = nabe;
+  var updates = 0;
+
+  lyr.shapes.forEach(function(shp, i) {
+    var data = onShape(i);
+    var area = geom.getShapeArea(shp, arcs);
+    var val = records[i][field];
+    if (internal.isEmptyValue(val)) return;
+    if (val in areas === false) areas[val] = 0;
+    areas[val] += area;
+    if (data.values.length > 0 && data.values.indexOf(val) === -1) {
+      // counts as island if it
+      // a. has neighbors with data and
+      // b. neighbors have different data
+      data.area = area;
+      islands.push(data);
     }
   });
+
+  // fill small islands
+  islands.forEach(function(data) {
+    var val = records[data.shape][field];
+    var pct = data.area / areas[val];
+    // don't remove islands that represent a large portion of this value's area
+    if (pct > 0.3) return;
+    records[data.shape][field] = internal.getMaxWeightValue(data);
+    updates++;
+  });
+  return updates;
 };
 
-internal.fillMissingValues = function(lyr, field, getValue) {
+// Try to smooth out jaggedness resulting from filling empty units
+// This function assigns a different adjacent data value to formerly empty units,
+// if this would produce a shorter boundary.
+internal.dataFillSmooth = function(field, lyr, arcs, getNeighbors, wasEmpty) {
+  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
   var records = lyr.data.getRecords();
-  var unassigned = internal.getEmptyRecordIds(records, field);
-  var count = 0;
-  unassigned.forEach(function(shpId) {
-    var value = getValue(shpId);
-    if (!internal.isEmptyValue(value)) {
-      count++;
-      records[shpId][field] = value;
+  var updates = 0;
+  lyr.shapes.forEach(function(shp, i) {
+    if (!wasEmpty(i)) return; // only edit shapes that were originally empty
+    var data = onShape(i);
+    if (data.values.length < 2) return; // no other values are available
+    var currVal = records[i][field];
+    var topVal = internal.getMaxWeightValue(data);
+    if (currVal != topVal) {
+      records[i][field] = topVal;
+      updates++;
     }
   });
-  return count;
+  return updates;
 };
 
-// Return a function for querying the value of one data field from
-// a feature's neighbors. The function returns a data value if all neighbors have the
-// same value for the query field, or null if neighbors have multiple values.
-// Function also returns null if the option 'min_border_pct' is given and the target
-// shape has fewer than this percentage of shared borders, by distance.
-internal.getSingleAssignment = function(lyr, field, arcs, opts) {
-  var index = internal.buildAssignmentIndex(lyr, field, arcs);
-  var minBorderPct = opts && opts.min_border_pct || 0;
+// Return value with the greatest weight from a datafill object
+internal.getMaxWeightValue = function(d) {
+  var maxWeight = Math.max.apply(null, d.weights);
+  var i = d.weights.indexOf(maxWeight);
+  return d.values[i]; // return highest weighted value
+};
 
-  return function(shpId) {
-    var nabes = index[shpId];
-    var emptyLen = 0;
-    var fieldLen = 0;
-    var fieldVal = null;
-    var nabe, val, len;
+// Assign values to units without data, using the values of neighboring units.
+internal.dataFillEmpty = function(field, lyr, arcs, getNeighbors) {
+  var records = lyr.data.getRecords();
+  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
+  var isEmpty = getEmptyValueFilter(field, lyr);
+  var groups = {}; // groups, indexed by key
+  var assignCount = 0;
 
-    for (var i=0; i<nabes.length; i++) {
-      nabe = nabes[i];
-      val = nabe.value;
-      len = nabe.length;
-      if (internal.isEmptyValue(val)) {
-        emptyLen += len;
-      } else if (fieldVal === null || fieldVal == val) {
-        fieldVal = val;
-        fieldLen += len;
-      } else {
-        // this shape has neighbors with different field values
-        return null;
-      }
+  // step one: place features in groups based on data values of non-empty neighbors.
+  // (grouping is an attempt to avoid ragged edges between groups of same-value units,
+  // which occured when data was assigned to units independently of adjacent units).
+  lyr.shapes.forEach(function(shp, i) {
+    if (!isEmpty(i)) return; // only assign shapes with missing values
+    var data = onShape(i);
+    if (!data.group) return; // e.g. if no neighbors have data
+    addDataToGroup(data, groups);
+  });
+
+  // step two: assign the same value to all members of a group
+  Object.keys(groups).forEach(function(groupId) {
+    var group = groups[groupId];
+    var value = internal.getMaxWeightValue(group);
+    assignValueToShapes(group.shapes, value);
+  });
+
+  function assignValueToShapes(ids, val) {
+    ids.forEach(function(id) {
+      assignCount++;
+      records[id][field] = val;
+    });
+  }
+
+  function addDataToGroup(d, groups) {
+    var group = groups[d.group];
+    var j;
+    if (!group) {
+      groups[d.group] = {
+        shapes: [d.shape],
+        weights: d.weights,
+        values: d.values
+      };
+      return;
     }
+    group.shapes.push(d.shape);
+    for (var i=0, n=d.values.length; i<n; i++) {
+      // add new weights to the group's total weights
+      j = group.values.indexOf(d.values[i]);
+      group.weights[j] += d.weights[i];
+    }
+  }
 
-    if (fieldLen / (fieldLen + emptyLen) < minBorderPct) return null;
-
-    return fieldLen > 0 ? fieldVal : null;
-  };
+  return assignCount;
 };
 
 internal.isEmptyValue = function(val) {
-  return !val && val !== 0;
+   return !val && val !== 0;
 };
 
-// Return a function for querying the value of one data field from
-// a feature's neighbors. Returns the data value that is exposed along the
-// longest section of shared border. Returns null if the target shape has no neighbors
-//
-internal.getMultipleAssignment = function(lyr, field, arcs) {
-  var index;
-  return function(shpId) {
-    // create index on first use
-    index = index || internal.buildAssignmentIndex(lyr, field, arcs);
-    var nabes = index[shpId];
-    var nabeIndex = {}; // boundary length indexed by value
-    var emptyLen = 0;
-    var maxLen = 0;
-    var maxVal = null;
-    var nabe, val, len;
-
-    for (var i=0; i<nabes.length; i++) {
-      nabe = nabes[i];
-      val = nabe.value;
-      len = nabe.length;
-      if (internal.isEmptyValue(val)) {
-        emptyLen += len;
-        continue;
-      }
-      if (val in nabeIndex) {
-        len += nabeIndex[val];
-      }
-      if (len > maxLen) {
-        maxLen = len;
-        maxVal = val;
-      }
-      nabeIndex[val] = len;
-    }
-    return maxVal; // may be null
-  };
-};
-
-internal.getEmptyRecordIds = function(records, field) {
-  var ids = [];
-  for (var i=0, n=records.length; i<n; i++) {
-    if (internal.isEmptyValue(records[i][field])) {
-      ids.push(i);
-    }
-  }
-  return ids;
-};
-
-// Return a lookup table that indexes data about each shape's neighbors by shape id.
-internal.buildAssignmentIndex = function(lyr, field, arcs) {
-  var shapes = lyr.shapes;
+function getEmptyValueFilter(field, lyr) {
   var records = lyr.data.getRecords();
-  var classify = internal.getArcClassifier(shapes, arcs)(filter);
-  var index = {};
-  var index2 = {};
+  return function(i) {
+    var rec = records[i];
+    return rec ? internal.isEmptyValue(rec[field]) : false;
+  };
+}
 
-  // calculate length of shared boundaries of each shape, indexed by shape id
-  internal.forEachArcId(shapes, onArc);
+// Returns a function to fetch the values of a data field from the neighbors of
+// a polygon feature. Each value is assigned a weight in proportion to the
+// length of the borders between the polygon and its neighbors.
+function getDataFillCalculator(field, lyr, arcs, getNeighbors) {
+  var isPlanar = arcs.isPlanar();
+  var records = lyr.data.getRecords();
+  var tmp;
 
-  // build final index
-  // collects border length and data value of each neighbor, indexed by shape id
-  Object.keys(index).forEach(function(shpId) {
-    var o = index[shpId];
-    var nabes = Object.keys(o);
-    var arr = index2[shpId] = [];
-    var nabeId;
-    for (var i=0; i<nabes.length; i++) {
-      nabeId = nabes[i];
-      arr.push({
-        length: o[nabeId],
-        value: nabeId > -1 ? records[nabeId][field] : null
-      });
-    }
-  });
-
-  return index2;
-
-  function filter(a, b) {
-    return a > -1 ? [a, b] : null;  // edges are b == -1
-  }
-
-  function onArc(arcId) {
-    var ab = classify(arcId);
-    var len;
-    if (ab) {
-      len = geom.calcPathLen([arcId], arcs, !arcs.isPlanar());
-      addArc(ab[0], ab[1], len);
-      if (ab[1] > -1) { // arc is not an outside boundary
-        addArc(ab[1], ab[0], len);
-      }
+  function onSharedArc(nabeId, arcId) {
+    var val = records[nabeId][field];
+    // console.log("nabe:", nabeId, "val:", val)
+    if (internal.isEmptyValue(val)) return;
+    var len = geom.calcPathLen([arcId], arcs, !isPlanar);
+    var i = tmp.values.indexOf(val);
+    if (i == -1) {
+      tmp.values.push(val);
+      tmp.weights.push(len);
+    } else {
+      tmp.weights[i] += len;
     }
   }
 
-  function addArc(shpA, shpB, len) {
-    var o = index[shpA] || (index[shpA] = {});
-    o[shpB] = len + (o[shpB] || 0);
-  }
-};
+  return function(shpId) {
+    tmp = {
+      shape: shpId,
+      weights: [],
+      values: [],
+      group: ''
+    };
+    getNeighbors(shpId, onSharedArc);
+    tmp.group = tmp.values.concat().sort().join('~');
+    return tmp;
+  };
+}

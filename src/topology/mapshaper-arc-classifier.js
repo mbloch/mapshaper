@@ -1,8 +1,16 @@
 /* @requires mapshaper-shape-utils */
 
-// @filter  optional filter function; signature: function(idA, idB or -1):bool
-internal.getArcClassifier = function(shapes, arcs, filter) {
-  var n = arcs.size(),
+// Returns a function for constructing a query function that accepts an arc id and
+// returns information about the polygon or polygons that use the given arc.
+// TODO: explain this better.
+//
+// options:
+//   filter: optional filter function; signature: function(idA, idB or -1) : boolean
+//   reusable: flag that lets an arc be queried multiple times.
+internal.getArcClassifier = function(shapes, arcs) {
+  var opts = arguments[2] || {},
+      useOnce = !opts.reusable,
+      n = arcs.size(),
       a = new Int32Array(n),
       b = new Int32Array(n);
 
@@ -30,11 +38,14 @@ internal.getArcClassifier = function(shapes, arcs, filter) {
     var key;
     if (shpA == -1) return null;
     key = getKey(shpA, shpB);
-    if (!key) return null;
-    a[i] = -1;
-    b[i] = -1;
+    if (key === null || key === false) return null;
+    if (useOnce) {
+      // arc can only be queried once
+      a[i] = -1;
+      b[i] = -1;
+    }
     // use optional filter to exclude some arcs
-    if (filter && !filter(shpA, shpB)) return null;
+    if (opts.filter && !opts.filter(shpA, shpB)) return null;
     return key;
   }
 
