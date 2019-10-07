@@ -1,3 +1,6 @@
+v0.4.136
+* Improvements to -data-fill and -fuzzy-join
+
 v0.4.135
 * [shapefile] If a projection has no known WKT definition, generate a fallback .prj file with an embedded Proj.4 string (readable by QGIS and gdal but not ArcGIS).
 
