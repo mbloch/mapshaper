@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.136';
+VERSION = '0.4.137';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -3915,6 +3915,19 @@ internal.getUniqFieldNames = function(fields, maxLen) {
     used[validName] = true;
     return validName;
   });
+};
+
+internal.getUniqFieldValues = function(records, field) {
+  var index = {};
+  var values = [];
+  records.forEach(function(rec) {
+    var val = rec[field];
+    if (val in index === false) {
+      index[val] = true;
+      values.push(val);
+    }
+  });
+  return values;
 };
 
 // Truncate and/or uniqify a name (if relevant params are present)
@@ -7922,7 +7935,7 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 };
 
-// Return unsigned distance of a point to a shape
+// Return unsigned distance of a point to the nearest point on a polygon or path
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   var minDist = (shp || []).reduce(function(minDist, ids) {
@@ -13035,7 +13048,7 @@ internal.getMaxValue = function(values) {
 internal.getCountDataSummary = function(o) {
   var counts = o.counts;
   var values = o.values;
-  var maxCount = internal.getMaxValue(counts);
+  var maxCount = counts.length > 0 ? internal.getMaxValue(counts) : 0;
   var nextCount = 0;
   var modes = [];
   var i, count;
@@ -13276,7 +13289,6 @@ internal.getMultiFieldKeyFunction = function(fields) {
     return partial ? function(rec) {return partial(rec) + '~~' + strval(rec);} : strval;
   }, null);
 };
-
 
 // Return an array of data records for a set of aggregated features
 //
@@ -15268,7 +15280,7 @@ utils.getClassId = function(val, breaks) {
 // This function creates a continuous mosaic of data values in a
 // given field by assigning data from adjacent polygon features to polygons
 // that contain null values.
-// The 'postprocess' option tries to smooth the output by removing data islands
+// The 'contiguous' option removes data islands to create contiguous groups
 // that are likely to be the result of unreliable data (e.g. faulty geocodes).
 
 api.dataFill = function(lyr, arcs, opts) {
@@ -15277,10 +15289,9 @@ api.dataFill = function(lyr, arcs, opts) {
   if (!lyr.data || !lyr.data.fieldExists(field)) stop("Layer is missing field:", field);
   if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
   var getNeighbors = internal.getNeighborLookupFunction(lyr, arcs);
-  var loopCount = 0;
-  var fillCount;
+  var fillCount, islandCount;
 
-  // get function to check if a shape was initially empty
+  // get function to check if a shape was empty before data-fill
   var initiallyEmpty = (function() {
     var flags = lyr.data.getRecords().map(function(rec) {
       return internal.isEmptyValue(rec[field]);
@@ -15289,81 +15300,20 @@ api.dataFill = function(lyr, arcs, opts) {
   }());
 
   // step one: fill empty units
-  do {
-    fillCount = internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
-  } while (fillCount > 0 && ++loopCount < 10);
+  fillCount = internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
 
   // step two: smooth perimeters
   internal.dataFillSmooth(field, lyr, arcs, getNeighbors, initiallyEmpty);
 
-  // step three: remove data inclusions
-  if (opts.postprocess) {
-    internal.dataFillIslands(field, lyr, arcs, getNeighbors);
+  // step three: remove non-contiguous data islands
+  if (opts.contiguous) {
+    islandCount = internal.dataFillIslandGroups(field, lyr, arcs, getNeighbors, opts);
   }
-};
 
-// TODO: think of edge cases where this might now work well... e.g. donut shapes
-internal.dataFillIslands = function(field, lyr, arcs, getNeighbors) {
-  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
-  var areas = {}; // total area of each group
-  var islands = [];
-  var records = lyr.data.getRecords();
-  var updates = 0;
-
-  lyr.shapes.forEach(function(shp, i) {
-    var data = onShape(i);
-    var area = geom.getShapeArea(shp, arcs);
-    var val = records[i][field];
-    if (internal.isEmptyValue(val)) return;
-    if (val in areas === false) areas[val] = 0;
-    areas[val] += area;
-    if (data.values.length > 0 && data.values.indexOf(val) === -1) {
-      // counts as island if it
-      // a. has neighbors with data and
-      // b. neighbors have different data
-      data.area = area;
-      islands.push(data);
-    }
-  });
-
-  // fill small islands
-  islands.forEach(function(data) {
-    var val = records[data.shape][field];
-    var pct = data.area / areas[val];
-    // don't remove islands that represent a large portion of this value's area
-    if (pct > 0.3) return;
-    records[data.shape][field] = internal.getMaxWeightValue(data);
-    updates++;
-  });
-  return updates;
-};
-
-// Try to smooth out jaggedness resulting from filling empty units
-// This function assigns a different adjacent data value to formerly empty units,
-// if this would produce a shorter boundary.
-internal.dataFillSmooth = function(field, lyr, arcs, getNeighbors, wasEmpty) {
-  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
-  var records = lyr.data.getRecords();
-  var updates = 0;
-  lyr.shapes.forEach(function(shp, i) {
-    if (!wasEmpty(i)) return; // only edit shapes that were originally empty
-    var data = onShape(i);
-    if (data.values.length < 2) return; // no other values are available
-    var currVal = records[i][field];
-    var topVal = internal.getMaxWeightValue(data);
-    if (currVal != topVal) {
-      records[i][field] = topVal;
-      updates++;
-    }
-  });
-  return updates;
-};
-
-// Return value with the greatest weight from a datafill object
-internal.getMaxWeightValue = function(d) {
-  var maxWeight = Math.max.apply(null, d.weights);
-  var i = d.weights.indexOf(maxWeight);
-  return d.values[i]; // return highest weighted value
+  message('Filled', fillCount, 'empty polygons' + utils.pluralSuffix(fillCount));
+  if (islandCount > 0) {
+    message('Removed', islandCount, 'non-contiguous polygon group' + utils.pluralSuffix(islandCount));
+  }
 };
 
 // Assign values to units without data, using the values of neighboring units.
@@ -15417,7 +15367,133 @@ internal.dataFillEmpty = function(field, lyr, arcs, getNeighbors) {
     }
   }
 
+  if (assignCount > 0) {
+    // recursively fill empty neighbors of the newly filled shapes
+    assignCount += internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
+  }
   return assignCount;
+};
+
+
+// Try to smooth out jaggedness resulting from filling empty units
+// This function assigns a different adjacent data value to formerly empty units,
+// if this would produce a shorter boundary.
+internal.dataFillSmooth = function(field, lyr, arcs, getNeighbors, wasEmpty) {
+  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
+  var records = lyr.data.getRecords();
+  var updates = 0;
+  lyr.shapes.forEach(function(shp, i) {
+    if (!wasEmpty(i)) return; // only edit shapes that were originally empty
+    var data = onShape(i);
+    if (data.values.length < 2) return; // no other values are available
+    var currVal = records[i][field];
+    var topVal = internal.getMaxWeightValue(data);
+    if (currVal != topVal) {
+      records[i][field] = topVal;
+      updates++;
+    }
+  });
+  return updates;
+};
+
+// Remove less-important data islands to ensure that data groups are contiguous
+//
+internal.dataFillIslandGroups = function(field, lyr, arcs, getNeighbors, opts) {
+  var records = lyr.data.getRecords();
+  var groupsByValue = {}; // array of group objects, indexed by data values
+  var unitIndex = new Uint8Array(lyr.shapes.length);
+  var currGroup = null;
+  var islandCount = 0;
+  var weightField = opts.weight_field || null;
+
+  if (weightField &&  !lyr.data.fieldExists(weightField)) {
+    stop('Field not found:', weightField);
+  }
+
+  // 1. form groups of contiguous units with the same attribute value
+  lyr.shapes.forEach(function(shp, shpId) {
+    onShape(shpId);
+  });
+
+  // 2. retain the most important group for each value; discard satellite groups
+  Object.keys(groupsByValue).forEach(function(val) {
+    var groups = groupsByValue[val];
+    var maxIdx;
+    if (groups.length < 2) return;
+    maxIdx = internal.indexOfMaxValue(groups, 'weight');
+    if (maxIdx == -1) return; // error condition...
+    groups
+      .filter(function(group, i) {return i != maxIdx;})
+      .forEach(clearIslandGroup);
+  });
+
+  // 3. fill gaps left by removing groups
+  if (islandCount > 0) {
+    internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
+  }
+  return islandCount;
+
+  function clearIslandGroup(group) {
+    islandCount++;
+    group.shapes.forEach(function(shpId) {
+      records[shpId][field] = null;
+    });
+  }
+
+  function onShape(shpId) {
+    if (unitIndex[shpId] == 1) return; // already added to a group
+    var val = records[shpId][field];
+    var firstShape = false;
+    if (internal.isEmptyValue(val)) return;
+    if (!currGroup) {
+      // start a new group
+      firstShape = true;
+      currGroup = {
+        value: val,
+        shapes: [],
+        weight: 0
+      };
+      if (val in groupsByValue === false) {
+        groupsByValue[val] = [];
+      }
+      groupsByValue[val].push(currGroup);
+    } else if (val != currGroup.value) {
+      return;
+    }
+    if (weightField) {
+      currGroup.weight += records[shpId][weightField];
+    } else {
+      currGroup.weight += geom.getShapeArea(lyr.shapes[shpId], arcs);
+    }
+    currGroup.shapes.push(shpId);
+    unitIndex[shpId] = 1;
+    // TODO: consider switching from depth-first traversal to breadth-first
+    getNeighbors(shpId).forEach(onShape);
+    if (firstShape) {
+      currGroup = null;
+    }
+  }
+};
+
+
+// Return value with the greatest weight from a datafill object
+internal.getMaxWeightValue = function(d) {
+  var maxWeight = Math.max.apply(null, d.weights);
+  var i = d.weights.indexOf(maxWeight);
+  return d.values[i]; // return highest weighted value
+};
+
+// TODO: move to a more sensible file... mapshaper-calc-utils?
+internal.indexOfMaxValue = function(arr, key) {
+  var maxWeight = -Infinity;
+  var idx = -1;
+  arr.forEach(function(o, i) {
+    if (o.weight > maxWeight) {
+      idx = i;
+      maxWeight = o.weight;
+    }
+  });
+  return idx;
 };
 
 internal.isEmptyValue = function(val) {
@@ -15441,16 +15517,18 @@ function getDataFillCalculator(field, lyr, arcs, getNeighbors) {
   var tmp;
 
   function onSharedArc(nabeId, arcId) {
+    var weight, i;
     var val = records[nabeId][field];
-    // console.log("nabe:", nabeId, "val:", val)
     if (internal.isEmptyValue(val)) return;
-    var len = geom.calcPathLen([arcId], arcs, !isPlanar);
-    var i = tmp.values.indexOf(val);
+    // weight is the length of the shared border
+    // TODO: consider support for alternate weighting schemes
+    weight = geom.calcPathLen([arcId], arcs, !isPlanar);
+    i = tmp.values.indexOf(val);
     if (i == -1) {
       tmp.values.push(val);
-      tmp.weights.push(len);
+      tmp.weights.push(weight);
     } else {
-      tmp.weights[i] += len;
+      tmp.weights[i] += weight;
     }
   }
 
@@ -19739,92 +19817,58 @@ api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
   }
   internal.requirePolygonLayer(polygonLyr);
   if (opts.dedup_points) {
-    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + d["' + opts.field + '"]'});
+    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + d["' + opts.field + '"]', verbose: false});
   }
   internal.fuzzyJoin(polygonLyr, arcs, pointLyr, opts);
 };
 
 internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
   var field = opts.field;
-  var getNeighbors = internal.getNeighborLookupFunction(polygonLyr, arcs);
-  var getPointIds = internal.getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, opts);
+  // using first_match param: don't let a point be assigned to multiple polygons
+  var getPointIds = internal.getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, {first_match: true});
   var getFieldValues = internal.getFieldValuesFunction(pointLyr, field);
-  var unassignedData = [];
   var assignedValues = [];
-  var lowDataIds = [];
-  var noDataIds = [];
+  var countData = [];
+  var modeCounts = [];
 
-  // first pass: assign high-confidence values, retain low-confidence data
+  // Step one: assign join values to mode value; resolve ties
   polygonLyr.shapes.forEach(function(shp, i) {
-    var values = getFieldValues(getPointIds(i) || []);
+    var pointIds = getPointIds(i) || [];
+    var values = getFieldValues(pointIds);
     var modeData = internal.getModeData(values, true);
-    var modeValue = modeData.modes.length > 0 ? modeData.modes[0] : null;
-    // TODO: remove hard-coded margin for establishing high confidence
-    var isHighConfidence = modeValue !== null && modeData.margin > 2;
-    var isLowConfidence = !isHighConfidence && modeData.count > 1;  // using count, not margin
-
-    assignedValues.push(isHighConfidence ? modeValue : null);
-    unassignedData.push(isHighConfidence ? null : modeData);
-
-    if (isLowConfidence) {
-      lowDataIds.push(i);
-    } else if (!isHighConfidence) {
-      noDataIds.push(i);
+    var modeValue = modeData.margin > 0 ? modeData.modes[0] : null;
+    var isTie = modeValue === null && modeData.modes.length > 1;
+    if (isTie) {
+      // resolve ties by picking between the candidate data values
+      // todo: consider using this method to evaluate near-ties as well
+      modeValue = internal.resolveFuzzyJoinTie(modeData.modes, pointLyr, pointIds, field, shp, arcs);
     }
+    modeCounts[i] = modeData.count || 0;
+    // retain count/mode data, to use later for restoring dropouts
+    if (opts.no_dropouts) {
+      countData.push(modeData);
+    }
+    assignedValues.push(modeValue);
   });
 
-  // second pass: add strength to low-confidence counts that are bordered by high-confidence shapes
-  lowDataIds.forEach(function(shpId) {
-    var nabes = getNeighbors(shpId);
-    nabes.forEach(function(nabeId) {
-      borrowStrength(shpId, nabeId);
-    });
-    // update mode data
-    var countData = unassignedData[shpId];
-    var modeData = internal.getCountDataSummary(countData);
-    if (modeData.margin > 0) {
-      // Assign values to units with a mode value (most common value)
-      assignedValues[shpId] = modeData.modes[0];
-    } else {
-      // Units without a mode have no value... these get filled below, using
-      // values from adjacent units.
-      noDataIds.push(shpId);
-    }
-    unassignedData[shpId] = null; // done with this data
-  });
-
+  internal.insertFieldValues(polygonLyr, 'join-count', modeCounts);
   internal.insertFieldValues(polygonLyr, field, assignedValues);
 
-  // fill in missing values using the data-fill function
-  if (noDataIds.length > 0) {
-    api.dataFill(polygonLyr, arcs, {field: field});
-  }
+  // fill in missing values, etc. using the data-fill function
+  api.dataFill(polygonLyr, arcs,
+    {field: field, weight_field: 'join-count', contiguous: opts.contiguous});
 
-  // remove suspicious data islands (assumed to be caused by geocoding errors, etc)
-  if (opts.postprocess) {
-    internal.dataFillIslands(field, polygonLyr, arcs, getNeighbors);
-  }
-
-  // shpA: id of a low-confidence shape
-  // shpB: id of a neighbor shape
-  function borrowStrength(shpA, shpB) {
-    var val = assignedValues[shpB];
-    if (val === null) return;
-    var data = unassignedData[shpA];
-    var counts = data.counts;
-    var values = data.values;
-    var weight = 2;
-    var i = values.indexOf(val);
-    if (i == -1) {
-      values.push(val);
-      counts.push(weight);
-    } else {
-      counts[i] += weight;
+  // restore dropouts
+  if (opts.no_dropouts) {
+    var missingValues = internal.findDropoutValues(polygonLyr, pointLyr, field);
+    if (missingValues.length > 0) {
+      restoreDropoutValues(polygonLyr, field, missingValues, countData);
     }
   }
+
 };
 
-// receive array of feature ids, array of values from a data field
+// Returns a function for converting an array of feature ids to an array of values from a given data field.
 internal.getFieldValuesFunction = function(lyr, field) {
   var records = lyr.data.getRecords();
   return function getFieldValues(ids) {
@@ -19835,6 +19879,78 @@ internal.getFieldValuesFunction = function(lyr, field) {
     }
     return values;
   };
+};
+
+internal.findDropoutValues = function(targetLyr, sourceLyr, field) {
+  var sourceValues = internal.getUniqFieldValues(sourceLyr.data.getRecords(), field);
+  var targetValues = internal.getUniqFieldValues(targetLyr.data.getRecords(), field);
+  var missing = utils.difference(sourceValues, targetValues);
+  return missing;
+};
+
+function restoreDropoutValues(lyr, field, missingValues, countData) {
+  var records = lyr.data.getRecords();
+  var failures = [];
+  var restoredIds = [];
+
+  var targetIds = missingValues.map(function(missingValue) {
+    var shpId = internal.findDropoutInsertionShape(missingValue, countData);
+    if (shpId > -1 && restoredIds.indexOf(shpId) === -1) {
+      records[shpId][field] = missingValue;
+      restoredIds.push(shpId);
+    } else {
+      failures.push(missingValue);
+    }
+  });
+
+  message('Restored', restoredIds.length, 'dropout value' + utils.pluralSuffix(restoredIds.length));
+
+  // TODO: handle different kinds of failure differently:
+  // a. values that point-to-polygon failed to match to a polygon
+  // b. multiple dropout values are assigned to the same target polygon
+  // c. restoring a dropout results in replacing the only instance of another value
+  if (failures.length > 0) {
+    message('Failed to restore dropout value(s):', failures.join(', '));
+  }
+}
+
+internal.findDropoutInsertionShape = function(value, countData) {
+  var id = -1;
+  var count = 0;
+  countData.forEach(function(d, shpId) {
+    var i = d.values.indexOf(value);
+    var n = i > -1 ? d.counts[i] : 0;
+    if (n > count) {
+      id = shpId;
+      count = n;
+    }
+  });
+  return id;
+};
+
+// TODO: move to more appropriate file
+internal.getPointsToPolygonDistance = function(points, poly, arcs) {
+  // todo: handle multipoint geometry (this function will return an invalid distance
+  // if the first point in a multipoint feature falls outside the target polygon
+  var p = points[0];
+  // unsigned distance to nearest polygon boundary
+  return geom.getPointToShapeDistance(p[0], p[1], poly, arcs);
+};
+
+internal.resolveFuzzyJoinTie = function(modeValues, pointLyr, pointIds, field, shp, arcs) {
+  var weights = modeValues.map(function() {return 0;}); // initialize to 0
+  pointIds.forEach(function(pointId) {
+    var coords = pointLyr.shapes[pointId];
+    var val = pointLyr.data.getRecordAt(pointId)[field];
+    var i = modeValues.indexOf(val);
+    if (i === -1) return;
+    var dist = internal.getPointsToPolygonDistance(coords, shp, arcs);
+    weights[i] += dist;
+  });
+  // use value with the highest weight
+  var maxWeight = Math.max.apply(null, weights);
+  var maxValue = modeValues[weights.indexOf(maxWeight)];
+  return maxValue;
 };
 
 
@@ -20473,6 +20589,7 @@ internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts)
   // Build a reverse lookup table for mapping polygon ids to point ids.
   var joinFunction = internal.getPointToPolygonsFunction(pointLyr, polygonLyr, arcs, opts);
   var index = [];
+  var firstMatch = !!opts.first_match; // a point is assigned to the first matching polygon
   var hits, polygonId;
   pointLyr.shapes.forEach(function(shp, pointId) {
     var polygonIds = joinFunction(pointId);
@@ -20485,6 +20602,7 @@ internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts)
       } else {
         index[polygonId] = [pointId];
       }
+      if (firstMatch) break;
     }
   });
 
@@ -25834,12 +25952,13 @@ internal.getOptionParser = function() {
         '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
   parser.command('data-fill')
-    // .describe('interpolate missing values by copying from neighbor polygons')
+    .describe('fill in missing values in a polygon layer')
     .option('field', {
-      describe: 'name of field to fill out'
+      describe: 'name of field to fill in'
     })
-    .option('postprocess', {
-      describe: 'remove data islands',
+    .option('postprocess', {alias_to: 'contiguous'})
+    .option('contiguous', {
+      describe: 'remove non-contiguous data islands',
       type: 'flag'
     });
 
@@ -25885,8 +26004,13 @@ internal.getOptionParser = function() {
       describe: 'uniqify points with the same location and field value',
       type: 'flag'
     })
-    .option('postprocess', {
-      describe: 'try to clean up small data islands',
+    .option('no-dropouts', {
+      describe: 'try to retain all values from the point layer',
+      type: 'flag'
+    })
+    .option('postprocess', {alias_to: 'contiguous'})
+    .option('contiguous', {
+      describe: 'remove non-contiguous data islands',
       type: 'flag'
     })
     .option('target', targetOpt);
