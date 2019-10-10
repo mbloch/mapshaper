@@ -1141,6 +1141,12 @@ internal.getOptionParser = function() {
     .option('contiguous', {
       describe: 'remove non-contiguous data islands',
       type: 'flag'
+    })
+    // .option('min-weight-pct', {
+    //   describe: 'retain data islands weighted more than this pct'
+    // })
+    .option('weight-field', {
+      describe: 'use field values to calculate data island weights'
     });
 
   parser.command('frame')
