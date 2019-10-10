@@ -1,3 +1,6 @@
+v0.4.137
+* Further improvements to -data-fill and -fuzzy-join. Added 'contiguous' flag to ensure that only the most important one of multiple same-value areas is retained.
+
 v0.4.136
 * Improvements to -data-fill and -fuzzy-join
 
