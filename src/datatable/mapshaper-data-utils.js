@@ -143,6 +143,19 @@ internal.getUniqFieldNames = function(fields, maxLen) {
   });
 };
 
+internal.getUniqFieldValues = function(records, field) {
+  var index = {};
+  var values = [];
+  records.forEach(function(rec) {
+    var val = rec[field];
+    if (val in index === false) {
+      index[val] = true;
+      values.push(val);
+    }
+  });
+  return values;
+};
+
 // Truncate and/or uniqify a name (if relevant params are present)
 internal.adjustFieldName = function(name, maxLen, i) {
   var name2, suff;

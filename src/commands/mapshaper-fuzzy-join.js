@@ -19,92 +19,58 @@ api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
   }
   internal.requirePolygonLayer(polygonLyr);
   if (opts.dedup_points) {
-    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + d["' + opts.field + '"]'});
+    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + d["' + opts.field + '"]', verbose: false});
   }
   internal.fuzzyJoin(polygonLyr, arcs, pointLyr, opts);
 };
 
 internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
   var field = opts.field;
-  var getNeighbors = internal.getNeighborLookupFunction(polygonLyr, arcs);
-  var getPointIds = internal.getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, opts);
+  // using first_match param: don't let a point be assigned to multiple polygons
+  var getPointIds = internal.getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, {first_match: true});
   var getFieldValues = internal.getFieldValuesFunction(pointLyr, field);
-  var unassignedData = [];
   var assignedValues = [];
-  var lowDataIds = [];
-  var noDataIds = [];
+  var countData = [];
+  var modeCounts = [];
 
-  // first pass: assign high-confidence values, retain low-confidence data
+  // Step one: assign join values to mode value; resolve ties
   polygonLyr.shapes.forEach(function(shp, i) {
-    var values = getFieldValues(getPointIds(i) || []);
+    var pointIds = getPointIds(i) || [];
+    var values = getFieldValues(pointIds);
     var modeData = internal.getModeData(values, true);
-    var modeValue = modeData.modes.length > 0 ? modeData.modes[0] : null;
-    // TODO: remove hard-coded margin for establishing high confidence
-    var isHighConfidence = modeValue !== null && modeData.margin > 2;
-    var isLowConfidence = !isHighConfidence && modeData.count > 1;  // using count, not margin
-
-    assignedValues.push(isHighConfidence ? modeValue : null);
-    unassignedData.push(isHighConfidence ? null : modeData);
-
-    if (isLowConfidence) {
-      lowDataIds.push(i);
-    } else if (!isHighConfidence) {
-      noDataIds.push(i);
+    var modeValue = modeData.margin > 0 ? modeData.modes[0] : null;
+    var isTie = modeValue === null && modeData.modes.length > 1;
+    if (isTie) {
+      // resolve ties by picking between the candidate data values
+      // todo: consider using this method to evaluate near-ties as well
+      modeValue = internal.resolveFuzzyJoinTie(modeData.modes, pointLyr, pointIds, field, shp, arcs);
     }
+    modeCounts[i] = modeData.count || 0;
+    // retain count/mode data, to use later for restoring dropouts
+    if (opts.no_dropouts) {
+      countData.push(modeData);
+    }
+    assignedValues.push(modeValue);
   });
 
-  // second pass: add strength to low-confidence counts that are bordered by high-confidence shapes
-  lowDataIds.forEach(function(shpId) {
-    var nabes = getNeighbors(shpId);
-    nabes.forEach(function(nabeId) {
-      borrowStrength(shpId, nabeId);
-    });
-    // update mode data
-    var countData = unassignedData[shpId];
-    var modeData = internal.getCountDataSummary(countData);
-    if (modeData.margin > 0) {
-      // Assign values to units with a mode value (most common value)
-      assignedValues[shpId] = modeData.modes[0];
-    } else {
-      // Units without a mode have no value... these get filled below, using
-      // values from adjacent units.
-      noDataIds.push(shpId);
-    }
-    unassignedData[shpId] = null; // done with this data
-  });
-
+  internal.insertFieldValues(polygonLyr, 'join-count', modeCounts);
   internal.insertFieldValues(polygonLyr, field, assignedValues);
 
-  // fill in missing values using the data-fill function
-  if (noDataIds.length > 0) {
-    api.dataFill(polygonLyr, arcs, {field: field});
-  }
+  // fill in missing values, etc. using the data-fill function
+  api.dataFill(polygonLyr, arcs,
+    {field: field, weight_field: 'join-count', contiguous: opts.contiguous});
 
-  // remove suspicious data islands (assumed to be caused by geocoding errors, etc)
-  if (opts.postprocess) {
-    internal.dataFillIslands(field, polygonLyr, arcs, getNeighbors);
-  }
-
-  // shpA: id of a low-confidence shape
-  // shpB: id of a neighbor shape
-  function borrowStrength(shpA, shpB) {
-    var val = assignedValues[shpB];
-    if (val === null) return;
-    var data = unassignedData[shpA];
-    var counts = data.counts;
-    var values = data.values;
-    var weight = 2;
-    var i = values.indexOf(val);
-    if (i == -1) {
-      values.push(val);
-      counts.push(weight);
-    } else {
-      counts[i] += weight;
+  // restore dropouts
+  if (opts.no_dropouts) {
+    var missingValues = internal.findDropoutValues(polygonLyr, pointLyr, field);
+    if (missingValues.length > 0) {
+      restoreDropoutValues(polygonLyr, field, missingValues, countData);
     }
   }
+
 };
 
-// receive array of feature ids, array of values from a data field
+// Returns a function for converting an array of feature ids to an array of values from a given data field.
 internal.getFieldValuesFunction = function(lyr, field) {
   var records = lyr.data.getRecords();
   return function getFieldValues(ids) {
@@ -115,4 +81,76 @@ internal.getFieldValuesFunction = function(lyr, field) {
     }
     return values;
   };
+};
+
+internal.findDropoutValues = function(targetLyr, sourceLyr, field) {
+  var sourceValues = internal.getUniqFieldValues(sourceLyr.data.getRecords(), field);
+  var targetValues = internal.getUniqFieldValues(targetLyr.data.getRecords(), field);
+  var missing = utils.difference(sourceValues, targetValues);
+  return missing;
+};
+
+function restoreDropoutValues(lyr, field, missingValues, countData) {
+  var records = lyr.data.getRecords();
+  var failures = [];
+  var restoredIds = [];
+
+  var targetIds = missingValues.map(function(missingValue) {
+    var shpId = internal.findDropoutInsertionShape(missingValue, countData);
+    if (shpId > -1 && restoredIds.indexOf(shpId) === -1) {
+      records[shpId][field] = missingValue;
+      restoredIds.push(shpId);
+    } else {
+      failures.push(missingValue);
+    }
+  });
+
+  message('Restored', restoredIds.length, 'dropout value' + utils.pluralSuffix(restoredIds.length));
+
+  // TODO: handle different kinds of failure differently:
+  // a. values that point-to-polygon failed to match to a polygon
+  // b. multiple dropout values are assigned to the same target polygon
+  // c. restoring a dropout results in replacing the only instance of another value
+  if (failures.length > 0) {
+    message('Failed to restore dropout value(s):', failures.join(', '));
+  }
+}
+
+internal.findDropoutInsertionShape = function(value, countData) {
+  var id = -1;
+  var count = 0;
+  countData.forEach(function(d, shpId) {
+    var i = d.values.indexOf(value);
+    var n = i > -1 ? d.counts[i] : 0;
+    if (n > count) {
+      id = shpId;
+      count = n;
+    }
+  });
+  return id;
+};
+
+// TODO: move to more appropriate file
+internal.getPointsToPolygonDistance = function(points, poly, arcs) {
+  // todo: handle multipoint geometry (this function will return an invalid distance
+  // if the first point in a multipoint feature falls outside the target polygon
+  var p = points[0];
+  // unsigned distance to nearest polygon boundary
+  return geom.getPointToShapeDistance(p[0], p[1], poly, arcs);
+};
+
+internal.resolveFuzzyJoinTie = function(modeValues, pointLyr, pointIds, field, shp, arcs) {
+  var weights = modeValues.map(function() {return 0;}); // initialize to 0
+  pointIds.forEach(function(pointId) {
+    var coords = pointLyr.shapes[pointId];
+    var val = pointLyr.data.getRecordAt(pointId)[field];
+    var i = modeValues.indexOf(val);
+    if (i === -1) return;
+    var dist = internal.getPointsToPolygonDistance(coords, shp, arcs);
+    weights[i] += dist;
+  });
+  // use value with the highest weight
+  var maxWeight = Math.max.apply(null, weights);
+  var maxValue = modeValues[weights.indexOf(maxWeight)];
+  return maxValue;
 };

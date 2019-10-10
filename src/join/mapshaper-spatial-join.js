@@ -43,6 +43,7 @@ internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts)
   // Build a reverse lookup table for mapping polygon ids to point ids.
   var joinFunction = internal.getPointToPolygonsFunction(pointLyr, polygonLyr, arcs, opts);
   var index = [];
+  var firstMatch = !!opts.first_match; // a point is assigned to the first matching polygon
   var hits, polygonId;
   pointLyr.shapes.forEach(function(shp, pointId) {
     var polygonIds = joinFunction(pointId);
@@ -55,6 +56,7 @@ internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts)
       } else {
         index[polygonId] = [pointId];
       }
+      if (firstMatch) break;
     }
   });
 

@@ -38,7 +38,7 @@ internal.getMaxValue = function(values) {
 internal.getCountDataSummary = function(o) {
   var counts = o.counts;
   var values = o.values;
-  var maxCount = internal.getMaxValue(counts);
+  var maxCount = counts.length > 0 ? internal.getMaxValue(counts) : 0;
   var nextCount = 0;
   var modes = [];
   var i, count;

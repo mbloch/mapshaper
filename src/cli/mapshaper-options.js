@@ -1133,12 +1133,13 @@ internal.getOptionParser = function() {
         '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
   parser.command('data-fill')
-    // .describe('interpolate missing values by copying from neighbor polygons')
+    .describe('fill in missing values in a polygon layer')
     .option('field', {
-      describe: 'name of field to fill out'
+      describe: 'name of field to fill in'
     })
-    .option('postprocess', {
-      describe: 'remove data islands',
+    .option('postprocess', {alias_to: 'contiguous'})
+    .option('contiguous', {
+      describe: 'remove non-contiguous data islands',
       type: 'flag'
     });
 
@@ -1184,8 +1185,13 @@ internal.getOptionParser = function() {
       describe: 'uniqify points with the same location and field value',
       type: 'flag'
     })
-    .option('postprocess', {
-      describe: 'try to clean up small data islands',
+    .option('no-dropouts', {
+      describe: 'try to retain all values from the point layer',
+      type: 'flag'
+    })
+    .option('postprocess', {alias_to: 'contiguous'})
+    .option('contiguous', {
+      describe: 'remove non-contiguous data islands',
       type: 'flag'
     })
     .option('target', targetOpt);

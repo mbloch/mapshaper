@@ -3,7 +3,7 @@
 // This function creates a continuous mosaic of data values in a
 // given field by assigning data from adjacent polygon features to polygons
 // that contain null values.
-// The 'postprocess' option tries to smooth the output by removing data islands
+// The 'contiguous' option removes data islands to create contiguous groups
 // that are likely to be the result of unreliable data (e.g. faulty geocodes).
 
 api.dataFill = function(lyr, arcs, opts) {
@@ -12,10 +12,9 @@ api.dataFill = function(lyr, arcs, opts) {
   if (!lyr.data || !lyr.data.fieldExists(field)) stop("Layer is missing field:", field);
   if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
   var getNeighbors = internal.getNeighborLookupFunction(lyr, arcs);
-  var loopCount = 0;
-  var fillCount;
+  var fillCount, islandCount;
 
-  // get function to check if a shape was initially empty
+  // get function to check if a shape was empty before data-fill
   var initiallyEmpty = (function() {
     var flags = lyr.data.getRecords().map(function(rec) {
       return internal.isEmptyValue(rec[field]);
@@ -24,81 +23,20 @@ api.dataFill = function(lyr, arcs, opts) {
   }());
 
   // step one: fill empty units
-  do {
-    fillCount = internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
-  } while (fillCount > 0 && ++loopCount < 10);
+  fillCount = internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
 
   // step two: smooth perimeters
   internal.dataFillSmooth(field, lyr, arcs, getNeighbors, initiallyEmpty);
 
-  // step three: remove data inclusions
-  if (opts.postprocess) {
-    internal.dataFillIslands(field, lyr, arcs, getNeighbors);
+  // step three: remove non-contiguous data islands
+  if (opts.contiguous) {
+    islandCount = internal.dataFillIslandGroups(field, lyr, arcs, getNeighbors, opts);
   }
-};
 
-// TODO: think of edge cases where this might now work well... e.g. donut shapes
-internal.dataFillIslands = function(field, lyr, arcs, getNeighbors) {
-  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
-  var areas = {}; // total area of each group
-  var islands = [];
-  var records = lyr.data.getRecords();
-  var updates = 0;
-
-  lyr.shapes.forEach(function(shp, i) {
-    var data = onShape(i);
-    var area = geom.getShapeArea(shp, arcs);
-    var val = records[i][field];
-    if (internal.isEmptyValue(val)) return;
-    if (val in areas === false) areas[val] = 0;
-    areas[val] += area;
-    if (data.values.length > 0 && data.values.indexOf(val) === -1) {
-      // counts as island if it
-      // a. has neighbors with data and
-      // b. neighbors have different data
-      data.area = area;
-      islands.push(data);
-    }
-  });
-
-  // fill small islands
-  islands.forEach(function(data) {
-    var val = records[data.shape][field];
-    var pct = data.area / areas[val];
-    // don't remove islands that represent a large portion of this value's area
-    if (pct > 0.3) return;
-    records[data.shape][field] = internal.getMaxWeightValue(data);
-    updates++;
-  });
-  return updates;
-};
-
-// Try to smooth out jaggedness resulting from filling empty units
-// This function assigns a different adjacent data value to formerly empty units,
-// if this would produce a shorter boundary.
-internal.dataFillSmooth = function(field, lyr, arcs, getNeighbors, wasEmpty) {
-  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
-  var records = lyr.data.getRecords();
-  var updates = 0;
-  lyr.shapes.forEach(function(shp, i) {
-    if (!wasEmpty(i)) return; // only edit shapes that were originally empty
-    var data = onShape(i);
-    if (data.values.length < 2) return; // no other values are available
-    var currVal = records[i][field];
-    var topVal = internal.getMaxWeightValue(data);
-    if (currVal != topVal) {
-      records[i][field] = topVal;
-      updates++;
-    }
-  });
-  return updates;
-};
-
-// Return value with the greatest weight from a datafill object
-internal.getMaxWeightValue = function(d) {
-  var maxWeight = Math.max.apply(null, d.weights);
-  var i = d.weights.indexOf(maxWeight);
-  return d.values[i]; // return highest weighted value
+  message('Filled', fillCount, 'empty polygons' + utils.pluralSuffix(fillCount));
+  if (islandCount > 0) {
+    message('Removed', islandCount, 'non-contiguous polygon group' + utils.pluralSuffix(islandCount));
+  }
 };
 
 // Assign values to units without data, using the values of neighboring units.
@@ -152,7 +90,133 @@ internal.dataFillEmpty = function(field, lyr, arcs, getNeighbors) {
     }
   }
 
+  if (assignCount > 0) {
+    // recursively fill empty neighbors of the newly filled shapes
+    assignCount += internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
+  }
   return assignCount;
+};
+
+
+// Try to smooth out jaggedness resulting from filling empty units
+// This function assigns a different adjacent data value to formerly empty units,
+// if this would produce a shorter boundary.
+internal.dataFillSmooth = function(field, lyr, arcs, getNeighbors, wasEmpty) {
+  var onShape = getDataFillCalculator(field, lyr, arcs, getNeighbors);
+  var records = lyr.data.getRecords();
+  var updates = 0;
+  lyr.shapes.forEach(function(shp, i) {
+    if (!wasEmpty(i)) return; // only edit shapes that were originally empty
+    var data = onShape(i);
+    if (data.values.length < 2) return; // no other values are available
+    var currVal = records[i][field];
+    var topVal = internal.getMaxWeightValue(data);
+    if (currVal != topVal) {
+      records[i][field] = topVal;
+      updates++;
+    }
+  });
+  return updates;
+};
+
+// Remove less-important data islands to ensure that data groups are contiguous
+//
+internal.dataFillIslandGroups = function(field, lyr, arcs, getNeighbors, opts) {
+  var records = lyr.data.getRecords();
+  var groupsByValue = {}; // array of group objects, indexed by data values
+  var unitIndex = new Uint8Array(lyr.shapes.length);
+  var currGroup = null;
+  var islandCount = 0;
+  var weightField = opts.weight_field || null;
+
+  if (weightField &&  !lyr.data.fieldExists(weightField)) {
+    stop('Field not found:', weightField);
+  }
+
+  // 1. form groups of contiguous units with the same attribute value
+  lyr.shapes.forEach(function(shp, shpId) {
+    onShape(shpId);
+  });
+
+  // 2. retain the most important group for each value; discard satellite groups
+  Object.keys(groupsByValue).forEach(function(val) {
+    var groups = groupsByValue[val];
+    var maxIdx;
+    if (groups.length < 2) return;
+    maxIdx = internal.indexOfMaxValue(groups, 'weight');
+    if (maxIdx == -1) return; // error condition...
+    groups
+      .filter(function(group, i) {return i != maxIdx;})
+      .forEach(clearIslandGroup);
+  });
+
+  // 3. fill gaps left by removing groups
+  if (islandCount > 0) {
+    internal.dataFillEmpty(field, lyr, arcs, getNeighbors);
+  }
+  return islandCount;
+
+  function clearIslandGroup(group) {
+    islandCount++;
+    group.shapes.forEach(function(shpId) {
+      records[shpId][field] = null;
+    });
+  }
+
+  function onShape(shpId) {
+    if (unitIndex[shpId] == 1) return; // already added to a group
+    var val = records[shpId][field];
+    var firstShape = false;
+    if (internal.isEmptyValue(val)) return;
+    if (!currGroup) {
+      // start a new group
+      firstShape = true;
+      currGroup = {
+        value: val,
+        shapes: [],
+        weight: 0
+      };
+      if (val in groupsByValue === false) {
+        groupsByValue[val] = [];
+      }
+      groupsByValue[val].push(currGroup);
+    } else if (val != currGroup.value) {
+      return;
+    }
+    if (weightField) {
+      currGroup.weight += records[shpId][weightField];
+    } else {
+      currGroup.weight += geom.getShapeArea(lyr.shapes[shpId], arcs);
+    }
+    currGroup.shapes.push(shpId);
+    unitIndex[shpId] = 1;
+    // TODO: consider switching from depth-first traversal to breadth-first
+    getNeighbors(shpId).forEach(onShape);
+    if (firstShape) {
+      currGroup = null;
+    }
+  }
+};
+
+
+// Return value with the greatest weight from a datafill object
+internal.getMaxWeightValue = function(d) {
+  var maxWeight = Math.max.apply(null, d.weights);
+  var i = d.weights.indexOf(maxWeight);
+  return d.values[i]; // return highest weighted value
+};
+
+// TODO: move to a more sensible file... mapshaper-calc-utils?
+internal.indexOfMaxValue = function(arr, key) {
+  var maxWeight = -Infinity;
+  var idx = -1;
+  arr.forEach(function(o, i) {
+    if (o.weight > maxWeight) {
+      idx = i;
+      maxWeight = o.weight;
+    }
+  });
+  return idx;
 };
 
 internal.isEmptyValue = function(val) {
@@ -176,16 +240,18 @@ function getDataFillCalculator(field, lyr, arcs, getNeighbors) {
   var tmp;
 
   function onSharedArc(nabeId, arcId) {
+    var weight, i;
     var val = records[nabeId][field];
-    // console.log("nabe:", nabeId, "val:", val)
     if (internal.isEmptyValue(val)) return;
-    var len = geom.calcPathLen([arcId], arcs, !isPlanar);
-    var i = tmp.values.indexOf(val);
+    // weight is the length of the shared border
+    // TODO: consider support for alternate weighting schemes
+    weight = geom.calcPathLen([arcId], arcs, !isPlanar);
+    i = tmp.values.indexOf(val);
     if (i == -1) {
       tmp.values.push(val);
-      tmp.weights.push(len);
+      tmp.weights.push(weight);
     } else {
-      tmp.weights[i] += len;
+      tmp.weights[i] += weight;
     }
   }
 

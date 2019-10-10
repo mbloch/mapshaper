@@ -138,7 +138,7 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 };
 
-// Return unsigned distance of a point to a shape
+// Return unsigned distance of a point to the nearest point on a polygon or path
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   var minDist = (shp || []).reduce(function(minDist, ids) {

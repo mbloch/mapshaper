@@ -41,7 +41,7 @@ describe('mapshaper-data-fill.js', function () {
 
   })
 
-  it('postprocess does not remove ordinary islands', function(done) {
+  it('contiguous option does not remove ordinary islands', function(done) {
     //
     //  . --------- .
     //  |           |
@@ -70,7 +70,7 @@ describe('mapshaper-data-fill.js', function () {
       }]
     };
 
-    api.applyCommands('-i polygons.json -data-fill field=state postprocess -o',
+    api.applyCommands('-i polygons.json -data-fill field=state contiguous -o',
       {'polygons.json': input}, function(err, output) {
         var features = JSON.parse(output['polygons.json']).features;
         assert.equal(features[0].properties.state, 'outer');
@@ -81,7 +81,7 @@ describe('mapshaper-data-fill.js', function () {
   });
 
 
-  it('postprocess removes breakaway islands', function(done) {
+  it('contiguous removes breakaway islands', function(done) {
     //
     // . --------------- .
     // |                 |
@@ -121,7 +121,7 @@ describe('mapshaper-data-fill.js', function () {
       }]
     };
 
-    api.applyCommands('-i polygons.json -data-fill field=state postprocess -o',
+    api.applyCommands('-i polygons.json -data-fill field=state contiguous -o',
       {'polygons.json': input}, function(err, output) {
         var features = JSON.parse(output['polygons.json']).features;
         assert.equal(features[0].properties.state, 'a');

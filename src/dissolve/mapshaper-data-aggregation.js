@@ -30,7 +30,6 @@ internal.getMultiFieldKeyFunction = function(fields) {
   }, null);
 };
 
-
 // Return an array of data records for a set of aggregated features
 //
 // @records input records
