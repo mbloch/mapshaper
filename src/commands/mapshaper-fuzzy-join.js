@@ -19,7 +19,7 @@ api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
   }
   internal.requirePolygonLayer(polygonLyr);
   if (opts.dedup_points) {
-    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + d["' + opts.field + '"]', verbose: false});
+    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + this.properties[' + JSON.stringify(opts.field) + ']', verbose: false});
   }
   internal.fuzzyJoin(polygonLyr, arcs, pointLyr, opts);
 };

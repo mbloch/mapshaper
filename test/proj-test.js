@@ -1,8 +1,22 @@
 
 var assert = require('assert');
 var api = require("..");
+var helpers = require('./helpers');
 
 describe('mapshaper-proj.js', function() {
+  describe('-proj EPSG:XXXX form works', function () {
+    it('-proj EPSG:3395', function (done) {
+      var input = 'lat,lng\n0,0';
+      var cmd = '-i point.csv -points -proj EPSG:3395 -o format=geojson';
+      api.applyCommands(cmd, {'point.csv': input}, function(err, out) {
+        var json = JSON.parse(out['point.json']);
+        var xy = json.features[0].geometry.coordinates;
+        helpers.coordinatesAlmostEqual(xy, [0, 0], 1e-9)
+        done();
+      });
+    })
+  })
+
   describe('-proj <alias>', function() {
     it('webmercator alias', function(done) {
       api.applyCommands('-i test/test_data/three_points.shp -proj webmercator -o',

@@ -17,6 +17,10 @@ internal.findProjLibs = function(str) {
   return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
 };
 
+internal.looksLikeInitString = function(str) {
+  return /^(esri|epsg|nad83|nad27):[0-9]+$/i.test(String(str));
+};
+
 // Returns a function for reprojecting [x, y] points; function throws an error
 // if the transformation fails
 // src, dest: proj4 objects
@@ -115,6 +119,8 @@ internal.getProjDefn = function(str) {
     defn = '+proj=' + str;
   } else if (str in internal.projectionAliases) {
     defn = internal.projectionAliases[str];  // defn is a function
+  } else if (internal.looksLikeInitString(str)) {
+    defn = '+init=' + str.toLowerCase();
   } else {
     defn = internal.parseCustomProjection(str);
   }
