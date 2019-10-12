@@ -15,7 +15,22 @@ describe('mapshaper-proj.js', function() {
         done();
       });
     })
+
+    it('-proj from=epsg:4326 epsg:3395', function (done) {
+      var input = 'lat,lng\n-1,1';
+      var cmd = '-i point.csv -points -proj from=epsg:4326 epsg:3395 -o format=geojson';
+      api.applyCommands(cmd, {'point.csv': input}, function(err, out) {
+        var json = JSON.parse(out['point.json']);
+        var xy = json.features[0].geometry.coordinates;
+        // reference coordinates from command line "proj" program
+        helpers.coordinatesAlmostEqual(xy, [111319.49079327357, -110579.96522189587], 1e-9)
+        done();
+      });
+    })
+
   })
+
+
 
   describe('-proj <alias>', function() {
     it('webmercator alias', function(done) {
