@@ -13,6 +13,5 @@ if (memRxp.test(args[0])) {
     process.exit(1);
   }
 }
-console.error("Allocating", gb, "GB of heap memory");
 args = ['--max-old-space-size=' + Math.round(gb * 1000), mapshaper].concat(args);
 require('child_process').spawn(process.argv[0], args, {stdio: 'inherit'});

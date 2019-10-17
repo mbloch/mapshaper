@@ -423,7 +423,42 @@ describe('mapshaper-commands.js', function () {
     })
   })
 
+  describe('runCommandsXL()', function () {
+    it('Works with {xl: "4gb"} option + callback', function(done) {
+      mapshaper.runCommandsXL('test/test_data/three_points.geojson -filter true', {xl: '4gb'}, function(err) {
+        assert(!err);
+        done();
+      });
+    });
+
+    it('Works with no argument', function() {
+      var promise = mapshaper.runCommandsXL('-v');
+      assert(promise.then);
+    });
+
+    it('Works with {xl: 3gb} option + Promise', function() {
+      var promise = mapshaper.runCommandsXL('-v', {xl: "3gb"});
+      assert(promise.then);
+    });
+
+    it('Error on invalid xl option (callback)', function(done) {
+      mapshaper.runCommandsXL('-v', {xl: "1000gb"}, function(err) {
+        assert(!!err);
+        done();
+      });
+    });
+
+    it('Error on invalid xl option (promise)', function(done) {
+      mapshaper.runCommandsXL('-v', {xl: "1000gb"}).then(function() {
+        done(new Error('expected an error'));
+      }).catch(function(e) {
+        done();
+      });
+    });
+  });
+
   describe('runCommands()', function () {
+
     it('Returns a Promise if no callback is passed', function() {
       var promise = mapshaper.runCommands('-v');
       assert(promise.then);

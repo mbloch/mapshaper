@@ -74,6 +74,13 @@ describe('mapshaper-svg-style.js', function () {
   })
 
   describe('svgStyle()', function () {
+    it('label-text expression detection', function() {
+      var records = [{foo: 'a'}, {foo: 'b'}];
+      var lyr = {data: new api.internal.DataTable(records)};
+
+    })
+
+
     it('expressions', function () {
       var records = [{foo: 2, bar: 'a', baz: 'white'}, {foo: 0.5, bar: 'b', baz: 'black'}]
       var lyr = {
