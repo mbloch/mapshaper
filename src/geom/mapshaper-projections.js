@@ -203,7 +203,7 @@ internal.printProjections = function() {
   Object.keys(internal.projectionAliases).sort().forEach(function(n) {
     msg += '\n  ' + n;
   });
-  message(msg);
+  print(msg);
 };
 
 internal.translatePrj = function(str) {

@@ -332,7 +332,7 @@ function CommandParser() {
   };
 
   this.printHelp = function(command) {
-    message(this.getHelpMessage(command));
+    print(this.getHelpMessage(command));
   };
 
   function getCommands() {

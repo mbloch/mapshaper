@@ -5,6 +5,7 @@ var VERSION; // set by build script
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
+  STDOUT: false,
   context: createContext()
 };
 
@@ -94,8 +95,16 @@ function messageArgs(args) {
   return arr;
 }
 
+// print a status message to stderr
 function message() {
   internal.message.apply(null, messageArgs(arguments));
+}
+
+// print a message to stdout
+function print() {
+  internal.STDOUT = true; // tell logArgs() to print to stdout, not stderr
+  message.apply(null, arguments);
+  internal.STDOUT = false;
 }
 
 function verbose() {
@@ -175,7 +184,7 @@ internal.formatStringsAsGrid = function(arr) {
 
 internal.logArgs = function(args) {
   if (internal.LOGGING && !internal.getStateVar('QUIET') && utils.isArrayLike(args)) {
-    (console.error || console.log).call(console, internal.formatLogArgs(args));
+    (!internal.STDOUT && console.error || console.log).call(console, internal.formatLogArgs(args));
   }
 };
 

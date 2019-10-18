@@ -119,7 +119,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' ||
+      if (!(name == 'graticule' || name == 'i' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
           name == 'polygon-grid' || name == 'include')) {
         throw new UserError("No data is available");
@@ -200,9 +200,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
-
-    } else if (name == 'help') {
-      internal.getOptionParser().printHelp(opts.command);
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();

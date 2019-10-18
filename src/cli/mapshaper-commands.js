@@ -308,11 +308,13 @@ internal.readAndRemoveSettings = function(commands) {
 internal.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(internal.VERSION);
+      print(internal.VERSION);
     } else if (cmd.name == 'encodings') {
       internal.printEncodings();
     } else if (cmd.name == 'projections') {
       internal.printProjections();
+    } else if (cmd.name == 'help') {
+      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }

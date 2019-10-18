@@ -126,5 +126,5 @@ internal.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
+  print("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
 };
