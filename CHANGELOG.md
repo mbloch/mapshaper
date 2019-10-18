@@ -1,3 +1,6 @@
+v0.4.140
+* Fix error in web UI.
+
 v0.4.139
 * Send output of -version, -help and some other informational commands to stdout, not stderr.
 
