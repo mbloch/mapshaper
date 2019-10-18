@@ -1,3 +1,6 @@
+v0.4.139
+* Send output of -version, -help and some other informational commands to stdout, not stderr.
+
 v0.4.138
 * Added runCommandsXL() function to Mapshaper's Node API, for running commands with more memory.
 
