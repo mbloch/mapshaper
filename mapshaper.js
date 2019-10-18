@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.138';
+VERSION = '0.4.139';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1492,6 +1492,7 @@ var VERSION; // set by build script
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
+  STDOUT: false,
   context: createContext()
 };
 
@@ -1581,8 +1582,16 @@ function messageArgs(args) {
   return arr;
 }
 
+// print a status message to stderr
 function message() {
   internal.message.apply(null, messageArgs(arguments));
+}
+
+// print a message to stdout
+function print() {
+  internal.STDOUT = true; // tell logArgs() to print to stdout, not stderr
+  message.apply(null, arguments);
+  internal.STDOUT = false;
 }
 
 function verbose() {
@@ -1662,7 +1671,7 @@ internal.formatStringsAsGrid = function(arr) {
 
 internal.logArgs = function(args) {
   if (internal.LOGGING && !internal.getStateVar('QUIET') && utils.isArrayLike(args)) {
-    (console.error || console.log).call(console, internal.formatLogArgs(args));
+    (!internal.STDOUT && console.error || console.log).call(console, internal.formatLogArgs(args));
   }
 };
 
@@ -4088,7 +4097,7 @@ internal.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
+  print("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
 };
 
 
@@ -6234,7 +6243,7 @@ internal.printProjections = function() {
   Object.keys(internal.projectionAliases).sort().forEach(function(n) {
     msg += '\n  ' + n;
   });
-  message(msg);
+  print(msg);
 };
 
 internal.translatePrj = function(str) {
@@ -23871,7 +23880,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'help' || name == 'graticule' || name == 'i' ||
+      if (!(name == 'graticule' || name == 'i' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
           name == 'polygon-grid' || name == 'include')) {
         throw new UserError("No data is available");
@@ -23952,9 +23961,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
-
-    } else if (name == 'help') {
-      internal.getOptionParser().printHelp(opts.command);
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
@@ -24542,7 +24548,7 @@ function CommandParser() {
   };
 
   this.printHelp = function(command) {
-    message(this.getHelpMessage(command));
+    print(this.getHelpMessage(command));
   };
 
   function getCommands() {
@@ -26737,11 +26743,13 @@ internal.readAndRemoveSettings = function(commands) {
 internal.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(internal.VERSION);
+      print(internal.VERSION);
     } else if (cmd.name == 'encodings') {
       internal.printEncodings();
     } else if (cmd.name == 'projections') {
       internal.printProjections();
+    } else if (cmd.name == 'help') {
+      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }
