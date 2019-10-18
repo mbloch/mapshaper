@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.139';
+VERSION = '0.4.140';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -26630,7 +26630,9 @@ internal.runParsedCommands = function(commands, catalog, cb) {
     return done(new UserError("No commands to run"));
   }
   commands = internal.readAndRemoveSettings(commands);
-  internal.printStartupMessages();
+  if (!internal.runningInBrowser()) {
+    internal.printStartupMessages();
+  }
   commands = internal.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
     return done(null);
