@@ -653,10 +653,6 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('target', targetOpt);
 
-  parser.command('mosaic')
-    .option('debug', {type: 'flag'})
-    .option('target', targetOpt);
-
   parser.command('overlay')
     // .describe('convert polygons to polylines along shared edges')
     .option('source', {
@@ -1200,6 +1196,12 @@ internal.getOptionParser = function() {
       describe: 'remove non-contiguous data islands',
       type: 'flag'
     })
+    .option('target', targetOpt);
+
+  parser.command('mosaic')
+    .describe('flatten a polygon layer by converting overlaps to separate polygons')
+    .option('debug', {type: 'flag'})
+    .option('name', nameOpt)
     .option('target', targetOpt);
 
   parser.command('polygons')

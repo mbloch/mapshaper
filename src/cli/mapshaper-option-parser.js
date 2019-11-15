@@ -272,9 +272,9 @@ function CommandParser() {
       } else if (opt.label) {
         lines.push([opt.label, description]);
       } else if (opt.name == cmd.default) {
-        label = '<' + opt.name + '>';
+        label = opt.name + '=';
+        lines.push(['<' + opt.name + '>', 'shortcut for ' + label]);
         lines.push([label, description]);
-        lines.push([opt.name + '=', 'equivalent to ' + label]);
       } else {
         label = opt.name;
         if (opt.alias) label += ', ' + opt.alias;
