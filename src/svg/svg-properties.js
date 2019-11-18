@@ -118,6 +118,10 @@ internal.parseSvgLiteralValue = function(strVal, type, fields) {
   return val;
 };
 
+internal.looksLikeExpression = function(str) {
+
+};
+
 internal.isDashArray = function(str) {
   return /^[0-9]+( [0-9]+)*$/.test(str);
 };

@@ -34,6 +34,7 @@ function RepairControl(gui) {
     showIntersections(fixed, _currArcs);
     repairBtn.addClass('disabled');
     model.updated({repair: true});
+    gui.session.simplificationRepair();
   });
 
   function hide() {

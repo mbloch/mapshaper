@@ -67,8 +67,8 @@ function ImportControl(gui, opts) {
   var importCount = 0;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
-  var _importOpts = {};
   var cachedFiles = {};
+  var _useDefaultOptions = false;
   var catalog;
 
   if (opts.catalog) {
@@ -217,7 +217,7 @@ function ImportControl(gui, opts) {
   function onSubmit(quickView) {
     gui.container.removeClass('queued-files');
     gui.container.removeClass('splash-screen');
-    _importOpts = quickView === true ? {} : readImportOpts();
+    _useDefaultOptions = !!quickView;
     procNextQueuedFile();
   }
 
@@ -249,12 +249,23 @@ function ImportControl(gui, opts) {
     return /\.(shp|shx|dbf|prj)$/i.test(name);
   }
 
+
   function readImportOpts() {
+    if (_useDefaultOptions) return {};
     var freeform = El('#import-options .advanced-options').node().value,
         opts = GUI.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#repair-intersections-opt").node().checked;
     opts.snap = !!El("#snap-points-opt").node().checked;
     return opts;
+  }
+
+  // for CLI output
+  function readImportOptsAsString() {
+    if (_useDefaultOptions) return '';
+    var freeform = El('#import-options .advanced-options').node().value;
+    var opts = readImportOpts();
+    if (opts.snap) freeform = 'snap ' + freeform;
+    return freeform.trim();
   }
 
   // @file a File object
@@ -283,7 +294,7 @@ function ImportControl(gui, opts) {
 
   function importFileContent(fileName, content) {
     var fileType = internal.guessInputType(fileName, content),
-        importOpts = utils.extend({}, _importOpts),
+        importOpts = readImportOpts(),
         matches = findMatchingShp(fileName),
         dataset, lyr;
 
@@ -356,6 +367,7 @@ function ImportControl(gui, opts) {
         dataset = internal.importContent(input, importOpts);
         // save import options for use by repair control, etc.
         dataset.info.import_options = importOpts;
+        gui.session.fileImported(fileName, readImportOptsAsString());
         addDataset(dataset);
 
       } catch(e) {

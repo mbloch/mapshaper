@@ -343,6 +343,8 @@ function Console(gui) {
         clear();
       } else if (cmd == 'tips') {
         printExamples();
+      } else if (cmd == 'history') {
+        toLog(gui.session.toCommandLineString());
       } else if (cmd == 'layers') {
         message("Available layers:",
           internal.getFormattedLayerList(model));
@@ -353,7 +355,12 @@ function Console(gui) {
         setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
-        runMapshaperCommands(cmd, function() {
+        runMapshaperCommands(cmd, function(err) {
+          if (err) {
+            onError(err);
+          } else {
+            gui.session.consoleCommands(internal.standardizeConsoleCommands(cmd));
+          }
           line.show();
           input.node().focus();
         });
@@ -369,8 +376,7 @@ function Console(gui) {
       commands = internal.parseConsoleCommands(str);
       commands = internal.runAndRemoveInfoCommands(commands);
     } catch (e) {
-      onError(e);
-      commands = [];
+      return done(e);
     }
     if (commands.length > 0) {
       applyParsedCommands(commands, done);
@@ -404,8 +410,7 @@ function Console(gui) {
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
-      if (err) onError(err);
-      done();
+      done(err);
     });
   }
 
@@ -454,8 +459,10 @@ function Console(gui) {
     printExample("See a list of all console commands", "$ help");
     printExample("Get help using a single command", "$ help innerlines");
     printExample("Get information about imported datasets", "$ info");
+    printExample("Display browser session as shell commands", "$ history");
     printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
     printExample("Clear the console", "$ clear");
   }
+
 }

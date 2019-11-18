@@ -6,6 +6,7 @@ gui-model
 gui-map
 gui-interaction-mode-control
 gui-sidebar-buttons
+gui-session-history
 */
 
 GUI.isActiveInstance = function(gui) {
@@ -31,6 +32,7 @@ function GuiInstance(container, opts) {
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui);
   gui.interaction = new InteractionMode(gui);
+  gui.session = new SessionHistory(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

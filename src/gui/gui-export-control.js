@@ -42,14 +42,26 @@ var ExportControl = function(gui) {
     }, 20);
   }
 
+  function getExportOpts() {
+    return GUI.parseFreeformOptions(getExportOptsAsString(), 'o');
+  }
+
+  function getExportOptsAsString() {
+    var freeform = menu.findChild('.advanced-options').node().value;
+    if (/format=/.test(freeform) === false) {
+      freeform += ' format=' + getSelectedFormat();
+    }
+    return freeform.trim();
+  }
+
   // @done function(string|Error|null)
   function exportMenuSelection(done) {
     var opts, files;
     try {
-      opts = GUI.parseFreeformOptions(menu.findChild('.advanced-options').node().value, 'o');
-      if (!opts.format) opts.format = getSelectedFormat();
+      opts = getExportOpts();
       // ignoring command line "target" option
       files = internal.exportTargetLayers(getTargetLayers(), opts);
+      gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
     } catch(e) {
       return done(e);
     }
@@ -108,11 +120,15 @@ var ExportControl = function(gui) {
     return menu.findChild('.export-formats input:checked').node().value;
   }
 
-  function getTargetLayers() {
-    var ids = checkboxes.reduce(function(memo, box, i) {
+  function getTargetLayerIds() {
+    return checkboxes.reduce(function(memo, box, i) {
       if (box.checked) memo.push(box.value);
       return memo;
-    }, []).join(',');
+    }, []);
+  }
+
+  function getTargetLayers() {
+    var ids = getTargetLayerIds().join(',');
     return ids ? model.findCommandTargets(ids) : [];
   }
 };

@@ -267,6 +267,7 @@ function LayerControl(gui) {
         var str = cleanLayerName(this.value());
         this.value(getDisplayName(str));
         target.layer.name = str;
+        gui.session.layerRenamed(target.layer, str);
         updateMenuBtn();
       });
 

@@ -15,15 +15,20 @@ internal.parseCommands = function(tokens) {
   return internal.getOptionParser().parseArgv(tokens);
 };
 
-// Parse a command line string for the browser console
-internal.parseConsoleCommands = function(raw) {
-  var blocked = ['i', 'include', 'require'];
+internal.standardizeConsoleCommands = function(raw) {
   var str = raw.replace(/^mapshaper\b/, '').trim();
-  var parsed;
   if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
+  return str;
+};
+
+// Parse a command line string for the browser console
+internal.parseConsoleCommands = function(raw) {
+  var blocked = ['i', 'include', 'require'];
+  var str = internal.standardizeConsoleCommands(raw);
+  var parsed;
   parsed = internal.parseCommands(str);
   parsed.forEach(function(cmd) {
     var i = blocked.indexOf(cmd.name);

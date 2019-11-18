@@ -167,6 +167,7 @@ var SimplifyControl = function(gui) {
     setTimeout(function() {
       var opts = getSimplifyOptions();
       mapshaper.simplify(dataset, opts);
+      gui.session.simplificationApplied(getSimplifyOptionsAsString());
       model.updated({
         // trigger filtered arc rebuild without redraw if pct is 1
         simplify_method: opts.percentage == 1,
@@ -194,6 +195,16 @@ var SimplifyControl = function(gui) {
     };
   }
 
+  function getSimplifyOptionsAsString() {
+    var opts = getSimplifyOptions();
+    var str = 'percentage=' + opts.percentage;
+    if (opts.method == 'visvalingam' || opts.method == 'dp') str += ' ' + opts.method;
+    if (opts.no_repair) str += ' no-repair';
+    if (opts.keep_shapes) str += ' keep-shapes';
+    if (opts.planar) str += ' planar';
+    return str;
+  }
+
   function toSliderPct(p) {
     p = Math.sqrt(p);
     var pct = 1 - p;
@@ -209,6 +220,7 @@ var SimplifyControl = function(gui) {
     if (_value != pct) {
       _value = pct;
       model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      gui.session.updateSimplificationPct(pct);
       model.updated({'simplify_amount': true});
       updateSliderDisplay();
     }

@@ -315,8 +315,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.printEncodings();
     } else if (cmd.name == 'projections') {
       internal.printProjections();
-    } else if (cmd.name == 'help') {
-      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }
