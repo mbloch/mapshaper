@@ -1,3 +1,7 @@
+v0.4.141
+* Added "history" command to browser console, for displaying browser session as a command line shell command.
+* Added -mosaic as a documented command (flattens overlapping polygons by converting overlaps to separate features).
+
 v0.4.140
 * Fix error in web UI.
 
