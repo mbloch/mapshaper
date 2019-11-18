@@ -138,7 +138,23 @@ describe('mapshaper-merge-layers.js', function () {
       assert.equal(merged[0].geometry_type, 'point');
     })
 
-    it('layers with incompatible geometries are not merged', function () {
+    it('layers with incompatible geometries are not merged', function (done) {
+      var lyr1 = {
+        type: 'MultiPoint',
+        coordinates: [[0, 1], [2, 1]]
+      };
+      var lyr2 = {
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1], [2, 0]]
+      };
+      var cmd = '-i point.json -i line.json -merge-layers force target=* -o';
+      api.applyCommands(cmd, {'point.json': lyr1, 'line.json': lyr2}, function(err, out) {
+        assert(err.message.indexOf('Incompatible geometry types') > -1);
+        done();
+      })
+    })
+
+    it('a point layer and a null geometry layer can be merged', function () {
       var lyr1 = {
         geometry_type: "point",
         shapes: [[[0, 1]], [[2, 1]]],
@@ -147,9 +163,9 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr2 = {
         data: new internal.DataTable([{a: 7}])
       };
-      assert.throws(function() {
-        var merged = api.mergeLayers([lyr1, lyr2]);
-      })
+      var merged = api.mergeLayers([lyr1, lyr2]);
+      assert.deepEqual(merged[0].shapes,[[[0, 1]], [[2, 1]], null])
+
     })
 
     it('layers with only geometry are merged', function() {

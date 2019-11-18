@@ -23,10 +23,10 @@ api.mergeLayers = function(layersArg, opts) {
 };
 
 internal.getMergedLayersGeometryType = function(layers) {
-  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'));
+  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'))
+    .filter(function(type) {return !!type;}); // ignore null-type layers
   if (geoTypes.length > 1) {
-    stop("Incompatible geometry types:",
-      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
+    stop("Incompatible geometry types:", geoTypes.join(', '));
   }
   return geoTypes[0] || null;
 };

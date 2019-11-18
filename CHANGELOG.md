@@ -1,3 +1,6 @@
+v0.4.142 (unreleased)
+* Allow -merge-layers to combine a shape layer with a layer that has null geometry.
+
 v0.4.141
 * Added "history" command to browser console, for displaying browser session as a command line shell command.
 * Added -mosaic as a documented command (flattens overlapping polygons by converting overlaps to separate features).
