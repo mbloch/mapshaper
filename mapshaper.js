@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.140';
+VERSION = '0.4.141';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -17895,6 +17895,10 @@ internal.parseSvgLiteralValue = function(strVal, type, fields) {
   return val;
 };
 
+internal.looksLikeExpression = function(str) {
+
+};
+
 internal.isDashArray = function(str) {
   return /^[0-9]+( [0-9]+)*$/.test(str);
 };
@@ -23880,7 +23884,7 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'graticule' || name == 'i' ||
+      if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
           name == 'polygon-grid' || name == 'include')) {
         throw new UserError("No data is available");
@@ -23961,6 +23965,10 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
+
+    } else if (cmd.name == 'help') {
+      // placing this here to handle errors from invalid command names
+      internal.getOptionParser().printHelp(cmd.options.command);
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
@@ -24488,9 +24496,9 @@ function CommandParser() {
       } else if (opt.label) {
         lines.push([opt.label, description]);
       } else if (opt.name == cmd.default) {
-        label = '<' + opt.name + '>';
+        label = opt.name + '=';
+        lines.push(['<' + opt.name + '>', 'shortcut for ' + label]);
         lines.push([label, description]);
-        lines.push([opt.name + '=', 'equivalent to ' + label]);
       } else {
         label = opt.name;
         if (opt.alias) label += ', ' + opt.alias;
@@ -25484,10 +25492,6 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('target', targetOpt);
 
-  parser.command('mosaic')
-    .option('debug', {type: 'flag'})
-    .option('target', targetOpt);
-
   parser.command('overlay')
     // .describe('convert polygons to polylines along shared edges')
     .option('source', {
@@ -26033,6 +26037,12 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
+  parser.command('mosaic')
+    .describe('flatten a polygon layer by converting overlaps to separate polygons')
+    .option('debug', {type: 'flag'})
+    .option('name', nameOpt)
+    .option('target', targetOpt);
+
   parser.command('polygons')
     .describe('convert polylines to polygons')
     .option('gap-tolerance', {
@@ -26209,15 +26219,20 @@ internal.parseCommands = function(tokens) {
   return internal.getOptionParser().parseArgv(tokens);
 };
 
-// Parse a command line string for the browser console
-internal.parseConsoleCommands = function(raw) {
-  var blocked = ['i', 'include', 'require'];
+internal.standardizeConsoleCommands = function(raw) {
   var str = raw.replace(/^mapshaper\b/, '').trim();
-  var parsed;
   if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
+  return str;
+};
+
+// Parse a command line string for the browser console
+internal.parseConsoleCommands = function(raw) {
+  var blocked = ['i', 'include', 'require'];
+  var str = internal.standardizeConsoleCommands(raw);
+  var parsed;
   parsed = internal.parseCommands(str);
   parsed.forEach(function(cmd) {
     var i = blocked.indexOf(cmd.name);
@@ -26750,8 +26765,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.printEncodings();
     } else if (cmd.name == 'projections') {
       internal.printProjections();
-    } else if (cmd.name == 'help') {
-      internal.getOptionParser().printHelp(cmd.options.command);
     } else {
       return true;
     }

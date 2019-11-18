@@ -4951,6 +4951,121 @@ function SidebarButtons(gui) {
 }
 
 
+
+function SessionHistory(gui) {
+  var commands = [];
+
+  gui.model.on('select', function(e) {
+    var layers = gui.model.getLayers();
+    if (layers.length > 1) {
+      if (indexOfLastCommand('-target') == commands.length - 1) {
+        // if last commands was -target, remove it
+        commands.pop();
+      }
+      // TODO: only when necessary
+      commands.push('-target ' + getTargetFromLayer(e.layer));
+    }
+  });
+
+  this.fileImported = function(file, optStr) {
+    var cmd = '-i ' + file;
+    if (optStr) {
+      cmd += ' ' + optStr;
+    }
+    commands.push(cmd);
+  };
+
+  this.layerRenamed = function(lyr, name) {
+    var currTarget = getCurrentTarget();
+    var layerTarget = getTargetFromLayer(lyr);
+    if (currTarget == layerTarget) {
+      commands.push('-rename-layers ' + name);
+    } else {
+      commands.push('-rename-layers ' + name + ' target=' + layerTarget);
+      commands.push('-target ' + currTarget);
+    }
+  };
+
+  this.consoleCommands = function(str) {
+    commands.push(str); // todo: split commands?
+  };
+
+  this.simplificationApplied = function(optStr) {
+    commands.push('-simplify ' + optStr);
+  };
+
+  this.simplificationRepair = function() {
+    //  TODO: improve this... repair does not necessarily apply to most recent
+    //  simplification command
+    //  consider adding a (hidden) repair command to handle this event
+    var i = indexOfLastCommand('-simplify');
+    if (i > -1) {
+      commands[i] = commands[i].replace(' no-repair', '');
+    }
+  };
+
+  this.updateSimplificationPct = function(pct) {
+    var i = indexOfLastCommand('-simplify');
+    if (i > -1) {
+      commands[i] = commands[i].replace(/percentage=[^ ]+/, 'percentage=' + pct);
+    }
+  };
+
+  this.layersExported = function(ids, optStr) {
+    var layers = gui.model.getLayers();
+    var cmd = '-o';
+    if (layers.length > 1) {
+      cmd += ' target=' + ids.map(getTargetFromId).join(',');
+    }
+    if (optStr) {
+      cmd += ' ' + optStr;
+    }
+    commands.push(cmd);
+  };
+
+  this.toCommandLineString = function() {
+    var str = commands.join(' \\\n  ');
+    return 'mapshaper ' + str;
+  };
+
+  function getCurrentTarget() {
+    return getTargetFromLayer(gui.model.getActiveLayer().layer);
+  }
+
+  function indexOfLastCommand(cmd) {
+    return commands.reduce(function(memo, str, i) {
+      return str.indexOf(cmd) === 0 ? i : memo;
+    }, -1);
+  }
+
+  function getTargetFromId(id) {
+    var layers = gui.model.getLayers();
+    return getTargetFromLayer(layers[id - 1].layer);
+  }
+
+  function getTargetFromLayer(lyr) {
+    var layers = gui.model.getLayers();
+    var id = 0;
+    layers.forEach(function(o, i) {
+      if (o.layer == lyr) id = i + 1;
+    });
+    if (lyr.name && isUniqueLayerName(lyr.name, layers)) {
+      return lyr.name;
+    } else if (id > 0) {
+      return id;
+    }
+    // error
+  }
+
+  function isUniqueLayerName(name, layers) {
+    return layers.reduce(function(memo, obj) {
+      return obj.layer.name == name ? memo + 1 : memo;
+    }, 0) == 1;
+  }
+
+}
+
+
 GUI.isActiveInstance = function(gui) {
   return gui == GUI.__active;
 };
@@ -4974,6 +5089,7 @@ function GuiInstance(container, opts) {
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui);
   gui.interaction = new InteractionMode(gui);
+  gui.session = new SessionHistory(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {
@@ -5537,6 +5653,7 @@ var SimplifyControl = function(gui) {
     setTimeout(function() {
       var opts = getSimplifyOptions();
       mapshaper.simplify(dataset, opts);
+      gui.session.simplificationApplied(getSimplifyOptionsAsString());
       model.updated({
         // trigger filtered arc rebuild without redraw if pct is 1
         simplify_method: opts.percentage == 1,
@@ -5564,6 +5681,16 @@ var SimplifyControl = function(gui) {
     };
   }
 
+  function getSimplifyOptionsAsString() {
+    var opts = getSimplifyOptions();
+    var str = 'percentage=' + opts.percentage;
+    if (opts.method == 'visvalingam' || opts.method == 'dp') str += ' ' + opts.method;
+    if (opts.no_repair) str += ' no-repair';
+    if (opts.keep_shapes) str += ' keep-shapes';
+    if (opts.planar) str += ' planar';
+    return str;
+  }
+
   function toSliderPct(p) {
     p = Math.sqrt(p);
     var pct = 1 - p;
@@ -5579,6 +5706,7 @@ var SimplifyControl = function(gui) {
     if (_value != pct) {
       _value = pct;
       model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      gui.session.updateSimplificationPct(pct);
       model.updated({'simplify_amount': true});
       updateSliderDisplay();
     }
@@ -5813,8 +5941,8 @@ function ImportControl(gui, opts) {
   var importCount = 0;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
-  var _importOpts = {};
   var cachedFiles = {};
+  var _useDefaultOptions = false;
   var catalog;
 
   if (opts.catalog) {
@@ -5963,7 +6091,7 @@ function ImportControl(gui, opts) {
   function onSubmit(quickView) {
     gui.container.removeClass('queued-files');
     gui.container.removeClass('splash-screen');
-    _importOpts = quickView === true ? {} : readImportOpts();
+    _useDefaultOptions = !!quickView;
     procNextQueuedFile();
   }
 
@@ -5995,12 +6123,23 @@ function ImportControl(gui, opts) {
     return /\.(shp|shx|dbf|prj)$/i.test(name);
   }
 
+
   function readImportOpts() {
+    if (_useDefaultOptions) return {};
     var freeform = El('#import-options .advanced-options').node().value,
         opts = GUI.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#repair-intersections-opt").node().checked;
     opts.snap = !!El("#snap-points-opt").node().checked;
     return opts;
+  }
+
+  // for CLI output
+  function readImportOptsAsString() {
+    if (_useDefaultOptions) return '';
+    var freeform = El('#import-options .advanced-options').node().value;
+    var opts = readImportOpts();
+    if (opts.snap) freeform = 'snap ' + freeform;
+    return freeform.trim();
   }
 
   // @file a File object
@@ -6029,7 +6168,7 @@ function ImportControl(gui, opts) {
 
   function importFileContent(fileName, content) {
     var fileType = internal.guessInputType(fileName, content),
-        importOpts = utils.extend({}, _importOpts),
+        importOpts = readImportOpts(),
         matches = findMatchingShp(fileName),
         dataset, lyr;
 
@@ -6102,6 +6241,7 @@ function ImportControl(gui, opts) {
         dataset = internal.importContent(input, importOpts);
         // save import options for use by repair control, etc.
         dataset.info.import_options = importOpts;
+        gui.session.fileImported(fileName, readImportOptsAsString());
         addDataset(dataset);
 
       } catch(e) {
@@ -6356,14 +6496,26 @@ var ExportControl = function(gui) {
     }, 20);
   }
 
+  function getExportOpts() {
+    return GUI.parseFreeformOptions(getExportOptsAsString(), 'o');
+  }
+
+  function getExportOptsAsString() {
+    var freeform = menu.findChild('.advanced-options').node().value;
+    if (/format=/.test(freeform) === false) {
+      freeform += ' format=' + getSelectedFormat();
+    }
+    return freeform.trim();
+  }
+
   // @done function(string|Error|null)
   function exportMenuSelection(done) {
     var opts, files;
     try {
-      opts = GUI.parseFreeformOptions(menu.findChild('.advanced-options').node().value, 'o');
-      if (!opts.format) opts.format = getSelectedFormat();
+      opts = getExportOpts();
       // ignoring command line "target" option
       files = internal.exportTargetLayers(getTargetLayers(), opts);
+      gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
     } catch(e) {
       return done(e);
     }
@@ -6422,11 +6574,15 @@ var ExportControl = function(gui) {
     return menu.findChild('.export-formats input:checked').node().value;
   }
 
-  function getTargetLayers() {
-    var ids = checkboxes.reduce(function(memo, box, i) {
+  function getTargetLayerIds() {
+    return checkboxes.reduce(function(memo, box, i) {
       if (box.checked) memo.push(box.value);
       return memo;
-    }, []).join(',');
+    }, []);
+  }
+
+  function getTargetLayers() {
+    var ids = getTargetLayerIds().join(',');
     return ids ? model.findCommandTargets(ids) : [];
   }
 };
@@ -6466,6 +6622,7 @@ function RepairControl(gui) {
     showIntersections(fixed, _currArcs);
     repairBtn.addClass('disabled');
     model.updated({repair: true});
+    gui.session.simplificationRepair();
   });
 
   function hide() {
@@ -6834,6 +6991,7 @@ function LayerControl(gui) {
         var str = cleanLayerName(this.value());
         this.value(getDisplayName(str));
         target.layer.name = str;
+        gui.session.layerRenamed(target.layer, str);
         updateMenuBtn();
       });
 
@@ -7257,6 +7415,8 @@ function Console(gui) {
         clear();
       } else if (cmd == 'tips') {
         printExamples();
+      } else if (cmd == 'history') {
+        toLog(gui.session.toCommandLineString());
       } else if (cmd == 'layers') {
         message("Available layers:",
           internal.getFormattedLayerList(model));
@@ -7267,7 +7427,12 @@ function Console(gui) {
         setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
-        runMapshaperCommands(cmd, function() {
+        runMapshaperCommands(cmd, function(err) {
+          if (err) {
+            onError(err);
+          } else {
+            gui.session.consoleCommands(internal.standardizeConsoleCommands(cmd));
+          }
           line.show();
           input.node().focus();
         });
@@ -7283,8 +7448,7 @@ function Console(gui) {
       commands = internal.parseConsoleCommands(str);
       commands = internal.runAndRemoveInfoCommands(commands);
     } catch (e) {
-      onError(e);
-      commands = [];
+      return done(e);
     }
     if (commands.length > 0) {
       applyParsedCommands(commands, done);
@@ -7318,8 +7482,7 @@ function Console(gui) {
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
-      if (err) onError(err);
-      done();
+      done(err);
     });
   }
 
@@ -7368,10 +7531,12 @@ function Console(gui) {
     printExample("See a list of all console commands", "$ help");
     printExample("Get help using a single command", "$ help innerlines");
     printExample("Get information about imported datasets", "$ info");
+    printExample("Display browser session as shell commands", "$ history");
     printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
     printExample("Clear the console", "$ clear");
   }
+
 }
 
 
