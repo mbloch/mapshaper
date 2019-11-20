@@ -118,13 +118,16 @@ function CommandParser() {
           argv.unshift(parts[1]);
         }
       } else {
-        // looks like a simple spaced-delimited argument
+        // try to parse as a flag option,
+        // or as a space-delimited assignment option (for backwards compatibility)
         optDef = findOptionDefn(token, cmdDef);
       }
 
       if (!optDef) {
         // token is not a defined option; add it to _ array for later processing
-        cmd._.push(token);
+        // Stripping surrounding quotes here, although this may not be necessary since
+        // (some, most, all?) shells seem to remove quotes.
+        cmd._.push(utils.trimQuotes(token));
         return;
       }
 
@@ -449,6 +452,8 @@ internal.parseColorList = function(token) {
 internal.cleanArgv = function(argv) {
   argv = argv.map(function(s) {return s.trim();}); // trim whitespace
   argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-  argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
+  // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
+  // be parsed the same way as name=Meg and name="Meg"
+  //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
   return argv;
 };

@@ -6,7 +6,7 @@ api.symbols = function(lyr, opts) {
   var f, filter;
   // console.log("-symbols opts", opts)
   internal.requirePointLayer(lyr);
-  f = internal.getSymbolPropertyAccessor(lyr, opts);
+  f = internal.getSymbolDataAccessor(lyr, opts);
   if (opts.where) {
     filter = internal.compileValueExpression(opts.where, lyr, null);
   }

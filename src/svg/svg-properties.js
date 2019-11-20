@@ -62,25 +62,17 @@ SVG.findPropertiesBySymbolGeom = function(fields, type) {
 // Returns a function that returns an object containing property values for a single record
 // opts: parsed command line options for the -symbols command
 //
-internal.getSymbolPropertyAccessor = function(lyr, opts) {
-  var literals = {};
+internal.getSymbolDataAccessor = function(lyr, opts) {
   var functions = {};
   var properties = [];
 
   Object.keys(opts).forEach(function(optName) {
-    var literalVal, strVal, dataType;
     var svgName = optName.replace('_', '-');
     if (!SVG.isSupportedSvgSymbolProperty(svgName)) {
       return;
     }
-    dataType = SVG.symbolPropertyTypes[svgName];
-    strVal = opts[optName].trim();
-    literalVal = internal.parseSvgLiteralValue(strVal, dataType, lyr.data.getFields());
-    if (literalVal === null) { // not parsed as a literal value, assuming JS expression
-      functions[svgName] = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
-    } else {
-      literals[svgName] = literalVal;
-    }
+    var strVal = opts[optName].trim();
+    functions[svgName] = internal.getSymbolPropertyAccessor(strVal, svgName, lyr);
     properties.push(svgName);
   });
 
@@ -88,18 +80,49 @@ internal.getSymbolPropertyAccessor = function(lyr, opts) {
     var d = {}, name;
     for (var i=0; i<properties.length; i++) {
       name = properties[i];
-      d[name] = name in functions ? functions[name](id) : literals[name];
+      d[name] = functions[name](id);
     }
     return d;
   };
 };
 
+internal.getSymbolPropertyAccessor = function(strVal, svgName, lyr) {
+  var typeHint = SVG.symbolPropertyTypes[svgName];
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  var literalVal = null;
+  var accessor;
+
+  if (typeHint && fields.indexOf(strVal) === -1) {
+    literalVal = internal.parseSvgLiteralValue(strVal, typeHint);
+  }
+  if (literalVal === null) {
+    accessor = internal.parseStyleExpression(strVal, lyr);
+  }
+  if (!accessor && literalVal === null && !typeHint) {
+    // We don't have a type rule for detecting an invalid value, so we're
+    // treating the string as a literal value
+    literalVal = strVal;
+  }
+  if (accessor) return accessor;
+  if (literalVal !== null) return function(id) {return literalVal;};
+  stop('Unexpected value for', svgName + ':', strVal);
+};
+
+internal.parseStyleExpression = function(strVal, lyr) {
+  var func;
+  try {
+    func = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
+    func(0); // check for runtime errors (e.g. undefined variables)
+  } catch(e) {
+    func = null;
+  }
+  return func;
+};
+
 // returns parsed value or null if @strVal is not recognized as a valid literal value
-internal.parseSvgLiteralValue = function(strVal, type, fields) {
-  var val;
-  if (fields.indexOf(strVal) > -1) {
-    val = null; // field names are valid expressions
-  } else if (type == 'number') {
+internal.parseSvgLiteralValue = function(strVal, type) {
+  var val = null;
+  if (type == 'number') {
     // TODO: handle values with units, like "13px"
     val = internal.isSvgNumber(strVal) ? Number(strVal) : null;
   } else if (type == 'color') {
@@ -110,16 +133,12 @@ internal.parseSvgLiteralValue = function(strVal, type, fields) {
     val = internal.isSvgMeasure(strVal) ? internal.parseSvgMeasure(strVal) : null;
   } else if (type == 'dasharray') {
     val = internal.isDashArray(strVal) ? strVal : null;
-  } else {
-    // unknown type -- assume string is an expression if JS syntax chars are found
-    // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
-    val = /[\?\:\[\(\+]/.test(strVal) ? null : strVal; //
   }
+  //  else {
+  //   // unknown type -- assume literal value
+  //   val = strVal;
+  // }
   return val;
-};
-
-internal.looksLikeExpression = function(str) {
-
 };
 
 internal.isDashArray = function(str) {

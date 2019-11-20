@@ -185,6 +185,7 @@ describe('mapshaper-options.js', function () {
     good("-dissolve", {});
     good("-dissolve STATE", {fields: ['STATE']});
     good("-dissolve STATE,REGION", {fields: ['STATE', 'REGION']});
+    good("-dissolve name=foo", {name: "foo"});
     good("-dissolve FIPS sum-fields POP copy-fields NAME,FIPS", {fields: ["FIPS"], copy_fields: ["NAME", "FIPS"], sum_fields: ["POP"]});
     bad("-dissolve STATE COUNTY");
     bad("-dissolve name -o"); // expects name=<lyr name>

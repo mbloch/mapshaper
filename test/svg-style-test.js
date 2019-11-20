@@ -80,7 +80,6 @@ describe('mapshaper-svg-style.js', function () {
 
     })
 
-
     it('expressions', function () {
       var records = [{foo: 2, bar: 'a', baz: 'white'}, {foo: 0.5, bar: 'b', baz: 'black'}]
       var lyr = {
@@ -128,5 +127,41 @@ describe('mapshaper-svg-style.js', function () {
       api.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     })
+
+    it('literals 2', function() {
+      var records = [{}]
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        stroke: 'red',
+        label_text: 'green',
+        fill: 'SteelBlue'
+      };
+      var target = [{
+        stroke: 'red',
+        'label-text': 'green',
+        fill: 'SteelBlue'
+      }];
+      api.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), target);
+    })
+
+    it('literals 3', function() {
+      var records = [{}]
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        label_text: 'National Oceanic and Atmospheric Administration (NOAA)',
+        font_family: 'Helvetica,_sans'
+      };
+      var target = [{
+        'label-text': 'National Oceanic and Atmospheric Administration (NOAA)',
+        'font-family': 'Helvetica,_sans'
+      }];
+      api.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), target);
+    });
   })
 });

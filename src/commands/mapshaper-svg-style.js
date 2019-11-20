@@ -10,17 +10,11 @@ api.svgStyle = function(lyr, dataset, opts) {
   }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
-    var strVal, literalVal, func, dataType;
     if (!SVG.isSupportedSvgStyleProperty(svgName)) {
       return;
     }
-    dataType = SVG.stylePropertyTypes[svgName];
-    strVal = opts[optName].trim();
-    literalVal = internal.parseSvgLiteralValue(strVal, dataType, lyr.data.getFields());
-    if (literalVal === null) {
-      // if value was not parsed as a literal, assume it is a JS expression
-      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
-    }
+    var strVal = opts[optName].trim();
+    var accessor = internal.getSymbolPropertyAccessor(strVal, svgName, lyr);
     internal.getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
       if (filter && !filter(i)) {
         // make sure field exists if record is excluded by filter
@@ -28,7 +22,7 @@ api.svgStyle = function(lyr, dataset, opts) {
           rec[svgName] = undefined;
         }
       } else {
-        rec[svgName] = func ? func(i) : literalVal;
+        rec[svgName] = accessor(i);
       }
     });
   });
