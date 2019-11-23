@@ -20,6 +20,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
 
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
+  this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
 
   // Assign shape ids to mosaic tile shapes.
   shapes.forEach(function(shp, shapeId) {
@@ -262,6 +263,18 @@ function TileShapeIndex(mosaic, opts) {
   this.getShapeIdByTileId = function(id) {
     var shapeId = singleIndex[id];
     return shapeId >= 0 ? shapeId : -1;
+  };
+
+  // return ids of all shapes that include a tile
+  this.getShapeIdsByTileId = function(id) {
+    var singleId = singleIndex[id];
+    if (singleId >= 0) {
+      return [singleId];
+    }
+    if (singleId == -1) {
+      return [];
+    }
+    return multipleIndex[id];
   };
 
   this.indexTileIdsByShapeId = function(shapeId, tileIds) {

@@ -33,6 +33,9 @@ internal.getOptionParser = function() {
         describe: 'smaller gaps than this are filled (default is small)',
         type: 'area'
       },
+      calcOpt = {
+        describe: 'use a JS expression to aggregate data values'
+      },
       sumFieldsOpt = {
         describe: 'fields to sum when dissolving  (comma-sep. list)',
         type: 'strings'
@@ -396,9 +399,7 @@ internal.getOptionParser = function() {
       '$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
-    .option('calc', {
-      describe: 'use a JS expression to aggregate data values'
-    })
+    .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
     .option('weight', {
@@ -417,9 +418,7 @@ internal.getOptionParser = function() {
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
     .option('arcs', {type: 'flag'}) // debugging option
-    .option('calc', {
-      describe: 'use a JS expression to aggregate data values'
-    })
+    .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
     .option('min-gap-area', minGapAreaOpt)
@@ -436,9 +435,7 @@ internal.getOptionParser = function() {
     .option('mosaic', {type: 'flag'}) // debugging option
     .option('arcs', {type: 'flag'}) // debugging option
     .option('tiles', {type: 'flag'}) // debugging option
-    .option('calc', {
-      describe: 'use a JS expression to aggregate data values'
-    })
+    .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
     .option('min-gap-area', minGapAreaOpt)
@@ -1200,8 +1197,10 @@ internal.getOptionParser = function() {
 
   parser.command('mosaic')
     .describe('flatten a polygon layer by converting overlaps to separate polygons')
+    .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
   parser.command('polygons')
@@ -1295,6 +1294,18 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
+  // parser.command('union')
+  //   .describe('combine two polygon layers (A and B) into a single flattened layer')
+  //   .option('source', {
+  //     DEFAULT: true,
+  //     describe: 'file or layer containing B polygons'
+  //   })
+  //   .option('field-prefixes', {
+  //     describe: 'prefixes of data fields from A- and B-layers (comma-sep.)'
+  //   })
+  //   .option('name', nameOpt)
+  //   .option('no-replace', noReplaceOpt)
+  //   .option('target', targetOpt);
 
   parser.section('Informational commands');
 

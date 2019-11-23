@@ -32,6 +32,7 @@ mapshaper-keep-shapes
 mapshaper-lines
 mapshaper-merge-files
 mapshaper-merge-layers
+mapshaper-mosaic
 mapshaper-overlay
 mapshaper-points
 mapshaper-point-grid
@@ -237,8 +238,9 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {
-      opts.no_replace = true; // add mosaic as a new layer
-      outputLayers = internal.mosaic(targetDataset, opts);
+      // opts.no_replace = true; // add mosaic as a new layer
+      // outputLayers = internal.mosaic(targetDataset, opts);
+      outputLayers = api.mosaic(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
       outputFiles = internal.exportTargetLayers(targets, opts);

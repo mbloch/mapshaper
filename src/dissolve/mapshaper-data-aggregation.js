@@ -30,14 +30,32 @@ internal.getMultiFieldKeyFunction = function(fields) {
   }, null);
 };
 
-// Return an array of data records for a set of aggregated features
+// Performs many-to-one data record aggregation on an array of data records
+// Returns an array of data records for a set of aggregated features
 //
 // @records input records
 // @getGroupId()  converts input record id to id of aggregated record
 //
 internal.aggregateDataRecords = function(records, getGroupId, opts) {
-  var groups = internal.groupIds(getGroupId, records.length),
-      sumFields = opts.sum_fields || [],
+  var groups = internal.groupIds(getGroupId, records.length);
+  return internal.aggregateDataRecords2(records, groups, opts);
+};
+
+// Performs many-to-many data record aggregation on an array of data records
+// (used by the -mosaic command)
+// getSourceIds()  receives the id of an output record and returns
+//    an array of input record ids
+//
+internal.recombineDataRecords = function(records, getSourceIds, n, opts) {
+  var groups = [];
+  for (var i=0; i<n; i++) {
+    groups.push(getSourceIds(i));
+  }
+  return internal.aggregateDataRecords2(records, groups, opts);
+};
+
+internal.aggregateDataRecords2 = function(records, groups, opts) {
+  var sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [],
       calc;
 
