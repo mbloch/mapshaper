@@ -53,6 +53,7 @@ mapshaper-sort
 mapshaper-svg-style
 mapshaper-symbols
 mapshaper-target
+mapshaper-union
 mapshaper-uniq
 mapshaper-source-utils
 */
@@ -354,6 +355,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'target') {
       internal.target(catalog, opts);
+
+    } else if (name == 'union') {
+      outputLayers = api.union(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'uniq') {
       applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);

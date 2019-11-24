@@ -4,6 +4,9 @@ mapshaper-pathfinder-utils
 mapshaper-pathfinder
 */
 
+// REPLACED by api.mosaic()
+// TODO port debug option from here to api.mosaic
+//
 // Create a mosaic layer from a dataset (useful for debugging commands like -clean
 //    that create a mosaic as an intermediate data structure)
 // Create additional layers if the "debug" flag is present

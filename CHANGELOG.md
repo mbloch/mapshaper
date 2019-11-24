@@ -1,4 +1,6 @@
 v0.4.142 (unreleased)
+* Add -union command for creating a mosaic from two polygon layers, preserving data from both layers.
+* Add -mosaic calc= option, which provides options for transferring data from source polygons to mosaic polygons.
 * Allow -merge-layers to combine a shape layer with a layer that has null geometry.
 
 v0.4.141

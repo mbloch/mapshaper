@@ -1196,7 +1196,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('mosaic')
-    .describe('flatten a polygon layer by converting overlaps to separate polygons')
+    .describe('convert a polygon layer with overlaps into a flat mosaic')
     .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
@@ -1294,18 +1294,24 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
-  // parser.command('union')
-  //   .describe('combine two polygon layers (A and B) into a single flattened layer')
-  //   .option('source', {
-  //     DEFAULT: true,
-  //     describe: 'file or layer containing B polygons'
-  //   })
-  //   .option('field-prefixes', {
-  //     describe: 'prefixes of data fields from A- and B-layers (comma-sep.)'
-  //   })
-  //   .option('name', nameOpt)
-  //   .option('no-replace', noReplaceOpt)
-  //   .option('target', targetOpt);
+  parser.command('union')
+    .describe('create a flat mosaic from two polygon layers (A and B)')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'file or layer to use as layer B'
+    })
+    // .option('field-prefixes', {
+    //   describe: 'prefixes of data fields from A- and B-layers (comma-sep.)'
+    // })
+    .option('add-fid', {
+      describe: 'add FID_A and FID_B fields to output layer',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', {
+      describe: 'specify layer A'
+    });
 
   parser.section('Informational commands');
 

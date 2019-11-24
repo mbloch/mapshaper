@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-dataset-utils
+mapshaper-overlay-utils
 mapshaper-intersection-cuts
 mapshaper-polygon-clipping
 mapshaper-polyline-clipping
@@ -38,40 +39,12 @@ api.sliceLayer = function(targetLyr, src, dataset, opts) {
 // @type: 'clip' or 'erase'
 internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
-  var clipDataset, mergedDataset, clipLyr, nodes, tmp;
+  var mergedDataset, clipLyr, nodes;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
-
   if (opts.bbox2) {
     return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
   }
-
-  if (clipSrc && clipSrc.geometry_type) {
-    // TODO: update tests to remove this case (clipSrc is a layer)
-    clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
-  }
-  if (opts.bbox) {
-    clipDataset = internal.convertClipBounds(opts.bbox);
-    clipLyr = clipDataset.layers[0];
-  } else if (clipSrc) {
-    clipLyr = clipSrc.layer;
-    clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
-  } else {
-    stop("Command requires a source file, layer id or bbox");
-  }
-  if (targetDataset.arcs != clipDataset.arcs) {
-    // using external dataset -- need to merge arcs
-    if (clipSrc && !clipSrc.disposable) {
-      // copy layer shapes because arc ids will be reindexed during merging
-      clipLyr = clipDataset.layers[0] = internal.copyLayerShapes(clipDataset.layers[0]);
-    }
-    // merge external dataset with target dataset,
-    // so arcs are shared between target layers and clipping lyr
-    // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
-    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
-    api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
-  } else {
-    mergedDataset = targetDataset;
-  }
+  mergedDataset = internal.mergeLayersForOverlay(targetLayers, clipSrc, targetDataset, opts);
   if (usingPathClip) {
     // add vertices at all line intersections
     // (generally slower than actual clipping)
@@ -80,8 +53,10 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
+  clipLyr = mergedDataset.layers.pop();
   return internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
 };
+
 
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
   internal.requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
