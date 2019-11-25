@@ -5940,10 +5940,10 @@ function FileChooser(el, cb) {
 function ImportControl(gui, opts) {
   var model = gui.model;
   var importCount = 0;
+  var useQuickView = false;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var cachedFiles = {};
-  var _useDefaultOptions = false;
   var catalog;
 
   if (opts.catalog) {
@@ -6001,6 +6001,7 @@ function ImportControl(gui, opts) {
     }
     gui.clearProgressMessage();
     importCount = 0;
+    useQuickView = false; // unset 'quick view' mode, if on
     close();
   }
 
@@ -6063,18 +6064,19 @@ function ImportControl(gui, opts) {
   }
 
   function receiveFilesQuickView(files) {
-    receiveFiles(files, true);
+    useQuickView = true;
+    receiveFiles(files);
   }
 
-  function receiveFiles(files, quickView) {
+  function receiveFiles(files) {
     var prevSize = queuedFiles.length;
-    files = handleZipFiles(utils.toArray(files), quickView);
+    files = handleZipFiles(utils.toArray(files));
     addFilesToQueue(files);
     if (queuedFiles.length === 0) return;
     gui.enterMode('import');
 
-    if (quickView === true) {
-      onSubmit(quickView);
+    if (useQuickView) {
+      onSubmit();
     } else {
       gui.container.addClass('queued-files');
       El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
@@ -6089,10 +6091,9 @@ function ImportControl(gui, opts) {
     });
   }
 
-  function onSubmit(quickView) {
+  function onSubmit() {
     gui.container.removeClass('queued-files');
     gui.container.removeClass('splash-screen');
-    _useDefaultOptions = !!quickView;
     procNextQueuedFile();
   }
 
@@ -6126,7 +6127,7 @@ function ImportControl(gui, opts) {
 
 
   function readImportOpts() {
-    if (_useDefaultOptions) return {};
+    if (useQuickView) return {};
     var freeform = El('#import-options .advanced-options').node().value,
         opts = GUI.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#repair-intersections-opt").node().checked;
@@ -6136,7 +6137,7 @@ function ImportControl(gui, opts) {
 
   // for CLI output
   function readImportOptsAsString() {
-    if (_useDefaultOptions) return '';
+    if (useQuickView) return '';
     var freeform = El('#import-options .advanced-options').node().value;
     var opts = readImportOpts();
     if (opts.snap) freeform = 'snap ' + freeform;
@@ -6261,17 +6262,17 @@ function ImportControl(gui, opts) {
     console.error(e);
   }
 
-  function handleZipFiles(files, quickView) {
+  function handleZipFiles(files) {
     return files.filter(function(file) {
       var isZip = internal.isZipFile(file.name);
       if (isZip) {
-        importZipFile(file, quickView);
+        importZipFile(file);
       }
       return !isZip;
     });
   }
 
-  function importZipFile(file, quickView) {
+  function importZipFile(file) {
     // gui.showProgressMessage('Importing');
     setTimeout(function() {
       GUI.readZipFile(file, function(err, files) {
@@ -6283,7 +6284,7 @@ function ImportControl(gui, opts) {
           files = files.filter(function(f) {
             return !/\.txt$/i.test(f.name);
           });
-          receiveFiles(files, quickView);
+          receiveFiles(files);
         }
       });
     }, 35);
@@ -6308,7 +6309,7 @@ function ImportControl(gui, opts) {
     return items.filter(Boolean);
   }
 
-  function downloadFiles(paths, quickView) {
+  function downloadFiles(paths) {
     var items = prepFilesForDownload(paths);
     utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
       if (err) {
@@ -6316,7 +6317,7 @@ function ImportControl(gui, opts) {
       } else if (!files.length) {
         gui.clearMode();
       } else {
-        receiveFiles(files, quickView);
+        receiveFiles(files);
       }
     });
   }
