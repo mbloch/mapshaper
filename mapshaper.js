@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.141';
+VERSION = '0.4.142';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -9607,10 +9607,10 @@ api.mergeLayers = function(layersArg, opts) {
 };
 
 internal.getMergedLayersGeometryType = function(layers) {
-  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'));
+  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'))
+    .filter(function(type) {return !!type;}); // ignore null-type layers
   if (geoTypes.length > 1) {
-    stop("Incompatible geometry types:",
-      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
+    stop("Incompatible geometry types:", geoTypes.join(', '));
   }
   return geoTypes[0] || null;
 };
@@ -13305,14 +13305,32 @@ internal.getMultiFieldKeyFunction = function(fields) {
   }, null);
 };
 
-// Return an array of data records for a set of aggregated features
+// Performs many-to-one data record aggregation on an array of data records
+// Returns an array of data records for a set of aggregated features
 //
 // @records input records
 // @getGroupId()  converts input record id to id of aggregated record
 //
 internal.aggregateDataRecords = function(records, getGroupId, opts) {
-  var groups = internal.groupIds(getGroupId, records.length),
-      sumFields = opts.sum_fields || [],
+  var groups = internal.groupIds(getGroupId, records.length);
+  return internal.aggregateDataRecords2(records, groups, opts);
+};
+
+// Performs many-to-many data record aggregation on an array of data records
+// (used by the -mosaic command)
+// getSourceIds()  receives the id of an output record and returns
+//    an array of input record ids
+//
+internal.recombineDataRecords = function(records, getSourceIds, n, opts) {
+  var groups = [];
+  for (var i=0; i<n; i++) {
+    groups.push(getSourceIds(i));
+  }
+  return internal.aggregateDataRecords2(records, groups, opts);
+};
+
+internal.aggregateDataRecords2 = function(records, groups, opts) {
+  var sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [],
       calc;
 
@@ -13611,6 +13629,9 @@ internal.fixNestingErrors2 = function(rings, arcs) {
 
 
 
+// REPLACED by api.mosaic()
+// TODO port debug option from here to api.mosaic
+//
 // Create a mosaic layer from a dataset (useful for debugging commands like -clean
 //    that create a mosaic as an intermediate data structure)
 // Create additional layers if the "debug" flag is present
@@ -14005,6 +14026,45 @@ api.cleanLayers = function(layers, dataset, opts) {
   if (!opts.no_arc_dissolve && dataset.arcs) {
     internal.dissolveArcs(dataset); // remove leftover endpoints within contiguous lines
   }
+};
+
+
+
+// Combine target layer(s) and overlay layer into a single dataset, with overlay
+// last in the layers array
+// DOES NOT insert clipping points
+internal.mergeLayersForOverlay = function(targetLayers, clipSrc, targetDataset, opts) {
+  var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
+  var mergedDataset, clipDataset, clipLyr;
+  if (clipSrc && clipSrc.geometry_type) {
+    // TODO: update tests to remove this case (clipSrc is a layer)
+    clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
+  }
+  if (opts.bbox) {
+    clipDataset = internal.convertClipBounds(opts.bbox);
+    clipLyr = clipDataset.layers[0];
+  } else if (clipSrc) {
+    clipLyr = clipSrc.layer;
+    clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
+  } else {
+    stop("Command requires a source file, layer id or bbox");
+  }
+  if (targetDataset.arcs != clipDataset.arcs) {
+    // using external dataset -- need to merge arcs
+    if (clipSrc && !clipSrc.disposable) {
+      // copy overlay layer shapes because arc ids will be reindexed during merging
+      clipDataset.layers[0] = internal.copyLayerShapes(clipDataset.layers[0]);
+    }
+    // merge external dataset with target dataset,
+    // so arcs are shared between target layers and clipping lyr
+    // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
+    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
+    api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
+  } else {
+    mergedDataset = utils.extend({}, targetDataset);
+    mergedDataset.layers = targetLayers.concat(clipLyr);
+  }
+  return mergedDataset;
 };
 
 
@@ -14724,40 +14784,12 @@ api.sliceLayer = function(targetLyr, src, dataset, opts) {
 // @type: 'clip' or 'erase'
 internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
-  var clipDataset, mergedDataset, clipLyr, nodes, tmp;
+  var mergedDataset, clipLyr, nodes;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
-
   if (opts.bbox2) {
     return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
   }
-
-  if (clipSrc && clipSrc.geometry_type) {
-    // TODO: update tests to remove this case (clipSrc is a layer)
-    clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
-  }
-  if (opts.bbox) {
-    clipDataset = internal.convertClipBounds(opts.bbox);
-    clipLyr = clipDataset.layers[0];
-  } else if (clipSrc) {
-    clipLyr = clipSrc.layer;
-    clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
-  } else {
-    stop("Command requires a source file, layer id or bbox");
-  }
-  if (targetDataset.arcs != clipDataset.arcs) {
-    // using external dataset -- need to merge arcs
-    if (clipSrc && !clipSrc.disposable) {
-      // copy layer shapes because arc ids will be reindexed during merging
-      clipLyr = clipDataset.layers[0] = internal.copyLayerShapes(clipDataset.layers[0]);
-    }
-    // merge external dataset with target dataset,
-    // so arcs are shared between target layers and clipping lyr
-    // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
-    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
-    api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
-  } else {
-    mergedDataset = targetDataset;
-  }
+  mergedDataset = internal.mergeLayersForOverlay(targetLayers, clipSrc, targetDataset, opts);
   if (usingPathClip) {
     // add vertices at all line intersections
     // (generally slower than actual clipping)
@@ -14766,8 +14798,10 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
+  clipLyr = mergedDataset.layers.pop();
   return internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
 };
+
 
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
   internal.requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
@@ -15578,6 +15612,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
 
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
+  this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
 
   // Assign shape ids to mosaic tile shapes.
   shapes.forEach(function(shp, shapeId) {
@@ -15820,6 +15855,18 @@ function TileShapeIndex(mosaic, opts) {
   this.getShapeIdByTileId = function(id) {
     var shapeId = singleIndex[id];
     return shapeId >= 0 ? shapeId : -1;
+  };
+
+  // return ids of all shapes that include a tile
+  this.getShapeIdsByTileId = function(id) {
+    var singleId = singleIndex[id];
+    if (singleId >= 0) {
+      return [singleId];
+    }
+    if (singleId == -1) {
+      return [];
+    }
+    return multipleIndex[id];
   };
 
   this.indexTileIdsByShapeId = function(shapeId, tileIds) {
@@ -17839,25 +17886,17 @@ SVG.findPropertiesBySymbolGeom = function(fields, type) {
 // Returns a function that returns an object containing property values for a single record
 // opts: parsed command line options for the -symbols command
 //
-internal.getSymbolPropertyAccessor = function(lyr, opts) {
-  var literals = {};
+internal.getSymbolDataAccessor = function(lyr, opts) {
   var functions = {};
   var properties = [];
 
   Object.keys(opts).forEach(function(optName) {
-    var literalVal, strVal, dataType;
     var svgName = optName.replace('_', '-');
     if (!SVG.isSupportedSvgSymbolProperty(svgName)) {
       return;
     }
-    dataType = SVG.symbolPropertyTypes[svgName];
-    strVal = opts[optName].trim();
-    literalVal = internal.parseSvgLiteralValue(strVal, dataType, lyr.data.getFields());
-    if (literalVal === null) { // not parsed as a literal value, assuming JS expression
-      functions[svgName] = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
-    } else {
-      literals[svgName] = literalVal;
-    }
+    var strVal = opts[optName].trim();
+    functions[svgName] = internal.getSymbolPropertyAccessor(strVal, svgName, lyr);
     properties.push(svgName);
   });
 
@@ -17865,18 +17904,49 @@ internal.getSymbolPropertyAccessor = function(lyr, opts) {
     var d = {}, name;
     for (var i=0; i<properties.length; i++) {
       name = properties[i];
-      d[name] = name in functions ? functions[name](id) : literals[name];
+      d[name] = functions[name](id);
     }
     return d;
   };
 };
 
+internal.getSymbolPropertyAccessor = function(strVal, svgName, lyr) {
+  var typeHint = SVG.symbolPropertyTypes[svgName];
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  var literalVal = null;
+  var accessor;
+
+  if (typeHint && fields.indexOf(strVal) === -1) {
+    literalVal = internal.parseSvgLiteralValue(strVal, typeHint);
+  }
+  if (literalVal === null) {
+    accessor = internal.parseStyleExpression(strVal, lyr);
+  }
+  if (!accessor && literalVal === null && !typeHint) {
+    // We don't have a type rule for detecting an invalid value, so we're
+    // treating the string as a literal value
+    literalVal = strVal;
+  }
+  if (accessor) return accessor;
+  if (literalVal !== null) return function(id) {return literalVal;};
+  stop('Unexpected value for', svgName + ':', strVal);
+};
+
+internal.parseStyleExpression = function(strVal, lyr) {
+  var func;
+  try {
+    func = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
+    func(0); // check for runtime errors (e.g. undefined variables)
+  } catch(e) {
+    func = null;
+  }
+  return func;
+};
+
 // returns parsed value or null if @strVal is not recognized as a valid literal value
-internal.parseSvgLiteralValue = function(strVal, type, fields) {
-  var val;
-  if (fields.indexOf(strVal) > -1) {
-    val = null; // field names are valid expressions
-  } else if (type == 'number') {
+internal.parseSvgLiteralValue = function(strVal, type) {
+  var val = null;
+  if (type == 'number') {
     // TODO: handle values with units, like "13px"
     val = internal.isSvgNumber(strVal) ? Number(strVal) : null;
   } else if (type == 'color') {
@@ -17887,16 +17957,12 @@ internal.parseSvgLiteralValue = function(strVal, type, fields) {
     val = internal.isSvgMeasure(strVal) ? internal.parseSvgMeasure(strVal) : null;
   } else if (type == 'dasharray') {
     val = internal.isDashArray(strVal) ? strVal : null;
-  } else {
-    // unknown type -- assume string is an expression if JS syntax chars are found
-    // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
-    val = /[\?\:\[\(\+]/.test(strVal) ? null : strVal; //
   }
+  //  else {
+  //   // unknown type -- assume literal value
+  //   val = strVal;
+  // }
   return val;
-};
-
-internal.looksLikeExpression = function(str) {
-
 };
 
 internal.isDashArray = function(str) {
@@ -17936,17 +18002,11 @@ api.svgStyle = function(lyr, dataset, opts) {
   }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
-    var strVal, literalVal, func, dataType;
     if (!SVG.isSupportedSvgStyleProperty(svgName)) {
       return;
     }
-    dataType = SVG.stylePropertyTypes[svgName];
-    strVal = opts[optName].trim();
-    literalVal = internal.parseSvgLiteralValue(strVal, dataType, lyr.data.getFields());
-    if (literalVal === null) {
-      // if value was not parsed as a literal, assume it is a JS expression
-      func = internal.compileValueExpression(strVal, lyr, dataset.arcs, {context: internal.getStateVar('defs')});
-    }
+    var strVal = opts[optName].trim();
+    var accessor = internal.getSymbolPropertyAccessor(strVal, svgName, lyr);
     internal.getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
       if (filter && !filter(i)) {
         // make sure field exists if record is excluded by filter
@@ -17954,7 +18014,7 @@ api.svgStyle = function(lyr, dataset, opts) {
           rec[svgName] = undefined;
         }
       } else {
-        rec[svgName] = func ? func(i) : literalVal;
+        rec[svgName] = accessor(i);
       }
     });
   });
@@ -21207,6 +21267,32 @@ internal.importFiles = function(files, opts) {
 };
 
 
+api.mosaic = function(layers, dataset, opts) {
+  var lyr = layers[0];
+  if (!lyr || layers.length > 1) {
+    stop('Command takes a single target layer');
+  }
+  internal.requirePolygonLayer(lyr);
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false});
+  var mosaicShapes = mosaicIndex.mosaic;
+  var records2;
+
+  var lyr2 = {
+    name: 'name' in lyr ? lyr.name : undefined,
+    shapes: mosaicShapes,
+    geometry_type: 'polygon',
+  };
+
+  if (opts.calc) {
+    records2 = internal.recombineDataRecords(lyr.data.getRecords(), mosaicIndex.getSourceIdsByTileId, mosaicShapes.length, opts);
+    lyr2.data = new DataTable(records2);
+  }
+
+  return [lyr2];
+};
+
+
 
 
 api.overlay = function(targetLyr, src, targetDataset, opts) {
@@ -23689,7 +23775,7 @@ api.symbols = function(lyr, opts) {
   var f, filter;
   // console.log("-symbols opts", opts)
   internal.requirePointLayer(lyr);
-  f = internal.getSymbolPropertyAccessor(lyr, opts);
+  f = internal.getSymbolDataAccessor(lyr, opts);
   if (opts.where) {
     filter = internal.compileValueExpression(opts.where, lyr, null);
   }
@@ -23732,6 +23818,94 @@ internal.target = function(catalog, opts) {
     targets[0].layers[0].name = opts.name;
   }
   catalog.setDefaultTargets(targets);
+};
+
+
+api.union = function(targetLayers, src, targetDataset, opts) {
+  var sourceDataset;
+  if (!src || !src.layer || !src.dataset) {
+    error("Unexpected source layer argument");
+  }
+  var mergedDataset = internal.mergeLayersForOverlay(targetLayers, src, targetDataset, opts);
+  var nodes = internal.addIntersectionCuts(mergedDataset, opts);
+  var unionLyr = mergedDataset.layers.pop();
+  var outputLayers = targetLayers.map(function(targetLyr) {
+    return internal.unionTwoLayers(targetLyr, unionLyr, nodes, opts);
+  });
+  targetDataset.arcs = nodes.arcs;
+  return outputLayers;
+};
+
+internal.unionTwoLayers = function(targetLyr, sourceLyr, nodes, opts) {
+  if (targetLyr.geometry_type != 'polygon' || sourceLyr.geometry_type != 'polygon') {
+    stop('Command requires two polygon layers');
+  }
+  var mergedLayer = {
+    geometry_type: 'polygon',
+    shapes: targetLyr.shapes.concat(sourceLyr.shapes)
+  };
+  // Use suffixes to disambiguate same-name fields
+  // TODO: add an option to override these defaults
+  var suffixA = '_A';
+  var suffixB = '_B';
+  var decorateRecord = opts.each ? internal.getUnionRecordDecorator(opts.each, targetLyr, sourceLyr, nodes.arcs) : null;
+  var mosaicIndex = new MosaicIndex(mergedLayer, nodes, {flat: false});
+  var mosaicShapes = mosaicIndex.mosaic;
+  var targetRecords = targetLyr.data ? targetLyr.data.getRecords() : null;
+  var targetFields = targetLyr.data ? targetLyr.data.getFields() : [];
+  var targetSize = targetLyr.shapes.length;
+  var sourceRecords = sourceLyr.data ? sourceLyr.data.getRecords() : null;
+  var sourceFields = sourceLyr.data ? sourceLyr.data.getFields() : [];
+  var sourceSize = sourceLyr.shapes.length;
+  var targetMap = internal.unionGetFieldMap(targetFields, sourceFields, suffixA);
+  var sourceMap = internal.unionGetFieldMap(sourceFields, targetFields, suffixB);
+
+  var mosaicRecords = mosaicShapes.map(function(shp, i) {
+    var mergedIds = mosaicIndex.getSourceIdsByTileId(i);
+    var targetId = internal.unionFindOriginId(mergedIds, targetSize, sourceSize);
+    var sourceId = internal.unionFindOriginId(mergedIds, 0, targetSize);
+    var rec = {};
+    var targetRec = targetId > -1 && targetRecords ? targetRecords[targetId] : null;
+    var sourceRec = sourceId > -1 && sourceRecords ? sourceRecords[sourceId] : null;
+    internal.unionMergeDataProperties(rec, targetRec, targetFields, targetMap);
+    internal.unionMergeDataProperties(rec, sourceRec, sourceFields, sourceMap);
+    if (opts.add_fid) {
+      rec.FID_A = targetId;
+      rec.FID_B = sourceId;
+    }
+    return rec;
+  });
+  var unionLyr = {
+    geometry_type: 'polygon',
+    shapes: mosaicShapes,
+    data: new DataTable(mosaicRecords)
+  };
+  if ('name' in targetLyr) unionLyr.name = targetLyr.name;
+  return unionLyr;
+};
+
+internal.unionFindOriginId = function(mergedIds, offset, length) {
+  var mergedId;
+  for (var i=0; i<mergedIds.length; i++) {
+    mergedId = mergedIds[i];
+    if (mergedId >= offset && mergedId < offset + length) {
+      return mergedId - offset;
+    }
+  }
+  return -1;
+};
+
+internal.unionMergeDataProperties = function(outRec, inRec, fields, fieldMap) {
+  for (var i=0; i<fields.length; i++) {
+    outRec[fieldMap[fields[i]]] = inRec ? inRec[fields[i]] : null;
+  }
+};
+
+internal.unionGetFieldMap = function(fields, otherFields, suffix) {
+  return fields.reduce(function(memo, field) {
+    memo[field] = otherFields.indexOf(field) > -1 ? field + suffix : field;
+    return memo;
+  }, {});
 };
 
 
@@ -24002,8 +24176,9 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {
-      opts.no_replace = true; // add mosaic as a new layer
-      outputLayers = internal.mosaic(targetDataset, opts);
+      // opts.no_replace = true; // add mosaic as a new layer
+      // outputLayers = internal.mosaic(targetDataset, opts);
+      outputLayers = api.mosaic(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
       outputFiles = internal.exportTargetLayers(targets, opts);
@@ -24117,6 +24292,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'target') {
       internal.target(catalog, opts);
+
+    } else if (name == 'union') {
+      outputLayers = api.union(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'uniq') {
       applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
@@ -24342,13 +24520,16 @@ function CommandParser() {
           argv.unshift(parts[1]);
         }
       } else {
-        // looks like a simple spaced-delimited argument
+        // try to parse as a flag option,
+        // or as a space-delimited assignment option (for backwards compatibility)
         optDef = findOptionDefn(token, cmdDef);
       }
 
       if (!optDef) {
         // token is not a defined option; add it to _ array for later processing
-        cmd._.push(token);
+        // Stripping surrounding quotes here, although this may not be necessary since
+        // (some, most, all?) shells seem to remove quotes.
+        cmd._.push(utils.trimQuotes(token));
         return;
       }
 
@@ -24673,7 +24854,9 @@ internal.parseColorList = function(token) {
 internal.cleanArgv = function(argv) {
   argv = argv.map(function(s) {return s.trim();}); // trim whitespace
   argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-  argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
+  // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
+  // be parsed the same way as name=Meg and name="Meg"
+  //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
   return argv;
 };
 
@@ -24871,6 +25054,9 @@ internal.getOptionParser = function() {
       minGapAreaOpt = {
         describe: 'smaller gaps than this are filled (default is small)',
         type: 'area'
+      },
+      calcOpt = {
+        describe: 'use a JS expression to aggregate data values'
       },
       sumFieldsOpt = {
         describe: 'fields to sum when dissolving  (comma-sep. list)',
@@ -25235,9 +25421,7 @@ internal.getOptionParser = function() {
       '$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
-    .option('calc', {
-      describe: 'use a JS expression to aggregate data values'
-    })
+    .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
     .option('weight', {
@@ -25256,9 +25440,7 @@ internal.getOptionParser = function() {
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
     .option('arcs', {type: 'flag'}) // debugging option
-    .option('calc', {
-      describe: 'use a JS expression to aggregate data values'
-    })
+    .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
     .option('min-gap-area', minGapAreaOpt)
@@ -25275,9 +25457,7 @@ internal.getOptionParser = function() {
     .option('mosaic', {type: 'flag'}) // debugging option
     .option('arcs', {type: 'flag'}) // debugging option
     .option('tiles', {type: 'flag'}) // debugging option
-    .option('calc', {
-      describe: 'use a JS expression to aggregate data values'
-    })
+    .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
     .option('min-gap-area', minGapAreaOpt)
@@ -26038,9 +26218,11 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('mosaic')
-    .describe('flatten a polygon layer by converting overlaps to separate polygons')
+    .describe('convert a polygon layer with overlaps into a flat mosaic')
+    .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
   parser.command('polygons')
@@ -26134,6 +26316,24 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
+  parser.command('union')
+    .describe('create a flat mosaic from two polygon layers (A and B)')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'file or layer to use as layer B'
+    })
+    // .option('field-prefixes', {
+    //   describe: 'prefixes of data fields from A- and B-layers (comma-sep.)'
+    // })
+    .option('add-fid', {
+      describe: 'add FID_A and FID_B fields to output layer',
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', {
+      describe: 'specify layer A'
+    });
 
   parser.section('Informational commands');
 
