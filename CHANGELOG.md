@@ -1,3 +1,6 @@
+v0.4.143
+* Fix for web UI bug that caused command line options to be ignored.
+
 v0.4.142
 * Add -union command for creating a mosaic from two polygon layers, preserving data from both layers.
 * Add -mosaic calc= option, which provides options for transferring data from source polygons to mosaic polygons.
