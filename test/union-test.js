@@ -71,15 +71,15 @@ describe('mapshaper-union.js', function () {
     });
   });
 
-  it('union with a no-data layer works', function(done) {
+  it('union with a no-data layer works; default layer name is "union"', function(done) {
     var fileA = 'test/test_data/issues/union/polygonA.json';
     var geomB = {
       type: 'Polygon',
       coordinates: [[[1, 1], [2, 2], [3, 1], [2, 0], [1, 1]]]
     }
-    var cmd = `-i polygonB.json -i ${fileA} -union target=polygonA,polygonB name=merged -o`;
+    var cmd = `-i polygonB.json -i ${fileA} -union target=polygonA,polygonB -o`;
     api.applyCommands(cmd, {'polygonB.json': geomB}, function(err, out) {
-      var features = JSON.parse(out['merged.json']).features;
+      var features = JSON.parse(out['union.json']).features;
       var records = _.pluck(features, 'properties');
       assert.deepEqual(records, [
         { name: 'A', value: 4 },

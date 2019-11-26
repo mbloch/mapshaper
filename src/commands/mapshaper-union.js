@@ -49,11 +49,11 @@ api.union = function(targetLayers, targetDataset, opts) {
   });
 
   var unionLyr = {
+    name: 'union',
     geometry_type: 'polygon',
     shapes: mosaicShapes,
     data: new DataTable(mosaicRecords)
   };
-  // if ('name' in targetLyr) unionLyr.name = targetLyr.name;
   return [unionLyr];
 };
 
