@@ -143,6 +143,7 @@ internal.getUniqFieldNames = function(fields, maxLen) {
   });
 };
 
+
 internal.getUniqFieldValues = function(records, field) {
   var index = {};
   var values = [];

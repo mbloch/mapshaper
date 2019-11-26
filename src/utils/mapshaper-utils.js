@@ -103,24 +103,24 @@ utils.formatVersionedName = function(name, i) {
 utils.uniqifyNames = function(names, formatter) {
   var counts = utils.countValues(names),
       format = formatter || utils.formatVersionedName,
-      blacklist = {};
+      names2 = [];
 
-  Object.keys(counts).forEach(function(name) {
-    if (counts[name] > 1) blacklist[name] = true; // uniqify all instances of a name
-  });
-  return names.map(function(name) {
-    var i = 1, // first version id
+  names.forEach(function(name) {
+    var i = 0,
         candidate = name,
         versionedName;
-    while (candidate in blacklist) {
+    while (
+        names2.indexOf(candidate) > -1 || // candidate name has already been used
+        candidate == name && counts[candidate] > 1 || // duplicate unversioned names
+        candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
+      i++;
       versionedName = format(name, i);
       if (!versionedName || versionedName == candidate) {
         throw new Error("Naming error"); // catch buggy versioning function
       }
       candidate = versionedName;
-      i++;
     }
-    blacklist[candidate] = true;
-    return candidate;
+    names2.push(candidate);
   });
+  return names2;
 };

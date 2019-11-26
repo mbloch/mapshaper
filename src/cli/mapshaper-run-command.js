@@ -98,9 +98,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else {
       targets = catalog.findCommandTargets(opts.target);
 
-      // special case to allow merge-layers to merge layers from multiple datasets
+      // special case to allow -merge-layers and -union to combine layers from multiple datasets
       // TODO: support multi-dataset targets for other commands
-      if (targets.length > 1 && name == 'merge-layers') {
+      if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
         targets = internal.mergeCommandTargets(targets, catalog);
       }
 
@@ -357,7 +357,7 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.target(catalog, opts);
 
     } else if (name == 'union') {
-      outputLayers = api.union(targetLayers, source, targetDataset, opts);
+      outputLayers = api.union(targetLayers, targetDataset, opts);
 
     } else if (name == 'uniq') {
       applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);

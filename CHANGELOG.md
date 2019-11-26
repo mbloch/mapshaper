@@ -1,3 +1,7 @@
+v0.4.144
+* Change -union command syntax to use two or more target layers as input
+* Add -union fields= option for selecting which fields from the input layers to retain.
+
 v0.4.143
 * Fix for web UI bug that caused command line options to be ignored.
 

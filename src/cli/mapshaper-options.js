@@ -1295,22 +1295,19 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('union')
-    .describe('create a flat mosaic from two polygon layers (A and B)')
-    .option('source', {
-      DEFAULT: true,
-      describe: 'file or layer to use as layer B'
-    })
-    // .option('field-prefixes', {
-    //   describe: 'prefixes of data fields from A- and B-layers (comma-sep.)'
+    .describe('create a flat mosaic from two or more polygon layers')
+    // .option('add-fid', {
+    //   describe: 'add FID_A, FID_B, ... fields to output layer',
+    //   type: 'flag'
     // })
-    .option('add-fid', {
-      describe: 'add FID_A and FID_B fields to output layer',
-      type: 'flag'
+    .option('fields', {
+      type: 'strings',
+      describe: 'fields to retain (comma-sep.) (default is all fields)',
     })
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('target', {
-      describe: 'specify layer A'
+      describe: 'specify layers to target (comma-sep. list)'
     });
 
   parser.section('Informational commands');

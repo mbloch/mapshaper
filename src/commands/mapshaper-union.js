@@ -1,66 +1,60 @@
 /* @require mapshaper-overlay-utils */
 
-api.union = function(targetLayers, src, targetDataset, opts) {
-  var sourceDataset;
-  if (!src || !src.layer || !src.dataset) {
-    error("Unexpected source layer argument");
+api.union = function(targetLayers, targetDataset, opts) {
+  // var mergedDataset = internal.mergeLayersForUnion(targetLayers, targetDataset);
+  if (targetLayers.length < 2) {
+    stop('Command requires at least two target layers');
   }
-  var mergedDataset = internal.mergeLayersForOverlay(targetLayers, src, targetDataset, opts);
-  var nodes = internal.addIntersectionCuts(mergedDataset, opts);
-  var unionLyr = mergedDataset.layers.pop();
-  var outputLayers = targetLayers.map(function(targetLyr) {
-    return internal.unionTwoLayers(targetLyr, unionLyr, nodes, opts);
+  var allFields = [];
+  var allShapes = [];
+  var layerData = [];
+  targetLayers.forEach(function(lyr, i) {
+    internal.requirePolygonLayer(lyr);
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    if (opts.fields) {
+      fields = opts.fields.indexOf('*') > 1 ? fields :
+        fields.filter(function(name) {return opts.fields.indexOf(name) > -1;});
+    }
+    layerData.push({
+      layer: lyr,
+      fields: fields,
+      records: lyr.data ? lyr.data.getRecords() : null,
+      offset: allShapes.length,
+      size: lyr.shapes.length
+    });
+    allFields = allFields.concat(fields);
+    allShapes = allShapes.concat(lyr.shapes);
   });
-  targetDataset.arcs = nodes.arcs;
-  return outputLayers;
-};
-
-internal.unionTwoLayers = function(targetLyr, sourceLyr, nodes, opts) {
-  if (targetLyr.geometry_type != 'polygon' || sourceLyr.geometry_type != 'polygon') {
-    stop('Command requires two polygon layers');
-  }
-  var mergedLayer = {
+  var unionFields = utils.uniqifyNames(allFields, function(name, n) {
+    return name + '_' + n;
+  });
+  var mergedLyr = {
     geometry_type: 'polygon',
-    shapes: targetLyr.shapes.concat(sourceLyr.shapes)
+    shapes: allShapes
   };
-  // Use suffixes to disambiguate same-name fields
-  // TODO: add an option to override these defaults
-  var suffixA = '_A';
-  var suffixB = '_B';
-  var decorateRecord = opts.each ? internal.getUnionRecordDecorator(opts.each, targetLyr, sourceLyr, nodes.arcs) : null;
-  var mosaicIndex = new MosaicIndex(mergedLayer, nodes, {flat: false});
+  var nodes = internal.addIntersectionCuts(targetDataset, opts);
+  var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
   var mosaicShapes = mosaicIndex.mosaic;
-  var targetRecords = targetLyr.data ? targetLyr.data.getRecords() : null;
-  var targetFields = targetLyr.data ? targetLyr.data.getFields() : [];
-  var targetSize = targetLyr.shapes.length;
-  var sourceRecords = sourceLyr.data ? sourceLyr.data.getRecords() : null;
-  var sourceFields = sourceLyr.data ? sourceLyr.data.getFields() : [];
-  var sourceSize = sourceLyr.shapes.length;
-  var targetMap = internal.unionGetFieldMap(targetFields, sourceFields, suffixA);
-  var sourceMap = internal.unionGetFieldMap(sourceFields, targetFields, suffixB);
-
   var mosaicRecords = mosaicShapes.map(function(shp, i) {
     var mergedIds = mosaicIndex.getSourceIdsByTileId(i);
-    var targetId = internal.unionFindOriginId(mergedIds, targetSize, sourceSize);
-    var sourceId = internal.unionFindOriginId(mergedIds, 0, targetSize);
-    var rec = {};
-    var targetRec = targetId > -1 && targetRecords ? targetRecords[targetId] : null;
-    var sourceRec = sourceId > -1 && sourceRecords ? sourceRecords[sourceId] : null;
-    internal.unionMergeDataProperties(rec, targetRec, targetFields, targetMap);
-    internal.unionMergeDataProperties(rec, sourceRec, sourceFields, sourceMap);
-    if (opts.add_fid) {
-      rec.FID_A = targetId;
-      rec.FID_B = sourceId;
+    var values = [];
+    var lyrInfo, srcId, rec;
+    for (var lyrId=0, n=layerData.length; lyrId < n; lyrId++) {
+      lyrInfo = layerData[lyrId];
+      srcId = internal.unionFindOriginId(mergedIds, lyrInfo.offset, lyrInfo.size);
+      rec = srcId == -1 || lyrInfo.records === null ? null : lyrInfo.records[srcId];
+      internal.unionAddDataValues(values, lyrInfo.fields, rec);
     }
-    return rec;
+    return internal.unionMakeDataRecord(unionFields, values);
   });
+
   var unionLyr = {
     geometry_type: 'polygon',
     shapes: mosaicShapes,
     data: new DataTable(mosaicRecords)
   };
-  if ('name' in targetLyr) unionLyr.name = targetLyr.name;
-  return unionLyr;
+  // if ('name' in targetLyr) unionLyr.name = targetLyr.name;
+  return [unionLyr];
 };
 
 internal.unionFindOriginId = function(mergedIds, offset, length) {
@@ -74,15 +68,16 @@ internal.unionFindOriginId = function(mergedIds, offset, length) {
   return -1;
 };
 
-internal.unionMergeDataProperties = function(outRec, inRec, fields, fieldMap) {
+internal.unionAddDataValues = function(arr, fields, rec) {
   for (var i=0; i<fields.length; i++) {
-    outRec[fieldMap[fields[i]]] = inRec ? inRec[fields[i]] : null;
+    arr.push(rec ? rec[fields[i]] : null);
   }
 };
 
-internal.unionGetFieldMap = function(fields, otherFields, suffix) {
-  return fields.reduce(function(memo, field) {
-    memo[field] = otherFields.indexOf(field) > -1 ? field + suffix : field;
-    return memo;
-  }, {});
+internal.unionMakeDataRecord = function(fields, values) {
+  var rec = {};
+  for (var i=0; i<fields.length; i++) {
+    rec[fields[i]] = values[i];
+  }
+  return rec;
 };
