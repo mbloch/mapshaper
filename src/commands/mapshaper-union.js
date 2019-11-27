@@ -1,7 +1,6 @@
 /* @require mapshaper-overlay-utils */
 
 api.union = function(targetLayers, targetDataset, opts) {
-  // var mergedDataset = internal.mergeLayersForUnion(targetLayers, targetDataset);
   if (targetLayers.length < 2) {
     stop('Command requires at least two target layers');
   }
