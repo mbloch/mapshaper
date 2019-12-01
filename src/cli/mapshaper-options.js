@@ -735,20 +735,20 @@ internal.getOptionParser = function() {
   parser.command('polygon-grid')
     // .describe('create a rectangular grid of cells')
     .validate(validateGridOpts)
-    .option('-', {
-      label: '<cols,rows>',
-      describe: 'size of the grid, e.g. -point-grid 100,100'
-    })
+    // .option('-', {
+    //   label: '<cols,rows>',
+    //   describe: 'size of the grid, e.g. -point-grid 100,100'
+    // })
     .option('interval', {
       describe: 'distance between adjacent points, in source units',
       type: 'number'
     })
-    .option('cols', {
-      type: 'integer'
-    })
-    .option('rows', {
-      type: 'integer'
-    })
+    // .option('cols', {
+    //   type: 'integer'
+    // })
+    // .option('rows', {
+    //   type: 'integer'
+    // })
     .option('bbox', {
       type: 'bbox',
       describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
