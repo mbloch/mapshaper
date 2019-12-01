@@ -76,24 +76,6 @@
 			"integrity": "sha1-yxAt8cVvUSPquLZ817mAJ6AnkXg=",
 			"dev": true
 		},
-		"array-filter": {
-			"version": "0.0.1",
-			"resolved": "https://registry.npmjs.org/array-filter/-/array-filter-0.0.1.tgz",
-			"integrity": "sha1-fajPLiZijtcygDWB/SH2fKzS7uw=",
-			"dev": true
-		},
-		"array-map": {
-			"version": "0.0.0",
-			"resolved": "https://registry.npmjs.org/array-map/-/array-map-0.0.0.tgz",
-			"integrity": "sha1-iKK6tz0c97zVwbEYoAP2b2ZfpmI=",
-			"dev": true
-		},
-		"array-reduce": {
-			"version": "0.0.0",
-			"resolved": "https://registry.npmjs.org/array-reduce/-/array-reduce-0.0.0.tgz",
-			"integrity": "sha1-FziZ0//Rx9k4PkR5Ul2+J4yrXys=",
-			"dev": true
-		},
 		"asap": {
 			"version": "2.0.6",
 			"resolved": "https://registry.npmjs.org/asap/-/asap-2.0.6.tgz",
@@ -127,7 +109,7 @@
 				},
 				"util": {
 					"version": "0.10.3",
-					"resolved": "http://registry.npmjs.org/util/-/util-0.10.3.tgz",
+					"resolved": "https://registry.npmjs.org/util/-/util-0.10.3.tgz",
 					"integrity": "sha1-evsa/lCAUkZInj23/g7TeTNqwPk=",
 					"dev": true,
 					"requires": {
@@ -652,7 +634,7 @@
 			"dependencies": {
 				"minimist": {
 					"version": "1.2.0",
-					"resolved": "http://registry.npmjs.org/minimist/-/minimist-1.2.0.tgz",
+					"resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.0.tgz",
 					"integrity": "sha1-o1AIsg9BOD7sH7kU9M1d95omQoQ=",
 					"dev": true
 				}
@@ -1187,7 +1169,7 @@
 		},
 		"minimist": {
 			"version": "0.0.10",
-			"resolved": "http://registry.npmjs.org/minimist/-/minimist-0.0.10.tgz",
+			"resolved": "https://registry.npmjs.org/minimist/-/minimist-0.0.10.tgz",
 			"integrity": "sha1-3j+YVD2/lggr5IrRoMfNqDYwHc8="
 		},
 		"mkdirp": {
@@ -1593,16 +1575,10 @@
 			}
 		},
 		"shell-quote": {
-			"version": "1.6.1",
-			"resolved": "https://registry.npmjs.org/shell-quote/-/shell-quote-1.6.1.tgz",
-			"integrity": "sha1-9HgZSczkAmlxJ0MOo7PFR29IF2c=",
-			"dev": true,
-			"requires": {
-				"array-filter": "~0.0.0",
-				"array-map": "~0.0.0",
-				"array-reduce": "~0.0.0",
-				"jsonify": "~0.0.0"
-			}
+			"version": "1.7.2",
+			"resolved": "https://registry.npmjs.org/shell-quote/-/shell-quote-1.7.2.tgz",
+			"integrity": "sha512-mRz/m/JVscCrkMyPqHc/bczi3OQHkLTqXHEFu0zDhK/qfv3UcOA4SVmRCLmos4bhjr9ekVQubj/R7waKapmiQg==",
+			"dev": true
 		},
 		"simple-concat": {
 			"version": "1.0.0",
@@ -1775,7 +1751,7 @@
 			"dependencies": {
 				"minimist": {
 					"version": "1.2.0",
-					"resolved": "http://registry.npmjs.org/minimist/-/minimist-1.2.0.tgz",
+					"resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.0.tgz",
 					"integrity": "sha1-o1AIsg9BOD7sH7kU9M1d95omQoQ=",
 					"dev": true
 				}
