@@ -5,7 +5,7 @@ api.pointGrid = function(dataset, opts) {
   return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
 };
 
-api.polygonGrid = function(dataset, opts) {
+api.polygonGrid_old = function(dataset, opts) {
   var gridOpts = internal.getPointGridParams(dataset, opts);
   return internal.createPolygonGridDataset(internal.createPointGrid(gridOpts), opts);
 };
@@ -46,31 +46,6 @@ internal.createPointGridLayer = function(rows, opts) {
   return lyr;
 };
 
-internal.createPolygonGridDataset = function(rows, opts) {
-  var rings = [], rowArr;
-  var col, row, tl, br, ring;
-  for (row = 0; row < rows.length - 1; row++) {
-    rowArr = rows[row];
-    for (col = 0; col < rowArr.length - 1; col++) {
-      bl = rows[row][col];
-      tr = rows[row + 1][col + 1];
-      ring = [[bl[0], bl[1]], [bl[0], tr[1]], [tr[0], tr[1]], [tr[0], bl[1]], [bl[0], bl[1]]];
-      rings.push(ring);
-    }
-  }
-  var geojson = {
-    type: "GeometryCollection",
-    geometries: rings.map(function(ring){
-      return {
-        type: 'Polygon',
-        coordinates: [ring]
-      };
-    })
-  };
-  var dataset = internal.importGeoJSON(geojson, {});
-  if (opts.name) dataset.layers[0].name = opts.name;
-  return dataset;
-};
 
 // Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
 internal.createPointGrid = function(opts) {

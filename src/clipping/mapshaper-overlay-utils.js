@@ -1,8 +1,8 @@
 
-// Combine target layer(s) and overlay layer into a single dataset, with overlay
-// last in the layers array
+// Create a merged dataset by appending the overlay layer to the target dataset
+// so it is last in the layers array.
 // DOES NOT insert clipping points
-internal.mergeLayersForOverlay = function(targetLayers, clipSrc, targetDataset, opts) {
+internal.mergeLayersForOverlay = function(targetLayers, targetDataset, clipSrc, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
   var mergedDataset, clipDataset, clipLyr;
   if (clipSrc && clipSrc.geometry_type) {
@@ -30,8 +30,10 @@ internal.mergeLayersForOverlay = function(targetLayers, clipSrc, targetDataset, 
     mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
     api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
   } else {
+    // overlay layer belongs to the same dataset as target layers... move it to the end
     mergedDataset = utils.extend({}, targetDataset);
-    mergedDataset.layers = targetLayers.concat(clipLyr);
+    mergedDataset.layers = targetDataset.layers.filter(function(lyr) {return lyr != clipLyr;});
+    mergedDataset.layers.push(clipLyr);
   }
   return mergedDataset;
 };

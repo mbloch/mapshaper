@@ -44,7 +44,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   if (opts.bbox2) {
     return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
   }
-  mergedDataset = internal.mergeLayersForOverlay(targetLayers, clipSrc, targetDataset, opts);
+  mergedDataset = internal.mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
   if (usingPathClip) {
     // add vertices at all line intersections
     // (generally slower than actual clipping)

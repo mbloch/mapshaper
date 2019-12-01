@@ -36,6 +36,7 @@ mapshaper-mosaic
 mapshaper-overlay
 mapshaper-points
 mapshaper-point-grid
+mapshaper-polygon-grid
 mapshaper-proj
 mapshaper-polygons
 mapshaper-rectangle
@@ -260,8 +261,8 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.addDataset({layers: outputLayers});
       }
 
-    } else if (name == 'polygon-grid') {
-      catalog.addDataset(api.polygonGrid(targetDataset, opts));
+    // } else if (name == 'polygon-grid') {
+    //   catalog.addDataset(api.polygonGrid(targetDataset, opts));
 
     } else if (name == 'points') {
       outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);

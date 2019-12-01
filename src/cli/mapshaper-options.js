@@ -603,6 +603,10 @@ internal.getOptionParser = function() {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
       type: 'strings'
     })
+    .option('interpolate', {
+      describe: '(polygon-polygon join) (comma-sep.) area-interpolated numeric fields',
+      type: 'strings'
+    })
     .option('string-fields', stringFieldsOpt)
     .option('field-types', fieldTypesOpt)
     .option('sum-fields', {

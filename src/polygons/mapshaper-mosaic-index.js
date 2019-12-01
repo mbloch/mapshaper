@@ -21,7 +21,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
   this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
-
+  this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
   // Assign shape ids to mosaic tile shapes.
   shapes.forEach(function(shp, shapeId) {
     var tileIds = shapeTiler.getTilesInShape(shp, shapeId);

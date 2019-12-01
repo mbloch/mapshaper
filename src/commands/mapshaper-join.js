@@ -1,7 +1,8 @@
 /* @require
 mapshaper-common
 mapshaper-delim-import
-mapshaper-spatial-join
+mapshaper-point-polygon-join
+mapshaper-polygon-polygon-join
 mapshaper-data-utils
 dbf-import
 mapshaper-join-filter
@@ -29,6 +30,8 @@ api.join = function(targetLyr, dataset, src, opts) {
       retn = api.joinPolygonsToPoints(targetLyr, src.layer, src.dataset.arcs, opts);
     } else if (srcType == 'point' && targetType == 'point') {
       retn = api.joinPointsToPoints(targetLyr, src.layer, opts);
+    } else if (srcType == 'polygon' && targetType == 'polygon') {
+      retn = internal.joinPolygonsToPolygons(targetLyr, dataset, src, opts);
     } else {
       stop(utils.format("Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
