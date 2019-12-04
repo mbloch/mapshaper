@@ -1,5 +1,6 @@
 
 var api = require('../'),
+  internal = api.internal,
   assert = require('assert');
 
 
@@ -27,6 +28,18 @@ describe('mapshaper-snapping.js', function () {
     })
   })
   */
+
+  describe('getHighPrecisionSnappingInterval()', function() {
+    it('latlong range', function() {
+      var interval = internal.getHighPrecisionSnapInterval([-180, -90]);
+      assert(interval < 1e-11);
+    })
+
+    it('meter range', function() {
+      var interval = internal.getHighPrecisionSnapInterval([-410237,1062963,-415294,1066765]);
+      assert(interval < 1e-7);
+    })
+  });
 
   describe('-i snap', function () {
     it('polyline A, outside threshold', function (done) {

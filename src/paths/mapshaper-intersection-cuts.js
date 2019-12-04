@@ -20,11 +20,14 @@ mapshaper-units
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
+  var arcBounds = arcs.getBounds();
   var snapDist, snapCount, dupeCount, nodes;
   if (opts.snap_interval) {
     snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+  } else if (arcBounds.hasBounds()) {
+    snapDist = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
   } else {
-    snapDist = internal.getHighPrecisionSnapInterval(arcs);
+    snapDist = 0;
   }
   debug('addIntersectionCuts() snap dist:', snapDist);
 
@@ -190,7 +193,6 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
       xx1 = new Float64Array(destPointTotal),
       yy1 = new Float64Array(destPointTotal),
       n0, n1, arcLen, p;
-
 
   points.reverse(); // reverse sorted order to use pop()
 
