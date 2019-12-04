@@ -567,6 +567,30 @@ internal.getOptionParser = function() {
   parser.command('graticule')
     .describe('create a graticule layer');
 
+  parser.command('grid')
+    .describe('create a grid of square or hexagonal polygons')
+    .option('type', {
+      describe: 'square or hex (default is square)'
+    })
+    .option('interval', {
+      describe: 'side length, in source units',
+      type: 'number'
+    })
+    // .option('cols', {
+    //   type: 'integer'
+    // })
+    // .option('rows', {
+    //   type: 'integer'
+    // })
+    .option('bbox', {
+      type: 'bbox',
+      describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
+    })
+    .option('debug', {
+      type: 'flag'
+    })
+    .option('name', nameOpt);
+
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
     .flag('no_arg')
@@ -637,6 +661,10 @@ internal.getOptionParser = function() {
     })
     .option('where', whereOpt2)
     .option('each', eachOpt2)
+    .option('segments', {
+      describe: 'convert vectors to segments, for debugging',
+      type: 'flag'
+    })
     .option('groupby', {
       describe: 'field for grouping point input into multiple lines'
     })
@@ -731,29 +759,6 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
-
-  parser.command('polygon-grid')
-    // .describe('create a rectangular grid of cells')
-    .validate(validateGridOpts)
-    // .option('-', {
-    //   label: '<cols,rows>',
-    //   describe: 'size of the grid, e.g. -point-grid 100,100'
-    // })
-    .option('interval', {
-      describe: 'distance between adjacent points, in source units',
-      type: 'number'
-    })
-    // .option('cols', {
-    //   type: 'integer'
-    // })
-    // .option('rows', {
-    //   type: 'integer'
-    // })
-    .option('bbox', {
-      type: 'bbox',
-      describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
-    })
-    .option('name', nameOpt);
 
   parser.command('proj')
     .describe('project your data (using Proj.4)')

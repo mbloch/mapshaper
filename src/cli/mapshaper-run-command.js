@@ -124,7 +124,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
       if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-          name == 'polygon-grid' || name == 'include')) {
+          name == 'grid' || name == 'include')) {
         throw new UserError("No data is available");
       }
     }
@@ -261,8 +261,8 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.addDataset({layers: outputLayers});
       }
 
-    // } else if (name == 'polygon-grid') {
-    //   catalog.addDataset(api.polygonGrid(targetDataset, opts));
+    } else if (name == 'grid') {
+      catalog.addDataset(api.polygonGrid(targetLayers, targetDataset, opts));
 
     } else if (name == 'points') {
       outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);

@@ -169,7 +169,17 @@ function ArcCollection() {
           n2++;
         }
       }
-      if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
+      if (n2 == 1) {
+        error("Collapsed arc");
+        // This should not happen (endpoints should be z == Infinity)
+        // Could handle like this, instead of throwing an error:
+        // n2 = 0;
+        // xx2.pop();
+        // yy2.pop();
+        // zz2.pop();
+      } else if (n2 === 0) {
+        // collapsed arc... ignoring
+      }
       nn2[arcId] = n2;
     }
     return {

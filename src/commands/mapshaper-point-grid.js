@@ -5,11 +5,6 @@ api.pointGrid = function(dataset, opts) {
   return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
 };
 
-api.polygonGrid_old = function(dataset, opts) {
-  var gridOpts = internal.getPointGridParams(dataset, opts);
-  return internal.createPolygonGridDataset(internal.createPointGrid(gridOpts), opts);
-};
-
 internal.getPointGridParams = function(dataset, opts) {
   var params = {};
   var crs = dataset ? internal.getDatasetCRS(dataset) : null;

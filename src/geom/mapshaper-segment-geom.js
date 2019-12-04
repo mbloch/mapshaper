@@ -102,7 +102,9 @@ function snapIfCloser(p, minDist, x, y, x2, y2) {
 function snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
   var x = p[0],
       y = p[1],
-      snapDist = 1e-12;
+      snapDist = internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
+      // snapDist = 1e-10; // 1e-12
+      // real world dist: 5.820766091346741e-11
   snapDist = snapIfCloser(p, snapDist, x, y, ax, ay);
   snapDist = snapIfCloser(p, snapDist, x, y, bx, by);
   snapDist = snapIfCloser(p, snapDist, x, y, cx, cy);

@@ -4,11 +4,38 @@ api.lines = function(lyr, dataset, opts) {
   opts = opts || {};
   if (lyr.geometry_type == 'point') {
     return internal.pointsToLines(lyr, dataset, opts);
+  } else if (opts.segments) {
+    return [internal.convertShapesToSegments(lyr, dataset)];
   } else if (lyr.geometry_type == 'polygon') {
     return internal.polygonsToLines(lyr, dataset.arcs, opts);
   } else {
     internal.requirePolygonLayer(lyr, "Command requires a polygon or point layer");
   }
+};
+
+internal.convertShapesToSegments = function(lyr, dataset) {
+  var arcs = dataset.arcs;
+  var features = [];
+  var geojson = {type: 'FeatureCollection', features: []};
+  var arcId;
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    arcId = i;
+    arcs.forEachArcSegment(arcId, onSeg);
+  }
+  function onSeg(i1, i2, xx, yy) {
+    var a = xx[i1],
+        b = yy[i1],
+        c = xx[i2],
+        d = yy[i2];
+    geojson.features.push({
+      type: 'Feature',
+      properties: {arc: arcId, x1: a, y1: b, x2: c, y2: d},
+      geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
+    });
+  }
+  var merged = internal.mergeDatasets([dataset, internal.importGeoJSON(geojson, {})]);
+  dataset.arcs = merged.arcs;
+  return merged.layers.pop();
 };
 
 internal.pointsToLines = function(lyr, dataset, opts) {
