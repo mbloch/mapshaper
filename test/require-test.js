@@ -14,7 +14,7 @@ describe('mapshaper-require.js', function () {
 
     it('require a module file and initialize it', function(done) {
       var json = [{foo: 'bar'}];
-      var cmd = '-i in.json name=info -require test/test_data/require/test_module.js \
+      var cmd = '-i in.json name=info -require test/test_data/features/require/test_module.js \
         init="setName(target.layer.name)" -each "layer_name = getName()" -o out.json';
       api.applyCommands(cmd, {'in.json': json}, function(err, result) {
         assert.deepEqual(JSON.parse(result['out.json']), [{foo: 'bar', layer_name: 'info'}]);

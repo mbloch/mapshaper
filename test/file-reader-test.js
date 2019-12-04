@@ -27,7 +27,7 @@ describe('test Reader', function () {
 describe('mapshaper-file-reader.js', function () {
 
     it('buffer larger than file cache', function () {
-      var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 2, bufferSize: 4});
+      var reader = new FileReader('test/test_data/text/lorem.txt', {cacheSize: 2, bufferSize: 4});
       assert.equal(toString(reader.readSync(2)), 'rem ');
       assert.equal(toString(reader.readSync(4)), 'm ip');
       assert.equal(toString(reader.readSync(7)), 'psum');
@@ -44,7 +44,7 @@ describe('mapshaper-file-reader.js', function () {
   describe('FileReader', function () {
 
     it('file cache larger than file', function () {
-      var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 0x1000, bufferSize: 2});
+      var reader = new FileReader('test/test_data/text/lorem.txt', {cacheSize: 0x1000, bufferSize: 2});
       assert.equal(toString(reader.readSync(2)), 're');
       assert.equal(toString(reader.expandBuffer().readSync(6)), 'ipsu');
       assert.equal(toString(reader.expandBuffer().readSync(10)), 'm'); // end of file
@@ -52,7 +52,7 @@ describe('mapshaper-file-reader.js', function () {
     })
 
     it('buffer same size as file', function () {
-      var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 0x1000, bufferSize: 11});
+      var reader = new FileReader('test/test_data/text/lorem.txt', {cacheSize: 0x1000, bufferSize: 11});
       assert.equal(toString(reader.readSync(0)), 'lorem ipsum');
       assert.equal(toString(reader.readSync(1)), 'orem ipsum');
       assert.equal(toString(reader.readSync(2)), 'rem ipsum');
@@ -60,7 +60,7 @@ describe('mapshaper-file-reader.js', function () {
     })
 
     it('try to read beyond file end', function() {
-      var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 0x1000, bufferSize: 12});
+      var reader = new FileReader('test/test_data/text/lorem.txt', {cacheSize: 0x1000, bufferSize: 12});
       assert.equal(toString(reader.readSync(11)), ''); // at eof: return empty buffer
       assert.throws(function() {
         reader.readSync(12);

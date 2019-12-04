@@ -11,7 +11,7 @@ describe('mapshaper-shapefile.js', function () {
 
   it('Fix: point shapefile importing', function (done) {
 
-    api.internal.testCommands('-i test/test_data/issues/shp_point_import/points.shp', function(err, dataset) {
+    api.internal.testCommands('-i test/test_data/issues/point_shapefile_import_error/points.shp', function(err, dataset) {
       assert.deepEqual(dataset.layers[0].shapes, [[[0, 0]], [[1, 1], [1, 2]]]);
       assert.equal(dataset.layers[0].geometry_type, 'point');
       done();

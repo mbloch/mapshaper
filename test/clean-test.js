@@ -119,7 +119,7 @@ describe('mapshaper-clean.js', function () {
 
 
     it('Removes overlapping section in GeoJSON input', function(done) {
-      api.applyCommands('-i test/test_data/issues/clean/overlapping_polygons.json -clean -o out.json', null, function(err, data) {
+      api.applyCommands('-i test/test_data/features/clean/overlapping_polygons.json -clean -o out.json', null, function(err, data) {
         var geojson = JSON.parse(data['out.json']);
         var a = geojson.geometries[0].coordinates;
         var b = geojson.geometries[1].coordinates;
