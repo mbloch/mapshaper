@@ -301,6 +301,16 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return apexDistSq(ab2, ac2, bc2);
 }
 
+// Apparently better conditioned for some inputs than pointSegDistSq()
+//
+function pointSegDistSq2(px, py, ax, ay, bx, by) {
+  var ab2 = distanceSq(ax, ay, bx, by);
+  var t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ab2;
+  if (ab2 === 0) return distanceSq(px, py, ax, ay);
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  return distanceSq(px, py, ax + t * (bx - ax), ay + t * (by - ay));
+}
 
 internal.calcArcBounds = function(xx, yy, start, len) {
   var i = start | 0,
@@ -372,6 +382,7 @@ var geom = {
   greatCircleDistance: greatCircleDistance,
   pointSegDistSq: pointSegDistSq,
   pointSegDistSq3D: pointSegDistSq3D,
+  pointSegDistSq2: pointSegDistSq2,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,

@@ -26,8 +26,13 @@ describe('mapshaper-intersection-cuts.js', function () {
     var xx = [0, 0, 1, 1, 2];
     var yy = [0, 0, 1, 2, 2];
 
-    it('out-of-range cut point-> null', function() {
-      assert.equal(getCutPoint(-1e-20, 0, 1, 2, xx, yy), null)
+    // it('out-of-range cut point-> null', function() {
+    it('out-of-range cut point-> tolerated', function() {
+      assert.deepEqual(getCutPoint(-1e-20, 0, 1, 2, xx, yy), {
+        x: -1e-20,
+        y: 0,
+        i: 1
+      })
     })
 
     it('out-of-sequence arc ids -> error', function() {

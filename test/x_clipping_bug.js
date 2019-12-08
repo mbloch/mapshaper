@@ -15,9 +15,12 @@ describe('x_clipping_bug', function () {
         };
         api.applyCommands('-clip bbox=-1,0,0,1 -debug', polygon, function(err, output) {
           var geojson = JSON.parse(output);
-          // console.log("err:", err, 'output:', geojson)
           var coords = geojson.geometries[0].coordinates[0];
-          assert.deepEqual(coords, [[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,0], [-0.9, 0.4]])
+
+          // clipping command has changed: now very slightly out-of-bounds coordinates are tolerated
+          // if present in the original dataset.
+          // assert.deepEqual(coords, [[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,0], [-0.9, 0.4]])
+          assert.deepEqual(coords, [[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,-1.734723475976807e-18], [-0.9, 0.4]])
           done();
         });
       })

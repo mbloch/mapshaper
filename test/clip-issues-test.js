@@ -125,7 +125,8 @@ describe('mapshaper-clip-erase.js', function () {
         api.applyCommands('-i poly.json -clip bbox=-1,0,0,1 -o', {'poly.json': polygon}, function(err, output) {
           var geojson = JSON.parse(output['poly.json']);
           var coords = geojson.geometries[0].coordinates[0];
-          assert.deepEqual(coords, [[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,0], [-0.9, 0.4]])
+          // slightly out-of-range coordinates are tolerated now
+          assert.deepEqual(coords, [[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,-1.734723475976807e-18], [-0.9, 0.4]])
           done();
         });
       })

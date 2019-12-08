@@ -194,6 +194,7 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
       yy1 = new Float64Array(destPointTotal),
       n0, n1, arcLen, p;
 
+
   points.reverse(); // reverse sorted order to use pop()
 
   p = points.pop();
@@ -258,11 +259,14 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
   if (j < i || j > i + 1) {
     error("Out-of-sequence arc ids:", i, j);
   }
-  if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
-    // out-of-range issues should have been handled upstream
-    debug("[getCutPoint()] Coordinate range error");
-    return null;
-  }
+
+  // Small out-of-range intersection points are now allowed.
+  // (They may occur due to fp rounding, when intersections occur along
+  // vertical or horizontal segments)
+  // if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
+    // return null;
+  // }
+
   // if (x == ix && y == iy || x == jx && y == jy) {
     // if point xy is at a vertex, don't insert a (duplicate) point
     // TODO: investigate why this can cause pathfinding errors
@@ -277,9 +281,12 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
 //   ascending distance from same endpoint.
 internal.sortCutPoints = function(points, xx, yy) {
   points.sort(function(a, b) {
-    return a.i - b.i ||
-      Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
-      Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
+    if (a.i != b.i) return a.i - b.i;
+    return distanceSq(xx[a.i], yy[a.i], a.x, a.y) - distanceSq(xx[b.i], yy[b.i], b.x, b.y);
+    // The old code below is no longer reliable, now that out-of-range intersection
+    // points are being allowed.
+    // return Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
+    // Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
   });
   return points;
 };
@@ -315,5 +322,6 @@ internal.filterSortedCutPoints = function(points, arcs) {
 internal.findClippingPoints = function(arcs) {
   var intersections = internal.findSegmentIntersections(arcs),
       data = arcs.getVertexData();
+  // console.log("[findClippingPoints()] xx:", intersections)
   return internal.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
 };
