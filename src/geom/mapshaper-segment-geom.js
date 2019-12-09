@@ -1,6 +1,6 @@
 /* @requires mapshaper-arcs, mapshaper-geom */
 
-geom.segmentIntersection = segmentIntersection2;
+geom.segmentIntersection = segmentIntersection;
 geom.segmentHit = segmentHit;
 geom.orient2D = orient2D;
 geom.findClosestPointOnSeg = findClosestPointOnSeg;
@@ -9,15 +9,16 @@ geom.findClosestPointOnSeg = findClosestPointOnSeg;
 // Find the intersection between two 2D segments
 // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
 // Special cases:
-// If the segments touch at an endpoint of both segments, it is not treated as an intersection
-// If the segments touch at a T-intersection, it is treated as an intersection
+// Endpoint-to-endpoint touches are not treated as intersections.
+// If the segments touch at a T-intersection, it is treated as an intersection.
 // If the segments are collinear and partially overlapping, each subsumed endpoint
-//    is counted as an intersection (there will be one or two)
+//    is counted as an intersection (there will be either one or two)
 //
-function segmentIntersection2(ax, ay, bx, by, cx, cy, dx, dy) {
+function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   // Use a small tolerance interval, so collinear segments and T-intersections
   // are detected (floating point rounding often causes exact functions to fail)
-  var eps = internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
+  var eps = epsArg >= 0 ? epsArg :
+      internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
   var epsSq = eps * eps;
   // Detect touch intersections (segments with one or more endpoints that touch
   // along the linear portion of the other segment).
@@ -52,7 +53,9 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   //   pathfinder errors related to f-p rounding.
   // (NOTE: this may no longer be needed, since T-intersections are now detected
   // first)
-  snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps);
+  if (eps > 0) {
+    snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps);
+  }
   // Clamp point to x range and y range of both segments
   // (This may occur due to fp rounding, if one segment is vertical or horizontal)
   clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy);
@@ -60,8 +63,8 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
 }
 
 function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
-  return geom.distanceSq(ax, ay, cx, cy) < epsSq || geom.distanceSq(ax, ay, dx, dy) < epsSq ||
-    geom.distanceSq(bx, by, cx, cy) < epsSq || geom.distanceSq(bx, by, dx, dy) < epsSq;
+  return geom.distanceSq(ax, ay, cx, cy) <= epsSq || geom.distanceSq(ax, ay, dx, dy) <= epsSq ||
+    geom.distanceSq(bx, by, cx, cy) <= epsSq || geom.distanceSq(bx, by, dx, dy) <= epsSq;
 }
 
 function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
@@ -84,10 +87,10 @@ function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
   // (probably because of large rounding errors with some inputs).
   // var pab = geom.pointSegDistSq(px, py, ax, ay, bx, by);
   var pab = geom.pointSegDistSq2(px, py, ax, ay, bx, by);
-  if (pab >= epsSq) return; // point is too far from segment to touch
+  if (pab > epsSq) return; // point is too far from segment to touch
   var pa = geom.distanceSq(ax, ay, px, py);
   var pb = geom.distanceSq(bx, by, px, py);
-  if (pa < epsSq || pb < epsSq) return; // ignore endpoint hits
+  if (pa <= epsSq || pb <= epsSq) return; // ignore endpoint hits
   arr.push(px, py); // T intersection at P and AB
 }
 
@@ -126,9 +129,7 @@ function snapIfCloser(p, minDist, x, y, x2, y2) {
 function snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps) {
   var x = p[0],
       y = p[1],
-      snapDist = eps || internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
-      // snapDist = 1e-10; // 1e-12
-      // real world dist: 5.820766091346741e-11
+      snapDist = eps;
   snapDist = snapIfCloser(p, snapDist, x, y, ax, ay);
   snapDist = snapIfCloser(p, snapDist, x, y, bx, by);
   snapDist = snapIfCloser(p, snapDist, x, y, cx, cy);

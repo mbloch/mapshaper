@@ -8,8 +8,8 @@ mapshaper-units
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
-// TODO: rename this function to something like repairTopology
-//    (consider using it at import to build initial topology)
+// TODO:
+//    Consider inserting cut points on import, when building initial topology
 //    Improve efficiency (e.g. only update ArcCollection once)
 //    Remove junk arcs (collapsed and duplicate arcs) instead of just removing
 //       references to them
@@ -194,9 +194,7 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
       yy1 = new Float64Array(destPointTotal),
       n0, n1, arcLen, p;
 
-
   points.reverse(); // reverse sorted order to use pop()
-
   p = points.pop();
 
   for (var srcArcId=0, destArcId=0; srcArcId < srcArcTotal; srcArcId++) {
@@ -260,17 +258,16 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
     error("Out-of-sequence arc ids:", i, j);
   }
 
-  // Small out-of-range intersection points are now allowed.
-  // (They may occur due to fp rounding, when intersections occur along
+  // Removed out-of-range check: small out-of-range intersection points are now allowed.
+  // (Such points may occur due to fp rounding, when intersections occur along
   // vertical or horizontal segments)
   // if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
     // return null;
   // }
 
+  // Removed endpoint check: intersecting arcs need to be cut both at vertices
+  // and between vertices, so pathfinding functions will work correctly.
   // if (x == ix && y == iy || x == jx && y == jy) {
-    // if point xy is at a vertex, don't insert a (duplicate) point
-    // TODO: investigate why this can cause pathfinding errors
-    //       e.g. when clipping cd115_districts
     // return null;
   // }
   return {x: x, y: y, i: i};
@@ -284,7 +281,7 @@ internal.sortCutPoints = function(points, xx, yy) {
     if (a.i != b.i) return a.i - b.i;
     return distanceSq(xx[a.i], yy[a.i], a.x, a.y) - distanceSq(xx[b.i], yy[b.i], b.x, b.y);
     // The old code below is no longer reliable, now that out-of-range intersection
-    // points are being allowed.
+    // points are allowed.
     // return Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
     // Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
   });
@@ -305,7 +302,7 @@ internal.filterSortedCutPoints = function(points, arcs) {
 
     while (pointId < points.length && points[pointId].i <= j) {
       p = points[pointId];
-      pp = filtered[filtered.length - 1];
+      pp = filtered[filtered.length - 1]; // previous point
       if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) {
         // clip point is an arc endpoint -- discard
       } else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) {
@@ -322,6 +319,5 @@ internal.filterSortedCutPoints = function(points, arcs) {
 internal.findClippingPoints = function(arcs) {
   var intersections = internal.findSegmentIntersections(arcs),
       data = arcs.getVertexData();
-  // console.log("[findClippingPoints()] xx:", intersections)
   return internal.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
 };

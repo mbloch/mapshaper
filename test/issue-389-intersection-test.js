@@ -3,7 +3,6 @@ var api = require('..'),
     assert = require('assert'),
     segmentIntersection = api.geom.segmentIntersection;
 
-
 describe('Issue #389 (clipping error)', function () {
 
   it('inner polygon is not removed by clipping', function(done) {

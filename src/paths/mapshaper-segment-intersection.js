@@ -28,8 +28,8 @@ internal.findSegmentIntersections = (function() {
     return new Uint32Array(buf, 0, count);
   }
 
-  return function(arcs, arg2) {
-    var opts = arg2 || {},
+  return function(arcs, optArg) {
+    var opts = optArg || {},
         bounds = arcs.getBounds(),
         // TODO: handle spherical bounds
         spherical = !arcs.isPlanar() &&
@@ -89,13 +89,12 @@ internal.findSegmentIntersections = (function() {
         intersections = [],
         arr;
     for (i=0; i<stripeCount; i++) {
-      arr = internal.intersectSegments(stripes[i], raw.xx, raw.yy);
+      arr = internal.intersectSegments(stripes[i], raw.xx, raw.yy, opts);
       for (j=0; j<arr.length; j++) {
         intersections.push(arr[j]);
       }
     }
-
-    return internal.dedupIntersections(intersections);
+    return internal.dedupIntersections(intersections, opts.unique ? internal.getUniqueIntersectionKey : null);
   };
 })();
 
@@ -105,10 +104,13 @@ internal.sortIntersections = function(arr) {
   });
 };
 
-internal.dedupIntersections = function(arr) {
+
+
+internal.dedupIntersections = function(arr, keyFunction) {
   var index = {};
+  var getKey = keyFunction || internal.getIntersectionKey;
   return arr.filter(function(o) {
-    var key = internal.getIntersectionKey(o);
+    var key = getKey(o);
     if (key in index) {
       return false;
     }
@@ -121,6 +123,10 @@ internal.dedupIntersections = function(arr) {
 // Assumes that vertex ids of o.a and o.b are sorted
 internal.getIntersectionKey = function(o) {
   return o.a.join(',') + ';' + o.b.join(',');
+};
+
+internal.getUniqueIntersectionKey = function(o) {
+  return o.x + ',' + o.y;
 };
 
 // Fast method
@@ -156,10 +162,12 @@ internal.calcSegmentIntersectionStripeCount_old = function(arcs) {
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
 //
-internal.intersectSegments = function(ids, xx, yy) {
+internal.intersectSegments = function(ids, xx, yy, optsArg) {
   var lim = ids.length - 2,
-      intersections = [];
-  var s1p1, s1p2, s2p1, s2p2,
+      opts = optsArg || {},
+      intersections = [],
+      tolerance = opts.tolerance, // may be undefined
+      s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
       hit, seg1, seg2, i, j;
@@ -208,7 +216,7 @@ internal.intersectSegments = function(ids, xx, yy) {
 
       // test two candidate segments for intersection
       hit = geom.segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
-          s2p1x, s2p1y, s2p2x, s2p2y);
+          s2p1x, s2p1y, s2p2x, s2p2y, tolerance);
       if (hit) {
         seg1 = [s1p1, s1p2];
         seg2 = [s2p1, s2p2];

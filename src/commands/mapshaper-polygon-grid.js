@@ -11,7 +11,7 @@ api.polygonGrid = function(targetLayers, targetDataset, opts) {
   }
   internal.alignGridToBounds(geojson, params.bbox);
   var gridDataset = internal.importGeoJSON(geojson, {});
-  // api.buildTopology(gridDataset);
+  api.buildTopology(gridDataset);
   if (opts.name) gridDataset.layers[0].name = opts.name;
   if (opts.debug) gridDataset.layers.push(api.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;

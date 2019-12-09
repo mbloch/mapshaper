@@ -60,17 +60,21 @@ function RepairControl(gui) {
     var dataset = e.dataset;
     var arcs = dataset && dataset.arcs;
     var XX, showBtn;
+    var opts = {
+      unique: true,
+      tolerance: 0
+    };
     if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
     if (arcs.getRetainedInterval() > 0) {
       // TODO: cache these intersections
-      XX = internal.findSegmentIntersections(arcs);
+      XX = internal.findSegmentIntersections(arcs, opts);
       showBtn = XX.length > 0;
     } else { // no simplification
       XX = dataset.info.intersections;
       if (!XX) {
         // cache intersections at 0 simplification, to avoid recalculating
         // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs);
+        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs, opts);
       }
       showBtn = false;
     }
