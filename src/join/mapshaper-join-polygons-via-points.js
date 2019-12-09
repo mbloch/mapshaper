@@ -8,11 +8,11 @@ internal.joinPolygonsViaPoints = function(targetLyr, targetDataset, source, opts
 
   if (targetLyr.shapes.length > sourceLyr.shapes.length) {
     // convert target polygons to points
-    pointLyr = internal.polygonsToPointsForJoin(targetLyr, targetDataset);
+    pointLyr = internal.pointsFromPolygonsForJoin(targetLyr, targetDataset);
     return api.joinPolygonsToPoints(targetLyr, sourceLyr, sourceDataset.arcs, opts);
   } else {
     // convert source polygons to points
-    pointLyr = internal.polygonsToPointsForJoin(sourceLyr, sourceDataset);
+    pointLyr = internal.pointsFromPolygonsForJoin(sourceLyr, sourceDataset);
     return api.joinPointsToPolygons(targetLyr, targetDataset.arcs, pointLyr, opts);
   }
 };

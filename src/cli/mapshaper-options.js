@@ -631,6 +631,14 @@ internal.getOptionParser = function() {
       describe: '(polygon-polygon join) (comma-sep.) area-interpolated numeric fields',
       type: 'strings'
     })
+    .option('point-method', {
+      describe: '(polygon-polygon join) join polygons via inner points',
+      type: 'flag'
+    })
+    .option('planar', {
+      // describe: 'use planar geometry when interpolating by area' // useful for testing
+      type: 'flag'
+    })
     .option('string-fields', stringFieldsOpt)
     .option('field-types', fieldTypesOpt)
     .option('sum-fields', {

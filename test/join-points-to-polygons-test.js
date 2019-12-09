@@ -3,7 +3,7 @@ var api = require('../'),
     ArcCollection = api.internal.ArcCollection,
     DataTable = api.internal.DataTable;
 
-describe('mapshaper-spatial-join.js', function () {
+describe('Points to polygons and polygons to points spatial join', function () {
   describe('Bug fix: need to handle congruent / overlapping polygons', function () {
 
     it('join point to two congruent polygons', function(done) {
@@ -69,29 +69,7 @@ describe('mapshaper-spatial-join.js', function () {
           done();
         });
     });
-
   })
-
-
-  describe('point-to-point join', function() {
-    it('simple one-point join', function(done) {
-      var a = {
-        type: 'Point',
-        coordinates: [1, 1]
-      };
-      var b = {
-        type: 'Feature',
-        properties: {id: 'foo'},
-        geometry: {type: 'Point', coordinates: [1, 1]}
-      };
-      api.applyCommands('-i a.json -join b.json -o', {'a.json': a, 'b.json': b}, function(err, output) {
-        var features = JSON.parse(output['a.json']).features;
-        assert.deepEqual(features[0].properties, {id: 'foo'});
-        done();
-      });
-    });
-
-  });
 
   describe('joinPointsToPolygons()', function () {
     it('simple point to polygon join', function () {
@@ -170,5 +148,4 @@ describe('mapshaper-spatial-join.js', function () {
     })
 
   })
-
 });
