@@ -186,7 +186,7 @@ internal.getScaleFactorAtXY = function(x, y, crs) {
 };
 
 internal.isProjectedCRS = function(P) {
-  return P && P.is_latlong || false;
+  return !internal.isLatLngCRS(P);
 };
 
 internal.isLatLngCRS = function(P) {

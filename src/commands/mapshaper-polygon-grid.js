@@ -1,5 +1,8 @@
 
 api.polygonGrid = function(targetLayers, targetDataset, opts) {
+  if (internal.isLatLngCRS(internal.getDatasetCRS(targetDataset))) {
+    stop("Command requires projected coordinates (not lat-long coordinates)");
+  }
   var params = internal.getGridParams(targetLayers, targetDataset, opts);
   var geojson;
   if (params.type == 'square') {
