@@ -17,9 +17,11 @@ internal.convertShapesToSegments = function(lyr, dataset) {
   var arcs = dataset.arcs;
   var features = [];
   var geojson = {type: 'FeatureCollection', features: []};
+  var test = internal.getArcPresenceTest(lyr.shapes, arcs);
   var arcId;
   for (var i=0, n=arcs.size(); i<n; i++) {
     arcId = i;
+    if (!test(arcId)) continue;
     arcs.forEachArcSegment(arcId, onSeg);
   }
   function onSeg(i1, i2, xx, yy) {
@@ -29,12 +31,13 @@ internal.convertShapesToSegments = function(lyr, dataset) {
         d = yy[i2];
     geojson.features.push({
       type: 'Feature',
-      properties: {arc: arcId, x1: a, y1: b, x2: c, y2: d},
+      properties: {arc: arcId, i1: i1, i2: i2, x1: a, y1: b, x2: c, y2: d},
       geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
     });
   }
   var merged = internal.mergeDatasets([dataset, internal.importGeoJSON(geojson, {})]);
   dataset.arcs = merged.arcs;
+  // api.buildTopology(dataset);
   return merged.layers.pop();
 };
 
