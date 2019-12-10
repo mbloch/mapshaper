@@ -82,7 +82,7 @@ describe("mapshaper-variable-simplify.js", function() {
   })
 
   describe('-variable simplify has same output as standard simplify when applied uniformly', function () {
-    var content = fs.readFileSync('test/test_data/six_counties_three_null.json')
+    var content = fs.readFileSync('test/data/six_counties_three_null.json')
     it('5%', function (done) {
       sameOutputTest(content, '10%', 'variable percentage=\'"10" + "%"\'', done);
     })

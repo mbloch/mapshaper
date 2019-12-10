@@ -49,7 +49,7 @@ describe('mapshaper-mosaic.js', function () {
   });
 
   it ('-mosaic calc= option works', function(done) {
-    var cmd = '-i test/test_data/features/mosaic/two_polygons.json -mosaic calc="n=_.count(), names=collect(name)" -o output.json';
+    var cmd = '-i test/data/features/mosaic/two_polygons.json -mosaic calc="n=_.count(), names=collect(name)" -o output.json';
     api.applyCommands(cmd, {'input.json': figure1}, function(err, out) {
       var features = JSON.parse(out['output.json']).features;
       var data = _.pluck(features, 'properties');

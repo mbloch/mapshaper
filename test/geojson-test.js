@@ -81,13 +81,13 @@ describe('mapshaper-geojson.js', function () {
 
   describe('importGeoJSON', function () {
     it('Import FeatureCollection with polygon geometries', function () {
-      var data = api.importFile(fixPath('test_data/two_states.json'))
+      var data = api.importFile(fixPath('data/two_states.json'))
       assert.equal(data.layers[0].shapes.length, 2);
       assert.equal(data.layers[0].data.size(), 2);
     })
 
     it('Import FeatureCollection with three null geometries', function () {
-      var data = api.importFile(fixPath('test_data/six_counties_three_null.json'), 'geojson');
+      var data = api.importFile(fixPath('data/six_counties_three_null.json'), 'geojson');
       assert.equal(data.layers[0].data.size(), 6);
       assert.equal(data.layers[0].shapes.length, 6);
       assert.equal(data.layers[0].shapes.filter(function(shape) {return shape != null}).length, 3)
@@ -459,7 +459,7 @@ describe('mapshaper-geojson.js', function () {
     })
 
     it('default file extension is .json', function(done) {
-      api.applyCommands('-i test/test_data/two_states.json -o', {}, function(err, output) {
+      api.applyCommands('-i test/data/two_states.json -o', {}, function(err, output) {
         assert('two_states.json' in output);
         done();
       })
@@ -467,7 +467,7 @@ describe('mapshaper-geojson.js', function () {
     })
 
     it('-o extension= overrides default file extension', function(done) {
-      api.applyCommands('-i test/test_data/two_states.json -o extension=geojson', {}, function(err, output) {
+      api.applyCommands('-i test/data/two_states.json -o extension=geojson', {}, function(err, output) {
         assert('two_states.geojson' in output);
         done();
       })
@@ -799,7 +799,7 @@ describe('mapshaper-geojson.js', function () {
     })
 
     it('reversed ring with duplicate points is not removed (#42)', function() {
-      var geoStr = api.cli.readFile(fixPath("test_data/ccw_polygon.json"), 'utf8'),
+      var geoStr = api.cli.readFile(fixPath("data/ccw_polygon.json"), 'utf8'),
           outputObj = importExport(geoStr);
       assert.ok(outputObj.features[0].geometry != null);
     })
@@ -853,15 +853,15 @@ describe('mapshaper-geojson.js', function () {
   describe('Export/Import roundtrip tests', function () {
 
     it('two states', function () {
-      geoJSONRoundTrip('test_data/two_states.json');
+      geoJSONRoundTrip('data/two_states.json');
     })
 
     it('six counties, two null geometries', function () {
-      geoJSONRoundTrip('test_data/six_counties_three_null.json');
+      geoJSONRoundTrip('data/six_counties_three_null.json');
     })
 
     it('Internal state borders (polyline)', function () {
-      geoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
+      geoJSONRoundTrip('data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
     /* */
   })

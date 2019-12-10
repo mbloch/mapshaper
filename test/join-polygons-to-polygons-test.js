@@ -7,8 +7,8 @@ describe('Polygons to polygons spatial joins', function () {
     // Sum of interpolated values of inner subdivisions should be less than value of enclosing source polygon
     // (Before, geometry errors from an earlier, less robust intersection function
     //  caused this dataset to fail this test).
-    var cmd = '-i test/test_data/features/polygon_join/ex1_outer.json ' +
-    '-i test/test_data/features/polygon_join/ex1_inner.json -join ex1_outer ' +
+    var cmd = '-i test/data/features/polygon_join/ex1_outer.json ' +
+    '-i test/data/features/polygon_join/ex1_inner.json -join ex1_outer ' +
       'interpolate=POPULATION,T,D,R ' +
       '-o target=*';
     api.applyCommands(cmd, {}, function(err, output) {
@@ -32,8 +32,8 @@ describe('Polygons to polygons spatial joins', function () {
   })
 
   it('Join inner polygon to outer polygon, 1:2 area ratio', function(done) {
-    var cmd = '-i test/test_data/features/polygon_join/ex2_A.json ' +
-      '-join test/test_data/features/polygon_join/ex2_C.json interpolate=cval ' +
+    var cmd = '-i test/data/features/polygon_join/ex2_A.json ' +
+      '-join test/data/features/polygon_join/ex2_C.json interpolate=cval ' +
       '-o out.json';
     api.applyCommands(cmd, {}, function(err, output) {
       var json = JSON.parse(output['out.json']);
@@ -43,8 +43,8 @@ describe('Polygons to polygons spatial joins', function () {
   })
 
   it('Join outer polygon to inner polygon, 1:2 area ratio', function(done) {
-    var cmd = '-i test/test_data/features/polygon_join/ex2_C.json ' +
-      '-join test/test_data/features/polygon_join/ex2_A.json interpolate=value planar ' +
+    var cmd = '-i test/data/features/polygon_join/ex2_C.json ' +
+      '-join test/data/features/polygon_join/ex2_A.json interpolate=value planar ' +
       '-o out.json';
     api.applyCommands(cmd, {}, function(err, output) {
       var json = JSON.parse(output['out.json']);
@@ -54,8 +54,8 @@ describe('Polygons to polygons spatial joins', function () {
   })
 
   it('Join outer polygon to inner polygon using inner-point method', function(done) {
-    var cmd = '-i test/test_data/features/polygon_join/ex2_C.json ' +
-      '-join test/test_data/features/polygon_join/ex2_A.json point-method ' +
+    var cmd = '-i test/data/features/polygon_join/ex2_C.json ' +
+      '-join test/data/features/polygon_join/ex2_A.json point-method ' +
       '-o out.json';
     api.applyCommands(cmd, {}, function(err, output) {
       var json = JSON.parse(output['out.json']);

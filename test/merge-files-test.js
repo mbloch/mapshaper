@@ -3,25 +3,25 @@ var assert = require('assert'),
 
 describe('mapshaper-merge-files.js', function () {
   it('import a point GeoJSON and a csv file', function() {
-    var a = 'test/test_data/three_points.geojson',
-        b = 'test/test_data/text/two_states.csv';
+    var a = 'test/data/three_points.geojson',
+        b = 'test/data/text/two_states.csv';
     var combined = api.internal.importFiles([a, b], {});
     assert(api.internal.getDatasetCRS(combined).is_latlong);
-    assert.deepEqual(combined.info.input_files, ['test/test_data/three_points.geojson', 'test/test_data/text/two_states.csv']);
+    assert.deepEqual(combined.info.input_files, ['test/data/three_points.geojson', 'test/data/text/two_states.csv']);
     assert.deepEqual(combined.info.input_formats, ['geojson', 'dsv']);
   })
 
   it('import a polygon Shapefile and a polygon GeoJSON file', function() {
-      var a = 'test/test_data/six_counties.shp',
-          b = 'test/test_data/two_states.json',
+      var a = 'test/data/six_counties.shp',
+          b = 'test/data/two_states.json',
           combined = api.internal.importFiles([a, b], {});
       assert(api.internal.getDatasetCRS(combined).is_latlong);
       // TODO: check geometry
   })
 
   it('issue #153 topology was ignored when using -i combine-files option', function(done) {
-    var a = 'test/test_data/issues/153/a.json',
-        b = 'test/test_data/issues/153/b.json',
+    var a = 'test/data/issues/153/a.json',
+        b = 'test/data/issues/153/b.json',
         cmd = '-i combine-files ' + a + ' ' + b;
     api.internal.testCommands(cmd, function(err, combined) {
       var targetArcs = [ [ [ 1, 1 ], [ 1, 0 ] ],
@@ -46,8 +46,8 @@ describe('mapshaper-merge-files.js', function () {
 
   it('importing a projected and an unprojected polygon file throws and error', function() {
     assert.throws(function() {
-      var a = 'test/test_data/two_states_mercator.shp',
-          b = 'test/test_data/two_states.shp',
+      var a = 'test/data/two_states_mercator.shp',
+          b = 'test/data/two_states.shp',
           combined = api.internal.importFiles([a, b], {});
     })
   })

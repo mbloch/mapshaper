@@ -13,7 +13,7 @@ describe('dbf-reader.js', function () {
   // "Neuchâtel Baden-Württemberg La Gruyère"
 
   function importRecords(path, encoding) {
-    path = fixPath("test_data/" + path);
+    path = fixPath("data/" + path);
     var opts = encoding ? {encoding: encoding} : undefined;
     var dataset = api.importFile(path, opts);
     return dataset.layers[0].data.getRecords();
@@ -172,7 +172,7 @@ describe('dbf-reader.js', function () {
 
   describe('DbfReader()', function () {
     it('#readRow() method', function () {
-      var buf = require('fs').readFileSync('test/test_data/two_states.dbf');
+      var buf = require('fs').readFileSync('test/data/two_states.dbf');
       var reader = new api.internal.DbfReader(buf);
       // read second row
       assert.deepEqual(reader.readRow(1), { "STATE_NAME": "Washington", "FIPS": "53", "STATE": "WA", "LAT": 47.38, "LONG": -120.0});
@@ -182,7 +182,7 @@ describe('dbf-reader.js', function () {
   describe('Issue #115: Invalid header terminator + misplaced EOF (geojson.io export)', function() {
 
     it ('Able to parse header with 0 as terminator byte', function() {
-      var buf = require('fs').readFileSync('test/test_data/dbf/POLYGON.dbf');
+      var buf = require('fs').readFileSync('test/data/dbf/POLYGON.dbf');
       var reader = new api.internal.DbfReader(buf);
       assert.equal(reader.size(), 2);
       assert.equal(reader.getFields().length, 1);

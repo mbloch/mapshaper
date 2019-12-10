@@ -110,7 +110,7 @@ describe('mapshaper-dissolve.js', function () {
     });
 
     it('polygon test 1', function(done) {
-      var cmd = "-i test/test_data/six_counties.shp -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE";
+      var cmd = "-i test/data/six_counties.shp -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE";
         api.internal.testCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         var lyr1 = data.layers[0]; // original lyr

@@ -14,7 +14,7 @@ describe('mapshaper-graticule.js', function () {
 
   it('reproject to match dataset with known projection', function(done) {
 
-    api.internal.testCommands('-i test/test_data/three_points.shp -proj +proj=robin -graticule', function(err, dataset) {
+    api.internal.testCommands('-i test/data/three_points.shp -proj +proj=robin -graticule', function(err, dataset) {
       var graticule = dataset.layers[0];
       var bbox = api.internal.getLayerBounds(graticule, dataset.arcs);
       assert.equal(graticule.name, 'graticule');

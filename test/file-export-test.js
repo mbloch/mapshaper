@@ -26,17 +26,17 @@ describe('mapshaper-file-export.js', function () {
 
     /*
     it('avoid file collisions by default', function () {
-      var paths = [fixPath("test_data/two_states.json")],
+      var paths = [fixPath("data/two_states.json")],
           opts = {},
-          target = [fixPath("test_data/two_states-ms.json")];
+          target = [fixPath("data/two_states-ms.json")];
       assert.deepEqual(api.internal.getOutputPaths(paths, opts), target);
     })
     */
 
     it('allow file collisions by default', function() {
-      var paths = [fixPath("test_data/two_states.json")],
+      var paths = [fixPath("data/two_states.json")],
           opts = {},
-          target = [fixPath("test_data/two_states.json")];
+          target = [fixPath("data/two_states.json")];
       assert.deepEqual(api.internal.getOutputPaths(paths, opts), target);
     })
 

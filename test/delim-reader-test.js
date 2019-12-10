@@ -116,7 +116,7 @@ describe('mapshaper-delim-reader.js', function () {
     });
 
     it('reading from a file (testing buffer expansion)', function() {
-      var file = 'test/test_data/text/states.csv';
+      var file = 'test/data/text/states.csv';
       var reader1 = new api.internal.FileReader(file);
       var reader2 = new api.internal.FileReader(file, {bufferSize: 64}); // start with tiny buffer, to test buffer expansion
       var records1 = read(reader1, ',');

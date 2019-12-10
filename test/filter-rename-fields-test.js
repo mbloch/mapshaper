@@ -2,7 +2,7 @@ var api = require('../'),
   assert = require('assert'),
   format = api.utils.format;
 
-var states_shp = "test/test_data/two_states.shp";
+var states_shp = "test/data/two_states.shp";
 
 describe('mapshaper-filter-rename-fields.js', function () {
 

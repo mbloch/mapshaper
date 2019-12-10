@@ -4,7 +4,7 @@ var api = require('../'),
 describe('mapshaper-polygon-grid.js', function () {
 
   it('square grid fully encloses the target layer', function(done) {
-    var cmd = '-i test/test_data/features/grid/rectangle.json ' +
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
         '-grid type=square interval=2000 + name=grid -o target=* bbox';
     api.applyCommands(cmd, {}, function(err, out) {
       var rect = JSON.parse(out['rectangle.json']);
@@ -18,7 +18,7 @@ describe('mapshaper-polygon-grid.js', function () {
   });
 
   it('hex grid fully encloses the target layer', function(done) {
-    var cmd = '-i test/test_data/features/grid/rectangle.json ' +
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
         '-grid type=hex interval=2000 + name=grid -dissolve ' +
         '-erase target=rectangle grid -o';
     api.applyCommands(cmd, {}, function(err, out) {
@@ -29,7 +29,7 @@ describe('mapshaper-polygon-grid.js', function () {
   });
 
   it('hex2 grid fully encloses the target layer', function(done) {
-    var cmd = '-i test/test_data/features/grid/rectangle.json ' +
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
         '-grid type=hex2 interval=3000 + name=grid -dissolve ' +
         '-erase target=rectangle grid -o';
     api.applyCommands(cmd, {}, function(err, out) {
@@ -52,7 +52,7 @@ describe('mapshaper-polygon-grid.js', function () {
   })
 
   it('-grid has the same CRS as the target dataset', function (done) {
-    var cmd = '-i test/test_data/features/grid/rectangle.json ' +
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
       '-proj from=webmercator -grid interval=5000 + name=grid -o target=* format=shapefile';
     api.applyCommands(cmd, {}, function(err, out) {
       assert(out['grid.prj']);
@@ -62,7 +62,7 @@ describe('mapshaper-polygon-grid.js', function () {
   })
 
   it('interval option accepts distance units', function (done) {
-    var cmd = '-i test/test_data/features/grid/rectangle.json ' +
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
       '-proj from=webmercator -grid interval=3100m name=grid + ' +
       '-grid target=rectangle interval=3.1km name=grid2 -o target=*';
     api.applyCommands(cmd, {}, function(err, out) {
@@ -75,7 +75,7 @@ describe('mapshaper-polygon-grid.js', function () {
   })
 
   it('default output layer name is "grid"', function (done) {
-    var cmd = '-i test/test_data/features/grid/rectangle.json ' +
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
       '-grid interval=4500 -o';
     api.applyCommands(cmd, {}, function(err, out) {
       assert(!!out['grid.json']);

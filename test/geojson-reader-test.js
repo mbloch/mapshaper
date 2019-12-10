@@ -52,7 +52,7 @@ describe('geojson-reader.js', function () {
       })
 
       it('file reading test', function() {
-        var file = 'test/test_data/three_points.geojson';
+        var file = 'test/data/three_points.geojson';
         var reader = new FileReader(file);
         var features = [];
         var contents = require('fs').readFileSync(file, 'utf8');

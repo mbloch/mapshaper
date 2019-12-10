@@ -5,8 +5,8 @@ var api = require('../'),
 describe('mapshaper-union.js', function () {
 
   it('union of two polygons with identical fields adds disambiguating suffixes', function(done) {
-    var fileA = 'test/test_data/features/union/polygonA.json';
-    var fileB = 'test/test_data/features/union/polygonB.json';
+    var fileA = 'test/data/features/union/polygonA.json';
+    var fileB = 'test/data/features/union/polygonB.json';
     var cmd = `-i ${fileA} ${fileB} combine-files -union name=merged -o`;
     api.applyCommands(cmd, {}, function(err, out) {
       var features = JSON.parse(out['merged.json']).features;
@@ -21,8 +21,8 @@ describe('mapshaper-union.js', function () {
   });
 
   it('fields= option selects fields to retain', function(done) {
-    var fileA = 'test/test_data/features/union/polygonA.json';
-    var fileB = 'test/test_data/features/union/polygonB.json';
+    var fileA = 'test/data/features/union/polygonA.json';
+    var fileB = 'test/data/features/union/polygonB.json';
     var cmd = `-i ${fileA} ${fileB} combine-files -union fields=name name=merged -o`;
     api.applyCommands(cmd, {}, function(err, out) {
       var features = JSON.parse(out['merged.json']).features;
@@ -37,9 +37,9 @@ describe('mapshaper-union.js', function () {
   });
 
   it('union of three polygons with identical fields', function(done) {
-    var fileA = 'test/test_data/features/union/polygonA.json';
-    var fileB = 'test/test_data/features/union/polygonB.json';
-    var fileC = 'test/test_data/features/union/polygonC.json';
+    var fileA = 'test/data/features/union/polygonA.json';
+    var fileB = 'test/data/features/union/polygonB.json';
+    var fileC = 'test/data/features/union/polygonC.json';
     var cmd = `-i ${fileA} ${fileB} ${fileC} combine-files -union name=merged -o`;
     api.applyCommands(cmd, {}, function(err, out) {
       var features = JSON.parse(out['merged.json']).features;
@@ -56,8 +56,8 @@ describe('mapshaper-union.js', function () {
   });
 
   it('union of two polygons with different fields preserves field names', function(done) {
-    var fileA = 'test/test_data/features/union/polygonA.json';
-    var fileB = 'test/test_data/features/union/polygonB.json';
+    var fileA = 'test/data/features/union/polygonA.json';
+    var fileB = 'test/data/features/union/polygonB.json';
     var cmd = `-i ${fileA} -rename-fields nameA=name,valueA=value -i ${fileB} -union target=* name=merged -o`;
     api.applyCommands(cmd, {}, function(err, out) {
       var features = JSON.parse(out['merged.json']).features;
@@ -72,7 +72,7 @@ describe('mapshaper-union.js', function () {
   });
 
   it('union with a no-data layer works; default layer name is "union"', function(done) {
-    var fileA = 'test/test_data/features/union/polygonA.json';
+    var fileA = 'test/data/features/union/polygonA.json';
     var geomB = {
       type: 'Polygon',
       coordinates: [[[1, 1], [2, 2], [3, 1], [2, 0], [1, 1]]]

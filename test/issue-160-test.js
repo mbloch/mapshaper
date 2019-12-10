@@ -18,7 +18,7 @@ describe('issue 160', function () {
   // cause: simplification data was removed by topology function, but simplification
   //    threshold in ArcCollection was not reset.
   it ('svg output after simplification works', function(done) {
-    api.applyCommands('-i test/test_data/two_states_mercator.shp -simplify 10% -o precision=100 format=svg final', null, function(err, output) {
+    api.applyCommands('-i test/data/two_states_mercator.shp -simplify 10% -o precision=100 format=svg final', null, function(err, output) {
       assert(!err);
       done();
     });

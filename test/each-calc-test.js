@@ -202,7 +202,7 @@ describe('mapshaper-each-calc.js', function () {
     describe('$.length for polygons', function() {
       it ('polygon perimeter and polyline length are the same', function(done) {
         // bit of a kludge to copy polygon perimeter to generated line features
-        var cmd = '-i test/test_data/two_states.json no-topology -each "perimeter = this.perimeter" ' +
+        var cmd = '-i test/data/two_states.json no-topology -each "perimeter = this.perimeter" ' +
           '-lines each="perimeter = A.perimeter" -each "length = this.length" -o';
         api.applyCommands(cmd, function(err, out) {
           var features = JSON.parse(out['two_states.json']).features;

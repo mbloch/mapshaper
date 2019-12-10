@@ -34,7 +34,7 @@ describe('mapshaper-proj.js', function() {
 
   describe('-proj <alias>', function() {
     it('webmercator alias', function(done) {
-      api.applyCommands('-i test/test_data/three_points.shp -proj webmercator -o',
+      api.applyCommands('-i test/data/three_points.shp -proj webmercator -o',
           {}, function(err, output) {
         assert(/Mercator/.test(output['three_points.prj']));
         done();
@@ -42,7 +42,7 @@ describe('mapshaper-proj.js', function() {
     })
 
     it('robinson alias', function(done) {
-      api.applyCommands('-i test/test_data/three_points.shp -proj robinson -o',
+      api.applyCommands('-i test/data/three_points.shp -proj robinson -o',
           {}, function(err, output) {
         assert(/Robinson/.test(output['three_points.prj']));
         done();
@@ -52,7 +52,7 @@ describe('mapshaper-proj.js', function() {
 
   describe('-proj from= tests', function () {
     it('Assign projection to bare .shp file', function (done) {
-      var cmd = '-i test/test_data/two_states_merc_copy.shp -proj from="+proj=merc" +proj=robin -o robin.shp';
+      var cmd = '-i test/data/two_states_merc_copy.shp -proj from="+proj=merc" +proj=robin -o robin.shp';
       api.applyCommands(cmd, null, function(err, output) {
         assert(/Robinson/.test(output['robin.prj']));
         done();
@@ -60,7 +60,7 @@ describe('mapshaper-proj.js', function() {
     })
 
     it('from= sets CRS if no dest CRS is given', function (done) {
-      var cmd = '-i test/test_data/two_states_merc_copy.shp -proj from="+proj=merc" -o merc.shp';
+      var cmd = '-i test/data/two_states_merc_copy.shp -proj from="+proj=merc" -o merc.shp';
       api.applyCommands(cmd, null, function(err, output) {
         assert(/Mercator/.test(output['merc.prj']));
         done();
@@ -78,7 +78,7 @@ describe('mapshaper-proj.js', function() {
 
 
     it('Match a .prj file', function (done) {
-      var cmd = '-i test/test_data/two_states_merc_copy.shp -proj from="test/test_data/two_states_mercator.prj" +proj=robin -o robin.shp';
+      var cmd = '-i test/data/two_states_merc_copy.shp -proj from="test/data/two_states_mercator.prj" +proj=robin -o robin.shp';
       api.applyCommands(cmd, null, function(err, output) {
         assert(/Robinson/.test(output['robin.prj']));
         done();
@@ -87,7 +87,7 @@ describe('mapshaper-proj.js', function() {
 
     it('Match a .prj file even if dataset is empty', function (done) {
       var input = {type: 'GeometryCollection', geometries: []};
-      var cmd = '-i in.json -proj from="test/test_data/two_states_mercator.prj" +proj=robin -o robin.shp';
+      var cmd = '-i in.json -proj from="test/data/two_states_mercator.prj" +proj=robin -o robin.shp';
       api.applyCommands(cmd, {'in.json': input}, function(err, output) {
         assert(/Robinson/.test(output['robin.prj']));
         done();
@@ -98,7 +98,7 @@ describe('mapshaper-proj.js', function() {
 
   describe('-proj match= tests', function () {
     it('match= argument can be a .prj file', function(done) {
-      api.applyCommands('-i test/test_data/three_points.shp -proj match=test/test_data/two_states_mercator.prj -o',
+      api.applyCommands('-i test/data/three_points.shp -proj match=test/data/two_states_mercator.prj -o',
           {}, function(err, output) {
         assert(/Mercator/.test(output['three_points.prj']));
         done();
@@ -106,7 +106,7 @@ describe('mapshaper-proj.js', function() {
     })
 
     it('source= is an alias for match= (TODO: phase this out)', function(done) {
-      api.applyCommands('-i test/test_data/three_points.shp -proj source=test/test_data/two_states_mercator.prj -o',
+      api.applyCommands('-i test/data/three_points.shp -proj source=test/data/two_states_mercator.prj -o',
           {}, function(err, output) {
         assert(/Mercator/.test(output['three_points.prj']));
         done();
@@ -114,7 +114,7 @@ describe('mapshaper-proj.js', function() {
     })
 
     it('match= argument can be a layer name', function(done) {
-      api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i test/test_data/three_points.shp -proj match=states -o',
+      api.applyCommands('-i test/data/two_states_mercator.shp name=states -i test/data/three_points.shp -proj match=states -o',
           {}, function(err, output) {
         assert(/Mercator/.test(output['three_points.prj']));
         done();
@@ -123,7 +123,7 @@ describe('mapshaper-proj.js', function() {
 
     it('match= works even if dataset is empty', function(done) {
       var empty = {type: 'GeometryCollection', geometries: []};
-      api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i in.json -proj match=states -o format=shapefile',
+      api.applyCommands('-i test/data/two_states_mercator.shp name=states -i in.json -proj match=states -o format=shapefile',
           {'in.json': empty}, function(err, output) {
         assert(/Mercator/.test(output['in.prj']));
         done();
@@ -131,8 +131,8 @@ describe('mapshaper-proj.js', function() {
     })
 
     it('output copies .prj string from match= source', function(done) {
-      var prj = require('fs').readFileSync('test/test_data/two_states_mercator.prj', 'utf8');
-      api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i test/test_data/three_points.shp -proj match=states -o',
+      var prj = require('fs').readFileSync('test/data/two_states_mercator.prj', 'utf8');
+      api.applyCommands('-i test/data/two_states_mercator.shp name=states -i test/data/three_points.shp -proj match=states -o',
           {}, function(err, output) {
         var prj2 = output['three_points.prj'];
         assert.equal(prj2, prj);

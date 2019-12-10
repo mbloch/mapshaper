@@ -153,7 +153,7 @@ internal.limitSimplificationExtent = function(arcs, bb, hardLimit) {
 //
 internal.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
-  // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+  // -179.99999999999994 in test/data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
   internal.limitSimplificationExtent(arcs, internal.getWorldBounds(1e-12), false);
 };

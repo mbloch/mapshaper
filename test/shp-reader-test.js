@@ -7,7 +7,7 @@ var ShpReader = api.internal.ShpReader,
     Bounds = api.internal.Bounds;
 
 function filePath(file) {
-  var path = require('path').join(__dirname, "test_data", file);
+  var path = require('path').join(__dirname, "data", file);
   return path;
 }
 

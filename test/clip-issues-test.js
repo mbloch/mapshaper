@@ -34,7 +34,7 @@ describe('mapshaper-clip-erase.js', function () {
     describe('inner2.json test', function () {
       it('polygon should not disappear after clipping', function (done) {
         // previously, inner2.json disappeared after clipping
-        var cmd = '-i test/test_data/features/clip/ex1_inner2.json -clip test/test_data/features/clip/ex1_outer.json -o';
+        var cmd = '-i test/data/features/clip/ex1_inner2.json -clip test/data/features/clip/ex1_outer.json -o';
         api.applyCommands(cmd, {}, function(err, output) {
           var json = JSON.parse(output['ex1_inner2.json']);
           assert.equal(json.features[0].geometry.coordinates.length, 1); //

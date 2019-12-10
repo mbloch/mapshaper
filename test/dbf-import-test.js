@@ -6,7 +6,7 @@ describe('dbf-import.js', function () {
 
   describe('if possible, dbf binary data is not unpacked', function () {
     it('e.g. if no commands are run', function (done) {
-      var buf = fs.readFileSync('test/test_data/two_states_mercator.dbf');
+      var buf = fs.readFileSync('test/data/two_states_mercator.dbf');
       api.applyCommands('-i file.dbf -o a.dbf -each true -o b.dbf', {'file.dbf': buf}, function(err, output) {
         var a = output['a.dbf'];
         var b = output['b.dbf']

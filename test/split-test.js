@@ -5,7 +5,7 @@ describe('mapshaper-split.js', function () {
 
   describe('-split command', function () {
     it('test 1', function(done) {
-      var cmd = "-i test/test_data/two_states.shp -split STATE";
+      var cmd = "-i test/data/two_states.shp -split STATE";
       api.internal.testCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         assert.equal(data.layers[0].shapes.length, 1);

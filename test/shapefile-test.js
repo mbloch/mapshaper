@@ -11,7 +11,7 @@ describe('mapshaper-shapefile.js', function () {
 
   it('Fix: point shapefile importing', function (done) {
 
-    api.internal.testCommands('-i test/test_data/issues/point_shapefile_import_error/points.shp', function(err, dataset) {
+    api.internal.testCommands('-i test/data/issues/point_shapefile_import_error/points.shp', function(err, dataset) {
       assert.deepEqual(dataset.layers[0].shapes, [[[0, 0]], [[1, 1], [1, 2]]]);
       assert.equal(dataset.layers[0].geometry_type, 'point');
       done();
@@ -21,7 +21,7 @@ describe('mapshaper-shapefile.js', function () {
   describe('.prj tests', function() {
 
     it('prj is exported even if mapshaper can not parse it (Issue #193)', function() {
-      var data = api.importFile(fixPath('test_data/issues/193/three_points.shp'), {});
+      var data = api.importFile(fixPath('data/issues/193/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
       var prj = Utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
@@ -30,7 +30,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('prj is exported if input prj is present', function() {
-      var data = api.importFile(fixPath('test_data/three_points.shp'), {});
+      var data = api.importFile(fixPath('data/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
       var prj = Utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
@@ -39,7 +39,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('prj is exported if data is reprojected to "webmercator"', function(done) {
-      api.applyCommands('-i test/test_data/three_points.shp -proj webmercator -o', {}, function(err, output) {
+      api.applyCommands('-i test/data/three_points.shp -proj webmercator -o', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(/Pseudo-Mercator/.test(prj));
         done();
@@ -47,7 +47,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('Albers WKT is exported if data is reprojected to "albersusa"', function(done) {
-      api.applyCommands('-i test/test_data/three_points.shp -proj albersusa -o', {}, function(err, output) {
+      api.applyCommands('-i test/data/three_points.shp -proj albersusa -o', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(/Albers/.test(prj));
         done();
@@ -55,7 +55,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('WGS84 prj is generated if input is unprojected GeoJSON', function(done) {
-      api.applyCommands('-i test/test_data/three_points.geojson -o format=shapefile', {}, function(err, output) {
+      api.applyCommands('-i test/data/three_points.geojson -o format=shapefile', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(/WGS84/.test(prj));
         done();
@@ -63,7 +63,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('Fallback WKT (with custom_proj4 PROJECTION) is generated if CRS has no known WKT equivalent', function(done) {
-      api.applyCommands('-i test/test_data/three_points.geojson -proj +proj=boggs -o format=shapefile', {}, function(err, output) {
+      api.applyCommands('-i test/data/three_points.geojson -proj +proj=boggs -o format=shapefile', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(prj.indexOf('custom_proj4') > -1);
         assert(prj.indexOf('EXTENSION["PROJ4","+proj=boggs') > -1);
@@ -178,31 +178,31 @@ describe('mapshaper-shapefile.js', function () {
   describe('Export/Import roundtrip tests', function () {
 
     it('Six counties', function () {
-      shapefileRoundTrip('test_data/six_counties.shp');
+      shapefileRoundTrip('data/six_counties.shp');
     })
 
     it('Six counties, two null geometries', function () {
-      shapefileRoundTrip('test_data/two_states.shp');
+      shapefileRoundTrip('data/two_states.shp');
     })
 
     it('World land borders from Natural Earth', function() {
-      shapefileRoundTrip('test_data/ne/ne_110m_admin_0_boundary_lines_land.shp');
+      shapefileRoundTrip('data/ne/ne_110m_admin_0_boundary_lines_land.shp');
     })
 
     it('U.S. states from Natural Earth', function() {
-      shapefileRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_shp.shp');
+      shapefileRoundTrip('data/ne/ne_110m_admin_1_states_provinces_shp.shp');
     })
 
     it('Pacific groupings from Natural Earth', function() {
-      shapefileRoundTrip('test_data/ne/ne_110m_admin_0_pacific_groupings.shp');
+      shapefileRoundTrip('data/ne/ne_110m_admin_0_pacific_groupings.shp');
     })
 
     it('Single multipoint record (shplib)', function() {
-      shapefileRoundTrip('test_data/shplib/multipnt.shp');
+      shapefileRoundTrip('data/shplib/multipnt.shp');
     })
 
     it('POINTZ layer (shplib)', function() {
-      shapefileRoundTrip('test_data/shplib/masspntz.shp');
+      shapefileRoundTrip('data/shplib/masspntz.shp');
     })
 
   })

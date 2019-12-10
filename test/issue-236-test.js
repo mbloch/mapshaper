@@ -8,7 +8,7 @@ var fs = require('fs'),
 describe('Issue #236: Failing to export GeoJson files', function () {
   it ('Feature collection with crs property', function() {
 
-    var file = 'test/test_data/issues/236/point.geojson';
+    var file = 'test/data/issues/236/point.geojson';
     var reader = new FileReader(file);
     var features = [];
     var contents = require('fs').readFileSync(file, 'utf8');

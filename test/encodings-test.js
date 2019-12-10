@@ -9,14 +9,14 @@ describe('mapshaper-encodings.js', function () {
   describe('cli.readFile() accepts encoding param', function () {
     it('trims BOM', function () {
       // BOM removal also tested in delim-table-test.js
-      var str = api.cli.readFile('test/test_data/text/utf16bom.txt', 'utf-16');
+      var str = api.cli.readFile('test/data/text/utf16bom.txt', 'utf-16');
       assert.equal(str, 'NAME\n国语國語');
     })
   })
 
   describe('decodeString()', function () {
     it('utf-16 example', function () {
-      var buf = fs.readFileSync('test/test_data/text/utf16.txt');
+      var buf = fs.readFileSync('test/data/text/utf16.txt');
       var str = api.internal.decodeString(buf, 'utf-16');
       assert.equal(str, 'NAME\n国语國語');
     })

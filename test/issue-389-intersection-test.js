@@ -6,8 +6,8 @@ var api = require('..'),
 describe('Issue #389 (clipping error)', function () {
 
   it('inner polygon is not removed by clipping', function(done) {
-    var cmd = '-i test/test_data/issues/389_clipping_error/inner_polygon.json ' +
-      '-clip test/test_data/issues/389_clipping_error/outer_polygon.json -o';
+    var cmd = '-i test/data/issues/389_clipping_error/inner_polygon.json ' +
+      '-clip test/data/issues/389_clipping_error/outer_polygon.json -o';
     api.applyCommands(cmd, {}, function(err, out) {
       var json = JSON.parse(out['inner_polygon.json']);
       assert.equal(json.features[0].geometry.type, 'Polygon');

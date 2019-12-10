@@ -9,14 +9,14 @@ describe('Features with invalid point coordinates are imported without geometry'
   };
 
   it('.shp with large negative values', function (done) {
-    var cmd = '-i test/test_data/issues/invalid_coords/invalid_coordinates.shp -o out.json';
+    var cmd = '-i test/data/issues/invalid_coords/invalid_coordinates.shp -o out.json';
     api.applyCommands(cmd, {}, function(err, out) {
       assert.deepEqual(JSON.parse(out['out.json']).features[0], target);
       done();
     });
   })
   it('GeoJSON with large negative values', function (done) {
-    var cmd = '-i test/test_data/issues/invalid_coords/invalid_coordinates.json -o out.json';
+    var cmd = '-i test/data/issues/invalid_coords/invalid_coordinates.json -o out.json';
     api.applyCommands(cmd, {}, function(err, out) {
       assert.deepEqual(JSON.parse(out['out.json']).features[0], target);
       done();

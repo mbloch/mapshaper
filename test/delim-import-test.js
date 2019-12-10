@@ -16,7 +16,7 @@ describe('mapshaper-delim-import.js', function() {
 
   describe('csv decoding with -i', function () {
     it('-i csv-lines= csv-field-names= csv-fields= options', function(done) {
-      var cmd = '-i test/test_data/text/states.csv csv-fields=A,D ' +
+      var cmd = '-i test/data/text/states.csv csv-fields=A,D ' +
         'csv-field-names=A,B,C,D,E,F csv-skip-lines=1 csv-lines=2 -o format=json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['states.json']);
@@ -39,7 +39,7 @@ describe('mapshaper-delim-import.js', function() {
       var target = `Residence_Addresses_Latitude,Residence_Addresses_Longitude,Residence_Addresses_LatLongAccuracy,County,Voters_FIPS,Precinct
 38.25722,-119.226515,GeoMatch5Digit,MONO,051,BRIDGEPORT
 ,,,MONO,051,BRIDGEPORT`;
-      api.applyCommands('-i test/test_data/text/empty_fields.csv string-fields=Voters_FIPS -info -o data.csv',  function(err, out) {
+      api.applyCommands('-i test/data/text/empty_fields.csv string-fields=Voters_FIPS -info -o data.csv',  function(err, out) {
         var output = out['data.csv'].toString();
         assert.equal(output, target);
         done();
@@ -50,7 +50,7 @@ describe('mapshaper-delim-import.js', function() {
       var target = `County,Voters_FIPS,Precinct,Residence_Addresses_Latitude,Residence_Addresses_Longitude,Residence_Addresses_LatLongAccuracy
 LOS ANGELES,037,ALTADENA-0046,34.1911,-118.158,GeoMatchRooftop
 LOS ANGELES,037,ALTADENA-0048,,,`;
-      api.applyCommands('-i test/test_data/text/empty_fields2.csv string-fields=Voters_FIPS  -o data.csv',  function(err, out) {
+      api.applyCommands('-i test/data/text/empty_fields2.csv string-fields=Voters_FIPS  -o data.csv',  function(err, out) {
         var output = out['data.csv'].toString();
         assert.equal(output, target);
         done();
@@ -61,7 +61,7 @@ LOS ANGELES,037,ALTADENA-0048,,,`;
       var target = `County,Residence_Addresses_Latitude,Residence_Addresses_Longitude
 LOS ANGELES,34.1911,-118.158
 LOS ANGELES,,`;
-      api.applyCommands('-i test/test_data/text/empty_fields2.csv csv-fields=County,Residence_Addresses_Latitude,Residence_Addresses_Longitude  -o data.csv',  function(err, out) {
+      api.applyCommands('-i test/data/text/empty_fields2.csv csv-fields=County,Residence_Addresses_Latitude,Residence_Addresses_Longitude  -o data.csv',  function(err, out) {
           var output = out['data.csv'].toString();
           assert.equal(output, target);
           done();
@@ -193,7 +193,7 @@ LOS ANGELES,,`;
 
   describe('infer export delimiter from filename, if possible', function () {
     it('.tsv implies tab-delimited text', function (done) {
-      var cmd = '-i test/test_data/text/two_states.csv -o output.tsv';
+      var cmd = '-i test/data/text/two_states.csv -o output.tsv';
       api.applyCommands(cmd, {}, function(err, output) {
         assert.ok(output['output.tsv'].indexOf('\t') > -1); // got tabs
         done();
@@ -201,7 +201,7 @@ LOS ANGELES,,`;
     })
 
     it('use input delimiter if export filename is ambiguous', function (done) {
-      var cmd = '-i test/test_data/text/two_states.csv -o output.txt';
+      var cmd = '-i test/data/text/two_states.csv -o output.txt';
       api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
         assert.ok(output['output.txt'].indexOf(',') > -1); // got commas
@@ -210,7 +210,7 @@ LOS ANGELES,,`;
     })
 
     it('use comma as default delimiter if other methods fail', function (done) {
-      var cmd = '-i test/test_data/two_states.shp -o output.txt';
+      var cmd = '-i test/data/two_states.shp -o output.txt';
       api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
         assert.ok(output['output.txt'].indexOf(',') > -1); // got commas
@@ -219,7 +219,7 @@ LOS ANGELES,,`;
     })
 
     it('.csv in output filename implies comma-delimited text', function (done) {
-      var cmd = '-i test/test_data/text/two_states.tsv -o output.csv';
+      var cmd = '-i test/data/text/two_states.tsv -o output.csv';
       api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
         assert.ok(output['output.csv'].indexOf(',') > -1); // got commas
@@ -230,7 +230,7 @@ LOS ANGELES,,`;
 
   describe('Importing dsv with encoding= option', function() {
     it ('utf16 (be)', function(done) {
-      var cmd = '-i test/test_data/text/utf16.txt encoding=utf16';
+      var cmd = '-i test/data/text/utf16.txt encoding=utf16';
       api.internal.testCommands(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getRecords(), [{NAME: '国语國語'}])
         done();
@@ -238,7 +238,7 @@ LOS ANGELES,,`;
     })
 
     it ('utf16 (be) with BOM', function(done) {
-      var cmd = '-i test/test_data/text/utf16bom.txt encoding=utf16';
+      var cmd = '-i test/data/text/utf16bom.txt encoding=utf16';
       api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
@@ -247,7 +247,7 @@ LOS ANGELES,,`;
     })
 
     it ('utf16be with BOM', function(done) {
-      var cmd = '-i test/test_data/text/utf16bom.txt encoding=utf-16be';
+      var cmd = '-i test/data/text/utf16bom.txt encoding=utf-16be';
       api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
@@ -256,7 +256,7 @@ LOS ANGELES,,`;
     })
 
     it ('utf16le with BOM', function(done) {
-      var cmd = '-i test/test_data/text/utf16le_bom.txt encoding=utf16le';
+      var cmd = '-i test/data/text/utf16le_bom.txt encoding=utf16le';
       api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
@@ -265,7 +265,7 @@ LOS ANGELES,,`;
     })
 
     it ('utf8 with BOM', function(done) {
-      var cmd = '-i test/test_data/text/utf8bom.txt';
+      var cmd = '-i test/data/text/utf8bom.txt';
       api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
@@ -438,7 +438,7 @@ LOS ANGELES,,`;
   describe('importDelim2()', function () {
     it('import from a file', function () {
       var input = {
-        filename: 'test/test_data/text/states.csv'
+        filename: 'test/data/text/states.csv'
       };
       var output = api.internal.importDelim2(input);
       var records = output.layers[0].data.getRecords();
@@ -455,7 +455,7 @@ LOS ANGELES,,`;
 
     it('import file with filter', function () {
       var input = {
-        filename: 'test/test_data/text/states.csv'
+        filename: 'test/data/text/states.csv'
       };
       var opts = {
         csv_filter: 'STATE_NAME == "Colorado"'
@@ -474,7 +474,7 @@ LOS ANGELES,,`;
     })
 
     it('import string with filter', function () {
-      var str = require('fs').readFileSync('test/test_data/text/states.csv', 'utf8');
+      var str = require('fs').readFileSync('test/data/text/states.csv', 'utf8');
       var input = {
         content: str
       };

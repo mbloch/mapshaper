@@ -365,21 +365,21 @@ describe('topojson-export.js and topojson-import.js', function () {
 
 
     it('default file extension is .json', function(done) {
-      api.applyCommands('-i test/test_data/two_states.shp -o format=topojson', {}, function(err, output) {
+      api.applyCommands('-i test/data/two_states.shp -o format=topojson', {}, function(err, output) {
         assert('two_states.json' in output);
         done();
       })
     })
 
     it('-o extension= overrides default file extension', function(done) {
-      api.applyCommands('-i test/test_data/two_states.shp -o format=topojson extension=TOPOJSON', {}, function(err, output) {
+      api.applyCommands('-i test/data/two_states.shp -o format=topojson extension=TOPOJSON', {}, function(err, output) {
         assert('two_states.TOPOJSON' in output);
         done();
       })
     })
 
     it("export a single point with quantization", function(done) {
-      api.internal.testCommands('-i test/test_data/one_point.geojson', function(err, data) {
+      api.internal.testCommands('-i test/data/one_point.geojson', function(err, data) {
         var topology = TopoJSON.exportTopology(data, {quantization: 10000, bbox:true});
         assert.deepEqual(topology,
     // reference output from topojson program
@@ -390,7 +390,7 @@ describe('topojson-export.js and topojson-import.js', function () {
     })
 
     it("export three points with quantization", function(done) {
-      api.internal.testCommands('-i test/test_data/three_points.geojson', function(err, data) {
+      api.internal.testCommands('-i test/data/three_points.geojson', function(err, data) {
         var topology = TopoJSON.exportTopology(data, {quantization: 10000, bbox:true});
         assert.deepEqual(topology,
   // reference output from topojson program
@@ -533,19 +533,19 @@ describe('topojson-export.js and topojson-import.js', function () {
     });
 
     it('two states', function () {
-      topoJSONRoundTrip('test_data/two_states.json');
+      topoJSONRoundTrip('data/two_states.json');
     })
 
     it('three points', function () {
-      topoJSONRoundTrip('test_data/three_points.geojson');
+      topoJSONRoundTrip('data/three_points.geojson');
     })
 
     it('six counties, two null geometries', function () {
-      topoJSONRoundTrip('test_data/six_counties_three_null.json');
+      topoJSONRoundTrip('data/six_counties_three_null.json');
     })
 
     it('internal state borders (polyline)', function () {
-      topoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
+      topoJSONRoundTrip('data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
   })
 })
