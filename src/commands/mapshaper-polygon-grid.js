@@ -1,7 +1,7 @@
 
 api.polygonGrid = function(targetLayers, targetDataset, opts) {
   if (internal.isLatLngCRS(internal.getDatasetCRS(targetDataset))) {
-    stop("Command requires projected coordinates (not lat-long coordinates)");
+    stop("Command requires a target with projected coordinates (not lat-long)");
   }
   var params = internal.getGridParams(targetLayers, targetDataset, opts);
   var geojson;
@@ -9,13 +9,18 @@ api.polygonGrid = function(targetLayers, targetDataset, opts) {
     geojson = internal.getSquareGridGeoJSON(internal.getSquareGridCoordinates(params));
   } else if (params.type == 'hex') {
     geojson = internal.getHexGridGeoJSON(internal.getHexGridCoordinates(params));
+  } else if (params.type == 'hex2') {
+    // use rotated grid
+    geojson = internal.getHexGridGeoJSON(internal.getHexGridCoordinates(internal.swapGridParams(params)));
+    internal.swapPolygonCoords(geojson);
   } else {
     stop('Unsupported grid type');
   }
   internal.alignGridToBounds(geojson, params.bbox);
   var gridDataset = internal.importGeoJSON(geojson, {});
+  gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
   api.buildTopology(gridDataset);
-  if (opts.name) gridDataset.layers[0].name = opts.name;
+  gridDataset.layers[0].name = opts.name || 'grid';
   if (opts.debug) gridDataset.layers.push(api.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;
 };
@@ -37,6 +42,22 @@ api.pointGrid2 = function(targetLayers, targetDataset, opts) {
   return gridDataset.layers[0];
 };
 
+internal.swapGridParams = function(params) {
+  var bbox = params.bbox;
+  return utils.defaults({
+    width: params.height,
+    height: params.width,
+    bbox: [bbox[1], bbox[0], bbox[3], bbox[2]]
+  }, params);
+};
+
+internal.swapPolygonCoords = function(json) {
+  json.geometries.forEach(function(geom) {
+    geom.coordinates[0] = geom.coordinates[0].map(function(p) {
+      return [p[1], p[0]];
+    });
+  });
+};
 
 internal.getGridParams = function(layers, dataset, opts) {
   var params = {};
@@ -100,7 +121,7 @@ internal.getHexGridGeoJSON = function(arr) {
 
 internal.getSquareGridGeoJSON = function(arr) {
   var geometries = [], a, b, c, d;
-  for (var row = 0, rows = arr.length - 2; row < rows; row++) {
+  for (var row = 0, rows = arr.length - 1; row < rows; row++) {
     for (var col = 0, cols = arr[row].length - 1; col < cols; col++) {
       a = arr[row][col];
       b = arr[row + 1][col];

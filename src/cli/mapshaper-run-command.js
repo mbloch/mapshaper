@@ -68,6 +68,7 @@ api.runCommand = function(cmd, catalog, cb) {
   var name = cmd.name,
       opts = cmd.options,
       source,
+      outputDataset,
       outputLayers,
       outputFiles,
       targets,
@@ -124,7 +125,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
       if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-          name == 'grid' || name == 'include')) {
+          name == 'include')) {
         throw new UserError("No data is available");
       }
     }
@@ -262,7 +263,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'grid') {
-      catalog.addDataset(api.polygonGrid(targetLayers, targetDataset, opts));
+      outputDataset = api.polygonGrid(targetLayers, targetDataset, opts);
 
     } else if (name == 'points') {
       outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
@@ -375,8 +376,17 @@ api.runCommand = function(cmd, catalog, cb) {
       });
     }
 
-    // integrate output layers into the target dataset
-    if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
+    if (outputDataset) {
+      catalog.addDataset(outputDataset); // also sets default target
+      outputLayers = outputDataset.layers;
+      if (targetLayers && !opts.no_replace) {
+        // remove target layers from target dataset
+        targetLayers.forEach(function(lyr) {
+          catalog.deleteLayer(lyr, targetDataset);
+        });
+      }
+    } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
+      // integrate output layers into the target dataset
       if (opts.no_replace) {
         // make sure commands do not return input layers with 'no_replace' option
         if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
@@ -396,6 +406,8 @@ api.runCommand = function(cmd, catalog, cb) {
       // use command output as new default target
       catalog.setDefaultTarget(outputLayers, targetDataset);
     }
+
+
 
     // delete arcs if no longer needed (e.g. after -points command)
     // (after output layers have been integrated)

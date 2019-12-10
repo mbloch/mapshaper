@@ -570,11 +570,11 @@ internal.getOptionParser = function() {
   parser.command('grid')
     .describe('create a grid of square or hexagonal polygons')
     .option('type', {
-      describe: 'square or hex (default is square)'
+      describe: 'square, hex or hex2 (default is square)'
     })
     .option('interval', {
-      describe: 'side length, in source units',
-      type: 'number'
+      describe: 'side length (e.g. 500m, 12km)',
+      type: 'distance'
     })
     // .option('cols', {
     //   type: 'integer'
@@ -582,14 +582,16 @@ internal.getOptionParser = function() {
     // .option('rows', {
     //   type: 'integer'
     // })
-    .option('bbox', {
-      type: 'bbox',
-      describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
-    })
+    // .option('bbox', {
+    //   type: 'bbox',
+    //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
+    // })
     .option('debug', {
       type: 'flag'
     })
-    .option('name', nameOpt);
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
 
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
