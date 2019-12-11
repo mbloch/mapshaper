@@ -111,7 +111,7 @@ internal.getSymbolPropertyAccessor = function(strVal, svgName, lyr) {
 internal.parseStyleExpression = function(strVal, lyr) {
   var func;
   try {
-    func = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
+    func = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs'), quiet: true});
     func(0); // check for runtime errors (e.g. undefined variables)
   } catch(e) {
     func = null;

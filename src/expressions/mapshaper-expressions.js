@@ -164,6 +164,7 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
     try {
       val = func.call(ctx.$, rec, ctx);
     } catch(e) {
+      if (opts.quiet) throw e;
       stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return val;
