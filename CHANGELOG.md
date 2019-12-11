@@ -1,13 +1,20 @@
+v0.4.145
+* Added -grid command for creating grids of square or hexagonal polygons. Assumes target layer is projected. Creates a grid layer that entirely contains the bounding box of the target layer.
+* Added polygon-to-polygon spatial joins to the -join command.
+* Added "interpolate=" option to the -join command, for reassigning attribute values of the listed fields using simple areal interpolation (assumes even distribution of data within polygon areas) (polygon-polygon spatial joins only).
+* Added "point-method" option to the -join command, for performing polygon-polygon spatial joins using an alternate method.
+* Added "-lines segments" option, to explode a polygon or polyline layer into individual segments.
+
 v0.4.144
 * Change -union command syntax to use two or more target layers as input
-* Add -union fields= option for selecting which fields from the input layers to retain.
+* Added -union fields= option for selecting which fields from the input layers to retain.
 
 v0.4.143
 * Fix for web UI bug that caused command line options to be ignored.
 
 v0.4.142
-* Add -union command for creating a mosaic from two polygon layers, preserving data from both layers.
-* Add -mosaic calc= option, which provides options for transferring data from source polygons to mosaic polygons.
+* Added -union command for creating a mosaic from two polygon layers, preserving data from both layers.
+* Added -mosaic calc= option, which provides options for transferring data from source polygons to mosaic polygons.
 * Allow -merge-layers to combine a shape layer with a layer that has null geometry.
 
 v0.4.141
