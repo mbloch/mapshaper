@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.144';
+VERSION = '0.4.145';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -2060,6 +2060,16 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return apexDistSq(ab2, ac2, bc2);
 }
 
+// Apparently better conditioned for some inputs than pointSegDistSq()
+//
+function pointSegDistSq2(px, py, ax, ay, bx, by) {
+  var ab2 = distanceSq(ax, ay, bx, by);
+  var t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ab2;
+  if (ab2 === 0) return distanceSq(px, py, ax, ay);
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  return distanceSq(px, py, ax + t * (bx - ax), ay + t * (by - ay));
+}
 
 internal.calcArcBounds = function(xx, yy, start, len) {
   var i = start | 0,
@@ -2131,6 +2141,7 @@ var geom = {
   greatCircleDistance: greatCircleDistance,
   pointSegDistSq: pointSegDistSq,
   pointSegDistSq3D: pointSegDistSq3D,
+  pointSegDistSq2: pointSegDistSq2,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
@@ -2466,7 +2477,17 @@ function ArcCollection() {
           n2++;
         }
       }
-      if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
+      if (n2 == 1) {
+        error("Collapsed arc");
+        // This should not happen (endpoints should be z == Infinity)
+        // Could handle like this, instead of throwing an error:
+        // n2 = 0;
+        // xx2.pop();
+        // yy2.pop();
+        // zz2.pop();
+      } else if (n2 === 0) {
+        // collapsed arc... ignoring
+      }
       nn2[arcId] = n2;
     }
     return {
@@ -6227,7 +6248,7 @@ internal.getScaleFactorAtXY = function(x, y, crs) {
 };
 
 internal.isProjectedCRS = function(P) {
-  return P && P.is_latlong || false;
+  return !internal.isLatLngCRS(P);
 };
 
 internal.isLatLngCRS = function(P) {
@@ -8638,11 +8659,16 @@ internal.replaceArcIds = function(src, replacements) {
 };
 
 
-internal.getHighPrecisionSnapInterval = function(arcs) {
-  var bb = arcs.getBounds();
-  if (!bb.hasBounds()) return 0;
-  var maxCoord = Math.max(Math.abs(bb.xmin), Math.abs(bb.ymin),
-      Math.abs(bb.xmax), Math.abs(bb.ymax));
+// Returns an interval for snapping together coordinates that be co-incident bug
+// have diverged because of floating point rounding errors. Intended to be small
+// enought not not to snap points that should be distinct.
+// This is not a robust method... e.g. some formulas for some inputs may produce
+// errors that are larger than this interval.
+// @coords: Array of relevant coordinates (e.g. bbox coordinates of vertex coordinates
+//   of two intersecting segments).
+//
+internal.getHighPrecisionSnapInterval = function(coords) {
+  var maxCoord = Math.max.apply(null, coords.map(Math.abs));
   return maxCoord * 1e-14;
 };
 
@@ -10978,54 +11004,97 @@ function PathIndex(shapes, arcs) {
 geom.segmentIntersection = segmentIntersection;
 geom.segmentHit = segmentHit;
 geom.orient2D = orient2D;
-geom.outsideRange = outsideRange;
 geom.findClosestPointOnSeg = findClosestPointOnSeg;
 
-// Find the intersection between two 2D segments
-// Returns 0, 1 or two x, y locations as null, [x, y], or [x1, y1, x2, y2]
-// Special cases:
-// If the segments touch at an endpoint of both segments, it is not treated as an intersection
-// If the segments touch at a T-intersection, it is treated as an intersection
-// If the segments are collinear and partially overlapping, each subsumed endpoint
-//    is counted as an intersection (there will be one or two)
-//
-function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-  var hit = segmentHit(ax, ay, bx, by, cx, cy, dx, dy);
-  return hit ? findSegmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) : null;
-}
 
-// Assumes segments intersect
-function findSegmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-  var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
-  var m, p;
-  // Case: segments are collinear
-  if (den === 0) {
-    return collinearIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+// Find the intersection between two 2D segments
+// Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
+// Special cases:
+// Endpoint-to-endpoint touches are not treated as intersections.
+// If the segments touch at a T-intersection, it is treated as an intersection.
+// If the segments are collinear and partially overlapping, each subsumed endpoint
+//    is counted as an intersection (there will be either one or two)
+//
+function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
+  // Use a small tolerance interval, so collinear segments and T-intersections
+  // are detected (floating point rounding often causes exact functions to fail)
+  var eps = epsArg >= 0 ? epsArg :
+      internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
+  var epsSq = eps * eps;
+  // Detect touch intersections (segments with one or more endpoints that touch
+  // along the linear portion of the other segment).
+  var touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
+  if (touches) {
+    // Found one or two 'touch' intersections, where a vertex of one segment
+    // is very close to the other segment's linear portion.
+    // One touch indicates either a T-intersection or two overlapping collinear
+    // segments that share an endpoint. Two touches indicates overlapping
+    // collinear segments that do not share an endpoint.
+    return touches;
   }
-  // TODO: remove when/if no longer needed
-  if (endpointHit(ax, ay, bx, by, cx, cy, dx, dy)) {
+  // Ignore endpoint-only intersections
+  if (testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
     return null;
   }
-  // Case: segments are very nearly collinear
-  // TODO: rethink this
-  if (Math.abs(den) < 1e-18) {
-    // tiny denominator = low precision; snapping to a vertex
-    return findEndpointInRange(ax, ay, bx, by, cx, cy, dx, dy);
-  }
-  m = orient2D(cx, cy, dx, dy, ax, ay) / den;
-  p = [ax + m * (bx - ax), ay + m * (by - ay)];
+  // Detect cross intersections
+  return findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+}
+
+// Find the intersection point of two segments that cross each other,
+// or return null if the segments do not cross.
+// Assumes endpoint intersections, T-intersections and collinear intersections
+// have already been detected.
+function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
+  if (!segmentHit(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+  var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
+  var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
+  var p = [ax + m * (bx - ax), ay + m * (by - ay)];
   // Snap p to a vertex if very close to one
   // This avoids tiny segments caused by T-intersection overshoots and prevents
   //   pathfinder errors related to f-p rounding.
-  // TODO: look into applying similar snapping to tiny undershoots, which might
-  //   also cause pathfinder errors.
-  snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy);
-  // Snap to bbox edge if p is outside
-  // (May no longer be needed, now that we're using snapIntersectionPoint() above)
-  // TODO: handle out-of-bounds point as an error
+  // (NOTE: this may no longer be needed, since T-intersections are now detected
+  // first)
+  if (eps > 0) {
+    snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps);
+  }
+  // Clamp point to x range and y range of both segments
+  // (This may occur due to fp rounding, if one segment is vertical or horizontal)
   clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy);
   return p;
 }
+
+function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
+  return geom.distanceSq(ax, ay, cx, cy) <= epsSq || geom.distanceSq(ax, ay, dx, dy) <= epsSq ||
+    geom.distanceSq(bx, by, cx, cy) <= epsSq || geom.distanceSq(bx, by, dx, dy) <= epsSq;
+}
+
+function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
+  var touches = [];
+  collectPointSegTouch(touches, epsSq, ax, ay, cx, cy, dx, dy);
+  collectPointSegTouch(touches, epsSq, bx, by, cx, cy, dx, dy);
+  collectPointSegTouch(touches, epsSq, cx, cy, ax, ay, bx, by);
+  collectPointSegTouch(touches, epsSq, dx, dy, ax, ay, bx, by);
+  if (touches.length === 0) return null;
+  if (touches.length > 4) {
+    // Geometrically, more than two touch intersections can not occur.
+    // Is it possible that fp rounding or a bug might result in >2 touches?
+    debug('Intersection detection error');
+  }
+  return touches;
+}
+
+function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
+  // The original point-seg distance function caused errors in test data.
+  // (probably because of large rounding errors with some inputs).
+  // var pab = geom.pointSegDistSq(px, py, ax, ay, bx, by);
+  var pab = geom.pointSegDistSq2(px, py, ax, ay, bx, by);
+  if (pab > epsSq) return; // point is too far from segment to touch
+  var pa = geom.distanceSq(ax, ay, px, py);
+  var pb = geom.distanceSq(bx, by, px, py);
+  if (pa <= epsSq || pb <= epsSq) return; // ignore endpoint hits
+  arr.push(px, py); // T intersection at P and AB
+}
+
 
 // Used by mapshaper-undershoots.js
 // TODO: make more robust, make sure result is compatible with segmentIntersection()
@@ -11048,22 +11117,6 @@ function findClosestPointOnSeg(px, py, ax, ay, bx, by) {
   return p;
 }
 
-function findEndpointInRange(ax, ay, bx, by, cx, cy, dx, dy) {
-  var p = null;
-  if (!outsideRange(ax, cx, dx) && !outsideRange(ay, cy, dy)) {
-    p = [ax, ay];
-  } else if (!outsideRange(bx, cx, dx) && !outsideRange(by, cy, dy)) {
-    p = [bx, by];
-  } else if (!outsideRange(cx, ax, bx) && !outsideRange(cy, ay, by)) {
-    p = [cx, cy];
-  } else if (!outsideRange(dx, ax, bx) && !outsideRange(dy, ay, by)) {
-    p = [dx, dy];
-  } else {
-    debug('[findEndpointInRange()] error');
-  }
-  return p;
-}
-
 function snapIfCloser(p, minDist, x, y, x2, y2) {
   var dist = distance2D(x, y, x2, y2);
   if (dist < minDist) {
@@ -11074,10 +11127,10 @@ function snapIfCloser(p, minDist, x, y, x2, y2) {
   return minDist;
 }
 
-function snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
+function snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps) {
   var x = p[0],
       y = p[1],
-      snapDist = 1e-12;
+      snapDist = eps;
   snapDist = snapIfCloser(p, snapDist, x, y, ax, ay);
   snapDist = snapIfCloser(p, snapDist, x, y, bx, by);
   snapDist = snapIfCloser(p, snapDist, x, y, cx, cy);
@@ -11118,7 +11171,7 @@ function outsideRange(a, b, c) {
 
 function clampToCloseRange(a, b, c) {
   var lim;
-  if (geom.outsideRange(a, b, c)) {
+  if (outsideRange(a, b, c)) {
     lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
     if (Math.abs(a - lim) > 1e-15) {
       debug("[clampToCloseRange()] large clamping interval", a, b, c);
@@ -11144,125 +11197,14 @@ function orient2D(ax, ay, bx, by, cx, cy) {
 }
 
 // Source: Sedgewick, _Algorithms in C_
-// (Tried various other functions that failed owing to floating point errors)
+// (Other functions were tried that were more sensitive to floating point errors
+//  than this function)
 function segmentHit(ax, ay, bx, by, cx, cy, dx, dy) {
   return orient2D(ax, ay, bx, by, cx, cy) *
       orient2D(ax, ay, bx, by, dx, dy) <= 0 &&
       orient2D(cx, cy, dx, dy, ax, ay) *
       orient2D(cx, cy, dx, dy, bx, by) <= 0;
 }
-
-function inside(x, minX, maxX) {
-  return x > minX && x < maxX;
-}
-
-function sortSeg(x1, y1, x2, y2) {
-  return x1 < x2 || x1 == x2 && y1 < y2 ? [x1, y1, x2, y2] : [x2, y2, x1, y1];
-}
-
-// Assume segments s1 and s2 are collinear and overlap; find one or two internal endpoints
-function collinearIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-  var minX = Math.min(ax, bx, cx, dx),
-      maxX = Math.max(ax, bx, cx, dx),
-      minY = Math.min(ay, by, cy, dy),
-      maxY = Math.max(ay, by, cy, dy),
-      useY = maxY - minY > maxX - minX,
-      coords = [];
-
-  if (useY ? inside(ay, minY, maxY) : inside(ax, minX, maxX)) {
-    coords.push(ax, ay);
-  }
-  if (useY ? inside(by, minY, maxY) : inside(bx, minX, maxX)) {
-    coords.push(bx, by);
-  }
-  if (useY ? inside(cy, minY, maxY) : inside(cx, minX, maxX)) {
-    coords.push(cx, cy);
-  }
-  if (useY ? inside(dy, minY, maxY) : inside(dx, minX, maxX)) {
-    coords.push(dx, dy);
-  }
-  if (coords.length != 2 && coords.length != 4) {
-    coords = null;
-    debug("Invalid collinear segment intersection", coords);
-  } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
-    // segs that meet in the middle don't count
-    coords = null;
-  }
-  return coords;
-}
-
-function endpointHit(ax, ay, bx, by, cx, cy, dx, dy) {
-  return ax == cx && ay == cy || ax == dx && ay == dy ||
-          bx == cx && by == cy || bx == dx && by == dy;
-}
-
-// function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-//   var hit = segmentHit(ax, ay, bx, by, cx, cy, dx, dy),
-//       p = null;
-//   if (hit) {
-//     p = crossIntersection(ax, ay, bx, by, cx, cy, dx, dy);
-//     if (!p) { // collinear if p is null
-//       p = collinearIntersection(ax, ay, bx, by, cx, cy, dx, dy);
-//     } else if (endpointHit(ax, ay, bx, by, cx, cy, dx, dy)) {
-//       p = null; // filter out segments that only intersect at an endpoint
-//     }
-//   }
-//   return p;
-// }
-
-// // Get intersection point if segments are non-collinear, else return null
-// // Assumes that segments have been found to intersect (e.g. by segmentHit() function)
-// function crossIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-//   var p = lineIntersection(ax, ay, bx, by, cx, cy, dx, dy);
-//   var nearest;
-//   if (p) {
-//     // Re-order operands so intersection point is closest to a (better precision)
-//     // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
-//     nearest = nearestPoint(p[0], p[1], ax, ay, bx, by, cx, cy, dx, dy);
-//     if (nearest == 1) {
-//       p = lineIntersection(bx, by, ax, ay, cx, cy, dx, dy);
-//     } else if (nearest == 2) {
-//       p = lineIntersection(cx, cy, dx, dy, ax, ay, bx, by);
-//     } else if (nearest == 3) {
-//       p = lineIntersection(dx, dy, cx, cy, ax, ay, bx, by);
-//     }
-//   }
-//   if (p) {
-//     clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy);
-//   }
-//   return p;
-// }
-
-
-// function lineIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-//   var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
-//   var eps = 1e-18;
-//   var m, p;
-//   if (den === 0) return null;
-//   m = orient2D(cx, cy, dx, dy, ax, ay) / den;
-//   if (den <= eps && den >= -eps) {
-//     // tiny denominator = low precision; using one of the endpoints as intersection
-//     p = findEndpointInRange(ax, ay, bx, by, cx, cy, dx, dy);
-//   } else {
-//     p = [ax + m * (bx - ax), ay + m * (by - ay)];
-//   }
-//   return p;
-// }
-
-// // Return id of nearest point to x, y, among x0, y0, x1, y1, ...
-// function nearestPoint(x, y, x0, y0) {
-//   var minIdx = -1,
-//       minDist = Infinity,
-//       dist;
-//   for (var i = 0, j = 2, n = arguments.length; j < n; i++, j += 2) {
-//     dist = distanceSq(x, y, arguments[j], arguments[j+1]);
-//     if (dist < minDist) {
-//       minDist = dist;
-//       minIdx = i;
-//     }
-//   }
-//   return minIdx;
-// }
 
 
 // Convert an array of intersections into an ArcCollection (for display)
@@ -11293,8 +11235,8 @@ internal.findSegmentIntersections = (function() {
     return new Uint32Array(buf, 0, count);
   }
 
-  return function(arcs, arg2) {
-    var opts = arg2 || {},
+  return function(arcs, optArg) {
+    var opts = optArg || {},
         bounds = arcs.getBounds(),
         // TODO: handle spherical bounds
         spherical = !arcs.isPlanar() &&
@@ -11354,13 +11296,12 @@ internal.findSegmentIntersections = (function() {
         intersections = [],
         arr;
     for (i=0; i<stripeCount; i++) {
-      arr = internal.intersectSegments(stripes[i], raw.xx, raw.yy);
+      arr = internal.intersectSegments(stripes[i], raw.xx, raw.yy, opts);
       for (j=0; j<arr.length; j++) {
         intersections.push(arr[j]);
       }
     }
-
-    return internal.dedupIntersections(intersections);
+    return internal.dedupIntersections(intersections, opts.unique ? internal.getUniqueIntersectionKey : null);
   };
 })();
 
@@ -11370,10 +11311,13 @@ internal.sortIntersections = function(arr) {
   });
 };
 
-internal.dedupIntersections = function(arr) {
+
+
+internal.dedupIntersections = function(arr, keyFunction) {
   var index = {};
+  var getKey = keyFunction || internal.getIntersectionKey;
   return arr.filter(function(o) {
-    var key = internal.getIntersectionKey(o);
+    var key = getKey(o);
     if (key in index) {
       return false;
     }
@@ -11386,6 +11330,10 @@ internal.dedupIntersections = function(arr) {
 // Assumes that vertex ids of o.a and o.b are sorted
 internal.getIntersectionKey = function(o) {
   return o.a.join(',') + ';' + o.b.join(',');
+};
+
+internal.getUniqueIntersectionKey = function(o) {
+  return o.x + ',' + o.y;
 };
 
 // Fast method
@@ -11421,10 +11369,12 @@ internal.calcSegmentIntersectionStripeCount_old = function(arcs) {
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
 //
-internal.intersectSegments = function(ids, xx, yy) {
+internal.intersectSegments = function(ids, xx, yy, optsArg) {
   var lim = ids.length - 2,
-      intersections = [];
-  var s1p1, s1p2, s2p1, s2p2,
+      opts = optsArg || {},
+      intersections = [],
+      tolerance = opts.tolerance, // may be undefined
+      s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
       hit, seg1, seg2, i, j;
@@ -11473,7 +11423,7 @@ internal.intersectSegments = function(ids, xx, yy) {
 
       // test two candidate segments for intersection
       hit = geom.segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
-          s2p1x, s2p1y, s2p2x, s2p2y);
+          s2p1x, s2p1y, s2p2x, s2p2y, tolerance);
       if (hit) {
         seg1 = [s1p1, s1p2];
         seg2 = [s2p1, s2p2];
@@ -11533,8 +11483,8 @@ internal.formatIntersectingSegment = function(x, y, i, j, xx, yy) {
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
-// TODO: rename this function to something like repairTopology
-//    (consider using it at import to build initial topology)
+// TODO:
+//    Consider inserting cut points on import, when building initial topology
 //    Improve efficiency (e.g. only update ArcCollection once)
 //    Remove junk arcs (collapsed and duplicate arcs) instead of just removing
 //       references to them
@@ -11545,11 +11495,14 @@ internal.formatIntersectingSegment = function(x, y, i, j, xx, yy) {
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
+  var arcBounds = arcs.getBounds();
   var snapDist, snapCount, dupeCount, nodes;
   if (opts.snap_interval) {
     snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+  } else if (arcBounds.hasBounds()) {
+    snapDist = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
   } else {
-    snapDist = internal.getHighPrecisionSnapInterval(arcs);
+    snapDist = 0;
   }
   debug('addIntersectionCuts() snap dist:', snapDist);
 
@@ -11716,9 +11669,7 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
       yy1 = new Float64Array(destPointTotal),
       n0, n1, arcLen, p;
 
-
   points.reverse(); // reverse sorted order to use pop()
-
   p = points.pop();
 
   for (var srcArcId=0, destArcId=0; srcArcId < srcArcTotal; srcArcId++) {
@@ -11781,15 +11732,17 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
   if (j < i || j > i + 1) {
     error("Out-of-sequence arc ids:", i, j);
   }
-  if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
-    // out-of-range issues should have been handled upstream
-    debug("[getCutPoint()] Coordinate range error");
-    return null;
-  }
+
+  // Removed out-of-range check: small out-of-range intersection points are now allowed.
+  // (Such points may occur due to fp rounding, when intersections occur along
+  // vertical or horizontal segments)
+  // if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
+    // return null;
+  // }
+
+  // Removed endpoint check: intersecting arcs need to be cut both at vertices
+  // and between vertices, so pathfinding functions will work correctly.
   // if (x == ix && y == iy || x == jx && y == jy) {
-    // if point xy is at a vertex, don't insert a (duplicate) point
-    // TODO: investigate why this can cause pathfinding errors
-    //       e.g. when clipping cd115_districts
     // return null;
   // }
   return {x: x, y: y, i: i};
@@ -11800,9 +11753,12 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
 //   ascending distance from same endpoint.
 internal.sortCutPoints = function(points, xx, yy) {
   points.sort(function(a, b) {
-    return a.i - b.i ||
-      Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
-      Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
+    if (a.i != b.i) return a.i - b.i;
+    return distanceSq(xx[a.i], yy[a.i], a.x, a.y) - distanceSq(xx[b.i], yy[b.i], b.x, b.y);
+    // The old code below is no longer reliable, now that out-of-range intersection
+    // points are allowed.
+    // return Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
+    // Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
   });
   return points;
 };
@@ -11821,7 +11777,7 @@ internal.filterSortedCutPoints = function(points, arcs) {
 
     while (pointId < points.length && points[pointId].i <= j) {
       p = points[pointId];
-      pp = filtered[filtered.length - 1];
+      pp = filtered[filtered.length - 1]; // previous point
       if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) {
         // clip point is an arc endpoint -- discard
       } else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) {
@@ -14031,10 +13987,10 @@ api.cleanLayers = function(layers, dataset, opts) {
 
 
 
-// Combine target layer(s) and overlay layer into a single dataset, with overlay
-// last in the layers array
+// Create a merged dataset by appending the overlay layer to the target dataset
+// so it is last in the layers array.
 // DOES NOT insert clipping points
-internal.mergeLayersForOverlay = function(targetLayers, clipSrc, targetDataset, opts) {
+internal.mergeLayersForOverlay = function(targetLayers, targetDataset, clipSrc, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
   var mergedDataset, clipDataset, clipLyr;
   if (clipSrc && clipSrc.geometry_type) {
@@ -14062,8 +14018,10 @@ internal.mergeLayersForOverlay = function(targetLayers, clipSrc, targetDataset, 
     mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
     api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
   } else {
+    // overlay layer belongs to the same dataset as target layers... move it to the end
     mergedDataset = utils.extend({}, targetDataset);
-    mergedDataset.layers = targetLayers.concat(clipLyr);
+    mergedDataset.layers = targetDataset.layers.filter(function(lyr) {return lyr != clipLyr;});
+    mergedDataset.layers.push(clipLyr);
   }
   return mergedDataset;
 };
@@ -14790,7 +14748,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   if (opts.bbox2) {
     return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
   }
-  mergedDataset = internal.mergeLayersForOverlay(targetLayers, clipSrc, targetDataset, opts);
+  mergedDataset = internal.mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
   if (usingPathClip) {
     // add vertices at all line intersections
     // (generally slower than actual clipping)
@@ -15614,7 +15572,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
   this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
-
+  this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
   // Assign shape ids to mosaic tile shapes.
   shapes.forEach(function(shp, shapeId) {
     var tileIds = shapeTiler.getTilesInShape(shp, shapeId);
@@ -20318,11 +20276,41 @@ api.lines = function(lyr, dataset, opts) {
   opts = opts || {};
   if (lyr.geometry_type == 'point') {
     return internal.pointsToLines(lyr, dataset, opts);
+  } else if (opts.segments) {
+    return [internal.convertShapesToSegments(lyr, dataset)];
   } else if (lyr.geometry_type == 'polygon') {
     return internal.polygonsToLines(lyr, dataset.arcs, opts);
   } else {
     internal.requirePolygonLayer(lyr, "Command requires a polygon or point layer");
   }
+};
+
+internal.convertShapesToSegments = function(lyr, dataset) {
+  var arcs = dataset.arcs;
+  var features = [];
+  var geojson = {type: 'FeatureCollection', features: []};
+  var test = internal.getArcPresenceTest(lyr.shapes, arcs);
+  var arcId;
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    arcId = i;
+    if (!test(arcId)) continue;
+    arcs.forEachArcSegment(arcId, onSeg);
+  }
+  function onSeg(i1, i2, xx, yy) {
+    var a = xx[i1],
+        b = yy[i1],
+        c = xx[i2],
+        d = yy[i2];
+    geojson.features.push({
+      type: 'Feature',
+      properties: {arc: arcId, i1: i1, i2: i2, x1: a, y1: b, x2: c, y2: d},
+      geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
+    });
+  }
+  var merged = internal.mergeDatasets([dataset, internal.importGeoJSON(geojson, {})]);
+  dataset.arcs = merged.arcs;
+  // api.buildTopology(dataset);
+  return merged.layers.pop();
 };
 
 internal.pointsToLines = function(lyr, dataset, opts) {
@@ -20724,6 +20712,229 @@ internal.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) 
 };
 
 
+internal.joinPolygonsViaPoints = function(targetLyr, targetDataset, source, opts) {
+
+  var sourceLyr = source.layer,
+      sourceDataset = source.dataset,
+      pointLyr;
+
+  if (targetLyr.shapes.length > sourceLyr.shapes.length) {
+    // convert target polygons to points
+    pointLyr = internal.pointsFromPolygonsForJoin(targetLyr, targetDataset);
+    return api.joinPolygonsToPoints(targetLyr, sourceLyr, sourceDataset.arcs, opts);
+  } else {
+    // convert source polygons to points
+    pointLyr = internal.pointsFromPolygonsForJoin(sourceLyr, sourceDataset);
+    return api.joinPointsToPolygons(targetLyr, targetDataset.arcs, pointLyr, opts);
+  }
+};
+
+internal.pointsFromPolygonsForJoin = function(lyr, dataset) {
+  // TODO use faster method to get inner points
+  return {
+    geometry_type: 'point',
+    shapes: internal.pointsFromPolygons(lyr, dataset.arcs, {inner: true}),
+    data: lyr.data // TODO copy if needed
+  };
+};
+
+
+api.union = function(targetLayers, targetDataset, opts) {
+  if (targetLayers.length < 2) {
+    stop('Command requires at least two target layers');
+  }
+  var allFields = [];
+  var allShapes = [];
+  var layerData = [];
+  targetLayers.forEach(function(lyr, i) {
+    internal.requirePolygonLayer(lyr);
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    if (opts.fields) {
+      fields = opts.fields.indexOf('*') > 1 ? fields :
+        fields.filter(function(name) {return opts.fields.indexOf(name) > -1;});
+    }
+    layerData.push({
+      layer: lyr,
+      fields: fields,
+      records: lyr.data ? lyr.data.getRecords() : null,
+      offset: allShapes.length,
+      size: lyr.shapes.length
+    });
+    allFields = allFields.concat(fields);
+    allShapes = allShapes.concat(lyr.shapes);
+  });
+  var unionFields = utils.uniqifyNames(allFields, function(name, n) {
+    return name + '_' + n;
+  });
+  var mergedLyr = {
+    geometry_type: 'polygon',
+    shapes: allShapes
+  };
+  var nodes = internal.addIntersectionCuts(targetDataset, opts);
+  var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
+  var mosaicShapes = mosaicIndex.mosaic;
+  var mosaicRecords = mosaicShapes.map(function(shp, i) {
+    var mergedIds = mosaicIndex.getSourceIdsByTileId(i);
+    var values = [];
+    var lyrInfo, srcId, rec;
+    for (var lyrId=0, n=layerData.length; lyrId < n; lyrId++) {
+      lyrInfo = layerData[lyrId];
+      srcId = internal.unionFindOriginId(mergedIds, lyrInfo.offset, lyrInfo.size);
+      rec = srcId == -1 || lyrInfo.records === null ? null : lyrInfo.records[srcId];
+      internal.unionAddDataValues(values, lyrInfo.fields, rec);
+    }
+    return internal.unionMakeDataRecord(unionFields, values);
+  });
+
+  var unionLyr = {
+    name: 'union',
+    geometry_type: 'polygon',
+    shapes: mosaicShapes,
+    data: new DataTable(mosaicRecords)
+  };
+  return [unionLyr];
+};
+
+internal.unionFindOriginId = function(mergedIds, offset, length) {
+  var mergedId;
+  for (var i=0; i<mergedIds.length; i++) {
+    mergedId = mergedIds[i];
+    if (mergedId >= offset && mergedId < offset + length) {
+      return mergedId - offset;
+    }
+  }
+  return -1;
+};
+
+internal.unionAddDataValues = function(arr, fields, rec) {
+  for (var i=0; i<fields.length; i++) {
+    arr.push(rec ? rec[fields[i]] : null);
+  }
+};
+
+internal.unionMakeDataRecord = function(fields, values) {
+  var rec = {};
+  for (var i=0; i<fields.length; i++) {
+    rec[fields[i]] = values[i];
+  }
+  return rec;
+};
+
+
+internal.joinPolygonsViaMosaic = function(targetLyr, targetDataset, source, opts) {
+  var mergedDataset = internal.mergeLayersForOverlay([targetLyr], targetDataset, source, opts);
+  var nodes = internal.addIntersectionCuts(mergedDataset, opts);
+  var sourceLyr = mergedDataset.layers.pop();
+  targetDataset.arcs = mergedDataset.arcs;
+  internal.prepJoinLayers(targetLyr, sourceLyr);
+  var mergedLyr = {
+    geometry_type: 'polygon',
+    shapes: targetLyr.shapes.concat(sourceLyr.shapes)
+  };
+  var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
+
+  var joinOpts = utils.extend({}, opts);
+  var joinFunction = internal.getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex);
+  var retn = internal.joinTables(targetLyr.data, sourceLyr.data, joinFunction, joinOpts);
+
+  if (opts.interpolate) {
+    internal.interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
+  }
+  return retn;
+};
+
+internal.interpolateFieldsByArea = function(destLyr, sourceLyr, mosaicIndex, opts) {
+  var sourceFields = opts.interpolate;
+  var getShapeArea = opts.planar ? geom.getPlanarShapeArea : geom.getShapeArea;
+  var sourceLen = sourceLyr.shapes.length;
+  var destLen = destLyr.shapes.length;
+  var mosaicShapes = mosaicIndex.mosaic;
+  var arcs = mosaicIndex.nodes.arcs;
+  var mosaicRecords = mosaicShapes.map(function(shp, i) {
+    var rec = {
+      area: getShapeArea(shp, arcs),
+      weight: 0,
+      sourceId: -1
+    };
+    return rec;
+  });
+
+  sourceLyr.shapes.forEach(function(sourceShp, sourceId) {
+    var tileIds = mosaicIndex.getTileIdsByShapeId(sourceId + destLen);
+    var shapeArea = getShapeArea(sourceShp, arcs);
+    var tileRec;
+    for (var i=0; i<tileIds.length; i++) {
+      tileRec = mosaicRecords[tileIds[i]];
+      if (tileRec.sourceId > -1) {
+        // overlap in source layer
+        continue;
+      }
+      tileRec.weight = tileRec.area / shapeArea;
+      tileRec.sourceId = sourceId;
+    }
+  });
+
+  destLyr.data.getRecords().forEach(function(destRec, destId) {
+    var sourceRecords = sourceLyr.data.getRecords();
+    var tileIds = mosaicIndex.getTileIdsByShapeId(destId);
+    var tileRecords = [], i, field;
+    for (i=0; i<tileIds.length; i++) {
+      tileRecords.push(mosaicRecords[tileIds[i]]);
+    }
+    for (i=0; i<sourceFields.length; i++) {
+      field = sourceFields[i];
+      destRec[field] = internal.getInterpolatedValue(field, tileRecords, sourceRecords);
+    }
+  });
+};
+
+internal.getInterpolatedValue = function(field, tileRecords, sourceRecords) {
+  var value = 0, tileRec, sourceRec;
+  for (var i=0; i<tileRecords.length; i++) {
+    tileRec = tileRecords[i];
+    if (tileRec.sourceId == -1) continue;
+    sourceRec = sourceRecords[tileRec.sourceId];
+    value += tileRec.weight * sourceRec[field];
+  }
+  return value;
+};
+
+internal.getIdConversionFunction = function(offset, length) {
+  return function (mergedIds) {
+    var ids = [], id;
+    for (var i=0; i<mergedIds.length; i++) {
+      id = mergedIds[i] - offset;
+      if (id >= 0 && id < length) ids.push(id);
+    }
+    return ids;
+  };
+};
+
+// Returned function converts a target layer feature id to multiple source feature ids
+internal.getPolygonToPolygonFunction = function(targetLyr, srcLyr, mosaicIndex) {
+  var mergedToSourceIds = internal.getIdConversionFunction(targetLyr.shapes.length, srcLyr.shapes.length);
+  return function(targId) {
+    var tileIds = mosaicIndex.getTileIdsByShapeId(targId);
+    var sourceIds = [], tmp;
+    for (var i=0; i<tileIds.length; i++) {
+      tmp = mosaicIndex.getSourceIdsByTileId(tileIds[i]);
+      tmp = mergedToSourceIds(tmp);
+      sourceIds = sourceIds.length > 0 ? utils.uniq(sourceIds, tmp) : tmp;
+    }
+    return sourceIds;
+  };
+};
+
+
+internal.joinPolygonsToPolygons = function(targetLyr, targetDataset, source, opts) {
+  if (opts.point_method) {
+    return internal.joinPolygonsViaPoints(targetLyr, targetDataset, source, opts);
+  } else {
+    return internal.joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts);
+  }
+};
+
+
 // Returns a function for filtering multiple source-table records
 // (used by -join command)
 internal.getJoinFilter = function(data, exp) {
@@ -20853,6 +21064,8 @@ api.join = function(targetLyr, dataset, src, opts) {
       retn = api.joinPolygonsToPoints(targetLyr, src.layer, src.dataset.arcs, opts);
     } else if (srcType == 'point' && targetType == 'point') {
       retn = api.joinPointsToPoints(targetLyr, src.layer, opts);
+    } else if (srcType == 'polygon' && targetType == 'polygon') {
+      retn = internal.joinPolygonsToPolygons(targetLyr, dataset, src, opts);
     } else {
       stop(utils.format("Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
@@ -21704,11 +21917,6 @@ api.pointGrid = function(dataset, opts) {
   return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
 };
 
-api.polygonGrid = function(dataset, opts) {
-  var gridOpts = internal.getPointGridParams(dataset, opts);
-  return internal.createPolygonGridDataset(internal.createPointGrid(gridOpts), opts);
-};
-
 internal.getPointGridParams = function(dataset, opts) {
   var params = {};
   var crs = dataset ? internal.getDatasetCRS(dataset) : null;
@@ -21745,31 +21953,6 @@ internal.createPointGridLayer = function(rows, opts) {
   return lyr;
 };
 
-internal.createPolygonGridDataset = function(rows, opts) {
-  var rings = [], rowArr;
-  var col, row, tl, br, ring;
-  for (row = 0; row < rows.length - 1; row++) {
-    rowArr = rows[row];
-    for (col = 0; col < rowArr.length - 1; col++) {
-      bl = rows[row][col];
-      tr = rows[row + 1][col + 1];
-      ring = [[bl[0], bl[1]], [bl[0], tr[1]], [tr[0], tr[1]], [tr[0], bl[1]], [bl[0], bl[1]]];
-      rings.push(ring);
-    }
-  }
-  var geojson = {
-    type: "GeometryCollection",
-    geometries: rings.map(function(ring){
-      return {
-        type: 'Polygon',
-        coordinates: [ring]
-      };
-    })
-  };
-  var dataset = internal.importGeoJSON(geojson, {});
-  if (opts.name) dataset.layers[0].name = opts.name;
-  return dataset;
-};
 
 // Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
 internal.createPointGrid = function(opts) {
@@ -21810,6 +21993,241 @@ internal.createPointGrid = function(opts) {
     y += dy;
   }
   return rowsArr;
+};
+
+
+
+api.polygonGrid = function(targetLayers, targetDataset, opts) {
+  if (internal.isLatLngCRS(internal.getDatasetCRS(targetDataset))) {
+    stop("Command requires a target with projected coordinates (not lat-long)");
+  }
+  var params = internal.getGridParams(targetLayers, targetDataset, opts);
+  var geojson;
+  if (params.type == 'square') {
+    geojson = internal.getSquareGridGeoJSON(internal.getSquareGridCoordinates(params));
+  } else if (params.type == 'hex') {
+    geojson = internal.getHexGridGeoJSON(internal.getHexGridCoordinates(params));
+  } else if (params.type == 'hex2') {
+    // use rotated grid
+    geojson = internal.getHexGridGeoJSON(internal.getHexGridCoordinates(internal.swapGridParams(params)));
+    internal.swapPolygonCoords(geojson);
+  } else {
+    stop('Unsupported grid type');
+  }
+  internal.alignGridToBounds(geojson, params.bbox);
+  var gridDataset = internal.importGeoJSON(geojson, {});
+  gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
+  api.buildTopology(gridDataset);
+  gridDataset.layers[0].name = opts.name || 'grid';
+  if (opts.debug) gridDataset.layers.push(api.pointGrid2(targetLayers, targetDataset, opts));
+  return gridDataset;
+};
+
+// TODO: Update -point-grid command to use this function
+api.pointGrid2 = function(targetLayers, targetDataset, opts) {
+  var params = internal.getGridParams(targetLayers, targetDataset, opts);
+  var geojson;
+  if (params.type == 'square') {
+    geojson = internal.getPointGridGeoJSON(internal.getSquareGridCoordinates(params));
+  } else if (params.type == 'hex') {
+    geojson = internal.getPointGridGeoJSON(internal.getHexGridCoordinates(params));
+  } else {
+    stop('Unsupported grid type');
+  }
+  internal.alignGridToBounds(geojson, params.bbox);
+  var gridDataset = internal.importGeoJSON(geojson, {});
+  if (opts.name) gridDataset.layers[0].name = opts.name;
+  return gridDataset.layers[0];
+};
+
+internal.swapGridParams = function(params) {
+  var bbox = params.bbox;
+  return utils.defaults({
+    width: params.height,
+    height: params.width,
+    bbox: [bbox[1], bbox[0], bbox[3], bbox[2]]
+  }, params);
+};
+
+internal.swapPolygonCoords = function(json) {
+  json.geometries.forEach(function(geom) {
+    geom.coordinates[0] = geom.coordinates[0].map(function(p) {
+      return [p[1], p[0]];
+    });
+  });
+};
+
+internal.getGridParams = function(layers, dataset, opts) {
+  var params = {};
+  var crs = dataset ? internal.getDatasetCRS(dataset) : null;
+  if (opts.interval) {
+    params.interval = internal.convertIntervalParam(opts.interval, crs);
+  } else {
+    stop('Missing required interval option');
+  }
+  if (opts.bbox) {
+    params.bbox = opts.bbox;
+  } else if (dataset) {
+    dataset = utils.defaults({layers: layers}, dataset);
+    params.bbox = internal.getDatasetBounds(dataset).toArray();
+  } else {
+    stop('Missing grid bbox');
+  }
+  params.width = params.bbox[2] - params.bbox[0];
+  params.height = params.bbox[3] - params.bbox[1];
+  params.type = opts.type || 'square';
+  return params;
+};
+
+internal.getPointGridGeoJSON = function(arr) {
+  var geometries = [];
+  arr.forEach(function(row) {
+    row.forEach(function(xy) {
+      geometries.push({
+        type: 'Point',
+        coordinates: xy
+      });
+    });
+  });
+  return {type: 'GeometryCollection', geometries: geometries};
+};
+
+internal.getHexGridGeoJSON = function(arr) {
+  var geometries = [], a, b, c, d, e, f;
+  var rows = arr.length - 2;
+  var row, col, midOffset, evenRow;
+  for (row = 0; row < rows; row++) {
+    evenRow = row % 2 === 0;
+    col = evenRow ? 0 : 2;
+    midOffset = evenRow ? 0 : -1;
+    for (; true; col += 3) {
+      a = arr[row][col];
+      b = arr[row + 1][col + midOffset]; // middle-left
+      c = arr[row + 2][col];
+      d = arr[row + 2][col + 1];
+      e = arr[row + 1][col + 2 + midOffset]; // middle-right
+      f = arr[row][col + 1];
+      if (!d || !e) break; // end of row
+      geometries.push({
+        type: 'Polygon',
+        coordinates: [[a, b, c, d, e, f, a]]
+      });
+    }
+  }
+  return {type: 'GeometryCollection', geometries: geometries};
+};
+
+internal.getSquareGridGeoJSON = function(arr) {
+  var geometries = [], a, b, c, d;
+  for (var row = 0, rows = arr.length - 1; row < rows; row++) {
+    for (var col = 0, cols = arr[row].length - 1; col < cols; col++) {
+      a = arr[row][col];
+      b = arr[row + 1][col];
+      c = arr[row + 1][col + 1];
+      d = arr[row][col + 1];
+      geometries.push({
+        type: 'Polygon',
+        coordinates: [[a, b, c, d, a]]
+      });
+    }
+  }
+  return {type: 'GeometryCollection', geometries: geometries};
+};
+
+internal.getHexGridCoordinates = function(params) {
+  var xInterval = params.interval;
+  var yInterval = Math.sqrt(3) * xInterval / 2;
+  var xOddRowShift = xInterval / 2;
+  var xmax = params.width + xInterval * 2; // width of hexagon is 2 * xInterval
+  var ymax = params.height + yInterval * 2; // height of hexagon is 2 * yInterval
+  var y = -yInterval;
+  var rows = [];
+  var x, row;
+  while (y < ymax) {
+    x = rows.length % 2 === 0 ? 0 : -xOddRowShift;
+    row = [];
+    rows.push(row);
+    while (x < xmax) {
+      row.push([x, y]);
+      x += xInterval;
+    }
+    y += yInterval;
+  }
+  return rows;
+};
+
+internal.getSquareGridCoordinates = function(params) {
+  var y = 0, rows = [],
+      interval = params.interval,
+      xmax = params.width + interval,
+      ymax = params.height + interval,
+      x, row;
+  while (y < ymax) {
+    x = 0;
+    row = [];
+    rows.push(row);
+    while (x < xmax) {
+      row.push([x, y]);
+      x += interval;
+    }
+    y += interval;
+  }
+  return rows;
+};
+
+internal.alignGridToBounds = function(geojson, bbox) {
+  var geojsonBbox = internal.findPolygonGridBounds(geojson);
+  var dx = (bbox[2] + bbox[0]) / 2 - (geojsonBbox[2] + geojsonBbox[0]) / 2;
+  var dy = (bbox[3] + bbox[1]) / 2 - (geojsonBbox[3] + geojsonBbox[1]) / 2;
+  internal.shiftPolygonGrid(geojson, dx, dy);
+};
+
+internal.shiftPolygonGrid = function(geojson, dx, dy) {
+  geojson.geometries.forEach(function(geom) {
+    if (geom.type == 'Point') {
+      geom.coordinates = [geom.coordinates[0] + dx, geom.coordinates[1] + dy];
+    }
+    if (geom.type == 'Polygon') {
+      geom.coordinates[0] = geom.coordinates[0].map(function(xy) {
+        return [xy[0] + dx, xy[1] + dy];
+      });
+    }
+  });
+};
+
+internal.findPolygonGridBounds = function(geojson) {
+  var boundsFunctions = {
+    Point: pointBounds,
+    Polygon: polygonBounds
+  };
+  return geojson.geometries.reduce(function(memo, geom) {
+    var getBounds = boundsFunctions[geom.type];
+    var bbox = getBounds(geom);
+    if (!memo) return bbox;
+    updateBounds(memo, bbox[0], bbox[1]);
+    updateBounds(memo, bbox[2], bbox[3]);
+    return memo;
+  }, null);
+
+  function polygonBounds(geom) {
+    return geom.coordinates[0].reduce(function(bbox, p) {
+      if (!bbox) return [p[0], p[1], p[0], p[1]];
+      updateBounds(bbox, p[0], p[1]);
+      return bbox;
+    }, null);
+  }
+
+  function pointBounds(geom) {
+    var p = geom.coordinates;
+    return [p[0], p[1], p[0], p[1]];
+  }
+
+  function updateBounds(bbox, x, y) {
+    if (x < bbox[0]) bbox[0] = x;
+    if (y < bbox[1]) bbox[1] = y;
+    if (x > bbox[2]) bbox[2] = x;
+    if (y > bbox[3]) bbox[3] = y;
+  }
 };
 
 
@@ -23311,7 +23729,7 @@ internal.limitSimplificationExtent = function(arcs, bb, hardLimit) {
 //
 internal.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
-  // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+  // -179.99999999999994 in test/data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
   internal.limitSimplificationExtent(arcs, internal.getWorldBounds(1e-12), false);
 };
@@ -23822,89 +24240,6 @@ internal.target = function(catalog, opts) {
 };
 
 
-api.union = function(targetLayers, targetDataset, opts) {
-  // var mergedDataset = internal.mergeLayersForUnion(targetLayers, targetDataset);
-  if (targetLayers.length < 2) {
-    stop('Command requires at least two target layers');
-  }
-  var allFields = [];
-  var allShapes = [];
-  var layerData = [];
-  targetLayers.forEach(function(lyr, i) {
-    internal.requirePolygonLayer(lyr);
-    var fields = lyr.data ? lyr.data.getFields() : [];
-    if (opts.fields) {
-      fields = opts.fields.indexOf('*') > 1 ? fields :
-        fields.filter(function(name) {return opts.fields.indexOf(name) > -1;});
-    }
-    layerData.push({
-      layer: lyr,
-      fields: fields,
-      records: lyr.data ? lyr.data.getRecords() : null,
-      offset: allShapes.length,
-      size: lyr.shapes.length
-    });
-    allFields = allFields.concat(fields);
-    allShapes = allShapes.concat(lyr.shapes);
-  });
-  var unionFields = utils.uniqifyNames(allFields, function(name, n) {
-    return name + '_' + n;
-  });
-  var mergedLyr = {
-    geometry_type: 'polygon',
-    shapes: allShapes
-  };
-  var nodes = internal.addIntersectionCuts(targetDataset, opts);
-  var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
-  var mosaicShapes = mosaicIndex.mosaic;
-  var mosaicRecords = mosaicShapes.map(function(shp, i) {
-    var mergedIds = mosaicIndex.getSourceIdsByTileId(i);
-    var values = [];
-    var lyrInfo, srcId, rec;
-    for (var lyrId=0, n=layerData.length; lyrId < n; lyrId++) {
-      lyrInfo = layerData[lyrId];
-      srcId = internal.unionFindOriginId(mergedIds, lyrInfo.offset, lyrInfo.size);
-      rec = srcId == -1 || lyrInfo.records === null ? null : lyrInfo.records[srcId];
-      internal.unionAddDataValues(values, lyrInfo.fields, rec);
-    }
-    return internal.unionMakeDataRecord(unionFields, values);
-  });
-
-  var unionLyr = {
-    geometry_type: 'polygon',
-    shapes: mosaicShapes,
-    data: new DataTable(mosaicRecords)
-  };
-  // if ('name' in targetLyr) unionLyr.name = targetLyr.name;
-  return [unionLyr];
-};
-
-internal.unionFindOriginId = function(mergedIds, offset, length) {
-  var mergedId;
-  for (var i=0; i<mergedIds.length; i++) {
-    mergedId = mergedIds[i];
-    if (mergedId >= offset && mergedId < offset + length) {
-      return mergedId - offset;
-    }
-  }
-  return -1;
-};
-
-internal.unionAddDataValues = function(arr, fields, rec) {
-  for (var i=0; i<fields.length; i++) {
-    arr.push(rec ? rec[fields[i]] : null);
-  }
-};
-
-internal.unionMakeDataRecord = function(fields, values) {
-  var rec = {};
-  for (var i=0; i<fields.length; i++) {
-    rec[fields[i]] = values[i];
-  }
-  return rec;
-};
-
-
 api.uniq = function(lyr, arcs, opts) {
   var n = internal.getFeatureCount(lyr),
       compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
@@ -24000,6 +24335,7 @@ api.runCommand = function(cmd, catalog, cb) {
   var name = cmd.name,
       opts = cmd.options,
       source,
+      outputDataset,
       outputLayers,
       outputFiles,
       targets,
@@ -24056,7 +24392,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
       if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-          name == 'polygon-grid' || name == 'include')) {
+          name == 'include')) {
         throw new UserError("No data is available");
       }
     }
@@ -24193,8 +24529,8 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.addDataset({layers: outputLayers});
       }
 
-    } else if (name == 'polygon-grid') {
-      catalog.addDataset(api.polygonGrid(targetDataset, opts));
+    } else if (name == 'grid') {
+      outputDataset = api.polygonGrid(targetLayers, targetDataset, opts);
 
     } else if (name == 'points') {
       outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
@@ -24307,8 +24643,17 @@ api.runCommand = function(cmd, catalog, cb) {
       });
     }
 
-    // integrate output layers into the target dataset
-    if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
+    if (outputDataset) {
+      catalog.addDataset(outputDataset); // also sets default target
+      outputLayers = outputDataset.layers;
+      if (targetLayers && !opts.no_replace) {
+        // remove target layers from target dataset
+        targetLayers.forEach(function(lyr) {
+          catalog.deleteLayer(lyr, targetDataset);
+        });
+      }
+    } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
+      // integrate output layers into the target dataset
       if (opts.no_replace) {
         // make sure commands do not return input layers with 'no_replace' option
         if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
@@ -24328,6 +24673,8 @@ api.runCommand = function(cmd, catalog, cb) {
       // use command output as new default target
       catalog.setDefaultTarget(outputLayers, targetDataset);
     }
+
+
 
     // delete arcs if no longer needed (e.g. after -points command)
     // (after output layers have been integrated)
@@ -25585,6 +25932,32 @@ internal.getOptionParser = function() {
   parser.command('graticule')
     .describe('create a graticule layer');
 
+  parser.command('grid')
+    .describe('create a grid of square or hexagonal polygons')
+    .option('type', {
+      describe: 'square, hex or hex2 (default is square)'
+    })
+    .option('interval', {
+      describe: 'side length (e.g. 500m, 12km)',
+      type: 'distance'
+    })
+    // .option('cols', {
+    //   type: 'integer'
+    // })
+    // .option('rows', {
+    //   type: 'integer'
+    // })
+    // .option('bbox', {
+    //   type: 'bbox',
+    //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
+    // })
+    .option('debug', {
+      type: 'flag'
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
+
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
     .flag('no_arg')
@@ -25621,6 +25994,18 @@ internal.getOptionParser = function() {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
       type: 'strings'
     })
+    .option('interpolate', {
+      describe: '(polygon-polygon join) (comma-sep.) area-interpolated numeric fields',
+      type: 'strings'
+    })
+    .option('point-method', {
+      describe: '(polygon-polygon join) join polygons via inner points',
+      type: 'flag'
+    })
+    .option('planar', {
+      // describe: 'use planar geometry when interpolating by area' // useful for testing
+      type: 'flag'
+    })
     .option('string-fields', stringFieldsOpt)
     .option('field-types', fieldTypesOpt)
     .option('sum-fields', {
@@ -25651,6 +26036,10 @@ internal.getOptionParser = function() {
     })
     .option('where', whereOpt2)
     .option('each', eachOpt2)
+    .option('segments', {
+      describe: 'convert vectors to segments, for debugging',
+      type: 'flag'
+    })
     .option('groupby', {
       describe: 'field for grouping point input into multiple lines'
     })
@@ -25745,29 +26134,6 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
-
-  parser.command('polygon-grid')
-    // .describe('create a rectangular grid of cells')
-    .validate(validateGridOpts)
-    .option('-', {
-      label: '<cols,rows>',
-      describe: 'size of the grid, e.g. -point-grid 100,100'
-    })
-    .option('interval', {
-      describe: 'distance between adjacent points, in source units',
-      type: 'number'
-    })
-    .option('cols', {
-      type: 'integer'
-    })
-    .option('rows', {
-      type: 'integer'
-    })
-    .option('bbox', {
-      type: 'bbox',
-      describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
-    })
-    .option('name', nameOpt);
 
   parser.command('proj')
     .describe('project your data (using Proj.4)')
@@ -25959,6 +26325,9 @@ internal.getOptionParser = function() {
     .option('class', {
       describe: 'name of CSS class or classes (space-separated)'
     })
+    // .option('css', {
+    //   describe: 'inline css style'
+    // })
     .option('fill', {
       describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
     })
