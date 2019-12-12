@@ -11,6 +11,7 @@ api.filterIslands = function(lyr, dataset, opts) {
     return;
   }
 
+
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
       removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset, opts));

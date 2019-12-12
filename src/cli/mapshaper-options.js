@@ -909,6 +909,14 @@ internal.getOptionParser = function() {
     .option('no-snap', noSnapOpt)
     .option('target', targetOpt);
 
+  parser.command('snap')
+    // .describe('snap vertices')
+    .option('interval', {
+      DEFAULT: true,
+      type: 'distance'
+    })
+    .option('target', targetOpt);
+
   parser.command('sort')
     .describe('sort features using a JS expression')
     .option('expression', {

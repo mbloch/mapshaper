@@ -47,10 +47,11 @@ mapshaper-scalebar
 mapshaper-shape
 mapshaper-simplify
 mapshaper-variable-simplify
+mapshaper-snap
+mapshaper-sort
 mapshaper-split
 mapshaper-split-on-grid
 mapshaper-subdivide
-mapshaper-sort
 mapshaper-svg-style
 mapshaper-symbols
 mapshaper-target
@@ -333,6 +334,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'slice') {
       outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
+
+    } else if (name == 'snap') {
+      api.snap(targetDataset, opts);
 
     } else if (name == 'sort') {
       applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
