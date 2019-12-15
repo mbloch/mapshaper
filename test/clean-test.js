@@ -18,7 +18,6 @@ function cleanArcs(dataset) {
   api.cleanLayers(dataset.layers, dataset, {arcs: true});
 }
 
-
 describe('mapshaper-clean.js', function () {
 
   describe('clean arcs', function () {
@@ -39,9 +38,97 @@ describe('mapshaper-clean.js', function () {
     })
   })
 
-  describe('-clean command', function () {
 
-  it('Removes empty geometries by default', function(done) {
+  it('Ignores layers with no geometry', function() {
+    var records = [{id: 'a'}]
+    var dataset = {
+      info: {},
+      layers: [{
+        data: new api.internal.DataTable(records)
+      }]
+    };
+    api.cleanLayers(dataset.layers, dataset);
+    assert.deepEqual(dataset.layers[0].data.getRecords(), [{id: 'a'}]);
+  });
+
+  it('Converts segment intersections in line features to multipart geometries', function(done) {
+    var data = {
+      type: 'LineString',
+      coordinates: [[0, 0], [1, 1], [0, 1], [1, 0]]
+    };
+    var target = {
+      type: 'MultiLineString',
+      coordinates: [[[0, 0], [0.5, 0.5]], [[0.5, 0.5], [1, 1], [0, 1], [0.5, 0.5]],
+       [[0.5, 0.5], [1, 0]]]
+    }
+    var cmd = '-i data.json -clean -o';
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var json = JSON.parse(out['data.json']);
+      assert.deepEqual(json.geometries[0], target)
+      done();
+    });
+
+
+  });
+
+  it('Removes empty line geometries by default', function(done) {
+    var data = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: null,
+        properties: {id: 'a'}
+      }, {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [[0, 0], [1, 1]]
+        },
+        properties: {id: 'b'}
+      }]
+    };
+    var cmd = '-i data.json -clean -o';
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var json = JSON.parse(out['data.json']);
+      assert.deepEqual(json, {
+        type: 'FeatureCollection',
+        features: [data.features[1]]
+      });
+      done();
+    });
+  });
+
+  it('Removes duplicate coordinates within multipoint features', function() {
+    var dataset = {
+      info: {},
+      layers: [{
+        geometry_type: 'point',
+        shapes: [[[0, 0]], [[1, 1], [1, 1], [0, 0]]]
+      }]
+    };
+    api.cleanLayers(dataset.layers, dataset);
+    assert.deepEqual(dataset.layers[0].shapes, [[[0, 0]], [[1, 1], [0, 0]]]);
+  })
+
+  it('Removes empty point geometries by default', function() {
+    var dataset = {
+      info: {},
+      layers: [{
+        geometry_type: 'point',
+        shapes: [null, [[0, 0]], null, [[1, 1], [2, 2]] ],
+        data: null
+      }]
+    };
+    api.cleanLayers(dataset.layers, dataset);
+    assert.deepEqual(dataset.layers[0], {
+      geometry_type: 'point',
+      shapes: [ [[0, 0]], [[1, 1], [2, 2]] ],
+      data: null
+    });
+
+  })
+
+  it('Removes empty polygon geometries by default', function(done) {
       //  a ----- b
       //  |       |
       //  |       |
@@ -85,103 +172,101 @@ describe('mapshaper-clean.js', function () {
     })
 
   it('Retains empty geometries if "allow-empty" flag is present', function(done) {
-      //  a ----- b
-      //  |       |
-      //  |       |
-      //  |       |
-      //  d ----- c
+    //  a ----- b
+    //  |       |
+    //  |       |
+    //  |       |
+    //  d ----- c
 
-      var input = {
-        type: 'FeatureCollection',
-        features: [{
-          type: "Feature",
-          properties: {id: 0},
-          geometry: null
-        }, {
-          type: "Feature",
-          properties: {id: 1},
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
-          }
-        }, {
-          type: "Feature",
-          properties: {id: 2},
-          geometry: null
-        }]};
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: "Feature",
+        properties: {id: 0},
+        geometry: null
+      }, {
+        type: "Feature",
+        properties: {id: 1},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
+        }
+      }, {
+        type: "Feature",
+        properties: {id: 2},
+        geometry: null
+      }]};
 
-      api.applyCommands('-i poly.json -clean allow-empty -o', {'poly.json': input}, function(err, output) {
-        var poly2 = JSON.parse(output['poly.json']);
-        assert.deepEqual(poly2, input);
-        done();
-      });
+    api.applyCommands('-i poly.json -clean allow-empty -o', {'poly.json': input}, function(err, output) {
+      var poly2 = JSON.parse(output['poly.json']);
+      assert.deepEqual(poly2, input);
+      done();
+    });
+  });
+
+
+  it('Removes overlapping section in GeoJSON input', function(done) {
+    api.applyCommands('-i test/data/features/clean/overlapping_polygons.json -clean -o out.json', null, function(err, data) {
+      var geojson = JSON.parse(data['out.json']);
+      var a = geojson.geometries[0].coordinates;
+      var b = geojson.geometries[1].coordinates;
+      assert.deepEqual(a, [ [ [ 0, 0 ], [ 0, 2 ], [ 2, 2 ], [ 1, 1 ], [ 2, 0 ], [ 0, 0 ] ] ])
+      assert.deepEqual(b, [ [ [ 2, 0 ], [ 1, 1 ], [ 2, 2 ], [ 3, 3 ], [ 5, 1 ], [ 3, -1 ], [ 2, 0 ] ] ])
+      done();
+    })
+
+  })
+
+  it('Removes spurious endpoints (arc dissolve)', function(done) {
+    //  a ----- b
+    //  |       |
+    //  |       c
+    //  |       |
+    //  f - e - d
+
+    var poly = {
+      type: 'Polygon',
+      coordinates: [[[0, 1], [1, 1], [1, 0.5], [1, 0], [0.5, 0], [0.5, 0], [0, 0], [0, 1]]]
+    }
+    var expected = poly = {
+      type: 'Polygon',
+      coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
+    }
+    api.applyCommands('-i poly.json -clean -o', {'poly.json': poly}, function(err, output) {
+      var poly2 = JSON.parse(output['poly.json']).geometries[0];
+      assert.deepEqual;(poly2, expected);
+      done();
+
     });
 
+  })
 
-    it('Removes overlapping section in GeoJSON input', function(done) {
-      api.applyCommands('-i test/data/features/clean/overlapping_polygons.json -clean -o out.json', null, function(err, data) {
-        var geojson = JSON.parse(data['out.json']);
-        var a = geojson.geometries[0].coordinates;
-        var b = geojson.geometries[1].coordinates;
-        assert.deepEqual(a, [ [ [ 0, 0 ], [ 0, 2 ], [ 2, 2 ], [ 1, 1 ], [ 2, 0 ], [ 0, 0 ] ] ])
-        assert.deepEqual(b, [ [ [ 2, 0 ], [ 1, 1 ], [ 2, 2 ], [ 3, 3 ], [ 5, 1 ], [ 3, -1 ], [ 2, 0 ] ] ])
-        done();
-      })
-
+  it('handles bowtie shapes', function(done) {
+    // Fig 16 in figures.txt
+    var a = {
+      type: "Polygon",
+      coordinates: [[[0, 2], [2, 2], [3, 2], [2, 3], [2, 2], [2, 0], [0, 0], [0, 2]]]
+    }
+    var b = {
+      type: "Polygon",
+      coordinates: [[[4, 2], [2, 2], [2, 4], [4, 2]]]
+    }
+    var input = {
+      type: 'GeometryCollection',
+      geometries: [a, b]
+    };
+    var expected = [{
+      type: 'MultiPolygon',
+      coordinates: [[[[3, 2], [2, 2], [2, 3], [3, 2]]], [[[2, 2], [2, 0], [0, 0], [0, 2], [2, 2]]]]
+    }, {
+      type: 'Polygon',
+      coordinates: [[[3, 2], [2, 3], [2, 4], [4, 2], [3, 2]]]
+    }];
+    api.applyCommands('-i input.json -clean -o output.json', {'input.json': input}, function(err, out) {
+      var geojson = JSON.parse(out['output.json']);
+      assert.deepEqual(geojson.geometries, expected);
+      done();
     })
-
-    it('Removes spurious endpoints (arc dissolve)', function(done) {
-      //  a ----- b
-      //  |       |
-      //  |       c
-      //  |       |
-      //  f - e - d
-
-      var poly = {
-        type: 'Polygon',
-        coordinates: [[[0, 1], [1, 1], [1, 0.5], [1, 0], [0.5, 0], [0.5, 0], [0, 0], [0, 1]]]
-      }
-      var expected = poly = {
-        type: 'Polygon',
-        coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
-      }
-      api.applyCommands('-i poly.json -clean -o', {'poly.json': poly}, function(err, output) {
-        var poly2 = JSON.parse(output['poly.json']).geometries[0];
-        assert.deepEqual;(poly2, expected);
-        done();
-
-      });
-
-    })
-
-    it('handles bowtie shapes', function(done) {
-      // Fig 16 in figures.txt
-      var a = {
-        type: "Polygon",
-        coordinates: [[[0, 2], [2, 2], [3, 2], [2, 3], [2, 2], [2, 0], [0, 0], [0, 2]]]
-      }
-      var b = {
-        type: "Polygon",
-        coordinates: [[[4, 2], [2, 2], [2, 4], [4, 2]]]
-      }
-      var input = {
-        type: 'GeometryCollection',
-        geometries: [a, b]
-      };
-      var expected = [{
-        type: 'MultiPolygon',
-        coordinates: [[[[3, 2], [2, 2], [2, 3], [3, 2]]], [[[2, 2], [2, 0], [0, 0], [0, 2], [2, 2]]]]
-      }, {
-        type: 'Polygon',
-        coordinates: [[[3, 2], [2, 3], [2, 4], [4, 2], [3, 2]]]
-      }];
-      api.applyCommands('-i input.json -clean -o output.json', {'input.json': input}, function(err, out) {
-        var geojson = JSON.parse(out['output.json']);
-        assert.deepEqual(geojson.geometries, expected);
-        done();
-      })
-    })
-
   })
 
   describe('cleanLayers()', function() {
