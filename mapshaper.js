@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.145';
+VERSION = '0.4.146';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1711,6 +1711,14 @@ internal.layerHasNonNullShapes = function(lyr) {
   });
 };
 
+internal.requireDataField = function(obj, field, msg) {
+  var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
+  if (!field) stop('Missing a field parameter');
+  if (!data || !data.fieldExists(field)) {
+    stop(msg || 'Missing a field named:', field);
+  }
+};
+
 internal.requireDataFields = function(table, fields) {
   if (!table) {
     stop("Missing attribute data");
@@ -1757,6 +1765,13 @@ internal.requirePathLayer = function(lyr, msg) {
   if (!lyr || !internal.layerHasPaths(lyr))
     stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
 };
+
+internal.requireProjectedDataset = function(dataset) {
+  if (internal.isLatLngCRS(internal.getDatasetCRS(dataset))) {
+    stop("Command requires a target with projected coordinates (not lat-long)");
+  }
+};
+
 
 
 var R = 6378137;
@@ -6850,7 +6865,10 @@ function NodeCollection(arcs, filter) {
     var chainId = arcToChainId(arcId),
         chains =  getNodeChains(),
         nextChainId = chains[chainId];
-    if (!(nextChainId >= 0 && nextChainId < chains.length)) error("out-of-range chain id");
+    if (!(nextChainId >= 0 && nextChainId < chains.length)) {
+      // console.log('arcId:', arcId, 'chainId:', chainId, 'next chain id:', nextChainId)
+      error("out-of-range chain id");
+    }
     return chainToArcId(nextChainId);
   }
 
@@ -11495,8 +11513,11 @@ internal.formatIntersectingSegment = function(x, y, i, j, xx, yy) {
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
-  var arcBounds = arcs.getBounds();
+  var arcBounds = arcs && arcs.getBounds();
   var snapDist, snapCount, dupeCount, nodes;
+  if (!arcBounds || !arcBounds.hasBounds()) {
+    return new NodeCollection([]);
+  }
   if (opts.snap_interval) {
     snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
   } else if (arcBounds.hasBounds()) {
@@ -12844,6 +12865,7 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
     try {
       val = func.call(ctx.$, rec, ctx);
     } catch(e) {
+      if (opts.quiet) throw e;
       stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return val;
@@ -13237,9 +13259,7 @@ internal.getJoinCalc = function(src, exp) {
 internal.getCategoryClassifier = function(fields, data) {
   if (!fields || fields.length === 0) return function() {return 0;};
   fields.forEach(function(f) {
-    if (!data || !data.fieldExists(f)) {
-      stop("Data table is missing field:", f);
-    }
+    internal.requireDataField(data, f);
   });
   var index = {},
       count = 0,
@@ -13971,8 +13991,13 @@ api.cleanLayers = function(layers, dataset, opts) {
   if (!opts.arcs) { // arcs option only removes unused arcs
     nodes = internal.addIntersectionCuts(dataset, opts);
     layers.forEach(function(lyr) {
+      if (!lyr.geometry_type) return; // ignore data-only layers
       if (lyr.geometry_type == 'polygon') {
-        lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
+        internal.cleanPolygonLayerGeometry(lyr, dataset, opts);
+      } else if (lyr.geometry_type == 'polyline') {
+        internal.cleanPolylineLayerGeometry(lyr, dataset, opts);
+      } else if (lyr.geometry_type == 'point') {
+        internal.cleanPointLayerGeometry(lyr, dataset, opts);
       }
       if (!opts.allow_empty) {
         api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
@@ -13981,7 +14006,76 @@ api.cleanLayers = function(layers, dataset, opts) {
   }
 
   if (!opts.no_arc_dissolve && dataset.arcs) {
-    internal.dissolveArcs(dataset); // remove leftover endpoints within contiguous lines
+    // remove leftover endpoints within contiguous lines
+    internal.dissolveArcs(dataset);
+  }
+};
+
+internal.cleanPolygonLayerGeometry = function(lyr, dataset, opts) {
+  lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
+};
+
+// Remove duplicate points from multipoint geometries
+// TODO: consider checking for invalid coordinates
+internal.cleanPointLayerGeometry = function(lyr, dataset, opts) {
+  var index, parts;
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    if (!shp || shp.length > 0 === false) {
+      return null;
+    }
+    if (shp.length == 1) {
+      return shp; // single part
+    }
+    // remove duplicate points from multipoint geometry
+    index = {};
+    parts = [];
+    shp.forEach(onPoint);
+    if (parts.length === 0) {
+      return null;
+    }
+    return parts;
+  });
+
+  function onPoint(p) {
+    var key = p.join('~');
+    if (key in index) return;
+    index[key] = true;
+    parts.push(p);
+  }
+};
+
+// Assumes intersection cuts have been added and duplicated points removed
+// TODO: consider closing undershoots (see mapshaper-undershoots.js)
+internal.cleanPolylineLayerGeometry = function(lyr, dataset, opts) {
+  var filter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
+  var nodes = new NodeCollection(dataset.arcs, filter);
+  var shape;
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    if (!shp) return null;
+    shape = [];
+    internal.forEachShapePart(shp, onPart);
+    return shape;
+  });
+
+  function onPart(ids) {
+    var n = ids.length;
+    var id, connected;
+    var ids2 = [];
+    for (var i=0; i<n; i++) {
+      // check each segment of the current part (equivalent to a LineString)
+      id = ids[i];
+      ids2.push(id);
+      if (i < n-1 && nodes.getConnectedArcs(id).length > 1) {
+        // divide the current part if the front endpoint of the current segment
+        // touches any other segment than the next segment in this part
+        // TODO: consider not dividing if the intersection does not involve
+        // the current feature (ie. it is not a self-intersection).
+        // console.log('connections:', nodes.getConnectedArcs(id))
+        shape.push(ids2);
+        ids2 = [];
+      }
+    }
+    if (ids2.length > 0) shape.push(ids2);
   }
 };
 
@@ -14388,6 +14482,7 @@ api.filterIslands = function(lyr, dataset, opts) {
     return;
   }
 
+
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
       removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset, opts));
@@ -14543,8 +14638,8 @@ api.splitLayer = function(src, splitField, opts) {
       splitLayers = [],
       prefix;
 
-  if (splitField && (!properties || !lyr0.data.fieldExists(splitField))) {
-    stop("Missing attribute field:", splitField);
+  if (splitField) {
+    internal.requireDataField(lyr0, splitField);
   }
 
   // if not splitting on a field and layer is unnamed, name split-apart layers
@@ -15294,7 +15389,7 @@ utils.getClassId = function(val, breaks) {
 api.dataFill = function(lyr, arcs, opts) {
   var field = opts.field;
   if (!field) stop("Missing required field= parameter");
-  if (!lyr.data || !lyr.data.fieldExists(field)) stop("Layer is missing field:", field);
+  internal.requireDataField(lyr, field);
   if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
   var getNeighbors = internal.getNeighborLookupFunction(lyr, arcs);
   var fillCount, islandCount;
@@ -15414,8 +15509,8 @@ internal.dataFillIslandGroups = function(field, lyr, arcs, getNeighbors, opts) {
   var islandCount = 0;
   var weightField = opts.weight_field || null;
 
-  if (weightField &&  !lyr.data.fieldExists(weightField)) {
-    stop('Field not found:', weightField);
+  if (weightField) {
+    internal.requireDataField(lyr, weightField);
   }
 
   // 1. form groups of contiguous units with the same attribute value
@@ -16022,6 +16117,41 @@ api.dissolve2_v1 = function(layers, dataset, opts) {
 };
 
 
+
+api.dots = function(lyr, arcs, opts) {
+  internal.requirePolygonLayer(lyr);
+  internal.requireDataField(lyr, opts.field);
+  var records = lyr.data ? data.getRecords() : [];
+  var shapes = [];
+  lyr.shapes.forEach(function(shp, i) {
+    var d = records[i];
+    var n = d ? +d[opts.field] : 0;
+    var coords = null;
+    if (n > 0) {
+      coords = internal.createInnerPoints(shp, arcs, n);
+    }
+    shapes.push(coords);
+  });
+  return {
+    type: 'point',
+    shapes: shapes
+  };
+};
+
+internal.createInnerPoints = function(shp, arcs, n) {
+  if (!shp || shp.length != 1) {
+    return null; // TODO: support polygons with holes and multipart polygons
+  }
+  return fillPolygonWithDots(shp, arcs, n);
+};
+
+
+function fillPolygonWithDots(shp, arcs, n) {
+  var area = geom.getPlanarShapeArea(shp, arcs);
+  var bounds = arcs.getMultiShapeBounds(shp);
+}
+
+
 api.drop2 = function(catalog, targets, opts) {
   targets.forEach(function(target) {
     api.drop(catalog, target.layers, target.dataset, opts);
@@ -16433,7 +16563,6 @@ internal.explodePolygon = function(shape, arcs, reverseWinding) {
 
 internal.explodePolygonNaive = function(shape, arcs) {
   var paths = internal.getPathMetadata(shape, arcs, "polygon");
-  console.log("Naive");
   return paths.map(function(path) {
     if (path.area < 0) {
       internal.reversePath(path.ids);
@@ -17894,7 +18023,7 @@ internal.getSymbolPropertyAccessor = function(strVal, svgName, lyr) {
 internal.parseStyleExpression = function(strVal, lyr) {
   var func;
   try {
-    func = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs')});
+    func = internal.compileValueExpression(strVal, lyr, null, {context: internal.getStateVar('defs'), quiet: true});
     func(0); // check for runtime errors (e.g. undefined variables)
   } catch(e) {
     func = null;
@@ -19850,9 +19979,7 @@ api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
   if (!pointLyr || !internal.layerHasPoints(pointLyr)) {
     stop('Missing a point layer to join from');
   }
-  if (!pointLyr.data || !pointLyr.data.fieldExists(opts.field)) {
-    stop('Missing', opts.field ? '[' + opts.field + '] field' : 'a field parameter');
-  }
+  internal.requireDataField(pointLyr, opts.field);
   internal.requirePolygonLayer(polygonLyr);
   if (opts.dedup_points) {
     api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + this.properties[' + JSON.stringify(opts.field) + ']', verbose: false});
@@ -20388,9 +20515,7 @@ internal.polygonsToLines = function(lyr, arcs, opts) {
       }
       return a + '-' + b;
     };
-    if (!lyr.data.fieldExists(field)) {
-      stop("Unknown data field:", field);
-    }
+    internal.requireDataField(lyr, field);
     addLines(internal.extractLines(lyr.shapes, classifier(key)), field);
   });
 
@@ -21308,12 +21433,8 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
   var index = internal.createTableIndex(src.getRecords(), srcKey);
   var srcType, destType;
-  if (src.fieldExists(srcKey) === false) {
-    stop("External table is missing a field named:", srcKey);
-  }
-  if (!dest || !dest.fieldExists(destKey)) {
-    stop("Target layer is missing key field:", destKey);
-  }
+  internal.requireDataField(src, srcKey, 'External table is missing a field named:');
+  internal.requireDataField(dest, destKey, 'Target layer is missing key field:');
   srcType = internal.getColumnType(srcKey, src.getRecords());
   destType = internal.getColumnType(destKey, destRecords);
   internal.validateJoinFieldType(srcKey, srcType);
@@ -21998,9 +22119,7 @@ internal.createPointGrid = function(opts) {
 
 
 api.polygonGrid = function(targetLayers, targetDataset, opts) {
-  if (internal.isLatLngCRS(internal.getDatasetCRS(targetDataset))) {
-    stop("Command requires a target with projected coordinates (not lat-long)");
-  }
+  internal.requireProjectedDataset(targetDataset);
   var params = internal.getGridParams(targetLayers, targetDataset, opts);
   var geojson;
   if (params.type == 'square') {
@@ -23961,6 +24080,48 @@ internal.calculateVariableThresholds = function(lyr, arcs, getShapeThreshold) {
 };
 
 
+api.snap = function(dataset, opts) {
+  var interval = 0;
+  var arcs = dataset.arcs;
+  var arcBounds = arcs && arcs.getBounds();
+  if (!arcBounds || !arcBounds.hasBounds()) {
+    stop('Dataset is missing path data');
+  }
+  if (opts.interval) {
+    interval = internal.convertIntervalParam(opts.interval, internal.getDatasetCRS(dataset));
+  } else {
+    interval = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
+  }
+  arcs.flatten(); // bake in any simplification
+  var snapCount = internal.snapCoordsByInterval(arcs, interval);
+  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
+  if (snapCount > 0) {
+    arcs.dedupCoords();
+    api.buildTopology(dataset);
+  }
+};
+
+
+api.sortFeatures = function(lyr, arcs, opts) {
+  var n = internal.getFeatureCount(lyr),
+      ascending = !opts.descending,
+      compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
+      values = [];
+
+  utils.repeat(n, function(i) {
+    values.push(compiled(i));
+  });
+
+  var ids = utils.getSortedIds(values, ascending);
+  if (lyr.shapes) {
+    utils.reorderArray(lyr.shapes, ids);
+  }
+  if (lyr.data) {
+    utils.reorderArray(lyr.data.getRecords(), ids);
+  }
+};
+
+
 // Split the shapes in a layer according to a grid
 // Return array of layers. Use -o bbox-index option to create index
 //
@@ -24108,26 +24269,6 @@ internal.divideLayer = function(lyr, arcs, bounds) {
     lyr2.data = new DataTable(lyr2.data);
   }
   return [lyr1, lyr2];
-};
-
-
-api.sortFeatures = function(lyr, arcs, opts) {
-  var n = internal.getFeatureCount(lyr),
-      ascending = !opts.descending,
-      compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
-      values = [];
-
-  utils.repeat(n, function(i) {
-    values.push(compiled(i));
-  });
-
-  var ids = utils.getSortedIds(values, ascending);
-  if (lyr.shapes) {
-    utils.reorderArray(lyr.shapes, ids);
-  }
-  if (lyr.data) {
-    utils.reorderArray(lyr.data.getRecords(), ids);
-  }
 };
 
 
@@ -24435,6 +24576,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'dissolve2_v1') {
       outputLayers = api.dissolve2_v1(targetLayers, targetDataset, opts);
 
+    } else if (name == 'dots') {
+      outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
+
     } else if (name == 'drop') {
       api.drop2(catalog, targets, opts);
       // api.drop(catalog, targetLayers, targetDataset, opts);
@@ -24600,6 +24744,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'slice') {
       outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
+
+    } else if (name == 'snap') {
+      api.snap(targetDataset, opts);
 
     } else if (name == 'sort') {
       applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
@@ -25673,6 +25820,28 @@ internal.getOptionParser = function() {
 
   parser.section('Editing commands');
 
+  parser.command('affine')
+    .describe('transform coordinates by shifting, scaling and rotating')
+    .flag('no_args')
+    .option('shift', {
+      type: 'strings',
+      describe: 'x,y offsets in source units (e.g. 5000,-5000)'
+    })
+    .option('scale', {
+      type: 'number',
+      describe: 'scale (default is 1)'
+    })
+    .option('rotate', {
+      type: 'number',
+      describe: 'angle of rotation in degrees (default is 0)'
+    })
+    .option('anchor', {
+      type: 'numbers',
+      describe: 'center of rotation/scaling (default is center of selected shapes)'
+    })
+    .option('where', whereOpt)
+    .option('target', targetOpt);
+
   parser.command('buffer')
     // .describe('')
     .option('radius', {
@@ -25711,7 +25880,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('clean')
-    .describe('repairs overlaps and small gaps in polygon layers')
+    .describe('repairs abnormal geometry, including polygon overlaps and small gaps')
     .option('min-gap-area', minGapAreaOpt)
     .option('snap-interval', snapIntervalOpt)
     .option('no-snap', noSnapOpt)
@@ -25754,6 +25923,38 @@ internal.getOptionParser = function() {
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
     .option('target', targetOpt);
+
+  parser.command('colorizer')
+    .describe('define a function to convert data values to color classes')
+    .flag('no_arg')
+    .option('colors', {
+      describe: 'comma-separated list of CSS colors',
+      type: 'colors'
+    })
+    .option('breaks', {
+      describe: 'ascending-order list of breaks for sequential color scheme',
+      type: 'numbers'
+    })
+    .option('categories', {
+      describe: 'comma-sep. list of keys for categorical color scheme',
+      type: 'strings'
+    })
+    .option('other', {
+      describe: 'default color for categorical scheme (defaults to no-data color)'
+    })
+    .option('nodata', {
+      describe: 'color to use for invalid or missing data (default is white)'
+    })
+    .option('name', {
+      describe: 'function name to use in -each and -svg-style commands'
+    })
+    .option('precision', {
+      describe: 'rounding precision to apply before classification (e.g. 0.1)',
+      type: 'number'
+    })
+    .example('Define a sequential color scheme and use it to create a new field\n' +
+        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
+        '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
   parser.command('dissolve')
     .describe('merge features within a layer')
@@ -25809,6 +26010,13 @@ internal.getOptionParser = function() {
     .option('no-snap', noSnapOpt)
     .option('target', targetOpt);
 
+  parser.command('dots')
+    .describe('')
+    .option('field', {
+      describe: 'field containing number of dots'
+    })
+    .option('target', targetOpt);
+
   parser.command('drop')
     .describe('delete layer(s) or elements within the target layer(s)')
     .flag('no_arg') // prevent trying to pass a list of layer names as default option
@@ -25825,7 +26033,6 @@ internal.getOptionParser = function() {
       describe: 'delete a list of attribute data fields, e.g. \'id,name\' \'*\''
     })
     .option('target', targetOpt);
-
 
   parser.command('each')
     .describe('create/update/delete data fields using a JS expression')
@@ -26057,6 +26264,14 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('target', targetOpt);
 
+  parser.command('mosaic')
+    .describe('convert a polygon layer with overlaps into a flat mosaic')
+    .option('calc', calcOpt)
+    .option('debug', {type: 'flag'})
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
+
   parser.command('overlay')
     // .describe('convert polygons to polylines along shared edges')
     .option('source', {
@@ -26135,6 +26350,14 @@ internal.getOptionParser = function() {
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
+  parser.command('polygons')
+    .describe('convert polylines to polygons')
+    .option('gap-tolerance', {
+      describe: 'specify gap tolerance in source units',
+      type: 'distance'
+    })
+    .option('target', targetOpt);
+
   parser.command('proj')
     .describe('project your data (using Proj.4)')
     .flag('multi_arg')
@@ -26161,6 +26384,29 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt)
     .validate(validateProjOpts);
+
+  parser.command('rectangle')
+    .describe('create a rectangle from a bbox or target layer extent')
+    .option('bbox', {
+      describe: 'rectangle coordinates (xmin,ymin,xmax,ymax)',
+      type: 'bbox'
+    })
+    .option('offset', offsetOpt)
+    .option('aspect-ratio', aspectRatioOpt)
+    .option('source', {
+      describe: 'name of layer to enclose'
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
+
+  parser.command('rectangles')
+    .describe('create a rectangle around each feature in the target layer')
+    .option('offset', offsetOpt)
+    .option('aspect-ratio', aspectRatioOpt)
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
 
   parser.command('rename-fields')
     .describe('rename data fields')
@@ -26272,6 +26518,14 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
+    .option('target', targetOpt);
+
+  parser.command('snap')
+    // .describe('snap vertices')
+    .option('interval', {
+      DEFAULT: true,
+      type: 'distance'
+    })
     .option('target', targetOpt);
 
   parser.command('sort')
@@ -26407,6 +26661,22 @@ internal.getOptionParser = function() {
       describe: 'rename the target layer'
     });
 
+  parser.command('union')
+    .describe('create a flat mosaic from two or more polygon layers')
+    // .option('add-fid', {
+    //   describe: 'add FID_A, FID_B, ... fields to output layer',
+    //   type: 'flag'
+    // })
+    .option('fields', {
+      type: 'strings',
+      describe: 'fields to retain (comma-sep.) (default is all fields)',
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', {
+      describe: 'specify layers to target (comma-sep. list)'
+    });
+
   parser.command('uniq')
     .describe('delete features with the same id as a previous feature')
     .option('expression', {
@@ -26430,28 +26700,6 @@ internal.getOptionParser = function() {
 
   // Experimental commands
   parser.section('Experimental commands (may give unexpected results)');
-
-  parser.command('affine')
-    .describe('transform coordinates by shifting, scaling and rotating')
-    .flag('no_args')
-    .option('shift', {
-      type: 'strings',
-      describe: 'x,y offsets in source units (e.g. 5000,-5000)'
-    })
-    .option('scale', {
-      type: 'number',
-      describe: 'scale (default is 1)'
-    })
-    .option('rotate', {
-      type: 'number',
-      describe: 'angle of rotation in degrees (default is 0)'
-    })
-    .option('anchor', {
-      type: 'numbers',
-      describe: 'center of rotation/scaling (default is center of selected shapes)'
-    })
-    .option('where', whereOpt)
-    .option('target', targetOpt);
 
   parser.command('cluster')
     .describe('group polygons into compact clusters')
@@ -26479,38 +26727,6 @@ internal.getOptionParser = function() {
       describe: 'field name; only same-value shapes will be grouped'
     })
     .option('target', targetOpt);
-
-  parser.command('colorizer')
-    .describe('define a function to convert data values to color classes')
-    .flag('no_arg')
-    .option('colors', {
-      describe: 'comma-separated list of CSS colors',
-      type: 'colors'
-    })
-    .option('breaks', {
-      describe: 'ascending-order list of breaks for sequential color scheme',
-      type: 'numbers'
-    })
-    .option('categories', {
-      describe: 'comma-sep. list of keys for categorical color scheme',
-      type: 'strings'
-    })
-    .option('other', {
-      describe: 'default color for categorical scheme (defaults to no-data color)'
-    })
-    .option('nodata', {
-      describe: 'color to use for invalid or missing data (default is white)'
-    })
-    .option('name', {
-      describe: 'function name to use in -each and -svg-style commands'
-    })
-    .option('precision', {
-      describe: 'rounding precision to apply before classification (e.g. 0.1)',
-      type: 'number'
-    })
-    .example('Define a sequential color scheme and use it to create a new field\n' +
-        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
-        '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
   parser.command('data-fill')
     .describe('fill in missing values in a polygon layer')
@@ -26582,45 +26798,6 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
-  parser.command('mosaic')
-    .describe('convert a polygon layer with overlaps into a flat mosaic')
-    .option('calc', calcOpt)
-    .option('debug', {type: 'flag'})
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
-  parser.command('polygons')
-    .describe('convert polylines to polygons')
-    .option('gap-tolerance', {
-      describe: 'specify gap tolerance in source units',
-      type: 'distance'
-    })
-    .option('target', targetOpt);
-
-  parser.command('rectangle')
-    .describe('create a rectangle from a bbox or target layer extent')
-    .option('bbox', {
-      describe: 'rectangle coordinates (xmin,ymin,xmax,ymax)',
-      type: 'bbox'
-    })
-    .option('offset', offsetOpt)
-    .option('aspect-ratio', aspectRatioOpt)
-    .option('source', {
-      describe: 'name of layer to enclose'
-    })
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
-  parser.command('rectangles')
-    .describe('create a rectangle around each feature in the target layer')
-    .option('offset', offsetOpt)
-    .option('aspect-ratio', aspectRatioOpt)
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
   parser.command('require')
     .describe('require a Node module for use in -each expressions')
     .option('module', {
@@ -26680,22 +26857,6 @@ internal.getOptionParser = function() {
       describe: 'boolean JS expression'
     })
     .option('target', targetOpt);
-
-  parser.command('union')
-    .describe('create a flat mosaic from two or more polygon layers')
-    // .option('add-fid', {
-    //   describe: 'add FID_A, FID_B, ... fields to output layer',
-    //   type: 'flag'
-    // })
-    .option('fields', {
-      type: 'strings',
-      describe: 'fields to retain (comma-sep.) (default is all fields)',
-    })
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', {
-      describe: 'specify layers to target (comma-sep. list)'
-    });
 
   parser.section('Informational commands');
 
