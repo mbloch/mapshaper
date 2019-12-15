@@ -274,12 +274,8 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
   var index = internal.createTableIndex(src.getRecords(), srcKey);
   var srcType, destType;
-  if (src.fieldExists(srcKey) === false) {
-    stop("External table is missing a field named:", srcKey);
-  }
-  if (!dest || !dest.fieldExists(destKey)) {
-    stop("Target layer is missing key field:", destKey);
-  }
+  internal.requireDataField(src, srcKey, 'External table is missing a field named:');
+  internal.requireDataField(dest, destKey, 'Target layer is missing key field:');
   srcType = internal.getColumnType(srcKey, src.getRecords());
   destType = internal.getColumnType(destKey, destRecords);
   internal.validateJoinFieldType(srcKey, srcType);

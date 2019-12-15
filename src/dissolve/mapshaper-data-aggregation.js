@@ -5,9 +5,7 @@
 internal.getCategoryClassifier = function(fields, data) {
   if (!fields || fields.length === 0) return function() {return 0;};
   fields.forEach(function(f) {
-    if (!data || !data.fieldExists(f)) {
-      stop("Data table is missing field:", f);
-    }
+    internal.requireDataField(data, f);
   });
   var index = {},
       count = 0,

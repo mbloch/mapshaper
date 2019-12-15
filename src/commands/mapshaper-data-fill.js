@@ -9,7 +9,7 @@
 api.dataFill = function(lyr, arcs, opts) {
   var field = opts.field;
   if (!field) stop("Missing required field= parameter");
-  if (!lyr.data || !lyr.data.fieldExists(field)) stop("Layer is missing field:", field);
+  internal.requireDataField(lyr, field);
   if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
   var getNeighbors = internal.getNeighborLookupFunction(lyr, arcs);
   var fillCount, islandCount;
@@ -129,8 +129,8 @@ internal.dataFillIslandGroups = function(field, lyr, arcs, getNeighbors, opts) {
   var islandCount = 0;
   var weightField = opts.weight_field || null;
 
-  if (weightField &&  !lyr.data.fieldExists(weightField)) {
-    stop('Field not found:', weightField);
+  if (weightField) {
+    internal.requireDataField(lyr, weightField);
   }
 
   // 1. form groups of contiguous units with the same attribute value

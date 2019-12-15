@@ -8,8 +8,8 @@ api.splitLayer = function(src, splitField, opts) {
       splitLayers = [],
       prefix;
 
-  if (splitField && (!properties || !lyr0.data.fieldExists(splitField))) {
-    stop("Missing attribute field:", splitField);
+  if (splitField) {
+    internal.requireDataField(lyr0, splitField);
   }
 
   // if not splitting on a field and layer is unnamed, name split-apart layers

@@ -224,6 +224,14 @@ internal.layerHasNonNullShapes = function(lyr) {
   });
 };
 
+internal.requireDataField = function(obj, field, msg) {
+  var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
+  if (!field) stop('Missing a field parameter');
+  if (!data || !data.fieldExists(field)) {
+    stop(msg || 'Missing a field named:', field);
+  }
+};
+
 internal.requireDataFields = function(table, fields) {
   if (!table) {
     stop("Missing attribute data");
@@ -270,3 +278,10 @@ internal.requirePathLayer = function(lyr, msg) {
   if (!lyr || !internal.layerHasPaths(lyr))
     stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
 };
+
+internal.requireProjectedDataset = function(dataset) {
+  if (internal.isLatLngCRS(internal.getDatasetCRS(dataset))) {
+    stop("Command requires a target with projected coordinates (not lat-long)");
+  }
+};
+

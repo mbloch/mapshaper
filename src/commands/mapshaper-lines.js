@@ -116,9 +116,7 @@ internal.polygonsToLines = function(lyr, arcs, opts) {
       }
       return a + '-' + b;
     };
-    if (!lyr.data.fieldExists(field)) {
-      stop("Unknown data field:", field);
-    }
+    internal.requireDataField(lyr, field);
     addLines(internal.extractLines(lyr.shapes, classifier(key)), field);
   });
 

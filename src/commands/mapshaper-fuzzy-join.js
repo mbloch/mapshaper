@@ -14,9 +14,7 @@ api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
   if (!pointLyr || !internal.layerHasPoints(pointLyr)) {
     stop('Missing a point layer to join from');
   }
-  if (!pointLyr.data || !pointLyr.data.fieldExists(opts.field)) {
-    stop('Missing', opts.field ? '[' + opts.field + '] field' : 'a field parameter');
-  }
+  internal.requireDataField(pointLyr, opts.field);
   internal.requirePolygonLayer(polygonLyr);
   if (opts.dedup_points) {
     api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + this.properties[' + JSON.stringify(opts.field) + ']', verbose: false});

@@ -20,8 +20,11 @@ mapshaper-units
 internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
-  var arcBounds = arcs.getBounds();
+  var arcBounds = arcs && arcs.getBounds();
   var snapDist, snapCount, dupeCount, nodes;
+  if (!arcBounds || !arcBounds.hasBounds()) {
+    return new NodeCollection([]);
+  }
   if (opts.snap_interval) {
     snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
   } else if (arcBounds.hasBounds()) {

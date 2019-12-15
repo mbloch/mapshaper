@@ -54,7 +54,6 @@ internal.explodePolygon = function(shape, arcs, reverseWinding) {
 
 internal.explodePolygonNaive = function(shape, arcs) {
   var paths = internal.getPathMetadata(shape, arcs, "polygon");
-  console.log("Naive");
   return paths.map(function(path) {
     if (path.area < 0) {
       internal.reversePath(path.ids);

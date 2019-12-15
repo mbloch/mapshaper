@@ -194,7 +194,10 @@ function NodeCollection(arcs, filter) {
     var chainId = arcToChainId(arcId),
         chains =  getNodeChains(),
         nextChainId = chains[chainId];
-    if (!(nextChainId >= 0 && nextChainId < chains.length)) error("out-of-range chain id");
+    if (!(nextChainId >= 0 && nextChainId < chains.length)) {
+      // console.log('arcId:', arcId, 'chainId:', chainId, 'next chain id:', nextChainId)
+      error("out-of-range chain id");
+    }
     return chainToArcId(nextChainId);
   }
 
