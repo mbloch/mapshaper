@@ -308,6 +308,28 @@ internal.getOptionParser = function() {
 
   parser.section('Editing commands');
 
+  parser.command('affine')
+    .describe('transform coordinates by shifting, scaling and rotating')
+    .flag('no_args')
+    .option('shift', {
+      type: 'strings',
+      describe: 'x,y offsets in source units (e.g. 5000,-5000)'
+    })
+    .option('scale', {
+      type: 'number',
+      describe: 'scale (default is 1)'
+    })
+    .option('rotate', {
+      type: 'number',
+      describe: 'angle of rotation in degrees (default is 0)'
+    })
+    .option('anchor', {
+      type: 'numbers',
+      describe: 'center of rotation/scaling (default is center of selected shapes)'
+    })
+    .option('where', whereOpt)
+    .option('target', targetOpt);
+
   parser.command('buffer')
     // .describe('')
     .option('radius', {
@@ -346,7 +368,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('clean')
-    .describe('repairs overlaps and small gaps in polygon layers')
+    .describe('repairs abnormal geometry, including polygon overlaps and small gaps')
     .option('min-gap-area', minGapAreaOpt)
     .option('snap-interval', snapIntervalOpt)
     .option('no-snap', noSnapOpt)
@@ -389,6 +411,38 @@ internal.getOptionParser = function() {
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
     .option('target', targetOpt);
+
+  parser.command('colorizer')
+    .describe('define a function to convert data values to color classes')
+    .flag('no_arg')
+    .option('colors', {
+      describe: 'comma-separated list of CSS colors',
+      type: 'colors'
+    })
+    .option('breaks', {
+      describe: 'ascending-order list of breaks for sequential color scheme',
+      type: 'numbers'
+    })
+    .option('categories', {
+      describe: 'comma-sep. list of keys for categorical color scheme',
+      type: 'strings'
+    })
+    .option('other', {
+      describe: 'default color for categorical scheme (defaults to no-data color)'
+    })
+    .option('nodata', {
+      describe: 'color to use for invalid or missing data (default is white)'
+    })
+    .option('name', {
+      describe: 'function name to use in -each and -svg-style commands'
+    })
+    .option('precision', {
+      describe: 'rounding precision to apply before classification (e.g. 0.1)',
+      type: 'number'
+    })
+    .example('Define a sequential color scheme and use it to create a new field\n' +
+        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
+        '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
   parser.command('dissolve')
     .describe('merge features within a layer')
@@ -444,6 +498,13 @@ internal.getOptionParser = function() {
     .option('no-snap', noSnapOpt)
     .option('target', targetOpt);
 
+  parser.command('dots')
+    .describe('')
+    .option('field', {
+      describe: 'field containing number of dots'
+    })
+    .option('target', targetOpt);
+
   parser.command('drop')
     .describe('delete layer(s) or elements within the target layer(s)')
     .flag('no_arg') // prevent trying to pass a list of layer names as default option
@@ -460,7 +521,6 @@ internal.getOptionParser = function() {
       describe: 'delete a list of attribute data fields, e.g. \'id,name\' \'*\''
     })
     .option('target', targetOpt);
-
 
   parser.command('each')
     .describe('create/update/delete data fields using a JS expression')
@@ -692,6 +752,14 @@ internal.getOptionParser = function() {
     .option('name', nameOpt)
     .option('target', targetOpt);
 
+  parser.command('mosaic')
+    .describe('convert a polygon layer with overlaps into a flat mosaic')
+    .option('calc', calcOpt)
+    .option('debug', {type: 'flag'})
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
+
   parser.command('overlay')
     // .describe('convert polygons to polylines along shared edges')
     .option('source', {
@@ -770,6 +838,14 @@ internal.getOptionParser = function() {
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
+  parser.command('polygons')
+    .describe('convert polylines to polygons')
+    .option('gap-tolerance', {
+      describe: 'specify gap tolerance in source units',
+      type: 'distance'
+    })
+    .option('target', targetOpt);
+
   parser.command('proj')
     .describe('project your data (using Proj.4)')
     .flag('multi_arg')
@@ -796,6 +872,29 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt)
     .validate(validateProjOpts);
+
+  parser.command('rectangle')
+    .describe('create a rectangle from a bbox or target layer extent')
+    .option('bbox', {
+      describe: 'rectangle coordinates (xmin,ymin,xmax,ymax)',
+      type: 'bbox'
+    })
+    .option('offset', offsetOpt)
+    .option('aspect-ratio', aspectRatioOpt)
+    .option('source', {
+      describe: 'name of layer to enclose'
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
+
+  parser.command('rectangles')
+    .describe('create a rectangle around each feature in the target layer')
+    .option('offset', offsetOpt)
+    .option('aspect-ratio', aspectRatioOpt)
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', targetOpt);
 
   parser.command('rename-fields')
     .describe('rename data fields')
@@ -1050,6 +1149,22 @@ internal.getOptionParser = function() {
       describe: 'rename the target layer'
     });
 
+  parser.command('union')
+    .describe('create a flat mosaic from two or more polygon layers')
+    // .option('add-fid', {
+    //   describe: 'add FID_A, FID_B, ... fields to output layer',
+    //   type: 'flag'
+    // })
+    .option('fields', {
+      type: 'strings',
+      describe: 'fields to retain (comma-sep.) (default is all fields)',
+    })
+    .option('name', nameOpt)
+    .option('no-replace', noReplaceOpt)
+    .option('target', {
+      describe: 'specify layers to target (comma-sep. list)'
+    });
+
   parser.command('uniq')
     .describe('delete features with the same id as a previous feature')
     .option('expression', {
@@ -1073,28 +1188,6 @@ internal.getOptionParser = function() {
 
   // Experimental commands
   parser.section('Experimental commands (may give unexpected results)');
-
-  parser.command('affine')
-    .describe('transform coordinates by shifting, scaling and rotating')
-    .flag('no_args')
-    .option('shift', {
-      type: 'strings',
-      describe: 'x,y offsets in source units (e.g. 5000,-5000)'
-    })
-    .option('scale', {
-      type: 'number',
-      describe: 'scale (default is 1)'
-    })
-    .option('rotate', {
-      type: 'number',
-      describe: 'angle of rotation in degrees (default is 0)'
-    })
-    .option('anchor', {
-      type: 'numbers',
-      describe: 'center of rotation/scaling (default is center of selected shapes)'
-    })
-    .option('where', whereOpt)
-    .option('target', targetOpt);
 
   parser.command('cluster')
     .describe('group polygons into compact clusters')
@@ -1122,38 +1215,6 @@ internal.getOptionParser = function() {
       describe: 'field name; only same-value shapes will be grouped'
     })
     .option('target', targetOpt);
-
-  parser.command('colorizer')
-    .describe('define a function to convert data values to color classes')
-    .flag('no_arg')
-    .option('colors', {
-      describe: 'comma-separated list of CSS colors',
-      type: 'colors'
-    })
-    .option('breaks', {
-      describe: 'ascending-order list of breaks for sequential color scheme',
-      type: 'numbers'
-    })
-    .option('categories', {
-      describe: 'comma-sep. list of keys for categorical color scheme',
-      type: 'strings'
-    })
-    .option('other', {
-      describe: 'default color for categorical scheme (defaults to no-data color)'
-    })
-    .option('nodata', {
-      describe: 'color to use for invalid or missing data (default is white)'
-    })
-    .option('name', {
-      describe: 'function name to use in -each and -svg-style commands'
-    })
-    .option('precision', {
-      describe: 'rounding precision to apply before classification (e.g. 0.1)',
-      type: 'number'
-    })
-    .example('Define a sequential color scheme and use it to create a new field\n' +
-        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
-        '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
   parser.command('data-fill')
     .describe('fill in missing values in a polygon layer')
@@ -1225,45 +1286,6 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
-  parser.command('mosaic')
-    .describe('convert a polygon layer with overlaps into a flat mosaic')
-    .option('calc', calcOpt)
-    .option('debug', {type: 'flag'})
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
-  parser.command('polygons')
-    .describe('convert polylines to polygons')
-    .option('gap-tolerance', {
-      describe: 'specify gap tolerance in source units',
-      type: 'distance'
-    })
-    .option('target', targetOpt);
-
-  parser.command('rectangle')
-    .describe('create a rectangle from a bbox or target layer extent')
-    .option('bbox', {
-      describe: 'rectangle coordinates (xmin,ymin,xmax,ymax)',
-      type: 'bbox'
-    })
-    .option('offset', offsetOpt)
-    .option('aspect-ratio', aspectRatioOpt)
-    .option('source', {
-      describe: 'name of layer to enclose'
-    })
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
-  parser.command('rectangles')
-    .describe('create a rectangle around each feature in the target layer')
-    .option('offset', offsetOpt)
-    .option('aspect-ratio', aspectRatioOpt)
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
   parser.command('require')
     .describe('require a Node module for use in -each expressions')
     .option('module', {
@@ -1323,22 +1345,6 @@ internal.getOptionParser = function() {
       describe: 'boolean JS expression'
     })
     .option('target', targetOpt);
-
-  parser.command('union')
-    .describe('create a flat mosaic from two or more polygon layers')
-    // .option('add-fid', {
-    //   describe: 'add FID_A, FID_B, ... fields to output layer',
-    //   type: 'flag'
-    // })
-    .option('fields', {
-      type: 'strings',
-      describe: 'fields to retain (comma-sep.) (default is all fields)',
-    })
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', {
-      describe: 'specify layers to target (comma-sep. list)'
-    });
 
   parser.section('Informational commands');
 
