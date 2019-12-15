@@ -1,3 +1,7 @@
+v0.4.146
+* Added support for line and point type features to the -clean command.
+* Added (undocumented) -snap command, for snapping vertices post-import.
+
 v0.4.145
 * Added -grid command for creating grids of square or hexagonal polygons. Assumes target layer is projected. Creates a grid layer that entirely contains the bounding box of the target layer.
 * Added polygon-to-polygon spatial joins to the -join command.
