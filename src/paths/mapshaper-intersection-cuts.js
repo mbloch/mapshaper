@@ -21,13 +21,14 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
   var arcBounds = arcs && arcs.getBounds();
-  var snapDist, snapCount, dupeCount, nodes;
+  var snapDist, nodes;
   if (!arcBounds || !arcBounds.hasBounds()) {
     return new NodeCollection([]);
   }
+
   if (opts.snap_interval) {
     snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
-  } else if (arcBounds.hasBounds()) {
+  } else if (!opts.no_snap && arcBounds.hasBounds()) {
     snapDist = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
   } else {
     snapDist = 0;
@@ -37,15 +38,9 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
   // used to reset simplification)
   arcs.flatten();
-  snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
-  dupeCount = arcs.dedupCoords();
-  if (snapCount > 0 || dupeCount > 0) {
-    // Detect topology again if coordinates have changed
-    api.buildTopology(dataset);
-  }
 
-  // cut arcs at points where segments intersect
-  internal.cutPathsAtIntersections(dataset);
+  internal.snapAndCut(dataset, snapDist);
+
   // Clean shapes by removing collapsed arc references, etc.
   // TODO: consider alternative -- avoid creating degenerate arcs
   // in insertCutPoints()
@@ -59,6 +54,45 @@ internal.addIntersectionCuts = function(dataset, _opts) {
 
   return nodes;
 };
+
+internal.snapAndCut = function(dataset, snapDist) {
+  var arcs = dataset.arcs;
+  var cutOpts = snapDist > 0 ? {} : {tolerance: 0};
+  var coordsHaveChanged = false;
+  var snapCount, dupeCount, cutCount;
+  snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+  dupeCount = arcs.dedupCoords();
+
+  // why was topology built here previously????
+  // if (snapCount > 0 || dupeCount > 0) {
+  //   // Detect topology again if coordinates have changed
+  //   api.buildTopology(dataset);
+  // }
+
+  // cut arcs at points where segments intersect
+  cutCount = internal.cutPathsAtIntersections(dataset, cutOpts);
+  if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
+    coordsHaveChanged = true;
+  }
+  // perform a second snap + cut pass if needed
+  if (cutCount > 0) {
+    cutCount = 0;
+    snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+    arcs.dedupCoords(); // need to do this here?
+    if (snapCount > 0) {
+      cutCount = internal.cutPathsAtIntersections(dataset, cutOpts);
+    }
+    if (cutCount > 0) {
+      arcs.dedupCoords(); // need to do this here?
+      debug('Second-pass vertices added:', cutCount, 'consider third pass?');
+    }
+  }
+  // Detect topology again if coordinates have changed
+  if (coordsHaveChanged) {
+    api.buildTopology(dataset);
+  }
+};
+
 
 // Remap any references to duplicate arcs in paths to use the same arcs
 // Remove any unused arcs from the dataset's ArcCollection.
@@ -155,19 +189,22 @@ internal.getDividedArcUpdater = function(map, arcCount) {
 
 // Divides a collection of arcs at points where arc paths cross each other
 // Returns array for remapping arc ids
-internal.divideArcs = function(arcs) {
-  var points = internal.findClippingPoints(arcs);
+internal.divideArcs = function(arcs, opts) {
+  var points = internal.findClippingPoints(arcs, opts);
   // TODO: avoid the following if no points need to be added
   var map = internal.insertCutPoints(points, arcs);
   // segment-point intersections currently create duplicate points
   // TODO: consider dedup in a later cleanup pass?
-  arcs.dedupCoords();
+  // arcs.dedupCoords();
   return map;
 };
 
-internal.cutPathsAtIntersections = function(dataset) {
-  var map = internal.divideArcs(dataset.arcs);
+internal.cutPathsAtIntersections = function(dataset, opts) {
+  var n = dataset.arcs.getPointCount();
+  var map = internal.divideArcs(dataset.arcs, opts);
+  var n2 = dataset.arcs.getPointCount();
   internal.remapDividedArcs(dataset, map);
+  return n2 - n;
 };
 
 internal.remapDividedArcs = function(dataset, map) {
@@ -319,8 +356,8 @@ internal.filterSortedCutPoints = function(points, arcs) {
   return filtered;
 };
 
-internal.findClippingPoints = function(arcs) {
-  var intersections = internal.findSegmentIntersections(arcs),
+internal.findClippingPoints = function(arcs, opts) {
+  var intersections = internal.findSegmentIntersections(arcs, opts),
       data = arcs.getVertexData();
   return internal.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
 };

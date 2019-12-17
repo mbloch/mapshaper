@@ -98,21 +98,16 @@ geom.getPointToPathDistance = function(px, py, ids, arcs) {
 geom.getPointToPathInfo = function(px, py, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   var pPathSq = Infinity;
-  var ax, ay, bx, by, axmin, aymin, bxmin, bymin,
-      paSq, pbSq, abSq, pabSq;
+  var ax, ay, bx, by, axmin, aymin, bxmin, bymin, pabSq;
   if (iter.hasNext()) {
     ax = axmin = bxmin = iter.x;
     ay = aymin = bymin = iter.y;
-    paSq = distanceSq(px, py, ax, ay);
   }
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
-    pbSq = distanceSq(px, py, bx, by);
-    abSq = distanceSq(ax, ay, bx, by);
-    pabSq = apexDistSq(paSq, pbSq, abSq);
+    pabSq = pointSegDistSq2(px, py, ax, ay, bx, by);
     if (pabSq < pPathSq) {
-
       pPathSq = pabSq;
       axmin = ax;
       aymin = ay;
@@ -121,7 +116,6 @@ geom.getPointToPathInfo = function(px, py, ids, arcs) {
     }
     ax = bx;
     ay = by;
-    paSq = pbSq;
   }
   if (pPathSq == Infinity) return {distance: Infinity};
   return {

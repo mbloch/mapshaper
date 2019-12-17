@@ -35,14 +35,17 @@ internal.snapCoords = function(arcs, threshold) {
 //
 internal.snapCoordsByInterval = function(arcs, snapDist) {
   var snapCount = 0,
-      data = arcs.getVertexData();
+      data = arcs.getVertexData(),
+      ids;
 
-  // Get sorted coordinate ids
-  // Consider: speed up sorting -- try bucket sort as first pass.
-  //
-  var ids = utils.sortCoordinateIds(data.xx);
-  for (var i=0, n=ids.length; i<n; i++) {
-    snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
+  if (snapDist > 0) {
+    // Get sorted coordinate ids
+    // Consider: speed up sorting -- try bucket sort as first pass.
+    //
+    ids = utils.sortCoordinateIds(data.xx);
+    for (var i=0, n=ids.length; i<n; i++) {
+      snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
+    }
   }
   return snapCount;
 

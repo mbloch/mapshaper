@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-polygon-dissolve2_v1,
+mapshaper-polygon-dissolve2,
 mapshaper-arc-dissolve,
 mapshaper-filter
 mapshaper-self-intersection
@@ -8,6 +8,10 @@ mapshaper-self-intersection
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
+  if (opts.debug) {
+    internal.addIntersectionCuts(dataset, opts);
+    return;
+  }
   if (!opts.arcs) { // arcs option only removes unused arcs
     nodes = internal.addIntersectionCuts(dataset, opts);
     layers.forEach(function(lyr) {
@@ -32,7 +36,10 @@ api.cleanLayers = function(layers, dataset, opts) {
 };
 
 internal.cleanPolygonLayerGeometry = function(lyr, dataset, opts) {
-  lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
+  var groups = lyr.shapes.map(function(shp, i) {
+    return [i];
+  });
+  lyr.shapes = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
 };
 
 // Remove duplicate points from multipoint geometries

@@ -215,8 +215,20 @@ describe('mapshaper-intersection-cuts.js', function () {
           [[2, 3], [2, 4], [4, 4], [4, 2], [3, 2]],
           [[3, 2], [2, 2]]];
 
+      // UPDATE: duplicate points are no longer removed by divideArcs()
+      var targetArcs2 = [
+        [ [ 3, 3 ], [ 3, 2 ] ],
+        [ [ 3, 2 ], [ 3, 1 ], [ 1, 1 ], [ 1, 3 ], [ 2, 3 ] ],
+        [ [ 2, 3 ], [ 3, 3 ] ],
+        [ [ 2, 2 ], [ 2, 3 ], [ 2, 3 ] ],
+        [ [ 2, 3 ], [ 2, 4 ], [ 4, 4 ], [ 4, 2 ], [ 3, 2 ], [ 3, 2 ] ],
+        [ [ 3, 2 ], [ 2, 2 ] ]
+      ];
+
       var result = arcs.toArray();
-      assert.deepEqual(result, targetArcs);
+      assert.deepEqual(arcs.toArray(), targetArcs2);
+      arcs.dedupCoords();
+      assert.deepEqual(arcs.toArray(), targetArcs);
       assert.deepEqual(api.utils.toArray(map), [0, 3]);
     })
   })
@@ -257,6 +269,7 @@ describe('mapshaper-intersection-cuts.js', function () {
     var dataset = {arcs: arcs, layers: [lyrA, lyrB]};
 
     api.internal.cutPathsAtIntersections(dataset);
+    dataset.arcs.dedupCoords();
 
     it ("divide arcs", function() {
 

@@ -4,6 +4,18 @@ var api = require('../'),
 
 describe('mapshaper-polygons.js', function () {
 
+  describe('Tests based on real data', function () {
+    it('polygons/ex1.shp -- 6 polygons are generated', function (done) {
+      // From issue #354 -- before, one polygon was not detected
+      var cmd = '-i test/data/features/polygons/ex1.shp -polygons -o ex1.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['ex1.json']);
+        assert.equal(json.geometries.length, 6);
+        done();
+      });
+    })
+  })
+
   it ('test 1: tic-tac-toe board', function(done) {
     var input = {
       type: 'MultiLineString',

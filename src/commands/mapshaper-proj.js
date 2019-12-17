@@ -193,7 +193,7 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
       p = proj(lng1, lat1),
       distSq;
   if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-  distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
+  distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
   points = points || [];
   // Bisect current segment if the projected midpoint deviates from original
   //   segment by more than the @interval parameter.

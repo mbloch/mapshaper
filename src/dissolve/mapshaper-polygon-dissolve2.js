@@ -6,6 +6,7 @@ mapshaper-data-aggregation
 mapshaper-ring-nesting
 mapshaper-polygon-mosaic
 mapshaper-mosaic-index
+mapshaper-gaps
 */
 
 
@@ -17,19 +18,10 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   }
   var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
   var groups = internal.groupPolygons2(lyr, getGroupId);
-  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
-  var nodes = new NodeCollection(dataset.arcs, arcFilter);
-  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-  if (opts.mosaic) {
-    return internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
-  }
-  if (opts.arcs) {
-    return internal.getArcLayer(nodes.arcs, lyr.name);
-  }
-  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
-  var shapes2 = internal.dissolvePolygonGroups2(groups, mosaicIndex, opts);
+  var shapes2 = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
+
 
 internal.getArcLayer = function(arcs, name) {
   var records = [];
@@ -67,7 +59,12 @@ internal.groupPolygons2 = function(lyr, getGroupId) {
   }, []);
 };
 
-internal.dissolvePolygonGroups2 = function(groups, mosaicIndex, opts) {
+internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
+  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
+
   var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
   var dissolvedShapes = groups.map(function(shapeIds) {
     var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);

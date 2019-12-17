@@ -1,13 +1,6 @@
 /* @requires mapshaper-nodes mapshaper-geom */
 
 
-internal.findAcyclicArcs = function(nodes) {
-  var arcs = [];
-
-
-};
-
-
 // Return id of rightmost connected arc in relation to @arcId
 // Return @arcId if no arcs can be found
 internal.getRightmostArc = function(arcId, nodes, filter) {
@@ -46,6 +39,7 @@ internal.getRighmostArc2 = function(fromId, ids, arcs) {
     candId = ids[j];
     icand = arcs.indexOfVertex(candId, -2);
     code = internal.chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+    // code = internal.chooseRighthandPath(0, 0, nodeX - fromX, nodeY - fromY, xx[ito] - fromX, yy[ito] - fromY, xx[icand] - fromX, yy[icand] - fromY);
     if (code == 2) {
       toId = candId;
       ito = icand;
@@ -58,6 +52,11 @@ internal.getRighmostArc2 = function(fromId, ids, arcs) {
   return toId;
 };
 
+internal.chooseRighthandPath2 = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
+  return internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
+};
+
+// TODO: consider using simpler internal.chooseRighthandPath2()
 // Returns 1 if node->a, return 2 if node->b, else return 0
 // TODO: better handling of identical angles (better -- avoid creating them)
 internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
@@ -91,7 +90,6 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
     // Equal angles: use fallback test that is less sensitive to rounding error
     code = internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
     debug('[chooseRighthandPath()] equal angles:', angleA, 'fallback test:', code);
-    // debug(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
   }
   return code;
 };

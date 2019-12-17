@@ -386,6 +386,9 @@ internal.getOptionParser = function() {
       describe: 'remove unused arcs',
       type: 'flag'
     })
+    .option('debug', {
+      type: 'flag'
+    })
     .option('no-arc-dissolve', {
       type: 'flag' // no description
     })
@@ -467,28 +470,15 @@ internal.getOptionParser = function() {
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
-  parser.command('dissolve2_v1')
-    // .describe('merge adjacent polygons (repairs overlaps and gaps)')
-    .option('field', {}) // old arg handled by dissolve function
-    .option('fields', dissolveFieldsOpt)
-    .option('arcs', {type: 'flag'}) // debugging option
-    .option('calc', calcOpt)
-    .option('sum-fields', sumFieldsOpt)
-    .option('copy-fields', copyFieldsOpt)
-    .option('min-gap-area', minGapAreaOpt)
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
 
-  // for testing replacement for dissolve2
   parser.command('dissolve2')
     .describe('merge adjacent polygons (repairs overlaps and gaps)')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
-    .option('mosaic', {type: 'flag'}) // debugging option
-    .option('arcs', {type: 'flag'}) // debugging option
-    .option('tiles', {type: 'flag'}) // debugging option
+    // UPDATE: Use -mosaic command for debugging
+    //.option('mosaic', {type: 'flag'}) // debugging option
+    //.option('arcs', {type: 'flag'}) // debugging option
+    //.option('tiles', {type: 'flag'}) // debugging option
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)

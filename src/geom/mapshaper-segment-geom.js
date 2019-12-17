@@ -20,34 +20,60 @@ function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   var eps = epsArg >= 0 ? epsArg :
       internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
   var epsSq = eps * eps;
-  // Detect touch intersections (segments with one or more endpoints that touch
-  // along the linear portion of the other segment).
-  var touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
-  if (touches) {
-    // Found one or two 'touch' intersections, where a vertex of one segment
-    // is very close to the other segment's linear portion.
-    // One touch indicates either a T-intersection or two overlapping collinear
-    // segments that share an endpoint. Two touches indicates overlapping
-    // collinear segments that do not share an endpoint.
-    return touches;
-  }
+  var touches, cross;
+  // Detect 0, 1 or 2 'touch' intersections, where a vertex of one segment
+  // is very close to the other segment's linear portion.
+  // One touch indicates either a T-intersection or two overlapping collinear
+  // segments that share an endpoint. Two touches indicates overlapping
+  // collinear segments that do not share an endpoint.
+  touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
+  // if (touches) return touches;
   // Ignore endpoint-only intersections
-  if (testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
+  if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
     return null;
   }
-  // Detect cross intersections
-  return findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+  // Detect cross intersection
+  cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+  if (cross && touches) {
+    // Removed this call -- using multiple snap/cut passes seems more
+    // effective for repairing real-world datasets.
+    // return reconcileCrossAndTouches(cross, touches, eps);
+  }
+  return touches || cross || null;
 }
+
+function reconcileCrossAndTouches(cross, touches, eps) {
+  var hits;
+  eps = eps || 0;
+  if (touches.length > 2) {
+    // two touches and a cross: cross should be between the touches, intersection at touches
+    hits = touches;
+  } else if (geom.distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
+    // cross is very close to touch point (e.g. small overshoot): intersection at touch point
+    hits = touches;
+  } else {
+    // one touch and one cross: use both points
+    hits = touches.concat(cross);
+  }
+  return hits;
+}
+
 
 // Find the intersection point of two segments that cross each other,
 // or return null if the segments do not cross.
-// Assumes endpoint intersections, T-intersections and collinear intersections
-// have already been detected.
+// Assumes endpoint intersections have already been detected
 function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   if (!segmentHit(ax, ay, bx, by, cx, cy, dx, dy)) return null;
   var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
   var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
   var p = [ax + m * (bx - ax), ay + m * (by - ay)];
+  if (Math.abs(den) < 1e-18) {
+    // assume that collinear and near-collinear segment intersections have been
+    // accounted for already.
+    // TODO: is this a valid assumption?
+    return null;
+  }
+
   // Snap p to a vertex if very close to one
   // This avoids tiny segments caused by T-intersection overshoots and prevents
   //   pathfinder errors related to f-p rounding.

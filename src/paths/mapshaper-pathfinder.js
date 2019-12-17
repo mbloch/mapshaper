@@ -127,7 +127,6 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
   }
 
   return function(startId) {
-    // console.log(" # from:" ,startId);
     var path = [],
         nextId, msg,
         candId = startId;

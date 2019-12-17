@@ -145,6 +145,7 @@ internal.compileExpressionToFunction = function(exp, opts) {
   try {
     func = new Function("$$record,$$env",  functionBody);
   } catch(e) {
+    if (opts.quiet) throw e;
     stop(e.name, "in expression [" + exp + "]");
   }
   return func;

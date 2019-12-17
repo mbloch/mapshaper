@@ -163,5 +163,21 @@ describe('mapshaper-svg-style.js', function () {
       api.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     });
+
+    it('literals 4', function() {
+      var records = [{}]
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        label_text: 'dane © OpenStreetMap (licencja ODBL)' // issue 363
+      };
+      var target = [{
+        'label-text': 'dane © OpenStreetMap (licencja ODBL)'
+      }];
+      api.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), target);
+    });
+
   })
 });

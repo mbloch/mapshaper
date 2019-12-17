@@ -8,7 +8,6 @@ mapshaper-colorizer
 mapshaper-data-fill
 mapshaper-dissolve
 mapshaper-dissolve2
-mapshaper-dissolve2_v1
 mapshaper-dots
 mapshaper-drop
 mapshaper-export
@@ -166,9 +165,6 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
-
-    } else if (name == 'dissolve2_v1') {
-      outputLayers = api.dissolve2_v1(targetLayers, targetDataset, opts);
 
     } else if (name == 'dots') {
       outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
