@@ -30,6 +30,15 @@ describe('mapshaper-clean.js', function () {
       });
     })
 
+    it('clean/ex9_FranklinTwoPrecinctsDetail.json -- all polygons are retained', function (done) {
+      var cmd = '-i test/data/features/clean/ex9_FranklinTwoPrecinctsDetail.json -clean -o clean.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['clean.json']);
+        assert.equal(json.features.length, 2);
+        done();
+      });
+    })
+
     it('clean/ex8_britain.json -- all polygons are retained', function (done) {
       var cmd = '-i test/data/features/clean/ex8_britain.json -clean -o clean.json';
       api.applyCommands(cmd, {}, function(err, out) {

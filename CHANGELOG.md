@@ -1,3 +1,6 @@
+v0.4.147
+* Improved robustness of path intersection (used by many commands, including -clean -dissolve2 -clip -erase -union).
+
 v0.4.146
 * Added support for line and point type features to the -clean command.
 * Added (undocumented) -snap command, for snapping vertices post-import.
