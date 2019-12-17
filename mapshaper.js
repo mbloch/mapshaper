@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.146';
+VERSION = '0.4.147';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -7950,21 +7950,16 @@ geom.getPointToPathDistance = function(px, py, ids, arcs) {
 geom.getPointToPathInfo = function(px, py, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   var pPathSq = Infinity;
-  var ax, ay, bx, by, axmin, aymin, bxmin, bymin,
-      paSq, pbSq, abSq, pabSq;
+  var ax, ay, bx, by, axmin, aymin, bxmin, bymin, pabSq;
   if (iter.hasNext()) {
     ax = axmin = bxmin = iter.x;
     ay = aymin = bymin = iter.y;
-    paSq = distanceSq(px, py, ax, ay);
   }
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
-    pbSq = distanceSq(px, py, bx, by);
-    abSq = distanceSq(ax, ay, bx, by);
-    pabSq = apexDistSq(paSq, pbSq, abSq);
+    pabSq = pointSegDistSq2(px, py, ax, ay, bx, by);
     if (pabSq < pPathSq) {
-
       pPathSq = pabSq;
       axmin = ax;
       aymin = ay;
@@ -7973,7 +7968,6 @@ geom.getPointToPathInfo = function(px, py, ids, arcs) {
     }
     ax = bx;
     ay = by;
-    paSq = pbSq;
   }
   if (pPathSq == Infinity) return {distance: Infinity};
   return {
@@ -8708,14 +8702,17 @@ internal.snapCoords = function(arcs, threshold) {
 //
 internal.snapCoordsByInterval = function(arcs, snapDist) {
   var snapCount = 0,
-      data = arcs.getVertexData();
+      data = arcs.getVertexData(),
+      ids;
 
-  // Get sorted coordinate ids
-  // Consider: speed up sorting -- try bucket sort as first pass.
-  //
-  var ids = utils.sortCoordinateIds(data.xx);
-  for (var i=0, n=ids.length; i<n; i++) {
-    snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
+  if (snapDist > 0) {
+    // Get sorted coordinate ids
+    // Consider: speed up sorting -- try bucket sort as first pass.
+    //
+    ids = utils.sortCoordinateIds(data.xx);
+    for (var i=0, n=ids.length; i<n; i++) {
+      snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
+    }
   }
   return snapCount;
 
@@ -11039,34 +11036,60 @@ function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   var eps = epsArg >= 0 ? epsArg :
       internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
   var epsSq = eps * eps;
-  // Detect touch intersections (segments with one or more endpoints that touch
-  // along the linear portion of the other segment).
-  var touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
-  if (touches) {
-    // Found one or two 'touch' intersections, where a vertex of one segment
-    // is very close to the other segment's linear portion.
-    // One touch indicates either a T-intersection or two overlapping collinear
-    // segments that share an endpoint. Two touches indicates overlapping
-    // collinear segments that do not share an endpoint.
-    return touches;
-  }
+  var touches, cross;
+  // Detect 0, 1 or 2 'touch' intersections, where a vertex of one segment
+  // is very close to the other segment's linear portion.
+  // One touch indicates either a T-intersection or two overlapping collinear
+  // segments that share an endpoint. Two touches indicates overlapping
+  // collinear segments that do not share an endpoint.
+  touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
+  // if (touches) return touches;
   // Ignore endpoint-only intersections
-  if (testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
+  if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
     return null;
   }
-  // Detect cross intersections
-  return findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+  // Detect cross intersection
+  cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+  if (cross && touches) {
+    // Removed this call -- using multiple snap/cut passes seems more
+    // effective for repairing real-world datasets.
+    // return reconcileCrossAndTouches(cross, touches, eps);
+  }
+  return touches || cross || null;
 }
+
+function reconcileCrossAndTouches(cross, touches, eps) {
+  var hits;
+  eps = eps || 0;
+  if (touches.length > 2) {
+    // two touches and a cross: cross should be between the touches, intersection at touches
+    hits = touches;
+  } else if (geom.distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
+    // cross is very close to touch point (e.g. small overshoot): intersection at touch point
+    hits = touches;
+  } else {
+    // one touch and one cross: use both points
+    hits = touches.concat(cross);
+  }
+  return hits;
+}
+
 
 // Find the intersection point of two segments that cross each other,
 // or return null if the segments do not cross.
-// Assumes endpoint intersections, T-intersections and collinear intersections
-// have already been detected.
+// Assumes endpoint intersections have already been detected
 function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   if (!segmentHit(ax, ay, bx, by, cx, cy, dx, dy)) return null;
   var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
   var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
   var p = [ax + m * (bx - ax), ay + m * (by - ay)];
+  if (Math.abs(den) < 1e-18) {
+    // assume that collinear and near-collinear segment intersections have been
+    // accounted for already.
+    // TODO: is this a valid assumption?
+    return null;
+  }
+
   // Snap p to a vertex if very close to one
   // This avoids tiny segments caused by T-intersection overshoots and prevents
   //   pathfinder errors related to f-p rounding.
@@ -11514,13 +11537,14 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
   var arcBounds = arcs && arcs.getBounds();
-  var snapDist, snapCount, dupeCount, nodes;
+  var snapDist, nodes;
   if (!arcBounds || !arcBounds.hasBounds()) {
     return new NodeCollection([]);
   }
+
   if (opts.snap_interval) {
     snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
-  } else if (arcBounds.hasBounds()) {
+  } else if (!opts.no_snap && arcBounds.hasBounds()) {
     snapDist = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
   } else {
     snapDist = 0;
@@ -11530,15 +11554,9 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
   // used to reset simplification)
   arcs.flatten();
-  snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
-  dupeCount = arcs.dedupCoords();
-  if (snapCount > 0 || dupeCount > 0) {
-    // Detect topology again if coordinates have changed
-    api.buildTopology(dataset);
-  }
 
-  // cut arcs at points where segments intersect
-  internal.cutPathsAtIntersections(dataset);
+  internal.snapAndCut(dataset, snapDist);
+
   // Clean shapes by removing collapsed arc references, etc.
   // TODO: consider alternative -- avoid creating degenerate arcs
   // in insertCutPoints()
@@ -11552,6 +11570,45 @@ internal.addIntersectionCuts = function(dataset, _opts) {
 
   return nodes;
 };
+
+internal.snapAndCut = function(dataset, snapDist) {
+  var arcs = dataset.arcs;
+  var cutOpts = snapDist > 0 ? {} : {tolerance: 0};
+  var coordsHaveChanged = false;
+  var snapCount, dupeCount, cutCount;
+  snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+  dupeCount = arcs.dedupCoords();
+
+  // why was topology built here previously????
+  // if (snapCount > 0 || dupeCount > 0) {
+  //   // Detect topology again if coordinates have changed
+  //   api.buildTopology(dataset);
+  // }
+
+  // cut arcs at points where segments intersect
+  cutCount = internal.cutPathsAtIntersections(dataset, cutOpts);
+  if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
+    coordsHaveChanged = true;
+  }
+  // perform a second snap + cut pass if needed
+  if (cutCount > 0) {
+    cutCount = 0;
+    snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+    arcs.dedupCoords(); // need to do this here?
+    if (snapCount > 0) {
+      cutCount = internal.cutPathsAtIntersections(dataset, cutOpts);
+    }
+    if (cutCount > 0) {
+      arcs.dedupCoords(); // need to do this here?
+      debug('Second-pass vertices added:', cutCount, 'consider third pass?');
+    }
+  }
+  // Detect topology again if coordinates have changed
+  if (coordsHaveChanged) {
+    api.buildTopology(dataset);
+  }
+};
+
 
 // Remap any references to duplicate arcs in paths to use the same arcs
 // Remove any unused arcs from the dataset's ArcCollection.
@@ -11648,19 +11705,22 @@ internal.getDividedArcUpdater = function(map, arcCount) {
 
 // Divides a collection of arcs at points where arc paths cross each other
 // Returns array for remapping arc ids
-internal.divideArcs = function(arcs) {
-  var points = internal.findClippingPoints(arcs);
+internal.divideArcs = function(arcs, opts) {
+  var points = internal.findClippingPoints(arcs, opts);
   // TODO: avoid the following if no points need to be added
   var map = internal.insertCutPoints(points, arcs);
   // segment-point intersections currently create duplicate points
   // TODO: consider dedup in a later cleanup pass?
-  arcs.dedupCoords();
+  // arcs.dedupCoords();
   return map;
 };
 
-internal.cutPathsAtIntersections = function(dataset) {
-  var map = internal.divideArcs(dataset.arcs);
+internal.cutPathsAtIntersections = function(dataset, opts) {
+  var n = dataset.arcs.getPointCount();
+  var map = internal.divideArcs(dataset.arcs, opts);
+  var n2 = dataset.arcs.getPointCount();
   internal.remapDividedArcs(dataset, map);
+  return n2 - n;
 };
 
 internal.remapDividedArcs = function(dataset, map) {
@@ -11812,17 +11872,10 @@ internal.filterSortedCutPoints = function(points, arcs) {
   return filtered;
 };
 
-internal.findClippingPoints = function(arcs) {
-  var intersections = internal.findSegmentIntersections(arcs),
+internal.findClippingPoints = function(arcs, opts) {
+  var intersections = internal.findSegmentIntersections(arcs, opts),
       data = arcs.getVertexData();
   return internal.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
-};
-
-
-internal.findAcyclicArcs = function(nodes) {
-  var arcs = [];
-
-
 };
 
 
@@ -11864,6 +11917,7 @@ internal.getRighmostArc2 = function(fromId, ids, arcs) {
     candId = ids[j];
     icand = arcs.indexOfVertex(candId, -2);
     code = internal.chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+    // code = internal.chooseRighthandPath(0, 0, nodeX - fromX, nodeY - fromY, xx[ito] - fromX, yy[ito] - fromY, xx[icand] - fromX, yy[icand] - fromY);
     if (code == 2) {
       toId = candId;
       ito = icand;
@@ -11876,6 +11930,11 @@ internal.getRighmostArc2 = function(fromId, ids, arcs) {
   return toId;
 };
 
+internal.chooseRighthandPath2 = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
+  return internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
+};
+
+// TODO: consider using simpler internal.chooseRighthandPath2()
 // Returns 1 if node->a, return 2 if node->b, else return 0
 // TODO: better handling of identical angles (better -- avoid creating them)
 internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
@@ -11909,7 +11968,6 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
     // Equal angles: use fallback test that is less sensitive to rounding error
     code = internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
     debug('[chooseRighthandPath()] equal angles:', angleA, 'fallback test:', code);
-    // debug(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
   }
   return code;
 };
@@ -12047,7 +12105,6 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
   }
 
   return function(startId) {
-    // console.log(" # from:" ,startId);
     var path = [],
         nextId, msg,
         candId = startId;
@@ -12846,6 +12903,7 @@ internal.compileExpressionToFunction = function(exp, opts) {
   try {
     func = new Function("$$record,$$env",  functionBody);
   } catch(e) {
+    if (opts.quiet) throw e;
     stop(e.name, "in expression [" + exp + "]");
   }
   return func;
@@ -13755,6 +13813,396 @@ internal.findMosaicRings = function(nodes) {
 };
 
 
+// Associate mosaic tiles with shapes (i.e. identify the groups of tiles that
+//   belong to each shape)
+//
+function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
+  var arcs = nodes.arcs;
+  var visitedTileIndex = new IndexIndex(mosaic.length);
+  var divide = internal.getHoleDivider(nodes);
+  // temp vars
+  var currHoles; // arc ids of all holes in shape
+  var currShapeId;
+  var currRingBbox;
+  var tilesInShape; // accumulator for tile ids of tiles in current shape
+  var ringIndex = new IndexIndex(arcs.size());
+  var holeIndex = new IndexIndex(arcs.size());
+
+  // return ids of tiles in shape
+  this.getTilesInShape = function(shp, shapeId) {
+    var cw = [], ccw = [], retn;
+    tilesInShape = [];
+    currHoles = [];
+    currShapeId = shapeId;
+    if (opts.no_holes) {
+      divide(shp, cw, ccw);
+      // ccw.forEach(internal.reversePath);
+      // cw = cw.concat(ccw);
+    } else {
+      // divide shape into rings and holes (splits self-intersecting rings)
+      // TODO: rewrite divide() -- it is a performance bottleneck and can convert
+      //   space-filling areas into ccw holes
+      divide(shp, cw, ccw);
+      ccw.forEach(procShapeHole);
+      holeIndex.setIds(currHoles);
+    }
+    cw.forEach(procShapeRing);
+    retn = tilesInShape;
+    // reset tmp vars, etc
+    tilesInShape = null;
+    holeIndex.clearIds(currHoles);
+    currHoles = null;
+    return retn;
+  };
+
+  function procShapeHole(path) {
+    currHoles = currHoles ? currHoles.concat(path) : path;
+  }
+
+  function procShapeRing(path) {
+    currRingBbox = arcs.getSimpleShapeBounds2(path);
+    ringIndex.setIds(path);
+    procArcIds(path);
+    ringIndex.clearIds(path);
+    // allow overlapping rings to visit the same tiles
+    visitedTileIndex.clearIds(tilesInShape);
+  }
+
+  // ids: an array of arcIds
+  function procArcIds(ids) {
+    var tileIds = [], tileId;
+    for (var i=0, n=ids.length; i<n; i++) {
+      tileId = procRingArc(ids[i]);
+      if (tileId > -1) tileIds.push(tileId);
+    }
+    if (tileIds.length > 0) traverseFromTiles(tileIds);
+  }
+
+  function traverseFromTiles(tileIds) {
+    // breadth-first traversal, to prevent call stack overflow when there is
+    // a large number of tiles within a ring (due to many partially overlapping rings)
+    var arcIds = [];
+    for (var i=0, n=tileIds.length; i<n; i++) {
+      accumulateTraversibleArcIds(arcIds, mosaic[tileIds[i]]);
+    }
+    if (arcIds.length > 0) procArcIds(arcIds);
+  }
+
+  function accumulateTraversibleArcIds(ids, tile) {
+    var arcId, ring;
+    for (var j=0; j<tile.length; j++) {
+      ring = tile[j];
+      for (var i=0; i<ring.length; i++) {
+        arcId = ring[i];
+        if (arcIsTraversible(arcId)) {
+          ids.push(~arcId);
+        }
+      }
+    }
+  }
+
+  function arcIsTraversible(tileArc) {
+    var neighborArc = ~tileArc;
+    // don't cross boundary of the current ring or of any hole in the current shape
+    var traversible = !(holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc)  ||
+      ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc));
+    if (traversible && arcs.arcIsContained(absArcId(neighborArc), currRingBbox) === false) {
+      debug('Out-of-bounds traversal error in arc', tileArc);
+      traversible = false;
+    }
+    return traversible;
+  }
+
+  function procRingArc(arcId) {
+    var tileId = arcTileIndex.getShapeIdByArcId(arcId);
+    if (arcs.arcIsContained(absArcId(arcId), currRingBbox) === false) {
+      debug('Out-of-bounds ring arc', arcId);
+      tileId = -1;
+    }
+    if (tileId == -1 || visitedTileIndex.hasId(tileId)) return -1;
+    visitedTileIndex.setId(tileId);
+    tilesInShape.push(tileId);
+    return tileId;
+  }
+}
+
+
+
+
+// Maps tile ids to shape ids (both are non-negative integers). Supports
+//    one-to-many mapping (a tile may belong to multiple shapes)
+// Also maps shape ids to tile ids. A shape may contain multiple tiles
+// Also supports 'flattening' -- removing one-to-many tile-shape mappings by
+//    removing all but one shape from a tile.
+// Supports one-to-many mapping
+function TileShapeIndex(mosaic, opts) {
+  // indexes for mapping tile ids to shape ids
+  var singleIndex = new Int32Array(mosaic.length);
+  utils.initializeArray(singleIndex, -1);
+  var multipleIndex = [];
+  // index that maps shape ids to tile ids
+  var shapeIndex = [];
+
+  this.getTileIdsByShapeId = function(id) {
+    return shapeIndex[id];
+  };
+
+  // assumes index has been flattened
+  this.getShapeIdByTileId = function(id) {
+    var shapeId = singleIndex[id];
+    return shapeId >= 0 ? shapeId : -1;
+  };
+
+  // return ids of all shapes that include a tile
+  this.getShapeIdsByTileId = function(id) {
+    var singleId = singleIndex[id];
+    if (singleId >= 0) {
+      return [singleId];
+    }
+    if (singleId == -1) {
+      return [];
+    }
+    return multipleIndex[id];
+  };
+
+  this.indexTileIdsByShapeId = function(shapeId, tileIds, weightFunction) {
+    // shapeIndex[shapeId] = tileIds;
+    shapeIndex[shapeId] = [];
+    for (var i=0; i<tileIds.length; i++) {
+      indexShapeIdByTileId(shapeId, tileIds[i], weightFunction);
+    }
+  };
+
+  // remove many-to-one tile=>shape mappings
+  this.flatten = function() {
+    multipleIndex.forEach(function(shapeIds, tileId) {
+      flattenStackedTile(tileId);
+    });
+    multipleIndex = [];
+  };
+
+  this.getUnusedTileIds = function() {
+    var ids = [];
+    for (var i=0, n=singleIndex.length; i<n; i++) {
+      if (singleIndex[i] == -1) ids.push(i);
+    }
+    return ids;
+  };
+
+  // used by gap fill; assumes that flatten() has been called
+  this.addTileToShape = function(shapeId, tileId) {
+    if (shapeId in shapeIndex === false || singleIndex[tileId] != -1) {
+      error('Internal error');
+    }
+    singleIndex[tileId] = shapeId;
+    shapeIndex[shapeId].push(tileId);
+  };
+
+  // add a shape id to a tile
+  function indexShapeIdByTileId(shapeId, tileId, weightFunction) {
+    var singleId = singleIndex[tileId];
+    if (singleId != -1 && opts.flat) {
+      // pick the best shape if we have a weight function
+      if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
+        // replace existing shape reference
+        removeTileFromShape(tileId, singleId);
+        singleIndex[tileId] = singleId;
+        singleId = -1;
+      } else {
+        // keep existing shape reference
+        return;
+      }
+    }
+    if (singleId == -1) {
+      singleIndex[tileId] = shapeId;
+    } else if (singleId == -2) {
+      multipleIndex[tileId].push(shapeId);
+    } else {
+      multipleIndex[tileId] = [singleId, shapeId];
+      singleIndex[tileId] = -2;
+    }
+    shapeIndex[shapeId].push(tileId);
+  }
+
+
+  function flattenStackedTile(tileId) {
+    // TODO: select the best shape (using some metric)
+    var shapeIds = multipleIndex[tileId];
+    // if (!shapeIds || shapeIds.length > 1 === false) error('flattening error');
+    var selectedId = shapeIds[0];
+    var shapeId;
+    singleIndex[tileId] = selectedId; // add shape to single index
+    // remove tile from other stacked shapes
+    for (var i=0; i<shapeIds.length; i++) {
+      shapeId = shapeIds[i];
+      if (shapeId != selectedId) {
+        removeTileFromShape(tileId, shapeId);
+      }
+    }
+  }
+
+  function removeTileFromShape(tileId, shapeId) {
+    shapeIndex[shapeId] = shapeIndex[shapeId].filter(function(tileId2) {
+      return tileId2 != tileId;
+    });
+    if (shapeIndex[shapeId].length > 0 === false) {
+      // TODO: make sure to test the case where a shape becomes empty
+      // error("empty shape")
+    }
+  }
+}
+
+function MosaicIndex(lyr, nodes, optsArg) {
+  var opts = optsArg || {};
+  var shapes = lyr.shapes;
+  var divide = internal.getHoleDivider(nodes);
+  var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
+
+  // map arc ids to tile ids
+  var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
+  // keep track of which tiles have been assigned to shapes
+  var fetchedTileIndex = new IndexIndex(mosaic.length);
+  // bidirection index of tile ids <=> shape ids
+  var tileShapeIndex = new TileShapeIndex(mosaic, opts);
+  // assign tiles to shapes
+  var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
+
+  var weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
+
+  this.mosaic = mosaic;
+  this.nodes = nodes; // kludge
+  this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
+  this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
+  // Assign shape ids to mosaic tile shapes.
+  shapes.forEach(function(shp, shapeId) {
+    var tileIds = shapeTiler.getTilesInShape(shp, shapeId);
+    tileShapeIndex.indexTileIdsByShapeId(shapeId, tileIds, weightFunction);
+  });
+
+  // ensure each tile is assigned to only one shape
+  if (opts.flat) {
+    tileShapeIndex.flatten();
+  }
+
+  // fill gaps
+  // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
+  this.removeGaps = function(gapTest) {
+    if (!opts.flat) {
+      error('MosaicIndex#removeGaps() should only be called with flat mosaic');
+    }
+    var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
+      var tile = mosaic[tileId];
+      return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
+    });
+    // find shape to assign gap tiles to
+    gapTileIds.forEach(assignTileToAdjacentShape);
+  };
+
+  this.getUnusedTiles = function() {
+    return getUnusedTileIds().map(tileIdToTile);
+  };
+
+  this.getTilesByShapeIds = function(shapeIds) {
+    return getTileIdsByShapeIds(shapeIds).map(tileIdToTile);
+  };
+
+  function getAreaWeightFunction(shapes, arcs) {
+    var index = [];
+    return function(shpId) {
+      var weight;
+      if (shpId in index) {
+        weight = index[shpId];
+      } else {
+        weight = index[shpId] = Math.abs(geom.getShapeArea(shapes[shpId], arcs));
+      }
+      return weight;
+    };
+  }
+
+  function tileIdToTile(id, i) {
+    return mosaic[id];
+  }
+
+  function assignTileToAdjacentShape(tileId) {
+    var ring = mosaic[tileId][0];
+    var arcs = nodes.arcs;
+    var arcId, neighborShapeId, neighborTileId, arcLen;
+    var shapeId = -1, maxArcLen = 0;
+    for (var i=0; i<ring.length; i++) {
+      arcId = ring[i];
+      neighborTileId = arcTileIndex.getShapeIdByArcId(~arcId);
+      if (neighborTileId < 0) continue;
+      neighborShapeId = tileShapeIndex.getShapeIdByTileId(neighborTileId);
+      if (neighborShapeId < 0) continue;
+      arcLen = geom.getPathPerimeter([arcId], arcs);
+      if (arcLen > maxArcLen) {
+        shapeId = neighborShapeId;
+        maxArcLen = arcLen;
+      }
+    }
+    if (shapeId > -1) {
+      tileShapeIndex.addTileToShape(shapeId, tileId);
+    }
+  }
+
+  function getTileIdsByShapeIds(shapeIds) {
+    var uniqIds = [];
+    var tileId, tileIds, i, j;
+    for (i=0; i<shapeIds.length; i++) {
+      tileIds = tileShapeIndex.getTileIdsByShapeId(shapeIds[i]);
+      for (j=0; j<tileIds.length; j++) {
+        tileId = tileIds[j];
+        // uniqify tile ids (in case the shape contains overlapping rings)
+        if (fetchedTileIndex.hasId(tileId)) continue;
+        fetchedTileIndex.setId(tileId);
+        uniqIds.push(tileId);
+      }
+    }
+    // clearing this index allows duplicate tile ids between calls to this function
+    // (should not happen in a typical dissolve)
+    fetchedTileIndex.clearIds(uniqIds);
+    return uniqIds;
+  }
+}
+
+
+// Map arc ids to shape ids, assuming perfect topology
+// (an arcId maps to at most one shape)
+// Supports looking up a shape id using an arc id.
+function ShapeArcIndex(shapes, arcs) {
+  var n = arcs.size();
+  var fwdArcIndex = new Int32Array(n);
+  var revArcIndex = new Int32Array(n);
+  var shapeId;
+  utils.initializeArray(fwdArcIndex, -1);
+  utils.initializeArray(revArcIndex, -1);
+  shapes.forEach(onShape);
+
+  function onShape(shp, i) {
+    shapeId = i;
+    shp.forEach(onPart);
+  }
+  function onPart(path) {
+    var arcId;
+    for (var i=0, n=path.length; i<n; i++) {
+      arcId = path[i];
+      if (arcId < 0) {
+        revArcIndex[~arcId] = shapeId;
+      } else {
+        fwdArcIndex[arcId] = shapeId;
+      }
+    }
+  }
+
+  // returns -1 if shape has not been indexed
+  this.getShapeIdByArcId = function(arcId) {
+    var idx = absArcId(arcId);
+    if (idx >= n) return -1; // TODO: throw error (out-of-range id)
+    return arcId < 0 ? revArcIndex[idx] : fwdArcIndex[idx];
+  };
+}
+
+
 internal.getVertexCountTest = function(minVertices, arcs) {
   return function(path) {
     // first and last vertex in ring count as one
@@ -13814,180 +14262,100 @@ internal.getGapFillTest = function(dataset, opts) {
 
 
 // Assumes that arcs do not intersect except at endpoints
-internal.dissolvePolygonLayer2_v1 = function(lyr, dataset, opts) {
+internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   opts = utils.extend({}, opts);
-  if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+  if (opts.field) {
+    opts.fields = [opts.field]; // support old "field" parameter
+  }
   var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
-  var groups = lyr.shapes.reduce(function(groups, shape, i) {
-    var i2 = getGroupId(i);
-    if (i2 in groups === false) {
-      groups[i2] = [];
-    }
-    internal.extendShape(groups[i2], shape);
-    return groups;
-  }, []);
-  var shapes2 = internal.dissolvePolygons2_v1(groups, dataset, opts);
+  var groups = internal.groupPolygons2(lyr, getGroupId);
+  var shapes2 = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
-internal.dissolvePolygons2_v1 = function(shapes, dataset, opts) {
-  var arcs = dataset.arcs;
-  var arcFilter = internal.getArcPresenceTest(shapes, arcs);
-  var nodes = new NodeCollection(arcs, arcFilter);
-  var divide = internal.getHoleDivider(nodes);
-  var dissolve = internal.getRingIntersector(nodes, 'dissolve');
-  var gapTest = internal.getGapFillTest(dataset, opts);
-  T.start();
-  var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
-  T.stop("Build mosaic");
-  // Indexes for looking up shape/feature id by arc id
-  var fwdArcIndex = new Int32Array(arcs.size());
-  var revArcIndex = new Int32Array(arcs.size());
-  var shapeWeights = [];
-  var unassignedTiles = [];
-  var tileGroups = shapes.map(function() {return [];});
-  T.start();
-  shapes.forEach(indexPolygon);
-  mosaic.forEach(assignMosaicRing);
-  unassignedTiles = unassignedTiles.filter(assignRemainingTile);
-  var shapes2 = tileGroups.map(dissolveTileGroup);
-  T.stop('Dissolve tiles');
-  return shapes2;
 
-  function dissolveTileGroup(group) {
-    var rings = [],
-        holes = [],
-        dissolved, tile;
-    for (var i=0, n=group.length; i<n; i++) {
-      tile = mosaic[group[i]];
-      rings.push(tile[0]);
-      if (tile.length > 1) {
-        holes = holes.concat(tile.slice(1));
-      }
-    }
-    dissolved = dissolve(rings.concat(holes));
-    if (dissolved.length > 1) {
-      // Commenting-out nesting order repair -- new method should prevent nesting errors
-      // dissolved = internal.fixNestingErrors(dissolved, arcs);
-    }
-    return dissolved.length > 0 ? dissolved : null;
+internal.getArcLayer = function(arcs, name) {
+  var records = [];
+  var lyr = {
+    geometry_type: 'polyline',
+    shapes: [],
+    name: name
+  };
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    lyr.shapes.push([[i]]);
+    records.push({arc_id: i});
   }
-
-  function assignRemainingTile(tileId) {
-    var tile = mosaic[tileId];
-    var ring = tile[0];
-    var shapeId = -1;
-    for (var i=0, n=ring.length; i<n; i++) {
-      // find highest-priority neighboring shape
-      shapeId = chooseShape(shapeId, getShapeId(~ring[i]));
-    }
-    if (shapeId > -1 && gapTest(ring)) {
-      tileGroups[shapeId].push(tileId);
-    }
-    return shapeId < 0;
-  }
-
-  // @tile An indivisible mosaic tile
-  function findFullEnclosureCandidates(tile) {
-    var shapeIds = [];
-    var reversedRing = internal.reversePath(ring.concat());
-    reversedRing.forEach(function(arcId) {
-      var shpId = getShapeId(arcId);
-      if (shpId > -1  && shapeIds.indexOf(shpId) == -1) {
-        shapeIds.push(shpId);
-      }
-    });
-  }
-
-
-  // STUB
-  // Search for a shape that entirely encloses a tile ring but doesn't intersect it
-  // @tileRing a (cw) mosaic ring
-  // Returns: id of enclosing shape or -1 if none found
-  function findEnclosingShape(tileRing) {
-    return -1;
-  }
-
-  function assignMosaicRing(tile, tileId) {
-    var shapeId = -1;
-    var ring = tile[0]; // cw ring
-    for (var i=0, n=ring.length; i<n; i++) {
-      shapeId = chooseShape(shapeId, getShapeId(ring[i]));
-    }
-    if (shapeId == -1) {
-      shapeId = findEnclosingShape(ring);
-    }
-    if (shapeId == -1) {
-      unassignedTiles.push(tileId);
-    } else {
-      tileGroups[shapeId].push(tileId);
-    }
-  }
-
-  function chooseShape(a, b) {
-    var shpId = a;
-    if (a == -1 || b > -1 && shapeWeights[a] < shapeWeights[b]) {
-      shpId = b;
-    }
-    return shpId;
-  }
-
-  function indexPolygon(shape, shapeId) {
-    // TODO: support other metrics than area
-    //       consider per-ring metrics
-    var weight = geom.getShapeArea(shape, arcs);
-    var cw = [], ccw = [], i, n;
-    shapeWeights[shapeId] = weight;
-    divide(shape, cw, ccw);
-    if (ccw.length > 0) {
-      shape = cw.concat(ccw);
-      internal.fixNestingErrors2(shape, arcs);
-    } else {
-      shape = cw;
-    }
-    for (i=0, n=shape.length; i<n; i++) {
-      indexRing(shape[i], shapeId);
-    }
-  }
-
-  function indexRing(ring, shapeId) {
-    for (var i=0, n=ring.length; i<n; i++) {
-      indexArc(ring[i], shapeId);
-    }
-  }
-
-  function indexArc(arcId, shapeId) {
-    var storedId = getShapeId(arcId);
-    if (storedId === -1 || chooseShape(shapeId, storedId) == shapeId) {
-      setShapeId(arcId, shapeId);
-    }
-  }
-
-  function getShapeId(arcId) {
-    var absId = absArcId(arcId);
-    // index is 1-based, 0 is null
-    return (absId == arcId ? fwdArcIndex : revArcIndex)[absId] - 1;
-  }
-
-  function setShapeId(arcId, shpId) {
-    var absId = absArcId(arcId);
-    (absId == arcId ? fwdArcIndex : revArcIndex)[absId] = shpId + 1;
-  }
-
+  lyr.data = new DataTable(records);
+  return lyr;
 };
 
-internal.extendShape = function(dest, src) {
-  if (src) {
-    for (var i=0, n=src.length; i<n; i++) {
-      dest.push(src[i]);
+internal.composeMosaicLayer = function(lyr, shapes2) {
+  var records = shapes2.map(function(shp, i) {
+    return {tile_id: i};
+  });
+  return utils.defaults({
+    shapes: shapes2,
+    data: new DataTable(records)
+  }, lyr);
+};
+
+internal.groupPolygons2 = function(lyr, getGroupId) {
+  return lyr.shapes.reduce(function(groups, shape, shapeId) {
+    var groupId = getGroupId(shapeId);
+    if (groupId in groups === false) {
+      groups[groupId] = [];
+    }
+    groups[groupId].push(shapeId);
+    return groups;
+  }, []);
+};
+
+internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
+  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
+  var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
+  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
+
+  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
+  var dissolvedShapes = groups.map(function(shapeIds) {
+    var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
+    if (opts.tiles) {
+      return tiles.reduce(function(memo, tile) {
+        return memo.concat(tile);
+      }, []);
+    }
+    return internal.dissolveTileGroup2(tiles, dissolve);
+  });
+  return dissolvedShapes;
+};
+
+internal.dissolveTileGroup2 = function(tiles, dissolve) {
+  var rings = [],
+      holes = [],
+      dissolved, tile;
+  for (var i=0, n=tiles.length; i<n; i++) {
+    tile = tiles[i];
+    rings.push(tile[0]);
+    if (tile.length > 1) {
+      holes = holes.concat(tile.slice(1));
     }
   }
+  dissolved = dissolve(rings.concat(holes));
+  if (dissolved.length > 1) {
+    // Commenting-out nesting order repair -- new method should prevent nesting errors
+    // dissolved = internal.fixNestingErrors(dissolved, arcs);
+  }
+  return dissolved.length > 0 ? dissolved : null;
 };
 
 
 api.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
+  if (opts.debug) {
+    internal.addIntersectionCuts(dataset, opts);
+    return;
+  }
   if (!opts.arcs) { // arcs option only removes unused arcs
     nodes = internal.addIntersectionCuts(dataset, opts);
     layers.forEach(function(lyr) {
@@ -14012,7 +14380,10 @@ api.cleanLayers = function(layers, dataset, opts) {
 };
 
 internal.cleanPolygonLayerGeometry = function(lyr, dataset, opts) {
-  lyr.shapes = internal.dissolvePolygons2_v1(lyr.shapes, dataset, opts);
+  var groups = lyr.shapes.map(function(shp, i) {
+    return [i];
+  });
+  lyr.shapes = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
 };
 
 // Remove duplicate points from multipoint geometries
@@ -15649,450 +16020,6 @@ function getDataFillCalculator(field, lyr, arcs, getNeighbors) {
 }
 
 
-function MosaicIndex(lyr, nodes, optsArg) {
-  var opts = optsArg || {};
-  var shapes = lyr.shapes;
-  var divide = internal.getHoleDivider(nodes);
-  var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
-
-  // map arc ids to tile ids
-  var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
-  // keep track of which tiles have been assigned to shapes
-  var fetchedTileIndex = new IndexIndex(mosaic.length);
-  // bidirection index of tile ids <=> shape ids
-  var tileShapeIndex = new TileShapeIndex(mosaic, opts);
-  // assign tiles to shapes
-  var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
-
-  this.mosaic = mosaic;
-  this.nodes = nodes; // kludge
-  this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
-  this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
-  // Assign shape ids to mosaic tile shapes.
-  shapes.forEach(function(shp, shapeId) {
-    var tileIds = shapeTiler.getTilesInShape(shp, shapeId);
-    tileShapeIndex.indexTileIdsByShapeId(shapeId, tileIds);
-  });
-
-  // ensure each tile is assigned to only one shape
-  if (opts.flat) {
-    tileShapeIndex.flatten();
-  }
-
-  // fill gaps
-  // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
-  this.removeGaps = function(gapTest) {
-    if (!opts.flat) {
-      error('MosaicIndex#removeGaps() should only be called with flat mosaic');
-    }
-    var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
-      var tile = mosaic[tileId];
-      return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
-    });
-    // find shape to assign gap tiles to
-    gapTileIds.forEach(assignTileToAdjacentShape);
-  };
-
-  this.getUnusedTiles = function() {
-    return getUnusedTileIds().map(tileIdToTile);
-  };
-
-  this.getTilesByShapeIds = function(shapeIds) {
-    return getTileIdsByShapeIds(shapeIds).map(tileIdToTile);
-  };
-
-  this.overlayShapes = function(shapes) {
-
-  };
-
-  function tileIdToTile(id, i) {
-    return mosaic[id];
-  }
-
-  function assignTileToAdjacentShape(tileId) {
-    var ring = mosaic[tileId][0];
-    var arcs = nodes.arcs;
-    var arcId, neighborShapeId, neighborTileId, arcLen;
-    var shapeId = -1, maxArcLen = 0;
-    for (var i=0; i<ring.length; i++) {
-      arcId = ring[i];
-      neighborTileId = arcTileIndex.getShapeIdByArcId(~arcId);
-      if (neighborTileId < 0) continue;
-      neighborShapeId = tileShapeIndex.getShapeIdByTileId(neighborTileId);
-      if (neighborShapeId < 0) continue;
-      arcLen = geom.getPathPerimeter([arcId], arcs);
-      if (arcLen > maxArcLen) {
-        shapeId = neighborShapeId;
-        maxArcLen = arcLen;
-      }
-    }
-    if (shapeId > -1) {
-      tileShapeIndex.addTileToShape(shapeId, tileId);
-    }
-  }
-
-  function getTileIdsByShapeIds(shapeIds) {
-    var uniqIds = [];
-    var tileId, tileIds, i, j;
-    for (i=0; i<shapeIds.length; i++) {
-      tileIds = tileShapeIndex.getTileIdsByShapeId(shapeIds[i]);
-      for (j=0; j<tileIds.length; j++) {
-        tileId = tileIds[j];
-        // uniqify tile ids (in case the shape contains overlapping rings)
-        if (fetchedTileIndex.hasId(tileId)) continue;
-        fetchedTileIndex.setId(tileId);
-        uniqIds.push(tileId);
-      }
-    }
-    // clearing this index allows duplicate tile ids between calls to this function
-    // (should not happen in a typical dissolve)
-    fetchedTileIndex.clearIds(uniqIds);
-    return uniqIds;
-  }
-}
-
-// Convert polygon shapes to tiles
-//
-function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
-  var visitedTileIndex = new IndexIndex(mosaic.length);
-  var divide = internal.getHoleDivider(nodes);
-  // temp vars
-  var currHoles; // arc ids of all holes in shape
-  var currShapeId;
-  var tilesInShape; // tile ids of tiles in shape
-  var ringIndex = new IndexIndex(nodes.arcs.size());
-  var holeIndex = new IndexIndex(nodes.arcs.size());
-
-  // return ids of tiles in shape
-  this.getTilesInShape = function(shp, shapeId) {
-    var cw = [], ccw = [], retn;
-    tilesInShape = [];
-    currHoles = [];
-    currShapeId = shapeId;
-    if (opts.no_holes) {
-      divide(shp, cw, ccw);
-      // ccw.forEach(internal.reversePath);
-      // cw = cw.concat(ccw);
-    } else {
-      // divide shape into rings and holes (splits self-intersecting rings)
-      // TODO: rewrite divide() -- it is a performance bottleneck and can convert
-      //   space-filling areas into ccw holes
-      divide(shp, cw, ccw);
-      ccw.forEach(procShapeHole);
-      holeIndex.setIds(currHoles);
-    }
-    cw.forEach(procShapeRing);
-    retn = tilesInShape;
-    // reset tmp vars, etc
-    tilesInShape = null;
-    holeIndex.clearIds(currHoles);
-    currHoles = null;
-    return retn;
-  };
-
-  function procShapeHole(path) {
-    currHoles = currHoles ? currHoles.concat(path) : path;
-  }
-
-  function procShapeRing(path) {
-    ringIndex.setIds(path);
-    procArcIds(path);
-    ringIndex.clearIds(path);
-    // allow overlapping rings to visit the same tiles
-    visitedTileIndex.clearIds(tilesInShape);
-  }
-
-  // ids: an array of arcIds
-  function procArcIds(ids) {
-    var tileIds = [], tileId;
-    for (var i=0, n=ids.length; i<n; i++) {
-      tileId = procRingArc(ids[i]);
-      if (tileId > -1) tileIds.push(tileId);
-    }
-    if (tileIds.length > 0) traverseFromTiles(tileIds);
-  }
-
-  function traverseFromTiles(tileIds) {
-    // breadth-first traversal, to prevent call stack overflow when there is
-    // a large number of tiles within a ring (due to many partially overlapping rings)
-    var arcIds = [];
-    for (var i=0, n=tileIds.length; i<n; i++) {
-      accumulateTraversibleArcIds(arcIds, mosaic[tileIds[i]]);
-    }
-    if (arcIds.length > 0) procArcIds(arcIds);
-  }
-
-  function accumulateTraversibleArcIds(ids, tile) {
-    var arcId, ring;
-    for (var j=0; j<tile.length; j++) {
-      ring = tile[j];
-      for (var i=0; i<ring.length; i++) {
-        arcId = ring[i];
-        if (arcIsTraversible(arcId)) {
-          ids.push(~arcId);
-        }
-      }
-    }
-  }
-
-  function arcIsTraversible(tileArc) {
-    var neighborArc = ~tileArc;
-    // don't cross boundary of the current ring or of any hole in the current shape
-    return !(holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc)  ||
-      ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc));
-  }
-
-  function procRingArc(arcId) {
-    var tileId = arcTileIndex.getShapeIdByArcId(arcId);
-    if (tileId == -1 || visitedTileIndex.hasId(tileId)) return -1;
-    visitedTileIndex.setId(tileId);
-    tilesInShape.push(tileId);
-    return tileId;
-  }
-}
-
-// Map arc ids to shape ids, assuming perfect topology
-// (an arcId maps to at most one shape)
-// Supports looking up a shape id using an arc id.
-function ShapeArcIndex(shapes, arcs) {
-  var n = arcs.size();
-  var fwdArcIndex = new Int32Array(n);
-  var revArcIndex = new Int32Array(n);
-  var shapeId;
-  utils.initializeArray(fwdArcIndex, -1);
-  utils.initializeArray(revArcIndex, -1);
-  shapes.forEach(onShape);
-
-  function onShape(shp, i) {
-    shapeId = i;
-    shp.forEach(onPart);
-  }
-  function onPart(path) {
-    var arcId;
-    for (var i=0, n=path.length; i<n; i++) {
-      arcId = path[i];
-      if (arcId < 0) {
-        revArcIndex[~arcId] = shapeId;
-      } else {
-        fwdArcIndex[arcId] = shapeId;
-      }
-    }
-  }
-
-  // returns -1 if shape has not been indexed
-  this.getShapeIdByArcId = function(arcId) {
-    var idx = absArcId(arcId);
-    if (idx >= n) return -1; // TODO: throw error (out-of-range id)
-    return arcId < 0 ? revArcIndex[idx] : fwdArcIndex[idx];
-  };
-}
-
-// Maps tile ids to shape ids (both are non-negative integers). Supports
-//    one-to-many mapping (a tile may belong to multiple shapes)
-// Also maps shape ids to tile ids. A shape may contain multiple tiles
-// Also supports 'flattening' -- removing one-to-many tile-shape mappings by
-//    removing all but one shape from a tile.
-// Supports one-to-many mapping
-function TileShapeIndex(mosaic, opts) {
-  // indexes for mapping tile ids to shape ids
-  var singleIndex = new Int32Array(mosaic.length);
-  utils.initializeArray(singleIndex, -1);
-  var multipleIndex = [];
-  // index that maps shape ids to tile ids
-  var shapeIndex = [];
-
-  this.getTileIdsByShapeId = function(id) {
-    return shapeIndex[id];
-  };
-
-  // assumes index has been flattened
-  this.getShapeIdByTileId = function(id) {
-    var shapeId = singleIndex[id];
-    return shapeId >= 0 ? shapeId : -1;
-  };
-
-  // return ids of all shapes that include a tile
-  this.getShapeIdsByTileId = function(id) {
-    var singleId = singleIndex[id];
-    if (singleId >= 0) {
-      return [singleId];
-    }
-    if (singleId == -1) {
-      return [];
-    }
-    return multipleIndex[id];
-  };
-
-  this.indexTileIdsByShapeId = function(shapeId, tileIds) {
-    // shapeIndex[shapeId] = tileIds;
-    shapeIndex[shapeId] = [];
-    for (var i=0; i<tileIds.length; i++) {
-      indexShapeIdByTileId(shapeId, tileIds[i]);
-    }
-  };
-
-  // remove many-to-one tile=>shape mappings
-  this.flatten = function() {
-    var c = 0;
-    multipleIndex.forEach(function(shapeIds, tileId) {
-      flattenStackedTile(tileId);
-    });
-    multipleIndex = [];
-  };
-
-  this.getUnusedTileIds = function() {
-    var ids = [];
-    for (var i=0, n=singleIndex.length; i<n; i++) {
-      if (singleIndex[i] == -1) ids.push(i);
-    }
-    return ids;
-  };
-
-  // used by gap fill; assumes that flatten() has been called
-  this.addTileToShape = function(shapeId, tileId) {
-    if (shapeId in shapeIndex === false || singleIndex[tileId] != -1) {
-      error('Internal error');
-    }
-    singleIndex[tileId] = shapeId;
-    shapeIndex[shapeId].push(tileId);
-  };
-
-  // add a shape id to a tile
-  function indexShapeIdByTileId(shapeId, tileId) {
-    var val = singleIndex[tileId];
-    if (val != -1 && opts.flat) {
-      return;
-    }
-    if (val == -1) {
-      singleIndex[tileId] = shapeId;
-    } else if (val == -2) {
-      multipleIndex[tileId].push(shapeId);
-    } else {
-      multipleIndex[tileId] = [val, shapeId];
-      singleIndex[tileId] = -2;
-    }
-    shapeIndex[shapeId].push(tileId);
-  }
-
-  function flattenStackedTile(tileId) {
-    // TODO: select the best shape (using some metric)
-    var shapeIds = multipleIndex[tileId];
-    // if (!shapeIds || shapeIds.length > 1 === false) error('flattening error');
-    var selectedId = shapeIds[0];
-    var shapeId;
-    singleIndex[tileId] = selectedId; // add shape to single index
-    // remove tile from other stacked shapes
-    for (var i=0; i<shapeIds.length; i++) {
-      shapeId = shapeIds[i];
-      if (shapeId != selectedId) {
-        shapeIndex[shapeId] = shapeIndex[shapeId].filter(tileTest);
-        if (shapeIndex[shapeId].length > 0 === false) {
-          // TODO: make sure to test the case where a shape becomes empty
-          // error("empty shape")
-        }
-      }
-    }
-
-    function tileTest(tileId2) {
-      return tileId != tileId2;
-    }
-  }
-
-}
-
-
-// Assumes that arcs do not intersect except at endpoints
-internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
-  opts = utils.extend({}, opts);
-  if (opts.field) {
-    opts.fields = [opts.field]; // support old "field" parameter
-  }
-  var getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
-  var groups = internal.groupPolygons2(lyr, getGroupId);
-  var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
-  var nodes = new NodeCollection(dataset.arcs, arcFilter);
-  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-  if (opts.mosaic) {
-    return internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
-  }
-  if (opts.arcs) {
-    return internal.getArcLayer(nodes.arcs, lyr.name);
-  }
-  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
-  var shapes2 = internal.dissolvePolygonGroups2(groups, mosaicIndex, opts);
-  return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
-};
-
-internal.getArcLayer = function(arcs, name) {
-  var records = [];
-  var lyr = {
-    geometry_type: 'polyline',
-    shapes: [],
-    name: name
-  };
-  for (var i=0, n=arcs.size(); i<n; i++) {
-    lyr.shapes.push([[i]]);
-    records.push({arc_id: i});
-  }
-  lyr.data = new DataTable(records);
-  return lyr;
-};
-
-internal.composeMosaicLayer = function(lyr, shapes2) {
-  var records = shapes2.map(function(shp, i) {
-    return {tile_id: i};
-  });
-  return utils.defaults({
-    shapes: shapes2,
-    data: new DataTable(records)
-  }, lyr);
-};
-
-internal.groupPolygons2 = function(lyr, getGroupId) {
-  return lyr.shapes.reduce(function(groups, shape, shapeId) {
-    var groupId = getGroupId(shapeId);
-    if (groupId in groups === false) {
-      groups[groupId] = [];
-    }
-    groups[groupId].push(shapeId);
-    return groups;
-  }, []);
-};
-
-internal.dissolvePolygonGroups2 = function(groups, mosaicIndex, opts) {
-  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
-  var dissolvedShapes = groups.map(function(shapeIds) {
-    var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
-    if (opts.tiles) {
-      return tiles.reduce(function(memo, tile) {
-        return memo.concat(tile);
-      }, []);
-    }
-    return internal.dissolveTileGroup2(tiles, dissolve);
-  });
-  return dissolvedShapes;
-};
-
-internal.dissolveTileGroup2 = function(tiles, dissolve) {
-  var rings = [],
-      holes = [],
-      dissolved, tile;
-  for (var i=0, n=tiles.length; i<n; i++) {
-    tile = tiles[i];
-    rings.push(tile[0]);
-    if (tile.length > 1) {
-      holes = holes.concat(tile.slice(1));
-    }
-  }
-  dissolved = dissolve(rings.concat(holes));
-  if (dissolved.length > 1) {
-    // Commenting-out nesting order repair -- new method should prevent nesting errors
-    // dissolved = internal.fixNestingErrors(dissolved, arcs);
-  }
-  return dissolved.length > 0 ? dissolved : null;
-};
-
-
 // Removes small gaps and all overlaps
 api.dissolve2 = function(layers, dataset, opts) {
   layers.forEach(internal.requirePolygonLayer);
@@ -16101,18 +16028,6 @@ api.dissolve2 = function(layers, dataset, opts) {
   T.stop('Add cuts');
   return layers.map(function(lyr) {
     return internal.dissolvePolygonLayer2(lyr, dataset, opts);
-  });
-};
-
-
-// Newest version, with gap and overlap repair
-api.dissolve2_v1 = function(layers, dataset, opts) {
-  layers.forEach(internal.requirePolygonLayer);
-  T.start();
-  var nodes = internal.addIntersectionCuts(dataset, opts);
-  T.stop('Add cuts');
-  return layers.map(function(lyr) {
-    return internal.dissolvePolygonLayer2_v1(lyr, dataset, opts);
   });
 };
 
@@ -22599,7 +22514,7 @@ internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj,
       p = proj(lng1, lat1),
       distSq;
   if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-  distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
+  distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
   points = points || [];
   // Bisect current segment if the projected midpoint deviates from original
   //   segment by more than the @interval parameter.
@@ -24573,9 +24488,6 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
-    } else if (name == 'dissolve2_v1') {
-      outputLayers = api.dissolve2_v1(targetLayers, targetDataset, opts);
-
     } else if (name == 'dots') {
       outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
 
@@ -25898,6 +25810,9 @@ internal.getOptionParser = function() {
       describe: 'remove unused arcs',
       type: 'flag'
     })
+    .option('debug', {
+      type: 'flag'
+    })
     .option('no-arc-dissolve', {
       type: 'flag' // no description
     })
@@ -25979,28 +25894,15 @@ internal.getOptionParser = function() {
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
-  parser.command('dissolve2_v1')
-    // .describe('merge adjacent polygons (repairs overlaps and gaps)')
-    .option('field', {}) // old arg handled by dissolve function
-    .option('fields', dissolveFieldsOpt)
-    .option('arcs', {type: 'flag'}) // debugging option
-    .option('calc', calcOpt)
-    .option('sum-fields', sumFieldsOpt)
-    .option('copy-fields', copyFieldsOpt)
-    .option('min-gap-area', minGapAreaOpt)
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
 
-  // for testing replacement for dissolve2
   parser.command('dissolve2')
     .describe('merge adjacent polygons (repairs overlaps and gaps)')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
-    .option('mosaic', {type: 'flag'}) // debugging option
-    .option('arcs', {type: 'flag'}) // debugging option
-    .option('tiles', {type: 'flag'}) // debugging option
+    // UPDATE: Use -mosaic command for debugging
+    //.option('mosaic', {type: 'flag'}) // debugging option
+    //.option('arcs', {type: 'flag'}) // debugging option
+    //.option('tiles', {type: 'flag'}) // debugging option
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)

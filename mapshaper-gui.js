@@ -1765,12 +1765,16 @@ function getShapePencil(arcs, ext) {
 }
 
 function protectIterForDrawing(iter, ext) {
-  var bounds;
+  var bounds, k;
   if (ext.scale() > 100) {
     // clip to rectangle when zoomed far in (canvas stops drawing shapes when
     // the coordinates become too large)
-    bounds = ext.getBounds().clone();
-    bounds.scale(1.1); // add a margin, to hide strokes along the edges
+    // scale the bbox to avoid large fp errors
+    // (affects projected datasets when zoomed very far in)
+    // k too large, long segments won't render; too small, segments will jump around
+    // TODO: consider converting to pixels before clipping
+    k = Math.pow(ext.scale(), 0.45);
+    bounds = ext.getBounds(k);
     iter = new internal.PointIter(internal.clipIterByBounds(iter, bounds));
   }
   return iter;
@@ -2222,7 +2226,8 @@ function MapNav(gui, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier * zoomScaleMultiplier),
+    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
+    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
         delta = e.direction > 0 ? k : 1 / k;
     if (disabled()) return;
     ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
@@ -2340,9 +2345,10 @@ function MapExtent(_position) {
     return this.getBounds().getTransform(viewBounds, true);
   };
 
-  this.getBounds = function() {
+  // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
+  this.getBounds = function(k) {
     if (!_contentBounds) return new Bounds();
-    return calcBounds(_cx, _cy, _scale);
+    return calcBounds(_cx, _cy, _scale / (k || 1));
   };
 
   // Update the extent of 'full' zoom without navigating the current view
@@ -4462,7 +4468,7 @@ function MshpMap(gui) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
       flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-      flags.union || flags.mosaic || flags.snap || false;
+      flags.union || flags.mosaic || flags.snap || flags.clean || false;
   }
 
   // Update map frame after user navigates the map in frame edit mode
