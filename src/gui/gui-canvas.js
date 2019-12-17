@@ -404,12 +404,16 @@ function getShapePencil(arcs, ext) {
 }
 
 function protectIterForDrawing(iter, ext) {
-  var bounds;
+  var bounds, k;
   if (ext.scale() > 100) {
     // clip to rectangle when zoomed far in (canvas stops drawing shapes when
     // the coordinates become too large)
-    bounds = ext.getBounds().clone();
-    bounds.scale(1.1); // add a margin, to hide strokes along the edges
+    // scale the bbox to avoid large fp errors
+    // (affects projected datasets when zoomed very far in)
+    // k too large, long segments won't render; too small, segments will jump around
+    // TODO: consider converting to pixels before clipping
+    k = Math.pow(ext.scale(), 0.45);
+    bounds = ext.getBounds(k);
     iter = new internal.PointIter(internal.clipIterByBounds(iter, bounds));
   }
   return iter;

@@ -79,9 +79,10 @@ function MapExtent(_position) {
     return this.getBounds().getTransform(viewBounds, true);
   };
 
-  this.getBounds = function() {
+  // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
+  this.getBounds = function(k) {
     if (!_contentBounds) return new Bounds();
-    return calcBounds(_cx, _cy, _scale);
+    return calcBounds(_cx, _cy, _scale / (k || 1));
   };
 
   // Update the extent of 'full' zoom without navigating the current view

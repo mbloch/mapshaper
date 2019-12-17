@@ -245,7 +245,7 @@ function MshpMap(gui) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
       flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-      flags.union || flags.mosaic || flags.snap || false;
+      flags.union || flags.mosaic || flags.snap || flags.clean || false;
   }
 
   // Update map frame after user navigates the map in frame edit mode

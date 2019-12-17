@@ -77,7 +77,8 @@ function MapNav(gui, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier * zoomScaleMultiplier),
+    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
+    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
         delta = e.direction > 0 ? k : 1 / k;
     if (disabled()) return;
     ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
