@@ -63,7 +63,7 @@ internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
+  mosaicIndex.removeGaps(internal.getGapFillTest2(lyr, dataset, opts));
 
   var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
   var dissolvedShapes = groups.map(function(shapeIds) {

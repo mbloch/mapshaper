@@ -4,6 +4,7 @@ api.filterFields = function(lyr, names) {
   var table = lyr.data;
   names = names || [];
   internal.requireDataFields(table, names);
+  if (!table) return;
   utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
 

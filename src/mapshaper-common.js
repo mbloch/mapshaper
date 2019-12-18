@@ -233,6 +233,7 @@ internal.requireDataField = function(obj, field, msg) {
 };
 
 internal.requireDataFields = function(table, fields) {
+  if (!fields || !fields.length) return;
   if (!table) {
     stop("Missing attribute data");
   }

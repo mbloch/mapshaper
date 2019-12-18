@@ -33,7 +33,6 @@ mapshaper-lines
 mapshaper-merge-files
 mapshaper-merge-layers
 mapshaper-mosaic
-mapshaper-overlay
 mapshaper-points
 mapshaper-point-grid
 mapshaper-polygon-grid
@@ -253,9 +252,6 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog = null;
       }
       return internal.writeFiles(outputFiles, opts, done);
-
-    } else if (name == 'overlay') {
-      outputFiles = internal.overlay(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'point-grid') {
       outputLayers = [api.pointGrid(targetDataset, opts)];

@@ -29,7 +29,7 @@ internal.findSegmentIntersections = (function() {
   }
 
   return function(arcs, optArg) {
-    var opts = optArg || {},
+    var opts = utils.extend({}, optArg),
         bounds = arcs.getBounds(),
         // TODO: handle spherical bounds
         spherical = !arcs.isPlanar() &&
@@ -40,6 +40,12 @@ internal.findSegmentIntersections = (function() {
         stripeSizes = new Uint32Array(stripeCount),
         stripeId = stripeCount > 1 && yrange > 0 ? multiStripeId : singleStripeId,
         i, j;
+
+    if (opts.tolerance >= 0 === false) {
+      // by default, use a small tolerance when detecting segment intersections
+      // (intended to overcome the effects of floating point rounding errors in geometrical formulas)
+      opts.tolerance = internal.getHighPrecisionSnapInterval(bounds.toArray());
+    }
 
     function multiStripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);

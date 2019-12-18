@@ -7,15 +7,6 @@ internal.getVertexCountTest = function(minVertices, arcs) {
   };
 };
 
-internal.getSliverTest = function(arcs) {
-  var maxSliverArea = internal.calcMaxSliverArea(arcs);
-  return function(path) {
-    // TODO: more sophisticated metric, perhaps considering shape
-    var area = geom.getPlanarPathArea(path, arcs);
-    return Math.abs(area) <= maxSliverArea;
-  };
-};
-
 internal.getMinAreaTest = function(areaParam, dataset, opts) {
   var arcs = dataset.arcs;
   var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
