@@ -6,11 +6,30 @@ api.lines = function(lyr, dataset, opts) {
     return internal.pointsToLines(lyr, dataset, opts);
   } else if (opts.segments) {
     return [internal.convertShapesToSegments(lyr, dataset)];
+  } else if (opts.arcs) {
+    return [internal.convertShapesToArcs(lyr, dataset)];
   } else if (lyr.geometry_type == 'polygon') {
     return internal.polygonsToLines(lyr, dataset.arcs, opts);
   } else {
     internal.requirePolygonLayer(lyr, "Command requires a polygon or point layer");
   }
+};
+
+internal.convertShapesToArcs = function(lyr, dataset) {
+  var arcs = dataset.arcs;
+  var test = internal.getArcPresenceTest(lyr.shapes, arcs);
+  var records = [];
+  var shapes = [];
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    if (!test(i)) continue;
+    records.push({arcid: i});
+    shapes.push([[i]]);
+  }
+  return {
+    geometry_type: 'polyline',
+    data: new DataTable(records),
+    shapes: shapes
+  };
 };
 
 internal.convertShapesToSegments = function(lyr, dataset) {

@@ -722,7 +722,11 @@ internal.getOptionParser = function() {
     .option('where', whereOpt2)
     .option('each', eachOpt2)
     .option('segments', {
-      describe: 'convert vectors to segments, for debugging',
+      describe: 'convert paths to segments, for debugging',
+      type: 'flag'
+    })
+    .option('arcs', {
+      describe: 'convert paths to arcs, for debugging',
       type: 'flag'
     })
     .option('groupby', {
@@ -747,15 +751,6 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
-  parser.command('overlay')
-    // .describe('convert polygons to polylines along shared edges')
-    .option('source', {
-      DEFAULT: true,
-      describe: 'file or layer containing overlay polygons'
-    })
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
