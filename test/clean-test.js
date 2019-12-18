@@ -86,6 +86,113 @@ describe('mapshaper-clean.js', function () {
 
   })
 
+  describe('OGC Simple Features tests', function () {
+
+    it('invalid holes are not created', function (done) {
+      var cmd = '-i test/data/features/clean/ex11_ogc.geojson -filter-fields -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.equal(json.geometries[0].type, 'MultiPolygon');
+        assert.equal(json.geometries[0].coordinates.length, 2);
+        assert.equal(json.geometries.length, 1);
+        done();
+      });
+    })
+
+    it('polygon rings that share an edge are merged', function (done) {
+      var cmd = '-i test/data/features/clean/ex12_ogc.geojson -filter-fields -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        var target = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'Polygon',
+            coordinates: [[[5,2],[3,1],[1,2],[1,4],[3,5],[5,4],[7,5],[9,4],[9,2],[7,1],[5,2]]]
+          }]
+        }
+        assert.deepEqual(json, target)
+        done();
+      });
+    })
+
+    it('cuts are removed', function (done) {
+      var cmd = '-i test/data/features/clean/ex13_ogc.json -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        var target = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'MultiPolygon',
+            coordinates: [
+              [[[5,3],[6,3],[6,1],[4,1],[4,3],[5,3]]],
+              [[[2,3],[3,3],[3,1],[1,1],[1,3],[2,3]]]]
+          }]
+        }
+        assert.deepEqual(json, target)
+        done();
+      });
+    })
+
+    it('spikes are removed', function (done) {
+      var cmd = '-i test/data/features/clean/ex14_ogc.json -filter-fields -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        var target = {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: 'MultiPolygon',
+            coordinates: [
+              [[[5,3],[6,3],[6,1],[4,1],[4,3],[5,3]]],
+              [[[2,3],[3,3],[3,1],[1,1],[1,3],[2,3]]]]
+          }]
+        }
+        assert.deepEqual(json, target)
+        done();
+      });
+    })
+
+    it('holes cannot touch outer ring', function (done) {
+      var cmd = '-i test/data/features/clean/ex15_ogc.json -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.equal(json.geometries[0].type, 'MultiPolygon');
+        assert.equal(json.geometries[0].coordinates.length, 4);
+        done();
+      });
+    })
+
+   it('holes cannot touch outer ring2', function (done) {
+      var cmd = '-i test/data/features/clean/ex16_ogc.json -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.equal(json.geometries[0].type, 'Polygon');
+        assert.equal(json.geometries[0].coordinates.length, 1); // no holes
+        done();
+      });
+    })
+
+    it('holes cannot touch outer ring3', function (done) {
+      var cmd = '-i test/data/features/clean/ex17_ogc.json -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.equal(json.geometries[0].type, 'MultiPolygon');
+        assert.equal(json.geometries[0].coordinates.length, 2);
+        done();
+      });
+    })
+
+    it('a polygon can not have two lobes connected by a linear portion', function (done) {
+      var cmd = '-i test/data/features/clean/ex19_ogc.json -clean -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.equal(json.geometries[0].type, 'MultiPolygon');
+        assert.equal(json.geometries[0].coordinates.length, 2);
+        done();
+      });
+    })
+
+  })
+
   describe('clean arcs', function () {
     it('removes unused arcs', function () {
       var arcs = [[[0, 0], [1, 0]], [[0, 1], [1, 1]], [[0, 2], [1, 2]], [[0, 3], [1, 3]]];
