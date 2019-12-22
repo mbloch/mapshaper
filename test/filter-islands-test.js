@@ -3,6 +3,7 @@ var assert = require('assert'),
 
 describe('mapshaper-filter-islands.js', function () {
 
+
   it ('-filter-islands should not remove donut-hole polygons', function(done) {
     //       e
     //      / \

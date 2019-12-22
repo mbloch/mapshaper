@@ -5,10 +5,125 @@ var assert = require('assert'),
     dissolve2 = api.dissolve2,
     dissolvePolygons = function(lyr, arcs, opts) {
       // wrapper for bw compatibility with tests
-      return api.internal.dissolvePolygonLayer2(lyr, {arcs: arcs}, opts);
+      return api.internal.dissolvePolygonLayer2(lyr, {arcs: arcs, layers: [lyr], info: {}}, opts);
     };
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
+
+  describe('gap-fill-area= option tests', function () {
+
+    function test(input, args, expect, done) {
+      var expectArray = Array.isArray(expect);
+      var cmd = '-i in.json -dissolve2 ' + args + ' -o out.json';
+      api.applyCommands(cmd, {'in.json': input}, function(err, output) {
+        var out = JSON.parse(output['out.json']);
+        var result = out.geometries || out.features;
+        if (!expectArray) {
+          assert.equal(result.length, 1);
+          result = result[0];
+        }
+        assert.deepEqual(result, expect);
+        done();
+      });
+    }
+
+    it('dissolves cw ring inside another cw ring', function (done) {
+      // Fig. 14
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]]
+        }]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]]]
+      };
+      test(input, '', expect, done);
+    })
+
+    it('dissolving single polygon preserves hole', function (done) {
+      // Fig. 14
+      var input = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]], [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]], [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]
+      };
+      test(input, '', expect, done);
+    })
+
+    it('dissolving single polygon with gap-fill-area=<area> removes hole', function (done) {
+      // Fig. 14
+      var input = {
+        type: 'Polygon',
+        coordinates: [[[0, 100], [0, 103], [3, 103], [3, 100], [0, 100]],  // y-coord is kludge to prevent lat-long detection
+          [[1, 101], [2, 101], [2, 102], [1, 102], [1, 101]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 100], [0, 103], [3, 103], [3, 100], [0,100]]]
+      };
+      test(input, 'gap-fill-area=1.1', expect, done);
+    })
+
+    it('gap-fill-area=<area> supports units', function(done) {
+      // Fig. 14
+      var input = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 13], [3, 13], [3, 0], [0, 0]],
+          [[1, 1], [1.02, 1], [1.02, 1.02], [1, 1.02], [1, 1]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 13], [3, 13], [3, 0], [0, 0]]]
+      };
+      test(input, 'gap-fill-area=10km2', expect, done);
+    })
+
+
+    it('dissolving single polygon with gap-fill-area=<smaller area> retains hole', function (done) {
+      // Fig. 14
+      var input = {
+        type: 'Polygon',
+        coordinates: [[[0, 100], [0, 103], [3, 103], [3, 100], [0, 100]],  // y-coord is kludge to prevent lat-long detection
+          [[1, 101], [2, 101], [2, 102], [1, 102], [1, 101]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 100], [0, 103], [3, 103], [3, 100], [0,100]],
+          [[1, 101], [2, 101], [2, 102], [1, 102], [1, 101]]]
+      };
+      test(input, 'gap-fill-area=0.9 sliver-control=0', expect, done);
+    })
+
+
+    it('donut and hole dissolve cleanly', function (done) {
+      // Fig. 14
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]], [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[1, 2], [2, 2], [2, 1], [1, 1], [1, 2]]] // rotated relative to containing hole
+        }]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]]]
+      };
+      test(input, '', expect, done);
+    })
+  })
+
 
   it('Fix: dissolving preserves simplification', function(done) {
     var input = {
@@ -48,34 +163,34 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
         })
     })
 
-    console.log('TODO: fix dissolve2-test.js');
-    // it('Hole-in-hole is dissolved', function(done) {
-    //   var input = {
-    //     type: 'GeometryCollection',
-    //     geometries: [
-    //       {
-    //         type: 'Polygon',
-    //         coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]], [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]
-    //       }, {
-    //         type: 'Polygon',
-    //         coordinates: [[[-1,-1], [-1, 4], [4, 4], [4, -1], [-1, -1]], [[1.1, 1.1], [1.9, 1.1], [1.9, 1.9], [1.1, 1.9], [1.1, 1.1]]]
-    //       }
-    //     ]
-    //   };
+    // see test file dissolve2/ex1.json
+    it('Space-enclosing rings take precedence over holes in areas of overlap', function(done) {
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [
+          {
+            type: 'Polygon',
+            coordinates: [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]], [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]
+          }, {
+            type: 'Polygon',
+            coordinates: [[[-1,-1], [-1, 4], [4, 4], [4, -1], [-1, -1]], [[1.1, 1.1], [1.9, 1.1], [1.9, 1.9], [1.1, 1.9], [1.1, 1.1]]]
+          }
+        ]
+      };
 
-    //   var target = {
-    //     type: 'Polygon',
-    //     coordinates: [[[-1,-1], [-1, 4], [4, 4], [4, -1], [-1, -1]],  [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]
-    //   };
+      var target = {
+        type: 'Polygon',
+        coordinates: [[[-1,-1], [-1, 4], [4, 4], [4, -1], [-1, -1]],  [[1.1, 1.1], [1.9, 1.1], [1.9, 1.9], [1.1, 1.9], [1.1, 1.1]]]
+      };
 
-    //   api.applyCommands('-i input.json -dissolve2 -o out.json',
-    //     {'input.json': input}, function(err, output) {
-    //       var json = JSON.parse(output['out.json']);
-    //       assert.deepEqual(json.geometries[0], target);
-    //       done();
-    //     })
+      api.applyCommands('-i input.json -dissolve2 gap-fill-area=0 -o out.json',
+        {'input.json': input}, function(err, output) {
+          var json = JSON.parse(output['out.json']);
+          assert.deepEqual(json.geometries[0], target);
+          done();
+        })
 
-    // })
+    })
 
 
     it('Smallest enclosing ring is found in atypical case', function(done) {

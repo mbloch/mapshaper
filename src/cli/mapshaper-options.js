@@ -30,8 +30,13 @@ internal.getOptionParser = function() {
         type: 'distance'
       },
       minGapAreaOpt = {
-        describe: 'smaller gaps than this are filled (default is small)',
+        old_alias: 'min-gap-area',
+        describe: 'threshold for filling gaps, e.g. 1sqkm (default is small)',
         type: 'area'
+      },
+      sliverControlOpt = {
+        describe: 'boost gap-fill-area of slivers (0-1, default is 1)',
+        type: 'number'
       },
       calcOpt = {
         describe: 'use a JS expression to aggregate data values'
@@ -368,8 +373,9 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('clean')
-    .describe('repairs abnormal geometry, including polygon overlaps and small gaps')
-    .option('min-gap-area', minGapAreaOpt)
+    .describe('fixes geometry issues, including polygon overlaps and gaps')
+    .option('gap-fill-area', minGapAreaOpt)
+    .option('sliver-control', sliverControlOpt)
     .option('snap-interval', snapIntervalOpt)
     .option('no-snap', noSnapOpt)
     .option('allow-empty', {
@@ -482,7 +488,8 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
-    .option('min-gap-area', minGapAreaOpt)
+    .option('gap-fill-area', minGapAreaOpt)
+    .option('sliver-control', sliverControlOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
@@ -600,11 +607,15 @@ internal.getOptionParser = function() {
     .describe('remove small polygon rings')
     .option('min-area', {
       type: 'area',
-      describe: 'remove small-area rings (sq meters or projected units)'
+      describe: 'area threshold (e.g. 2sqkm)'
+    })
+    .option('sliver-control', {
+      describe: 'boost area threshold of slivers (0-1, default is 1)',
+      type: 'number'
     })
     .option('weighted', {
+      // describe: 'multiply min-area by Polsby-Popper compactness (0-1)'
       type: 'flag',
-      describe: 'multiply min-area by Polsby-Popper compactness (0-1)'
     })
     /*
     .option('remove-empty', {
@@ -680,7 +691,7 @@ internal.getOptionParser = function() {
       type: 'strings'
     })
     .option('interpolate', {
-      describe: '(polygon-polygon join) (comma-sep.) area-interpolated numeric fields',
+      describe: '(polygon-polygon join) (comma-sep.) area-interpolated fields',
       type: 'strings'
     })
     .option('point-method', {

@@ -39,16 +39,20 @@ function MosaicIndex(lyr, nodes, optsArg) {
 
   // fill gaps
   // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
-  this.removeGaps = function(gapTest) {
+  this.removeGaps = function(filter) {
     if (!opts.flat) {
-      error('MosaicIndex#removeGaps() should only be called with flat mosaic');
+      error('MosaicIndex#removeGaps() should only be called with a flat mosaic');
     }
-    var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
+    var remainingIds = tileShapeIndex.getUnusedTileIds();
+    var filledIds = remainingIds.filter(function(tileId) {
       var tile = mosaic[tileId];
-      return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
+      return filter(tile[0]); // test tile ring, ignoring any holes (does this matter?)
     });
-    // find shape to assign gap tiles to
-    gapTileIds.forEach(assignTileToAdjacentShape);
+    filledIds.forEach(assignTileToAdjacentShape);
+    return {
+      removed: filledIds.length,
+      remaining: remainingIds.length - filledIds.length
+    };
   };
 
   this.getUnusedTiles = function() {

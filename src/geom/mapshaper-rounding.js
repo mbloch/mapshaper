@@ -30,6 +30,7 @@ internal.setCoordinatePrecision = function(dataset, precision) {
   return dataset;
 };
 
+// inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
 utils.getRoundingFunction = function(inc) {
   if (!utils.isNumber(inc) || inc === 0) {
     error("Rounding increment must be a non-zero number.");
@@ -43,4 +44,8 @@ utils.getRoundingFunction = function(inc) {
     // return Math.round(x / inc) * inc;
     // return Math.round(x * inv) * inc;
   };
+};
+
+utils.roundToSignificantDigits = function(n, d) {
+  return +n.toPrecision(d);
 };

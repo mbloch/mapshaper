@@ -153,3 +153,11 @@ internal.convertFourSides = function(opt, crs, bounds) {
     return internal.convertIntervalParam(opt, crs);
   });
 };
+
+
+// Convert an area measure to a label in sqkm or sqm
+internal.getAreaLabel = function(area, crs) {
+  var sqm = crs && crs.to_meter ? area * crs.to_meter * crs.to_meter : area;
+  var sqkm = sqm / 1e6;
+  return sqkm < 0.01 ? Math.round(sqm) + ' sq meter' : sqkm + ' sq km';
+};

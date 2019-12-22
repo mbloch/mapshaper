@@ -1,47 +1,85 @@
 /* @requires mapshaper-polygon-geom */
 
-// This test underweights rings that are less compact
-// It uses a compromise metric that may not detect enough gaps in some datasets
-// and may be too aggressive in others
-internal.getSliverTest2 = function(lyr, arcs) {
-  var values = [];
-  var compactness = geom.calcPolsbyPopperCompactness; // geom.calcSchwartzbergCompactness //
-  internal.editShapes(lyr.shapes, function(path) {
-    var val = geom.getPathArea(path, arcs);
-    if (val > 0) values.push(val);
-  });
-  utils.genericSort(values, true);
-  var n = Math.floor(Math.pow(values.length, 0.6) - 1);
-  var nth = values[n];
-  var threshold = nth / 10;
-  // console.log("values:", values.length, "n:", n, "thresh:", threshold, 'nth:', nth, 'smallest:', values[0])
 
+// Assumes lyr is a polygon layer
+internal.getSliverFilter = function(lyr, dataset, opts) {
+  var areaArg = opts.min_gap_area || opts.min_area || opts.gap_fill_area;
+  if (+areaArg == 0) {
+    return {
+      filter: function() {return false;}, // don't fill any gaps
+      threshold: 0
+    };
+  }
+  var sliverControl = opts.sliver_control >= 0 ? opts.sliver_control : 0; // 0 is default
+  var crs = internal.getDatasetCRS(dataset);
+  var threshold = areaArg ?
+      internal.convertAreaParam(areaArg, crs) :
+      internal.getDefaultSliverThreshold(lyr, dataset.arcs);
+  var filter = sliverControl > 0 ?
+      internal.getSliverTest(lyr, dataset.arcs, threshold, sliverControl) :
+      internal.getMinAreaTest(threshold, dataset);
+  var label = internal.getSliverLabel(internal.getAreaLabel(threshold, crs), sliverControl > 0);
+  return {
+    threshold: threshold,
+    filter: filter,
+    label: label
+  };
+};
+
+internal.getSliverLabel = function(areaStr, variable) {
+  if (variable) {
+    areaStr = areaStr.replace(' ', '+ ') + ' variable';
+  }
+  return areaStr + ' threshold';
+};
+
+internal.getMinAreaTest = function(minArea, dataset) {
+  var pathArea = dataset.arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  return function(path) {
+    var area = pathArea(path, dataset.arcs);
+    return Math.abs(area) < minArea;
+  };
+};
+
+internal.getSliverTest = function(lyr, arcs, threshold, strength) {
+  if (strength >= 0 === false) {
+    strength = 1; // default is 1 (full-strength)
+  }
+  if (strength > 1 || threshold > 0 === false) {
+    error('Invalid parameter');
+  }
+  var k = Math.sqrt(strength); // more sensible than linear weighted avg.
   return function(ring) {
     var area = geom.getPathArea(ring, arcs);
-    var val = internal.getCompactnessAdjustedPathArea(ring, arcs, compactness);
-    return val < threshold;
+    var perim = geom.getPathPerimeter(ring, arcs);
+    var compactness = geom.calcPolsbyPopperCompactness(area, perim);
+    var effectiveArea = area * (k * compactness + 1 - k);
+    return Math.abs(effectiveArea) < threshold;
   };
 };
 
-
-internal.getCompactnessAdjustedPathArea = function(path, arcs, calcCompactness) {
-  var area = geom.getPathArea(path, arcs);
-  var perim = geom.getPathPerimeter(path, arcs);
-  var compactness = calcCompactness(area, perim);
-  return Math.abs(area * compactness);
-};
-
-
-// This test relies on segment length, which can cause relative large-area rings
-// to be identified as slivers in layers that contain segments that are long relative
-// to polygon area.
-internal.getSliverTest = function(arcs) {
-  var maxSliverArea = internal.calcMaxSliverArea(arcs);
-  return function(path) {
-    // TODO: more sophisticated metric, perhaps considering shape
-    var area = geom.getPlanarPathArea(path, arcs);
-    return Math.abs(area) <= maxSliverArea;
-  };
+internal.getDefaultSliverThreshold = function(lyr, arcs) {
+  var ringCount = 0;
+  var calcLen = arcs.isPlanar() ? geom.distance2D : geom.greatCircleDistance;
+  var avgSegLen = 0;
+  var segCount = 0;
+  internal.editShapes(lyr.shapes, function(path) {
+    ringCount++;
+    internal.forEachSegmentInPath(path, arcs, onSeg);
+  });
+  var segPerRing = segCount / ringCount;
+  var complexityFactor = Math.pow(segPerRing, 0.75) / 50;
+  var threshold = avgSegLen * avgSegLen * complexityFactor;
+  // Base the area threshold on average segment length, but increase the threshold for high-detail datasets
+  // and decrease it for low-detail datasets (using segments per ring as a measure of detail).
+  // round for display
+  threshold = utils.roundToSignificantDigits(threshold, 2);
+  return threshold;
+  function onSeg(i, j, xx, yy) {
+    var len = calcLen(xx[i], yy[i], xx[j], yy[j]);
+    segCount++;
+    avgSegLen += (len - avgSegLen) / segCount;
+  }
 };
 
 // Calculate an area threshold based on the average segment length,

@@ -12,9 +12,10 @@ api.filterSlivers = function(lyr, dataset, opts) {
   return internal.filterSlivers(lyr, dataset, opts);
 };
 
-internal.filterSlivers = function(lyr, dataset, opts) {
-  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset, opts) :
-    internal.getSliverTest(dataset.arcs);
+internal.filterSlivers = function(lyr, dataset, optsArg) {
+  var opts = utils.extend({sliver_control: 1}, optsArg);
+  var filterData = internal.getSliverFilter(lyr, dataset, opts);
+  var ringTest = filterData.filter;
   var removed = 0;
   var pathFilter = function(path, i, paths) {
     if (ringTest(path)) {
@@ -24,13 +25,15 @@ internal.filterSlivers = function(lyr, dataset, opts) {
   };
 
   internal.editShapes(lyr.shapes, pathFilter);
-  message(utils.format("Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
+  message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
   return removed;
 };
 
 internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
+  var threshold = internal.getDefaultSliverThreshold(lyr, arcs);
+  // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
+  var ringTest = internal.getSliverTest(lyr, arcs, threshold);
   var flags = new Uint8Array(arcs.size());
-  var ringTest = internal.getSliverTest(arcs);
   var removed = 0;
   var pathFilter = function(path) {
     var prevArcs = 0,

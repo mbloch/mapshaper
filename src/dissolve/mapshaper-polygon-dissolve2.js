@@ -6,7 +6,7 @@ mapshaper-data-aggregation
 mapshaper-ring-nesting
 mapshaper-polygon-mosaic
 mapshaper-mosaic-index
-mapshaper-gaps
+mapshaper-slivers
 */
 
 
@@ -21,7 +21,6 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   var shapes2 = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
-
 
 internal.getArcLayer = function(arcs, name) {
   var records = [];
@@ -59,12 +58,20 @@ internal.groupPolygons2 = function(lyr, getGroupId) {
   }, []);
 };
 
+internal.getGapRemovalMessage = function(removed, retained, areaLabel) {
+  var msg;
+  if (removed > 0 === false) return '';
+  return utils.format('Closed %,d / %,d gap%s using %s',
+      removed, removed + retained, utils.pluralSuffix(removed), areaLabel);
+};
+
 internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-  mosaicIndex.removeGaps(internal.getGapFillTest2(lyr, dataset, opts));
-
+  var sliverOpts = utils.extend({sliver_control: 1}, opts);
+  var filterData = internal.getSliverFilter(lyr, dataset, sliverOpts);
+  var cleanupData = mosaicIndex.removeGaps(filterData.filter);
   var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
   var dissolvedShapes = groups.map(function(shapeIds) {
     var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
@@ -75,6 +82,8 @@ internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
     }
     return internal.dissolveTileGroup2(tiles, dissolve);
   });
+  var gapMessage = internal.getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
+  if (gapMessage) message(gapMessage);
   return dissolvedShapes;
 };
 

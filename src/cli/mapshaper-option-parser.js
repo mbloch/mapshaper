@@ -357,7 +357,7 @@ function CommandParser() {
 
   function findOptionDefn(name, cmdDef) {
     return utils.find(cmdDef.options, function(o) {
-      return o.name === name || o.alias === name;
+      return o.name === name || o.alias === name || o.old_alias === name;
     });
   }
 }
@@ -409,7 +409,7 @@ function CommandOptions(name) {
   };
 
   this.option = function(name, opts) {
-    opts = opts || {}; // accept just a name -- some options don't need properties
+    opts = utils.extend({}, opts); // accept just a name -- some options don't need properties
     if (!utils.isString(name) || !name) error("Missing option name");
     if (!utils.isObject(opts)) error("Invalid option definition:", opts);
     // default option -- assign unnamed argument to this option

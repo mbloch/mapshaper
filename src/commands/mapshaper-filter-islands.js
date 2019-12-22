@@ -1,33 +1,40 @@
 /* @requires
 mapshaper-filter,
 mapshaper-shape-utils
-mapshaper-path-filters
+mapshaper-slivers
 */
 
-api.filterIslands = function(lyr, dataset, opts) {
+api.filterIslands = function(lyr, dataset, optsArg) {
+  var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
   var arcs = dataset.arcs;
   var removed = 0;
+  var filter;
   if (lyr.geometry_type != 'polygon') {
     return;
   }
-
-
-  if (opts.min_area || opts.min_vertices) {
-    if (opts.min_area) {
-      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset, opts));
-    }
-    if (opts.min_vertices) {
-      removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
-    }
-    if (opts.remove_empty) {
-      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
-    }
-    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
-  } else {
+  if (!opts.min_area && !opts.min_vertices) {
     message("Missing a criterion for filtering islands; use min-area or min-vertices");
+    return;
   }
+
+  if (opts.min_area) {
+    filter = internal.getSliverFilter(lyr, dataset, opts).filter;
+  } else {
+    filter = internal.getVertexCountTest(opts.min_vertices, arcs);
+  }
+  removed += internal.filterIslands(lyr, arcs, filter);
+  if (opts.remove_empty) {
+    api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+  }
+  message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
 };
 
+internal.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
+  };
+};
 
 internal.filterIslands = function(lyr, arcs, ringTest) {
   var removed = 0;
