@@ -32,7 +32,7 @@ internal.filterSlivers = function(lyr, dataset, optsArg) {
 internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
   var threshold = internal.getDefaultSliverThreshold(lyr, arcs);
   // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
-  var ringTest = internal.getSliverTest(lyr, arcs, threshold);
+  var ringTest = internal.getSliverTest(arcs, threshold, 1);
   var flags = new Uint8Array(arcs.size());
   var removed = 0;
   var pathFilter = function(path) {

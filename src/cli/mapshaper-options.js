@@ -31,7 +31,7 @@ internal.getOptionParser = function() {
       },
       minGapAreaOpt = {
         old_alias: 'min-gap-area',
-        describe: 'threshold for filling gaps, e.g. 1sqkm (default is small)',
+        describe: 'threshold for filling gaps, e.g. 1.5km2 (default is small)',
         type: 'area'
       },
       sliverControlOpt = {
@@ -591,7 +591,7 @@ internal.getOptionParser = function() {
     .describe('remove small detached polygon rings (islands)')
     .option('min-area', {
       type: 'area',
-      describe: 'remove small-area islands (sq meters or projected units)'
+      describe: 'remove small-area islands (e.g. 10km2)'
     })
     .option('min-vertices', {
       type: 'integer',

@@ -159,5 +159,5 @@ internal.convertFourSides = function(opt, crs, bounds) {
 internal.getAreaLabel = function(area, crs) {
   var sqm = crs && crs.to_meter ? area * crs.to_meter * crs.to_meter : area;
   var sqkm = sqm / 1e6;
-  return sqkm < 0.01 ? Math.round(sqm) + ' sq meter' : sqkm + ' sq km';
+  return sqkm < 0.01 ? Math.round(sqm) + ' m2' : sqkm + ' km2';
 };

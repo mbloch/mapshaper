@@ -1,3 +1,10 @@
+v0.4.148
+* Added sliver-control=[0-1] option to -clean -dissolve2 and -filter-slivers commands, for variable sliver control.
+* Made sliver-control=1 the default value for these commands.
+* Tweaked the default area threshold for gap/sliver removal to use a larger threshold for more detailed datasets (detail is estimated using average segments per ring).
+* Changed name of min-gap-area option to gap-fill-area (original name also works).
+* Added tests of -clean command polygon output to verify OGC Simple Features compatibility (output is compatible).
+
 v0.4.147
 * Improved robustness of path intersection (used by many commands, including -clean -dissolve2 -clip -erase -union).
 
