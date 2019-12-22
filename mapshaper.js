@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.147';
+VERSION = '0.4.148';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1720,6 +1720,7 @@ internal.requireDataField = function(obj, field, msg) {
 };
 
 internal.requireDataFields = function(table, fields) {
+  if (!fields || !fields.length) return;
   if (!table) {
     stop("Missing attribute data");
   }
@@ -6094,6 +6095,8 @@ internal.findProjLibs = function(str) {
   return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
 };
 
+
+
 internal.looksLikeInitString = function(str) {
   return /^(esri|epsg|nad83|nad27):[0-9]+$/i.test(String(str));
 };
@@ -6451,6 +6454,14 @@ internal.convertFourSides = function(opt, crs, bounds) {
     }
     return internal.convertIntervalParam(opt, crs);
   });
+};
+
+
+// Convert an area measure to a label in sqkm or sqm
+internal.getAreaLabel = function(area, crs) {
+  var sqm = crs && crs.to_meter ? area * crs.to_meter * crs.to_meter : area;
+  var sqkm = sqm / 1e6;
+  return sqkm < 0.01 ? Math.round(sqm) + ' m2' : sqkm + ' km2';
 };
 
 
@@ -7836,6 +7847,7 @@ internal.setCoordinatePrecision = function(dataset, precision) {
   return dataset;
 };
 
+// inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
 utils.getRoundingFunction = function(inc) {
   if (!utils.isNumber(inc) || inc === 0) {
     error("Rounding increment must be a non-zero number.");
@@ -7851,95 +7863,8 @@ utils.getRoundingFunction = function(inc) {
   };
 };
 
-
-// Calculations for planar geometry of shapes
-// TODO: consider 3D versions of some of these
-
-// TODO: adjust for spherical/ellipsoidal
-geom.calcPolsbyPopperCompactness = function(area, perimeter) {
-  if (!perimeter) return 0;
-  return area * Math.PI * 4 / (perimeter * perimeter);
-};
-
-geom.getShapeArea = function(shp, arcs) {
-  // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
-  return (shp || []).reduce(function(area, ids) {
-    return area + geom.getPathArea(ids, arcs);
-  }, 0);
-};
-
-geom.getPlanarShapeArea = function(shp, arcs) {
-  return (shp || []).reduce(function(area, ids) {
-    return area + geom.getPlanarPathArea(ids, arcs);
-  }, 0);
-};
-
-geom.getSphericalShapeArea = function(shp, arcs) {
-  if (arcs.isPlanar()) {
-    error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
-  }
-  return (shp || []).reduce(function(area, ids) {
-    return area + geom.getSphericalPathArea(ids, arcs);
-  }, 0);
-};
-
-// Return path with the largest (area) bounding box
-// @shp array of array of arc ids
-// @arcs ArcCollection
-geom.getMaxPath = function(shp, arcs) {
-  var maxArea = 0;
-  return (shp || []).reduce(function(maxPath, path) {
-    var bbArea = arcs.getSimpleShapeBounds(path).area();
-    if (bbArea > maxArea) {
-      maxArea = bbArea;
-      maxPath = path;
-    }
-    return maxPath;
-  }, null);
-};
-
-// @ids array of arc ids
-// @arcs ArcCollection
-geom.getAvgPathXY = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  if (!iter.hasNext()) return null;
-  var x0 = iter.x,
-      y0 = iter.y,
-      count = 0,
-      sumX = 0,
-      sumY = 0;
-  while (iter.hasNext()) {
-    count++;
-    sumX += iter.x;
-    sumY += iter.y;
-  }
-  if (count === 0 || iter.x !== x0 || iter.y !== y0) {
-    sumX += x0;
-    sumY += y0;
-    count++;
-  }
-  return {
-    x: sumX / count,
-    y: sumY / count
-  };
-};
-
-// Return true if point is inside or on boundary of a shape
-//
-geom.testPointInPolygon = function(x, y, shp, arcs) {
-  var isIn = false,
-      isOn = false;
-  if (shp) {
-    shp.forEach(function(ids) {
-      var inRing = geom.testPointInRing(x, y, ids, arcs);
-      if (inRing == 1) {
-        isIn = !isIn;
-      } else if (inRing == -1) {
-        isOn = true;
-      }
-    });
-  }
-  return isOn || isIn;
+utils.roundToSignificantDigits = function(n, d) {
+  return +n.toPrecision(d);
 };
 
 
@@ -7976,15 +7901,8 @@ geom.getPointToPathInfo = function(px, py, ids, arcs) {
   };
 };
 
-geom.getYIntercept = function(x, ax, ay, bx, by) {
-  return ay + (x - ax) * (by - ay) / (bx - ax);
-};
 
-geom.getXIntercept = function(y, ax, ay, bx, by) {
-  return ax + (y - ay) * (bx - ax) / (by - ay);
-};
-
-// Return unsigned distance of a point to the nearest point on a polygon or path
+// Return unsigned distance of a point to the nearest point on a polygon or polyline path
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   var minDist = (shp || []).reduce(function(minDist, ids) {
@@ -7993,6 +7911,144 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   }, Infinity);
   return minDist;
 };
+
+// @ids array of arc ids
+// @arcs ArcCollection
+geom.getAvgPathXY = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids);
+  if (!iter.hasNext()) return null;
+  var x0 = iter.x,
+      y0 = iter.y,
+      count = 0,
+      sumX = 0,
+      sumY = 0;
+  while (iter.hasNext()) {
+    count++;
+    sumX += iter.x;
+    sumY += iter.y;
+  }
+  if (count === 0 || iter.x !== x0 || iter.y !== y0) {
+    sumX += x0;
+    sumY += y0;
+    count++;
+  }
+  return {
+    x: sumX / count,
+    y: sumY / count
+  };
+};
+
+// Return path with the largest (area) bounding box
+// @shp array of array of arc ids
+// @arcs ArcCollection
+geom.getMaxPath = function(shp, arcs) {
+  var maxArea = 0;
+  return (shp || []).reduce(function(maxPath, path) {
+    var bbArea = arcs.getSimpleShapeBounds(path).area();
+    if (bbArea > maxArea) {
+      maxArea = bbArea;
+      maxPath = path;
+    }
+    return maxPath;
+  }, null);
+};
+
+geom.countVerticesInPath = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      count = 0;
+  while (iter.hasNext()) count++;
+  return count;
+};
+
+geom.getPathBounds = function(points) {
+  var bounds = new Bounds();
+  for (var i=0, n=points.length; i<n; i++) {
+    bounds.mergePoint(points[i][0], points[i][1]);
+  }
+  return bounds;
+};
+
+geom.calcPathLen = (function() {
+  var len, calcLen;
+  function addSegLen(i, j, xx, yy) {
+    len += calcLen(xx[i], yy[i], xx[j], yy[j]);
+  }
+  // @spherical (optional bool) calculate great circle length in meters
+  return function(path, arcs, spherical) {
+    if (spherical && arcs.isPlanar()) {
+      error("Expected lat-long coordinates");
+    }
+    calcLen = spherical ? greatCircleDistance : distance2D;
+    len = 0;
+    for (var i=0, n=path.length; i<n; i++) {
+      arcs.forEachArcSegment(path[i], addSegLen);
+    }
+    return len;
+  };
+}());
+
+
+// A compactness measure designed for testing electoral districts for gerrymandering.
+// Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
+geom.calcPolsbyPopperCompactness = function(area, perimeter) {
+  if (perimeter <= 0) return 0;
+  return Math.abs(area) * Math.PI * 4 / (perimeter * perimeter);
+};
+
+// Larger values (less severe penalty) fthan Polsby Popper
+geom.calcSchwartzbergCompactness = function(area, perimeter) {
+  if (perimeter <= 0) return 0;
+  return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
+};
+
+geom.getShapeArea = function(shp, arcs) {
+  // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
+  return (shp || []).reduce(function(area, ids) {
+    return area + geom.getPathArea(ids, arcs);
+  }, 0);
+};
+
+geom.getPlanarShapeArea = function(shp, arcs) {
+  return (shp || []).reduce(function(area, ids) {
+    return area + geom.getPlanarPathArea(ids, arcs);
+  }, 0);
+};
+
+geom.getSphericalShapeArea = function(shp, arcs) {
+  if (arcs.isPlanar()) {
+    error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
+  }
+  return (shp || []).reduce(function(area, ids) {
+    return area + geom.getSphericalPathArea(ids, arcs);
+  }, 0);
+};
+
+// Return true if point is inside or on boundary of a shape
+//
+geom.testPointInPolygon = function(x, y, shp, arcs) {
+  var isIn = false,
+      isOn = false;
+  if (shp) {
+    shp.forEach(function(ids) {
+      var inRing = geom.testPointInRing(x, y, ids, arcs);
+      if (inRing == 1) {
+        isIn = !isIn;
+      } else if (inRing == -1) {
+        isOn = true;
+      }
+    });
+  }
+  return isOn || isIn;
+};
+
+geom.getYIntercept = function(x, ax, ay, bx, by) {
+  return ay + (x - ax) * (by - ay) / (bx - ax);
+};
+
+geom.getXIntercept = function(y, ax, ay, bx, by) {
+  return ax + (y - ay) * (bx - ax) / (by - ay);
+};
+
 
 // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
 // Return 0: outside; 1: inside; -1: on boundary
@@ -8146,7 +8202,6 @@ geom.getPlanarPathArea = function(ids, arcs) {
   return sum / 2;
 };
 
-
 geom.getPathPerimeter = function(ids, arcs) {
   return (arcs.isPlanar() ? geom.getPlanarPathPerimeter : geom.getSphericalPathPerimeter)(ids, arcs);
 };
@@ -8174,48 +8229,8 @@ geom.getSphericalPathPerimeter = function(ids, arcs) {
   return geom.calcPathLen(ids, arcs, true);
 };
 
-geom.countVerticesInPath = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids),
-      count = 0;
-  while (iter.hasNext()) count++;
-  return count;
-};
 
-geom.getPathBounds = function(points) {
-  var bounds = new Bounds();
-  for (var i=0, n=points.length; i<n; i++) {
-    bounds.mergePoint(points[i][0], points[i][1]);
-  }
-  return bounds;
-};
-
-geom.transposePoints = function(points) {
-  var xx = [], yy = [], n=points.length;
-  for (var i=0; i<n; i++) {
-    xx.push(points[i][0]);
-    yy.push(points[i][1]);
-  }
-  return [xx, yy];
-};
-
-geom.calcPathLen = (function() {
-  var len, calcLen;
-  function addSegLen(i, j, xx, yy) {
-    len += calcLen(xx[i], yy[i], xx[j], yy[j]);
-  }
-  // @spherical (optional bool) calculate great circle length in meters
-  return function(path, arcs, spherical) {
-    if (spherical && arcs.isPlanar()) {
-      error("Expected lat-long coordinates");
-    }
-    calcLen = spherical ? greatCircleDistance : distance2D;
-    len = 0;
-    for (var i=0, n=path.length; i<n; i++) {
-      arcs.forEachArcSegment(path[i], addSegLen);
-    }
-    return len;
-  };
-}());
+// TODO: change references to this file to mapshaper-polygon-geom.js or mapshaper-path-geom.js
 
 
 
@@ -11277,7 +11292,7 @@ internal.findSegmentIntersections = (function() {
   }
 
   return function(arcs, optArg) {
-    var opts = optArg || {},
+    var opts = utils.extend({}, optArg),
         bounds = arcs.getBounds(),
         // TODO: handle spherical bounds
         spherical = !arcs.isPlanar() &&
@@ -11288,6 +11303,12 @@ internal.findSegmentIntersections = (function() {
         stripeSizes = new Uint32Array(stripeCount),
         stripeId = stripeCount > 1 && yrange > 0 ? multiStripeId : singleStripeId,
         i, j;
+
+    if (opts.tolerance >= 0 === false) {
+      // by default, use a small tolerance when detecting segment intersections
+      // (intended to overcome the effects of floating point rounding errors in geometrical formulas)
+      opts.tolerance = internal.getHighPrecisionSnapInterval(bounds.toArray());
+    }
 
     function multiStripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);
@@ -14086,16 +14107,20 @@ function MosaicIndex(lyr, nodes, optsArg) {
 
   // fill gaps
   // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
-  this.removeGaps = function(gapTest) {
+  this.removeGaps = function(filter) {
     if (!opts.flat) {
-      error('MosaicIndex#removeGaps() should only be called with flat mosaic');
+      error('MosaicIndex#removeGaps() should only be called with a flat mosaic');
     }
-    var gapTileIds = tileShapeIndex.getUnusedTileIds().filter(function(tileId) {
+    var remainingIds = tileShapeIndex.getUnusedTileIds();
+    var filledIds = remainingIds.filter(function(tileId) {
       var tile = mosaic[tileId];
-      return gapTest(tile[0]); // test tile ring, ignoring any holes (does this matter?)
+      return filter(tile[0]); // test tile ring, ignoring any holes (does this matter?)
     });
-    // find shape to assign gap tiles to
-    gapTileIds.forEach(assignTileToAdjacentShape);
+    filledIds.forEach(assignTileToAdjacentShape);
+    return {
+      removed: filledIds.length,
+      remaining: remainingIds.length - filledIds.length
+    };
   };
 
   this.getUnusedTiles = function() {
@@ -14203,61 +14228,116 @@ function ShapeArcIndex(shapes, arcs) {
 }
 
 
-internal.getVertexCountTest = function(minVertices, arcs) {
-  return function(path) {
-    // first and last vertex in ring count as one
-    return geom.countVerticesInPath(path, arcs) <= minVertices;
-  };
-};
-
-internal.getSliverTest = function(arcs) {
-  var maxSliverArea = internal.calcMaxSliverArea(arcs);
-  return function(path) {
-    // TODO: more sophisticated metric, perhaps considering shape
-    var area = geom.getPlanarPathArea(path, arcs);
-    return Math.abs(area) <= maxSliverArea;
-  };
-};
-
-internal.getMinAreaTest = function(areaParam, dataset, opts) {
-  var arcs = dataset.arcs;
-  var minArea = internal.convertAreaParam(areaParam, internal.getDatasetCRS(dataset));
-  if (opts && opts.weighted) {
-    return internal.getWeightedMinAreaFilter(minArea, dataset.arcs);
+// Used by -clean -dissolve2 -filter-slivers -filter-islands to generate area filters
+// for removing small polygon rings.
+// Assumes lyr is a polygon layer.
+internal.getSliverFilter = function(lyr, dataset, opts) {
+  var areaArg = opts.min_gap_area || opts.min_area || opts.gap_fill_area;
+  if (+areaArg == 0) {
+    return {
+      filter: function() {return false;}, // don't fill any gaps
+      threshold: 0
+    };
   }
-  return internal.getMinAreaFilter(minArea, dataset.arcs);
+  var sliverControl = opts.sliver_control >= 0 ? opts.sliver_control : 0; // 0 is default
+  var crs = internal.getDatasetCRS(dataset);
+  var threshold = areaArg ?
+      internal.convertAreaParam(areaArg, crs) :
+      internal.getDefaultSliverThreshold(lyr, dataset.arcs);
+  var filter = sliverControl > 0 ?
+      internal.getSliverTest(dataset.arcs, threshold, sliverControl) :
+      internal.getMinAreaTest(threshold, dataset);
+  var label = internal.getSliverLabel(internal.getAreaLabel(threshold, crs), sliverControl > 0);
+  return {
+    threshold: threshold,
+    filter: filter,
+    label: label
+  };
 };
 
-internal.getMinAreaFilter = function(minArea, arcs) {
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+internal.getSliverLabel = function(areaStr, variable) {
+  if (variable) {
+    areaStr = areaStr.replace(' ', '+ ') + ' variable';
+  }
+  return areaStr + ' threshold';
+};
+
+internal.getMinAreaTest = function(minArea, dataset) {
+  var pathArea = dataset.arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(path) {
-    var area = pathArea(path, arcs);
+    var area = pathArea(path, dataset.arcs);
     return Math.abs(area) < minArea;
   };
 };
 
-internal.getWeightedMinAreaFilter = function(minArea, arcs) {
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  var pathPerimeter = arcs.isPlanar() ? geom.getPlanarPathPerimeter : geom.getSphericalPathPerimeter;
-  return function(path) {
-    var area = pathArea(path, arcs);
-    var perim = pathPerimeter(path, arcs);
-    var compactness = geom.calcPolsbyPopperCompactness(area, perim);
-    return Math.abs(area * compactness) < minArea;
+internal.getSliverTest = function(arcs, threshold, strength) {
+  if (strength >= 0 === false) {
+    strength = 1; // default is 1 (full-strength)
+  }
+  if (strength > 1 || threshold > 0 === false) {
+    error('Invalid parameter');
+  }
+  var calcEffectiveArea = internal.getSliverAreaFunction(arcs, strength);
+  return function(ring) {
+    return Math.abs(calcEffectiveArea(ring)) < threshold;
   };
 };
 
+// Strength: 0-1
+internal.getSliverAreaFunction = function(arcs, strength) {
+  var k = Math.sqrt(strength); // more sensible than linear weighted avg.
+  return function(ring) {
+    var area = geom.getPathArea(ring, arcs);
+    var perim = geom.getPathPerimeter(ring, arcs);
+    var compactness = geom.calcPolsbyPopperCompactness(area, perim);
+    var effectiveArea = area * (k * compactness + 1 - k);
+    return effectiveArea;
+  };
+};
 
-internal.getGapFillTest = function(dataset, opts) {
-  var test;
-  if (opts.min_gap_area === 0) {
-    test = function() {return false;}; // don't fill any gaps
-  } else if (opts.min_gap_area) {
-    test = internal.getMinAreaTest(opts.min_gap_area, dataset);
-  } else {
-    test = internal.getSliverTest(dataset.arcs); // default is same as -filter-slivers default
-  }
-  return test;
+// Calculate a default area threshold using average segment length,
+// but increase the threshold for high-detail datasets and decrease it for
+// low-detail datasets (using segments per ring as a measure of detail).
+//
+internal.getDefaultSliverThreshold = function(lyr, arcs) {
+  var ringCount = 0;
+  var calcLen = arcs.isPlanar() ? geom.distance2D : geom.greatCircleDistance;
+  var avgSegLen = 0;
+  var segCount = 0;
+  var onSeg = function(i, j, xx, yy) {
+    var len = calcLen(xx[i], yy[i], xx[j], yy[j]);
+    segCount++;
+    avgSegLen += (len - avgSegLen) / segCount;
+  };
+  internal.editShapes(lyr.shapes, function(path) {
+    ringCount++;
+    internal.forEachSegmentInPath(path, arcs, onSeg);
+  });
+  var segPerRing = segCount / ringCount;
+  var complexityFactor = Math.pow(segPerRing, 0.75); // use seg/ring as a proxy for complexity
+  var threshold = avgSegLen * avgSegLen / 50 * complexityFactor;
+  threshold = utils.roundToSignificantDigits(threshold, 2); // round for display
+  return threshold;
+};
+
+
+
+// Original function for calculating default area threshold
+internal.calcMaxSliverArea = function(arcs) {
+  var k = 2,
+      dxMax = arcs.getBounds().width() / k,
+      dyMax = arcs.getBounds().height() / k,
+      count = 0,
+      mean = 0;
+  arcs.forEachSegment(function(i, j, xx, yy) {
+    var dx = Math.abs(xx[i] - xx[j]),
+        dy = Math.abs(yy[i] - yy[j]);
+    if (dx < dxMax && dy < dyMax) {
+      // TODO: write utility function for calculating mean this way
+      mean += (Math.sqrt(dx * dx + dy * dy) - mean) / ++count;
+    }
+  });
+  return mean * mean;
 };
 
 
@@ -14272,7 +14352,6 @@ internal.dissolvePolygonLayer2 = function(lyr, dataset, opts) {
   var shapes2 = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
   return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
-
 
 internal.getArcLayer = function(arcs, name) {
   var records = [];
@@ -14310,12 +14389,20 @@ internal.groupPolygons2 = function(lyr, getGroupId) {
   }, []);
 };
 
+internal.getGapRemovalMessage = function(removed, retained, areaLabel) {
+  var msg;
+  if (removed > 0 === false) return '';
+  return utils.format('Closed %,d / %,d gap%s using %s',
+      removed, removed + retained, utils.pluralSuffix(removed), areaLabel);
+};
+
 internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
   var arcFilter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
-
+  var sliverOpts = utils.extend({sliver_control: 1}, opts);
+  var filterData = internal.getSliverFilter(lyr, dataset, sliverOpts);
+  var cleanupData = mosaicIndex.removeGaps(filterData.filter);
   var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
   var dissolvedShapes = groups.map(function(shapeIds) {
     var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
@@ -14326,6 +14413,8 @@ internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
     }
     return internal.dissolveTileGroup2(tiles, dissolve);
   });
+  var gapMessage = internal.getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
+  if (gapMessage) message(gapMessage);
   return dissolvedShapes;
 };
 
@@ -14846,30 +14935,37 @@ internal.clipPoints = function(points, clipShapes, arcs, type) {
 };
 
 
-api.filterIslands = function(lyr, dataset, opts) {
+api.filterIslands = function(lyr, dataset, optsArg) {
+  var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
   var arcs = dataset.arcs;
   var removed = 0;
+  var filter;
   if (lyr.geometry_type != 'polygon') {
     return;
   }
-
-
-  if (opts.min_area || opts.min_vertices) {
-    if (opts.min_area) {
-      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, dataset, opts));
-    }
-    if (opts.min_vertices) {
-      removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
-    }
-    if (opts.remove_empty) {
-      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
-    }
-    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
-  } else {
+  if (!opts.min_area && !opts.min_vertices) {
     message("Missing a criterion for filtering islands; use min-area or min-vertices");
+    return;
   }
+
+  if (opts.min_area) {
+    filter = internal.getSliverFilter(lyr, dataset, opts).filter;
+  } else {
+    filter = internal.getVertexCountTest(opts.min_vertices, arcs);
+  }
+  removed += internal.filterIslands(lyr, arcs, filter);
+  if (opts.remove_empty) {
+    api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+  }
+  message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
 };
 
+internal.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
+  };
+};
 
 internal.filterIslands = function(lyr, arcs, ringTest) {
   var removed = 0;
@@ -14933,9 +15029,10 @@ api.filterSlivers = function(lyr, dataset, opts) {
   return internal.filterSlivers(lyr, dataset, opts);
 };
 
-internal.filterSlivers = function(lyr, dataset, opts) {
-  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, dataset, opts) :
-    internal.getSliverTest(dataset.arcs);
+internal.filterSlivers = function(lyr, dataset, optsArg) {
+  var opts = utils.extend({sliver_control: 1}, optsArg);
+  var filterData = internal.getSliverFilter(lyr, dataset, opts);
+  var ringTest = filterData.filter;
   var removed = 0;
   var pathFilter = function(path, i, paths) {
     if (ringTest(path)) {
@@ -14944,15 +15041,16 @@ internal.filterSlivers = function(lyr, dataset, opts) {
     }
   };
 
-
   internal.editShapes(lyr.shapes, pathFilter);
-  message(utils.format("Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
+  message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
   return removed;
 };
 
 internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
+  var threshold = internal.getDefaultSliverThreshold(lyr, arcs);
+  // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
+  var ringTest = internal.getSliverTest(arcs, threshold, 1);
   var flags = new Uint8Array(arcs.size());
-  var ringTest = internal.getSliverTest(arcs);
   var removed = 0;
   var pathFilter = function(path) {
     var prevArcs = 0,
@@ -14977,28 +15075,6 @@ internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
   return removed;
 };
 
-
-// Calculate an area threshold based on the average segment length,
-// but disregarding very long segments (i.e. bounding boxes)
-// TODO: need something more reliable
-// consider: calculating the distribution of segment lengths in one pass
-//
-internal.calcMaxSliverArea = function(arcs) {
-  var k = 2,
-      dxMax = arcs.getBounds().width() / k,
-      dyMax = arcs.getBounds().height() / k,
-      count = 0,
-      mean = 0;
-  arcs.forEachSegment(function(i, j, xx, yy) {
-    var dx = Math.abs(xx[i] - xx[j]),
-        dy = Math.abs(yy[i] - yy[j]);
-    if (dx < dxMax && dy < dyMax) {
-      // TODO: write utility function for calculating mean this way
-      mean += (Math.sqrt(dx * dx + dy * dy) - mean) / ++count;
-    }
-  });
-  return mean * mean;
-};
 
 
 api.splitLayer = function(src, splitField, opts) {
@@ -19573,6 +19649,7 @@ api.filterFields = function(lyr, names) {
   var table = lyr.data;
   names = names || [];
   internal.requireDataFields(table, names);
+  if (!table) return;
   utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
 
@@ -20320,11 +20397,30 @@ api.lines = function(lyr, dataset, opts) {
     return internal.pointsToLines(lyr, dataset, opts);
   } else if (opts.segments) {
     return [internal.convertShapesToSegments(lyr, dataset)];
+  } else if (opts.arcs) {
+    return [internal.convertShapesToArcs(lyr, dataset)];
   } else if (lyr.geometry_type == 'polygon') {
     return internal.polygonsToLines(lyr, dataset.arcs, opts);
   } else {
     internal.requirePolygonLayer(lyr, "Command requires a polygon or point layer");
   }
+};
+
+internal.convertShapesToArcs = function(lyr, dataset) {
+  var arcs = dataset.arcs;
+  var test = internal.getArcPresenceTest(lyr.shapes, arcs);
+  var records = [];
+  var shapes = [];
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    if (!test(i)) continue;
+    records.push({arcid: i});
+    shapes.push([[i]]);
+  }
+  return {
+    geometry_type: 'polyline',
+    data: new DataTable(records),
+    shapes: shapes
+  };
 };
 
 internal.convertShapesToSegments = function(lyr, dataset) {
@@ -21540,42 +21636,6 @@ api.mosaic = function(layers, dataset, opts) {
   }
 
   return [lyr2];
-};
-
-
-
-
-api.overlay = function(targetLyr, src, targetDataset, opts) {
-  var sourceLyr, sourceDataset, mergedDataset;
-  if (!src || !src.layer || !src.dataset) {
-    error("Unexpected source layer argument");
-  }
-  sourceLyr = src.layer;
-  sourceDataset = src.dataset;
-  if (targetDataset.arcs != sourceDataset.arcs) {
-    // see mapshaper-clip-erase.js
-    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
-    api.buildTopology(mergedDataset);
-  } else {
-    mergedDataset = targetDataset;
-  }
-
-  internal.overlayLayer(targetLyr, sourceLyr, mergedDataset, opts);
-};
-
-
-internal.overlayLayer = function(targetLyr, sourceLyr, dataset, opts) {
-  // TODO: don't build nodes twice (consider adding filter option to addIntersectionCuts())
-  internal.addIntersectionCuts(dataset, opts); // returns a NodeCollection
-  // build nodes from arcs in both layers
-  var arcFilter = internal.getArcPresenceTest(targetLyr.shapes.concat(sourceLyr.shapes), dataset.arcs);
-  var nodes = new NodeCollection(dataset.arcs, arcFilter);
-  var mosaicIndex = new MosaicIndex(targetLyr, nodes); // TODO: add flat opt
-  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
-
-  mosaicIndex.removeGaps(internal.getGapFillTest(dataset, opts));
-
-
 };
 
 
@@ -24576,9 +24636,6 @@ api.runCommand = function(cmd, catalog, cb) {
       }
       return internal.writeFiles(outputFiles, opts, done);
 
-    } else if (name == 'overlay') {
-      outputFiles = internal.overlay(targetLayers, source, targetDataset, opts);
-
     } else if (name == 'point-grid') {
       outputLayers = [api.pointGrid(targetDataset, opts)];
       if (!targetDataset) {
@@ -25161,7 +25218,7 @@ function CommandParser() {
 
   function findOptionDefn(name, cmdDef) {
     return utils.find(cmdDef.options, function(o) {
-      return o.name === name || o.alias === name;
+      return o.name === name || o.alias === name || o.old_alias === name;
     });
   }
 }
@@ -25213,7 +25270,7 @@ function CommandOptions(name) {
   };
 
   this.option = function(name, opts) {
-    opts = opts || {}; // accept just a name -- some options don't need properties
+    opts = utils.extend({}, opts); // accept just a name -- some options don't need properties
     if (!utils.isString(name) || !name) error("Missing option name");
     if (!utils.isObject(opts)) error("Invalid option definition:", opts);
     // default option -- assign unnamed argument to this option
@@ -25454,8 +25511,13 @@ internal.getOptionParser = function() {
         type: 'distance'
       },
       minGapAreaOpt = {
-        describe: 'smaller gaps than this are filled (default is small)',
+        old_alias: 'min-gap-area',
+        describe: 'threshold for filling gaps, e.g. 1.5km2 (default is small)',
         type: 'area'
+      },
+      sliverControlOpt = {
+        describe: 'boost gap-fill-area of slivers (0-1, default is 1)',
+        type: 'number'
       },
       calcOpt = {
         describe: 'use a JS expression to aggregate data values'
@@ -25792,8 +25854,9 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('clean')
-    .describe('repairs abnormal geometry, including polygon overlaps and small gaps')
-    .option('min-gap-area', minGapAreaOpt)
+    .describe('fixes geometry issues, including polygon overlaps and gaps')
+    .option('gap-fill-area', minGapAreaOpt)
+    .option('sliver-control', sliverControlOpt)
     .option('snap-interval', snapIntervalOpt)
     .option('no-snap', noSnapOpt)
     .option('allow-empty', {
@@ -25906,7 +25969,8 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
-    .option('min-gap-area', minGapAreaOpt)
+    .option('gap-fill-area', minGapAreaOpt)
+    .option('sliver-control', sliverControlOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
@@ -26008,7 +26072,7 @@ internal.getOptionParser = function() {
     .describe('remove small detached polygon rings (islands)')
     .option('min-area', {
       type: 'area',
-      describe: 'remove small-area islands (sq meters or projected units)'
+      describe: 'remove small-area islands (e.g. 10km2)'
     })
     .option('min-vertices', {
       type: 'integer',
@@ -26024,11 +26088,15 @@ internal.getOptionParser = function() {
     .describe('remove small polygon rings')
     .option('min-area', {
       type: 'area',
-      describe: 'remove small-area rings (sq meters or projected units)'
+      describe: 'area threshold (e.g. 2sqkm)'
+    })
+    .option('sliver-control', {
+      describe: 'boost area threshold of slivers (0-1, default is 1)',
+      type: 'number'
     })
     .option('weighted', {
+      // describe: 'multiply min-area by Polsby-Popper compactness (0-1)'
       type: 'flag',
-      describe: 'multiply min-area by Polsby-Popper compactness (0-1)'
     })
     /*
     .option('remove-empty', {
@@ -26104,7 +26172,7 @@ internal.getOptionParser = function() {
       type: 'strings'
     })
     .option('interpolate', {
-      describe: '(polygon-polygon join) (comma-sep.) area-interpolated numeric fields',
+      describe: '(polygon-polygon join) (comma-sep.) area-interpolated fields',
       type: 'strings'
     })
     .option('point-method', {
@@ -26146,7 +26214,11 @@ internal.getOptionParser = function() {
     .option('where', whereOpt2)
     .option('each', eachOpt2)
     .option('segments', {
-      describe: 'convert vectors to segments, for debugging',
+      describe: 'convert paths to segments, for debugging',
+      type: 'flag'
+    })
+    .option('arcs', {
+      describe: 'convert paths to arcs, for debugging',
       type: 'flag'
     })
     .option('groupby', {
@@ -26171,15 +26243,6 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-
-  parser.command('overlay')
-    // .describe('convert polygons to polylines along shared edges')
-    .option('source', {
-      DEFAULT: true,
-      describe: 'file or layer containing overlay polygons'
-    })
     .option('no-replace', noReplaceOpt)
     .option('target', targetOpt);
 
