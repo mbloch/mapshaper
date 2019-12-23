@@ -1,3 +1,6 @@
+v0.4.150
+* Fixed a bug affecting the calc=[expression] option when performing polygon-to-polygon spatial joins.
+
 v0.4.149
 * Improve OGC compliance of cleaned polygons.
 

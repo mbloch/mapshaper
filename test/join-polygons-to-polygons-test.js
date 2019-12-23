@@ -3,6 +3,23 @@ var api = require('../'),
 
 describe('Polygons to polygons spatial joins', function () {
 
+  it('-join calc= expressions work correctly', function(done) {
+    var cmd = '-i test/data/features/polygon_join/ex3_target.json ' +
+      '-join test/data/features/polygon_join/ex3_source.json calc="names=collect(name), n=count(), groups=collect(group)" -o out.json';
+    api.applyCommands(cmd, {}, function(err, output) {
+      var json = JSON.parse(output['out.json']);
+      var rec = json.features[0].properties;
+      assert.deepEqual(rec, {
+        name: 'A', // first joined value gets assigned
+        names: ['A', 'B'], // collected names
+        group: 'foo',
+        groups: ['foo', 'foo'], // collected groups
+        n: 2
+      });
+      done();
+    });
+  })
+
   it('Bug fix: mosaic error', function (done) {
     // Sum of interpolated values of inner subdivisions should be less than value of enclosing source polygon
     // (Before, geometry errors from an earlier, less robust intersection function

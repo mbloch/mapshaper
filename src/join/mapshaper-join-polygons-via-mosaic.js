@@ -100,8 +100,9 @@ internal.getPolygonToPolygonFunction = function(targetLyr, srcLyr, mosaicIndex) 
     for (var i=0; i<tileIds.length; i++) {
       tmp = mosaicIndex.getSourceIdsByTileId(tileIds[i]);
       tmp = mergedToSourceIds(tmp);
-      sourceIds = sourceIds.length > 0 ? utils.uniq(sourceIds, tmp) : tmp;
+      sourceIds = sourceIds.length > 0 ? sourceIds.concat(tmp) : tmp;
     }
+    sourceIds = utils.uniq(sourceIds);
     return sourceIds;
   };
 };
