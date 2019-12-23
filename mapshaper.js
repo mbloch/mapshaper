@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.149';
+VERSION = '0.4.150';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -12004,84 +12004,101 @@ internal.chooseRighthandVector = function(ax, ay, bx, by) {
 
 
 // Functions for redrawing polygons for clipping / erasing / flattening / division
+// These functions use 8 bit codes to control forward and reverse traversal of each arc.
+//
+// Function of path bits 0-7:
+// 0: is fwd path hidden or visible? (0=hidden, 1=visible)
+// 1: is fwd path open or closed for traversal? (0=closed, 1=open)
+// 2: unused
+// 3: unused
+// 4: is rev path hidden or visible?
+// 5: is rev path open or closed for traversal?
+// 6: unused
+// 7: unused
+//
+// Example codes:
+// 0x3 (3): forward path is visible and open, reverse path is hidden and closed
+// 0x10 (16): forward path is hidden and closed, reverse path is visible and closed
+//
 
-internal.setBits = function(src, flags, mask) {
-  return (src & ~mask) | (flags & mask);
+var FWD_VISIBLE = 0x1;
+var FWD_OPEN = 0x2;
+var REV_VISIBLE = 0x10;
+var REV_OPEN = 0x20;
+
+internal.setBits = function(bits, arcBits, mask) {
+  return (bits & ~mask) | (arcBits & mask);
 };
 
-internal.andBits = function(src, flags, mask) {
-  return src & (~mask | flags);
+internal.andBits = function(bits, arcBits, mask) {
+  return bits & (~mask | arcBits);
 };
 
-internal.setRouteBits = function(bits, id, flags) {
-  var abs = absArcId(id),
+internal.setRouteBits = function(arcBits, arcId, routesArr) {
+  var idx = absArcId(arcId), // get index of path in
       mask;
-  if (abs == id) { // fw
-    mask = ~3;
-  } else {
-    mask = ~0x30;
-    bits = bits << 4;
+  if (idx == arcId) { // arcBits controls fwd path
+    mask = ~3; // target fwd bits
+  } else { // arcBits controls rev. path
+    mask = ~0x30; // target rev bits
+    arcBits = arcBits << 4; // shift code to target rev path
   }
-  flags[abs] &= (bits | mask);
+  routesArr[idx] &= (arcBits | mask);
 };
 
-internal.getRouteBits = function(id, flags) {
-  var abs = absArcId(id),
-      bits = flags[abs];
-  if (abs != id) bits = bits >> 4;
+internal.getRouteBits = function(arcId, routesArr) {
+  var idx = absArcId(arcId),
+      bits = routesArr[idx];
+  if (idx != arcId) bits = bits >> 4;
   return bits & 7;
 };
 
-
-// enable arc pathways in a single shape or array of shapes
-// Uses 8 bits to control traversal of each arc
-// 0-3: forward arc; 4-7: rev arc
-// 0: fw path is visible
-// 1: fw path is open for traversal
-// ...
+// Open arc pathways in a single shape or array of shapes
 //
-internal.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
-  internal.forEachArcId(arcIds, function(id) {
-    var isInv = id < 0,
-        absId = isInv ? ~id : id,
-        currFlag = flags[absId],
+internal.openArcRoutes = function(paths, arcColl, routesArr, fwd, rev, dissolve, orBits) {
+  internal.forEachArcId(paths, function(arcId) {
+    var isInv = arcId < 0,
+        idx = isInv ? ~arcId : arcId,
+        currBits = routesArr[idx],
         openFwd = isInv ? rev : fwd,
         openRev = isInv ? fwd : rev,
-        newFlag = currFlag;
+        newBits = currBits;
 
     // error condition: lollipop arcs can cause problems; ignore these
-    if (arcs.arcIsLollipop(id)) {
+    if (arcColl.arcIsLollipop(arcId)) {
       debug('lollipop');
-      newFlag = 0; // unset (i.e. make invisible)
+      newBits = 0; // unset (i.e. make invisible)
     } else {
       if (openFwd) {
-        newFlag |= 3; // visible / open
+        newBits |= 3; // set fwd path to visible and open
       }
       if (openRev) {
-        newFlag |= 0x30; // visible / open
+        newBits |= 0x30; // set rev. path to visible and open
       }
 
       // placing this in front of dissolve - dissolve has to be able to hide
-      // arcs that are set to visible
+      // pathways that are made visible by orBits
       if (orBits > 0) {
-        newFlag |= orBits;
+        newBits |= orBits;
       }
 
       // dissolve hides arcs that have both fw and rev pathways open
-      if (dissolve && (newFlag & 0x22) === 0x22) {
-        newFlag &= ~0x11; // make invisible
+      // (these arcs represent shared borders and will not be part of the dissolved path)
+      //
+      if (dissolve && (newBits & 0x22) === 0x22) {
+        newBits &= ~0x11; // make invisible
       }
     }
 
-    flags[absId] = newFlag;
+    routesArr[idx] = newBits;
   });
 };
 
-internal.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
-  internal.forEachArcId(arcIds, function(id) {
-    var isInv = id < 0,
-        absId = isInv ? ~id : id,
-        currFlag = flags[absId],
+internal.closeArcRoutes = function(arcIds, arcs, routesArr, fwd, rev, hide) {
+  internal.forEachArcId(arcIds, function(arcId) {
+    var isInv = arcId < 0,
+        idx = isInv ? ~arcId : arcId,
+        currBits = routesArr[idx],
         mask = 0xff,
         closeFwd = isInv ? rev : fwd,
         closeRev = isInv ? fwd : rev;
@@ -12094,11 +12111,11 @@ internal.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
       if (hide) mask &= ~0x10;
       mask ^= 0x20;
     }
-    flags[absId] = currFlag & mask;
+    routesArr[idx] = currBits & mask;
   });
 };
 
-// Return a function for generating a path across a field of intersecting arcs
+// Return a function for generating a path across a graph of connected arcs
 // useRoute: function(arcId) {}
 //           Tries to extend path to the given arc
 //           Returns true and extends path by one arc on success
@@ -12145,7 +12162,6 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
   };
 };
 
-// types: "dissolve" "flatten"
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
@@ -12154,6 +12170,7 @@ internal.getRingIntersector = function(nodes, flags) {
   var findPath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   flags = flags || new Uint8Array(arcs.size());
 
+  // types: "dissolve" "flatten"
   return function(rings, type) {
     var dissolve = type == 'dissolve',
         openFwd = true,
@@ -21070,8 +21087,9 @@ internal.getPolygonToPolygonFunction = function(targetLyr, srcLyr, mosaicIndex) 
     for (var i=0; i<tileIds.length; i++) {
       tmp = mosaicIndex.getSourceIdsByTileId(tileIds[i]);
       tmp = mergedToSourceIds(tmp);
-      sourceIds = sourceIds.length > 0 ? utils.uniq(sourceIds, tmp) : tmp;
+      sourceIds = sourceIds.length > 0 ? sourceIds.concat(tmp) : tmp;
     }
+    sourceIds = utils.uniq(sourceIds);
     return sourceIds;
   };
 };
