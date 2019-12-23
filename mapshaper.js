@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.148';
+VERSION = '0.4.149';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -6456,12 +6456,11 @@ internal.convertFourSides = function(opt, crs, bounds) {
   });
 };
 
-
 // Convert an area measure to a label in sqkm or sqm
 internal.getAreaLabel = function(area, crs) {
   var sqm = crs && crs.to_meter ? area * crs.to_meter * crs.to_meter : area;
   var sqkm = sqm / 1e6;
-  return sqkm < 0.01 ? Math.round(sqm) + ' m2' : sqkm + ' km2';
+  return sqkm < 0.01 ? Math.round(sqm) + ' sqm' : sqkm + ' sqkm';
 };
 
 
@@ -7512,18 +7511,15 @@ internal.dissolveBufferDataset = function(dataset, optsArg) {
     lyr.data = tmp.data;
     return;
   }
-  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
-  // var dissolve = internal.getBufferTileDissolver(); // alternate dissolve (same as -dissolve command)
+  var pathfind = internal.getRingIntersector(mosaicIndex.nodes);
   var shapes2 = lyr.shapes.map(function(shp, shapeId) {
     var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
     var rings = [];
     for (var i=0; i<tiles.length; i++) {
       rings.push(tiles[i][0]);
     }
-    // return rings;
-    return dissolve(rings);
+    return pathfind(rings, 'dissolve');
   });
-  // shapes2 = mosaicIndex.mosaic
   lyr.shapes = shapes2;
   if (!opts.no_dissolve) {
     internal.dissolveArcs(dataset);
@@ -12153,12 +12149,12 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-internal.getRingIntersector = function(nodes, type, flags) {
+internal.getRingIntersector = function(nodes, flags) {
   var arcs = nodes.arcs;
   var findPath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   flags = flags || new Uint8Array(arcs.size());
 
-  return function(rings) {
+  return function(rings, type) {
     var dissolve = type == 'dissolve',
         openFwd = true,
         openRev = type == 'flatten',
@@ -14403,7 +14399,7 @@ internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
   var sliverOpts = utils.extend({sliver_control: 1}, opts);
   var filterData = internal.getSliverFilter(lyr, dataset, sliverOpts);
   var cleanupData = mosaicIndex.removeGaps(filterData.filter);
-  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
+  var pathfind = internal.getRingIntersector(mosaicIndex.nodes);
   var dissolvedShapes = groups.map(function(shapeIds) {
     var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
     if (opts.tiles) {
@@ -14411,14 +14407,17 @@ internal.dissolvePolygonGroups2 = function(groups, lyr, dataset, opts) {
         return memo.concat(tile);
       }, []);
     }
-    return internal.dissolveTileGroup2(tiles, dissolve);
+    return internal.dissolveTileGroup2(tiles, pathfind);
   });
+  // convert self-intersecting rings to outer/inner rings, for OGC
+  // Simple Features compliance
+  dissolvedShapes = internal.fixTangentHoles(dissolvedShapes, pathfind);
   var gapMessage = internal.getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
   if (gapMessage) message(gapMessage);
   return dissolvedShapes;
 };
 
-internal.dissolveTileGroup2 = function(tiles, dissolve) {
+internal.dissolveTileGroup2 = function(tiles, pathfind) {
   var rings = [],
       holes = [],
       dissolved, tile;
@@ -14429,12 +14428,30 @@ internal.dissolveTileGroup2 = function(tiles, dissolve) {
       holes = holes.concat(tile.slice(1));
     }
   }
-  dissolved = dissolve(rings.concat(holes));
+  dissolved = pathfind(rings.concat(holes), 'dissolve');
   if (dissolved.length > 1) {
     // Commenting-out nesting order repair -- new method should prevent nesting errors
     // dissolved = internal.fixNestingErrors(dissolved, arcs);
   }
   return dissolved.length > 0 ? dissolved : null;
+};
+
+internal.fixTangentHoles = function(shapes, pathfind) {
+  var onRing = function(memo, ring) {
+    internal.reversePath(ring);
+    var fixed = pathfind([ring], 'flatten');
+    if (fixed.length > 1) {
+      fixed.forEach(internal.reversePath);
+      memo = memo.concat(fixed);
+    } else {
+      memo.push(internal.reversePath(ring));
+    }
+    return memo;
+  };
+  return shapes.map(function(rings) {
+    if (!rings) return null;
+    return rings.reduce(onRing, []);
+  });
 };
 
 
@@ -14611,8 +14628,7 @@ internal.getPolygonDissolver = function(nodes, spherical) {
   spherical = spherical && !nodes.arcs.isPlanar();
   var flags = new Uint8Array(nodes.arcs.size());
   var divide = internal.getHoleDivider(nodes, spherical);
-  var flatten = internal.getRingIntersector(nodes, 'flatten', flags, spherical);
-  var dissolve = internal.getRingIntersector(nodes, 'dissolve', flags, spherical);
+  var pathfind = internal.getRingIntersector(nodes, flags);
 
   return function(shp) {
     if (!shp) return null;
@@ -14620,13 +14636,12 @@ internal.getPolygonDissolver = function(nodes, spherical) {
         ccw = [];
 
     divide(shp, cw, ccw);
-    cw = flatten(cw);
+    cw = pathfind(cw, 'flatten');
     ccw.forEach(internal.reversePath);
-    ccw = flatten(ccw);
+    ccw = pathfind(ccw, 'flatten');
     ccw.forEach(internal.reversePath);
-
     var shp2 = internal.appendHolesToRings(cw, ccw);
-    var dissolved = dissolve(shp2);
+    var dissolved = pathfind(shp2, 'dissolve');
 
     if (dissolved.length > 1) {
       dissolved = internal.fixNestingErrors(dissolved, nodes.arcs);
