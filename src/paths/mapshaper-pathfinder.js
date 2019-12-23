@@ -154,12 +154,12 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-internal.getRingIntersector = function(nodes, type, flags) {
+internal.getRingIntersector = function(nodes, flags) {
   var arcs = nodes.arcs;
   var findPath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   flags = flags || new Uint8Array(arcs.size());
 
-  return function(rings) {
+  return function(rings, type) {
     var dissolve = type == 'dissolve',
         openFwd = true,
         openRev = type == 'flatten',

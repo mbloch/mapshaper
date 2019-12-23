@@ -1,3 +1,6 @@
+v0.4.149
+* Improve OGC compliance of cleaned polygons.
+
 v0.4.148
 * Added sliver-control=[0-1] option to -clean -dissolve2 and -filter-slivers commands, for variable sliver control.
 * Made sliver-control=1 the default value for these commands.

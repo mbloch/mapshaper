@@ -36,8 +36,7 @@ internal.getPolygonDissolver = function(nodes, spherical) {
   spherical = spherical && !nodes.arcs.isPlanar();
   var flags = new Uint8Array(nodes.arcs.size());
   var divide = internal.getHoleDivider(nodes, spherical);
-  var flatten = internal.getRingIntersector(nodes, 'flatten', flags, spherical);
-  var dissolve = internal.getRingIntersector(nodes, 'dissolve', flags, spherical);
+  var pathfind = internal.getRingIntersector(nodes, flags);
 
   return function(shp) {
     if (!shp) return null;
@@ -45,13 +44,12 @@ internal.getPolygonDissolver = function(nodes, spherical) {
         ccw = [];
 
     divide(shp, cw, ccw);
-    cw = flatten(cw);
+    cw = pathfind(cw, 'flatten');
     ccw.forEach(internal.reversePath);
-    ccw = flatten(ccw);
+    ccw = pathfind(ccw, 'flatten');
     ccw.forEach(internal.reversePath);
-
     var shp2 = internal.appendHolesToRings(cw, ccw);
-    var dissolved = dissolve(shp2);
+    var dissolved = pathfind(shp2, 'dissolve');
 
     if (dissolved.length > 1) {
       dissolved = internal.fixNestingErrors(dissolved, nodes.arcs);

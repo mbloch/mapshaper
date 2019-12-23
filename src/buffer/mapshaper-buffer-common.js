@@ -20,18 +20,15 @@ internal.dissolveBufferDataset = function(dataset, optsArg) {
     lyr.data = tmp.data;
     return;
   }
-  var dissolve = internal.getRingIntersector(mosaicIndex.nodes, 'dissolve');
-  // var dissolve = internal.getBufferTileDissolver(); // alternate dissolve (same as -dissolve command)
+  var pathfind = internal.getRingIntersector(mosaicIndex.nodes);
   var shapes2 = lyr.shapes.map(function(shp, shapeId) {
     var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
     var rings = [];
     for (var i=0; i<tiles.length; i++) {
       rings.push(tiles[i][0]);
     }
-    // return rings;
-    return dissolve(rings);
+    return pathfind(rings, 'dissolve');
   });
-  // shapes2 = mosaicIndex.mosaic
   lyr.shapes = shapes2;
   if (!opts.no_dissolve) {
     internal.dissolveArcs(dataset);

@@ -151,7 +151,7 @@ describe('mapshaper-clean.js', function () {
       });
     })
 
-    it('holes cannot touch outer ring', function (done) {
+    it('holes cannot touch outer ring at more than one point', function (done) {
       var cmd = '-i test/data/features/clean/ex15_ogc.json -clean -o out.json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['out.json']);
@@ -161,17 +161,17 @@ describe('mapshaper-clean.js', function () {
       });
     })
 
-   it('holes cannot touch outer ring2', function (done) {
+   it('self-intersecting loops are converted to holes', function (done) {
       var cmd = '-i test/data/features/clean/ex16_ogc.json -clean -o out.json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['out.json']);
         assert.equal(json.geometries[0].type, 'Polygon');
-        assert.equal(json.geometries[0].coordinates.length, 1); // no holes
+        assert.equal(json.geometries[0].coordinates.length, 2); // one hole
         done();
       });
     })
 
-    it('holes cannot touch outer ring3', function (done) {
+    it('self-intersections are converted to multipart polygons', function (done) {
       var cmd = '-i test/data/features/clean/ex17_ogc.json -clean -o out.json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['out.json']);
@@ -554,10 +554,11 @@ describe('mapshaper-clean.js', function () {
           [[3, 3], [5, 3]]];
       var arcs = new ArcCollection(coords);
 
-      it('paths are preserved', function () {
+      it('self intersection converted to ring + hole', function () {
         var shapes = [[[0, ~1, 2]], [[1]]];
-        var target = [[[0, ~1, 2]], [[1]]];
-        assert.deepEqual(clean(shapes, arcs), target);
+        var target = [[[0, 2], [~1]], [[1]]];
+        var output = clean(shapes, arcs);
+        assert.deepEqual(output, target);
       })
     })
 
@@ -581,10 +582,12 @@ describe('mapshaper-clean.js', function () {
           [[3, 4], [5, 4]]];
       var arcs = new ArcCollection(coords);
 
-      it('paths are preserved', function () {
+      it('self-intersecting loops are converted to holes', function () {
         var shapes = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
-        var target = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
-        assert.deepEqual(clean(shapes, arcs), target);
+        // var target = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
+        var target = [ [ [ 0, 4 ], [ -4, -2 ] ], [ [ 2, 3 ] ], [ [ 1, -3 ] ] ];
+        var output = clean(shapes, arcs);
+        assert.deepEqual(output, target);
       })
 
     })
