@@ -48,6 +48,18 @@ describe('mapshaper-dissolve.js (points)', function () {
     assert.deepEqual(lyr2.data.getRecords(), [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}]);
   })
 
+  it('group-points option: group points instead of converting to centroid', function() {
+    var lyr = {
+      geometry_type: 'point',
+      shapes: [null, [[1, 1]], [[0, 0]], [[2, 2]], [[1, 0]], [[2, 0]], [[0, 2]]],
+      data: new api.internal.DataTable([{foo: 'a'}, {foo: 'a'}, {foo: 'a'}, {foo: 'a'}, {foo: 'b'}, {foo: 'c'}, {foo: 'c'}])
+    };
+
+    var lyr2 = api.dissolve(lyr, null, {field: 'foo', planar: true, group_points: true});
+    assert.deepEqual(lyr2.shapes, [[[1, 1], [0, 0], [2, 2]], [[1, 0]], [[2, 0], [0, 2]]])
+    assert.deepEqual(lyr2.data.getRecords(), [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}]);
+  })
+
   it('weighted centroid', function() {
     var lyr = {
       geometry_type: 'point',

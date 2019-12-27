@@ -21,12 +21,30 @@ function GeoJSONReader(reader) {
 
   this.readObject = readObject;
 
-  function readObjects(start, cb) {
-    var obj = readObject(start);
+  function readObjects(offset, cb) {
+    var obj = readObject(offset);
+    var json;
     while (obj) {
-      cb(JSON.parse(obj.text)); // Use JSON.parse to parse object
-      obj = readObject(obj.offset);
+      try {
+        json = JSON.parse(obj.text);
+      } catch(e) {
+        stop('JSON parsing error --', adjustPositionMessage(e.message, offset + obj.start));
+      }
+      cb(json);
+      offset = obj.end;
+      obj = readObject(obj.end);
     }
+  }
+
+  // msg: JSON.parse() error message, e.g. "Unexpected token . in JSON at position 579"
+  // offset: start position of the parsed text in the JSON file
+  function adjustPositionMessage(msg, offset) {
+    var rxp = /position (\d+)/; // assumes no thousands separator in error message
+    var match = rxp.exec(msg);
+    if (match) {
+      msg = msg.replace(rxp, 'position ' + (offset + parseInt(match[1])));
+    }
+    return msg;
   }
 
   // Search for a JSON object starting at position @offs
@@ -67,7 +85,8 @@ function GeoJSONReader(reader) {
         if (level === 0) {
           retn = {
             text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
-            offset: offs + i + 1
+            start: startPos,
+            end: offs + i + 1
           };
           break;
         } else if (level == -1) {

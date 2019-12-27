@@ -21,7 +21,7 @@ api.dissolve = function(lyr, arcs, opts) {
   } else if (lyr.geometry_type == 'polyline') {
     dissolveShapes = internal.dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
   } else if (lyr.geometry_type == 'point') {
-    dissolveShapes = dissolvePointLayerGeometry(lyr, getGroupId, opts);
+    dissolveShapes = internal.dissolvePointGeometry(lyr, getGroupId, opts);
   }
   return internal.composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
 };

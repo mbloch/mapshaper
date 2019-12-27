@@ -3,6 +3,37 @@ var api = require('../'),
 
 describe('mapshaper-import.js', function () {
 
+  describe('-i json-subtree option', function () {
+    it('nested path, object input', function(done) {
+      var data = {
+        data: {
+          records: [{foo: 'a'}, {foo: 'b'}]
+        }
+      };
+      api.applyCommands('-i json-subtree=data/records data.json -o',
+          {'data.json': data},function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        assert.deepEqual(json, [{foo: 'a'}, {foo: 'b'}]);
+        done();
+      });
+    });
+
+    it('nested path, string input', function(done) {
+      var data = JSON.stringify({
+        data: {
+          records: [{foo: 'a'}, {foo: 'b'}]
+        }
+      });
+      api.applyCommands('-i json-subtree=data/records data.json -o',
+          {'data.json': data},function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        assert.deepEqual(json, [{foo: 'a'}, {foo: 'b'}]);
+        done();
+      });
+    });
+  });
+
+
   describe('import polygons without topology', function () {
     //      b --- d
     //     / \   /

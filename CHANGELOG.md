@@ -1,15 +1,19 @@
+v0.4.151
+* Added -i json-subtree=<path> option, for importing a nested array of JSON data records.
+* Added -dissolve group-points option, to convert groups of point/multipoint features to multipoint features, instead of converting groups to centroids.
+
 v0.4.150
 * Fixed a bug affecting the calc=[expression] option when performing polygon-to-polygon spatial joins.
 
 v0.4.149
-* Improve OGC compliance of cleaned polygons.
+* Improve OGC Simple Features compliance of cleaned polygons.
 
 v0.4.148
 * Added sliver-control=[0-1] option to -clean -dissolve2 and -filter-slivers commands, for variable sliver control.
 * Made sliver-control=1 the default value for these commands.
 * Tweaked the default area threshold for gap/sliver removal to use a larger threshold for more detailed datasets (detail is estimated using average segments per ring).
 * Changed name of min-gap-area option to gap-fill-area (original name also works).
-* Added tests of -clean command polygon output to verify OGC Simple Features compatibility (output is compatible).
+* Added tests of -clean command polygon output to verify OGC Simple Features compatibility.
 
 v0.4.147
 * Improved robustness of path intersection (used by many commands, including -clean -dissolve2 -clip -erase -union).

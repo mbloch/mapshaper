@@ -6,8 +6,8 @@ internal.identifyJSONString = function(str, opts) {
   var fmt = null;
   if (str.length > maxChars) str = str.substr(0, maxChars);
   str = str.replace(/\s/g, '');
-  if (opts && opts.json_path) {
-    fmt = 'json'; // TODO: make json_path compatible with other types
+  if (opts && opts.json_subtree) {
+    fmt = 'json'; // TODO: make json_subtree compatible with other types
   } else if (/^\[[{\]]/.test(str)) {
     // empty array or array of objects
     fmt = 'json';
@@ -27,7 +27,7 @@ internal.identifyJSONObject = function(o) {
     fmt = 'topojson';
   } else if (o.type) {
     fmt = 'geojson';
-  } else if (utils.isArray(o)) {
+  } else if (utils.isArray(o) || o.json_subtree) {
     fmt = 'json';
   }
   return fmt;
@@ -93,11 +93,15 @@ internal.importJSON = function(data, opts) {
       try {
         content = JSON.parse(content); // ~3sec for 100MB string
       } catch(e) {
-        stop("Unable to parse JSON");
+        // stop("Unable to parse JSON");
+        stop('JSON parsing error --', e.message);
       }
     }
-    if (opts.json_path) {
-      content = internal.selectFromObject(content, opts.json_path);
+    if (opts.json_subtree) {
+      content = internal.selectFromObject(content, opts.json_subtree);
+      if (Array.isArray(content) === false) {
+        stop('Expected an array at JSON subtree:', opts.json_subtree);
+      }
     }
     retn.format = internal.identifyJSONObject(content, opts);
     if (retn.format == 'topojson') {
@@ -114,13 +118,15 @@ internal.importJSON = function(data, opts) {
   return retn;
 };
 
-// path: path from top-level to the target object, as a list of property
-//   names separated by '.'
+// path: path from top-level to the target object
 internal.selectFromObject = function(o, path) {
-  var parts = path.split('.');
-  var value = o && o[parts[0]];
-  if (parts > 1) {
-    return internal.selectFromObject(value, parts.slice(1).join(''));
+  var separator = path.indexOf('/') > 0 ? '/' : '.';
+  var parts = path.split(separator);
+  var key;
+  while (parts.length > 0) {
+    key = parts.shift();
+    if (!o[key]) return null;
+    o = o[key];
   }
-  return value;
+  return o;
 };

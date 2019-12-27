@@ -52,10 +52,10 @@ internal.getOptionParser = function() {
       dissolveFieldsOpt = {
         DEFAULT: true,
         type: 'strings',
-        describe: '(optional) field or fields to dissolve on (comma-sep. list)'
+        describe: '(optional) field(s) to dissolve on (comma-sep. list)'
       },
       fieldTypesOpt = {
-        describe: 'type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str',
+        describe: 'type hints for csv source files, e.g. FIPS:str,ZIPCODE:str',
         type: 'strings'
       },
       stringFieldsOpt = {
@@ -170,6 +170,10 @@ internal.getOptionParser = function() {
     .option('csv-fields', {
       type: 'strings',
       describe: '[CSV] comma-sep. list of fields to import'
+    })
+    .option('json-subtree', {
+      old_alias: 'json-path',
+      describe: '[JSON] path to an array of data records; separator is /'
     });
 
   parser.command('o')
@@ -283,7 +287,7 @@ internal.getOptionParser = function() {
       describe: '(SVG/TopoJSON) space betw. data and viewport (default is 1)'
     })
     .option('pixels', {
-      describe: '(SVG/TopoJSON) output area in pixels (alternative to width=)',
+      describe: '(SVG/TopoJSON) output area in pix. (alternative to width=)',
       type: 'number'
     })
     .option('svg-scale', {
@@ -465,6 +469,10 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
+    .option('group-points', {
+      type: 'flag',
+      describe: '[points] group points instead of converting to centroids'
+    })
     .option('weight', {
       describe: '[points] field or expression to use for weighting centroid'
     })
@@ -677,7 +685,7 @@ internal.getOptionParser = function() {
       describe: 'file or layer containing data records'
     })
     .option('keys', {
-      describe: 'join by matching target,source key fields; e.g. keys=FIPS,ID',
+      describe: 'join by matching target,source key fields, e.g. keys=FID,id',
       type: 'strings'
     })
     .option('calc', {
@@ -691,7 +699,7 @@ internal.getOptionParser = function() {
       type: 'strings'
     })
     .option('interpolate', {
-      describe: '(polygon-polygon join) (comma-sep.) area-interpolated fields',
+      describe: '(polygon-polygon join) list of area-interpolated fields',
       type: 'strings'
     })
     .option('point-method', {
@@ -956,7 +964,8 @@ internal.getOptionParser = function() {
     })
     */
     .option('variable', {
-      describe: 'expect an expression with interval=, percentage= or resolution=',
+      // describe: 'expect an expression with interval=, percentage= or resolution=',
+      describe: 'JS expr. assigning to one of: interval= percentage= resolution=',
       type: 'flag'
     })
     .option('planar', {

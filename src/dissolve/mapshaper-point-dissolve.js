@@ -1,6 +1,28 @@
 /* @requires mapshaper-expressions */
 
-function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
+internal.dissolvePointGeometry = function(lyr, getGroupId, opts) {
+  var dissolve = opts.group_points ?
+      dissolvePointsAsGroups : dissolvePointsAsCentroids;
+  return dissolve(lyr, getGroupId, opts);
+};
+
+function dissolvePointsAsGroups(lyr, getGroupId, opts) {
+  var shapes = internal.cloneShapes(lyr.shapes);
+  var shapes2 = [];
+  lyr.shapes.forEach(function(shp, i) {
+    var groupId = getGroupId(i);
+    if (!shp) return;
+    if (!shapes2[groupId]) {
+      shapes2[groupId] = shp;
+    } else {
+      shapes2[groupId].push.apply(shapes2[groupId], shp);
+    }
+  });
+  return shapes2;
+}
+
+
+function dissolvePointsAsCentroids(lyr, getGroupId, opts) {
   var useSph = !opts.planar && internal.probablyDecimalDegreeBounds(internal.getLayerBounds(lyr));
   var getWeight = opts.weight ? internal.compileValueExpression(opts.weight, lyr) : null;
   var groups = [];
