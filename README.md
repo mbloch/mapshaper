@@ -32,6 +32,14 @@ All processing is done in the browser, so your data stays private, even when usi
 
 The web UI works in recent desktop versions of Chrome, Firefox, Safari and Internet Explorer. Safari before v10.1 and IE before v10 are not supported.
 
+## User-contributed resources
+
+[rmapshaper](https://github.com/ateucher/rmapshaper) is an R package written by Andy Teucher that gives R users access to many of mapshaper's editing commands.
+
+[Here](https://hub.docker.com/r/freifunkhamm/mapshaper) are resources for using mapshaper with Docker, provided by Christian Weiss.
+
+You can find a number of mapshaper tutorials online, including a [two](https://moriartynaps.org/command-carto-part-one/) [part](https://moriartynaps.org/command-carto-part-two/) guide to command line cartography by Dylan Moriarty and [this introduction](https://datavizforall.org/convert-edit-join-and-dissolve-with-mapshaper-org.html) by Jack Dougherty.
+
 
 ## Large file support
 
