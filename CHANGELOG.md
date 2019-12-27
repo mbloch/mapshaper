@@ -1,3 +1,6 @@
+v0.4.152
+* Rename json-subtree option json-path.
+
 v0.4.151
 * Added -i json-subtree=<path> option, for importing a nested array of JSON data records.
 * Added -dissolve group-points option, to convert groups of point/multipoint features to multipoint features, instead of converting groups to centroids.

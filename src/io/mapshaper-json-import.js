@@ -6,8 +6,8 @@ internal.identifyJSONString = function(str, opts) {
   var fmt = null;
   if (str.length > maxChars) str = str.substr(0, maxChars);
   str = str.replace(/\s/g, '');
-  if (opts && opts.json_subtree) {
-    fmt = 'json'; // TODO: make json_subtree compatible with other types
+  if (opts && opts.json_path) {
+    fmt = 'json'; // TODO: make json_path compatible with other types
   } else if (/^\[[{\]]/.test(str)) {
     // empty array or array of objects
     fmt = 'json';
@@ -27,7 +27,7 @@ internal.identifyJSONObject = function(o) {
     fmt = 'topojson';
   } else if (o.type) {
     fmt = 'geojson';
-  } else if (utils.isArray(o) || o.json_subtree) {
+  } else if (utils.isArray(o) || o.json_path) {
     fmt = 'json';
   }
   return fmt;
@@ -97,10 +97,10 @@ internal.importJSON = function(data, opts) {
         stop('JSON parsing error --', e.message);
       }
     }
-    if (opts.json_subtree) {
-      content = internal.selectFromObject(content, opts.json_subtree);
+    if (opts.json_path) {
+      content = internal.selectFromObject(content, opts.json_path);
       if (Array.isArray(content) === false) {
-        stop('Expected an array at JSON subtree:', opts.json_subtree);
+        stop('Expected an array at JSON path:', opts.json_path);
       }
     }
     retn.format = internal.identifyJSONObject(content, opts);

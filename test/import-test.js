@@ -3,14 +3,14 @@ var api = require('../'),
 
 describe('mapshaper-import.js', function () {
 
-  describe('-i json-subtree option', function () {
+  describe('-i json-path option', function () {
     it('nested path, object input', function(done) {
       var data = {
         data: {
           records: [{foo: 'a'}, {foo: 'b'}]
         }
       };
-      api.applyCommands('-i json-subtree=data/records data.json -o',
+      api.applyCommands('-i json-path=data/records data.json -o',
           {'data.json': data},function(err, out) {
         var json = JSON.parse(out['data.json']);
         assert.deepEqual(json, [{foo: 'a'}, {foo: 'b'}]);
@@ -24,7 +24,7 @@ describe('mapshaper-import.js', function () {
           records: [{foo: 'a'}, {foo: 'b'}]
         }
       });
-      api.applyCommands('-i json-subtree=data/records data.json -o',
+      api.applyCommands('-i json-path=data/records data.json -o',
           {'data.json': data},function(err, out) {
         var json = JSON.parse(out['data.json']);
         assert.deepEqual(json, [{foo: 'a'}, {foo: 'b'}]);

@@ -171,8 +171,8 @@ internal.getOptionParser = function() {
       type: 'strings',
       describe: '[CSV] comma-sep. list of fields to import'
     })
-    .option('json-subtree', {
-      old_alias: 'json-path',
+    .option('json-path', {
+      old_alias: 'json-subtree',
       describe: '[JSON] path to an array of data records; separator is /'
     });
 
