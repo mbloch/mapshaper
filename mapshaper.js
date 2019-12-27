@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.150';
+VERSION = '0.4.151';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -7748,12 +7748,30 @@ function GeoJSONReader(reader) {
 
   this.readObject = readObject;
 
-  function readObjects(start, cb) {
-    var obj = readObject(start);
+  function readObjects(offset, cb) {
+    var obj = readObject(offset);
+    var json;
     while (obj) {
-      cb(JSON.parse(obj.text)); // Use JSON.parse to parse object
-      obj = readObject(obj.offset);
+      try {
+        json = JSON.parse(obj.text);
+      } catch(e) {
+        stop('JSON parsing error --', adjustPositionMessage(e.message, offset + obj.start));
+      }
+      cb(json);
+      offset = obj.end;
+      obj = readObject(obj.end);
     }
+  }
+
+  // msg: JSON.parse() error message, e.g. "Unexpected token . in JSON at position 579"
+  // offset: start position of the parsed text in the JSON file
+  function adjustPositionMessage(msg, offset) {
+    var rxp = /position (\d+)/; // assumes no thousands separator in error message
+    var match = rxp.exec(msg);
+    if (match) {
+      msg = msg.replace(rxp, 'position ' + (offset + parseInt(match[1])));
+    }
+    return msg;
   }
 
   // Search for a JSON object starting at position @offs
@@ -7794,7 +7812,8 @@ function GeoJSONReader(reader) {
         if (level === 0) {
           retn = {
             text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
-            offset: offs + i + 1
+            start: startPos,
+            end: offs + i + 1
           };
           break;
         } else if (level == -1) {
@@ -13456,7 +13475,29 @@ internal.groupIds = function(getId, n) {
 };
 
 
-function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
+internal.dissolvePointGeometry = function(lyr, getGroupId, opts) {
+  var dissolve = opts.group_points ?
+      dissolvePointsAsGroups : dissolvePointsAsCentroids;
+  return dissolve(lyr, getGroupId, opts);
+};
+
+function dissolvePointsAsGroups(lyr, getGroupId, opts) {
+  var shapes = internal.cloneShapes(lyr.shapes);
+  var shapes2 = [];
+  lyr.shapes.forEach(function(shp, i) {
+    var groupId = getGroupId(i);
+    if (!shp) return;
+    if (!shapes2[groupId]) {
+      shapes2[groupId] = shp;
+    } else {
+      shapes2[groupId].push.apply(shapes2[groupId], shp);
+    }
+  });
+  return shapes2;
+}
+
+
+function dissolvePointsAsCentroids(lyr, getGroupId, opts) {
   var useSph = !opts.planar && internal.probablyDecimalDegreeBounds(internal.getLayerBounds(lyr));
   var getWeight = opts.weight ? internal.compileValueExpression(opts.weight, lyr) : null;
   var groups = [];
@@ -13606,7 +13647,7 @@ api.dissolve = function(lyr, arcs, opts) {
   } else if (lyr.geometry_type == 'polyline') {
     dissolveShapes = internal.dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
   } else if (lyr.geometry_type == 'point') {
-    dissolveShapes = dissolvePointLayerGeometry(lyr, getGroupId, opts);
+    dissolveShapes = internal.dissolvePointGeometry(lyr, getGroupId, opts);
   }
   return internal.composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
 };
@@ -19248,8 +19289,8 @@ internal.identifyJSONString = function(str, opts) {
   var fmt = null;
   if (str.length > maxChars) str = str.substr(0, maxChars);
   str = str.replace(/\s/g, '');
-  if (opts && opts.json_path) {
-    fmt = 'json'; // TODO: make json_path compatible with other types
+  if (opts && opts.json_subtree) {
+    fmt = 'json'; // TODO: make json_subtree compatible with other types
   } else if (/^\[[{\]]/.test(str)) {
     // empty array or array of objects
     fmt = 'json';
@@ -19269,7 +19310,7 @@ internal.identifyJSONObject = function(o) {
     fmt = 'topojson';
   } else if (o.type) {
     fmt = 'geojson';
-  } else if (utils.isArray(o)) {
+  } else if (utils.isArray(o) || o.json_subtree) {
     fmt = 'json';
   }
   return fmt;
@@ -19335,11 +19376,15 @@ internal.importJSON = function(data, opts) {
       try {
         content = JSON.parse(content); // ~3sec for 100MB string
       } catch(e) {
-        stop("Unable to parse JSON");
+        // stop("Unable to parse JSON");
+        stop('JSON parsing error --', e.message);
       }
     }
-    if (opts.json_path) {
-      content = internal.selectFromObject(content, opts.json_path);
+    if (opts.json_subtree) {
+      content = internal.selectFromObject(content, opts.json_subtree);
+      if (Array.isArray(content) === false) {
+        stop('Expected an array at JSON subtree:', opts.json_subtree);
+      }
     }
     retn.format = internal.identifyJSONObject(content, opts);
     if (retn.format == 'topojson') {
@@ -19356,15 +19401,17 @@ internal.importJSON = function(data, opts) {
   return retn;
 };
 
-// path: path from top-level to the target object, as a list of property
-//   names separated by '.'
+// path: path from top-level to the target object
 internal.selectFromObject = function(o, path) {
-  var parts = path.split('.');
-  var value = o && o[parts[0]];
-  if (parts > 1) {
-    return internal.selectFromObject(value, parts.slice(1).join(''));
+  var separator = path.indexOf('/') > 0 ? '/' : '.';
+  var parts = path.split(separator);
+  var key;
+  while (parts.length > 0) {
+    key = parts.shift();
+    if (!o[key]) return null;
+    o = o[key];
   }
-  return value;
+  return o;
 };
 
 
@@ -25566,10 +25613,10 @@ internal.getOptionParser = function() {
       dissolveFieldsOpt = {
         DEFAULT: true,
         type: 'strings',
-        describe: '(optional) field or fields to dissolve on (comma-sep. list)'
+        describe: '(optional) field(s) to dissolve on (comma-sep. list)'
       },
       fieldTypesOpt = {
-        describe: 'type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str',
+        describe: 'type hints for csv source files, e.g. FIPS:str,ZIPCODE:str',
         type: 'strings'
       },
       stringFieldsOpt = {
@@ -25684,6 +25731,10 @@ internal.getOptionParser = function() {
     .option('csv-fields', {
       type: 'strings',
       describe: '[CSV] comma-sep. list of fields to import'
+    })
+    .option('json-subtree', {
+      old_alias: 'json-path',
+      describe: '[JSON] path to an array of data records; separator is /'
     });
 
   parser.command('o')
@@ -25797,7 +25848,7 @@ internal.getOptionParser = function() {
       describe: '(SVG/TopoJSON) space betw. data and viewport (default is 1)'
     })
     .option('pixels', {
-      describe: '(SVG/TopoJSON) output area in pixels (alternative to width=)',
+      describe: '(SVG/TopoJSON) output area in pix. (alternative to width=)',
       type: 'number'
     })
     .option('svg-scale', {
@@ -25979,6 +26030,10 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
+    .option('group-points', {
+      type: 'flag',
+      describe: '[points] group points instead of converting to centroids'
+    })
     .option('weight', {
       describe: '[points] field or expression to use for weighting centroid'
     })
@@ -26191,7 +26246,7 @@ internal.getOptionParser = function() {
       describe: 'file or layer containing data records'
     })
     .option('keys', {
-      describe: 'join by matching target,source key fields; e.g. keys=FIPS,ID',
+      describe: 'join by matching target,source key fields, e.g. keys=FID,id',
       type: 'strings'
     })
     .option('calc', {
@@ -26205,7 +26260,7 @@ internal.getOptionParser = function() {
       type: 'strings'
     })
     .option('interpolate', {
-      describe: '(polygon-polygon join) (comma-sep.) area-interpolated fields',
+      describe: '(polygon-polygon join) list of area-interpolated fields',
       type: 'strings'
     })
     .option('point-method', {
@@ -26470,7 +26525,8 @@ internal.getOptionParser = function() {
     })
     */
     .option('variable', {
-      describe: 'expect an expression with interval=, percentage= or resolution=',
+      // describe: 'expect an expression with interval=, percentage= or resolution=',
+      describe: 'JS expr. assigning to one of: interval= percentage= resolution=',
       type: 'flag'
     })
     .option('planar', {
