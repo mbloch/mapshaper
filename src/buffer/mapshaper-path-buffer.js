@@ -37,7 +37,7 @@ internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
 
 internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
 
-  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 10;
+  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var tolerance;

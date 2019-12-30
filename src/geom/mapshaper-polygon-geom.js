@@ -14,6 +14,12 @@ geom.calcSchwartzbergCompactness = function(area, perimeter) {
   return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
 };
 
+// Returns: 1 if CW, -1 if CCW, 0 if collapsed
+geom.getPathWinding = function(ids, arcs) {
+  var area = geom.getPathArea(ids, arcs);
+  return area > 0 && 1 || area < 0 && -1 || 0;
+};
+
 geom.getShapeArea = function(shp, arcs) {
   // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
   return (shp || []).reduce(function(area, ids) {
