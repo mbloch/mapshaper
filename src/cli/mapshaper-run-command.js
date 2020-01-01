@@ -12,6 +12,7 @@ mapshaper-dots
 mapshaper-drop
 mapshaper-export
 mapshaper-each
+mapshaper-external
 mapshaper-calc
 mapshaper-file-import
 mapshaper-file-export
@@ -180,6 +181,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'explode') {
       outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
+
+    } else if (name == 'external') {
+      internal.external(opts);
 
     } else if (name == 'filter') {
       outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
@@ -365,7 +369,8 @@ api.runCommand = function(cmd, catalog, cb) {
       applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
 
     } else {
-      error("Unhandled command: [" + name + "]");
+      // throws error if cmd is not registered
+      internal.runExternalCommand(cmd, catalog);
     }
 
     // apply name parameter

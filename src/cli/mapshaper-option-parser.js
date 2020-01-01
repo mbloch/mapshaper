@@ -62,7 +62,10 @@ function CommandParser() {
       }
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        stop("Unknown command:", cmdName);
+        // In order to support adding commands at runtime, unknown commands
+        // are parsed without options (tokens get stored for later parsing)
+        // stop("Unknown command:", cmdName);
+        cmdDef = {name: cmdName, options: [], multi_arg: true};
       }
       cmd = {
         name: cmdDef.name,

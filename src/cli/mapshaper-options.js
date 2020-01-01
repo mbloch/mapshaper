@@ -1238,6 +1238,12 @@ internal.getOptionParser = function() {
       describe: 'use field values to calculate data island weights'
     });
 
+  parser.command('external')
+    .option('module', {
+      DEFAULT: true,
+      describe: 'name of Node module containing the command'
+    });
+
   parser.command('frame')
     // .describe('create a map frame at a given size')
     .option('bbox', {

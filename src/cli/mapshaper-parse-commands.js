@@ -26,7 +26,7 @@ internal.standardizeConsoleCommands = function(raw) {
 
 // Parse a command line string for the browser console
 internal.parseConsoleCommands = function(raw) {
-  var blocked = ['i', 'include', 'require'];
+  var blocked = ['i', 'include', 'require', 'external'];
   var str = internal.standardizeConsoleCommands(raw);
   var parsed;
   parsed = internal.parseCommands(str);

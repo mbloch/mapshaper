@@ -208,7 +208,7 @@ describe('mapshaper-commands.js', function () {
     });
 
 
-    it('missing file', function(done) {
+    it('missing file causes UserError', function(done) {
       api.applyCommands('-i data.csv', {}, function(err, output) {
         assert(err.name, 'UserError');
         done();
@@ -493,8 +493,6 @@ describe('mapshaper-commands.js', function () {
         done();
       });
     });
-
-
 
     it('Error: -i missing a file', function(done) {
       mapshaper.runCommands("-i oops.shp", function(err) {

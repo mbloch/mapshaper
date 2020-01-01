@@ -1,5 +1,6 @@
 var api = require('../'),
-  assert = require('assert');
+  assert = require('assert'),
+  internal = api.internal;
 
 
 describe('mapshaper-options.js', function () {
@@ -107,7 +108,6 @@ describe('mapshaper-options.js', function () {
   });
 
   describe('simplify', function() {
-    bad("-s") // no alias (add one?)
     bad("-simplify cartesian i 0.001")
     good("-simplify visvalingam 10%", {method: "visvalingam", percentage: '10%'})
     good("-simplify cartesian 1%", {planar: true, percentage: '1%'})
@@ -243,7 +243,19 @@ describe('mapshaper-options.js', function () {
 
   describe('syntax rules', function () {
     good("--help", {}); // all commands accept -- prefix
-    bad("-dummy") // unknown command
+  })
+
+  describe('Undefined command (gets parsed as tokens)', function() {
+
+    it('no arguments: empty token array', function() {
+      var parsed = internal.parseCommands('-dummy');
+      assert.deepEqual(parsed, [{name: 'dummy', _: [], options: {}}])
+    });
+
+    it ('arguments are imported as tokens', function() {
+      var parsed = internal.parseCommands('-dummy a   b=c  d=e,f ');
+      assert.deepEqual(parsed, [{name: 'dummy', _: ['a', 'b=c', 'd=e,f'], options: {}}])
+    });
   })
 
 })
@@ -251,14 +263,14 @@ describe('mapshaper-options.js', function () {
 function bad(str) {
   it(str, function() {
     assert.throws(function() {
-      api.internal.parseCommands(str);
+      internal.parseCommands(str);
     });
   })
 }
 
 function good(str, reference) {
   it(str, function() {
-    var parsed = api.internal.parseCommands(str);
+    var parsed = internal.parseCommands(str);
     var target = parsed[0].options;
     assert.deepEqual(target, reference);
   })

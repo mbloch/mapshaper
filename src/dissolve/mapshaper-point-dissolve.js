@@ -21,7 +21,6 @@ function dissolvePointsAsGroups(lyr, getGroupId, opts) {
   return shapes2;
 }
 
-
 function dissolvePointsAsCentroids(lyr, getGroupId, opts) {
   var useSph = !opts.planar && internal.probablyDecimalDegreeBounds(internal.getLayerBounds(lyr));
   var getWeight = opts.weight ? internal.compileValueExpression(opts.weight, lyr) : null;
