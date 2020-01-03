@@ -242,8 +242,14 @@ describe('mapshaper-options.js', function () {
   })
 
   describe('syntax rules', function () {
-    good("--help", {}); // all commands accept -- prefix
+    // all commands accept alternative -- prefix
+    good("--help", {});
+
+    // -<command>=<value> syntax throws an error
+    bad('-target=layer1');
+
   })
+
 
   describe('Undefined command (gets parsed as tokens)', function() {
 

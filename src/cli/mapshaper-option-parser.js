@@ -2,6 +2,7 @@
 
 function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
+      invalidCommandRxp = /^--?[a-z][\w-]*[=]/i, // e.g. -target=A // could be more general
       assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
       _usage = "",
       _examples = [],
@@ -99,6 +100,9 @@ function CommandParser() {
     return commands;
 
     function tokenLooksLikeCommand(s) {
+      if (invalidCommandRxp.test(s)) {
+        stop('Invalid command syntax:', s);
+      }
       return commandRxp.test(s);
     }
 
