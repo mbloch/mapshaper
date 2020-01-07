@@ -164,7 +164,7 @@ internal.projectAndDensifyArcs = function(arcs, proj) {
     p = proj(lng, lat);
     if (!p) return false; // signal that current arc contains an error
 
-    // Don't try to optimize shorter segments (optimization)
+    // Don't try to densify shorter segments (optimization)
     if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
       internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
         .forEach(append);

@@ -70,14 +70,68 @@ describe('Polygons to polygons spatial joins', function () {
     });
   })
 
-  it('Join outer polygon to inner polygon using inner-point method', function(done) {
-    var cmd = '-i test/data/features/polygon_join/ex2_C.json ' +
-      '-join test/data/features/polygon_join/ex2_A.json point-method ' +
-      '-o out.json';
-    api.applyCommands(cmd, {}, function(err, output) {
-      var json = JSON.parse(output['out.json']);
-      assert.equal(json.features[0].properties.value, 4); // entire value is joined
-      done();
+  describe('inner-point join method', function () {
+
+    var one = {
+      type: 'Feature',
+      properties: {name: 'A'},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 5], [5, 5], [5, 0], [0, 0]]]
+      }
+    };
+
+    var many = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {id: '0'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]]
+        }
+      }, {
+        type: 'Feature',
+        properties: {id: '1'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[3, 1], [3, 2], [4, 2], [4, 1], [3, 1]]]
+        }
+      }]
+    };
+    one = JSON.stringify(one);
+    many = JSON.stringify(many);
+
+    it('Join outer polygon to inner polygon using inner-point method', function(done) {
+      var cmd = '-i test/data/features/polygon_join/ex2_C.json ' +
+        '-join test/data/features/polygon_join/ex2_A.json point-method ' +
+        '-o out.json';
+      api.applyCommands(cmd, {}, function(err, output) {
+        var json = JSON.parse(output['out.json']);
+        var rec = json.features[0].properties;
+        assert.equal(rec.value, 4); // entire value is joined
+        done();
+      });
+    })
+
+    it('Join many polygons to one using inner-point method', function(done) {
+      var cmd = '-i one.json -join many.json fields= calc="n=count()" -o';
+      api.applyCommands(cmd, {'one.json': one, 'many.json': many}, function(err, out) {
+        var json = JSON.parse(out['one.json']);
+        var rec = json.features[0].properties;
+        assert.deepEqual(rec, {name: 'A', n: 2});
+        done();
+      });
+    });
+
+    it('Join one polygon to many using inner-point method', function(done) {
+      var cmd = '-i many.json -join one.json -o';
+      api.applyCommands(cmd, {'one.json': one, 'many.json': many}, function(err, out) {
+        var json = JSON.parse(out['many.json'])
+        assert.deepEqual(json.features[0].properties, {name: 'A', id: 0})
+        assert.deepEqual(json.features[1].properties, {name: 'A', id: 1})
+        done();
+      });
     });
   })
 
