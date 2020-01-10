@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.152';
+VERSION = '0.4.153';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -8016,6 +8016,12 @@ geom.calcSchwartzbergCompactness = function(area, perimeter) {
   return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
 };
 
+// Returns: 1 if CW, -1 if CCW, 0 if collapsed
+geom.getPathWinding = function(ids, arcs) {
+  var area = geom.getPathArea(ids, arcs);
+  return area > 0 && 1 || area < 0 && -1 || 0;
+};
+
 geom.getShapeArea = function(shp, arcs) {
   // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
   return (shp || []).reduce(function(area, ids) {
@@ -10139,7 +10145,7 @@ internal.getPolylineBufferMaker = function(arcs, geod, getBearing, opts) {
 
 internal.getPathBufferMaker = function(arcs, geod, getBearing, opts) {
 
-  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 10;
+  var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var tolerance;
@@ -10341,70 +10347,104 @@ internal.bufferIntersection = function(ax, ay, bx, by, cx, cy, dx, dy) {
 };
 
 
+
+internal.testSegmentBoundsIntersection = function(a, b, bb) {
+  if (bb.containsPoint(a[0], a[1])) {
+    return true;
+  }
+  return !!(
+    geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymin, bb.xmin, bb.ymax) ||
+    geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymax, bb.xmax, bb.ymax) ||
+    geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymax, bb.xmax, bb.ymin) ||
+    geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymin, bb.xmin, bb.ymin));
+};
+
+
 internal.getPolylineBufferMaker2 = function(arcs, geod, getBearing, opts) {
-  var maker = internal.getPathBufferMaker2(arcs, geod, getBearing, opts);
+  var makeLeftBuffer = internal.getPathBufferMaker2(arcs, geod, getBearing, opts);
   var geomType = opts.geometry_type;
-  // polyline output could be used for debugging
-  var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
 
   function polygonCoords(ring) {
     return [ring];
   }
 
-  function pathBufferCoords(pathArcs, dist) {
-    var partialRings = maker(pathArcs, dist);
-    var coords, revPathArcs;
+  function needLeftBuffer(path, arcs) {
     if (geomType == 'polyline') {
-      revPathArcs = internal.reversePath(pathArcs.concat());
-      partialRings = partialRings.concat(maker(revPathArcs, dist));
+      return opts.type != 'right';
     }
-    return outputGeom == 'polyline' ? coords : coords.map(polygonCoords);
+    // assume polygon type
+    if (opts.type == 'outer') {
+      return geom.getPathWinding(path, arcs) == 1;
+    }
+    if (opts.type == 'inner') {
+      return geom.getPathWinding(path, arcs) == -1;
+    }
+    return true;
+  }
+
+  function needRightBuffer() {
+    return geomType == 'polyline' && opts.type != 'left';
+  }
+
+  function makeBufferParts(pathArcs, dist) {
+    var leftPartials, rightPartials, parts, revPathArcs;
+
+    if (needLeftBuffer(pathArcs, arcs)) {
+      leftPartials = makeLeftBuffer(pathArcs, dist);
+    }
+    if (needRightBuffer()) {
+      revPathArcs = internal.reversePath(pathArcs.concat());
+      rightPartials = makeLeftBuffer(revPathArcs, dist);
+    }
+    parts = (leftPartials || []).concat(rightPartials || []);
+    return parts.map(polygonCoords);
   }
 
   // Returns a GeoJSON Geometry (MultiLineString or MultiPolygon) or null
   return function(shape, dist) {
     var geom = {
-      type: outputGeom == 'polyline' ? 'MultiLineString' : 'MultiPolygon',
+      type: 'MultiPolygon',
       coordinates: []
     };
     for (var i=0; i<shape.length; i++) {
-      geom.coordinates = geom.coordinates.concat(pathBufferCoords(shape[i], dist));
+      geom.coordinates = geom.coordinates.concat(makeBufferParts(shape[i], dist));
     }
     return geom.coordinates.length == 0 ? null : geom;
   };
 };
-
 
 internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
   var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var tolerance;
+  var partials, left, center;
+  var bounds;
   // TODO: implement other join styles than round
 
   function updateTolerance(dist) {
 
   }
 
-  function addRoundJoin(arr, x, y, startDir, angle, dist) {
+  function addRoundJoin(x, y, startDir, angle, dist) {
     var increment = 10;
     var endDir = startDir + angle;
     var dir = startDir + increment;
     while (dir < endDir) {
-      addBufferVertex(arr, geod(x, y, dir, dist));
+      addBufferVertex(geod(x, y, dir, dist));
       dir += increment;
     }
   }
 
-  function addRoundJoin2(arr, x, y, startDir, angle, dist) {
-    var increment = 10;
-    var endDir = startDir + angle;
-    var dir = startDir + increment;
-    while (dir < endDir) {
-      addBufferVertex(arr, geod(x, y, dir, dist));
-      dir += increment;
-    }
-  }
+  // function addRoundJoin2(arr, x, y, startDir, angle, dist) {
+  //   var increment = 10;
+  //   var endDir = startDir + angle;
+  //   var dir = startDir + increment;
+  //   while (dir < endDir) {
+  //     addBufferVertex(arr, geod(x, y, dir, dist));
+  //     dir += increment;
+  //   }
+  // }
 
   // Test if two points are within a snapping tolerance
   // TODO: calculate the tolerance more sensibly
@@ -10461,39 +10501,99 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
     return delta;
   }
 
-  function addBufferVertex(arr, d) {
-    var a, b, c, hit;
-    for (var i=0, idx = arr.length - 3; i<backtrackSteps && idx >= 0; i++, idx--) {
-      c = arr[arr.length - 1];
+
+  // TODO: handle polygon holes
+  function addBufferVertex(d) {
+    var arr = left;
+    var a, b, c, c0, hit;
+    // c is the start point of the segment formed by appending point d to the polyline.
+    c0 = c = arr[arr.length - 1];
+    for (var i=0, idx = arr.length - 3; idx >= 0; i++, idx--) {
       a = arr[idx];
       b = arr[idx + 1];
       // TODO: consider using a geodetic intersection function for lat-long datasets
       hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
       if (hit) {
-        // if (internal.segmentTurn(a, b, c, d) == 1) console.log('enter')
-
-        // TODO: handle collinear segments
+        if (internal.segmentTurn(a, b, c, d) == 1) {
+          // interpretation: segment cd crosses segment ab from outside to inside
+          // the buffer -- we need to start a new partial; otherwise,
+          // the following code would likely remove a loop representing
+          // an oxbow-type hole in the buffer.
+          //
+          finishPartial();
+          break;
+        } else {
+          // console.log('HIT', internal.segmentTurn(a, b, c, d))
+        }
+        // TODO: handle collinear segments (consider creating new partial)
         // if (hit.length != 2) console.log('COLLINEAR', hit)
-        // segments intersect -- replace two internal segment endpoints with xx point
+
+        // segments intersect, indicating a spurious loop: remove the loop and
+        // replace the endpoints of the intersecting segments with the intersection point.
         while (arr.length > idx + 1) arr.pop();
         appendPoint(arr, hit);
+        c = hit; // update starting point of the newly added segment
+      }
+
+      // Maintain a bounding box around vertices before the backtrack limit.
+      // If the latest segment intersects this bounding box, there could be a self-
+      // intersection -- start a new partial to prevent self-intersection.
+      //
+      if (i >= backtrackSteps) {
+        if (!bounds) {
+          bounds = new Bounds();
+          bounds.mergePoint(a[0], a[1]);
+        }
+        bounds.mergePoint(b[0], b[1]);
+        if (internal.testSegmentBoundsIntersection(c0, d, bounds)) {
+          finishPartial();
+        }
+        break;
       }
     }
 
     appendPoint(arr, d);
   }
 
+  function finishPartial() {
+    // Get endpoints of the two polylines, for starting the next partial
+    var leftEP = left[left.length - 1];
+    var centerEP = center[center.length - 1];
+
+    // Make a polygon ring
+    var ring = [];
+    extendArray(ring, left);
+    center.reverse();
+    extendArray(ring, center);
+    ring.push(ring[0]); // close ring
+    partials.push(ring);
+
+    // Start next partial
+    left.push(leftEP);
+    center.push(centerEP);
+
+    // clear bbox
+    bbox = null;
+  }
+
+  function extendArray(arr, arr2) {
+    arr2.reverse();
+    while(arr2.length > 0) arr.push(arr2.pop());
+  }
+
   return function(path, dist) {
-    var rings = [];
-    var left = [];
-    var right = [];
     var x0, y0, x1, y1, x2, y2;
     var p1, p2;
     var bearing, prevBearing, firstBearing, joinAngle;
-    var i = 0;
-    var inside = false;
+    partials = [];
+    left = [];
+    center = [];
     pathIter.init(path);
 
+    if (pathIter.hasNext()) {
+      x0 = x2 = pathIter.x;
+      y0 = y2 = pathIter.y;
+    }
     while (pathIter.hasNext()) {
       // TODO: use a tolerance
       if (pathIter.x === x2 && pathIter.y === y2) continue; // skip duplicate points
@@ -10501,51 +10601,55 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
       y1 = y2;
       x2 = pathIter.x;
       y2 = pathIter.y;
-      if (i >= 1) {
-        prevBearing = bearing;
-        bearing = getBearing(x1, y1, x2, y2);
-        // shift original polyline segment to the left by buffer distance
-        p1 = geod(x1, y1, bearing - 90, dist);
-        p2 = geod(x2, y2, bearing - 90, dist);
-        // left.push([x1, y1], p1) // debug extrusion lines
-        // left.push([x2, y2], p2) // debug extrusion lines
-      }
-      if (i == 1) {
-        firstBearing = bearing;
-        x0 = x1;
-        y0 = y1;
+
+      prevBearing = bearing;
+      bearing = getBearing(x1, y1, x2, y2);
+      // shift original polyline segment to the left by buffer distance
+      p1 = geod(x1, y1, bearing - 90, dist);
+      p2 = geod(x2, y2, bearing - 90, dist);
+
+      if (center.length === 0) {
+        // first loop, second point in this partial
+        if (partials.length === 0) {
+          firstBearing = bearing;
+        }
         left.push(p1, p2);
-      }
-      if (i > 1) {
+        center.push([x1, y1], [x2, y2]);
+      } else {
+        //
         joinAngle = getJoinAngle(prevBearing, bearing);
         if (veryCloseToPrevPoint(left, p1[0], p1[1])) {
           // skip first point
-          addBufferVertex(left, p2);
+          addBufferVertex(p2);
         } else if (joinAngle > 0) {
-          addRoundJoin(left, x1, y1, prevBearing - 90, joinAngle, dist);
-          addBufferVertex(left, p1);
-          addBufferVertex(left, p2);
+          addRoundJoin(x1, y1, prevBearing - 90, joinAngle, dist);
+          addBufferVertex(p1);
+          addBufferVertex(p2);
         } else {
-          addBufferVertex(left, p1);
-          addBufferVertex(left, p2);
+          addBufferVertex(p1);
+          addBufferVertex(p2);
         }
+        center.push([x2, y2]);
       }
-      i++;
+    }
+
+    if (center.length > 1) {
+      finishPartial();
     }
     // TODO: handle defective polylines
 
-    if (x2 == x0 && y2 == y0) {
-      // add join to finish closed path
-      joinAngle = getJoinAngle(bearing, firstBearing);
-      if (joinAngle > 0) {
-        addRoundJoin(left, x2, y2, bearing - 90, joinAngle, dist);
-      }
-    } else {
-      // add a cap to finish open path
-      left.push.apply(left, makeCap(x2, y2, bearing, dist));
-    }
+    // if (x2 == x0 && y2 == y0) {
+    //   // add join to finish closed path
+    //   joinAngle = getJoinAngle(bearing, firstBearing);
+    //   if (joinAngle > 0) {
+    //     addRoundJoin(leftpart, x2, y2, bearing - 90, joinAngle, dist);
+    //   }
+    // } else {
+    //   // add a cap to finish open path
+    //   leftpart.push.apply(leftpart, makeCap(x2, y2, bearing, dist));
+    // }
 
-    return rings;
+    return partials;
   };
 };
 
@@ -13495,7 +13599,6 @@ function dissolvePointsAsGroups(lyr, getGroupId, opts) {
   });
   return shapes2;
 }
-
 
 function dissolvePointsAsCentroids(lyr, getGroupId, opts) {
   var useSph = !opts.planar && internal.probablyDecimalDegreeBounds(internal.getLayerBounds(lyr));
@@ -19283,6 +19386,89 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
 };
 
 
+var externalCommands = {};
+
+internal.external = function(opts) {
+  // TODO: remove duplication with -require command
+  var _module, moduleFile, moduleName;
+  if (!opts.module) {
+    stop('Missing required "module" parameter');
+  }
+  if (cli.isFile(opts.module)) {
+    moduleFile = opts.module;
+  } else if (cli.isFile(opts.module + '.js')) {
+    moduleFile = opts.module + '.js';
+  } else {
+    moduleName = opts.module;
+  }
+  if (moduleFile) {
+    moduleFile = require('path').join(process.cwd(), moduleFile);
+  }
+  try {
+    _module = require(moduleFile || moduleName);
+    _module(api);
+  } catch(e) {
+    // stop(e);
+    stop('Unable to load external module:', e.message);
+  }
+};
+
+api.registerCommand = function(name, params) {
+  var defn = {name: name, options: params.options || []};
+  // Add definitions of options common to all commands (TODO: remove duplication)
+  defn.options.push({name: 'target'});
+  utils.defaults(defn, params);
+  internal.validateExternalCommand(defn);
+  externalCommands[name] = defn;
+};
+
+internal.validateExternalCommand = function(defn) {
+  var targetTypes = ['layer', 'layers'];
+  if (typeof defn.command != 'function') {
+    stop('Expected "command" parameter function');
+  }
+  if (!defn.target) {
+    stop('Missing required "target" parameter');
+  }
+};
+
+internal.runExternalCommand = function(cmdOpts, catalog) {
+  var name = cmdOpts.name;
+  var cmdDefn = externalCommands[name];
+  if (!cmdDefn) {
+    stop('Unsupported command');
+  }
+  var targetType = cmdDefn.target;
+  var opts = internal.parseExternalCommand(name, cmdDefn, cmdOpts._);
+  var targets = catalog.findCommandTargets(opts.target || '*');
+  var target = targets[0];
+  if (!target) {
+    stop('Missing a target');
+  }
+  if (targetType == 'layer' && (target.layers.length != 1 || targets.length > 1)) {
+    stop('This command only supports targeting a single layer');
+  }
+  if (targets.length > 1) {
+    stop("Targetting layers from multiple datasets is not supported");
+  }
+  if (targetType == 'layer') {
+    cmdDefn.command(target.layers[0], target.dataset, opts.options);
+  } else if (targetType == 'layers') {
+    cmdDefn.command(target.layers, target.dataset, opts.options);
+  }
+};
+
+internal.parseExternalCommand = function(name, cmdDefn, tokens) {
+  var parser = new CommandParser();
+  var cmd = parser.command(name);
+  (cmdDefn.options || []).forEach(function(o) {
+    cmd.option(o.name, o);
+  });
+  var parsed = parser.parseArgv(['-' + name].concat(tokens));
+  return parsed[0];
+};
+
+
 // Identify JSON type from the initial subset of a JSON string
 internal.identifyJSONString = function(str, opts) {
   var maxChars = 1000;
@@ -20931,17 +21117,19 @@ internal.joinPolygonsViaPoints = function(targetLyr, targetDataset, source, opts
 
   var sourceLyr = source.layer,
       sourceDataset = source.dataset,
-      pointLyr;
+      pointLyr, retn;
 
   if (targetLyr.shapes.length > sourceLyr.shapes.length) {
-    // convert target polygons to points
+    // convert target polygons to points, then join source data to points
     pointLyr = internal.pointsFromPolygonsForJoin(targetLyr, targetDataset);
-    return api.joinPolygonsToPoints(targetLyr, sourceLyr, sourceDataset.arcs, opts);
+    retn = api.joinPolygonsToPoints(pointLyr, sourceLyr, sourceDataset.arcs, opts);
+    targetLyr.data = pointLyr.data;
   } else {
-    // convert source polygons to points
+    // convert source polygons to points, then join points to target polygons
     pointLyr = internal.pointsFromPolygonsForJoin(sourceLyr, sourceDataset);
-    return api.joinPointsToPolygons(targetLyr, targetDataset.arcs, pointLyr, opts);
+    retn = api.joinPointsToPolygons(targetLyr, targetDataset.arcs, pointLyr, opts);
   }
+  return retn;
 };
 
 internal.pointsFromPolygonsForJoin = function(lyr, dataset) {
@@ -22625,7 +22813,7 @@ internal.projectAndDensifyArcs = function(arcs, proj) {
     p = proj(lng, lat);
     if (!p) return false; // signal that current arc contains an error
 
-    // Don't try to optimize shorter segments (optimization)
+    // Don't try to densify shorter segments (optimization)
     if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
       internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
         .forEach(append);
@@ -22807,13 +22995,13 @@ internal.createPolygonLayer = function(lyr, dataset, opts) {
 
 api.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
-  var name = 'layer';
+  var name = '';
   var suffix = '';
   layers.forEach(function(lyr, i) {
     if (i < nameCount) {
       name = names[i];
     }
-    if (nameCount < layers.length && (i >= nameCount - 1)) {
+    if (name && nameCount < layers.length && (i >= nameCount - 1)) {
       suffix = (suffix || 0) + 1;
     }
     lyr.name = name + suffix;
@@ -24428,7 +24616,7 @@ internal.target = function(catalog, opts) {
   if (targets.length === 0) {
     stop("No layers were matched (pattern: " + pattern + (type ? ' type: ' + type : '') + ")");
   }
-  if (opts.name) {
+  if (opts.name || opts.name === '') {
     // TODO: improve this
     targets[0].layers[0].name = opts.name;
   }
@@ -24644,6 +24832,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'explode') {
       outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
 
+    } else if (name == 'external') {
+      internal.external(opts);
+
     } else if (name == 'filter') {
       outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
 
@@ -24828,7 +25019,8 @@ api.runCommand = function(cmd, catalog, cb) {
       applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
 
     } else {
-      error("Unhandled command: [" + name + "]");
+      // throws error if cmd is not registered
+      internal.runExternalCommand(cmd, catalog);
     }
 
     // apply name parameter
@@ -24943,6 +25135,7 @@ utils.trimQuotes = function(raw) {
 
 function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
+      invalidCommandRxp = /^--?[a-z][\w-]*[=]/i, // e.g. -target=A // could be more general
       assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
       _usage = "",
       _examples = [],
@@ -25003,7 +25196,10 @@ function CommandParser() {
       }
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        stop("Unknown command:", cmdName);
+        // In order to support adding commands at runtime, unknown commands
+        // are parsed without options (tokens get stored for later parsing)
+        // stop("Unknown command:", cmdName);
+        cmdDef = {name: cmdName, options: [], multi_arg: true};
       }
       cmd = {
         name: cmdDef.name,
@@ -25037,6 +25233,9 @@ function CommandParser() {
     return commands;
 
     function tokenLooksLikeCommand(s) {
+      if (invalidCommandRxp.test(s)) {
+        stop('Invalid command syntax:', s);
+      }
       return commandRxp.test(s);
     }
 
@@ -26799,6 +26998,12 @@ internal.getOptionParser = function() {
       describe: 'use field values to calculate data island weights'
     });
 
+  parser.command('external')
+    .option('module', {
+      DEFAULT: true,
+      describe: 'name of Node module containing the command'
+    });
+
   parser.command('frame')
     // .describe('create a map frame at a given size')
     .option('bbox', {
@@ -27007,7 +27212,7 @@ internal.standardizeConsoleCommands = function(raw) {
 
 // Parse a command line string for the browser console
 internal.parseConsoleCommands = function(raw) {
-  var blocked = ['i', 'include', 'require'];
+  var blocked = ['i', 'include', 'require', 'external'];
   var str = internal.standardizeConsoleCommands(raw);
   var parsed;
   parsed = internal.parseCommands(str);
