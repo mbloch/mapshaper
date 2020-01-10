@@ -1,3 +1,7 @@
+v0.4.153
+* Allow setting empty layer names using -rename-layers "".
+* Fixed bug affecting polygon-to-polygon spatial joins using the "point-method" flag.
+
 v0.4.152
 * Rename json-subtree option json-path.
 
