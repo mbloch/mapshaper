@@ -10,7 +10,7 @@ internal.target = function(catalog, opts) {
   if (targets.length === 0) {
     stop("No layers were matched (pattern: " + pattern + (type ? ' type: ' + type : '') + ")");
   }
-  if (opts.name) {
+  if (opts.name || opts.name === '') {
     // TODO: improve this
     targets[0].layers[0].name = opts.name;
   }

@@ -76,18 +76,19 @@ describe('mapshaper-rename-layers.js', function () {
     assert.deepEqual(layers, [{name: 'a'}, {name: 'b'}]);
   })
 
-  it ('use layer1, layer2, ... if names are missing', function() {
+  // it ('use layer1, layer2, ... if names are missing', function() {
+  it ('use empty strings if names argument is empty', function() {
     var layers = [{}, {}],
         names = null;
     api.renameLayers(layers, names);
-    assert.deepEqual(layers, [{name: 'layer1'}, {name: 'layer2'}]);
+    assert.deepEqual(layers, [{name: ''}, {name: ''}]);
   })
 
-  it ('use layer1 for a single layer if no names are given', function() {
+  // it ('use layer1 for a single layer if no names are given', function() {
+  it ('use empty string for a single layer if no names are given', function() {
     var layers = [{}],
         names = [];
     api.renameLayers(layers, names);
-    assert.deepEqual(layers, [{name: 'layer1'}]);
+    assert.deepEqual(layers, [{name: ''}]);
   })
-
 });
