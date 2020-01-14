@@ -1,3 +1,6 @@
+v0.4.154
+* Added -divide command, for divide a polyline layer by a polygon layer. Also joins data from the polygon layer to the divided polyline layer.
+
 v0.4.153
 * Allow setting empty layer names using -rename-layers "".
 * Fixed bug affecting polygon-to-polygon spatial joins using the "point-method" flag.
