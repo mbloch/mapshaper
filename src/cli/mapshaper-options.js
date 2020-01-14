@@ -16,7 +16,9 @@ internal.getOptionParser = function() {
       noReplaceOpt = {
         alias: '+',
         type: 'flag',
-        describe: 'retain the original layer(s) instead of replacing'
+        label: '+, no-replace', // show alias as primary option
+        // describe: 'retain the original layer(s) instead of replacing'
+        describe: 'retain both input and output layer(s)'
       },
       noSnapOpt = {
         // describe: 'don't snap points before applying command'
@@ -373,11 +375,11 @@ internal.getOptionParser = function() {
       describe: 'distance units (meters|miles|km|feet) (default is meters)'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('clean')
-    .describe('fixes geometry issues, including polygon overlaps and gaps')
+    .describe('fixes geometry issues, such as polygon overlaps and gaps')
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
     .option('snap-interval', snapIntervalOpt)
@@ -421,9 +423,9 @@ internal.getOptionParser = function() {
         describe: 'experimental fast bbox clipping'
       })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('colorizer')
     .describe('define a function to convert data values to color classes')
@@ -481,8 +483,8 @@ internal.getOptionParser = function() {
       describe: '[points] use 2D math to find centroids of latlong points'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
 
   parser.command('dissolve2')
@@ -499,9 +501,9 @@ internal.getOptionParser = function() {
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('dots')
     .describe('')
@@ -551,9 +553,9 @@ internal.getOptionParser = function() {
     })
     .option('bbox', bboxOpt)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('explode')
     .describe('divide multi-part features into single-part features')
@@ -575,8 +577,8 @@ internal.getOptionParser = function() {
     })
     .option('cleanup', {type: 'flag'}) // TODO: document
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('filter-fields')
     .describe('retain a subset of data fields')
@@ -659,8 +661,8 @@ internal.getOptionParser = function() {
       type: 'flag'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
@@ -668,8 +670,8 @@ internal.getOptionParser = function() {
     .option('where', whereOpt2)
     // .option('each', eachOpt2)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('join')
     .describe('join data records from a file or layer to a layer')
@@ -752,8 +754,8 @@ internal.getOptionParser = function() {
       describe: 'field for grouping point input into multiple lines'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('merge-layers')
     .describe('merge multiple layers into as few layers as possible')
@@ -770,8 +772,8 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('point-grid')
     .describe('create a rectangular grid of points')
@@ -839,8 +841,8 @@ internal.getOptionParser = function() {
       type: 'distance'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('polygons')
     .describe('convert polylines to polygons')
@@ -889,16 +891,16 @@ internal.getOptionParser = function() {
       describe: 'name of layer to enclose'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('rectangles')
-    .describe('create a rectangle around each feature in the target layer')
+    .describe('create a rectangle around each feature in a layer')
     .option('offset', offsetOpt)
     .option('aspect-ratio', aspectRatioOpt)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('rename-fields')
     .describe('rename data fields')
@@ -1009,9 +1011,9 @@ internal.getOptionParser = function() {
       describe: 'slice id field (from source layer)'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('snap')
     // .describe('snap vertices')
@@ -1038,13 +1040,13 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('split')
-    .describe('split features into separate layers using a data field')
+    .describe('split a layer into single-feature or multi-feature layers')
     .option('field', {
       DEFAULT: true,
-      describe: 'name of an attribute field (omit to split all features)'
+      describe: 'attribute field for grouping same-value features'
     })
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('split-on-grid')
     .describe('split features into separate layers using a grid')
@@ -1165,10 +1167,10 @@ internal.getOptionParser = function() {
       describe: 'fields to retain (comma-sep.) (default is all fields)',
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('target', {
       describe: 'specify layers to target (comma-sep. list)'
-    });
+    })
+    .option('no-replace', noReplaceOpt);
 
   parser.command('uniq')
     .describe('delete features with the same id as a previous feature')

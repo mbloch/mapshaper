@@ -237,7 +237,7 @@ function CommandParser() {
 
     function formatLines(lines) {
       var colWidth = calcColWidth(lines);
-      var gutter = ' ';
+      var gutter = '  ';
       var helpStr = lines.map(function(line) {
         if (Array.isArray(line)) {
           line = '  ' + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
