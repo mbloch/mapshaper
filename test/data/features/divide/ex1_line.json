@@ -1,0 +1,8 @@
+{
+  "type": "Feature",
+  "properties": {"line_name": "B"},
+  "geometry": {
+    "type": "LineString",
+    "coordinates": [[0, 1], [2, 1]]
+  }
+}

@@ -505,6 +505,26 @@ internal.getOptionParser = function() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('divide')
+    .describe('divide lines by polygons, copy data from polygons to lines')
+    .option('fields', {
+      describe: 'fields to copy (comma-sep.) (default is all but key field)',
+      type: 'strings'
+    })
+    .option('calc', {
+      describe: 'use a JS expression to assign values (for many-to-one joins)'
+    })
+    .option('force', {
+      describe: 'replace values from same-named fields',
+      type: 'flag'
+    })
+    .option('source', {
+      DEFAULT: true,
+      describe: 'file or layer containing polygons'
+    })
+    .option('target', targetOpt);
+    // .option('no-replace', noReplaceOpt);
+
   parser.command('dots')
     .describe('')
     .option('field', {
@@ -691,7 +711,7 @@ internal.getOptionParser = function() {
       type: 'strings'
     })
     .option('calc', {
-      describe: 'use a JS expression to assign values in many-to-one joins'
+      describe: 'use a JS expression to assign values (for many-to-one joins)'
     })
     .option('where', {
       describe: 'use a JS expression to filter source records'
@@ -1414,10 +1434,7 @@ internal.getOptionParser = function() {
   parser.command('debug');
 
   /*
-  parser.command('divide')
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+
 
   parser.command('fill-holes')
     .option('no-replace', noReplaceOpt)

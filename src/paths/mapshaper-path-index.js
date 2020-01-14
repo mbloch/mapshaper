@@ -30,7 +30,8 @@ function PathIndex(shapes, arcs) {
   // (p is inside a ring or on the boundary)
   this.findEnclosingShapes = function(p) {
     var ids = [];
-    var groups = groupItemsByShapeId(findPointHitCandidates(p));
+    var cands = findPointHitCandidates(p);
+    var groups = groupItemsByShapeId(cands);
     groups.forEach(function(group) {
       if (testPointInRings(p, group)) {
         ids.push(group[0].id);
@@ -40,7 +41,7 @@ function PathIndex(shapes, arcs) {
   };
 
   // Returns shape id of a polygon that intersects p or -1
-  // (If multiple intersections, returns on of the polygons)
+  // (If multiple intersections, returns one of the polygons)
   this.findEnclosingShape = function(p) {
     var shpId = -1;
     var groups = groupItemsByShapeId(findPointHitCandidates(p));
@@ -50,6 +51,15 @@ function PathIndex(shapes, arcs) {
       }
     });
     return shpId;
+  };
+
+  // Returns shape ids of polygons that contain an arc
+  // (arcs that are )
+  // Assumes that input arc is either inside, outside or coterminous with indexed
+  // arcs (i.e. input arc does not cross an indexed arc)
+  this.findShapesEnclosingArc = function(arcId) {
+    var p = getTestPoint([arcId]);
+    return this.findEnclosingShapes(p);
   };
 
   this.findPointEnclosureCandidates = function(p, buffer) {
