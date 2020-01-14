@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.153';
+VERSION = '0.4.154';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -10969,7 +10969,8 @@ function PathIndex(shapes, arcs) {
   // (p is inside a ring or on the boundary)
   this.findEnclosingShapes = function(p) {
     var ids = [];
-    var groups = groupItemsByShapeId(findPointHitCandidates(p));
+    var cands = findPointHitCandidates(p);
+    var groups = groupItemsByShapeId(cands);
     groups.forEach(function(group) {
       if (testPointInRings(p, group)) {
         ids.push(group[0].id);
@@ -10979,7 +10980,7 @@ function PathIndex(shapes, arcs) {
   };
 
   // Returns shape id of a polygon that intersects p or -1
-  // (If multiple intersections, returns on of the polygons)
+  // (If multiple intersections, returns one of the polygons)
   this.findEnclosingShape = function(p) {
     var shpId = -1;
     var groups = groupItemsByShapeId(findPointHitCandidates(p));
@@ -10989,6 +10990,15 @@ function PathIndex(shapes, arcs) {
       }
     });
     return shpId;
+  };
+
+  // Returns shape ids of polygons that contain an arc
+  // (arcs that are )
+  // Assumes that input arc is either inside, outside or coterminous with indexed
+  // arcs (i.e. input arc does not cross an indexed arc)
+  this.findShapesEnclosingArc = function(arcId) {
+    var p = getTestPoint([arcId]);
+    return this.findEnclosingShapes(p);
   };
 
   this.findPointEnclosureCandidates = function(p, buffer) {
@@ -16281,6 +16291,103 @@ api.dissolve2 = function(layers, dataset, opts) {
   return layers.map(function(lyr) {
     return internal.dissolvePolygonLayer2(lyr, dataset, opts);
   });
+};
+
+
+
+api.divide = function(targetLayers, targetDataset, source, opts) {
+  targetLayers.forEach(internal.requirePolylineLayer);
+  var mergedDataset = internal.mergeLayersForOverlay(targetLayers, targetDataset, source, opts);
+  var nodes = internal.addIntersectionCuts(mergedDataset, opts);
+  var polygonLyr = mergedDataset.layers.pop();
+  internal.requirePolygonLayer(polygonLyr);
+  // Assume that topology is now built
+  targetDataset.arcs = mergedDataset.arcs;
+  targetLayers.forEach(function(polylineLyr) {
+    internal.dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts);
+  });
+};
+
+internal.dividePolylineLayer = function(polylineLyr, polygonLyr, nodes, opts) {
+  var index = new PathIndex(polygonLyr.shapes, nodes.arcs);
+  var records = polylineLyr.data ? polylineLyr.data.getRecords() : [];
+  var shapes2 = [];
+  var records2 = [];
+  var index2 = [];
+  var outputLines;
+  var outputKeys;
+  var outputMatches;
+  polylineLyr.shapes.forEach(function(shp, i) {
+    var rec = records[i] || {};
+    if (!shp) {
+      // case: record with no geometry -- retain in the output layer
+      shapes2.push(null);
+      records2.push(rec);
+      return;
+    }
+    outputLines = [];
+    outputKeys = [];
+    outputMatches = [];
+    internal.forEachShapePart(shp, onPart);
+    outputLines.forEach(function(shape2, i) {
+      shapes2.push(shape2);
+      records2.push(i > 0 ? utils.extend({}, rec) : rec); // assume input data is being replaced
+      index2.push(outputMatches[i]);
+    });
+  });
+  polylineLyr.shapes = shapes2;
+  polylineLyr.data = new DataTable(records2);
+  internal.joinTables(polylineLyr.data, polygonLyr.data, function(i) {
+    return index2[i] || [];
+  }, opts);
+
+  function addDividedParts(parts, keys, matches) {
+    var keyId, key;
+    for (var i=0; i<parts.length; i++) {
+      key = keys[i];
+      keyId = outputKeys.indexOf(key);
+      if (keyId == -1) {
+        outputKeys.push(key);
+        outputLines.push([parts[i]]);
+        outputMatches.push(matches[i]);
+      } else {
+        outputLines[keyId].push(parts[i]);
+      }
+    }
+  }
+
+  function getKey(shapeIds) {
+    return shapeIds.sort().join(',');
+    // multiple matches: treat like no match
+    // return shapeIds.length == 1 ? String(shapeIds[0]) : '-1';
+  }
+
+  // Partition each part
+  function onPart(ids) {
+    var parts2 = [];
+    var keys2 = [];
+    var matches2 = [];
+    var prevKey = null;
+    var containingIds, key, part2, arcId;
+    // assign each arc to a divided shape
+    for (var i=0, n=ids.length; i<n; i++) {
+      arcId = ids[i];
+      containingIds = index.findShapesEnclosingArc(absArcId(arcId));
+      key = getKey(containingIds);
+      if (key === prevKey) {
+        // case: continuation of a part
+        part2.push(arcId);
+      } else {
+        // case: start of a new part
+        part2 = [arcId];
+        parts2.push(part2);
+        keys2.push(key);
+        matches2.push(containingIds);
+      }
+      prevKey = key;
+    }
+    addDividedParts(parts2, keys2, matches2);
+  }
 };
 
 
@@ -24816,6 +24923,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'dissolve2') {
       outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
 
+    } else if (name == 'divide') {
+      api.divide(targetLayers, targetDataset, source, opts);
+
     } else if (name == 'dots') {
       outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
 
@@ -25370,7 +25480,7 @@ function CommandParser() {
 
     function formatLines(lines) {
       var colWidth = calcColWidth(lines);
-      var gutter = ' ';
+      var gutter = '  ';
       var helpStr = lines.map(function(line) {
         if (Array.isArray(line)) {
           line = '  ' + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
@@ -25776,7 +25886,9 @@ internal.getOptionParser = function() {
       noReplaceOpt = {
         alias: '+',
         type: 'flag',
-        describe: 'retain the original layer(s) instead of replacing'
+        label: '+, no-replace', // show alias as primary option
+        // describe: 'retain the original layer(s) instead of replacing'
+        describe: 'retain both input and output layer(s)'
       },
       noSnapOpt = {
         // describe: 'don't snap points before applying command'
@@ -26133,11 +26245,11 @@ internal.getOptionParser = function() {
       describe: 'distance units (meters|miles|km|feet) (default is meters)'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('clean')
-    .describe('fixes geometry issues, including polygon overlaps and gaps')
+    .describe('fixes geometry issues, such as polygon overlaps and gaps')
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
     .option('snap-interval', snapIntervalOpt)
@@ -26181,9 +26293,9 @@ internal.getOptionParser = function() {
         describe: 'experimental fast bbox clipping'
       })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('colorizer')
     .describe('define a function to convert data values to color classes')
@@ -26241,8 +26353,8 @@ internal.getOptionParser = function() {
       describe: '[points] use 2D math to find centroids of latlong points'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
 
   parser.command('dissolve2')
@@ -26259,9 +26371,29 @@ internal.getOptionParser = function() {
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('divide')
+    .describe('divide lines by polygons, copy data from polygons to lines')
+    .option('fields', {
+      describe: 'fields to copy (comma-sep.) (default is all but key field)',
+      type: 'strings'
+    })
+    .option('calc', {
+      describe: 'use a JS expression to assign values (for many-to-one joins)'
+    })
+    .option('force', {
+      describe: 'replace values from same-named fields',
+      type: 'flag'
+    })
+    .option('source', {
+      DEFAULT: true,
+      describe: 'file or layer containing polygons'
+    })
     .option('target', targetOpt);
+    // .option('no-replace', noReplaceOpt);
 
   parser.command('dots')
     .describe('')
@@ -26311,9 +26443,9 @@ internal.getOptionParser = function() {
     })
     .option('bbox', bboxOpt)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('explode')
     .describe('divide multi-part features into single-part features')
@@ -26335,8 +26467,8 @@ internal.getOptionParser = function() {
     })
     .option('cleanup', {type: 'flag'}) // TODO: document
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('filter-fields')
     .describe('retain a subset of data fields')
@@ -26419,8 +26551,8 @@ internal.getOptionParser = function() {
       type: 'flag'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
@@ -26428,8 +26560,8 @@ internal.getOptionParser = function() {
     .option('where', whereOpt2)
     // .option('each', eachOpt2)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('join')
     .describe('join data records from a file or layer to a layer')
@@ -26449,7 +26581,7 @@ internal.getOptionParser = function() {
       type: 'strings'
     })
     .option('calc', {
-      describe: 'use a JS expression to assign values in many-to-one joins'
+      describe: 'use a JS expression to assign values (for many-to-one joins)'
     })
     .option('where', {
       describe: 'use a JS expression to filter source records'
@@ -26512,8 +26644,8 @@ internal.getOptionParser = function() {
       describe: 'field for grouping point input into multiple lines'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('merge-layers')
     .describe('merge multiple layers into as few layers as possible')
@@ -26530,8 +26662,8 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('debug', {type: 'flag'})
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('point-grid')
     .describe('create a rectangular grid of points')
@@ -26599,8 +26731,8 @@ internal.getOptionParser = function() {
       type: 'distance'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('polygons')
     .describe('convert polylines to polygons')
@@ -26649,16 +26781,16 @@ internal.getOptionParser = function() {
       describe: 'name of layer to enclose'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('rectangles')
-    .describe('create a rectangle around each feature in the target layer')
+    .describe('create a rectangle around each feature in a layer')
     .option('offset', offsetOpt)
     .option('aspect-ratio', aspectRatioOpt)
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('rename-fields')
     .describe('rename data fields')
@@ -26769,9 +26901,9 @@ internal.getOptionParser = function() {
       describe: 'slice id field (from source layer)'
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('no-snap', noSnapOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('snap')
     // .describe('snap vertices')
@@ -26798,13 +26930,13 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('split')
-    .describe('split features into separate layers using a data field')
+    .describe('split a layer into single-feature or multi-feature layers')
     .option('field', {
       DEFAULT: true,
-      describe: 'name of an attribute field (omit to split all features)'
+      describe: 'attribute field for grouping same-value features'
     })
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('split-on-grid')
     .describe('split features into separate layers using a grid')
@@ -26925,10 +27057,10 @@ internal.getOptionParser = function() {
       describe: 'fields to retain (comma-sep.) (default is all fields)',
     })
     .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
     .option('target', {
       describe: 'specify layers to target (comma-sep. list)'
-    });
+    })
+    .option('no-replace', noReplaceOpt);
 
   parser.command('uniq')
     .describe('delete features with the same id as a previous feature')
@@ -27172,10 +27304,7 @@ internal.getOptionParser = function() {
   parser.command('debug');
 
   /*
-  parser.command('divide')
-    .option('name', nameOpt)
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
+
 
   parser.command('fill-holes')
     .option('no-replace', noReplaceOpt)
