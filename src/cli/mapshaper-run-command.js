@@ -95,7 +95,7 @@ api.runCommand = function(cmd, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'proj' || name == 'drop' || name == 'target') {
+    } else if (name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
       // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
@@ -229,7 +229,8 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.include(opts);
 
     } else if (name == 'info') {
-      internal.printInfo(catalog.getLayers(), targetLayers);
+      // internal.printInfo(catalog.getLayers(), targetLayers);
+      internal.printInfo(internal.expandCommandTargets(targets));
 
     } else if (name == 'inspect') {
       applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
@@ -440,6 +441,7 @@ internal.outputLayersAreDifferent = function(output, input) {
     return output.indexOf(lyr) > -1;
   });
 };
+
 
 // Apply a command to an array of target layers
 function applyCommandToEachLayer(func, targetLayers) {

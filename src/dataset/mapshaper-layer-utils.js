@@ -1,6 +1,13 @@
 
 // utility functions for layers
 
+// Used by info command and gui layer menu
+internal.getLayerSourceFile = function(lyr, dataset) {
+  var inputs = dataset.info && dataset.info.input_files;
+  return inputs && inputs[0] || '';
+};
+
+
 // Divide a collection of features with mixed types into layers of a single type
 // (Used for importing TopoJSON and GeoJSON features)
 internal.divideFeaturesByType = function(shapes, properties, types) {

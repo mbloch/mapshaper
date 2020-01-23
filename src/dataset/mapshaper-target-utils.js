@@ -1,5 +1,16 @@
 /* @requires mapshaper-common */
 
+// convert targets from [{layers: [...], dataset: <>}, ...] format to
+// [{layer: <>, dataset: <>}, ...] format
+internal.expandCommandTargets = function(targets) {
+  return targets.reduce(function(memo, target) {
+    target.layers.forEach(function(lyr) {
+      memo.push({layer: lyr, dataset: target.dataset});
+    });
+    return memo;
+  }, []);
+};
+
 internal.findCommandTargets = function(catalog, pattern, type) {
   var targets = [];
   var layers = utils.pluck(catalog.getLayers(), 'layer');

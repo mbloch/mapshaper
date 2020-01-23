@@ -301,7 +301,7 @@ function LayerControl(gui) {
   }
 
   function getWarnings(lyr, dataset) {
-    var file = getSourceFile(lyr, dataset);
+    var file = internal.getLayerSourceFile(lyr, dataset);
     var missing = [];
     var msg;
     if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
@@ -318,13 +318,8 @@ function LayerControl(gui) {
     return msg;
   }
 
-  function getSourceFile(lyr, dataset) {
-    var inputs = dataset.info.input_files;
-    return inputs && inputs[0] || '';
-  }
-
   function describeSrc(lyr, dataset) {
-    return getSourceFile(lyr, dataset);
+    return internal.getLayerSourceFile(lyr, dataset);
   }
 
   function getDisplayName(name) {

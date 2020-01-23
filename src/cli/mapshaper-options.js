@@ -1407,7 +1407,8 @@ internal.getOptionParser = function() {
     });
 
   parser.command('info')
-    .describe('print information about data layers');
+    .describe('print information about data layers')
+    .option('target', targetOpt);
 
   parser.command('inspect')
     .describe('print information about a feature')

@@ -5,18 +5,27 @@ mapshaper-nodes
 mapshaper-projections
 */
 
-internal.printInfo = function(layers, targetLayers) {
+var MAX_RULE_LEN = 50;
+
+internal.printInfo = function(layers) {
   var str = '';
   layers.forEach(function(o, i) {
-    var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
-    var targStr = isTarget ? ' *' : '';
+    var title =  'Layer:    ' + (o.layer.name || '[unnamed layer]');
+    var tableStr = internal.getAttributeTableInfo(o.layer);
+    var tableWidth = internal.measureLongestLine(tableStr);
+    var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
     str += '\n';
-    str += utils.lpad('', 25, '=') + '\n';
-    str += 'Layer ' + (i + 1) + targStr + '\n';
-    str += utils.lpad('', 25, '-') + '\n';
+    str += utils.lpad('', ruleLen, '=') + '\n';
+    str += title + '\n';
+    str += utils.lpad('', ruleLen, '-') + '\n';
     str += internal.getLayerInfo(o.layer, o.dataset);
+    str += tableStr;
   });
   message(str);
+};
+
+internal.measureLongestLine = function(str) {
+  return Math.max.apply(null, str.split('\n').map(function(line) {return line.length;}));
 };
 
 internal.getLayerData = function(lyr, dataset) {
@@ -64,7 +73,7 @@ internal.countRings = function(shapes, arcs) {
 
 internal.getLayerInfo = function(lyr, dataset) {
   var data = internal.getLayerData(lyr, dataset);
-  var str = "Name:     " + (lyr.name || "[unnamed]") + "\n";
+  var str = '';
   str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
   str += utils.format("Records:  %,d\n",data.feature_count);
   if (data.null_shape_count > 0) {
@@ -74,7 +83,7 @@ internal.getLayerInfo = function(lyr, dataset) {
     str += "Bounds:   " + data.bbox.join(',') + "\n";
     str += "CRS:      " + data.proj4 + "\n";
   }
-  str += internal.getAttributeTableInfo(lyr);
+  str += "Source:   " + (internal.getLayerSourceFile(lyr, dataset) || 'n/a') + "\n";
   return str;
 };
 
@@ -103,8 +112,9 @@ internal.formatAttributeTable = function(data, i) {
   }, [i >= 0 ? 'Value' : 'First value']);
   var col1Chars = internal.maxChars(col1Arr);
   var col2Chars = internal.maxChars(col2Arr);
-  var sepLine = utils.rpad('', col1Chars + 2, '-') + '+' +
-      utils.rpad('', col2Chars + 2, '-') + '\n';
+  var sepStr = (utils.rpad('', col1Chars + 2, '-') + '+' +
+      utils.rpad('', col2Chars + 2, '-')).substr(0, MAX_RULE_LEN);
+  var sepLine = sepStr + '\n';
   var table = sepLine;
   col1Arr.forEach(function(col1, i) {
     table += ' ' + utils.rpad(col1, col1Chars, ' ') + ' | ' +
@@ -112,10 +122,6 @@ internal.formatAttributeTable = function(data, i) {
     if (i === 0) table += sepLine; // separator after first line
   });
   return table + sepLine;
-};
-
-internal.getTableBorder = function(col1, col2) {
-  return utils.rpad('', col1 + 2, '-') + '+' + utils.rpad('', col2 + 2, '-');
 };
 
 internal.formatNumber = function(val) {
