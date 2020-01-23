@@ -59,6 +59,10 @@ describe('mapshaper-expressions.js', function () {
       assert.deepEqual(api.internal.getAssignedVars('foo=1'), ['foo']);
     })
 
+    it('arrow functions not detected as getAssignmentObjects', function () {
+      assert.deepEqual(api.internal.getAssignedVars('foo=arr.map(s => {return s;})'), ['foo']);
+    })
+
     it('multiple assigment', function () {
       assert.deepEqual(api.internal.getAssignedVars('foo=bar = baz = 1'), ['foo', 'bar', 'baz']);
     })

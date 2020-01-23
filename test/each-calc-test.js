@@ -33,6 +33,15 @@ describe('mapshaper-each-calc.js', function () {
       assert.deepEqual(records, [{}, {}]);
     })
 
+    it('use arrow function', function () {
+      var records = [{foo:[1,2,3]}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "foo = foo.map(n => n+1).join('')");
+      assert.deepEqual(records, [{foo: '234'}]);
+    })
+
     it('update a field', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
