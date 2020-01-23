@@ -72,6 +72,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
 internal.joinTables = function(dest, src, join, opts) {
   var srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
+      prefix = opts.prefix || '',
       unmatchedRecords = [],
       joinFields = internal.getFieldsToJoin(dest.getFields(), src.getFields(), opts),
       sumFields = opts.sum_fields || [],
@@ -107,16 +108,16 @@ internal.joinTables = function(dest, src, join, opts) {
       if (count === 0) {
         if (copyFields.length > 0) {
           // only copying the first match
-          internal.joinByCopy(destRec, srcRec, copyFields);
+          internal.joinByCopy(destRec, srcRec, copyFields, prefix);
         }
       } else if (count == 1) {
-        if (copyFields.length > 0) {
+        if (copyFields.length > 0 && !prefix) {
           internal.findCollisionFields(destRec, srcRec, copyFields, collisionFields);
         }
         collisionCount++; // count target records with multiple joins
       }
       if (sumFields.length > 0) {
-        internal.joinBySum(destRec, srcRec, sumFields);
+        internal.joinBySum(destRec, srcRec, sumFields, prefix);
       }
       joinCounts[srcId]++;
       count++;
@@ -132,7 +133,7 @@ internal.joinTables = function(dest, src, join, opts) {
         // are added.
         unmatchedRecords.push(utils.extend({}, destRec));
       }
-      internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
+      internal.updateUnmatchedRecord(destRec, copyFields, sumFields, prefix);
     }
   }
 
@@ -167,9 +168,9 @@ internal.countJoins = function(counts) {
 };
 
 // Unset fields of unmatched records get null/empty values
-internal.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
-  internal.joinByCopy(rec, {}, copyFields);
-  internal.joinBySum(rec, {}, sumFields);
+internal.updateUnmatchedRecord = function(rec, copyFields, sumFields, prefix) {
+  internal.joinByCopy(rec, {}, copyFields, prefix);
+  internal.joinBySum(rec, {}, sumFields, prefix);
 };
 
 /*
@@ -179,18 +180,30 @@ internal.getCountFieldName = function(fields) {
 };
 */
 
-internal.joinByCopy = function(dest, src, fields) {
-  var f;
+internal.joinByCopy = function(dest, src, fields, prefix) {
+  var f, f2;
+  prefix = prefix || '';
   for (var i=0, n=fields.length; i<n; i++) {
     // dest[fields[i]] = src[fields[i]];
     // Use null when the source record is missing an expected value
     // TODO: think some more about whether this is desirable
     f = fields[i];
+    f2 = prefix + f;
     if (Object.prototype.hasOwnProperty.call(src, f)) {
-      dest[f] = src[f];
-    } else if (!Object.prototype.hasOwnProperty.call(dest, f)) {
-      dest[f] = null;
+      dest[f2] = src[f];
+    } else if (!Object.prototype.hasOwnProperty.call(dest, f2)) {
+      dest[f2] = null;
     }
+  }
+};
+
+internal.joinBySum = function(dest, src, fields, prefix) {
+  var f, f2;
+  prefix = prefix || '';
+  for (var j=0; j<fields.length; j++) {
+    f = fields[j];
+    f2 = prefix + f;
+    dest[f2] = (dest[f2] || 0) + (src[f] || 0);
   }
 };
 
@@ -201,14 +214,6 @@ internal.findCollisionFields = function(dest, src, fields, collisionFields) {
     if (dest[f] !== src[f] && collisionFields.indexOf(f) === -1) {
       collisionFields.push(f);
     }
-  }
-};
-
-internal.joinBySum = function(dest, src, fields) {
-  var f;
-  for (var j=0; j<fields.length; j++) {
-    f = fields[j];
-    dest[f] = (dest[f] || 0) + (src[f] || 0);
   }
 };
 

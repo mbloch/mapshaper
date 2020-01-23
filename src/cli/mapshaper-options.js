@@ -720,6 +720,9 @@ internal.getOptionParser = function() {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
       type: 'strings'
     })
+    .option('prefix', {
+      describe: 'prefix for renaming fields joined from the source table'
+    })
     .option('interpolate', {
       describe: '(polygon-polygon join) list of area-interpolated fields',
       type: 'strings'

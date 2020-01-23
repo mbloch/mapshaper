@@ -14,6 +14,11 @@ function SessionHistory(gui) {
     }
   });
 
+  // used for ...
+  this.unsavedChanges = function() {
+    return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
+  };
+
   this.fileImported = function(file, optStr) {
     var cmd = '-i ' + file;
     if (optStr) {

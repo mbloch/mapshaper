@@ -59,6 +59,15 @@ describe('mapshaper-join.js', function () {
       });
     });
 
+    it('prefix= option adds prefix to external fields', function(done) {
+      var a = 'id\n1';
+      var b = 'key,score\n1,100';
+      api.applyCommands('a.csv -join b.csv keys=id,key prefix="b-" -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert.deepEqual(out['a.csv'], 'id,b-score\n1,100');
+        done();
+      });
+    });
+
     it('calc assignments add values to unmatched records', function(done) {
       var a = 'id\n1\n2';
       var b = 'id\n1';
