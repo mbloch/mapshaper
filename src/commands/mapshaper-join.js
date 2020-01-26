@@ -260,8 +260,9 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
       joinFields = utils.difference(joinFields, [opts.keys[1]]);
     }
   }
-  if (!opts.force) {
-    // only overwrite existing fields if the "force" option is set.
+  if (!opts.force && !opts.prefix) {
+    // overwrite existing fields if the "force" option is set.
+    // prefix also overwrites... TODO: consider changing this
     joinFields = utils.difference(joinFields, destFields);
   }
   return joinFields;

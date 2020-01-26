@@ -68,6 +68,15 @@ describe('mapshaper-join.js', function () {
       });
     });
 
+    it('prefix= option prevents conflicts', function(done) {
+      var a = 'id,foo\n1,50';
+      var b = 'key,foo\n1,100';
+      api.applyCommands('a.csv -join b.csv keys=id,key prefix="b-" -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert.deepEqual(out['a.csv'], 'id,foo,b-foo\n1,50,100');
+        done();
+      });
+    });
+
     it('calc assignments add values to unmatched records', function(done) {
       var a = 'id\n1\n2';
       var b = 'id\n1';
