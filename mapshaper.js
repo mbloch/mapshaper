@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.154';
+VERSION = '0.4.155';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -6974,6 +6974,13 @@ internal.getPathEndpointTest = function(layers, arcs) {
 
 // utility functions for layers
 
+// Used by info command and gui layer menu
+internal.getLayerSourceFile = function(lyr, dataset) {
+  var inputs = dataset.info && dataset.info.input_files;
+  return inputs && inputs[0] || '';
+};
+
+
 // Divide a collection of features with mixed types into layers of a single type
 // (Used for importing TopoJSON and GeoJSON features)
 internal.divideFeaturesByType = function(shapes, properties, types) {
@@ -13038,7 +13045,7 @@ internal.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
 // Return array of variables on the left side of assignment operations
 // @hasDot (bool) Return property assignments via dot notation
 internal.getAssignedVars = function(exp, hasDot) {
-  var rxp = /[a-z_][.a-z0-9_]*(?= *=[^=])/ig;
+  var rxp = /[a-z_][.a-z0-9_]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
   var matches = exp.match(rxp) || [];
   var f = function(s) {
     var i = s.indexOf('.');
@@ -20589,18 +20596,27 @@ internal.include = function(opts) {
 };
 
 
-internal.printInfo = function(layers, targetLayers) {
+var MAX_RULE_LEN = 50;
+
+internal.printInfo = function(layers) {
   var str = '';
   layers.forEach(function(o, i) {
-    var isTarget = Array.isArray(targetLayers) && targetLayers.indexOf(o.layer) > -1;
-    var targStr = isTarget ? ' *' : '';
+    var title =  'Layer:    ' + (o.layer.name || '[unnamed layer]');
+    var tableStr = internal.getAttributeTableInfo(o.layer);
+    var tableWidth = internal.measureLongestLine(tableStr);
+    var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
     str += '\n';
-    str += utils.lpad('', 25, '=') + '\n';
-    str += 'Layer ' + (i + 1) + targStr + '\n';
-    str += utils.lpad('', 25, '-') + '\n';
+    str += utils.lpad('', ruleLen, '=') + '\n';
+    str += title + '\n';
+    str += utils.lpad('', ruleLen, '-') + '\n';
     str += internal.getLayerInfo(o.layer, o.dataset);
+    str += tableStr;
   });
   message(str);
+};
+
+internal.measureLongestLine = function(str) {
+  return Math.max.apply(null, str.split('\n').map(function(line) {return line.length;}));
 };
 
 internal.getLayerData = function(lyr, dataset) {
@@ -20648,7 +20664,7 @@ internal.countRings = function(shapes, arcs) {
 
 internal.getLayerInfo = function(lyr, dataset) {
   var data = internal.getLayerData(lyr, dataset);
-  var str = "Name:     " + (lyr.name || "[unnamed]") + "\n";
+  var str = '';
   str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
   str += utils.format("Records:  %,d\n",data.feature_count);
   if (data.null_shape_count > 0) {
@@ -20658,7 +20674,7 @@ internal.getLayerInfo = function(lyr, dataset) {
     str += "Bounds:   " + data.bbox.join(',') + "\n";
     str += "CRS:      " + data.proj4 + "\n";
   }
-  str += internal.getAttributeTableInfo(lyr);
+  str += "Source:   " + (internal.getLayerSourceFile(lyr, dataset) || 'n/a') + "\n";
   return str;
 };
 
@@ -20687,8 +20703,9 @@ internal.formatAttributeTable = function(data, i) {
   }, [i >= 0 ? 'Value' : 'First value']);
   var col1Chars = internal.maxChars(col1Arr);
   var col2Chars = internal.maxChars(col2Arr);
-  var sepLine = utils.rpad('', col1Chars + 2, '-') + '+' +
-      utils.rpad('', col2Chars + 2, '-') + '\n';
+  var sepStr = (utils.rpad('', col1Chars + 2, '-') + '+' +
+      utils.rpad('', col2Chars + 2, '-')).substr(0, MAX_RULE_LEN);
+  var sepLine = sepStr + '\n';
   var table = sepLine;
   col1Arr.forEach(function(col1, i) {
     table += ' ' + utils.rpad(col1, col1Chars, ' ') + ' | ' +
@@ -20696,10 +20713,6 @@ internal.formatAttributeTable = function(data, i) {
     if (i === 0) table += sepLine; // separator after first line
   });
   return table + sepLine;
-};
-
-internal.getTableBorder = function(col1, col2) {
-  return utils.rpad('', col1 + 2, '-') + '+' + utils.rpad('', col2 + 2, '-');
 };
 
 internal.formatNumber = function(val) {
@@ -21617,6 +21630,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
 internal.joinTables = function(dest, src, join, opts) {
   var srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
+      prefix = opts.prefix || '',
       unmatchedRecords = [],
       joinFields = internal.getFieldsToJoin(dest.getFields(), src.getFields(), opts),
       sumFields = opts.sum_fields || [],
@@ -21652,16 +21666,16 @@ internal.joinTables = function(dest, src, join, opts) {
       if (count === 0) {
         if (copyFields.length > 0) {
           // only copying the first match
-          internal.joinByCopy(destRec, srcRec, copyFields);
+          internal.joinByCopy(destRec, srcRec, copyFields, prefix);
         }
       } else if (count == 1) {
-        if (copyFields.length > 0) {
+        if (copyFields.length > 0 && !prefix) {
           internal.findCollisionFields(destRec, srcRec, copyFields, collisionFields);
         }
         collisionCount++; // count target records with multiple joins
       }
       if (sumFields.length > 0) {
-        internal.joinBySum(destRec, srcRec, sumFields);
+        internal.joinBySum(destRec, srcRec, sumFields, prefix);
       }
       joinCounts[srcId]++;
       count++;
@@ -21677,7 +21691,7 @@ internal.joinTables = function(dest, src, join, opts) {
         // are added.
         unmatchedRecords.push(utils.extend({}, destRec));
       }
-      internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
+      internal.updateUnmatchedRecord(destRec, copyFields, sumFields, prefix);
     }
   }
 
@@ -21712,9 +21726,9 @@ internal.countJoins = function(counts) {
 };
 
 // Unset fields of unmatched records get null/empty values
-internal.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
-  internal.joinByCopy(rec, {}, copyFields);
-  internal.joinBySum(rec, {}, sumFields);
+internal.updateUnmatchedRecord = function(rec, copyFields, sumFields, prefix) {
+  internal.joinByCopy(rec, {}, copyFields, prefix);
+  internal.joinBySum(rec, {}, sumFields, prefix);
 };
 
 /*
@@ -21724,18 +21738,30 @@ internal.getCountFieldName = function(fields) {
 };
 */
 
-internal.joinByCopy = function(dest, src, fields) {
-  var f;
+internal.joinByCopy = function(dest, src, fields, prefix) {
+  var f, f2;
+  prefix = prefix || '';
   for (var i=0, n=fields.length; i<n; i++) {
     // dest[fields[i]] = src[fields[i]];
     // Use null when the source record is missing an expected value
     // TODO: think some more about whether this is desirable
     f = fields[i];
+    f2 = prefix + f;
     if (Object.prototype.hasOwnProperty.call(src, f)) {
-      dest[f] = src[f];
-    } else if (!Object.prototype.hasOwnProperty.call(dest, f)) {
-      dest[f] = null;
+      dest[f2] = src[f];
+    } else if (!Object.prototype.hasOwnProperty.call(dest, f2)) {
+      dest[f2] = null;
     }
+  }
+};
+
+internal.joinBySum = function(dest, src, fields, prefix) {
+  var f, f2;
+  prefix = prefix || '';
+  for (var j=0; j<fields.length; j++) {
+    f = fields[j];
+    f2 = prefix + f;
+    dest[f2] = (dest[f2] || 0) + (src[f] || 0);
   }
 };
 
@@ -21746,14 +21772,6 @@ internal.findCollisionFields = function(dest, src, fields, collisionFields) {
     if (dest[f] !== src[f] && collisionFields.indexOf(f) === -1) {
       collisionFields.push(f);
     }
-  }
-};
-
-internal.joinBySum = function(dest, src, fields) {
-  var f;
-  for (var j=0; j<fields.length; j++) {
-    f = fields[j];
-    dest[f] = (dest[f] || 0) + (src[f] || 0);
   }
 };
 
@@ -21800,8 +21818,9 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
       joinFields = utils.difference(joinFields, [opts.keys[1]]);
     }
   }
-  if (!opts.force) {
-    // only overwrite existing fields if the "force" option is set.
+  if (!opts.force && !opts.prefix) {
+    // overwrite existing fields if the "force" option is set.
+    // prefix also overwrites... TODO: consider changing this
     joinFields = utils.difference(joinFields, destFields);
   }
   return joinFields;
@@ -24851,7 +24870,7 @@ api.runCommand = function(cmd, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'proj' || name == 'drop' || name == 'target') {
+    } else if (name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
       // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
@@ -24985,7 +25004,8 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.include(opts);
 
     } else if (name == 'info') {
-      internal.printInfo(catalog.getLayers(), targetLayers);
+      // internal.printInfo(catalog.getLayers(), targetLayers);
+      internal.printInfo(internal.expandCommandTargets(targets));
 
     } else if (name == 'inspect') {
       applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
@@ -25196,6 +25216,7 @@ internal.outputLayersAreDifferent = function(output, input) {
     return output.indexOf(lyr) > -1;
   });
 };
+
 
 // Apply a command to an array of target layers
 function applyCommandToEachLayer(func, targetLayers) {
@@ -26590,6 +26611,9 @@ internal.getOptionParser = function() {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
       type: 'strings'
     })
+    .option('prefix', {
+      describe: 'prefix for renaming fields joined from the source table'
+    })
     .option('interpolate', {
       describe: '(polygon-polygon join) list of area-interpolated fields',
       type: 'strings'
@@ -27277,7 +27301,8 @@ internal.getOptionParser = function() {
     });
 
   parser.command('info')
-    .describe('print information about data layers');
+    .describe('print information about data layers')
+    .option('target', targetOpt);
 
   parser.command('inspect')
     .describe('print information about a feature')
@@ -27354,6 +27379,17 @@ internal.parseConsoleCommands = function(raw) {
   return parsed;
 };
 
+
+// convert targets from [{layers: [...], dataset: <>}, ...] format to
+// [{layer: <>, dataset: <>}, ...] format
+internal.expandCommandTargets = function(targets) {
+  return targets.reduce(function(memo, target) {
+    target.layers.forEach(function(lyr) {
+      memo.push({layer: lyr, dataset: target.dataset});
+    });
+    return memo;
+  }, []);
+};
 
 internal.findCommandTargets = function(catalog, pattern, type) {
   var targets = [];

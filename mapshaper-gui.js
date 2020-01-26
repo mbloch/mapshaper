@@ -4974,6 +4974,11 @@ function SessionHistory(gui) {
     }
   });
 
+  // used for ...
+  this.unsavedChanges = function() {
+    return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
+  };
+
   this.fileImported = function(file, optStr) {
     var cmd = '-i ' + file;
     if (optStr) {
@@ -5946,7 +5951,7 @@ function FileChooser(el, cb) {
 function ImportControl(gui, opts) {
   var model = gui.model;
   var importCount = 0;
-  var useQuickView = false;
+  var useQuickView = opts.quick_view; // may be set by mapshaper-gui
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var cachedFiles = {};
@@ -7037,7 +7042,7 @@ function LayerControl(gui) {
   }
 
   function getWarnings(lyr, dataset) {
-    var file = getSourceFile(lyr, dataset);
+    var file = internal.getLayerSourceFile(lyr, dataset);
     var missing = [];
     var msg;
     if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
@@ -7054,13 +7059,8 @@ function LayerControl(gui) {
     return msg;
   }
 
-  function getSourceFile(lyr, dataset) {
-    var inputs = dataset.info.input_files;
-    return inputs && inputs[0] || '';
-  }
-
   function describeSrc(lyr, dataset) {
-    return getSourceFile(lyr, dataset);
+    return internal.getLayerSourceFile(lyr, dataset);
   }
 
   function getDisplayName(name) {
@@ -7577,6 +7577,7 @@ function getImportOpts() {
     opts.files = manifest;
   } else if (manifest.files) {
     opts.files = manifest.files.concat();
+    opts.quick_view = !!manifest.quick_view;
   } else {
     opts.files = [];
   }
