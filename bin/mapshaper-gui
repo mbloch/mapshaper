@@ -20,6 +20,11 @@ var http = require("http"),
         default: defaultPort,
         describe: "http port of server on localhost"
       })
+      .options("q", {
+        alias: "quick-view",
+        describe: "load files with default options (bypasses import dialog)",
+        'boolean': true
+      })
       .options("s", {
         alias: "direct-save",
         describe: "allow saving files directly (outside Download folder)",
@@ -210,6 +215,7 @@ function getManifestJS(files, opts) {
   var o = {files: files};
   if (opts.s) o.allow_saving = true;
   if (opts.a) o.display_all = true;
+  if (opts.q) o.quick_view = true;
   return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 

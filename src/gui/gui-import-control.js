@@ -65,7 +65,7 @@ function FileChooser(el, cb) {
 function ImportControl(gui, opts) {
   var model = gui.model;
   var importCount = 0;
-  var useQuickView = false;
+  var useQuickView = opts.quick_view; // may be set by mapshaper-gui
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var cachedFiles = {};

@@ -35,6 +35,7 @@ function getImportOpts() {
     opts.files = manifest;
   } else if (manifest.files) {
     opts.files = manifest.files.concat();
+    opts.quick_view = !!manifest.quick_view;
   } else {
     opts.files = [];
   }
