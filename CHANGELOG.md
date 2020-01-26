@@ -1,3 +1,8 @@
+v0.4.155
+* Added mapshaper-gui -q/--quick-view option, for bypassing the import dialog.
+* Added -join prefix= option, to add a prefix to the names of fields joined from the source dataset.
+* Updated CLI -info command to show only target layer(s) by default. Use -info target=* for information about all layers.
+
 v0.4.154
 * Added -divide command, for dividing a polyline layer by a polygon layer. Also joins data from the polygon layer to the divided polyline layer.
 
