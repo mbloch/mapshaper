@@ -6,8 +6,8 @@ internal.splitShellTokens = function(str) {
 
 internal.splitTokens = function(str, delimChars) {
   var BAREWORD = '([^' + delimChars + '\'"])+'; // TODO: make safer
-  var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
-  var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
+  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
   var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
   var matches = str.match(rxp) || [];
   var chunks = matches.filter(function(chunk) {
