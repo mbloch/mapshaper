@@ -5,12 +5,17 @@ function BoxTool(gui, ext, nav) {
   var _on = false;
   var bbox, bboxPixels;
   var popup = gui.container.findChild('.box-tool-options');
+  var coords = popup.findChild('.box-coords');
 
   gui.keyboard.onMenuSubmit(popup, zoomToBox);
 
   new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
 
   new SimpleButton(popup.findChild('.zoom-btn').addClass('default-btn')).on('click', zoomToBox);
+
+  new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
+    showCoords();
+  });
 
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
     var cmd = '-clip bbox=' + bbox.join(',');
@@ -19,6 +24,16 @@ function BoxTool(gui, ext, nav) {
     });
     gui.clearMode();
   });
+
+  function showCoords() {
+    coords.text(bbox.join(','));
+    coords.show();
+    GUI.selectElement(coords.node());
+  }
+
+  function hideCoords() {
+    coords.hide();
+  }
 
   function zoomToBox() {
     nav.zoomToBbox(bboxPixels);
@@ -34,6 +49,7 @@ function BoxTool(gui, ext, nav) {
     _on = false;
     box.hide();
     popup.hide();
+    hideCoords();
   }
 
   function bboxToCoords(bbox) {
@@ -60,6 +76,7 @@ function BoxTool(gui, ext, nav) {
   gui.addMode('box_tool', turnOn, turnOff);
 
   gui.on('box_drag_start', function() {
+    hideCoords();
     if (internal.layerHasGeometry(gui.model.getActiveLayer().layer)) {
       gui.enterMode('box_tool');
     }
@@ -71,8 +88,12 @@ function BoxTool(gui, ext, nav) {
   });
 
   gui.on('box_drag_end', function(e) {
+    var decimals;
     bboxPixels = e.map_bbox;
     bbox = bboxToCoords(bboxPixels);
+    // round coords, for nicer 'info' display
+    // (rounded precision should be sub-pixel)
+    bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
     popup.show();
   });
 }

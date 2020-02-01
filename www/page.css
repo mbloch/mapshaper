@@ -213,6 +213,14 @@ body {
 	pointer-events: initial;
 }
 
+.box-tool-options .info-box {
+	text-align: center;
+}
+
+.box-tool-options .box-coords {
+	pointer-events: initial;
+}
+
 /* --- Export dialog --------- */
 
 .export-options .dialog-btn {

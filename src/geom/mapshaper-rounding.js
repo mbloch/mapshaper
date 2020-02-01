@@ -1,5 +1,26 @@
 /* @require mapshaper-dataset-utils, mapshaper-point-utils */
 
+internal.getBoundsPrecisionForDisplay = function(bbox) {
+  var w = bbox[2] - bbox[0],
+      h = bbox[3] - bbox[1],
+      range = Math.min(w, h) + 1e-8,
+      digits = 0;
+  while (range < 2000) {
+    range *= 10;
+    digits++;
+  }
+  return digits;
+};
+
+internal.getRoundedCoordString = function(coords, decimals) {
+  return coords.map(function(n) {return n.toFixed(decimals);}).join(',');
+};
+
+internal.getRoundedCoords = function(coords, decimals) {
+  return internal.getRoundedCoordString(coords, decimals).split(',').map(parseFloat);
+};
+
+
 internal.roundPoints = function(lyr, round) {
   internal.forEachPoint(lyr.shapes, function(p) {
     p[0] = round(p[0]);
