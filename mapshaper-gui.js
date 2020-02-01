@@ -978,6 +978,8 @@ function MouseArea(element, pos) {
     _prevEvt = {
       originalEvent: e,
       shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      ctrlKey: e.ctrlKey,
       time: +new Date(),
       pageX: pageX,
       pageY: pageY,
@@ -2156,7 +2158,8 @@ function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
       zoomTween = new Tween(Tween.sineInOut),
-      shiftDrag = false,
+      zoomDrag = false,
+      boxDrag = false,
       zoomScale = 1.5,
       zoomScaleMultiplier = 1,
       inBtn, outBtn,
@@ -2166,6 +2169,8 @@ function MapNav(gui, ext, mouse) {
   this.setZoomFactor = function(k) {
     zoomScaleMultiplier = k || 1;
   };
+
+  this.zoomToBbox = zoomToBbox;
 
   if (gui.options.homeControl) {
     gui.buttons.addButton("#home-icon").on('click', function() {
@@ -2197,30 +2202,64 @@ function MapNav(gui, ext, mouse) {
 
   mouse.on('dragstart', function(e) {
     if (disabled()) return;
-    shiftDrag = !!e.shiftKey;
-    if (shiftDrag) {
+    if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
+    zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+    boxDrag = !!e.shiftKey;
+    if (zoomDrag || boxDrag) {
       dragStartEvt = e;
+    }
+    if (boxDrag) {
+      gui.dispatchEvent('box_drag_start');
     }
   });
 
+  function swapElements(arr, i, j) {
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+
+  function getBoxData(e) {
+    var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
+    var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
+    var tmp;
+    if (pageBox[0] > pageBox[2]) {
+      swapElements(pageBox, 0, 2);
+      swapElements(mapBox, 0, 2);
+    }
+    if (pageBox[1] > pageBox[3]) {
+      swapElements(pageBox, 1, 3);
+      swapElements(mapBox, 1, 3);
+    }
+    return {
+      map_bbox: mapBox,
+      page_bbox: pageBox
+    };
+  }
+
   mouse.on('drag', function(e) {
     if (disabled()) return;
-    if (shiftDrag) {
+    if (zoomDrag) {
       zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
+    } else if (boxDrag) {
+      gui.dispatchEvent('box_drag', getBoxData(e));
     } else {
       ext.pan(e.dx, e.dy);
     }
   });
 
   mouse.on('dragend', function(e) {
-    var bounds;
+    var bbox;
     if (disabled()) return;
-    if (shiftDrag) {
-      shiftDrag = false;
-      bounds = new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y);
+    if (boxDrag) {
+      boxDrag = false;
+      gui.dispatchEvent('box_drag_end', getBoxData(e));
+    } else if (zoomDrag) {
+      zoomDrag = false;
+      bbox = getBoxData(e).map_bbox;
       zoomBox.hide();
-      if (bounds.width() > 5 && bounds.height() > 5) {
-        zoomToBox(bounds);
+      if (bbox[3] - bbox[1] > 5 && bbox[2] - bbox[0] > 5) {
+        zoomToBbox(bbox);
       }
     }
   });
@@ -2248,10 +2287,11 @@ function MapNav(gui, ext, mouse) {
   }
 
   // @box Bounds with pixels from t,l corner of map area.
-  function zoomToBox(box) {
-    var pct = Math.max(box.width() / ext.width(), box.height() / ext.height()),
-        fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
-        fy = box.centerY() / ext.height() * (1 + pct) - pct / 2;
+  function zoomToBbox(bbox) {
+    var bounds = new Bounds(bbox),
+        pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
+        fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
+        fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
     zoomByPct(1 / pct, fx, fy);
   }
 
@@ -2957,7 +2997,6 @@ internal.sortLayersForMenuDisplay = function(layers) {
 function CoordinatesDisplay(gui, ext, mouse) {
   var readout = gui.container.findChild('.coordinate-info').hide();
   var enabled = false;
-  var bboxPoint;
 
   gui.model.on('select', function(e) {
     enabled = !!e.layer.geometry_type; // no display on tabular layers
@@ -2969,8 +3008,6 @@ function CoordinatesDisplay(gui, ext, mouse) {
     setTimeout(function() {
       getSelection().removeAllRanges();
     }, 50);
-    // don't display bounding box if user copies coords
-    bboxPoint = null;
   });
 
   // clear coords when map pans
@@ -2985,9 +3022,6 @@ function CoordinatesDisplay(gui, ext, mouse) {
   mouse.on('click', function(e) {
     if (!enabled) return;
     GUI.selectElement(readout.node());
-    // TODO: don't save bbox point when inspector is active
-    // clear bbox point if already present
-    bboxPoint = bboxPoint ? null : ext.translatePixelCoords(e.x, e.y);
   });
 
   mouse.on('hover', onMouseChange);
@@ -3003,38 +3037,17 @@ function CoordinatesDisplay(gui, ext, mouse) {
   }
 
   function displayCoords(p) {
-    var decimals = getCoordPrecision(ext.getBounds());
-    var coords = bboxPoint ? getBbox(p, bboxPoint) : p;
-    var str = coords.map(function(n) {return n.toFixed(decimals);}).join(',');
+    var decimals = internal.getBoundsPrecisionForDisplay(ext.getBounds().toArray());
+    var str = internal.getRoundedCoordString(p, decimals);
     readout.text(str).show();
   }
 
   function clearCoords() {
-    bboxPoint = null;
     readout.hide();
   }
 
   function isOverMap(e) {
     return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-  }
-
-  function getBbox(a, b) {
-    return [
-      Math.min(a[0], b[0]),
-      Math.min(a[1], b[1]),
-      Math.max(a[0], b[0]),
-      Math.max(a[1], b[1])
-    ];
-  }
-
-  function getCoordPrecision(bounds) {
-    var range = Math.min(bounds.width(), bounds.height()) + 1e-8;
-    var digits = 0;
-    while (range < 2000) {
-      range *= 10;
-      digits++;
-    }
-    return digits;
   }
 }
 
@@ -4237,6 +4250,175 @@ function SymbolDragging2(gui, ext, hit) {
 }
 
 
+function BoxTool(gui, ext, nav) {
+  var self = new EventDispatcher();
+  var box = new HighlightBox('body');
+  var _on = false;
+  var bbox, bboxPixels;
+  var popup = gui.container.findChild('.box-tool-options');
+  var coords = popup.findChild('.box-coords');
+  var _selection = null;
+
+  // gui.keyboard.onMenuSubmit(popup, zoomToBox);
+  clearSelection(); // hide selection buttons
+
+  new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
+
+  new SimpleButton(popup.findChild('.zoom-btn')).on('click', zoomToBox);
+
+  new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
+    toggleCoords();
+  });
+
+  new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+    updateSelection();
+  });
+
+  new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
+    if (!_selection) return;
+    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) == -1"';
+    runCommand(cmd);
+    clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
+    if (!_selection) return;
+    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) > -1"';
+    runCommand(cmd);
+    clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
+    if (!_selection) return;
+    var cmd = '-each "split_name = ' + JSON.stringify(_selection) +
+      '.indexOf(this.id) == -1 ? \'1\' : \'2\'" -split split_name';
+    runCommand(cmd);
+    clearSelection();
+  });
+
+  // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
+  //   runCommand('-rectangle bbox=' + bbox.join(','));
+  // });
+
+  new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
+    runCommand('-clip bbox2=' + bbox.join(','));
+  });
+
+  function updateSelection() {
+    var active = gui.model.getActiveLayer();
+    var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
+    if (ids.length) showSelection(ids);
+    else clearSelection();
+  }
+
+  function showSelection(ids) {
+    var data = {ids: ids, id: ids.length ? ids[0] : -1, pinned: false};
+    _selection = ids;
+    box.hide();
+    self.dispatchEvent('selection', data);
+    popup.findChild('.default-group').hide();
+    popup.findChild('.selection-group').css('display', 'inline-block');
+  }
+
+  function clearSelection() {
+    popup.findChild('.default-group').css('display', 'inline-block');
+    popup.findChild('.selection-group').hide();
+    if (_selection) {
+      _selection = null;
+      self.dispatchEvent('selection', {ids: [], id: -1});
+    }
+  }
+
+  function runCommand(cmd) {
+    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
+    gui.clearMode();
+  }
+
+  function toggleCoords() {
+    if (coords.visible()) {
+      hideCoords();
+    } else {
+      coords.text(bbox.join(','));
+      coords.show();
+      GUI.selectElement(coords.node());
+    }
+  }
+
+  function hideCoords() {
+    coords.hide();
+  }
+
+  function zoomToBox() {
+    nav.zoomToBbox(bboxPixels);
+    gui.clearMode();
+  }
+
+
+  function turnOn() {
+    _on = true;
+  }
+
+  function turnOff() {
+    _on = false;
+    box.hide();
+    popup.hide();
+    hideCoords();
+    clearSelection();
+  }
+
+  function bboxToCoords(bbox) {
+    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+    return [a[0], b[1], b[0], a[1]];
+  }
+
+  function bboxToPixels(bbox) {
+    var a = ext.translateCoords(bbox[0], bbox[1]);
+    var b = ext.translateCoords(bbox[2], bbox[3]);
+    return [a[0], b[1], b[0], a[1]];
+  }
+
+  ext.on('change', function() {
+    if (!_on || _selection) return;
+    var b = bboxToPixels(bbox);
+    var pos = ext.position();
+    var dx = pos.pageX,
+        dy = pos.pageY;
+    box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
+  });
+
+  gui.addMode('box_tool', turnOn, turnOff);
+
+  gui.on('box_drag_start', function() {
+    hideCoords();
+    if (internal.layerHasGeometry(gui.model.getActiveLayer().layer)) {
+      gui.enterMode('box_tool');
+    }
+  });
+
+  gui.on('box_drag', function(e) {
+    var b = e.page_bbox;
+    box.show(b[0], b[1], b[2], b[3]);
+  });
+
+  gui.on('box_drag_end', function(e) {
+    var decimals;
+    bboxPixels = e.map_bbox;
+    bbox = bboxToCoords(bboxPixels);
+    // round coords, for nicer 'info' display
+    // (rounded precision should be sub-pixel)
+    bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+    if (_selection) {
+      updateSelection();
+    } else {
+      popup.show();
+    }
+  });
+
+  return self;
+}
+
+
 utils.inherit(MshpMap, EventDispatcher);
 
 function MshpMap(gui) {
@@ -4249,13 +4431,14 @@ function MshpMap(gui) {
       _ext = new MapExtent(position),
       // _hit = new HitControl(gui, _ext, _mouse),
       _hit = new HitControl2(gui, _ext, _mouse),
+      _nav = new MapNav(gui, _ext, _mouse),
+      _boxTool = new BoxTool(gui, _ext, _nav),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav, _editor,
+      _inspector, _stack, _editor,
       _dynamicCRS;
 
-  _nav = new MapNav(gui, _ext, _mouse);
   if (gui.options.showMouseCoordinates) {
     new CoordinatesDisplay(gui, _ext, _mouse);
   }
@@ -4443,6 +4626,12 @@ function MshpMap(gui) {
         updateFrameExtent();
       }
       drawLayers(true);
+    });
+
+    _boxTool.on('selection', function(e) {
+      // same as hit tool
+      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+      _stack.drawOverlayLayer(_overlayLyr);
     });
 
     _hit.on('change', function(e) {
@@ -7105,6 +7294,9 @@ function Console(gui) {
   var _isOpen = false;
   var btn = gui.container.findChild('.console-btn').on('click', toggle);
 
+  // expose this function, so other components can run commands (e.g. box tool)
+  this.runMapshaperCommands = runMapshaperCommands;
+
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
@@ -7442,8 +7634,6 @@ function Console(gui) {
         runMapshaperCommands(cmd, function(err) {
           if (err) {
             onError(err);
-          } else {
-            gui.session.consoleCommands(internal.standardizeConsoleCommands(cmd));
           }
           line.show();
           input.node().focus();
@@ -7453,8 +7643,16 @@ function Console(gui) {
     }
   }
 
-
   function runMapshaperCommands(str, done) {
+    runMapshaperCommands2(str, function(err) {
+      if (!err) {
+        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+      }
+      done(err);
+    });
+  }
+
+  function runMapshaperCommands2(str, done) {
     var commands;
     try {
       commands = internal.parseConsoleCommands(str);
@@ -7602,7 +7800,7 @@ var startEditing = function() {
   new ImportControl(gui, importOpts);
   new ExportControl(gui);
   new LayerControl(gui);
-  new Console(gui);
+  gui.console = new Console(gui);
 
   startEditing = function() {};
 

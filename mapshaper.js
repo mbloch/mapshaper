@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.155';
+VERSION = '0.4.156';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -7837,6 +7837,27 @@ function GeoJSONReader(reader) {
     return retn;
   }
 }
+
+
+internal.getBoundsPrecisionForDisplay = function(bbox) {
+  var w = bbox[2] - bbox[0],
+      h = bbox[3] - bbox[1],
+      range = Math.min(w, h) + 1e-8,
+      digits = 0;
+  while (range < 2000) {
+    range *= 10;
+    digits++;
+  }
+  return digits;
+};
+
+internal.getRoundedCoordString = function(coords, decimals) {
+  return coords.map(function(n) {return n.toFixed(decimals);}).join(',');
+};
+
+internal.getRoundedCoords = function(coords, decimals) {
+  return internal.getRoundedCoordString(coords, decimals).split(',').map(parseFloat);
+};
 
 
 internal.roundPoints = function(lyr, round) {
@@ -19992,38 +20013,6 @@ internal.getOutputPaths = function(files, opts) {
 };
 
 
-api.filterGeom = function(lyr, arcs, opts) {
-  if (!internal.layerHasGeometry(lyr)) {
-    stop("Layer is missing geometry");
-  }
-  if (opts.bbox) {
-    internal.filterByBoundsIntersection(lyr, arcs, opts);
-  }
-  api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
-};
-
-internal.filterByBoundsIntersection = function(lyr, arcs, opts) {
-  var bounds = new Bounds(opts.bbox);
-  var filter = lyr.geometry_type == 'point' ?
-        internal.getPointInBoundsTest(bounds) :
-        internal.getPathBoundsIntersectionTest(bounds, arcs);
-  internal.editShapes(lyr.shapes, filter);
-};
-
-internal.getPointInBoundsTest = function(bounds) {
-  return function(xy) {
-    var contains =  bounds.containsPoint(xy[0], xy[1]);
-    return contains ? xy : null;
-  };
-};
-
-internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
-  return function(path) {
-    return bounds.intersects(arcs.getSimpleShapeBounds(path)) ? path : null;
-  };
-};
-
-
 api.filterFields = function(lyr, names) {
   var table = lyr.data;
   names = names || [];
@@ -24836,412 +24825,10 @@ internal.findCommandSource = function(sourceName, catalog, opts) {
 };
 
 
-// TODO: consider refactoring to allow modules
-// @cmd  example: {name: "dissolve", options:{field: "STATE"}}
-// @catalog: Catalog object
-// @done callback: function(err, catalog)
-//
-api.runCommand = function(cmd, catalog, cb) {
-  var name = cmd.name,
-      opts = cmd.options,
-      source,
-      outputDataset,
-      outputLayers,
-      outputFiles,
-      targets,
-      targetDataset,
-      targetLayers,
-      arcs;
-
-  try { // catch errors from synchronous functions
-
-    T.start();
-    if (!catalog) catalog = new Catalog();
-
-    if (name == 'rename-layers') {
-      // default target is all layers
-      targets = catalog.findCommandTargets(opts.target || '*');
-      targetLayers = targets.reduce(function(memo, obj) {
-        return memo.concat(obj.layers);
-      }, []);
-
-    } else if (name == 'o') {
-      // when combining GeoJSON layers, default is all layers
-      // TODO: check that combine_layers is only used w/ GeoJSON output
-      targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
-
-    } else if (name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
-      // these commands accept multiple target datasets
-      targets = catalog.findCommandTargets(opts.target);
-
-    } else {
-      targets = catalog.findCommandTargets(opts.target);
-
-      // special case to allow -merge-layers and -union to combine layers from multiple datasets
-      // TODO: support multi-dataset targets for other commands
-      if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
-        targets = internal.mergeCommandTargets(targets, catalog);
-      }
-
-      if (targets.length == 1) {
-        targetDataset = targets[0].dataset;
-        arcs = targetDataset.arcs;
-        targetLayers = targets[0].layers;
-        // target= option sets default target
-        catalog.setDefaultTarget(targetLayers, targetDataset);
-
-      } else if (targets.length > 1) {
-        stop("This command does not support targetting layers from different datasets");
-      }
-    }
-
-    if (targets.length === 0) {
-      if (opts.target) {
-        stop(utils.format('Missing target: %s\nAvailable layers: %s',
-            opts.target, internal.getFormattedLayerList(catalog)));
-      }
-      if (!(name == 'graticule' || name == 'i' || name == 'help' ||
-          name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-          name == 'include')) {
-        throw new UserError("No data is available");
-      }
-    }
-
-    if (opts.source) {
-      source = internal.findCommandSource(internal.convertSourceName(opts.source, targets), catalog, opts);
-    }
-
-    if (name == 'affine') {
-      api.affine(targetLayers, targetDataset, opts);
-
-    } else if (name == 'buffer') {
-      // applyCommandToEachLayer(api.buffer, targetLayers, targetDataset, opts);
-      outputLayers = api.buffer(targetLayers, targetDataset, opts);
-
-    } else if (name == 'data-fill') {
-      applyCommandToEachLayer(api.dataFill, targetLayers, arcs, opts);
-
-    } else if (name == 'cluster') {
-      applyCommandToEachLayer(api.cluster, targetLayers, arcs, opts);
-
-    } else if (name == 'calc') {
-      applyCommandToEachLayer(api.calc, targetLayers, arcs, opts);
-
-    } else if (name == 'clean') {
-      api.cleanLayers(targetLayers, targetDataset, opts);
-
-    } else if (name == 'clip') {
-      outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
-
-    } else if (name == 'colorizer') {
-      outputLayers = api.colorizer(opts);
-
-    } else if (name == 'dissolve') {
-      outputLayers = applyCommandToEachLayer(api.dissolve, targetLayers, arcs, opts);
-
-    } else if (name == 'dissolve2') {
-      outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
-
-    } else if (name == 'divide') {
-      api.divide(targetLayers, targetDataset, source, opts);
-
-    } else if (name == 'dots') {
-      outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
-
-    } else if (name == 'drop') {
-      api.drop2(catalog, targets, opts);
-      // api.drop(catalog, targetLayers, targetDataset, opts);
-
-    } else if (name == 'each') {
-      applyCommandToEachLayer(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
-
-    } else if (name == 'erase') {
-      outputLayers = api.eraseLayers(targetLayers, source, targetDataset, opts);
-
-    } else if (name == 'explode') {
-      outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
-
-    } else if (name == 'external') {
-      internal.external(opts);
-
-    } else if (name == 'filter') {
-      outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
-
-    } else if (name == 'filter-fields') {
-      applyCommandToEachLayer(api.filterFields, targetLayers, opts.fields);
-
-    } else if (name == 'filter-geom') {
-      applyCommandToEachLayer(api.filterGeom, targetLayers, arcs, opts);
-
-    } else if (name == 'filter-islands') {
-      applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
-
-    } else if (name == 'filter-slivers') {
-      applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
-
-    } else if (name == 'frame') {
-      api.frame(catalog, source, opts);
-
-    } else if (name == 'fuzzy-join') {
-      applyCommandToEachLayer(api.fuzzyJoin, targetLayers, arcs, source, opts);
-
-    } else if (name == 'graticule') {
-      catalog.addDataset(api.graticule(targetDataset, opts));
-
-    } else if (cmd.name == 'help') {
-      // placing this here to handle errors from invalid command names
-      internal.getOptionParser().printHelp(cmd.options.command);
-
-    } else if (name == 'i') {
-      if (opts.replace) catalog = new Catalog();
-      targetDataset = api.importFiles(cmd.options);
-      if (targetDataset) {
-        catalog.addDataset(targetDataset);
-        outputLayers = targetDataset.layers; // kludge to allow layer naming below
-      }
-
-    } else if (name == 'include') {
-      internal.include(opts);
-
-    } else if (name == 'info') {
-      // internal.printInfo(catalog.getLayers(), targetLayers);
-      internal.printInfo(internal.expandCommandTargets(targets));
-
-    } else if (name == 'inspect') {
-      applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
-
-    } else if (name == 'innerlines') {
-      outputLayers = applyCommandToEachLayer(api.innerlines, targetLayers, arcs, opts);
-
-    } else if (name == 'join') {
-      applyCommandToEachLayer(api.join, targetLayers, targetDataset, source, opts);
-
-    } else if (name == 'lines') {
-      outputLayers = applyCommandToEachLayer(api.lines, targetLayers, targetDataset, opts);
-
-    } else if (name == 'merge-layers') {
-      // returned layers are modified input layers
-      // (assumes that targetLayers are replaced by outputLayers below)
-      outputLayers = api.mergeLayers(targetLayers, opts);
-
-    } else if (name == 'mosaic') {
-      // opts.no_replace = true; // add mosaic as a new layer
-      // outputLayers = internal.mosaic(targetDataset, opts);
-      outputLayers = api.mosaic(targetLayers, targetDataset, opts);
-
-    } else if (name == 'o') {
-      outputFiles = internal.exportTargetLayers(targets, opts);
-      if (opts.final) {
-        // don't propagate data if output is final
-        catalog = null;
-      }
-      return internal.writeFiles(outputFiles, opts, done);
-
-    } else if (name == 'point-grid') {
-      outputLayers = [api.pointGrid(targetDataset, opts)];
-      if (!targetDataset) {
-        catalog.addDataset({layers: outputLayers});
-      }
-
-    } else if (name == 'grid') {
-      outputDataset = api.polygonGrid(targetLayers, targetDataset, opts);
-
-    } else if (name == 'points') {
-      outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
-
-    } else if (name == 'polygons') {
-      outputLayers = api.polygons(targetLayers, targetDataset, opts);
-
-    } else if (name == 'proj') {
-      internal.initProjLibrary(opts, function() {
-        var err = null;
-        try {
-          targets.forEach(function(targ) {
-            var destArg = opts.match || opts.crs || opts.projection;
-            var srcInfo, destInfo;
-            if (opts.from) {
-              srcInfo = internal.getCrsInfo(opts.from, catalog);
-              if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
-              internal.setDatasetCRS(targ.dataset, srcInfo);
-            }
-            if (destArg) {
-              destInfo = internal.getCrsInfo(destArg, catalog);
-              api.proj(targ.dataset, destInfo, opts);
-            }
-          });
-        } catch(e) {
-          err = e;
-        }
-        done(err);
-      });
-      return; // async command
-
-    } else if (name == 'rectangle') {
-      if (source || opts.bbox || targets.length === 0) {
-        catalog.addDataset(api.rectangle(source, opts));
-      } else {
-        outputLayers = api.rectangle2(targets[0], opts);
-      }
-
-    } else if (name == 'rectangles') {
-      outputLayers = applyCommandToEachLayer(api.rectangles, targetLayers, targetDataset, opts);
-
-    } else if (name == 'rename-fields') {
-      applyCommandToEachLayer(api.renameFields, targetLayers, opts.fields);
-
-    } else if (name == 'rename-layers') {
-      api.renameLayers(targetLayers, opts.names);
-
-    } else if (name == 'require') {
-      api.require(targets, opts);
-
-    } else if (name == 'run') {
-      api.run(targets, catalog, opts, done);
-      return;
-
-    } else if (name == 'scalebar') {
-      api.scalebar(catalog, opts);
-
-    } else if (name == 'shape') {
-      catalog.addDataset(api.shape(opts));
-
-    } else if (name == 'simplify') {
-      if (opts.variable) {
-        api.variableSimplify(targetLayers, targetDataset, opts);
-      } else {
-        api.simplify(targetDataset, opts);
-      }
-
-    } else if (name == 'slice') {
-      outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
-
-    } else if (name == 'snap') {
-      api.snap(targetDataset, opts);
-
-    } else if (name == 'sort') {
-      applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
-
-    } else if (name == 'split') {
-      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
-
-    } else if (name == 'split-on-grid') {
-      outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);
-
-    } else if (name == 'stitch') {
-      api.stitch(targetDataset);
-
-    } else if (name == 'style') {
-      applyCommandToEachLayer(api.svgStyle, targetLayers, targetDataset, opts);
-
-    } else if (name == 'symbols') {
-      applyCommandToEachLayer(api.symbols, targetLayers, opts);
-
-    } else if (name == 'subdivide') {
-      outputLayers = applyCommandToEachLayer(api.subdivideLayer, targetLayers, arcs, opts.expression);
-
-    } else if (name == 'target') {
-      internal.target(catalog, opts);
-
-    } else if (name == 'union') {
-      outputLayers = api.union(targetLayers, targetDataset, opts);
-
-    } else if (name == 'uniq') {
-      applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
-
-    } else {
-      // throws error if cmd is not registered
-      internal.runExternalCommand(cmd, catalog);
-    }
-
-    // apply name parameter
-    if (('name' in opts) && outputLayers) {
-      // TODO: consider uniqifying multiple layers here
-      outputLayers.forEach(function(lyr) {
-        lyr.name = opts.name;
-      });
-    }
-
-    if (outputDataset) {
-      catalog.addDataset(outputDataset); // also sets default target
-      outputLayers = outputDataset.layers;
-      if (targetLayers && !opts.no_replace) {
-        // remove target layers from target dataset
-        targetLayers.forEach(function(lyr) {
-          catalog.deleteLayer(lyr, targetDataset);
-        });
-      }
-    } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
-      // integrate output layers into the target dataset
-      if (opts.no_replace) {
-        // make sure commands do not return input layers with 'no_replace' option
-        if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
-          error('Command returned invalid output');
-        }
-
-        targetDataset.layers = targetDataset.layers.concat(outputLayers);
-      } else {
-        // TODO: consider replacing old layers as they are generated, for gc
-        internal.replaceLayers(targetDataset, targetLayers, outputLayers);
-        // some operations leave unreferenced arcs that should be cleaned up
-        if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
-            name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
-          internal.dissolveArcs(targetDataset);
-        }
-      }
-      // use command output as new default target
-      catalog.setDefaultTarget(outputLayers, targetDataset);
-    }
-
-
-
-    // delete arcs if no longer needed (e.g. after -points command)
-    // (after output layers have been integrated)
-    if (targetDataset) {
-      internal.cleanupArcs(targetDataset);
-    }
-  } catch(e) {
-    return done(e);
-  }
-
-  done(null);
-
-  function done(err) {
-    T.stop('-');
-    cb(err, err ? null : catalog);
-  }
-};
-
-internal.outputLayersAreDifferent = function(output, input) {
-  return !utils.some(input, function(lyr) {
-    return output.indexOf(lyr) > -1;
-  });
-};
-
-
-// Apply a command to an array of target layers
-function applyCommandToEachLayer(func, targetLayers) {
-  var args = utils.toArray(arguments).slice(2);
-  return targetLayers.reduce(function(memo, lyr) {
-    var result = func.apply(null, [lyr].concat(args));
-    if (utils.isArray(result)) { // some commands return an array of layers
-      memo = memo.concat(result);
-    } else if (result) { // assuming result is a layer
-      memo.push(result);
-    }
-    return memo;
-  }, []);
-}
-
-
-
 internal.splitShellTokens = function(str) {
-  return internal.splitTokens(str, '\\s');
-};
-
-internal.splitTokens = function(str, delimChars) {
-  var BAREWORD = '([^' + delimChars + '\'"])+'; // TODO: make safer
-  var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
-  var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var BAREWORD = '([^\'"\\s])+';
+  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
+  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
   var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
   var matches = str.match(rxp) || [];
   var chunks = matches.filter(function(chunk) {
@@ -25699,9 +25286,9 @@ function CommandOptions(name) {
 // individual members
 internal.parseStringList = function(token) {
   var delim = ',';
-  var list = internal.splitTokens(token, delim);
+  var list = internal.splitOptionList(token, delim);
   if (list.length == 1) {
-    list = internal.splitTokens(list[0], delim);
+    list = internal.splitOptionList(list[0], delim);
   }
   return list;
 };
@@ -25710,9 +25297,9 @@ internal.parseStringList = function(token) {
 internal.parseColorList = function(token) {
   var delim = ', ';
   var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
-  var list = internal.splitTokens(token2, delim);
+  var list = internal.splitOptionList(token2, delim);
   if (list.length == 1) {
-    list = internal.splitTokens(list[0], delim);
+    list = internal.splitOptionList(list[0], delim);
   }
   list = list.map(function(str) {
     return str.replace(/~~~/g, ',');
@@ -25727,6 +25314,22 @@ internal.cleanArgv = function(argv) {
   // be parsed the same way as name=Meg and name="Meg"
   //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
   return argv;
+};
+
+internal.splitOptionList = function(str, delimChars) {
+  var BAREWORD = '([^' + delimChars + '\'"][^' + delimChars + ']*)'; // TODO: make safer
+  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
+  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var rxp = new RegExp('^(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')([' + delimChars + ']+|$)');
+  var chunks = [];
+  var match;
+  while ((match = rxp.exec(str)) !== null) {
+    chunks.push(match[1]);
+    str = str.substr(match[0].length);
+  }
+  return chunks.filter(function(chunk) {
+    return !!chunk && chunk != '\\';
+  }).map(utils.trimQuotes);
 };
 
 
@@ -27597,6 +27200,754 @@ internal.getFormattedLayerList = function(catalog) {
 };
 
 
+// Return an array containing points from a path iterator, clipped to a bounding box
+// Currently using this function for clipping styled polygons in the GUI to speed up layer rendering.
+// Artifacts along the edges make this unsuitable for clipping datasets
+// TODO: support clipping a single-part shape to multiple parts
+// TODO: prevent artifacts along edges
+internal.clipIterByBounds = function(iter, bounds) {
+  var points = [];
+  var bbox = getClippingBBox(bounds);
+  var xy, xyp, first, isRing;
+  while (iter.hasNext()) {
+    xy = [iter.x, iter.y];
+    addClippedPoint(points, xyp, xy, bbox);
+    xyp = xy;
+    if (!first) first = xy;
+  }
+  // detect closed rings
+  isRing = pointsAreEqual(first, xy);
+  if (isRing && points.length > 0 && !pointsAreEqual(points[0], points[points.length - 1])) {
+    // some rings need to be closed
+    points.push(points[0].concat());
+  }
+  if (isRing && points.length < 4 || points.length < 2) {
+    // catch defective rings and polylines
+    points = [];
+  }
+  return points;
+};
+
+function pointsAreEqual(a, b) {
+  return a && b && a[0] === b[0] && a[1] === b[1];
+}
+
+//  2 3 4
+//  1 8 5
+//  0 7 6
+function getPointSector(x, y, bbox) {
+  var bl = bbox[0];
+  var tr = bbox[2];
+  var i;
+  if (x > tr[0]) {
+    i = y > tr[1] && 4 || y >= bl[1] && 5 || 6; // right col
+  } else if (x >= bl[0]) {
+    i = y > tr[1] && 3 || y >= bl[1] && 8 || 7; // middle col
+  } else {
+    i = y > tr[1] && 2 || y >= bl[1] && 1 || 0; // left col
+  }
+  return i;
+}
+
+function isCornerSector(q) {
+  return q == 0 || q == 2 || q == 4 || q == 6;
+}
+
+function isEdgeSector(q) {
+  return q == 1 || q == 3 || q == 5 || q == 7;
+}
+
+// Number of CCW turns to normalize
+function getSectorRotation(q) {
+  return q > 1 && q < 8 ? Math.floor(q / 2) : 0;
+}
+
+// i: rotation number
+// b: bbox object
+function rotateClippingBox(i, bbox) {
+  var a = bbox[0],
+      b = bbox[1],
+      c = bbox[2],
+      d = bbox[3];
+  if (i === 0) {
+    bbox = [a, b, c, d];
+  } else if (i == 1) {
+    bbox = [b, c, d, a];
+  } else if (i == 2) {
+    bbox = [c, d, a, b];
+  } else if (i == 3) {
+    bbox = [d, a, b, c];
+  } else error('Invalid rotation number');
+  return bbox;
+}
+
+// Convert a Bounds object to an array of 4 points designed to be rotated
+function getClippingBBox(bounds) {
+  return [[bounds.xmin, bounds.ymin],
+          [bounds.xmin, bounds.ymax],
+          [bounds.xmax, bounds.ymax],
+          [bounds.xmax, bounds.ymin]];
+}
+
+// i: ccw turns (0-3)
+function rotateSector(i, q) {
+  return q < 8 && q >= 0 ? (q + 8 - i * 2) % 8 : q;
+}
+
+function getCornerBySector(q, bbox) {
+  if (isCornerSector(q)) {
+    return bbox[q / 2].concat();
+  }
+  error('Invalid corner sector:', q);
+}
+
+function addCornerPoint(points, q, bbox) {
+  points.push(getCornerBySector(q, bbox));
+}
+
+function projectPointToEdge(p, s1, s2) {
+  return s1[0] == s2[0] ? [s1[0], p[1]] : [p[0], s1[1]];
+}
+
+function addClippedPoint(points, p1, p2, bbox) {
+  var q1 = p1 ? getPointSector(p1[0], p1[1], bbox) : -1;
+  var q2 = getPointSector(p2[0], p2[1], bbox);
+  var rot;
+  // even polylines need to be connected along bbox edges to prevent artifact
+  //   segments cutting through the bbox
+  // TODO: convert disconnected parts to individual polylines or rings
+  var closed = true;
+
+  if (q1 == 8 && q2 == 8) {
+    // segment is fully within box
+    points.push(p2);
+
+  } else if (q1 == q2) {
+    // segment is fully within one outer sector (ignore it)
+
+  } else if (q1 == -1) {
+    // p2 is first point in the path
+    if (q2 == 8) {
+      points.push(p2);
+    } else if (closed && isCornerSector(q2)) {
+      addCornerPoint(points, q2, bbox);
+    }
+
+  } else if (q1 == 8) {
+    // segment leaves box
+    addSegmentBoundsIntersection(points, p1, p2, bbox);
+    if (closed && isCornerSector(q2)) {
+      addCornerPoint(points, q2, bbox);
+    }
+
+  } else if (q2 == 8) {
+    // segment enters box
+    addSegmentBoundsIntersection(points, p1, p2, bbox);
+    points.push(p2);
+
+  } else {
+    // segment travels from one outer sector to another outer sector
+    // normalise segment by rotating bbox so that p1 is
+    // in the 0 or 1 sector relative to the bbox coordinates, if p1 is in an
+    // outer segment
+    rot = getSectorRotation(q1);
+    bbox = rotateClippingBox(rot, bbox);
+    q1 = rotateSector(rot, q1);
+    q2 = rotateSector(rot, q2);
+    if (q1 == 0) {
+      // first point is in a corner sector
+      if (q2 === 0 || q2 === 1 || q2 === 7) {
+        // move to adjacent side -- no point
+
+      } else if (q2 == 2 || q2 == 6) {
+        // move to adjacent corner
+        if (closed) addCornerPoint(points, q2, bbox);
+
+      } else if (q2 == 3) {
+        // far left edge (intersection or left corner)
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
+
+      } else if (q2 == 4) {
+        // opposite corner
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox)) {
+          // determine if bbox is to the left or right of segment
+          if (geom.orient2D(p1[0], p1[1], p2[0], p2[1], bbox[0][0], bbox[0][1]) > 1) {
+            // bbox is on the left (seg -> nearest corner is CCW)
+            addCornerPoint(points, 6, bbox);
+          } else {
+            // bbox is on the right
+            addCornerPoint(points, 2, bbox);
+          }
+        }
+        if (closed) addCornerPoint(points, q2, bbox);
+
+      } else if (q2 == 5) {
+        // far right edge (intersection or right corner)
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 6, bbox);
+      }
+
+    } else if (q1 == 1) {
+      // first point is in a side sector
+      if (q2 == 2 || q2 === 0) {
+        // near left corner, near right corner
+        addCornerPoint(points, q2, bbox);
+
+      } else if (q2 == 3) {
+        // to left side
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
+
+      } else if (q2 == 4) {
+        // to far left corner
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
+        if (closed) addCornerPoint(points, 4, bbox);
+
+      } else if (q2 == 5) {
+        // to opposite side
+        addSegmentBoundsIntersection(points, p1, p2, bbox);
+
+      } else if (q2 == 6) {
+        // to far right corner
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 0, bbox);
+        if (closed) addCornerPoint(points, 6, bbox);
+
+      } else if (q2 == 7) {
+        // to right side
+        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 0, bbox);
+      }
+
+    } else {
+      error("Sector error");
+    }
+  }
+}
+
+function addSegmentSegmentIntersection(points, a, b, c, d) {
+  var p = geom.segmentIntersection(a[0], a[1], b[0], b[1], c[0], c[1],
+        d[0], d[1]);
+  if (p) points.push(p);
+}
+
+function addSegmentBoundsIntersection(points, a, b, bounds) {
+  var hits = [];
+  addSegmentSegmentIntersection(hits, a, b, bounds[0], bounds[1]); // first edge
+  addSegmentSegmentIntersection(hits, a, b, bounds[0], bounds[3]); // last edge
+  addSegmentSegmentIntersection(hits, a, b, bounds[1], bounds[2]);
+  addSegmentSegmentIntersection(hits, a, b, bounds[2], bounds[3]);
+  if (hits.length > 0 ) {
+    points.push.apply(points, hits);
+    return true;
+  }
+  return false;
+}
+
+
+api.filterGeom = function(lyr, arcs, opts) {
+  if (!internal.layerHasGeometry(lyr)) {
+    stop("Layer is missing geometry");
+  }
+  if (opts.bbox) {
+    internal.filterByBoundsIntersection(lyr, arcs, opts);
+  }
+  api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+};
+
+internal.filterByBoundsIntersection = function(lyr, arcs, opts) {
+  var filter = internal.getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
+  internal.editShapes(lyr.shapes, filter);
+};
+
+internal.getBoundsIntersectionFilter = function(bbox, lyr, arcs) {
+  var bounds = new Bounds(bbox);
+  var filter = lyr.geometry_type == 'point' ?
+        internal.getPointInBoundsTest(bounds) :
+        internal.getPathBoundsIntersectionTest(bounds, arcs);
+  return filter;
+};
+
+internal.getPointInBoundsTest = function(bounds) {
+  return function(xy) {
+    var contains =  bounds.containsPoint(xy[0], xy[1]);
+    return contains ? xy : null;
+  };
+};
+
+// V1 too-simple test: bounding-box intersection
+// internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
+//   return function(path) {
+//     return bounds.intersects(arcs.getSimpleShapeBounds(path)) ? path : null;
+//   };
+// };
+
+internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
+  var bbox = bounds.toArray(),
+    left = bbox[0],
+    bottom = bbox[1],
+    right = bbox[2],
+    top = bbox[3];
+
+  return function(path) {
+    // case: bounding boxes don't intersect -> the path doesn't intersect the box
+    if (!bounds.intersects(arcs.getSimpleShapeBounds(path))) {
+      return null;
+    }
+    var intersects = false;
+    var ax, ay, bx, by;
+    var iter = arcs.getShapeIter(path);
+
+    if (iter.hasNext()) {
+      ax = iter.x;
+      ay = iter.y;
+    }
+    while (iter.hasNext()) {
+      bx = ax;
+      by = ay;
+      ax = iter.x;
+      ay = iter.y;
+      if (internal.segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) continue;
+      if (internal.segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) {
+        intersects = true;
+        break;
+      }
+      if (geom.segmentIntersection(left, top, right, top, ax, ay, bx, by) ||
+          geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by) ||
+          geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by) ||
+          geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by)) {
+        intersects = true;
+        break;
+      }
+    }
+
+    // case: bbox is entirely inside this ring
+    if (!intersects && geom.testPointInRing(left, bottom, path, arcs)) {
+      intersects = true;
+    }
+    return intersects ? path : null;
+  };
+};
+
+// Return a function for testing if a shape (path or point) intersects a bounding box
+// TODO: move this function to a different file
+internal.getBBoxIntersectionTest = function(bbox, lyr, arcs) {
+  var filter = internal.getBoundsIntersectionFilter(bbox, lyr, arcs);
+  return function(shapeId) {
+    var shp = lyr.shapes[shapeId];
+    if (!shp) return false;
+    for (var i=0; i<shp.length; i++) {
+      if (filter(shp[i])) return true;
+    }
+    return false;
+  };
+};
+
+// return array of shape ids
+internal.findShapesIntersectingBBox = function(bbox, lyr, arcs) {
+  var test = internal.getBBoxIntersectionTest(bbox, lyr, arcs);
+  var ids = [];
+  for (var i=0; i<lyr.shapes.length; i++) {
+    if (test(i)) ids.push(i);
+  }
+  return ids;
+};
+
+
+// TODO: consider refactoring to allow modules
+// @cmd  example: {name: "dissolve", options:{field: "STATE"}}
+// @catalog: Catalog object
+// @done callback: function(err, catalog)
+//
+api.runCommand = function(cmd, catalog, cb) {
+  var name = cmd.name,
+      opts = cmd.options,
+      source,
+      outputDataset,
+      outputLayers,
+      outputFiles,
+      targets,
+      targetDataset,
+      targetLayers,
+      arcs;
+
+  try { // catch errors from synchronous functions
+
+    T.start();
+    if (!catalog) catalog = new Catalog();
+
+    if (name == 'rename-layers') {
+      // default target is all layers
+      targets = catalog.findCommandTargets(opts.target || '*');
+      targetLayers = targets.reduce(function(memo, obj) {
+        return memo.concat(obj.layers);
+      }, []);
+
+    } else if (name == 'o') {
+      // when combining GeoJSON layers, default is all layers
+      // TODO: check that combine_layers is only used w/ GeoJSON output
+      targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+
+    } else if (name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
+      // these commands accept multiple target datasets
+      targets = catalog.findCommandTargets(opts.target);
+
+    } else {
+      targets = catalog.findCommandTargets(opts.target);
+
+      // special case to allow -merge-layers and -union to combine layers from multiple datasets
+      // TODO: support multi-dataset targets for other commands
+      if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
+        targets = internal.mergeCommandTargets(targets, catalog);
+      }
+
+      if (targets.length == 1) {
+        targetDataset = targets[0].dataset;
+        arcs = targetDataset.arcs;
+        targetLayers = targets[0].layers;
+        // target= option sets default target
+        catalog.setDefaultTarget(targetLayers, targetDataset);
+
+      } else if (targets.length > 1) {
+        stop("This command does not support targetting layers from different datasets");
+      }
+    }
+
+    if (targets.length === 0) {
+      if (opts.target) {
+        stop(utils.format('Missing target: %s\nAvailable layers: %s',
+            opts.target, internal.getFormattedLayerList(catalog)));
+      }
+      if (!(name == 'graticule' || name == 'i' || name == 'help' ||
+          name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+          name == 'include')) {
+        throw new UserError("No data is available");
+      }
+    }
+
+    if (opts.source) {
+      source = internal.findCommandSource(internal.convertSourceName(opts.source, targets), catalog, opts);
+    }
+
+    if (name == 'affine') {
+      api.affine(targetLayers, targetDataset, opts);
+
+    } else if (name == 'buffer') {
+      // applyCommandToEachLayer(api.buffer, targetLayers, targetDataset, opts);
+      outputLayers = api.buffer(targetLayers, targetDataset, opts);
+
+    } else if (name == 'data-fill') {
+      applyCommandToEachLayer(api.dataFill, targetLayers, arcs, opts);
+
+    } else if (name == 'cluster') {
+      applyCommandToEachLayer(api.cluster, targetLayers, arcs, opts);
+
+    } else if (name == 'calc') {
+      applyCommandToEachLayer(api.calc, targetLayers, arcs, opts);
+
+    } else if (name == 'clean') {
+      api.cleanLayers(targetLayers, targetDataset, opts);
+
+    } else if (name == 'clip') {
+      outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
+
+    } else if (name == 'colorizer') {
+      outputLayers = api.colorizer(opts);
+
+    } else if (name == 'dissolve') {
+      outputLayers = applyCommandToEachLayer(api.dissolve, targetLayers, arcs, opts);
+
+    } else if (name == 'dissolve2') {
+      outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
+
+    } else if (name == 'divide') {
+      api.divide(targetLayers, targetDataset, source, opts);
+
+    } else if (name == 'dots') {
+      outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
+
+    } else if (name == 'drop') {
+      api.drop2(catalog, targets, opts);
+      // api.drop(catalog, targetLayers, targetDataset, opts);
+
+    } else if (name == 'each') {
+      applyCommandToEachLayer(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
+
+    } else if (name == 'erase') {
+      outputLayers = api.eraseLayers(targetLayers, source, targetDataset, opts);
+
+    } else if (name == 'explode') {
+      outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
+
+    } else if (name == 'external') {
+      internal.external(opts);
+
+    } else if (name == 'filter') {
+      outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
+
+    } else if (name == 'filter-fields') {
+      applyCommandToEachLayer(api.filterFields, targetLayers, opts.fields);
+
+    } else if (name == 'filter-geom') {
+      applyCommandToEachLayer(api.filterGeom, targetLayers, arcs, opts);
+
+    } else if (name == 'filter-islands') {
+      applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
+
+    } else if (name == 'filter-slivers') {
+      applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
+
+    } else if (name == 'frame') {
+      api.frame(catalog, source, opts);
+
+    } else if (name == 'fuzzy-join') {
+      applyCommandToEachLayer(api.fuzzyJoin, targetLayers, arcs, source, opts);
+
+    } else if (name == 'graticule') {
+      catalog.addDataset(api.graticule(targetDataset, opts));
+
+    } else if (cmd.name == 'help') {
+      // placing this here to handle errors from invalid command names
+      internal.getOptionParser().printHelp(cmd.options.command);
+
+    } else if (name == 'i') {
+      if (opts.replace) catalog = new Catalog();
+      targetDataset = api.importFiles(cmd.options);
+      if (targetDataset) {
+        catalog.addDataset(targetDataset);
+        outputLayers = targetDataset.layers; // kludge to allow layer naming below
+      }
+
+    } else if (name == 'include') {
+      internal.include(opts);
+
+    } else if (name == 'info') {
+      // internal.printInfo(catalog.getLayers(), targetLayers);
+      internal.printInfo(internal.expandCommandTargets(targets));
+
+    } else if (name == 'inspect') {
+      applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
+
+    } else if (name == 'innerlines') {
+      outputLayers = applyCommandToEachLayer(api.innerlines, targetLayers, arcs, opts);
+
+    } else if (name == 'join') {
+      applyCommandToEachLayer(api.join, targetLayers, targetDataset, source, opts);
+
+    } else if (name == 'lines') {
+      outputLayers = applyCommandToEachLayer(api.lines, targetLayers, targetDataset, opts);
+
+    } else if (name == 'merge-layers') {
+      // returned layers are modified input layers
+      // (assumes that targetLayers are replaced by outputLayers below)
+      outputLayers = api.mergeLayers(targetLayers, opts);
+
+    } else if (name == 'mosaic') {
+      // opts.no_replace = true; // add mosaic as a new layer
+      // outputLayers = internal.mosaic(targetDataset, opts);
+      outputLayers = api.mosaic(targetLayers, targetDataset, opts);
+
+    } else if (name == 'o') {
+      outputFiles = internal.exportTargetLayers(targets, opts);
+      if (opts.final) {
+        // don't propagate data if output is final
+        catalog = null;
+      }
+      return internal.writeFiles(outputFiles, opts, done);
+
+    } else if (name == 'point-grid') {
+      outputLayers = [api.pointGrid(targetDataset, opts)];
+      if (!targetDataset) {
+        catalog.addDataset({layers: outputLayers});
+      }
+
+    } else if (name == 'grid') {
+      outputDataset = api.polygonGrid(targetLayers, targetDataset, opts);
+
+    } else if (name == 'points') {
+      outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
+
+    } else if (name == 'polygons') {
+      outputLayers = api.polygons(targetLayers, targetDataset, opts);
+
+    } else if (name == 'proj') {
+      internal.initProjLibrary(opts, function() {
+        var err = null;
+        try {
+          targets.forEach(function(targ) {
+            var destArg = opts.match || opts.crs || opts.projection;
+            var srcInfo, destInfo;
+            if (opts.from) {
+              srcInfo = internal.getCrsInfo(opts.from, catalog);
+              if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
+              internal.setDatasetCRS(targ.dataset, srcInfo);
+            }
+            if (destArg) {
+              destInfo = internal.getCrsInfo(destArg, catalog);
+              api.proj(targ.dataset, destInfo, opts);
+            }
+          });
+        } catch(e) {
+          err = e;
+        }
+        done(err);
+      });
+      return; // async command
+
+    } else if (name == 'rectangle') {
+      if (source || opts.bbox || targets.length === 0) {
+        catalog.addDataset(api.rectangle(source, opts));
+      } else {
+        outputLayers = api.rectangle2(targets[0], opts);
+      }
+
+    } else if (name == 'rectangles') {
+      outputLayers = applyCommandToEachLayer(api.rectangles, targetLayers, targetDataset, opts);
+
+    } else if (name == 'rename-fields') {
+      applyCommandToEachLayer(api.renameFields, targetLayers, opts.fields);
+
+    } else if (name == 'rename-layers') {
+      api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'require') {
+      api.require(targets, opts);
+
+    } else if (name == 'run') {
+      api.run(targets, catalog, opts, done);
+      return;
+
+    } else if (name == 'scalebar') {
+      api.scalebar(catalog, opts);
+
+    } else if (name == 'shape') {
+      catalog.addDataset(api.shape(opts));
+
+    } else if (name == 'simplify') {
+      if (opts.variable) {
+        api.variableSimplify(targetLayers, targetDataset, opts);
+      } else {
+        api.simplify(targetDataset, opts);
+      }
+
+    } else if (name == 'slice') {
+      outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
+
+    } else if (name == 'snap') {
+      api.snap(targetDataset, opts);
+
+    } else if (name == 'sort') {
+      applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
+
+    } else if (name == 'split') {
+      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
+
+    } else if (name == 'split-on-grid') {
+      outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);
+
+    } else if (name == 'stitch') {
+      api.stitch(targetDataset);
+
+    } else if (name == 'style') {
+      applyCommandToEachLayer(api.svgStyle, targetLayers, targetDataset, opts);
+
+    } else if (name == 'symbols') {
+      applyCommandToEachLayer(api.symbols, targetLayers, opts);
+
+    } else if (name == 'subdivide') {
+      outputLayers = applyCommandToEachLayer(api.subdivideLayer, targetLayers, arcs, opts.expression);
+
+    } else if (name == 'target') {
+      internal.target(catalog, opts);
+
+    } else if (name == 'union') {
+      outputLayers = api.union(targetLayers, targetDataset, opts);
+
+    } else if (name == 'uniq') {
+      applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
+
+    } else {
+      // throws error if cmd is not registered
+      internal.runExternalCommand(cmd, catalog);
+    }
+
+    // apply name parameter
+    if (('name' in opts) && outputLayers) {
+      // TODO: consider uniqifying multiple layers here
+      outputLayers.forEach(function(lyr) {
+        lyr.name = opts.name;
+      });
+    }
+
+    if (outputDataset) {
+      catalog.addDataset(outputDataset); // also sets default target
+      outputLayers = outputDataset.layers;
+      if (targetLayers && !opts.no_replace) {
+        // remove target layers from target dataset
+        targetLayers.forEach(function(lyr) {
+          catalog.deleteLayer(lyr, targetDataset);
+        });
+      }
+    } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
+      // integrate output layers into the target dataset
+      if (opts.no_replace) {
+        // make sure commands do not return input layers with 'no_replace' option
+        if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
+          error('Command returned invalid output');
+        }
+
+        targetDataset.layers = targetDataset.layers.concat(outputLayers);
+      } else {
+        // TODO: consider replacing old layers as they are generated, for gc
+        internal.replaceLayers(targetDataset, targetLayers, outputLayers);
+        // some operations leave unreferenced arcs that should be cleaned up
+        if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
+            name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
+          internal.dissolveArcs(targetDataset);
+        }
+      }
+      // use command output as new default target
+      catalog.setDefaultTarget(outputLayers, targetDataset);
+    }
+
+
+
+    // delete arcs if no longer needed (e.g. after -points command)
+    // (after output layers have been integrated)
+    if (targetDataset) {
+      internal.cleanupArcs(targetDataset);
+    }
+  } catch(e) {
+    return done(e);
+  }
+
+  done(null);
+
+  function done(err) {
+    T.stop('-');
+    cb(err, err ? null : catalog);
+  }
+};
+
+internal.outputLayersAreDifferent = function(output, input) {
+  return !utils.some(input, function(lyr) {
+    return output.indexOf(lyr) > -1;
+  });
+};
+
+
+// Apply a command to an array of target layers
+function applyCommandToEachLayer(func, targetLayers) {
+  var args = utils.toArray(arguments).slice(2);
+  return targetLayers.reduce(function(memo, lyr) {
+    var result = func.apply(null, [lyr].concat(args));
+    if (utils.isArray(result)) { // some commands return an array of layers
+      memo = memo.concat(result);
+    } else if (result) { // assuming result is a layer
+      memo.push(result);
+    }
+    return memo;
+  }, []);
+}
+
+
+
 // Parse command line args into commands and run them
 // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
 //   function(argv[, input], callback)
@@ -27918,247 +28269,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
     return false;
   });
 };
-
-
-// Return an array containing points from a path iterator, clipped to a bounding box
-// Currently using this function for clipping styled polygons in the GUI to speed up layer rendering.
-// Artifacts along the edges make this unsuitable for clipping datasets
-// TODO: support clipping a single-part shape to multiple parts
-// TODO: prevent artifacts along edges
-internal.clipIterByBounds = function(iter, bounds) {
-  var points = [];
-  var bbox = getClippingBBox(bounds);
-  var xy, xyp, first, isRing;
-  while (iter.hasNext()) {
-    xy = [iter.x, iter.y];
-    addClippedPoint(points, xyp, xy, bbox);
-    xyp = xy;
-    if (!first) first = xy;
-  }
-  // detect closed rings
-  isRing = pointsAreEqual(first, xy);
-  if (isRing && points.length > 0 && !pointsAreEqual(points[0], points[points.length - 1])) {
-    // some rings need to be closed
-    points.push(points[0].concat());
-  }
-  if (isRing && points.length < 4 || points.length < 2) {
-    // catch defective rings and polylines
-    points = [];
-  }
-  return points;
-};
-
-function pointsAreEqual(a, b) {
-  return a && b && a[0] === b[0] && a[1] === b[1];
-}
-
-//  2 3 4
-//  1 8 5
-//  0 7 6
-function getPointSector(x, y, bbox) {
-  var bl = bbox[0];
-  var tr = bbox[2];
-  var i;
-  if (x > tr[0]) {
-    i = y > tr[1] && 4 || y >= bl[1] && 5 || 6; // right col
-  } else if (x >= bl[0]) {
-    i = y > tr[1] && 3 || y >= bl[1] && 8 || 7; // middle col
-  } else {
-    i = y > tr[1] && 2 || y >= bl[1] && 1 || 0; // left col
-  }
-  return i;
-}
-
-function isCornerSector(q) {
-  return q == 0 || q == 2 || q == 4 || q == 6;
-}
-
-function isEdgeSector(q) {
-  return q == 1 || q == 3 || q == 5 || q == 7;
-}
-
-// Number of CCW turns to normalize
-function getSectorRotation(q) {
-  return q > 1 && q < 8 ? Math.floor(q / 2) : 0;
-}
-
-// i: rotation number
-// b: bbox object
-function rotateClippingBox(i, bbox) {
-  var a = bbox[0],
-      b = bbox[1],
-      c = bbox[2],
-      d = bbox[3];
-  if (i === 0) {
-    bbox = [a, b, c, d];
-  } else if (i == 1) {
-    bbox = [b, c, d, a];
-  } else if (i == 2) {
-    bbox = [c, d, a, b];
-  } else if (i == 3) {
-    bbox = [d, a, b, c];
-  } else error('Invalid rotation number');
-  return bbox;
-}
-
-// Convert a Bounds object to an array of 4 points designed to be rotated
-function getClippingBBox(bounds) {
-  return [[bounds.xmin, bounds.ymin],
-          [bounds.xmin, bounds.ymax],
-          [bounds.xmax, bounds.ymax],
-          [bounds.xmax, bounds.ymin]];
-}
-
-// i: ccw turns (0-3)
-function rotateSector(i, q) {
-  return q < 8 && q >= 0 ? (q + 8 - i * 2) % 8 : q;
-}
-
-function getCornerBySector(q, bbox) {
-  if (isCornerSector(q)) {
-    return bbox[q / 2].concat();
-  }
-  error('Invalid corner sector:', q);
-}
-
-function addCornerPoint(points, q, bbox) {
-  points.push(getCornerBySector(q, bbox));
-}
-
-function projectPointToEdge(p, s1, s2) {
-  return s1[0] == s2[0] ? [s1[0], p[1]] : [p[0], s1[1]];
-}
-
-function addClippedPoint(points, p1, p2, bbox) {
-  var q1 = p1 ? getPointSector(p1[0], p1[1], bbox) : -1;
-  var q2 = getPointSector(p2[0], p2[1], bbox);
-  var rot;
-  // even polylines need to be connected along bbox edges to prevent artifact
-  //   segments cutting through the bbox
-  // TODO: convert disconnected parts to individual polylines or rings
-  var closed = true;
-
-  if (q1 == 8 && q2 == 8) {
-    // segment is fully within box
-    points.push(p2);
-
-  } else if (q1 == q2) {
-    // segment is fully within one outer sector (ignore it)
-
-  } else if (q1 == -1) {
-    // p2 is first point in the path
-    if (q2 == 8) {
-      points.push(p2);
-    } else if (closed && isCornerSector(q2)) {
-      addCornerPoint(points, q2, bbox);
-    }
-
-  } else if (q1 == 8) {
-    // segment leaves box
-    addSegmentBoundsIntersection(points, p1, p2, bbox);
-    if (closed && isCornerSector(q2)) {
-      addCornerPoint(points, q2, bbox);
-    }
-
-  } else if (q2 == 8) {
-    // segment enters box
-    addSegmentBoundsIntersection(points, p1, p2, bbox);
-    points.push(p2);
-
-  } else {
-    // segment travels from one outer sector to another outer sector
-    // normalise segment by rotating bbox so that p1 is
-    // in the 0 or 1 sector relative to the bbox coordinates, if p1 is in an
-    // outer segment
-    rot = getSectorRotation(q1);
-    bbox = rotateClippingBox(rot, bbox);
-    q1 = rotateSector(rot, q1);
-    q2 = rotateSector(rot, q2);
-    if (q1 == 0) {
-      // first point is in a corner sector
-      if (q2 === 0 || q2 === 1 || q2 === 7) {
-        // move to adjacent side -- no point
-
-      } else if (q2 == 2 || q2 == 6) {
-        // move to adjacent corner
-        if (closed) addCornerPoint(points, q2, bbox);
-
-      } else if (q2 == 3) {
-        // far left edge (intersection or left corner)
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
-
-      } else if (q2 == 4) {
-        // opposite corner
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox)) {
-          // determine if bbox is to the left or right of segment
-          if (geom.orient2D(p1[0], p1[1], p2[0], p2[1], bbox[0][0], bbox[0][1]) > 1) {
-            // bbox is on the left (seg -> nearest corner is CCW)
-            addCornerPoint(points, 6, bbox);
-          } else {
-            // bbox is on the right
-            addCornerPoint(points, 2, bbox);
-          }
-        }
-        if (closed) addCornerPoint(points, q2, bbox);
-
-      } else if (q2 == 5) {
-        // far right edge (intersection or right corner)
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 6, bbox);
-      }
-
-    } else if (q1 == 1) {
-      // first point is in a side sector
-      if (q2 == 2 || q2 === 0) {
-        // near left corner, near right corner
-        addCornerPoint(points, q2, bbox);
-
-      } else if (q2 == 3) {
-        // to left side
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
-
-      } else if (q2 == 4) {
-        // to far left corner
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
-        if (closed) addCornerPoint(points, 4, bbox);
-
-      } else if (q2 == 5) {
-        // to opposite side
-        addSegmentBoundsIntersection(points, p1, p2, bbox);
-
-      } else if (q2 == 6) {
-        // to far right corner
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 0, bbox);
-        if (closed) addCornerPoint(points, 6, bbox);
-
-      } else if (q2 == 7) {
-        // to right side
-        if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 0, bbox);
-      }
-
-    } else {
-      error("Sector error");
-    }
-  }
-}
-
-function addSegmentSegmentIntersection(points, a, b, c, d) {
-  var p = geom.segmentIntersection(a[0], a[1], b[0], b[1], c[0], c[1],
-        d[0], d[1]);
-  if (p) points.push(p);
-}
-
-function addSegmentBoundsIntersection(points, a, b, bounds) {
-  var hits = [];
-  addSegmentSegmentIntersection(hits, a, b, bounds[0], bounds[1]); // first edge
-  addSegmentSegmentIntersection(hits, a, b, bounds[0], bounds[3]); // last edge
-  addSegmentSegmentIntersection(hits, a, b, bounds[1], bounds[2]);
-  addSegmentSegmentIntersection(hits, a, b, bounds[2], bounds[3]);
-  if (hits.length > 0 ) {
-    points.push.apply(points, hits);
-    return true;
-  }
-  return false;
-}
 
 
 api.cli = cli;
