@@ -1,34 +1,97 @@
 /* @requires gui-highlight-box */
 
 function BoxTool(gui, ext, nav) {
+  var self = new EventDispatcher();
   var box = new HighlightBox('body');
   var _on = false;
   var bbox, bboxPixels;
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
+  var _selection = null;
 
-  gui.keyboard.onMenuSubmit(popup, zoomToBox);
+  // gui.keyboard.onMenuSubmit(popup, zoomToBox);
+  clearSelection(); // hide selection buttons
 
   new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
 
-  new SimpleButton(popup.findChild('.zoom-btn').addClass('default-btn')).on('click', zoomToBox);
+  new SimpleButton(popup.findChild('.zoom-btn')).on('click', zoomToBox);
 
   new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
-    showCoords();
+    toggleCoords();
   });
+
+  new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+    updateSelection();
+  });
+
+  new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
+    if (!_selection) return;
+    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) == -1"';
+    runCommand(cmd);
+    clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
+    if (!_selection) return;
+    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) > -1"';
+    runCommand(cmd);
+    clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
+    if (!_selection) return;
+    var cmd = '-each "split_name = ' + JSON.stringify(_selection) +
+      '.indexOf(this.id) == -1 ? \'1\' : \'2\'" -split split_name';
+    runCommand(cmd);
+    clearSelection();
+  });
+
+  // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
+  //   runCommand('-rectangle bbox=' + bbox.join(','));
+  // });
 
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-    var cmd = '-clip bbox=' + bbox.join(',');
-    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
-      //
-    });
-    gui.clearMode();
+    runCommand('-clip bbox2=' + bbox.join(','));
   });
 
-  function showCoords() {
-    coords.text(bbox.join(','));
-    coords.show();
-    GUI.selectElement(coords.node());
+  function updateSelection() {
+    var active = gui.model.getActiveLayer();
+    var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
+    if (ids.length) showSelection(ids);
+    else clearSelection();
+  }
+
+  function showSelection(ids) {
+    var data = {ids: ids, id: ids.length ? ids[0] : -1, pinned: false};
+    _selection = ids;
+    box.hide();
+    self.dispatchEvent('selection', data);
+    popup.findChild('.default-group').hide();
+    popup.findChild('.selection-group').css('display', 'inline-block');
+  }
+
+  function clearSelection() {
+    popup.findChild('.default-group').css('display', 'inline-block');
+    popup.findChild('.selection-group').hide();
+    if (_selection) {
+      _selection = null;
+      self.dispatchEvent('selection', {ids: [], id: -1});
+    }
+  }
+
+  function runCommand(cmd) {
+    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
+    gui.clearMode();
+  }
+
+  function toggleCoords() {
+    if (coords.visible()) {
+      hideCoords();
+    } else {
+      coords.text(bbox.join(','));
+      coords.show();
+      GUI.selectElement(coords.node());
+    }
   }
 
   function hideCoords() {
@@ -50,6 +113,7 @@ function BoxTool(gui, ext, nav) {
     box.hide();
     popup.hide();
     hideCoords();
+    clearSelection();
   }
 
   function bboxToCoords(bbox) {
@@ -65,7 +129,7 @@ function BoxTool(gui, ext, nav) {
   }
 
   ext.on('change', function() {
-    if (!_on) return;
+    if (!_on || _selection) return;
     var b = bboxToPixels(bbox);
     var pos = ext.position();
     var dx = pos.pageX,
@@ -94,6 +158,12 @@ function BoxTool(gui, ext, nav) {
     // round coords, for nicer 'info' display
     // (rounded precision should be sub-pixel)
     bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
-    popup.show();
+    if (_selection) {
+      updateSelection();
+    } else {
+      popup.show();
+    }
   });
+
+  return self;
 }

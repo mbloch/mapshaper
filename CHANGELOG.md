@@ -1,3 +1,6 @@
+v0.4.156
+* Added box tool to the GUI, activated by shift-drag. The box tool supports clipping, feature selection + filtering, bbox coordinate lookup and zoom-to-box.
+
 v0.4.155
 * Added mapshaper-gui -q/--quick-view option, for bypassing the import dialog.
 * Added -join prefix= option, to add a prefix to the names of fields joined from the source dataset.

@@ -209,6 +209,10 @@ body {
 	pointer-events: none;
 }
 
+.box-tool-options .btn-group {
+	display: inline-block;
+}
+
 .box-tool-options .btn {
 	pointer-events: initial;
 }

@@ -224,6 +224,12 @@ function MshpMap(gui) {
       drawLayers(true);
     });
 
+    _boxTool.on('selection', function(e) {
+      // same as hit tool
+      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+      _stack.drawOverlayLayer(_overlayLyr);
+    });
+
     _hit.on('change', function(e) {
       // draw highlight effect for hover and select
       _overlayLyr = getMapLayerOverlay(_activeLyr, e);
