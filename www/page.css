@@ -204,6 +204,15 @@ body {
 	margin: 0 2px 0 2px;
 }
 
+/* --- Box tool dialog --------- */
+.box-tool-options {
+	pointer-events: none;
+}
+
+.box-tool-options .btn {
+	pointer-events: initial;
+}
+
 /* --- Export dialog --------- */
 
 .export-options .dialog-btn {
@@ -1081,6 +1090,7 @@ img.close-btn:hover,
 	position: absolute;
 	border: 1px solid #f74b80;
 	z-index: 15;
+	pointer-events: none;
 }
 
 

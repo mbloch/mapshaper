@@ -7,7 +7,8 @@ function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
       zoomTween = new Tween(Tween.sineInOut),
-      shiftDrag = false,
+      zoomDrag = false,
+      boxDrag = false,
       zoomScale = 1.5,
       zoomScaleMultiplier = 1,
       inBtn, outBtn,
@@ -17,6 +18,8 @@ function MapNav(gui, ext, mouse) {
   this.setZoomFactor = function(k) {
     zoomScaleMultiplier = k || 1;
   };
+
+  this.zoomToBbox = zoomToBbox;
 
   if (gui.options.homeControl) {
     gui.buttons.addButton("#home-icon").on('click', function() {
@@ -48,30 +51,64 @@ function MapNav(gui, ext, mouse) {
 
   mouse.on('dragstart', function(e) {
     if (disabled()) return;
-    shiftDrag = !!e.shiftKey;
-    if (shiftDrag) {
+    if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
+    zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+    boxDrag = !!e.shiftKey;
+    if (zoomDrag || boxDrag) {
       dragStartEvt = e;
+    }
+    if (boxDrag) {
+      gui.dispatchEvent('box_drag_start');
     }
   });
 
+  function swapElements(arr, i, j) {
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+
+  function getBoxData(e) {
+    var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
+    var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
+    var tmp;
+    if (pageBox[0] > pageBox[2]) {
+      swapElements(pageBox, 0, 2);
+      swapElements(mapBox, 0, 2);
+    }
+    if (pageBox[1] > pageBox[3]) {
+      swapElements(pageBox, 1, 3);
+      swapElements(mapBox, 1, 3);
+    }
+    return {
+      map_bbox: mapBox,
+      page_bbox: pageBox
+    };
+  }
+
   mouse.on('drag', function(e) {
     if (disabled()) return;
-    if (shiftDrag) {
+    if (zoomDrag) {
       zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
+    } else if (boxDrag) {
+      gui.dispatchEvent('box_drag', getBoxData(e));
     } else {
       ext.pan(e.dx, e.dy);
     }
   });
 
   mouse.on('dragend', function(e) {
-    var bounds;
+    var bbox;
     if (disabled()) return;
-    if (shiftDrag) {
-      shiftDrag = false;
-      bounds = new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y);
+    if (boxDrag) {
+      boxDrag = false;
+      gui.dispatchEvent('box_drag_end', getBoxData(e));
+    } else if (zoomDrag) {
+      zoomDrag = false;
+      bbox = getBoxData(e).map_bbox;
       zoomBox.hide();
-      if (bounds.width() > 5 && bounds.height() > 5) {
-        zoomToBox(bounds);
+      if (bbox[3] - bbox[1] > 5 && bbox[2] - bbox[0] > 5) {
+        zoomToBbox(bbox);
       }
     }
   });
@@ -99,10 +136,11 @@ function MapNav(gui, ext, mouse) {
   }
 
   // @box Bounds with pixels from t,l corner of map area.
-  function zoomToBox(box) {
-    var pct = Math.max(box.width() / ext.width(), box.height() / ext.height()),
-        fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
-        fy = box.centerY() / ext.height() * (1 + pct) - pct / 2;
+  function zoomToBbox(bbox) {
+    var bounds = new Bounds(bbox),
+        pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
+        fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
+        fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
     zoomByPct(1 / pct, fx, fy);
   }
 

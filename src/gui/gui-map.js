@@ -12,6 +12,7 @@ gui-coordinates-display
 gui-hit-control2
 gui-inspection-control2
 gui-symbol-dragging2
+gui-box-tool
 */
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -26,13 +27,14 @@ function MshpMap(gui) {
       _ext = new MapExtent(position),
       // _hit = new HitControl(gui, _ext, _mouse),
       _hit = new HitControl2(gui, _ext, _mouse),
+      _nav = new MapNav(gui, _ext, _mouse),
+      _boxTool = new BoxTool(gui, _ext, _nav),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _nav, _editor,
+      _inspector, _stack, _editor,
       _dynamicCRS;
 
-  _nav = new MapNav(gui, _ext, _mouse);
   if (gui.options.showMouseCoordinates) {
     new CoordinatesDisplay(gui, _ext, _mouse);
   }

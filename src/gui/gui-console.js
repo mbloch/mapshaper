@@ -21,6 +21,9 @@ function Console(gui) {
   var _isOpen = false;
   var btn = gui.container.findChild('.console-btn').on('click', toggle);
 
+  // expose this function, so other components can run commands (e.g. box tool)
+  this.runMapshaperCommands = runMapshaperCommands;
+
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
@@ -358,8 +361,6 @@ function Console(gui) {
         runMapshaperCommands(cmd, function(err) {
           if (err) {
             onError(err);
-          } else {
-            gui.session.consoleCommands(internal.standardizeConsoleCommands(cmd));
           }
           line.show();
           input.node().focus();
@@ -369,8 +370,16 @@ function Console(gui) {
     }
   }
 
-
   function runMapshaperCommands(str, done) {
+    runMapshaperCommands2(str, function(err) {
+      if (!err) {
+        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+      }
+      done(err);
+    });
+  }
+
+  function runMapshaperCommands2(str, done) {
     var commands;
     try {
       commands = internal.parseConsoleCommands(str);

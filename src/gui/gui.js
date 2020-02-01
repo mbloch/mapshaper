@@ -60,7 +60,7 @@ var startEditing = function() {
   new ImportControl(gui, importOpts);
   new ExportControl(gui);
   new LayerControl(gui);
-  new Console(gui);
+  gui.console = new Console(gui);
 
   startEditing = function() {};
 
