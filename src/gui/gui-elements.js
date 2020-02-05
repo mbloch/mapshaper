@@ -154,6 +154,8 @@ function SimpleButton(ref) {
     return this;
   };
 
+  this.node = function() {return _el.node();};
+
   function isVisible() {
     var el = _el.node();
     return el.offsetParent !== null;

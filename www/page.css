@@ -81,7 +81,8 @@ body {
 
 .dialog-btn:hover,
 .header-btn:hover,
-.dialog-btn.default-btn {
+.dialog-btn.default-btn,
+.dialog-btn.selected-btn {
 	background-color: #0F5A84;
 }
 

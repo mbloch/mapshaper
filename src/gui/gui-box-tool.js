@@ -9,16 +9,13 @@ function BoxTool(gui, ext, nav) {
   var coords = popup.findChild('.box-coords');
   var _selection = null;
 
-  // gui.keyboard.onMenuSubmit(popup, zoomToBox);
-  clearSelection(); // hide selection buttons
+  var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
+    toggleCoords();
+  });
 
   new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
 
   new SimpleButton(popup.findChild('.zoom-btn')).on('click', zoomToBox);
-
-  new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
-    toggleCoords();
-  });
 
   new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
     updateSelection();
@@ -48,6 +45,9 @@ function BoxTool(gui, ext, nav) {
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
     runCommand('-clip bbox2=' + bbox.join(','));
   });
+
+  // gui.keyboard.onMenuSubmit(popup, zoomToBox);
+  clearSelection(); // hide selection buttons
 
   function updateSelection() {
     var active = gui.model.getActiveLayer();
@@ -80,16 +80,18 @@ function BoxTool(gui, ext, nav) {
   }
 
   function toggleCoords() {
-    if (coords.visible()) {
-      hideCoords();
-    } else {
-      coords.text(bbox.join(','));
-      coords.show();
-      GUI.selectElement(coords.node());
-    }
+    if (coords.visible()) hideCoords(); else showCoords();
+  }
+
+  function showCoords() {
+    El(infoBtn.node()).addClass('selected-btn');
+    coords.text(bbox.join(','));
+    coords.show();
+    GUI.selectElement(coords.node());
   }
 
   function hideCoords() {
+    El(infoBtn.node()).removeClass('selected-btn');
     coords.hide();
   }
 
