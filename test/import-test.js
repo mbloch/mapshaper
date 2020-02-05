@@ -18,6 +18,22 @@ describe('mapshaper-import.js', function () {
       });
     });
 
+    it('array notation', function(done) {
+      var data = {
+        data: {
+          races: [{
+            records: [{foo: 'a'}, {foo: 'b'}]
+          }]
+        }
+      };
+      api.applyCommands('-i json-path=data.races[0].records data.json -o',
+          {'data.json': data},function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        assert.deepEqual(json, [{foo: 'a'}, {foo: 'b'}]);
+        done();
+      });
+    });
+
     it('nested path, string input', function(done) {
       var data = JSON.stringify({
         data: {
