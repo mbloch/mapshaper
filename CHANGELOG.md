@@ -1,3 +1,9 @@
+v0.4.157
+* Fixes and other improvements to the interactive box tool.
+* Fixes to the web console "history" command.
+* Added -filter bbox= option, to retain features that intersect a bbox.
+* Added -filter invert option, to retain the features that would have been deleted.
+
 v0.4.156
 * Added box tool to the GUI, activated by shift-drag. The box tool supports clipping, feature selection + filtering, bbox coordinate lookup and zoom-to-box.
 
