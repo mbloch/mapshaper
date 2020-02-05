@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.156';
+VERSION = '0.4.157';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -13197,6 +13197,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
       filteredLyr = internal.getOutputLayer(lyr, opts),
+      invert = !!opts.invert,
       filter;
 
   if (opts.expression) {
@@ -13207,12 +13208,17 @@ api.filterFeatures = function(lyr, arcs, opts) {
     filter = internal.combineFilters(filter, internal.getNullGeometryFilter(lyr, arcs));
   }
 
+  if (opts.bbox) {
+    filter = internal.combineFilters(filter, internal.getBBoxIntersectionTest(opts.bbox, lyr, arcs));
+  }
+
   if (!filter) {
-    stop("Missing a filter expression");
+    stop("Missing a filter criterion");
   }
 
   utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
+    if (invert) result = !result;
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);
@@ -15348,7 +15354,7 @@ internal.clipLayersByBBox = function(layers, dataset, opts) {
   var bbox = opts.bbox2;
   var clipLyr = internal.divideDatasetByBBox(dataset, bbox);
   var nodes = new NodeCollection(dataset.arcs);
-  var retn = internal.clipLayersByLayer(dataset.layers, clipLyr, nodes, 'clip', opts);
+  var retn = internal.clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
   return retn;
 };
 
@@ -24850,6 +24856,68 @@ utils.trimQuotes = function(raw) {
   return raw;
 };
 
+// Split comma-delimited list, trim quotes from entire list and
+// individual members
+internal.parseStringList = function(token) {
+  var delim = ',';
+  var list = internal.splitOptionList(token, delim);
+  if (list.length == 1) {
+    list = internal.splitOptionList(list[0], delim);
+  }
+  return list;
+};
+
+// Accept spaces and/or commas as delimiters
+internal.parseColorList = function(token) {
+  var delim = ', ';
+  var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
+  var list = internal.splitOptionList(token2, delim);
+  if (list.length == 1) {
+    list = internal.splitOptionList(list[0], delim);
+  }
+  list = list.map(function(str) {
+    return str.replace(/~~~/g, ',');
+  });
+  return list;
+};
+
+internal.cleanArgv = function(argv) {
+  argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+  argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
+  // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
+  // be parsed the same way as name=Meg and name="Meg"
+  //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
+  return argv;
+};
+
+internal.splitOptionList = function(str, delimChars) {
+  var BAREWORD = '([^' + delimChars + '\'"][^' + delimChars + ']*)'; // TODO: make safer
+  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
+  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var rxp = new RegExp('^(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')([' + delimChars + ']+|$)');
+  var chunks = [];
+  var match;
+  while ((match = rxp.exec(str)) !== null) {
+    chunks.push(match[1]);
+    str = str.substr(match[0].length);
+  }
+  return chunks.filter(function(chunk) {
+    return !!chunk && chunk != '\\';
+  }).map(utils.trimQuotes);
+};
+
+// Prepare a value to be used as an option value.
+// Places quotes around strings containing spaces.
+// e.g. converts   Layer 1 -> "Layer 1"
+//   for use in contexts like: name="Layer 1"
+internal.formatOptionValue = function(val) {
+  val = String(val);
+  if (val.indexOf(' ') > -1) {
+    val = JSON.stringify(val); // quote ids with spaces
+  }
+  return val;
+};
+
 
 function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
@@ -25282,56 +25350,6 @@ function CommandOptions(name) {
   };
 }
 
-// Split comma-delimited list, trim quotes from entire list and
-// individual members
-internal.parseStringList = function(token) {
-  var delim = ',';
-  var list = internal.splitOptionList(token, delim);
-  if (list.length == 1) {
-    list = internal.splitOptionList(list[0], delim);
-  }
-  return list;
-};
-
-// Accept spaces and/or commas as delimiters
-internal.parseColorList = function(token) {
-  var delim = ', ';
-  var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
-  var list = internal.splitOptionList(token2, delim);
-  if (list.length == 1) {
-    list = internal.splitOptionList(list[0], delim);
-  }
-  list = list.map(function(str) {
-    return str.replace(/~~~/g, ',');
-  });
-  return list;
-};
-
-internal.cleanArgv = function(argv) {
-  argv = argv.map(function(s) {return s.trim();}); // trim whitespace
-  argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-  // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
-  // be parsed the same way as name=Meg and name="Meg"
-  //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
-  return argv;
-};
-
-internal.splitOptionList = function(str, delimChars) {
-  var BAREWORD = '([^' + delimChars + '\'"][^' + delimChars + ']*)'; // TODO: make safer
-  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
-  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
-  var rxp = new RegExp('^(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')([' + delimChars + ']+|$)');
-  var chunks = [];
-  var match;
-  while ((match = rxp.exec(str)) !== null) {
-    chunks.push(match[1]);
-    str = str.substr(match[0].length);
-  }
-  return chunks.filter(function(chunk) {
-    return !!chunk && chunk != '\\';
-  }).map(utils.trimQuotes);
-};
-
 
 function validateInputOpts(cmd) {
   var o = cmd.options,
@@ -25561,6 +25579,10 @@ internal.getOptionParser = function() {
       bboxOpt = {
         type: 'bbox',
         describe: 'comma-sep. bounding box: xmin,ymin,xmax,ymax'
+      },
+      invertOpt = {
+        type: 'flag',
+        describe: 'retain only features that would have been deleted'
       },
       whereOpt = {
         describe: 'use a JS expression to select a subset of features'
@@ -26082,6 +26104,11 @@ internal.getOptionParser = function() {
       DEFAULT: true,
       describe: 'delete features that evaluate to false'
     })
+    .option('bbox', {
+      describe: 'delete features outside bbox (xmin,ymin,xmax,ymax)',
+      type: 'bbox'
+    })
+    .option('invert', invertOpt)
     .option('remove-empty', {
       type: 'flag',
       describe: 'delete features with null geometry'
@@ -26699,10 +26726,7 @@ internal.getOptionParser = function() {
       type: 'number',
       describe: 'max features with the same id (default is 1)'
     })
-    .option('invert', {
-      type: 'flag',
-      describe: 'retain only features that would have been deleted'
-    })
+    .option('invert', invertOpt)
     .option('verbose', {
       describe: 'print each removed feature',
       type: 'flag'
@@ -27042,6 +27066,26 @@ internal.getLayerMatch = function(pattern) {
   return function(lyr, i) {
     return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
   };
+};
+
+internal.countTargetLayers = function(targets) {
+  return targets.reduce(function(memo, target) {
+    return memo + target.layers.length;
+  }, 0);
+};
+
+// get an identifier for a layer that can be used in a target= option
+// (returns name if layer has a unique name, or a numerical id)
+internal.getLayerTargetId = function(catalog, lyr) {
+  var nameCount = 0,
+      name = lyr.name,
+      id;
+  catalog.getLayers().forEach(function(o, i) {
+    if (lyr.name && o.layer.name == lyr.name) nameCount++;
+    if (lyr == o.layer) id = String(i + 1);
+  });
+  if (!id) error('Layer not found');
+  return nameCount == 1 ? lyr.name : id;
 };
 
 

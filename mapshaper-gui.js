@@ -1301,7 +1301,7 @@ function KeyboardEvents(gui) {
 utils.inherit(KeyboardEvents, EventDispatcher);
 
 
-function Model() {
+function Model(gui) {
   var self = new api.internal.Catalog();
   var deleteLayer = self.deleteLayer;
   utils.extend(self, EventDispatcher.prototype);
@@ -1328,17 +1328,13 @@ function Model() {
     }
   };
 
-  self.updated = function(flags, lyr, dataset) {
-    var targ, active;
-    // if (lyr && dataset && (!active || active.layer != lyr)) {
-    if (lyr && dataset) {
-      self.setDefaultTarget([lyr], dataset);
+  self.updated = function(flags) {
+    var targets = self.getDefaultTargets();
+    var active = self.getActiveLayer();
+    if (internal.countTargetLayers(targets) > 1) {
+      self.setDefaultTarget([active.layer], active.dataset);
+      gui.session.setTargetLayer(active.layer); // add -target command to target single layer
     }
-    targ = self.getDefaultTargets()[0];
-    if (lyr && targ.layers[0] != lyr) {
-      flags.select = true;
-    }
-    active = {layer: targ.layers[0], dataset: targ.dataset};
     if (flags.select) {
       self.dispatchEvent('select', active);
     }
@@ -1346,7 +1342,10 @@ function Model() {
   };
 
   self.selectLayer = function(lyr, dataset) {
-    self.updated({select: true}, lyr, dataset);
+    if (self.getActiveLayer().layer == lyr) return;
+    self.setDefaultTarget([lyr], dataset);
+    self.updated({select: true});
+    gui.session.setTargetLayer(lyr);
   };
 
   self.selectNextLayer = function() {
@@ -4276,26 +4275,21 @@ function BoxTool(gui, ext, nav) {
 
   new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
     if (!_selection) return;
-    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) == -1"';
+    var cmd = '-filter invert bbox=' + bbox.join(',');
     runCommand(cmd);
     clearSelection();
   });
 
   new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
     if (!_selection) return;
-    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) > -1"';
+    var cmd = '-filter bbox=' + bbox.join(',');
     runCommand(cmd);
     clearSelection();
   });
 
-  new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-    if (!_selection) return;
-    var cmd = '-each "split_name = ' + JSON.stringify(_selection) +
-      '.indexOf(this.id) == -1 ? \'1\' : \'2\'" -split split_name';
-    runCommand(cmd);
-    clearSelection();
-  });
-
+  // Removing button for creating a layer containing a single rectangle.
+  // You can get the bbox with the Info button and create a rectangle in the console
+  // using -rectangle bbox=<coordinates>
   // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
   //   runCommand('-rectangle bbox=' + bbox.join(','));
   // });
@@ -5151,19 +5145,7 @@ function SidebarButtons(gui) {
 function SessionHistory(gui) {
   var commands = [];
 
-  gui.model.on('select', function(e) {
-    var layers = gui.model.getLayers();
-    if (layers.length > 1) {
-      if (indexOfLastCommand('-target') == commands.length - 1) {
-        // if last commands was -target, remove it
-        commands.pop();
-      }
-      // TODO: only when necessary
-      commands.push('-target ' + getTargetFromLayer(e.layer));
-    }
-  });
-
-  // used for ...
+  // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes
   this.unsavedChanges = function() {
     return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
   };
@@ -5224,6 +5206,16 @@ function SessionHistory(gui) {
     commands.push(cmd);
   };
 
+  this.setTargetLayer = function(lyr) {
+    var layers = gui.model.getLayers();
+    if (layers.length > 1) {
+      if (indexOfLastCommand('-target') == commands.length - 1) {
+        commands.pop(); // if last commands was -target, remove it
+      }
+      commands.push('-target ' + getTargetFromLayer(lyr));
+    }
+  };
+
   this.toCommandLineString = function() {
     var str = commands.join(' \\\n  ');
     return 'mapshaper ' + str;
@@ -5245,25 +5237,9 @@ function SessionHistory(gui) {
   }
 
   function getTargetFromLayer(lyr) {
-    var layers = gui.model.getLayers();
-    var id = 0;
-    layers.forEach(function(o, i) {
-      if (o.layer == lyr) id = i + 1;
-    });
-    if (lyr.name && isUniqueLayerName(lyr.name, layers)) {
-      return lyr.name;
-    } else if (id > 0) {
-      return id;
-    }
-    // error
+    var id = internal.getLayerTargetId(gui.model, lyr);
+    return internal.formatOptionValue(id);
   }
-
-  function isUniqueLayerName(name, layers) {
-    return layers.reduce(function(memo, obj) {
-      return obj.layer.name == name ? memo + 1 : memo;
-    }, 0) == 1;
-  }
-
 }
 
 
@@ -5285,7 +5261,7 @@ function GuiInstance(container, opts) {
 
   gui.options = opts;
   gui.container = El(container);
-  gui.model = new Model();
+  gui.model = new Model(gui);
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui);
@@ -6196,8 +6172,9 @@ function ImportControl(gui, opts) {
     if (catalog) catalog.reset(); // re-enable clickable catalog
     if (importCount > 0) {
       // display last layer of last imported dataset
-      target = model.getDefaultTargets()[0];
-      model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+      // target = model.getDefaultTargets()[0];
+      // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+      model.updated({select: true});
     }
     gui.clearProgressMessage();
     importCount = 0;
@@ -6393,7 +6370,8 @@ function ImportControl(gui, opts) {
         }
         if (!lyr.geometry_type) {
           // kludge: trigger display of table cells if .shp has null geometry
-          model.updated({}, lyr, dataset);
+          // TODO: test case if lyr is not the current active layer
+          model.updated({});
         }
         procNextQueuedFile();
         return;
@@ -7208,7 +7186,7 @@ function LayerControl(gui) {
       if (!GUI.getInputElement() && !dragging) {
         gui.clearMode();
         if (!map.isActiveLayer(target.layer)) {
-          model.updated({select: true}, target.layer, target.dataset);
+          model.selectLayer(target.layer, target.dataset);
         }
       }
     });
@@ -7644,27 +7622,25 @@ function Console(gui) {
   }
 
   function runMapshaperCommands(str, done) {
-    runMapshaperCommands2(str, function(err) {
-      if (!err) {
-        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
-      }
-      done(err);
-    });
-  }
-
-  function runMapshaperCommands2(str, done) {
     var commands;
     try {
       commands = internal.parseConsoleCommands(str);
+      // don't add info commands to console history
+      // (for one thing, they interfere with target resetting)
       commands = internal.runAndRemoveInfoCommands(commands);
     } catch (e) {
-      return done(e);
+      return done(e, {});
     }
-    if (commands.length > 0) {
-      applyParsedCommands(commands, done);
-    } else {
-      done();
-    }
+    if (commands.length === 0) return done();
+    applyParsedCommands(commands, function(err, flags) {
+      if (!err) {
+        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+      }
+      if (flags) {
+        model.updated(flags); // info commands do not return flags
+      }
+      done(err);
+    });
   }
 
   function applyParsedCommands(commands, done) {
@@ -7688,11 +7664,13 @@ function Console(gui) {
       if (!sameArcs) {
         flags.arc_count = true;
       }
-      model.updated(flags, active2.layer, active2.dataset);
+      if (active.layer != active2.layer) {
+        flags.select = true;
+      }
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
-      done(err);
+      done(err, flags);
     });
   }
 
