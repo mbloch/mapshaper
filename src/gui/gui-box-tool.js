@@ -26,26 +26,21 @@ function BoxTool(gui, ext, nav) {
 
   new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
     if (!_selection) return;
-    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) == -1"';
+    var cmd = '-filter invert bbox=' + bbox.join(',');
     runCommand(cmd);
     clearSelection();
   });
 
   new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
     if (!_selection) return;
-    var cmd = '-filter "' + JSON.stringify(_selection) + '.indexOf(this.id) > -1"';
+    var cmd = '-filter bbox=' + bbox.join(',');
     runCommand(cmd);
     clearSelection();
   });
 
-  new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-    if (!_selection) return;
-    var cmd = '-each "split_name = ' + JSON.stringify(_selection) +
-      '.indexOf(this.id) == -1 ? \'1\' : \'2\'" -split split_name';
-    runCommand(cmd);
-    clearSelection();
-  });
-
+  // Removing button for creating a layer containing a single rectangle.
+  // You can get the bbox with the Info button and create a rectangle in the console
+  // using -rectangle bbox=<coordinates>
   // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
   //   runCommand('-rectangle bbox=' + bbox.join(','));
   // });

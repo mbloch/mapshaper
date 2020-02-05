@@ -278,7 +278,7 @@ function LayerControl(gui) {
       if (!GUI.getInputElement() && !dragging) {
         gui.clearMode();
         if (!map.isActiveLayer(target.layer)) {
-          model.updated({select: true}, target.layer, target.dataset);
+          model.selectLayer(target.layer, target.dataset);
         }
       }
     });

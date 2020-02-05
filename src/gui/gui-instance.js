@@ -27,7 +27,7 @@ function GuiInstance(container, opts) {
 
   gui.options = opts;
   gui.container = El(container);
-  gui.model = new Model();
+  gui.model = new Model(gui);
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui);

@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-chunker */
+/* @requires mapshaper-common, mapshaper-option-parsing-utils */
 
 function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
@@ -430,53 +430,3 @@ function CommandOptions(name) {
     return _command;
   };
 }
-
-// Split comma-delimited list, trim quotes from entire list and
-// individual members
-internal.parseStringList = function(token) {
-  var delim = ',';
-  var list = internal.splitOptionList(token, delim);
-  if (list.length == 1) {
-    list = internal.splitOptionList(list[0], delim);
-  }
-  return list;
-};
-
-// Accept spaces and/or commas as delimiters
-internal.parseColorList = function(token) {
-  var delim = ', ';
-  var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
-  var list = internal.splitOptionList(token2, delim);
-  if (list.length == 1) {
-    list = internal.splitOptionList(list[0], delim);
-  }
-  list = list.map(function(str) {
-    return str.replace(/~~~/g, ',');
-  });
-  return list;
-};
-
-internal.cleanArgv = function(argv) {
-  argv = argv.map(function(s) {return s.trim();}); // trim whitespace
-  argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-  // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
-  // be parsed the same way as name=Meg and name="Meg"
-  //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
-  return argv;
-};
-
-internal.splitOptionList = function(str, delimChars) {
-  var BAREWORD = '([^' + delimChars + '\'"][^' + delimChars + ']*)'; // TODO: make safer
-  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
-  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
-  var rxp = new RegExp('^(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')([' + delimChars + ']+|$)');
-  var chunks = [];
-  var match;
-  while ((match = rxp.exec(str)) !== null) {
-    chunks.push(match[1]);
-    str = str.substr(match[0].length);
-  }
-  return chunks.filter(function(chunk) {
-    return !!chunk && chunk != '\\';
-  }).map(utils.trimQuotes);
-};

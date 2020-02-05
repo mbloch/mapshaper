@@ -7,6 +7,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
       filteredLyr = internal.getOutputLayer(lyr, opts),
+      invert = !!opts.invert,
       filter;
 
   if (opts.expression) {
@@ -17,12 +18,17 @@ api.filterFeatures = function(lyr, arcs, opts) {
     filter = internal.combineFilters(filter, internal.getNullGeometryFilter(lyr, arcs));
   }
 
+  if (opts.bbox) {
+    filter = internal.combineFilters(filter, internal.getBBoxIntersectionTest(opts.bbox, lyr, arcs));
+  }
+
   if (!filter) {
-    stop("Missing a filter expression");
+    stop("Missing a filter criterion");
   }
 
   utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
+    if (invert) result = !result;
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);

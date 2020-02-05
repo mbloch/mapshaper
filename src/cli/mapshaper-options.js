@@ -2,7 +2,7 @@
 mapshaper-common
 mapshaper-option-parser
 mapshaper-option-validation
-mapshaper-chunker
+mapshaper-option-parsing-utils
 */
 
 internal.getOptionParser = function() {
@@ -67,6 +67,10 @@ internal.getOptionParser = function() {
       bboxOpt = {
         type: 'bbox',
         describe: 'comma-sep. bounding box: xmin,ymin,xmax,ymax'
+      },
+      invertOpt = {
+        type: 'flag',
+        describe: 'retain only features that would have been deleted'
       },
       whereOpt = {
         describe: 'use a JS expression to select a subset of features'
@@ -588,6 +592,11 @@ internal.getOptionParser = function() {
       DEFAULT: true,
       describe: 'delete features that evaluate to false'
     })
+    .option('bbox', {
+      describe: 'delete features outside bbox (xmin,ymin,xmax,ymax)',
+      type: 'bbox'
+    })
+    .option('invert', invertOpt)
     .option('remove-empty', {
       type: 'flag',
       describe: 'delete features with null geometry'
@@ -1205,10 +1214,7 @@ internal.getOptionParser = function() {
       type: 'number',
       describe: 'max features with the same id (default is 1)'
     })
-    .option('invert', {
-      type: 'flag',
-      describe: 'retain only features that would have been deleted'
-    })
+    .option('invert', invertOpt)
     .option('verbose', {
       describe: 'print each removed feature',
       type: 'flag'

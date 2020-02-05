@@ -121,8 +121,9 @@ function ImportControl(gui, opts) {
     if (catalog) catalog.reset(); // re-enable clickable catalog
     if (importCount > 0) {
       // display last layer of last imported dataset
-      target = model.getDefaultTargets()[0];
-      model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+      // target = model.getDefaultTargets()[0];
+      // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+      model.updated({select: true});
     }
     gui.clearProgressMessage();
     importCount = 0;
@@ -318,7 +319,8 @@ function ImportControl(gui, opts) {
         }
         if (!lyr.geometry_type) {
           // kludge: trigger display of table cells if .shp has null geometry
-          model.updated({}, lyr, dataset);
+          // TODO: test case if lyr is not the current active layer
+          model.updated({});
         }
         procNextQueuedFile();
         return;

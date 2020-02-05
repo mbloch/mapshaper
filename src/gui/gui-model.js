@@ -1,6 +1,6 @@
 /* @requires gui-lib */
 
-function Model() {
+function Model(gui) {
   var self = new api.internal.Catalog();
   var deleteLayer = self.deleteLayer;
   utils.extend(self, EventDispatcher.prototype);
@@ -27,17 +27,13 @@ function Model() {
     }
   };
 
-  self.updated = function(flags, lyr, dataset) {
-    var targ, active;
-    // if (lyr && dataset && (!active || active.layer != lyr)) {
-    if (lyr && dataset) {
-      self.setDefaultTarget([lyr], dataset);
+  self.updated = function(flags) {
+    var targets = self.getDefaultTargets();
+    var active = self.getActiveLayer();
+    if (internal.countTargetLayers(targets) > 1) {
+      self.setDefaultTarget([active.layer], active.dataset);
+      gui.session.setTargetLayer(active.layer); // add -target command to target single layer
     }
-    targ = self.getDefaultTargets()[0];
-    if (lyr && targ.layers[0] != lyr) {
-      flags.select = true;
-    }
-    active = {layer: targ.layers[0], dataset: targ.dataset};
     if (flags.select) {
       self.dispatchEvent('select', active);
     }
@@ -45,7 +41,10 @@ function Model() {
   };
 
   self.selectLayer = function(lyr, dataset) {
-    self.updated({select: true}, lyr, dataset);
+    if (self.getActiveLayer().layer == lyr) return;
+    self.setDefaultTarget([lyr], dataset);
+    self.updated({select: true});
+    gui.session.setTargetLayer(lyr);
   };
 
   self.selectNextLayer = function() {

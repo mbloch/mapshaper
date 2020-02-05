@@ -60,3 +60,23 @@ internal.getLayerMatch = function(pattern) {
     return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
   };
 };
+
+internal.countTargetLayers = function(targets) {
+  return targets.reduce(function(memo, target) {
+    return memo + target.layers.length;
+  }, 0);
+};
+
+// get an identifier for a layer that can be used in a target= option
+// (returns name if layer has a unique name, or a numerical id)
+internal.getLayerTargetId = function(catalog, lyr) {
+  var nameCount = 0,
+      name = lyr.name,
+      id;
+  catalog.getLayers().forEach(function(o, i) {
+    if (lyr.name && o.layer.name == lyr.name) nameCount++;
+    if (lyr == o.layer) id = String(i + 1);
+  });
+  if (!id) error('Layer not found');
+  return nameCount == 1 ? lyr.name : id;
+};

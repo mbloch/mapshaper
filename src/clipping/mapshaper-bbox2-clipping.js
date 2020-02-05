@@ -3,7 +3,7 @@ internal.clipLayersByBBox = function(layers, dataset, opts) {
   var bbox = opts.bbox2;
   var clipLyr = internal.divideDatasetByBBox(dataset, bbox);
   var nodes = new NodeCollection(dataset.arcs);
-  var retn = internal.clipLayersByLayer(dataset.layers, clipLyr, nodes, 'clip', opts);
+  var retn = internal.clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
   return retn;
 };
 

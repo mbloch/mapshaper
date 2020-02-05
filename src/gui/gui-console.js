@@ -371,27 +371,25 @@ function Console(gui) {
   }
 
   function runMapshaperCommands(str, done) {
-    runMapshaperCommands2(str, function(err) {
-      if (!err) {
-        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
-      }
-      done(err);
-    });
-  }
-
-  function runMapshaperCommands2(str, done) {
     var commands;
     try {
       commands = internal.parseConsoleCommands(str);
+      // don't add info commands to console history
+      // (for one thing, they interfere with target resetting)
       commands = internal.runAndRemoveInfoCommands(commands);
     } catch (e) {
-      return done(e);
+      return done(e, {});
     }
-    if (commands.length > 0) {
-      applyParsedCommands(commands, done);
-    } else {
-      done();
-    }
+    if (commands.length === 0) return done();
+    applyParsedCommands(commands, function(err, flags) {
+      if (!err) {
+        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+      }
+      if (flags) {
+        model.updated(flags); // info commands do not return flags
+      }
+      done(err);
+    });
   }
 
   function applyParsedCommands(commands, done) {
@@ -415,11 +413,13 @@ function Console(gui) {
       if (!sameArcs) {
         flags.arc_count = true;
       }
-      model.updated(flags, active2.layer, active2.dataset);
+      if (active.layer != active2.layer) {
+        flags.select = true;
+      }
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
-      done(err);
+      done(err, flags);
     });
   }
 

@@ -2,19 +2,7 @@
 function SessionHistory(gui) {
   var commands = [];
 
-  gui.model.on('select', function(e) {
-    var layers = gui.model.getLayers();
-    if (layers.length > 1) {
-      if (indexOfLastCommand('-target') == commands.length - 1) {
-        // if last commands was -target, remove it
-        commands.pop();
-      }
-      // TODO: only when necessary
-      commands.push('-target ' + getTargetFromLayer(e.layer));
-    }
-  });
-
-  // used for ...
+  // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes
   this.unsavedChanges = function() {
     return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
   };
@@ -75,6 +63,16 @@ function SessionHistory(gui) {
     commands.push(cmd);
   };
 
+  this.setTargetLayer = function(lyr) {
+    var layers = gui.model.getLayers();
+    if (layers.length > 1) {
+      if (indexOfLastCommand('-target') == commands.length - 1) {
+        commands.pop(); // if last commands was -target, remove it
+      }
+      commands.push('-target ' + getTargetFromLayer(lyr));
+    }
+  };
+
   this.toCommandLineString = function() {
     var str = commands.join(' \\\n  ');
     return 'mapshaper ' + str;
@@ -96,23 +94,7 @@ function SessionHistory(gui) {
   }
 
   function getTargetFromLayer(lyr) {
-    var layers = gui.model.getLayers();
-    var id = 0;
-    layers.forEach(function(o, i) {
-      if (o.layer == lyr) id = i + 1;
-    });
-    if (lyr.name && isUniqueLayerName(lyr.name, layers)) {
-      return lyr.name;
-    } else if (id > 0) {
-      return id;
-    }
-    // error
+    var id = internal.getLayerTargetId(gui.model, lyr);
+    return internal.formatOptionValue(id);
   }
-
-  function isUniqueLayerName(name, layers) {
-    return layers.reduce(function(memo, obj) {
-      return obj.layer.name == name ? memo + 1 : memo;
-    }, 0) == 1;
-  }
-
 }
