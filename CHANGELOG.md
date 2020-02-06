@@ -1,3 +1,6 @@
+v0.4.158
+* Support bracket notation in -i json-path= option, for targetting datasets nested inside JSON arrays.
+
 v0.4.157
 * Fixes and other improvements to the interactive box tool.
 * Fixes to the web console "history" command.
