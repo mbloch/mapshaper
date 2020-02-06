@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.157';
+VERSION = '0.4.158';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -19730,13 +19730,20 @@ internal.importJSON = function(data, opts) {
 
 // path: path from top-level to the target object
 internal.selectFromObject = function(o, path) {
+  var arrayRxp = /(.*)\[([0-9]+)\]$/;
   var separator = path.indexOf('/') > 0 ? '/' : '.';
   var parts = path.split(separator);
-  var key;
+  var subpath, array, match;
   while (parts.length > 0) {
-    key = parts.shift();
-    if (!o[key]) return null;
-    o = o[key];
+    subpath = parts.shift();
+    match = arrayRxp.exec(subpath);
+    if (match) {
+      array = o[match[1]];
+      o = array && array[+match[2]] || null;
+    } else {
+      o = o[subpath];
+    }
+    if (!o) return null;
   }
   return o;
 };
