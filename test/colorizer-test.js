@@ -84,6 +84,29 @@ describe('mapshaper-colorizer.js', function () {
       assert.equal(f(''), 'pink');
     })
 
+    it('random colors are consistent when called with a value', function() {
+      var f = api.internal.getColorizerFunction({colors: ['red', 'blue'], random: true});
+      var n = 1000;
+      var obj = {};
+      var obj2 = {};
+      while (n-- > 0) {
+        obj[f('foo')] = true;
+        obj2[f(n)] = true;
+      }
+      assert.equal(Object.keys(obj).length, 1);
+      assert.deepEqual(Object.keys(obj2).sort(), ['blue', 'red']);
+    });
+
+    it('random colors are pseudorandom when function is called without a value', function() {
+      var f = api.internal.getColorizerFunction({colors: ['red', 'blue', 'green'], random: true});
+      var n = 1000;
+      var obj = {};
+      while (n-- > 0) {
+        obj[f()] = true;
+      }
+      assert.deepEqual(Object.keys(obj).sort(), ['blue', 'green', 'red'])
+    });
+
     it('default no-data color is white', function() {
       var f = api.internal.getColorizerFunction({colors: ['red', 'blue'], categories: ['lepen', 'macron']});
       assert.equal(f(''), 'white');

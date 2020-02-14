@@ -446,6 +446,10 @@ internal.getOptionParser = function() {
       describe: 'comma-sep. list of keys for categorical color scheme',
       type: 'strings'
     })
+    .option('random', {
+      describe: 'randomly assign colors',
+      type: 'flag'
+    })
     .option('other', {
       describe: 'default color for categorical scheme (defaults to no-data color)'
     })
