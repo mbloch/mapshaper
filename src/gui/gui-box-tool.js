@@ -1,13 +1,12 @@
 /* @requires gui-highlight-box */
 
-function BoxTool(gui, ext, nav) {
+function BoxTool(gui, ext, nav, hit) {
   var self = new EventDispatcher();
   var box = new HighlightBox('body');
   var _on = false;
   var bbox, bboxPixels;
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
-  var _selection = null;
 
   var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
     toggleCoords();
@@ -18,21 +17,7 @@ function BoxTool(gui, ext, nav) {
   new SimpleButton(popup.findChild('.zoom-btn')).on('click', zoomToBox);
 
   new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
-    updateSelection();
-  });
-
-  new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-    if (!_selection) return;
-    var cmd = '-filter invert bbox=' + bbox.join(',');
-    runCommand(cmd);
-    clearSelection();
-  });
-
-  new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-    if (!_selection) return;
-    var cmd = '-filter bbox=' + bbox.join(',');
-    runCommand(cmd);
-    clearSelection();
+    showSelection();
   });
 
   // Removing button for creating a layer containing a single rectangle.
@@ -47,31 +32,15 @@ function BoxTool(gui, ext, nav) {
   });
 
   // gui.keyboard.onMenuSubmit(popup, zoomToBox);
-  clearSelection(); // hide selection buttons
 
-  function updateSelection() {
+  function showSelection() {
     var active = gui.model.getActiveLayer();
     var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
-    if (ids.length) showSelection(ids);
-    else clearSelection();
-  }
-
-  function showSelection(ids) {
-    var data = {ids: ids, id: ids.length ? ids[0] : -1, pinned: false};
-    _selection = ids;
-    box.hide();
-    self.dispatchEvent('selection', data);
-    popup.findChild('.default-group').hide();
-    popup.findChild('.selection-group').css('display', 'inline-block');
-  }
-
-  function clearSelection() {
-    popup.findChild('.default-group').css('display', 'inline-block');
-    popup.findChild('.selection-group').hide();
-    if (_selection) {
-      _selection = null;
-      self.dispatchEvent('selection', {ids: [], id: -1});
-    }
+    if (!ids.length) return;
+    gui.enterMode('selection_tool');
+    gui.interaction.setMode('selection');
+    gui.interaction.setActive(true);
+    hit.addSelectionIds(ids);
   }
 
   function runCommand(cmd) {
@@ -100,7 +69,6 @@ function BoxTool(gui, ext, nav) {
     gui.clearMode();
   }
 
-
   function turnOn() {
     _on = true;
   }
@@ -110,7 +78,6 @@ function BoxTool(gui, ext, nav) {
     box.hide();
     popup.hide();
     hideCoords();
-    clearSelection();
   }
 
   function bboxToCoords(bbox) {
@@ -126,7 +93,7 @@ function BoxTool(gui, ext, nav) {
   }
 
   ext.on('change', function() {
-    if (!_on || _selection) return;
+    if (!_on) return;
     var b = bboxToPixels(bbox);
     var pos = ext.position();
     var dx = pos.pageX,
@@ -144,22 +111,19 @@ function BoxTool(gui, ext, nav) {
   });
 
   gui.on('box_drag', function(e) {
+    if (!_on) return;
     var b = e.page_bbox;
     box.show(b[0], b[1], b[2], b[3]);
   });
 
   gui.on('box_drag_end', function(e) {
-    var decimals;
+    if (!_on) return;
     bboxPixels = e.map_bbox;
     bbox = bboxToCoords(bboxPixels);
     // round coords, for nicer 'info' display
     // (rounded precision should be sub-pixel)
     bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
-    if (_selection) {
-      updateSelection();
-    } else {
-      popup.show();
-    }
+    popup.show();
   });
 
   return self;

@@ -3,11 +3,10 @@
 function InteractionMode(gui) {
   var buttons, btn1, btn2, menu;
 
-  // all possible menu contents
   var menus = {
-    standard: ['info', 'data'],
-    labels: ['info', 'data', 'labels', 'location'],
-    points: ['info', 'data', 'location']
+    standard: ['info', 'data', 'selection'],
+    labels: ['info', 'data', 'selection', 'labels', 'location'],
+    points: ['info', 'data', 'selection', 'location']
   };
 
   // mode name -> menu text lookup
@@ -15,7 +14,8 @@ function InteractionMode(gui) {
     info: 'off', // no data editing, just popup
     data: 'data',
     labels: 'labels',
-    location: 'coordinates'
+    location: 'coordinates',
+    selection: 'selection'
   };
 
   // state variables
@@ -60,14 +60,6 @@ function InteractionMode(gui) {
     if (mode in labels) {
       setMode(mode);
     }
-  };
-
-  this.modeUsesDrag = function(name) {
-    return name == 'location' || name == 'labels';
-  };
-
-  this.modeUsesClick = function(name) {
-    return name == 'data' || name == 'info'; // click used to pin popup
   };
 
   gui.model.on('update', function(e) {

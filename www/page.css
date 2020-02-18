@@ -205,13 +205,19 @@ body {
 	margin: 0 2px 0 2px;
 }
 
-/* --- Box tool dialog --------- */
-.box-tool-options {
+/* --- Selection tool dialog --------- */
+
+.selection-tool-options {
 	pointer-events: none;
 }
 
-.box-tool-options .btn-group {
-	display: inline-block;
+.selection-tool-options .btn {
+	pointer-events: initial;
+}
+
+/* --- Box tool dialog --------- */
+.box-tool-options {
+	pointer-events: none;
 }
 
 .box-tool-options .btn {

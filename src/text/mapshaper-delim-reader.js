@@ -160,7 +160,7 @@ internal.readLinesAsString = function(reader, lines, encoding) {
   // str = retn.bytesRead > 0 ? retn.buffer.toString('ascii', 0, retn.bytesRead) : '';
   str = retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
   if (reader.position() === 0) {
-    str = internal.trimBOM(str);
+   str = internal.trimBOM(str);
   }
   reader.advance(retn.bytesRead);
   return str;

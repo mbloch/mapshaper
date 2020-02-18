@@ -9,10 +9,11 @@ gui-layer-stack
 gui-layer-sorting
 gui-proxy
 gui-coordinates-display
-gui-hit-control2
 gui-inspection-control2
 gui-symbol-dragging2
 gui-box-tool
+gui-selection-tool
+gui-interactive-selection
 */
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -25,10 +26,11 @@ function MshpMap(gui) {
       map = this,
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
-      // _hit = new HitControl(gui, _ext, _mouse),
-      _hit = new HitControl2(gui, _ext, _mouse),
+      // _hit = new HitControl2(gui, _ext, _mouse),
+      _hit = new InteractiveSelection(gui, _ext, _mouse),
       _nav = new MapNav(gui, _ext, _mouse),
-      _boxTool = new BoxTool(gui, _ext, _nav),
+      _boxTool = new BoxTool(gui, _ext, _nav, _hit),
+      _selectionTool = new SelectionTool(gui, _hit),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
@@ -222,12 +224,6 @@ function MshpMap(gui) {
         updateFrameExtent();
       }
       drawLayers(true);
-    });
-
-    _boxTool.on('selection', function(e) {
-      // same as hit tool
-      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-      _stack.drawOverlayLayer(_overlayLyr);
     });
 
     _hit.on('change', function(e) {

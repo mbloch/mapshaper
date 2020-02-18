@@ -7,6 +7,7 @@ var MapStyle = (function() {
       violetFill = "rgba(249, 170, 249, 0.32)",
       gold = "#efc100",
       black = "black",
+      grey = "#888",
       selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 180, 255, 0.2)",
       activeStyle = { // outline style for the active layer
@@ -38,9 +39,22 @@ var MapStyle = (function() {
           strokeWidth: 1.2
         }, point:  {
           dotColor: black,
-          dotSize: 8
+          dotSize: 9
         }, polyline:  {
           strokeColor: black,
+          strokeWidth: 2.5
+        }
+      },
+      unfilledHoverStyles = {
+        polygon: {
+          fillColor: 'rgba(0,0,0,0)',
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: grey,
+          dotSize: 9
+        }, polyline:  {
+          strokeColor: grey,
           strokeWidth: 2.5
         }
       },
@@ -127,16 +141,7 @@ var MapStyle = (function() {
     var overlayStyle = {
       styler: styler
     };
-    // first layer: features that were selected via the -inspect command
-    // DISABLED after hit control refactor
-    // o.selection_ids.forEach(function(i) {
-    //   // skip features in a higher layer
-    //   if (i == topId || o.hover_ids.indexOf(i) > -1) return;
-    //   ids.push(i);
-    //   styles.push(selectionStyles[type]);
-    // });
-    // second layer: hover feature(s)
-    // o.hover_ids.forEach(function(i) {
+
     o.ids.forEach(function(i) {
       var style;
       if (i == topId) return;
@@ -148,14 +153,14 @@ var MapStyle = (function() {
     // top layer: feature that was selected by clicking in inspection mode ([i])
     if (topId > -1) {
       var isPinned = o.pinned;
-      var inSelection = false; // o.selection_ids.indexOf(topId) > -1;
+      var inSelection = o.ids.indexOf(topId) > -1;
       var style;
       if (isPinned) {
         style = pinnedStyles[type];
       } else if (inSelection) {
-        style = selectionHoverStyles[type]; // TODO: differentiate from other hover ids
+        style = hoverStyles[type];
       } else {
-        style = hoverStyles[type]; // TODO: differentiate from other hover ids
+        style = unfilledHoverStyles[type];
       }
       ids.push(topId);
       styles.push(style);

@@ -86,8 +86,10 @@ function InspectionControl2(gui, hit) {
   }, !!'capture'); // preempt the layer control's arrow key handler
 
   hit.on('change', function(e) {
+    var ids;
     if (!inspecting()) return;
-    inspect(e.id, e.pinned, e.ids);
+    ids = e.mode == 'selection' ? null : e.ids;
+    inspect(e.id, e.pinned, ids);
   });
 
   function showInspector(id, ids, pinned) {

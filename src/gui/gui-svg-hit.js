@@ -6,15 +6,11 @@ function getSvgHitTest(displayLayer) {
     // target could be a part of an SVG symbol, or the SVG element, or something else
     var target = pointerEvent.originalEvent.target;
     var symbolNode = getSymbolNode(target);
-    var featureId;
     if (!symbolNode) {
       return null;
     }
-    // TODO: some validation on feature id
-    featureId = getSymbolNodeId(symbolNode);
     return {
-      id: featureId,
-      ids: [featureId],
+      targetId: getSymbolNodeId(symbolNode), // TODO: some validation on id
       targetSymbol: symbolNode,
       targetNode: target,
       container: symbolNode.parentNode
