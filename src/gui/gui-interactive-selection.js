@@ -71,6 +71,10 @@ function InteractiveSelection(gui, ext, mouse) {
     updateSelectionState(null);
   };
 
+  self.clearHover = function() {
+    updateSelectionState(mergeHoverData({ids: []}));
+  };
+
   self.getSelectionIds = function() {
     return selectionIds.concat();
   };
@@ -174,6 +178,8 @@ function InteractiveSelection(gui, ext, mouse) {
     }
     if (selectable()) {
       hitData.ids = selectionIds;
+      // kludge to inhibit hover effect while dragging a box
+      if (gui.keydown) hitData.id = -1;
     }
     return hitData;
   }

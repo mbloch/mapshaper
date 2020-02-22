@@ -1028,6 +1028,8 @@ img.close-btn:hover,
 	cursor: pointer;
 }
 
+/* ---  MAP BUTTONS --- */
+
 .nav-buttons {
 	z-index: 20;
 	position: absolute;
@@ -1052,46 +1054,42 @@ img.close-btn:hover,
 
 .nav-sub-menu {
 	position: absolute;
-	top: 1px;
-	right: 22px;
-	white-space: nowrap;
-	background-color: rgba(255, 255, 255, 0.85);
-	padding: 3px 0px 3px 6px;
+	top: 6px;
+	right: 21px;
+	z-index: -1;
 }
 
 .nav-menu-item {
-	white-space: inherit;
-	display: inline-block;
-	padding-right: 6px;
-	color: #222;
-	font-weight: bold;
-}
-
-.nav-menu-link {
-	text-decoration: none;
-	cursor: pointer;
+	background-color: white;
 	color: #0774a5; /* .colored-text color */
-	font-weight: normal;
+	float: right;
+	clear: right;
+	white-space: nowrap;
+	display: inline-block;
+	padding: 2px 6px;
+	line-height: 13px;
+	cursor: pointer;
 }
 
-.nav-menu-link.selected {
+.nav-menu-item.selected,
+.nav-menu-item:hover {
 	color: black;
 	font-weight: bold;
-	text-decoration: none;
-	/* pointer-events: none; */
 }
 
 .nav-btn {
+	position: relative;
 	cursor:pointer;
 	padding: 3px;
+	margin-bottom: 1px;
 	line-height: 1;
 }
 
-.nav-btn:hover:not(.disabled) * {
+.nav-btn:hover:not(.disabled) svg * {
 	fill: black;
 }
 
-.nav-btn.selected:not(.disabled) * {
+.nav-btn.selected:not(.disabled) svg * {
 	fill: white;
 }
 

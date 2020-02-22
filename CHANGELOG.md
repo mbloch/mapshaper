@@ -1,3 +1,9 @@
+v0.4.159
+* Changed GUI icon and user interaction for switching interaction modes.
+* Added feature-selection interaction mode to the Web UI, for selecting features with the mouse.
+* Added box-select (using shift-drag) to feature-selection mode.
+* Added 'random' option to the -colorizer command, for assigning colors randomly.
+
 v0.4.158
 * Support bracket notation in -i json-path= option, for targetting datasets nested inside JSON arrays.
 

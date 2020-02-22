@@ -1,7 +1,6 @@
 /* @require gui-lib */
 
 function InteractionMode(gui) {
-  var buttons, btn1, btn2, menu;
 
   var menus = {
     standard: ['info', 'data', 'selection'],
@@ -11,49 +10,45 @@ function InteractionMode(gui) {
 
   // mode name -> menu text lookup
   var labels = {
-    info: 'off', // no data editing, just popup
-    data: 'data',
-    labels: 'labels',
-    location: 'coordinates',
-    selection: 'selection'
+    info: 'inspect attributes',
+    data: 'edit attributes',
+    labels: 'position labels',
+    location: 'drag points',
+    selection: 'select features'
   };
+  var btn, menu;
+  var _menuTimeout;
 
   // state variables
-  var _editMode = 'info'; // one of labels{} keys
-  var _active = false; // interaction on/off
+  var _editMode = 'off';
   var _menuOpen = false;
 
   // Only render edit mode button/menu if this option is present
   if (gui.options.inspectorControl) {
-    buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
-    btn1 = buttons[0]; // [i] button
-    btn2 = buttons[1]; // submenu button
-    menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+    btn = gui.buttons.addButton('#pointer-icon');
+    menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    menu.on('click', function() {
-      closeMenu(0); // dismiss menu by clicking off an active link
+    btn.on('mouseleave', autoClose);
+    btn.on('mouseenter', function() {
+      clearTimeout(_menuTimeout);
     });
 
-    btn1.on('click', function() {
-      gui.dispatchEvent('interaction_toggle');
+    btn.on('click', function(e) {
+      if (active()) {
+        setMode('off');
+        closeMenu();
+      } else {
+        if (_editMode == 'off') {
+          setMode('info');
+        }
+        clearTimeout(_menuTimeout);
+        openMenu();
+      }
+      e.stopPropagation();
     });
-
-    btn2.on('click', function() {
-      _menuOpen = true;
-      updateMenu();
-    });
-
-    // triggered by a keyboard shortcut
-    gui.on('interaction_toggle', function() {
-      setActive(!_active);
-    });
-
-    updateVisibility();
   }
 
   this.getMode = getInteractionMode;
-
-  this.setActive = setActive;
 
   this.setMode = function(mode) {
     // TODO: check that this mode is valid for the current dataset
@@ -66,9 +61,13 @@ function InteractionMode(gui) {
     // change mode if active layer doesn't support the current mode
     updateCurrentMode();
     if (_menuOpen) {
-      updateMenu();
+      renderMenu();
     }
   }, null, -1); // low priority?
+
+  function active() {
+    return _editMode && _editMode != 'off';
+  }
 
   function getAvailableModes() {
     var o = gui.model.getActiveLayer();
@@ -85,49 +84,52 @@ function InteractionMode(gui) {
   }
 
   function getInteractionMode() {
-    return _active ? _editMode : 'off';
+    return active() ? _editMode : 'off';
   }
 
-  function renderMenu(modes) {
+  function renderMenu() {
+    if (!menu) return;
+    var modes = getAvailableModes();
     menu.empty();
-    El('div').addClass('nav-menu-item').text('interactive editing:').appendTo(menu);
     modes.forEach(function(mode) {
-      var link = El('div').addClass('nav-menu-item nav-menu-link').attr('data-name', mode).text(labels[mode]).appendTo(menu);
+      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
       link.on('click', function(e) {
-        if (_editMode != mode) {
+        if (_editMode == mode) {
+          closeMenu();
+        } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(500);
-          e.stopPropagation();
+          closeMenu(400);
         }
+        e.stopPropagation();
       });
     });
+    updateModeDisplay();
   }
 
   // if current editing mode is not available, switch to another mode
   function updateCurrentMode() {
     var modes = getAvailableModes();
     if (modes.indexOf(_editMode) == -1) {
-      setMode(modes[0]);
-    }
-  }
-
-  function updateMenu() {
-    if (menu) {
-      renderMenu(getAvailableModes());
-      updateModeDisplay();
-      updateVisibility();
+      setMode('off');
     }
   }
 
   function openMenu() {
     _menuOpen = true;
-    updateVisibility();
+    updateAppearance();
+  }
+
+  function autoClose() {
+    clearTimeout(_menuTimeout);
+    _menuTimeout = setTimeout(closeMenu, 800);
   }
 
   function closeMenu(delay) {
+    if (!_menuOpen) return;
+    _menuOpen = false;
     setTimeout(function() {
       _menuOpen = false;
-      updateVisibility();
+      updateAppearance();
     }, delay || 0);
   }
 
@@ -135,17 +137,8 @@ function InteractionMode(gui) {
     var changed = mode != _editMode;
     if (changed) {
       _editMode = mode;
-      updateMenu();
       onModeChange();
-    }
-  }
-
-  function setActive(active) {
-    if (active != _active) {
-      _active = !!active;
-      _menuOpen = false; // make sure menu does not stay open when button toggles off
-      updateVisibility();
-      onModeChange();
+      updateAppearance();
     }
   }
 
@@ -153,21 +146,15 @@ function InteractionMode(gui) {
     gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
   }
 
-  function updateVisibility() {
+  function updateAppearance() {
     if (!menu) return;
-    // menu
-    if (_menuOpen && _active) {
+    if (_menuOpen) {
       menu.show();
+      renderMenu();
     } else {
       menu.hide();
     }
-    // button
-    if (_menuOpen || !_active) {
-      btn2.hide();
-    } else {
-      btn2.show();
-    }
-    btn1.classed('selected', _active);
+    btn.classed('selected', active() || _menuOpen);
   }
 
   function updateModeDisplay() {
@@ -176,9 +163,4 @@ function InteractionMode(gui) {
       el.classed('selected', el.attr('data-name') == _editMode);
     });
   }
-
-  function initLink(label) {
-    return El('div').addClass('edit-mode-link').text(label);
-  }
-
 }

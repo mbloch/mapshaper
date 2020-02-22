@@ -228,6 +228,16 @@ LOS ANGELES,,`;
     })
   })
 
+  false && describe('Auto-detecting UTF-8 and UTF-16 with BOM', function () {
+    it('utf16be sample', function (done) {
+      var cmd = '-i test/data/text/utf16_le_bom.csv -o out.csv'; //
+      api.applyCommands(cmd, {}, function(err, output) {
+        console.log(output['out.csv']);
+        done();
+      });
+    })
+  })
+
   describe('Importing dsv with encoding= option', function() {
     it ('utf16 (be)', function(done) {
       var cmd = '-i test/data/text/utf16.txt encoding=utf16';
