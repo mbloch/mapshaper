@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.158';
+VERSION = '0.4.159';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -5382,7 +5382,7 @@ internal.readLinesAsString = function(reader, lines, encoding) {
   // str = retn.bytesRead > 0 ? retn.buffer.toString('ascii', 0, retn.bytesRead) : '';
   str = retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
   if (reader.position() === 0) {
-    str = internal.trimBOM(str);
+   str = internal.trimBOM(str);
   }
   reader.advance(retn.bytesRead);
   return str;
@@ -15979,11 +15979,13 @@ internal.getColorizerFunction = function(opts) {
   var round = opts.precision ? utils.getRoundingFunction(opts.precision) : null;
   var colorFunction;
 
-  if (!opts.colors || !opts.colors.length) {
+  if (!opts.random && (!opts.colors || !opts.colors.length)) {
     stop("Missing colors= parameter");
   }
 
-  if (opts.breaks) {
+  if (opts.random) {
+    colorFunction = internal.getRandomColorFunction(opts.colors);
+  } else if (opts.breaks) {
     colorFunction = internal.getSequentialColorFunction(opts.colors, opts.breaks, round);
   } else if (opts.categories) {
     colorFunction = internal.getCategoricalColorFunction(opts.colors, opts.other, opts.categories);
@@ -15996,6 +15998,30 @@ internal.getColorizerFunction = function(opts) {
     return col || nodataColor;
   };
 };
+
+internal.fastStringHash = function(val) {
+  // based on https://github.com/darkskyapp/string-hash (public domain)
+  var str = String(val),
+      hash = 5381,
+      i = str.length;
+  while (i > 0) {
+    hash = (hash * 33) ^ str.charCodeAt(--i);
+  }
+  return Math.abs(hash);
+};
+
+internal.getRandomColorFunction = function(colors) {
+  if (!colors || !colors.length) {
+    colors = '#ccc,#888,#444'.split(',');
+  }
+  return function(val) {
+    var n = colors.length;
+    var i = val === undefined ?
+        Math.floor(Math.random() * n) : internal.fastStringHash(val) % n;
+    return colors[i];
+  };
+};
+
 
 internal.getCategoricalColorFunction = function(colors, otherColor, keys) {
   if (colors.length != keys.length) {
@@ -25964,6 +25990,10 @@ internal.getOptionParser = function() {
     .option('categories', {
       describe: 'comma-sep. list of keys for categorical color scheme',
       type: 'strings'
+    })
+    .option('random', {
+      describe: 'randomly assign colors',
+      type: 'flag'
     })
     .option('other', {
       describe: 'default color for categorical scheme (defaults to no-data color)'

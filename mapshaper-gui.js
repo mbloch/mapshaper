@@ -2516,6 +2516,7 @@ var MapStyle = (function() {
       violetFill = "rgba(249, 170, 249, 0.32)",
       gold = "#efc100",
       black = "black",
+      grey = "#888",
       selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 180, 255, 0.2)",
       activeStyle = { // outline style for the active layer
@@ -2547,9 +2548,22 @@ var MapStyle = (function() {
           strokeWidth: 1.2
         }, point:  {
           dotColor: black,
-          dotSize: 8
+          dotSize: 9
         }, polyline:  {
           strokeColor: black,
+          strokeWidth: 2.5
+        }
+      },
+      unfilledHoverStyles = {
+        polygon: {
+          fillColor: 'rgba(0,0,0,0)',
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: grey,
+          dotSize: 9
+        }, polyline:  {
+          strokeColor: grey,
           strokeWidth: 2.5
         }
       },
@@ -2636,16 +2650,7 @@ var MapStyle = (function() {
     var overlayStyle = {
       styler: styler
     };
-    // first layer: features that were selected via the -inspect command
-    // DISABLED after hit control refactor
-    // o.selection_ids.forEach(function(i) {
-    //   // skip features in a higher layer
-    //   if (i == topId || o.hover_ids.indexOf(i) > -1) return;
-    //   ids.push(i);
-    //   styles.push(selectionStyles[type]);
-    // });
-    // second layer: hover feature(s)
-    // o.hover_ids.forEach(function(i) {
+
     o.ids.forEach(function(i) {
       var style;
       if (i == topId) return;
@@ -2657,14 +2662,14 @@ var MapStyle = (function() {
     // top layer: feature that was selected by clicking in inspection mode ([i])
     if (topId > -1) {
       var isPinned = o.pinned;
-      var inSelection = false; // o.selection_ids.indexOf(topId) > -1;
+      var inSelection = o.ids.indexOf(topId) > -1;
       var style;
       if (isPinned) {
         style = pinnedStyles[type];
       } else if (inSelection) {
-        style = selectionHoverStyles[type]; // TODO: differentiate from other hover ids
+        style = hoverStyles[type];
       } else {
-        style = hoverStyles[type]; // TODO: differentiate from other hover ids
+        style = unfilledHoverStyles[type];
       }
       ids.push(topId);
       styles.push(style);
@@ -3051,487 +3056,6 @@ function CoordinatesDisplay(gui, ext, mouse) {
 }
 
 
-
-
-function getShapeHitTest(displayLayer, ext) {
-  var geoType = displayLayer.layer.geometry_type;
-  var test;
-  if (geoType == 'point' && displayLayer.style.type == 'styled') {
-    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
-  } else if (geoType == 'point') {
-    test = pointTest;
-  } else if (geoType == 'polyline') {
-    test = polylineTest;
-  } else if (geoType == 'polygon') {
-    test = polygonTest;
-  } else {
-    error("Unexpected geometry type:", geoType);
-  }
-  return test;
-
-  // Convert pixel distance to distance in coordinate units.
-  function getHitBuffer(pix) {
-    return pix / ext.getTransform().mx;
-  }
-
-  // reduce hit threshold when zoomed out
-  function getHitBuffer2(pix, minPix) {
-    var scale = ext.scale();
-    if (scale < 1) {
-      pix *= scale;
-    }
-    if (minPix > 0 && pix < minPix) pix = minPix;
-    return getHitBuffer(pix);
-  }
-
-  function polygonTest(x, y) {
-    var maxDist = getHitBuffer2(5, 1),
-        cands = findHitCandidates(x, y, maxDist),
-        hits = [],
-        cand, hitId;
-    for (var i=0; i<cands.length; i++) {
-      cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
-        hits.push(cand.id);
-      }
-    }
-    if (cands.length > 0 && hits.length === 0) {
-      // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, displayLayer.arcs);
-      hits = pickNearestCandidates(cands, 0, maxDist);
-    }
-    return hits;
-  }
-
-  function pickNearestCandidates(sorted, bufDist, maxDist) {
-    var hits = [],
-        cand, minDist;
-    for (var i=0; i<sorted.length; i++) {
-      cand = sorted[i];
-      if (cand.dist < maxDist !== true) {
-        break;
-      } else if (i === 0) {
-        minDist = cand.dist;
-      } else if (cand.dist - minDist > bufDist) {
-        break;
-      }
-      hits.push(cand.id);
-    }
-    return hits;
-  }
-
-  function polylineTest(x, y) {
-    var maxDist = getHitBuffer2(15, 2),
-        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
-        cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, displayLayer.arcs);
-    return pickNearestCandidates(cands, bufDist, maxDist);
-  }
-
-  function sortByDistance(x, y, cands, arcs) {
-    for (var i=0; i<cands.length; i++) {
-      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
-    }
-    utils.sortOn(cands, 'dist');
-  }
-
-  function pointTest(x, y) {
-    var dist = getHitBuffer2(25, 4),
-        limitSq = dist * dist,
-        hits = [];
-    internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-      var distSq = geom.distanceSq(x, y, p[0], p[1]);
-      if (distSq < limitSq) {
-        hits = [id];
-        limitSq = distSq;
-      } else if (distSq == limitSq) {
-        hits.push(id);
-      }
-    });
-    return hits;
-  }
-
-  function getRadiusFunction(style) {
-    var o = {};
-    if (style.styler) {
-      return function(i) {
-        style.styler(o, i);
-        return o.radius || 0;
-      };
-    }
-    return function() {return style.radius || 0;};
-  }
-
-  function getGraduatedCircleTest(radius) {
-    return function(x, y) {
-      var hits = [],
-          margin = getHitBuffer(12),
-          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
-          directHit = false,
-          hitRadius = 0,
-          hitDist;
-      internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-        var distSq = geom.distanceSq(x, y, p[0], p[1]);
-        var isHit = false;
-        var isOver, isNear, r, d, rpix;
-        if (distSq > limit * limit) return;
-        rpix = radius(id);
-        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
-        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
-        isOver = d < 0;
-        isNear = d < margin;
-        if (!isNear || rpix > 0 === false) {
-          isHit = false;
-        } else if (hits.length === 0) {
-          isHit = isNear;
-        } else if (!directHit && isOver) {
-          isHit = true;
-        } else if (directHit && isOver) {
-          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
-        } else if (!directHit && !isOver) {
-          // closest to bubble edge wins
-          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
-        }
-        if (isHit) {
-          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
-            hits = [];
-          }
-          hitRadius = r;
-          hitDist = d;
-          directHit = isOver;
-          hits.push(id);
-        }
-      });
-      return hits;
-    };
-  }
-
-  function findHitCandidates(x, y, dist) {
-    var arcs = displayLayer.arcs,
-        index = {},
-        cands = [],
-        bbox = [];
-    displayLayer.layer.shapes.forEach(function(shp, shpId) {
-      var cand;
-      for (var i = 0, n = shp && shp.length; i < n; i++) {
-        arcs.getSimpleShapeBounds2(shp[i], bbox);
-        if (x + dist < bbox[0] || x - dist > bbox[2] ||
-          y + dist < bbox[1] || y - dist > bbox[3]) {
-          continue; // bbox non-intersection
-        }
-        cand = index[shpId];
-        if (!cand) {
-          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
-          cands.push(cand);
-        }
-        cand.shape.push(shp[i]);
-      }
-    });
-    return cands;
-  }
-}
-
-
-
-function getSymbolNodeId(node) {
-  return parseInt(node.getAttribute('data-id'));
-}
-
-function getSymbolNodeById(id, parent) {
-  // TODO: optimize selector
-  var sel = '[data-id="' + id + '"]';
-  return parent.querySelector(sel);
-}
-
-
-
-function getSvgHitTest(displayLayer) {
-
-  return function(pointerEvent) {
-    // target could be a part of an SVG symbol, or the SVG element, or something else
-    var target = pointerEvent.originalEvent.target;
-    var symbolNode = getSymbolNode(target);
-    var featureId;
-    if (!symbolNode) {
-      return null;
-    }
-    // TODO: some validation on feature id
-    featureId = getSymbolNodeId(symbolNode);
-    return {
-      id: featureId,
-      ids: [featureId],
-      targetSymbol: symbolNode,
-      targetNode: target,
-      container: symbolNode.parentNode
-    };
-  };
-
-  // target: event target (could be any DOM element)
-  function getSymbolNode(target) {
-    var node = target;
-    while (node && nodeHasSymbolTagType(node)) {
-      if (isSymbolNode(node)) {
-        return node;
-      }
-      node = node.parentElement;
-    }
-    return null;
-  }
-
-  // TODO: switch to attribute detection
-  function nodeHasSymbolTagType(node) {
-    var tag = node.tagName;
-    return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
-      tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
-  }
-
-  function isSymbolNode(node) {
-    return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
-  }
-
-  function isSymbolChildNode(node) {
-
-  }
-
-  function getChildId(childNode) {
-
-  }
-
-  function getSymbolId(symbolNode) {
-
-  }
-
-  function getFeatureId(symbolNode) {
-
-  }
-
-}
-
-
-function HitControl2(gui, ext, mouse) {
-  var self = new EventDispatcher();
-  var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
-  var active = false;
-  var shapeTest;
-  var svgTest;
-  var targetLayer;
-  // event priority is higher than navigation, so stopping propagation disables
-  // pan navigation
-  var priority = 2;
-
-  self.setLayer = function(mapLayer) {
-    if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
-      shapeTest = null;
-      svgTest = null;
-      self.stop();
-    } else {
-      shapeTest = getShapeHitTest(mapLayer, ext);
-      svgTest = getSvgHitTest(mapLayer);
-    }
-    targetLayer = mapLayer;
-    // deselect any  selection
-    // TODO: maintain selection if layer & shapes have not changed
-    updateHitData(null);
-  };
-
-  self.start = function() {
-    active = true;
-  };
-
-  self.stop = function() {
-    if (active) {
-      updateHitData(null); // no hit data, no event
-      active = false;
-    }
-  };
-
-  self.getHitId = function() {return storedData.id;};
-
-  // Get a reference to the active layer, so listeners to hit events can interact
-  // with data and shapes
-  self.getHitTarget = function() {
-    return targetLayer;
-  };
-
-  self.getTargetDataTable = function() {
-    var targ = self.getHitTarget();
-    return targ && targ.layer.data || null;
-  };
-
-  self.getSwitchHandler = function(diff) {
-    return function() {
-      self.switchSelection(diff);
-    };
-  };
-
-  self.switchSelection = function(diff) {
-    var i = storedData.ids.indexOf(storedData.id);
-    var n = storedData.ids.length;
-    if (i < 0 || n < 2) return;
-    if (diff != 1 && diff != -1) {
-      diff = 1;
-    }
-    storedData.id = storedData.ids[(i + diff + n) % n];
-    triggerHitEvent('change');
-  };
-
-  // make sure popup is unpinned and turned off when switching editing modes
-  // (some modes do not support pinning)
-  gui.on('interaction_mode_change', function(e) {
-    updateHitData(null);
-    if (e.mode == 'off') {
-      self.stop();
-    } else {
-      self.start();
-    }
-  });
-
-  mouse.on('dblclick', handlePointerEvent, null, priority);
-  mouse.on('dragstart', handlePointerEvent, null, priority);
-  mouse.on('drag', handlePointerEvent, null, priority);
-  mouse.on('dragend', handlePointerEvent, null, priority);
-
-  mouse.on('click', function(e) {
-    var hitData;
-    if (!shapeTest || !active) return;
-    e.stopPropagation();
-
-    // TODO: move pinning to inspection control?
-    if (gui.interaction.modeUsesClick(gui.interaction.getMode())) {
-      hitData = hitTest(e);
-      // TOGGLE pinned state under some conditions
-      if (!hitData.pinned && hitData.id > -1) {
-        hitData.pinned = true;
-      } else if (hitData.pinned && hitData.id == storedData.id) {
-        hitData.pinned = false;
-      }
-      updateHitData(hitData);
-    }
-
-    triggerHitEvent('click', e.data);
-
-  }, null, priority);
-
-  // Hits are re-detected on 'hover' (if hit detection is active)
-  mouse.on('hover', function(e) {
-    if (storedData.pinned || !shapeTest || !active) return;
-    if (!isOverMap(e)) {
-      // mouse is off of map viewport -- clear any current hit
-      updateHitData(null);
-    } else if (e.hover) {
-      // mouse is hovering directly over map area -- update hit detection
-      updateHitData(hitTest(e));
-    } else {
-      // mouse is over map viewport but not directly over map (e.g. hovering
-      // over popup) -- don't update hit detection
-    }
-
-  }, null, priority);
-
-  function noHitData() {return {ids: [], id: -1, pinned: false};}
-
-  function hitTest(e) {
-    var p = ext.translatePixelCoords(e.x, e.y);
-    var shapeHitIds = shapeTest(p[0], p[1]);
-    var svgData = svgTest(e); // null or a data object
-    var data = noHitData();
-    if (svgData) { // mouse is over an SVG symbol
-      utils.extend(data, svgData);
-      if (shapeHitIds) {
-        // if both SVG hit and shape hit, merge hit ids
-        data.ids = utils.uniq(data.ids.concat(shapeHitIds));
-      }
-    } else if (shapeHitIds) {
-      data.ids = shapeHitIds;
-    }
-
-    // update selected id
-    if (data.id > -1) {
-      // svg hit takes precedence over any prior hit
-    } else if (storedData.id > -1 && data.ids.indexOf(storedData.id) > -1) {
-      data.id = storedData.id;
-    } else if (data.ids.length > 0) {
-      data.id = data.ids[0];
-    }
-
-    // update pinned property
-    if (storedData.pinned && data.id > -1) {
-      data.pinned = true;
-    }
-    return data;
-  }
-
-  // If hit ids have changed, update stored hit ids and fire 'hover' event
-  // evt: (optional) mouse event
-  function updateHitData(newData) {
-    if (!newData) {
-      newData = noHitData();
-    }
-    if (!testHitChange(storedData, newData)) {
-      return;
-    }
-    storedData = newData;
-    gui.container.findChild('.map-layers').classed('symbol-hit', newData.ids.length > 0);
-    if (active) {
-      triggerHitEvent('change');
-    }
-  }
-
-  // check if an event is used in the current interaction mode
-  function eventIsEnabled(type) {
-    var mode = gui.interaction.getMode();
-    if (type == 'click' && !gui.interaction.modeUsesClick(mode)) {
-      return false;
-    }
-    if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !gui.interaction.modeUsesDrag(mode)) {
-      return false;
-    }
-    return true;
-  }
-
-  function isOverMap(e) {
-    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-  }
-
-  function handlePointerEvent(e) {
-    if (!shapeTest || !active) return;
-    if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
-    // don't block pan and other navigation in modes when they are not being used
-    if (eventIsEnabled(e.type)) {
-      e.stopPropagation(); // block navigation
-      triggerHitEvent(e.type, e.data);
-    }
-  }
-
-  // d: event data (may be a pointer event object, an ordinary object or null)
-  function triggerHitEvent(type, d) {
-    // Merge stored hit data into the event data
-    var eventData = utils.extend({}, d || {}, storedData);
-    self.dispatchEvent(type, eventData);
-  }
-
-  // Test if two hit data objects are equivalent
-  function testHitChange(a, b) {
-    // check change in 'container', e.g. so moving from anchor hit to label hit
-    //   is detected
-    if (sameIds(a.ids, b.ids) && a.container == b.container && a.pinned == b.pinned && a.id == b.id) {
-      return false;
-    }
-    return true;
-  }
-
-  function sameIds(a, b) {
-    if (a.length != b.length) return false;
-    for (var i=0; i<a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-
-  return self;
-}
-
-
 // @onNext: handler for switching between multiple records
 function Popup(gui, onNext, onPrev) {
   var self = new EventDispatcher();
@@ -3798,8 +3322,10 @@ function InspectionControl2(gui, hit) {
   }, !!'capture'); // preempt the layer control's arrow key handler
 
   hit.on('change', function(e) {
+    var ids;
     if (!inspecting()) return;
-    inspect(e.id, e.pinned, e.ids);
+    ids = e.mode == 'selection' ? null : e.ids;
+    inspect(e.id, e.pinned, ids);
   });
 
   function showInspector(id, ids, pinned) {
@@ -3919,6 +3445,19 @@ function applyDelta(rec, key, delta) {
   var newVal = (+currVal + delta) || 0;
   rec[key] = isString ? String(newVal) : newVal;
 }
+
+
+function getSymbolNodeId(node) {
+  return parseInt(node.getAttribute('data-id'));
+}
+
+function getSymbolNodeById(id, parent) {
+  // TODO: optimize selector
+  var sel = '[data-id="' + id + '"]';
+  return parent.querySelector(sel);
+}
+
+
 
 
 function getDisplayCoordsById(id, layer, ext) {
@@ -4252,36 +3791,27 @@ function SymbolDragging2(gui, ext, hit) {
 function BoxTool(gui, ext, nav) {
   var self = new EventDispatcher();
   var box = new HighlightBox('body');
-  var _on = false;
-  var bbox, bboxPixels;
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
-  var _selection = null;
+  var _on = false;
+  var bbox, bboxPixels;
 
   var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
-    toggleCoords();
+    if (coords.visible()) hideCoords(); else showCoords();
   });
 
   new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
 
-  new SimpleButton(popup.findChild('.zoom-btn')).on('click', zoomToBox);
+  new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
+    nav.zoomToBbox(bboxPixels);
+    gui.clearMode();
+  });
 
   new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
-    updateSelection();
-  });
-
-  new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-    if (!_selection) return;
-    var cmd = '-filter invert bbox=' + bbox.join(',');
-    runCommand(cmd);
-    clearSelection();
-  });
-
-  new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-    if (!_selection) return;
-    var cmd = '-filter bbox=' + bbox.join(',');
-    runCommand(cmd);
-    clearSelection();
+    gui.enterMode('selection_tool');
+    gui.interaction.setMode('selection');
+    // kludge to pass bbox to the selection tool
+    gui.dispatchEvent('box_drag_end', {map_bbox: bboxPixels});
   });
 
   // Removing button for creating a layer containing a single rectangle.
@@ -4295,41 +3825,43 @@ function BoxTool(gui, ext, nav) {
     runCommand('-clip bbox2=' + bbox.join(','));
   });
 
-  // gui.keyboard.onMenuSubmit(popup, zoomToBox);
-  clearSelection(); // hide selection buttons
+  ext.on('change', function() {
+    if (!_on) return;
+    var b = bboxToPixels(bbox);
+    var pos = ext.position();
+    var dx = pos.pageX,
+        dy = pos.pageY;
+    box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
+  });
 
-  function updateSelection() {
-    var active = gui.model.getActiveLayer();
-    var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
-    if (ids.length) showSelection(ids);
-    else clearSelection();
-  }
+  gui.addMode('box_tool', turnOn, turnOff);
 
-  function showSelection(ids) {
-    var data = {ids: ids, id: ids.length ? ids[0] : -1, pinned: false};
-    _selection = ids;
-    box.hide();
-    self.dispatchEvent('selection', data);
-    popup.findChild('.default-group').hide();
-    popup.findChild('.selection-group').css('display', 'inline-block');
-  }
-
-  function clearSelection() {
-    popup.findChild('.default-group').css('display', 'inline-block');
-    popup.findChild('.selection-group').hide();
-    if (_selection) {
-      _selection = null;
-      self.dispatchEvent('selection', {ids: [], id: -1});
+  gui.on('box_drag_start', function() {
+    hideCoords();
+    if (internal.layerHasGeometry(gui.model.getActiveLayer().layer) && gui.getMode() != 'selection_tool') {
+      gui.enterMode('box_tool');
     }
-  }
+  });
+
+  gui.on('box_drag', function(e) {
+    if (!_on) return;
+    var b = e.page_bbox;
+    box.show(b[0], b[1], b[2], b[3]);
+  });
+
+  gui.on('box_drag_end', function(e) {
+    if (!_on) return;
+    bboxPixels = e.map_bbox;
+    bbox = bboxToCoords(bboxPixels);
+    // round coords, for nicer 'info' display
+    // (rounded precision should be sub-pixel)
+    bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+    popup.show();
+  });
 
   function runCommand(cmd) {
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
     gui.clearMode();
-  }
-
-  function toggleCoords() {
-    if (coords.visible()) hideCoords(); else showCoords();
   }
 
   function showCoords() {
@@ -4344,12 +3876,6 @@ function BoxTool(gui, ext, nav) {
     coords.hide();
   }
 
-  function zoomToBox() {
-    nav.zoomToBbox(bboxPixels);
-    gui.clearMode();
-  }
-
-
   function turnOn() {
     _on = true;
   }
@@ -4359,7 +3885,6 @@ function BoxTool(gui, ext, nav) {
     box.hide();
     popup.hide();
     hideCoords();
-    clearSelection();
   }
 
   function bboxToCoords(bbox) {
@@ -4374,42 +3899,637 @@ function BoxTool(gui, ext, nav) {
     return [a[0], b[1], b[0], a[1]];
   }
 
-  ext.on('change', function() {
-    if (!_on || _selection) return;
-    var b = bboxToPixels(bbox);
-    var pos = ext.position();
-    var dx = pos.pageX,
-        dy = pos.pageY;
-    box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
-  });
+  return self;
+}
 
-  gui.addMode('box_tool', turnOn, turnOff);
+
+
+function SelectionTool(gui, ext, hit) {
+  var popup = gui.container.findChild('.selection-tool-options');
+  var box = new HighlightBox('body');
+  var _on = false;
+
+  gui.addMode('selection_tool', turnOn, turnOff);
 
   gui.on('box_drag_start', function() {
-    hideCoords();
-    if (internal.layerHasGeometry(gui.model.getActiveLayer().layer)) {
-      gui.enterMode('box_tool');
-    }
+    if (!_on) return;
+    hit.clearHover();
   });
 
   gui.on('box_drag', function(e) {
+    if (!_on) return;
     var b = e.page_bbox;
     box.show(b[0], b[1], b[2], b[3]);
   });
 
   gui.on('box_drag_end', function(e) {
-    var decimals;
+    if (!_on) return;
+    box.hide();
     bboxPixels = e.map_bbox;
-    bbox = bboxToCoords(bboxPixels);
-    // round coords, for nicer 'info' display
-    // (rounded precision should be sub-pixel)
-    bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
-    if (_selection) {
-      updateSelection();
-    } else {
-      popup.show();
+    var bbox = bboxToCoords(bboxPixels);
+    var active = gui.model.getActiveLayer();
+    var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
+    if (!ids.length) return;
+    hit.addSelectionIds(ids);
+  });
+
+
+  function turnOn() {
+    _on = true;
+  }
+
+  function bboxToCoords(bbox) {
+    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+    return [a[0], b[1], b[0], a[1]];
+  }
+
+  gui.on('interaction_mode_change', function(e) {
+    if (e.mode === 'selection') {
+      gui.enterMode('selection_tool');
+    } else if (gui.getMode() == 'selection_tool') {
+      gui.clearMode();
     }
   });
+
+  function turnOff() {
+    popup.hide();
+    hit.clearSelection();
+    _on = false;
+  }
+
+  hit.on('change', function(e) {
+    if (e.mode != 'selection') return;
+    var ids = hit.getSelectionIds();
+    if (ids.length > 0) {
+      // enter this mode when we're ready to show the selection options
+      // (this closes any other active mode, e.g. box_tool)
+      gui.enterMode('selection_tool');
+      popup.show();
+    } else {
+      popup.hide();
+    }
+  });
+
+  new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
+    var cmd = '-filter invert "' + getFilterExp(hit.getSelectionIds()) + '"';
+    runCommand(cmd);
+    hit.clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
+    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds()) + '"';
+    runCommand(cmd);
+    hit.clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
+    var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds()) +
+      ' ? \'1\' : \'2\'" -split split_id';
+    runCommand(cmd);
+    hit.clearSelection();
+  });
+
+  new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
+    hit.clearSelection();
+  });
+
+  function getFilterExp(ids) {
+    return JSON.stringify(ids) + '.indexOf(this.id) > -1';
+  }
+
+  function runCommand(cmd) {
+    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
+    gui.clearMode();
+  }
+}
+
+
+
+
+function getShapeHitTest(displayLayer, ext) {
+  var geoType = displayLayer.layer.geometry_type;
+  var test;
+  if (geoType == 'point' && displayLayer.style.type == 'styled') {
+    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
+  } else if (geoType == 'point') {
+    test = pointTest;
+  } else if (geoType == 'polyline') {
+    test = polylineTest;
+  } else if (geoType == 'polygon') {
+    test = polygonTest;
+  } else {
+    error("Unexpected geometry type:", geoType);
+  }
+  return test;
+
+  // Convert pixel distance to distance in coordinate units.
+  function getHitBuffer(pix) {
+    return pix / ext.getTransform().mx;
+  }
+
+  // reduce hit threshold when zoomed out
+  function getHitBuffer2(pix, minPix) {
+    var scale = ext.scale();
+    if (scale < 1) {
+      pix *= scale;
+    }
+    if (minPix > 0 && pix < minPix) pix = minPix;
+    return getHitBuffer(pix);
+  }
+
+  function polygonTest(x, y) {
+    var maxDist = getHitBuffer2(5, 1),
+        cands = findHitCandidates(x, y, maxDist),
+        hits = [],
+        cand, hitId;
+    for (var i=0; i<cands.length; i++) {
+      cand = cands[i];
+      if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
+        hits.push(cand.id);
+      }
+    }
+    if (cands.length > 0 && hits.length === 0) {
+      // secondary detection: proximity, if not inside a polygon
+      sortByDistance(x, y, cands, displayLayer.arcs);
+      hits = pickNearestCandidates(cands, 0, maxDist);
+    }
+    return hits;
+  }
+
+  function pickNearestCandidates(sorted, bufDist, maxDist) {
+    var hits = [],
+        cand, minDist;
+    for (var i=0; i<sorted.length; i++) {
+      cand = sorted[i];
+      if (cand.dist < maxDist !== true) {
+        break;
+      } else if (i === 0) {
+        minDist = cand.dist;
+      } else if (cand.dist - minDist > bufDist) {
+        break;
+      }
+      hits.push(cand.id);
+    }
+    return hits;
+  }
+
+  function polylineTest(x, y) {
+    var maxDist = getHitBuffer2(15, 2),
+        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, displayLayer.arcs);
+    return pickNearestCandidates(cands, bufDist, maxDist);
+  }
+
+  function sortByDistance(x, y, cands, arcs) {
+    for (var i=0; i<cands.length; i++) {
+      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+    }
+    utils.sortOn(cands, 'dist');
+  }
+
+  function pointTest(x, y) {
+    var dist = getHitBuffer2(25, 4),
+        limitSq = dist * dist,
+        hits = [];
+    internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+      var distSq = geom.distanceSq(x, y, p[0], p[1]);
+      if (distSq < limitSq) {
+        hits = [id];
+        limitSq = distSq;
+      } else if (distSq == limitSq) {
+        hits.push(id);
+      }
+    });
+    return hits;
+  }
+
+  function getRadiusFunction(style) {
+    var o = {};
+    if (style.styler) {
+      return function(i) {
+        style.styler(o, i);
+        return o.radius || 0;
+      };
+    }
+    return function() {return style.radius || 0;};
+  }
+
+  function getGraduatedCircleTest(radius) {
+    return function(x, y) {
+      var hits = [],
+          margin = getHitBuffer(12),
+          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
+          directHit = false,
+          hitRadius = 0,
+          hitDist;
+      internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+        var distSq = geom.distanceSq(x, y, p[0], p[1]);
+        var isHit = false;
+        var isOver, isNear, r, d, rpix;
+        if (distSq > limit * limit) return;
+        rpix = radius(id);
+        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
+        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
+        isOver = d < 0;
+        isNear = d < margin;
+        if (!isNear || rpix > 0 === false) {
+          isHit = false;
+        } else if (hits.length === 0) {
+          isHit = isNear;
+        } else if (!directHit && isOver) {
+          isHit = true;
+        } else if (directHit && isOver) {
+          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
+        } else if (!directHit && !isOver) {
+          // closest to bubble edge wins
+          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
+        }
+        if (isHit) {
+          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
+            hits = [];
+          }
+          hitRadius = r;
+          hitDist = d;
+          directHit = isOver;
+          hits.push(id);
+        }
+      });
+      return hits;
+    };
+  }
+
+  function findHitCandidates(x, y, dist) {
+    var arcs = displayLayer.arcs,
+        index = {},
+        cands = [],
+        bbox = [];
+    displayLayer.layer.shapes.forEach(function(shp, shpId) {
+      var cand;
+      for (var i = 0, n = shp && shp.length; i < n; i++) {
+        arcs.getSimpleShapeBounds2(shp[i], bbox);
+        if (x + dist < bbox[0] || x - dist > bbox[2] ||
+          y + dist < bbox[1] || y - dist > bbox[3]) {
+          continue; // bbox non-intersection
+        }
+        cand = index[shpId];
+        if (!cand) {
+          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
+          cands.push(cand);
+        }
+        cand.shape.push(shp[i]);
+      }
+    });
+    return cands;
+  }
+}
+
+
+function getSvgHitTest(displayLayer) {
+
+  return function(pointerEvent) {
+    // target could be a part of an SVG symbol, or the SVG element, or something else
+    var target = pointerEvent.originalEvent.target;
+    var symbolNode = getSymbolNode(target);
+    if (!symbolNode) {
+      return null;
+    }
+    return {
+      targetId: getSymbolNodeId(symbolNode), // TODO: some validation on id
+      targetSymbol: symbolNode,
+      targetNode: target,
+      container: symbolNode.parentNode
+    };
+  };
+
+  // target: event target (could be any DOM element)
+  function getSymbolNode(target) {
+    var node = target;
+    while (node && nodeHasSymbolTagType(node)) {
+      if (isSymbolNode(node)) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  // TODO: switch to attribute detection
+  function nodeHasSymbolTagType(node) {
+    var tag = node.tagName;
+    return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
+      tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
+  }
+
+  function isSymbolNode(node) {
+    return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
+  }
+
+  function isSymbolChildNode(node) {
+
+  }
+
+  function getChildId(childNode) {
+
+  }
+
+  function getSymbolId(symbolNode) {
+
+  }
+
+  function getFeatureId(symbolNode) {
+
+  }
+
+}
+
+
+
+function getPointerHitTest(mapLayer, ext) {
+  var shapeTest, svgTest, targetLayer;
+  if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
+    return null;
+  }
+  shapeTest = getShapeHitTest(mapLayer, ext);
+  svgTest = getSvgHitTest(mapLayer);
+
+  // e: pointer event
+  return function(e) {
+    var p = ext.translatePixelCoords(e.x, e.y);
+    var data = {
+      ids: shapeTest(p[0], p[1]) || []
+    };
+    var svgData = svgTest(e); // null or a data object
+    if (svgData) { // mouse is over an SVG symbol
+      utils.extend(data, svgData);
+      // placing symbol id in front of any other hits
+      data.ids = utils.uniq([svgData.targetId].concat(data.ids));
+    }
+    data.id = data.ids.length > 0 ? data.ids[0] : -1;
+    return data;
+  };
+}
+
+
+function InteractiveSelection(gui, ext, mouse) {
+  var self = new EventDispatcher();
+  var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
+  var selectionIds = [];
+  var active = false;
+  var interactionMode;
+  var targetLayer;
+  var hitTest;
+  // event priority is higher than navigation, so stopping propagation disables
+  // pan navigation
+  var priority = 2;
+
+  self.setLayer = function(mapLayer) {
+    hitTest = getPointerHitTest(mapLayer, ext);
+    if (!hitTest) {
+      hitText = function() {return {ids: []};};
+    }
+    targetLayer = mapLayer;
+    // deselect any  selection
+    // TODO: maintain selection if layer & shapes have not changed
+    updateSelectionState(null);
+  };
+
+  function turnOn(mode) {
+    interactionMode = mode;
+    active = true;
+  }
+
+  function turnOff() {
+    if (active) {
+      updateSelectionState(null); // no hit data, no event
+      active = false;
+    }
+  }
+
+  function selectable() {
+    return interactionMode == 'selection';
+  }
+
+  function pinnable() {
+    return clickable() && interactionMode != 'selection';
+  }
+
+  function draggable() {
+    return interactionMode == 'location' || interactionMode == 'labels';
+  }
+
+  function clickable() {
+    // click used to pin popup and select features
+    return interactionMode == 'data' || interactionMode == 'info' || interactionMode == 'selection';
+  }
+
+  self.getHitId = function() {return storedData.id;};
+
+  // Get a reference to the active layer, so listeners to hit events can interact
+  // with data and shapes
+  self.getHitTarget = function() {
+    return targetLayer;
+  };
+
+  self.addSelectionIds = function(ids) {
+    turnOn('selection');
+    selectionIds = utils.uniq(selectionIds.concat(ids));
+    ids = utils.uniq(storedData.ids.concat(ids));
+    updateSelectionState({ids: ids});
+  };
+
+  self.clearSelection = function() {
+    updateSelectionState(null);
+  };
+
+  self.clearHover = function() {
+    updateSelectionState(mergeHoverData({ids: []}));
+  };
+
+  self.getSelectionIds = function() {
+    return selectionIds.concat();
+  };
+
+  self.getTargetDataTable = function() {
+    var targ = self.getHitTarget();
+    return targ && targ.layer.data || null;
+  };
+
+  self.getSwitchHandler = function(diff) {
+    return function() {
+      self.switchSelection(diff);
+    };
+  };
+
+  self.switchSelection = function(diff) {
+    var i = storedData.ids.indexOf(storedData.id);
+    var n = storedData.ids.length;
+    if (i < 0 || n < 2) return;
+    if (diff != 1 && diff != -1) {
+      diff = 1;
+    }
+    storedData.id = storedData.ids[(i + diff + n) % n];
+    triggerHitEvent('change');
+  };
+
+  // make sure popup is unpinned and turned off when switching editing modes
+  // (some modes do not support pinning)
+  gui.on('interaction_mode_change', function(e) {
+    updateSelectionState(null);
+    if (e.mode == 'off') {
+      turnOff();
+    } else {
+      turnOn(e.mode);
+    }
+  });
+
+  mouse.on('dblclick', handlePointerEvent, null, priority);
+  mouse.on('dragstart', handlePointerEvent, null, priority);
+  mouse.on('drag', handlePointerEvent, null, priority);
+  mouse.on('dragend', handlePointerEvent, null, priority);
+
+  mouse.on('click', function(e) {
+    if (!hitTest || !active) return;
+    e.stopPropagation();
+
+    // TODO: move pinning to inspection control?
+    if (clickable()) {
+      updateSelectionState(mergeClickData(hitTest(e)));
+    }
+    triggerHitEvent('click', e.data);
+  }, null, priority);
+
+  // Hits are re-detected on 'hover' (if hit detection is active)
+  mouse.on('hover', function(e) {
+    if (storedData.pinned || !hitTest || !active) return;
+    if (!isOverMap(e)) {
+      // mouse is off of map viewport -- clear any current hover ids
+      updateSelectionState(mergeHoverData({ids:[]}));
+    } else if (e.hover) {
+      // mouse is hovering directly over map area -- update hit detection
+      updateSelectionState(mergeHoverData(hitTest(e)));
+    } else {
+      // mouse is over map viewport but not directly over map (e.g. hovering
+      // over popup) -- don't update hit detection
+    }
+  }, null, priority);
+
+  function noHitData() {return {ids: [], id: -1, pinned: false};}
+
+  function mergeClickData(hitData) {
+    // mergeCurrentState(hitData);
+    // TOGGLE pinned state under some conditions
+    var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+    hitData.id = id;
+    if (pinnable()) {
+      if (!storedData.pinned && id > -1) {
+        hitData.pinned = true; // add pin
+      } else if (storedData.pinned && storedData.id == id) {
+        delete hitData.pinned; // remove pin
+        // hitData.id = -1; // keep highlighting (pointer is still hovering)
+      } else if (storedData.pinned && id > -1) {
+        hitData.pinned = true; // stay pinned, switch id
+      }
+    }
+    if (selectable()) {
+      if (id > -1) {
+        selectionIds = toggleId(id, selectionIds);
+      }
+      hitData.ids = selectionIds;
+    }
+    return hitData;
+  }
+
+  function mergeHoverData(hitData) {
+    if (storedData.pinned) {
+      hitData.id = storedData.id;
+      hitData.pinned = true;
+    } else {
+      hitData.id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+    }
+    if (selectable()) {
+      hitData.ids = selectionIds;
+      // kludge to inhibit hover effect while dragging a box
+      if (gui.keydown) hitData.id = -1;
+    }
+    return hitData;
+  }
+
+  function toggleId(id, ids) {
+    if (ids.indexOf(id) > -1) {
+      return utils.difference(ids, [id]);
+    }
+    return [id].concat(ids);
+  }
+
+  // If hit ids have changed, update stored hit ids and fire 'hover' event
+  // evt: (optional) mouse event
+  function updateSelectionState(newData) {
+    var nonEmpty = newData && (newData.ids.length || newData.id > -1);
+    if (!newData) {
+      newData = noHitData();
+      selectionIds = [];
+    }
+    if (!testHitChange(storedData, newData)) {
+      return;
+    }
+    storedData = newData;
+    gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
+    if (active) {
+      triggerHitEvent('change');
+    }
+  }
+
+  // check if an event is used in the current interaction mode
+  function eventIsEnabled(type) {
+    if (type == 'click' && !clickable()) {
+      return false;
+    }
+    if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !draggable()) {
+      return false;
+    }
+    return true;
+  }
+
+  function isOverMap(e) {
+    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
+  }
+
+  function handlePointerEvent(e) {
+    if (!hitTest || !active) return;
+    if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
+    // don't block pan and other navigation in modes when they are not being used
+    if (eventIsEnabled(e.type)) {
+      e.stopPropagation(); // block navigation
+      triggerHitEvent(e.type, e.data);
+    }
+  }
+
+  // d: event data (may be a pointer event object, an ordinary object or null)
+  function triggerHitEvent(type, d) {
+    // Merge stored hit data into the event data
+    var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+    self.dispatchEvent(type, eventData);
+  }
+
+  // Test if two hit data objects are equivalent
+  function testHitChange(a, b) {
+    // check change in 'container', e.g. so moving from anchor hit to label hit
+    //   is detected
+    if (sameIds(a.ids, b.ids) && a.container == b.container && a.pinned == b.pinned && a.id == b.id) {
+      return false;
+    }
+    return true;
+  }
+
+  function sameIds(a, b) {
+    if (a.length != b.length) return false;
+    for (var i=0; i<a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
 
   return self;
 }
@@ -4425,10 +4545,10 @@ function MshpMap(gui) {
       map = this,
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
-      // _hit = new HitControl(gui, _ext, _mouse),
-      _hit = new HitControl2(gui, _ext, _mouse),
+      _hit = new InteractiveSelection(gui, _ext, _mouse),
       _nav = new MapNav(gui, _ext, _mouse),
       _boxTool = new BoxTool(gui, _ext, _nav),
+      _selectionTool = new SelectionTool(gui, _ext, _hit),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
@@ -4622,12 +4742,6 @@ function MshpMap(gui) {
         updateFrameExtent();
       }
       drawLayers(true);
-    });
-
-    _boxTool.on('selection', function(e) {
-      // same as hit tool
-      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-      _stack.drawOverlayLayer(_overlayLyr);
     });
 
     _hit.on('change', function(e) {
@@ -4898,59 +5012,54 @@ GUI.getIntersectionPct = function(bb1, bb2) {
 
 
 function InteractionMode(gui) {
-  var buttons, btn1, btn2, menu;
 
-  // all possible menu contents
   var menus = {
-    standard: ['info', 'data'],
-    labels: ['info', 'data', 'labels', 'location'],
-    points: ['info', 'data', 'location']
+    standard: ['info', 'data', 'selection'],
+    labels: ['info', 'data', 'selection', 'labels', 'location'],
+    points: ['info', 'data', 'selection', 'location']
   };
 
   // mode name -> menu text lookup
   var labels = {
-    info: 'off', // no data editing, just popup
-    data: 'data',
-    labels: 'labels',
-    location: 'coordinates'
+    info: 'inspect attributes',
+    data: 'edit attributes',
+    labels: 'position labels',
+    location: 'drag points',
+    selection: 'select features'
   };
+  var btn, menu;
+  var _menuTimeout;
 
   // state variables
-  var _editMode = 'info'; // one of labels{} keys
-  var _active = false; // interaction on/off
+  var _editMode = 'off';
   var _menuOpen = false;
 
   // Only render edit mode button/menu if this option is present
   if (gui.options.inspectorControl) {
-    buttons = gui.buttons.addDoubleButton('#info-icon2', '#info-menu-icon');
-    btn1 = buttons[0]; // [i] button
-    btn2 = buttons[1]; // submenu button
-    menu = El('div').addClass('nav-sub-menu').appendTo(btn2.node().parentNode);
+    btn = gui.buttons.addButton('#pointer-icon');
+    menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    menu.on('click', function() {
-      closeMenu(0); // dismiss menu by clicking off an active link
+    btn.on('mouseleave', autoClose);
+    btn.on('mouseenter', function() {
+      clearTimeout(_menuTimeout);
     });
 
-    btn1.on('click', function() {
-      gui.dispatchEvent('interaction_toggle');
+    btn.on('click', function(e) {
+      if (active()) {
+        setMode('off');
+        closeMenu();
+      } else {
+        if (_editMode == 'off') {
+          setMode('info');
+        }
+        clearTimeout(_menuTimeout);
+        openMenu();
+      }
+      e.stopPropagation();
     });
-
-    btn2.on('click', function() {
-      _menuOpen = true;
-      updateMenu();
-    });
-
-    // triggered by a keyboard shortcut
-    gui.on('interaction_toggle', function() {
-      setActive(!_active);
-    });
-
-    updateVisibility();
   }
 
   this.getMode = getInteractionMode;
-
-  this.setActive = setActive;
 
   this.setMode = function(mode) {
     // TODO: check that this mode is valid for the current dataset
@@ -4959,21 +5068,17 @@ function InteractionMode(gui) {
     }
   };
 
-  this.modeUsesDrag = function(name) {
-    return name == 'location' || name == 'labels';
-  };
-
-  this.modeUsesClick = function(name) {
-    return name == 'data' || name == 'info'; // click used to pin popup
-  };
-
   gui.model.on('update', function(e) {
     // change mode if active layer doesn't support the current mode
     updateCurrentMode();
     if (_menuOpen) {
-      updateMenu();
+      renderMenu();
     }
   }, null, -1); // low priority?
+
+  function active() {
+    return _editMode && _editMode != 'off';
+  }
 
   function getAvailableModes() {
     var o = gui.model.getActiveLayer();
@@ -4990,49 +5095,52 @@ function InteractionMode(gui) {
   }
 
   function getInteractionMode() {
-    return _active ? _editMode : 'off';
+    return active() ? _editMode : 'off';
   }
 
-  function renderMenu(modes) {
+  function renderMenu() {
+    if (!menu) return;
+    var modes = getAvailableModes();
     menu.empty();
-    El('div').addClass('nav-menu-item').text('interactive editing:').appendTo(menu);
     modes.forEach(function(mode) {
-      var link = El('div').addClass('nav-menu-item nav-menu-link').attr('data-name', mode).text(labels[mode]).appendTo(menu);
+      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
       link.on('click', function(e) {
-        if (_editMode != mode) {
+        if (_editMode == mode) {
+          closeMenu();
+        } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(500);
-          e.stopPropagation();
+          closeMenu(400);
         }
+        e.stopPropagation();
       });
     });
+    updateModeDisplay();
   }
 
   // if current editing mode is not available, switch to another mode
   function updateCurrentMode() {
     var modes = getAvailableModes();
     if (modes.indexOf(_editMode) == -1) {
-      setMode(modes[0]);
-    }
-  }
-
-  function updateMenu() {
-    if (menu) {
-      renderMenu(getAvailableModes());
-      updateModeDisplay();
-      updateVisibility();
+      setMode('off');
     }
   }
 
   function openMenu() {
     _menuOpen = true;
-    updateVisibility();
+    updateAppearance();
+  }
+
+  function autoClose() {
+    clearTimeout(_menuTimeout);
+    _menuTimeout = setTimeout(closeMenu, 800);
   }
 
   function closeMenu(delay) {
+    if (!_menuOpen) return;
+    _menuOpen = false;
     setTimeout(function() {
       _menuOpen = false;
-      updateVisibility();
+      updateAppearance();
     }, delay || 0);
   }
 
@@ -5040,17 +5148,8 @@ function InteractionMode(gui) {
     var changed = mode != _editMode;
     if (changed) {
       _editMode = mode;
-      updateMenu();
       onModeChange();
-    }
-  }
-
-  function setActive(active) {
-    if (active != _active) {
-      _active = !!active;
-      _menuOpen = false; // make sure menu does not stay open when button toggles off
-      updateVisibility();
-      onModeChange();
+      updateAppearance();
     }
   }
 
@@ -5058,21 +5157,15 @@ function InteractionMode(gui) {
     gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
   }
 
-  function updateVisibility() {
+  function updateAppearance() {
     if (!menu) return;
-    // menu
-    if (_menuOpen && _active) {
+    if (_menuOpen) {
       menu.show();
+      renderMenu();
     } else {
       menu.hide();
     }
-    // button
-    if (_menuOpen || !_active) {
-      btn2.hide();
-    } else {
-      btn2.show();
-    }
-    btn1.classed('selected', _active);
+    btn.classed('selected', active() || _menuOpen);
   }
 
   function updateModeDisplay() {
@@ -5081,11 +5174,6 @@ function InteractionMode(gui) {
       el.classed('selected', el.attr('data-name') == _editMode);
     });
   }
-
-  function initLink(label) {
-    return El('div').addClass('edit-mode-link').text(label);
-  }
-
 }
 
 
@@ -7463,8 +7551,8 @@ function Console(gui) {
        if (kc == 32) { // space bar opens console
         capture = true;
         turnOn();
-      } else if (kc == 73) { // letter i opens inspector
-        gui.dispatchEvent('interaction_toggle');
+      // } else if (kc == 73) { // letter i opens inspector
+      //   gui.dispatchEvent('interaction_toggle');
       } else if (kc == 72) { // letter h resets map extent
         gui.dispatchEvent('map_reset');
       } else if (kc == 13) {
