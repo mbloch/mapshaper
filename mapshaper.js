@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.159';
+VERSION = '0.4.158';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -423,8 +423,10 @@ utils.formatNumber = function(num, decimals, nullStr, showPos) {
 
 
 function Transform() {
-  this.mx = this.my = 1;
-  this.bx = this.by = 0;
+  this.mx = 1;
+  this.my = 1;
+  this.bx = 0;
+  this.by = 0;
 }
 
 Transform.prototype.isNull = function() {

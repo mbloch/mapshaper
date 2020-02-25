@@ -1054,7 +1054,7 @@ img.close-btn:hover,
 
 .nav-sub-menu {
 	position: absolute;
-	top: 6px;
+	top: 4px;
 	right: 21px;
 	z-index: -1;
 }
@@ -1067,14 +1067,24 @@ img.close-btn:hover,
 	white-space: nowrap;
 	display: inline-block;
 	padding: 2px 6px;
-	line-height: 13px;
+	line-height: 12px;
 	cursor: pointer;
 }
 
+.nav-menu-title {
+	font-size: 12px;
+	color: #000;
+}
+
 .nav-menu-item.selected,
-.nav-menu-item:hover {
-	color: black;
+.nav-menu-item:hover:not(.nav-menu-title) {
+	color: #000;
 	font-weight: bold;
+}
+
+/* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
+.nav-menu-item.selected:before {
+	content: "\25B8  "
 }
 
 .nav-btn {

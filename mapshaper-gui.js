@@ -1,4 +1,5 @@
 (function(){
+VERSION = '0.4.158';
 
 var GUI = {}; // shared namespace for all GUI instances
 var api = mapshaper; // assuming mapshaper is in global scope
@@ -1555,7 +1556,11 @@ function DisplayCanvas() {
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
         color = style.dotColor || "black",
-        shp, x, y, i, j, n, m;
+        shp, x, y, i, j, n, m,
+        mx = t.mx,
+        my = t.my,
+        bx = t.bx,
+        by = t.by;
     if (size === 0) return;
     if (size <= 4 && !styler) {
       // optimized drawing of many small same-colored dots
@@ -1571,8 +1576,8 @@ function DisplayCanvas() {
       }
       shp = shapes[i];
       for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        x = shp[j][0] * t.mx + t.bx;
-        y = shp[j][1] * t.my + t.by;
+        x = shp[j][0] * mx + bx;
+        y = shp[j][1] * my + by;
         if (x > -size && y > -size && x < xmax && y < ymax) {
           drawSquare(x, y, size, _ctx);
         }
@@ -1587,12 +1592,16 @@ function DisplayCanvas() {
         // imageData = _ctx.createImageData(w, h),
         imageData = _ctx.getImageData(0, 0, w, h),
         pixels = new Uint32Array(imageData.data.buffer),
-        shp, x, y, i, j, n, m;
+        shp, x, y, i, j, n, m,
+        mx = t.mx,
+        my = t.my,
+        bx = t.bx,
+        by = t.by;
     for (i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
       for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        x = shp[j][0] * t.mx + t.bx;
-        y = shp[j][1] * t.my + t.by;
+        x = shp[j][0] * mx + bx;
+        y = shp[j][1] * my + by;
         if (x >= 0 && y >= 0 && x <= w && y <= h) {
           drawSquareFaster(x, y, rgba, size, pixels, w, h);
         }
@@ -1628,7 +1637,11 @@ function DisplayCanvas() {
         scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
         startPath = getPathStart(_ext),
         styler = style.styler || null,
-        shp, p;
+        shp, p,
+        mx = t.mx,
+        my = t.my,
+        bx = t.bx,
+        by = t.by;
 
     for (var i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
@@ -1637,7 +1650,7 @@ function DisplayCanvas() {
       if (!shp || style.radius > 0 === false) continue;
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * scale, _ctx);
+        drawCircle(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
       }
       endPath(_ctx, style);
     }
@@ -1715,7 +1728,16 @@ function getDotScale2(shapes, ext) {
 }
 
 function getScaledTransform(ext) {
-  return ext.getTransform(GUI.getPixelRatio());
+  var t = ext.getTransform(GUI.getPixelRatio());
+  // A recent Chrome update (v80?) seems to have introduced a performance
+  // regression causing slow object property access.
+  // the effect is intermittent and pretty mysterious.
+  return {
+    mx: t.mx,
+    my: t.my,
+    bx: t.bx,
+    by: t.by
+  };
 }
 
 function drawCircle(x, y, radius, ctx) {
@@ -1736,15 +1758,20 @@ function drawSquare(x, y, size, ctx) {
 }
 
 function drawPath(vec, t, ctx, minLen) {
+  // copy to local variables because of odd performance regression in Chrome 80
+  var mx = t.mx,
+      my = t.my,
+      bx = t.bx,
+      by = t.by;
   var x, y, xp, yp;
   if (!vec.hasNext()) return;
   minLen = utils.isNonNegNumber(minLen) ? minLen : 0.4;
-  x = xp = vec.x * t.mx + t.bx;
-  y = yp = vec.y * t.my + t.by;
+  x = xp = vec.x * mx + bx;
+  y = yp = vec.y * my + by;
   ctx.moveTo(x, y);
   while (vec.hasNext()) {
-    x = vec.x * t.mx + t.bx;
-    y = vec.y * t.my + t.by;
+    x = vec.x * mx + bx;
+    y = vec.y * my + by;
     if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
       ctx.lineTo(x, y);
       xp = x;
@@ -5102,6 +5129,7 @@ function InteractionMode(gui) {
     if (!menu) return;
     var modes = getAvailableModes();
     menu.empty();
+    // El('div').addClass('nav-menu-title nav-menu-item').text('INTERACTION MODE').appendTo(menu);
     modes.forEach(function(mode) {
       var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
       link.on('click', function(e) {
@@ -5109,7 +5137,7 @@ function InteractionMode(gui) {
           closeMenu();
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(400);
+          closeMenu(500);
         }
         e.stopPropagation();
       });
