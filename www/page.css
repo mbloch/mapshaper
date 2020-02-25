@@ -1054,7 +1054,7 @@ img.close-btn:hover,
 
 .nav-sub-menu {
 	position: absolute;
-	top: 6px;
+	top: 5px;
 	right: 21px;
 	z-index: -1;
 }
@@ -1071,10 +1071,16 @@ img.close-btn:hover,
 	cursor: pointer;
 }
 
+
 .nav-menu-item.selected,
-.nav-menu-item:hover {
+.nav-menu-item:hover:not(.nav-menu-title) {
 	color: black;
 	font-weight: bold;
+}
+
+/* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
+.nav-menu-item.selected:before {
+	content: "\25B8  "
 }
 
 .nav-btn {

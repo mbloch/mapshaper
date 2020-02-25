@@ -98,7 +98,7 @@ function InteractionMode(gui) {
           closeMenu();
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(400);
+          closeMenu(500);
         }
         e.stopPropagation();
       });
