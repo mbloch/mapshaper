@@ -90,7 +90,7 @@ internal.getDelimValueFormatter = function(delim) {
     } else if (utils.isObject(val)) {
       s = formatString(JSON.stringify(val));
     } else {
-      s = s + '';
+      s = val + '';
     }
     return s;
   };

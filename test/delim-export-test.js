@@ -87,6 +87,13 @@ describe('mapshaper-delim-export.js', function() {
       assert.equal(csv, target);
     });
 
+    it('booleans are exported as "true" and "false"', function() {
+      var data = new api.internal.DataTable([{foo: true, bar: false}]);
+      var csv = api.internal.exportLayerAsDSV({data: data}, ',');
+      var target = 'foo,bar\ntrue,false';
+      assert.equal(csv, target);
+    })
+
     it('arrays are exported as JSON', function() {
       var data = new api.internal.DataTable([{foo: [], bar: ["a", "b"]}]);
       var csv = api.internal.exportLayerAsDSV({data: data}, ',');
