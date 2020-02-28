@@ -15,6 +15,16 @@ describe('mapshaper-filter-rename-fields.js', function () {
         done();
       })
     })
+
+    it("affects the sequence of CSV output fields", function(done) {
+      var csv = 'a,b,c,d,e\n1,2,3,4,5\n6,7,8,9,10';
+      var cmd = '-i csv.csv -filter-fields d,c -o';
+      api.applyCommands(cmd, {'csv.csv': csv}, function(err, out) {
+        assert.equal(out['csv.csv'], 'd,c\n4,3\n9,8');
+        done();
+      })
+
+    })
   })
 
   describe('-rename-fields', function () {

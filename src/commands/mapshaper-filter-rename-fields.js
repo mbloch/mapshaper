@@ -5,7 +5,11 @@ api.filterFields = function(lyr, names) {
   names = names || [];
   internal.requireDataFields(table, names);
   if (!table) return;
-  utils.difference(table.getFields(), names).forEach(table.deleteField, table);
+  // old method: does not set field order e.g. in CSV output files
+  // utils.difference(table.getFields(), names).forEach(table.deleteField, table);
+  // the below method sets field order of CSV output, and is generally faster
+  var map = internal.mapFieldNames(names);
+  lyr.data.update(internal.getRecordMapper(map));
 };
 
 api.renameFields = function(lyr, names) {
