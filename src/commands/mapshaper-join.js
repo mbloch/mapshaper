@@ -278,8 +278,13 @@ internal.validateJoinFieldType = function(field, type) {
 // of two key fields.
 internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
-  var index = internal.createTableIndex(src.getRecords(), srcKey);
+  var srcRecords = src.getRecords();
+  var index = internal.createTableIndex(srcRecords, srcKey);
   var srcType, destType;
+  if (srcRecords.length == 0) {
+    // allow empty external tables
+    return function(i) {return [];};
+  }
   internal.requireDataField(src, srcKey, 'External table is missing a field named:');
   internal.requireDataField(dest, destKey, 'Target layer is missing key field:');
   srcType = internal.getColumnType(srcKey, src.getRecords());

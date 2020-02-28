@@ -23,6 +23,16 @@ describe('mapshaper-join.js', function () {
       });
     });
 
+    it('don\'t throw an error if external table is empty', function(done) {
+      var a = 'id,name\n1,foo';
+      var b = 'key,score';
+      api.applyCommands('a.csv -join b.csv keys=id,key fields=* -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert.deepEqual(out['a.csv'], 'id,name\n1,foo');
+        done();
+      });
+
+    });
+
     it('error if source and target key fields have different types', function(done) {
       var a = 'id,name\n1,foo';
       var b = 'key,score\n1,100';
