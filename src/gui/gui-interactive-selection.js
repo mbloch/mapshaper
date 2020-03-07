@@ -105,11 +105,15 @@ function InteractiveSelection(gui, ext, mouse) {
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
     updateSelectionState(null);
-    if (e.mode == 'off') {
+    if (e.mode == 'off' || e.mode == 'box') {
       turnOff();
     } else {
       turnOn(e.mode);
     }
+  });
+
+  gui.on('box_drag_start', function() {
+    self.clearHover();
   });
 
   mouse.on('dblclick', handlePointerEvent, null, priority);

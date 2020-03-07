@@ -13,16 +13,6 @@ function SidebarButtons(gui) {
     return btn;
   };
 
-  this.addDoubleButton = function(icon1Ref, icon2Ref) {
-    var btn1 = initButton(icon1Ref).addClass('nav-btn');
-    var btn2 = initButton(icon2Ref).addClass('nav-sub-btn');
-    var wrapper = El('div').addClass('nav-btn-wrapper');
-    btn1.appendTo(wrapper);
-    btn2.appendTo(wrapper);
-    wrapper.appendTo(buttons);
-    return [btn1, btn2];
-  };
-
   this.show = function() {
     _hidden = false;
     updateVisibility();
@@ -33,20 +23,20 @@ function SidebarButtons(gui) {
     updateVisibility();
   };
 
-  function updateVisibility() {
-    if (GUI.isActiveInstance(gui) && !_hidden) {
-      buttons.show();
-    } else {
-      buttons.hide();
-    }
-  }
-
-  function initButton(iconRef) {
+  var initButton = this.initButton = function(iconRef) {
     var icon = El('body').findChild(iconRef).node().cloneNode(true);
     var btn = El('div')
       .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
     btn.appendChild(icon);
     if (icon.hasAttribute('id')) icon.removeAttribute('id');
     return btn;
+  };
+
+  function updateVisibility() {
+    if (GUI.isActiveInstance(gui) && !_hidden) {
+      buttons.show();
+    } else {
+      buttons.hide();
+    }
   }
 }

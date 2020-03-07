@@ -6,11 +6,6 @@ function SelectionTool(gui, ext, hit) {
 
   gui.addMode('selection_tool', turnOn, turnOff);
 
-  gui.on('box_drag_start', function() {
-    if (!_on) return;
-    hit.clearHover();
-  });
-
   gui.on('box_drag', function(e) {
     if (!_on) return;
     var b = e.page_bbox;
@@ -27,7 +22,6 @@ function SelectionTool(gui, ext, hit) {
     if (!ids.length) return;
     hit.addSelectionIds(ids);
   });
-
 
   function turnOn() {
     _on = true;

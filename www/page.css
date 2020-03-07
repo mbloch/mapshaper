@@ -1045,13 +1045,16 @@ img.close-btn:hover,
 
 .nav-sub-btn {
 	position: absolute;
+	display: none;
 	cursor: pointer;
-	top: 1px;
+	top: 4px;
 	padding: 4px;
-	right: 19px;
-	z-index: 1;
+	right: 20px;
+	z-index: -2;
 }
-
+.nav-sub-btn svg * {
+	fill: black !important;
+}
 .nav-sub-menu {
 	position: absolute;
 	top: 5px;

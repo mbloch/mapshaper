@@ -48,6 +48,14 @@ function BoxTool(gui, ext, nav) {
 
   gui.addMode('box_tool', turnOn, turnOff);
 
+  gui.on('interaction_mode_change', function(e) {
+    if (e.mode === 'box_tool') {
+      gui.enterMode('box_tool');
+    } else if (gui.getMode() == 'box_tool') {
+      gui.clearMode();
+    }
+  });
+
   gui.on('box_drag_start', function() {
     hideCoords();
     if (internal.layerHasGeometry(gui.model.getActiveLayer().layer) && gui.getMode() != 'selection_tool') {

@@ -3,24 +3,33 @@
 function InteractionMode(gui) {
 
   var menus = {
-    standard: ['info', 'data', 'selection'],
-    labels: ['info', 'data', 'selection', 'labels', 'location'],
-    points: ['info', 'data', 'selection', 'location']
+    standard: ['info', 'data', 'selection', 'box'],
+    table: ['info', 'data', 'selection'],
+    labels: ['info', 'data', 'selection', 'box', 'labels', 'location'],
+    points: ['info', 'data', 'selection', 'box', 'location']
+  };
+
+  var prompts = {
+    box: 'Shift-drag to draw a box',
+    data: 'Click-select features to edit their attributes',
+    selection: 'Click-select or shift-drag to select features'
   };
 
   // mode name -> menu text lookup
   var labels = {
     info: 'inspect attributes',
+    box: 'shift-drag box',
     data: 'edit attributes',
     labels: 'position labels',
     location: 'drag points',
     selection: 'select features'
   };
-  var btn, menu;
+  var btn, menu, tab;
   var _menuTimeout;
 
   // state variables
   var _editMode = 'off';
+  var _prevMode = 'info'; // stored mode for re-opening menu
   var _menuOpen = false;
 
   // Only render edit mode button/menu if this option is present
@@ -28,10 +37,22 @@ function InteractionMode(gui) {
     btn = gui.buttons.addButton('#pointer-icon');
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    btn.on('mouseleave', autoClose);
-    btn.on('mouseenter', function() {
-      clearTimeout(_menuTimeout);
+    tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
+
+    btn.on('mouseleave', function() {
+      tab.hide();
+      autoClose();
     });
+
+    btn.on('mouseenter', function() {
+      if (_editMode != 'off') {
+        clearTimeout(_menuTimeout);
+        tab.show();
+      }
+    });
+
+    tab.on('mouseenter', openMenu);
+    // menu.on('mouseenter', openMenu);
 
     btn.on('click', function(e) {
       if (active()) {
@@ -39,7 +60,7 @@ function InteractionMode(gui) {
         closeMenu();
       } else {
         if (_editMode == 'off') {
-          setMode('info');
+          setMode(openWithMode());
         }
         clearTimeout(_menuTimeout);
         openMenu();
@@ -74,6 +95,9 @@ function InteractionMode(gui) {
     if (!o || !o.layer) {
       return menus.standard; // TODO: more sensible handling of missing layer
     }
+    if (!internal.layerHasGeometry(o.layer)) {
+      return menus.table;
+    }
     if (internal.layerHasLabels(o.layer)) {
       return menus.labels;
     }
@@ -98,7 +122,7 @@ function InteractionMode(gui) {
           closeMenu();
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(500);
+          closeMenu(400);
         }
         e.stopPropagation();
       });
@@ -114,14 +138,25 @@ function InteractionMode(gui) {
     }
   }
 
+  function openWithMode() {
+    if (getAvailableModes().indexOf(_prevMode) > -1) {
+      return _prevMode;
+    }
+    return 'info';
+  }
+
   function openMenu() {
-    _menuOpen = true;
-    updateAppearance();
+    clearTimeout(_menuTimeout);
+    if (!_menuOpen && _editMode != 'off') {
+      tab.hide();
+      _menuOpen = true;
+      updateAppearance();
+    }
   }
 
   function autoClose() {
     clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 800);
+    _menuTimeout = setTimeout(closeMenu, 600);
   }
 
   function closeMenu(delay) {
@@ -135,7 +170,11 @@ function InteractionMode(gui) {
 
   function setMode(mode) {
     var changed = mode != _editMode;
+    if (mode == 'off') tab.hide();
     if (changed) {
+      if (_editMode != 'off') {
+        _prevMode = _editMode; // save edit mode so we can re-open control with the same mode
+      }
       _editMode = mode;
       onModeChange();
       updateAppearance();
