@@ -1,5 +1,4 @@
 (function(){
-VERSION = '0.4.158';
 
 var GUI = {}; // shared namespace for all GUI instances
 var api = mapshaper; // assuming mapshaper is in global scope
@@ -425,7 +424,6 @@ utils.extend(El.prototype, {
     }
     return this;
   },
-
 
   remove: function(sel) {
     if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
@@ -2161,9 +2159,11 @@ function getDisplayBounds(lyr, arcs) {
 
 
 function HighlightBox(el) {
-  var stroke = 2,
-      box = El('div').addClass('zoom-box').appendTo(el).hide();
-  this.show = function(x1, y1, x2, y2) {
+  var box = El('div').addClass('zoom-box').appendTo(el),
+      show = box.show.bind(box), // original show() function
+      stroke = 2;
+  box.hide();
+  box.show = function(x1, y1, x2, y2) {
     var w = Math.abs(x1 - x2),
         h = Math.abs(y1 - y2);
     box.css({
@@ -2172,19 +2172,15 @@ function HighlightBox(el) {
       width: Math.max(w - stroke * 2, 1),
       height: Math.max(h - stroke * 2, 1)
     });
-    box.show();
+    show();
   };
-  this.hide = function() {
-    box.hide();
-  };
+  return box;
 }
 
 
 function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
-      zoomBox = new HighlightBox('body'),
       zoomTween = new Tween(Tween.sineInOut),
-      zoomDrag = false,
       boxDrag = false,
       zoomScale = 1.5,
       zoomScaleMultiplier = 1,
@@ -2229,14 +2225,38 @@ function MapNav(gui, ext, mouse) {
   mouse.on('dragstart', function(e) {
     if (disabled()) return;
     if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
-    zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+    // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
     boxDrag = !!e.shiftKey;
-    if (zoomDrag || boxDrag) {
-      dragStartEvt = e;
-    }
     if (boxDrag) {
+      dragStartEvt = e;
       gui.dispatchEvent('box_drag_start');
     }
+  });
+
+  mouse.on('drag', function(e) {
+    if (disabled()) return;
+    if (boxDrag) {
+      gui.dispatchEvent('box_drag', getBoxData(e));
+    } else {
+      ext.pan(e.dx, e.dy);
+    }
+  });
+
+  mouse.on('dragend', function(e) {
+    var bbox;
+    if (disabled()) return;
+    if (boxDrag) {
+      boxDrag = false;
+      gui.dispatchEvent('box_drag_end', getBoxData(e));
+    }
+  });
+
+  wheel.on('mousewheel', function(e) {
+    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
+    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
+        delta = e.direction > 0 ? k : 1 / k;
+    if (disabled()) return;
+    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
   function swapElements(arr, i, j) {
@@ -2262,41 +2282,6 @@ function MapNav(gui, ext, mouse) {
       page_bbox: pageBox
     };
   }
-
-  mouse.on('drag', function(e) {
-    if (disabled()) return;
-    if (zoomDrag) {
-      zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
-    } else if (boxDrag) {
-      gui.dispatchEvent('box_drag', getBoxData(e));
-    } else {
-      ext.pan(e.dx, e.dy);
-    }
-  });
-
-  mouse.on('dragend', function(e) {
-    var bbox;
-    if (disabled()) return;
-    if (boxDrag) {
-      boxDrag = false;
-      gui.dispatchEvent('box_drag_end', getBoxData(e));
-    } else if (zoomDrag) {
-      zoomDrag = false;
-      bbox = getBoxData(e).map_bbox;
-      zoomBox.hide();
-      if (bbox[3] - bbox[1] > 5 && bbox[2] - bbox[0] > 5) {
-        zoomToBbox(bbox);
-      }
-    }
-  });
-
-  wheel.on('mousewheel', function(e) {
-    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
-    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
-        delta = e.direction > 0 ? k : 1 / k;
-    if (disabled()) return;
-    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
-  });
 
   function disabled() {
     return !!gui.options.disableNavigation;
@@ -3815,7 +3800,7 @@ function SymbolDragging2(gui, ext, hit) {
 }
 
 
-function BoxTool(gui, ext, nav) {
+function BoxTool(gui, ext, mouse, nav) {
   var self = new EventDispatcher();
   var box = new HighlightBox('body');
   var popup = gui.container.findChild('.box-tool-options');
@@ -3827,12 +3812,15 @@ function BoxTool(gui, ext, nav) {
     if (coords.visible()) hideCoords(); else showCoords();
   });
 
-  new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
-
-  new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
-    nav.zoomToBbox(bboxPixels);
-    gui.clearMode();
+  new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
+    reset();
   });
+
+  // Removing zoom-in button -- cumbersome way to zoom
+  // new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
+  //   nav.zoomToBbox(bboxPixels);
+  //   reset();
+  // });
 
   new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
     gui.enterMode('selection_tool');
@@ -3852,8 +3840,19 @@ function BoxTool(gui, ext, nav) {
     runCommand('-clip bbox2=' + bbox.join(','));
   });
 
+  gui.addMode('box_tool', turnOn, turnOff);
+
+  gui.on('interaction_mode_change', function(e) {
+    // console.log('mode change', e.mode)
+    if (e.mode === 'box') {
+      gui.enterMode('box_tool');
+    } else if (gui.getMode() == 'box_tool') {
+      gui.clearMode();
+    }
+  });
+
   ext.on('change', function() {
-    if (!_on) return;
+    if (!_on || !box.visible()) return;
     var b = bboxToPixels(bbox);
     var pos = ext.position();
     var dx = pos.pageX,
@@ -3861,34 +3860,43 @@ function BoxTool(gui, ext, nav) {
     box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
   });
 
-  gui.addMode('box_tool', turnOn, turnOff);
-
   gui.on('box_drag_start', function() {
+    box.classed('zooming', zoomDragging());
     hideCoords();
-    if (internal.layerHasGeometry(gui.model.getActiveLayer().layer) && gui.getMode() != 'selection_tool') {
-      gui.enterMode('box_tool');
-    }
   });
 
   gui.on('box_drag', function(e) {
-    if (!_on) return;
     var b = e.page_bbox;
-    box.show(b[0], b[1], b[2], b[3]);
+    if (_on || zoomDragging()) {
+      box.show(b[0], b[1], b[2], b[3]);
+    }
   });
 
   gui.on('box_drag_end', function(e) {
-    if (!_on) return;
     bboxPixels = e.map_bbox;
-    bbox = bboxToCoords(bboxPixels);
-    // round coords, for nicer 'info' display
-    // (rounded precision should be sub-pixel)
-    bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
-    popup.show();
+    if (zoomDragging()) {
+      box.hide();
+      nav.zoomToBbox(bboxPixels);
+    } else if (_on) {
+      bbox = bboxToCoords(bboxPixels);
+      // round coords, for nicer 'info' display
+      // (rounded precision should be sub-pixel)
+      bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+      popup.show();
+    }
   });
 
+  function zoomDragging() {
+    return !_on && gui.getMode() != 'selection_tool';
+  }
+
   function runCommand(cmd) {
-    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
-    gui.clearMode();
+    if (gui.console) {
+      gui.console.runMapshaperCommands(cmd, function(err) {
+        reset();
+      });
+    }
+    // reset(); // TODO: exit interactive mode
   }
 
   function showCoords() {
@@ -3908,7 +3916,15 @@ function BoxTool(gui, ext, nav) {
   }
 
   function turnOff() {
+    if (gui.interaction.getMode() == 'box') {
+      // mode change was not initiated by interactive menu -- turn off interactivity
+      gui.interaction.turnOff();
+    }
     _on = false;
+    reset();
+  }
+
+  function reset() {
     box.hide();
     popup.hide();
     hideCoords();
@@ -3938,9 +3954,12 @@ function SelectionTool(gui, ext, hit) {
 
   gui.addMode('selection_tool', turnOn, turnOff);
 
-  gui.on('box_drag_start', function() {
-    if (!_on) return;
-    hit.clearHover();
+  gui.on('interaction_mode_change', function(e) {
+    if (e.mode === 'selection') {
+      gui.enterMode('selection_tool');
+    } else if (gui.getMode() == 'selection_tool') {
+      gui.clearMode();
+    }
   });
 
   gui.on('box_drag', function(e) {
@@ -3960,7 +3979,6 @@ function SelectionTool(gui, ext, hit) {
     hit.addSelectionIds(ids);
   });
 
-
   function turnOn() {
     _on = true;
   }
@@ -3971,18 +3989,18 @@ function SelectionTool(gui, ext, hit) {
     return [a[0], b[1], b[0], a[1]];
   }
 
-  gui.on('interaction_mode_change', function(e) {
-    if (e.mode === 'selection') {
-      gui.enterMode('selection_tool');
-    } else if (gui.getMode() == 'selection_tool') {
-      gui.clearMode();
-    }
-  });
-
   function turnOff() {
+    reset();
+    _on = false;
+    if (gui.interaction.getMode() == 'selection') {
+      // mode change was not initiated by interactive menu -- turn off interactivity
+      gui.interaction.turnOff();
+    }
+  }
+
+  function reset() {
     popup.hide();
     hit.clearSelection();
-    _on = false;
   }
 
   hit.on('change', function(e) {
@@ -3999,19 +4017,19 @@ function SelectionTool(gui, ext, hit) {
   });
 
   new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-    var cmd = '-filter invert "' + getFilterExp(hit.getSelectionIds()) + '"';
+    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), true) + '"';
     runCommand(cmd);
     hit.clearSelection();
   });
 
   new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds()) + '"';
+    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), false) + '"';
     runCommand(cmd);
     hit.clearSelection();
   });
 
   new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-    var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds()) +
+    var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds(), false) +
       ' ? \'1\' : \'2\'" -split split_id';
     runCommand(cmd);
     hit.clearSelection();
@@ -4021,13 +4039,13 @@ function SelectionTool(gui, ext, hit) {
     hit.clearSelection();
   });
 
-  function getFilterExp(ids) {
-    return JSON.stringify(ids) + '.indexOf(this.id) > -1';
+  function getFilterExp(ids, invert) {
+    return JSON.stringify(ids) + '.indexOf(this.id) ' + (invert ? '== -1' : '> -1');
   }
 
   function runCommand(cmd) {
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
-    gui.clearMode();
+    reset();
   }
 }
 
@@ -4404,11 +4422,15 @@ function InteractiveSelection(gui, ext, mouse) {
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
     updateSelectionState(null);
-    if (e.mode == 'off') {
+    if (e.mode == 'off' || e.mode == 'box') {
       turnOff();
     } else {
       turnOn(e.mode);
     }
+  });
+
+  gui.on('box_drag_start', function() {
+    self.clearHover();
   });
 
   mouse.on('dblclick', handlePointerEvent, null, priority);
@@ -4574,7 +4596,7 @@ function MshpMap(gui) {
       _ext = new MapExtent(position),
       _hit = new InteractiveSelection(gui, _ext, _mouse),
       _nav = new MapNav(gui, _ext, _mouse),
-      _boxTool = new BoxTool(gui, _ext, _nav),
+      _boxTool = new BoxTool(gui, _ext, _mouse, _nav),
       _selectionTool = new SelectionTool(gui, _ext, _hit),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
@@ -5041,24 +5063,34 @@ GUI.getIntersectionPct = function(bb1, bb2) {
 function InteractionMode(gui) {
 
   var menus = {
-    standard: ['info', 'data', 'selection'],
-    labels: ['info', 'data', 'selection', 'labels', 'location'],
-    points: ['info', 'data', 'selection', 'location']
+    standard: ['info', 'data', 'selection', 'box', 'off'],
+    table: ['info', 'data', 'selection', 'off'],
+    labels: ['info', 'data', 'selection', 'box', 'labels', 'location', 'off'],
+    points: ['info', 'data', 'selection', 'box', 'location', 'off']
+  };
+
+  var prompts = {
+    box: 'Shift-drag to draw a box',
+    data: 'Click-select features to edit their attributes',
+    selection: 'Click-select or shift-drag to select features'
   };
 
   // mode name -> menu text lookup
   var labels = {
     info: 'inspect attributes',
+    box: 'shift-drag box tool',
     data: 'edit attributes',
     labels: 'position labels',
     location: 'drag points',
-    selection: 'select features'
+    selection: 'select features',
+    off: 'turn off'
   };
-  var btn, menu;
+  var btn, menu, tab;
   var _menuTimeout;
 
   // state variables
   var _editMode = 'off';
+  var _prevMode = 'info'; // stored mode for re-opening menu
   var _menuOpen = false;
 
   // Only render edit mode button/menu if this option is present
@@ -5066,18 +5098,36 @@ function InteractionMode(gui) {
     btn = gui.buttons.addButton('#pointer-icon');
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    btn.on('mouseleave', autoClose);
-    btn.on('mouseenter', function() {
-      clearTimeout(_menuTimeout);
+    tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
+
+    btn.on('mouseleave', function() {
+      btn.removeClass('hover');
+      tab.hide();
+      autoClose();
     });
+
+    btn.on('mouseenter', function() {
+      btn.addClass('hover');
+      if (_editMode != 'off') {
+        clearTimeout(_menuTimeout);
+        tab.show();
+      }
+    });
+
+    tab.on('mouseenter', openMenu);
+    // menu.on('mouseenter', openMenu);
 
     btn.on('click', function(e) {
       if (active()) {
         setMode('off');
         closeMenu();
+      } else if (_menuOpen) {
+        closeMenu();
       } else {
         if (_editMode == 'off') {
-          setMode('info');
+          // turn on interaction when menu opens
+          // (could this be confusing?)
+          setMode(openWithMode());
         }
         clearTimeout(_menuTimeout);
         openMenu();
@@ -5085,6 +5135,10 @@ function InteractionMode(gui) {
       e.stopPropagation();
     });
   }
+
+  this.turnOff = function() {
+    setMode('off');
+  };
 
   this.getMode = getInteractionMode;
 
@@ -5112,6 +5166,9 @@ function InteractionMode(gui) {
     if (!o || !o.layer) {
       return menus.standard; // TODO: more sensible handling of missing layer
     }
+    if (!internal.layerHasGeometry(o.layer)) {
+      return menus.table;
+    }
     if (internal.layerHasLabels(o.layer)) {
       return menus.labels;
     }
@@ -5129,7 +5186,6 @@ function InteractionMode(gui) {
     if (!menu) return;
     var modes = getAvailableModes();
     menu.empty();
-    // El('div').addClass('nav-menu-title nav-menu-item').text('INTERACTION MODE').appendTo(menu);
     modes.forEach(function(mode) {
       var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
       link.on('click', function(e) {
@@ -5137,7 +5193,7 @@ function InteractionMode(gui) {
           closeMenu();
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(500);
+          closeMenu(mode == 'off' ? 200 : 350);
         }
         e.stopPropagation();
       });
@@ -5153,14 +5209,26 @@ function InteractionMode(gui) {
     }
   }
 
+  function openWithMode() {
+    if (getAvailableModes().indexOf(_prevMode) > -1) {
+      return _prevMode;
+    }
+    return 'info';
+  }
+
   function openMenu() {
-    _menuOpen = true;
-    updateAppearance();
+    clearTimeout(_menuTimeout);
+    // if (!_menuOpen && _editMode != 'off') {
+    if (!_menuOpen) {
+      tab.hide();
+      _menuOpen = true;
+      updateAppearance();
+    }
   }
 
   function autoClose() {
     clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 800);
+    _menuTimeout = setTimeout(closeMenu, 500);
   }
 
   function closeMenu(delay) {
@@ -5174,7 +5242,12 @@ function InteractionMode(gui) {
 
   function setMode(mode) {
     var changed = mode != _editMode;
+    if (mode == 'off') tab.hide();
     if (changed) {
+      menu.classed('active', mode != 'off');
+      if (_editMode != 'off') {
+        _prevMode = _editMode; // save edit mode so we can re-open control with the same mode
+      }
       _editMode = mode;
       onModeChange();
       updateAppearance();
@@ -5188,10 +5261,12 @@ function InteractionMode(gui) {
   function updateAppearance() {
     if (!menu) return;
     if (_menuOpen) {
-      menu.show();
+      btn.addClass('open');
       renderMenu();
     } else {
-      menu.hide();
+      btn.removeClass('hover');
+      btn.removeClass('open');
+      // menu.hide();
     }
     btn.classed('selected', active() || _menuOpen);
   }
@@ -5220,16 +5295,6 @@ function SidebarButtons(gui) {
     return btn;
   };
 
-  this.addDoubleButton = function(icon1Ref, icon2Ref) {
-    var btn1 = initButton(icon1Ref).addClass('nav-btn');
-    var btn2 = initButton(icon2Ref).addClass('nav-sub-btn');
-    var wrapper = El('div').addClass('nav-btn-wrapper');
-    btn1.appendTo(wrapper);
-    btn2.appendTo(wrapper);
-    wrapper.appendTo(buttons);
-    return [btn1, btn2];
-  };
-
   this.show = function() {
     _hidden = false;
     updateVisibility();
@@ -5240,21 +5305,21 @@ function SidebarButtons(gui) {
     updateVisibility();
   };
 
-  function updateVisibility() {
-    if (GUI.isActiveInstance(gui) && !_hidden) {
-      buttons.show();
-    } else {
-      buttons.hide();
-    }
-  }
-
-  function initButton(iconRef) {
+  var initButton = this.initButton = function(iconRef) {
     var icon = El('body').findChild(iconRef).node().cloneNode(true);
     var btn = El('div')
       .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
     btn.appendChild(icon);
     if (icon.hasAttribute('id')) icon.removeAttribute('id');
     return btn;
+  };
+
+  function updateVisibility() {
+    if (GUI.isActiveInstance(gui) && !_hidden) {
+      buttons.show();
+    } else {
+      buttons.hide();
+    }
   }
 }
 

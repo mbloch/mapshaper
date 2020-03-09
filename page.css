@@ -1045,18 +1045,28 @@ img.close-btn:hover,
 
 .nav-sub-btn {
 	position: absolute;
+	display: none;
 	cursor: pointer;
-	top: 1px;
+	top: 4px;
 	padding: 4px;
-	right: 19px;
-	z-index: 1;
+	right: 20px;
+	z-index: -2;
 }
-
+.nav-sub-btn svg * {
+	fill: black !important;
+}
 .nav-sub-menu {
 	position: absolute;
-	top: 4px;
+	top: 5px;
 	right: 21px;
 	z-index: -1;
+	display: none;
+	pointer-events: none;
+}
+
+.nav-btn.open .nav-sub-menu {
+	display: block;
+	pointer-events: inherit;
 }
 
 .nav-menu-item {
@@ -1067,23 +1077,19 @@ img.close-btn:hover,
 	white-space: nowrap;
 	display: inline-block;
 	padding: 2px 6px;
-	line-height: 12px;
+	line-height: 13px;
 	cursor: pointer;
 }
 
-.nav-menu-title {
-	font-size: 12px;
-	color: #000;
-}
 
 .nav-menu-item.selected,
 .nav-menu-item:hover:not(.nav-menu-title) {
-	color: #000;
+	color: black;
 	font-weight: bold;
 }
 
 /* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
-.nav-menu-item.selected:before {
+.nav-sub-menu.active .nav-menu-item.selected:before {
 	content: "\25B8  "
 }
 
@@ -1095,7 +1101,7 @@ img.close-btn:hover,
 	line-height: 1;
 }
 
-.nav-btn:hover:not(.disabled) svg * {
+.nav-btn.hover:not(.disabled) svg * {
 	fill: black;
 }
 
@@ -1118,6 +1124,10 @@ img.close-btn:hover,
 	border: 1px solid #f74b80;
 	z-index: 15;
 	pointer-events: none;
+}
+
+.zoom-box.zooming {
+	border-color: #0774a5;
 }
 
 

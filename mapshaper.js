@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.158';
+VERSION = '0.4.160';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -423,10 +423,8 @@ utils.formatNumber = function(num, decimals, nullStr, showPos) {
 
 
 function Transform() {
-  this.mx = 1;
-  this.my = 1;
-  this.bx = 0;
-  this.by = 0;
+  this.mx = this.my = 1;
+  this.bx = this.by = 0;
 }
 
 Transform.prototype.isNull = function() {
@@ -14770,13 +14768,14 @@ internal.cleanPolylineLayerGeometry = function(lyr, dataset, opts) {
 // DOES NOT insert clipping points
 internal.mergeLayersForOverlay = function(targetLayers, targetDataset, clipSrc, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
+  var bbox = opts.bbox || opts.bbox2;
   var mergedDataset, clipDataset, clipLyr;
   if (clipSrc && clipSrc.geometry_type) {
     // TODO: update tests to remove this case (clipSrc is a layer)
     clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
   }
-  if (opts.bbox) {
-    clipDataset = internal.convertClipBounds(opts.bbox);
+  if (bbox) {
+    clipDataset = internal.convertClipBounds(bbox);
     clipLyr = clipDataset.layers[0];
   } else if (clipSrc) {
     clipLyr = clipSrc.layer;
@@ -15509,7 +15508,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
   var mergedDataset, clipLyr, nodes;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
-  if (opts.bbox2) {
+  if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
     return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
   }
   mergedDataset = internal.mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
@@ -19191,7 +19190,7 @@ internal.getDelimValueFormatter = function(delim) {
     } else if (utils.isObject(val)) {
       s = formatString(JSON.stringify(val));
     } else {
-      s = s + '';
+      s = val + '';
     }
     return s;
   };
@@ -20059,7 +20058,11 @@ api.filterFields = function(lyr, names) {
   names = names || [];
   internal.requireDataFields(table, names);
   if (!table) return;
-  utils.difference(table.getFields(), names).forEach(table.deleteField, table);
+  // old method: does not set field order e.g. in CSV output files
+  // utils.difference(table.getFields(), names).forEach(table.deleteField, table);
+  // the below method sets field order of CSV output, and is generally faster
+  var map = internal.mapFieldNames(names);
+  lyr.data.update(internal.getRecordMapper(map));
 };
 
 api.renameFields = function(lyr, names) {
@@ -21866,8 +21869,13 @@ internal.validateJoinFieldType = function(field, type) {
 // of two key fields.
 internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
-  var index = internal.createTableIndex(src.getRecords(), srcKey);
+  var srcRecords = src.getRecords();
+  var index = internal.createTableIndex(srcRecords, srcKey);
   var srcType, destType;
+  if (srcRecords.length == 0) {
+    // allow empty external tables
+    return function(i) {return [];};
+  }
   internal.requireDataField(src, srcKey, 'External table is missing a field named:');
   internal.requireDataField(dest, destKey, 'Target layer is missing key field:');
   srcType = internal.getColumnType(srcKey, src.getRecords());
