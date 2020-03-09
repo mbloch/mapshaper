@@ -630,6 +630,27 @@ internal.getOptionParser = function() {
     })
     .option('target', targetOpt);
 
+  parser.command('filter-islands2')
+    .describe('remove small detached polygon rings (islands)')
+    .option('min-area', {
+      type: 'area',
+      describe: 'remove small-area islands (e.g. 10km2)'
+    })
+    .option('min-vertices', {
+      type: 'integer',
+      describe: 'remove low-vertex-count islands'
+    })
+    .option('keep-shapes', {
+      type: 'flag',
+      describe: 'only filter smaller parts of multipart polygons',
+    })
+    .option('remove-empty', {
+      type: 'flag',
+      describe: 'delete features with null geometry'
+    })
+    .option('target', targetOpt);
+
+
   parser.command('filter-islands')
     .describe('remove small detached polygon rings (islands)')
     .option('min-area', {
