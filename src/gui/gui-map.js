@@ -28,7 +28,7 @@ function MshpMap(gui) {
       _ext = new MapExtent(position),
       _hit = new InteractiveSelection(gui, _ext, _mouse),
       _nav = new MapNav(gui, _ext, _mouse),
-      _boxTool = new BoxTool(gui, _ext, _nav),
+      _boxTool = new BoxTool(gui, _ext, _mouse, _nav),
       _selectionTool = new SelectionTool(gui, _ext, _hit),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,

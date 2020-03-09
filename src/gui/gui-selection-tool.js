@@ -6,6 +6,14 @@ function SelectionTool(gui, ext, hit) {
 
   gui.addMode('selection_tool', turnOn, turnOff);
 
+  gui.on('interaction_mode_change', function(e) {
+    if (e.mode === 'selection') {
+      gui.enterMode('selection_tool');
+    } else if (gui.getMode() == 'selection_tool') {
+      gui.clearMode();
+    }
+  });
+
   gui.on('box_drag', function(e) {
     if (!_on) return;
     var b = e.page_bbox;
@@ -33,18 +41,18 @@ function SelectionTool(gui, ext, hit) {
     return [a[0], b[1], b[0], a[1]];
   }
 
-  gui.on('interaction_mode_change', function(e) {
-    if (e.mode === 'selection') {
-      gui.enterMode('selection_tool');
-    } else if (gui.getMode() == 'selection_tool') {
-      gui.clearMode();
-    }
-  });
-
   function turnOff() {
+    reset();
+    _on = false;
+    if (gui.interaction.getMode() == 'selection') {
+      // mode change was not initiated by interactive menu -- turn off interactivity
+      gui.interaction.turnOff();
+    }
+  }
+
+  function reset() {
     popup.hide();
     hit.clearSelection();
-    _on = false;
   }
 
   hit.on('change', function(e) {
@@ -61,19 +69,19 @@ function SelectionTool(gui, ext, hit) {
   });
 
   new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-    var cmd = '-filter invert "' + getFilterExp(hit.getSelectionIds()) + '"';
+    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), true) + '"';
     runCommand(cmd);
     hit.clearSelection();
   });
 
   new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds()) + '"';
+    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), false) + '"';
     runCommand(cmd);
     hit.clearSelection();
   });
 
   new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-    var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds()) +
+    var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds(), false) +
       ' ? \'1\' : \'2\'" -split split_id';
     runCommand(cmd);
     hit.clearSelection();
@@ -83,12 +91,12 @@ function SelectionTool(gui, ext, hit) {
     hit.clearSelection();
   });
 
-  function getFilterExp(ids) {
-    return JSON.stringify(ids) + '.indexOf(this.id) > -1';
+  function getFilterExp(ids, invert) {
+    return JSON.stringify(ids) + '.indexOf(this.id) ' + (invert ? '== -1' : '> -1');
   }
 
   function runCommand(cmd) {
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
-    gui.clearMode();
+    reset();
   }
 }

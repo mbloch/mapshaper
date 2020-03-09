@@ -3,10 +3,10 @@
 function InteractionMode(gui) {
 
   var menus = {
-    standard: ['info', 'data', 'selection', 'box'],
-    table: ['info', 'data', 'selection'],
-    labels: ['info', 'data', 'selection', 'box', 'labels', 'location'],
-    points: ['info', 'data', 'selection', 'box', 'location']
+    standard: ['info', 'data', 'selection', 'box', 'off'],
+    table: ['info', 'data', 'selection', 'off'],
+    labels: ['info', 'data', 'selection', 'box', 'labels', 'location', 'off'],
+    points: ['info', 'data', 'selection', 'box', 'location', 'off']
   };
 
   var prompts = {
@@ -18,11 +18,12 @@ function InteractionMode(gui) {
   // mode name -> menu text lookup
   var labels = {
     info: 'inspect attributes',
-    box: 'shift-drag box',
+    box: 'shift-drag box tool',
     data: 'edit attributes',
     labels: 'position labels',
     location: 'drag points',
-    selection: 'select features'
+    selection: 'select features',
+    off: 'turn off'
   };
   var btn, menu, tab;
   var _menuTimeout;
@@ -40,11 +41,13 @@ function InteractionMode(gui) {
     tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
 
     btn.on('mouseleave', function() {
+      btn.removeClass('hover');
       tab.hide();
       autoClose();
     });
 
     btn.on('mouseenter', function() {
+      btn.addClass('hover');
       if (_editMode != 'off') {
         clearTimeout(_menuTimeout);
         tab.show();
@@ -58,8 +61,12 @@ function InteractionMode(gui) {
       if (active()) {
         setMode('off');
         closeMenu();
+      } else if (_menuOpen) {
+        closeMenu();
       } else {
         if (_editMode == 'off') {
+          // turn on interaction when menu opens
+          // (could this be confusing?)
           setMode(openWithMode());
         }
         clearTimeout(_menuTimeout);
@@ -68,6 +75,10 @@ function InteractionMode(gui) {
       e.stopPropagation();
     });
   }
+
+  this.turnOff = function() {
+    setMode('off');
+  };
 
   this.getMode = getInteractionMode;
 
@@ -122,7 +133,7 @@ function InteractionMode(gui) {
           closeMenu();
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(400);
+          closeMenu(mode == 'off' ? 200 : 350);
         }
         e.stopPropagation();
       });
@@ -147,7 +158,8 @@ function InteractionMode(gui) {
 
   function openMenu() {
     clearTimeout(_menuTimeout);
-    if (!_menuOpen && _editMode != 'off') {
+    // if (!_menuOpen && _editMode != 'off') {
+    if (!_menuOpen) {
       tab.hide();
       _menuOpen = true;
       updateAppearance();
@@ -156,7 +168,7 @@ function InteractionMode(gui) {
 
   function autoClose() {
     clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 600);
+    _menuTimeout = setTimeout(closeMenu, 500);
   }
 
   function closeMenu(delay) {
@@ -172,6 +184,7 @@ function InteractionMode(gui) {
     var changed = mode != _editMode;
     if (mode == 'off') tab.hide();
     if (changed) {
+      menu.classed('active', mode != 'off');
       if (_editMode != 'off') {
         _prevMode = _editMode; // save edit mode so we can re-open control with the same mode
       }
@@ -188,10 +201,12 @@ function InteractionMode(gui) {
   function updateAppearance() {
     if (!menu) return;
     if (_menuOpen) {
-      menu.show();
+      btn.addClass('open');
       renderMenu();
     } else {
-      menu.hide();
+      btn.removeClass('hover');
+      btn.removeClass('open');
+      // menu.hide();
     }
     btn.classed('selected', active() || _menuOpen);
   }

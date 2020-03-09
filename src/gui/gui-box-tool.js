@@ -1,6 +1,6 @@
 /* @requires gui-highlight-box */
 
-function BoxTool(gui, ext, nav) {
+function BoxTool(gui, ext, mouse, nav) {
   var self = new EventDispatcher();
   var box = new HighlightBox('body');
   var popup = gui.container.findChild('.box-tool-options');
@@ -12,12 +12,15 @@ function BoxTool(gui, ext, nav) {
     if (coords.visible()) hideCoords(); else showCoords();
   });
 
-  new SimpleButton(popup.findChild('.cancel-btn')).on('click', gui.clearMode);
-
-  new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
-    nav.zoomToBbox(bboxPixels);
-    gui.clearMode();
+  new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
+    reset();
   });
+
+  // Removing zoom-in button -- cumbersome way to zoom
+  // new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
+  //   nav.zoomToBbox(bboxPixels);
+  //   reset();
+  // });
 
   new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
     gui.enterMode('selection_tool');
@@ -37,8 +40,19 @@ function BoxTool(gui, ext, nav) {
     runCommand('-clip bbox2=' + bbox.join(','));
   });
 
+  gui.addMode('box_tool', turnOn, turnOff);
+
+  gui.on('interaction_mode_change', function(e) {
+    // console.log('mode change', e.mode)
+    if (e.mode === 'box') {
+      gui.enterMode('box_tool');
+    } else if (gui.getMode() == 'box_tool') {
+      gui.clearMode();
+    }
+  });
+
   ext.on('change', function() {
-    if (!_on) return;
+    if (!_on || !box.visible()) return;
     var b = bboxToPixels(bbox);
     var pos = ext.position();
     var dx = pos.pageX,
@@ -46,42 +60,43 @@ function BoxTool(gui, ext, nav) {
     box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
   });
 
-  gui.addMode('box_tool', turnOn, turnOff);
-
-  gui.on('interaction_mode_change', function(e) {
-    if (e.mode === 'box_tool') {
-      gui.enterMode('box_tool');
-    } else if (gui.getMode() == 'box_tool') {
-      gui.clearMode();
-    }
-  });
-
   gui.on('box_drag_start', function() {
+    box.classed('zooming', zoomDragging());
     hideCoords();
-    if (internal.layerHasGeometry(gui.model.getActiveLayer().layer) && gui.getMode() != 'selection_tool') {
-      gui.enterMode('box_tool');
-    }
   });
 
   gui.on('box_drag', function(e) {
-    if (!_on) return;
     var b = e.page_bbox;
-    box.show(b[0], b[1], b[2], b[3]);
+    if (_on || zoomDragging()) {
+      box.show(b[0], b[1], b[2], b[3]);
+    }
   });
 
   gui.on('box_drag_end', function(e) {
-    if (!_on) return;
     bboxPixels = e.map_bbox;
-    bbox = bboxToCoords(bboxPixels);
-    // round coords, for nicer 'info' display
-    // (rounded precision should be sub-pixel)
-    bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
-    popup.show();
+    if (zoomDragging()) {
+      box.hide();
+      nav.zoomToBbox(bboxPixels);
+    } else if (_on) {
+      bbox = bboxToCoords(bboxPixels);
+      // round coords, for nicer 'info' display
+      // (rounded precision should be sub-pixel)
+      bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+      popup.show();
+    }
   });
 
+  function zoomDragging() {
+    return !_on && gui.getMode() != 'selection_tool';
+  }
+
   function runCommand(cmd) {
-    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
-    gui.clearMode();
+    if (gui.console) {
+      gui.console.runMapshaperCommands(cmd, function(err) {
+        reset();
+      });
+    }
+    // reset(); // TODO: exit interactive mode
   }
 
   function showCoords() {
@@ -101,7 +116,15 @@ function BoxTool(gui, ext, nav) {
   }
 
   function turnOff() {
+    if (gui.interaction.getMode() == 'box') {
+      // mode change was not initiated by interactive menu -- turn off interactivity
+      gui.interaction.turnOff();
+    }
     _on = false;
+    reset();
+  }
+
+  function reset() {
     box.hide();
     popup.hide();
     hideCoords();

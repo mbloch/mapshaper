@@ -1060,6 +1060,13 @@ img.close-btn:hover,
 	top: 5px;
 	right: 21px;
 	z-index: -1;
+	display: none;
+	pointer-events: none;
+}
+
+.nav-btn.open .nav-sub-menu {
+	display: block;
+	pointer-events: inherit;
 }
 
 .nav-menu-item {
@@ -1082,7 +1089,7 @@ img.close-btn:hover,
 }
 
 /* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
-.nav-menu-item.selected:before {
+.nav-sub-menu.active .nav-menu-item.selected:before {
 	content: "\25B8  "
 }
 
@@ -1094,7 +1101,7 @@ img.close-btn:hover,
 	line-height: 1;
 }
 
-.nav-btn:hover:not(.disabled) svg * {
+.nav-btn.hover:not(.disabled) svg * {
 	fill: black;
 }
 
@@ -1117,6 +1124,10 @@ img.close-btn:hover,
 	border: 1px solid #f74b80;
 	z-index: 15;
 	pointer-events: none;
+}
+
+.zoom-box.zooming {
+	border-color: #0774a5;
 }
 
 

@@ -5,9 +5,7 @@ gui-highlight-box
 
 function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
-      zoomBox = new HighlightBox('body'),
       zoomTween = new Tween(Tween.sineInOut),
-      zoomDrag = false,
       boxDrag = false,
       zoomScale = 1.5,
       zoomScaleMultiplier = 1,
@@ -52,14 +50,38 @@ function MapNav(gui, ext, mouse) {
   mouse.on('dragstart', function(e) {
     if (disabled()) return;
     if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
-    zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+    // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
     boxDrag = !!e.shiftKey;
-    if (zoomDrag || boxDrag) {
-      dragStartEvt = e;
-    }
     if (boxDrag) {
+      dragStartEvt = e;
       gui.dispatchEvent('box_drag_start');
     }
+  });
+
+  mouse.on('drag', function(e) {
+    if (disabled()) return;
+    if (boxDrag) {
+      gui.dispatchEvent('box_drag', getBoxData(e));
+    } else {
+      ext.pan(e.dx, e.dy);
+    }
+  });
+
+  mouse.on('dragend', function(e) {
+    var bbox;
+    if (disabled()) return;
+    if (boxDrag) {
+      boxDrag = false;
+      gui.dispatchEvent('box_drag_end', getBoxData(e));
+    }
+  });
+
+  wheel.on('mousewheel', function(e) {
+    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
+    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
+        delta = e.direction > 0 ? k : 1 / k;
+    if (disabled()) return;
+    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
   function swapElements(arr, i, j) {
@@ -85,41 +107,6 @@ function MapNav(gui, ext, mouse) {
       page_bbox: pageBox
     };
   }
-
-  mouse.on('drag', function(e) {
-    if (disabled()) return;
-    if (zoomDrag) {
-      zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
-    } else if (boxDrag) {
-      gui.dispatchEvent('box_drag', getBoxData(e));
-    } else {
-      ext.pan(e.dx, e.dy);
-    }
-  });
-
-  mouse.on('dragend', function(e) {
-    var bbox;
-    if (disabled()) return;
-    if (boxDrag) {
-      boxDrag = false;
-      gui.dispatchEvent('box_drag_end', getBoxData(e));
-    } else if (zoomDrag) {
-      zoomDrag = false;
-      bbox = getBoxData(e).map_bbox;
-      zoomBox.hide();
-      if (bbox[3] - bbox[1] > 5 && bbox[2] - bbox[0] > 5) {
-        zoomToBbox(bbox);
-      }
-    }
-  });
-
-  wheel.on('mousewheel', function(e) {
-    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
-    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
-        delta = e.direction > 0 ? k : 1 / k;
-    if (disabled()) return;
-    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
-  });
 
   function disabled() {
     return !!gui.options.disableNavigation;
