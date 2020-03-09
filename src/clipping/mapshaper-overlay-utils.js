@@ -4,13 +4,14 @@
 // DOES NOT insert clipping points
 internal.mergeLayersForOverlay = function(targetLayers, targetDataset, clipSrc, opts) {
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
+  var bbox = opts.bbox || opts.bbox2;
   var mergedDataset, clipDataset, clipLyr;
   if (clipSrc && clipSrc.geometry_type) {
     // TODO: update tests to remove this case (clipSrc is a layer)
     clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
   }
-  if (opts.bbox) {
-    clipDataset = internal.convertClipBounds(opts.bbox);
+  if (bbox) {
+    clipDataset = internal.convertClipBounds(bbox);
     clipLyr = clipDataset.layers[0];
   } else if (clipSrc) {
     clipLyr = clipSrc.layer;

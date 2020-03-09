@@ -3,6 +3,26 @@ var api = require('../'),
 
 describe('-clip bbox2=<bbox>', function () {
 
+  it('Point layer', function(done) {
+    var input = {
+      type: 'MultiPoint',
+      coordinates: [[-1, -2], [3, 3]]
+    };
+    var cmd = '-i points.json -clip bbox2=0,0,5,5 -o';
+    var expected = {
+      type: 'GeometryCollection',
+      geometries: [{
+        type: 'Point',
+        coordinates: [3,3]
+      }]
+    };
+    api.applyCommands(cmd, {'points.json': input}, function(err, out) {
+      var json = JSON.parse(out['points.json']);
+      assert.deepEqual(json, expected);
+      done();
+    })
+  })
+
   it ('Cross-shaped figure (test 1)', function(done) {
 
     var input = {

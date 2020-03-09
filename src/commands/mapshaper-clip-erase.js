@@ -41,7 +41,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
   var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
   var mergedDataset, clipLyr, nodes;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
-  if (opts.bbox2) {
+  if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
     return internal.clipLayersByBBox(targetLayers, targetDataset, opts);
   }
   mergedDataset = internal.mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
