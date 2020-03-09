@@ -1,3 +1,8 @@
+
+v0.4.160
+* Adjusted the pointer interaction interface.
+* Now, the -filter-fields command sets the field order of exported CSV.
+
 v0.4.159
 * Changed GUI icon and user interaction for switching interaction modes.
 * Added feature-selection interaction mode to the Web UI, for selecting features with the mouse.
