@@ -1,7 +1,9 @@
-
-v0.4.160
+v0.4.161
 * Adjusted the pointer interaction interface.
 * Now, the -filter-fields command sets the field order of exported CSV.
+
+v0.4.160
+* Bug fixes
 
 v0.4.159
 * Changed GUI icon and user interaction for switching interaction modes.
