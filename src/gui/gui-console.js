@@ -28,15 +28,11 @@ function Console(gui) {
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
-  GUI.onClick(content, function(e) {
-    if (GUI.getInputElement() || El(e.target).hasClass('command-line')) {
-      // prevent click-to-focus when typing or clicking on content
-      e.stopPropagation();
-    }
-  });
-
   GUI.onClick(el, function(e) {
-    input.node().focus(); // focus if user clicks blank part of console
+    var targ = El(e.target);
+    if (targ.hasClass('console-window') || targ.hasClass('command-line')) {
+      input.node().focus(); // focus if user clicks blank part of console
+    }
   });
 
   function toggle() {
