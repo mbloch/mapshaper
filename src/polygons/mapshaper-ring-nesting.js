@@ -38,36 +38,36 @@ internal.rewindPolygons = function(lyr, arcs) {
   });
 };
 
-// Convert CCW rings that are not contained into CW rings
+// Update winding order of rings in a polygon so that outermost rings are
+// CW and nested rings alternate between CCW and CW.
 internal.rewindPolygon = function(rings, arcs) {
   var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
-  // convert rings to shapes for PathIndex
-  // var shapes = rings.map(function(ids) {return [ids];});
-  // var index = new PathIndex(shapes, arcs);
 
-  // sort large to small
+  // Sort rings by area, from large to small
   ringData.sort(function(a, b) {
     return Math.abs(b.area) - Math.abs(a.area);
   });
-  ringData.forEach(fixRing);
-  return ringData.map(function(data) { return data.ids; });
-
-  // TODO: consider other kinds of nesting errors
-  function fixRing(ring, i) {
+  // If a ring is contained by one or more rings, set it to the opposite
+  //   direction as its immediate parent
+  // If a ring is not contained, make it CW.
+  ringData.forEach(function(ring, i) {
     var shouldBeCW = true;
-    var largerRing;
     var j = i;
+    var largerRing;
     while (--j >= 0) {
       largerRing = ringData[j];
       if (internal.testRingInRing(ring, largerRing, arcs)) {
-        shouldBeCW = largerRing.area > 0 ? false : true; // opposite of containing ring
+        // set to opposite of containing ring
+        shouldBeCW = largerRing.area > 0 ? false : true;
         break;
       }
     }
     internal.setRingWinding(ring, shouldBeCW);
-  }
+  });
+  return ringData.map(function(data) { return data.ids; });
 };
 
+// data: a ring data object
 internal.setRingWinding = function(data, cw) {
   var isCW = data.area > 0;
   if (isCW != cw) {
@@ -76,18 +76,9 @@ internal.setRingWinding = function(data, cw) {
   }
 };
 
-internal.getNestingTestPoint = function(ring, arcs) {
-  var arcId = ring[0],
-      p0 = arcs.getVertex(arcId, 0),
-      p1 = arcs.getVertex(arcId, 1);
-  // return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
-  return [p0.x, p0.y];
-};
-
-
 // a, b: two ring data objects (from getPathMetadata);
 internal.testRingInRing = function(a, b, arcs) {
   if (b.bounds.contains(a.bounds) === false) return false;
-  var p = internal.getNestingTestPoint(a.ids, arcs);
-  return geom.testPointInRing(p[0], p[1], b.ids, arcs) == 1;
+  var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
+  return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
 };
