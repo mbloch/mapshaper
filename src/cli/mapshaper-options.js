@@ -479,6 +479,10 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
+    .option('multipart', {
+      type: 'flag',
+      describe: 'make multipart features instead of dissolving'
+    })
     .option('group-points', {
       type: 'flag',
       describe: '[points] group points instead of converting to centroids'
@@ -906,6 +910,10 @@ internal.getOptionParser = function() {
     .option('gap-tolerance', {
       describe: 'specify gap tolerance in source units',
       type: 'distance'
+    })
+    .option('from-rings', {
+      describe: 'do simple conversion from a layer of closed paths',
+      type: 'flag'
     })
     .option('target', targetOpt);
 

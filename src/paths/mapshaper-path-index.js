@@ -219,3 +219,4 @@ function PathIndex(shapes, arcs) {
     return xor;
   }
 }
+

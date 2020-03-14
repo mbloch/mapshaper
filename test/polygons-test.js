@@ -4,6 +4,44 @@ var api = require('../'),
 
 describe('mapshaper-polygons.js', function () {
 
+  describe('-polygons from-rings option', function () {
+    it('creates a donut from two CW lines', function (done) {
+      // two CW rings
+      var input = {
+        type: 'MultiLineString',
+        coordinates: [[[1,1], [1,2], [2,2], [2, 1], [1,1]], [[0,0], [0,3], [3,3], [3, 0], [0,0]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0,0], [0,3], [3,3], [3, 0], [0,0]],[[1,1], [2,1], [2,2], [1,2], [1,1]]]
+      };
+      api.applyCommands('-i input.json -polygons from-rings -o output.json',
+          {'input.json': input}, function(err, out) {
+            var output = JSON.parse(out['output.json']).geometries[0];
+            assert.deepEqual(output, expect);
+            done();
+          });
+    })
+
+    it('creates a donut from two CCW lines', function(done) {
+     // two CCW rings
+      var input = {
+        type: 'MultiLineString',
+        coordinates: [[[1,1], [2,1], [2,2], [1,2], [1,1]], [[0,0], [3, 0], [3,3], [0, 3], [0,0]]]
+      };
+      var expect = {
+        type: 'Polygon',
+        coordinates: [[[0,0], [0,3], [3,3], [3, 0], [0,0]],[[1,1], [2,1], [2,2], [1,2], [1,1]]]
+      };
+      api.applyCommands('-i input.json -polygons from-rings -o output.json',
+          {'input.json': input}, function(err, out) {
+            var output = JSON.parse(out['output.json']).geometries[0];
+            assert.deepEqual(output, expect);
+            done();
+          });
+    });
+  })
+
   describe('Tests based on real data', function () {
     it('polygons/ex1.shp -- 6 polygons are generated', function (done) {
       // From issue #354 -- before, one polygon was not detected

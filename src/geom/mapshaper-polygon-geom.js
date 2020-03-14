@@ -68,7 +68,6 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 };
 
-
 // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
 // Return 0: outside; 1: inside; -1: on boundary
 //
