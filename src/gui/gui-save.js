@@ -38,18 +38,13 @@ function saveZipFile(zipfileName, files, done) {
   }
 }
 
-function saveFilesToServer(exports, opts, done) {
-  var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
-  var data = utils.pluck(exports, 'content');
+function saveFilesToServer(paths, data, done) {
   var i = -1;
   next();
   function next(err) {
     i++;
     if (err) return done(err);
-    if (i >= exports.length) {
-      gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
-      return done();
-    }
+    if (i >= data.length) return done();
     saveBlobToServer(paths[i], new Blob([data[i]]), next);
   }
 }
