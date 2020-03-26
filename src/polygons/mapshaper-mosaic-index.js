@@ -1,8 +1,10 @@
 /* @requires
 mapshaper-polygon-mosaic
-mapshaper-index-index
+mapshaper-id-test-index
+mapshaper-id-lookup-index
 mapshaper-polygon-tiler
 mapshaper-tile-shape-index
+mapshaper-id-lookup-index
 */
 
 function MosaicIndex(lyr, nodes, optsArg) {
@@ -14,7 +16,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
-  var fetchedTileIndex = new IndexIndex(mosaic.length);
+  var fetchedTileIndex = new IdTestIndex(mosaic.length);
   // bidirection index of tile ids <=> shape ids
   var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
@@ -122,17 +124,13 @@ function MosaicIndex(lyr, nodes, optsArg) {
   }
 }
 
-
 // Map arc ids to shape ids, assuming perfect topology
 // (an arcId maps to at most one shape)
 // Supports looking up a shape id using an arc id.
 function ShapeArcIndex(shapes, arcs) {
   var n = arcs.size();
-  var fwdArcIndex = new Int32Array(n);
-  var revArcIndex = new Int32Array(n);
+  var index = new IdLookupIndex(n);
   var shapeId;
-  utils.initializeArray(fwdArcIndex, -1);
-  utils.initializeArray(revArcIndex, -1);
   shapes.forEach(onShape);
 
   function onShape(shp, i) {
@@ -143,18 +141,12 @@ function ShapeArcIndex(shapes, arcs) {
     var arcId;
     for (var i=0, n=path.length; i<n; i++) {
       arcId = path[i];
-      if (arcId < 0) {
-        revArcIndex[~arcId] = shapeId;
-      } else {
-        fwdArcIndex[arcId] = shapeId;
-      }
+      index.setId(arcId, shapeId);
     }
   }
 
   // returns -1 if shape has not been indexed
   this.getShapeIdByArcId = function(arcId) {
-    var idx = absArcId(arcId);
-    if (idx >= n) return -1; // TODO: throw error (out-of-range id)
-    return arcId < 0 ? revArcIndex[idx] : fwdArcIndex[idx];
+    return index.getId(arcId);
   };
 }

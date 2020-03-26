@@ -1,5 +1,8 @@
-/* @requires mapshaper-geom, mapshaper-path-geom  */
-
+/* @requires
+mapshaper-geom
+mapshaper-path-geom
+mapshaper-polygon-neighbors
+*/
 
 // A compactness measure designed for testing electoral districts for gerrymandering.
 // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon

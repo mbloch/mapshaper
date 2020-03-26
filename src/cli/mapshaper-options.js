@@ -635,7 +635,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('filter-islands2')
-    .describe('remove small detached polygon rings (islands)')
+    // .describe('remove small detached polygon rings (islands)')
     .option('min-area', {
       type: 'area',
       describe: 'remove small-area islands (e.g. 10km2)'
@@ -653,7 +653,6 @@ internal.getOptionParser = function() {
       describe: 'delete features with null geometry'
     })
     .option('target', targetOpt);
-
 
   parser.command('filter-islands')
     .describe('remove small detached polygon rings (islands)')

@@ -30,22 +30,38 @@ api.filterIslands2 = function(lyr, dataset, optsArg) {
 };
 
 internal.buildIslandIndex = function(lyr, arcs, ringTest) {
+  // index of all islands
+  // (all rings are considered to belong to an island)
   var islandIndex = [];
-  var firstArcIndex = [];
+  // this index maps id of first arc in each ring to
+  // an island in islandIndex
+  var firstArcIndex = new ArcToIdIndex(arcs);
   var shpId;
   var parts;
 
   lyr.shapes.forEach(function(shp, i) {
-    shpId = i;
     if (!shp) return;
-
-    parts = shp;
-    internal.forEachShapePart(parts, onPart);
+    shpId = i;
+    internal.forEachShapePart(parts, eachRing);
 
   });
 
-  function onPart(part, partId, shp) {
-    // var area =
+  function eachRing(ring, ringId, shp) {
+    var area = geom.getPathArea(ring, arcs);
+    var firstArcId = part[0];
+    if (area <= 0) return; // skip holes (really?)
+    var islandId = firstArcIndex.getId(firstArcId);
+    var islandData;
+    if (islandId == -1) {
+      islandData = {
+        area: 0
+      };
+      islandId = islandIndex.length;
+      islandIndex.push(islandData);
+    } else {
+      islandData = islandIndex[islandId];
+    }
+    islandData.area += area;
 
   }
 
@@ -75,7 +91,7 @@ internal.filterIslands2 = function(lyr, arcs, ringTest) {
   return removed;
 };
 
-function ArcToIndexIndex(arcs) {
+function ArcToIdIndex(arcs) {
   var n = arcs.size();
   var fwdArcIndex = new Int32Array(n);
   var revArcIndex = new Int32Array(n);

@@ -20,6 +20,8 @@ api.simplify = function(dataset, opts) {
     arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
   } else if (opts.resolution) {
     arcs.setRetainedInterval(internal.convertSimplifyResolution(opts.resolution, arcs, opts));
+  } else if (opts.presimplify) {
+    return;
   } else {
     stop("Missing a simplification amount");
   }

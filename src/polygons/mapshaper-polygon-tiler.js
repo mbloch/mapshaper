@@ -1,19 +1,19 @@
-/* @requires mapshaper-index-index */
+/* @requires mapshaper-id-test-index */
 
 // Associate mosaic tiles with shapes (i.e. identify the groups of tiles that
 //   belong to each shape)
 //
 function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   var arcs = nodes.arcs;
-  var visitedTileIndex = new IndexIndex(mosaic.length);
+  var visitedTileIndex = new IdTestIndex(mosaic.length);
   var divide = internal.getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
   var currShapeId;
   var currRingBbox;
   var tilesInShape; // accumulator for tile ids of tiles in current shape
-  var ringIndex = new IndexIndex(arcs.size());
-  var holeIndex = new IndexIndex(arcs.size());
+  var ringIndex = new IdTestIndex(arcs.size());
+  var holeIndex = new IdTestIndex(arcs.size());
 
   // return ids of tiles in shape
   this.getTilesInShape = function(shp, shapeId) {
