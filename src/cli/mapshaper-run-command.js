@@ -351,7 +351,7 @@ api.runCommand = function(cmd, catalog, cb) {
       applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.expression, opts);
 
     } else if (name == 'split-on-grid') {
       outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);

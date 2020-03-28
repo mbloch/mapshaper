@@ -1106,8 +1106,12 @@ internal.getOptionParser = function() {
   parser.command('split')
     .describe('split a layer into single-feature or multi-feature layers')
     .option('field', {
+      // former name
+      alias_to: 'expression'
+    })
+    .option('expression', {
       DEFAULT: true,
-      describe: 'attribute field for grouping same-value features'
+      describe: 'expression or field for grouping features and naming split layers'
     })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

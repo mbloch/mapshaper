@@ -1,12 +1,101 @@
 
 // utility functions for layers
 
+internal.layerHasGeometry = function(lyr) {
+  return internal.layerHasPaths(lyr) || internal.layerHasPoints(lyr);
+};
+
+internal.layerHasPaths = function(lyr) {
+  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+    internal.layerHasNonNullShapes(lyr);
+};
+
+internal.layerHasPoints = function(lyr) {
+  return lyr.geometry_type == 'point' && internal.layerHasNonNullShapes(lyr);
+};
+
+internal.layerHasNonNullShapes = function(lyr) {
+  return utils.some(lyr.shapes || [], function(shp) {
+    return !!shp;
+  });
+};
+
+internal.getFeatureCount = function(lyr) {
+  var count = 0;
+  if (lyr.data) {
+    count = lyr.data.size();
+  } else if (lyr.shapes) {
+    count = lyr.shapes.length;
+  }
+  return count;
+};
+
+internal.layerIsEmpty = function(lyr) {
+  return internal.getFeatureCount(lyr) == 0;
+};
+
+internal.requireDataField = function(obj, field, msg) {
+  var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
+  if (!field) stop('Missing a field parameter');
+  if (!data || !data.fieldExists(field)) {
+    stop(msg || 'Missing a field named:', field);
+  }
+};
+
+internal.requireDataFields = function(table, fields) {
+  if (!fields || !fields.length) return;
+  if (!table) {
+    stop("Missing attribute data");
+  }
+  var dataFields = table.getFields(),
+      missingFields = utils.difference(fields, dataFields);
+  if (missingFields.length > 0) {
+    stop("Table is missing one or more fields:\n",
+        missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
+  }
+};
+
+internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
+  var msg;
+  if (customMsg && utils.isString(customMsg)) {
+    msg = customMsg;
+  } else {
+    msg = defaultMsg + ', ';
+    if (!lyr || !lyr.geometry_type) {
+      msg += 'received a layer with no geometry';
+    } else {
+      msg += 'received a ' + lyr.geometry_type + ' layer';
+    }
+  }
+  return msg;
+};
+
+internal.requirePointLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'point')
+    stop(internal.layerTypeMessage(lyr, "Expected a point layer", msg));
+};
+
+internal.requirePolylineLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polyline')
+    stop(internal.layerTypeMessage(lyr, "Expected a polyline layer", msg));
+};
+
+internal.requirePolygonLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polygon')
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon layer", msg));
+};
+
+internal.requirePathLayer = function(lyr, msg) {
+  if (!lyr || !internal.layerHasPaths(lyr))
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
+};
+
+
 // Used by info command and gui layer menu
 internal.getLayerSourceFile = function(lyr, dataset) {
   var inputs = dataset.info && dataset.info.input_files;
   return inputs && inputs[0] || '';
 };
-
 
 // Divide a collection of features with mixed types into layers of a single type
 // (Used for importing TopoJSON and GeoJSON features)
@@ -82,16 +171,6 @@ internal.countMultiPartFeatures = function(shapes) {
   var count = 0;
   for (var i=0, n=shapes.length; i<n; i++) {
     if (shapes[i] && shapes[i].length > 1) count++;
-  }
-  return count;
-};
-
-internal.getFeatureCount = function(lyr) {
-  var count = 0;
-  if (lyr.data) {
-    count = lyr.data.size();
-  } else if (lyr.shapes) {
-    count = lyr.shapes.length;
   }
   return count;
 };

@@ -15,7 +15,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   if (!opts.arcs) { // arcs option only removes unused arcs
     nodes = internal.addIntersectionCuts(dataset, opts);
     layers.forEach(function(lyr) {
-      if (!lyr.geometry_type) return; // ignore data-only layers
+      if (!internal.layerHasGeometry(lyr)) return;
       if (lyr.geometry_type == 'polygon') {
         internal.cleanPolygonLayerGeometry(lyr, dataset, opts);
       } else if (lyr.geometry_type == 'polyline') {
