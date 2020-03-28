@@ -14,7 +14,7 @@ internal.exportJSON = function(dataset, opts) {
   return dataset.layers.reduce(function(arr, lyr) {
     if (lyr.data){
       arr.push({
-        content: internal.exportJSONTable(lyr),
+        content: internal.exportJSONTable(lyr, opts),
         filename: (lyr.name || 'output') + '.json'
       });
     }
@@ -22,6 +22,7 @@ internal.exportJSON = function(dataset, opts) {
   }, []);
 };
 
-internal.exportJSONTable = function(lyr) {
-  return JSON.stringify(lyr.data.getRecords());
+internal.exportJSONTable = function(lyr, opts) {
+  var stringify = opts && opts.prettify ? internal.getFormattedStringify([]) : JSON.stringify;
+  return stringify(lyr.data.getRecords());
 };

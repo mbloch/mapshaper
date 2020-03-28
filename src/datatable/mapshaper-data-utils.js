@@ -1,6 +1,7 @@
 /* @requires mapshaper-common */
 
 
+
 internal.getLayerDataTable = function(lyr) {
   var data = lyr.data;
   if (!data) {

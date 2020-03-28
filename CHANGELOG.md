@@ -1,3 +1,8 @@
+v0.4.162
+* Added -dissolve multipart option, for grouping parts without modifying geometry.
+* Added -polygons from-rings option, for creating polygons when the original layer contains polyline rings.
+* -filter-fields now sets the order of fields in CSV output.
+
 v0.4.161
 * Adjusted the pointer interaction interface.
 * Now, the -filter-fields command sets the field order of exported CSV.

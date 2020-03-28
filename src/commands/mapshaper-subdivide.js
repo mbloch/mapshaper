@@ -12,7 +12,7 @@ api.subdivideLayer = function(lyr, arcs, exp) {
 internal.subdivide = function(lyr, arcs, exp) {
   var divide = internal.evalCalcExpression(lyr, arcs, exp),
       subdividedLayers = [],
-      tmp, bounds, lyr1, lyr2;
+      tmp, bounds, lyr1, lyr2, layerName;
 
   if (!utils.isBoolean(divide)) {
     stop("Expression must evaluate to true or false");
@@ -36,9 +36,9 @@ internal.subdivide = function(lyr, arcs, exp) {
   } else {
     subdividedLayers.push(lyr);
   }
-
+  layerName = internal.getSplitNameFunction(lyr);
   subdividedLayers.forEach(function(lyr2, i) {
-    lyr2.name = internal.getSplitLayerName(lyr.name || 'split', i + 1);
+    lyr2.name = layerName(i);
     utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;

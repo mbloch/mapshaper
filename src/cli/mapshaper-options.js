@@ -479,6 +479,10 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
+    .option('multipart', {
+      type: 'flag',
+      describe: 'make multipart features instead of dissolving'
+    })
     .option('group-points', {
       type: 'flag',
       describe: '[points] group points instead of converting to centroids'
@@ -627,6 +631,26 @@ internal.getOptionParser = function() {
     .option('bbox', {
       type: 'bbox',
       describe: 'remove non-intersecting geometry (xmin,ymin,xmax,ymax)'
+    })
+    .option('target', targetOpt);
+
+  parser.command('filter-islands2')
+    // .describe('remove small detached polygon rings (islands)')
+    .option('min-area', {
+      type: 'area',
+      describe: 'remove small-area islands (e.g. 10km2)'
+    })
+    .option('min-vertices', {
+      type: 'integer',
+      describe: 'remove low-vertex-count islands'
+    })
+    .option('keep-shapes', {
+      type: 'flag',
+      describe: 'only filter smaller parts of multipart polygons',
+    })
+    .option('remove-empty', {
+      type: 'flag',
+      describe: 'delete features with null geometry'
     })
     .option('target', targetOpt);
 
@@ -886,6 +910,10 @@ internal.getOptionParser = function() {
       describe: 'specify gap tolerance in source units',
       type: 'distance'
     })
+    .option('from-rings', {
+      describe: 'do simple conversion from a layer of closed paths',
+      type: 'flag'
+    })
     .option('target', targetOpt);
 
   parser.command('proj')
@@ -1078,8 +1106,12 @@ internal.getOptionParser = function() {
   parser.command('split')
     .describe('split a layer into single-feature or multi-feature layers')
     .option('field', {
+      // former name
+      alias_to: 'expression'
+    })
+    .option('expression', {
       DEFAULT: true,
-      describe: 'attribute field for grouping same-value features'
+      describe: 'expression or field for grouping features and naming split layers'
     })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

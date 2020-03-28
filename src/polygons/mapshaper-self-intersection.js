@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-index-index */
+/* @requires mapshaper-common, mapshaper-id-test-index */
 
 // Returns a function for splitting self-intersecting polygon rings
 // The splitter function receives a single polygon ring represented as an array
@@ -12,7 +12,7 @@
 // split into two rings that touch each other where the original ring crossed itself.
 //
 internal.getSelfIntersectionSplitter = function(nodes) {
-  var pathIndex = new IndexIndex(nodes.arcs.size());
+  var pathIndex = new IdTestIndex(nodes.arcs.size());
   var filter = function(arcId) {
     return pathIndex.hasId(~arcId);
   };

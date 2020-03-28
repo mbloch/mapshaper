@@ -27,13 +27,13 @@ describe('mapshaper-split.js', function () {
       assert.equal(layers.length, 3)
       assert.deepEqual(layers[0].data.getRecords(), [{foo: 'spruce'}]);
       assert.deepEqual(layers[0].shapes, [[[0]]]);
-      assert.equal(layers[0].name, 'trees-spruce')
+      assert.equal(layers[0].name, 'spruce')
       assert.deepEqual(layers[1].data.getRecords(), [{foo: "fir"}, {foo: "fir"}]);
       assert.deepEqual(layers[1].shapes, [[[1], [2]], [[3]]]);
-      assert.equal(layers[1].name, 'trees-fir')
+      assert.equal(layers[1].name, 'fir')
       assert.deepEqual(layers[2].data.getRecords(), [{foo: 'apple'}]);
       assert.deepEqual(layers[2].shapes, [null]);
-      assert.equal(layers[2].name, 'trees-apple')
+      assert.equal(layers[2].name, 'apple')
     })
 
     it('Fix: numerical values are converted to string names', function () {
@@ -45,9 +45,38 @@ describe('mapshaper-split.js', function () {
       };
       var layers = api.splitLayer(lyr, 'foo');
       assert.equal(layers.length, 3)
-      assert.equal(layers[0].name, 'bar-0');
-      assert.equal(layers[1].name, 'bar--1')
-      assert.equal(layers[2].name, 'bar-1')
+      assert.strictEqual(layers[0].name, '0');
+      assert.strictEqual(layers[1].name, '-1')
+      assert.strictEqual(layers[2].name, '1')
+    })
+
+    it('Splitting with an expression also sets layer name', function () {
+      var records = [{foo: 0}, {foo: -1}, {foo: 1}, {foo: 1}];
+      var lyr = {
+        name: 'bar',
+        data: new api.internal.DataTable(records),
+        shapes: [[[0, -2]], [[1], [2, 4]], null, [[3, 4]]]
+      };
+      var layers = api.splitLayer(lyr, '"layer_" + foo');
+      assert.equal(layers.length, 3)
+      assert.strictEqual(layers[0].name, 'layer_0');
+      assert.strictEqual(layers[1].name, 'layer_-1')
+      assert.strictEqual(layers[2].name, 'layer_1')
+    })
+
+    it('Non-string values are coerced to strings', function () {
+      var records = [{foo: 0}, {foo: null}, {foo: undefined}
+        , {foo: false}, {foo: true}];
+      var lyr = {
+        name: 'bar',
+        data: new api.internal.DataTable(records)
+      };
+      var layers = api.splitLayer(lyr, 'foo');
+      assert.strictEqual(layers[0].name, '0');
+      assert.strictEqual(layers[1].name, 'null')
+      assert.strictEqual(layers[2].name, 'undefined')
+      assert.strictEqual(layers[3].name, 'false')
+      assert.strictEqual(layers[4].name, 'true')
     })
 
     it('Issue #123 if layer is unnamed and a field is given, do not add a prefix to output layers', function () {

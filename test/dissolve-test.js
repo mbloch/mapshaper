@@ -7,6 +7,34 @@ var assert = require('assert'),
 describe('mapshaper-dissolve.js', function () {
 
   describe('-dissolve command', function () {
+    it('multipart option with polylines', function(done) {
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[0, 0], [1, 1]]
+        }, {
+          type: 'LineString',
+          coordinates: [[1, 1], [2, 2]]
+        }, {
+          type: 'LineString',
+          coordinates: [[2, 2], [3, 3]]
+        }]
+      };
+      var expect = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'MultiLineString',
+          coordinates: [[[0, 0], [1, 1]], [[1, 1], [2, 2]], [[2, 2], [3, 3]]]
+        }]
+      };
+      api.applyCommands('-i lines.json -dissolve multipart -o', {'lines.json': input}, function(err, out) {
+          var output = JSON.parse(out['lines.json']);
+          assert.deepEqual(output, expect);
+          done();
+        });
+
+    });
 
     it('dissolve CSV on three fields', function(done) {
       var str = 'id1,id2,id3\na,1,x\na,1,x\na,2,x\nb,1,x\nb,2,x\nb,2,x\nc,2,x\na,1,y\na,1,y';

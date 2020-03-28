@@ -48,8 +48,11 @@ internal.getNeighborLookupFunction = function(lyr, arcs) {
   };
 };
 
-// Returns a lookup table mapping shape ids to arrays of ids of adjacent shapes
-internal.findNeighbors = function(shapes, arcs) {
+
+// Returns an array containing all pairs of adjacent shapes
+// in a collection of polygon shapes. A pair of shapes is represented as
+// an array of two shape indexes [a, b].
+internal.findPairsOfNeighbors = function(shapes, arcs) {
   var getKey = function(a, b) {
     return b > -1 && a > -1 ? [a, b] : null;
   };

@@ -21,6 +21,7 @@ mapshaper-filter
 mapshaper-filter-geom
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
+mapshaper-filter-islands2
 mapshaper-filter-slivers
 mapshaper-frame
 mapshaper-fuzzy-join
@@ -201,6 +202,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'filter-islands') {
       applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
 
+    } else if (name == 'filter-islands2') {
+      applyCommandToEachLayer(api.filterIslands2, targetLayers, targetDataset, opts);
+
     } else if (name == 'filter-slivers') {
       applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
 
@@ -347,7 +351,7 @@ api.runCommand = function(cmd, catalog, cb) {
       applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.expression, opts);
 
     } else if (name == 'split-on-grid') {
       outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);

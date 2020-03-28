@@ -1,5 +1,8 @@
-/* @requires mapshaper-geom, mapshaper-path-geom  */
-
+/* @requires
+mapshaper-geom
+mapshaper-path-geom
+mapshaper-polygon-neighbors
+*/
 
 // A compactness measure designed for testing electoral districts for gerrymandering.
 // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
@@ -67,7 +70,6 @@ geom.getYIntercept = function(x, ax, ay, bx, by) {
 geom.getXIntercept = function(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 };
-
 
 // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
 // Return 0: outside; 1: inside; -1: on boundary

@@ -1,6 +1,6 @@
-// Keep track of whether integer ids (indexes) are 'used' or not.
-// Accepts positive and negative ids.
-function IndexIndex(n) {
+// Keep track of whether positive or negative integer ids are 'used' or not.
+
+function IdTestIndex(n) {
   var index = new Uint8Array(n);
 
   this.setId = function(id) {

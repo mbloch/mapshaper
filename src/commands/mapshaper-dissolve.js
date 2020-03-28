@@ -16,7 +16,9 @@ api.dissolve = function(lyr, arcs, opts) {
   opts = utils.extend({}, opts);
   if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
   getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
-  if (lyr.geometry_type == 'polygon') {
+  if (opts.multipart || opts.group_points) {
+    dissolveShapes = internal.makeMultipartShapes(lyr, getGroupId);
+  } else if (lyr.geometry_type == 'polygon') {
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   } else if (lyr.geometry_type == 'polyline') {
     dissolveShapes = internal.dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
@@ -24,6 +26,21 @@ api.dissolve = function(lyr, arcs, opts) {
     dissolveShapes = internal.dissolvePointGeometry(lyr, getGroupId, opts);
   }
   return internal.composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
+};
+
+internal.makeMultipartShapes = function(lyr, getGroupId) {
+  var shapes = internal.cloneShapes(lyr.shapes);
+  var shapes2 = [];
+  lyr.shapes.forEach(function(shp, i) {
+    var groupId = getGroupId(i);
+    if (!shp) return;
+    if (!shapes2[groupId]) {
+      shapes2[groupId] = shp;
+    } else {
+      shapes2[groupId].push.apply(shapes2[groupId], shp);
+    }
+  });
+  return shapes2;
 };
 
 // @lyr: original undissolved layer

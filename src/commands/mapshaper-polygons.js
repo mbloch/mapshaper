@@ -10,8 +10,30 @@ api.polygons = function(layers, dataset, opts) {
   internal.addIntersectionCuts(dataset, opts);
   return layers.map(function(lyr) {
     if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+    if (opts.from_rings) {
+      return internal.createPolygonLayerFromRings(lyr, dataset);
+    }
     return internal.createPolygonLayer(lyr, dataset, opts);
   });
+};
+
+// Convert a polyline layer of rings to a polygon layer
+internal.createPolygonLayerFromRings = function(lyr, dataset) {
+  var arcs = dataset.arcs;
+  var openCount = 0;
+  internal.editShapes(lyr.shapes, function(part) {
+    if (geom.pathIsClosed(part, arcs)) {
+      return part;
+    }
+    openCount++;
+    return null;
+  });
+  if (openCount > 0) {
+    message('Removed', openCount, 'open ' + (openCount == 1 ? 'ring' : 'rings'));
+  }
+  lyr.geometry_type = 'polygon';
+  internal.rewindPolygons(lyr, arcs);
+  return lyr;
 };
 
 internal.createPolygonLayer = function(lyr, dataset, opts) {

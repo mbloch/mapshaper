@@ -27,11 +27,14 @@ function MessageProxy(gui) {
 function WriteFilesProxy(gui) {
   // replaces function from mapshaper.js
   internal.writeFiles = function(files, opts, done) {
+
     var filename;
     if (!utils.isArray(files) || files.length === 0) {
       done("Nothing to export");
     } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-      saveFilesToServer(files, opts, function(err) {
+      var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
+      var data = utils.pluck(files, 'content');
+      saveFilesToServer(paths, data, function(err) {
         var msg;
         if (err) {
           msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
@@ -40,6 +43,9 @@ function WriteFilesProxy(gui) {
           // fall back to standard method if saving to server fails
           internal.writeFiles(files, {save_to_download_folder: true}, done);
         } else {
+          if (files.length >= 1) {
+            gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+          }
           done();
         }
       });

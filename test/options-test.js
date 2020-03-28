@@ -193,7 +193,7 @@ describe('mapshaper-options.js', function () {
 
   describe('split', function () {
     good("-split", {});
-    good("-split STATE", {field: 'STATE'});
+    good("-split STATE", {expression: 'STATE'});
     bad("-split STATE COUNTY");
   })
 

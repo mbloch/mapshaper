@@ -1,5 +1,14 @@
 /* @requires mapshaper-geom */
 
+geom.pathIsClosed = function(ids, arcs) {
+  var firstArc = ids[0];
+  var lastArc = ids[ids.length - 1];
+  var p1 = arcs.getVertex(firstArc, 0);
+  var p2 = arcs.getVertex(lastArc, -1);
+  var closed = p1.x === p2.x && p1.y === p2.y;
+  return closed;
+};
+
 geom.getPointToPathDistance = function(px, py, ids, arcs) {
   return geom.getPointToPathInfo(px, py, ids, arcs).distance;
 };
