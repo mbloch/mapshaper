@@ -46,7 +46,7 @@
 		"sync-request": "5.0.0"
 	},
 	"devDependencies": {
-		"browserify": "^16.2.3",
+		"browserify": "^16.5.0",
 		"catty": "0.1.0",
 		"csv-spectrum": "^1.0.0",
 		"deep-eql": ">=0.1.3",
