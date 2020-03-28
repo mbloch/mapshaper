@@ -1180,11 +1180,14 @@ function MessageProxy(gui) {
 function WriteFilesProxy(gui) {
   // replaces function from mapshaper.js
   internal.writeFiles = function(files, opts, done) {
+
     var filename;
     if (!utils.isArray(files) || files.length === 0) {
       done("Nothing to export");
     } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-      saveFilesToServer(files, opts, function(err) {
+      var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
+      var data = utils.pluck(files, 'content');
+      saveFilesToServer(paths, data, function(err) {
         var msg;
         if (err) {
           msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
@@ -1193,6 +1196,9 @@ function WriteFilesProxy(gui) {
           // fall back to standard method if saving to server fails
           internal.writeFiles(files, {save_to_download_folder: true}, done);
         } else {
+          if (files.length >= 1) {
+            gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+          }
           done();
         }
       });
@@ -6757,18 +6763,13 @@ function saveZipFile(zipfileName, files, done) {
   }
 }
 
-function saveFilesToServer(exports, opts, done) {
-  var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
-  var data = utils.pluck(exports, 'content');
+function saveFilesToServer(paths, data, done) {
   var i = -1;
   next();
   function next(err) {
     i++;
     if (err) return done(err);
-    if (i >= exports.length) {
-      gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
-      return done();
-    }
+    if (i >= data.length) return done();
     saveBlobToServer(paths[i], new Blob([data[i]]), next);
   }
 }
@@ -7464,15 +7465,11 @@ function Console(gui) {
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
 
-  GUI.onClick(content, function(e) {
-    if (GUI.getInputElement() || El(e.target).hasClass('command-line')) {
-      // prevent click-to-focus when typing or clicking on content
-      e.stopPropagation();
-    }
-  });
-
   GUI.onClick(el, function(e) {
-    input.node().focus(); // focus if user clicks blank part of console
+    var targ = El(e.target);
+    if (targ.hasClass('console-window') || targ.hasClass('command-line')) {
+      input.node().focus(); // focus if user clicks blank part of console
+    }
   });
 
   function toggle() {

@@ -1,5 +1,5 @@
 (function(){
-VERSION = '0.4.161';
+VERSION = '0.4.162';
 
 var error = function() {
   var msg = utils.toArray(arguments).join(' ');
@@ -1690,81 +1690,6 @@ internal.clampToWorldBounds = function(b) {
   var bbox = (b instanceof Bounds) ? b.toArray() : b;
   return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
       Math.min(bbox[2], 180), Math.min(bbox[3], 90));
-};
-
-internal.layerHasGeometry = function(lyr) {
-  return internal.layerHasPaths(lyr) || internal.layerHasPoints(lyr);
-};
-
-internal.layerHasPaths = function(lyr) {
-  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
-    internal.layerHasNonNullShapes(lyr);
-};
-
-internal.layerHasPoints = function(lyr) {
-  return lyr.geometry_type == 'point' && internal.layerHasNonNullShapes(lyr);
-};
-
-internal.layerHasNonNullShapes = function(lyr) {
-  return utils.some(lyr.shapes || [], function(shp) {
-    return !!shp;
-  });
-};
-
-internal.requireDataField = function(obj, field, msg) {
-  var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
-  if (!field) stop('Missing a field parameter');
-  if (!data || !data.fieldExists(field)) {
-    stop(msg || 'Missing a field named:', field);
-  }
-};
-
-internal.requireDataFields = function(table, fields) {
-  if (!fields || !fields.length) return;
-  if (!table) {
-    stop("Missing attribute data");
-  }
-  var dataFields = table.getFields(),
-      missingFields = utils.difference(fields, dataFields);
-  if (missingFields.length > 0) {
-    stop("Table is missing one or more fields:\n",
-        missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
-  }
-};
-
-internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
-  var msg;
-  if (customMsg && utils.isString(customMsg)) {
-    msg = customMsg;
-  } else {
-    msg = defaultMsg + ', ';
-    if (!lyr || !lyr.geometry_type) {
-      msg += 'received a layer with no geometry';
-    } else {
-      msg += 'received a ' + lyr.geometry_type + ' layer';
-    }
-  }
-  return msg;
-};
-
-internal.requirePointLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'point')
-    stop(internal.layerTypeMessage(lyr, "Expected a point layer", msg));
-};
-
-internal.requirePolylineLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polyline')
-    stop(internal.layerTypeMessage(lyr, "Expected a polyline layer", msg));
-};
-
-internal.requirePolygonLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polygon')
-    stop(internal.layerTypeMessage(lyr, "Expected a polygon layer", msg));
-};
-
-internal.requirePathLayer = function(lyr, msg) {
-  if (!lyr || !internal.layerHasPaths(lyr))
-    stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
 };
 
 internal.requireProjectedDataset = function(dataset) {
@@ -6974,12 +6899,101 @@ internal.getPathEndpointTest = function(layers, arcs) {
 
 // utility functions for layers
 
+internal.layerHasGeometry = function(lyr) {
+  return internal.layerHasPaths(lyr) || internal.layerHasPoints(lyr);
+};
+
+internal.layerHasPaths = function(lyr) {
+  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+    internal.layerHasNonNullShapes(lyr);
+};
+
+internal.layerHasPoints = function(lyr) {
+  return lyr.geometry_type == 'point' && internal.layerHasNonNullShapes(lyr);
+};
+
+internal.layerHasNonNullShapes = function(lyr) {
+  return utils.some(lyr.shapes || [], function(shp) {
+    return !!shp;
+  });
+};
+
+internal.getFeatureCount = function(lyr) {
+  var count = 0;
+  if (lyr.data) {
+    count = lyr.data.size();
+  } else if (lyr.shapes) {
+    count = lyr.shapes.length;
+  }
+  return count;
+};
+
+internal.layerIsEmpty = function(lyr) {
+  return internal.getFeatureCount(lyr) == 0;
+};
+
+internal.requireDataField = function(obj, field, msg) {
+  var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
+  if (!field) stop('Missing a field parameter');
+  if (!data || !data.fieldExists(field)) {
+    stop(msg || 'Missing a field named:', field);
+  }
+};
+
+internal.requireDataFields = function(table, fields) {
+  if (!fields || !fields.length) return;
+  if (!table) {
+    stop("Missing attribute data");
+  }
+  var dataFields = table.getFields(),
+      missingFields = utils.difference(fields, dataFields);
+  if (missingFields.length > 0) {
+    stop("Table is missing one or more fields:\n",
+        missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
+  }
+};
+
+internal.layerTypeMessage = function(lyr, defaultMsg, customMsg) {
+  var msg;
+  if (customMsg && utils.isString(customMsg)) {
+    msg = customMsg;
+  } else {
+    msg = defaultMsg + ', ';
+    if (!lyr || !lyr.geometry_type) {
+      msg += 'received a layer with no geometry';
+    } else {
+      msg += 'received a ' + lyr.geometry_type + ' layer';
+    }
+  }
+  return msg;
+};
+
+internal.requirePointLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'point')
+    stop(internal.layerTypeMessage(lyr, "Expected a point layer", msg));
+};
+
+internal.requirePolylineLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polyline')
+    stop(internal.layerTypeMessage(lyr, "Expected a polyline layer", msg));
+};
+
+internal.requirePolygonLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polygon')
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon layer", msg));
+};
+
+internal.requirePathLayer = function(lyr, msg) {
+  if (!lyr || !internal.layerHasPaths(lyr))
+    stop(internal.layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
+};
+
+
 // Used by info command and gui layer menu
 internal.getLayerSourceFile = function(lyr, dataset) {
   var inputs = dataset.info && dataset.info.input_files;
   return inputs && inputs[0] || '';
 };
-
 
 // Divide a collection of features with mixed types into layers of a single type
 // (Used for importing TopoJSON and GeoJSON features)
@@ -7055,16 +7069,6 @@ internal.countMultiPartFeatures = function(shapes) {
   var count = 0;
   for (var i=0, n=shapes.length; i<n; i++) {
     if (shapes[i] && shapes[i].length > 1) count++;
-  }
-  return count;
-};
-
-internal.getFeatureCount = function(lyr) {
-  var count = 0;
-  if (lyr.data) {
-    count = lyr.data.size();
-  } else if (lyr.shapes) {
-    count = lyr.shapes.length;
   }
   return count;
 };
@@ -7911,6 +7915,15 @@ utils.roundToSignificantDigits = function(n, d) {
 };
 
 
+geom.pathIsClosed = function(ids, arcs) {
+  var firstArc = ids[0];
+  var lastArc = ids[ids.length - 1];
+  var p1 = arcs.getVertex(firstArc, 0);
+  var p2 = arcs.getVertex(lastArc, -1);
+  var closed = p1.x === p2.x && p1.y === p2.y;
+  return closed;
+};
+
 geom.getPointToPathDistance = function(px, py, ids, arcs) {
   return geom.getPointToPathInfo(px, py, ids, arcs).distance;
 };
@@ -8031,6 +8044,138 @@ geom.calcPathLen = (function() {
 }());
 
 
+// Returns a function for constructing a query function that accepts an arc id and
+// returns information about the polygon or polygons that use the given arc.
+// TODO: explain this better.
+//
+// options:
+//   filter: optional filter function; signature: function(idA, idB or -1) : boolean
+//   reusable: flag that lets an arc be queried multiple times.
+internal.getArcClassifier = function(shapes, arcs) {
+  var opts = arguments[2] || {},
+      useOnce = !opts.reusable,
+      n = arcs.size(),
+      a = new Int32Array(n),
+      b = new Int32Array(n);
+
+  utils.initializeArray(a, -1);
+  utils.initializeArray(b, -1);
+
+  internal.traversePaths(shapes, function(o) {
+    var i = absArcId(o.arcId);
+    var shpId = o.shapeId;
+    var aval = a[i];
+    if (aval == -1) {
+      a[i] = shpId;
+    } else if (shpId < aval) {
+      b[i] = aval;
+      a[i] = shpId;
+    } else {
+      b[i] = shpId;
+    }
+  });
+
+  function classify(arcId, getKey) {
+    var i = absArcId(arcId);
+    var shpA = a[i];
+    var shpB = b[i];
+    var key;
+    if (shpA == -1) return null;
+    key = getKey(shpA, shpB);
+    if (key === null || key === false) return null;
+    if (useOnce) {
+      // arc can only be queried once
+      a[i] = -1;
+      b[i] = -1;
+    }
+    // use optional filter to exclude some arcs
+    if (opts.filter && !opts.filter(shpA, shpB)) return null;
+    return key;
+  }
+
+  return function(getKey) {
+    return function(arcId) {
+      return classify(arcId, getKey);
+    };
+  };
+};
+
+
+// Returns a function for querying the neighbors of a given shape. The function
+// can be called in either of two ways:
+//
+// 1. function(shapeId, callback)
+//    Callback signature: function(adjacentShapeId, arcId)
+//    The callback function is called once for each arc that the given feature
+//    shares with another feature.
+//
+// 2. function(shapeId)
+//    The function returns an array of unique ids of neighboring shapes, or
+//    an empty array if a shape has no neighbors.
+//
+internal.getNeighborLookupFunction = function(lyr, arcs) {
+  var classifier = internal.getArcClassifier(lyr.shapes, arcs, {reusable: true});
+  var classify = classifier(onShapes);
+  var currShapeId;
+  var neighbors;
+  var callback;
+
+  function onShapes(a, b) {
+    if (b == -1) return -1; // outer edges are b == -1
+    return a == currShapeId ? b : a;
+  }
+
+  function onArc(arcId) {
+    var nabeId = classify(arcId);
+    if (nabeId == -1) return;
+    if (callback) {
+      callback(nabeId, arcId);
+    } else if (neighbors.indexOf(nabeId) == -1) {
+      neighbors.push(nabeId);
+    }
+  }
+
+  return function(shpId, cb) {
+    currShapeId = shpId;
+    if (cb) {
+      callback = cb;
+      internal.forEachArcId(lyr.shapes[shpId], onArc);
+      callback = null;
+    } else {
+      neighbors = [];
+      internal.forEachArcId(lyr.shapes[shpId], onArc);
+      return neighbors;
+    }
+  };
+};
+
+
+// Returns an array containing all pairs of adjacent shapes
+// in a collection of polygon shapes. A pair of shapes is represented as
+// an array of two shape indexes [a, b].
+internal.findPairsOfNeighbors = function(shapes, arcs) {
+  var getKey = function(a, b) {
+    return b > -1 && a > -1 ? [a, b] : null;
+  };
+  var classify = internal.getArcClassifier(shapes, arcs)(getKey);
+  var arr = [];
+  var index = {};
+  var onArc = function(arcId) {
+    var obj = classify(arcId);
+    var key;
+    if (obj) {
+      key = obj.join('~');
+      if (key in index === false) {
+        arr.push(obj);
+        index[key] = true;
+      }
+    }
+  };
+  internal.forEachArcId(shapes, onArc);
+  return arr;
+};
+
+
 // A compactness measure designed for testing electoral districts for gerrymandering.
 // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
 geom.calcPolsbyPopperCompactness = function(area, perimeter) {
@@ -8097,7 +8242,6 @@ geom.getYIntercept = function(x, ax, ay, bx, by) {
 geom.getXIntercept = function(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 };
-
 
 // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
 // Return 0: outside; 1: inside; -1: on boundary
@@ -8904,9 +9048,9 @@ utils.insertionSortIds = function(arr, ids, start, end) {
 };
 
 
-// Keep track of whether integer ids (indexes) are 'used' or not.
-// Accepts positive and negative ids.
-function IndexIndex(n) {
+// Keep track of whether positive or negative integer ids are 'used' or not.
+
+function IdTestIndex(n) {
   var index = new Uint8Array(n);
 
   this.setId = function(id) {
@@ -8957,7 +9101,7 @@ function IndexIndex(n) {
 // split into two rings that touch each other where the original ring crossed itself.
 //
 internal.getSelfIntersectionSplitter = function(nodes) {
-  var pathIndex = new IndexIndex(nodes.arcs.size());
+  var pathIndex = new IdTestIndex(nodes.arcs.size());
   var filter = function(arcId) {
     return pathIndex.hasId(~arcId);
   };
@@ -11186,6 +11330,7 @@ function PathIndex(shapes, arcs) {
     return xor;
   }
 }
+
 
 
 geom.segmentIntersection = segmentIntersection;
@@ -13624,27 +13769,6 @@ internal.groupIds = function(getId, n) {
 
 
 internal.dissolvePointGeometry = function(lyr, getGroupId, opts) {
-  var dissolve = opts.group_points ?
-      dissolvePointsAsGroups : dissolvePointsAsCentroids;
-  return dissolve(lyr, getGroupId, opts);
-};
-
-function dissolvePointsAsGroups(lyr, getGroupId, opts) {
-  var shapes = internal.cloneShapes(lyr.shapes);
-  var shapes2 = [];
-  lyr.shapes.forEach(function(shp, i) {
-    var groupId = getGroupId(i);
-    if (!shp) return;
-    if (!shapes2[groupId]) {
-      shapes2[groupId] = shp;
-    } else {
-      shapes2[groupId].push.apply(shapes2[groupId], shp);
-    }
-  });
-  return shapes2;
-}
-
-function dissolvePointsAsCentroids(lyr, getGroupId, opts) {
   var useSph = !opts.planar && internal.probablyDecimalDegreeBounds(internal.getLayerBounds(lyr));
   var getWeight = opts.weight ? internal.compileValueExpression(opts.weight, lyr) : null;
   var groups = [];
@@ -13680,7 +13804,7 @@ function dissolvePointsAsCentroids(lyr, getGroupId, opts) {
     }
     return memo ? [p2] : null;
   });
-}
+};
 
 function reducePointCentroid(memo, p, weight) {
   var x = p[0],
@@ -13789,7 +13913,9 @@ api.dissolve = function(lyr, arcs, opts) {
   opts = utils.extend({}, opts);
   if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
   getGroupId = internal.getCategoryClassifier(opts.fields, lyr.data);
-  if (lyr.geometry_type == 'polygon') {
+  if (opts.multipart || opts.group_points) {
+    dissolveShapes = internal.makeMultipartShapes(lyr, getGroupId);
+  } else if (lyr.geometry_type == 'polygon') {
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   } else if (lyr.geometry_type == 'polyline') {
     dissolveShapes = internal.dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
@@ -13797,6 +13923,21 @@ api.dissolve = function(lyr, arcs, opts) {
     dissolveShapes = internal.dissolvePointGeometry(lyr, getGroupId, opts);
   }
   return internal.composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
+};
+
+internal.makeMultipartShapes = function(lyr, getGroupId) {
+  var shapes = internal.cloneShapes(lyr.shapes);
+  var shapes2 = [];
+  lyr.shapes.forEach(function(shp, i) {
+    var groupId = getGroupId(i);
+    if (!shp) return;
+    if (!shapes2[groupId]) {
+      shapes2[groupId] = shp;
+    } else {
+      shapes2[groupId].push.apply(shapes2[groupId], shp);
+    }
+  });
+  return shapes2;
 };
 
 // @lyr: original undissolved layer
@@ -13864,24 +14005,58 @@ internal.fixNestingErrors = function(rings, arcs) {
   }
 };
 
-// Convert CCW rings that are not contained into CW rings
-internal.fixNestingErrors2 = function(rings, arcs) {
+// Set winding order of polygon rings so that outer rings are CW, first-order
+// nested rings are CCW, etc.
+internal.rewindPolygons = function(lyr, arcs) {
+  lyr.shapes = lyr.shapes.map(function(shp) {
+    if (!shp) return null;
+    return internal.rewindPolygon(shp, arcs);
+  });
+};
+
+// Update winding order of rings in a polygon so that outermost rings are
+// CW and nested rings alternate between CCW and CW.
+internal.rewindPolygon = function(rings, arcs) {
   var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
-  // convert rings to shapes for PathIndex
-  var shapes = rings.map(function(ids) {return [ids];});
-  var index = new PathIndex(shapes, arcs);
-  rings.forEach(fixRing);
-  // TODO: consider other kinds of nesting errors
-  function fixRing(ids, i) {
-    var ringIsCW = ringData[i].area > 0;
-    var containerId;
-    if (!ringIsCW) {
-      containerId = index.findSmallestEnclosingPolygon(ids);
-      if (containerId == -1) {
-        internal.reversePath(ids);
+
+  // Sort rings by area, from large to small
+  ringData.sort(function(a, b) {
+    return Math.abs(b.area) - Math.abs(a.area);
+  });
+  // If a ring is contained by one or more rings, set it to the opposite
+  //   direction as its immediate parent
+  // If a ring is not contained, make it CW.
+  ringData.forEach(function(ring, i) {
+    var shouldBeCW = true;
+    var j = i;
+    var largerRing;
+    while (--j >= 0) {
+      largerRing = ringData[j];
+      if (internal.testRingInRing(ring, largerRing, arcs)) {
+        // set to opposite of containing ring
+        shouldBeCW = largerRing.area > 0 ? false : true;
+        break;
       }
     }
+    internal.setRingWinding(ring, shouldBeCW);
+  });
+  return ringData.map(function(data) { return data.ids; });
+};
+
+// data: a ring data object
+internal.setRingWinding = function(data, cw) {
+  var isCW = data.area > 0;
+  if (isCW != cw) {
+    data.area = -data.area;
+    internal.reversePath(data.ids);
   }
+};
+
+// a, b: two ring data objects (from getPathMetadata);
+internal.testRingInRing = function(a, b, arcs) {
+  if (b.bounds.contains(a.bounds) === false) return false;
+  var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
+  return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
 };
 
 
@@ -14035,20 +14210,46 @@ internal.findMosaicRings = function(nodes) {
 };
 
 
+// Map positive or negative integer ids to non-negative integer ids
+
+function IdLookupIndex(n) {
+  var fwdIndex = new Int32Array(n);
+  var revIndex = new Int32Array(n);
+  utils.initializeArray(fwdIndex, -1);
+  utils.initializeArray(revIndex, -1);
+
+  this.setId = function(id, val) {
+    if (id < 0) {
+      revIndex[~id] = val;
+    } else {
+      fwdIndex[id] = val;
+    }
+  };
+
+  this.getId = function(id) {
+    var idx = id < 0 ? ~id : id;
+    if (idx >= n) {
+      return -1; // TODO: consider throwing an error?
+    }
+    return id < 0 ? revIndex[idx] : fwdIndex[idx];
+  };
+}
+
+
 // Associate mosaic tiles with shapes (i.e. identify the groups of tiles that
 //   belong to each shape)
 //
 function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   var arcs = nodes.arcs;
-  var visitedTileIndex = new IndexIndex(mosaic.length);
+  var visitedTileIndex = new IdTestIndex(mosaic.length);
   var divide = internal.getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
   var currShapeId;
   var currRingBbox;
   var tilesInShape; // accumulator for tile ids of tiles in current shape
-  var ringIndex = new IndexIndex(arcs.size());
-  var holeIndex = new IndexIndex(arcs.size());
+  var ringIndex = new IdTestIndex(arcs.size());
+  var holeIndex = new IdTestIndex(arcs.size());
 
   // return ids of tiles in shape
   this.getTilesInShape = function(shp, shapeId) {
@@ -14283,7 +14484,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
-  var fetchedTileIndex = new IndexIndex(mosaic.length);
+  var fetchedTileIndex = new IdTestIndex(mosaic.length);
   // bidirection index of tile ids <=> shape ids
   var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
@@ -14391,17 +14592,13 @@ function MosaicIndex(lyr, nodes, optsArg) {
   }
 }
 
-
 // Map arc ids to shape ids, assuming perfect topology
 // (an arcId maps to at most one shape)
 // Supports looking up a shape id using an arc id.
 function ShapeArcIndex(shapes, arcs) {
   var n = arcs.size();
-  var fwdArcIndex = new Int32Array(n);
-  var revArcIndex = new Int32Array(n);
+  var index = new IdLookupIndex(n);
   var shapeId;
-  utils.initializeArray(fwdArcIndex, -1);
-  utils.initializeArray(revArcIndex, -1);
   shapes.forEach(onShape);
 
   function onShape(shp, i) {
@@ -14412,19 +14609,13 @@ function ShapeArcIndex(shapes, arcs) {
     var arcId;
     for (var i=0, n=path.length; i<n; i++) {
       arcId = path[i];
-      if (arcId < 0) {
-        revArcIndex[~arcId] = shapeId;
-      } else {
-        fwdArcIndex[arcId] = shapeId;
-      }
+      index.setId(arcId, shapeId);
     }
   }
 
   // returns -1 if shape has not been indexed
   this.getShapeIdByArcId = function(arcId) {
-    var idx = absArcId(arcId);
-    if (idx >= n) return -1; // TODO: throw error (out-of-range id)
-    return arcId < 0 ? revArcIndex[idx] : fwdArcIndex[idx];
+    return index.getId(arcId);
   };
 }
 
@@ -14670,7 +14861,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   if (!opts.arcs) { // arcs option only removes unused arcs
     nodes = internal.addIntersectionCuts(dataset, opts);
     layers.forEach(function(lyr) {
-      if (!lyr.geometry_type) return; // ignore data-only layers
+      if (!internal.layerHasGeometry(lyr)) return;
       if (lyr.geometry_type == 'polygon') {
         internal.cleanPolygonLayerGeometry(lyr, dataset, opts);
       } else if (lyr.geometry_type == 'polyline') {
@@ -15298,37 +15489,35 @@ internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
 
 
 
-api.splitLayer = function(src, splitField, opts) {
+// @expression: optional field name or expression
+//
+api.splitLayer = function(src, expression, opts) {
   var lyr0 = opts && opts.no_replace ? internal.copyLayer(src) : src,
       properties = lyr0.data ? lyr0.data.getRecords() : null,
       shapes = lyr0.shapes,
       index = {},
       splitLayers = [],
-      prefix;
+      namer = internal.getSplitNameFunction(lyr0, expression);
 
-  if (splitField) {
-    internal.requireDataField(lyr0, splitField);
-  }
-
-  // if not splitting on a field and layer is unnamed, name split-apart layers
-  // like: split-0, split-1, ...
-  prefix = lyr0.name || (splitField ? '' : 'split');
+  // if (splitField) {
+  //   internal.requireDataField(lyr0, splitField);
+  // }
 
   utils.repeat(internal.getFeatureCount(lyr0), function(i) {
-    var key = internal.getSplitKey(i, splitField, properties),
+    var name = namer(i),
         lyr;
 
-    if (key in index === false) {
-      index[key] = splitLayers.length;
+    if (name in index === false) {
+      index[name] = splitLayers.length;
       lyr = {
         geometry_type: lyr0.geometry_type,
-        name: internal.getSplitLayerName(prefix, key),
+        name: name,
         data: properties ? new DataTable() : null,
         shapes: shapes ? [] : null
       };
       splitLayers.push(lyr);
     } else {
-      lyr = splitLayers[index[key]];
+      lyr = splitLayers[index[name]];
     }
     if (shapes) {
       lyr.shapes.push(shapes[i]);
@@ -15340,14 +15529,47 @@ api.splitLayer = function(src, splitField, opts) {
   return splitLayers;
 };
 
-internal.getSplitKey = function(i, field, properties) {
-  var rec = field && properties ? properties[i] : null;
-  return String(rec ? rec[field] : i + 1);
+internal.getSplitNameFunction = function(lyr, exp) {
+  var compiled;
+  if (!exp) {
+    // if not splitting on an expression and layer is unnamed, name split-apart layers
+    // like: split-1, split-2, ...
+    return function(i) {
+      return (lyr && lyr.name || 'split') + '-' + (i + 1);
+    };
+  }
+  lyr = {name: lyr.name, data: lyr.data}; // remove shape info
+  compiled = internal.compileValueExpression(exp, lyr, null);
+  return function(i) {
+    var val = compiled(i);
+    return String(val);
+    // return val || val === 0 ? String(val) : '';
+  };
 };
 
-internal.getSplitLayerName = function(base, key) {
-  return (base ? base + '-' : '') + key;
-};
+
+// internal.getSplitKey = function(i, field, properties) {
+//   var rec = field && properties ? properties[i] : null;
+//   return String(rec ? rec[field] : i + 1);
+// };
+
+// internal.getSplitLayerName = function(base, key) {
+//   return (base ? base + '-' : '') + key;
+// };
+
+// internal.getStringInterpolator = function(str) {
+//   var body = 'with($$ctx) { return `' + str + '`; }';
+//   var f = new Function("$$ctx", body);
+//   return function(o) {
+//     var s = '';
+//     try {
+//       s = f(ctx);
+//     } catch(e) {
+//       stop("Unable to interpolate [" + str + "]");
+//     }
+//     return s;
+//   }
+// };
 
 
 
@@ -15630,135 +15852,6 @@ internal.convertClipBounds = function(bb) {
 };
 
 
-// Returns a function for constructing a query function that accepts an arc id and
-// returns information about the polygon or polygons that use the given arc.
-// TODO: explain this better.
-//
-// options:
-//   filter: optional filter function; signature: function(idA, idB or -1) : boolean
-//   reusable: flag that lets an arc be queried multiple times.
-internal.getArcClassifier = function(shapes, arcs) {
-  var opts = arguments[2] || {},
-      useOnce = !opts.reusable,
-      n = arcs.size(),
-      a = new Int32Array(n),
-      b = new Int32Array(n);
-
-  utils.initializeArray(a, -1);
-  utils.initializeArray(b, -1);
-
-  internal.traversePaths(shapes, function(o) {
-    var i = absArcId(o.arcId);
-    var shpId = o.shapeId;
-    var aval = a[i];
-    if (aval == -1) {
-      a[i] = shpId;
-    } else if (shpId < aval) {
-      b[i] = aval;
-      a[i] = shpId;
-    } else {
-      b[i] = shpId;
-    }
-  });
-
-  function classify(arcId, getKey) {
-    var i = absArcId(arcId);
-    var shpA = a[i];
-    var shpB = b[i];
-    var key;
-    if (shpA == -1) return null;
-    key = getKey(shpA, shpB);
-    if (key === null || key === false) return null;
-    if (useOnce) {
-      // arc can only be queried once
-      a[i] = -1;
-      b[i] = -1;
-    }
-    // use optional filter to exclude some arcs
-    if (opts.filter && !opts.filter(shpA, shpB)) return null;
-    return key;
-  }
-
-  return function(getKey) {
-    return function(arcId) {
-      return classify(arcId, getKey);
-    };
-  };
-};
-
-
-// Returns a function for querying the neighbors of a given shape. The function
-// can be called in either of two ways:
-//
-// 1. function(shapeId, callback)
-//    Callback signature: function(adjacentShapeId, arcId)
-//    The callback function is called once for each arc that the given feature
-//    shares with another feature.
-//
-// 2. function(shapeId)
-//    The function returns an array of unique ids of neighboring shapes, or
-//    an empty array if a shape has no neighbors.
-//
-internal.getNeighborLookupFunction = function(lyr, arcs) {
-  var classifier = internal.getArcClassifier(lyr.shapes, arcs, {reusable: true});
-  var classify = classifier(onShapes);
-  var currShapeId;
-  var neighbors;
-  var callback;
-
-  function onShapes(a, b) {
-    if (b == -1) return -1; // outer edges are b == -1
-    return a == currShapeId ? b : a;
-  }
-
-  function onArc(arcId) {
-    var nabeId = classify(arcId);
-    if (nabeId == -1) return;
-    if (callback) {
-      callback(nabeId, arcId);
-    } else if (neighbors.indexOf(nabeId) == -1) {
-      neighbors.push(nabeId);
-    }
-  }
-
-  return function(shpId, cb) {
-    currShapeId = shpId;
-    if (cb) {
-      callback = cb;
-      internal.forEachArcId(lyr.shapes[shpId], onArc);
-      callback = null;
-    } else {
-      neighbors = [];
-      internal.forEachArcId(lyr.shapes[shpId], onArc);
-      return neighbors;
-    }
-  };
-};
-
-// Returns a lookup table mapping shape ids to arrays of ids of adjacent shapes
-internal.findNeighbors = function(shapes, arcs) {
-  var getKey = function(a, b) {
-    return b > -1 && a > -1 ? [a, b] : null;
-  };
-  var classify = internal.getArcClassifier(shapes, arcs)(getKey);
-  var arr = [];
-  var index = {};
-  var onArc = function(arcId) {
-    var obj = classify(arcId);
-    var key;
-    if (obj) {
-      key = obj.join('~');
-      if (key in index === false) {
-        arr.push(obj);
-        index[key] = true;
-      }
-    }
-  };
-  internal.forEachArcId(shapes, onArc);
-  return arr;
-};
-
-
 // Assign a cluster id to each polygon in a dataset, which can be used with
 //   one of the dissolve commands to dissolve the clusters
 // Works by iteratively grouping pairs of polygons with the smallest distance
@@ -15801,7 +15894,7 @@ internal.calcPolygonClusters = function(lyr, arcs, opts) {
   if (groupField && !lyr.data) stop("Missing attribute data table");
 
   // Populate mergeItems array
-  internal.findNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
+  internal.findPairsOfNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
     // ab: [a, b] indexes of two polygons
     var a = shapeItems[ab[0]],
         b = shapeItems[ab[1]],
@@ -19240,7 +19333,7 @@ internal.exportJSON = function(dataset, opts) {
   return dataset.layers.reduce(function(arr, lyr) {
     if (lyr.data){
       arr.push({
-        content: internal.exportJSONTable(lyr),
+        content: internal.exportJSONTable(lyr, opts),
         filename: (lyr.name || 'output') + '.json'
       });
     }
@@ -19248,8 +19341,9 @@ internal.exportJSON = function(dataset, opts) {
   }, []);
 };
 
-internal.exportJSONTable = function(lyr) {
-  return JSON.stringify(lyr.data.getRecords());
+internal.exportJSONTable = function(lyr, opts) {
+  var stringify = opts && opts.prettify ? internal.getFormattedStringify([]) : JSON.stringify;
+  return stringify(lyr.data.getRecords());
 };
 
 
@@ -20102,6 +20196,115 @@ internal.getRecordMapper = function(map) {
 //     return key + ": rec[" + key + "]";
 //   }).join(",") + "}");
 // };
+
+
+api.filterIslands2 = function(lyr, dataset, optsArg) {
+  var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
+  var arcs = dataset.arcs;
+  var removed = 0;
+  var filter;
+  if (lyr.geometry_type != 'polygon') {
+    return;
+  }
+  if (!opts.min_area && !opts.min_vertices) {
+    message("Missing a criterion for filtering islands; use min-area or min-vertices");
+    return;
+  }
+
+  if (opts.min_area) {
+    filter = internal.getSliverFilter(lyr, dataset, opts).filter;
+  } else {
+    filter = internal.getVertexCountTest(opts.min_vertices, arcs);
+  }
+  removed += internal.filterIslands2(lyr, arcs, filter);
+  if (opts.remove_empty) {
+    api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+  }
+  message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+};
+
+internal.buildIslandIndex = function(lyr, arcs, ringTest) {
+  // index of all islands
+  // (all rings are considered to belong to an island)
+  var islandIndex = [];
+  // this index maps id of first arc in each ring to
+  // an island in islandIndex
+  var firstArcIndex = new ArcToIdIndex(arcs);
+  var shpId;
+  var parts;
+
+  lyr.shapes.forEach(function(shp, i) {
+    if (!shp) return;
+    shpId = i;
+    internal.forEachShapePart(parts, eachRing);
+
+  });
+
+  function eachRing(ring, ringId, shp) {
+    var area = geom.getPathArea(ring, arcs);
+    var firstArcId = part[0];
+    if (area <= 0) return; // skip holes (really?)
+    var islandId = firstArcIndex.getId(firstArcId);
+    var islandData;
+    if (islandId == -1) {
+      islandData = {
+        area: 0
+      };
+      islandId = islandIndex.length;
+      islandIndex.push(islandData);
+    } else {
+      islandData = islandIndex[islandId];
+    }
+    islandData.area += area;
+
+  }
+
+};
+
+
+internal.filterIslands2 = function(lyr, arcs, ringTest) {
+  var removed = 0;
+  var counts = new Uint8Array(arcs.size());
+  internal.countArcsInShapes(lyr.shapes, counts);
+
+  var pathFilter = function(path, i, paths) {
+    if (path.length == 1) { // got an island ring
+      if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+        if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+          // and it does not contain any holes itself
+          // O(n^2), so testing this last
+          if (!internal.ringHasHoles(path, paths, arcs)) {
+            removed++;
+            return null;
+          }
+        }
+      }
+    }
+  };
+  internal.editShapes(lyr.shapes, pathFilter);
+  return removed;
+};
+
+function ArcToIdIndex(arcs) {
+  var n = arcs.size();
+  var fwdArcIndex = new Int32Array(n);
+  var revArcIndex = new Int32Array(n);
+  utils.initializeArray(fwdArcIndex, -1);
+  utils.initializeArray(revArcIndex, -1);
+  this.setId = function(arcId, id) {
+    if (arcId >= 0) {
+      fwdArcIndex[arcId] = id;
+    } else {
+      revArcIndex[~arcId] = id;
+    }
+  };
+
+  this.getId = function(arcId) {
+    var i = absArcId(arcId);
+    if (i < n === false) return -1;
+    return (arcId < 0 ? revArcIndex : fwdArcIndex)[i];
+  };
+}
 
 
 // Create rectangles around each feature in a layer
@@ -23142,8 +23345,30 @@ api.polygons = function(layers, dataset, opts) {
   internal.addIntersectionCuts(dataset, opts);
   return layers.map(function(lyr) {
     if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+    if (opts.from_rings) {
+      return internal.createPolygonLayerFromRings(lyr, dataset);
+    }
     return internal.createPolygonLayer(lyr, dataset, opts);
   });
+};
+
+// Convert a polyline layer of rings to a polygon layer
+internal.createPolygonLayerFromRings = function(lyr, dataset) {
+  var arcs = dataset.arcs;
+  var openCount = 0;
+  internal.editShapes(lyr.shapes, function(part) {
+    if (geom.pathIsClosed(part, arcs)) {
+      return part;
+    }
+    openCount++;
+    return null;
+  });
+  if (openCount > 0) {
+    message('Removed', openCount, 'open ' + (openCount == 1 ? 'ring' : 'rings'));
+  }
+  lyr.geometry_type = 'polygon';
+  internal.rewindPolygons(lyr, arcs);
+  return lyr;
 };
 
 internal.createPolygonLayer = function(lyr, dataset, opts) {
@@ -24122,6 +24347,8 @@ api.simplify = function(dataset, opts) {
     arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
   } else if (opts.resolution) {
     arcs.setRetainedInterval(internal.convertSimplifyResolution(opts.resolution, arcs, opts));
+  } else if (opts.presimplify) {
+    return;
   } else {
     stop("Missing a simplification amount");
   }
@@ -24603,7 +24830,7 @@ api.subdivideLayer = function(lyr, arcs, exp) {
 internal.subdivide = function(lyr, arcs, exp) {
   var divide = internal.evalCalcExpression(lyr, arcs, exp),
       subdividedLayers = [],
-      tmp, bounds, lyr1, lyr2;
+      tmp, bounds, lyr1, lyr2, layerName;
 
   if (!utils.isBoolean(divide)) {
     stop("Expression must evaluate to true or false");
@@ -24627,9 +24854,9 @@ internal.subdivide = function(lyr, arcs, exp) {
   } else {
     subdividedLayers.push(lyr);
   }
-
+  layerName = internal.getSplitNameFunction(lyr);
   subdividedLayers.forEach(function(lyr2, i) {
-    lyr2.name = internal.getSplitLayerName(lyr.name || 'split', i + 1);
+    lyr2.name = layerName(i);
     utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;
@@ -26034,6 +26261,10 @@ internal.getOptionParser = function() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
+    .option('multipart', {
+      type: 'flag',
+      describe: 'make multipart features instead of dissolving'
+    })
     .option('group-points', {
       type: 'flag',
       describe: '[points] group points instead of converting to centroids'
@@ -26182,6 +26413,26 @@ internal.getOptionParser = function() {
     .option('bbox', {
       type: 'bbox',
       describe: 'remove non-intersecting geometry (xmin,ymin,xmax,ymax)'
+    })
+    .option('target', targetOpt);
+
+  parser.command('filter-islands2')
+    // .describe('remove small detached polygon rings (islands)')
+    .option('min-area', {
+      type: 'area',
+      describe: 'remove small-area islands (e.g. 10km2)'
+    })
+    .option('min-vertices', {
+      type: 'integer',
+      describe: 'remove low-vertex-count islands'
+    })
+    .option('keep-shapes', {
+      type: 'flag',
+      describe: 'only filter smaller parts of multipart polygons',
+    })
+    .option('remove-empty', {
+      type: 'flag',
+      describe: 'delete features with null geometry'
     })
     .option('target', targetOpt);
 
@@ -26441,6 +26692,10 @@ internal.getOptionParser = function() {
       describe: 'specify gap tolerance in source units',
       type: 'distance'
     })
+    .option('from-rings', {
+      describe: 'do simple conversion from a layer of closed paths',
+      type: 'flag'
+    })
     .option('target', targetOpt);
 
   parser.command('proj')
@@ -26633,8 +26888,12 @@ internal.getOptionParser = function() {
   parser.command('split')
     .describe('split a layer into single-feature or multi-feature layers')
     .option('field', {
+      // former name
+      alias_to: 'expression'
+    })
+    .option('expression', {
       DEFAULT: true,
-      describe: 'attribute field for grouping same-value features'
+      describe: 'expression or field for grouping features and naming split layers'
     })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
@@ -27781,6 +28040,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'filter-islands') {
       applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
 
+    } else if (name == 'filter-islands2') {
+      applyCommandToEachLayer(api.filterIslands2, targetLayers, targetDataset, opts);
+
     } else if (name == 'filter-slivers') {
       applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
 
@@ -27927,7 +28189,7 @@ api.runCommand = function(cmd, catalog, cb) {
       applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.expression, opts);
 
     } else if (name == 'split-on-grid') {
       outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);
