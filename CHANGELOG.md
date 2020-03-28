@@ -1,3 +1,8 @@
+v0.4.160
+* Added -dissolve multipart option, for grouping parts without modifying geometry.
+* Added -polygons from-rings option, for creating polygons when the original layer contains polyline rings.
+* -filter-fields now sets the order of fields in CSV output.
+
 v0.4.159
 * Changed GUI icon and user interaction for switching interaction modes.
 * Added feature-selection interaction mode to the Web UI, for selecting features with the mouse.
