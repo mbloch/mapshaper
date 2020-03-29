@@ -39,7 +39,7 @@ var MapStyle = (function() {
           strokeWidth: 1.2
         }, point:  {
           dotColor: black,
-          dotSize: 9
+          dotSize: 8
         }, polyline:  {
           strokeColor: black,
           strokeWidth: 2.5
@@ -52,7 +52,7 @@ var MapStyle = (function() {
           strokeWidth: 1.2
         }, point:  {
           dotColor: grey,
-          dotSize: 9
+          dotSize: 8
         }, polyline:  {
           strokeColor: grey,
           strokeWidth: 2.5
@@ -91,7 +91,7 @@ var MapStyle = (function() {
           strokeWidth: 1.8
         }, point:  {
           dotColor: 'violet',
-          dotSize: 7
+          dotSize: 8
         }, polyline:  {
           strokeColor: violet,
           strokeWidth: 3
