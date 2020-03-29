@@ -1052,16 +1052,21 @@ img.close-btn:hover,
 	right: 20px;
 	z-index: -2;
 }
+
 .nav-sub-btn svg * {
 	fill: black !important;
 }
+
 .nav-sub-menu {
 	position: absolute;
-	top: 5px;
-	right: 21px;
+	/* top: 5px;
+	right: 21px; */
 	z-index: -1;
 	display: none;
 	pointer-events: none;
+	padding-top: 4px;
+	top: 28px;
+	right: -6px;
 }
 
 .nav-btn.open .nav-sub-menu {

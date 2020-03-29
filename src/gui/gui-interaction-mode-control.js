@@ -38,11 +38,11 @@ function InteractionMode(gui) {
     btn = gui.buttons.addButton('#pointer-icon');
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
+    // tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
 
     btn.on('mouseleave', function() {
       btn.removeClass('hover');
-      tab.hide();
+      // tab.hide();
       autoClose();
     });
 
@@ -50,12 +50,12 @@ function InteractionMode(gui) {
       btn.addClass('hover');
       if (_editMode != 'off') {
         clearTimeout(_menuTimeout);
-        tab.show();
+        openMenu();
+        // tab.show();
       }
     });
 
-    tab.on('mouseenter', openMenu);
-    // menu.on('mouseenter', openMenu);
+    // tab.on('mouseenter', openMenu);
 
     btn.on('click', function(e) {
       if (active()) {
@@ -160,7 +160,7 @@ function InteractionMode(gui) {
     clearTimeout(_menuTimeout);
     // if (!_menuOpen && _editMode != 'off') {
     if (!_menuOpen) {
-      tab.hide();
+      // tab.hide();
       _menuOpen = true;
       updateAppearance();
     }
@@ -168,7 +168,7 @@ function InteractionMode(gui) {
 
   function autoClose() {
     clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 500);
+    _menuTimeout = setTimeout(closeMenu, 300);
   }
 
   function closeMenu(delay) {
@@ -182,7 +182,7 @@ function InteractionMode(gui) {
 
   function setMode(mode) {
     var changed = mode != _editMode;
-    if (mode == 'off') tab.hide();
+    // if (mode == 'off') tab.hide();
     if (changed) {
       menu.classed('active', mode != 'off');
       if (_editMode != 'off') {
