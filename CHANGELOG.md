@@ -1,3 +1,6 @@
+v0.4.163
+* Updated dependences, increased minimum Node version to 6.0.
+
 v0.4.162
 * Added -dissolve multipart option, for grouping parts without modifying geometry.
 * Added -polygons from-rings option, for creating polygons when the original layer contains polyline rings.
