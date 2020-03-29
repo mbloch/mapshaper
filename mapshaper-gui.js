@@ -2566,7 +2566,7 @@ var MapStyle = (function() {
           strokeWidth: 1.2
         }, point:  {
           dotColor: black,
-          dotSize: 9
+          dotSize: 8
         }, polyline:  {
           strokeColor: black,
           strokeWidth: 2.5
@@ -2579,7 +2579,7 @@ var MapStyle = (function() {
           strokeWidth: 1.2
         }, point:  {
           dotColor: grey,
-          dotSize: 9
+          dotSize: 8
         }, polyline:  {
           strokeColor: grey,
           strokeWidth: 2.5
@@ -2618,7 +2618,7 @@ var MapStyle = (function() {
           strokeWidth: 1.8
         }, point:  {
           dotColor: 'violet',
-          dotSize: 7
+          dotSize: 8
         }, polyline:  {
           strokeColor: violet,
           strokeWidth: 3
@@ -4080,7 +4080,7 @@ function getShapeHitTest(displayLayer, ext) {
   }
 
   // reduce hit threshold when zoomed out
-  function getHitBuffer2(pix, minPix) {
+  function getZoomAdjustedHitBuffer(pix, minPix) {
     var scale = ext.scale();
     if (scale < 1) {
       pix *= scale;
@@ -4090,7 +4090,7 @@ function getShapeHitTest(displayLayer, ext) {
   }
 
   function polygonTest(x, y) {
-    var maxDist = getHitBuffer2(5, 1),
+    var maxDist = getZoomAdjustedHitBuffer(5, 1),
         cands = findHitCandidates(x, y, maxDist),
         hits = [],
         cand, hitId;
@@ -4126,8 +4126,8 @@ function getShapeHitTest(displayLayer, ext) {
   }
 
   function polylineTest(x, y) {
-    var maxDist = getHitBuffer2(15, 2),
-        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
+    var maxDist = getZoomAdjustedHitBuffer(15, 2),
+        bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, displayLayer.arcs);
     return pickNearestCandidates(cands, bufDist, maxDist);
@@ -4141,18 +4141,28 @@ function getShapeHitTest(displayLayer, ext) {
   }
 
   function pointTest(x, y) {
-    var dist = getHitBuffer2(25, 4),
-        limitSq = dist * dist,
-        hits = [];
+    var bullseyeDist = 2, // hit all points w/in 2 px
+        tinyDist = 0.5,
+        toPx = ext.getTransform().mx,
+        hits = [],
+        hitThreshold = 25,
+        newThreshold = Infinity;
+
     internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-      var distSq = geom.distanceSq(x, y, p[0], p[1]);
-      if (distSq < limitSq) {
+      var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
+      if (dist > hitThreshold) return;
+      // got a hit
+      if (dist < newThreshold) {
+        // start a collection of hits
         hits = [id];
-        limitSq = distSq;
-      } else if (distSq == limitSq) {
+        hitThreshold = Math.max(bullseyeDist, dist + tinyDist);
+        newThreshold = dist < bullseyeDist ? -1 : dist - tinyDist;
+      } else {
+        // add to hits if inside bullseye or is same dist as previous hit
         hits.push(id);
       }
     });
+    // console.log(hitThreshold, bullseye);
     return hits;
   }
 
@@ -5104,11 +5114,11 @@ function InteractionMode(gui) {
     btn = gui.buttons.addButton('#pointer-icon');
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
+    // tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
 
     btn.on('mouseleave', function() {
       btn.removeClass('hover');
-      tab.hide();
+      // tab.hide();
       autoClose();
     });
 
@@ -5116,12 +5126,12 @@ function InteractionMode(gui) {
       btn.addClass('hover');
       if (_editMode != 'off') {
         clearTimeout(_menuTimeout);
-        tab.show();
+        openMenu();
+        // tab.show();
       }
     });
 
-    tab.on('mouseenter', openMenu);
-    // menu.on('mouseenter', openMenu);
+    // tab.on('mouseenter', openMenu);
 
     btn.on('click', function(e) {
       if (active()) {
@@ -5226,7 +5236,7 @@ function InteractionMode(gui) {
     clearTimeout(_menuTimeout);
     // if (!_menuOpen && _editMode != 'off') {
     if (!_menuOpen) {
-      tab.hide();
+      // tab.hide();
       _menuOpen = true;
       updateAppearance();
     }
@@ -5234,7 +5244,7 @@ function InteractionMode(gui) {
 
   function autoClose() {
     clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 500);
+    _menuTimeout = setTimeout(closeMenu, 300);
   }
 
   function closeMenu(delay) {
@@ -5248,7 +5258,7 @@ function InteractionMode(gui) {
 
   function setMode(mode) {
     var changed = mode != _editMode;
-    if (mode == 'off') tab.hide();
+    // if (mode == 'off') tab.hide();
     if (changed) {
       menu.classed('active', mode != 'off');
       if (_editMode != 'off') {
