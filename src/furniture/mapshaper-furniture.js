@@ -1,32 +1,32 @@
-/* @require mapshaper-common mapshaper-dataset-utils svg-common */
 
+import { stop } from '../utils/mapshaper-logging';
+export var furnitureRenderers = {};
 
 // @lyr a layer in a dataset
-internal.layerHasFurniture = function(lyr) {
-  var type = internal.getFurnitureLayerType(lyr);
-  return !!type && (type in SVG.furnitureRenderers);
-};
+export function layerHasFurniture(lyr) {
+  var type = getFurnitureLayerType(lyr);
+  return !!type && (type in furnitureRenderers);
+}
 
 // @mapLayer a map layer object
-internal.isFurnitureLayer = function(mapLayer) {
+function isFurnitureLayer(mapLayer) {
   return !!mapLayer.furniture;
-};
-
+}
 
 // @lyr dataset layer
-internal.getFurnitureLayerType = function(lyr) {
+export function getFurnitureLayerType(lyr) {
   var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
   return rec && rec.type || null;
-};
+}
 
-internal.getFurnitureLayerData = function(lyr) {
+export function getFurnitureLayerData(lyr) {
   return lyr.data && lyr.data.getReadOnlyRecordAt(0);
-};
+}
 
-SVG.importFurniture = function(d, frame) {
-  var renderer = SVG.furnitureRenderers[d.type];
+export function importFurniture(d, frame) {
+  var renderer = furnitureRenderers[d.type];
   if (!renderer) {
     stop('Missing renderer for', d.type, 'element');
   }
   return renderer(d, frame) || [];
-};
+}

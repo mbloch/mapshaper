@@ -1,19 +1,17 @@
-/* @requires
-gui-modes
-gui-proxy
-gui-keyboard
-gui-model
-gui-map
-gui-interaction-mode-control
-gui-sidebar-buttons
-gui-session-history
-*/
+import { WriteFilesProxy, ImportFileProxy } from './gui-proxy';
+import { SessionHistory } from './gui-session-history';
+import { SidebarButtons } from './gui-sidebar-buttons';
+import { ModeSwitcher } from './gui-modes';
+import { KeyboardEvents } from './gui-keyboard';
+import { InteractionMode } from './gui-interaction-mode-control';
+import { Model } from './gui-model';
+import { MshpMap } from './gui-map';
+import { utils } from './gui-core';
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
+import { MessageProxy } from './gui-proxy';
 
-GUI.isActiveInstance = function(gui) {
-  return gui == GUI.__active;
-};
-
-function GuiInstance(container, opts) {
+export function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
   opts = utils.extend({
     // defaults

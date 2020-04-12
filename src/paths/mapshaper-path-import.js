@@ -1,41 +1,46 @@
-/* @requires
-mapshaper-rounding,
-mapshaper-shape-geom,
-mapshaper-snapping,
-mapshaper-shape-utils,
-mapshaper-polygon-repair
-mapshaper-units
-*/
+
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { convertIntervalParam } from '../geom/mapshaper-units';
+import { snapCoords } from '../paths/mapshaper-snapping';
+import { layerHasPaths, divideFeaturesByType } from '../dataset/mapshaper-layer-utils';
+import { cleanShapes } from '../paths/mapshaper-path-repair-utils';
+import { getRoundingFunction } from '../geom/mapshaper-rounding';
+import { verbose, stop, message } from '../utils/mapshaper-logging';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { fixInconsistentFields } from '../datatable/mapshaper-data-utils';
+import { ArcCollection } from '../paths/mapshaper-arcs';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
 
 // Apply snapping, remove duplicate coords and clean up defective paths in a dataset
 // Assumes that any CRS info has been added to the dataset
 // @opts: import options
-internal.cleanPathsAfterImport = function(dataset, opts) {
+export function cleanPathsAfterImport(dataset, opts) {
   var arcs = dataset.arcs;
   var snapDist;
   if (opts.snap || opts.auto_snap || opts.snap_interval) { // auto_snap is older name
     if (opts.snap_interval) {
-      snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+      snapDist = convertIntervalParam(opts.snap_interval, getDatasetCRS(dataset));
     }
     if (arcs) {
-      internal.snapCoords(arcs, snapDist);
+      snapCoords(arcs, snapDist);
     }
   }
   dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    if (layerHasPaths(lyr)) {
+      cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
-};
+}
 
-internal.pointHasValidCoords = function(p) {
+export function pointHasValidCoords(p) {
   // The Shapefile spec states that "measures" less then -1e38 indicate null values
   // This should not apply to coordinate data, but in-the-wild Shapefiles have been
   // seen with large negative values indicating null coordinates.
   // This test catches these and also NaNs, but does not detect other kinds of
   // invalid coords
   return p[0] > -1e38 && p[1] > -1e38;
-};
+}
 
 // Accumulates points in buffers until #endPath() is called
 // @drain callback: function(xarr, yarr, size) {}
@@ -67,7 +72,7 @@ function PathImportStream(drain) {
 // in preparation for identifying topology.
 // @opts.reserved_points -- estimate of points in dataset, for pre-allocating buffers
 //
-function PathImporter(opts) {
+export function PathImporter(opts) {
   var bufSize = opts.reserved_points > 0 ? opts.reserved_points : 20000,
       xx = new Float64Array(bufSize),
       yy = new Float64Array(bufSize),
@@ -84,7 +89,7 @@ function PathImporter(opts) {
       openRingCount = 0;
 
   if (opts.precision) {
-    round = utils.getRoundingFunction(opts.precision);
+    round = getRoundingFunction(opts.precision);
   }
 
   // mix in #addPoint() and #endPath() methods
@@ -106,7 +111,7 @@ function PathImporter(opts) {
 
   this.importPoints = function(points) {
     setShapeType('point');
-    points = points.filter(internal.pointHasValidCoords);
+    points = points.filter(pointHasValidCoords);
     if (round) {
       points.forEach(function(p) {
         p[0] = round(p[0]);
@@ -169,7 +174,7 @@ function PathImporter(opts) {
     }
 
     if (collectionType == 'mixed') {
-      layers = internal.divideFeaturesByType(shapes, properties, types);
+      layers = divideFeaturesByType(shapes, properties, types);
 
     } else {
       lyr = {geometry_type: collectionType};
@@ -187,7 +192,7 @@ function PathImporter(opts) {
         //internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
       //}
       if (lyr.data) {
-        internal.fixInconsistentFields(lyr.data.getRecords());
+        fixInconsistentFields(lyr.data.getRecords());
       }
     });
 

@@ -1,45 +1,22 @@
-/* @requires
-mapshaper-commands
-mapshaper-cli-utils
-mapshaper-bbox-clipping
-*/
+// The entry point for the core mapshaper module
 
-api.cli = cli;
-api.internal = internal;
-api.utils = utils;
-api.geom = geom;
-mapshaper = api;
+import coreAPI from './mapshaper-api'; // the main public api
 
-// Expose internal objects for testing
-utils.extend(api.internal, {
-  Catalog: Catalog,
-  DataTable: DataTable,
-  BinArray: BinArray,
-  DouglasPeucker: DouglasPeucker,
-  Visvalingam: Visvalingam,
-  Heap: Heap,
-  ShpReader: ShpReader,
-  ShpType: ShpType,
-  Dbf: Dbf,
-  DbfReader: DbfReader,
-  ShapefileTable: ShapefileTable,
-  ArcCollection: ArcCollection,
-  PointIter: PointIter,
-  ArcIter: ArcIter,
-  ShapeIter: ShapeIter,
-  Bounds: Bounds,
-  Transform: Transform,
-  NodeCollection: NodeCollection,
-  PolygonIndex: PolygonIndex,
-  PathIndex: PathIndex,
-  topojson: TopoJSON,
-  geojson: GeoJSON,
-  svg: SVG,
-  UserError: UserError
-});
+// Attach some namespaces to the module, for compatibility with tests and
+// to expose internal functions to the web UI
+import cmd from './mapshaper-cmd';
+import internal from './mapshaper-internal';
+import geom from './geom/mapshaper-geom';
+import utils from './utils/mapshaper-utils';
+import cli from './cli/mapshaper-cli-utils';
+import { importFile } from './io/mapshaper-file-import';
+var moduleAPI = Object.assign({
+  cli, geom, utils, internal,
+  importFile // Adding importFile() for compatibility with old tests; todo: rewrite tests
+}, cmd, coreAPI);  // Adding command functions to the top-level module API, for test compatibility
 
-if (typeof define === "function" && define.amd) {
-  define("mapshaper", api);
-} else if (typeof module === "object" && module.exports) {
-  module.exports = api;
+if (typeof module === "object" && module.exports) {
+  module.exports = moduleAPI;
+} else if (typeof window === "object" && window) {
+  window.mapshaper = moduleAPI;
 }

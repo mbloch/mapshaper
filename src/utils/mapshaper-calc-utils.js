@@ -1,11 +1,10 @@
-/* @requires mapshaper-common */
 
-internal.getMode = function(values) {
-  var data = internal.getModeData(values);
+export function getMode(values) {
+  var data = getModeData(values);
   return data.modes[0];
-};
+}
 
-internal.getValueCountData = function(values) {
+function getValueCountData(values) {
   var uniqValues = [],
       uniqIndex = {},
       counts = [];
@@ -24,21 +23,21 @@ internal.getValueCountData = function(values) {
     values: uniqValues,
     counts: counts
   };
-};
+}
 
-internal.getMaxValue = function(values) {
+function getMaxValue(values) {
   var max = -Infinity;
   var i;
   for (i=0; i<values.length; i++) {
     if (values[i] > max) max = values[i];
   }
   return max;
-};
+}
 
-internal.getCountDataSummary = function(o) {
+function getCountDataSummary(o) {
   var counts = o.counts;
   var values = o.values;
-  var maxCount = counts.length > 0 ? internal.getMaxValue(counts) : 0;
+  var maxCount = counts.length > 0 ? getMaxValue(counts) : 0;
   var nextCount = 0;
   var modes = [];
   var i, count;
@@ -55,14 +54,14 @@ internal.getCountDataSummary = function(o) {
     margin: modes.length > 1 ? 0 : maxCount - nextCount,
     count: maxCount
   };
-};
+}
 
-internal.getModeData = function(values, verbose) {
-  var counts = internal.getValueCountData(values);
-  var modes = internal.getCountDataSummary(counts);
+export function getModeData(values, verbose) {
+  var counts = getValueCountData(values);
+  var modes = getCountDataSummary(counts);
   if (verbose) {
     modes.counts = counts.counts;
     modes.values = counts.values;
   }
   return modes;
-};
+}

@@ -1,9 +1,8 @@
-/* @requires
-gui-lib
-gui-highlight-box
-*/
+import { MouseWheel } from './gui-mouse';
+import { Tween } from './gui-tween';
+import { Bounds, internal } from './gui-core';
 
-function MapNav(gui, ext, mouse) {
+export function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomTween = new Tween(Tween.sineInOut),
       boxDrag = false,

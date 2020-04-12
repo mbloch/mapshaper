@@ -1,33 +1,31 @@
-/* @require gui-lib */
+import { saveZipFile, saveFilesToServer, saveBlobToDownloadFolder } from './gui-save';
+import { internal, utils, cli, stop } from './gui-core';
+import { GUI } from './gui-lib';
 
-// These functions could be called when validating i/o options; TODO: avoid this
-cli.isFile =
-cli.isDirectory = function(name) {return false;};
-cli.validateOutputDir = function() {};
-
-function MessageProxy(gui) {
-  // Replace error function in mapshaper lib
-  error = internal.error = function() {
-    stop.apply(null, utils.toArray(arguments));
-  };
-
+export function MessageProxy(gui) {
   // replace stop function
-  stop = internal.stop = function() {
+  var stop = function() {
     // Show a popup error message, then throw an error
     var msg = GUI.formatMessageArgs(arguments);
     gui.alert(msg);
     throw new Error(msg);
   };
 
-  message = internal.message = function() {
+  // Replace error function in mapshaper lib
+  var error = function() {
+    stop.apply(null, utils.toArray(arguments));
+  };
+
+  var message = function() {
     internal.logArgs(arguments); // reset default
   };
+
+  internal.setLoggingFunctions(message, error, stop);
 }
 
-function WriteFilesProxy(gui) {
-  // replaces function from mapshaper.js
-  internal.writeFiles = function(files, opts, done) {
-
+export function WriteFilesProxy(gui) {
+  // replace CLI version of writeFiles()
+  internal.replaceWriteFiles(function(files, opts, done) {
     var filename;
     if (!utils.isArray(files) || files.length === 0) {
       done("Nothing to export");
@@ -52,16 +50,16 @@ function WriteFilesProxy(gui) {
     } else if (files.length == 1) {
       saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
     } else {
-      filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+      filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
       saveZipFile(filename + ".zip", files, done);
     }
-  };
+  });
 }
 
 // Replaces functions for reading from files with functions that try to match
 // already-loaded datasets.
 //
-function ImportFileProxy(gui) {
+export function ImportFileProxy(gui) {
   var model = gui.model;
 
   // Try to match an imported dataset or layer.
@@ -81,26 +79,26 @@ function ImportFileProxy(gui) {
     return retn;
   }
 
-  api.importFile = function(src, opts) {
+  internal.replaceImportFile(function(src, opts) {
     var dataset = find(src);
-    // Aeturn a copy with layers duplicated, so changes won't affect original layers
+    // Return a copy with layers duplicated, so changes won't affect original layers
     // This makes an (unsafe) assumption that the dataset arcs won't be changed...
     // need to rethink this.
     return utils.defaults({
       layers: dataset.layers.map(internal.copyLayer)
     }, dataset);
-  };
+  });
 }
 
 // load Proj.4 CRS definition files dynamically
 //
-internal.initProjLibrary = function(opts, done) {
+internal.setProjectionLoader(function(opts, done) {
   var mproj = require('mproj');
   var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.crs || ''].join(' '));
   // skip loaded libs
   libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
   loadProjLibs(libs, done);
-};
+});
 
 function loadProjLibs(libs, done) {
   var mproj = require('mproj');

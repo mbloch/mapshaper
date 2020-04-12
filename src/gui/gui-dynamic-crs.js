@@ -1,6 +1,8 @@
+import { internal, utils } from './gui-core';
+
 // Assumes projections are available
 
-function needReprojectionForDisplay(sourceCRS, displayCRS) {
+export function needReprojectionForDisplay(sourceCRS, displayCRS) {
   if (!sourceCRS || !displayCRS) {
     return false;
   }
@@ -17,14 +19,14 @@ function projectArcsForDisplay_v1(arcs, src, dest) {
   return copy;
 }
 
-function projectArcsForDisplay(arcs, src, dest) {
+export function projectArcsForDisplay(arcs, src, dest) {
   var copy = arcs.getCopy(); // need to flatten first?
   var proj = internal.getProjTransform2(src, dest);
   internal.projectArcs2(copy, proj); // need to densify arcs?
   return copy;
 }
 
-function projectPointsForDisplay(lyr, src, dest) {
+export function projectPointsForDisplay(lyr, src, dest) {
   var copy = utils.extend({}, lyr);
   var proj = internal.getProjTransform2(src, dest);
   copy.shapes = internal.cloneShapes(lyr.shapes);
@@ -32,31 +34,9 @@ function projectPointsForDisplay(lyr, src, dest) {
   return copy;
 }
 
-// displayCRS: CRS to use for display, or null (which clears any current display CRS)
-function projectDisplayLayer(lyr, displayCRS) {
-  var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
-  var lyr2;
-  if (!lyr.geographic || !sourceCRS) {
-    return lyr;
-  }
-  if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
-    return lyr;
-  }
-  lyr2 = getMapLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
-  // kludge: copy projection-related properties to original layer
-  lyr.dynamic_crs = lyr2.dynamic_crs;
-  lyr.layer = lyr2.layer;
-  if (lyr.style && lyr.style.ids) {
-    // re-apply layer filter
-    lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
-  }
-  lyr.bounds = lyr2.bounds;
-  lyr.arcs = lyr2.arcs;
-  return lyr;
-}
 
 // Update map extent and trigger redraw, after a new display CRS has been applied
-function projectMapExtent(ext, src, dest, newBounds) {
+export function projectMapExtent(ext, src, dest, newBounds) {
   var oldBounds = ext.getBounds();
   var oldScale = ext.scale();
   var newCP, proj;
@@ -82,7 +62,7 @@ function projectMapExtent(ext, src, dest, newBounds) {
 }
 
 // Called from console; for testing dynamic crs
-function setDisplayProjection(gui, cmd) {
+export function setDisplayProjection(gui, cmd) {
   var arg = cmd.replace(/^projd[ ]*/, '');
   if (arg) {
     gui.map.setDisplayCRS(internal.getCRS(arg));
@@ -91,14 +71,3 @@ function setDisplayProjection(gui, cmd) {
   }
 }
 
-// Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
-function findEmptyArcs(arcs) {
-  var nn = arcs.getVertexData().nn;
-  var ids = [];
-  for (var i=0, n=nn.length; i<n; i++) {
-    if (nn[i] === 0) {
-      ids.push(i);
-    }
-  }
-  return ids;
-}

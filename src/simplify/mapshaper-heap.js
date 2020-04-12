@@ -1,8 +1,9 @@
-/* @requires mapshaper-common */
+import utils from '../utils/mapshaper-utils';
+import { error } from '../utils/mapshaper-logging';
 
 // A minheap data structure used for computing Visvalingam simplification data.
 //
-function Heap() {
+export function Heap() {
   var heapBuf = utils.expandoBuffer(Int32Array),
       indexBuf = utils.expandoBuffer(Int32Array),
       itemsInHeap = 0,

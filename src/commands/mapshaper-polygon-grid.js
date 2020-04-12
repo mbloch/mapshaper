@@ -1,67 +1,76 @@
 
-api.polygonGrid = function(targetLayers, targetDataset, opts) {
-  internal.requireProjectedDataset(targetDataset);
-  var params = internal.getGridParams(targetLayers, targetDataset, opts);
+import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { convertIntervalParam } from '../geom/mapshaper-units';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { importGeoJSON } from '../geojson/geojson-import';
+import cmd from '../mapshaper-cmd';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { requireProjectedDataset } from '../geom/mapshaper-projections';
+import { buildTopology } from '../topology/mapshaper-topology';
+cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
+  requireProjectedDataset(targetDataset);
+  var params = getGridParams(targetLayers, targetDataset, opts);
   var geojson;
   if (params.type == 'square') {
-    geojson = internal.getSquareGridGeoJSON(internal.getSquareGridCoordinates(params));
+    geojson = getSquareGridGeoJSON(getSquareGridCoordinates(params));
   } else if (params.type == 'hex') {
-    geojson = internal.getHexGridGeoJSON(internal.getHexGridCoordinates(params));
+    geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
   } else if (params.type == 'hex2') {
     // use rotated grid
-    geojson = internal.getHexGridGeoJSON(internal.getHexGridCoordinates(internal.swapGridParams(params)));
-    internal.swapPolygonCoords(geojson);
+    geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
+    swapPolygonCoords(geojson);
   } else {
     stop('Unsupported grid type');
   }
-  internal.alignGridToBounds(geojson, params.bbox);
-  var gridDataset = internal.importGeoJSON(geojson, {});
+  alignGridToBounds(geojson, params.bbox);
+  var gridDataset = importGeoJSON(geojson, {});
   gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
-  api.buildTopology(gridDataset);
+  buildTopology(gridDataset);
   gridDataset.layers[0].name = opts.name || 'grid';
-  if (opts.debug) gridDataset.layers.push(api.pointGrid2(targetLayers, targetDataset, opts));
+  if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;
 };
 
 // TODO: Update -point-grid command to use this function
-api.pointGrid2 = function(targetLayers, targetDataset, opts) {
-  var params = internal.getGridParams(targetLayers, targetDataset, opts);
+cmd.pointGrid2 = function(targetLayers, targetDataset, opts) {
+  var params = getGridParams(targetLayers, targetDataset, opts);
   var geojson;
   if (params.type == 'square') {
-    geojson = internal.getPointGridGeoJSON(internal.getSquareGridCoordinates(params));
+    geojson = getPointGridGeoJSON(getSquareGridCoordinates(params));
   } else if (params.type == 'hex') {
-    geojson = internal.getPointGridGeoJSON(internal.getHexGridCoordinates(params));
+    geojson = getPointGridGeoJSON(getHexGridCoordinates(params));
   } else {
     stop('Unsupported grid type');
   }
-  internal.alignGridToBounds(geojson, params.bbox);
-  var gridDataset = internal.importGeoJSON(geojson, {});
+  alignGridToBounds(geojson, params.bbox);
+  var gridDataset = importGeoJSON(geojson, {});
   if (opts.name) gridDataset.layers[0].name = opts.name;
   return gridDataset.layers[0];
 };
 
-internal.swapGridParams = function(params) {
+function swapGridParams(params) {
   var bbox = params.bbox;
   return utils.defaults({
     width: params.height,
     height: params.width,
     bbox: [bbox[1], bbox[0], bbox[3], bbox[2]]
   }, params);
-};
+}
 
-internal.swapPolygonCoords = function(json) {
+function swapPolygonCoords(json) {
   json.geometries.forEach(function(geom) {
     geom.coordinates[0] = geom.coordinates[0].map(function(p) {
       return [p[1], p[0]];
     });
   });
-};
+}
 
-internal.getGridParams = function(layers, dataset, opts) {
+function getGridParams(layers, dataset, opts) {
   var params = {};
-  var crs = dataset ? internal.getDatasetCRS(dataset) : null;
+  var crs = dataset ? getDatasetCRS(dataset) : null;
   if (opts.interval) {
-    params.interval = internal.convertIntervalParam(opts.interval, crs);
+    params.interval = convertIntervalParam(opts.interval, crs);
   } else {
     stop('Missing required interval option');
   }
@@ -69,7 +78,7 @@ internal.getGridParams = function(layers, dataset, opts) {
     params.bbox = opts.bbox;
   } else if (dataset) {
     dataset = utils.defaults({layers: layers}, dataset);
-    params.bbox = internal.getDatasetBounds(dataset).toArray();
+    params.bbox = getDatasetBounds(dataset).toArray();
   } else {
     stop('Missing grid bbox');
   }
@@ -77,9 +86,9 @@ internal.getGridParams = function(layers, dataset, opts) {
   params.height = params.bbox[3] - params.bbox[1];
   params.type = opts.type || 'square';
   return params;
-};
+}
 
-internal.getPointGridGeoJSON = function(arr) {
+function getPointGridGeoJSON(arr) {
   var geometries = [];
   arr.forEach(function(row) {
     row.forEach(function(xy) {
@@ -90,9 +99,9 @@ internal.getPointGridGeoJSON = function(arr) {
     });
   });
   return {type: 'GeometryCollection', geometries: geometries};
-};
+}
 
-internal.getHexGridGeoJSON = function(arr) {
+function getHexGridGeoJSON(arr) {
   var geometries = [], a, b, c, d, e, f;
   var rows = arr.length - 2;
   var row, col, midOffset, evenRow;
@@ -115,9 +124,9 @@ internal.getHexGridGeoJSON = function(arr) {
     }
   }
   return {type: 'GeometryCollection', geometries: geometries};
-};
+}
 
-internal.getSquareGridGeoJSON = function(arr) {
+function getSquareGridGeoJSON(arr) {
   var geometries = [], a, b, c, d;
   for (var row = 0, rows = arr.length - 1; row < rows; row++) {
     for (var col = 0, cols = arr[row].length - 1; col < cols; col++) {
@@ -132,9 +141,9 @@ internal.getSquareGridGeoJSON = function(arr) {
     }
   }
   return {type: 'GeometryCollection', geometries: geometries};
-};
+}
 
-internal.getHexGridCoordinates = function(params) {
+function getHexGridCoordinates(params) {
   var xInterval = params.interval;
   var yInterval = Math.sqrt(3) * xInterval / 2;
   var xOddRowShift = xInterval / 2;
@@ -154,9 +163,9 @@ internal.getHexGridCoordinates = function(params) {
     y += yInterval;
   }
   return rows;
-};
+}
 
-internal.getSquareGridCoordinates = function(params) {
+function getSquareGridCoordinates(params) {
   var y = 0, rows = [],
       interval = params.interval,
       xmax = params.width + interval,
@@ -173,16 +182,16 @@ internal.getSquareGridCoordinates = function(params) {
     y += interval;
   }
   return rows;
-};
+}
 
-internal.alignGridToBounds = function(geojson, bbox) {
-  var geojsonBbox = internal.findPolygonGridBounds(geojson);
+function alignGridToBounds(geojson, bbox) {
+  var geojsonBbox = findPolygonGridBounds(geojson);
   var dx = (bbox[2] + bbox[0]) / 2 - (geojsonBbox[2] + geojsonBbox[0]) / 2;
   var dy = (bbox[3] + bbox[1]) / 2 - (geojsonBbox[3] + geojsonBbox[1]) / 2;
-  internal.shiftPolygonGrid(geojson, dx, dy);
-};
+  shiftPolygonGrid(geojson, dx, dy);
+}
 
-internal.shiftPolygonGrid = function(geojson, dx, dy) {
+function shiftPolygonGrid(geojson, dx, dy) {
   geojson.geometries.forEach(function(geom) {
     if (geom.type == 'Point') {
       geom.coordinates = [geom.coordinates[0] + dx, geom.coordinates[1] + dy];
@@ -193,9 +202,9 @@ internal.shiftPolygonGrid = function(geojson, dx, dy) {
       });
     }
   });
-};
+}
 
-internal.findPolygonGridBounds = function(geojson) {
+function findPolygonGridBounds(geojson) {
   var boundsFunctions = {
     Point: pointBounds,
     Polygon: polygonBounds
@@ -228,4 +237,4 @@ internal.findPolygonGridBounds = function(geojson) {
     if (x > bbox[2]) bbox[2] = x;
     if (y > bbox[3]) bbox[3] = y;
   }
-};
+}

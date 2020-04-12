@@ -1,14 +1,18 @@
-/* @requires
-mapshaper-import
-dbf-import
-*/
+import { importContent } from '../io/mapshaper-import';
+import { isSupportedBinaryInputType, guessInputContentType, guessInputFileType } from '../io/mapshaper-file-types';
+import { importFiles } from '../cli/mapshaper-merge-files';
+import cmd from '../mapshaper-cmd';
+import cli from '../cli/mapshaper-cli-utils';
+import utils from '../utils/mapshaper-utils';
+import { message, verbose, stop } from '../utils/mapshaper-logging';
+import { getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 
-api.importFiles = function(opts) {
+cmd.importFiles = function(opts) {
   var files = opts.files || [],
       dataset;
 
   if (opts.stdin) {
-    return api.importFile('/dev/stdin', opts);
+    return importFile('/dev/stdin', opts);
   }
 
   if (files.length > 0 === false) {
@@ -18,21 +22,30 @@ api.importFiles = function(opts) {
   verbose("Importing: " + files.join(' '));
 
   if (files.length == 1) {
-    dataset = api.importFile(files[0], opts);
+    dataset = importFile(files[0], opts);
   } else if (opts.merge_files) {
     // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-    dataset = internal.importFiles(files, opts);
-    dataset.layers = api.mergeLayers(dataset.layers);
+    dataset = importFiles(files, opts);
+    dataset.layers = cmd.mergeLayers(dataset.layers);
   } else if (opts.combine_files) {
-    dataset = internal.importFiles(files, opts);
+    dataset = importFiles(files, opts);
   } else {
     stop('Invalid inputs');
   }
   return dataset;
 };
 
-api.importFile = function(path, opts) {
-  var fileType = internal.guessInputFileType(path),
+// Let the web UI replace importFile() with a browser-friendly version
+export function replaceImportFile(func) {
+  _importFile = func;
+}
+
+export function importFile(path, opts) {
+  return _importFile(path, opts);
+}
+
+var _importFile = function(path, opts) {
+  var fileType = guessInputFileType(path),
       input = {},
       encoding = opts && opts.encoding || null,
       cache = opts && opts.input || null,
@@ -52,7 +65,7 @@ api.importFile = function(path, opts) {
     // content = cli.readFile(path); // read from buffer
     content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
 
-  } else if (fileType && internal.isSupportedBinaryInputType(path)) {
+  } else if (fileType && isSupportedBinaryInputType(path)) {
     content = cli.readFile(path, null, cache);
     if (utils.isString(content)) {
       // Fix for issue #264 (applyCommands() input is file path instead of binary content)
@@ -64,7 +77,7 @@ api.importFile = function(path, opts) {
 
   } else { // type can't be inferred from filename -- try reading as text
     content = cli.readFile(path, encoding || 'utf-8', cache);
-    fileType = internal.guessInputContentType(content);
+    fileType = guessInputContentType(content);
     if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
       // invalidate string data that contains the 'replacement character'
       fileType = null;
@@ -72,21 +85,21 @@ api.importFile = function(path, opts) {
   }
 
   if (!fileType) {
-    stop(internal.getUnsupportedFileMessage(path));
+    stop(getUnsupportedFileMessage(path));
   }
   input[fileType] = {filename: path, content: content};
   content = null; // for g.c.
   if (fileType == 'shp' || fileType == 'dbf') {
-    internal.readShapefileAuxFiles(path, input, cache);
+    readShapefileAuxFiles(path, input, cache);
   }
   if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
-  return internal.importContent(input, opts);
+  return importContent(input, opts);
 };
 
-internal.getUnsupportedFileMessage = function(path) {
-  var ext = utils.getFileExtension(path);
+function getUnsupportedFileMessage(path) {
+  var ext = getFileExtension(path);
   var msg = 'Unable to import ' + path;
   if (ext.toLowerCase() == 'zip') {
     msg += ' (ZIP files must be unpacked before running mapshaper)';
@@ -94,13 +107,13 @@ internal.getUnsupportedFileMessage = function(path) {
     msg += ' (unknown file type)';
   }
   return msg;
-};
+}
 
-internal.readShapefileAuxFiles = function(path, obj, cache) {
-  var dbfPath = utils.replaceFileExtension(path, 'dbf');
-  var shxPath = utils.replaceFileExtension(path, 'shx');
-  var cpgPath = utils.replaceFileExtension(path, 'cpg');
-  var prjPath = utils.replaceFileExtension(path, 'prj');
+function readShapefileAuxFiles(path, obj, cache) {
+  var dbfPath = replaceFileExtension(path, 'dbf');
+  var shxPath = replaceFileExtension(path, 'shx');
+  var cpgPath = replaceFileExtension(path, 'cpg');
+  var prjPath = replaceFileExtension(path, 'prj');
   if (cli.isFile(prjPath, cache)) {
     obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8', cache)};
   }
@@ -113,4 +126,4 @@ internal.readShapefileAuxFiles = function(path, obj, cache) {
   if (obj.dbf && cli.isFile(cpgPath, cache)) {
     obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8', cache).trim()};
   }
-};
+}

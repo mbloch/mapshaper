@@ -1,8 +1,6 @@
 var api = require('../'),
     assert = require('assert');
 
-var Utils = api.utils;
-
 function fixPath(p) {
   return require('path').join(__dirname, p);
 }
@@ -23,7 +21,7 @@ describe('mapshaper-shapefile.js', function () {
     it('prj is exported even if mapshaper can not parse it (Issue #193)', function() {
       var data = api.importFile(fixPath('data/issues/193/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
-      var prj = Utils.find(files, function(o) {
+      var prj = api.utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
       });
       assert.equal(prj && prj.filename, 'three_points.prj');
@@ -32,7 +30,7 @@ describe('mapshaper-shapefile.js', function () {
     it('prj is exported if input prj is present', function() {
       var data = api.importFile(fixPath('data/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
-      var prj = Utils.find(files, function(o) {
+      var prj = api.utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
       });
       assert.equal(prj && prj.filename, 'three_points.prj');
@@ -218,5 +216,5 @@ function shapefileRoundTrip(fname) {
   var data2 = api.internal.importContent(input2, {encoding: 'ascii'});
   var files2 = api.internal.exportFileContent(data2, {encoding: 'ascii', format:"shapefile"});
 
-  assert.ok(Utils.buffersAreIdentical(files[0].content, files2[0].content));
+  assert.ok(api.internal.buffersAreIdentical(files[0].content, files2[0].content));
 }

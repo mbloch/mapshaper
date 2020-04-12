@@ -1,58 +1,57 @@
-/* @requires
-mapshaper-geom
-mapshaper-path-geom
-mapshaper-polygon-neighbors
-*/
+
+import { error } from '../utils/mapshaper-logging';
+import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
+import { calcPathLen } from '../geom/mapshaper-path-geom';
 
 // A compactness measure designed for testing electoral districts for gerrymandering.
 // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
-geom.calcPolsbyPopperCompactness = function(area, perimeter) {
+export function calcPolsbyPopperCompactness(area, perimeter) {
   if (perimeter <= 0) return 0;
   return Math.abs(area) * Math.PI * 4 / (perimeter * perimeter);
-};
+}
 
 // Larger values (less severe penalty) fthan Polsby Popper
-geom.calcSchwartzbergCompactness = function(area, perimeter) {
+export function calcSchwartzbergCompactness(area, perimeter) {
   if (perimeter <= 0) return 0;
   return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
-};
+}
 
 // Returns: 1 if CW, -1 if CCW, 0 if collapsed
-geom.getPathWinding = function(ids, arcs) {
-  var area = geom.getPathArea(ids, arcs);
+export function getPathWinding(ids, arcs) {
+  var area = getPathArea(ids, arcs);
   return area > 0 && 1 || area < 0 && -1 || 0;
-};
+}
 
-geom.getShapeArea = function(shp, arcs) {
+export function getShapeArea(shp, arcs) {
   // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
   return (shp || []).reduce(function(area, ids) {
-    return area + geom.getPathArea(ids, arcs);
+    return area + getPathArea(ids, arcs);
   }, 0);
-};
+}
 
-geom.getPlanarShapeArea = function(shp, arcs) {
+export function getPlanarShapeArea(shp, arcs) {
   return (shp || []).reduce(function(area, ids) {
-    return area + geom.getPlanarPathArea(ids, arcs);
+    return area + getPlanarPathArea(ids, arcs);
   }, 0);
-};
+}
 
-geom.getSphericalShapeArea = function(shp, arcs) {
+export function getSphericalShapeArea(shp, arcs) {
   if (arcs.isPlanar()) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
   return (shp || []).reduce(function(area, ids) {
-    return area + geom.getSphericalPathArea(ids, arcs);
+    return area + getSphericalPathArea(ids, arcs);
   }, 0);
-};
+}
 
 // Return true if point is inside or on boundary of a shape
 //
-geom.testPointInPolygon = function(x, y, shp, arcs) {
+export function testPointInPolygon(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
   if (shp) {
     shp.forEach(function(ids) {
-      var inRing = geom.testPointInRing(x, y, ids, arcs);
+      var inRing = testPointInRing(x, y, ids, arcs);
       if (inRing == 1) {
         isIn = !isIn;
       } else if (inRing == -1) {
@@ -61,20 +60,20 @@ geom.testPointInPolygon = function(x, y, shp, arcs) {
     });
   }
   return isOn || isIn;
-};
+}
 
-geom.getYIntercept = function(x, ax, ay, bx, by) {
+function getYIntercept(x, ax, ay, bx, by) {
   return ay + (x - ax) * (by - ay) / (bx - ax);
-};
+}
 
-geom.getXIntercept = function(y, ax, ay, bx, by) {
+function getXIntercept(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
-};
+}
 
 // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
 // Return 0: outside; 1: inside; -1: on boundary
 //
-geom.testPointInRing = function(x, y, ids, arcs) {
+export function testPointInRing(x, y, ids, arcs) {
   /*
   // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
   //// wait, why not? simplifcation shoudn't expand bounds, so this test makes sense
@@ -84,8 +83,8 @@ geom.testPointInRing = function(x, y, ids, arcs) {
   */
   var isIn = false,
       isOn = false;
-  internal.forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
-    var result = geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+  forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
+    var result = testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result == 1) {
       isIn = !isIn;
     } else if (isNaN(result)) {
@@ -93,20 +92,20 @@ geom.testPointInRing = function(x, y, ids, arcs) {
     }
   });
   return isOn ? -1 : (isIn ? 1 : 0);
-};
+}
 
 // test if a vertical ray originating at (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
 // (Special rules apply to endpoint intersections, to support point-in-polygon testing.)
-geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
-  var val = geom.getRayIntersection(x, y, ax, ay, bx, by);
+export function testRayIntersection(x, y, ax, ay, bx, by) {
+  var val = getRayIntersection(x, y, ax, ay, bx, by);
   if (val != val) {
     return NaN;
   }
   return val == -Infinity ? 0 : 1;
-};
+}
 
-geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
+export function getRayIntersection(x, y, ax, ay, bx, by) {
   var hit = -Infinity, // default: no hit
       yInt;
 
@@ -144,7 +143,7 @@ geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
     }
   // case: px is between endpoints
   } else {
-    yInt = geom.getYIntercept(x, ax, ay, bx, by);
+    yInt = getYIntercept(x, ax, ay, bx, by);
     if (yInt > y) {
       hit = yInt;
     } else if (yInt == y) {
@@ -152,13 +151,13 @@ geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
     }
   }
   return hit;
-};
+}
 
-geom.getPathArea = function(ids, arcs) {
-  return (arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea)(ids, arcs);
-};
+export function getPathArea(ids, arcs) {
+  return (arcs.isPlanar() ? getPlanarPathArea : getSphericalPathArea)(ids, arcs);
+}
 
-geom.getSphericalPathArea = function(ids, arcs) {
+export function getSphericalPathArea(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
       started = false,
@@ -176,13 +175,13 @@ geom.getSphericalPathArea = function(ids, arcs) {
     yp = y;
   }
   return sum / 2 * 6378137 * 6378137;
-};
+}
 
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
 //   wrapping points in an iterator.
 //
-geom.getPlanarPathArea2 = function(points) {
+export function getPlanarPathArea2(points) {
   var sum = 0,
       ax, ay, bx, by, dx, dy, p;
   for (var i=0, n=points.length; i<n; i++) {
@@ -201,9 +200,9 @@ geom.getPlanarPathArea2 = function(points) {
     by = ay;
   }
   return sum / 2;
-};
+}
 
-geom.getPlanarPathArea = function(ids, arcs) {
+export function getPlanarPathArea(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
       ax, ay, bx, by, dx, dy;
@@ -221,31 +220,31 @@ geom.getPlanarPathArea = function(ids, arcs) {
     }
   }
   return sum / 2;
-};
+}
 
-geom.getPathPerimeter = function(ids, arcs) {
-  return (arcs.isPlanar() ? geom.getPlanarPathPerimeter : geom.getSphericalPathPerimeter)(ids, arcs);
-};
+export function getPathPerimeter(ids, arcs) {
+  return (arcs.isPlanar() ? getPlanarPathPerimeter : getSphericalPathPerimeter)(ids, arcs);
+}
 
-geom.getShapePerimeter = function(shp, arcs) {
+export function getShapePerimeter(shp, arcs) {
   return (shp || []).reduce(function(len, ids) {
-    return len + geom.getPathPerimeter(ids, arcs);
+    return len + getPathPerimeter(ids, arcs);
   }, 0);
-};
+}
 
-geom.getSphericalShapePerimeter = function(shp, arcs) {
+export function getSphericalShapePerimeter(shp, arcs) {
   if (arcs.isPlanar()) {
     error("[getSphericalShapePerimeter()] Function requires decimal degree coordinates");
   }
   return (shp || []).reduce(function(len, ids) {
-    return len + geom.getSphericalPathPerimeter(ids, arcs);
+    return len + getSphericalPathPerimeter(ids, arcs);
   }, 0);
-};
+}
 
-geom.getPlanarPathPerimeter = function(ids, arcs) {
-  return geom.calcPathLen(ids, arcs, false);
-};
+export function getPlanarPathPerimeter(ids, arcs) {
+  return calcPathLen(ids, arcs, false);
+}
 
-geom.getSphericalPathPerimeter = function(ids, arcs) {
-  return geom.calcPathLen(ids, arcs, true);
-};
+export function getSphericalPathPerimeter(ids, arcs) {
+  return calcPathLen(ids, arcs, true);
+}

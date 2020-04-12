@@ -1,7 +1,9 @@
-/* @requires
-gui-zip-reader
-gui-catalog-control
-*/
+import { CatalogControl } from './gui-catalog-control';
+import './gui-zip-reader';
+import { utils, internal, stop } from './gui-core';
+import { El } from './gui-el';
+import { SimpleButton } from './gui-elements';
+import { GUI } from './gui-lib';
 
 // @cb function(<FileList>)
 function DropControl(el, cb) {
@@ -62,7 +64,7 @@ function FileChooser(el, cb) {
   }
 }
 
-function ImportControl(gui, opts) {
+export function ImportControl(gui, opts) {
   var model = gui.model;
   var importCount = 0;
   var useQuickView = opts.quick_view; // may be set by mapshaper-gui
@@ -98,11 +100,11 @@ function ImportControl(gui, opts) {
 
   function findMatchingShp(filename) {
     // use case-insensitive matching
-    var base = utils.getPathBase(filename).toLowerCase();
+    var base = internal.getPathBase(filename).toLowerCase();
     return model.getDatasets().filter(function(d) {
       var fname = d.info.input_files && d.info.input_files[0] || "";
-      var ext = utils.getFileExtension(fname).toLowerCase();
-      var base2 = utils.getPathBase(fname).toLowerCase();
+      var ext = internal.getFileExtension(fname).toLowerCase();
+      var base2 = internal.getPathBase(fname).toLowerCase();
       return base == base2 && ext == 'shp';
     });
   }
@@ -165,10 +167,10 @@ function ImportControl(gui, opts) {
     if (!isShapefilePart(nextFile.name)) {
       return queue;
     }
-    basename = utils.getFileBase(nextFile.name).toLowerCase();
+    basename = internal.getFileBase(nextFile.name).toLowerCase();
     parts = [];
     queue = queue.filter(function(file) {
-      if (utils.getFileBase(file.name).toLowerCase() == basename) {
+      if (internal.getFileBase(file.name).toLowerCase() == basename) {
         parts.push(file);
         return false;
       }

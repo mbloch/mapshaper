@@ -1,4 +1,67 @@
-/* @requires mapshaper-common, mapshaper-id-test-index */
+import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
+import { editShapeParts, forEachShapePart } from '../paths/mapshaper-shape-utils';
+
+// Clean polygon or polyline shapes (in-place)
+//
+export function cleanShapes(shapes, arcs, type) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = cleanShape(shapes[i], arcs, type);
+  }
+}
+
+// Remove defective arcs and zero-area polygon rings
+// Remove simple polygon spikes of form: [..., id, ~id, ...]
+// Don't remove duplicate points
+// Don't check winding order of polygon rings
+function cleanShape(shape, arcs, type) {
+  return editShapeParts(shape, function(path) {
+    var cleaned = cleanPath(path, arcs);
+    if (type == 'polygon' && cleaned) {
+      removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
+      if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
+        cleaned = null;
+      }
+    }
+    return cleaned;
+  });
+}
+
+function cleanPath(path, arcs) {
+  var nulls = 0;
+  for (var i=0, n=path.length; i<n; i++) {
+    if (arcs.arcIsDegenerate(path[i])) {
+      nulls++;
+      path[i] = null;
+    }
+  }
+  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
+}
+
+
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+// (in place)
+export function removeSpikesInPath(ids) {
+  var n = ids.length;
+  if (n >= 2) {
+    if (ids[0] == ~ids[n-1]) {
+      ids.pop();
+      ids.shift();
+    } else {
+      for (var i=1; i<n; i++) {
+        if (ids[i-1] == ~ids[i]) {
+          ids.splice(i-1, 2);
+          break;
+        }
+      }
+    }
+    if (ids.length < n) {
+      removeSpikesInPath(ids);
+    }
+  }
+}
+
 
 // Returns a function for splitting self-intersecting polygon rings
 // The splitter function receives a single polygon ring represented as an array
@@ -11,7 +74,7 @@
 // be non-self-intersecting. For example, a figure-eight shaped ring will be
 // split into two rings that touch each other where the original ring crossed itself.
 //
-internal.getSelfIntersectionSplitter = function(nodes) {
+export function getSelfIntersectionSplitter(nodes) {
   var pathIndex = new IdTestIndex(nodes.arcs.size());
   var filter = function(arcId) {
     return pathIndex.hasId(~arcId);
@@ -33,7 +96,7 @@ internal.getSelfIntersectionSplitter = function(nodes) {
       }
     }
     // indivisible path -- clean it by removing any spikes
-    internal.removeSpikesInPath(path);
+    removeSpikesInPath(path);
     return path.length > 0 ? [path] : [];
   }
 
@@ -61,7 +124,7 @@ internal.getSelfIntersectionSplitter = function(nodes) {
       return null;
     }
     // path forks -- recursively subdivide
-    var subPaths = internal.splitPathByIds(path, exitArcIndexes);
+    var subPaths = splitPathByIds(path, exitArcIndexes);
     return subPaths.reduce(accumulatePaths, null);
   }
 
@@ -82,13 +145,13 @@ internal.getSelfIntersectionSplitter = function(nodes) {
     return -1;
   }
 
-};
+}
 
 // Function returns an array of split-apart rings
 // @path An array of arc ids describing a self-intersecting polygon ring
 // @ids An array of two or more indexes of arcs that originate from a single vertex
 //      where @path intersects itself -- assumes indexes are in ascending sequence
-internal.splitPathByIds = function(path, indexes) {
+export function splitPathByIds(path, indexes) {
   var subPaths = [];
   utils.genericSort(indexes, true); // sort ascending
   if (indexes[0] > 0) {
@@ -106,4 +169,4 @@ internal.splitPathByIds = function(path, indexes) {
     utils.merge(subPaths[0], subPaths.pop());
   }
   return subPaths;
-};
+}

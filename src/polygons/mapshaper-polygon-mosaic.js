@@ -1,22 +1,25 @@
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { getPathFinder } from '../paths/mapshaper-pathfinder';
+import { reversePath } from '../paths/mapshaper-path-utils';
+import { PathIndex } from '../paths/mapshaper-path-index';
+import { debug, stop } from '../utils/mapshaper-logging';
+import { T } from '../utils/mapshaper-timing';
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
 
-/* @requires
-mapshaper-pathfinder-utils
-mapshaper-pathfinder
-*/
 
-// REPLACED by api.mosaic()
-// TODO port debug option from here to api.mosaic
-//
 // Create a mosaic layer from a dataset (useful for debugging commands like -clean
 //    that create a mosaic as an intermediate data structure)
 // Create additional layers if the "debug" flag is present
 //
-internal.mosaic = function(dataset, opts) {
+export function mosaic(dataset, opts) {
   var layers2 = [];
   var nodes, output;
   if (!dataset.arcs) stop("Dataset is missing path data");
-  nodes = internal.addIntersectionCuts(dataset, opts);
-  output = internal.buildPolygonMosaic(nodes);
+  nodes = addIntersectionCuts(dataset, opts);
+  output = buildPolygonMosaic(nodes);
   layers2.push({
     name: 'mosaic',
     shapes: output.mosaic,
@@ -52,7 +55,7 @@ internal.mosaic = function(dataset, opts) {
     pointLyr.data = new DataTable(pointData);
     return [arcLyr, pointLyr];
   }
-};
+}
 
 // Process arc-node topology to generate a layer of indivisible mosaic "tiles" {mosaic}
 //   ... also return a layer of outer-boundary polygons {enclosures}
@@ -65,12 +68,12 @@ internal.mosaic = function(dataset, opts) {
 //      (this should follow from 1... but may occur due to FP errors)
 // TODO: a better job of handling FP errors
 //
-internal.buildPolygonMosaic = function(nodes) {
+export function buildPolygonMosaic(nodes) {
   T.start();
   // Detach any acyclic paths (spikes) from arc graph (these would interfere with
   //    the ring finding operation). This modifies @nodes -- a side effect.
   nodes.detachAcyclicArcs();
-  var data = internal.findMosaicRings(nodes);
+  var data = findMosaicRings(nodes);
 
   // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
   var mosaic = data.cw.map(function(ring) {return [ring];});
@@ -88,16 +91,16 @@ internal.buildPolygonMosaic = function(nodes) {
       mosaic[id].push(ring);
     } else {
       // Non-enclosed CCW rings are outer boundaries -- add to enclosures layer
-      internal.reversePath(ring);
+      reversePath(ring);
       enclosures.push([ring]);
     }
   });
   T.stop(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length));
 
   return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
-};
+}
 
-internal.findMosaicRings = function(nodes) {
+function findMosaicRings(nodes) {
   var arcs = nodes.arcs,
       cw = [],
       ccw = [],
@@ -105,7 +108,7 @@ internal.findMosaicRings = function(nodes) {
       lostArcs = [];
 
   var flags = new Uint8Array(arcs.size());
-  var findPath = internal.getPathFinder(nodes, useRoute);
+  var findPath = getPathFinder(nodes, useRoute);
 
   for (var i=0, n=flags.length; i<n; i++) {
     tryPath(i);
@@ -150,4 +153,4 @@ internal.findMosaicRings = function(nodes) {
     if (closeRoute && isOpen) flags[absId] |= bit;
     return isOpen;
   }
-};
+}

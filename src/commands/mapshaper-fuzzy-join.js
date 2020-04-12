@@ -1,4 +1,12 @@
-/* @require mapshaper-data-fill */
+import { getUniqFieldValues } from '../datatable/mapshaper-data-utils';
+import { insertFieldValues, requireDataField, layerHasPoints, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { getModeData } from '../utils/mapshaper-calc-utils';
+import { getPolygonToPointsFunction } from '../join/mapshaper-point-polygon-join';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
+import { message, stop } from '../utils/mapshaper-logging';
+
 
 // This is a special-purpose function designed to copy a data field from a points
 // layer to a target polygon layer using a spatial join. It tries to create a continuous
@@ -9,24 +17,24 @@
 // or precinct field to a Census Block file, in preparation to dissolving the
 // blocks into larger polygons.
 //
-api.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
+cmd.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
   var pointLyr = src ? src.layer : null;
-  if (!pointLyr || !internal.layerHasPoints(pointLyr)) {
+  if (!pointLyr || !layerHasPoints(pointLyr)) {
     stop('Missing a point layer to join from');
   }
-  internal.requireDataField(pointLyr, opts.field);
-  internal.requirePolygonLayer(polygonLyr);
+  requireDataField(pointLyr, opts.field);
+  requirePolygonLayer(polygonLyr);
   if (opts.dedup_points) {
-    api.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + this.properties[' + JSON.stringify(opts.field) + ']', verbose: false});
+    cmd.uniq(pointLyr, null, {expression: 'this.x + "~" + this.y + "~" + this.properties[' + JSON.stringify(opts.field) + ']', verbose: false});
   }
-  internal.fuzzyJoin(polygonLyr, arcs, pointLyr, opts);
+  fuzzyJoin(polygonLyr, arcs, pointLyr, opts);
 };
 
-internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
+function fuzzyJoin(polygonLyr, arcs, pointLyr, opts) {
   var field = opts.field;
   // using first_match param: don't let a point be assigned to multiple polygons
-  var getPointIds = internal.getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, {first_match: true});
-  var getFieldValues = internal.getFieldValuesFunction(pointLyr, field);
+  var getPointIds = getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, {first_match: true});
+  var getFieldValues = getFieldValuesFunction(pointLyr, field);
   var assignedValues = [];
   var countData = [];
   var modeCounts = [];
@@ -35,13 +43,13 @@ internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
   polygonLyr.shapes.forEach(function(shp, i) {
     var pointIds = getPointIds(i) || [];
     var values = getFieldValues(pointIds);
-    var modeData = internal.getModeData(values, true);
+    var modeData = getModeData(values, true);
     var modeValue = modeData.margin > 0 ? modeData.modes[0] : null;
     var isTie = modeValue === null && modeData.modes.length > 1;
     if (isTie) {
       // resolve ties by picking between the candidate data values
       // todo: consider using this method to evaluate near-ties as well
-      modeValue = internal.resolveFuzzyJoinTie(modeData.modes, pointLyr, pointIds, field, shp, arcs);
+      modeValue = resolveFuzzyJoinTie(modeData.modes, pointLyr, pointIds, field, shp, arcs);
     }
     modeCounts[i] = modeData.count || 0;
     // retain count/mode data, to use later for restoring dropouts
@@ -51,25 +59,25 @@ internal.fuzzyJoin = function(polygonLyr, arcs, pointLyr, opts) {
     assignedValues.push(modeValue);
   });
 
-  internal.insertFieldValues(polygonLyr, 'join-count', modeCounts);
-  internal.insertFieldValues(polygonLyr, field, assignedValues);
+  insertFieldValues(polygonLyr, 'join-count', modeCounts);
+  insertFieldValues(polygonLyr, field, assignedValues);
 
   // fill in missing values, etc. using the data-fill function
-  api.dataFill(polygonLyr, arcs,
+  cmd.dataFill(polygonLyr, arcs,
     {field: field, weight_field: 'join-count', contiguous: opts.contiguous});
 
   // restore dropouts
   if (opts.no_dropouts) {
-    var missingValues = internal.findDropoutValues(polygonLyr, pointLyr, field);
+    var missingValues = findDropoutValues(polygonLyr, pointLyr, field);
     if (missingValues.length > 0) {
       restoreDropoutValues(polygonLyr, field, missingValues, countData);
     }
   }
 
-};
+}
 
 // Returns a function for converting an array of feature ids to an array of values from a given data field.
-internal.getFieldValuesFunction = function(lyr, field) {
+function getFieldValuesFunction(lyr, field) {
   var records = lyr.data.getRecords();
   return function getFieldValues(ids) {
     var values = [], rec;
@@ -79,14 +87,14 @@ internal.getFieldValuesFunction = function(lyr, field) {
     }
     return values;
   };
-};
+}
 
-internal.findDropoutValues = function(targetLyr, sourceLyr, field) {
-  var sourceValues = internal.getUniqFieldValues(sourceLyr.data.getRecords(), field);
-  var targetValues = internal.getUniqFieldValues(targetLyr.data.getRecords(), field);
+function findDropoutValues(targetLyr, sourceLyr, field) {
+  var sourceValues = getUniqFieldValues(sourceLyr.data.getRecords(), field);
+  var targetValues = getUniqFieldValues(targetLyr.data.getRecords(), field);
   var missing = utils.difference(sourceValues, targetValues);
   return missing;
-};
+}
 
 function restoreDropoutValues(lyr, field, missingValues, countData) {
   var records = lyr.data.getRecords();
@@ -94,7 +102,7 @@ function restoreDropoutValues(lyr, field, missingValues, countData) {
   var restoredIds = [];
 
   var targetIds = missingValues.map(function(missingValue) {
-    var shpId = internal.findDropoutInsertionShape(missingValue, countData);
+    var shpId = findDropoutInsertionShape(missingValue, countData);
     if (shpId > -1 && restoredIds.indexOf(shpId) === -1) {
       records[shpId][field] = missingValue;
       restoredIds.push(shpId);
@@ -114,7 +122,7 @@ function restoreDropoutValues(lyr, field, missingValues, countData) {
   }
 }
 
-internal.findDropoutInsertionShape = function(value, countData) {
+function findDropoutInsertionShape(value, countData) {
   var id = -1;
   var count = 0;
   countData.forEach(function(d, shpId) {
@@ -126,29 +134,29 @@ internal.findDropoutInsertionShape = function(value, countData) {
     }
   });
   return id;
-};
+}
 
 // TODO: move to more appropriate file
-internal.getPointsToPolygonDistance = function(points, poly, arcs) {
+function getPointsToPolygonDistance(points, poly, arcs) {
   // todo: handle multipoint geometry (this function will return an invalid distance
   // if the first point in a multipoint feature falls outside the target polygon
   var p = points[0];
   // unsigned distance to nearest polygon boundary
   return geom.getPointToShapeDistance(p[0], p[1], poly, arcs);
-};
+}
 
-internal.resolveFuzzyJoinTie = function(modeValues, pointLyr, pointIds, field, shp, arcs) {
+function resolveFuzzyJoinTie(modeValues, pointLyr, pointIds, field, shp, arcs) {
   var weights = modeValues.map(function() {return 0;}); // initialize to 0
   pointIds.forEach(function(pointId) {
     var coords = pointLyr.shapes[pointId];
     var val = pointLyr.data.getRecordAt(pointId)[field];
     var i = modeValues.indexOf(val);
     if (i === -1) return;
-    var dist = internal.getPointsToPolygonDistance(coords, shp, arcs);
+    var dist = getPointsToPolygonDistance(coords, shp, arcs);
     weights[i] += dist;
   });
   // use value with the highest weight
   var maxWeight = Math.max.apply(null, weights);
   var maxValue = modeValues[weights.indexOf(maxWeight)];
   return maxValue;
-};
+}

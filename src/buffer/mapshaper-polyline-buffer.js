@@ -1,26 +1,24 @@
-/* @requires
-mapshaper-buffer-common
-mapshaper-shape-iter
-mapshaper-geodesic
-mapshaper-geojson
-mapshaper-path-buffer
-mapshaper-path-buffer2
-*/
+import { getPolylineBufferMaker } from '../buffer/mapshaper-path-buffer';
+import { getPolylineBufferMaker2 } from '../buffer/mapshaper-path-buffer2';
+import { getBearingFunction } from '../geom/mapshaper-geodesic';
+import { getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
+import { getBufferToleranceFunction, getBufferDistanceFunction, dissolveBufferDataset } from '../buffer/mapshaper-buffer-common';
+import { importGeoJSON } from '../geojson/geojson-import';
 
-internal.makePolylineBuffer = function(lyr, dataset, opts) {
-  var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
-  var dataset2 = internal.importGeoJSON(geojson, {});
-  internal.dissolveBufferDataset(dataset2, opts);
+export function makePolylineBuffer(lyr, dataset, opts) {
+  var geojson = makeShapeBufferGeoJSON(lyr, dataset, opts);
+  var dataset2 = importGeoJSON(geojson, {});
+  dissolveBufferDataset(dataset2, opts);
   return dataset2;
-};
+}
 
-internal.makeShapeBufferGeoJSON = function(lyr, dataset, opts) {
-  var distanceFn = internal.getBufferDistanceFunction(lyr, dataset, opts);
-  var toleranceFn = internal.getBufferToleranceFunction(dataset, opts);
-  var geod = internal.getGeodeticSegmentFunction(dataset, false);
-  var getBearing = internal.getBearingFunction(dataset);
-  var makerOpts = utils.extend({geometry_type: lyr.geometry_type}, opts);
-  var factory = opts.v2 ? internal.getPolylineBufferMaker2 : internal.getPolylineBufferMaker;
+export function makeShapeBufferGeoJSON(lyr, dataset, opts) {
+  var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+  var toleranceFn = getBufferToleranceFunction(dataset, opts);
+  var geod = getGeodeticSegmentFunction(dataset, false);
+  var getBearing = getBearingFunction(dataset);
+  var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
+  var factory = opts.v2 ? getPolylineBufferMaker2 : getPolylineBufferMaker;
   var makeShapeBuffer = factory(dataset.arcs, geod, getBearing, makerOpts);
   var records = lyr.data ? lyr.data.getRecords() : null;
   var geometries = lyr.shapes.map(function(shape, i) {
@@ -33,5 +31,5 @@ internal.makeShapeBufferGeoJSON = function(lyr, dataset, opts) {
     type: 'GeometryCollection',
     geometries: geometries
   };
-};
+}
 

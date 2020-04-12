@@ -1,7 +1,8 @@
-/* @requires gui-lib */
+import { EventDispatcher } from './gui-events';
+import { internal, utils } from './gui-core';
 
-function Model(gui) {
-  var self = new api.internal.Catalog();
+export function Model(gui) {
+  var self = new internal.Catalog();
   var deleteLayer = self.deleteLayer;
   utils.extend(self, EventDispatcher.prototype);
 

@@ -1,11 +1,10 @@
-/* @requires
-gui-lib
-gui-svg-labels
-gui-svg-symbol-utils
-gui-map-utils
-*/
+import { getSvgSymbolTransform } from './gui-svg-symbols';
+import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTextAnchor, applyDelta } from './gui-svg-labels';
+import { error, internal } from './gui-core';
+import { translateDeltaDisplayCoords, getPointCoordsById, getDisplayCoordsById } from './gui-map-utils';
+import { EventDispatcher } from './gui-events';
 
-function SymbolDragging2(gui, ext, hit) {
+export function SymbolDragging2(gui, ext, hit) {
   // var targetTextNode; // text node currently being dragged
   var dragging = false;
   var activeRecord;
@@ -187,6 +186,13 @@ function SymbolDragging2(gui, ext, hit) {
       // updateSymbol(targetTextNode, activeRecord);
       updateSymbol2(textNode, activeRecord, activeId);
     }
+
+    function getSymbolNodeById(id, parent) {
+      // TODO: optimize selector
+      var sel = '[data-id="' + id + '"]';
+      return parent.querySelector(sel);
+    }
+
 
     function getTextTarget3(e) {
       if (e.id > -1 === false || !e.container) return null;

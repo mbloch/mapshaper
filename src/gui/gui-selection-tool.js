@@ -1,5 +1,8 @@
+import { HighlightBox } from './gui-highlight-box';
+import { internal } from './gui-core';
+import { SimpleButton } from './gui-elements';
 
-function SelectionTool(gui, ext, hit) {
+export function SelectionTool(gui, ext, hit) {
   var popup = gui.container.findChild('.selection-tool-options');
   var box = new HighlightBox('body');
   var _on = false;
@@ -23,7 +26,7 @@ function SelectionTool(gui, ext, hit) {
   gui.on('box_drag_end', function(e) {
     if (!_on) return;
     box.hide();
-    bboxPixels = e.map_bbox;
+    var bboxPixels = e.map_bbox;
     var bbox = bboxToCoords(bboxPixels);
     var active = gui.model.getActiveLayer();
     var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);

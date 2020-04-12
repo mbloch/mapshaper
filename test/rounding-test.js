@@ -1,5 +1,6 @@
 var api = require('../'),
   utils = api.utils,
+  internal = api.internal,
   assert = require('assert');
 
 function testPoints(src, precision, target) {
@@ -18,7 +19,7 @@ describe('mapshaper-rounding.js', function () {
   describe('getRoundingFunction', function () {
 
     function testAtPrecision(precision) {
-      var round = utils.getRoundingFunction(precision),
+      var round = internal.getRoundingFunction(precision),
           // avoid 0.0000001 -> 1e-7
           maxDigits = countDigits(precision.toFixed(15).replace(/0*$/, '')),
           tests = 1000,
@@ -41,13 +42,13 @@ describe('mapshaper-rounding.js', function () {
     }
 
     it('Rounds to 1s', function () {
-      var round = utils.getRoundingFunction(1);
+      var round = internal.getRoundingFunction(1);
       assert.equal(round(10.2), 10);
       assert.equal(round(-1000000.2), -1000000);
     })
 
     it('Rounds to 10s', function () {
-      var round = utils.getRoundingFunction(10);
+      var round = internal.getRoundingFunction(10);
       assert.equal(round(11), 10);
       assert.equal(round(-15.55), -20);
     })
@@ -85,7 +86,7 @@ describe('mapshaper-rounding.js', function () {
     })
 
     it('JSON.stringify() doesn\'t show rounding artefacts', function () {
-      var round = utils.getRoundingFunction(0.1);
+      var round = internal.getRoundingFunction(0.1);
       assert.equal(JSON.stringify(round(0.1)), "0.1");
       assert.equal(JSON.stringify(round(-77.2)), "-77.2");
       assert.equal(JSON.stringify(round(33.3)), "33.3");

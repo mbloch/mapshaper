@@ -1,10 +1,11 @@
-/* @requires mapshaper-hash-function */
+import { getXYHash } from '../topology/mapshaper-hash-function';
+import utils from '../utils/mapshaper-utils';
 
 // Return an array with data for chains of vertices with same x, y coordinates
 // Array contains ids of next point in each chain.
 // Unique vertices link to themselves (i.e. arr[n] == n)
 //
-function initPointChains(xx, yy) {
+export function initPointChains(xx, yy) {
   var pointCount = xx.length,
       // Performance doesn't improve much above ~1.3 * point count
       hashTableSize = Math.floor(pointCount * 1.4),

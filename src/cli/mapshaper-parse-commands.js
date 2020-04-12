@@ -1,35 +1,38 @@
-/* @requires mapshaper-options, mapshaper-option-parsing-utils */
+import { getOptionParser } from '../cli/mapshaper-options';
+import { splitShellTokens } from '../cli/mapshaper-option-parsing-utils';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
 // Parse an array or a string of command line tokens into an array of
 // command objects.
-internal.parseCommands = function(tokens) {
+export function parseCommands(tokens) {
   if (Array.isArray(tokens) && utils.isObject(tokens[0])) {
     // argv seems to contain parsed commands already... make a copy
     return tokens.map(function(cmd) {
-      return {name: cmd.name, options: utils.extend({}, cmd.options)};
+      return {name: cmd.name, options: Object.assign({}, cmd.options)};
     });
   }
   if (utils.isString(tokens)) {
-    tokens = internal.splitShellTokens(tokens);
+    tokens = splitShellTokens(tokens);
   }
-  return internal.getOptionParser().parseArgv(tokens);
-};
+  return getOptionParser().parseArgv(tokens);
+}
 
-internal.standardizeConsoleCommands = function(raw) {
+export function standardizeConsoleCommands(raw) {
   var str = raw.replace(/^mapshaper\b/, '').trim();
   if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
   return str;
-};
+}
 
 // Parse a command line string for the browser console
-internal.parseConsoleCommands = function(raw) {
+export function parseConsoleCommands(raw) {
   var blocked = ['i', 'include', 'require', 'external'];
-  var str = internal.standardizeConsoleCommands(raw);
+  var str = standardizeConsoleCommands(raw);
   var parsed;
-  parsed = internal.parseCommands(str);
+  parsed = parseCommands(str);
   parsed.forEach(function(cmd) {
     var i = blocked.indexOf(cmd.name);
     if (i > -1) {
@@ -37,4 +40,4 @@ internal.parseConsoleCommands = function(raw) {
     }
   });
   return parsed;
-};
+}

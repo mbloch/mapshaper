@@ -1,4 +1,7 @@
-function CoordinatesDisplay(gui, ext, mouse) {
+import { internal } from './gui-core';
+import { GUI } from './gui-lib';
+
+export function CoordinatesDisplay(gui, ext, mouse) {
   var readout = gui.container.findChild('.coordinate-info').hide();
   var enabled = false;
 
@@ -10,7 +13,7 @@ function CoordinatesDisplay(gui, ext, mouse) {
   readout.on('copy', function(e) {
     // remove selection on copy (using timeout or else copy is cancelled)
     setTimeout(function() {
-      getSelection().removeAllRanges();
+      window.getSelection().removeAllRanges();
     }, 50);
   });
 

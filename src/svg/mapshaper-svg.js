@@ -1,16 +1,19 @@
-/* @requires
-mapshaper-common
-mapshaper-basic-symbols
-geojson-export
-geojson-to-svg
-mapshaper-svg-style
-svg-common
-mapshaper-pixel-transform
-*/
+import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getFurnitureLayerData, layerHasFurniture, importFurniture } from '../furniture/mapshaper-furniture';
+import { findFrameLayerInDataset } from '../commands/mapshaper-frame';
+import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
+import { transformDatasetToPixels } from '../geom/mapshaper-pixel-transform';
+import { copyDataset } from '../dataset/mapshaper-dataset-utils';
+import utils from '../utils/mapshaper-utils';
+import { message, error, stop } from '../utils/mapshaper-logging';
+import { embedImages, stringify } from '../svg/svg-stringify';
+import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
+import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 
 //
 //
-internal.exportSVG = function(dataset, opts) {
+export function exportSVG(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg %s ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
@@ -21,19 +24,19 @@ internal.exportSVG = function(dataset, opts) {
   if (opts.final) {
     if (dataset.arcs) dataset.arcs.flatten();
   } else {
-    dataset = internal.copyDataset(dataset); // Modify a copy of the dataset
+    dataset = copyDataset(dataset); // Modify a copy of the dataset
   }
   // invert_y setting for screen coordinates and geojson polygon generation
   utils.extend(opts, {invert_y: true});
-  size = internal.transformCoordsForSVG(dataset, opts);
+  size = transformCoordsForSVG(dataset, opts);
 
   // error if one or more svg_data fields are not present in any layers
-  if (opts.svg_data) internal.validateSvgDataFields(dataset.layers, opts.svg_data);
+  if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
 
   svg = dataset.layers.map(function(lyr) {
-    var obj = internal.exportLayerForSVG(lyr, dataset, opts);
-    SVG.embedImages(obj, symbols);
-    return SVG.stringify(obj);
+    var obj = exportLayerForSVG(lyr, dataset, opts);
+    embedImages(obj, symbols);
+    return stringify(obj);
   }).join('\n');
   if (symbols.length > 0) {
     namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
@@ -42,50 +45,50 @@ internal.exportSVG = function(dataset, opts) {
   svg = utils.format(template, namespace, size[0], size[1], 0, 0, size[0], size[1], svg);
   return [{
     content: svg,
-    filename: opts.file || utils.getOutputFileBase(dataset) + '.svg'
+    filename: opts.file || getOutputFileBase(dataset) + '.svg'
   }];
-};
+}
 
-internal.transformCoordsForSVG = function(dataset, opts) {
-  var size = internal.transformDatasetToPixels(dataset, opts);
+function transformCoordsForSVG(dataset, opts) {
+  var size = transformDatasetToPixels(dataset, opts);
   var precision = opts.precision || 0.0001;
-  internal.setCoordinatePrecision(dataset, precision);
+  setCoordinatePrecision(dataset, precision);
   return size;
-};
+}
 
-internal.exportLayerForSVG = function(lyr, dataset, opts) {
-  var layerObj = internal.getEmptyLayerForSVG(lyr, opts);
-  if (internal.layerHasFurniture(lyr)) {
-    layerObj.children = internal.exportFurnitureForSVG(lyr, dataset, opts);
+export function exportLayerForSVG(lyr, dataset, opts) {
+  var layerObj = getEmptyLayerForSVG(lyr, opts);
+  if (layerHasFurniture(lyr)) {
+    layerObj.children = exportFurnitureForSVG(lyr, dataset, opts);
   } else {
-    layerObj.children = internal.exportSymbolsForSVG(lyr, dataset, opts);
+    layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
   }
   return layerObj;
-};
+}
 
-internal.exportFurnitureForSVG = function(lyr, dataset, opts) {
-  var frameLyr = internal.findFrameLayerInDataset(dataset);
+function exportFurnitureForSVG(lyr, dataset, opts) {
+  var frameLyr = findFrameLayerInDataset(dataset);
   var frameData;
   if (!frameLyr) return [];
-  frameData = internal.getFurnitureLayerData(frameLyr);
-  frameData.crs = internal.getDatasetCRS(dataset); // required by e.g. scalebar
-  return SVG.importFurniture(internal.getFurnitureLayerData(lyr), frameData);
-};
+  frameData = getFurnitureLayerData(frameLyr);
+  frameData.crs = getDatasetCRS(dataset); // required by e.g. scalebar
+  return importFurniture(getFurnitureLayerData(lyr), frameData);
+}
 
-internal.exportSymbolsForSVG = function(lyr, dataset, opts) {
+function exportSymbolsForSVG(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
   var d = utils.defaults({layers: [lyr]}, dataset);
-  var geojson = internal.exportDatasetAsGeoJSON(d, opts);
+  var geojson = exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  var children = SVG.importGeoJSONFeatures(features, opts);
+  var children = importGeoJSONFeatures(features, opts);
   var data;
   if (opts.svg_data && lyr.data) {
-    internal.addDataAttributesToSVG(children, lyr.data, opts.svg_data);
+    addDataAttributesToSVG(children, lyr.data, opts.svg_data);
   }
   return children;
-};
+}
 
-internal.validateSvgDataFields = function(layers, fieldsArg) {
+export function validateSvgDataFields(layers, fieldsArg) {
   var missingFields = fieldsArg.reduce(function(memo, field) {
     if (!fieldExists(layers, field)) {
       memo.push(field);
@@ -102,9 +105,9 @@ internal.validateSvgDataFields = function(layers, fieldsArg) {
       return lyr.data && lyr.data.fieldExists(field) || false;
     });
   }
-};
+}
 
-internal.addDataAttributesToSVG = function(children, table, fieldsArg) {
+function addDataAttributesToSVG(children, table, fieldsArg) {
   var allFields = table.getFields();
   var dataFields = fieldsArg.indexOf('*') > -1 ? allFields.concat() : fieldsArg;
   var missingFields = utils.difference(dataFields, allFields);
@@ -113,16 +116,16 @@ internal.addDataAttributesToSVG = function(children, table, fieldsArg) {
     // stop("Missing data field(s):", missingFields.join(', '));
   }
   var records = table.getRecords();
-  var data = internal.exportDataAttributesForSVG(records, dataFields);
+  var data = exportDataAttributesForSVG(records, dataFields);
   if (children.length != data.length) {
     error("Mismatch between number of SVG symbols and data attributes");
   }
   children.forEach(function(child, i) {
     utils.extend(child.properties || {}, data[i]);
   });
-};
+}
 
-internal.exportDataAttributesForSVG = function(records, fields) {
+export function exportDataAttributesForSVG(records, fields) {
   var validRxp = /^[a-z_][a-z0-9_-]*$/i;
   var invalidRxp = /^xml/;
   var validFields = fields.filter(function(name) {
@@ -137,17 +140,17 @@ internal.exportDataAttributesForSVG = function(records, fields) {
     var obj = {};
     for (var i=0; i<validFields.length; i++) {
       obj['data-' + validFields[i].toLowerCase()] =
-        internal.validDataAttributeValue(rec[validFields[i]]);
+        validDataAttributeValue(rec[validFields[i]]);
     }
     return obj;
   });
-};
+}
 
-internal.validDataAttributeValue = function(val) {
+function validDataAttributeValue(val) {
   // TODO: consider converting some falsy values to empty strings
   // (e.g. null, undefined, NaN)
   return String(val);
-};
+}
 
 // internal.validDataAttributeNames = function(names) {
 //   return utils.uniqifyNames(names.map(internal.validDataAttributeName));
@@ -168,7 +171,7 @@ internal.validDataAttributeValue = function(val) {
 //   return name;
 // };
 
-internal.getEmptyLayerForSVG = function(lyr, opts) {
+function getEmptyLayerForSVG(lyr, opts) {
   var layerObj = {
     tag: 'g',
     properties: {id: (opts.id_prefix || '') + lyr.name},
@@ -176,7 +179,7 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
   };
 
   // override default black fill for layers that might have open paths
-  if (lyr.geometry_type == 'polyline' || internal.layerHasSvgSymbols(lyr)) {
+  if (lyr.geometry_type == 'polyline' || layerHasSvgSymbols(lyr)) {
     layerObj.properties.fill = 'none';
   }
 
@@ -189,23 +192,23 @@ internal.getEmptyLayerForSVG = function(lyr, opts) {
 
 
   // add default text properties to layers with labels
-  if (internal.layerHasLabels(lyr) || internal.layerHasSvgSymbols(lyr) || internal.layerHasFurniture(lyr)) {
+  if (layerHasLabels(lyr) || layerHasSvgSymbols(lyr) || layerHasFurniture(lyr)) {
     layerObj.properties['font-family'] = 'sans-serif';
     layerObj.properties['font-size'] = '12';
     layerObj.properties['text-anchor'] = 'middle';
   }
 
   return layerObj;
-};
+}
 
-internal.layerHasSvgSymbols = function(lyr) {
+export function layerHasSvgSymbols(lyr) {
   return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
-};
+}
 
-internal.layerHasLabels = function(lyr) {
+export function layerHasLabels(lyr) {
   var hasLabels = lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('label-text');
   //if (hasLabels && internal.findMaxPartCount(lyr.shapes) > 1) {
   //  console.error('Multi-point labels are not fully supported');
   //}
   return hasLabels;
-};
+}

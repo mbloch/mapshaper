@@ -10,10 +10,9 @@
 //     iter.x, iter.y; // do something w/ x & y
 //   }
 
-
 // Iterate over an array of [x, y] points
 //
-function PointIter(points) {
+export function PointIter(points) {
   var n = points.length,
       i = 0,
       iter = {
@@ -34,7 +33,7 @@ function PointIter(points) {
 
 // Constructor takes arrays of coords: xx, yy, zz (optional)
 //
-function ArcIter(xx, yy) {
+export function ArcIter(xx, yy) {
   this._i = 0;
   this._n = 0;
   this._inc = 1;
@@ -70,7 +69,7 @@ ArcIter.prototype.hasNext = function() {
   return false;
 };
 
-function FilteredArcIter(xx, yy, zz) {
+export function FilteredArcIter(xx, yy, zz) {
   var _zlim = 0,
       _i = 0,
       _inc = 1,
@@ -112,7 +111,7 @@ function FilteredArcIter(xx, yy, zz) {
 
 // Iterate along a path made up of one or more arcs.
 //
-function ShapeIter(arcs) {
+export function ShapeIter(arcs) {
   this._arcs = arcs;
   this._i = 0;
   this._n = 0;

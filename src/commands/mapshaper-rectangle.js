@@ -1,18 +1,28 @@
-/* @require mapshaper-geojson, mapshaper-dataset-utils */
+import cmd from '../mapshaper-cmd';
+import { convertFourSides } from '../geom/mapshaper-units';
+import { setDatasetCRS, getDatasetCRS, getCRS } from '../geom/mapshaper-projections';
+import { getLayerBounds, layerHasGeometry } from '../dataset/mapshaper-layer-utils';
+import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
+import { importGeoJSON } from '../geojson/geojson-import';
+import { getPointFeatureBounds } from '../points/mapshaper-point-utils';
+import utils from '../utils/mapshaper-utils';
+import { stop } from '../utils/mapshaper-logging';
+import { probablyDecimalDegreeBounds, clampToWorldBounds } from '../geom/mapshaper-latlon';
+import { Bounds } from '../geom/mapshaper-bounds';
 
 // Create rectangles around each feature in a layer
-api.rectangles = function(targetLyr, targetDataset, opts) {
-  if (!internal.layerHasGeometry(targetLyr)) {
+cmd.rectangles = function(targetLyr, targetDataset, opts) {
+  if (!layerHasGeometry(targetLyr)) {
     stop("Layer is missing geometric shapes");
   }
-  var crs = internal.getDatasetCRS(targetDataset);
+  var crs = getDatasetCRS(targetDataset);
   var records = targetLyr.data ? targetLyr.data.getRecords() : null;
   var geometries = targetLyr.shapes.map(function(shp) {
     var bounds = targetLyr.geometryType == 'point' ?
-      internal.getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-    bounds = internal.applyRectangleOptions(bounds, crs, opts);
+      getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
+    bounds = applyRectangleOptions(bounds, crs, opts);
     if (!bounds) return null;
-    return internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+    return convertBboxToGeoJSON(bounds.toArray(), opts);
   });
   var geojson = {
     type: 'FeatureCollection',
@@ -28,8 +38,8 @@ api.rectangles = function(targetLyr, targetDataset, opts) {
       };
     })
   };
-  var dataset = internal.importGeoJSON(geojson, {});
-  var outputLayers = internal.mergeDatasetsIntoDataset(targetDataset, [dataset]);
+  var dataset = importGeoJSON(geojson, {});
+  var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
   if (!opts.no_replace) {
     outputLayers[0].name = targetLyr.name || outputLayers[0].name;
   }
@@ -38,57 +48,57 @@ api.rectangles = function(targetLyr, targetDataset, opts) {
 
 // Create rectangles around one or more target layers
 //
-api.rectangle2 = function(target, opts) {
+cmd.rectangle2 = function(target, opts) {
   var datasets = target.layers.map(function(lyr) {
-    var dataset = api.rectangle({layer: lyr, dataset: target.dataset}, opts);
+    var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
     if (!opts.no_replace) {
       dataset.layers[0].name = lyr.name || dataset.layers[0].name;
     }
     return dataset;
   });
-  return internal.mergeDatasetsIntoDataset(target.dataset, datasets);
+  return mergeDatasetsIntoDataset(target.dataset, datasets);
 };
 
-api.rectangle = function(source, opts) {
+cmd.rectangle = function(source, opts) {
   var offsets, bounds, crs, coords, sourceInfo;
   if (source) {
-    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
+    bounds = getLayerBounds(source.layer, source.dataset.arcs);
     sourceInfo = source.dataset.info;
-    crs = internal.getDatasetCRS(source.dataset);
+    crs = getDatasetCRS(source.dataset);
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
-    crs = internal.getCRS('wgs84');
+    crs = getCRS('wgs84');
   }
-  bounds = bounds && internal.applyRectangleOptions(bounds, crs, opts);
+  bounds = bounds && applyRectangleOptions(bounds, crs, opts);
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
   }
-  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
-  var dataset = internal.importGeoJSON(geojson, {});
+  var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
+  var dataset = importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
   if (sourceInfo) {
-    internal.setDatasetCRS(dataset, sourceInfo);
+    setDatasetCRS(dataset, sourceInfo);
   }
   return dataset;
 };
 
-internal.applyRectangleOptions = function(bounds, crs, opts) {
-  var isGeoBox = internal.probablyDecimalDegreeBounds(bounds);
+function applyRectangleOptions(bounds, crs, opts) {
+  var isGeoBox = probablyDecimalDegreeBounds(bounds);
   if (opts.offset) {
-    bounds = internal.applyBoundsOffset(opts.offset, bounds, crs);
+    bounds = applyBoundsOffset(opts.offset, bounds, crs);
   }
   if (bounds.area() > 0 === false) return null;
   if (opts.aspect_ratio) {
-    bounds = internal.applyAspectRatio(opts.aspect_ratio, bounds);
+    bounds = applyAspectRatio(opts.aspect_ratio, bounds);
   }
   if (isGeoBox) {
-    bounds = internal.clampToWorldBounds(bounds);
+    bounds = clampToWorldBounds(bounds);
   }
   return bounds;
-};
+}
 
 // opt: aspect ratio as a single number or a range (e.g. "1,2");
-internal.applyAspectRatio = function(opt, bounds) {
+export function applyAspectRatio(opt, bounds) {
   var range = String(opt).split(',').map(parseFloat),
     aspectRatio = bounds.width() / bounds.height(),
     min, max; // min is height limit, max is width limit
@@ -108,19 +118,19 @@ internal.applyAspectRatio = function(opt, bounds) {
     bounds.fillOut(max);
   }
   return bounds;
-};
+}
 
-internal.applyBoundsOffset = function(offsetOpt, bounds, crs) {
-  var offsets = internal.convertFourSides(offsetOpt, crs, bounds);
+function applyBoundsOffset(offsetOpt, bounds, crs) {
+  var offsets = convertFourSides(offsetOpt, crs, bounds);
   bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
   return bounds;
-};
+}
 
-internal.convertBboxToGeoJSON = function(bbox, opts) {
+function convertBboxToGeoJSON(bbox, opts) {
   var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
       [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
   return {
     type: 'Polygon',
     coordinates: [coords]
   };
-};
+}

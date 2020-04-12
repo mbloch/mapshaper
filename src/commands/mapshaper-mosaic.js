@@ -1,12 +1,18 @@
-/* @requires mapshaper-polygon-mosaic */
+import { recombineDataRecords } from '../dissolve/mapshaper-data-aggregation';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import { stop } from '../utils/mapshaper-logging';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
 
-api.mosaic = function(layers, dataset, opts) {
+cmd.mosaic = function(layers, dataset, opts) {
   var lyr = layers[0];
   if (!lyr || layers.length > 1) {
     stop('Command takes a single target layer');
   }
-  internal.requirePolygonLayer(lyr);
-  var nodes = internal.addIntersectionCuts(dataset, opts);
+  requirePolygonLayer(lyr);
+  var nodes = addIntersectionCuts(dataset, opts);
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false});
   var mosaicShapes = mosaicIndex.mosaic;
   var records2;
@@ -18,7 +24,7 @@ api.mosaic = function(layers, dataset, opts) {
   };
 
   if (opts.calc) {
-    records2 = internal.recombineDataRecords(lyr.data.getRecords(), mosaicIndex.getSourceIdsByTileId, mosaicShapes.length, opts);
+    records2 = recombineDataRecords(lyr.data.getRecords(), mosaicIndex.getSourceIdsByTileId, mosaicShapes.length, opts);
     lyr2.data = new DataTable(records2);
   }
 

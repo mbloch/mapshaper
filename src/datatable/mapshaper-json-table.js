@@ -1,28 +1,30 @@
-/* @requires mapshaper-data-table */
+import { getFormattedStringify } from '../geojson/mapshaper-stringify';
+import { fixInconsistentFields } from '../datatable/mapshaper-data-utils';
+import { DataTable } from '../datatable/mapshaper-data-table';
 
-internal.importJSONTable = function(arr) {
-  internal.fixInconsistentFields(arr);
+export function importJSONTable(arr) {
+  fixInconsistentFields(arr);
   return {
     layers: [{
       data: new DataTable(arr)
     }],
     info: {}
   };
-};
+}
 
-internal.exportJSON = function(dataset, opts) {
+export function exportJSON(dataset, opts) {
   return dataset.layers.reduce(function(arr, lyr) {
     if (lyr.data){
       arr.push({
-        content: internal.exportJSONTable(lyr, opts),
+        content: exportJSONTable(lyr, opts),
         filename: (lyr.name || 'output') + '.json'
       });
     }
     return arr;
   }, []);
-};
+}
 
-internal.exportJSONTable = function(lyr, opts) {
-  var stringify = opts && opts.prettify ? internal.getFormattedStringify([]) : JSON.stringify;
+export function exportJSONTable(lyr, opts) {
+  var stringify = opts && opts.prettify ? getFormattedStringify([]) : JSON.stringify;
   return stringify(lyr.data.getRecords());
-};
+}

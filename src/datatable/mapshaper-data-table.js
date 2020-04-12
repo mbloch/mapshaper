@@ -1,6 +1,8 @@
-/* @require mapshaper-common, mapshaper-data-utils, dbf-writer */
+import { error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { copyRecord, findFieldNames } from '../datatable/mapshaper-data-utils';
 
-function DataTable(obj) {
+export function DataTable(obj) {
   var records;
   if (utils.isArray(obj)) {
     records = obj;
@@ -16,21 +18,17 @@ function DataTable(obj) {
     }
   }
 
-  this.exportAsDbf = function(opts) {
-    return Dbf.exportRecords(records, opts.encoding, opts.field_order);
-  };
-
   this.getRecords = function() {
     return records;
   };
 
   // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
   this.getReadOnlyRecordAt = function(i) {
-    return internal.copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
+    return copyRecord(records[i]); // deep-copies plain objects but not other constructed objects
   };
 }
 
-var dataTableProto = {
+DataTable.prototype = {
 
   fieldExists: function(name) {
     return utils.contains(this.getFields(), name);
@@ -73,7 +71,7 @@ var dataTableProto = {
   },
 
   getFields: function() {
-    return internal.findFieldNames(this.getRecords());
+    return findFieldNames(this.getRecords());
   },
 
   update: function(f) {
@@ -86,7 +84,7 @@ var dataTableProto = {
   clone: function() {
     // TODO: this could be sped up using a record constructor function
     // (see getRecordConstructor() in DbfReader)
-    var records2 = this.getRecords().map(internal.copyRecord);
+    var records2 = this.getRecords().map(copyRecord);
     return new DataTable(records2);
   },
 
@@ -94,5 +92,3 @@ var dataTableProto = {
     return this.getRecords().length;
   }
 };
-
-utils.extend(DataTable.prototype, dataTableProto);

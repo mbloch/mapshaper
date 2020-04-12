@@ -1,6 +1,11 @@
-/* @requires mapshaper-cli-utils, mapshaper-expressions */
+import { getBaseContext } from '../expressions/mapshaper-expressions';
+import utils from '../utils/mapshaper-utils';
+import { stop } from '../utils/mapshaper-logging';
+import cli from '../cli/mapshaper-cli-utils';
+import { getStateVar } from '../mapshaper-state';
+import cmd from '../mapshaper-cmd';
 
-internal.include = function(opts) {
+cmd.include = function(opts) {
   var content, obj, context;
   // TODO: handle web context
   if (!opts.file) {
@@ -17,7 +22,7 @@ internal.include = function(opts) {
       // Try to isolate the imported JS code from the program scope and global environment
       // TODO: consider whether this is desirable... it may be pointless anyway
       //   as long as we're passing through the 'require()' function
-      context = internal.getBaseContext();
+      context = getBaseContext();
       context.require = require;
       obj = Function('ctx', 'with(ctx) {return (' + content + ');}').call({}, context);
       // obj = eval('(' + content + ')');
@@ -29,5 +34,5 @@ internal.include = function(opts) {
     obj = content;
   }
 
-  utils.extend(internal.getStateVar('defs'), obj);
+  utils.extend(getStateVar('defs'), obj);
 };

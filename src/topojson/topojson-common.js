@@ -1,9 +1,6 @@
-/* @requires
-mapshaper-common
-mapshaper-geojson
-*/
-
+import utils from '../utils/mapshaper-utils';
 var TopoJSON = {};
+export default TopoJSON;
 
 // Iterate over all arrays of arc is in a geometry object
 // @cb callback: function(ids)

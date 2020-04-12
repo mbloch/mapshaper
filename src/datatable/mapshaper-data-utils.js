@@ -1,18 +1,8 @@
-/* @requires mapshaper-common */
 
-
-
-internal.getLayerDataTable = function(lyr) {
-  var data = lyr.data;
-  if (!data) {
-    data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
-  }
-  return data;
-};
-
+import utils from '../utils/mapshaper-utils';
 
 // Not a general-purpose deep copy function
-internal.copyRecord = function(o) {
+export function copyRecord(o) {
   var o2 = {}, key, val;
   if (!o) return null;
   for (key in o) {
@@ -23,33 +13,14 @@ internal.copyRecord = function(o) {
         val = utils.extend({}, val);
         delete val[key];
       }
-      o2[key] = val && val.constructor === Object ? internal.copyRecord(val) : val;
+      o2[key] = val && val.constructor === Object ? copyRecord(val) : val;
     }
   }
   return o2;
-};
+}
 
 
-// Insert a column of values into a (new or existing) data field
-internal.insertFieldValues = function(lyr, fieldName, values) {
-  var size = internal.getFeatureCount(lyr) || values.length,
-      table = lyr.data = (lyr.data || new DataTable(size)),
-      records = table.getRecords();
-  internal.insertFieldValues2(fieldName, table.getRecords(), values);
-};
-
-internal.insertFieldValues2 = function(key, records, values) {
-  var n = records.length,
-      i, rec, val;
-  for (i=0, n=records.length; i<n; i++) {
-    rec = records[i];
-    val = values[i];
-    if (!rec) rec = records[i] = {};
-    rec[key] = val === undefined ? null : val;
-  }
-};
-
-internal.getValueType = function(val) {
+export function getValueType(val) {
   var type = null;
   if (utils.isString(val)) {
     type = 'string';
@@ -61,17 +32,17 @@ internal.getValueType = function(val) {
     type = 'object';
   }
   return type;
-};
+}
 
 // Fill out a data table with undefined values
 // The undefined members will disappear when records are exported as JSON,
 // but will show up when fields are listed using Object.keys()
-internal.fixInconsistentFields = function(records) {
-  var fields = internal.findIncompleteFields(records);
-  internal.patchMissingFields(records, fields);
-};
+export function fixInconsistentFields(records) {
+  var fields = findIncompleteFields(records);
+  patchMissingFields(records, fields);
+}
 
-internal.findIncompleteFields = function(records) {
+function findIncompleteFields(records) {
   var counts = {},
       i, j, keys;
   for (i=0; i<records.length; i++) {
@@ -81,9 +52,9 @@ internal.findIncompleteFields = function(records) {
     }
   }
   return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
-};
+}
 
-internal.patchMissingFields = function(records, fields) {
+function patchMissingFields(records, fields) {
   var rec, i, j, f;
   for (i=0; i<records.length; i++) {
     rec = records[i] || (records[i] = {});
@@ -94,47 +65,47 @@ internal.patchMissingFields = function(records, fields) {
       }
     }
   }
-};
+}
 
-internal.fieldListContainsAll = function(list, fields) {
+export function fieldListContainsAll(list, fields) {
   return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
-};
+}
 
-internal.getColumnType = function(key, records) {
+export function getColumnType(key, records) {
   var type = null,
       rec;
   for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];
-    type = rec ? internal.getValueType(rec[key]) : null;
+    type = rec ? getValueType(rec[key]) : null;
     if (type) break;
   }
   return type;
-};
+}
 
-internal.deleteFields = function(table, test) {
+export function deleteFields(table, test) {
   table.getFields().forEach(function(name) {
     if (test(name)) {
       table.deleteField(name);
     }
   });
-};
+}
 
-internal.isInvalidFieldName = function(f) {
+export function isInvalidFieldName(f) {
   // Reject empty and all-whitespace strings. TODO: consider other criteria
   return /^\s*$/.test(f);
-};
+}
 
 // Resolve name conflicts in field names by appending numbers
 // @fields Array of field names
 // @maxLen (optional) Maximum chars in name
 //
-internal.getUniqFieldNames = function(fields, maxLen) {
+export function getUniqFieldNames(fields, maxLen) {
   var used = {};
   return fields.map(function(name) {
     var i = 0,
         validName;
     do {
-      validName = internal.adjustFieldName(name, maxLen, i);
+      validName = adjustFieldName(name, maxLen, i);
       i++;
     } while ((validName in used) ||
       // don't replace an existing valid field name with a truncated name
@@ -142,10 +113,9 @@ internal.getUniqFieldNames = function(fields, maxLen) {
     used[validName] = true;
     return validName;
   });
-};
+}
 
-
-internal.getUniqFieldValues = function(records, field) {
+export function getUniqFieldValues(records, field) {
   var index = {};
   var values = [];
   records.forEach(function(rec) {
@@ -156,10 +126,10 @@ internal.getUniqFieldValues = function(records, field) {
     }
   });
   return values;
-};
+}
 
 // Truncate and/or uniqify a name (if relevant params are present)
-internal.adjustFieldName = function(name, maxLen, i) {
+function adjustFieldName(name, maxLen, i) {
   var name2, suff;
   maxLen = maxLen || 256;
   if (!i) {
@@ -172,19 +142,19 @@ internal.adjustFieldName = function(name, maxLen, i) {
     name2 = name.substr(0, maxLen - suff.length) + suff;
   }
   return name2;
-};
+}
 
-internal.applyFieldOrder = function(arr, option) {
+export function applyFieldOrder(arr, option) {
   if (option == 'ascending') {
     arr.sort(function(a, b) {
       return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
     });
   }
   return arr;
-};
+}
 
-internal.findFieldNames = function(records, order) {
+export function findFieldNames(records, order) {
   var first = records[0];
   var names = first ? Object.keys(first) : [];
-  return internal.applyFieldOrder(names, order);
-};
+  return applyFieldOrder(names, order);
+}

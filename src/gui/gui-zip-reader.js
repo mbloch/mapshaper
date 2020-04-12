@@ -1,9 +1,10 @@
-// Assume zip.js is loaded and zip is defined globally
+import { GUI } from './gui-lib';
 
 // @file: Zip file
 // @cb: function(err, <files>)
 //
 GUI.readZipFile = function(file, cb) {
+  var zip = window.zip; // Assume zip.js is loaded and zip is defined globally
   var _files = [];
   zip.createReader(new zip.BlobReader(file), importZipContent, onError);
 

@@ -1,6 +1,8 @@
-/* @requires mapshaper-shape-utils */
+import { traversePaths } from '../paths/mapshaper-path-utils';
+import { error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
-function dissolvePolygonGeometry(shapes, getGroupId) {
+export function dissolvePolygonGeometry(shapes, getGroupId) {
   var segments = dissolveFirstPass(shapes, getGroupId);
   return dissolveSecondPass(segments, shapes, getGroupId);
 }
@@ -14,7 +16,7 @@ function dissolveFirstPass(shapes, getGroupId) {
         return getGroupId(i);
       });
 
-  internal.traversePaths(shapes, procArc);
+  traversePaths(shapes, procArc);
   largeGroups.forEach(splitGroup);
   return segments;
 

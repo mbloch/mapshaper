@@ -1,4 +1,8 @@
-/* @require mapshaper-segment-intersection */
+import { intersectSegments } from '../paths/mapshaper-segment-intersection';
+import { findNextRemovableVertex } from '../paths/mapshaper-path-utils';
+import { message, verbose, error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
 
 // Remove line-segment intersections introduced by simplification by rolling
 // back simplification along intersecting segments.
@@ -7,9 +11,9 @@
 // in the original dataset.
 // TODO: don't roll back simplification for unrepairable intersections.
 //
-internal.postSimplifyRepair = function(arcs) {
-  var intersections = internal.findSegmentIntersections(arcs),
-      unfixable = internal.repairIntersections(arcs, intersections),
+export function postSimplifyRepair(arcs) {
+  var intersections = findSegmentIntersections(arcs),
+      unfixable = repairIntersections(arcs, intersections),
       countPre = intersections.length,
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0,
@@ -23,19 +27,19 @@ internal.postSimplifyRepair = function(arcs) {
     }
     message(msg);
   }
-};
+}
 
-// @intersections (Array) Output from internal.findSegmentIntersections()
+// @intersections (Array) Output from findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
-//
-internal.repairIntersections = function(arcs, intersections) {
-  while (internal.unwindIntersections(arcs, intersections) > 0) {
-    intersections = internal.findSegmentIntersections(arcs);
+// (export for GUI)
+export function repairIntersections(arcs, intersections) {
+  while (unwindIntersections(arcs, intersections) > 0) {
+    intersections = findSegmentIntersections(arcs);
   }
   return intersections;
-};
+}
 
-internal.unwindIntersections = function(arcs, intersections) {
+function unwindIntersections(arcs, intersections) {
   var data = arcs.getVertexData(),
       zlim = arcs.getRetainedInterval(),
       changes = 0,
@@ -43,23 +47,23 @@ internal.unwindIntersections = function(arcs, intersections) {
       replacements, queue, target, i;
 
   // create a queue of unwind targets
-  queue = internal.getUnwindTargets(intersections, zlim, data.zz);
+  queue = getUnwindTargets(intersections, zlim, data.zz);
   utils.sortOn(queue, 'z', !!"ascending");
 
   while (queue.length > 0) {
     target = queue.pop();
     // redetect unwind target, in case a previous unwind operation has changed things
     // TODO: don't redetect if target couldn't have been affected
-    replacements = internal.redetectIntersectionTarget(target, zlim, data.xx, data.yy, data.zz);
+    replacements = redetectIntersectionTarget(target, zlim, data.xx, data.yy, data.zz);
     if (replacements.length == 1) {
-      replacements = internal.unwindIntersection(replacements[0], zlim, data.zz);
+      replacements = unwindIntersection(replacements[0], zlim, data.zz);
       changes++;
     } else  {
       // either 0 or multiple intersections detected
     }
 
     for (i=0; i<replacements.length; i++) {
-      internal.insertUnwindTarget(queue, replacements[i]);
+      insertUnwindTarget(queue, replacements[i]);
     }
   }
   if (++loops > 500000) {
@@ -67,17 +71,17 @@ internal.unwindIntersections = function(arcs, intersections) {
     return 0;
   }
   return changes;
-};
+}
 
-internal.getUnwindTargets = function(intersections, zlim, zz) {
+function getUnwindTargets(intersections, zlim, zz) {
   return intersections.reduce(function(memo, o) {
-    var target = internal.getUnwindTarget(o, zlim, zz);
+    var target = getUnwindTarget(o, zlim, zz);
     if (target !== null) {
       memo.push(target);
     }
     return memo;
   }, []);
-};
+}
 
 // @o an intersection object
 // returns null if no vertices can be added along both segments
@@ -85,9 +89,9 @@ internal.getUnwindTargets = function(intersections, zlim, zz) {
 //   a: intersecting segment to be partitioned
 //   b: intersecting segment to be retained
 //   z: threshold value of one or more points along [a] to be re-added
-internal.getUnwindTarget = function(o, zlim, zz) {
-  var ai = internal.findNextRemovableVertex(zz, zlim, o.a[0], o.a[1]),
-      bi = internal.findNextRemovableVertex(zz, zlim, o.b[0], o.b[1]),
+function getUnwindTarget(o, zlim, zz) {
+  var ai = findNextRemovableVertex(zz, zlim, o.a[0], o.a[1]),
+      bi = findNextRemovableVertex(zz, zlim, o.b[0], o.b[1]),
       targ;
   if (ai == -1 && bi == -1) {
     targ = null;
@@ -105,10 +109,10 @@ internal.getUnwindTarget = function(o, zlim, zz) {
     };
   }
   return targ;
-};
+}
 
 // Insert an intersection into sorted position
-internal.insertUnwindTarget = function(arr, obj) {
+function insertUnwindTarget(arr, obj) {
   var ins = arr.length;
   while (ins > 0) {
     if (arr[ins-1].z <= obj.z) {
@@ -118,12 +122,12 @@ internal.insertUnwindTarget = function(arr, obj) {
     ins--;
   }
   arr[ins] = obj;
-};
+}
 
 // Partition one of two intersecting segments by setting the removal threshold
 // of vertices indicated by @target equal to @zlim (the current simplification
 // level of the ArcCollection)
-internal.unwindIntersection = function(target, zlim, zz) {
+function unwindIntersection(target, zlim, zz) {
   var replacements = [];
   var start = target.a[0],
       end = target.a[1],
@@ -141,24 +145,24 @@ internal.unwindIntersection = function(target, zlim, zz) {
   }
   if (replacements.length < 2) error("Error in unwindIntersection()");
   return replacements;
-};
+}
 
-internal.redetectIntersectionTarget = function(targ, zlim, xx, yy, zz) {
-  var segIds = internal.getIntersectionCandidates(targ, zlim, xx, yy, zz);
-  var intersections = internal.intersectSegments(segIds, xx, yy);
-  return internal.getUnwindTargets(intersections, zlim, zz);
-};
+function redetectIntersectionTarget(targ, zlim, xx, yy, zz) {
+  var segIds = getIntersectionCandidates(targ, zlim, xx, yy, zz);
+  var intersections = intersectSegments(segIds, xx, yy);
+  return getUnwindTargets(intersections, zlim, zz);
+}
 
-internal.getIntersectionCandidates = function(o, zlim, xx, yy, zz) {
-  var segIds = internal.getSegmentVertices(o.a, zlim, xx, yy, zz);
-  segIds = segIds.concat(internal.getSegmentVertices(o.b, zlim, xx, yy, zz));
+function getIntersectionCandidates(o, zlim, xx, yy, zz) {
+  var segIds = getSegmentVertices(o.a, zlim, xx, yy, zz);
+  segIds = segIds.concat(getSegmentVertices(o.b, zlim, xx, yy, zz));
   return segIds;
-};
+}
 
 // Get all segments defined by two endpoints and the vertices between
 // them that are at or above the current simplification threshold.
 // TODO: test intersections with identical start + end ids
-internal.getSegmentVertices = function(seg, zlim, xx, yy, zz) {
+function getSegmentVertices(seg, zlim, xx, yy, zz) {
   var start, end, prev, ids = [];
   if (seg[0] <= seg[1]) {
     start = seg[0];
@@ -179,4 +183,4 @@ internal.getSegmentVertices = function(seg, zlim, xx, yy, zz) {
     }
   }
   return ids;
-};
+}

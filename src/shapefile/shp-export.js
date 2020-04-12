@@ -1,27 +1,31 @@
-/* @requires
-shp-common
-mapshaper-path-export
-mapshaper-projections
-mapshaper-shape-utils
-*/
+import { exportPathData } from '../paths/mapshaper-path-export';
+import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { findMaxPartCount } from '../paths/mapshaper-shape-utils';
+import { getDatasetCRS, crsToPrj } from '../geom/mapshaper-projections';
+import { exportDbfFile } from '../shapefile/dbf-export';
+import { message, error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import ShpType from '../shapefile/shp-type';
+import { Bounds } from '../geom/mapshaper-bounds';
+import { BinArray } from '../utils/mapshaper-binarray';
 
 // Convert a dataset to Shapefile files
-internal.exportShapefile = function(dataset, opts) {
+export function exportShapefile(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
-    var prj = internal.exportPrjFile(lyr, dataset);
-    files = files.concat(internal.exportShpAndShxFiles(lyr, dataset, opts));
-    files = files.concat(internal.exportDbfFile(lyr, dataset, opts));
+    var prj = exportPrjFile(lyr, dataset);
+    files = files.concat(exportShpAndShxFiles(lyr, dataset, opts));
+    files = files.concat(exportDbfFile(lyr, dataset, opts));
     if (prj) files.push(prj);
     return files;
   }, []);
-};
+}
 
-internal.exportPrjFile = function(lyr, dataset) {
+function exportPrjFile(lyr, dataset) {
   var info = dataset.info || {};
   var prj = info.prj;
   if (!prj) {
     try {
-      prj = internal.crsToPrj(internal.getDatasetCRS(dataset));
+      prj = crsToPrj(getDatasetCRS(dataset));
     } catch(e) {}
   }
   if (!prj) {
@@ -31,13 +35,13 @@ internal.exportPrjFile = function(lyr, dataset) {
     content: prj,
     filename: lyr.name + '.prj'
   } : null;
-};
+}
 
-internal.getShapefileExportType = function(lyr) {
+function getShapefileExportType(lyr) {
   var type = lyr.geometry_type;
   var shpType;
   if (type == 'point') {
-    shpType = internal.findMaxPartCount(lyr.shapes || []) <= 1 ? ShpType.POINT : ShpType.MULTIPOINT;
+    shpType = findMaxPartCount(lyr.shapes || []) <= 1 ? ShpType.POINT : ShpType.MULTIPOINT;
   } else if (type == 'polygon') {
     shpType = ShpType.POLYGON;
   } else if (type == 'polyline') {
@@ -46,12 +50,12 @@ internal.getShapefileExportType = function(lyr) {
     shpType = ShpType.NULL;
   }
   return shpType;
-};
+}
 
-internal.exportShpAndShxFiles = function(layer, dataset, opts) {
-  var shapes = layer.shapes || utils.initializeArray(new Array(internal.getFeatureCount(layer)), null);
+function exportShpAndShxFiles(layer, dataset, opts) {
+  var shapes = layer.shapes || utils.initializeArray(new Array(getFeatureCount(layer)), null);
   var bounds = new Bounds();
-  var shpType = internal.getShapefileExportType(layer);
+  var shpType = getShapefileExportType(layer);
   var fileBytes = 100;
   var shxBytes = 100 + shapes.length * 8;
   var shxBin = new BinArray(shxBytes).bigEndian().position(100); // jump to record section
@@ -61,8 +65,8 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
   // individual buffers for each record (for large point datasets,
   // creating millions of buffers impacts performance significantly)
   var shapeBuffers = shapes.map(function(shape, i) {
-    var pathData = internal.exportPathData(shape, dataset.arcs, layer.geometry_type);
-    var rec = internal.exportShpRecord(pathData, i+1, shpType);
+    var pathData = exportPathData(shape, dataset.arcs, layer.geometry_type);
+    var rec = exportShpRecord(pathData, i+1, shpType);
     var recBytes = rec.buffer.byteLength;
 
     // add shx record
@@ -113,13 +117,13 @@ internal.exportShpAndShxFiles = function(layer, dataset, opts) {
       content: shxBin.buffer(),
       filename: layer.name + ".shx"
     }];
-};
+}
 
 // Returns an ArrayBuffer containing a Shapefile record for one shape
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
-internal.exportShpRecord = function(data, id, shpType) {
+function exportShpRecord(data, id, shpType) {
   var multiPartType = ShpType.isMultiPartType(shpType),
       singlePointType = !multiPartType && !ShpType.isMultiPointType(shpType),
       isNull = data.pointCount > 0 === false,
@@ -181,4 +185,4 @@ internal.exportShpRecord = function(data, id, shpType) {
   }
 
   return {bounds: bounds, buffer: bin.buffer()};
-};
+}

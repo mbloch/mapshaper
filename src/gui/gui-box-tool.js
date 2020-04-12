@@ -1,6 +1,11 @@
-/* @requires gui-highlight-box */
+import { HighlightBox } from './gui-highlight-box';
+import { EventDispatcher } from './gui-events';
+import { SimpleButton } from './gui-elements';
+import { internal } from './gui-core';
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
 
-function BoxTool(gui, ext, mouse, nav) {
+export function BoxTool(gui, ext, mouse, nav) {
   var self = new EventDispatcher();
   var box = new HighlightBox('body');
   var popup = gui.container.findChild('.box-tool-options');

@@ -1,6 +1,14 @@
-/* @requires mapshaper-simplify-pct */
+import { forEachArcId } from '../paths/mapshaper-path-utils';
+import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { getThresholdFunction } from '../simplify/mapshaper-simplify-pct';
+import { finalizeSimplification, convertSimplifyInterval, convertSimplifyResolution,
+  simplifyPaths, getStandardSimplifyOpts } from '../commands/mapshaper-simplify';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import cmd from '../mapshaper-cmd';
 
-api.variableSimplify = function(layers, dataset, opts) {
+cmd.variableSimplify = function(layers, dataset, opts) {
   var lyr = layers[0];
   var arcs = dataset.arcs;
   var getShapeThreshold;
@@ -8,63 +16,63 @@ api.variableSimplify = function(layers, dataset, opts) {
   if (layers.length != 1) {
     stop('Variable simplification requires a single target layer');
   }
-  if (!internal.layerHasPaths(lyr)) {
+  if (!layerHasPaths(lyr)) {
     stop('Target layer is missing path data');
   }
 
-  opts = internal.getStandardSimplifyOpts(dataset, opts);
-  internal.simplifyPaths(arcs, opts);
+  opts = getStandardSimplifyOpts(dataset, opts);
+  simplifyPaths(arcs, opts);
 
   if (opts.interval) {
-    getShapeThreshold = internal.getVariableIntervalFunction(opts.interval, lyr, dataset, opts);
+    getShapeThreshold = getVariableIntervalFunction(opts.interval, lyr, dataset, opts);
   } else if (opts.percentage) {
-    getShapeThreshold = internal.getVariablePercentageFunction(opts.percentage, lyr, dataset, opts);
+    getShapeThreshold = getVariablePercentageFunction(opts.percentage, lyr, dataset, opts);
   } else if (opts.resolution) {
-    getShapeThreshold = internal.getVariableResolutionFunction(opts.resolution, lyr, dataset, opts);
+    getShapeThreshold = getVariableResolutionFunction(opts.resolution, lyr, dataset, opts);
   } else {
     stop("Missing a simplification expression");
   }
 
-  arcThresholds = internal.calculateVariableThresholds(lyr, arcs, getShapeThreshold);
-  internal.applyArcThresholds(arcs, arcThresholds);
+  arcThresholds = calculateVariableThresholds(lyr, arcs, getShapeThreshold);
+  applyArcThresholds(arcs, arcThresholds);
   arcs.setRetainedInterval(1e20); // set to a huge value
-  internal.finalizeSimplification(dataset, opts);
+  finalizeSimplification(dataset, opts);
   arcs.flatten(); // bake in simplification (different from standard -simplify)
 };
 
-internal.getVariableIntervalFunction = function(exp, lyr, dataset, opts) {
-  var compiled = internal.compileSimplifyExpression(exp, lyr, dataset.arcs);
+function getVariableIntervalFunction(exp, lyr, dataset, opts) {
+  var compiled = compileSimplifyExpression(exp, lyr, dataset.arcs);
   return function(shpId) {
     var val = compiled(shpId);
-    return internal.convertSimplifyInterval(val, dataset, opts);
+    return convertSimplifyInterval(val, dataset, opts);
   };
-};
+}
 
-internal.getVariableResolutionFunction = function(exp, lyr, dataset, opts) {
-  var compiled = internal.compileSimplifyExpression(exp, lyr, dataset.arcs);
+function getVariableResolutionFunction(exp, lyr, dataset, opts) {
+  var compiled = compileSimplifyExpression(exp, lyr, dataset.arcs);
   return function(shpId) {
     var val = compiled(shpId);
-    return internal.convertSimplifyResolution(val, dataset.arcs, opts);
+    return convertSimplifyResolution(val, dataset.arcs, opts);
   };
-};
+}
 
-internal.getVariablePercentageFunction = function(exp, lyr, dataset, opts) {
-  var compiled = internal.compileSimplifyExpression(exp, lyr, dataset.arcs);
-  var pctToInterval = internal.getThresholdFunction(dataset.arcs);
+function getVariablePercentageFunction(exp, lyr, dataset, opts) {
+  var compiled = compileSimplifyExpression(exp, lyr, dataset.arcs);
+  var pctToInterval = getThresholdFunction(dataset.arcs);
   return function(shpId) {
     var val = compiled(shpId);
     var pct = utils.parsePercent(val);
     return pctToInterval(pct);
   };
-};
+}
 
 // TODO: memoize?
-internal.compileSimplifyExpression = function(exp, lyr, arcs) {
-  return internal.compileValueExpression(exp, lyr, arcs);
-};
+function compileSimplifyExpression(exp, lyr, arcs) {
+  return compileValueExpression(exp, lyr, arcs);
+}
 
 // Filter arcs based on an array of thresholds
-internal.applyArcThresholds = function(arcs, thresholds) {
+function applyArcThresholds(arcs, thresholds) {
   var zz = arcs.getVertexData().zz;
   arcs.forEach2(function(start, n, xx, yy, zz, arcId) {
     var arcZ = thresholds[arcId];
@@ -79,16 +87,16 @@ internal.applyArcThresholds = function(arcs, thresholds) {
       }
     }
   });
-};
+}
 
-internal.calculateVariableThresholds = function(lyr, arcs, getShapeThreshold) {
+function calculateVariableThresholds(lyr, arcs, getShapeThreshold) {
   var thresholds = new Float64Array(arcs.size()); // init to 0s
   var UNUSED = -1;
   var currThresh;
   utils.initializeArray(thresholds, UNUSED);
   lyr.shapes.forEach(function(shp, shpId) {
     currThresh = getShapeThreshold(shpId);
-    internal.forEachArcId(shp || [], procArc);
+    forEachArcId(shp || [], procArc);
   });
   // set unset arcs to 0 so they are not simplified
   for (var i=0, n=thresholds.length; i<n; i++) {
@@ -105,4 +113,4 @@ internal.calculateVariableThresholds = function(lyr, arcs, getShapeThreshold) {
       thresholds[i] = currThresh;
     }
   }
-};
+}

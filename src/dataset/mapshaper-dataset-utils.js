@@ -1,105 +1,95 @@
-/* @requires
-mapshaper-common
-mapshaper-shape-utils
-mapshaper-point-utils
-mapshaper-layer-utils
-mapshaper-merging
-*/
+
+import utils from '../utils/mapshaper-utils';
+import { getLayerBounds, layerHasGeometry, layerHasPaths, transformPointsInLayer,
+  copyLayerShapes, copyLayer, layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { Bounds } from '../geom/mapshaper-bounds';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 // utility functions for datasets
 
-internal.mergeDatasetsIntoDataset = function(dataset, datasets) {
-  var merged = internal.mergeDatasets([dataset].concat(datasets));
-  var mergedLayers = datasets.reduce(function(memo, dataset) {
-    return memo.concat(dataset.layers);
-  }, []);
-  dataset.arcs = merged.arcs;
-  return mergedLayers;
-};
-
 // Split into datasets with one layer each
-internal.splitDataset = function(dataset) {
+export function splitDataset(dataset) {
   return dataset.layers.map(function(lyr) {
     var split = {
       arcs: dataset.arcs,
       layers: [lyr],
       info: dataset.info
     };
-    internal.dissolveArcs(split); // replace arcs with filtered + dissolved copy
+    dissolveArcs(split); // replace arcs with filtered + dissolved copy
     return split;
   });
-};
+}
 
 // clone all layers, make a filtered copy of arcs
-internal.copyDataset = function(dataset) {
+export function copyDataset(dataset) {
   var d2 = utils.extend({}, dataset);
-  d2.layers = d2.layers.map(internal.copyLayer);
+  d2.layers = d2.layers.map(copyLayer);
   if (d2.arcs) {
     d2.arcs = d2.arcs.getFilteredCopy();
   }
   return d2;
-};
+}
 
 // clone coordinate data, shallow-copy attribute data
-internal.copyDatasetForExport = function(dataset) {
+export function copyDatasetForExport(dataset) {
   var d2 = utils.extend({}, dataset);
-  d2.layers = d2.layers.map(internal.copyLayerShapes);
+  d2.layers = d2.layers.map(copyLayerShapes);
   if (d2.arcs) {
     d2.arcs = d2.arcs.getFilteredCopy();
   }
   return d2;
-};
+}
 
 // shallow-copy layers, so they can be renamed (for export)
-internal.copyDatasetForRenaming = function(dataset) {
+export function copyDatasetForRenaming(dataset) {
   return utils.defaults({
     layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
   }, dataset);
-};
+}
 
-internal.getDatasetBounds = function(dataset) {
+export function getDatasetBounds(dataset) {
   var bounds = new Bounds();
   dataset.layers.forEach(function(lyr) {
-    var lyrbb = internal.getLayerBounds(lyr, dataset.arcs);
+    var lyrbb = getLayerBounds(lyr, dataset.arcs);
     if (lyrbb) bounds.mergeBounds(lyrbb);
   });
   return bounds;
-};
+}
 
-internal.datasetHasGeometry = function(dataset) {
+export function datasetHasGeometry(dataset) {
   return utils.some(dataset.layers, function(lyr) {
-    return internal.layerHasGeometry(lyr);
+    return layerHasGeometry(lyr);
   });
-};
+}
 
-internal.datasetHasPaths = function(dataset) {
+export function datasetHasPaths(dataset) {
   return utils.some(dataset.layers, function(lyr) {
-    return internal.layerHasPaths(lyr);
+    return layerHasPaths(lyr);
   });
-};
+}
 
 // Remove ArcCollection of a dataset if not referenced by any layer
 // TODO: consider doing arc dissolve, or just removing unreferenced arcs
 // (currently cleanupArcs() is run after every command, so be mindful of performance)
-internal.cleanupArcs = function(dataset) {
-  if (dataset.arcs && !utils.some(dataset.layers, internal.layerHasPaths)) {
+export function cleanupArcs(dataset) {
+  if (dataset.arcs && !utils.some(dataset.layers, layerHasPaths)) {
     dataset.arcs = null;
     return true;
   }
-};
+}
 
 // Remove unused arcs from a dataset
 // Warning: using dissolveArcs() means that adjacent arcs are combined when possible
-internal.pruneArcs = function(dataset) {
-  internal.cleanupArcs(dataset);
+export function pruneArcs(dataset) {
+  cleanupArcs(dataset);
   if (dataset.arcs) {
-    internal.dissolveArcs(dataset);
+    dissolveArcs(dataset);
   }
-};
+}
 
 // replace cut layers in-sequence (to maintain layer indexes)
 // append any additional new layers
-internal.replaceLayers = function(dataset, cutLayers, newLayers) {
+export function replaceLayers(dataset, cutLayers, newLayers) {
   // modify a copy in case cutLayers == dataset.layers
   var currLayers = dataset.layers.concat();
   utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
@@ -115,16 +105,16 @@ internal.replaceLayers = function(dataset, cutLayers, newLayers) {
     }
   });
   dataset.layers = currLayers;
-};
+}
 
 // Transform the points in a dataset in-place; don't clean up corrupted shapes
-internal.transformPoints = function(dataset, f) {
+export function transformPoints(dataset, f) {
   if (dataset.arcs) {
     dataset.arcs.transformPoints(f);
   }
   dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPoints(lyr)) {
-      internal.transformPointsInLayer(lyr, f);
+    if (layerHasPoints(lyr)) {
+      transformPointsInLayer(lyr, f);
     }
   });
-};
+}

@@ -1,6 +1,11 @@
-/* @require gui-lib gui-dom-cache */
+import { DomCache } from './gui-dom-cache';
+import { sortLayersForMenuDisplay } from './gui-layer-sorting';
+import { utils, internal } from './gui-core';
+import { El } from './gui-el';
+import { ClickText2 } from './gui-elements';
+import { GUI } from './gui-lib';
 
-function LayerControl(gui) {
+export function LayerControl(gui) {
   var map = gui.map;
   var model = gui.model;
   var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
@@ -57,7 +62,7 @@ function LayerControl(gui) {
   }
 
   function getLayerOrderSlug() {
-    return internal.sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
+    return sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
       return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
     }).join('');
   }
@@ -135,7 +140,7 @@ function LayerControl(gui) {
       updatePinAllButton();
     }
 
-    internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
+    sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
       var lyr = o.layer;
       var opts = {
         show_source: layerCount < 5,

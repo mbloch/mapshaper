@@ -1,6 +1,6 @@
-/* @require mapshaper-arcs */
+import { message } from '../utils/mapshaper-logging';
 
-internal.editArcs = function(arcs, onPoint) {
+export function editArcs(arcs, onPoint) {
   var nn2 = [],
       xx2 = [],
       yy2 = [],
@@ -58,4 +58,4 @@ internal.editArcs = function(arcs, onPoint) {
       errors++;
     }
   }
-};
+}

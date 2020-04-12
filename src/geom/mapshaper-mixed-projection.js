@@ -1,11 +1,13 @@
-/* @requires mapshaper-matrix2d */
+import {Matrix2D} from '../geom/mapshaper-matrix2d';
+import {Bounds} from '../geom/mapshaper-bounds';
+import utils from '../utils/mapshaper-utils';
 
 // A compound projection, consisting of a default projection and one or more rectangular frames
 // that are projected separately and affine transformed.
 // @mainParams: parameters for main projection, including:
 //    proj: Proj string
 //    bbox: lat-lon bounding box
-function MixedProjection(mainParams, options) {
+export function MixedProjection(mainParams, options) {
   var mproj = require('mproj');
   var mainFrame = initFrame(mainParams);
   var mainP = mainFrame.crs;
@@ -29,7 +31,7 @@ function MixedProjection(mainParams, options) {
   //    rotation: rotation in degrees (0 = no rotation)
   //
   mainP.addFrame = function(paramsArg) {
-    var params = internal.getFrameParams(paramsArg, options); // apply defaults and overrides
+    var params = getFrameParams(paramsArg, options); // apply defaults and overrides
     var frame = initFrame(params);
     var m = new Matrix2D();
     //  originXY: the projected coordinates of the frame origin
@@ -98,7 +100,7 @@ function initMixedProjection(mproj) {
   return mproj.pj_init('+proj=mixed');
 }
 
-internal.getFrameParams = function(params, options) {
+function getFrameParams (params, options) {
   var opts = options[params.name];
   utils.defaults(params, {scale: 1, dx: 0, dy: 0, rotation: 0}); // add defaults
   if (!opts) return params;
@@ -107,13 +109,13 @@ internal.getFrameParams = function(params, options) {
     if (key in params) {
       params[key] = opts[key];
     } else {
-      params.proj = internal.replaceProjParam(params.proj, key, val);
+      params.proj = replaceProjParam(params.proj, key, val);
     }
   });
   return params;
-};
+}
 
-internal.replaceProjParam = function(proj, key, val) {
+function replaceProjParam(proj, key, val) {
   var param = '+' + key + '=';
   return proj.split(' ').map(function(str) {
     if (str.indexOf(param) === 0) {
@@ -121,4 +123,4 @@ internal.replaceProjParam = function(proj, key, val) {
     }
     return str;
   }).join(' ');
-};
+}

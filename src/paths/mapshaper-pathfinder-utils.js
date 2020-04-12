@@ -1,9 +1,9 @@
-/* @requires mapshaper-nodes mapshaper-geom */
-
+import { error, debug } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
 
 // Return id of rightmost connected arc in relation to @arcId
 // Return @arcId if no arcs can be found
-internal.getRightmostArc = function(arcId, nodes, filter) {
+export function getRightmostArc(arcId, nodes, filter) {
   var ids = nodes.getConnectedArcs(arcId);
   if (filter) {
     ids = ids.filter(filter);
@@ -11,10 +11,10 @@ internal.getRightmostArc = function(arcId, nodes, filter) {
   if (ids.length === 0) {
     return arcId; // error condition, handled by caller
   }
-  return internal.getRighmostArc2(arcId, ids, nodes.arcs);
-};
+  return getRighmostArc2(arcId, ids, nodes.arcs);
+}
 
-internal.getRighmostArc2 = function(fromId, ids, arcs) {
+function getRighmostArc2 (fromId, ids, arcs) {
   var coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
@@ -38,7 +38,7 @@ internal.getRighmostArc2 = function(fromId, ids, arcs) {
   for (j=1; j<ids.length; j++) {
     candId = ids[j];
     icand = arcs.indexOfVertex(candId, -2);
-    code = internal.chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+    code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
     // code = internal.chooseRighthandPath(0, 0, nodeX - fromX, nodeY - fromY, xx[ito] - fromX, yy[ito] - fromY, xx[icand] - fromX, yy[icand] - fromY);
     if (code == 2) {
       toId = candId;
@@ -50,16 +50,16 @@ internal.getRighmostArc2 = function(fromId, ids, arcs) {
     error("Pathfinder error");
   }
   return toId;
-};
+}
 
-internal.chooseRighthandPath2 = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
-  return internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-};
+function chooseRighthandPath2(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
+  return chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
+}
 
 // TODO: consider using simpler internal.chooseRighthandPath2()
 // Returns 1 if node->a, return 2 if node->b, else return 0
 // TODO: better handling of identical angles (better -- avoid creating them)
-internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
+function chooseRighthandPath(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
   var angleA = geom.signedAngle(fromX, fromY, nodeX, nodeY, ax, ay);
   var angleB = geom.signedAngle(fromX, fromY, nodeX, nodeY, bx, by);
   var code;
@@ -88,13 +88,13 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
     error('Invalid node geometry');
   } else {
     // Equal angles: use fallback test that is less sensitive to rounding error
-    code = internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
+    code = chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
     debug('[chooseRighthandPath()] equal angles:', angleA, 'fallback test:', code);
   }
   return code;
-};
+}
 
-internal.chooseRighthandVector = function(ax, ay, bx, by) {
+export function chooseRighthandVector(ax, ay, bx, by) {
   var orient = geom.orient2D(ax, ay, 0, 0, bx, by);
   var code;
   if (orient > 0) {
@@ -105,4 +105,4 @@ internal.chooseRighthandVector = function(ax, ay, bx, by) {
     code = 0;
   }
   return code;
-};
+}

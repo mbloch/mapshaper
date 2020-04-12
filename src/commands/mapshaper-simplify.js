@@ -1,87 +1,91 @@
-/* @requires
-mapshaper-visvalingam
-mapshaper-dp
-mapshaper-dataset-utils
-mapshaper-post-simplify-repair
-mapshaper-geom
-mapshaper-simplify-info
-*/
+import { convertIntervalParam, convertDistanceParam } from '../geom/mapshaper-units';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { printSimplifyInfo } from '../simplify/mapshaper-simplify-info';
+import { postSimplifyRepair } from '../simplify/mapshaper-post-simplify-repair';
+import cmd from '../mapshaper-cmd';
+import { stop } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
+import Visvalingam from '../simplify/mapshaper-visvalingam';
+import DouglasPeucker from '../simplify/mapshaper-dp';
+import { keepEveryPolygon } from '../simplify/mapshaper-keep-shapes';
+import { getWorldBounds } from '../geom/mapshaper-latlon';
 
-api.simplify = function(dataset, opts) {
+cmd.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
   if (!arcs || arcs.size() === 0) return; // removed in v0.4.125: stop("Missing path data");
-  opts = internal.getStandardSimplifyOpts(dataset, opts); // standardize options
-  internal.simplifyPaths(arcs, opts);
+  opts = getStandardSimplifyOpts(dataset, opts); // standardize options
+  simplifyPaths(arcs, opts);
 
   // calculate and apply simplification interval
   if (opts.percentage || opts.percentage === 0) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (opts.interval || opts.interval === 0) {
-    arcs.setRetainedInterval(internal.convertSimplifyInterval(opts.interval, dataset, opts));
+    arcs.setRetainedInterval(convertSimplifyInterval(opts.interval, dataset, opts));
   } else if (opts.resolution) {
-    arcs.setRetainedInterval(internal.convertSimplifyResolution(opts.resolution, arcs, opts));
+    arcs.setRetainedInterval(convertSimplifyResolution(opts.resolution, arcs, opts));
   } else if (opts.presimplify) {
     return;
   } else {
     stop("Missing a simplification amount");
   }
 
-  internal.finalizeSimplification(dataset, opts);
+  finalizeSimplification(dataset, opts);
 };
 
-internal.finalizeSimplification = function(dataset, opts) {
+export function finalizeSimplification(dataset, opts) {
   var arcs = dataset.arcs;
   if (opts.keep_shapes) {
-    api.keepEveryPolygon(arcs, dataset.layers);
+    keepEveryPolygon(arcs, dataset.layers);
   }
 
   if (!opts.no_repair && arcs.getRetainedInterval() > 0) {
-    internal.postSimplifyRepair(arcs);
+    postSimplifyRepair(arcs);
   }
 
   if (opts.stats) {
-    internal.printSimplifyInfo(arcs, opts);
+    printSimplifyInfo(arcs, opts);
   }
 
   // stash simplification options (used by gui settings dialog)
   dataset.info = utils.defaults({simplify: opts}, dataset.info);
-};
+}
 
-internal.getStandardSimplifyOpts = function(dataset, opts) {
+export function getStandardSimplifyOpts(dataset, opts) {
   opts = opts || {};
   return utils.defaults({
-    method: internal.getSimplifyMethod(opts),
-    spherical: internal.useSphericalSimplify(dataset.arcs, opts)
+    method: getSimplifyMethod(opts),
+    spherical: useSphericalSimplify(dataset.arcs, opts)
   }, opts);
-};
+}
 
-internal.useSphericalSimplify = function(arcs, opts) {
+export function useSphericalSimplify(arcs, opts) {
   return !opts.planar && !arcs.isPlanar();
-};
+}
 
 // Calculate simplification thresholds for each vertex of an arc collection
 // (modifies @arcs ArcCollection in-place)
-internal.simplifyPaths = function(arcs, opts) {
-  var simplifyPath = internal.getSimplifyFunction(opts);
+export function simplifyPaths(arcs, opts) {
+  var simplifyPath = getSimplifyFunction(opts);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (opts.spherical) {
-    internal.simplifyPaths3D(arcs, simplifyPath);
-    internal.protectWorldEdges(arcs);
+    simplifyPaths3D(arcs, simplifyPath);
+    protectWorldEdges(arcs);
   } else {
-    internal.simplifyPaths2D(arcs, simplifyPath);
+    simplifyPaths2D(arcs, simplifyPath);
   }
   if (opts.lock_box) {
-    internal.protectContentEdges(arcs);
+    protectContentEdges(arcs);
   }
-};
+}
 
-internal.simplifyPaths2D = function(arcs, simplify) {
+function simplifyPaths2D(arcs, simplify) {
   arcs.forEach3(function(xx, yy, kk, i) {
     simplify(kk, xx, yy);
   });
-};
+}
 
-internal.simplifyPaths3D = function(arcs, simplify) {
+function simplifyPaths3D(arcs, simplify) {
   var xbuf = utils.expandoBuffer(Float64Array),
       ybuf = utils.expandoBuffer(Float64Array),
       zbuf = utils.expandoBuffer(Float64Array);
@@ -93,17 +97,17 @@ internal.simplifyPaths3D = function(arcs, simplify) {
     geom.convLngLatToSph(xx, yy, xx2, yy2, zz2);
     simplify(kk, xx2, yy2, zz2);
   });
-};
+}
 
-internal.getSimplifyMethod = function(opts) {
+export function getSimplifyMethod(opts) {
   var m = opts.method;
   if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
     m =  'weighted_visvalingam';
   }
   return m;
-};
+}
 
-internal.getSimplifyFunction = function(opts) {
+function getSimplifyFunction(opts) {
   var f;
   if (opts.method == 'dp') {
     f = DouglasPeucker.calcArcData;
@@ -112,25 +116,25 @@ internal.getSimplifyFunction = function(opts) {
   } else if (opts.method == 'weighted_visvalingam') {
     f = Visvalingam.getWeightedSimplifier(opts, opts.spherical);
   } else {
-    stop('Unsupported simplify method:', method);
+    stop('Unsupported simplify method:', opts.method);
   }
   return f;
-};
+}
 
-internal.protectContentEdges = function(arcs) {
+function protectContentEdges(arcs) {
   var e = 1e-14;
   var bb = arcs.getBounds();
   bb.padBounds(-e, -e, -e, -e);
-  internal.limitSimplificationExtent(arcs, bb.toArray(), true);
-};
+  limitSimplificationExtent(arcs, bb.toArray(), true);
+}
 
 // @hardLimit
 //    true: never remove edge vertices
 //    false: never remove before other vertices
-internal.limitSimplificationExtent = function(arcs, bb, hardLimit) {
+function limitSimplificationExtent(arcs, bb, hardLimit) {
   var arcBounds = arcs.getBounds().toArray();
   // return if content doesn't reach edges
-  if (containsBounds(bb, arcBounds) === true) return;
+  if (geom.containsBounds(bb, arcBounds) === true) return;
   arcs.forEach3(function(xx, yy, zz) {
     var lockZ = hardLimit ? Infinity : 0,
     x, y;
@@ -139,7 +143,7 @@ internal.limitSimplificationExtent = function(arcs, bb, hardLimit) {
       y = yy[i];
       if (x >= bb[2] || x <= bb[0] || y <= bb[1] || y >= bb[3]) {
         if (lockZ === 0) {
-          lockZ = internal.findMaxThreshold(zz);
+          lockZ = findMaxThreshold(zz);
         }
         if (zz[i] !== Infinity) { // don't override lock value
           zz[i] = lockZ;
@@ -147,22 +151,22 @@ internal.limitSimplificationExtent = function(arcs, bb, hardLimit) {
       }
     }
   });
-};
+}
 
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
-internal.protectWorldEdges = function(arcs) {
+export function protectWorldEdges(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
-  internal.limitSimplificationExtent(arcs, internal.getWorldBounds(1e-12), false);
-};
+  limitSimplificationExtent(arcs, getWorldBounds(1e-12), false);
+}
 
 // Return largest value in an array, ignoring Infinity (lock value)
 //
-internal.findMaxThreshold = function(zz) {
+function findMaxThreshold(zz) {
   var z, maxZ = 0;
   for (var i=0, n=zz.length; i<n; i++) {
     z = zz[i];
@@ -171,9 +175,9 @@ internal.findMaxThreshold = function(zz) {
     }
   }
   return maxZ;
-};
+}
 
-internal.parseSimplifyResolution = function(raw) {
+export function parseSimplifyResolution(raw) {
   var parts, w, h;
   if (utils.isNumber(raw)) {
     w = raw;
@@ -188,47 +192,47 @@ internal.parseSimplifyResolution = function(raw) {
     stop("Invalid simplify resolution:", raw);
   }
   return [w, h]; // TODO: validate;
-};
+}
 
-internal.calcPlanarInterval = function(xres, yres, width, height) {
+export function calcPlanarInterval(xres, yres, width, height) {
   var fitWidth = xres !== 0 && width / height > xres / yres || yres === 0;
   return fitWidth ? width / xres : height / yres;
-};
+}
 
 // Calculate a simplification interval for unprojected data, given an output resolution
 // (This is approximate, since we don't know how the data will be projected for display)
-internal.calcSphericalInterval = function(xres, yres, bounds) {
+export function calcSphericalInterval(xres, yres, bounds) {
   // Using length of arc along parallel through center of bbox as content width
   // TODO: consider using great circle instead of parallel arc to calculate width
   //    (doesn't work if width of bbox is greater than 180deg)
   var width = geom.degreesToMeters(bounds.width()) * Math.cos(bounds.centerY() * geom.D2R);
   var height = geom.degreesToMeters(bounds.height());
-  return internal.calcPlanarInterval(xres, yres, width, height);
-};
+  return calcPlanarInterval(xres, yres, width, height);
+}
 
-internal.convertSimplifyInterval = function(param, dataset, opts) {
-  var crs = internal.getDatasetCRS(dataset);
+export function convertSimplifyInterval(param, dataset, opts) {
+  var crs = getDatasetCRS(dataset);
   var interval;
-  if (internal.useSphericalSimplify(dataset.arcs, opts)) {
-    interval = internal.convertDistanceParam(param, crs);
+  if (useSphericalSimplify(dataset.arcs, opts)) {
+    interval = convertDistanceParam(param, crs);
   } else {
-    interval = internal.convertIntervalParam(param, crs);
+    interval = convertIntervalParam(param, crs);
   }
   return interval;
-};
+}
 
 // convert resolution to an interval
-internal.convertSimplifyResolution = function(param, arcs, opts) {
-  var res = internal.parseSimplifyResolution(param);
+export function convertSimplifyResolution(param, arcs, opts) {
+  var res = parseSimplifyResolution(param);
   var bounds = arcs.getBounds();
   var interval;
-  if (internal.useSphericalSimplify(arcs, opts)) {
-    interval = internal.calcSphericalInterval(res[0], res[1], bounds);
+  if (useSphericalSimplify(arcs, opts)) {
+    interval = calcSphericalInterval(res[0], res[1], bounds);
   } else {
-    interval = internal.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
+    interval = calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
   }
   // scale interval to double the resolution (single-pixel resolution creates
   //  visible artifacts)
   interval *= 0.5;
   return interval;
-};
+}

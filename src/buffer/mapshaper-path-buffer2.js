@@ -1,7 +1,13 @@
-/* @requires mapshaper-bounds-geom */
+import { testSegmentBoundsIntersection } from '../geom/mapshaper-bounds-geom';
+import { segmentTurn } from '../geom/mapshaper-geodesic';
+import { bufferIntersection } from '../buffer/mapshaper-path-buffer';
+import { reversePath } from '../paths/mapshaper-path-utils';
+import geom from '../geom/mapshaper-geom';
+import { ShapeIter } from '../paths/mapshaper-shape-iter';
+import { Bounds } from '../geom/mapshaper-bounds';
 
-internal.getPolylineBufferMaker2 = function(arcs, geod, getBearing, opts) {
-  var makeLeftBuffer = internal.getPathBufferMaker2(arcs, geod, getBearing, opts);
+export function getPolylineBufferMaker2(arcs, geod, getBearing, opts) {
+  var makeLeftBuffer = getPathBufferMaker2(arcs, geod, getBearing, opts);
   var geomType = opts.geometry_type;
 
   function polygonCoords(ring) {
@@ -33,7 +39,7 @@ internal.getPolylineBufferMaker2 = function(arcs, geod, getBearing, opts) {
       leftPartials = makeLeftBuffer(pathArcs, dist);
     }
     if (needRightBuffer()) {
-      revPathArcs = internal.reversePath(pathArcs.concat());
+      revPathArcs = reversePath(pathArcs.concat());
       rightPartials = makeLeftBuffer(revPathArcs, dist);
     }
     parts = (leftPartials || []).concat(rightPartials || []);
@@ -51,9 +57,9 @@ internal.getPolylineBufferMaker2 = function(arcs, geod, getBearing, opts) {
     }
     return geom.coordinates.length == 0 ? null : geom;
   };
-};
+}
 
-internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
+function getPathBufferMaker2(arcs, geod, getBearing, opts) {
   var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
@@ -152,9 +158,9 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
       a = arr[idx];
       b = arr[idx + 1];
       // TODO: consider using a geodetic intersection function for lat-long datasets
-      hit = internal.bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+      hit = bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
       if (hit) {
-        if (internal.segmentTurn(a, b, c, d) == 1) {
+        if (segmentTurn(a, b, c, d) == 1) {
           // interpretation: segment cd crosses segment ab from outside to inside
           // the buffer -- we need to start a new partial; otherwise,
           // the following code would likely remove a loop representing
@@ -185,7 +191,7 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
           bounds.mergePoint(a[0], a[1]);
         }
         bounds.mergePoint(b[0], b[1]);
-        if (internal.testSegmentBoundsIntersection(c0, d, bounds)) {
+        if (testSegmentBoundsIntersection(c0, d, bounds)) {
           finishPartial();
         }
         break;
@@ -213,7 +219,7 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
     center.push(centerEP);
 
     // clear bbox
-    bbox = null;
+    // bbox = null;
   }
 
   function extendArray(arr, arr2) {
@@ -291,4 +297,4 @@ internal.getPathBufferMaker2 = function(arcs, geod, getBearing, opts) {
 
     return partials;
   };
-};
+}

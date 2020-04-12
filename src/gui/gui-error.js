@@ -1,7 +1,6 @@
+import { El } from './gui-el';
 
-/* @require gui-lib */
-
-function AlertControl(gui) {
+export function AlertControl(gui) {
   var el;
   gui.addMode('alert', function() {}, turnOff);
 

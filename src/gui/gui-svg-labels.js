@@ -1,11 +1,9 @@
-/* @requires gui-svg-symbols */
-
-
-function isMultilineLabel(textNode) {
+import { utils } from './gui-core';
+export function isMultilineLabel(textNode) {
   return textNode.childNodes.length > 1;
 }
 
-function toggleTextAlign(textNode, rec) {
+export function toggleTextAlign(textNode, rec) {
   var curr = rec['text-anchor'] || 'middle';
   var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
   updateTextAnchor(value, textNode, rec);
@@ -14,7 +12,7 @@ function toggleTextAlign(textNode, rec) {
 // Set an attribute on a <text> node and any child <tspan> elements
 // (mapshaper's svg labels require tspans to have the same x and dx values
 //  as the enclosing text node)
-function setMultilineAttribute(textNode, name, value) {
+export function setMultilineAttribute(textNode, name, value) {
   var n = textNode.childNodes.length;
   var i = -1;
   var child;
@@ -36,7 +34,7 @@ function findSvgRoot(el) {
 }
 
 // p: pixel coordinates of label anchor
-function autoUpdateTextAnchor(textNode, rec, p) {
+export function autoUpdateTextAnchor(textNode, rec, p) {
   var svg = findSvgRoot(textNode);
   var rect = textNode.getBoundingClientRect();
   var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
@@ -68,9 +66,8 @@ function updateTextAnchor(value, textNode, rec) {
   }
 }
 
-
 // handle either numeric strings or numbers in fields
-function applyDelta(rec, key, delta) {
+export function applyDelta(rec, key, delta) {
   var currVal = rec[key];
   var isString = utils.isString(currVal);
   var newVal = (+currVal + delta) || 0;

@@ -1,26 +1,29 @@
-/* @requires mapshaper-common, mapshaper-data-utils mapshaper-polygon-holes */
+import { pruneArcs } from '../dataset/mapshaper-dataset-utils';
+import { deleteHoles } from '../polygons/mapshaper-polygon-holes';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { fieldListContainsAll } from '../datatable/mapshaper-data-utils';
+import cmd from '../mapshaper-cmd';
 
-api.drop2 = function(catalog, targets, opts) {
+cmd.drop2 = function(catalog, targets, opts) {
   targets.forEach(function(target) {
-    api.drop(catalog, target.layers, target.dataset, opts);
+    cmd.drop(catalog, target.layers, target.dataset, opts);
   });
 };
 
-
-api.drop = function(catalog, layers, dataset, opts) {
+cmd.drop = function(catalog, layers, dataset, opts) {
   var updateArcs = false;
 
   layers.forEach(function(lyr) {
     var fields = lyr.data && opts.fields;
-    var allFields = fields && internal.fieldListContainsAll(fields, lyr.data.getFields());
+    var allFields = fields && fieldListContainsAll(fields, lyr.data.getFields());
     var deletion = !fields && !opts.geometry && !opts.holes || allFields && opts.geometry;
     if (opts.geometry) {
-      updateArcs |= internal.layerHasPaths(lyr);
+      updateArcs |= layerHasPaths(lyr);
       delete lyr.shapes;
       delete lyr.geometry_type;
     }
     if (opts.holes && lyr.geometry_type == 'polygon') {
-      internal.deleteHoles(lyr, dataset.arcs);
+      deleteHoles(lyr, dataset.arcs);
     }
     if (deletion) {
       catalog.deleteLayer(lyr, dataset);
@@ -32,6 +35,6 @@ api.drop = function(catalog, layers, dataset, opts) {
   });
 
   if (updateArcs) {
-    internal.pruneArcs(dataset);
+    pruneArcs(dataset);
   }
 };

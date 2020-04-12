@@ -1,16 +1,22 @@
-/* @requires mapshaper-dataset-utils, mapshaper-calc */
+import { getSplitNameFunction } from '../commands/mapshaper-split';
+import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { evalCalcExpression } from '../commands/mapshaper-calc';
+import { stop } from '../utils/mapshaper-logging';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
+import { DataTable } from '../datatable/mapshaper-data-table';
 
 // Recursively divide a layer into two layers until a (compiled) expression
 // no longer returns true. The original layer is split along the long side of
 // its bounding box, so that each split-off layer contains half of the original
 // shapes (+/- 1).
 //
-api.subdivideLayer = function(lyr, arcs, exp) {
-  return internal.subdivide(lyr, arcs, exp);
+cmd.subdivideLayer = function(lyr, arcs, exp) {
+  return subdivide(lyr, arcs, exp);
 };
 
-internal.subdivide = function(lyr, arcs, exp) {
-  var divide = internal.evalCalcExpression(lyr, arcs, exp),
+function subdivide(lyr, arcs, exp) {
+  var divide = evalCalcExpression(lyr, arcs, exp),
       subdividedLayers = [],
       tmp, bounds, lyr1, lyr2, layerName;
 
@@ -18,36 +24,36 @@ internal.subdivide = function(lyr, arcs, exp) {
     stop("Expression must evaluate to true or false");
   }
   if (divide) {
-    bounds = internal.getLayerBounds(lyr, arcs);
-    tmp = internal.divideLayer(lyr, arcs, bounds);
+    bounds = getLayerBounds(lyr, arcs);
+    tmp = divideLayer(lyr, arcs, bounds);
     lyr1 = tmp[0];
     if (lyr1.shapes.length > 1 && lyr1.shapes.length < lyr.shapes.length) {
-      utils.merge(subdividedLayers, internal.subdivide(lyr1, arcs, exp));
+      utils.merge(subdividedLayers, subdivide(lyr1, arcs, exp));
     } else {
       subdividedLayers.push(lyr1);
     }
 
     lyr2 = tmp[1];
     if (lyr2.shapes.length > 1 && lyr2.shapes.length < lyr.shapes.length) {
-      utils.merge(subdividedLayers, internal.subdivide(lyr2, arcs, exp));
+      utils.merge(subdividedLayers, subdivide(lyr2, arcs, exp));
     } else {
       subdividedLayers.push(lyr2);
     }
   } else {
     subdividedLayers.push(lyr);
   }
-  layerName = internal.getSplitNameFunction(lyr);
+  layerName = getSplitNameFunction(lyr);
   subdividedLayers.forEach(function(lyr2, i) {
     lyr2.name = layerName(i);
     utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;
-};
+}
 
 // split one layer into two layers containing the same number of shapes (+-1),
 // either horizontally or vertically
 //
-internal.divideLayer = function(lyr, arcs, bounds) {
+function divideLayer(lyr, arcs, bounds) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes,
       lyr1, lyr2;
@@ -85,4 +91,4 @@ internal.divideLayer = function(lyr, arcs, bounds) {
     lyr2.data = new DataTable(lyr2.data);
   }
   return [lyr1, lyr2];
-};
+}

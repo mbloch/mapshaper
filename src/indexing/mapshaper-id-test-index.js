@@ -1,6 +1,6 @@
 // Keep track of whether positive or negative integer ids are 'used' or not.
 
-function IdTestIndex(n) {
+export function IdTestIndex(n) {
   var index = new Uint8Array(n);
 
   this.setId = function(id) {

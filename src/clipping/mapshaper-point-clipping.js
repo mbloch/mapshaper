@@ -1,10 +1,6 @@
-/* @requires
-mapshaper-path-index
-mapshaper-shape-utils
-*/
-
+import { PathIndex } from '../paths/mapshaper-path-index';
 //
-internal.clipPoints = function(points, clipShapes, arcs, type) {
+export function clipPoints(points, clipShapes, arcs, type) {
   var index = new PathIndex(clipShapes, arcs);
 
   var points2 = points.reduce(function(memo, feat) {
@@ -24,4 +20,4 @@ internal.clipPoints = function(points, clipShapes, arcs, type) {
   }, []);
 
   return points2;
-};
+}

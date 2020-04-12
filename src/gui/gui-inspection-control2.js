@@ -1,6 +1,9 @@
-/* @requires gui-lib, gui-popup */
+import { Popup } from './gui-popup';
+import { EventDispatcher } from './gui-events';
+import { internal } from './gui-core';
+import { GUI } from './gui-lib';
 
-function InspectionControl2(gui, hit) {
+export function InspectionControl2(gui, hit) {
   var model = gui.model;
   var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
   var _self = new EventDispatcher();
@@ -26,27 +29,6 @@ function InspectionControl2(gui, hit) {
     d.i = _highId; // need to add record id
     _self.dispatchEvent('data_change', d);
   });
-
-  // replace cli inspect command
-  // TODO: support multiple editors on the page
-  // REMOVING gui output for -inspect command
-  /*
-  api.inspect = function(lyr, arcs, opts) {
-    var ids;
-    if (!_target) return; // control is disabled (selected layer is hidden, etc)
-    if (lyr != model.getActiveLayer().layer) {
-      error("Only the active layer can be targeted");
-    }
-    ids = internal.selectFeatures(lyr, arcs, opts);
-    if (ids.length === 0) {
-      message("No features were selected");
-      return;
-    }
-    _selectionIds = ids;
-    turnOn();
-    inspect(ids[0], true);
-  };
-  */
 
   gui.keyboard.on('keydown', function(evt) {
     var e = evt.originalEvent;

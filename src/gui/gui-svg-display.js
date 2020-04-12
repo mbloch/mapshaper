@@ -1,10 +1,9 @@
-/* @requires
-gui-lib
-gui-svg-symbols
-gui-svg-furniture
-*/
+import { repositionSymbols, renderSymbols } from './gui-svg-symbols';
+import { renderFurniture, repositionFurniture } from './gui-svg-furniture';
+import { El } from './gui-el';
+import { utils } from './gui-core';
 
-function SvgDisplayLayer(gui, ext, mouse) {
+export function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   var el = El(svg);
 

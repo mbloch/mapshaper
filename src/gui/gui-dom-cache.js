@@ -1,4 +1,4 @@
-function DomCache() {
+export function DomCache() {
   var cache = {};
   var used = {};
 

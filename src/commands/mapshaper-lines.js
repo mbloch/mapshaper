@@ -1,23 +1,35 @@
-/* @requires mapshaper-shape-utils, mapshaper-arc-classifier, mapshaper-point-utils */
+import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
+import { compileFeaturePairExpression, compileFeaturePairFilterExpression } from '../expressions/mapshaper-expressions';
+import { requireDataField, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
+import { forEachPoint } from '../points/mapshaper-point-utils';
+import { aggregateDataRecords, getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
+import { mergeDatasetsIntoDataset, mergeDatasets } from '../dataset/mapshaper-merging';
+import { importGeoJSON } from '../geojson/geojson-import';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import cmd from '../mapshaper-cmd';
+import geom from '../geom/mapshaper-geom';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
-api.lines = function(lyr, dataset, opts) {
+cmd.lines = function(lyr, dataset, opts) {
   opts = opts || {};
   if (lyr.geometry_type == 'point') {
-    return internal.pointsToLines(lyr, dataset, opts);
+    return pointsToLines(lyr, dataset, opts);
   } else if (opts.segments) {
-    return [internal.convertShapesToSegments(lyr, dataset)];
+    return [convertShapesToSegments(lyr, dataset)];
   } else if (opts.arcs) {
-    return [internal.convertShapesToArcs(lyr, dataset)];
+    return [convertShapesToArcs(lyr, dataset)];
   } else if (lyr.geometry_type == 'polygon') {
-    return internal.polygonsToLines(lyr, dataset.arcs, opts);
+    return polygonsToLines(lyr, dataset.arcs, opts);
   } else {
-    internal.requirePolygonLayer(lyr, "Command requires a polygon or point layer");
+    requirePolygonLayer(lyr, "Command requires a polygon or point layer");
   }
 };
 
-internal.convertShapesToArcs = function(lyr, dataset) {
+function convertShapesToArcs(lyr, dataset) {
   var arcs = dataset.arcs;
-  var test = internal.getArcPresenceTest(lyr.shapes, arcs);
+  var test = getArcPresenceTest(lyr.shapes, arcs);
   var records = [];
   var shapes = [];
   for (var i=0, n=arcs.size(); i<n; i++) {
@@ -30,13 +42,13 @@ internal.convertShapesToArcs = function(lyr, dataset) {
     data: new DataTable(records),
     shapes: shapes
   };
-};
+}
 
-internal.convertShapesToSegments = function(lyr, dataset) {
+function convertShapesToSegments(lyr, dataset) {
   var arcs = dataset.arcs;
   var features = [];
   var geojson = {type: 'FeatureCollection', features: []};
-  var test = internal.getArcPresenceTest(lyr.shapes, arcs);
+  var test = getArcPresenceTest(lyr.shapes, arcs);
   var arcId;
   for (var i=0, n=arcs.size(); i<n; i++) {
     arcId = i;
@@ -54,29 +66,29 @@ internal.convertShapesToSegments = function(lyr, dataset) {
       geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
     });
   }
-  var merged = internal.mergeDatasets([dataset, internal.importGeoJSON(geojson, {})]);
+  var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
   dataset.arcs = merged.arcs;
-  // api.buildTopology(dataset);
+  // buildTopology(dataset);
   return merged.layers.pop();
-};
+}
 
-internal.pointsToLines = function(lyr, dataset, opts) {
+function pointsToLines(lyr, dataset, opts) {
   var geojson = opts.groupby ?
-    internal.groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
-    internal.pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
-  var dataset2 = internal.importGeoJSON(geojson);
-  var outputLayers = internal.mergeDatasetsIntoDataset(dataset, [dataset2]);
+    groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
+    pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
+  var dataset2 = importGeoJSON(geojson);
+  var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
   if (!opts.no_replace) {
     outputLayers[0].name = lyr.name || outputLayers[0].name;
   }
   return outputLayers;
-};
+}
 
-internal.groupedPointsToLineGeoJSON = function(lyr, field, opts) {
+function groupedPointsToLineGeoJSON(lyr, field, opts) {
   var groups = [];
-  var getGroupId = internal.getCategoryClassifier([field], lyr.data);
+  var getGroupId = getCategoryClassifier([field], lyr.data);
   var dataOpts = utils.defaults({fields: [field]}, opts);
-  var records = internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
+  var records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
   var features;
   lyr.shapes.forEach(function(shape, i) {
     var groupId = getGroupId(i);
@@ -89,29 +101,29 @@ internal.groupedPointsToLineGeoJSON = function(lyr, field, opts) {
     return {
       type: 'Feature',
       properties: records[i],
-      geometry: shapes.length > 1 ? internal.pointShapesToLineGeometry(shapes) : null
+      geometry: shapes.length > 1 ? pointShapesToLineGeometry(shapes) : null
     };
   });
   return {
     type: 'FeatureCollection',
     features: features
   };
-};
+}
 
 // TOOD: automatically convert rings into separate shape parts
-internal.pointShapesToLineGeometry = function(shapes) {
+function pointShapesToLineGeometry(shapes) {
   var coords = [];
-  internal.forEachPoint(shapes, function(p) {
+  forEachPoint(shapes, function(p) {
     coords.push(p.concat());
   });
   return {type: 'LineString', coordinates: coords};
-};
+}
 
-internal.polygonsToLines = function(lyr, arcs, opts) {
+export function polygonsToLines(lyr, arcs, opts) {
   opts = opts || {};
-  var filter = opts.where ? internal.compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
-      decorateRecord = opts.each ? internal.getLineRecordDecorator(opts.each, lyr, arcs) : null,
-      classifier = internal.getArcClassifier(lyr.shapes, arcs, {filter: filter}),
+  var filter = opts.where ? compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
+      decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
+      classifier = getArcClassifier(lyr.shapes, arcs, {filter: filter}),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
       rankId = 0,
       shapes = [],
@@ -122,7 +134,7 @@ internal.polygonsToLines = function(lyr, arcs, opts) {
     stop("Missing a data table");
   }
 
-  addLines(internal.extractOuterLines(lyr.shapes, classifier), 'outer');
+  addLines(extractOuterLines(lyr.shapes, classifier), 'outer');
 
   fields.forEach(function(field) {
     var data = lyr.data.getRecords();
@@ -135,12 +147,12 @@ internal.polygonsToLines = function(lyr, arcs, opts) {
       }
       return a + '-' + b;
     };
-    internal.requireDataField(lyr, field);
-    addLines(internal.extractLines(lyr.shapes, classifier(key)), field);
+    requireDataField(lyr, field);
+    addLines(extractLines(lyr.shapes, classifier(key)), field);
   });
 
-  addLines(internal.extractInnerLines(lyr.shapes, classifier), 'inner');
-  outputLyr = internal.createLineLayer(shapes, records);
+  addLines(extractInnerLines(lyr.shapes, classifier), 'inner');
+  outputLyr = createLineLayer(shapes, records);
   outputLyr.name = opts.no_replace ? null : lyr.name;
   return outputLyr;
 
@@ -154,14 +166,14 @@ internal.polygonsToLines = function(lyr, arcs, opts) {
     records = utils.merge(attr, records);
     rankId++;
   }
-};
+}
 
 
 // kludgy way to implement each= option of -lines command
-internal.getLineRecordDecorator = function(exp, lyr, arcs) {
+function getLineRecordDecorator(exp, lyr, arcs) {
   // repurpose arc classifier function to convert arc ids to shape ids of original polygons
-  var procArcId = internal.getArcClassifier(lyr.shapes, arcs)(procShapeIds);
-  var compiled = internal.compileFeaturePairExpression(exp, lyr, arcs);
+  var procArcId = getArcClassifier(lyr.shapes, arcs)(procShapeIds);
+  var compiled = compileFeaturePairExpression(exp, lyr, arcs);
   var tmp;
 
   function procShapeIds(shpA, shpB) {
@@ -173,35 +185,35 @@ internal.getLineRecordDecorator = function(exp, lyr, arcs) {
     procArcId(shp[0][0]);
     return rec;
   };
-};
+}
 
 
-internal.createLineLayer = function(lines, records) {
+export function createLineLayer(lines, records) {
   return {
     geometry_type: 'polyline',
     shapes: lines,
     data: records ? new DataTable(records) : null
   };
-};
+}
 
-internal.extractOuterLines = function(shapes, classifier) {
+function extractOuterLines(shapes, classifier) {
   var key = function(a, b) {return b == -1 ? String(a) : null;};
-  return internal.extractLines(shapes, classifier(key));
-};
+  return extractLines(shapes, classifier(key));
+}
 
-internal.extractInnerLines = function(shapes, classifier) {
+export function extractInnerLines(shapes, classifier) {
   var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
-  return internal.extractLines(shapes, classifier(key));
-};
+  return extractLines(shapes, classifier(key));
+}
 
-internal.extractLines = function(shapes, classify) {
+function extractLines(shapes, classify) {
   var lines = [],
       index = {},
       prev = null,
       prevKey = null,
       part;
 
-  internal.traversePaths(shapes, onArc, onPart);
+  traversePaths(shapes, onArc, onPart);
 
   function onArc(o) {
     var arcId = o.arcId,
@@ -236,4 +248,4 @@ internal.extractLines = function(shapes, classify) {
   }
 
   return lines;
-};
+}

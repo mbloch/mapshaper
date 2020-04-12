@@ -1,6 +1,8 @@
-/* @requires gui-lib, gui-mode-button */
+import { ModeButton } from './gui-mode-button';
+import { utils } from './gui-core';
+import { EventDispatcher } from './gui-events';
 
-function ModeSwitcher() {
+export function ModeSwitcher() {
   var self = this;
   var mode = null;
 

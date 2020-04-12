@@ -1,20 +1,21 @@
-/* @require mapshaper-common */
 
-utils.replaceFileExtension = function(path, ext) {
-  var info = utils.parseLocalPath(path);
+import utils from '../utils/mapshaper-utils';
+
+export function replaceFileExtension(path, ext) {
+  var info = parseLocalPath(path);
   return info.pathbase + '.' + ext;
-};
+}
 
-utils.getPathSep = function(path) {
+function getPathSep(path) {
   // TODO: improve
   return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
-};
+}
 
 // Parse the path to a file without using Node
 // Assumes: not a directory path
-utils.parseLocalPath = function(path) {
+export function parseLocalPath(path) {
   var obj = {},
-      sep = utils.getPathSep(path),
+      sep = getPathSep(path),
       parts = path.split(sep),
       i;
 
@@ -36,32 +37,32 @@ utils.parseLocalPath = function(path) {
     obj.pathbase = path;
   }
   return obj;
-};
+}
 
-utils.getFileBase = function(path) {
-  return utils.parseLocalPath(path).basename;
-};
+export function getFileBase(path) {
+  return parseLocalPath(path).basename;
+}
 
-utils.getFileExtension = function(path) {
-  return utils.parseLocalPath(path).extension;
-};
+export function getFileExtension(path) {
+  return parseLocalPath(path).extension;
+}
 
-utils.getPathBase = function(path) {
-  return utils.parseLocalPath(path).pathbase;
-};
+export function getPathBase(path) {
+  return parseLocalPath(path).pathbase;
+}
 
-utils.getCommonFileBase = function(names) {
+export function getCommonFileBase(names) {
   return names.reduce(function(memo, name, i) {
     if (i === 0) {
-      memo = utils.getFileBase(name);
+      memo = getFileBase(name);
     } else {
       memo = utils.mergeNames(memo, name);
     }
     return memo;
   }, "");
-};
+}
 
-utils.getOutputFileBase = function(dataset) {
+export function getOutputFileBase(dataset) {
   var inputFiles = dataset.info && dataset.info.input_files;
-  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
-};
+  return inputFiles && getCommonFileBase(inputFiles) || 'output';
+}

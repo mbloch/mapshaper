@@ -1,12 +1,9 @@
-/* @requires
-mapshaper-dataset-utils
-mapshaper-nodes
-mapshaper-shape-geom
-mapshaper-path-index
-mapshaper-intersection-cuts
-mapshaper-polygon-repair
-mapshaper-pathfinder-utils
-*/
+
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import { forEachArcId } from '../paths/mapshaper-path-utils';
+import { forEachShapePart } from '../paths/mapshaper-shape-utils';
+import { getRightmostArc } from '../paths/mapshaper-pathfinder-utils';
+import { debug } from '../utils/mapshaper-logging';
 
 // Functions for redrawing polygons for clipping / erasing / flattening / division
 // These functions use 8 bit codes to control forward and reverse traversal of each arc.
@@ -31,15 +28,15 @@ var FWD_OPEN = 0x2;
 var REV_VISIBLE = 0x10;
 var REV_OPEN = 0x20;
 
-internal.setBits = function(bits, arcBits, mask) {
+export function setBits(bits, arcBits, mask) {
   return (bits & ~mask) | (arcBits & mask);
-};
+}
 
-internal.andBits = function(bits, arcBits, mask) {
+export function andBits(bits, arcBits, mask) {
   return bits & (~mask | arcBits);
-};
+}
 
-internal.setRouteBits = function(arcBits, arcId, routesArr) {
+export function setRouteBits(arcBits, arcId, routesArr) {
   var idx = absArcId(arcId), // get index of path in
       mask;
   if (idx == arcId) { // arcBits controls fwd path
@@ -49,19 +46,19 @@ internal.setRouteBits = function(arcBits, arcId, routesArr) {
     arcBits = arcBits << 4; // shift code to target rev path
   }
   routesArr[idx] &= (arcBits | mask);
-};
+}
 
-internal.getRouteBits = function(arcId, routesArr) {
+export function getRouteBits(arcId, routesArr) {
   var idx = absArcId(arcId),
       bits = routesArr[idx];
   if (idx != arcId) bits = bits >> 4;
   return bits & 7;
-};
+}
 
 // Open arc pathways in a single shape or array of shapes
 //
-internal.openArcRoutes = function(paths, arcColl, routesArr, fwd, rev, dissolve, orBits) {
-  internal.forEachArcId(paths, function(arcId) {
+export function openArcRoutes(paths, arcColl, routesArr, fwd, rev, dissolve, orBits) {
+  forEachArcId(paths, function(arcId) {
     var isInv = arcId < 0,
         idx = isInv ? ~arcId : arcId,
         currBits = routesArr[idx],
@@ -97,10 +94,10 @@ internal.openArcRoutes = function(paths, arcColl, routesArr, fwd, rev, dissolve,
 
     routesArr[idx] = newBits;
   });
-};
+}
 
-internal.closeArcRoutes = function(arcIds, arcs, routesArr, fwd, rev, hide) {
-  internal.forEachArcId(arcIds, function(arcId) {
+export function closeArcRoutes(arcIds, arcs, routesArr, fwd, rev, hide) {
+  forEachArcId(arcIds, function(arcId) {
     var isInv = arcId < 0,
         idx = isInv ? ~arcId : arcId,
         currBits = routesArr[idx],
@@ -118,7 +115,7 @@ internal.closeArcRoutes = function(arcIds, arcs, routesArr, fwd, rev, hide) {
     }
     routesArr[idx] = currBits & mask;
   });
-};
+}
 
 // Return a function for generating a path across a graph of connected arcs
 // useRoute: function(arcId) {}
@@ -130,7 +127,7 @@ internal.closeArcRoutes = function(arcIds, arcs, routesArr, fwd, rev, hide) {
 //           this function returns false;
 // TODO: add option to use spherical geometry for lat-lng coords
 //
-internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
+export function getPathFinder(nodes, useRoute, routeIsUsable) {
   var testArc = null;
   if (routeIsUsable) {
     testArc = function(arcId) {
@@ -140,7 +137,7 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 
   function getNextArc(prevId) {
     // reverse arc to point onwards
-    return ~internal.getRightmostArc(prevId, nodes, testArc);
+    return ~getRightmostArc(prevId, nodes, testArc);
   }
 
   return function(startId) {
@@ -165,14 +162,14 @@ internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
     } while (candId != startId);
     return path.length === 0 ? null : path;
   };
-};
+}
 
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-internal.getRingIntersector = function(nodes, flags) {
+export function getRingIntersector(nodes, flags) {
   var arcs = nodes.arcs;
-  var findPath = internal.getPathFinder(nodes, useRoute, routeIsActive);
+  var findPath = getPathFinder(nodes, useRoute, routeIsActive);
   flags = flags || new Uint8Array(arcs.size());
 
   // types: "dissolve" "flatten"
@@ -184,8 +181,8 @@ internal.getRingIntersector = function(nodes, flags) {
     // even single rings get transformed (e.g. to remove spikes)
     if (rings.length > 0) {
       output = [];
-      internal.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
-      internal.forEachShapePart(rings, function(ids) {
+      openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+      forEachShapePart(rings, function(ids) {
         var path;
         for (var i=0, n=ids.length; i<n; i++) {
           path = findPath(ids[i]);
@@ -194,7 +191,7 @@ internal.getRingIntersector = function(nodes, flags) {
           }
         }
       });
-      internal.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+      closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
     } else {
       output = rings;
     }
@@ -202,35 +199,35 @@ internal.getRingIntersector = function(nodes, flags) {
   };
 
   function routeIsActive(arcId) {
-    var bits = internal.getRouteBits(arcId, flags);
+    var bits = getRouteBits(arcId, flags);
     return (bits & 1) == 1;
   }
 
   function useRoute(arcId) {
-    var route = internal.getRouteBits(arcId, flags),
+    var route = getRouteBits(arcId, flags),
         isOpen = false;
     if (route == 3) {
       isOpen = true;
-      internal.setRouteBits(1, arcId, flags); // close the path, leave visible
+      setRouteBits(1, arcId, flags); // close the path, leave visible
     }
     return isOpen;
   }
-};
+}
 
-internal.debugFlags = function(flags) {
-  var arr = [];
-  utils.forEach(flags, function(flag) {
-    arr.push(bitsToString(flag));
-  });
-  message(arr);
+// function debugFlags(flags) {
+//   var arr = [];
+//   utils.forEach(flags, function(flag) {
+//     arr.push(bitsToString(flag));
+//   });
+//   message(arr);
 
-  function bitsToString(bits) {
-    var str = "";
-    for (var i=0; i<8; i++) {
-      str += (bits & (1 << i)) > 0 ? "1" : "0";
-      if (i < 7) str += ' ';
-      if (i == 3) str += ' ';
-    }
-    return str;
-  }
-};
+//   function bitsToString(bits) {
+//     var str = "";
+//     for (var i=0; i<8; i++) {
+//       str += (bits & (1 << i)) > 0 ? "1" : "0";
+//       if (i < 7) str += ' ';
+//       if (i == 3) str += ' ';
+//     }
+//     return str;
+//   }
+// }

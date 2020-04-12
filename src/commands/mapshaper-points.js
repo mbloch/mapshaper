@@ -1,37 +1,40 @@
-/* @requires
-mapshaper-data-table
-mapshaper-dataset-utils
-mapshaper-polygon-centroid
-mapshaper-anchor-points
-mapshaper-inner-points
-mapshaper-polyline-to-point
-mapshaper-geom
-mapshaper-dms
-*/
+import { parseDMS } from '../geom/mapshaper-dms';
+import { findAnchorPoint } from '../points/mapshaper-anchor-points';
+import { polylineToPoint } from '../paths/mapshaper-polyline-to-point';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { convertIntervalParam } from '../geom/mapshaper-units';
+import { calcSegmentIntersectionStripeCount } from '../paths/mapshaper-segment-intersection';
+import { calcSegmentIntersectionStripeCount2 } from '../paths/mapshaper-segment-intersection';
+import { getOutputLayer } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
+import { stop, message } from '../utils/mapshaper-logging';
+import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
 
-api.createPointLayer = function(srcLyr, dataset, opts) {
-  var destLyr = internal.getOutputLayer(srcLyr, opts);
+cmd.createPointLayer = function(srcLyr, dataset, opts) {
+  var destLyr = getOutputLayer(srcLyr, opts);
   var arcs = dataset.arcs;
   if (opts.intersections) {
-    internal.testIntersections(arcs);
+    testIntersections(arcs);
     destLyr = srcLyr;
   } else if (opts.interpolated) {
     // TODO: consider making attributed points, including distance from origin
-    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, dataset, opts);
+    destLyr.shapes = interpolatedPointsFromVertices(srcLyr, dataset, opts);
   } else if (opts.vertices) {
-    destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+    destLyr.shapes = pointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.vertices2) {
-    destLyr.shapes = internal.pointsFromVertices2(srcLyr, arcs, opts);
+    destLyr.shapes = pointsFromVertices2(srcLyr, arcs, opts);
   } else if (opts.endpoints) {
-    destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
+    destLyr.shapes = pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
-    destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
+    destLyr.shapes = pointsFromDataTable(srcLyr.data, opts);
   } else if (srcLyr.geometry_type == 'polygon') {
-    destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
+    destLyr.shapes = pointsFromPolygons(srcLyr, arcs, opts);
   } else if (srcLyr.geometry_type == 'polyline') {
-    destLyr.shapes = internal.pointsFromPolylines(srcLyr, arcs, opts);
+    destLyr.shapes = pointsFromPolylines(srcLyr, arcs, opts);
   } else if (!srcLyr.geometry_type) {
-    destLyr.shapes = internal.pointsFromDataTableAuto(srcLyr.data);
+    destLyr.shapes = pointsFromDataTableAuto(srcLyr.data);
   } else {
     stop("Expected a polygon or polyline layer");
   }
@@ -52,31 +55,31 @@ api.createPointLayer = function(srcLyr, dataset, opts) {
 };
 
 // TODO: finish testing stripe count functions and remove
-internal.testIntersections = function(arcs) {
+function testIntersections(arcs) {
   var pointCount =  arcs.getFilteredPointCount(),
       arcCount = arcs.size(),
       segCount = pointCount - arcCount,
-      stripes = internal.calcSegmentIntersectionStripeCount2(arcs),
+      stripes = calcSegmentIntersectionStripeCount2(arcs),
       stripes2 = Math.ceil(stripes / 10),
       stripes3 = stripes * 10,
-      stripes4 = internal.calcSegmentIntersectionStripeCount(arcs);
+      stripes4 = calcSegmentIntersectionStripeCount(arcs);
 
   console.log("points:", pointCount, "arcs:", arcCount, "segs:", segCount);
   [stripes2, stripes, stripes3, stripes4].forEach(function(n) {
     console.time(n + ' stripes');
-    internal.findSegmentIntersections(arcs, {stripes: n});
+    findSegmentIntersections(arcs, {stripes: n});
     console.timeEnd(n + ' stripes');
   });
-};
+}
 
-internal.interpolatePoint2D = function(ax, ay, bx, by, k) {
+function interpolatePoint2D(ax, ay, bx, by, k) {
   var j = 1 - k;
   return [ax * j + bx * k, ay * j + by * k];
-};
+}
 
-internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
+function interpolatePointsAlongArc(ids, arcs, interval) {
   var iter = arcs.getShapeIter(ids);
-  var distance = arcs.isPlanar() ? distance2D : greatCircleDistance;
+  var distance = arcs.isPlanar() ? geom.distance2D : geom.greatCircleDistance;
   var coords = [];
   var elapsedDist = 0;
   var prevX, prevY;
@@ -91,7 +94,7 @@ internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
     while (elapsedDist + segLen >= interval) {
       k = (interval - elapsedDist) / segLen;
       // TODO: consider using great-arc distance for lat-long points
-      p = internal.interpolatePoint2D(prevX, prevY, iter.x, iter.y, k);
+      p = interpolatePoint2D(prevX, prevY, iter.x, iter.y, k);
       elapsedDist = 0;
       coords.push(p);
       prevX = p[0];
@@ -106,10 +109,10 @@ internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
     coords.push([prevX, prevY]);
   }
   return coords;
-};
+}
 
-internal.interpolatedPointsFromVertices = function(lyr, dataset, opts) {
-  var interval = internal.convertIntervalParam(opts.interval, internal.getDatasetCRS(dataset));
+function interpolatedPointsFromVertices(lyr, dataset, opts) {
+  var interval = convertIntervalParam(opts.interval, getDatasetCRS(dataset));
   var coords;
   if (interval > 0 === false) stop("Invalid interpolation interval:", opts.interval);
   if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
@@ -119,13 +122,13 @@ internal.interpolatedPointsFromVertices = function(lyr, dataset, opts) {
     return coords.length > 0 ? coords : null;
   });
   function nextPart(ids) {
-    var points = internal.interpolatePointsAlongArc(ids, dataset.arcs, interval);
+    var points = interpolatePointsAlongArc(ids, dataset.arcs, interval);
     coords = coords.concat(points);
   }
-};
+}
 
 // Unique vertices within each feature
-internal.pointsFromVertices = function(lyr, arcs, opts) {
+function pointsFromVertices(lyr, arcs, opts) {
   var coords, index;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
     stop("Expected a polygon or polyline layer");
@@ -151,11 +154,11 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
       addPoint(iter);
     }
   }
-};
+}
 
 // Simple conversion of path vertices to points (duplicate locations not removed)
 // TODO: Provide some way to rebuild paths from points (e.g. multipart features)
-internal.pointsFromVertices2 = function(lyr, arcs, opts) {
+function pointsFromVertices2(lyr, arcs, opts) {
   var coords;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
     stop("Expected a polygon or polyline layer");
@@ -172,9 +175,9 @@ internal.pointsFromVertices2 = function(lyr, arcs, opts) {
       coords.push([iter.x, iter.y]);
     }
   }
-};
+}
 
-internal.pointsFromEndpoints = function(lyr, arcs) {
+function pointsFromEndpoints(lyr, arcs) {
   var coords, index;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
     stop("Expected a polygon or polyline layer");
@@ -200,24 +203,24 @@ internal.pointsFromEndpoints = function(lyr, arcs) {
       addPoint(arcs.getVertex(ids[i], -1));
     }
   }
-};
+}
 
-internal.pointsFromPolylines = function(lyr, arcs, opts) {
+function pointsFromPolylines(lyr, arcs, opts) {
   return lyr.shapes.map(function(shp) {
-    var p = internal.polylineToPoint(shp, arcs, opts);
+    var p = polylineToPoint(shp, arcs, opts);
     return p ? [[p.x, p.y]] : null;
   });
-};
+}
 
-internal.pointsFromPolygons = function(lyr, arcs, opts) {
-  var func = opts.inner ? internal.findAnchorPoint : geom.getShapeCentroid;
+export function pointsFromPolygons(lyr, arcs, opts) {
+  var func = opts.inner ? findAnchorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
     var p = func(shp, arcs);
     return p ? [[p.x, p.y]] : null;
   });
-};
+}
 
-internal.coordinateFromValue = function(val) {
+export function coordinateFromValue(val) {
   var tmp;
   if (utils.isFiniteNumber(val)) {
     return val;
@@ -228,49 +231,49 @@ internal.coordinateFromValue = function(val) {
     if (utils.isFiniteNumber(tmp)) {
       return tmp;
     }
-    tmp = internal.parseDMS(val); // try to parse as DMS
+    tmp = parseDMS(val); // try to parse as DMS
     if (utils.isFiniteNumber(tmp)) {
       return tmp;
     }
   }
   return NaN;
-};
+}
 
-internal.findXField = function(fields) {
+export function findXField(fields) {
   var rxp = /^(lng|long?|longitude|x)$/i;
   return utils.find(fields, function(name) {
     return rxp.test(name);
   });
-};
+}
 
-internal.findYField = function(fields) {
+export function findYField(fields) {
   var rxp = /^(lat|latitude|y)$/i;
   return utils.find(fields, function(name) {
     return rxp.test(name);
   });
-};
+}
 
-internal.pointsFromDataTableAuto = function(data) {
+function pointsFromDataTableAuto(data) {
   var fields = data ? data.getFields() : [];
   var opts = {
-    x: internal.findXField(fields),
-    y: internal.findYField(fields)
+    x: findXField(fields),
+    y: findYField(fields)
   };
-  return internal.pointsFromDataTable(data, opts);
-};
+  return pointsFromDataTable(data, opts);
+}
 
-internal.pointsFromDataTable = function(data, opts) {
+function pointsFromDataTable(data, opts) {
   if (!data) stop("Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
     stop("Missing x,y data fields");
   }
 
   return data.getRecords().map(function(rec) {
-    var x = internal.coordinateFromValue(rec[opts.x]),
-        y = internal.coordinateFromValue(rec[opts.y]);
+    var x = coordinateFromValue(rec[opts.x]),
+        y = coordinateFromValue(rec[opts.y]);
     if (isNaN(x) || isNaN(y)) {
       return null;
     }
     return [[x, y]];
   });
-};
+}

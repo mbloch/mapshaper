@@ -1,5 +1,7 @@
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
 
-function SidebarButtons(gui) {
+export function SidebarButtons(gui) {
   var root = gui.container.findChild('.mshp-main-map');
   var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
   var _hidden = true;

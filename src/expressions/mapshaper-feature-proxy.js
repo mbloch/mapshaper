@@ -1,12 +1,11 @@
-/* @requires
-mapshaper-shape-geom
-mapshaper-polygon-centroid
-mapshaper-anchor-points
-mapshaper-arcs
-mapshaper-dataset-utils
-mapshaper-data-utils
-mapshaper-perimeter-calc
-*/
+
+import { findAnchorPoint } from '../points/mapshaper-anchor-points';
+import { getInnerPctCalcFunction } from '../geom/mapshaper-perimeter-calc';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { stop } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
 
 function addGetters(obj, getters) {
   Object.keys(getters).forEach(function(name) {
@@ -14,9 +13,9 @@ function addGetters(obj, getters) {
   });
 }
 
-internal.initFeatureProxy = function(lyr, arcs) {
-  var hasPoints = internal.layerHasPoints(lyr),
-      hasPaths = arcs && internal.layerHasPaths(lyr),
+export function initFeatureProxy(lyr, arcs) {
+  var hasPoints = layerHasPoints(lyr),
+      hasPaths = arcs && layerHasPaths(lyr),
       _records = lyr.data ? lyr.data.getRecords() : null,
       _isPlanar = hasPaths && arcs.isPlanar(),
       ctx = {},
@@ -89,7 +88,7 @@ internal.initFeatureProxy = function(lyr, arcs) {
           return geom.getPlanarShapeArea(_ids, arcs);
         },
         innerPct: function() {
-          if (!calcInnerPct) calcInnerPct = internal.getInnerPctCalcFunction(arcs, lyr.shapes);
+          if (!calcInnerPct) calcInnerPct = getInnerPctCalcFunction(arcs, lyr.shapes);
           return calcInnerPct(_ids);
         },
         originalArea: function() {
@@ -155,7 +154,7 @@ internal.initFeatureProxy = function(lyr, arcs) {
   }
 
   function innerXY() {
-    _innerXY = _innerXY || internal.findAnchorPoint(_ids, arcs);
+    _innerXY = _innerXY || findAnchorPoint(_ids, arcs);
     return _innerXY;
   }
 
@@ -180,4 +179,4 @@ internal.initFeatureProxy = function(lyr, arcs) {
     }
     return ctx;
   };
-};
+}

@@ -1,25 +1,26 @@
-/* @require mapshaper-arcs, mapshaper-shape-geom */
+import { findNextRemovableVertex } from '../paths/mapshaper-path-utils';
+import { verbose } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
 
-api.keepEveryPolygon =
-internal.keepEveryPolygon = function(arcData, layers) {
+export function keepEveryPolygon(arcData, layers) {
   layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon') {
-      internal.protectLayerShapes(arcData, lyr.shapes);
+      protectLayerShapes(arcData, lyr.shapes);
     }
   });
-};
+}
 
-internal.protectLayerShapes = function(arcData, shapes) {
+function protectLayerShapes(arcData, shapes) {
   shapes.forEach(function(shape) {
-    internal.protectShape(arcData, shape);
+    protectShape(arcData, shape);
   });
-};
+}
 
 // Protect a single shape from complete removal by simplification
 // @arcData an ArcCollection
 // @shape an array containing one or more arrays of arc ids, or null if null shape
 //
-internal.protectShape = function(arcData, shape) {
+export function protectShape(arcData, shape) {
   var maxArea = 0,
       arcCount = shape ? shape.length : 0,
       maxRing, area;
@@ -36,13 +37,13 @@ internal.protectShape = function(arcData, shape) {
     // invald shape
     verbose("[protectShape()] Invalid shape:", shape);
   } else {
-    internal.protectPolygonRing(arcData, maxRing);
+    protectPolygonRing(arcData, maxRing);
   }
-};
+}
 
 // Re-inflate a polygon ring that has collapsed due to simplification by
 //   adding points in reverse order of removal until polygon is inflated.
-internal.protectPolygonRing = function(arcData, ring) {
+function protectPolygonRing(arcData, ring) {
   var zlim = arcData.getRetainedInterval(),
       // use epsilon as min area instead of 0, in case f.p. rounding produces
       // a positive area for a collapsed polygon.
@@ -51,7 +52,7 @@ internal.protectPolygonRing = function(arcData, ring) {
   arcData.setRetainedInterval(Infinity);
   area = geom.getPlanarPathArea(ring, arcData);
   while (area <= minArea) {
-    added = internal.lockMaxThreshold(arcData, ring);
+    added = lockMaxThreshold(arcData, ring);
     if (added === 0) {
       verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
@@ -59,12 +60,12 @@ internal.protectPolygonRing = function(arcData, ring) {
     area = geom.getPlanarPathArea(ring, arcData);
   }
   arcData.setRetainedInterval(zlim);
-};
+}
 
 // Protect the vertex or vertices with the largest non-infinite
 // removal threshold in a ring.
 //
-internal.lockMaxThreshold = function(arcData, ring) {
+function lockMaxThreshold(arcData, ring) {
   var targZ = 0,
       targArcId,
       raw = arcData.getVertexData(),
@@ -76,7 +77,7 @@ internal.lockMaxThreshold = function(arcData, ring) {
     if (arcId < 0) arcId = ~arcId;
     start = raw.ii[arcId];
     end = start + raw.nn[arcId] - 1;
-    id = internal.findNextRemovableVertex(raw.zz, Infinity, start, end);
+    id = findNextRemovableVertex(raw.zz, Infinity, start, end);
     if (id == -1) continue;
     z = raw.zz[id];
     if (z > targZ) {
@@ -88,12 +89,12 @@ internal.lockMaxThreshold = function(arcData, ring) {
     // There may be more than one vertex with the target Z value; lock them all.
     start = raw.ii[targArcId];
     end = start + raw.nn[targArcId] - 1;
-    return internal.replaceInArray(raw.zz, targZ, Infinity, start, end);
+    return replaceInArray(raw.zz, targZ, Infinity, start, end);
   }
   return 0;
-};
+}
 
-internal.replaceInArray = function(zz, value, replacement, start, end) {
+export function replaceInArray(zz, value, replacement, start, end) {
   var count = 0;
   for (var i=start; i<=end; i++) {
     if (zz[i] === value) {
@@ -102,4 +103,4 @@ internal.replaceInArray = function(zz, value, replacement, start, end) {
     }
   }
   return count;
-};
+}

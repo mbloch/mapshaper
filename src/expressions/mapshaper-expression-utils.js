@@ -1,6 +1,6 @@
-/* @require mapshaper-common */
+import utils from '../utils/mapshaper-utils';
 
-internal.expressionUtils = {
+export default {
   round: function(val, dig) {
     var k = 1;
     dig = dig | 0;

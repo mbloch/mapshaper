@@ -1,29 +1,28 @@
-/* @require
-mapshaper-self-intersection
-mapshaper-shape-utils
-mapshaper-shape-geom
-*/
-// __mapshaper-self-intersection-v1
+
+import { getSelfIntersectionSplitter } from '../paths/mapshaper-path-repair-utils';
+import geom from '../geom/mapshaper-geom';
+import { editShapes, forEachShapePart } from '../paths/mapshaper-shape-utils';
+import { debug } from '../utils/mapshaper-logging';
 
 // TODO: also delete positive-space rings nested inside holes
-internal.deleteHoles = function(lyr, arcs) {
-  internal.editShapes(lyr.shapes, function(path) {
+export function deleteHoles(lyr, arcs) {
+  editShapes(lyr.shapes, function(path) {
     if (geom.getPathArea(path, arcs) <= 0) {
       return null; // null deletes the path
     }
   });
-};
+}
 
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
 //
-internal.getHoleDivider = function(nodes, spherical) {
-  var split = internal.getSelfIntersectionSplitter(nodes);
+export function getHoleDivider(nodes, spherical) {
+  var split = getSelfIntersectionSplitter(nodes);
   // var split = internal.getSelfIntersectionSplitter_v1(nodes); console.log('split')
 
   return function(rings, cw, ccw) {
     var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
-    internal.forEachShapePart(rings, function(ringIds) {
+    forEachShapePart(rings, function(ringIds) {
       var splitRings = split(ringIds);
       if (splitRings.length === 0) {
         debug("[getRingDivider()] Defective path:", ringIds);
@@ -38,4 +37,4 @@ internal.getHoleDivider = function(nodes, spherical) {
       });
     });
   };
-};
+}

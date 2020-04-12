@@ -1,6 +1,12 @@
-/* @require mapshaper-overlay-utils */
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { stop } from '../utils/mapshaper-logging';
+import cmd from '../mapshaper-cmd';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
+import utils from '../utils/mapshaper-utils';
 
-api.union = function(targetLayers, targetDataset, opts) {
+cmd.union = function(targetLayers, targetDataset, opts) {
   if (targetLayers.length < 2) {
     stop('Command requires at least two target layers');
   }
@@ -8,7 +14,7 @@ api.union = function(targetLayers, targetDataset, opts) {
   var allShapes = [];
   var layerData = [];
   targetLayers.forEach(function(lyr, i) {
-    internal.requirePolygonLayer(lyr);
+    requirePolygonLayer(lyr);
     var fields = lyr.data ? lyr.data.getFields() : [];
     if (opts.fields) {
       fields = opts.fields.indexOf('*') > 1 ? fields :
@@ -31,7 +37,7 @@ api.union = function(targetLayers, targetDataset, opts) {
     geometry_type: 'polygon',
     shapes: allShapes
   };
-  var nodes = internal.addIntersectionCuts(targetDataset, opts);
+  var nodes = addIntersectionCuts(targetDataset, opts);
   var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
   var mosaicShapes = mosaicIndex.mosaic;
   var mosaicRecords = mosaicShapes.map(function(shp, i) {
@@ -40,11 +46,11 @@ api.union = function(targetLayers, targetDataset, opts) {
     var lyrInfo, srcId, rec;
     for (var lyrId=0, n=layerData.length; lyrId < n; lyrId++) {
       lyrInfo = layerData[lyrId];
-      srcId = internal.unionFindOriginId(mergedIds, lyrInfo.offset, lyrInfo.size);
+      srcId = unionFindOriginId(mergedIds, lyrInfo.offset, lyrInfo.size);
       rec = srcId == -1 || lyrInfo.records === null ? null : lyrInfo.records[srcId];
-      internal.unionAddDataValues(values, lyrInfo.fields, rec);
+      unionAddDataValues(values, lyrInfo.fields, rec);
     }
-    return internal.unionMakeDataRecord(unionFields, values);
+    return unionMakeDataRecord(unionFields, values);
   });
 
   var unionLyr = {
@@ -56,7 +62,7 @@ api.union = function(targetLayers, targetDataset, opts) {
   return [unionLyr];
 };
 
-internal.unionFindOriginId = function(mergedIds, offset, length) {
+function unionFindOriginId(mergedIds, offset, length) {
   var mergedId;
   for (var i=0; i<mergedIds.length; i++) {
     mergedId = mergedIds[i];
@@ -65,18 +71,18 @@ internal.unionFindOriginId = function(mergedIds, offset, length) {
     }
   }
   return -1;
-};
+}
 
-internal.unionAddDataValues = function(arr, fields, rec) {
+function unionAddDataValues(arr, fields, rec) {
   for (var i=0; i<fields.length; i++) {
     arr.push(rec ? rec[fields[i]] : null);
   }
-};
+}
 
-internal.unionMakeDataRecord = function(fields, values) {
+function unionMakeDataRecord(fields, values) {
   var rec = {};
   for (var i=0; i<fields.length; i++) {
     rec[fields[i]] = values[i];
   }
   return rec;
-};
+}

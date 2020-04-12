@@ -1,9 +1,9 @@
-/* @requires
-mapshaper-polygon-neighbors
-mapshaper-common
-mapshaper-shape-geom
-mapshaper-polygon-centroid
-*/
+import { findPairsOfNeighbors } from '../polygons/mapshaper-polygon-neighbors';
+import { insertFieldValues, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
+import { stop } from '../utils/mapshaper-logging';
 
 // Assign a cluster id to each polygon in a dataset, which can be used with
 //   one of the dissolve commands to dissolve the clusters
@@ -12,16 +12,16 @@ mapshaper-polygon-centroid
 // Results are not optimal -- may be useful for creating levels of detail on
 //   interactive maps, not useful for analysis.
 //
-api.cluster = function(lyr, arcs, opts) {
-  internal.requirePolygonLayer(lyr);
-  var groups = internal.calcPolygonClusters(lyr, arcs, opts);
+cmd.cluster = function(lyr, arcs, opts) {
+  requirePolygonLayer(lyr);
+  var groups = calcPolygonClusters(lyr, arcs, opts);
   var idField = opts.id_field || "cluster";
-  internal.insertFieldValues(lyr, idField, groups);
+  insertFieldValues(lyr, idField, groups);
   return lyr;
 };
 
-internal.calcPolygonClusters = function(lyr, arcs, opts) {
-  var calcScore = internal.getPolygonClusterCalculator(opts);
+function calcPolygonClusters(lyr, arcs, opts) {
+  var calcScore = getPolygonClusterCalculator(opts);
   var size = lyr.shapes.length;
   var pct = opts.pct ? utils.parsePercent(opts.pct) : 1;
   var count = Math.round(size * pct);
@@ -47,7 +47,7 @@ internal.calcPolygonClusters = function(lyr, arcs, opts) {
   if (groupField && !lyr.data) stop("Missing attribute data table");
 
   // Populate mergeItems array
-  internal.findPairsOfNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
+  findPairsOfNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
     // ab: [a, b] indexes of two polygons
     var a = shapeItems[ab[0]],
         b = shapeItems[ab[1]],
@@ -187,9 +187,9 @@ internal.calcPolygonClusters = function(lyr, arcs, opts) {
     }
     return a + ',' + b;
   }
-};
+}
 
-internal.getPolygonClusterCalculator = function(opts) {
+function getPolygonClusterCalculator(opts) {
   var maxWidth = opts.max_width || Infinity;
   var maxHeight = opts.max_height || Infinity;
   var maxArea = opts.max_area || Infinity;
@@ -204,4 +204,4 @@ internal.getPolygonClusterCalculator = function(opts) {
     }
     return score;
   };
-};
+}

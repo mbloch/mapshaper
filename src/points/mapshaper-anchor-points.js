@@ -1,5 +1,8 @@
-/* @requires mapshaper-shape-geom mapshaper-simplify-fast */
-
+import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
+import { simplifyPolygonFast } from '../simplify/mapshaper-simplify-fast';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
+import { verbose } from '../utils/mapshaper-logging';
 
 // Find a point inside a polygon and located away from the polygon edge
 // Method:
@@ -14,7 +17,7 @@
 //
 // (distance is weighted to slightly favor points near centroid)
 //
-internal.findAnchorPoint = function(shp, arcs) {
+export function findAnchorPoint(shp, arcs) {
   var maxPath = shp && geom.getMaxPath(shp, arcs),
       pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
       thresh, simple;
@@ -27,19 +30,19 @@ internal.findAnchorPoint = function(shp, arcs) {
   // Caveat: In rare cases this could cause poor point placement, e.g. if
   //   simplification causes small holes to be removed.
   thresh = Math.sqrt(pathBounds.area()) * 0.01;
-  simple = internal.simplifyPolygonFast(shp, arcs, thresh);
+  simple = simplifyPolygonFast(shp, arcs, thresh);
   if (!simple.shape) {
     return null; // collapsed shape
   }
-  return internal.findAnchorPoint2(simple.shape, simple.arcs);
-};
+  return findAnchorPoint2(simple.shape, simple.arcs);
+}
 
 // Assumes: shp is a polygon with at least one space-enclosing ring
-internal.findAnchorPoint2 = function(shp, arcs) {
+function findAnchorPoint2(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs);
   var pathBounds = arcs.getSimpleShapeBounds(maxPath);
   var centroid = geom.getPathCentroid(maxPath, arcs);
-  var weight = internal.getPointWeightingFunction(centroid, pathBounds);
+  var weight = getPointWeightingFunction(centroid, pathBounds);
   var area = geom.getPlanarPathArea(maxPath, arcs);
   var hrange, lbound, rbound, focus, htics, hstep, p, p2;
 
@@ -60,44 +63,44 @@ internal.findAnchorPoint2 = function(shp, arcs) {
   hstep = hrange / htics;
 
   // Find a best-fit point
-  p = internal.probeForBestAnchorPoint(shp, arcs, lbound, rbound, htics, weight);
+  p = probeForBestAnchorPoint(shp, arcs, lbound, rbound, htics, weight);
   if (!p) {
     verbose("[points inner] failed, falling back to centroid");
    p = centroid;
   } else {
     // Look for even better fit close to best-fit point
-    p2 = internal.probeForBestAnchorPoint(shp, arcs, p.x - hstep / 2,
+    p2 = probeForBestAnchorPoint(shp, arcs, p.x - hstep / 2,
         p.x + hstep / 2, 2, weight);
     if (p2.distance > p.distance) {
       p = p2;
     }
   }
   return p;
-};
+}
 
-internal.getPointWeightingFunction = function(centroid, pathBounds) {
+function getPointWeightingFunction(centroid, pathBounds) {
   // Get a factor for weighting a candidate point
   // Points closer to the centroid are slightly preferred
   var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
   return function(x, y) {
-    var offset = distance2D(centroid.x, centroid.y, x, y);
+    var offset = geom.distance2D(centroid.x, centroid.y, x, y);
     return 1 - Math.min(0.6 * offset / referenceDist, 0.25);
   };
-};
+}
 
-internal.findAnchorPointCandidates = function(shp, arcs, xx) {
+function findAnchorPointCandidates(shp, arcs, xx) {
   var ymin = arcs.getBounds().ymin - 1;
   return xx.reduce(function(memo, x) {
-    var cands = internal.findHitCandidates(x, ymin, shp, arcs);
+    var cands = findHitCandidates(x, ymin, shp, arcs);
     return memo.concat(cands);
   }, []);
-};
+}
 
-internal.probeForBestAnchorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
-  var tics = internal.getInnerTics(lbound, rbound, htics);
+function probeForBestAnchorPoint(shp, arcs, lbound, rbound, htics, weight) {
+  var tics = getInnerTics(lbound, rbound, htics);
   var interval = (rbound - lbound) / htics;
   // Get candidate points, distributed along x-axis
-  var candidates = internal.findAnchorPointCandidates(shp, arcs, tics);
+  var candidates = findAnchorPointCandidates(shp, arcs, tics);
   var bestP, adjustedP, candP;
 
   // Sort candidates so points at the center of longer segments are tried first
@@ -115,31 +118,31 @@ internal.probeForBestAnchorPoint = function(shp, arcs, lbound, rbound, htics, we
     if (bestP && bestP.distance > candP.interval) {
       break;
     }
-    adjustedP = internal.getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
+    adjustedP = getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
 
     if (!bestP || adjustedP.distance > bestP.distance) {
       bestP = adjustedP;
     }
   }
   return bestP;
-};
+}
 
 // [x, y] is a point assumed to be inside a polygon @shp
 // Try to move the point farther from the polygon edge
-internal.getAdjustedPoint = function(x, y, shp, arcs, vstep, weight) {
+function getAdjustedPoint(x, y, shp, arcs, vstep, weight) {
   var p = {
     x: x,
     y: y,
     distance: geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y)
   };
-  internal.scanForBetterPoint(p, shp, arcs, vstep, weight); // scan up
-  internal.scanForBetterPoint(p, shp, arcs, -vstep, weight); // scan down
+  scanForBetterPoint(p, shp, arcs, vstep, weight); // scan up
+  scanForBetterPoint(p, shp, arcs, -vstep, weight); // scan down
   return p;
-};
+}
 
 // Try to find a better-fit point than @p by scanning vertically
 // Modify p in-place
-internal.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
+function scanForBetterPoint(p, shp, arcs, vstep, weight) {
   var x = p.x,
       y = p.y,
       dmax = p.distance,
@@ -158,12 +161,12 @@ internal.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
       break;
     }
   }
-};
+}
 
 // Return array of points at the midpoint of each line segment formed by the
 //   intersection of a vertical ray at [x, y] and a polygon shape
-internal.findHitCandidates = function(x, y, shp, arcs) {
-  var yy = internal.findRayShapeIntersections(x, y, shp, arcs);
+function findHitCandidates(x, y, shp, arcs) {
+  var yy = findRayShapeIntersections(x, y, shp, arcs);
   var cands = [], y1, y2, interval;
 
   // sorting by y-coord organizes y-intercepts into interior segments
@@ -181,22 +184,22 @@ internal.findHitCandidates = function(x, y, shp, arcs) {
     }
   }
   return cands;
-};
+}
 
 // Return array of y-intersections between vertical ray with origin at [x, y]
 //   and a polygon
-internal.findRayShapeIntersections = function(x, y, shp, arcs) {
+function findRayShapeIntersections(x, y, shp, arcs) {
   if (!shp) return [];
   return shp.reduce(function(memo, path) {
-    var yy = internal.findRayRingIntersections(x, y, path, arcs);
+    var yy = findRayRingIntersections(x, y, path, arcs);
     return memo.concat(yy);
   }, []);
-};
+}
 
 // Return array of y-intersections between vertical ray and a polygon ring
-internal.findRayRingIntersections = function(x, y, path, arcs) {
+function findRayRingIntersections(x, y, path, arcs) {
   var yints = [];
-  internal.forEachSegmentInPath(path, arcs, function(a, b, xx, yy) {
+  forEachSegmentInPath(path, arcs, function(a, b, xx, yy) {
     var result = geom.getRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result > -Infinity) {
       yints.push(result);
@@ -209,10 +212,10 @@ internal.findRayRingIntersections = function(x, y, path, arcs) {
     yints = [];
   }
   return yints;
-};
+}
 
 // TODO: find better home + name for this
-internal.getInnerTics = function(min, max, steps) {
+function getInnerTics(min, max, steps) {
   var range = max - min,
       step = range / (steps + 1),
       arr = [];
@@ -220,4 +223,4 @@ internal.getInnerTics = function(min, max, steps) {
     arr.push(min + step * i);
   }
   return arr;
-};
+}

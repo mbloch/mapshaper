@@ -2,7 +2,7 @@ var api = require('../'),
   internal = api.internal,
   assert = require('assert');
 
-describe('mapshaper-option-parser.js', function () {
+describe('mapshaper-command-parser.js', function () {
 
   describe('parseStringList()', function () {
     var list1 = '"County FIPS,State FIPS"',

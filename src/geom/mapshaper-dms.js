@@ -1,7 +1,7 @@
 
 // Parse a formatted value in DMS DM or D to a numeric value. Returns NaN if unparsable.
 // Delimiters: degrees: D|d|°; minutes: '; seconds: "
-internal.parseDMS = function(str) {
+export function parseDMS(str) {
   var rxp = /^([nsew+-]?)([0-9.]+)[d°]? ?([0-9.]*)['′]? ?([0-9.]*)["″]? ?([nsew]?)$/i;
   var match = rxp.exec(str.trim());
   var d = NaN;
@@ -16,4 +16,4 @@ internal.parseDMS = function(str) {
     }
   }
   return d;
-};
+}

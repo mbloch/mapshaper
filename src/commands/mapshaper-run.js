@@ -1,45 +1,52 @@
 
-/* @requires mapshaper-include, mapshaper-info */
+import { getLayerData } from '../commands/mapshaper-info';
+import { getBaseContext } from '../expressions/mapshaper-expressions';
+import { runParsedCommands } from '../cli/mapshaper-run-commands';
+import { parseCommands } from '../cli/mapshaper-parse-commands';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { getStateVar } from '../mapshaper-state';
+import cmd from '../mapshaper-cmd';
 
-api.run = function(targets, catalog, opts, cb) {
+cmd.run = function(targets, catalog, opts, cb) {
   var commandStr, commands;
   if (opts.include) {
-    internal.include({file: opts.include});
+    cmd.include({file: opts.include});
   }
   if (!opts.commands) {
     stop("Missing commands parameter");
   }
-  commandStr = internal.runGlobalExpression(opts.commands, targets);
+  commandStr = runGlobalExpression(opts.commands, targets);
   if (commandStr) {
-    commands = internal.parseCommands(commandStr);
-    internal.runParsedCommands(commands, catalog, cb);
+    commands = parseCommands(commandStr);
+    runParsedCommands(commands, catalog, cb);
   } else {
     cb(null);
   }
 };
 
-internal.runGlobalExpression = function(expression, targets) {
-  var ctx = internal.getBaseContext();
+export function runGlobalExpression(expression, targets) {
+  var ctx = getBaseContext();
   var output, targetData;
   // TODO: throw an informative error if target is used when there are multiple targets
   if (targets.length == 1) {
-    targetData = internal.getRunCommandData(targets[0]);
+    targetData = getRunCommandData(targets[0]);
     Object.defineProperty(ctx, 'target', {value: targetData});
   }
-  utils.extend(ctx, internal.getStateVar('defs'));
+  utils.extend(ctx, getStateVar('defs'));
   try {
     output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
   } catch(e) {
     stop(e.name, 'in JS source:', e.message);
   }
   return output;
-};
+}
 
 
-internal.getRunCommandData = function(target) {
+function getRunCommandData(target) {
   var lyr = target.layers[0];
-  var data = internal.getLayerData(lyr, target.dataset);
+  var data = getLayerData(lyr, target.dataset);
   data.layer = lyr;
   data.dataset = target.dataset;
   return data;
-};
+}

@@ -1,7 +1,11 @@
-/* @requires gui-lib gui-save */
+import { internal, utils, error } from './gui-core';
+import { SimpleButton } from './gui-elements';
+import { sortLayersForMenuDisplay } from './gui-layer-sorting';
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
 
 // Export buttons and their behavior
-var ExportControl = function(gui) {
+export var ExportControl = function(gui) {
   var model = gui.model;
   var unsupportedMsg = "Exporting is not supported in this browser";
   var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
@@ -75,7 +79,7 @@ var ExportControl = function(gui) {
       var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
       return {layer: o.layer, html: html};
     });
-    internal.sortLayersForMenuDisplay(objects);
+    sortLayersForMenuDisplay(objects);
     checkboxes = objects.map(function(o) {
       return El('div').html(o.html).appendTo(list).findChild('input').node();
     });

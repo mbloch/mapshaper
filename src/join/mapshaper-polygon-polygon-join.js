@@ -1,11 +1,10 @@
-/*
-@requires mapshaper-join-polygons-via-points mapshaper-join-polygons-via-mosaic
-*/
+import { joinPolygonsViaMosaic } from '../join/mapshaper-join-polygons-via-mosaic';
+import { joinPolygonsViaPoints } from '../join/mapshaper-join-polygons-via-points';
 
-internal.joinPolygonsToPolygons = function(targetLyr, targetDataset, source, opts) {
+export function joinPolygonsToPolygons(targetLyr, targetDataset, source, opts) {
   if (opts.point_method) {
-    return internal.joinPolygonsViaPoints(targetLyr, targetDataset, source, opts);
+    return joinPolygonsViaPoints(targetLyr, targetDataset, source, opts);
   } else {
-    return internal.joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts);
+    return joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts);
   }
-};
+}

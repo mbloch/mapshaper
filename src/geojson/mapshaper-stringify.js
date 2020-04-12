@@ -1,6 +1,7 @@
-/* @requires mapshaper-common */
 
-internal.getFormattedStringify = function(numArrayKeys) {
+import utils from '../utils/mapshaper-utils';
+
+export function getFormattedStringify(numArrayKeys) {
   var keyIndex = utils.arrayToIndex(numArrayKeys);
   var sentinel = '\u1000\u2FD5\u0310';
   var stripRxp = new RegExp('"' + sentinel + '|' + sentinel + '"', 'g');
@@ -26,4 +27,4 @@ internal.getFormattedStringify = function(numArrayKeys) {
     var json = JSON.stringify(obj, replace, indentChars);
     return json.replace(stripRxp, '');
   };
-};
+}

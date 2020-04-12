@@ -1,4 +1,12 @@
-/* @requires mapshaper-common, mapshaper-geom, mapshaper-shape-iter */
+
+import { calcArcBounds, absArcId } from '../paths/mapshaper-arc-utils';
+import { ArcIter, FilteredArcIter, ShapeIter } from '../paths/mapshaper-shape-iter';
+import { clampIntervalByPct } from '../paths/mapshaper-path-utils';
+import { getThresholdByPct } from '../simplify/mapshaper-simplify-pct';
+import { Bounds } from '../geom/mapshaper-bounds';
+import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
+import { error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
@@ -8,7 +16,7 @@
 //
 // ArcCollection(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-function ArcCollection() {
+export function ArcCollection() {
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
       _zz, _zlimit = 0, // simplification
@@ -79,12 +87,12 @@ function ArcCollection() {
   }
 
   function initBounds() {
-    var data = calcArcBounds(_xx, _yy, _nn);
+    var data = calcArcBounds2(_xx, _yy, _nn);
     _bb = data.bb;
     _allBounds = data.bounds;
   }
 
-  function calcArcBounds(xx, yy, nn) {
+  function calcArcBounds2(xx, yy, nn) {
     var numArcs = nn.length,
         bb = new Float64Array(numArcs * 4),
         bounds = new Bounds(),
@@ -95,7 +103,7 @@ function ArcCollection() {
       arcLen = nn[i];
       if (arcLen > 0) {
         j = i * 4;
-        b = internal.calcArcBounds(xx, yy, arcOffs, arcLen);
+        b = calcArcBounds(xx, yy, arcOffs, arcLen);
         bb[j++] = b[0];
         bb[j++] = b[1];
         bb[j++] = b[2];
@@ -352,7 +360,7 @@ function ArcCollection() {
         arcLen, arcLen2;
     while (arcId < arcCount) {
       arcLen = _nn[arcId];
-      arcLen2 = internal.dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
+      arcLen2 = dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
       _nn[arcId] = arcLen2;
       i += arcLen;
       i2 += arcLen2;
@@ -505,7 +513,7 @@ function ArcCollection() {
       _zlimit = 0;
     } else {
       _zlimit = this.getThresholdByPct(pct);
-      _zlimit = internal.clampIntervalByPct(_zlimit, pct);
+      _zlimit = clampIntervalByPct(_zlimit, pct);
     }
     return this;
   };
@@ -550,7 +558,7 @@ function ArcCollection() {
 
   // nth (optional): sample every nth threshold (use estimate for speed)
   this.getThresholdByPct = function(pct, nth) {
-    return internal.getThresholdByPct(pct, this, nth);
+    return getThresholdByPct(pct, this, nth);
   };
 
   this.arcIntersectsBBox = function(i, b1) {
@@ -573,7 +581,7 @@ function ArcCollection() {
 
   // TODO: allow datasets in lat-lng coord range to be flagged as planar
   this.isPlanar = function() {
-    return !internal.probablyDecimalDegreeBounds(this.getBounds());
+    return !probablyDecimalDegreeBounds(this.getBounds());
   };
 
   this.size = function() {
@@ -635,7 +643,7 @@ function ArcCollection() {
 }
 
 // Remove duplicate coords and NaNs
-internal.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
+function dedupArcCoords(src, dest, arcLen, xx, yy, zz) {
   var n = 0, n2 = 0; // counters
   var x, y, i, j, keep;
   while (n < arcLen) {
@@ -655,4 +663,4 @@ internal.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
     n++;
   }
   return n2 > 1 ? n2 : 0;
-};
+}

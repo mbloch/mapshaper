@@ -23,17 +23,20 @@
 	},
 	"scripts": {
 		"test": "node node_modules/mocha/bin/mocha --check-leaks -R dot",
-		"build": "node build",
+		"build": "node_modules/rollup/dist/bin/rollup --config; cp mapshaper.js www",
 		"pretest": "npm run build",
 		"prepublishOnly": "npm test",
-		"postpublish": "./release"
+		"postpublish": "./release",
+		"browserify": "node_modules/.bin/browserify -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -o www/modules.js",
+		"watch": "nodemon --watch src --exec npm run build"
 	},
 	"main": "./mapshaper.js",
 	"files": [
 		"/bin/**",
 		"/www/**",
 		"!/www/nacis/",
-		"/mapshaper.js"
+		"/mapshaper.js",
+		"!.DS_Store"
 	],
 	"dependencies": {
 		"cookies": "^0.7.1",
@@ -47,10 +50,11 @@
 	},
 	"devDependencies": {
 		"browserify": "^16.5.0",
-		"catty": "0.1.0",
 		"csv-spectrum": "^1.0.0",
 		"deep-eql": ">=0.1.3",
+		"esm": "^3.2.25",
 		"mocha": "^5.2.0",
+		"rollup": "^2.3.0",
 		"shell-quote": "^1.6.1",
 		"underscore": "^1.9.0"
 	},

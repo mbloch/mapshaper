@@ -1,33 +1,33 @@
 
-internal.clipLayersByBBox = function(layers, dataset, opts) {
-  var bbox = opts.bbox2;
-  var clipLyr = internal.divideDatasetByBBox(dataset, bbox);
-  var nodes = new NodeCollection(dataset.arcs);
-  var retn = internal.clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
-  return retn;
-};
+import { getCutPoint } from '../paths/mapshaper-intersection-cuts';
+import { formatIntersectingSegment } from '../paths/mapshaper-segment-intersection';
+import { mergeDatasets } from '../dataset/mapshaper-merging';
+import { remapDividedArcs, insertCutPoints } from '../paths/mapshaper-intersection-cuts';
+import { ArcCollection } from '../paths/mapshaper-arcs';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
 
 // Insert cutting points in arcs, where bbox intersects other shapes
 // Return a polygon layer containing the bounding box vectors, divided at cutting points.
-internal.divideDatasetByBBox = function(dataset, bbox) {
+export function divideDatasetByBBox(dataset, bbox) {
   var arcs = dataset.arcs;
-  var data = internal.findBBoxCutPoints(arcs, bbox);
-  var map = internal.insertCutPoints(data.cutPoints, arcs);
+  var data = findBBoxCutPoints(arcs, bbox);
+  var map = insertCutPoints(data.cutPoints, arcs);
   arcs.dedupCoords();
-  internal.remapDividedArcs(dataset, map);
+  remapDividedArcs(dataset, map);
   // merge bbox dataset with target dataset,
   // so arcs are shared between target layers and bbox layer
-  var clipDataset = internal.bboxPointsToClipDataset(data.bboxPoints);
-  var mergedDataset = internal.mergeDatasets([dataset, clipDataset]);
+  var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
+  var mergedDataset = mergeDatasets([dataset, clipDataset]);
   // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
-  // api.buildTopology(mergedDataset);
+  // buildTopology(mergedDataset);
   var clipLyr = mergedDataset.layers.pop();
   dataset.arcs = mergedDataset.arcs;
   dataset.layers = mergedDataset.layers;
   return clipLyr;
-};
+}
 
-internal.bboxPointsToClipDataset = function(arr) {
+function bboxPointsToClipDataset(arr) {
   var arcs = [];
   var shape = [];
   var layer = {geometry_type: 'polygon', shapes: [[shape]]};
@@ -42,9 +42,9 @@ internal.bboxPointsToClipDataset = function(arr) {
     arcs: new ArcCollection(arcs),
     layers: [layer]
   };
-};
+}
 
-internal.findBBoxCutPoints = function(arcs, bbox) {
+function findBBoxCutPoints(arcs, bbox) {
   var left = bbox[0],
       bottom = bbox[1],
       right = bbox[2],
@@ -62,8 +62,8 @@ internal.findBBoxCutPoints = function(arcs, bbox) {
         bx = xx[j],
         by = yy[j];
     var hit;
-    if (internal.segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-    if (internal.segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+    if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+    if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
 
     hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
     if (hit) addHit(tt, hit, i, j, xx, yy);
@@ -80,7 +80,7 @@ internal.findBBoxCutPoints = function(arcs, bbox) {
 
   return {
     cutPoints: ll.concat(bb, rr, tt),
-    bboxPoints: internal.getDividedBBoxPoints(bbox, ll, tt, rr, bb)
+    bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
   };
 
   function addHit(arr, hit, i, j, xx, yy) {
@@ -92,24 +92,24 @@ internal.findBBoxCutPoints = function(arcs, bbox) {
   }
 
   function formatHit(x, y, i, j, xx, yy) {
-    var ids = internal.formatIntersectingSegment(x, y, i, j, xx, yy);
-    return internal.getCutPoint(x, y, ids[0], ids[1], xx, yy);
+    var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
+    return getCutPoint(x, y, ids[0], ids[1], xx, yy);
   }
-};
+}
 
-internal.segmentOutsideBBox = function(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+export function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
   return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
       ay < ymin && by < ymin || ay > ymax && by > ymax;
-};
+}
 
-internal.segmentInsideBBox = function(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+export function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
   return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
       ay > ymin && by > ymin && ay < ymax && by < ymax;
-};
+}
 
 // Returns an array of points representing the vertices in
 // the bbox with cutting points inserted.
-internal.getDividedBBoxPoints = function(bbox, ll, tt, rr, bb) {
+function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
   var bl = {x: bbox[0], y: bbox[1]},
       tl = {x: bbox[0], y: bbox[3]},
       tr = {x: bbox[2], y: bbox[3]},
@@ -123,4 +123,4 @@ internal.getDividedBBoxPoints = function(bbox, ll, tt, rr, bb) {
     if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
     return memo;
   }, []);
-};
+}

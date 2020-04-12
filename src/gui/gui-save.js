@@ -1,6 +1,7 @@
-/* @requires gui-lib */
+import { El } from './gui-el';
 
-function saveZipFile(zipfileName, files, done) {
+export function saveZipFile(zipfileName, files, done) {
+  var zip = window.zip; // assumes zip library is loaded globally
   var toAdd = files;
   var zipWriter;
   try {
@@ -38,7 +39,7 @@ function saveZipFile(zipfileName, files, done) {
   }
 }
 
-function saveFilesToServer(paths, data, done) {
+export function saveFilesToServer(paths, data, done) {
   var i = -1;
   next();
   function next(err) {
@@ -52,7 +53,7 @@ function saveFilesToServer(paths, data, done) {
 function saveBlobToServer(path, blob, done) {
   var q = '?file=' + encodeURIComponent(path);
   var url = window.location.origin + '/save' + q;
-  fetch(url, {
+  window.fetch(url, {
     method: 'POST',
     credentials: 'include',
     body: blob
@@ -67,7 +68,7 @@ function saveBlobToServer(path, blob, done) {
   });
 }
 
-function saveBlobToDownloadFolder(filename, blob, done) {
+export function saveBlobToDownloadFolder(filename, blob, done) {
   var anchor, blobUrl;
   if (window.navigator.msSaveBlob) {
     window.navigator.msSaveBlob(blob, filename);

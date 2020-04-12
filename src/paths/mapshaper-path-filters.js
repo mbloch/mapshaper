@@ -1,1 +1,0 @@
-/* @requires mapshaper-shape-geom */

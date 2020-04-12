@@ -1,6 +1,7 @@
 // Map positive or negative integer ids to non-negative integer ids
+import utils from '../utils/mapshaper-utils';
 
-function IdLookupIndex(n) {
+export function IdLookupIndex(n) {
   var fwdIndex = new Int32Array(n);
   var revIndex = new Int32Array(n);
   utils.initializeArray(fwdIndex, -1);

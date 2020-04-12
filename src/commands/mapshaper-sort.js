@@ -1,12 +1,12 @@
-/* @requires
-mapshaper-expressions
-mapshaper-dataset-utils
-*/
+import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
 
-api.sortFeatures = function(lyr, arcs, opts) {
-  var n = internal.getFeatureCount(lyr),
+cmd.sortFeatures = function(lyr, arcs, opts) {
+  var n = getFeatureCount(lyr),
       ascending = !opts.descending,
-      compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
+      compiled = compileValueExpression(opts.expression, lyr, arcs),
       values = [];
 
   utils.repeat(n, function(i) {

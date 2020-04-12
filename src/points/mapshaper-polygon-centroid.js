@@ -1,14 +1,14 @@
-/* @requires mapshaper-shape-geom */
+import { getAvgPathXY, getMaxPath } from '../geom/mapshaper-path-geom';
 
 // Get the centroid of the largest ring of a polygon
 // TODO: Include holes in the calculation
 // TODO: Add option to find centroid of all rings, not just the largest
-geom.getShapeCentroid = function(shp, arcs) {
-  var maxPath = geom.getMaxPath(shp, arcs);
-  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
-};
+export function getShapeCentroid(shp, arcs) {
+  var maxPath = getMaxPath(shp, arcs);
+  return maxPath ? getPathCentroid(maxPath, arcs) : null;
+}
 
-geom.getPathCentroid = function(ids, arcs) {
+export function getPathCentroid(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
       sumX = 0,
@@ -32,9 +32,9 @@ geom.getPathCentroid = function(ids, arcs) {
   }
   area = sum / 2;
   if (area === 0) {
-    return geom.getAvgPathXY(ids, arcs);
+    return getAvgPathXY(ids, arcs);
   } else return {
     x: sumX / (6 * area) - dx,
     y: sumY / (6 * area) - dy
   };
-};
+}

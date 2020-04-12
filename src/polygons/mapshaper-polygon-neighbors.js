@@ -1,4 +1,5 @@
-/* @requires mapshaper-shape-utils, mapshaper-arc-classifier */
+import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
+import { forEachArcId } from '../paths/mapshaper-path-utils';
 
 // Returns a function for querying the neighbors of a given shape. The function
 // can be called in either of two ways:
@@ -12,8 +13,8 @@
 //    The function returns an array of unique ids of neighboring shapes, or
 //    an empty array if a shape has no neighbors.
 //
-internal.getNeighborLookupFunction = function(lyr, arcs) {
-  var classifier = internal.getArcClassifier(lyr.shapes, arcs, {reusable: true});
+export function getNeighborLookupFunction(lyr, arcs) {
+  var classifier = getArcClassifier(lyr.shapes, arcs, {reusable: true});
   var classify = classifier(onShapes);
   var currShapeId;
   var neighbors;
@@ -38,25 +39,25 @@ internal.getNeighborLookupFunction = function(lyr, arcs) {
     currShapeId = shpId;
     if (cb) {
       callback = cb;
-      internal.forEachArcId(lyr.shapes[shpId], onArc);
+      forEachArcId(lyr.shapes[shpId], onArc);
       callback = null;
     } else {
       neighbors = [];
-      internal.forEachArcId(lyr.shapes[shpId], onArc);
+      forEachArcId(lyr.shapes[shpId], onArc);
       return neighbors;
     }
   };
-};
+}
 
 
 // Returns an array containing all pairs of adjacent shapes
 // in a collection of polygon shapes. A pair of shapes is represented as
 // an array of two shape indexes [a, b].
-internal.findPairsOfNeighbors = function(shapes, arcs) {
+export function findPairsOfNeighbors(shapes, arcs) {
   var getKey = function(a, b) {
     return b > -1 && a > -1 ? [a, b] : null;
   };
-  var classify = internal.getArcClassifier(shapes, arcs)(getKey);
+  var classify = getArcClassifier(shapes, arcs)(getKey);
   var arr = [];
   var index = {};
   var onArc = function(arcId) {
@@ -70,6 +71,6 @@ internal.findPairsOfNeighbors = function(shapes, arcs) {
       }
     }
   };
-  internal.forEachArcId(shapes, onArc);
+  forEachArcId(shapes, onArc);
   return arr;
-};
+}

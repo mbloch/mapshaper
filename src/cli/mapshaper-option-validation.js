@@ -1,7 +1,13 @@
-/* @requires mapshaper-common, mapshaper-file-types, mapshaper-option-parser, mapshaper-units */
+import { isSupportedDelimiter } from '../text/mapshaper-delim-import';
+import { isSupportedOutputFormat } from '../io/mapshaper-file-types';
+import { filenameIsUnsupportedOutputType } from '../io/mapshaper-file-types';
+import { validateEncoding } from '../text/mapshaper-encodings';
+import { error, stop } from '../utils/mapshaper-logging';
+import cli from '../cli/mapshaper-cli-utils';
+import utils from '../utils/mapshaper-utils';
+import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 
-
-function validateInputOpts(cmd) {
+export function validateInputOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
 
@@ -21,11 +27,11 @@ function validateInputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = internal.validateEncoding(o.encoding);
+    o.encoding = validateEncoding(o.encoding);
   }
 }
 
-function validateSimplifyOpts(cmd) {
+export function validateSimplifyOpts(cmd) {
   var o = cmd.options,
       arg = cmd._[0];
 
@@ -50,7 +56,7 @@ function validateSimplifyOpts(cmd) {
   }
 }
 
-function validateProjOpts(cmd) {
+export function validateProjOpts(cmd) {
   var _ = cmd._,
       proj4 = [];
 
@@ -83,7 +89,7 @@ function validateProjOpts(cmd) {
   }
 }
 
-function validateGridOpts(cmd) {
+export function validateGridOpts(cmd) {
   var o = cmd.options;
   if (cmd._.length == 1) {
     var tmp = cmd._[0].split(',');
@@ -92,17 +98,17 @@ function validateGridOpts(cmd) {
   }
 }
 
-function validateExpressionOpt(cmd) {
+export function validateExpressionOpt(cmd) {
   if (!cmd.options.expression) {
     error("Command requires a JavaScript expression");
   }
 }
 
-function validateOutputOpts(cmd) {
+export function validateOutputOpts(cmd) {
   var _ = cmd._,
       o = cmd.options,
       arg = _[0] || "",
-      pathInfo = utils.parseLocalPath(arg);
+      pathInfo = parseLocalPath(arg);
 
   if (_.length > 1) {
     error("Command takes one file or directory argument");
@@ -121,7 +127,7 @@ function validateOutputOpts(cmd) {
       cli.validateOutputDir(o.directory);
     }
     o.file = pathInfo.filename;
-    if (internal.filenameIsUnsupportedOutputType(o.file)) {
+    if (filenameIsUnsupportedOutputType(o.file)) {
       error("Output file looks like an unsupported file type:", o.file);
     }
   }
@@ -135,7 +141,7 @@ function validateOutputOpts(cmd) {
       o.format = 'dsv';
       o.delimiter = o.delimiter || '\t';
     }
-    if (!internal.isSupportedOutputFormat(o.format)) {
+    if (!isSupportedOutputFormat(o.format)) {
       error("Unsupported output format:", o.format);
     }
   }
@@ -143,13 +149,13 @@ function validateOutputOpts(cmd) {
   if (o.delimiter) {
     // convert "\t" '\t' \t to tab
     o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
-    if (!internal.isSupportedDelimiter(o.delimiter)) {
+    if (!isSupportedDelimiter(o.delimiter)) {
       error("Unsupported delimiter:", o.delimiter);
     }
   }
 
   if (o.encoding) {
-    o.encoding = internal.validateEncoding(o.encoding);
+    o.encoding = validateEncoding(o.encoding);
   }
 
   if (o.field_order && o.field_order != 'ascending') {

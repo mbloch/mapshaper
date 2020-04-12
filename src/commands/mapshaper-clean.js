@@ -1,50 +1,52 @@
-/* @requires
-mapshaper-polygon-dissolve2,
-mapshaper-arc-dissolve,
-mapshaper-filter
-mapshaper-self-intersection
-*/
+import { forEachShapePart } from '../paths/mapshaper-shape-utils';
+import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
+import { dissolvePolygonGroups2 } from '../dissolve/mapshaper-polygon-dissolve2';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { NodeCollection } from '../topology/mapshaper-nodes';
+import cmd from '../mapshaper-cmd';
 
-api.cleanLayers = function(layers, dataset, opts) {
+cmd.cleanLayers = function(layers, dataset, opts) {
   var nodes;
   opts = opts || {};
   if (opts.debug) {
-    internal.addIntersectionCuts(dataset, opts);
+    addIntersectionCuts(dataset, opts);
     return;
   }
   if (!opts.arcs) { // arcs option only removes unused arcs
-    nodes = internal.addIntersectionCuts(dataset, opts);
+    nodes = addIntersectionCuts(dataset, opts);
     layers.forEach(function(lyr) {
-      if (!internal.layerHasGeometry(lyr)) return;
+      if (!layerHasGeometry(lyr)) return;
       if (lyr.geometry_type == 'polygon') {
-        internal.cleanPolygonLayerGeometry(lyr, dataset, opts);
+        cleanPolygonLayerGeometry(lyr, dataset, opts);
       } else if (lyr.geometry_type == 'polyline') {
-        internal.cleanPolylineLayerGeometry(lyr, dataset, opts);
+        cleanPolylineLayerGeometry(lyr, dataset, opts);
       } else if (lyr.geometry_type == 'point') {
-        internal.cleanPointLayerGeometry(lyr, dataset, opts);
+        cleanPointLayerGeometry(lyr, dataset, opts);
       }
       if (!opts.allow_empty) {
-        api.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+        cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
       }
     });
   }
 
   if (!opts.no_arc_dissolve && dataset.arcs) {
     // remove leftover endpoints within contiguous lines
-    internal.dissolveArcs(dataset);
+    dissolveArcs(dataset);
   }
 };
 
-internal.cleanPolygonLayerGeometry = function(lyr, dataset, opts) {
+function cleanPolygonLayerGeometry(lyr, dataset, opts) {
   var groups = lyr.shapes.map(function(shp, i) {
     return [i];
   });
-  lyr.shapes = internal.dissolvePolygonGroups2(groups, lyr, dataset, opts);
-};
+  lyr.shapes = dissolvePolygonGroups2(groups, lyr, dataset, opts);
+}
 
 // Remove duplicate points from multipoint geometries
 // TODO: consider checking for invalid coordinates
-internal.cleanPointLayerGeometry = function(lyr, dataset, opts) {
+function cleanPointLayerGeometry(lyr, dataset, opts) {
   var index, parts;
   lyr.shapes = lyr.shapes.map(function(shp, i) {
     if (!shp || shp.length > 0 === false) {
@@ -69,18 +71,18 @@ internal.cleanPointLayerGeometry = function(lyr, dataset, opts) {
     index[key] = true;
     parts.push(p);
   }
-};
+}
 
 // Assumes intersection cuts have been added and duplicated points removed
 // TODO: consider closing undershoots (see mapshaper-undershoots.js)
-internal.cleanPolylineLayerGeometry = function(lyr, dataset, opts) {
-  var filter = internal.getArcPresenceTest(lyr.shapes, dataset.arcs);
+function cleanPolylineLayerGeometry(lyr, dataset, opts) {
+  var filter = getArcPresenceTest(lyr.shapes, dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, filter);
   var shape;
   lyr.shapes = lyr.shapes.map(function(shp, i) {
     if (!shp) return null;
     shape = [];
-    internal.forEachShapePart(shp, onPart);
+    forEachShapePart(shp, onPart);
     return shape;
   });
 
@@ -104,4 +106,4 @@ internal.cleanPolylineLayerGeometry = function(lyr, dataset, opts) {
     }
     if (ids2.length > 0) shape.push(ids2);
   }
-};
+}

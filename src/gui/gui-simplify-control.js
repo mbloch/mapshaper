@@ -1,4 +1,7 @@
-/* @requires gui-elements, gui-slider, mapshaper-simplify-pct */
+import { Slider } from './gui-slider';
+import { utils, internal, mapshaper } from './gui-core';
+import { SimpleButton, ClickText } from './gui-elements';
+import { GUI } from './gui-lib';
 
 /*
 How changes in the simplify control should affect other components
@@ -23,7 +26,7 @@ slider drag end
 
 */
 
-var SimplifyControl = function(gui) {
+export var SimplifyControl = function(gui) {
   var model = gui.model;
   var control = {};
   var _value = 1;

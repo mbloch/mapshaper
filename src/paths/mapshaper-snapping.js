@@ -1,8 +1,6 @@
-/* @requires
-mapshaper-topology,
-mapshaper-geom,
-mapshaper-arcs
-*/
+import { message } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { getAvgSegment } from '../paths/mapshaper-path-utils';
 
 // Returns an interval for snapping together coordinates that be co-incident bug
 // have diverged because of floating point rounding errors. Intended to be small
@@ -12,13 +10,13 @@ mapshaper-arcs
 // @coords: Array of relevant coordinates (e.g. bbox coordinates of vertex coordinates
 //   of two intersecting segments).
 //
-internal.getHighPrecisionSnapInterval = function(coords) {
+export function getHighPrecisionSnapInterval(coords) {
   var maxCoord = Math.max.apply(null, coords.map(Math.abs));
   return maxCoord * 1e-14;
-};
+}
 
-internal.snapCoords = function(arcs, threshold) {
-    var avgDist = internal.getAvgSegment(arcs),
+export function snapCoords(arcs, threshold) {
+    var avgDist = getAvgSegment(arcs),
         autoSnapDist = avgDist * 0.0025,
         snapDist = autoSnapDist;
 
@@ -26,14 +24,14 @@ internal.snapCoords = function(arcs, threshold) {
     snapDist = threshold;
     message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
-  var snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+  var snapCount = snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
   message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
-};
+}
 
 // Snap together points within a small threshold
 //
-internal.snapCoordsByInterval = function(arcs, snapDist) {
+export function snapCoordsByInterval(arcs, snapDist) {
   var snapCount = 0,
       data = arcs.getVertexData(),
       ids;
@@ -42,7 +40,7 @@ internal.snapCoordsByInterval = function(arcs, snapDist) {
     // Get sorted coordinate ids
     // Consider: speed up sorting -- try bucket sort as first pass.
     //
-    ids = utils.sortCoordinateIds(data.xx);
+    ids = sortCoordinateIds(data.xx);
     for (var i=0, n=ids.length; i<n; i++) {
       snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
     }
@@ -69,17 +67,17 @@ internal.snapCoordsByInterval = function(arcs, snapDist) {
     }
     return snaps;
   }
-};
+}
 
-utils.sortCoordinateIds = function(a) {
+export function sortCoordinateIds(a) {
   var n = a.length,
       ids = new Uint32Array(n);
   for (var i=0; i<n; i++) {
     ids[i] = i;
   }
-  utils.quicksortIds(a, ids, 0, ids.length-1);
+  quicksortIds(a, ids, 0, ids.length-1);
   return ids;
-};
+}
 
 /*
 // Returns array of array ids, in ascending order.
@@ -137,7 +135,7 @@ utils.bucketSortIds = function(a, n) {
 };
 */
 
-utils.quicksortIds = function (a, ids, lo, hi) {
+function quicksortIds(a, ids, lo, hi) {
   if (hi - lo > 24) {
     var pivot = a[ids[lo + hi >> 1]],
         i = lo,
@@ -154,14 +152,14 @@ utils.quicksortIds = function (a, ids, lo, hi) {
         j--;
       }
     }
-    if (j > lo) utils.quicksortIds(a, ids, lo, j);
-    if (i < hi) utils.quicksortIds(a, ids, i, hi);
+    if (j > lo) quicksortIds(a, ids, lo, j);
+    if (i < hi) quicksortIds(a, ids, i, hi);
   } else {
-    utils.insertionSortIds(a, ids, lo, hi);
+    insertionSortIds(a, ids, lo, hi);
   }
-};
+}
 
-utils.insertionSortIds = function(arr, ids, start, end) {
+function insertionSortIds(arr, ids, start, end) {
   var id, i, j;
   for (j = start + 1; j <= end; j++) {
     id = ids[j];
@@ -170,4 +168,4 @@ utils.insertionSortIds = function(arr, ids, start, end) {
     }
     ids[i+1] = id;
   }
-};
+}

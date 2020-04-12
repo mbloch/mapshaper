@@ -1,6 +1,7 @@
-/* @require gui-lib */
+import { El } from './gui-el';
+import { internal } from './gui-core';
 
-function InteractionMode(gui) {
+export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'data', 'selection', 'box', 'off'],

@@ -1,20 +1,26 @@
-/* @requires geojson-common, svg-common, mapshaper-svg-style, svg-stringify, svg-path-utils */
 
-SVG.importGeoJSONFeatures = function(features, opts) {
+import { stringifyLineStringCoords } from '../svg/svg-path-utils';
+import GeoJSON from '../geojson/geojson-common';
+import { findPropertiesBySymbolGeom } from '../svg/svg-properties';
+import { getTransform, symbolRenderers } from '../svg/svg-common';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+
+export function importGeoJSONFeatures(features, opts) {
   opts = opts || {};
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
     var svgObj = null;
     if (geomType && geom.coordinates) {
-      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
+      svgObj = geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
     }
     if (!svgObj) {
       return {tag: 'g'}; // empty element
     }
     // TODO: fix error caused by null svgObj (caused by e.g. MultiPolygon with [] coordinates)
     if (obj.properties) {
-      SVG.applyStyleAttributes(svgObj, geomType, obj.properties);
+      applyStyleAttributes(svgObj, geomType, obj.properties);
     }
     if ('id' in obj) {
       if (!svgObj.properties) {
@@ -24,20 +30,20 @@ SVG.importGeoJSONFeatures = function(features, opts) {
     }
     return svgObj;
   });
-};
+}
 
-SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
+export function applyStyleAttributes(svgObj, geomType, rec) {
   var symbolType = GeoJSON.translateGeoJSONType(geomType);
   if (symbolType == 'point' && ('label-text' in rec)) {
     symbolType = 'label';
   }
-  var fields = SVG.findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
+  var fields = findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
-    SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
+    setAttribute(svgObj, fields[i], rec[fields[i]]);
   }
-};
+}
 
-SVG.setAttribute = function(obj, k, v) {
+function setAttribute(obj, k, v) {
   if (k == 'r') {
     // assigned by importPoint()
   } else {
@@ -48,12 +54,12 @@ SVG.setAttribute = function(obj, k, v) {
       obj.properties['stroke-linecap'] = 'butt';
     }
   }
-};
+}
 
-SVG.importMultiPoint = function(coords, rec, layerOpts) {
+function importMultiPoint(coords, rec, layerOpts) {
   var children = [], p;
   for (var i=0; i<coords.length; i++) {
-    p = SVG.importPoint(coords[i], rec, layerOpts);
+    p = importPoint(coords[i], rec, layerOpts);
     if (p.tag == 'g' && p.children) {
       children = children.concat(p.children);
     } else {
@@ -61,9 +67,9 @@ SVG.importMultiPoint = function(coords, rec, layerOpts) {
     }
   }
   return children.length > 0 ? {tag: 'g', children: children} : null;
-};
+}
 
-SVG.importMultiPath = function(coords, importer) {
+function importMultiPath(coords, importer) {
   var o;
   for (var i=0; i<coords.length; i++) {
     if (i === 0) {
@@ -73,34 +79,34 @@ SVG.importMultiPath = function(coords, importer) {
     }
   }
   return o;
-};
+}
 
-SVG.importLineString = function(coords) {
-  var d = SVG.stringifyLineStringCoords(coords);
+function importLineString(coords) {
+  var d = stringifyLineStringCoords(coords);
   return {
     tag: 'path',
     properties: {d: d}
   };
-};
+}
 
 
-SVG.importMultiLineString = function(coords) {
-  var d = coords.map(SVG.stringifyLineStringCoords).join(' ');
+function importMultiLineString(coords) {
+  var d = coords.map(stringifyLineStringCoords).join(' ');
   return {
     tag: 'path',
     properties: {d: d}
   };
-};
+}
 
 // Kludge for applying fill and other styles to a <text> element
 // (for rendering labels in the GUI with the dot in Canvas, not SVG)
-SVG.importStyledLabel = function(rec, p) {
-  var o = SVG.importLabel(rec, p);
-  SVG.applyStyleAttributes(o, 'Point', rec);
+export function importStyledLabel(rec, p) {
+  var o = importLabel(rec, p);
+  applyStyleAttributes(o, 'Point', rec);
   return o;
-};
+}
 
-SVG.importLabel = function(rec, p) {
+export function importLabel(rec, p) {
   var line = rec['label-text'] || '';
   var morelines, obj;
   // Accepting \n (two chars) as an alternative to the newline character
@@ -116,7 +122,7 @@ SVG.importLabel = function(rec, p) {
     x: dx
   };
   if (p) {
-    properties.transform = SVG.getTransform(p);
+    properties.transform = getTransform(p);
   }
   if (newline.test(line)) {
     morelines = line.split(newline);
@@ -143,27 +149,59 @@ SVG.importLabel = function(rec, p) {
     });
   }
   return obj;
-};
+}
 
-SVG.importPoint = function(coords, rec, layerOpts) {
+function getEmptySymbol() {
+  return {tag: 'g', properties: {}, children: []};
+}
+
+
+function renderSymbol(d, x, y) {
+  var renderer = symbolRenderers[d.type];
+   if (!renderer) {
+    stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
+  }
+  return renderer(d, x || 0, y || 0);
+}
+
+// d: svg-symbol object from feature data object
+export function importSymbol(d, xy) {
+  var renderer;
+  if (!d) {
+    return getEmptySymbol();
+  }
+  if (utils.isString(d)) {
+    d = JSON.parse(d);
+  }
+  return {
+    tag: 'g',
+    properties: {
+      'class': 'mapshaper-svg-symbol',
+      transform: xy ? getTransform(xy) : null
+    },
+    children: renderSymbol(d)
+  };
+}
+
+export function importPoint(coords, rec, layerOpts) {
   rec = rec || {};
   if ('svg-symbol' in rec) {
-    return SVG.importSymbol(rec['svg-symbol'], coords);
+    return importSymbol(rec['svg-symbol'], coords);
   }
-  return SVG.importStandardPoint(coords, rec, layerOpts || {});
-};
+  return importStandardPoint(coords, rec, layerOpts || {});
+}
 
-SVG.importPolygon = function(coords) {
+export function importPolygon(coords) {
   var d, o;
   for (var i=0; i<coords.length; i++) {
     d = o ? o.properties.d + ' ' : '';
-    o = SVG.importLineString(coords[i]);
+    o = importLineString(coords[i]);
     o.properties.d = d + o.properties.d + ' Z';
   }
   return o;
-};
+}
 
-SVG.importStandardPoint = function(coords, rec, layerOpts) {
+function importStandardPoint(coords, rec, layerOpts) {
   var isLabel = 'label-text' in rec;
   var symbolType = layerOpts.point_symbol || '';
   var children = [];
@@ -195,22 +233,22 @@ SVG.importStandardPoint = function(coords, rec, layerOpts) {
     children.push(p);
   }
   if (isLabel) {
-    children.push(SVG.importLabel(rec, coords));
+    children.push(importLabel(rec, coords));
   }
   return children.length > 1 ? {tag: 'g', children: children} : children[0];
-};
+}
 
-SVG.geojsonImporters = {
-  Point: SVG.importPoint,
-  Polygon: SVG.importPolygon,
-  LineString: SVG.importLineString,
+var geojsonImporters = {
+  Point: importPoint,
+  Polygon: importPolygon,
+  LineString: importLineString,
   MultiPoint: function(coords, rec, opts) {
-    return SVG.importMultiPoint(coords, rec, opts);
+    return importMultiPoint(coords, rec, opts);
   },
   MultiLineString: function(coords) {
-    return SVG.importMultiPath(coords, SVG.importLineString);
+    return importMultiPath(coords, importLineString);
   },
   MultiPolygon: function(coords) {
-    return SVG.importMultiPath(coords, SVG.importPolygon);
+    return importMultiPath(coords, importPolygon);
   }
 };

@@ -1,7 +1,11 @@
-/* @requires gui-lib */
+import { EventDispatcher } from './gui-events';
+import { utils, internal } from './gui-core';
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
+import { ClickText2 } from './gui-elements';
 
 // @onNext: handler for switching between multiple records
-function Popup(gui, onNext, onPrev) {
+export function Popup(gui, onNext, onPrev) {
   var self = new EventDispatcher();
   var parent = gui.container.findChild('.mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
@@ -59,7 +63,7 @@ function Popup(gui, onNext, onPrev) {
       var type;
       // missing GeoJSON fields are set to undefined on import; skip these
       if (v !== undefined) {
-        type = internal.getFieldType(v, k, table);
+        type = getFieldType(v, k, table);
         renderRow(tableEl, rec, k, type, editable);
         rows++;
       }
@@ -78,7 +82,7 @@ function Popup(gui, onNext, onPrev) {
   function renderRow(table, rec, key, type, editable) {
     var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
     var val = rec[key];
-    var str = internal.formatInspectorValue(val, type);
+    var str = formatInspectorValue(val, type);
     var cell = El('tr')
         .appendTo(table)
         .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
@@ -101,13 +105,13 @@ function Popup(gui, onNext, onPrev) {
 
   function editItem(el, rec, key, type) {
     var input = new ClickText2(el),
-        strval = internal.formatInspectorValue(rec[key], type),
-        parser = internal.getInputParser(type);
+        strval = formatInspectorValue(rec[key], type),
+        parser = getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
     input.on('change', function(e) {
       var val2 = parser(input.value()),
-          strval2 = internal.formatInspectorValue(val2, type);
+          strval2 = formatInspectorValue(val2, type);
       if (strval == strval2) {
         // contents unchanged
       } else if (val2 === null && type != 'object') { // allow null objects
@@ -125,7 +129,7 @@ function Popup(gui, onNext, onPrev) {
   }
 }
 
-internal.formatInspectorValue = function(val, type) {
+function formatInspectorValue(val, type) {
   var str;
   if (type == 'object') {
     str = val ? JSON.stringify(val) : "";
@@ -133,9 +137,9 @@ internal.formatInspectorValue = function(val, type) {
     str = String(val);
   }
   return str;
-};
+}
 
-internal.inputParsers = {
+var inputParsers = {
   string: function(raw) {
     return raw;
   },
@@ -170,11 +174,11 @@ internal.inputParsers = {
   }
 };
 
-internal.getInputParser = function(type) {
-  return internal.inputParsers[type || 'multiple'];
-};
+function getInputParser(type) {
+  return inputParsers[type || 'multiple'];
+}
 
-internal.getFieldType = function(val, key, table) {
+function getFieldType(val, key, table) {
   // if a field has a null value, look at entire column to identify type
   return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
-};
+}

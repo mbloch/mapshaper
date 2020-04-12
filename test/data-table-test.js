@@ -1,8 +1,7 @@
 var api = require('../'),
   assert = require('assert'),
   Utils = api.utils,
-  DataTable = api.internal.DataTable,
-  ShapefileTable = api.internal.ShapefileTable;
+  DataTable = api.internal.DataTable;
 
 describe('data-table.js', function () {
 
@@ -127,7 +126,7 @@ describe('data-table.js', function () {
     })
   })
 
-  describe('ShapefileTable', function() {
+  describe('importDbfTable()', function() {
     function readDBF(relpath) {
       var path = require('path').join(__dirname, relpath);
       return api.cli.readFile(path);
@@ -149,7 +148,7 @@ describe('data-table.js', function () {
             LONG: -120.00
           }];
 
-        var table = new ShapefileTable(readDBF("data/two_states.dbf"));
+        var table = api.internal.importDbfTable(readDBF("data/two_states.dbf"));
         assert.deepEqual(JSON.stringify(table.getRecords()),
             JSON.stringify(records));
       })
@@ -157,7 +156,7 @@ describe('data-table.js', function () {
 
     describe('#fieldExists()', function() {
       it ('identifies existing fields', function() {
-        var table = new ShapefileTable(readDBF("data/two_states.dbf"));
+        var table = api.internal.importDbfTable(readDBF("data/two_states.dbf"));
         assert.ok(table.fieldExists('LAT'))
         assert.ok(table.fieldExists('STATE_NAME'))
       })

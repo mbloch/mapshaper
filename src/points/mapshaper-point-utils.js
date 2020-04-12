@@ -1,37 +1,23 @@
-/* @requires mapshaper-common */
+import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { Bounds } from '../geom/mapshaper-bounds';
 
-internal.countPointsInLayer = function(lyr) {
+export function countPointsInLayer(lyr) {
   var count = 0;
-  if (internal.layerHasPoints(lyr)) {
-    internal.forEachPoint(lyr.shapes, function() {count++;});
+  if (layerHasPoints(lyr)) {
+    forEachPoint(lyr.shapes, function() {count++;});
   }
   return count;
-};
+}
 
-internal.countPoints2 = function(shapes, test, max) {
-  var count = 0;
-  var i, n, j, m, shp;
-  max = max || Infinity;
-  for (i=0, n=shapes.length; i<n && count<=max; i++) {
-    shp = shapes[i];
-    for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-      if (!test || test(shp[j])) {
-        count++;
-      }
-    }
-  }
-  return count;
-};
-
-internal.getPointBounds = function(shapes) {
+export function getPointBounds(shapes) {
   var bounds = new Bounds();
-  internal.forEachPoint(shapes, function(p) {
+  forEachPoint(shapes, function(p) {
     bounds.mergePoint(p[0], p[1]);
   });
   return bounds;
-};
+}
 
-internal.getPointFeatureBounds = function(shape, bounds) {
+export function getPointFeatureBounds(shape, bounds) {
   var n = shape ? shape.length : 0;
   var p;
   if (!bounds) bounds = new Bounds();
@@ -40,9 +26,9 @@ internal.getPointFeatureBounds = function(shape, bounds) {
     bounds.mergePoint(p[0], p[1]);
   }
   return bounds;
-};
+}
 
-internal.forEachPoint = function(shapes, cb) {
+export function forEachPoint(shapes, cb) {
   var i, n, j, m, shp;
   for (i=0, n=shapes.length; i<n; i++) {
     shp = shapes[i];
@@ -50,14 +36,5 @@ internal.forEachPoint = function(shapes, cb) {
       cb(shp[j], i);
     }
   }
-};
+}
 
-internal.transformPointsInLayer = function(lyr, f) {
-  if (internal.layerHasPoints(lyr)) {
-    internal.forEachPoint(lyr.shapes, function(p) {
-      var p2 = f(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
-  }
-};

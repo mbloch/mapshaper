@@ -1,6 +1,7 @@
-/* @requires gui-lib */
+import { utils, internal } from './gui-core';
+import { EventDispatcher } from './gui-events';
 
-function RepairControl(gui) {
+export function RepairControl(gui) {
   var map = gui.map,
       model = gui.model,
       el = gui.container.findChild(".intersection-display"),

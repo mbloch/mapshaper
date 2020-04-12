@@ -1,13 +1,16 @@
+import { importFile } from '../io/mapshaper-file-import';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
-internal.convertSourceName = function(name, targets) {
-  if (!internal.nameIsInterpolated(name)) return name;
+export function convertSourceName(name, targets) {
+  if (!nameIsInterpolated(name)) return name;
   if (targets.length > 1 || targets[0].layers.length != 1) {
     stop("Interpolated names are not compatible with multiple targets.");
   }
-  return internal.convertInterpolatedName(name, targets[0].layers[0]);
-};
+  return convertInterpolatedName(name, targets[0].layers[0]);
+}
 
-internal.convertInterpolatedName = function(name, lyr) {
+export function convertInterpolatedName(name, lyr) {
   var ctx = {target: lyr.name || ''};
   var body = 'with($$ctx) { return `' + name + '`; }';
   var func;
@@ -18,13 +21,13 @@ internal.convertInterpolatedName = function(name, lyr) {
     stop("Unable to interpolate [" + name + "]");
   }
   return name;
-};
+}
 
-internal.nameIsInterpolated = function(name) {
+function nameIsInterpolated(name) {
   return /[$][{]/.test(name);
-};
+}
 
-internal.findCommandSource = function(sourceName, catalog, opts) {
+export function findCommandSource(sourceName, catalog, opts) {
   var sources = catalog.findCommandTargets(sourceName);
   var sourceDataset, source;
   if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
@@ -36,7 +39,7 @@ internal.findCommandSource = function(sourceName, catalog, opts) {
     // don't need to build topology, because:
     //    join -- don't need topology
     //    clip/erase -- topology is built later, when datasets are combined
-    sourceDataset = api.importFile(sourceName, utils.defaults({no_topology: true}, opts));
+    sourceDataset = importFile(sourceName, utils.defaults({no_topology: true}, opts));
     if (!sourceDataset) {
       stop(utils.format('Unable to find source [%s]', sourceName));
     } else if (sourceDataset.layers.length > 1) {
@@ -46,4 +49,4 @@ internal.findCommandSource = function(sourceName, catalog, opts) {
     source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
   }
   return source;
-};
+}

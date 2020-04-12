@@ -1,15 +1,13 @@
-/* @requires
-mapshaper-polygon-dissolve2
-mapshaper-mosaic-index
-*/
+import cmd from '../mapshaper-cmd';
+import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
 
 // Removes small gaps and all overlaps
-api.dissolve2 = function(layers, dataset, opts) {
-  layers.forEach(internal.requirePolygonLayer);
-  T.start();
-  var nodes = internal.addIntersectionCuts(dataset, opts);
-  T.stop('Add cuts');
+cmd.dissolve2 = function(layers, dataset, opts) {
+  layers.forEach(requirePolygonLayer);
+  var nodes = addIntersectionCuts(dataset, opts);
   return layers.map(function(lyr) {
-    return internal.dissolvePolygonLayer2(lyr, dataset, opts);
+    return dissolvePolygonLayer2(lyr, dataset, opts);
   });
 };

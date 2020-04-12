@@ -4,10 +4,6 @@ var internal = api.internal;
 
 describe('mapshaper-custom-projections.js', function() {
 
-  describe('replaceProjParam()', function() {
-    
-  })
-
   describe('parseCustomParams()', function() {
 
     it ('test1', function() {

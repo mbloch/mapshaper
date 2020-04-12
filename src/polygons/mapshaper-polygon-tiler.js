@@ -1,12 +1,15 @@
-/* @requires mapshaper-id-test-index */
+import { debug } from '../utils/mapshaper-logging';
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
+import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
 
 // Associate mosaic tiles with shapes (i.e. identify the groups of tiles that
 //   belong to each shape)
 //
-function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
+export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   var arcs = nodes.arcs;
   var visitedTileIndex = new IdTestIndex(mosaic.length);
-  var divide = internal.getHoleDivider(nodes);
+  var divide = getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
   var currShapeId;

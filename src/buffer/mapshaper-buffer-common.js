@@ -1,26 +1,34 @@
 
-/* @require
-mapshaper-units
-mapshaper-polygon-dissolve
-mapshaper-arc-dissolve
-*/
+import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { convertDistanceParam } from '../geom/mapshaper-units';
+import { parseMeasure2 } from '../geom/mapshaper-units';
+import { reversePath } from '../paths/mapshaper-path-utils';
+import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { getRingIntersector } from '../paths/mapshaper-pathfinder';
+import { composeMosaicLayer } from '../dissolve/mapshaper-polygon-dissolve2';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { stop } from '../utils/mapshaper-logging';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
 
-internal.dissolveBufferDataset = function(dataset, optsArg) {
+export function dissolveBufferDataset(dataset, optsArg) {
   var opts = optsArg || {};
   var lyr = dataset.layers[0];
   var tmp;
-  var nodes = internal.addIntersectionCuts(dataset, {});
+  var nodes = addIntersectionCuts(dataset, {});
   if (opts.debug_division) {
-    return internal.debugBufferDivision(lyr, nodes);
+    return debugBufferDivision(lyr, nodes);
   }
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
   if (opts.debug_mosaic) {
-    tmp = internal.composeMosaicLayer(lyr, mosaicIndex.mosaic);
+    tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
     lyr.shapes = tmp.shapes;
     lyr.data = tmp.data;
     return;
   }
-  var pathfind = internal.getRingIntersector(mosaicIndex.nodes);
+  var pathfind = getRingIntersector(mosaicIndex.nodes);
   var shapes2 = lyr.shapes.map(function(shp, shapeId) {
     var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
     var rings = [];
@@ -31,12 +39,12 @@ internal.dissolveBufferDataset = function(dataset, optsArg) {
   });
   lyr.shapes = shapes2;
   if (!opts.no_dissolve) {
-    internal.dissolveArcs(dataset);
+    dissolveArcs(dataset);
   }
-};
+}
 
-internal.debugBufferDivision = function(lyr, nodes) {
-  var divide = internal.getHoleDivider(nodes);
+function debugBufferDivision(lyr, nodes) {
+  var divide = getHoleDivider(nodes);
   var shapes2 = [];
   var records = [];
   lyr.shapes.forEach(divideShape);
@@ -52,70 +60,64 @@ internal.debugBufferDivision = function(lyr, nodes) {
       records.push({type: 'ring'});
     });
     ccw.forEach(function(hole) {
-      shapes2.push([internal.reversePath(hole)]);
+      shapes2.push([reversePath(hole)]);
       records.push({type: 'hole'});
     });
   }
-};
-
-internal.getBufferTileDissolver = function() {
-  return function(rings) {
-    return dissolvePolygonGeometry([rings], function(i) {return 0;})[0];
-  };
-};
+}
 
 // n = number of segments used to approximate a circle
 // Returns tolerance as a percent of circle radius
-internal.getBufferToleranceFromCircleSegments = function(n) {
+export function getBufferToleranceFromCircleSegments(n) {
   return 1 - Math.cos(Math.PI / n);
-};
+}
 
-internal.getArcDegreesFromTolerancePct = function(pct) {
+export function getArcDegreesFromTolerancePct(pct) {
   return 360 * Math.acos(1 - pct) / Math.PI;
-};
+}
 
 // n = number of segments used to approximate a circle
 // Returns tolerance as a percent of circle radius
-internal.getBufferToleranceFromCircleSegments2 = function(n) {
+export function getBufferToleranceFromCircleSegments2(n) {
   return 1 / Math.cos(Math.PI / n) - 1;
-};
+}
 
-internal.getArcDegreesFromTolerancePct2 = function(pct) {
+export function getArcDegreesFromTolerancePct2(pct) {
   return 360 * Math.acos(1 / (pct + 1)) / Math.PI;
-};
+}
 
 // return constant distance in meters, or return null if unparsable
-internal.parseConstantBufferDistance = function(str, crs) {
-  var parsed = internal.parseMeasure2(str);
+export function parseConstantBufferDistance(str, crs) {
+  var parsed = parseMeasure2(str);
   if (!parsed.value) return null;
-  return internal.convertDistanceParam(str, crs) || null;
-};
+  return convertDistanceParam(str, crs) || null;
+}
 
-internal.getBufferToleranceFunction = function(dataset, opts) {
-  var crs = internal.getDatasetCRS(dataset);
-  var constTol = opts.tolerance ? internal.parseConstantBufferDistance(opts.tolerance, crs) : 0;
+export function getBufferToleranceFunction(dataset, opts) {
+  var crs = getDatasetCRS(dataset);
+  var constTol = opts.tolerance ? parseConstantBufferDistance(opts.tolerance, crs) : 0;
   var pctOfRadius = 1/100;
   return function(meterDist) {
     if (constTol) return constTol;
     return constTol ? constTol : meterDist * pctOfRadius;
   };
 
-};
+}
 
-internal.getBufferDistanceFunction = function(lyr, dataset, opts) {
+export function getBufferDistanceFunction(lyr, dataset, opts) {
   if (!opts.radius) {
     stop('Missing expected radius parameter');
   }
   var unitStr = opts.units || '';
-  var crs = internal.getDatasetCRS(dataset);
-  var constDist = internal.parseConstantBufferDistance(opts.radius + unitStr, crs);
+  var crs = getDatasetCRS(dataset);
+  var constDist = parseConstantBufferDistance(opts.radius + unitStr, crs);
   if (constDist) return function() {return constDist;};
-  var expr = internal.compileValueExpression(opts.radius, lyr, null, {}); // no arcs
+  var expr = compileValueExpression(opts.radius, lyr, null, {}); // no arcs
   return function(shpId) {
     var val = expr(shpId);
     if (!val) return 0;
     // TODO: optimize common case that expression returns a number
-    var dist = internal.parseConstantBufferDistance(val + unitStr, crs);
+    var dist = parseConstantBufferDistance(val + unitStr, crs);
     return dist || 0;
   };
-};
+}

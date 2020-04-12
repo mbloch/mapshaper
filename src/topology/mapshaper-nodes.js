@@ -1,10 +1,15 @@
-/* @require mapshaper-common, mapshaper-geom */
+
+import { initPointChains } from '../topology/mapshaper-topology-chains-v2';
+import { error } from '../utils/mapshaper-logging';
+import { ArcCollection } from '../paths/mapshaper-arcs';
+import utils from '../utils/mapshaper-utils';
+import { absArcId } from '../paths/mapshaper-arc-utils';
 
 // @arcs ArcCollection
 // @filter Optional filter function, arcIds that return false are excluded
 //
-function NodeCollection(arcs, filter) {
-  if (utils.isArray(arcs)) {
+export function NodeCollection(arcs, filter) {
+  if (Array.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
   }
   var arcData = arcs.getVertexData(),
@@ -158,7 +163,7 @@ function NodeCollection(arcs, filter) {
 
   function getNodeChains() {
     if (!nodeData) {
-      nodeData = internal.findNodeTopology(arcs, filter);
+      nodeData = findNodeTopology(arcs, filter);
       if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
     }
     return nodeData.chains;
@@ -220,7 +225,7 @@ function NodeCollection(arcs, filter) {
   };
 }
 
-internal.findNodeTopology = function(arcs, filter) {
+function findNodeTopology(arcs, filter) {
   var n = arcs.size() * 2,
       xx2 = new Float64Array(n),
       yy2 = new Float64Array(n),
@@ -254,4 +259,4 @@ internal.findNodeTopology = function(arcs, filter) {
     ids: ids2,
     chains: chains
   };
-};
+}

@@ -1,6 +1,6 @@
-/* @requires gui-svg-symbol-utils */
+import { getSymbolNodeId } from './gui-svg-symbols';
 
-function getSvgHitTest(displayLayer) {
+export function getSvgHitTest(displayLayer) {
 
   return function(pointerEvent) {
     // target could be a part of an SVG symbol, or the SVG element, or something else

@@ -1,10 +1,10 @@
 var api = require('../'),
   assert = require('assert'),
   fs = require('fs'),
-  format = api.utils.format;
+  format = api.utils.format,
+  mapshaper = api;
 
 var states_shp = "test/data/two_states.shp";
-
 
 function runFile(cmd, done) {
   var args = require('shell-quote').parse(cmd);
@@ -27,11 +27,12 @@ function runCmd(cmd, input, done) {
   });
 }
 
-describe('mapshaper-commands.js', function () {
+describe('mapshaper-run-commands.js', function () {
 
   describe('Issue #264 applyCommands()', function() {
     it ('should throw error if input is a file path, not file content', function(done) {
-      mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/data/two_states.shp'}, function(err, output) {
+      mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/data/two_states.shp'}, function(
+        err, output) {
         assert(!!err);
         done();
       });

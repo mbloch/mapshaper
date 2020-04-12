@@ -1,5 +1,6 @@
+import { internal } from './gui-core';
 
-function SessionHistory(gui) {
+export function SessionHistory(gui) {
   var commands = [];
 
   // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes

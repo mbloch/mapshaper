@@ -1,12 +1,16 @@
+import { internal } from './gui-core';
 
+export function getSymbolNodeId(node) {
+  return parseInt(node.getAttribute('data-id'));
+}
 
-function getSvgSymbolTransform(xy, ext) {
+export function getSvgSymbolTransform(xy, ext) {
   var scale = ext.getSymbolScale();
   var p = ext.translateCoords(xy[0], xy[1]);
   return internal.svg.getTransform(p, scale);
 }
 
-function repositionSymbols(elements, layer, ext) {
+export function repositionSymbols(elements, layer, ext) {
   var el, idx, p;
   for (var i=0, n=elements.length; i<n; i++) {
     el = elements[i];
@@ -17,7 +21,7 @@ function repositionSymbols(elements, layer, ext) {
   }
 }
 
-function renderSymbols(lyr, ext, type) {
+export function renderSymbols(lyr, ext, type) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];

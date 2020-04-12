@@ -1,12 +1,15 @@
-/* @requires mapshaper-expressions, mapshaper-calc-utils */
+import { getModeData } from '../utils/mapshaper-calc-utils';
+import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
 // Returns a function for filtering multiple source-table records
 // (used by -join command)
-internal.getJoinFilter = function(data, exp) {
-  var test = internal.getJoinFilterTestFunction(exp, data);
+export function getJoinFilter(data, exp) {
+  var test = getJoinFilterTestFunction(exp, data);
   var calc = null;
-  if (internal.expressionHasCalcFunction(exp)) {
-    calc = internal.getJoinFilterCalcFunction(exp, data);
+  if (expressionHasCalcFunction(exp)) {
+    calc = getJoinFilterCalcFunction(exp, data);
   }
 
   return function(srcIds, destRec) {
@@ -23,16 +26,16 @@ internal.getJoinFilter = function(data, exp) {
     }
     return filtered;
   };
-};
+}
 
-internal.expressionHasCalcFunction = function(exp) {
+function expressionHasCalcFunction(exp) {
   return utils.some(['isMax', 'isMin', 'isMode'], function(name) {
     return exp.indexOf(name) > -1;
   });
-};
+}
 
 
-internal.getJoinFilterCalcFunction = function(exp, data) {
+function getJoinFilterCalcFunction(exp, data) {
   var values, counts, max, min, context, calc, n;
 
   context = {
@@ -50,7 +53,7 @@ internal.getJoinFilterCalcFunction = function(exp, data) {
     }
   };
 
-  calc = internal.compileFeatureExpression(exp, {data: data}, null, {context: context});
+  calc = compileFeatureExpression(exp, {data: data}, null, {context: context});
 
   function reset() {
     max = -Infinity;
@@ -64,7 +67,7 @@ internal.getJoinFilterCalcFunction = function(exp, data) {
     for (var i=0; i<ids.length; i++) {
       calc(ids[i]);
     }
-    mode = values ? internal.getModeData(values) : null;
+    mode = values ? getModeData(values) : null;
     return {
       max: max,
       min: min,
@@ -72,10 +75,10 @@ internal.getJoinFilterCalcFunction = function(exp, data) {
       margin: mode ? mode.margin : null
     };
   };
-};
+}
 
 
-internal.getJoinFilterTestFunction = function(exp, data) {
+function getJoinFilterTestFunction(exp, data) {
   var test, calcRec, destRec;
   var context = {
     isMax: function(val) {
@@ -97,7 +100,7 @@ internal.getJoinFilterTestFunction = function(exp, data) {
     enumerable: true // so it can be mixed-in to the actual expression context
   });
 
-  test = internal.compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
+  test = compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
 
   // calcR: results from calculation phase, or null
   return function(srcId, destR, calcR) {
@@ -105,4 +108,4 @@ internal.getJoinFilterTestFunction = function(exp, data) {
     destRec = destR;
     return test(srcId);
   };
-};
+}

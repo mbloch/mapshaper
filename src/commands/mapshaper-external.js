@@ -1,8 +1,13 @@
-/* @require mapshaper-common */
+import api from '../mapshaper-api';
+import cmd from '../mapshaper-cmd';
+import { stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import cli from '../cli/mapshaper-cli-utils';
+import { CommandParser } from '../cli/mapshaper-command-parser';
 
 var externalCommands = {};
 
-internal.external = function(opts) {
+cmd.external = function(opts) {
   // TODO: remove duplication with -require command
   var _module, moduleFile, moduleName;
   if (!opts.module) {
@@ -27,16 +32,16 @@ internal.external = function(opts) {
   }
 };
 
-api.registerCommand = function(name, params) {
+cmd.registerCommand = function(name, params) {
   var defn = {name: name, options: params.options || []};
   // Add definitions of options common to all commands (TODO: remove duplication)
   defn.options.push({name: 'target'});
   utils.defaults(defn, params);
-  internal.validateExternalCommand(defn);
+  validateExternalCommand(defn);
   externalCommands[name] = defn;
 };
 
-internal.validateExternalCommand = function(defn) {
+function validateExternalCommand(defn) {
   var targetTypes = ['layer', 'layers'];
   if (typeof defn.command != 'function') {
     stop('Expected "command" parameter function');
@@ -44,16 +49,16 @@ internal.validateExternalCommand = function(defn) {
   if (!defn.target) {
     stop('Missing required "target" parameter');
   }
-};
+}
 
-internal.runExternalCommand = function(cmdOpts, catalog) {
+cmd.runExternalCommand = function(cmdOpts, catalog) {
   var name = cmdOpts.name;
   var cmdDefn = externalCommands[name];
   if (!cmdDefn) {
     stop('Unsupported command');
   }
   var targetType = cmdDefn.target;
-  var opts = internal.parseExternalCommand(name, cmdDefn, cmdOpts._);
+  var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
   var targets = catalog.findCommandTargets(opts.target || '*');
   var target = targets[0];
   if (!target) {
@@ -72,7 +77,7 @@ internal.runExternalCommand = function(cmdOpts, catalog) {
   }
 };
 
-internal.parseExternalCommand = function(name, cmdDefn, tokens) {
+function parseExternalCommand(name, cmdDefn, tokens) {
   var parser = new CommandParser();
   var cmd = parser.command(name);
   (cmdDefn.options || []).forEach(function(o) {
@@ -80,4 +85,4 @@ internal.parseExternalCommand = function(name, cmdDefn, tokens) {
   });
   var parsed = parser.parseArgv(['-' + name].concat(tokens));
   return parsed[0];
-};
+}

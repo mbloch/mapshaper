@@ -1,15 +1,19 @@
-/* @requires mapshaper-dataset-utils, geojson-import */
+import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { convertIntervalParam } from '../geom/mapshaper-units';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { stop } from '../utils/mapshaper-logging';
+import cmd from '../mapshaper-cmd';
 
-api.pointGrid = function(dataset, opts) {
-  var gridOpts = internal.getPointGridParams(dataset, opts);
-  return internal.createPointGridLayer(internal.createPointGrid(gridOpts), opts);
+cmd.pointGrid = function(dataset, opts) {
+  var gridOpts = getPointGridParams(dataset, opts);
+  return createPointGridLayer(createPointGrid(gridOpts), opts);
 };
 
-internal.getPointGridParams = function(dataset, opts) {
+function getPointGridParams(dataset, opts) {
   var params = {};
-  var crs = dataset ? internal.getDatasetCRS(dataset) : null;
+  var crs = dataset ? getDatasetCRS(dataset) : null;
   if (opts.interval) {
-    params.interval = internal.convertIntervalParam(opts.interval, crs);
+    params.interval = convertIntervalParam(opts.interval, crs);
   } else if (opts.rows > 0 && opts.cols > 0) {
     params.rows = opts.rows;
     params.cols = opts.cols;
@@ -19,14 +23,14 @@ internal.getPointGridParams = function(dataset, opts) {
   if (opts.bbox) {
     params.bbox = opts.bbox;
   } else if (dataset) {
-    params.bbox = internal.getDatasetBounds(dataset).toArray();
+    params.bbox = getDatasetBounds(dataset).toArray();
   } else {
     params.bbox = [-180, -90, 180, 90];
   }
   return params;
-};
+}
 
-internal.createPointGridLayer = function(rows, opts) {
+function createPointGridLayer(rows, opts) {
   var points = [], lyr;
   rows.forEach(function(row, rowId) {
     for (var i=0; i<row.length; i++) {
@@ -39,11 +43,11 @@ internal.createPointGridLayer = function(rows, opts) {
   };
   if (opts.name) lyr.name = opts.name;
   return lyr;
-};
+}
 
 
 // Returns a grid of [x,y] points so that point(c,r) == arr[r][c]
-internal.createPointGrid = function(opts) {
+function createPointGrid(opts) {
   var bbox = opts.bbox,
       w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
@@ -81,4 +85,4 @@ internal.createPointGrid = function(opts) {
     y += dy;
   }
   return rowsArr;
-};
+}

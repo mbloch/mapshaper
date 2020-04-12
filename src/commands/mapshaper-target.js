@@ -1,6 +1,7 @@
-/* @require mapshaper-common */
+import cmd from '../mapshaper-cmd';
+import { stop } from '../utils/mapshaper-logging';
 
-internal.target = function(catalog, opts) {
+cmd.target = function(catalog, opts) {
   var type = (opts.type || '').toLowerCase().replace('linestring', 'polyline');
   var pattern = opts.target || '*';
   var targets = catalog.findCommandTargets(pattern, type);

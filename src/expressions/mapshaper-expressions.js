@@ -1,15 +1,20 @@
-/* @requires mapshaper-feature-proxy, mapshaper-expression-utils */
+
+import expressionUtils from '../expressions/mapshaper-expression-utils';
+import { initFeatureProxy } from '../expressions/mapshaper-feature-proxy';
+import { initDataTable } from '../dataset/mapshaper-layer-utils';
+import utils from '../utils/mapshaper-utils';
+import { message, stop } from '../utils/mapshaper-logging';
+
 
 // Compiled expression returns a value
-internal.compileValueExpression = function(exp, lyr, arcs, opts) {
+export function compileValueExpression(exp, lyr, arcs, opts) {
   opts = opts || {};
   opts.returns = true;
-  return internal.compileFeatureExpression(exp, lyr, arcs, opts);
-};
+  return compileFeatureExpression(exp, lyr, arcs, opts);
+}
 
-
-internal.compileFeaturePairFilterExpression = function(exp, lyr, arcs) {
-  var func = internal.compileFeaturePairExpression(exp, lyr, arcs);
+export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
+  var func = compileFeaturePairExpression(exp, lyr, arcs);
   return function(idA, idB) {
     var val = func(idA, idB);
     if (val !== true && val !== false) {
@@ -17,13 +22,13 @@ internal.compileFeaturePairFilterExpression = function(exp, lyr, arcs) {
     }
     return val;
   };
-};
+}
 
-internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
-  var ctx = internal.getExpressionContext(lyr);
+export function compileFeaturePairExpression(exp, lyr, arcs) {
+  var ctx = getExpressionContext(lyr);
   var A = getProxyFactory(lyr, arcs);
   var B = getProxyFactory(lyr, arcs);
-  var vars = internal.getAssignedVars(exp);
+  var vars = getAssignedVars(exp);
   var functionBody = "with($$env){with($$record){return " + exp + "}}";
   var func;
 
@@ -35,11 +40,11 @@ internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
   }
 
   // protect global object from assigned values
-  internal.nullifyUnsetProperties(vars, ctx);
+  nullifyUnsetProperties(vars, ctx);
 
   function getProxyFactory(lyr, arcs) {
     var records = lyr.data ? lyr.data.getRecords() : [];
-    var getFeatureById = internal.initFeatureProxy(lyr, arcs);
+    var getFeatureById = initFeatureProxy(lyr, arcs);
     function Proxy(id) {}
 
     return function(id) {
@@ -61,7 +66,7 @@ internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
     ctx.B = B(idB);
     if (rec) {
       // initialize new fields to null so assignments work
-      internal.nullifyUnsetProperties(vars, rec);
+      nullifyUnsetProperties(vars, rec);
     }
     try {
       val = func.call(ctx, rec || {}, ctx);
@@ -70,28 +75,27 @@ internal.compileFeaturePairExpression = function(exp, lyr, arcs) {
     }
     return val;
   };
-};
+}
 
-
-internal.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
+export function compileFeatureExpression(rawExp, lyr, arcs, opts_) {
   var opts = utils.extend({}, opts_),
       exp = rawExp || '',
       mutable = !opts.no_assign, // block assignment expressions
-      vars = internal.getAssignedVars(exp),
+      vars = getAssignedVars(exp),
       func, records;
 
   if (mutable && vars.length > 0 && !lyr.data) {
-    internal.initDataTable(lyr);
+    initDataTable(lyr);
   }
 
   if (!mutable) {
     // protect global object from assigned values
     opts.context = opts.context || {};
-    internal.nullifyUnsetProperties(vars, opts.context);
+    nullifyUnsetProperties(vars, opts.context);
   }
 
   records = lyr.data ? lyr.data.getRecords() : [];
-  func = internal.getExpressionFunction(exp, lyr, arcs, opts);
+  func = getExpressionFunction(exp, lyr, arcs, opts);
 
   // @destRec (optional) substitute for records[recId] (used by -calc)
   return function(recId, destRec) {
@@ -104,15 +108,15 @@ internal.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
 
     // initialize new fields to null so assignments work
     if (mutable) {
-      internal.nullifyUnsetProperties(vars, record);
+      nullifyUnsetProperties(vars, record);
     }
     return func(record, recId);
   };
-};
+}
 
 // Return array of variables on the left side of assignment operations
 // @hasDot (bool) Return property assignments via dot notation
-internal.getAssignedVars = function(exp, hasDot) {
+export function getAssignedVars(exp, hasDot) {
   var rxp = /[a-z_][.a-z0-9_]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
   var matches = exp.match(rxp) || [];
   var f = function(s) {
@@ -120,12 +124,12 @@ internal.getAssignedVars = function(exp, hasDot) {
     return hasDot ? i > -1 : i == -1;
   };
   return utils.uniq(matches.filter(f));
-};
+}
 
 // Return array of objects with properties assigned via dot notation
 // e.g.  'd.value = 45' ->  ['d']
-internal.getAssignmentObjects = function(exp) {
-  var matches = internal.getAssignedVars(exp, true),
+export function getAssignmentObjects(exp) {
+  var matches = getAssignedVars(exp, true),
       names = [];
   matches.forEach(function(s) {
     var match = /^([^.]+)\.[^.]+$/.exec(s);
@@ -135,9 +139,9 @@ internal.getAssignmentObjects = function(exp) {
     }
   });
   return utils.uniq(names);
-};
+}
 
-internal.compileExpressionToFunction = function(exp, opts) {
+export function compileExpressionToFunction(exp, opts) {
   // $$ added to avoid duplication with data field variables (an error condition)
   var functionBody = "with($$env){with($$record){ " + (opts.returns ? 'return ' : '') +
         exp + "}}";
@@ -149,12 +153,12 @@ internal.compileExpressionToFunction = function(exp, opts) {
     stop(e.name, "in expression [" + exp + "]");
   }
   return func;
-};
+}
 
-internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
-  var getFeatureById = internal.initFeatureProxy(lyr, arcs);
-  var ctx = internal.getExpressionContext(lyr, opts.context, opts);
-  var func = internal.compileExpressionToFunction(exp, opts);
+function getExpressionFunction(exp, lyr, arcs, opts) {
+  var getFeatureById = initFeatureProxy(lyr, arcs);
+  var ctx = getExpressionContext(lyr, opts.context, opts);
+  var func = compileExpressionToFunction(exp, opts);
   return function(rec, i) {
     var val;
     // Assigning feature object to '$' -- this should maybe be removed, it is
@@ -170,25 +174,25 @@ internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
     }
     return val;
   };
-};
+}
 
-internal.nullifyUnsetProperties = function(vars, obj) {
+function nullifyUnsetProperties(vars, obj) {
   for (var i=0; i<vars.length; i++) {
     if (vars[i] in obj === false) {
       obj[vars[i]] = null;
     }
   }
-};
+}
 
-internal.getExpressionContext = function(lyr, mixins, opts) {
-  var env = internal.getBaseContext();
+function getExpressionContext(lyr, mixins, opts) {
+  var env = getBaseContext();
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];
   opts = opts || {};
-  utils.extend(env, internal.expressionUtils); // mix in round(), sprintf()
+  utils.extend(env, expressionUtils); // mix in round(), sprintf()
   if (lyr.data) {
     // default to null values when a data field is missing
-    internal.nullifyUnsetProperties(fields, env);
+    nullifyUnsetProperties(fields, env);
   }
   if (mixins) {
     Object.keys(mixins).forEach(function(key) {
@@ -222,9 +226,9 @@ internal.getExpressionContext = function(lyr, mixins, opts) {
     }
     return memo;
   }, ctx);
-};
+}
 
-internal.getBaseContext = function() {
+export function getBaseContext() {
   var obj = {};
   // Mask global properties (is this effective/worth doing?)
   (function() {
@@ -234,4 +238,4 @@ internal.getBaseContext = function() {
   }());
   obj.console = console;
   return obj;
-};
+}

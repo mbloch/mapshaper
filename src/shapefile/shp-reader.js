@@ -1,4 +1,9 @@
-/* @requires shp-record, mapshaper-file-reader */
+
+import ShpRecordClass from '../shapefile/shp-record';
+import { error, verbose, message, stop } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { FileReader, BufferReader } from '../io/mapshaper-file-reader';
+import { isSupportedShapefileType } from '../shapefile/shp-common';
 
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
@@ -20,7 +25,7 @@
 //      var data = s.read();
 //    });
 //
-function ShpReader(shpSrc, shxSrc) {
+export function ShpReader(shpSrc, shxSrc) {
   if (this instanceof ShpReader === false) {
     return new ShpReader(shpSrc, shxSrc);
   }
@@ -129,7 +134,7 @@ function ShpReader(shpSrc, shxSrc) {
       error("Not a valid .shp file");
     }
 
-    if (!internal.isSupportedShapefileType(header.type)) {
+    if (!isSupportedShapefileType(header.type)) {
       error("Unsupported .shp type:", header.type);
     }
 

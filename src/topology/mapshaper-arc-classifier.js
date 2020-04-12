@@ -1,4 +1,6 @@
-/* @requires mapshaper-shape-utils */
+import utils from '../utils/mapshaper-utils';
+import { traversePaths } from '../paths/mapshaper-path-utils';
+import { absArcId } from '../paths/mapshaper-arc-utils';
 
 // Returns a function for constructing a query function that accepts an arc id and
 // returns information about the polygon or polygons that use the given arc.
@@ -7,7 +9,7 @@
 // options:
 //   filter: optional filter function; signature: function(idA, idB or -1) : boolean
 //   reusable: flag that lets an arc be queried multiple times.
-internal.getArcClassifier = function(shapes, arcs) {
+export function getArcClassifier(shapes, arcs) {
   var opts = arguments[2] || {},
       useOnce = !opts.reusable,
       n = arcs.size(),
@@ -17,7 +19,7 @@ internal.getArcClassifier = function(shapes, arcs) {
   utils.initializeArray(a, -1);
   utils.initializeArray(b, -1);
 
-  internal.traversePaths(shapes, function(o) {
+  traversePaths(shapes, function(o) {
     var i = absArcId(o.arcId);
     var shpId = o.shapeId;
     var aval = a[i];
@@ -54,4 +56,4 @@ internal.getArcClassifier = function(shapes, arcs) {
       return classify(arcId, getKey);
     };
   };
-};
+}

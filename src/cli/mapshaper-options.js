@@ -1,11 +1,8 @@
-/* @requires
-mapshaper-common
-mapshaper-option-parser
-mapshaper-option-validation
-mapshaper-option-parsing-utils
-*/
+import * as V from '../cli/mapshaper-option-validation';
+import { error } from '../utils/mapshaper-logging';
+import { CommandParser } from '../cli/mapshaper-command-parser';
 
-internal.getOptionParser = function() {
+export function getOptionParser() {
   // definitions of options shared by more than one command
   var targetOpt = {
         describe: 'layer(s) to target (comma-sep. list)'
@@ -108,7 +105,7 @@ internal.getOptionParser = function() {
 
   parser.command('i')
     .describe('input one or more files')
-    .validate(validateInputOpts)
+    .validate(V.validateInputOpts)
     .flag('multi_arg')
     .option('files', {
       DEFAULT: true,
@@ -184,7 +181,7 @@ internal.getOptionParser = function() {
 
   parser.command('o')
     .describe('output edited content')
-    .validate(validateOutputOpts)
+    .validate(V.validateOutputOpts)
     .option('_', {
       label: '<file|directory>',
       describe: '(optional) name of output file or directory, - for stdout'
@@ -837,7 +834,7 @@ internal.getOptionParser = function() {
 
   parser.command('point-grid')
     .describe('create a rectangular grid of points')
-    .validate(validateGridOpts)
+    .validate(V.validateGridOpts)
     .option('-', {
       label: '<cols,rows>',
       describe: 'size of the grid, e.g. -point-grid 100,100'
@@ -941,7 +938,7 @@ internal.getOptionParser = function() {
       describe: 'add points along straight segments to approximate curves'
     })
     .option('target', targetOpt)
-    .validate(validateProjOpts);
+    .validate(V.validateProjOpts);
 
   parser.command('rectangle')
     .describe('create a rectangle from a bbox or target layer extent')
@@ -985,7 +982,7 @@ internal.getOptionParser = function() {
     .option('target', targetOpt);
 
   parser.command('simplify')
-    .validate(validateSimplifyOpts)
+    .validate(V.validateSimplifyOpts)
     .example('Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%')
     .describe('simplify the geometry of polygon and polyline features')
     .option('percentage', {
@@ -1118,7 +1115,7 @@ internal.getOptionParser = function() {
 
   parser.command('split-on-grid')
     .describe('split features into separate layers using a grid')
-    .validate(validateGridOpts)
+    .validate(V.validateGridOpts)
     .option('-', {
       label: '<cols,rows>',
       describe: 'size of the grid, e.g. -split-on-grid 12,10'
@@ -1417,7 +1414,7 @@ internal.getOptionParser = function() {
 
   parser.command('subdivide')
     .describe('recursively split a layer using a JS expression')
-    .validate(validateExpressionOpt)
+    .validate(V.validateExpressionOpt)
     .option('expression', {
       DEFAULT: true,
       describe: 'boolean JS expression'
@@ -1432,7 +1429,7 @@ internal.getOptionParser = function() {
       '$ mapshaper polygons.shp -calc \'sum($.area)\'')
     .example('Count census blocks in NY with zero population\n' +
       '$ mapshaper ny-census-blocks.shp -calc \'count()\' where=\'POPULATION == 0\'')
-    .validate(validateExpressionOpt)
+    .validate(V.validateExpressionOpt)
     .option('expression', {
       DEFAULT: true,
       describe: 'functions: sum() average() median() max() min() count()'
@@ -1462,7 +1459,7 @@ internal.getOptionParser = function() {
       describe: 'boolean JS expression for selecting a feature'
     })
     .option('target', targetOpt)
-    .validate(validateExpressionOpt);
+    .validate(V.validateExpressionOpt);
 
   parser.command('projections')
     .describe('print list of supported projections');
@@ -1479,13 +1476,5 @@ internal.getOptionParser = function() {
 
   parser.command('debug');
 
-  /*
-
-
-  parser.command('fill-holes')
-    .option('no-replace', noReplaceOpt)
-    .option('target', targetOpt);
-  */
-
   return parser;
-};
+}

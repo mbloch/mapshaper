@@ -1,21 +1,29 @@
-/* @requires
-mapshaper-common
-mapshaper-file-types
-*/
+
+import { preserveContext } from '../mapshaper-state';
+import { trimBOM, decodeString } from '../text/mapshaper-encodings';
+import { stop, error } from '../utils/mapshaper-logging';
+import { Buffer } from '../utils/mapshaper-node-buffer';
+import utils from '../utils/mapshaper-utils';
+import { getStateVar, runningInBrowser } from '../mapshaper-state';
+import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 
 var cli = {};
 
+export default cli;
+
 cli.isFile = function(path, cache) {
+  if (runningInBrowser()) return false;
   var ss = cli.statSync(path);
   return cache && (path in cache) || ss && ss.isFile() || false;
 };
 
-cli.fileSize = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.size || 0;
-};
+// cli.fileSize = function(path) {
+//   var ss = cli.statSync(path);
+//   return ss && ss.size || 0;
+// };
 
 cli.isDirectory = function(path) {
+  if (runningInBrowser()) return false;
   var ss = cli.statSync(path);
   return ss && ss.isDirectory() || false;
 };
@@ -29,11 +37,11 @@ cli.readFile = function(fname, encoding, cache) {
   } else if (fname == '/dev/stdin') {
     content = require('rw').readFileSync(fname);
   } else {
-    internal.getStateVar('input_files').push(fname);
+    getStateVar('input_files').push(fname);
     content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
-    content = internal.trimBOM(internal.decodeString(content, encoding));
+    content = trimBOM(decodeString(content, encoding));
   }
   return content;
 };
@@ -61,7 +69,7 @@ cli.convertArrayBuffer = function(buf) {
 // Expand any "*" wild cards in file name
 // (For the Windows command line; unix shells do this automatically)
 cli.expandFileName = function(name) {
-  var info = utils.parseLocalPath(name),
+  var info = parseLocalPath(name),
       rxp = utils.wildcardToRegExp(info.filename),
       dir = info.directory || '.',
       files = [];
@@ -94,7 +102,7 @@ cli.expandInputFiles = function(files) {
 };
 
 cli.validateOutputDir = function(name) {
-  if (!cli.isDirectory(name)) {
+  if (!cli.isDirectory(name) && !runningInBrowser()) {
     error("Output directory not found:", name);
   }
 };

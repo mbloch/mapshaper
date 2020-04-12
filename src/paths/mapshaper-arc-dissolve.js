@@ -1,23 +1,27 @@
-/* @requires
-mapshaper-nodes
-mapshaper-path-endpoints
-mapshaper-path-utils
-mapshaper-dataset-utils
-*/
+
+import { getPathEndpointTest } from '../paths/mapshaper-path-endpoints';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { editShapeParts } from '../paths/mapshaper-shape-utils';
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import { getArcPresenceTest2 } from '../dataset/mapshaper-layer-utils';
+import { verbose } from '../utils/mapshaper-logging';
+import { NodeCollection } from '../topology/mapshaper-nodes';
+import { ArcCollection } from '../paths/mapshaper-arcs';
+import utils from '../utils/mapshaper-utils';
 
 // Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
 // in layers. (dataset.arcs is replaced).
-internal.dissolveArcs = function(dataset) {
+export function dissolveArcs(dataset) {
   var arcs = dataset.arcs,
-      layers = dataset.layers.filter(internal.layerHasPaths);
+      layers = dataset.layers.filter(layerHasPaths);
 
   if (!arcs || !layers.length) {
     dataset.arcs = null;
     return;
   }
 
-  var arcsCanDissolve = internal.getArcDissolveTest(layers, arcs),
+  var arcsCanDissolve = getArcDissolveTest(layers, arcs),
       newArcs = [],
       totalPoints = 0,
       arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
@@ -27,10 +31,10 @@ internal.dissolveArcs = function(dataset) {
     // modify copies of the original shapes; original shapes should be unmodified
     // (need to test this)
     lyr.shapes = lyr.shapes.map(function(shape) {
-      return internal.editShapeParts(shape && shape.concat(), translatePath);
+      return editShapeParts(shape && shape.concat(), translatePath);
     });
   });
-  dataset.arcs = internal.dissolveArcCollection(arcs, newArcs, totalPoints);
+  dataset.arcs = dissolveArcCollection(arcs, newArcs, totalPoints);
 
   function translatePath(path) {
     var pointCount = 0;
@@ -78,9 +82,9 @@ internal.dissolveArcs = function(dataset) {
     totalPoints += pointCount;
     return newPath;
   }
-};
+}
 
-internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
+function dissolveArcCollection(arcs, newArcs, newLen) {
   var nn2 = new Uint32Array(newArcs.length),
       xx2 = new Float64Array(newLen),
       yy2 = new Float64Array(newLen),
@@ -116,14 +120,14 @@ internal.dissolveArcCollection = function(arcs, newArcs, newLen) {
       offs += n;
     }
   }
-};
+}
 
 // Test whether two arcs can be merged together
-internal.getArcDissolveTest = function(layers, arcs) {
-  var nodes = new NodeCollection(arcs, internal.getArcPresenceTest2(layers, arcs)),
+export function getArcDissolveTest(layers, arcs) {
+  var nodes = new NodeCollection(arcs, getArcPresenceTest2(layers, arcs)),
       // don't allow dissolving through endpoints of polyline paths
       lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
-      testLineEndpoint = internal.getPathEndpointTest(lineLayers, arcs),
+      testLineEndpoint = getPathEndpointTest(lineLayers, arcs),
       linkCount, lastId;
 
   return function(id1, id2) {
@@ -140,4 +144,4 @@ internal.getArcDissolveTest = function(layers, arcs) {
     linkCount++;
     lastId = arcId;
   }
-};
+}

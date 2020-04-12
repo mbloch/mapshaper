@@ -1,7 +1,15 @@
-/* @requires mapshaper-common */
+
+import { GeoJSONParser, importGeoJSON } from '../geojson/geojson-import';
+import { BufferReader, FileReader, readFirstChars } from '../io/mapshaper-file-reader';
+import utils from '../utils/mapshaper-utils';
+import { importTopoJSON } from '../topojson/topojson-import';
+import { stop } from '../utils/mapshaper-logging';
+import { GeoJSONReader } from '../geojson/geojson-reader';
+import { bufferToString } from '../text/mapshaper-encodings';
+import { importJSONTable } from '../datatable/mapshaper-json-table';
 
 // Identify JSON type from the initial subset of a JSON string
-internal.identifyJSONString = function(str, opts) {
+export function identifyJSONString(str, opts) {
   var maxChars = 1000;
   var fmt = null;
   if (str.length > maxChars) str = str.substr(0, maxChars);
@@ -17,9 +25,9 @@ internal.identifyJSONString = function(str, opts) {
     fmt = 'geojson';
   }
   return fmt;
-};
+}
 
-internal.identifyJSONObject = function(o) {
+export function identifyJSONObject(o) {
   var fmt = null;
   if (!o) {
     //
@@ -31,20 +39,20 @@ internal.identifyJSONObject = function(o) {
     fmt = 'json';
   }
   return fmt;
-};
+}
 
-internal.importGeoJSONFile = function(fileReader, opts) {
+export function importGeoJSONFile(fileReader, opts) {
   var importer = new GeoJSONParser(opts);
   new GeoJSONReader(fileReader).readObjects(importer.parseObject);
   return importer.done();
-};
+}
 
-internal.importJSONFile = function(reader, opts) {
-  var str = internal.readFirstChars(reader, 1000);
-  var type = internal.identifyJSONString(str, opts);
+function importJSONFile(reader, opts) {
+  var str = readFirstChars(reader, 1000);
+  var type = identifyJSONString(str, opts);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
-    dataset = internal.importGeoJSONFile(reader, opts);
+    dataset = importGeoJSONFile(reader, opts);
     retn = {
       dataset: dataset,
       format: 'geojson'
@@ -57,9 +65,9 @@ internal.importJSONFile = function(reader, opts) {
   }
   reader.close();
   return retn;
-};
+}
 
-internal.importJSON = function(data, opts) {
+export function importJSON(data, opts) {
   var content = data.content,
       filename = data.filename,
       retn = {filename: filename},
@@ -71,7 +79,7 @@ internal.importJSON = function(data, opts) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if (content.byteLength < 1e7) {
       // content = utils.createBuffer(content).toString();
-      content = internal.bufferToString(utils.createBuffer(content));
+      content = bufferToString(utils.createBuffer(content));
     } else {
       reader = new BufferReader(content);
       content = null;
@@ -79,7 +87,7 @@ internal.importJSON = function(data, opts) {
   }
 
   if (reader) {
-    data = internal.importJSONFile(reader, opts);
+    data = importJSONFile(reader, opts);
     if (data.dataset) {
       retn.dataset = data.dataset;
       retn.format = data.format;
@@ -98,28 +106,28 @@ internal.importJSON = function(data, opts) {
       }
     }
     if (opts.json_path) {
-      content = internal.selectFromObject(content, opts.json_path);
+      content = selectFromObject(content, opts.json_path);
       if (Array.isArray(content) === false) {
         stop('Expected an array at JSON path:', opts.json_path);
       }
     }
-    retn.format = internal.identifyJSONObject(content, opts);
+    retn.format = identifyJSONObject(content, opts);
     if (retn.format == 'topojson') {
-      retn.dataset = internal.importTopoJSON(content, opts);
+      retn.dataset = importTopoJSON(content, opts);
     } else if (retn.format == 'geojson') {
-      retn.dataset = internal.importGeoJSON(content, opts);
+      retn.dataset = importGeoJSON(content, opts);
     } else if (retn.format == 'json') {
-      retn.dataset = internal.importJSONTable(content, opts);
+      retn.dataset = importJSONTable(content, opts);
     } else {
       stop("Unknown JSON format");
     }
   }
 
   return retn;
-};
+}
 
 // path: path from top-level to the target object
-internal.selectFromObject = function(o, path) {
+function selectFromObject(o, path) {
   var arrayRxp = /(.*)\[([0-9]+)\]$/;
   var separator = path.indexOf('/') > 0 ? '/' : '.';
   var parts = path.split(separator);
@@ -136,4 +144,4 @@ internal.selectFromObject = function(o, path) {
     if (!o) return null;
   }
   return o;
-};
+}

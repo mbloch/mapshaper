@@ -1,9 +1,10 @@
-/* @requires mapshaper-common, mapshaper-target-utils */
+
+import { findCommandTargets } from '../dataset/mapshaper-target-utils';
 
 // Catalog contains zero or more multi-layer datasets
 // One layer is always "active", corresponding to the currently selected
 //   layer in the GUI or the current target in the CLI
-function Catalog() {
+export function Catalog() {
   var datasets = [],
       defaultTargets = [];// saved default command targets [{layers:[], dataset}, ...]
 
@@ -52,7 +53,7 @@ function Catalog() {
 
   this.findCommandTargets = function(pattern, type) {
     if (pattern) {
-      return internal.findCommandTargets(this, pattern, type);
+      return findCommandTargets(this, pattern, type);
     }
     return this.getDefaultTargets() || [];
   };
@@ -146,10 +147,10 @@ function Catalog() {
   }
 }
 
-internal.getFormattedLayerList = function(catalog) {
+export function getFormattedLayerList(catalog) {
   var lines = [];
   catalog.forEachLayer(function(lyr, dataset, i) {
     lines.push('  [' + (i+1) + ']  ' + (lyr.name || '[unnamed]'));
   });
   return lines.length > 0 ? lines.join('\n') : '[none]';
-};
+}

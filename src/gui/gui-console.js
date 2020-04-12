@@ -1,6 +1,10 @@
-/* @requires gui-lib */
+import { MessageProxy } from './gui-proxy';
+import { internal, utils, message, UserError } from './gui-core';
+import { El } from './gui-el';
+import { setDisplayProjection } from './gui-dynamic-crs';
+import { GUI } from './gui-lib';
 
-function Console(gui) {
+export function Console(gui) {
   var model = gui.model;
   var CURSOR = '$ ';
   var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
@@ -43,7 +47,7 @@ function Console(gui) {
   function getHistory() {
     var hist;
     try {
-      hist = JSON.parse(localStorage.getItem('console_history'));
+      hist = JSON.parse(window.localStorage.getItem('console_history'));
     } catch(e) {}
     return hist && hist.length > 0 ? hist : [];
   }
@@ -51,7 +55,7 @@ function Console(gui) {
   function saveHistory(history) {
     try {
       history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-      localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
+      window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
     } catch(e) {}
   }
 
@@ -71,9 +75,7 @@ function Console(gui) {
       // TODO: find a solution for logging problem when switching between multiple
       // gui instances with the console open. E.g. console could close
       // when an instance loses focus.
-      stop = internal.stop = consoleStop;
-      error = internal.error = consoleError;
-      message = internal.message = consoleMessage;
+      internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop);
       gui.container.addClass('console-open');
       gui.dispatchEvent('resize');
       el.show();
@@ -229,7 +231,7 @@ function Console(gui) {
       return name.indexOf(stub) === 0;
     });
     if (names.length > 0) {
-      name = utils.getCommonFileBase(names);
+      name = internal.getCommonFileBase(names);
       if (name.length > stub.length) {
         toCommandLine(line.substring(0, match.index) + name);
       }
@@ -445,7 +447,7 @@ function Console(gui) {
 
   function consoleMessage() {
     var msg = GUI.formatMessageArgs(arguments);
-    if (internal.LOGGING && !internal.getStateVar('QUIET')) {
+    if (internal.loggingEnabled() && !internal.getStateVar('QUIET')) {
       toLog(msg, 'console-message');
     }
   }

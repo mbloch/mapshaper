@@ -1,9 +1,8 @@
+import { getShapeHitTest } from './gui-shape-hit';
+import { getSvgHitTest } from './gui-svg-hit';
+import { internal, utils } from './gui-core';
 
-/*
-@requires gui-shape-hit, gui-svg-hit
-*/
-
-function getPointerHitTest(mapLayer, ext) {
+export function getPointerHitTest(mapLayer, ext) {
   var shapeTest, svgTest, targetLayer;
   if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
     return null;

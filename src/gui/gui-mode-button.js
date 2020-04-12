@@ -1,6 +1,6 @@
-/* @requires gui-lib */
+import { El } from './gui-el';
 
-function ModeButton(modes, el, name) {
+export function ModeButton(modes, el, name) {
   var btn = El(el),
       active = false;
   modes.on('mode', function(e) {

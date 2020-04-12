@@ -1,6 +1,8 @@
-/* @require mapshaper-arcs, mapshaper-geom */
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
+import { NodeCollection } from '../topology/mapshaper-nodes';
 
-internal.calcSimplifyStats = function(arcs, use3D) {
+export function calcSimplifyStats(arcs, use3D) {
   var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
       calcAngle = use3D ? geom.signedAngleSph : geom.signedAngle,
       removed = 0,
@@ -70,7 +72,7 @@ internal.calcSimplifyStats = function(arcs, use3D) {
     collapsedRings: collapsedRings,
     removed: removed,
     retained: retained,
-    uniqueCount: internal.countUniqueVertices(arcs),
+    uniqueCount: countUniqueVertices(arcs),
     removableCount: removed + retained
   };
 
@@ -101,11 +103,11 @@ internal.calcSimplifyStats = function(arcs, use3D) {
     ];
   }
   return stats;
-};
+}
 
-internal.countUniqueVertices = function(arcs) {
+function countUniqueVertices(arcs) {
   // TODO: exclude any zero-length arcs
   var endpoints = arcs.size() * 2;
   var nodes = new NodeCollection(arcs).size();
   return arcs.getPointCount() - endpoints + nodes;
-};
+}

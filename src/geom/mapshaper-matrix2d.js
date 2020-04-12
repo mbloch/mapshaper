@@ -5,7 +5,7 @@
 //   b  d  ty
 //   0  0  1  (u v w are not used)
 //
-function Matrix2D() {
+export function Matrix2D() {
   this.a = 1;
   this.c = 0;
   this.tx = 0;

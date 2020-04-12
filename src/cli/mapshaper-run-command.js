@@ -1,75 +1,82 @@
-/* @requires
-mapshaper-affine
-mapshaper-buffer
-mapshaper-clean
-mapshaper-clip-erase
-mapshaper-cluster
-mapshaper-colorizer
-mapshaper-data-fill
-mapshaper-dissolve
-mapshaper-dissolve2
-mapshaper-divide
-mapshaper-dots
-mapshaper-drop
-mapshaper-export
-mapshaper-each
-mapshaper-external
-mapshaper-calc
-mapshaper-file-import
-mapshaper-file-export
-mapshaper-filter
-mapshaper-filter-geom
-mapshaper-filter-rename-fields
-mapshaper-filter-islands
-mapshaper-filter-islands2
-mapshaper-filter-slivers
-mapshaper-frame
-mapshaper-fuzzy-join
-mapshaper-graticule
-mapshaper-include
-mapshaper-info
-mapshaper-innerlines
-mapshaper-inspect
-mapshaper-join
-mapshaper-keep-shapes
-mapshaper-lines
-mapshaper-merge-files
-mapshaper-merge-layers
-mapshaper-mosaic
-mapshaper-points
-mapshaper-point-grid
-mapshaper-polygon-grid
-mapshaper-proj
-mapshaper-polygons
-mapshaper-rectangle
-mapshaper-rename-layers
-mapshaper-require
-mapshaper-run
-mapshaper-scalebar
-mapshaper-shape
-mapshaper-simplify
-mapshaper-variable-simplify
-mapshaper-snap
-mapshaper-sort
-mapshaper-split
-mapshaper-split-on-grid
-mapshaper-subdivide
-mapshaper-svg-style
-mapshaper-symbols
-mapshaper-target
-mapshaper-union
-mapshaper-uniq
-mapshaper-source-utils
-*/
+import { cleanupArcs, replaceLayers } from '../dataset/mapshaper-dataset-utils';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { setDatasetCRS, initProjLibrary } from '../geom/mapshaper-projections';
+import { getCrsInfo } from '../commands/mapshaper-proj';
+import { writeFiles } from '../io/mapshaper-file-export';
+import { exportTargetLayers } from '../io/mapshaper-export';
+import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
+import { getOptionParser } from '../cli/mapshaper-options';
+import { convertSourceName, findCommandSource } from '../dataset/mapshaper-source-utils';
+import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
+import { mergeCommandTargets } from '../dataset/mapshaper-merging';
+import { T } from '../utils/mapshaper-timing';
+import { stop, error, UserError } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import cmd from '../mapshaper-cmd';
 
-// TODO: consider refactoring to allow modules
-// @cmd  example: {name: "dissolve", options:{field: "STATE"}}
-// @catalog: Catalog object
-// @done callback: function(err, catalog)
-//
-api.runCommand = function(cmd, catalog, cb) {
-  var name = cmd.name,
-      opts = cmd.options,
+import '../commands/mapshaper-affine';
+import '../commands/mapshaper-buffer';
+import '../commands/mapshaper-calc';
+import '../commands/mapshaper-clean';
+import '../commands/mapshaper-clip-erase';
+import '../commands/mapshaper-cluster';
+import '../commands/mapshaper-colorizer';
+import '../commands/mapshaper-data-fill';
+import '../commands/mapshaper-dissolve';
+import '../commands/mapshaper-dissolve2';
+import '../commands/mapshaper-divide';
+import '../commands/mapshaper-dots';
+import '../commands/mapshaper-drop';
+import '../commands/mapshaper-each';
+import '../commands/mapshaper-explode';
+import '../io/mapshaper-export';
+import '../commands/mapshaper-external';
+import '../commands/mapshaper-frame';
+import '../commands/mapshaper-filter';
+import '../commands/mapshaper-filter-geom';
+import '../commands/mapshaper-filter-islands';
+import '../commands/mapshaper-filter-islands2';
+import '../commands/mapshaper-filter-rename-fields';
+import '../commands/mapshaper-filter-slivers';
+import '../commands/mapshaper-fuzzy-join';
+import '../commands/mapshaper-graticule';
+import '../commands/mapshaper-include';
+import '../commands/mapshaper-info';
+import '../commands/mapshaper-innerlines';
+import '../commands/mapshaper-inspect';
+import '../commands/mapshaper-join';
+import '../commands/mapshaper-lines';
+import '../commands/mapshaper-mosaic';
+import '../commands/mapshaper-points';
+import '../commands/mapshaper-polygon-grid';
+import '../commands/mapshaper-point-grid';
+import '../commands/mapshaper-polygons';
+import '../commands/mapshaper-proj';
+import '../commands/mapshaper-rectangle';
+import '../commands/mapshaper-rename-layers';
+import '../commands/mapshaper-require';
+import '../commands/mapshaper-run';
+import '../commands/mapshaper-scalebar';
+import '../commands/mapshaper-simplify';
+import '../commands/mapshaper-sort';
+import '../commands/mapshaper-snap';
+import '../commands/mapshaper-split';
+import '../commands/mapshaper-svg-style';
+import '../commands/mapshaper-symbols';
+import '../commands/mapshaper-target';
+import '../commands/mapshaper-union';
+import '../commands/mapshaper-uniq';
+import '../io/mapshaper-file-import';
+import '../commands/mapshaper-merge-layers';
+import '../commands/mapshaper-shape';
+import '../simplify/mapshaper-variable-simplify';
+import '../commands/mapshaper-split-on-grid';
+import '../commands/mapshaper-subdivide';
+
+
+export function runCommand(command, catalog, cb) {
+  var name = command.name,
+      opts = command.options,
       source,
       outputDataset,
       outputLayers,
@@ -106,7 +113,7 @@ api.runCommand = function(cmd, catalog, cb) {
       // special case to allow -merge-layers and -union to combine layers from multiple datasets
       // TODO: support multi-dataset targets for other commands
       if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
-        targets = internal.mergeCommandTargets(targets, catalog);
+        targets = mergeCommandTargets(targets, catalog);
       }
 
       if (targets.length == 1) {
@@ -124,7 +131,7 @@ api.runCommand = function(cmd, catalog, cb) {
     if (targets.length === 0) {
       if (opts.target) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
-            opts.target, internal.getFormattedLayerList(catalog)));
+            opts.target, getFormattedLayerList(catalog)));
       }
       if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
@@ -134,168 +141,166 @@ api.runCommand = function(cmd, catalog, cb) {
     }
 
     if (opts.source) {
-      source = internal.findCommandSource(internal.convertSourceName(opts.source, targets), catalog, opts);
+      source = findCommandSource(convertSourceName(opts.source, targets), catalog, opts);
     }
 
     if (name == 'affine') {
-      api.affine(targetLayers, targetDataset, opts);
+      cmd.affine(targetLayers, targetDataset, opts);
 
     } else if (name == 'buffer') {
-      // applyCommandToEachLayer(api.buffer, targetLayers, targetDataset, opts);
-      outputLayers = api.buffer(targetLayers, targetDataset, opts);
+      // applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
+      outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
 
     } else if (name == 'data-fill') {
-      applyCommandToEachLayer(api.dataFill, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.dataFill, targetLayers, arcs, opts);
 
     } else if (name == 'cluster') {
-      applyCommandToEachLayer(api.cluster, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.cluster, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {
-      applyCommandToEachLayer(api.calc, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clean') {
-      api.cleanLayers(targetLayers, targetDataset, opts);
+      cmd.cleanLayers(targetLayers, targetDataset, opts);
 
     } else if (name == 'clip') {
-      outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
+      outputLayers = cmd.clipLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'colorizer') {
-      outputLayers = api.colorizer(opts);
+      outputLayers = cmd.colorizer(opts);
 
     } else if (name == 'dissolve') {
-      outputLayers = applyCommandToEachLayer(api.dissolve, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
-      outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
+      outputLayers = cmd.dissolve2(targetLayers, targetDataset, opts);
 
     } else if (name == 'divide') {
-      api.divide(targetLayers, targetDataset, source, opts);
+      cmd.divide(targetLayers, targetDataset, source, opts);
 
     } else if (name == 'dots') {
-      outputLayers = applyCommandToEachLayer(api.dots, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(cmd.dots, targetLayers, arcs, opts);
 
     } else if (name == 'drop') {
-      api.drop2(catalog, targets, opts);
-      // api.drop(catalog, targetLayers, targetDataset, opts);
+      cmd.drop2(catalog, targets, opts);
+      // cmd.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
-      applyCommandToEachLayer(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
+      applyCommandToEachLayer(cmd.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
     } else if (name == 'erase') {
-      outputLayers = api.eraseLayers(targetLayers, source, targetDataset, opts);
+      outputLayers = cmd.eraseLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'explode') {
-      outputLayers = applyCommandToEachLayer(api.explodeFeatures, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(cmd.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'external') {
-      internal.external(opts);
+      cmd.external(opts);
 
     } else if (name == 'filter') {
-      outputLayers = applyCommandToEachLayer(api.filterFeatures, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
-      applyCommandToEachLayer(api.filterFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(cmd.filterFields, targetLayers, opts.fields);
 
     } else if (name == 'filter-geom') {
-      applyCommandToEachLayer(api.filterGeom, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.filterGeom, targetLayers, arcs, opts);
 
     } else if (name == 'filter-islands') {
-      applyCommandToEachLayer(api.filterIslands, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(cmd.filterIslands, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-islands2') {
-      applyCommandToEachLayer(api.filterIslands2, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(cmd.filterIslands2, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-slivers') {
-      applyCommandToEachLayer(api.filterSlivers, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'frame') {
-      api.frame(catalog, source, opts);
+      cmd.frame(catalog, source, opts);
 
     } else if (name == 'fuzzy-join') {
-      applyCommandToEachLayer(api.fuzzyJoin, targetLayers, arcs, source, opts);
+      applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
-      catalog.addDataset(api.graticule(targetDataset, opts));
+      catalog.addDataset(cmd.graticule(targetDataset, opts));
 
-    } else if (cmd.name == 'help') {
+    } else if (name == 'help') {
       // placing this here to handle errors from invalid command names
-      internal.getOptionParser().printHelp(cmd.options.command);
+      getOptionParser().printHelp(command.options.command);
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
-      targetDataset = api.importFiles(cmd.options);
+      targetDataset = cmd.importFiles(command.options);
       if (targetDataset) {
         catalog.addDataset(targetDataset);
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
 
     } else if (name == 'include') {
-      internal.include(opts);
+      cmd.include(opts);
 
     } else if (name == 'info') {
-      // internal.printInfo(catalog.getLayers(), targetLayers);
-      internal.printInfo(internal.expandCommandTargets(targets));
+      cmd.printInfo(expandCommandTargets(targets));
 
     } else if (name == 'inspect') {
-      applyCommandToEachLayer(api.inspect, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.inspect, targetLayers, arcs, opts);
 
     } else if (name == 'innerlines') {
-      outputLayers = applyCommandToEachLayer(api.innerlines, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(cmd.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
-      applyCommandToEachLayer(api.join, targetLayers, targetDataset, source, opts);
+      applyCommandToEachLayer(cmd.join, targetLayers, targetDataset, source, opts);
 
     } else if (name == 'lines') {
-      outputLayers = applyCommandToEachLayer(api.lines, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(cmd.lines, targetLayers, targetDataset, opts);
 
     } else if (name == 'merge-layers') {
       // returned layers are modified input layers
       // (assumes that targetLayers are replaced by outputLayers below)
-      outputLayers = api.mergeLayers(targetLayers, opts);
+      outputLayers = cmd.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {
       // opts.no_replace = true; // add mosaic as a new layer
-      // outputLayers = internal.mosaic(targetDataset, opts);
-      outputLayers = api.mosaic(targetLayers, targetDataset, opts);
+      outputLayers = cmd.mosaic(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
-      outputFiles = internal.exportTargetLayers(targets, opts);
+      outputFiles = exportTargetLayers(targets, opts);
       if (opts.final) {
         // don't propagate data if output is final
         catalog = null;
       }
-      return internal.writeFiles(outputFiles, opts, done);
+      return writeFiles(outputFiles, opts, done);
 
     } else if (name == 'point-grid') {
-      outputLayers = [api.pointGrid(targetDataset, opts)];
+      outputLayers = [cmd.pointGrid(targetDataset, opts)];
       if (!targetDataset) {
         catalog.addDataset({layers: outputLayers});
       }
 
     } else if (name == 'grid') {
-      outputDataset = api.polygonGrid(targetLayers, targetDataset, opts);
+      outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
 
     } else if (name == 'points') {
-      outputLayers = applyCommandToEachLayer(api.createPointLayer, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(cmd.createPointLayer, targetLayers, targetDataset, opts);
 
     } else if (name == 'polygons') {
-      outputLayers = api.polygons(targetLayers, targetDataset, opts);
+      outputLayers = cmd.polygons(targetLayers, targetDataset, opts);
 
     } else if (name == 'proj') {
-      internal.initProjLibrary(opts, function() {
+      initProjLibrary(opts, function() {
         var err = null;
         try {
           targets.forEach(function(targ) {
             var destArg = opts.match || opts.crs || opts.projection;
             var srcInfo, destInfo;
             if (opts.from) {
-              srcInfo = internal.getCrsInfo(opts.from, catalog);
+              srcInfo = getCrsInfo(opts.from, catalog);
               if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
-              internal.setDatasetCRS(targ.dataset, srcInfo);
+              setDatasetCRS(targ.dataset, srcInfo);
             }
             if (destArg) {
-              destInfo = internal.getCrsInfo(destArg, catalog);
-              api.proj(targ.dataset, destInfo, opts);
+              destInfo = getCrsInfo(destArg, catalog);
+              cmd.proj(targ.dataset, destInfo, opts);
             }
           });
         } catch(e) {
@@ -307,79 +312,79 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'rectangle') {
       if (source || opts.bbox || targets.length === 0) {
-        catalog.addDataset(api.rectangle(source, opts));
+        catalog.addDataset(cmd.rectangle(source, opts));
       } else {
-        outputLayers = api.rectangle2(targets[0], opts);
+        outputLayers = cmd.rectangle2(targets[0], opts);
       }
 
     } else if (name == 'rectangles') {
-      outputLayers = applyCommandToEachLayer(api.rectangles, targetLayers, targetDataset, opts);
+      outputLayers = applyCommandToEachLayer(cmd.rectangles, targetLayers, targetDataset, opts);
 
     } else if (name == 'rename-fields') {
-      applyCommandToEachLayer(api.renameFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
-      api.renameLayers(targetLayers, opts.names);
+      cmd.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'require') {
-      api.require(targets, opts);
+      cmd.require(targets, opts);
 
     } else if (name == 'run') {
-      api.run(targets, catalog, opts, done);
+      cmd.run(targets, catalog, opts, done);
       return;
 
     } else if (name == 'scalebar') {
-      api.scalebar(catalog, opts);
+      cmd.scalebar(catalog, opts);
 
     } else if (name == 'shape') {
-      catalog.addDataset(api.shape(opts));
+      catalog.addDataset(cmd.shape(opts));
 
     } else if (name == 'simplify') {
       if (opts.variable) {
-        api.variableSimplify(targetLayers, targetDataset, opts);
+        cmd.variableSimplify(targetLayers, targetDataset, opts);
       } else {
-        api.simplify(targetDataset, opts);
+        cmd.simplify(targetDataset, opts);
       }
 
     } else if (name == 'slice') {
-      outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
+      outputLayers = cmd.sliceLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'snap') {
-      api.snap(targetDataset, opts);
+      cmd.snap(targetDataset, opts);
 
     } else if (name == 'sort') {
-      applyCommandToEachLayer(api.sortFeatures, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      outputLayers = applyCommandToEachLayer(api.splitLayer, targetLayers, opts.expression, opts);
+      outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
 
     } else if (name == 'split-on-grid') {
-      outputLayers = applyCommandToEachLayer(api.splitLayerOnGrid, targetLayers, arcs, opts);
+      outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
-      api.stitch(targetDataset);
+      cmd.stitch(targetDataset);
 
     } else if (name == 'style') {
-      applyCommandToEachLayer(api.svgStyle, targetLayers, targetDataset, opts);
+      applyCommandToEachLayer(cmd.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'symbols') {
-      applyCommandToEachLayer(api.symbols, targetLayers, opts);
+      applyCommandToEachLayer(cmd.symbols, targetLayers, opts);
 
     } else if (name == 'subdivide') {
-      outputLayers = applyCommandToEachLayer(api.subdivideLayer, targetLayers, arcs, opts.expression);
+      outputLayers = applyCommandToEachLayer(cmd.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'target') {
-      internal.target(catalog, opts);
+      cmd.target(catalog, opts);
 
     } else if (name == 'union') {
-      outputLayers = api.union(targetLayers, targetDataset, opts);
+      outputLayers = cmd.union(targetLayers, targetDataset, opts);
 
     } else if (name == 'uniq') {
-      applyCommandToEachLayer(api.uniq, targetLayers, arcs, opts);
+      applyCommandToEachLayer(cmd.uniq, targetLayers, arcs, opts);
 
     } else {
-      // throws error if cmd is not registered
-      internal.runExternalCommand(cmd, catalog);
+      // throws error if command is not registered
+      cmd.runExternalCommand(command, catalog);
     }
 
     // apply name parameter
@@ -403,18 +408,18 @@ api.runCommand = function(cmd, catalog, cb) {
       // integrate output layers into the target dataset
       if (opts.no_replace) {
         // make sure commands do not return input layers with 'no_replace' option
-        if (!internal.outputLayersAreDifferent(outputLayers, targetLayers || [])) {
+        if (!outputLayersAreDifferent(outputLayers, targetLayers || [])) {
           error('Command returned invalid output');
         }
 
         targetDataset.layers = targetDataset.layers.concat(outputLayers);
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
-        internal.replaceLayers(targetDataset, targetLayers, outputLayers);
+        replaceLayers(targetDataset, targetLayers, outputLayers);
         // some operations leave unreferenced arcs that should be cleaned up
         if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
             name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
-          internal.dissolveArcs(targetDataset);
+          dissolveArcs(targetDataset);
         }
       }
       // use command output as new default target
@@ -426,7 +431,7 @@ api.runCommand = function(cmd, catalog, cb) {
     // delete arcs if no longer needed (e.g. after -points command)
     // (after output layers have been integrated)
     if (targetDataset) {
-      internal.cleanupArcs(targetDataset);
+      cleanupArcs(targetDataset);
     }
   } catch(e) {
     return done(e);
@@ -438,13 +443,13 @@ api.runCommand = function(cmd, catalog, cb) {
     T.stop('-');
     cb(err, err ? null : catalog);
   }
-};
+}
 
-internal.outputLayersAreDifferent = function(output, input) {
+function outputLayersAreDifferent(output, input) {
   return !utils.some(input, function(lyr) {
     return output.indexOf(lyr) > -1;
   });
-};
+}
 
 
 // Apply a command to an array of target layers

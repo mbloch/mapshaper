@@ -1,6 +1,8 @@
-/* @requires mapshaper-common, mapshaper-option-parsing-utils */
+import { parseStringList, parseColorList, cleanArgv } from '../cli/mapshaper-option-parsing-utils';
+import utils from '../utils/mapshaper-utils';
+import { stop, print, error } from '../utils/mapshaper-logging';
 
-function CommandParser() {
+export function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
       invalidCommandRxp = /^--?[a-z][\w-]*[=]/i, // e.g. -target=A // could be more general
       assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
@@ -45,7 +47,7 @@ function CommandParser() {
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
         commands = [], cmd,
-        argv = internal.cleanArgv(raw),
+        argv = cleanArgv(raw),
         cmdName, cmdDef, opt;
 
     if (argv.length == 1 && tokenIsCommandName(argv[0])) {
@@ -182,9 +184,9 @@ function CommandParser() {
       } else if (type == 'integer') {
         val = Math.round(Number(token));
       } else if (type == 'colors') {
-        val = internal.parseColorList(token);
+        val = parseColorList(token);
       } else if (type == 'strings') {
-        val = internal.parseStringList(token);
+        val = parseStringList(token);
       } else if (type == 'bbox' || type == 'numbers') {
         val = token.split(',').map(parseFloat);
       } else if (type == 'percent') {

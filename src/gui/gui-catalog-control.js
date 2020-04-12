@@ -1,5 +1,6 @@
+import { utils } from './gui-core';
 
-function CatalogControl(gui, catalog, onSelect) {
+export function CatalogControl(gui, catalog, onSelect) {
   var self = this,
       container = gui.container.findChild('.file-catalog'),
       cols = catalog.cols,
@@ -7,7 +8,7 @@ function CatalogControl(gui, catalog, onSelect) {
       items = catalog.items,
       n = items.length,
       row = 0,
-      html;
+      html, rows;
 
   this.reset = function() {
     enabled = true;
@@ -22,7 +23,7 @@ function CatalogControl(gui, catalog, onSelect) {
     return;
   }
 
- gui.container.addClass('catalog-mode');
+  gui.container.addClass('catalog-mode');
 
   if (!cols) {
     cols = Math.ceil(Math.sqrt(n));

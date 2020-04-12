@@ -1,9 +1,8 @@
-/* @requires mapshaper-common */
 
 // Returns a search function
 // Receives array of objects to index; objects must have a 'bounds' member
 //    that is a Bounds object.
-internal.getBoundsSearchFunction = function(boxes) {
+export function getBoundsSearchFunction(boxes) {
   var index, Flatbush;
   if (!boxes.length) {
     // Unlike rbush, flatbush doesn't allow size 0 indexes; workaround
@@ -26,4 +25,4 @@ internal.getBoundsSearchFunction = function(boxes) {
   return function(a, b, c, d) {
     return index.search(a, b, c, d).map(idxToObj);
   };
-};
+}

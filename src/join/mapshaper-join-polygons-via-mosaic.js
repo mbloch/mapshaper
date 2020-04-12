@@ -1,13 +1,17 @@
-/*
-@requires mapshaper-mosaic-index mapshaper-union
-*/
+import { joinTables } from '../join/mapshaper-join-tables';
+import { prepJoinLayers } from '../join/mapshaper-point-polygon-join';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { mergeLayersForOverlay } from '../clipping/mapshaper-overlay-utils';
+import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
 
-internal.joinPolygonsViaMosaic = function(targetLyr, targetDataset, source, opts) {
-  var mergedDataset = internal.mergeLayersForOverlay([targetLyr], targetDataset, source, opts);
-  var nodes = internal.addIntersectionCuts(mergedDataset, opts);
+export function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
+  var mergedDataset = mergeLayersForOverlay([targetLyr], targetDataset, source, opts);
+  var nodes = addIntersectionCuts(mergedDataset, opts);
   var sourceLyr = mergedDataset.layers.pop();
   targetDataset.arcs = mergedDataset.arcs;
-  internal.prepJoinLayers(targetLyr, sourceLyr);
+  prepJoinLayers(targetLyr, sourceLyr);
   var mergedLyr = {
     geometry_type: 'polygon',
     shapes: targetLyr.shapes.concat(sourceLyr.shapes)
@@ -15,16 +19,16 @@ internal.joinPolygonsViaMosaic = function(targetLyr, targetDataset, source, opts
   var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
 
   var joinOpts = utils.extend({}, opts);
-  var joinFunction = internal.getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex);
-  var retn = internal.joinTables(targetLyr.data, sourceLyr.data, joinFunction, joinOpts);
+  var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex);
+  var retn = joinTables(targetLyr.data, sourceLyr.data, joinFunction, joinOpts);
 
   if (opts.interpolate) {
-    internal.interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
+    interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
   }
   return retn;
-};
+}
 
-internal.interpolateFieldsByArea = function(destLyr, sourceLyr, mosaicIndex, opts) {
+function interpolateFieldsByArea(destLyr, sourceLyr, mosaicIndex, opts) {
   var sourceFields = opts.interpolate;
   var getShapeArea = opts.planar ? geom.getPlanarShapeArea : geom.getShapeArea;
   var sourceLen = sourceLyr.shapes.length;
@@ -64,12 +68,12 @@ internal.interpolateFieldsByArea = function(destLyr, sourceLyr, mosaicIndex, opt
     }
     for (i=0; i<sourceFields.length; i++) {
       field = sourceFields[i];
-      destRec[field] = internal.getInterpolatedValue(field, tileRecords, sourceRecords);
+      destRec[field] = getInterpolatedValue(field, tileRecords, sourceRecords);
     }
   });
-};
+}
 
-internal.getInterpolatedValue = function(field, tileRecords, sourceRecords) {
+function getInterpolatedValue(field, tileRecords, sourceRecords) {
   var value = 0, tileRec, sourceRec;
   for (var i=0; i<tileRecords.length; i++) {
     tileRec = tileRecords[i];
@@ -78,9 +82,9 @@ internal.getInterpolatedValue = function(field, tileRecords, sourceRecords) {
     value += tileRec.weight * sourceRec[field];
   }
   return value;
-};
+}
 
-internal.getIdConversionFunction = function(offset, length) {
+function getIdConversionFunction(offset, length) {
   return function (mergedIds) {
     var ids = [], id;
     for (var i=0; i<mergedIds.length; i++) {
@@ -89,11 +93,11 @@ internal.getIdConversionFunction = function(offset, length) {
     }
     return ids;
   };
-};
+}
 
 // Returned function converts a target layer feature id to multiple source feature ids
-internal.getPolygonToPolygonFunction = function(targetLyr, srcLyr, mosaicIndex) {
-  var mergedToSourceIds = internal.getIdConversionFunction(targetLyr.shapes.length, srcLyr.shapes.length);
+function getPolygonToPolygonFunction(targetLyr, srcLyr, mosaicIndex) {
+  var mergedToSourceIds = getIdConversionFunction(targetLyr.shapes.length, srcLyr.shapes.length);
   return function(targId) {
     var tileIds = mosaicIndex.getTileIdsByShapeId(targId);
     var sourceIds = [], tmp;
@@ -105,4 +109,4 @@ internal.getPolygonToPolygonFunction = function(targetLyr, srcLyr, mosaicIndex) 
     sourceIds = utils.uniq(sourceIds);
     return sourceIds;
   };
-};
+}

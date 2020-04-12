@@ -1,26 +1,32 @@
-/* @require mapshaper-dataset-utils mapshaper-furniture */
+import { getFrameSize } from '../commands/mapshaper-frame';
+import { transformPoints, getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getFurnitureLayerData } from '../furniture/mapshaper-furniture';
+import { findFrameLayerInDataset } from '../commands/mapshaper-frame';
+import { Bounds } from '../geom/mapshaper-bounds';
+import utils from '../utils/mapshaper-utils';
+import { error } from '../utils/mapshaper-logging';
 
-internal.transformDatasetToPixels = function(dataset, opts) {
-  var frameLyr = internal.findFrameLayerInDataset(dataset);
+export function transformDatasetToPixels(dataset, opts) {
+  var frameLyr = findFrameLayerInDataset(dataset);
   var bounds, bounds2, fwd, frameData;
   if (frameLyr) {
     // TODO: handle options like width, height margin when a frame is present
     // TODO: check that aspect ratios match
-    frameData = internal.getFurnitureLayerData(frameLyr);
+    frameData = getFurnitureLayerData(frameLyr);
     bounds = new Bounds(frameData.bbox);
     bounds2 = new Bounds(0, 0, frameData.width, frameData.height);
   } else {
-    bounds = internal.getDatasetBounds(dataset);
-    bounds2 = internal.calcOutputSizeInPixels(bounds, opts);
+    bounds = getDatasetBounds(dataset);
+    bounds2 = calcOutputSizeInPixels(bounds, opts);
   }
   fwd = bounds.getTransform(bounds2, opts.invert_y);
-  internal.transformPoints(dataset, function(x, y) {
+  transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
   return [Math.round(bounds2.width()), Math.round(bounds2.height()) || 1];
-};
+}
 
-internal.parseMarginOption = function(opt) {
+export function parseMarginOption(opt) {
   var str = utils.isNumber(opt) ? String(opt) : opt || '';
   var margins = str.trim().split(/[, ] */);
   if (margins.length == 1) margins.push(margins[0]);
@@ -30,17 +36,17 @@ internal.parseMarginOption = function(opt) {
     var px = parseFloat(str);
     return isNaN(px) ? 1 : px; // 1 is default
   });
-};
+}
 
 // bounds: Bounds object containing bounds of content in geographic coordinates
 // returns Bounds object containing bounds of pixel output
 // side effect: bounds param is modified to match the output frame
-internal.calcOutputSizeInPixels = function(bounds, opts) {
+export function calcOutputSizeInPixels(bounds, opts) {
   var padX = 0,
       padY = 0,
       width = bounds.width(),
       height = bounds.height(),
-      margins = internal.parseMarginOption(opts.margin),
+      margins = parseMarginOption(opts.margin),
       marginX = margins[0] + margins[2],
       marginY = margins[1] + margins[3],
       // TODO: add option to tweak alignment of content when both width and height are given
@@ -54,7 +60,7 @@ internal.calcOutputSizeInPixels = function(bounds, opts) {
     widthPx = width / opts.svg_scale + marginX;
     heightPx = 0;
   } else if (+opts.pixels) {
-    size = internal.getFrameSize(bounds, opts);
+    size = getFrameSize(bounds, opts);
     widthPx = size[0];
     heightPx = size[1];
   } else {
@@ -106,4 +112,4 @@ internal.calcOutputSizeInPixels = function(bounds, opts) {
   }
 
   return new Bounds(0, 0, widthPx, heightPx);
-};
+}

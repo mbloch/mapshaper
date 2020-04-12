@@ -1,6 +1,8 @@
-/* @require gui-hit-test */
+import { getPointerHitTest } from './gui-hit-test';
+import { utils } from './gui-core';
+import { EventDispatcher } from './gui-events';
 
-function InteractiveSelection(gui, ext, mouse) {
+export function InteractiveSelection(gui, ext, mouse) {
   var self = new EventDispatcher();
   var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var selectionIds = [];
@@ -15,7 +17,7 @@ function InteractiveSelection(gui, ext, mouse) {
   self.setLayer = function(mapLayer) {
     hitTest = getPointerHitTest(mapLayer, ext);
     if (!hitTest) {
-      hitText = function() {return {ids: []};};
+      hitTest = function() {return {ids: []};};
     }
     targetLayer = mapLayer;
     // deselect any  selection

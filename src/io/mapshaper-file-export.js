@@ -1,6 +1,19 @@
-/* @require mapshaper-common */
+import { stop, message } from '../utils/mapshaper-logging';
+import { getStateVar } from '../mapshaper-state';
+import cli from '../cli/mapshaper-cli-utils';
+import utils from '../utils/mapshaper-utils';
 
-internal.writeFiles = function(exports, opts, cb) {
+export function writeFiles(exports, opts, cb) {
+  return _writeFiles(exports, opts, cb);
+}
+
+// Used by GUI to replace the CLI version of writeFiles()
+// (so -o can work in the browser console)
+export function replaceWriteFiles(func) {
+  _writeFiles = func;
+}
+
+var _writeFiles = function(exports, opts, cb) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.dry_run) {
@@ -10,8 +23,8 @@ internal.writeFiles = function(exports, opts, cb) {
     // trigger EAGAIN error, e.g. when piped to less)
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
-    var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
-    var inputFiles = internal.getStateVar('input_files');
+    var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
+    var inputFiles = getStateVar('input_files');
     exports.forEach(function(obj, i) {
       var path = paths[i];
       if (obj.content instanceof ArrayBuffer) {
@@ -32,7 +45,7 @@ internal.writeFiles = function(exports, opts, cb) {
   if (cb) cb(null);
 };
 
-internal.getOutputPaths = function(files, opts) {
+export function getOutputPaths(files, opts) {
   var odir = opts.directory;
   if (odir) {
     files = files.map(function(file) {
@@ -40,4 +53,4 @@ internal.getOutputPaths = function(files, opts) {
     });
   }
   return files;
-};
+}

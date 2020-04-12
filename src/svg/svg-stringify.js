@@ -1,8 +1,11 @@
-/* @require svg-common mapshaper-sha1 */
+import utils from '../utils/mapshaper-utils';
+import { sha1 } from '../utils/mapshaper-sha1';
+import { stop } from '../utils/mapshaper-logging';
+import { runningInBrowser } from '../mapshaper-state';
 
-SVG.embedImages = function(obj, symbols) {
+export function embedImages(obj, symbols) {
   // Same-origin policy is an obstacle to embedding images in web UI
-  if (internal.runningInBrowser()) return;
+  if (runningInBrowser()) return;
   procNode(obj);
 
   function procNode(obj) {
@@ -26,7 +29,7 @@ SVG.embedImages = function(obj, symbols) {
     if (!item) {
       item = {
         href: href,
-        id: SVG.urlToId(href) // generating id from href, to try to support multiple inline svgs on page
+        id: urlToId(href) // generating id from href, to try to support multiple inline svgs on page
       };
       // item.svg = convertSvgToSymbol(getSvgFile(href), item.id) + '\n';
       item.svg = convertSvg(getSvgFile(href), item.id) + '\n';
@@ -76,19 +79,19 @@ SVG.embedImages = function(obj, symbols) {
       return a;
     });
   }
-};
+}
 
-SVG.urlToId = function(url) {
-  return utils.sha1(url).substr(0, 12);
-};
+function urlToId(url) {
+  return sha1(url).substr(0, 12);
+}
 
-SVG.stringify = function(obj) {
+export function stringify(obj) {
   var svg, joinStr;
   if (!obj || !obj.tag) return '';
   svg = '<' + obj.tag;
   // w.s. is significant in text elements
   if (obj.properties) {
-    svg += SVG.stringifyProperties(obj.properties);
+    svg += stringifyProperties(obj.properties);
   }
   if (obj.children || obj.value) {
     joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
@@ -97,34 +100,32 @@ SVG.stringify = function(obj) {
       svg += obj.value;
     }
     if (obj.children) {
-      svg += obj.children.map(SVG.stringify).join(joinStr);
+      svg += obj.children.map(stringify).join(joinStr);
     }
     svg += joinStr + '</' + obj.tag + '>';
   } else {
     svg += '/>';
   }
   return svg;
-};
+}
 
-SVG.stringEscape = (function() {
-  // Replace some chars with XML "predefined entities" to avoid parsing errors
-  // https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references#Predefined_entities_in_XML
-  var rxp = /[&<>"']/g,
-      map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&apos;'
-      };
-  return function(s) {
-    return String(s).replace(rxp, function(s) {
-      return map[s];
-    });
-  };
-}());
+// Replace some chars with XML "predefined entities" to avoid parsing errors
+// https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references#Predefined_entities_in_XML
+var rxp = /[&<>"']/g,
+    map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&apos;'
+    };
+export function stringEscape(s) {
+  return String(s).replace(rxp, function(s) {
+    return map[s];
+  });
+}
 
-SVG.stringifyProperties = function(o) {
+export function stringifyProperties(o) {
   return Object.keys(o).reduce(function(memo, key) {
     var val = o[key],
         strval;
@@ -133,6 +134,6 @@ SVG.stringifyProperties = function(o) {
     if (key == 'href') {
       key = 'xlink:href';
     }
-    return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
+    return memo + ' ' + key + '="' + stringEscape(strval) + '"';
   }, '');
-};
+}

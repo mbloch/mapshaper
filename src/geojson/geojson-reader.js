@@ -1,10 +1,9 @@
-/* @requires mapshaper-encodings, mapshaper-file-reader */
-
-internal.GeoJSONReader = GeoJSONReader;
+import { bufferToString } from '../text/mapshaper-encodings';
+import { stop } from '../utils/mapshaper-logging';
 
 // Read GeoJSON Features or geometry objects from a file
 // @reader: a FileReader
-function GeoJSONReader(reader) {
+export function GeoJSONReader(reader) {
 
   // Read objects synchronously, with callback
   this.readObjects = function(onObject) {
@@ -84,7 +83,7 @@ function GeoJSONReader(reader) {
         level--;
         if (level === 0) {
           retn = {
-            text: internal.bufferToString(buf, 'utf8', startPos, i + 1),
+            text: bufferToString(buf, 'utf8', startPos, i + 1),
             start: startPos,
             end: offs + i + 1
           };

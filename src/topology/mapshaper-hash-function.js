@@ -1,7 +1,6 @@
 
-
 // Get function to Hash an x, y point to a non-negative integer
-function getXYHash(size) {
+export function getXYHash(size) {
   var buf = new ArrayBuffer(16),
       floats = new Float64Array(buf),
       uints = new Uint32Array(buf),
@@ -21,7 +20,7 @@ function getXYHash(size) {
 }
 
 // Get function to Hash a single coordinate to a non-negative integer
-function getXHash(size) {
+export function getXHash(size) {
   var buf = new ArrayBuffer(8),
       floats = new Float64Array(buf),
       uints = new Uint32Array(buf),

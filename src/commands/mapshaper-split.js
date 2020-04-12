@@ -1,20 +1,24 @@
-/* @requires mapshaper-common */
-
+import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { copyLayer } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
+import { DataTable } from '../datatable/mapshaper-data-table';
 // @expression: optional field name or expression
 //
-api.splitLayer = function(src, expression, opts) {
-  var lyr0 = opts && opts.no_replace ? internal.copyLayer(src) : src,
+cmd.splitLayer = function(src, expression, opts) {
+  var lyr0 = opts && opts.no_replace ? copyLayer(src) : src,
       properties = lyr0.data ? lyr0.data.getRecords() : null,
       shapes = lyr0.shapes,
       index = {},
       splitLayers = [],
-      namer = internal.getSplitNameFunction(lyr0, expression);
+      namer = getSplitNameFunction(lyr0, expression);
 
   // if (splitField) {
   //   internal.requireDataField(lyr0, splitField);
   // }
 
-  utils.repeat(internal.getFeatureCount(lyr0), function(i) {
+  utils.repeat(getFeatureCount(lyr0), function(i) {
     var name = namer(i),
         lyr;
 
@@ -40,7 +44,7 @@ api.splitLayer = function(src, expression, opts) {
   return splitLayers;
 };
 
-internal.getSplitNameFunction = function(lyr, exp) {
+export function getSplitNameFunction(lyr, exp) {
   var compiled;
   if (!exp) {
     // if not splitting on an expression and layer is unnamed, name split-apart layers
@@ -50,13 +54,13 @@ internal.getSplitNameFunction = function(lyr, exp) {
     };
   }
   lyr = {name: lyr.name, data: lyr.data}; // remove shape info
-  compiled = internal.compileValueExpression(exp, lyr, null);
+  compiled = compileValueExpression(exp, lyr, null);
   return function(i) {
     var val = compiled(i);
     return String(val);
     // return val || val === 0 ? String(val) : '';
   };
-};
+}
 
 
 // internal.getSplitKey = function(i, field, properties) {

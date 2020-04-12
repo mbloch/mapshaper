@@ -1,12 +1,13 @@
-/* @requires mapshaper-common, topojson-import, topojson-arc-prune */
+import { pruneArcs } from '../dataset/mapshaper-dataset-utils';
+import utils from '../utils/mapshaper-utils';
 
 // not in use
 
 // Divide a TopoJSON topology into multiple topologies, one for each
 // named geometry object.
 // Arcs are filtered and arc ids are reindexed as needed.
-//
-TopoJSON.splitTopology = function(topology) {
+
+function splitTopology(topology) {
   var topologies = {};
   Object.keys(topology.objects).forEach(function(name) {
     var split = {
@@ -16,8 +17,8 @@ TopoJSON.splitTopology = function(topology) {
     };
     split.objects[name] = topology.objects[name];
     utils.defaults(split, topology);
-    TopoJSON.pruneArcs(split);
+    pruneArcs(split);
     topologies[name] = split;
   });
   return topologies;
-};
+}

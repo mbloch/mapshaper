@@ -1,6 +1,6 @@
+import { utils, geom, internal, error } from './gui-core';
 
-
-function getShapeHitTest(displayLayer, ext) {
+export function getShapeHitTest(displayLayer, ext) {
   var geoType = displayLayer.layer.geometry_type;
   var test;
   if (geoType == 'point' && displayLayer.style.type == 'styled') {

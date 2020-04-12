@@ -1,20 +1,21 @@
-/* @requires mapshaper-common */
+import { error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
 // convert targets from [{layers: [...], dataset: <>}, ...] format to
 // [{layer: <>, dataset: <>}, ...] format
-internal.expandCommandTargets = function(targets) {
+export function expandCommandTargets(targets) {
   return targets.reduce(function(memo, target) {
     target.layers.forEach(function(lyr) {
       memo.push({layer: lyr, dataset: target.dataset});
     });
     return memo;
   }, []);
-};
+}
 
-internal.findCommandTargets = function(catalog, pattern, type) {
+export function findCommandTargets(catalog, pattern, type) {
   var targets = [];
   var layers = utils.pluck(catalog.getLayers(), 'layer');
-  var matches = internal.findMatchingLayers(layers, pattern);
+  var matches = findMatchingLayers(layers, pattern);
   if (type) matches = matches.filter(function(lyr) {return lyr.geometry_type == type;});
   catalog.getDatasets().forEach(function(dataset) {
     var layers = dataset.layers.filter(function(lyr) {
@@ -28,16 +29,16 @@ internal.findCommandTargets = function(catalog, pattern, type) {
     }
   });
   return targets;
-};
+}
 
 // @pattern is a layer identifier or a comma-sep. list of identifiers.
 // An identifier is a literal name, a pattern containing "*" wildcard or
 // a 1-based index (1..n)
-internal.findMatchingLayers = function(layers, pattern) {
+export function findMatchingLayers(layers, pattern) {
   var matches = [];
   var index = {};
   pattern.split(',').forEach(function(subpattern, i) {
-    var test = internal.getLayerMatch(subpattern);
+    var test = getLayerMatch(subpattern);
     layers.forEach(function(lyr, layerId) {
       // if (matches.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
       if (layerId in index) return;
@@ -51,25 +52,25 @@ internal.findMatchingLayers = function(layers, pattern) {
     });
   });
   return matches;
-};
+}
 
-internal.getLayerMatch = function(pattern) {
+export function getLayerMatch(pattern) {
   var isIndex = utils.isInteger(Number(pattern));
   var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
   return function(lyr, i) {
     return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
   };
-};
+}
 
-internal.countTargetLayers = function(targets) {
+export function countTargetLayers(targets) {
   return targets.reduce(function(memo, target) {
     return memo + target.layers.length;
   }, 0);
-};
+}
 
 // get an identifier for a layer that can be used in a target= option
 // (returns name if layer has a unique name, or a numerical id)
-internal.getLayerTargetId = function(catalog, lyr) {
+export function getLayerTargetId(catalog, lyr) {
   var nameCount = 0,
       name = lyr.name,
       id;
@@ -79,4 +80,4 @@ internal.getLayerTargetId = function(catalog, lyr) {
   });
   if (!id) error('Layer not found');
   return nameCount == 1 ? lyr.name : id;
-};
+}

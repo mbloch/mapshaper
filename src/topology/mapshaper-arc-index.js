@@ -1,8 +1,9 @@
-/* @requires mapshaper-common, mapshaper-hash-function */
+import { getXYHash } from '../topology/mapshaper-hash-function';
+import utils from '../utils/mapshaper-utils';
 
 // Used for building topology
 //
-function ArcIndex(pointCount) {
+export function ArcIndex(pointCount) {
   var hashTableSize = Math.floor(pointCount * 0.25 + 1),
       hash = getXYHash(hashTableSize),
       hashTable = new Int32Array(hashTableSize),

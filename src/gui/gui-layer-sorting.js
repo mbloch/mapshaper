@@ -1,7 +1,5 @@
-/* @requires gui-lib */
 
-
-internal.updateLayerStackOrder = function(layers) {
+export function updateLayerStackOrder(layers) {
   // 1. assign ascending ids to unassigned layers above the range of other layers
   layers.forEach(function(o, i) {
     if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
@@ -15,10 +13,10 @@ internal.updateLayerStackOrder = function(layers) {
     o.layer.stack_id = i + 1;
   });
   return layers;
-};
+}
 
-internal.sortLayersForMenuDisplay = function(layers) {
-  layers = internal.updateLayerStackOrder(layers);
+export function sortLayersForMenuDisplay(layers) {
+  layers = updateLayerStackOrder(layers);
   return layers.reverse();
-};
+}
 

@@ -1,7 +1,11 @@
-/* @requires mapshaper-run, mapshaper-expressions */
+import { runGlobalExpression } from '../commands/mapshaper-run';
+import cmd from '../mapshaper-cmd';
+import { stop } from '../utils/mapshaper-logging';
+import { getStateVar } from '../mapshaper-state';
+import cli from '../cli/mapshaper-cli-utils';
 
-api.require = function(targets, opts) {
-  var defs = internal.getStateVar('defs');
+cmd.require = function(targets, opts) {
+  var defs = getStateVar('defs');
   var moduleFile, moduleName, mod;
   if (!opts.module) {
     stop("Missing module name or path to module");
@@ -24,9 +28,9 @@ api.require = function(targets, opts) {
   if (moduleName || opts.alias) {
     defs[opts.alias || moduleName] = mod;
   } else {
-    utils.extend(defs, mod);
+    Object.assign(defs, mod);
   }
   if (opts.init) {
-    internal.runGlobalExpression(opts.init, targets);
+    runGlobalExpression(opts.init, targets);
   }
 };

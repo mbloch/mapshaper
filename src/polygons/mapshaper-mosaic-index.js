@@ -1,17 +1,18 @@
-/* @requires
-mapshaper-polygon-mosaic
-mapshaper-id-test-index
-mapshaper-id-lookup-index
-mapshaper-polygon-tiler
-mapshaper-tile-shape-index
-mapshaper-id-lookup-index
-*/
 
-function MosaicIndex(lyr, nodes, optsArg) {
+import { TileShapeIndex } from '../polygons/mapshaper-tile-shape-index';
+import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
+import { buildPolygonMosaic } from '../polygons/mapshaper-polygon-mosaic';
+import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
+import { IdLookupIndex } from '../indexing/mapshaper-id-lookup-index';
+import { PolygonTiler } from '../polygons/mapshaper-polygon-tiler';
+import { error } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
+
+export function MosaicIndex(lyr, nodes, optsArg) {
   var opts = optsArg || {};
   var shapes = lyr.shapes;
-  var divide = internal.getHoleDivider(nodes);
-  var mosaic = internal.buildPolygonMosaic(nodes).mosaic;
+  var divide = getHoleDivider(nodes);
+  var mosaic = buildPolygonMosaic(nodes).mosaic;
 
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
@@ -58,7 +59,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
   };
 
   this.getUnusedTiles = function() {
-    return getUnusedTileIds().map(tileIdToTile);
+    return tileShapeIndex.getUnusedTileIds().map(tileIdToTile);
   };
 
   this.getTilesByShapeIds = function(shapeIds) {
@@ -127,7 +128,7 @@ function MosaicIndex(lyr, nodes, optsArg) {
 // Map arc ids to shape ids, assuming perfect topology
 // (an arcId maps to at most one shape)
 // Supports looking up a shape id using an arc id.
-function ShapeArcIndex(shapes, arcs) {
+export function ShapeArcIndex(shapes, arcs) {
   var n = arcs.size();
   var index = new IdLookupIndex(n);
   var shapeId;

@@ -1,34 +1,41 @@
-/* @requires mapshaper-common, mapshaper- */
+import { segmentInsideBBox } from '../clipping/mapshaper-bbox2-clipping';
+import { segmentOutsideBBox } from '../clipping/mapshaper-bbox2-clipping';
+import { editShapes } from '../paths/mapshaper-shape-utils';
+import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import { Bounds } from '../geom/mapshaper-bounds';
+import geom from '../geom/mapshaper-geom';
+import { stop } from '../utils/mapshaper-logging';
 
-api.filterGeom = function(lyr, arcs, opts) {
-  if (!internal.layerHasGeometry(lyr)) {
+cmd.filterGeom = function(lyr, arcs, opts) {
+  if (!layerHasGeometry(lyr)) {
     stop("Layer is missing geometry");
   }
   if (opts.bbox) {
-    internal.filterByBoundsIntersection(lyr, arcs, opts);
+    filterByBoundsIntersection(lyr, arcs, opts);
   }
-  api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+  cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
 };
 
-internal.filterByBoundsIntersection = function(lyr, arcs, opts) {
-  var filter = internal.getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
-  internal.editShapes(lyr.shapes, filter);
-};
+function filterByBoundsIntersection(lyr, arcs, opts) {
+  var filter = getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
+  editShapes(lyr.shapes, filter);
+}
 
-internal.getBoundsIntersectionFilter = function(bbox, lyr, arcs) {
+function getBoundsIntersectionFilter(bbox, lyr, arcs) {
   var bounds = new Bounds(bbox);
   var filter = lyr.geometry_type == 'point' ?
-        internal.getPointInBoundsTest(bounds) :
-        internal.getPathBoundsIntersectionTest(bounds, arcs);
+        getPointInBoundsTest(bounds) :
+        getPathBoundsIntersectionTest(bounds, arcs);
   return filter;
-};
+}
 
-internal.getPointInBoundsTest = function(bounds) {
+function getPointInBoundsTest(bounds) {
   return function(xy) {
     var contains =  bounds.containsPoint(xy[0], xy[1]);
     return contains ? xy : null;
   };
-};
+}
 
 // V1 too-simple test: bounding-box intersection
 // internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
@@ -37,7 +44,7 @@ internal.getPointInBoundsTest = function(bounds) {
 //   };
 // };
 
-internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
+function getPathBoundsIntersectionTest(bounds, arcs) {
   var bbox = bounds.toArray(),
     left = bbox[0],
     bottom = bbox[1],
@@ -62,8 +69,8 @@ internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
       by = ay;
       ax = iter.x;
       ay = iter.y;
-      if (internal.segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) continue;
-      if (internal.segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) {
+      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) continue;
+      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) {
         intersects = true;
         break;
       }
@@ -82,12 +89,12 @@ internal.getPathBoundsIntersectionTest = function(bounds, arcs) {
     }
     return intersects ? path : null;
   };
-};
+}
 
 // Return a function for testing if a shape (path or point) intersects a bounding box
 // TODO: move this function to a different file
-internal.getBBoxIntersectionTest = function(bbox, lyr, arcs) {
-  var filter = internal.getBoundsIntersectionFilter(bbox, lyr, arcs);
+export function getBBoxIntersectionTest(bbox, lyr, arcs) {
+  var filter = getBoundsIntersectionFilter(bbox, lyr, arcs);
   return function(shapeId) {
     var shp = lyr.shapes[shapeId];
     if (!shp) return false;
@@ -96,14 +103,14 @@ internal.getBBoxIntersectionTest = function(bbox, lyr, arcs) {
     }
     return false;
   };
-};
+}
 
 // return array of shape ids
-internal.findShapesIntersectingBBox = function(bbox, lyr, arcs) {
-  var test = internal.getBBoxIntersectionTest(bbox, lyr, arcs);
+export function findShapesIntersectingBBox(bbox, lyr, arcs) {
+  var test = getBBoxIntersectionTest(bbox, lyr, arcs);
   var ids = [];
   for (var i=0; i<lyr.shapes.length; i++) {
     if (test(i)) ids.push(i);
   }
   return ids;
-};
+}

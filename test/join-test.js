@@ -249,7 +249,7 @@ describe('mapshaper-join.js', function () {
         fields: ["CASES"],
         keys: ["STATE", "ST"]
       };
-      api.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
+      api.internal.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
       assert.deepEqual(lyr.data.getRecords(),
           [{ STATE: "CA", CASES: 12}, {STATE: "NV", CASES: 54}]);
     })
@@ -264,7 +264,7 @@ describe('mapshaper-join.js', function () {
       var opts = {
         keys: ["key1", "key2"]
       };
-      api.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
+      api.internal.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
       assert.deepEqual(lyr.data.getRecords(),
           [{ key1: 1, foo: 0}, { key1: 0, foo: 1 }]);
     })
@@ -279,7 +279,7 @@ describe('mapshaper-join.js', function () {
       var opts = {
         keys: ["key1", "key2"]
       };
-      api.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
+      api.internal.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
       assert.deepEqual(lyr.data.getRecords(),
           [{ key1: 1, foo: 0}, { key1: 0, foo: null }]);
     })
@@ -296,7 +296,7 @@ describe('mapshaper-join.js', function () {
       var opts = {
         keys: ["key1", "key2"]
       };
-      api.joinAttributesToFeatures(lyr, sourceTable, opts);
+      api.internal.joinAttributesToFeatures(lyr, sourceTable, opts);
       assert.deepEqual(lyr.data.getRecords(),
           [{ key1: 'a', 'constructor': 'c', 'hasOwnProperty': 'd'}, { key1: 'b', 'constructor': null, 'hasOwnProperty': null }]);
     })
@@ -311,7 +311,7 @@ describe('mapshaper-join.js', function () {
         keys: ['foo', 'shmoo'],
         fields: ['baz']
       };
-      api.joinAttributesToFeatures(target, table2, opts);
+      api.internal.joinAttributesToFeatures(target, table2, opts);
       assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
             {foo: 5, bar: 'b', baz: 'pumpkin'}]);
     })
@@ -324,7 +324,7 @@ describe('mapshaper-join.js', function () {
         keys: ['foo', 'shmoo'],
         fields: ['baz']
       };
-      api.joinAttributesToFeatures(target, table2, opts);
+      api.internal.joinAttributesToFeatures(target, table2, opts);
       assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
             {foo: 3, bar: 'b', baz: null}]);
     })

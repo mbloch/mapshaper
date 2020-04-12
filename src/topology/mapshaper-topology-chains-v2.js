@@ -1,30 +1,6 @@
-/* @requires mapshaper-hash-function */
+import { getXYHash } from '../topology/mapshaper-hash-function';
 
-function initHashChains(xx, yy) {
-  // Performance doesn't improve much above ~1.3 * point count
-  var n = xx.length,
-      m = Math.floor(n * 1.3) || 1,
-      hash = getXYHash(m),
-      hashTable = new Int32Array(m),
-      chainIds = new Int32Array(n), // Array to be filled with chain data
-      key, j, i, x, y;
-
-  for (i=0; i<n; i++) {
-    x = xx[i];
-    y = yy[i];
-    if (x != x || y != y) {
-      j = -1; // NaN coord: no hash entry, one-link chain
-    } else {
-      key = hash(x, y);
-      j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
-      hashTable[key] = i + 1;
-    }
-    chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
-  }
-  return chainIds;
-}
-
-function initPointChains(xx, yy) {
+export function initPointChains(xx, yy) {
   var chainIds = initHashChains(xx, yy),
       j, next, prevMatchId, prevUnmatchId;
 
@@ -52,6 +28,30 @@ function initPointChains(xx, yy) {
       chainIds[prevUnmatchId] = prevUnmatchId;
     }
     chainIds[i] = prevMatchId; // close the chain
+  }
+  return chainIds;
+}
+
+function initHashChains(xx, yy) {
+  // Performance doesn't improve much above ~1.3 * point count
+  var n = xx.length,
+      m = Math.floor(n * 1.3) || 1,
+      hash = getXYHash(m),
+      hashTable = new Int32Array(m),
+      chainIds = new Int32Array(n), // Array to be filled with chain data
+      key, j, i, x, y;
+
+  for (i=0; i<n; i++) {
+    x = xx[i];
+    y = yy[i];
+    if (x != x || y != y) {
+      j = -1; // NaN coord: no hash entry, one-link chain
+    } else {
+      key = hash(x, y);
+      j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
+      hashTable[key] = i + 1;
+    }
+    chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
   }
   return chainIds;
 }

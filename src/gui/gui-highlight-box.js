@@ -1,6 +1,6 @@
-/* @requires gui-lib */
+import { El } from './gui-el';
 
-function HighlightBox(el) {
+export function HighlightBox(el) {
   var box = El('div').addClass('zoom-box').appendTo(el),
       show = box.show.bind(box), // original show() function
       stroke = 2;

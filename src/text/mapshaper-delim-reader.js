@@ -1,49 +1,53 @@
-/* @requires mapshaper-file-reader, mapshaper-encodings */
+import { trimBOM, decodeString } from '../text/mapshaper-encodings';
+import { getBaseContext, compileExpressionToFunction } from '../expressions/mapshaper-expressions';
+import utils from '../utils/mapshaper-utils';
+import { stop } from '../utils/mapshaper-logging';
+import { Reader2 } from '../io/mapshaper-file-reader';
 
 // Read and parse a DSV file
 // This version performs field filtering before fields are extracted (faster)
 // (tested with a 40GB CSV)
 //
 // TODO: confirm compatibility with all supported encodings
-internal.readDelimRecords = function(reader, delim, optsArg) {
+export function readDelimRecords(reader, delim, optsArg) {
   var reader2 = new Reader2(reader),
       opts = optsArg || {},
-      headerStr = internal.readLinesAsString(reader2, internal.getDelimHeaderLines(opts), opts.encoding),
-      header = internal.parseDelimHeaderSection(headerStr, delim, opts),
-      convertRowArr = internal.getRowConverter(header.import_fields),
+      headerStr = readLinesAsString(reader2, getDelimHeaderLines(opts), opts.encoding),
+      header = parseDelimHeaderSection(headerStr, delim, opts),
+      convertRowArr = getRowConverter(header.import_fields),
       batchSize = opts.batch_size || 1000,
       records = [],
       str, batch;
   if (header.import_fields.length === 0) return []; // e.g. empty file
   // read in batches (faster than line-by-line)
-  while ((str = internal.readLinesAsString(reader2, batchSize, opts.encoding))) {
-    batch = internal.parseDelimText(str, delim, convertRowArr, header.column_filter || false, header.row_filter || false);
+  while ((str = readLinesAsString(reader2, batchSize, opts.encoding))) {
+    batch = parseDelimText(str, delim, convertRowArr, header.column_filter || false, header.row_filter || false);
     records.push.apply(records, batch);
     if (opts.csv_lines && records.length >= opts.csv_lines) {
       return records.slice(0, opts.csv_lines);
     }
   }
   return records;
-};
+}
 
 // Fallback for readDelimRecords(), for encodings that do not use ascii values
 // for delimiter characters and newlines. Input size is limited by the maximum
 // string size.
-internal.readDelimRecordsFromString = function(str, delim, opts) {
-  var header = internal.parseDelimHeaderSection(str, delim, opts);
+export function readDelimRecordsFromString(str, delim, opts) {
+  var header = parseDelimHeaderSection(str, delim, opts);
   if (header.import_fields.length === 0 || !header.remainder) return [];
-  var convert = internal.getRowConverter(header.import_fields);
-  var records = internal.parseDelimText(header.remainder, delim, convert, header.column_filter, header.row_filter);
+  var convert = getRowConverter(header.import_fields);
+  var records = parseDelimText(header.remainder, delim, convert, header.column_filter, header.row_filter);
   if (opts.csv_lines > 0) {
     // TODO: don't parse unneeded rows
     records = records.slice(0, opts.csv_lines);
   }
   return records;
-};
+}
 
 // Get index in string of the nth line
 // line numbers are 1-based (first line is 1)
-internal.indexOfLine = function(str, nth) {
+export function indexOfLine(str, nth) {
   var rxp = /\r\n|[\r\n]|.$/g; // dot prevents matching end of string twice
   var i = 1;
   if (nth === 1) return 0;
@@ -53,74 +57,74 @@ internal.indexOfLine = function(str, nth) {
     if (i < nth === false) return rxp.lastIndex;
   }
   return -1;
-};
+}
 
-internal.getDelimHeaderLines = function(opts) {
+function getDelimHeaderLines(opts) {
   var skip = opts.csv_skip_lines || 0;
   if (!opts.csv_field_names) skip++;
   return skip;
-};
+}
 
 // Adapted from https://github.com/d3/d3-dsv
-internal.getRowConverter = function(fields) {
+export function getRowConverter(fields) {
   return new Function('arr', 'return {' + fields.map(function(name, i) {
     return JSON.stringify(name) + ': arr[' + i + '] || ""';
   }).join(',') + '}');
-};
+}
 
-internal.parseDelimHeaderSection = function(str, delim, opts) {
+export function parseDelimHeaderSection(str, delim, opts) {
   var nodata = {headers: [], import_fields: []},
       retn = {},
       i;
   str = str || '';
   if (opts.csv_skip_lines > 0) {
-    i = internal.indexOfLine(str, opts.csv_skip_lines + 1);
+    i = indexOfLine(str, opts.csv_skip_lines + 1);
     if (i === -1) return nodata;
     str = str.substr(i);
   }
   if (opts.csv_field_names) {
     retn.headers = opts.csv_field_names;
   } else {
-    i = internal.indexOfLine(str, 2);
+    i = indexOfLine(str, 2);
     if (i === -1) return nodata;
-    retn.headers = internal.parseDelimText(str.slice(0, i), delim)[0];
+    retn.headers = parseDelimText(str.slice(0, i), delim)[0];
     str = str.substr(i);
   }
   if (opts.csv_filter) {
-    retn.row_filter = internal.getDelimRecordFilterFunction(opts.csv_filter);
+    retn.row_filter = getDelimRecordFilterFunction(opts.csv_filter);
   }
   if (opts.csv_fields) {
-    retn.column_filter = internal.getDelimFieldFilter(retn.headers, opts.csv_fields);
+    retn.column_filter = getDelimFieldFilter(retn.headers, opts.csv_fields);
     retn.import_fields = retn.headers.filter(function(name, i) {return retn.column_filter(i);});
   } else {
     retn.import_fields = retn.headers;
   }
   retn.remainder = str;
   return retn;
-};
+}
 
 // Returns a function for filtering records
 // TODO: look into using more code from standard expressions.
-internal.getDelimRecordFilterFunction = function(expression) {
-  var rowFilter = internal.compileExpressionToFunction(expression, {returns: true});
-  var ctx = internal.getBaseContext();
+function getDelimRecordFilterFunction(expression) {
+  var rowFilter = compileExpressionToFunction(expression, {returns: true});
+  var ctx = getBaseContext();
   return function(rec) {
     var val;
     try {
       val = rowFilter.call(null, rec, ctx);
     } catch(e) {
-      stop(e.name, "in expression [" + exp + "]:", e.message);
+      stop(e.name, "in expression [" + expression + "]:", e.message);
     }
     if (val !== true && val !== false) {
       stop("Filter expression must return true or false");
     }
     return val;
   };
-};
+}
 
 // Returns a function for filtering fields by column index
 // The function returns true for retained fields and false for excluded fields
-internal.getDelimFieldFilter = function(header, fieldsToKeep) {
+export function getDelimFieldFilter(header, fieldsToKeep) {
   var index = utils.arrayToIndex(fieldsToKeep);
   var map = header.map(function(name) {
     return name in index;
@@ -134,39 +138,39 @@ internal.getDelimFieldFilter = function(header, fieldsToKeep) {
   return function(colIdx) {
     return map[colIdx];
   };
-};
+}
 
 // May be useful in the future to implement reading a range of CSV records
-internal.skipDelimLines = function(reader, lines) {
+function skipDelimLines(reader, lines) {
   // TODO: divide lines into batches, to prevent exceeding maximum buffer size
   var buf = reader.readSync();
-  var retn = internal.readLinesFromBuffer(buf, lines);
+  var retn = readLinesFromBuffer(buf, lines);
   if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
     reader.expandBuffer(); // buffer oflo, grow the buffer and try again
-    return internal.skipDelimLines(reader, lines);
+    return skipDelimLines(reader, lines);
   }
   reader.advance(retn.bytesRead);
-};
+}
 
-internal.readLinesAsString = function(reader, lines, encoding) {
+function readLinesAsString(reader, lines, encoding) {
   var buf = reader.readSync();
-  var retn = internal.readLinesFromBuffer(buf, lines);
+  var retn = readLinesFromBuffer(buf, lines);
   var str;
   if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
     // buffer overflow -- enlarge buffer and read lines again
     reader.expandBuffer();
-    return internal.readLinesAsString(reader, lines, encoding);
+    return readLinesAsString(reader, lines, encoding);
   }
   // str = retn.bytesRead > 0 ? retn.buffer.toString('ascii', 0, retn.bytesRead) : '';
-  str = retn.bytesRead > 0 ? internal.decodeString(retn.buffer, encoding) : '';
+  str = retn.bytesRead > 0 ? decodeString(retn.buffer, encoding) : '';
   if (reader.position() === 0) {
-   str = internal.trimBOM(str);
+   str = trimBOM(str);
   }
   reader.advance(retn.bytesRead);
   return str;
-};
+}
 
-internal.readLinesFromBuffer = function(buf, linesToRead) {
+function readLinesFromBuffer(buf, linesToRead) {
   var CR = 13, LF = 10, DQUOTE = 34,
       inQuotedText = false,
       lineCount = 0,
@@ -190,13 +194,13 @@ internal.readLinesFromBuffer = function(buf, linesToRead) {
     bytesRead: i,
     buffer: buf.slice(0, i)
   };
-};
+}
 
 // Convert a string of CSV data into an array of data records
 // convert: optional function for converting an array record to an object record (values indexed by field names)
 // colFilter: optional function for filtering columns by numerical column id (0-based); accepts an array record and an id
 // rowFilter: optional function for filtering rows; accepts a record in object format
-internal.parseDelimText = function(text, delim, convert, colFilter, rowFilter) {
+export function parseDelimText(text, delim, convert, colFilter, rowFilter) {
   var CR = 13, LF = 10, DQUOTE = 34,
       DELIM = delim.charCodeAt(0),
       inQuotedText = false,
@@ -262,4 +266,4 @@ internal.parseDelimText = function(text, delim, convert, colFilter, rowFilter) {
   }
 
   return records;
-};
+}

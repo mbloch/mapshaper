@@ -1,5 +1,8 @@
+import { utils } from './gui-core';
+import { EventDispatcher } from './gui-events';
+import { GUI } from './gui-lib';
 
-function KeyboardEvents(gui) {
+export function KeyboardEvents(gui) {
   var self = this;
   document.addEventListener('keydown', function(e) {
     if (!GUI.isActiveInstance(gui)) return;

@@ -1,15 +1,14 @@
-/* @requires
-mapshaper-shape-utils
-mapshaper-dataset-utils
-mapshaper-shape-geom
-mapshaper-polygon-index
-mapshaper-bounds-search
-*/
+
+import { getBoundsSearchFunction } from '../geom/mapshaper-bounds-search';
+import { getPathBounds } from '../paths/mapshaper-path-utils';
+import { PolygonIndex } from '../polygons/mapshaper-polygon-index';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
 
 // PathIndex supports several kinds of spatial query on a layer of polyline or polygon shapes
-function PathIndex(shapes, arcs) {
-  var boundsQuery = internal.getBoundsSearchFunction(getRingData(shapes, arcs));
-  var totalArea = internal.getPathBounds(shapes, arcs).area();
+export function PathIndex(shapes, arcs) {
+  var boundsQuery = getBoundsSearchFunction(getRingData(shapes, arcs));
+  var totalArea = getPathBounds(shapes, arcs).area();
 
   function getRingData(shapes, arcs) {
     var arr = [];

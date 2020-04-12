@@ -1,6 +1,7 @@
-/* @requires gui-lib */
+import { Bounds, utils } from './gui-core';
+import { EventDispatcher } from './gui-events';
 
-function MapExtent(_position) {
+export function MapExtent(_position) {
   var _scale = 1,
       _cx, _cy, // center in geographic units
       _contentBounds,

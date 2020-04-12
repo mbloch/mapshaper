@@ -1,8 +1,12 @@
-/* @requires
-mapshaper-common
-*/
+import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { convertIntervalParam } from '../geom/mapshaper-units';
+import { buildTopology } from '../topology/mapshaper-topology';
+import { stop, message } from '../utils/mapshaper-logging';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
 
-api.snap = function(dataset, opts) {
+cmd.snap = function(dataset, opts) {
   var interval = 0;
   var arcs = dataset.arcs;
   var arcBounds = arcs && arcs.getBounds();
@@ -10,15 +14,15 @@ api.snap = function(dataset, opts) {
     stop('Dataset is missing path data');
   }
   if (opts.interval) {
-    interval = internal.convertIntervalParam(opts.interval, internal.getDatasetCRS(dataset));
+    interval = convertIntervalParam(opts.interval, getDatasetCRS(dataset));
   } else {
-    interval = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
+    interval = getHighPrecisionSnapInterval(arcBounds.toArray());
   }
   arcs.flatten(); // bake in any simplification
-  var snapCount = internal.snapCoordsByInterval(arcs, interval);
+  var snapCount = snapCoordsByInterval(arcs, interval);
   message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
   if (snapCount > 0) {
     arcs.dedupCoords();
-    api.buildTopology(dataset);
+    buildTopology(dataset);
   }
 };

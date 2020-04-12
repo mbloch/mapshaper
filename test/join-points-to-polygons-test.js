@@ -87,7 +87,7 @@ describe('Points to polygons and polygons to points spatial join', function () {
         data: new DataTable([{foo: 'a'}, {foo: 'z'}])
       };
       var opts = {};
-      api.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
+      api.internal.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
       assert.deepEqual(target.layers[0].data.getRecords(), [{foo: 'a'}] )
     })
 
@@ -107,7 +107,7 @@ describe('Points to polygons and polygons to points spatial join', function () {
         data: new DataTable([{count: 1, foo: 'a'}, {count: 3, foo: 'b'}])
       };
       var opts = {calc: "joins = _.count(), total=sum(count)"};
-      api.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
+      api.internal.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
       assert.deepEqual(target.layers[0].data.getRecords(), [{total: 4, joins: 2, foo: 'a', count: 1}] )
     })
 
@@ -125,7 +125,7 @@ describe('Points to polygons and polygons to points spatial join', function () {
         }]
       };
       var opts = {};
-      api.joinPolygonsToPoints(target.layers[0], src, arcs, opts);
+      api.internal.joinPolygonsToPoints(target.layers[0], src, arcs, opts);
       assert.deepEqual(target.layers[0].data.getRecords(), [{foo: 'a'}, {foo: null}] )
     })
 
@@ -143,7 +143,7 @@ describe('Points to polygons and polygons to points spatial join', function () {
         }]
       };
       var opts = {};
-      api.joinPolygonsToPoints(target.layers[0], src, arcs, opts);
+      api.internal.joinPolygonsToPoints(target.layers[0], src, arcs, opts);
       assert.deepEqual(target.layers[0].data.getRecords(), [{foo: 'a'}, {foo: 'a'}] )
     })
 

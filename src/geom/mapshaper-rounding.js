@@ -1,6 +1,9 @@
-/* @require mapshaper-dataset-utils, mapshaper-point-utils */
+import { transformPoints } from '../dataset/mapshaper-dataset-utils';
+import { error } from '../utils/mapshaper-logging';
+import { forEachPoint } from '../points/mapshaper-point-utils';
+import utils from '../utils/mapshaper-utils';
 
-internal.getBoundsPrecisionForDisplay = function(bbox) {
+export function getBoundsPrecisionForDisplay(bbox) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
       range = Math.min(w, h) + 1e-8,
@@ -10,28 +13,27 @@ internal.getBoundsPrecisionForDisplay = function(bbox) {
     digits++;
   }
   return digits;
-};
+}
 
-internal.getRoundedCoordString = function(coords, decimals) {
+export function getRoundedCoordString(coords, decimals) {
   return coords.map(function(n) {return n.toFixed(decimals);}).join(',');
-};
+}
 
-internal.getRoundedCoords = function(coords, decimals) {
-  return internal.getRoundedCoordString(coords, decimals).split(',').map(parseFloat);
-};
+export function getRoundedCoords(coords, decimals) {
+  return getRoundedCoordString(coords, decimals).split(',').map(parseFloat);
+}
 
-
-internal.roundPoints = function(lyr, round) {
-  internal.forEachPoint(lyr.shapes, function(p) {
+export function roundPoints(lyr, round) {
+  forEachPoint(lyr.shapes, function(p) {
     p[0] = round(p[0]);
     p[1] = round(p[1]);
   });
-};
+}
 
-internal.setCoordinatePrecision = function(dataset, precision) {
-  var round = utils.getRoundingFunction(precision);
+export function setCoordinatePrecision(dataset, precision) {
+  var round = getRoundingFunction(precision);
   // var dissolvePolygon, nodes;
-  internal.transformPoints(dataset, function(x, y) {
+  transformPoints(dataset, function(x, y) {
     return [round(x), round(y)];
   });
   // v0.4.52 removing polygon dissolve - see issue #219
@@ -49,10 +51,10 @@ internal.setCoordinatePrecision = function(dataset, precision) {
   });
   */
   return dataset;
-};
+}
 
 // inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
-utils.getRoundingFunction = function(inc) {
+export function getRoundingFunction(inc) {
   if (!utils.isNumber(inc) || inc === 0) {
     error("Rounding increment must be a non-zero number.");
   }
@@ -65,8 +67,8 @@ utils.getRoundingFunction = function(inc) {
     // return Math.round(x / inc) * inc;
     // return Math.round(x * inv) * inc;
   };
-};
+}
 
-utils.roundToSignificantDigits = function(n, d) {
+export function roundToSignificantDigits(n, d) {
   return +n.toPrecision(d);
-};
+}

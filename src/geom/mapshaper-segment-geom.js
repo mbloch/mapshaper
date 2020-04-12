@@ -1,10 +1,7 @@
-/* @requires mapshaper-arcs, mapshaper-geom */
 
-geom.segmentIntersection = segmentIntersection;
-geom.segmentHit = segmentHit;
-geom.orient2D = orient2D;
-geom.findClosestPointOnSeg = findClosestPointOnSeg;
-
+import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
+import { debug } from '../utils/mapshaper-logging';
+import { distance2D, distanceSq, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
 
 // Find the intersection between two 2D segments
 // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
@@ -14,11 +11,11 @@ geom.findClosestPointOnSeg = findClosestPointOnSeg;
 // If the segments are collinear and partially overlapping, each subsumed endpoint
 //    is counted as an intersection (there will be either one or two)
 //
-function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
+export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   // Use a small tolerance interval, so collinear segments and T-intersections
   // are detected (floating point rounding often causes exact functions to fail)
   var eps = epsArg >= 0 ? epsArg :
-      internal.getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
+      getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
   var epsSq = eps * eps;
   var touches, cross;
   // Detect 0, 1 or 2 'touch' intersections, where a vertex of one segment
@@ -48,7 +45,7 @@ function reconcileCrossAndTouches(cross, touches, eps) {
   if (touches.length > 2) {
     // two touches and a cross: cross should be between the touches, intersection at touches
     hits = touches;
-  } else if (geom.distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
+  } else if (distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
     // cross is very close to touch point (e.g. small overshoot): intersection at touch point
     hits = touches;
   } else {
@@ -89,8 +86,8 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
 }
 
 function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
-  return geom.distanceSq(ax, ay, cx, cy) <= epsSq || geom.distanceSq(ax, ay, dx, dy) <= epsSq ||
-    geom.distanceSq(bx, by, cx, cy) <= epsSq || geom.distanceSq(bx, by, dx, dy) <= epsSq;
+  return distanceSq(ax, ay, cx, cy) <= epsSq || distanceSq(ax, ay, dx, dy) <= epsSq ||
+    distanceSq(bx, by, cx, cy) <= epsSq || distanceSq(bx, by, dx, dy) <= epsSq;
 }
 
 function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
@@ -111,11 +108,11 @@ function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
 function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
   // The original point-seg distance function caused errors in test data.
   // (probably because of large rounding errors with some inputs).
-  // var pab = geom.pointSegDistSq(px, py, ax, ay, bx, by);
-  var pab = geom.pointSegDistSq2(px, py, ax, ay, bx, by);
+  // var pab = pointSegDistSq(px, py, ax, ay, bx, by);
+  var pab = pointSegDistSq2(px, py, ax, ay, bx, by);
   if (pab > epsSq) return; // point is too far from segment to touch
-  var pa = geom.distanceSq(ax, ay, px, py);
-  var pb = geom.distanceSq(bx, by, px, py);
+  var pa = distanceSq(ax, ay, px, py);
+  var pb = distanceSq(bx, by, px, py);
   if (pa <= epsSq || pb <= epsSq) return; // ignore endpoint hits
   arr.push(px, py); // T intersection at P and AB
 }
@@ -124,7 +121,7 @@ function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
 // Used by mapshaper-undershoots.js
 // TODO: make more robust, make sure result is compatible with segmentIntersection()
 // (rounding errors currently must be handled downstream)
-function findClosestPointOnSeg(px, py, ax, ay, bx, by) {
+export function findClosestPointOnSeg(px, py, ax, ay, bx, by) {
   var dx = bx - ax,
       dy = by - ay,
       dotp = (px - ax) * dx + (py - ay) * dy,
@@ -217,14 +214,14 @@ function determinant2D(a, b, c, d) {
 // counterclockwise order, a negative value if the points are in clockwise
 // order, and zero if the points are collinear.
 // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
-function orient2D(ax, ay, bx, by, cx, cy) {
+export function orient2D(ax, ay, bx, by, cx, cy) {
   return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
 }
 
 // Source: Sedgewick, _Algorithms in C_
 // (Other functions were tried that were more sensitive to floating point errors
 //  than this function)
-function segmentHit(ax, ay, bx, by, cx, cy, dx, dy) {
+export function segmentHit(ax, ay, bx, by, cx, cy, dx, dy) {
   return orient2D(ax, ay, bx, by, cx, cy) *
       orient2D(ax, ay, bx, by, dx, dy) <= 0 &&
       orient2D(cx, cy, dx, dy, ax, ay) *

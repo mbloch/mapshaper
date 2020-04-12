@@ -1,16 +1,18 @@
-/* @requires
-gui-lib
-gui-instance
-gui-error
-gui-simplify-control
-gui-import-control
-gui-export-control
-gui-repair-control
-gui-layer-control
-gui-console
-*/
+// This is the entry point for bundling mapshaper's web UI
 
-Browser.onload(function() {
+import { ImportControl } from './gui-import-control';
+import { SimplifyControl } from './gui-simplify-control';
+import { Console } from './gui-console';
+import { AlertControl } from './gui-error';
+import { RepairControl } from './gui-repair-control';
+import { ExportControl } from './gui-export-control';
+import { LayerControl } from './gui-layer-control';
+import { GuiInstance } from './gui-instance';
+import { onload } from './dom-utils';
+import { GUI } from './gui-lib';
+import { El } from './gui-el';
+
+onload(function() {
   if (!GUI.browserIsSupported()) {
     El("#mshp-not-supported").show();
     return;
@@ -28,8 +30,8 @@ Browser.onload(function() {
 
 function getImportOpts() {
   var vars = GUI.getUrlVars();
-  var manifest = mapshaper.manifest || {};
   var opts = {};
+  var manifest = window.mapshaper.manifest || {}; // kludge -- bin/mapshaper-gui sets this
   if (Array.isArray(manifest)) {
     // old-style manifest: an array of filenames
     opts.files = manifest;

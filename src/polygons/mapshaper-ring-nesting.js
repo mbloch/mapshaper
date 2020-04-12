@@ -1,13 +1,15 @@
-/* @requires mapshaper-shape-utils, mapshaper-path-index */
+import { reversePath, getPathMetadata } from '../paths/mapshaper-path-utils';
+import { PathIndex } from '../paths/mapshaper-path-index';
+import geom from '../geom/mapshaper-geom';
 
 // Delete rings that are nested directly inside an enclosing ring with the same winding direction
 // Does not remove unenclosed CCW rings (currently this causes problems when
 //   rounding coordinates for SVG and TopoJSON output)
 // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
 //
-internal.fixNestingErrors = function(rings, arcs) {
+export function fixNestingErrors(rings, arcs) {
   if (rings.length <= 1) return rings;
-  var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
+  var ringData = getPathMetadata(rings, arcs, 'polygon');
   // convert rings to shapes for PathIndex
   var shapes = rings.map(function(ids) {return [ids];});
   var index = new PathIndex(shapes, arcs);
@@ -27,21 +29,21 @@ internal.fixNestingErrors = function(rings, arcs) {
     }
     return valid;
   }
-};
+}
 
 // Set winding order of polygon rings so that outer rings are CW, first-order
 // nested rings are CCW, etc.
-internal.rewindPolygons = function(lyr, arcs) {
+export function rewindPolygons(lyr, arcs) {
   lyr.shapes = lyr.shapes.map(function(shp) {
     if (!shp) return null;
-    return internal.rewindPolygon(shp, arcs);
+    return rewindPolygon(shp, arcs);
   });
-};
+}
 
 // Update winding order of rings in a polygon so that outermost rings are
 // CW and nested rings alternate between CCW and CW.
-internal.rewindPolygon = function(rings, arcs) {
-  var ringData = internal.getPathMetadata(rings, arcs, 'polygon');
+function rewindPolygon(rings, arcs) {
+  var ringData = getPathMetadata(rings, arcs, 'polygon');
 
   // Sort rings by area, from large to small
   ringData.sort(function(a, b) {
@@ -56,29 +58,29 @@ internal.rewindPolygon = function(rings, arcs) {
     var largerRing;
     while (--j >= 0) {
       largerRing = ringData[j];
-      if (internal.testRingInRing(ring, largerRing, arcs)) {
+      if (testRingInRing(ring, largerRing, arcs)) {
         // set to opposite of containing ring
         shouldBeCW = largerRing.area > 0 ? false : true;
         break;
       }
     }
-    internal.setRingWinding(ring, shouldBeCW);
+    setRingWinding(ring, shouldBeCW);
   });
   return ringData.map(function(data) { return data.ids; });
-};
+}
 
 // data: a ring data object
-internal.setRingWinding = function(data, cw) {
+function setRingWinding(data, cw) {
   var isCW = data.area > 0;
   if (isCW != cw) {
     data.area = -data.area;
-    internal.reversePath(data.ids);
+    reversePath(data.ids);
   }
-};
+}
 
 // a, b: two ring data objects (from getPathMetadata);
-internal.testRingInRing = function(a, b, arcs) {
+function testRingInRing(a, b, arcs) {
   if (b.bounds.contains(a.bounds) === false) return false;
   var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
   return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
-};
+}

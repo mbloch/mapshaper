@@ -1,7 +1,15 @@
-/* @requires
-gui-start
-mbloch-gui-lib
-*/
+import { internal, stop, mapshaper } from './gui-core';
+
+export var GUI = {};
+
+GUI.isActiveInstance = function(gui) {
+  return gui == GUI.__active;
+};
+
+GUI.getPixelRatio = function() {
+  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
+  return deviceRatio > 1 ? 2 : 1;
+};
 
 GUI.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&
@@ -54,7 +62,7 @@ GUI.getInputElement = function() {
 
 GUI.selectElement = function(el) {
   var range = document.createRange(),
-      sel = getSelection();
+      sel = window.getSelection();
   range.selectNodeContents(el);
   sel.removeAllRanges();
   sel.addRange(range);
@@ -78,7 +86,7 @@ GUI.onClick = function(el, cb) {
 
 // tests if filename is a type that can be used
 GUI.isReadableFileType = function(filename) {
-  var ext = utils.getFileExtension(filename).toLowerCase();
+  var ext = internal.getFileExtension(filename).toLowerCase();
   return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
     internal.isZipFile(filename);
 };

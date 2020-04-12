@@ -1,8 +1,14 @@
-/* @require mapshaper-merging, mapshaper-data-utils, mapshaper-dataset-utils */
+import { getColumnType } from '../datatable/mapshaper-data-utils';
+import { fixInconsistentFields } from '../datatable/mapshaper-data-utils';
+import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { message, stop, error } from '../utils/mapshaper-logging';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import utils from '../utils/mapshaper-utils';
+import cmd from '../mapshaper-cmd';
 
 // Merge layers, checking for incompatible geometries and data fields.
-api.mergeLayers = function(layersArg, opts) {
-  var layers = layersArg.filter(internal.getFeatureCount); // ignore empty layers
+cmd.mergeLayers = function(layersArg, opts) {
+  var layers = layersArg.filter(getFeatureCount); // ignore empty layers
   var merged = {};
   opts = opts || {};
   if (!layers.length) return null;
@@ -10,11 +16,11 @@ api.mergeLayers = function(layersArg, opts) {
     message('Use the target= option to specify multiple layers for merging');
     return layers.concat();
   }
-  merged.data = internal.mergeDataFromLayers(layers, opts.force);
-  merged.name = internal.mergeLayerNames(layers);
-  merged.geometry_type = internal.getMergedLayersGeometryType(layers);
+  merged.data = mergeDataFromLayers(layers, opts.force);
+  merged.name = mergeLayerNames(layers);
+  merged.geometry_type = getMergedLayersGeometryType(layers);
   if (merged.geometry_type) {
-    merged.shapes = internal.mergeShapesFromLayers(layers);
+    merged.shapes = mergeShapesFromLayers(layers);
   }
   if (merged.shapes && merged.data && merged.shapes.length != merged.data.size()) {
     error("Mismatch between geometry and attribute data");
@@ -22,38 +28,38 @@ api.mergeLayers = function(layersArg, opts) {
   return [merged];
 };
 
-internal.getMergedLayersGeometryType = function(layers) {
+function getMergedLayersGeometryType(layers) {
   var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'))
     .filter(function(type) {return !!type;}); // ignore null-type layers
   if (geoTypes.length > 1) {
     stop("Incompatible geometry types:", geoTypes.join(', '));
   }
   return geoTypes[0] || null;
-};
+}
 
-internal.mergeShapesFromLayers = function(layers) {
+function mergeShapesFromLayers(layers) {
   return layers.reduce(function(memo, lyr) {
     return memo.concat(lyr.shapes);
   }, []);
-};
+}
 
-internal.mergeDataFromLayers = function(layers, force) {
+function mergeDataFromLayers(layers, force) {
   var allFields = utils.uniq(layers.reduce(function(memo, lyr) {
     return memo.concat(lyr.data ? lyr.data.getFields() : []);
   }, []));
   if (allFields.length === 0) return null; // no data in any fields
-  var missingFields = internal.checkMergeLayersInconsistentFields(allFields, layers, force);
+  var missingFields = checkMergeLayersInconsistentFields(allFields, layers, force);
   var mergedRecords = layers.reduce(function(memo, lyr) {
-    var records = lyr.data ? lyr.data.getRecords() : new DataTable(internal.getFeatureCount(lyr)).getRecords();
+    var records = lyr.data ? lyr.data.getRecords() : new DataTable(getFeatureCount(lyr)).getRecords();
     return memo.concat(records);
   }, []);
   if (missingFields.length > 0) {
-    internal.fixInconsistentFields(mergedRecords);
+    fixInconsistentFields(mergedRecords);
   }
   return new DataTable(mergedRecords);
-};
+}
 
-internal.checkMergeLayersInconsistentFields = function(allFields, layers, force) {
+function checkMergeLayersInconsistentFields(allFields, layers, force) {
   var msg;
   // handle fields that are missing from one or more layers
   // (warn if force-merging, else error)
@@ -70,31 +76,31 @@ internal.checkMergeLayersInconsistentFields = function(allFields, layers, force)
     }
   }
   // check for fields with incompatible data types (e.g. number, string)
-  internal.checkMergeLayersFieldTypes(allFields, layers);
+  checkMergeLayersFieldTypes(allFields, layers);
   return missingFields;
-};
+}
 
-internal.checkMergeLayersFieldTypes = function(fields, layers) {
+function checkMergeLayersFieldTypes(fields, layers) {
   fields.forEach(function(key) {
-    var types = internal.checkFieldTypes(key, layers);
+    var types = checkFieldTypes(key, layers);
     if (types.length > 1) {
       stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
     }
   });
-};
+}
 
-internal.checkFieldTypes = function(key, layers) {
+function checkFieldTypes(key, layers) {
   // ignores empty-type fields
   return layers.reduce(function(memo, lyr) {
-    var type = lyr.data ? internal.getColumnType(key, lyr.data.getRecords()) : null;
+    var type = lyr.data ? getColumnType(key, lyr.data.getRecords()) : null;
     if (type && memo.indexOf(type) == -1) {
       memo.push(type);
     }
     return memo;
   }, []);
-};
+}
 
-internal.mergeLayerNames = function(layers) {
+export function mergeLayerNames(layers) {
   return layers.reduce(function(memo, lyr) {
     if (memo === null) {
       memo = lyr.name || null;
@@ -103,4 +109,4 @@ internal.mergeLayerNames = function(layers) {
     }
     return memo;
   }, null) || '';
-};
+}

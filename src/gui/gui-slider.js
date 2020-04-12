@@ -1,11 +1,14 @@
-/* @requires gui-lib */
+import { utils } from './gui-core';
+import { El } from './gui-el';
+import { EventDispatcher } from './gui-events';
+import { undraggable } from './dom-utils';
 
 function draggable(ref) {
   var xdown, ydown;
   var el = El(ref),
       dragging = false,
       obj = new EventDispatcher();
-  Browser.undraggable(el.node());
+  undraggable(el.node());
   el.on('mousedown', function(e) {
     xdown = e.pageX;
     ydown = e.pageY;
@@ -32,7 +35,7 @@ function draggable(ref) {
   return obj;
 }
 
-function Slider(ref, opts) {
+export function Slider(ref, opts) {
   var _el = El(ref);
   var _self = this;
   var defaults = {

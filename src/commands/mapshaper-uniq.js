@@ -1,11 +1,13 @@
-/* @requires
-mapshaper-expressions
-mapshaper-dataset-utils
-*/
+import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { message } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import cmd from '../mapshaper-cmd';
+import { DataTable } from '../datatable/mapshaper-data-table';
 
-api.uniq = function(lyr, arcs, opts) {
-  var n = internal.getFeatureCount(lyr),
-      compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
+cmd.uniq = function(lyr, arcs, opts) {
+  var n = getFeatureCount(lyr),
+      compiled = compileValueExpression(opts.expression, lyr, arcs),
       maxCount = opts.max_count || 1,
       counts = {},
       keepFlags = [],
@@ -33,6 +35,6 @@ api.uniq = function(lyr, arcs, opts) {
     lyr.data = new DataTable(records.filter(filter));
   }
   if (opts.verbose !== false) {
-    message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
+    message(utils.format('Retained %,d of %,d features', getFeatureCount(lyr), n));
   }
 };

@@ -1,6 +1,7 @@
-/* @requires mapshaper-common, mapshaper-geom */
+import geom from '../geom/mapshaper-geom';
 
 var DouglasPeucker = {};
+export default DouglasPeucker;
 
 DouglasPeucker.metricSq3D = geom.pointSegDistSq3D;
 DouglasPeucker.metricSq = geom.pointSegDistSq;

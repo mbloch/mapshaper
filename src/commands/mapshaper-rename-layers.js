@@ -1,6 +1,6 @@
-/* @requires mapshaper-common */
+import cmd from '../mapshaper-cmd';
 
-api.renameLayers = function(layers, names) {
+cmd.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
   var name = '';
   var suffix = '';

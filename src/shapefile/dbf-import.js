@@ -1,12 +1,12 @@
-/* @requires
-dbf-reader
-mapshaper-data-table
-*/
 
-internal.importDbfTable = function(buf, o) {
+import DbfReader from '../shapefile/dbf-reader';
+import Dbf from '../shapefile/dbf-writer';
+import { DataTable } from '../datatable/mapshaper-data-table';
+
+export function importDbfTable(buf, o) {
   var opts = o || {};
   return new ShapefileTable(buf, opts.encoding);
-};
+}
 
 // Implements the DataTable api for DBF file data.
 // We avoid touching the raw DBF field data if possible. This way, we don't need
@@ -14,7 +14,7 @@ internal.importDbfTable = function(buf, o) {
 // just the shapes and exporting in Shapefile format.
 // TODO: consider accepting just the filename, so buffer doesn't consume memory needlessly.
 //
-function ShapefileTable(buf, encoding) {
+export function ShapefileTable(buf, encoding) {
   var reader = new DbfReader(buf, encoding),
       altered = false,
       table;
@@ -32,7 +32,8 @@ function ShapefileTable(buf, encoding) {
   this.exportAsDbf = function(opts) {
     // export original dbf bytes if possible, for performance
     var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
-    return useOriginal ? reader.getBuffer() : getTable().exportAsDbf(opts);
+    if (useOriginal) return reader.getBuffer();
+    return Dbf.exportRecords(getTable().getRecords(), opts.encoding, opts.field_order);
   };
 
   this.getReadOnlyRecordAt = function(i) {
@@ -61,4 +62,4 @@ function ShapefileTable(buf, encoding) {
   };
 }
 
-utils.extend(ShapefileTable.prototype, dataTableProto);
+Object.assign(ShapefileTable.prototype, DataTable.prototype);

@@ -1,9 +1,12 @@
-/* @require mapshaper-shape-geom, mapshaper-segment-sorting */
+import { sortSegmentIds } from '../paths/mapshaper-segment-sorting';
+import { forEachSegmentInShape } from '../paths/mapshaper-path-utils';
+import { error } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
 
 // PolygonIndex indexes the coordinates in one polygon feature for efficient
 // point-in-polygon tests
 
-function PolygonIndex(shape, arcs, opts) {
+export function PolygonIndex(shape, arcs, opts) {
   var data = arcs.getVertexData(),
       polygonBounds = arcs.getMultiShapeBounds(shape),
       boundsLeft,
@@ -74,16 +77,16 @@ function PolygonIndex(shape, arcs, opts) {
         a, b, i, j, xmin, xmax;
 
     // get array of segments as [s0p0, s0p1, s1p0, s1p1, ...], sorted by xmin coordinate
-    internal.forEachSegmentInShape(shape, arcs, function() {
+    forEachSegmentInShape(shape, arcs, function() {
       segCount++;
     });
     segments = new Uint32Array(segCount * 2);
     i = 0;
-    internal.forEachSegmentInShape(shape, arcs, function(a, b, xx, yy) {
+    forEachSegmentInShape(shape, arcs, function(a, b, xx, yy) {
       segments[i++] = a;
       segments[i++] = b;
     });
-    internal.sortSegmentIds(xx, segments);
+    sortSegmentIds(xx, segments);
 
     // assign segments to buckets according to xmin coordinate
     xminIds = new Uint32Array(segCount);

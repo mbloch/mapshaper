@@ -1,6 +1,9 @@
-/* @require mapshaper-geojson, mapshaper-dataset-utils */
+import { importGeoJSON } from '../geojson/geojson-import';
+import GeoJSON from '../geojson/geojson-common';
+import { stop } from '../utils/mapshaper-logging';
+import cmd from '../mapshaper-cmd';
 
-api.shape = function(opts) {
+cmd.shape = function(opts) {
   var coords = opts.coordinates;
   var offsets = opts.offsets || [];
   var coordinates = [];
@@ -31,7 +34,7 @@ api.shape = function(opts) {
     type: type,
     coordinates: type == 'Polygon' ? [coordinates] : coordinates
   };
-  dataset = internal.importGeoJSON(geojson, {});
+  dataset = importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'shape';
   return dataset;
 };

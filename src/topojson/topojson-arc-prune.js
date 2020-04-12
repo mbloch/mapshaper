@@ -1,8 +1,11 @@
-/* @require topojson-common */
+// This file is not currently being used
+import TopoJSON from '../topojson/topojson-common';
+import utils from '../utils/mapshaper-utils';
+import { error } from '../utils/mapshaper-logging';
 
 // remove arcs that are not referenced or have collapsed
 // update ids of the remaining arcs
-TopoJSON.pruneArcs = function(topology) {
+export function pruneArcs(topology) {
   var arcs = topology.arcs;
   var retained = new Uint32Array(arcs.length);
 
@@ -28,14 +31,14 @@ TopoJSON.pruneArcs = function(topology) {
 
     // Re-index
     utils.forEachProperty(topology.objects, function(obj) {
-      TopoJSON.reindexArcIds(obj, retained);
+      reindexArcIds(obj, retained);
     });
   }
-};
+}
 
 // @map is an array of replacement arc ids, indexed by original arc id
 // @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
-TopoJSON.reindexArcIds = function(geom, map) {
+function reindexArcIds(geom, map) {
   TopoJSON.forEachArc(geom, function(id) {
     var rev = id < 0,
         idx = rev ? ~id : id,
@@ -45,4 +48,4 @@ TopoJSON.reindexArcIds = function(geom, map) {
     }
     return rev ? ~replacement : replacement;
   });
-};
+}

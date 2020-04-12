@@ -1,7 +1,6 @@
-
 // public domain implementation
 // source: https://github.com/jbt/js-crypto
-utils.sha1 = function(str1){
+export function sha1(str1){
   for (
     var blockstart = 0,
       i = 0,
@@ -38,4 +37,4 @@ utils.sha1 = function(str1){
 
   for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
   return str1;
-};
+}

@@ -1,6 +1,10 @@
-/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap */
+import { Heap } from '../simplify/mapshaper-heap';
+import { error } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
 
 var Visvalingam = {};
+export default Visvalingam;
 
 Visvalingam.getArcCalculator = function(metric, is3D) {
   var heap = new Heap(),
@@ -80,14 +84,14 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
   };
 };
 
-Visvalingam.standardMetric = triangleArea;
-Visvalingam.standardMetric3D = triangleArea3D;
+Visvalingam.standardMetric = geom.triangleArea;
+Visvalingam.standardMetric3D = geom.triangleArea3D;
 
 Visvalingam.getWeightedMetric = function(opts) {
   var weight = Visvalingam.getWeightFunction(opts);
   return function(ax, ay, bx, by, cx, cy) {
-    var area = triangleArea(ax, ay, bx, by, cx, cy),
-        cos = cosine(ax, ay, bx, by, cx, cy);
+    var area = geom.triangleArea(ax, ay, bx, by, cx, cy),
+        cos = geom.cosine(ax, ay, bx, by, cx, cy);
     return weight(cos) * area;
   };
 };
@@ -95,8 +99,8 @@ Visvalingam.getWeightedMetric = function(opts) {
 Visvalingam.getWeightedMetric3D = function(opts) {
   var weight = Visvalingam.getWeightFunction(opts);
   return function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-    var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-        cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
+    var area = geom.triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+        cos = geom.cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
     return weight(cos) * area;
   };
 };

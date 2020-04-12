@@ -1,6 +1,22 @@
-/* @requires dbf-reader, mapshaper-encodings */
 
-Dbf.MAX_STRING_LEN = 254;
+import { encodeString, decodeString } from '../text/mapshaper-encodings';
+import { findFieldNames, getUniqFieldNames } from '../datatable/mapshaper-data-utils';
+import { error, message } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
+import { BinArray } from '../utils/mapshaper-binarray';
+var Dbf = {};
+var MAX_STRING_LEN = 254;
+export default Dbf;
+
+Dbf.MAX_STRING_LEN = MAX_STRING_LEN;
+Dbf.convertValueToString = convertValueToString;
+Dbf.convertFieldNames = convertFieldNames;
+Dbf.discoverFieldType = discoverFieldType;
+Dbf.getDecimalFormatter = getDecimalFormatter;
+Dbf.getNumericFieldInfo = getNumericFieldInfo;
+Dbf.truncateEncodedString = truncateEncodedString;
+Dbf.getFieldInfo = getFieldInfo;
+Dbf.exportRecords = exportRecords;
 
 function BufferPool() {
   var n = 5000,
@@ -24,14 +40,14 @@ function BufferPool() {
   };
 }
 
-Dbf.bufferPool = new BufferPool();
+var bufferPool = new BufferPool();
 
-Dbf.exportRecords = function(records, encoding, fieldOrder) {
+function exportRecords(records, encoding, fieldOrder) {
   var rows = records.length;
-  var fields = internal.findFieldNames(records, fieldOrder);
-  var dbfFields = Dbf.convertFieldNames(fields);
+  var fields = findFieldNames(records, fieldOrder);
+  var dbfFields = convertFieldNames(fields);
   var fieldData = fields.map(function(name, i) {
-    var info = Dbf.getFieldInfo(records, name, encoding || 'utf8');
+    var info = getFieldInfo(records, name, encoding || 'utf8');
     var name2 = dbfFields[i];
     info.name = name2;
     if (name != name2) {
@@ -43,8 +59,8 @@ Dbf.exportRecords = function(records, encoding, fieldOrder) {
     return info;
   });
 
-  var headerBytes = Dbf.getHeaderSize(fieldData.length),
-      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
+  var headerBytes = getHeaderSize(fieldData.length),
+      recordBytes = getRecordSize(utils.pluck(fieldData, 'size')),
       fileBytes = headerBytes + rows * recordBytes + 1;
 
   var buffer = new ArrayBuffer(fileBytes);
@@ -97,21 +113,21 @@ Dbf.exportRecords = function(records, encoding, fieldOrder) {
     error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
   }
   return buffer;
-};
+}
 
-Dbf.getHeaderSize = function(numFields) {
+function getHeaderSize(numFields) {
   return 33 + numFields * 32;
-};
+}
 
-Dbf.getRecordSize = function(fieldSizes) {
+function getRecordSize(fieldSizes) {
   return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
-};
+}
 
-Dbf.initNumericField = function(info, arr, name) {
+function initNumericField(info, arr, name) {
   var MAX_FIELD_SIZE = 18,
       data, size;
 
-  data = this.getNumericFieldInfo(arr, name);
+  data = getNumericFieldInfo(arr, name);
   info.decimals = data.decimals;
   size = Math.max(data.max.toFixed(info.decimals).length,
       data.min.toFixed(info.decimals).length);
@@ -124,7 +140,7 @@ Dbf.initNumericField = function(info, arr, name) {
   }
   info.size = size;
 
-  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
+  var formatter = getDecimalFormatter(size, info.decimals);
   info.write = function(i, bin) {
     var rec = arr[i],
         str = formatter(rec[name]);
@@ -133,9 +149,9 @@ Dbf.initNumericField = function(info, arr, name) {
     }
     bin.writeString(str, size);
   };
-};
+}
 
-Dbf.initBooleanField = function(info, arr, name) {
+function initBooleanField(info, arr, name) {
   info.size = 1;
   info.write = function(i, bin) {
     var val = arr[i][name],
@@ -145,9 +161,9 @@ Dbf.initBooleanField = function(info, arr, name) {
     else c = '?';
     bin.writeString(c);
   };
-};
+}
 
-Dbf.initDateField = function(info, arr, name) {
+function initDateField(info, arr, name) {
   info.size = 8;
   info.write = function(i, bin) {
     var d = arr[i][name],
@@ -161,24 +177,24 @@ Dbf.initDateField = function(info, arr, name) {
     }
     bin.writeString(str);
   };
-};
+}
 
-Dbf.convertValueToString = function(s) {
+function convertValueToString(s) {
   return s === undefined || s === null ? '' : String(s);
-};
+}
 
-Dbf.initStringField = function(info, arr, name, encoding) {
-  var formatter = encoding == 'ascii' ? Dbf.encodeValueAsAscii : Dbf.getStringWriterEncoded(encoding);
+function initStringField(info, arr, name, encoding) {
+  var formatter = encoding == 'ascii' ? encodeValueAsAscii : getStringWriterEncoded(encoding);
   var size = 0;
   var truncated = 0;
   var buffers = arr.map(function(rec) {
-    var strval = Dbf.convertValueToString(rec[name]);
+    var strval = convertValueToString(rec[name]);
     var buf = formatter(strval);
-    if (buf.length > Dbf.MAX_STRING_LEN) {
+    if (buf.length > MAX_STRING_LEN) {
       if (encoding == 'ascii') {
-        buf = buf.subarray(0, Dbf.MAX_STRING_LEN);
+        buf = buf.subarray(0, MAX_STRING_LEN);
       } else {
-        buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+        buf = truncateEncodedString(buf, encoding, MAX_STRING_LEN);
       }
       truncated++;
     }
@@ -200,33 +216,33 @@ Dbf.initStringField = function(info, arr, name, encoding) {
   if (truncated > 0) {
     info.warning = 'Truncated ' + truncated + ' string' + (truncated == 1 ? '' : 's') + ' to fit the 254-byte limit';
   }
-};
+}
 
-Dbf.convertFieldNames = function(names) {
-  return internal.getUniqFieldNames(names.map(Dbf.cleanFieldName), 10);
-};
+function convertFieldNames(names) {
+  return getUniqFieldNames(names.map(cleanFieldName), 10);
+}
 
 // Replace non-alphanumeric characters with _ and merge adjacent _
 // See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
 // TODO: decide whether or not to avoid initial numerals
-Dbf.cleanFieldName = function(name) {
+function cleanFieldName(name) {
   return name.replace(/[^A-Za-z0-9]+/g, '_');
-};
+}
 
-Dbf.getFieldInfo = function(arr, name, encoding) {
-  var type = this.discoverFieldType(arr, name),
+function getFieldInfo(arr, name, encoding) {
+  var type = discoverFieldType(arr, name),
       info = {
         type: type,
         decimals: 0
       };
   if (type == 'N') {
-    Dbf.initNumericField(info, arr, name);
+    initNumericField(info, arr, name);
   } else if (type == 'C') {
-    Dbf.initStringField(info, arr, name, encoding);
+    initStringField(info, arr, name, encoding);
   } else if (type == 'L') {
-    Dbf.initBooleanField(info, arr, name);
+    initBooleanField(info, arr, name);
   } else if (type == 'D') {
-    Dbf.initDateField(info, arr, name);
+    initDateField(info, arr, name);
   } else {
     // Treat null fields as empty numeric fields; this way, they will be imported
     // again as nulls.
@@ -238,9 +254,9 @@ Dbf.getFieldInfo = function(arr, name, encoding) {
     info.write = function() {};
   }
   return info;
-};
+}
 
-Dbf.discoverFieldType = function(arr, name) {
+function discoverFieldType(arr, name) {
   var val;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
@@ -251,9 +267,9 @@ Dbf.discoverFieldType = function(arr, name) {
     if (val) return (typeof val);
   }
   return null;
-};
+}
 
-Dbf.getDecimalFormatter = function(size, decimals) {
+function getDecimalFormatter(size, decimals) {
   // TODO: find better way to handle nulls
   var nullValue = ' '; // ArcGIS may use 0
   return function(val) {
@@ -262,9 +278,9 @@ Dbf.getDecimalFormatter = function(size, decimals) {
         strval = valid ? val.toFixed(decimals) : String(nullValue);
     return utils.lpad(strval, size, ' ');
   };
-};
+}
 
-Dbf.getNumericFieldInfo = function(arr, name) {
+function getNumericFieldInfo(arr, name) {
   var min = 0,
       max = 0,
       k = 1,
@@ -300,13 +316,13 @@ Dbf.getNumericFieldInfo = function(arr, name) {
     min: min,
     max: max
   };
-};
+}
 
 // return an array buffer or null if value contains non-ascii chars
-Dbf.encodeValueAsAscii = function(val, strict) {
+function encodeValueAsAscii(val, strict) {
   var str = String(val),
       n = str.length,
-      view = Dbf.bufferPool.reserve(n),
+      view = bufferPool.reserve(n),
       i, c;
   for (i=0; i<n; i++) {
     c = str.charCodeAt(i);
@@ -320,30 +336,30 @@ Dbf.encodeValueAsAscii = function(val, strict) {
     }
     view[i] = c;
   }
-  Dbf.bufferPool.putBack(n-i);
+  bufferPool.putBack(n-i);
   return view ? view.subarray(0, i) : null;
-};
+}
 
-Dbf.getStringWriterEncoded = function(encoding) {
+function getStringWriterEncoded(encoding) {
   return function(val) {
     // optimization -- large majority of strings in real-world datasets are
     // ascii. Try (faster) ascii encoding first, fall back to text encoder.
-    var buf = Dbf.encodeValueAsAscii(val, true);
+    var buf = encodeValueAsAscii(val, true);
     if (buf === null) {
-      buf = internal.encodeString(String(val), encoding);
+      buf = encodeString(String(val), encoding);
     }
     return buf;
   };
-};
+}
 
 // try to remove partial multi-byte characters from the end of an encoded string.
-Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
+function truncateEncodedString(buf, encoding, maxLen) {
   var truncated = buf.slice(0, maxLen);
   var len = maxLen;
   var tmp, str;
   while (len > 0 && len >= maxLen - 3) {
     tmp = len == maxLen ? truncated : buf.slice(0, len);
-    str = internal.decodeString(tmp, encoding);
+    str = decodeString(tmp, encoding);
     if (str.charAt(str.length-1) != '\ufffd') {
       truncated = tmp;
       break;
@@ -351,4 +367,4 @@ Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
     len--;
   }
   return truncated;
-};
+}

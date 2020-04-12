@@ -1,10 +1,16 @@
-/* @requires
-mapshaper-segment-intersection,
-mapshaper-dataset-utils,
-mapshaper-path-index
-mapshaper-polygon-repair
-mapshaper-units
-*/
+
+import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
+import { convertIntervalParam } from '../geom/mapshaper-units';
+import { debug, error } from '../utils/mapshaper-logging';
+import { NodeCollection } from '../topology/mapshaper-nodes';
+import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { layerHasPaths, getArcPresenceTest2 } from '../dataset/mapshaper-layer-utils';
+import { cleanShapes } from '../paths/mapshaper-path-repair-utils';
+import { buildTopology } from '../topology/mapshaper-topology';
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import { editShapes } from '../paths/mapshaper-shape-utils';
+import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
+import geom from '../geom/mapshaper-geom';
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
@@ -17,7 +23,7 @@ mapshaper-units
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
-internal.addIntersectionCuts = function(dataset, _opts) {
+export function addIntersectionCuts(dataset, _opts) {
   var opts = _opts || {};
   var arcs = dataset.arcs;
   var arcBounds = arcs && arcs.getBounds();
@@ -27,9 +33,9 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   }
 
   if (opts.snap_interval) {
-    snapDist = internal.convertIntervalParam(opts.snap_interval, internal.getDatasetCRS(dataset));
+    snapDist = convertIntervalParam(opts.snap_interval, getDatasetCRS(dataset));
   } else if (!opts.no_snap && arcBounds.hasBounds()) {
-    snapDist = internal.getHighPrecisionSnapInterval(arcBounds.toArray());
+    snapDist = getHighPrecisionSnapInterval(arcBounds.toArray());
   } else {
     snapDist = 0;
   }
@@ -39,48 +45,48 @@ internal.addIntersectionCuts = function(dataset, _opts) {
   // used to reset simplification)
   arcs.flatten();
 
-  internal.snapAndCut(dataset, snapDist);
+  snapAndCut(dataset, snapDist);
 
   // Clean shapes by removing collapsed arc references, etc.
   // TODO: consider alternative -- avoid creating degenerate arcs
   // in insertCutPoints()
   dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    if (layerHasPaths(lyr)) {
+      cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
   // Further clean-up -- remove duplicate and missing arcs
-  nodes = internal.cleanArcReferences(dataset);
+  nodes = cleanArcReferences(dataset);
 
   return nodes;
-};
+}
 
-internal.snapAndCut = function(dataset, snapDist) {
+function snapAndCut(dataset, snapDist) {
   var arcs = dataset.arcs;
   var cutOpts = snapDist > 0 ? {} : {tolerance: 0};
   var coordsHaveChanged = false;
   var snapCount, dupeCount, cutCount;
-  snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+  snapCount = snapCoordsByInterval(arcs, snapDist);
   dupeCount = arcs.dedupCoords();
 
   // why was topology built here previously????
   // if (snapCount > 0 || dupeCount > 0) {
   //   // Detect topology again if coordinates have changed
-  //   api.buildTopology(dataset);
+  //   internal.buildTopology(dataset);
   // }
 
   // cut arcs at points where segments intersect
-  cutCount = internal.cutPathsAtIntersections(dataset, cutOpts);
+  cutCount = cutPathsAtIntersections(dataset, cutOpts);
   if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
     coordsHaveChanged = true;
   }
   // perform a second snap + cut pass if needed
   if (cutCount > 0) {
     cutCount = 0;
-    snapCount = internal.snapCoordsByInterval(arcs, snapDist);
+    snapCount = snapCoordsByInterval(arcs, snapDist);
     arcs.dedupCoords(); // need to do this here?
     if (snapCount > 0) {
-      cutCount = internal.cutPathsAtIntersections(dataset, cutOpts);
+      cutCount = cutPathsAtIntersections(dataset, cutOpts);
     }
     if (cutCount > 0) {
       arcs.dedupCoords(); // need to do this here?
@@ -89,32 +95,32 @@ internal.snapAndCut = function(dataset, snapDist) {
   }
   // Detect topology again if coordinates have changed
   if (coordsHaveChanged) {
-    api.buildTopology(dataset);
+    buildTopology(dataset);
   }
-};
+}
 
 
 // Remap any references to duplicate arcs in paths to use the same arcs
 // Remove any unused arcs from the dataset's ArcCollection.
 // Return a NodeCollection
-internal.cleanArcReferences = function(dataset) {
+function cleanArcReferences(dataset) {
   var nodes = new NodeCollection(dataset.arcs);
-  var map = internal.findDuplicateArcs(nodes);
+  var map = findDuplicateArcs(nodes);
   var dropCount;
   if (map) {
-    internal.replaceIndexedArcIds(dataset, map);
+    replaceIndexedArcIds(dataset, map);
   }
-  dropCount = internal.deleteUnusedArcs(dataset);
+  dropCount = deleteUnusedArcs(dataset);
   if (dropCount > 0) {
     // rebuild nodes if arcs have changed
     nodes = new NodeCollection(dataset.arcs);
   }
   return nodes;
-};
+}
 
 
 // @map an Object mapping old to new ids
-internal.replaceIndexedArcIds = function(dataset, map) {
+function replaceIndexedArcIds(dataset, map) {
   var remapPath = function(ids) {
     var arcId, absId, id2;
     for (var i=0; i<ids.length; i++) {
@@ -126,13 +132,13 @@ internal.replaceIndexedArcIds = function(dataset, map) {
     return ids;
   };
   dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      internal.editShapes(lyr.shapes, remapPath);
+    if (layerHasPaths(lyr)) {
+      editShapes(lyr.shapes, remapPath);
     }
   });
-};
+}
 
-internal.findDuplicateArcs = function(nodes) {
+function findDuplicateArcs(nodes) {
   var map = new Int32Array(nodes.arcs.size()),
       count = 0,
       i2;
@@ -142,24 +148,24 @@ internal.findDuplicateArcs = function(nodes) {
     if (i != i2) count++;
   }
   return count > 0 ? map : null;
-};
+}
 
-internal.deleteUnusedArcs = function(dataset) {
-  var test = internal.getArcPresenceTest2(dataset.layers, dataset.arcs);
+function deleteUnusedArcs(dataset) {
+  var test = getArcPresenceTest2(dataset.layers, dataset.arcs);
   var count1 = dataset.arcs.size();
   var map = dataset.arcs.deleteArcs(test); // condenses arcs
   var count2 = dataset.arcs.size();
   var deleteCount = count1 - count2;
   if (deleteCount > 0) {
-    internal.replaceIndexedArcIds(dataset, map);
+    replaceIndexedArcIds(dataset, map);
   }
   return deleteCount;
-};
+}
 
 // Return a function for updating a path (array of arc ids)
 // @map array generated by insertCutPoints()
 // @arcCount number of arcs in divided collection (kludge)
-internal.getDividedArcUpdater = function(map, arcCount) {
+function getDividedArcUpdater(map, arcCount) {
   return function(ids) {
     var ids2 = [];
     for (var j=0; j<ids.length; j++) {
@@ -185,40 +191,40 @@ internal.getDividedArcUpdater = function(map, arcCount) {
       ids.push(id2);
     } while (max - min >= 0);
   }
-};
+}
 
 // Divides a collection of arcs at points where arc paths cross each other
 // Returns array for remapping arc ids
-internal.divideArcs = function(arcs, opts) {
-  var points = internal.findClippingPoints(arcs, opts);
+export function divideArcs(arcs, opts) {
+  var points = findClippingPoints(arcs, opts);
   // TODO: avoid the following if no points need to be added
-  var map = internal.insertCutPoints(points, arcs);
+  var map = insertCutPoints(points, arcs);
   // segment-point intersections currently create duplicate points
   // TODO: consider dedup in a later cleanup pass?
   // arcs.dedupCoords();
   return map;
-};
+}
 
-internal.cutPathsAtIntersections = function(dataset, opts) {
+export function cutPathsAtIntersections(dataset, opts) {
   var n = dataset.arcs.getPointCount();
-  var map = internal.divideArcs(dataset.arcs, opts);
+  var map = divideArcs(dataset.arcs, opts);
   var n2 = dataset.arcs.getPointCount();
-  internal.remapDividedArcs(dataset, map);
+  remapDividedArcs(dataset, map);
   return n2 - n;
-};
+}
 
-internal.remapDividedArcs = function(dataset, map) {
-  var remapPath = internal.getDividedArcUpdater(map, dataset.arcs.size());
+export function remapDividedArcs(dataset, map) {
+  var remapPath = getDividedArcUpdater(map, dataset.arcs.size());
   dataset.layers.forEach(function(lyr) {
-    if (internal.layerHasPaths(lyr)) {
-      internal.editShapes(lyr.shapes, remapPath);
+    if (layerHasPaths(lyr)) {
+      editShapes(lyr.shapes, remapPath);
     }
   });
-};
+}
 
 // Inserts array of cutting points into an ArcCollection
 // Returns array for remapping arc ids
-internal.insertCutPoints = function(unfilteredPoints, arcs) {
+export function insertCutPoints(unfilteredPoints, arcs) {
   var data = arcs.getVertexData(),
       xx0 = data.xx,
       yy0 = data.yy,
@@ -228,7 +234,7 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
       nn1 = [],
       srcArcTotal = arcs.size(),
       map = new Uint32Array(srcArcTotal),
-      points = internal.filterSortedCutPoints(internal.sortCutPoints(unfilteredPoints, xx0, yy0), arcs),
+      points = filterSortedCutPoints(sortCutPoints(unfilteredPoints, xx0, yy0), arcs),
       destPointTotal = arcs.getPointCount() + points.length * 2,
       xx1 = new Float64Array(destPointTotal),
       yy1 = new Float64Array(destPointTotal),
@@ -272,24 +278,24 @@ internal.insertCutPoints = function(unfilteredPoints, arcs) {
   if (i1 != destPointTotal) error("[insertCutPoints()] Counting error");
   arcs.updateVertexData(nn1, xx1, yy1, null);
   return map;
-};
+}
 
-internal.convertIntersectionsToCutPoints = function(intersections, xx, yy) {
+function convertIntersectionsToCutPoints(intersections, xx, yy) {
   var points = [], ix, a, b;
   for (var i=0, n=intersections.length; i<n; i++) {
     ix = intersections[i];
-    a = internal.getCutPoint(ix.x, ix.y, ix.a[0], ix.a[1], xx, yy);
-    b = internal.getCutPoint(ix.x, ix.y, ix.b[0], ix.b[1], xx, yy);
+    a = getCutPoint(ix.x, ix.y, ix.a[0], ix.a[1], xx, yy);
+    b = getCutPoint(ix.x, ix.y, ix.b[0], ix.b[1], xx, yy);
     if (a) points.push(a);
     if (b) points.push(b);
   }
   return points;
-};
+}
 
 // i, j: indexes of segment endpoints in xx, yy, or of a single endpoint
 //   if point x,y falls on an endpoint
 // Assumes: i <= j
-internal.getCutPoint = function(x, y, i, j, xx, yy) {
+export function getCutPoint(x, y, i, j, xx, yy) {
   var ix = xx[i],
       iy = yy[i],
       jx = xx[j],
@@ -311,25 +317,25 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
     // return null;
   // }
   return {x: x, y: y, i: i};
-};
+}
 
 // Sort insertion points in order of insertion
 // Insertion order: ascending id of first endpoint of containing segment and
 //   ascending distance from same endpoint.
-internal.sortCutPoints = function(points, xx, yy) {
+export function sortCutPoints(points, xx, yy) {
   points.sort(function(a, b) {
     if (a.i != b.i) return a.i - b.i;
-    return distanceSq(xx[a.i], yy[a.i], a.x, a.y) - distanceSq(xx[b.i], yy[b.i], b.x, b.y);
+    return geom.distanceSq(xx[a.i], yy[a.i], a.x, a.y) - geom.distanceSq(xx[b.i], yy[b.i], b.x, b.y);
     // The old code below is no longer reliable, now that out-of-range intersection
     // points are allowed.
     // return Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
     // Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
   });
   return points;
-};
+}
 
 // Removes duplicate points and arc endpoints
-internal.filterSortedCutPoints = function(points, arcs) {
+export function filterSortedCutPoints(points, arcs) {
   var filtered = [],
       pointId = 0;
   arcs.forEach2(function(i, n, xx, yy) {
@@ -354,10 +360,10 @@ internal.filterSortedCutPoints = function(points, arcs) {
     }
   });
   return filtered;
-};
+}
 
-internal.findClippingPoints = function(arcs, opts) {
-  var intersections = internal.findSegmentIntersections(arcs, opts),
+export function findClippingPoints(arcs, opts) {
+  var intersections = findSegmentIntersections(arcs, opts),
       data = arcs.getVertexData();
-  return internal.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
-};
+  return convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
+}

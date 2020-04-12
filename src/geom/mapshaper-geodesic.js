@@ -1,22 +1,24 @@
-/* @requires mapshaper-projections, mapshaper-geom */
+import { isLatLngCRS, getDatasetCRS } from '../geom/mapshaper-projections';
+import { error } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
 
-internal.getGeodesic = function(dataset) {
-  var P = internal.getDatasetCRS(dataset);
-  if (!internal.isLatLngCRS(P)) error('Expected an unprojected CRS');
+function getGeodesic(dataset) {
+  var P = getDatasetCRS(dataset);
+  if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
   var f = P.es / (1 + Math.sqrt(P.one_es));
   var GeographicLib = require('mproj').internal.GeographicLib;
   return new GeographicLib.Geodesic.Geodesic(P.a, f);
-};
+}
 
-internal.getPlanarSegmentEndpoint = function(x, y, bearing, meterDist) {
+function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
   var rad = bearing / 180 * Math.PI;
   var dx = Math.sin(rad) * meterDist;
   var dy = Math.cos(rad) * meterDist;
   return [x + dx, y + dy];
-};
+}
 
 // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
-internal.fastGeodeticSegmentFunction = function(lng, lat, bearing, meterDist) {
+function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
   var D2R = Math.PI / 180;
   var cos = Math.cos(lat * D2R);
   var cos2 = 2 * cos * cos - 1;
@@ -29,39 +31,39 @@ internal.fastGeodeticSegmentFunction = function(lng, lat, bearing, meterDist) {
   var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
   var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
   return [lng2, lat2];
-};
+}
 
-internal.getGeodeticSegmentFunction = function(dataset, highPrecision) {
-  var P = internal.getDatasetCRS(dataset);
-  if (!internal.isLatLngCRS(P)) {
-    return internal.getPlanarSegmentEndpoint;
+export function getGeodeticSegmentFunction(dataset, highPrecision) {
+  var P = getDatasetCRS(dataset);
+  if (!isLatLngCRS(P)) {
+    return getPlanarSegmentEndpoint;
   }
   if (!highPrecision) {
     // CAREFUL: this function has higher error at very large distances and at the poles
     // also, it wouldn't work for other planets than Earth
-    return internal.fastGeodeticSegmentFunction;
+    return fastGeodeticSegmentFunction;
   }
-  var g = internal.getGeodesic(dataset);
+  var g = getGeodesic(dataset);
   return function(lng, lat, bearing, meterDist) {
     var o = g.Direct(lat, lng, bearing, meterDist);
     var p = [o.lon2, o.lat2];
     return p;
   };
-};
+}
 
-internal.getGeodeticDistanceFunction = function(dataset, highPrecision) {
-  var P = internal.getDatasetCRS(dataset);
-  if (!internal.isLatLngCRS(P)) {
-    return internal.getPlanarSegmentEndpoint;
+function getGeodeticDistanceFunction(dataset, highPrecision) {
+  var P = getDatasetCRS(dataset);
+  if (!isLatLngCRS(P)) {
+    return getPlanarSegmentEndpoint;
   }
-};
+}
 
 // Useful for determining if a segment that intersects another segment is
 // entering or leaving an enclosed buffer area
 // returns -1 if angle of p1p2 -> p3p4 is counter-clockwise (left turn)
 // returns 1 if angle is clockwise
 // return 0 if segments are collinear
-internal.segmentTurn = function(p1, p2, p3, p4) {
+export function segmentTurn(p1, p2, p3, p4) {
   var ax = p1[0],
       ay = p1[1],
       bx = p2[0],
@@ -74,18 +76,18 @@ internal.segmentTurn = function(p1, p2, p3, p4) {
       orientation = geom.orient2D(ax, ay, bx, by, cx, cy);
     if (!orientation) return 0;
     return orientation < 0 ? 1 : -1;
-};
+}
 
-internal.bearingDegrees = function(a, b, c, d) {
+function bearingDegrees(a, b, c, d) {
   return geom.bearing(a, b, c, d) * 180 / Math.PI;
-};
+}
 
-internal.bearingDegrees2D = function(a, b, c, d) {
+function bearingDegrees2D(a, b, c, d) {
   return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
-};
+}
 
 // return function to calculate bearing of a segment in degrees
-internal.getBearingFunction = function(dataset) {
-  var P = internal.getDatasetCRS(dataset);
-  return internal.isLatLngCRS(P) ? internal.bearingDegrees : internal.bearingDegrees2D;
-};
+export function getBearingFunction(dataset) {
+  var P = getDatasetCRS(dataset);
+  return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
+}

@@ -1,7 +1,13 @@
-/* @require svg-common mapshaper-frame */
+import { getMapFrameMetersPerPixel, findFrameDataset } from '../commands/mapshaper-frame';
+import { furnitureRenderers } from '../furniture/mapshaper-furniture';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { stop } from '../utils/mapshaper-logging';
+import { symbolRenderers } from '../svg/svg-common';
 
-api.scalebar = function(catalog, opts) {
-  var frame = internal.findFrameDataset(catalog);
+cmd.scalebar = function(catalog, opts) {
+  var frame = findFrameDataset(catalog);
   var obj, lyr;
   if (!frame) {
     stop('Missing a map frame');
@@ -15,7 +21,7 @@ api.scalebar = function(catalog, opts) {
 };
 
 // TODO: generalize to other kinds of furniture as they are developed
-internal.getScalebarPosition = function(d) {
+function getScalebarPosition(d) {
   var opts = { // defaults
     valign: 'top',
     halign: 'left',
@@ -37,13 +43,13 @@ internal.getScalebarPosition = function(d) {
     opts.valign = 'bottom';
   }
   return opts;
-};
+}
 
-SVG.furnitureRenderers.scalebar = function(d, frame) {
-  var pos = internal.getScalebarPosition(d);
-  var metersPerPx = internal.getMapFrameMetersPerPixel(frame);
-  var label = d.label_text || internal.getAutoScalebarLabel(frame.width, metersPerPx);
-  var scalebarKm = internal.parseScalebarLabelToKm(label);
+furnitureRenderers.scalebar = function(d, frame) {
+  var pos = getScalebarPosition(d);
+  var metersPerPx = getMapFrameMetersPerPixel(frame);
+  var label = d.label_text || getAutoScalebarLabel(frame.width, metersPerPx);
+  var scalebarKm = parseScalebarLabelToKm(label);
   var barHeight = 3;
   var labelOffs = 4;
   var fontSize = +d.font_size || 13;
@@ -83,7 +89,7 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
       // so I'm using 'hanging' and 'auto', which seem to be well supported.
       // downside: requires a kludgy multiplier to calculate scalebar height (see above)
     };
-  var labelObj = SVG.symbolRenderers.label(labelOpts, anchorX, anchorY)[0];
+  var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY)[0];
   var g = {
     tag: 'g',
     children: [barObj, labelObj],
@@ -94,7 +100,7 @@ SVG.furnitureRenderers.scalebar = function(d, frame) {
   return [g];
 };
 
-internal.getAutoScalebarLabel = function(mapWidth, metersPerPx) {
+function getAutoScalebarLabel(mapWidth, metersPerPx) {
   var minWidth = 100; // TODO: vary min size based on map width
   var minKm = metersPerPx * minWidth / 1000;
   var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
@@ -102,33 +108,33 @@ internal.getAutoScalebarLabel = function(mapWidth, metersPerPx) {
     '2,500 3,000 4,000 5,000').split(' ');
   return options.reduce(function(memo, str) {
     if (memo) return memo;
-    var label = internal.formatDistanceLabelAsMiles(str);
-    if (internal.parseScalebarLabelToKm(label) > minKm) {
+    var label = formatDistanceLabelAsMiles(str);
+    if (parseScalebarLabelToKm(label) > minKm) {
        return label;
     }
   }, null) || '';
-};
+}
 
-internal.formatDistanceLabelAsMiles = function(str) {
-  var num = internal.parseScalebarNumber(str);
+export function formatDistanceLabelAsMiles(str) {
+  var num = parseScalebarNumber(str);
   return str + (num > 1 ? ' MILES' : ' MILE');
-};
+}
 
 // See test/mapshaper-scalebar.js for examples of supported formats
-internal.parseScalebarLabelToKm = function(str) {
-  var units = internal.parseScalebarUnits(str);
-  var value = internal.parseScalebarNumber(str);
+export function parseScalebarLabelToKm(str) {
+  var units = parseScalebarUnits(str);
+  var value = parseScalebarNumber(str);
   if (!units || !value) return NaN;
   return units == 'mile' ? value * 1.60934 : value;
-};
+}
 
-internal.parseScalebarUnits = function(str) {
+function parseScalebarUnits(str) {
   var isMiles = /miles?$/.test(str.toLowerCase());
   var isKm = /(km|kilometers?|kilometres?)$/.test(str.toLowerCase());
   return isMiles && 'mile' || isKm && 'km' || '';
-};
+}
 
-internal.parseScalebarNumber = function(str) {
+function parseScalebarNumber(str) {
   var fractionRxp = /^([0-9]+) ?\/ ?([0-9]+)/;
   var match, value;
   str = str.replace(/[\s]/g, '').replace(/,/g, '');
@@ -139,4 +145,4 @@ internal.parseScalebarNumber = function(str) {
     value = parseFloat(str);
   }
   return value > 0 && value < Infinity ? value : NaN;
-};
+}

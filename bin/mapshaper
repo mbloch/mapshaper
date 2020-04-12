@@ -4,10 +4,5 @@ var mapshaper = require("../mapshaper.js");
 mapshaper.enableLogging();
 mapshaper.runCommands(process.argv.slice(2), done);
 function done(err) {
-  if (err) {
-    mapshaper.printError(err);
-    process.exit(1);
-  } else {
-    process.exit(0);
-  }
+  process.exit(err ? 1 : 0);
 }

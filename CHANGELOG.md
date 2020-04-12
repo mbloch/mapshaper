@@ -1,3 +1,7 @@
+v0.5.0
+* Refactored the codebase to use ES modules.
+* Switched to the "rollup" module bundler.
+
 v0.4.163
 * Updated dependences, increased minimum Node version to 6.0.
 

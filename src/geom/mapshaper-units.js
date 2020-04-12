@@ -1,4 +1,5 @@
-/* @requires mapshaper-projections */
+import { stop, error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
 var UNITS_LOOKUP = {
   m: 'meters',
@@ -24,7 +25,7 @@ var TO_METERS = {
 // @paramUnits: units code of distance param, or null if units are not specified
 // @crs: Proj.4 CRS object, or null (unknown latlong CRS);
 //
-internal.getIntervalConversionFactor = function(paramUnits, crs) {
+export function getIntervalConversionFactor(paramUnits, crs) {
   var fromParam = 0,
       fromCRS = 0,
       k;
@@ -58,19 +59,19 @@ internal.getIntervalConversionFactor = function(paramUnits, crs) {
     k = 1 / fromCRS;
   }
   return k;
-};
+}
 
 // throws an error if measure is non-parsable
-internal.parseMeasure = function(m) {
-  var o = internal.parseMeasure2(m);
+export function parseMeasure(m) {
+  var o = parseMeasure2(m);
   if (isNaN(o.value)) {
     stop('Invalid parameter:', m);
   }
   return o;
-};
+}
 
 // returns NaN value if value is non-parsable
-internal.parseMeasure2 = function(m) {
+export function parseMeasure2(m) {
   var s = utils.isString(m) ? m : '';
   var match = /(sq|)([a-z]+)(2|)$/i.exec(s); // units rxp
   var o = {};
@@ -90,29 +91,29 @@ internal.parseMeasure2 = function(m) {
     o.value = Number(s);
   }
   return o;
-};
+}
 
-internal.convertAreaParam = function(opt, crs) {
-  var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, crs);
+export function convertAreaParam(opt, crs) {
+  var o = parseMeasure(opt);
+  var k = getIntervalConversionFactor(o.units, crs);
   return o.value * k * k;
-};
+}
 
-internal.convertDistanceParam = function(opt, crs) {
-  var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, crs);
+export function convertDistanceParam(opt, crs) {
+  var o = parseMeasure(opt);
+  var k = getIntervalConversionFactor(o.units, crs);
   if (o.areal) {
     stop('Expected a distance, received an area:', opt);
   }
   return o.value * k;
-};
+}
 
 // Same as convertDistanceParam(), except:
 //   in the case of latlong datasets, coordinates are unitless (instead of meters),
 //   and parameters with units trigger an error
-internal.convertIntervalParam = function(opt, crs) {
-  var o = internal.parseMeasure(opt);
-  var k = internal.getIntervalConversionFactor(o.units, crs);
+export function convertIntervalParam(opt, crs) {
+  var o = parseMeasure(opt);
+  var k = getIntervalConversionFactor(o.units, crs);
   if (o.units && crs && crs.is_latlong) {
     stop('Parameter does not support distance units with latlong datasets');
   }
@@ -120,24 +121,24 @@ internal.convertIntervalParam = function(opt, crs) {
     stop('Expected a distance, received an area:', opt);
   }
   return o.value * k;
-};
+}
 
-internal.convertIntervalPair = function(opt, crs) {
+export function convertIntervalPair(opt, crs) {
   var a, b;
   if (!Array.isArray(opt) || opt.length != 2) {
     stop('Expected two distance parameters, received', opt);
   }
-  a = internal.parseMeasure(opt[0]);
-  b = internal.parseMeasure(opt[1]);
+  a = parseMeasure(opt[0]);
+  b = parseMeasure(opt[1]);
   if (a.units && !b.units || b.units && !a.units) {
     stop('Both parameters should have units:', opt);
   }
-  return [internal.convertIntervalParam(opt[0], crs),
-          internal.convertIntervalParam(opt[1], crs)];
-};
+  return [convertIntervalParam(opt[0], crs),
+          convertIntervalParam(opt[1], crs)];
+}
 
 // Accepts a single value or a list of four values. List order is l,b,t,r
-internal.convertFourSides = function(opt, crs, bounds) {
+export function convertFourSides(opt, crs, bounds) {
   var arr = opt.split(',');
   if (arr.length == 1) {
     arr = [arr[0], arr[0], arr[0], arr[0]];
@@ -150,13 +151,13 @@ internal.convertFourSides = function(opt, crs, bounds) {
       tmp = parseFloat(param) / 100 || 0;
       return tmp * (i == 1 || i == 3 ? bounds.height() : bounds.width());
     }
-    return internal.convertIntervalParam(opt, crs);
+    return convertIntervalParam(opt, crs);
   });
-};
+}
 
 // Convert an area measure to a label in sqkm or sqm
-internal.getAreaLabel = function(area, crs) {
+export function getAreaLabel(area, crs) {
   var sqm = crs && crs.to_meter ? area * crs.to_meter * crs.to_meter : area;
   var sqkm = sqm / 1e6;
   return sqkm < 0.01 ? Math.round(sqm) + ' sqm' : sqkm + ' sqkm';
-};
+}

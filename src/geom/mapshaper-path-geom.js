@@ -1,19 +1,21 @@
-/* @requires mapshaper-geom */
+import { Bounds } from '../geom/mapshaper-bounds';
+import { pointSegDistSq2, greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
+import { stop, error } from '../utils/mapshaper-logging';
 
-geom.pathIsClosed = function(ids, arcs) {
+export function pathIsClosed(ids, arcs) {
   var firstArc = ids[0];
   var lastArc = ids[ids.length - 1];
   var p1 = arcs.getVertex(firstArc, 0);
   var p2 = arcs.getVertex(lastArc, -1);
   var closed = p1.x === p2.x && p1.y === p2.y;
   return closed;
-};
+}
 
-geom.getPointToPathDistance = function(px, py, ids, arcs) {
-  return geom.getPointToPathInfo(px, py, ids, arcs).distance;
-};
+export function getPointToPathDistance(px, py, ids, arcs) {
+  return getPointToPathInfo(px, py, ids, arcs).distance;
+}
 
-geom.getPointToPathInfo = function(px, py, ids, arcs) {
+export function getPointToPathInfo(px, py, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   var pPathSq = Infinity;
   var ax, ay, bx, by, axmin, aymin, bxmin, bymin, pabSq;
@@ -40,22 +42,22 @@ geom.getPointToPathInfo = function(px, py, ids, arcs) {
     segment: [[axmin, aymin], [bxmin, bymin]],
     distance: Math.sqrt(pPathSq)
   };
-};
+}
 
 
 // Return unsigned distance of a point to the nearest point on a polygon or polyline path
 //
-geom.getPointToShapeDistance = function(x, y, shp, arcs) {
+export function getPointToShapeDistance(x, y, shp, arcs) {
   var minDist = (shp || []).reduce(function(minDist, ids) {
-    var pathDist = geom.getPointToPathDistance(x, y, ids, arcs);
+    var pathDist = getPointToPathDistance(x, y, ids, arcs);
     return Math.min(minDist, pathDist);
   }, Infinity);
   return minDist;
-};
+}
 
 // @ids array of arc ids
 // @arcs ArcCollection
-geom.getAvgPathXY = function(ids, arcs) {
+export function getAvgPathXY(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
   var x0 = iter.x,
@@ -77,12 +79,12 @@ geom.getAvgPathXY = function(ids, arcs) {
     x: sumX / count,
     y: sumY / count
   };
-};
+}
 
 // Return path with the largest (area) bounding box
 // @shp array of array of arc ids
 // @arcs ArcCollection
-geom.getMaxPath = function(shp, arcs) {
+export function getMaxPath(shp, arcs) {
   var maxArea = 0;
   return (shp || []).reduce(function(maxPath, path) {
     var bbArea = arcs.getSimpleShapeBounds(path).area();
@@ -92,24 +94,25 @@ geom.getMaxPath = function(shp, arcs) {
     }
     return maxPath;
   }, null);
-};
+}
 
-geom.countVerticesInPath = function(ids, arcs) {
+export function countVerticesInPath(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       count = 0;
   while (iter.hasNext()) count++;
   return count;
-};
+}
 
-geom.getPathBounds = function(points) {
+export function getPathBounds(points) {
   var bounds = new Bounds();
   for (var i=0, n=points.length; i<n; i++) {
     bounds.mergePoint(points[i][0], points[i][1]);
   }
   return bounds;
-};
+}
 
-geom.calcPathLen = (function() {
+export var calcPathLen;
+calcPathLen = (function() {
   var len, calcLen;
   function addSegLen(i, j, xx, yy) {
     len += calcLen(xx[i], yy[i], xx[j], yy[j]);

@@ -1,12 +1,13 @@
-/* @requires mapshaper-arcs, mapshaper-geom */
+import { ArcCollection } from '../paths/mapshaper-arcs';
+import geom from '../geom/mapshaper-geom';
 
-internal.simplifyArcsFast = function(arcs, dist) {
+export function simplifyArcsFast(arcs, dist) {
   var xx = [],
       yy = [],
       nn = [],
       count;
   for (var i=0, n=arcs.size(); i<n; i++) {
-    count = internal.simplifyPathFast([i], arcs, dist, xx, yy);
+    count = simplifyPathFast([i], arcs, dist, xx, yy);
     if (count == 1) {
       count = 0;
       xx.pop();
@@ -15,9 +16,9 @@ internal.simplifyArcsFast = function(arcs, dist) {
     nn.push(count);
   }
   return new ArcCollection(nn, xx, yy);
-};
+}
 
-internal.simplifyPolygonFast = function(shp, arcs, dist) {
+export function simplifyPolygonFast(shp, arcs, dist) {
   if (!shp || !dist) return null;
   var xx = [],
       yy = [],
@@ -25,7 +26,7 @@ internal.simplifyPolygonFast = function(shp, arcs, dist) {
       shp2 = [];
 
   shp.forEach(function(path) {
-    var count = internal.simplifyPathFast(path, arcs, dist, xx, yy);
+    var count = simplifyPathFast(path, arcs, dist, xx, yy);
     while (count < 4 && count > 0) {
       xx.pop();
       yy.pop();
@@ -40,16 +41,16 @@ internal.simplifyPolygonFast = function(shp, arcs, dist) {
     shape: shp2.length > 0 ? shp2 : null,
     arcs: new ArcCollection(nn, xx, yy)
   };
-};
+}
 
-internal.simplifyPathFast = function(path, arcs, dist, xx, yy) {
+function simplifyPathFast(path, arcs, dist, xx, yy) {
   var iter = arcs.getShapeIter(path),
       count = 0,
       prevX, prevY, x, y;
   while (iter.hasNext()) {
     x = iter.x;
     y = iter.y;
-    if (count === 0 || distance2D(x, y, prevX, prevY) > dist) {
+    if (count === 0 || geom.distance2D(x, y, prevX, prevY) > dist) {
       xx.push(x);
       yy.push(y);
       prevX = x;
@@ -63,4 +64,4 @@ internal.simplifyPathFast = function(path, arcs, dist, xx, yy) {
     count++;
   }
   return count;
-};
+}

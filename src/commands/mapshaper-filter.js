@@ -1,25 +1,32 @@
-/* @requires mapshaper-expressions, mapshaper-shape-geom, mapshaper-shape-utils */
+import { getBBoxIntersectionTest } from '../commands/mapshaper-filter-geom';
+import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { getOutputLayer, getFeatureCount, copyLayer } from '../dataset/mapshaper-layer-utils';
+import utils from '../utils/mapshaper-utils';
+import cmd from '../mapshaper-cmd';
+import { stop, message } from '../utils/mapshaper-logging';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import geom from '../geom/mapshaper-geom';
 
-api.filterFeatures = function(lyr, arcs, opts) {
+cmd.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
-      n = internal.getFeatureCount(lyr),
+      n = getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
-      filteredLyr = internal.getOutputLayer(lyr, opts),
+      filteredLyr = getOutputLayer(lyr, opts),
       invert = !!opts.invert,
       filter;
 
   if (opts.expression) {
-    filter = internal.compileValueExpression(opts.expression, lyr, arcs);
+    filter = compileValueExpression(opts.expression, lyr, arcs);
   }
 
   if (opts.remove_empty) {
-    filter = internal.combineFilters(filter, internal.getNullGeometryFilter(lyr, arcs));
+    filter = combineFilters(filter, getNullGeometryFilter(lyr, arcs));
   }
 
   if (opts.bbox) {
-    filter = internal.combineFilters(filter, internal.getBBoxIntersectionTest(opts.bbox, lyr, arcs));
+    filter = combineFilters(filter, getBBoxIntersectionTest(opts.bbox, lyr, arcs));
   }
 
   if (!filter) {
@@ -41,33 +48,33 @@ api.filterFeatures = function(lyr, arcs, opts) {
   filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
   if (opts.no_replace) {
     // if adding a layer, don't share objects between source and filtered layer
-    filteredLyr = internal.copyLayer(filteredLyr);
+    filteredLyr = copyLayer(filteredLyr);
   }
 
   if (opts.verbose !== false) {
-    message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(filteredLyr), n));
+    message(utils.format('Retained %,d of %,d features', getFeatureCount(filteredLyr), n));
   }
 
   return filteredLyr;
 };
 
-internal.getNullGeometryFilter = function(lyr, arcs) {
+function getNullGeometryFilter(lyr, arcs) {
   var shapes = lyr.shapes;
   if (lyr.geometry_type == 'polygon') {
-    return internal.getEmptyPolygonFilter(shapes, arcs);
+    return getEmptyPolygonFilter(shapes, arcs);
   }
   return function(i) {return !!shapes[i];};
-};
+}
 
-internal.getEmptyPolygonFilter = function(shapes, arcs) {
+function getEmptyPolygonFilter(shapes, arcs) {
   return function(i) {
     var shp = shapes[i];
     return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
   };
-};
+}
 
-internal.combineFilters = function(a, b) {
+function combineFilters(a, b) {
   return (a && b && function(id) {
       return a(id) && b(id);
     }) || a || b;
-};
+}

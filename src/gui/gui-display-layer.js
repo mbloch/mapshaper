@@ -1,7 +1,34 @@
-/* @requires gui-canvas, gui-shapes, gui-table, gui-dynamic-crs */
+import { MultiScaleArcCollection } from './gui-shapes';
+import { getDisplayLayerForTable } from './gui-table';
+import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisplay } from './gui-dynamic-crs';
+import { filterLayerByIds } from './gui-map-utils';
+import { internal, Bounds, utils } from './gui-core';
+
+// displayCRS: CRS to use for display, or null (which clears any current display CRS)
+export function projectDisplayLayer(lyr, displayCRS) {
+  var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
+  var lyr2;
+  if (!lyr.geographic || !sourceCRS) {
+    return lyr;
+  }
+  if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
+    return lyr;
+  }
+  lyr2 = getDisplayLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
+  // kludge: copy projection-related properties to original layer
+  lyr.dynamic_crs = lyr2.dynamic_crs;
+  lyr.layer = lyr2.layer;
+  if (lyr.style && lyr.style.ids) {
+    // re-apply layer filter
+    lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
+  }
+  lyr.bounds = lyr2.bounds;
+  lyr.arcs = lyr2.arcs;
+}
+
 
 // Wrap a layer in an object along with information needed for rendering
-function getMapLayer(layer, dataset, opts) {
+export function getDisplayLayer(layer, dataset, opts) {
   var obj = {
     layer: null,
     arcs: null,
@@ -95,4 +122,16 @@ function getDisplayBounds(lyr, arcs) {
     bounds = new Bounds();
   }
   return bounds;
+}
+
+// Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
+function findEmptyArcs(arcs) {
+  var nn = arcs.getVertexData().nn;
+  var ids = [];
+  for (var i=0, n=nn.length; i<n; i++) {
+    if (nn[i] === 0) {
+      ids.push(i);
+    }
+  }
+  return ids;
 }

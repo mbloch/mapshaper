@@ -1,16 +1,15 @@
-/* @requires
-mapshaper-id-lookup-index
-*/
+
+import { IdLookupIndex } from '../indexes/mapshaper-id-lookup-index';
+import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
 
 // Return function for returning connected groups of rings...
 // Function recieves a ring (represented as an array of arcs)
 // Function returns an array of connected rings
-internal.getConnectivityLookupFunction = function(lyr, arcs) {
+export function getConnectivityLookupFunction(lyr, arcs) {
 
+}
 
-};
-
-internal.indexRings = function(lyr, arcs) {
+function indexRings(lyr, arcs) {
   var ringShapes = [];
   var ringToShapeIndex = [];
   var arcToRingIndex = new IdLookupIndex(arcs.size());
@@ -20,7 +19,7 @@ internal.indexRings = function(lyr, arcs) {
   var islandId;
 
   // build indexes to map rings to shapes and arcs to rings
-  internal.traversePaths(lyr.shapes, null, onRing);
+  traversePaths(lyr.shapes, null, onRing);
 
   // build islands
   ringToIslandIndex = new IdLookupIndex(ringShapes.length);
@@ -49,4 +48,4 @@ internal.indexRings = function(lyr, arcs) {
     arcToRingIndex.setId(arcId, ringId);
   }
 
-};
+}

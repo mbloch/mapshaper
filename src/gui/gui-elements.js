@@ -1,9 +1,12 @@
-/* @requires gui-lib */
+import { utils, error } from './gui-core';
+import { EventDispatcher } from './gui-events';
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
 
 // TODO: switch all ClickText to ClickText2
 
 // @ref Reference to an element containing a text node
-function ClickText2(ref) {
+export function ClickText2(ref) {
   var self = this;
   var selected = false;
   var el = El(ref).on('mousedown', init);
@@ -19,7 +22,7 @@ function ClickText2(ref) {
     }).on('blur', function(e) {
       el.removeClass('editing');
       self.dispatchEvent('change');
-      getSelection().removeAllRanges();
+      window.getSelection().removeAllRanges();
     }).on('keydown', function(e) {
       if (e.keyCode == 13) { // enter
         e.stopPropagation();
@@ -27,7 +30,7 @@ function ClickText2(ref) {
         this.blur();
       }
     }).on('click', function(e) {
-      if (!selected && getSelection().isCollapsed) {
+      if (!selected && window.getSelection().isCollapsed) {
         GUI.selectElement(el.node());
       }
       selected = true;
@@ -47,7 +50,7 @@ function ClickText2(ref) {
 utils.inherit(ClickText2, EventDispatcher);
 
 // @ref reference to a text input element
-function ClickText(ref) {
+export function ClickText(ref) {
   var _el = El(ref);
   var _self = this;
   var _max = Infinity,
@@ -129,13 +132,13 @@ function ClickText(ref) {
 utils.inherit(ClickText, EventDispatcher);
 
 
-function Checkbox(ref) {
+export function Checkbox(ref) {
   var _el = El(ref);
 }
 
 utils.inherit(Checkbox, EventDispatcher);
 
-function SimpleButton(ref) {
+export function SimpleButton(ref) {
   var _el = El(ref),
       _self = this,
       _active = !_el.hasClass('disabled');

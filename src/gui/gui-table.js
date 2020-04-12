@@ -1,6 +1,6 @@
-/* @requires gui-lib */
+import { internal } from './gui-core';
 
-function getDisplayLayerForTable(table) {
+export function getDisplayLayerForTable(table) {
   var n = table.size(),
       cellWidth = 12,
       cellHeight = 5,

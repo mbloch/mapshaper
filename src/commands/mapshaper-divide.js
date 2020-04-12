@@ -1,18 +1,30 @@
 
-api.divide = function(targetLayers, targetDataset, source, opts) {
-  targetLayers.forEach(internal.requirePolylineLayer);
-  var mergedDataset = internal.mergeLayersForOverlay(targetLayers, targetDataset, source, opts);
-  var nodes = internal.addIntersectionCuts(mergedDataset, opts);
+import { joinTables } from '../join/mapshaper-join-tables';
+import { forEachShapePart } from '../paths/mapshaper-shape-utils';
+import { requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { mergeLayersForOverlay } from '../clipping/mapshaper-overlay-utils';
+import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
+import cmd from '../mapshaper-cmd';
+import { PathIndex } from '../paths/mapshaper-path-index';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import utils from '../utils/mapshaper-utils';
+
+cmd.divide = function(targetLayers, targetDataset, source, opts) {
+  targetLayers.forEach(requirePolylineLayer);
+  var mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, source, opts);
+  var nodes = addIntersectionCuts(mergedDataset, opts);
   var polygonLyr = mergedDataset.layers.pop();
-  internal.requirePolygonLayer(polygonLyr);
+  requirePolygonLayer(polygonLyr);
   // Assume that topology is now built
   targetDataset.arcs = mergedDataset.arcs;
   targetLayers.forEach(function(polylineLyr) {
-    internal.dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts);
+    dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts);
   });
 };
 
-internal.dividePolylineLayer = function(polylineLyr, polygonLyr, nodes, opts) {
+function dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts) {
   var index = new PathIndex(polygonLyr.shapes, nodes.arcs);
   var records = polylineLyr.data ? polylineLyr.data.getRecords() : [];
   var shapes2 = [];
@@ -32,7 +44,7 @@ internal.dividePolylineLayer = function(polylineLyr, polygonLyr, nodes, opts) {
     outputLines = [];
     outputKeys = [];
     outputMatches = [];
-    internal.forEachShapePart(shp, onPart);
+    forEachShapePart(shp, onPart);
     outputLines.forEach(function(shape2, i) {
       shapes2.push(shape2);
       records2.push(i > 0 ? utils.extend({}, rec) : rec); // assume input data is being replaced
@@ -41,7 +53,7 @@ internal.dividePolylineLayer = function(polylineLyr, polygonLyr, nodes, opts) {
   });
   polylineLyr.shapes = shapes2;
   polylineLyr.data = new DataTable(records2);
-  internal.joinTables(polylineLyr.data, polygonLyr.data, function(i) {
+  joinTables(polylineLyr.data, polygonLyr.data, function(i) {
     return index2[i] || [];
   }, opts);
 
@@ -92,4 +104,4 @@ internal.dividePolylineLayer = function(polylineLyr, polygonLyr, nodes, opts) {
     }
     addDividedParts(parts2, keys2, matches2);
   }
-};
+}

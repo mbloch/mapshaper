@@ -1,30 +1,35 @@
-/* @requires mapshaper-common, mapshaper-shape-utils */
+import { reversePath } from '../paths/mapshaper-path-utils';
+import { groupPolygonRings } from '../paths/mapshaper-path-utils';
+import { getPathMetadata } from '../paths/mapshaper-path-utils';
+import { DataTable } from '../datatable/mapshaper-data-table';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
 
-api.explodeFeatures = function(lyr, arcs, opts) {
+cmd.explodeFeatures = function(lyr, arcs, opts) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
       explodedLyr = utils.extend({}, lyr);
 
-  lyr.shapes.forEach(function explodeShape(shp, shpId) {
+  lyr.shapes.forEach(function(shp, shpId) {
     var exploded;
     if (!shp) {
       explodedShapes.push(null);
     } else {
       if (lyr.geometry_type == 'polygon' && shp.length > 1) {
         if (opts && opts.naive) {
-          exploded = internal.explodePolygonNaive(shp, arcs);
+          exploded = explodePolygonNaive(shp, arcs);
         } else {
-          exploded = internal.explodePolygon(shp, arcs);
+          exploded = explodePolygon(shp, arcs);
         }
       } else {
-        exploded = internal.explodeShape(shp);
+        exploded = explodeShape(shp);
       }
       utils.merge(explodedShapes, exploded);
     }
     if (explodedProperties !== null) {
       for (var i=0, n=exploded ? exploded.length : 1; i<n; i++) {
-        explodedProperties.push(internal.cloneProperties(properties[shpId]));
+        explodedProperties.push(cloneProperties(properties[shpId]));
       }
     }
   });
@@ -36,36 +41,36 @@ api.explodeFeatures = function(lyr, arcs, opts) {
   return explodedLyr;
 };
 
-internal.explodeShape = function(shp) {
+function explodeShape(shp) {
   return shp.map(function(part) {
     return [part.concat()];
   });
-};
+}
 
-internal.explodePolygon = function(shape, arcs, reverseWinding) {
-  var paths = internal.getPathMetadata(shape, arcs, "polygon");
-  var groups = internal.groupPolygonRings(paths, reverseWinding);
+export function explodePolygon(shape, arcs, reverseWinding) {
+  var paths = getPathMetadata(shape, arcs, "polygon");
+  var groups = groupPolygonRings(paths, reverseWinding);
   return groups.map(function(group) {
     return group.map(function(ring) {
       return ring.ids;
     });
   });
-};
+}
 
-internal.explodePolygonNaive = function(shape, arcs) {
-  var paths = internal.getPathMetadata(shape, arcs, "polygon");
+function explodePolygonNaive(shape, arcs) {
+  var paths = getPathMetadata(shape, arcs, "polygon");
   return paths.map(function(path) {
     if (path.area < 0) {
-      internal.reversePath(path.ids);
+      reversePath(path.ids);
     }
     return [path.ids];
   });
-};
+}
 
-internal.cloneProperties = function(obj) {
+function cloneProperties(obj) {
   var clone = {};
   for (var key in obj) {
     clone[key] = obj[key];
   }
   return clone;
-};
+}

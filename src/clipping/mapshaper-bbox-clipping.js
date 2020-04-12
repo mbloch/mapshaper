@@ -1,11 +1,12 @@
-/* @require mapshaper-shape-iter, mapshaper-segment-geom */
+import { error } from '../utils/mapshaper-logging';
+import geom from '../geom/mapshaper-geom';
 
 // Return an array containing points from a path iterator, clipped to a bounding box
 // Currently using this function for clipping styled polygons in the GUI to speed up layer rendering.
 // Artifacts along the edges make this unsuitable for clipping datasets
 // TODO: support clipping a single-part shape to multiple parts
 // TODO: prevent artifacts along edges
-internal.clipIterByBounds = function(iter, bounds) {
+export function clipIterByBounds(iter, bounds) {
   var points = [];
   var bbox = getClippingBBox(bounds);
   var xy, xyp, first, isRing;
@@ -26,7 +27,7 @@ internal.clipIterByBounds = function(iter, bounds) {
     points = [];
   }
   return points;
-};
+}
 
 function pointsAreEqual(a, b) {
   return a && b && a[0] === b[0] && a[1] === b[1];

@@ -1,4 +1,5 @@
-
+import { error } from '../utils/mapshaper-logging';
+import utils from '../utils/mapshaper-utils';
 
 // Maps tile ids to shape ids (both are non-negative integers). Supports
 //    one-to-many mapping (a tile may belong to multiple shapes)
@@ -6,7 +7,7 @@
 // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
 //    removing all but one shape from a tile.
 // Supports one-to-many mapping
-function TileShapeIndex(mosaic, opts) {
+export function TileShapeIndex(mosaic, opts) {
   // indexes for mapping tile ids to shape ids
   var singleIndex = new Int32Array(mosaic.length);
   utils.initializeArray(singleIndex, -1);

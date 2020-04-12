@@ -1,10 +1,16 @@
-/* @requires
-mapshaper-filter,
-mapshaper-shape-utils
-mapshaper-slivers
-*/
+import { editShapes } from '../paths/mapshaper-shape-utils';
+import { ringHasHoles } from '../commands/mapshaper-filter-islands';
+import { countArcsInShapes } from '../paths/mapshaper-path-utils';
+import { forEachShapePart } from '../paths/mapshaper-shape-utils';
+import { getVertexCountTest } from '../commands/mapshaper-filter-islands';
+import { getSliverFilter } from '../polygons/mapshaper-slivers';
+import { message } from '../utils/mapshaper-logging';
+import { absArcId } from '../paths/mapshaper-arc-utils';
+import cmd from '../mapshaper-cmd';
+import utils from '../utils/mapshaper-utils';
+import geom from '../geom/mapshaper-geom';
 
-api.filterIslands2 = function(lyr, dataset, optsArg) {
+cmd.filterIslands2 = function(lyr, dataset, optsArg) {
   var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
   var arcs = dataset.arcs;
   var removed = 0;
@@ -18,18 +24,18 @@ api.filterIslands2 = function(lyr, dataset, optsArg) {
   }
 
   if (opts.min_area) {
-    filter = internal.getSliverFilter(lyr, dataset, opts).filter;
+    filter = getSliverFilter(lyr, dataset, opts).filter;
   } else {
-    filter = internal.getVertexCountTest(opts.min_vertices, arcs);
+    filter = getVertexCountTest(opts.min_vertices, arcs);
   }
-  removed += internal.filterIslands2(lyr, arcs, filter);
+  removed += filterIslands2(lyr, arcs, filter);
   if (opts.remove_empty) {
-    api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+    cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
   }
   message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
 };
 
-internal.buildIslandIndex = function(lyr, arcs, ringTest) {
+function buildIslandIndex(lyr, arcs, ringTest) {
   // index of all islands
   // (all rings are considered to belong to an island)
   var islandIndex = [];
@@ -42,13 +48,13 @@ internal.buildIslandIndex = function(lyr, arcs, ringTest) {
   lyr.shapes.forEach(function(shp, i) {
     if (!shp) return;
     shpId = i;
-    internal.forEachShapePart(parts, eachRing);
+    forEachShapePart(parts, eachRing);
 
   });
 
   function eachRing(ring, ringId, shp) {
     var area = geom.getPathArea(ring, arcs);
-    var firstArcId = part[0];
+    var firstArcId = ring[0];
     if (area <= 0) return; // skip holes (really?)
     var islandId = firstArcIndex.getId(firstArcId);
     var islandData;
@@ -65,13 +71,13 @@ internal.buildIslandIndex = function(lyr, arcs, ringTest) {
 
   }
 
-};
+}
 
 
-internal.filterIslands2 = function(lyr, arcs, ringTest) {
+function filterIslands2(lyr, arcs, ringTest) {
   var removed = 0;
   var counts = new Uint8Array(arcs.size());
-  internal.countArcsInShapes(lyr.shapes, counts);
+  countArcsInShapes(lyr.shapes, counts);
 
   var pathFilter = function(path, i, paths) {
     if (path.length == 1) { // got an island ring
@@ -79,7 +85,7 @@ internal.filterIslands2 = function(lyr, arcs, ringTest) {
         if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
           // and it does not contain any holes itself
           // O(n^2), so testing this last
-          if (!internal.ringHasHoles(path, paths, arcs)) {
+          if (!ringHasHoles(path, paths, arcs)) {
             removed++;
             return null;
           }
@@ -87,9 +93,9 @@ internal.filterIslands2 = function(lyr, arcs, ringTest) {
       }
     }
   };
-  internal.editShapes(lyr.shapes, pathFilter);
+  editShapes(lyr.shapes, pathFilter);
   return removed;
-};
+}
 
 function ArcToIdIndex(arcs) {
   var n = arcs.size();

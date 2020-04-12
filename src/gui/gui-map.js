@@ -1,24 +1,26 @@
-/* @requires
-gui-lib
-gui-maplayer2
-gui-map-nav
-gui-map-extent
-gui-map-style
-gui-svg-display
-gui-layer-stack
-gui-layer-sorting
-gui-proxy
-gui-coordinates-display
-gui-inspection-control2
-gui-symbol-dragging2
-gui-box-tool
-gui-selection-tool
-gui-interactive-selection
-*/
+import { InteractiveSelection } from './gui-interactive-selection';
+import { CoordinatesDisplay } from './gui-coordinates-display';
+import { MapNav } from './gui-map-nav';
+import { SelectionTool } from './gui-selection-tool';
+import { InspectionControl2 } from './gui-inspection-control2';
+import { updateLayerStackOrder } from './gui-layer-sorting';
+import { SymbolDragging2 } from './gui-symbol-dragging2';
+import * as MapStyle from './gui-map-style';
+import { MapExtent } from './gui-map-extent';
+import { LayerStack } from './gui-layer-stack';
+import { BoxTool } from './gui-box-tool';
+import { projectMapExtent } from './gui-dynamic-crs';
+import { getDisplayLayer, projectDisplayLayer } from './gui-display-layer';
+import { filterLayerByIds } from './gui-map-utils';
+import { utils, internal, Bounds } from './gui-core';
+import { EventDispatcher } from './gui-events';
+import { ElementPosition } from './gui-element-position';
+import { MouseArea } from './gui-mouse';
+import { GUI } from './gui-lib';
 
 utils.inherit(MshpMap, EventDispatcher);
 
-function MshpMap(gui) {
+export function MshpMap(gui) {
   var opts = gui.options,
       el = gui.container.findChild('.map-layers').node(),
       position = new ElementPosition(el),
@@ -59,7 +61,7 @@ function MshpMap(gui) {
   // Currently used to show dots at line intersections
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr) {
-      _intersectionLyr = getMapLayer(lyr, dataset, getDisplayOptions());
+      _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
       _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
     } else {
       _intersectionLyr = null;
@@ -120,10 +122,10 @@ function MshpMap(gui) {
     clearAllDisplayArcs();
 
     // Reproject all visible map layers
-    if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
-    if (_intersectionLyr) _intersectionLyr = projectDisplayLayer(_intersectionLyr, newCRS);
+    if (_activeLyr) projectDisplayLayer(_activeLyr, newCRS);
+    if (_intersectionLyr) projectDisplayLayer(_intersectionLyr, newCRS);
     if (_overlayLyr) {
-      _overlayLyr = projectDisplayLayer(_overlayLyr, newCRS);
+      projectDisplayLayer(_overlayLyr, newCRS);
     }
     updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
     updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
@@ -163,7 +165,7 @@ function MshpMap(gui) {
       return;
     }
 
-    _activeLyr = getMapLayer(e.layer, e.dataset, getDisplayOptions());
+    _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
     _activeLyr.active = true;
     // if (_inspector) _inspector.updateLayer(_activeLyr);
@@ -203,7 +205,7 @@ function MshpMap(gui) {
       _inspector = new InspectionControl2(gui, _hit);
       _inspector.on('data_change', function(e) {
         // refresh the display if a style variable has been changed interactively
-        if (internal.svg.isSupportedSvgStyleProperty(e.field)) {
+        if (internal.isSupportedSvgStyleProperty(e.field)) {
           drawLayers();
         }
       });
@@ -227,7 +229,7 @@ function MshpMap(gui) {
 
     _hit.on('change', function(e) {
       // draw highlight effect for hover and select
-      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
+      _overlayLyr = getDisplayLayerOverlay(_activeLyr, e);
       _stack.drawOverlayLayer(_overlayLyr);
     });
 
@@ -354,7 +356,7 @@ function MshpMap(gui) {
       if (isActiveLayer(o.layer)) {
         layers.push(_activeLyr);
       } else if (!isTableView()) {
-        layers.push(getMapLayer(o.layer, o.dataset, getDisplayOptions()));
+        layers.push(getDisplayLayer(o.layer, o.dataset, getDisplayOptions()));
       }
     });
     _visibleLayers = layers;
@@ -429,7 +431,7 @@ function MshpMap(gui) {
       _ext.setBounds(getFullBounds());
       updateLayerStyles(contentLayers);
       // update stack_id property of all layers
-      internal.updateLayerStackOrder(model.getLayers());
+      updateLayerStackOrder(model.getLayers());
     }
     sortMapLayers(contentLayers);
     _stack.drawContentLayers(contentLayers, onlyNav);
@@ -442,24 +444,13 @@ function MshpMap(gui) {
   }
 }
 
-function getMapLayerOverlay(obj, e) {
+function getDisplayLayerOverlay(obj, e) {
   var style = MapStyle.getOverlayStyle(obj.layer, e);
   if (!style) return null;
   return utils.defaults({
     layer: filterLayerByIds(obj.layer, style.ids),
     style: style
   }, obj);
-}
-
-function filterLayerByIds(lyr, ids) {
-  var shapes;
-  if (lyr.shapes) {
-    shapes = ids.map(function(id) {
-      return lyr.shapes[id];
-    });
-    return utils.defaults({shapes: shapes}, lyr);
-  }
-  return lyr;
 }
 
 // Test if map should be re-framed to show updated layer

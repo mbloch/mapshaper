@@ -15,6 +15,8 @@ var ShpType = {
   MULTIPATCH: 31 // not supported
 };
 
+export default ShpType;
+
 ShpType.isPolygonType = function(t) {
   return t == 5 || t == 15 || t == 25;
 };
@@ -32,11 +34,11 @@ ShpType.isMultiPointType = function(t) {
 };
 
 ShpType.isZType = function(t) {
-  return utils.contains([11,13,15,18], t);
+  return [11,13,15,18].includes(t);
 };
 
 ShpType.isMType = function(t) {
-  return ShpType.isZType(t) || utils.contains([21,23,25,28], t);
+  return ShpType.isZType(t) || [21,23,25,28].includes(t);
 };
 
 ShpType.hasBounds = function(t) {

@@ -1,17 +1,32 @@
-/* @requires mapshaper-common, mapshaper-projections */
+import { isLatLngCRS, getDatasetCRS } from '../geom/mapshaper-projections';
+import { forEachArcId } from '../paths/mapshaper-path-utils';
+import { copyLayerShapes } from '../dataset/mapshaper-layer-utils';
+import utils from '../utils/mapshaper-utils';
+import { verbose, stop, error } from '../utils/mapshaper-logging';
+import { ArcCollection } from '../paths/mapshaper-arcs';
+import { buildTopology } from '../topology/mapshaper-topology';
+
+export function mergeDatasetsIntoDataset(dataset, datasets) {
+  var merged = mergeDatasets([dataset].concat(datasets));
+  var mergedLayers = datasets.reduce(function(memo, dataset) {
+    return memo.concat(dataset.layers);
+  }, []);
+  dataset.arcs = merged.arcs;
+  return mergedLayers;
+}
 
 // Don't modify input layers (mergeDatasets() updates arc ids in-place)
-internal.mergeDatasetsForExport = function(arr) {
+export function mergeDatasetsForExport(arr) {
   // copy layers but not arcs, which get copied in mergeDatasets()
   var copy = arr.map(function(dataset) {
     return utils.defaults({
-      layers: dataset.layers.map(internal.copyLayerShapes)
+      layers: dataset.layers.map(copyLayerShapes)
     }, dataset);
   });
-  return internal.mergeDatasets(copy);
-};
+  return mergeDatasets(copy);
+}
 
-internal.mergeCommandTargets = function(targets, catalog) {
+export function mergeCommandTargets(targets, catalog) {
   var targetLayers = [];
   var targetDatasets = [];
   var datasetsWithArcs = 0;
@@ -23,11 +38,11 @@ internal.mergeCommandTargets = function(targets, catalog) {
     if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
   });
 
-  merged = internal.mergeDatasets(targetDatasets);
+  merged = mergeDatasets(targetDatasets);
 
   // Rebuild topology, if multiple datasets contain arcs
   if (datasetsWithArcs > 1) {
-    api.buildTopology(merged);
+    buildTopology(merged);
   }
 
   // remove old datasets after merging, so catalog is not affected if merge throws an error
@@ -38,11 +53,11 @@ internal.mergeCommandTargets = function(targets, catalog) {
     layers: targetLayers,
     dataset: merged
   }];
-};
+}
 
 // Combine multiple datasets into one using concatenation
 // (any shared topology is ignored)
-internal.mergeDatasets = function(arr) {
+export function mergeDatasets(arr) {
   var arcSources = [],
       arcCount = 0,
       mergedLayers = [],
@@ -50,7 +65,7 @@ internal.mergeDatasets = function(arr) {
       mergedArcs;
 
   // Error if incompatible CRS
-  internal.requireDatasetsHaveCompatibleCRS(arr);
+  requireDatasetsHaveCompatibleCRS(arr);
 
   arr.forEach(function(dataset) {
     var n = dataset.arcs ? dataset.arcs.size() : 0;
@@ -58,10 +73,10 @@ internal.mergeDatasets = function(arr) {
       arcSources.push(dataset.arcs);
     }
 
-    internal.mergeDatasetInfo(mergedInfo, dataset);
+    mergeDatasetInfo(mergedInfo, dataset);
     dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-        internal.forEachArcId(lyr.shapes, function(id) {
+        forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }
@@ -70,7 +85,7 @@ internal.mergeDatasets = function(arr) {
     arcCount += n;
   });
 
-  mergedArcs = internal.mergeArcs(arcSources);
+  mergedArcs = mergeArcs(arcSources);
   if (mergedArcs.size() != arcCount) {
     error("[mergeDatasets()] Arc indexing error");
   }
@@ -80,29 +95,29 @@ internal.mergeDatasets = function(arr) {
     arcs: mergedArcs,
     layers: mergedLayers
   };
-};
+}
 
-internal.requireDatasetsHaveCompatibleCRS = function(arr) {
+function requireDatasetsHaveCompatibleCRS(arr) {
   arr.reduce(function(memo, dataset) {
-    var P = internal.getDatasetCRS(dataset);
+    var P = getDatasetCRS(dataset);
     if (memo && P) {
-      if (internal.isLatLngCRS(memo) != internal.isLatLngCRS(P)) {
+      if (isLatLngCRS(memo) != isLatLngCRS(P)) {
         stop("Unable to combine projected and unprojected datasets");
       }
     }
     return P || memo;
   }, null);
-};
+}
 
-internal.mergeDatasetInfo = function(merged, dataset) {
+function mergeDatasetInfo(merged, dataset) {
   var info = dataset.info || {};
   merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
   merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
   // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
   utils.defaults(merged, info);
-};
+}
 
-internal.mergeArcs = function(arr) {
+export function mergeArcs(arr) {
   var dataArr = arr.map(function(arcs) {
     if (arcs.getRetainedInterval() > 0) {
       verbose("Baking-in simplification setting.");
@@ -110,21 +125,21 @@ internal.mergeArcs = function(arr) {
     }
     return arcs.getVertexData();
   });
-  var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
-      yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
-      nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
+  var xx = mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+      yy = mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
+      nn = mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
 
   return new ArcCollection(nn, xx, yy);
-};
+}
 
-utils.countElements = function(arrays) {
+function countElements(arrays) {
   return arrays.reduce(function(memo, arr) {
     return memo + (arr.length || 0);
   }, 0);
-};
+}
 
-utils.mergeArrays = function(arrays, TypedArr) {
-  var size = utils.countElements(arrays),
+function mergeArrays(arrays, TypedArr) {
+  var size = countElements(arrays),
       Arr = TypedArr || Array,
       merged = new Arr(size),
       offs = 0;
@@ -136,4 +151,4 @@ utils.mergeArrays = function(arrays, TypedArr) {
     offs += n;
   });
   return merged;
-};
+}

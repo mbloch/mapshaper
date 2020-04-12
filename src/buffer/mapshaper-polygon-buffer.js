@@ -1,8 +1,10 @@
-/* @requires mapshaper-buffer-common, mapshaper-polyline-buffer, mapshaper-geojson */
+import { dissolveBufferDataset } from '../buffer/mapshaper-buffer-common';
+import { importGeoJSON } from '../geojson/geojson-import';
+import { makeShapeBufferGeoJSON } from '../buffer/mapshaper-polyline-buffer';
 
-internal.makePolygonBuffer = function(lyr, dataset, opts) {
-  var geojson = internal.makeShapeBufferGeoJSON(lyr, dataset, opts);
-  var dataset2 = internal.importGeoJSON(geojson, {});
-  internal.dissolveBufferDataset(dataset2);
+export function makePolygonBuffer(lyr, dataset, opts) {
+  var geojson = makeShapeBufferGeoJSON(lyr, dataset, opts);
+  var dataset2 = importGeoJSON(geojson, {});
+  dissolveBufferDataset(dataset2);
   return dataset2;
-};
+}

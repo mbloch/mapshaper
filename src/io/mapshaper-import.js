@@ -1,12 +1,13 @@
-/* @requires
-mapshaper-common
-mapshaper-geojson
-mapshaper-topojson
-mapshaper-shapefile
-mapshaper-json-table
-mapshaper-json-import
-mapshaper-delim-import
-*/
+import { importDbfTable } from '../shapefile/dbf-import';
+import { importShp } from '../shapefile/shp-import';
+import { guessInputType } from '../io/mapshaper-file-types';
+import { importDelim2 } from '../text/mapshaper-delim-import';
+import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
+import utils from '../utils/mapshaper-utils';
+import { importJSON } from '../io/mapshaper-json-import';
+import { buildTopology } from '../topology/mapshaper-topology';
+import { message, stop } from '../utils/mapshaper-logging';
+import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
@@ -14,30 +15,31 @@ mapshaper-delim-import
 //    content: Buffer, ArrayBuffer, String or Object
 //    filename: String or null
 //
-internal.importContent = function(obj, opts) {
+export function importContent(obj, opts) {
   var dataset, content, fileFmt, data;
   opts = opts || {};
   if (obj.json) {
-    data = internal.importJSON(obj.json, opts);
+    data = importJSON(obj.json, opts);
     fileFmt = data.format;
     dataset = data.dataset;
-    internal.cleanPathsAfterImport(dataset, opts);
+    cleanPathsAfterImport(dataset, opts);
 
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
-    dataset = internal.importDelim2(data, opts);
+    dataset = importDelim2(data, opts);
 
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;
-    dataset = internal.importShapefile(obj, opts);
-    internal.cleanPathsAfterImport(dataset, opts);
+    dataset = importShapefile(obj, opts);
+    cleanPathsAfterImport(dataset, opts);
 
   } else if (obj.dbf) {
     fileFmt = 'dbf';
     data = obj.dbf;
-    dataset = internal.importDbf(obj, opts);
+    dataset = importDbf(obj, opts);
+
   } else if (obj.prj) {
     // added for -proj command source
     fileFmt = 'prj';
@@ -51,13 +53,13 @@ internal.importContent = function(obj, opts) {
 
   // Convert to topological format, if needed
   if (dataset.arcs && !opts.no_topology && fileFmt != 'topojson') {
-    api.buildTopology(dataset);
+    buildTopology(dataset);
   }
 
   // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
-      internal.setLayerName(lyr, internal.filenameToLayerName(data.filename || ''));
+      setLayerName(lyr, filenameToLayerName(data.filename || ''));
     });
   }
 
@@ -68,25 +70,25 @@ internal.importContent = function(obj, opts) {
   }
   dataset.info.input_formats = [fileFmt];
   return dataset;
-};
+}
 
 // Deprecated (included for compatibility with older tests)
-internal.importFileContent = function(content, filename, opts) {
-  var type = internal.guessInputType(filename, content),
+export function importFileContent(content, filename, opts) {
+  var type = guessInputType(filename, content),
       input = {};
   input[type] = {filename: filename, content: content};
-  return internal.importContent(input, opts);
-};
+  return importContent(input, opts);
+}
 
 
-internal.importShapefile = function(obj, opts) {
+function importShapefile(obj, opts) {
   var shpSrc = obj.shp.content || obj.shp.filename, // read from a file if (binary) content is missing
       shxSrc = obj.shx ? obj.shx.content || obj.shx.filename : null,
-      dataset = internal.importShp(shpSrc, shxSrc, opts),
+      dataset = importShp(shpSrc, shxSrc, opts),
       lyr = dataset.layers[0],
       dbf;
   if (obj.dbf) {
-    dbf = internal.importDbf(obj, opts);
+    dbf = importDbf(obj, opts);
     utils.extend(dataset.info, dbf.info);
     lyr.data = dbf.layers[0].data;
     if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
@@ -97,33 +99,33 @@ internal.importShapefile = function(obj, opts) {
     dataset.info.prj = obj.prj.content;
   }
   return dataset;
-};
+}
 
-internal.importDbf = function(input, opts) {
+function importDbf(input, opts) {
   var table;
   opts = utils.extend({}, opts);
   if (input.cpg && !opts.encoding) {
     opts.encoding = input.cpg.content;
   }
-  table = internal.importDbfTable(input.dbf.content, opts);
+  table = importDbfTable(input.dbf.content, opts);
   return {
     info: {},
     layers: [{data: table}]
   };
-};
+}
 
-internal.filenameToLayerName = function(path) {
+function filenameToLayerName(path) {
   var name = 'layer1';
-  var obj = utils.parseLocalPath(path);
+  var obj = parseLocalPath(path);
   if (obj.basename && obj.extension) { // exclude paths like '/dev/stdin'
     name = obj.basename;
   }
   return name;
-};
+}
 
 // initialize layer name using filename
-internal.setLayerName = function(lyr, path) {
+function setLayerName(lyr, path) {
   if (!lyr.name) {
-    lyr.name = utils.getFileBase(path);
+    lyr.name = getFileBase(path);
   }
-};
+}

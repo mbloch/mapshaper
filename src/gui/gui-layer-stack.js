@@ -1,10 +1,9 @@
-/* @requires
-gui-svg-display
-gui-canvas
-gui-map-style
-*/
+import { drawOutlineLayerToCanvas, drawStyledLayerToCanvas, DisplayCanvas } from './gui-canvas';
+import { SvgDisplayLayer } from './gui-svg-display';
+import { internal } from './gui-core';
+import { El } from './gui-el';
 
-function LayerStack(gui, container, ext, mouse) {
+export function LayerStack(gui, container, ext, mouse) {
   var el = El(container),
       _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
       _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
