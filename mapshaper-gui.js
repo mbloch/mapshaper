@@ -1,144 +1,400 @@
-(function(){
+(function () {
+  var api = window.mapshaper; // assuming mapshaper is in global scope
+  var mapshaper = api,
+    utils = api.utils,
+    cli = api.cli,
+    geom = api.geom,
+    internal = api.internal,
+    Bounds = internal.Bounds,
+    UserError = internal.UserError,
+    message = internal.message, // stop, error and message are overridden in gui-proxy.js
+    stop = internal.stop,
+    error = internal.error;
 
-var GUI = {}; // shared namespace for all GUI instances
-var api = mapshaper; // assuming mapshaper is in global scope
-var utils = api.utils;
-var cli = api.cli;
-var geom = api.geom;
-var internal = api.internal;
-var Bounds = internal.Bounds;
-var UserError = internal.UserError;
-var message = internal.message;
-var stop = internal.stop; // stop and error are replaced in gui-proxy.js
-var error = internal.error;
-api.gui = true; // let the main library know we're running in the GUI
-api.enableLogging();
+  api.enableLogging();
 
-function Handler(type, target, callback, listener, priority) {
-  this.type = type;
-  this.callback = callback;
-  this.listener = listener || null;
-  this.priority = priority || 0;
-  this.target = target;
-}
+  function CatalogControl(gui, catalog, onSelect) {
+    var self = this,
+        container = gui.container.findChild('.file-catalog'),
+        cols = catalog.cols,
+        enabled = true,
+        items = catalog.items,
+        n = items.length,
+        row = 0,
+        html, rows;
 
-Handler.prototype.trigger = function(evt) {
-  if (!evt) {
-    evt = new EventData(this.type);
-    evt.target = this.target;
-  } else if (evt.target != this.target || evt.type != this.type) {
-    error("[Handler] event target/type have changed.");
-  }
-  this.callback.call(this.listener, evt);
-};
+    this.reset = function() {
+      enabled = true;
+      container.removeClass('downloading');
+      this.progress(-1);
+    };
 
-function EventData(type, target, data) {
-  this.type = type;
-  this.target = target;
-  if (data) {
-    utils.defaults(this, data);
-    this.data = data;
-  }
-}
+    this.progress = function() {}; // set by click handler
 
-EventData.prototype.stopPropagation = function() {
-  this.__stop__ = true;
-};
+    if (n > 0 === false) {
+      console.error("Catalog is missing array of items");
+      return;
+    }
 
-//  Base class for objects that dispatch events
-function EventDispatcher() {}
+    gui.container.addClass('catalog-mode');
 
+    if (!cols) {
+      cols = Math.ceil(Math.sqrt(n));
+    }
+    rows = Math.ceil(n / cols);
 
-// @obj (optional) data object, gets mixed into event
-// @listener (optional) dispatch event only to this object
-EventDispatcher.prototype.dispatchEvent = function(type, obj, listener) {
-  var evt;
-  // TODO: check for bugs if handlers are removed elsewhere while firing
-  var handlers = this._handlers;
-  if (handlers) {
-    for (var i = 0, len = handlers.length; i < len; i++) {
-      var handler = handlers[i];
-      if (handler.type == type && (!listener || listener == handler.listener)) {
-        if (!evt) {
-          evt = new EventData(type, this, obj);
+    html = '<table>';
+    if (catalog.title) {
+      html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
+    }
+    while (row < rows) {
+      html += renderRow(items.slice(row * cols, row * cols + cols));
+      row++;
+    }
+    html += '</table>';
+    container.node().innerHTML = html;
+    gui.container.findChildren('.file-catalog td').forEach(function(el, i) {
+      el.on('click', function() {
+        selectItem(el, i);
+      });
+    });
+
+    // Generate onprogress callback to show a progress indicator
+    function getProgressFunction(el) {
+      var visible = false,
+          i = 0;
+      return function(pct) {
+        i++;
+        if (i == 2 && pct < 0.5) {
+          // only show progress bar if file will take a while to load
+          visible = true;
         }
-        else if (evt.__stop__) {
-            break;
+        if (pct == -1) {
+          // kludge to reset progress bar
+          el.removeClass('downloading');
+          pct = 0;
         }
-        handler.trigger(evt);
+        if (visible) {
+          el.css('background-size', (Math.round(pct * 100) + '% 100%'));
+        }
+      };
+    }
+
+    function renderRow(items) {
+      var tds = items.map(function(o, col) {
+        var i = row * cols + col;
+        return renderCell(o, i);
+      });
+      return '<tr>' + tds.join('') + '</tr>';
+    }
+
+    function selectItem(el,i) {
+      var pageUrl = window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
+      var item = items[i];
+      var urls = item.files.map(function(file) {
+        var url = (item.url || '') + file;
+        if (/^http/.test(url) === false) {
+          // assume relative url
+          url = pageUrl + '/' + url;
+        }
+        return url;
+      });
+      if (enabled) { // only respond to first click
+        self.progress = getProgressFunction(el);
+        el.addClass('downloading');
+        container.addClass('downloading');
+        enabled = false;
+        onSelect(urls);
       }
     }
-  }
-};
 
-EventDispatcher.prototype.addEventListener =
-EventDispatcher.prototype.on = function(type, callback, context, priority) {
-  context = context || this;
-  priority = priority || 0;
-  var handler = new Handler(type, this, callback, context, priority);
-  // Insert the new event in the array of handlers according to its priority.
-  var handlers = this._handlers || (this._handlers = []);
-  var i = handlers.length;
-  while (--i >= 0 && handlers[i].priority < handler.priority) {}
-  handlers.splice(i+1, 0, handler);
-  return this;
-};
-
-// Remove an event handler.
-// @param {string} type Event type to match.
-// @param {function(BoundEvent)} callback Event handler function to match.
-// @param {*=} context Execution context of the event handler to match.
-// @return {number} Returns number of handlers removed (expect 0 or 1).
-EventDispatcher.prototype.removeEventListener = function(type, callback, context) {
-  context = context || this;
-  var count = this.removeEventListeners(type, callback, context);
-  return count;
-};
-
-// Remove event handlers; passing arguments can limit which listeners to remove
-// Returns nmber of handlers removed.
-EventDispatcher.prototype.removeEventListeners = function(type, callback, context) {
-  var handlers = this._handlers;
-  var newArr = [];
-  var count = 0;
-  for (var i = 0; handlers && i < handlers.length; i++) {
-    var evt = handlers[i];
-    if ((!type || type == evt.type) &&
-      (!callback || callback == evt.callback) &&
-      (!context || context == evt.listener)) {
-      count += 1;
+    function renderCell(item, i) {
+      var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
+      return utils.format(template, i, item.title, item.subtitle || '');
     }
-    else {
-      newArr.push(evt);
+
+  }
+
+  var GUI = {};
+
+  GUI.isActiveInstance = function(gui) {
+    return gui == GUI.__active;
+  };
+
+  GUI.getPixelRatio = function() {
+    var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
+    return deviceRatio > 1 ? 2 : 1;
+  };
+
+  GUI.browserIsSupported = function() {
+    return typeof ArrayBuffer != 'undefined' &&
+        typeof Blob != 'undefined' && typeof File != 'undefined';
+  };
+
+  GUI.exportIsSupported = function() {
+    return typeof URL != 'undefined' && URL.createObjectURL &&
+      typeof document.createElement("a").download != "undefined" ||
+      !!window.navigator.msSaveBlob;
+  };
+
+  // TODO: make this relative to a single GUI instance
+  GUI.canSaveToServer = function() {
+    return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
+  };
+
+  GUI.getUrlVars = function() {
+    var q = window.location.search.substring(1);
+    return q.split('&').reduce(function(memo, chunk) {
+      var pair = chunk.split('=');
+      var key = decodeURIComponent(pair[0]);
+      memo[key] = decodeURIComponent(pair[1]);
+      return memo;
+    }, {});
+  };
+
+  // Assumes that URL path ends with a filename
+  GUI.getUrlFilename = function(url) {
+    var path = /\/\/([^#?]+)/.exec(url);
+    var file = path ? path[1].split('/').pop() : '';
+    return file;
+  };
+
+  GUI.formatMessageArgs = function(args) {
+    // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
+    return internal.formatLogArgs(args);
+  };
+
+  GUI.handleDirectEvent = function(cb) {
+    return function(e) {
+      if (e.target == this) cb();
+    };
+  };
+
+  GUI.getInputElement = function() {
+    var el = document.activeElement;
+    return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
+  };
+
+  GUI.selectElement = function(el) {
+    var range = document.createRange(),
+        sel = window.getSelection();
+    range.selectNodeContents(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+
+  GUI.blurActiveElement = function() {
+    var el = GUI.getInputElement();
+    if (el) el.blur();
+  };
+
+  // Filter out delayed click events, e.g. so users can highlight and copy text
+  GUI.onClick = function(el, cb) {
+    var time;
+    el.on('mousedown', function() {
+      time = +new Date();
+    });
+    el.on('mouseup', function(e) {
+      if (+new Date() - time < 300) cb(e);
+    });
+  };
+
+  // tests if filename is a type that can be used
+  GUI.isReadableFileType = function(filename) {
+    var ext = internal.getFileExtension(filename).toLowerCase();
+    return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
+      internal.isZipFile(filename);
+  };
+
+  GUI.parseFreeformOptions = function(raw, cmd) {
+    var str = raw.trim(),
+        parsed;
+    if (!str) {
+      return {};
+    }
+    if (!/^-/.test(str)) {
+      str = '-' + cmd + ' ' + str;
+    }
+    parsed =  internal.parseCommands(str);
+    if (!parsed.length || parsed[0].name != cmd) {
+      stop("Unable to parse command line options");
+    }
+    return parsed[0].options;
+  };
+
+  // @file: Zip file
+  // @cb: function(err, <files>)
+  //
+  GUI.readZipFile = function(file, cb) {
+    var zip = window.zip; // Assume zip.js is loaded and zip is defined globally
+    var _files = [];
+    zip.createReader(new zip.BlobReader(file), importZipContent, onError);
+
+    function onError(err) {
+      cb(err);
+    }
+
+    function onDone() {
+      cb(null, _files);
+    }
+
+    function importZipContent(reader) {
+      var _entries;
+      reader.getEntries(readEntries);
+
+      function readEntries(entries) {
+        _entries = entries || [];
+        readNext();
+      }
+
+      function readNext() {
+        if (_entries.length > 0) {
+          readEntry(_entries.pop());
+        } else {
+          reader.close();
+          onDone();
+        }
+      }
+
+      function readEntry(entry) {
+        var filename = entry.filename,
+            isValid = !entry.directory && GUI.isReadableFileType(filename) &&
+                !/^__MACOSX/.test(filename); // ignore "resource-force" files
+        if (isValid) {
+          entry.getData(new zip.BlobWriter(), function(file) {
+            file.name = filename; // Give the Blob a name, like a File object
+            _files.push(file);
+            readNext();
+          });
+        } else {
+          readNext();
+        }
+      }
+    }
+  };
+
+  function Handler(type, target, callback, listener, priority) {
+    this.type = type;
+    this.callback = callback;
+    this.listener = listener || null;
+    this.priority = priority || 0;
+    this.target = target;
+  }
+
+  Handler.prototype.trigger = function(evt) {
+    if (!evt) {
+      evt = new EventData(this.type);
+      evt.target = this.target;
+    } else if (evt.target != this.target || evt.type != this.type) {
+      error("[Handler] event target/type have changed.");
+    }
+    this.callback.call(this.listener, evt);
+  };
+
+  function EventData(type, target, data) {
+    this.type = type;
+    this.target = target;
+    if (data) {
+      utils.defaults(this, data);
+      this.data = data;
     }
   }
-  this._handlers = newArr;
-  return count;
-};
 
-EventDispatcher.prototype.countEventListeners = function(type) {
-  var handlers = this._handlers,
-    len = handlers && handlers.length || 0,
-    count = 0;
-  if (!type) return len;
-  for (var i = 0; i < len; i++) {
-    if (handlers[i].type === type) count++;
-  }
-  return count;
-};
+  EventData.prototype.stopPropagation = function() {
+    this.__stop__ = true;
+  };
+
+  //  Base class for objects that dispatch events
+  function EventDispatcher() {}
 
 
+  // @obj (optional) data object, gets mixed into event
+  // @listener (optional) dispatch event only to this object
+  EventDispatcher.prototype.dispatchEvent = function(type, obj, listener) {
+    var evt;
+    // TODO: check for bugs if handlers are removed elsewhere while firing
+    var handlers = this._handlers;
+    if (handlers) {
+      for (var i = 0, len = handlers.length; i < len; i++) {
+        var handler = handlers[i];
+        if (handler.type == type && (!listener || listener == handler.listener)) {
+          if (!evt) {
+            evt = new EventData(type, this, obj);
+          }
+          else if (evt.__stop__) {
+              break;
+          }
+          handler.trigger(evt);
+        }
+      }
+    }
+  };
 
-var Browser = {
-  getPageXY: function(el) {
+  EventDispatcher.prototype.addEventListener =
+  EventDispatcher.prototype.on = function(type, callback, context, priority) {
+    context = context || this;
+    priority = priority || 0;
+    var handler = new Handler(type, this, callback, context, priority);
+    // Insert the new event in the array of handlers according to its priority.
+    var handlers = this._handlers || (this._handlers = []);
+    var i = handlers.length;
+    while (--i >= 0 && handlers[i].priority < handler.priority) {}
+    handlers.splice(i+1, 0, handler);
+    return this;
+  };
+
+  // Remove an event handler.
+  // @param {string} type Event type to match.
+  // @param {function(BoundEvent)} callback Event handler function to match.
+  // @param {*=} context Execution context of the event handler to match.
+  // @return {number} Returns number of handlers removed (expect 0 or 1).
+  EventDispatcher.prototype.removeEventListener = function(type, callback, context) {
+    context = context || this;
+    var count = this.removeEventListeners(type, callback, context);
+    return count;
+  };
+
+  // Remove event handlers; passing arguments can limit which listeners to remove
+  // Returns nmber of handlers removed.
+  EventDispatcher.prototype.removeEventListeners = function(type, callback, context) {
+    var handlers = this._handlers;
+    var newArr = [];
+    var count = 0;
+    for (var i = 0; handlers && i < handlers.length; i++) {
+      var evt = handlers[i];
+      if ((!type || type == evt.type) &&
+        (!callback || callback == evt.callback) &&
+        (!context || context == evt.listener)) {
+        count += 1;
+      }
+      else {
+        newArr.push(evt);
+      }
+    }
+    this._handlers = newArr;
+    return count;
+  };
+
+  EventDispatcher.prototype.countEventListeners = function(type) {
+    var handlers = this._handlers,
+      len = handlers && handlers.length || 0,
+      count = 0;
+    if (!type) return len;
+    for (var i = 0; i < len; i++) {
+      if (handlers[i].type === type) count++;
+    }
+    return count;
+  };
+
+  function getPageXY(el) {
     var x = 0, y = 0;
     if (el.getBoundingClientRect) {
       var box = el.getBoundingClientRect();
-      x = box.left - Browser.pageXToViewportX(0);
-      y = box.top - Browser.pageYToViewportY(0);
+      x = box.left - pageXToViewportX(0);
+      y = box.top - pageYToViewportY(0);
     }
     else {
-      var fixed = Browser.elementIsFixed(el);
+      var fixed = elementIsFixed(el);
 
       while (el) {
         x += el.offsetLeft || 0;
@@ -147,8 +403,8 @@ var Browser = {
       }
 
       if (fixed) {
-        var offsX = -Browser.pageXToViewportX(0);
-        var offsY = -Browser.pageYToViewportY(0);
+        var offsX = -pageXToViewportX(0);
+        var offsY = -pageYToViewportY(0);
         x += offsX;
         y += offsY;
       }
@@ -156,9 +412,9 @@ var Browser = {
 
     var obj = {x:x, y:y};
     return obj;
-  },
+  }
 
-  elementIsFixed: function(el) {
+  function elementIsFixed(el) {
     // get top-level offsetParent that isn't body (cf. Firefox)
     var body = document.body;
     var parent;
@@ -169,68 +425,60 @@ var Browser = {
 
     // Look for position:fixed in the computed style of the top offsetParent.
     // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
-    var styleObj = parent && Browser.getElementStyle(parent) || {};
+    var styleObj = parent && getElementStyle(parent) || {};
     return styleObj.position == 'fixed';
-  },
+  }
 
-  pageXToViewportX: function(x) {
+  function pageXToViewportX(x) {
     return x - window.pageXOffset;
-  },
+  }
 
-  pageYToViewportY: function(y) {
+  function pageYToViewportY(y) {
     return y - window.pageYOffset;
-  },
+  }
 
-  getElementStyle: function(el) {
+  function getElementStyle(el) {
     return el.currentStyle || window.getComputedStyle && window.getComputedStyle(el, '') || {};
-  },
+  }
 
-  getClassNameRxp: function(cname) {
+  function getClassNameRxp(cname) {
     return new RegExp("(^|\\s)" + cname + "(\\s|$)");
-  },
+  }
 
-  hasClass: function(el, cname) {
-    var rxp = this.getClassNameRxp(cname);
+  function hasClass(el, cname) {
+    var rxp = getClassNameRxp(cname);
     return el && rxp.test(el.className);
-  },
+  }
 
-  addClass: function(el, cname) {
+  function addClass(el, cname) {
     var classes = el.className;
     if (!classes) {
       classes = cname;
     }
-    else if (!this.hasClass(el, cname)) {
+    else if (!hasClass(el, cname)) {
       classes = classes + ' ' + cname;
     }
     el.className = classes;
-  },
+  }
 
-  removeClass: function(el, cname) {
-    var rxp = this.getClassNameRxp(cname);
+  function removeClass(el, cname) {
+    var rxp = getClassNameRxp(cname);
     el.className = el.className.replace(rxp, "$2");
-  },
+  }
 
-  replaceClass: function(el, c1, c2) {
-    var r1 = this.getClassNameRxp(c1);
-    el.className = el.className.replace(r1, '$1' + c2 + '$2');
-  },
+  var cssDiv = document.createElement('div');
+  function mergeCSS(s1, s2) {
+    cssDiv.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
+    return cssDiv.style.cssText;
+  }
 
-  mergeCSS: function(s1, s2) {
-    var div = this._cssdiv;
-    if (!div) {
-      div = this._cssdiv = document.createElement('div');
-    }
-    div.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
-    return div.style.cssText;
-  },
-
-  addCSS: function(el, css) {
-    el.style.cssText = Browser.mergeCSS(el.style.cssText, css);
-  },
+  function addCSS(el, css) {
+    el.style.cssText = mergeCSS(el.style.cssText, css);
+  }
 
   // Return: HTML node reference or null
   // Receive: node reference or id or "#" + id
-  getElement: function(ref) {
+  function getElement(ref) {
     var el;
     if (typeof ref == 'string') {
       if (ref.charAt(0) == '#') {
@@ -247,2295 +495,5126 @@ var Browser = {
       el = ref;
     }
     return el || null;
-  },
+  }
 
-  undraggable: function(el) {
+  function undraggable(el) {
     el.ondragstart = function(){return false;};
     el.draggable = false;
   }
 
-};
-
-Browser.onload = function(handler) {
-  if (document.readyState == 'complete') {
-    handler();
-  } else {
-    window.addEventListener('load', handler);
-  }
-};
-
-
-// See https://github.com/janl/mustache.js/blob/master/mustache.js
-utils.htmlEscape = (function() {
-  var entityMap = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-    '/': '&#x2F;'
-  };
-  return function(s) {
-    return String(s).replace(/[&<>"'\/]/g, function(s) {
-      return entityMap[s];
-    });
-  };
-}());
-
-
-var tagOrIdSelectorRE = /^#?[\w-]+$/;
-
-El.__select = function(selector, root) {
-  root = root || document;
-  var els;
-  if (document.querySelectorAll) {
-    try {
-      els = root.querySelectorAll(selector);
-    } catch (e) {
-      error("Invalid selector:", selector);
-    }
-  } else {
-    error("This browser doesn't support CSS query selectors");
-  }
-  return utils.toArray(els);
-};
-
-// Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
-// Doesn't change names that are already camelCase
-//
-El.toCamelCase = function(str) {
-  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
-  return cc;
-};
-
-El.fromCamelCase = function(str) {
-  var dashed = str.replace(/([A-Z])/g, "-$1").toLowerCase();
-  return dashed;
-};
-
-El.setStyle = function(el, name, val) {
-  var jsName = El.toCamelCase(name);
-  if (el.style[jsName] == void 0) {
-    console.error("[Element.setStyle()] css property:", jsName);
-    return;
-  }
-  var cssVal = val;
-  if (isFinite(val)) {
-    cssVal = String(val); // problem if converted to scientific notation
-    if (jsName != 'opacity' && jsName != 'zIndex') {
-      cssVal += "px";
-    }
-  }
-  el.style[jsName] = cssVal;
-};
-
-El.findAll = function(sel, root) {
-  return El.__select(sel, root);
-};
-
-function El(ref) {
-  if (!ref) error("Element() needs a reference");
-  if (ref instanceof El) {
-    return ref;
-  }
-  else if (this instanceof El === false) {
-    return new El(ref);
-  }
-
-  var node;
-  if (utils.isString(ref)) {
-    if (ref[0] == '<') {
-      var parent = El('div').html(ref).node();
-      node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
-    } else if (tagOrIdSelectorRE.test(ref)) {
-      node = Browser.getElement(ref) || document.createElement(ref); // TODO: detect type of argument
+  function onload(handler) {
+    if (document.readyState == 'complete') {
+      handler();
     } else {
-      node = El.__select(ref)[0];
+      window.addEventListener('load', handler);
     }
-  } else if (ref.tagName) {
-    node = ref;
   }
-  if (!node) error("Unmatched element selector:", ref);
-  this.el = node;
-}
 
-utils.inherit(El, EventDispatcher);
+  var tagOrIdSelectorRE = /^#?[\w-]+$/;
 
-utils.extend(El.prototype, {
-
-  clone: function() {
-    var el = this.el.cloneNode(true);
-    if (el.nodeName == 'SCRIPT') {
-      // Assume scripts are templates and convert to divs, so children
-      //    can ...
-      el = El('div').addClass(el.className).html(el.innerHTML).node();
-    }
-    el.id = utils.getUniqueName();
-    this.el = el;
-    return this;
-  },
-
-  node: function() {
-    return this.el;
-  },
-
-  width: function() {
-   return this.el.offsetWidth;
-  },
-
-  height: function() {
-    return this.el.offsetHeight;
-  },
-
-  top: function() {
-    return this.el.offsetTop;
-  },
-
-  left: function() {
-    return this.el.offsetLeft;
-  },
-
-  // Apply inline css styles to this Element, either as string or object.
-  css: function(css, val) {
-    if (val != null) {
-      El.setStyle(this.el, css, val);
-    }
-    else if (utils.isString(css)) {
-      Browser.addCSS(this.el, css);
-    }
-    else if (utils.isObject(css)) {
-      utils.forEachProperty(css, function(val, key) {
-        El.setStyle(this.el, key, val);
-      }, this);
-    }
-    return this;
-  },
-
-  attr: function(obj, value) {
-    if (utils.isString(obj)) {
-      if (arguments.length == 1) {
-        return this.el.getAttribute(obj);
+  El.__select = function(selector, root) {
+    root = root || document;
+    var els;
+    if (document.querySelectorAll) {
+      try {
+        els = root.querySelectorAll(selector);
+      } catch (e) {
+        error("Invalid selector:", selector);
       }
-      this.el.setAttribute(obj, value);
-      // this.el[obj] = value;
-    }
-    else if (!value) {
-      Opts.copyAllParams(this.el, obj);
-    }
-    return this;
-  },
-
-  remove: function(sel) {
-    if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
-    return this;
-  },
-
-  addClass: function(className) {
-    Browser.addClass(this.el, className);
-    return this;
-  },
-
-  removeClass: function(className) {
-    Browser.removeClass(this.el, className);
-    return this;
-  },
-
-  classed: function(className, b) {
-    this[b ? 'addClass' : 'removeClass'](className);
-    return this;
-  },
-
-  hasClass: function(className) {
-    return Browser.hasClass(this.el, className);
-  },
-
-  toggleClass: function(cname) {
-    if (this.hasClass(cname)) {
-      this.removeClass(cname);
     } else {
-      this.addClass(cname);
+      error("This browser doesn't support CSS query selectors");
     }
-  },
-
-  computedStyle: function() {
-    return Browser.getElementStyle(this.el);
-  },
-
-  visible: function() {
-    if (this._hidden !== undefined) {
-      return !this._hidden;
-    }
-    var style = this.computedStyle();
-    return style.display != 'none' && style.visibility != 'hidden';
-  },
-
-  hide: function(css) {
-    if (this.visible()) {
-      this.css('display:none;');
-      this._hidden = true;
-    }
-    return this;
-  },
-
-  show: function(css) {
-    if (!this.visible()) {
-      this.css('display:block;');
-      this._hidden = false;
-    }
-    return this;
-  },
-
-  html: function(html) {
-    if (arguments.length == 0) {
-      return this.el.innerHTML;
-    } else {
-      this.el.innerHTML = html;
-      return this;
-    }
-  },
-
-  text: function(str) {
-    this.html(utils.htmlEscape(str));
-    return this;
-  },
-
-  // Shorthand for attr('id', <name>)
-  id: function(id) {
-    if (id) {
-      this.el.id = id;
-      return this;
-    }
-    return this.el.id;
-  },
-
-  findChild: function(sel) {
-    var node = El.__select(sel, this.el)[0];
-    return node ? new El(node) : null;
-  },
-
-  findChildren: function(sel) {
-    return El.__select(sel, this.el).map(El);
-  },
-
-  appendTo: function(ref) {
-    var parent = ref instanceof El ? ref.el : Browser.getElement(ref);
-    if (this._sibs) {
-      for (var i=0, len=this._sibs.length; i<len; i++) {
-        parent.appendChild(this._sibs[i]);
-      }
-    }
-    parent.appendChild(this.el);
-    return this;
-  },
-
-  nextSibling: function() {
-    return this.el.nextSibling ? new El(this.el.nextSibling) : null;
-  },
-
-  firstChild: function() {
-    var ch = this.el.firstChild;
-    while (ch.nodeType != 1) { // skip text nodes
-      ch = ch.nextSibling;
-    }
-    return new El(ch);
-  },
-
-  appendChild: function(ref) {
-    var el = El(ref);
-    this.el.appendChild(el.el);
-    return this;
-  },
-
-  newChild: function(tagName) {
-    var ch = document.createElement(tagName);
-    this.el.appendChild(ch);
-    return new El(ch);
-  },
-
-  // Traverse to parent node
-  parent: function() {
-    var p = this.el && this.el.parentNode;
-    return p ? new El(p) : null;
-  },
-
-  findParent: function(tagName) {
-    var p = this.el && this.el.parentNode;
-    if (tagName) {
-      tagName = tagName.toUpperCase();
-      while (p && p.tagName != tagName) {
-        p = p.parentNode;
-      }
-    }
-    return p ? new El(p) : null;
-  },
-
-  // Remove all children of this element
-  empty: function() {
-    this.el.innerHTML = '';
-    return this;
-  }
-
-});
-
-// use DOM handler for certain events
-// TODO: find a better way distinguising DOM events and other events registered on El
-// e.g. different methods
-//
-//El.prototype.__domevents = utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
-El.prototype.__on = El.prototype.on;
-El.prototype.on = function(type, func, ctx) {
-  if (ctx) {
-    error("[El#on()] Third argument no longer supported.");
-  }
-  if (this.constructor == El) {
-    this.el.addEventListener(type, func);
-  } else {
-    this.__on.apply(this, arguments);
-  }
-  return this;
-};
-
-El.prototype.__removeEventListener = El.prototype.removeEventListener;
-El.prototype.removeEventListener = function(type, func) {
-  if (this.constructor == El) {
-    this.el.removeEventListener(type, func);
-  } else {
-    this.__removeEventListener.apply(this, arguments);
-  }
-  return this;
-};
-
-
-function ElementPosition(ref) {
-  var self = this,
-      el = El(ref),
-      pageX = 0,
-      pageY = 0,
-      width = 0,
-      height = 0;
-
-  el.on('mouseover', update);
-  if (window.onorientationchange) window.addEventListener('orientationchange', update);
-  window.addEventListener('scroll', update);
-  window.addEventListener('resize', update);
-
-  // trigger an update, e.g. when map container is resized
-  this.update = function() {
-    update();
+    return utils.toArray(els);
   };
 
-  this.resize = function(w, h) {
-    el.css('width', w).css('height', h);
-    update();
+  // Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
+  // Doesn't change names that are already camelCase
+  //
+  El.toCamelCase = function(str) {
+    var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
+    return cc;
   };
 
-  this.width = function() { return width; };
-  this.height = function() { return height; };
-  this.position = function() {
-    return {
-      element: el.node(),
-      pageX: pageX,
-      pageY: pageY,
-      width: width,
-      height: height
-    };
+  El.fromCamelCase = function(str) {
+    var dashed = str.replace(/([A-Z])/g, "-$1").toLowerCase();
+    return dashed;
   };
 
-  function update() {
-    var div = el.node(),
-        xy = Browser.getPageXY(div),
-        w = div.clientWidth,
-        h = div.clientHeight,
-        x = xy.x,
-        y = xy.y,
-        resized = w != width || h != height,
-        moved = x != pageX || y != pageY;
-    if (resized || moved) {
-      pageX = x;
-      pageY = y;
-      width = w;
-      height = h;
-      self.dispatchEvent('change', self.position());
-      if (resized) {
-        self.dispatchEvent('resize', self.position());
-      }
-    }
-  }
-  update();
-}
-
-utils.inherit(ElementPosition, EventDispatcher);
-
-
-function getTimerFunction() {
-  return typeof requestAnimationFrame == 'function' ?
-    requestAnimationFrame : function(cb) {setTimeout(cb, 25);};
-}
-
-function Timer() {
-  var self = this,
-      running = false,
-      busy = false,
-      tickTime, startTime, duration;
-
-  this.start = function(ms) {
-    var now = +new Date();
-    duration = ms || Infinity;
-    startTime = now;
-    running = true;
-    if (!busy) startTick(now);
-  };
-
-  this.stop = function() {
-    running = false;
-  };
-
-  function startTick(now) {
-    busy = true;
-    tickTime = now;
-    getTimerFunction()(onTick);
-  }
-
-  function onTick() {
-    var now = +new Date(),
-        elapsed = now - startTime,
-        pct = Math.min((elapsed + 10) / duration, 1),
-        done = pct >= 1;
-    if (!running) { // interrupted
-      busy = false;
+  El.setStyle = function(el, name, val) {
+    var jsName = El.toCamelCase(name);
+    if (el.style[jsName] == void 0) {
+      console.error("[Element.setStyle()] css property:", jsName);
       return;
     }
-    if (done) running = false;
-    self.dispatchEvent('tick', {
-      elapsed: elapsed,
-      pct: pct,
-      done: done,
-      time: now,
-      tickTime: now - tickTime
-    });
-    busy = false;
-    if (running) startTick(now);
-  }
-}
-
-utils.inherit(Timer, EventDispatcher);
-
-function Tween(ease) {
-  var self = this,
-      timer = new Timer(),
-      start, end;
-
-  timer.on('tick', onTick);
-
-  this.start = function(a, b, duration) {
-    start = a;
-    end = b;
-    timer.start(duration || 500);
-  };
-
-  function onTick(e) {
-    var pct = ease ? ease(e.pct) : e.pct,
-        val = end * pct + start * (1 - pct);
-    self.dispatchEvent('change', {value: val});
-  }
-}
-
-utils.inherit(Tween, EventDispatcher);
-
-Tween.sineInOut = function(n) {
-  return 0.5 - Math.cos(n * Math.PI) / 2;
-};
-
-Tween.quadraticOut = function(n) {
-  return 1 - Math.pow((1 - n), 2);
-};
-
-
-function MouseWheelDirection() {
-  var ptime = 0;
-  var getAverage;
-
-  // use avg of three values, as a buffer against single anomalous values
-  return function(e, time) {
-    var dir = 0;
-    var avg;
-    if (e.wheelDelta) dir = e.wheelDelta > 0 ? 1 : -1;
-    else if (e.detail) dir = e.detail > 0 ? -1 : 1;
-    if (time - ptime > 300) getAverage = LimitedAverage(3); // reset
-    ptime = time;
-    avg = getAverage(dir) || dir; // handle average == 0
-    return avg > 0 ? 1 : -1;
-  };
-}
-
-function LimitedAverage(maxSize) {
-  var arr = [];
-  return function(val) {
-    var sum = 0,
-        i = -1;
-    arr.push(val);
-    if (arr.length > maxSize) arr.shift();
-    while (++i < arr.length) {
-      sum += arr[i];
-    }
-    return sum / arr.length;
-  };
-}
-
-// @mouse: MouseArea object
-function MouseWheel(mouse) {
-  var self = this,
-      active = false,
-      timer = new Timer().addEventListener('tick', onTick),
-      sustainInterval = 150,
-      fadeDelay = 70,
-      eventTime = 0,
-      getAverageRate = LimitedAverage(10),
-      getWheelDirection = MouseWheelDirection(),
-      wheelDirection;
-
-  if (window.onmousewheel !== undefined) { // ie, webkit
-    window.addEventListener('mousewheel', handleWheel, {passive: false});
-  } else { // firefox
-    window.addEventListener('DOMMouseScroll', handleWheel);
-  }
-
-  function updateSustainInterval(eventRate) {
-    var fadeInterval = 80;
-    fadeDelay = eventRate + 50; // adding a little extra time helps keep trackpad scrolling smooth in Firefox
-    sustainInterval = fadeDelay + fadeInterval;
-  }
-
-  function handleWheel(evt) {
-    var now = +new Date();
-    wheelDirection = getWheelDirection(evt, now);
-    if (evt.ctrlKey) {
-      // Prevent pinch-zoom in Chrome (doesn't work in Safari, though)
-      evt.preventDefault();
-      evt.stopImmediatePropagation();
-    }
-    if (!mouse.isOver()) return;
-    evt.preventDefault();
-    if (!active) {
-      active = true;
-      self.dispatchEvent('mousewheelstart');
-    } else {
-      updateSustainInterval(getAverageRate(now - eventTime));
-    }
-    eventTime = now;
-    timer.start(sustainInterval);
-  }
-
-  function onTick(evt) {
-    var tickInterval = evt.time - eventTime,
-        multiplier = evt.tickTime / 25,
-        fadeFactor = 0,
-        obj;
-    if (tickInterval > fadeDelay) {
-      fadeFactor = Math.min(1, (tickInterval - fadeDelay) / (sustainInterval - fadeDelay));
-    }
-    if (evt.done) {
-      active = false;
-    } else {
-      if (fadeFactor > 0) {
-        // Decelerate towards the end of the sustain interval (for smoother zooming)
-        multiplier *= Tween.quadraticOut(1 - fadeFactor);
+    var cssVal = val;
+    if (isFinite(val)) {
+      cssVal = String(val); // problem if converted to scientific notation
+      if (jsName != 'opacity' && jsName != 'zIndex') {
+        cssVal += "px";
       }
-      obj = utils.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
-      self.dispatchEvent('mousewheel', obj);
     }
-  }
-}
-
-utils.inherit(MouseWheel, EventDispatcher);
-
-
-function MouseArea(element, pos) {
-  var _pos = pos || new ElementPosition(element),
-      _areaPos = _pos.position(),
-      _self = this,
-      _dragging = false,
-      _isOver = false,
-      _disabled = false,
-      _prevEvt,
-      _downEvt;
-
-  _pos.on('change', function() {_areaPos = _pos.position();});
-  // TODO: think about touch events
-  document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('mousedown', onMouseDown);
-  document.addEventListener('mouseup', onMouseUp);
-  element.addEventListener('mouseover', onAreaEnter);
-  element.addEventListener('mousemove', onAreaEnter);
-  element.addEventListener('mouseout', onAreaOut);
-  element.addEventListener('mousedown', onAreaDown);
-  element.addEventListener('dblclick', onAreaDblClick);
-
-  this.enable = function() {
-    if (!_disabled) return;
-    _disabled = false;
-    element.style.pointerEvents = 'auto';
+    el.style[jsName] = cssVal;
   };
 
-  this.stopDragging = function() {
-    if (_downEvt) {
-      if (_dragging) stopDragging(_downEvt);
-      _downEvt = null;
+  El.findAll = function(sel, root) {
+    return El.__select(sel, root);
+  };
+
+  function El(ref) {
+    if (!ref) error("Element() needs a reference");
+    if (ref instanceof El) {
+      return ref;
     }
-  };
-
-  this.disable = function() {
-    if (_disabled) return;
-    _disabled = true;
-    if (_isOver) onAreaOut();
-    this.stopDragging();
-    element.style.pointerEvents = 'none';
-  };
-
-  this.isOver = function() {
-    return _isOver;
-  };
-
-  this.isDown = function() {
-    return !!_downEvt;
-  };
-
-  this.mouseData = function() {
-    return utils.extend({}, _prevEvt);
-  };
-
-  function onAreaDown(e) {
-    e.preventDefault(); // prevent text selection cursor on drag
-  }
-
-  function onAreaEnter() {
-    if (!_isOver) {
-      _isOver = true;
-      _self.dispatchEvent('enter');
+    else if (this instanceof El === false) {
+      return new El(ref);
     }
-  }
 
-  function onAreaOut() {
-    _isOver = false;
-    _self.dispatchEvent('leave');
-  }
-
-  function onMouseUp(e) {
-    var evt = procMouseEvent(e),
-        elapsed, dx, dy;
-    if (_dragging) {
-      stopDragging(evt);
-    }
-    if (_downEvt) {
-      elapsed = evt.time - _downEvt.time;
-      dx = evt.pageX - _downEvt.pageX;
-      dy = evt.pageY - _downEvt.pageY;
-      if (_isOver && elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
-        _self.dispatchEvent('click', evt);
+    var node;
+    if (utils.isString(ref)) {
+      if (ref[0] == '<') {
+        var parent = El('div').html(ref).node();
+        node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
+      } else if (tagOrIdSelectorRE.test(ref)) {
+        node = getElement(ref) || document.createElement(ref); // TODO: detect type of argument
+      } else {
+        node = El.__select(ref)[0];
       }
-      _downEvt = null;
+    } else if (ref.tagName) {
+      node = ref;
     }
+    if (!node) error("Unmatched element selector:", ref);
+    this.el = node;
   }
 
-  function stopDragging(evt) {
-    _dragging = false;
-    _self.dispatchEvent('dragend', evt);
-  }
+  utils.inherit(El, EventDispatcher);
 
-  function onMouseDown(e) {
-   if (e.button != 2 && e.which != 3) { // ignore right-click
-      _downEvt = procMouseEvent(e);
-    }
-  }
+  utils.extend(El.prototype, {
 
-  function onMouseMove(e) {
-    var evt = procMouseEvent(e);
-    if (!_dragging && _downEvt && _downEvt.hover) {
-      _dragging = true;
-      _self.dispatchEvent('dragstart', evt);
+    clone: function() {
+      var el = this.el.cloneNode(true);
+      if (el.nodeName == 'SCRIPT') {
+        // Assume scripts are templates and convert to divs, so children
+        //    can ...
+        el = El('div').addClass(el.className).html(el.innerHTML).node();
+      }
+      el.id = utils.getUniqueName();
+      this.el = el;
+      return this;
+    },
+
+    node: function() {
+      return this.el;
+    },
+
+    width: function() {
+     return this.el.offsetWidth;
+    },
+
+    height: function() {
+      return this.el.offsetHeight;
+    },
+
+    top: function() {
+      return this.el.offsetTop;
+    },
+
+    left: function() {
+      return this.el.offsetLeft;
+    },
+
+    // Apply inline css styles to this Element, either as string or object.
+    css: function(css, val) {
+      if (val != null) {
+        El.setStyle(this.el, css, val);
+      }
+      else if (utils.isString(css)) {
+        addCSS(this.el, css);
+      }
+      else if (utils.isObject(css)) {
+        utils.forEachProperty(css, function(val, key) {
+          El.setStyle(this.el, key, val);
+        }, this);
+      }
+      return this;
+    },
+
+    attr: function(obj, value) {
+      if (utils.isString(obj)) {
+        if (arguments.length == 1) {
+          return this.el.getAttribute(obj);
+        }
+        this.el.setAttribute(obj, value);
+        // this.el[obj] = value;
+      }
+      // else if (!value) {
+      //   Opts.copyAllParams(this.el, obj);
+      // }
+      return this;
+    },
+
+
+    remove: function(sel) {
+      if (this.el.parentNode) this.el.parentNode.removeChild(this.el);
+      return this;
+    },
+
+    addClass: function(className) {
+      addClass(this.el, className);
+      return this;
+    },
+
+    removeClass: function(className) {
+      removeClass(this.el, className);
+      return this;
+    },
+
+    classed: function(className, b) {
+      this[b ? 'addClass' : 'removeClass'](className);
+      return this;
+    },
+
+    hasClass: function(className) {
+      return hasClass(this.el, className);
+    },
+
+    toggleClass: function(cname) {
+      if (this.hasClass(cname)) {
+        this.removeClass(cname);
+      } else {
+        this.addClass(cname);
+      }
+    },
+
+    computedStyle: function() {
+      return getElementStyle(this.el);
+    },
+
+    visible: function() {
+      if (this._hidden !== undefined) {
+        return !this._hidden;
+      }
+      var style = this.computedStyle();
+      return style.display != 'none' && style.visibility != 'hidden';
+    },
+
+    hide: function(css) {
+      if (this.visible()) {
+        this.css('display:none;');
+        this._hidden = true;
+      }
+      return this;
+    },
+
+    show: function(css) {
+      if (!this.visible()) {
+        this.css('display:block;');
+        this._hidden = false;
+      }
+      return this;
+    },
+
+    html: function(html) {
+      if (arguments.length == 0) {
+        return this.el.innerHTML;
+      } else {
+        this.el.innerHTML = html;
+        return this;
+      }
+    },
+
+    text: function(str) {
+      this.html(utils.htmlEscape(str));
+      return this;
+    },
+
+    // Shorthand for attr('id', <name>)
+    id: function(id) {
+      if (id) {
+        this.el.id = id;
+        return this;
+      }
+      return this.el.id;
+    },
+
+    findChild: function(sel) {
+      var node = El.__select(sel, this.el)[0];
+      return node ? new El(node) : null;
+    },
+
+    findChildren: function(sel) {
+      return El.__select(sel, this.el).map(El);
+    },
+
+    appendTo: function(ref) {
+      var parent = ref instanceof El ? ref.el : getElement(ref);
+      if (this._sibs) {
+        for (var i=0, len=this._sibs.length; i<len; i++) {
+          parent.appendChild(this._sibs[i]);
+        }
+      }
+      parent.appendChild(this.el);
+      return this;
+    },
+
+    nextSibling: function() {
+      return this.el.nextSibling ? new El(this.el.nextSibling) : null;
+    },
+
+    firstChild: function() {
+      var ch = this.el.firstChild;
+      while (ch.nodeType != 1) { // skip text nodes
+        ch = ch.nextSibling;
+      }
+      return new El(ch);
+    },
+
+    appendChild: function(ref) {
+      var el = El(ref);
+      this.el.appendChild(el.el);
+      return this;
+    },
+
+    newChild: function(tagName) {
+      var ch = document.createElement(tagName);
+      this.el.appendChild(ch);
+      return new El(ch);
+    },
+
+    // Traverse to parent node
+    parent: function() {
+      var p = this.el && this.el.parentNode;
+      return p ? new El(p) : null;
+    },
+
+    findParent: function(tagName) {
+      var p = this.el && this.el.parentNode;
+      if (tagName) {
+        tagName = tagName.toUpperCase();
+        while (p && p.tagName != tagName) {
+          p = p.parentNode;
+        }
+      }
+      return p ? new El(p) : null;
+    },
+
+    // Remove all children of this element
+    empty: function() {
+      this.el.innerHTML = '';
+      return this;
     }
-    if (evt.dx === 0 && evt.dy === 0) return; // seen in Chrome
-    if (_dragging) {
-      var obj = {
-        dragX: evt.pageX - _downEvt.pageX,
-        dragY: evt.pageY - _downEvt.pageY
-      };
-      _self.dispatchEvent('drag', utils.extend(obj, evt));
+
+  });
+
+  // use DOM handler for certain events
+  // TODO: find a better way distinguising DOM events and other events registered on El
+  // e.g. different methods
+  //
+  //El.prototype.__domevents = utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
+  El.prototype.__on = El.prototype.on;
+  El.prototype.on = function(type, func, ctx) {
+    if (ctx) {
+      error("[El#on()] Third argument no longer supported.");
+    }
+    if (this.constructor == El) {
+      this.el.addEventListener(type, func);
     } else {
-      _self.dispatchEvent('hover', evt);
+      this.__on.apply(this, arguments);
     }
-  }
+    return this;
+  };
 
-  function onAreaDblClick(e) {
-    if (_isOver) _self.dispatchEvent('dblclick', procMouseEvent(e));
-  }
+  El.prototype.__removeEventListener = El.prototype.removeEventListener;
+  El.prototype.removeEventListener = function(type, func) {
+    if (this.constructor == El) {
+      this.el.removeEventListener(type, func);
+    } else {
+      this.__removeEventListener.apply(this, arguments);
+    }
+    return this;
+  };
 
-  function procMouseEvent(e) {
-    var pageX = e.pageX,
-        pageY = e.pageY,
-        prev = _prevEvt;
-    _prevEvt = {
-      originalEvent: e,
-      shiftKey: e.shiftKey,
-      metaKey: e.metaKey,
-      ctrlKey: e.ctrlKey,
-      time: +new Date(),
-      pageX: pageX,
-      pageY: pageY,
-      hover: _isOver,
-      x: pageX - _areaPos.pageX,
-      y: pageY - _areaPos.pageY,
-      dx: prev ? pageX - prev.pageX : 0,
-      dy: prev ? pageY - prev.pageY : 0
+  // TODO: switch all ClickText to ClickText2
+
+  // @ref Reference to an element containing a text node
+  function ClickText2(ref) {
+    var self = this;
+    var selected = false;
+    var el = El(ref).on('mousedown', init);
+
+    function init() {
+      el.removeEventListener('mousedown', init);
+      el.attr('contentEditable', true)
+      .attr('spellcheck', false)
+      .attr('autocorrect', false)
+      .on('focus', function(e) {
+        el.addClass('editing');
+        selected = false;
+      }).on('blur', function(e) {
+        el.removeClass('editing');
+        self.dispatchEvent('change');
+        window.getSelection().removeAllRanges();
+      }).on('keydown', function(e) {
+        if (e.keyCode == 13) { // enter
+          e.stopPropagation();
+          e.preventDefault();
+          this.blur();
+        }
+      }).on('click', function(e) {
+        if (!selected && window.getSelection().isCollapsed) {
+          GUI.selectElement(el.node());
+        }
+        selected = true;
+        e.stopPropagation();
+      });
+    }
+
+    this.value = function(str) {
+      if (utils.isString(str)) {
+        el.node().textContent = str;
+      } else {
+        return el.node().textContent;
+      }
     };
-    return _prevEvt;
   }
-}
 
-utils.inherit(MouseArea, EventDispatcher);
+  utils.inherit(ClickText2, EventDispatcher);
 
+  // @ref reference to a text input element
+  function ClickText(ref) {
+    var _el = El(ref);
+    var _self = this;
+    var _max = Infinity,
+        _min = -Infinity,
+        _formatter = function(v) {return String(v);},
+        _validator = function(v) {return !isNaN(v);},
+        _parser = function(s) {return parseFloat(s);},
+        _value = 0;
 
+    _el.on('blur', onblur);
+    _el.on('keydown', onpress);
 
-
-GUI.browserIsSupported = function() {
-  return typeof ArrayBuffer != 'undefined' &&
-      typeof Blob != 'undefined' && typeof File != 'undefined';
-};
-
-GUI.exportIsSupported = function() {
-  return typeof URL != 'undefined' && URL.createObjectURL &&
-    typeof document.createElement("a").download != "undefined" ||
-    !!window.navigator.msSaveBlob;
-};
-
-// TODO: make this relative to a single GUI instance
-GUI.canSaveToServer = function() {
-  return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
-};
-
-GUI.getUrlVars = function() {
-  var q = window.location.search.substring(1);
-  return q.split('&').reduce(function(memo, chunk) {
-    var pair = chunk.split('=');
-    var key = decodeURIComponent(pair[0]);
-    memo[key] = decodeURIComponent(pair[1]);
-    return memo;
-  }, {});
-};
-
-// Assumes that URL path ends with a filename
-GUI.getUrlFilename = function(url) {
-  var path = /\/\/([^#?]+)/.exec(url);
-  var file = path ? path[1].split('/').pop() : '';
-  return file;
-};
-
-GUI.formatMessageArgs = function(args) {
-  // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
-  return internal.formatLogArgs(args);
-};
-
-GUI.handleDirectEvent = function(cb) {
-  return function(e) {
-    if (e.target == this) cb();
-  };
-};
-
-GUI.getInputElement = function() {
-  var el = document.activeElement;
-  return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
-};
-
-GUI.selectElement = function(el) {
-  var range = document.createRange(),
-      sel = getSelection();
-  range.selectNodeContents(el);
-  sel.removeAllRanges();
-  sel.addRange(range);
-};
-
-GUI.blurActiveElement = function() {
-  var el = GUI.getInputElement();
-  if (el) el.blur();
-};
-
-// Filter out delayed click events, e.g. so users can highlight and copy text
-GUI.onClick = function(el, cb) {
-  var time;
-  el.on('mousedown', function() {
-    time = +new Date();
-  });
-  el.on('mouseup', function(e) {
-    if (+new Date() - time < 300) cb(e);
-  });
-};
-
-// tests if filename is a type that can be used
-GUI.isReadableFileType = function(filename) {
-  var ext = utils.getFileExtension(filename).toLowerCase();
-  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
-    internal.isZipFile(filename);
-};
-
-GUI.parseFreeformOptions = function(raw, cmd) {
-  var str = raw.trim(),
-      parsed;
-  if (!str) {
-    return {};
-  }
-  if (!/^-/.test(str)) {
-    str = '-' + cmd + ' ' + str;
-  }
-  parsed =  internal.parseCommands(str);
-  if (!parsed.length || parsed[0].name != cmd) {
-    stop("Unable to parse command line options");
-  }
-  return parsed[0].options;
-};
-
-
-function ModeButton(modes, el, name) {
-  var btn = El(el),
-      active = false;
-  modes.on('mode', function(e) {
-    active = e.name == name;
-    if (active) {
-      btn.addClass('active');
-    } else {
-      btn.removeClass('active');
-    }
-  });
-
-  btn.on('click', function() {
-    modes.enterMode(active ? null : name);
-  });
-}
-
-
-function ModeSwitcher() {
-  var self = this;
-  var mode = null;
-
-  self.getMode = function() {
-    return mode;
-  };
-
-  // return a function to trigger this mode
-  self.addMode = function(name, enter, exit, btn) {
-    self.on('mode', function(e) {
-      if (e.prev == name) {
-        exit();
+    function onpress(e) {
+      if (e.keyCode == 27) { // esc
+        _self.value(_value); // reset input field to current value
+        _el.el.blur();
+      } else if (e.keyCode == 13) { // enter
+        _el.el.blur();
       }
-      if (e.name == name) {
-        enter();
+    }
+
+    // Validate input contents.
+    // Update internal value and fire 'change' if valid
+    //
+    function onblur() {
+      var val = _parser(_el.el.value);
+      if (_validator(val)) {
+        _self.value(val);
+        _self.dispatchEvent('change', {value:_self.value()});
+      } else {
+        _self.value(_value);
+        _self.dispatchEvent('error'); // TODO: improve
+      }
+    }
+
+    this.bounds = function(min, max) {
+      _min = min;
+      _max = max;
+      return this;
+    };
+
+    this.validator = function(f) {
+      _validator = f;
+      return this;
+    };
+
+    this.formatter = function(f) {
+      _formatter = f;
+      return this;
+    };
+
+    this.parser = function(f) {
+      _parser = f;
+      return this;
+    };
+
+    this.text = function() {return _el.el.value;};
+
+    this.value = function(arg) {
+      if (arg == void 0) {
+        // var valStr = this.el.value;
+        // return _parser ? _parser(valStr) : parseFloat(valStr);
+        return _value;
+      }
+      var val = utils.clamp(arg, _min, _max);
+      if (!_validator(val)) {
+        error("ClickText#value() invalid value:", arg);
+      } else {
+        _value = val;
+      }
+      _el.el.value = _formatter(val);
+      return this;
+    };
+  }
+
+  utils.inherit(ClickText, EventDispatcher);
+
+
+  function Checkbox(ref) {
+    var _el = El(ref);
+  }
+
+  utils.inherit(Checkbox, EventDispatcher);
+
+  function SimpleButton(ref) {
+    var _el = El(ref),
+        _self = this,
+        _active = !_el.hasClass('disabled');
+
+    _el.on('click', function(e) {
+      if (_active) _self.dispatchEvent('click');
+      return false;
+    });
+
+    this.active = function(a) {
+      if (a === void 0) return _active;
+      if (a !== _active) {
+        _active = a;
+        _el.toggleClass('disabled');
+      }
+      return this;
+    };
+
+    this.node = function() {return _el.node();};
+  }
+
+  utils.inherit(SimpleButton, EventDispatcher);
+
+  // @cb function(<FileList>)
+  function DropControl(el, cb) {
+    var area = El(el);
+    area.on('dragleave', ondragleave)
+        .on('dragover', ondragover)
+        .on('drop', ondrop);
+    function ondragleave(e) {
+      block(e);
+      out();
+    }
+    function ondragover(e) {
+      // blocking drag events enables drop event
+      block(e);
+      over();
+    }
+    function ondrop(e) {
+      block(e);
+      out();
+      cb(e.dataTransfer.files);
+    }
+    function over() {
+      area.addClass('dragover');
+    }
+    function out() {
+      area.removeClass('dragover');
+    }
+    function block(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  // @el DOM element for select button
+  // @cb function(<FileList>)
+  function FileChooser(el, cb) {
+    var btn = El(el).on('click', function() {
+      input.el.click();
+    });
+    var input = El('form')
+      .addClass('file-control').appendTo('body')
+      .newChild('input')
+      .attr('type', 'file')
+      .attr('multiple', 'multiple')
+      .on('change', onchange);
+
+    function onchange(e) {
+      var files = e.target.files;
+      // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
+      if (files) {
+        // disable the button while files are being processed
+        btn.addClass('selected');
+        input.attr('disabled', true);
+        cb(files);
+        btn.removeClass('selected');
+        input.attr('disabled', false);
+      }
+    }
+  }
+
+  function ImportControl(gui, opts) {
+    var model = gui.model;
+    var importCount = 0;
+    var useQuickView = opts.quick_view; // may be set by mapshaper-gui
+    var queuedFiles = [];
+    var manifestFiles = opts.files || [];
+    var cachedFiles = {};
+    var catalog;
+
+    if (opts.catalog) {
+      catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
+    }
+
+    new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
+    new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
+    new DropControl('body', receiveFiles); // default drop area is entire page
+    new DropControl('#import-drop', receiveFiles);
+    new DropControl('#import-quick-drop', receiveFilesQuickView);
+    new FileChooser('#file-selection-btn', receiveFiles);
+    new FileChooser('#import-buttons .add-btn', receiveFiles);
+    new FileChooser('#add-file-btn', receiveFiles);
+
+    gui.keyboard.onMenuSubmit(El('#import-options'), onSubmit);
+
+    gui.addMode('import', turnOn, turnOff);
+    gui.enterMode('import');
+
+    gui.on('mode', function(e) {
+      // re-open import opts if leaving alert or console modes and nothing has been imported yet
+      if (!e.name && model.isEmpty()) {
+        gui.enterMode('import');
       }
     });
-    if (btn) {
-      new ModeButton(self, btn, name);
+
+    function findMatchingShp(filename) {
+      // use case-insensitive matching
+      var base = internal.getPathBase(filename).toLowerCase();
+      return model.getDatasets().filter(function(d) {
+        var fname = d.info.input_files && d.info.input_files[0] || "";
+        var ext = internal.getFileExtension(fname).toLowerCase();
+        var base2 = internal.getPathBase(fname).toLowerCase();
+        return base == base2 && ext == 'shp';
+      });
     }
-  };
 
-  self.addMode(null, function() {}, function() {}); // null mode
-
-  self.clearMode = function() {
-    self.enterMode(null);
-  };
-
-  self.enterMode = function(next) {
-    var prev = mode;
-    if (next != prev) {
-      mode = next;
-      self.dispatchEvent('mode', {name: next, prev: prev});
+    function turnOn() {
+      if (manifestFiles.length > 0) {
+        downloadFiles(manifestFiles);
+        manifestFiles = [];
+      } else if (model.isEmpty()) {
+        gui.container.addClass('splash-screen');
+      }
     }
-  };
-}
 
-utils.inherit(ModeSwitcher, EventDispatcher);
+    function turnOff() {
+      if (catalog) catalog.reset(); // re-enable clickable catalog
+      if (importCount > 0) {
+        // display last layer of last imported dataset
+        // target = model.getDefaultTargets()[0];
+        // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+        model.updated({select: true});
+      }
+      gui.clearProgressMessage();
+      importCount = 0;
+      useQuickView = false; // unset 'quick view' mode, if on
+      close();
+    }
+
+    function close() {
+      clearQueuedFiles();
+      cachedFiles = {};
+    }
+
+    function clearQueuedFiles() {
+      queuedFiles = [];
+      gui.container.removeClass('queued-files');
+      gui.container.findChild('.dropped-file-list').empty();
+    }
+
+    function addFilesToQueue(files) {
+      var index = {};
+      queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
+        // filter out unreadable types and dupes
+        if (GUI.isReadableFileType(f.name) && f.name in index === false) {
+          index[f.name] = true;
+          memo.push(f);
+        }
+        return memo;
+      }, []);
+    }
+
+    // When a Shapefile component is at the head of the queue, move the entire
+    // Shapefile to the front of the queue, sorted in reverse alphabetical order,
+    // (a kludge), so .shp is read before .dbf and .prj
+    // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
+    // TODO: import Shapefile parts without relying on this kludge
+    function sortQueue(queue) {
+      var nextFile = queue[0];
+      var basename, parts;
+      if (!isShapefilePart(nextFile.name)) {
+        return queue;
+      }
+      basename = internal.getFileBase(nextFile.name).toLowerCase();
+      parts = [];
+      queue = queue.filter(function(file) {
+        if (internal.getFileBase(file.name).toLowerCase() == basename) {
+          parts.push(file);
+          return false;
+        }
+        return true;
+      });
+      parts.sort(function(a, b) {
+        // Sorting on LC filename so Shapefiles with mixed-case
+        // extensions are sorted correctly
+        return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
+      });
+      return parts.concat(queue);
+    }
+
+    function showQueuedFiles() {
+      var list = gui.container.findChild('.dropped-file-list').empty();
+      queuedFiles.forEach(function(f) {
+        El('<p>').text(f.name).appendTo(list);
+      });
+    }
+
+    function receiveFilesQuickView(files) {
+      useQuickView = true;
+      receiveFiles(files);
+    }
+
+    function receiveFiles(files) {
+      var prevSize = queuedFiles.length;
+      files = handleZipFiles(utils.toArray(files));
+      addFilesToQueue(files);
+      if (queuedFiles.length === 0) return;
+      gui.enterMode('import');
+
+      if (useQuickView) {
+        onSubmit();
+      } else {
+        gui.container.addClass('queued-files');
+        El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
+        showQueuedFiles();
+      }
+    }
+
+    function filesMayContainPaths(files) {
+      return utils.some(files, function(f) {
+          var type = internal.guessInputFileType(f.name);
+          return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
+      });
+    }
+
+    function onSubmit() {
+      gui.container.removeClass('queued-files');
+      gui.container.removeClass('splash-screen');
+      procNextQueuedFile();
+    }
+
+    function addDataset(dataset) {
+      if (!datasetIsEmpty(dataset)) {
+        model.addDataset(dataset);
+        importCount++;
+      }
+      procNextQueuedFile();
+    }
+
+    function datasetIsEmpty(dataset) {
+      return dataset.layers.every(function(lyr) {
+        return internal.getFeatureCount(lyr) === 0;
+      });
+    }
+
+    function procNextQueuedFile() {
+      if (queuedFiles.length === 0) {
+        gui.clearMode();
+      } else {
+        queuedFiles = sortQueue(queuedFiles);
+        readFile(queuedFiles.shift());
+      }
+    }
+
+    // TODO: support .cpg
+    function isShapefilePart(name) {
+      return /\.(shp|shx|dbf|prj)$/i.test(name);
+    }
 
 
-// These functions could be called when validating i/o options; TODO: avoid this
-cli.isFile =
-cli.isDirectory = function(name) {return false;};
-cli.validateOutputDir = function() {};
+    function readImportOpts() {
+      if (useQuickView) return {};
+      var freeform = El('#import-options .advanced-options').node().value,
+          opts = GUI.parseFreeformOptions(freeform, 'i');
+      opts.no_repair = !El("#repair-intersections-opt").node().checked;
+      opts.snap = !!El("#snap-points-opt").node().checked;
+      return opts;
+    }
 
-function MessageProxy(gui) {
-  // Replace error function in mapshaper lib
-  error = internal.error = function() {
-    stop.apply(null, utils.toArray(arguments));
-  };
+    // for CLI output
+    function readImportOptsAsString() {
+      if (useQuickView) return '';
+      var freeform = El('#import-options .advanced-options').node().value;
+      var opts = readImportOpts();
+      if (opts.snap) freeform = 'snap ' + freeform;
+      return freeform.trim();
+    }
 
-  // replace stop function
-  stop = internal.stop = function() {
-    // Show a popup error message, then throw an error
-    var msg = GUI.formatMessageArgs(arguments);
-    gui.alert(msg);
-    throw new Error(msg);
-  };
+    // @file a File object
+    function readFile(file) {
+      var name = file.name,
+          reader = new FileReader(),
+          useBinary = internal.isSupportedBinaryInputType(name) ||
+            internal.isZipFile(name) ||
+            internal.guessInputFileType(name) == 'json' ||
+            internal.guessInputFileType(name) == 'text';
 
-  message = internal.message = function() {
-    internal.logArgs(arguments); // reset default
-  };
-}
-
-function WriteFilesProxy(gui) {
-  // replaces function from mapshaper.js
-  internal.writeFiles = function(files, opts, done) {
-
-    var filename;
-    if (!utils.isArray(files) || files.length === 0) {
-      done("Nothing to export");
-    } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-      var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
-      var data = utils.pluck(files, 'content');
-      saveFilesToServer(paths, data, function(err) {
-        var msg;
-        if (err) {
-          msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
-          msg += "<br>Saving to download folder instead.";
-          gui.alert(msg);
-          // fall back to standard method if saving to server fails
-          internal.writeFiles(files, {save_to_download_folder: true}, done);
+      reader.addEventListener('loadend', function(e) {
+        if (!reader.result) {
+          handleImportError("Web browser was unable to load the file.", name);
         } else {
-          if (files.length >= 1) {
-            gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
-          }
-          done();
+          importFileContent(name, reader.result);
         }
       });
-    } else if (files.length == 1) {
-      saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
-    } else {
-      filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
-      saveZipFile(filename + ".zip", files, done);
+      if (useBinary) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
+        reader.readAsText(file, 'UTF-8');
+      }
     }
-  };
-}
 
-// Replaces functions for reading from files with functions that try to match
-// already-loaded datasets.
-//
-function ImportFileProxy(gui) {
-  var model = gui.model;
+    function importFileContent(fileName, content) {
+      var fileType = internal.guessInputType(fileName, content),
+          importOpts = readImportOpts(),
+          matches = findMatchingShp(fileName),
+          dataset, lyr;
 
-  // Try to match an imported dataset or layer.
-  // TODO: think about handling import options
-  function find(src) {
-    var datasets = model.getDatasets();
-    var retn = datasets.reduce(function(memo, d) {
-      var lyr;
-      if (memo) return memo; // already found a match
-      // try to match import filename of this dataset
-      if (d.info.input_files[0] == src) return d;
-      // try to match name of a layer in this dataset
-      lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
-      return lyr ? internal.isolateLayer(lyr, d) : null;
-    }, null);
-    if (!retn) stop("Missing data layer [" + src + "]");
-    return retn;
+      // Add dbf data to a previously imported .shp file with a matching name
+      // (.shp should have been queued before .dbf)
+      if (fileType == 'dbf' && matches.length > 0) {
+        // find an imported .shp layer that is missing attribute data
+        // (if multiple matches, try to use the most recently imported one)
+        dataset = matches.reduce(function(memo, d) {
+          if (!d.layers[0].data) {
+            memo = d;
+          }
+          return memo;
+        }, null);
+        if (dataset) {
+          lyr = dataset.layers[0];
+          lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
+          if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
+            stop("Different number of records in .shp and .dbf files");
+          }
+          if (!lyr.geometry_type) {
+            // kludge: trigger display of table cells if .shp has null geometry
+            // TODO: test case if lyr is not the current active layer
+            model.updated({});
+          }
+          procNextQueuedFile();
+          return;
+        }
+      }
+
+      if (fileType == 'shx') {
+        // save .shx for use when importing .shp
+        // (queue should be sorted so that .shx is processed before .shp)
+        cachedFiles[fileName.toLowerCase()] = {filename: fileName, content: content};
+        procNextQueuedFile();
+        return;
+      }
+
+      // Add .prj file to previously imported .shp file
+      if (fileType == 'prj') {
+        matches.forEach(function(d) {
+          if (!d.info.prj) {
+            d.info.prj = content;
+          }
+        });
+        procNextQueuedFile();
+        return;
+      }
+
+      importNewDataset(fileType, fileName, content, importOpts);
+    }
+
+    function importNewDataset(fileType, fileName, content, importOpts) {
+      var size = content.byteLength || content.length, // ArrayBuffer or string
+          delay = 0;
+
+      // show importing message if file is large
+      if (size > 4e7) {
+        gui.showProgressMessage('Importing');
+        delay = 35;
+      }
+      setTimeout(function() {
+        var dataset;
+        var input = {};
+        try {
+          input[fileType] = {filename: fileName, content: content};
+          if (fileType == 'shp') {
+            // shx file should already be cached, if it was added together with the shp
+            input.shx = cachedFiles[fileName.replace(/shp$/i, 'shx').toLowerCase()] || null;
+          }
+          dataset = internal.importContent(input, importOpts);
+          // save import options for use by repair control, etc.
+          dataset.info.import_options = importOpts;
+          gui.session.fileImported(fileName, readImportOptsAsString());
+          addDataset(dataset);
+
+        } catch(e) {
+          handleImportError(e, fileName);
+        }
+      }, delay);
+    }
+
+    function handleImportError(e, fileName) {
+      var msg = utils.isString(e) ? e : e.message;
+      if (fileName) {
+        msg = "Error importing <i>" + fileName + "</i><br>" + msg;
+      }
+      clearQueuedFiles();
+      gui.alert(msg);
+      console.error(e);
+    }
+
+    function handleZipFiles(files) {
+      return files.filter(function(file) {
+        var isZip = internal.isZipFile(file.name);
+        if (isZip) {
+          importZipFile(file);
+        }
+        return !isZip;
+      });
+    }
+
+    function importZipFile(file) {
+      // gui.showProgressMessage('Importing');
+      setTimeout(function() {
+        GUI.readZipFile(file, function(err, files) {
+          if (err) {
+            handleImportError(err, file.name);
+          } else {
+            // don't try to import .txt files from zip files
+            // (these would be parsed as dsv and throw errows)
+            files = files.filter(function(f) {
+              return !/\.txt$/i.test(f.name);
+            });
+            receiveFiles(files);
+          }
+        });
+      }, 35);
+    }
+
+    function prepFilesForDownload(names) {
+      var items = names.map(function(name) {
+        var isUrl = /:\/\//.test(name);
+        var item = {name: name};
+        if (isUrl) {
+          item.url = name;
+          item.basename = GUI.getUrlFilename(name);
+
+        } else {
+          item.basename = name;
+          // Assume non-urls are local files loaded via gui-gui
+          item.url = '/data/' + name;
+          item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
+        }
+        return GUI.isReadableFileType(item.basename) ? item : null;
+      });
+      return items.filter(Boolean);
+    }
+
+    function downloadFiles(paths) {
+      var items = prepFilesForDownload(paths);
+      utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
+        if (err) {
+          gui.alert(err);
+        } else if (!files.length) {
+          gui.clearMode();
+        } else {
+          receiveFiles(files);
+        }
+      });
+    }
+
+    function downloadNextFile(memo, item, next) {
+      var req = new XMLHttpRequest();
+      var blob;
+      req.responseType = 'blob';
+      req.addEventListener('load', function(e) {
+        if (req.status == 200) {
+          blob = req.response;
+        }
+      });
+      req.addEventListener('progress', function(e) {
+        var pct = e.loaded / e.total;
+        if (catalog) catalog.progress(pct);
+      });
+      req.addEventListener('loadend', function() {
+        var err;
+        if (req.status == 404) {
+          err = "Not&nbsp;found:&nbsp;" + item.name;
+        } else if (!blob) {
+          // Errors like DNS lookup failure, no CORS headers, no network connection
+          // all are status 0 - it seems impossible to show a more specific message
+          // actual reason is displayed on the console
+          err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
+        } else {
+          blob.name = item.basename;
+          memo.push(blob);
+        }
+        next(err, memo);
+      });
+      req.open('GET', item.url);
+      req.send();
+    }
   }
 
-  api.importFile = function(src, opts) {
-    var dataset = find(src);
-    // Aeturn a copy with layers duplicated, so changes won't affect original layers
-    // This makes an (unsafe) assumption that the dataset arcs won't be changed...
-    // need to rethink this.
-    return utils.defaults({
-      layers: dataset.layers.map(internal.copyLayer)
-    }, dataset);
-  };
-}
-
-// load Proj.4 CRS definition files dynamically
-//
-internal.initProjLibrary = function(opts, done) {
-  var mproj = require('mproj');
-  var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.crs || ''].join(' '));
-  // skip loaded libs
-  libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
-  loadProjLibs(libs, done);
-};
-
-function loadProjLibs(libs, done) {
-  var mproj = require('mproj');
-  var i = 0;
-  next();
-
-  function next() {
-    var libName = libs[i];
-    var content, req;
-    if (!libName) return done();
-    req = new XMLHttpRequest();
-    req.addEventListener('load', function(e) {
-      if (req.status == 200) {
-        content = req.response;
-      }
+  function draggable(ref) {
+    var xdown, ydown;
+    var el = El(ref),
+        dragging = false,
+        obj = new EventDispatcher();
+    undraggable(el.node());
+    el.on('mousedown', function(e) {
+      xdown = e.pageX;
+      ydown = e.pageY;
+      window.addEventListener('mousemove', onmove);
+      window.addEventListener('mouseup', onrelease);
     });
-    req.addEventListener('loadend', function() {
-      if (content) {
-        mproj.internal.mproj_insert_libcache(libName, content);
+
+    function onrelease(e) {
+      window.removeEventListener('mousemove', onmove);
+      window.removeEventListener('mouseup', onrelease);
+      if (dragging) {
+        dragging = false;
+        obj.dispatchEvent('dragend');
       }
-      // TODO: consider stopping with an error message if no content was loaded
-      // (currently, a less specific error will occur when mapshaper tries to use the library)
-      next();
-    });
-    req.open('GET', 'assets/' + libName);
-    req.send();
-    i++;
+    }
+
+    function onmove(e) {
+      if (!dragging) {
+        dragging = true;
+        obj.dispatchEvent('dragstart');
+      }
+      obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
+    }
+    return obj;
   }
-}
 
-
-
-function KeyboardEvents(gui) {
-  var self = this;
-  document.addEventListener('keydown', function(e) {
-    if (!GUI.isActiveInstance(gui)) return;
-    self.dispatchEvent('keydown', {originalEvent: e});
-  });
-
-  this.onMenuSubmit = function(menuEl, cb) {
-    gui.on('enter_key', function(e) {
-      if (menuEl.visible()) {
-        e.originalEvent.stopPropagation();
-        cb();
-      }
-    });
-  };
-}
-
-utils.inherit(KeyboardEvents, EventDispatcher);
-
-
-function Model(gui) {
-  var self = new api.internal.Catalog();
-  var deleteLayer = self.deleteLayer;
-  utils.extend(self, EventDispatcher.prototype);
-
-  // override Catalog method (so -drop command will work in web console)
-  self.deleteLayer = function(lyr, dataset) {
-    var active, flags;
-    deleteLayer.call(self, lyr, dataset);
-    if (self.isEmpty()) {
-      // refresh browser if deleted layer was the last layer
-      window.location.href = window.location.href.toString();
-    } else {
-      // trigger event to update layer list and, if needed, the map view
-      flags = {};
-      active = self.getActiveLayer();
-      if (active.layer != lyr) {
-        flags.select = true;
-      }
-      internal.cleanupArcs(active.dataset);
-      if (internal.layerHasPaths(lyr)) {
-        flags.arc_count = true; // looks like a kludge, try to remove
-      }
-      self.updated(flags, active.layer, active.dataset);
-    }
-  };
-
-  self.updated = function(flags) {
-    var targets = self.getDefaultTargets();
-    var active = self.getActiveLayer();
-    if (internal.countTargetLayers(targets) > 1) {
-      self.setDefaultTarget([active.layer], active.dataset);
-      gui.session.setTargetLayer(active.layer); // add -target command to target single layer
-    }
-    if (flags.select) {
-      self.dispatchEvent('select', active);
-    }
-    self.dispatchEvent('update', utils.extend({flags: flags}, active));
-  };
-
-  self.selectLayer = function(lyr, dataset) {
-    if (self.getActiveLayer().layer == lyr) return;
-    self.setDefaultTarget([lyr], dataset);
-    self.updated({select: true});
-    gui.session.setTargetLayer(lyr);
-  };
-
-  self.selectNextLayer = function() {
-    var next = self.findNextLayer(self.getActiveLayer().layer);
-    if (next) self.selectLayer(next.layer, next.dataset);
-  };
-
-  self.selectPrevLayer = function() {
-    var prev = self.findPrevLayer(self.getActiveLayer().layer);
-    if (prev) self.selectLayer(prev.layer, prev.dataset);
-  };
-
-  return self;
-}
-
-
-GUI.getPixelRatio = function() {
-  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
-  return deviceRatio > 1 ? 2 : 1;
-};
-
-// TODO: consider moving this upstream
-function getArcsForRendering(obj, ext) {
-  var dataset = obj.source.dataset;
-  var sourceArcs = dataset.arcs;
-  if (obj.geographic && dataset.displayArcs) {
-    return dataset.displayArcs.getScaledArcs(ext);
-  }
-  return obj.arcs;
-}
-
-function drawOutlineLayerToCanvas(obj, canv, ext) {
-  var arcs;
-  var style = obj.style;
-  var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
-      lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
-  var filter;
-  if (internal.layerHasPaths(obj.layer)) {
-    if (!obj.arcCounts) {
-      obj.arcCounts = new Uint8Array(obj.arcs.size());
-      internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
-    }
-    if (obj.arcCounts) {
-      arcs = getArcsForRendering(obj, ext);
-      if (lightStyle.strokeColor) {
-        filter = getArcFilter(arcs, ext, false, obj.arcCounts);
-        canv.drawArcs(arcs, lightStyle, filter);
-      }
-      if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
-        filter = getArcFilter(arcs, ext, true, obj.arcCounts);
-        canv.drawArcs(arcs, darkStyle, filter);
-      }
-    }
-  }
-  if (obj.layer.geometry_type == 'point') {
-    canv.drawSquareDots(obj.layer.shapes, style);
-  }
-}
-
-function drawStyledLayerToCanvas(obj, canv, ext) {
-  // TODO: add filter for out-of-view shapes
-  var style = obj.style;
-  var layer = obj.layer;
-  var arcs, filter;
-  if (layer.geometry_type == 'point') {
-    if (style.type == 'styled') {
-      canv.drawPoints(layer.shapes, style);
-    } else {
-      canv.drawSquareDots(layer.shapes, style);
-    }
-  } else {
-    arcs = getArcsForRendering(obj, ext);
-    filter = getShapeFilter(arcs, ext);
-    canv.drawPathShapes(layer.shapes, arcs, style, filter);
-  }
-}
-
-
-// Return a function for testing if an arc should be drawn in the current view
-function getArcFilter(arcs, ext, usedFlag, arcCounts) {
-  var minPathLen = 0.5 * ext.getPixelSize(),
-      geoBounds = ext.getBounds(),
-      geoBBox = geoBounds.toArray(),
-      allIn = geoBounds.contains(arcs.getBounds()),
-      visible;
-  // don't continue dropping paths if user zooms out farther than full extent
-  if (ext.scale() < 1) minPathLen *= ext.scale();
-  return function(i) {
-      var visible = true;
-      if (usedFlag != arcCounts[i] > 0) { // show either used or unused arcs
-        visible = false;
-      } else if (arcs.arcIsSmaller(i, minPathLen)) {
-        visible = false;
-      } else if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) {
-        visible = false;
-      }
-      return visible;
+  function Slider(ref, opts) {
+    var _el = El(ref);
+    var _self = this;
+    var defaults = {
+      space: 7
     };
+    opts = utils.extend(defaults, opts);
+
+    var _pct = 0;
+    var _track,
+        _handle,
+        _handleLeft = opts.space;
+
+    function size() {
+      return _track ? _track.width() - opts.space * 2 : 0;
+    }
+
+    this.track = function(ref) {
+      if (ref && !_track) {
+        _track = El(ref);
+        _handleLeft = _track.el.offsetLeft + opts.space;
+        updateHandlePos();
+      }
+      return _track;
+    };
+
+    this.handle = function(ref) {
+      var startX;
+      if (ref && !_handle) {
+        _handle = El(ref);
+        draggable(_handle)
+          .on('drag', function(e) {
+            setHandlePos(startX + e.dx);
+          })
+          .on('dragstart', function(e) {
+            startX = position();
+            _self.dispatchEvent('start');
+          })
+          .on('dragend', function(e) {
+            _self.dispatchEvent('end');
+          });
+        updateHandlePos();
+      }
+      return _handle;
+    };
+
+    function position() {
+      return Math.round(_pct * size());
+    }
+
+    this.pct = function(pct) {
+      if (pct >= 0 && pct <= 1) {
+        _pct = pct;
+        updateHandlePos();
+      }
+      return _pct;
+    };
+
+    function setHandlePos(x, fire) {
+      x = utils.clamp(x, 0, size());
+      var pct = x / size();
+      if (pct != _pct) {
+        _pct = pct;
+        _handle.css('left', _handleLeft + x);
+        _self.dispatchEvent('change', {pct: _pct});
+      }
+    }
+
+    function updateHandlePos() {
+      var x = _handleLeft + Math.round(position());
+      if (_handle) _handle.css('left', x);
+    }
   }
 
-// Return a function for testing if a shape should be drawn in the current view
-function getShapeFilter(arcs, ext) {
-  var viewBounds = ext.getBounds();
-  var bounds = new Bounds();
-  if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
-  return function(shape) {
-    bounds.empty();
-    arcs.getMultiShapeBounds(shape, bounds);
-    return viewBounds.intersects(bounds);
-  };
-}
-
-function getPixelColorFunction() {
-  var canv = El('canvas').node();
-  canv.width = canv.height = 1;
-  return function(col) {
-    var ctx = canv.getContext('2d');
-    var pixels;
-    ctx.fillStyle = col;
-    ctx.fillRect(0, 0, 1, 1);
-    pixels = new Uint32Array(ctx.getImageData(0, 0, 1, 1).data.buffer);
-    return pixels[0];
-  };
-}
-
-function DisplayCanvas() {
-  var _self = El('canvas'),
-      _canvas = _self.node(),
-      _ctx = _canvas.getContext('2d'),
-      _pixelColor = getPixelColorFunction(),
-      _ext;
-
-  _self.prep = function(extent) {
-    var w = extent.width(),
-        h = extent.height(),
-        pixRatio = GUI.getPixelRatio();
-    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-    _canvas.width = w * pixRatio;
-    _canvas.height = h * pixRatio;
-    _self.classed('retina', pixRatio == 2);
-    _self.show();
-    _ext = extent;
-  };
+  utils.inherit(Slider, EventDispatcher);
 
   /*
-  // Original function, not optimized
-  _self.drawPathShapes = function(shapes, arcs, style) {
-    var startPath = getPathStart(_ext),
-        drawPath = getShapePencil(arcs, _ext),
-        styler = style.styler || null;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      if (styler) styler(style, i);
-      startPath(_ctx, style);
-      drawPath(shapes[i], _ctx);
-      endPath(_ctx, style);
-    }
-  };
+  How changes in the simplify control should affect other components
+
+  data calculated, 100% simplification
+   -> [map] filtered arcs update
+
+  data calculated, <100% simplification
+   -> [map] filtered arcs update, redraw; [repair] intersection update
+
+  change via text field
+   -> [map] redraw; [repair] intersection update
+
+  slider drag start
+   -> [repair] hide display
+
+  slider drag
+   -> [map] redraw
+
+  slider drag end
+   -> [repair] intersection update
+
   */
 
+  var SimplifyControl = function(gui) {
+    var model = gui.model;
+    var control = {};
+    var _value = 1;
+    var el = gui.container.findChild('.simplify-control-wrapper');
+    var menu = gui.container.findChild('.simplify-options');
+    var slider, text, fromPct;
 
-  // Optimized to draw paths in same-style batches (faster Canvas drawing)
-  _self.drawPathShapes = function(shapes, arcs, style, filter) {
-    var styleIndex = {};
-    var batchSize = 1500;
-    var startPath = getPathStart(_ext, getScaledLineScale(_ext));
-    var draw = getShapePencil(arcs, _ext);
-    var key, item;
-    var styler = style.styler || null;
-    for (var i=0; i<shapes.length; i++) {
-      if (filter && !filter(shapes[i])) continue;
-      if (styler) styler(style, i);
-      key = getStyleKey(style);
-      if (key in styleIndex === false) {
-        styleIndex[key] = {
-          style: utils.defaults({}, style),
-          shapes: []
-        };
+    // init settings menu
+    new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
+    new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
+      if (el.visible()) {
+        // cancel just hides menu if slider is visible
+        menu.hide();
+      } else {
+        gui.clearMode();
       }
-      item = styleIndex[key];
-      item.shapes.push(shapes[i]);
-      // overlays should not be batched, so transparency of overlapping shapes
-      // is drawn correctly
-      if (item.shapes.length >= batchSize || style.overlay) {
-        drawPaths(item.shapes, startPath, draw, item.style);
-        item.shapes = [];
+    });
+    new SimpleButton(el.findChild('.simplify-settings-btn')).on('click', function() {
+      if (menu.visible()) {
+        menu.hide();
+      } else {
+        showMenu();
+      }
+    });
+    gui.keyboard.onMenuSubmit(menu, onSubmit);
+
+    // init simplify button and mode
+    gui.addMode('simplify', turnOn, turnOff, gui.container.findChild('.simplify-btn'));
+    model.on('select', function() {
+      if (gui.getMode() == 'simplify') gui.clearMode();
+    });
+
+    // exit simplify mode when user clicks off the visible part of the menu
+    menu.on('click', GUI.handleDirectEvent(gui.clearMode));
+
+    // init slider
+    slider = new Slider(el.findChild(".simplify-control .slider"));
+    slider.handle(el.findChild(".simplify-control .handle"));
+    slider.track(el.findChild(".simplify-control .track"));
+    slider.on('change', function(e) {
+      var pct = fromSliderPct(e.pct);
+      text.value(pct);
+      pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
+      onChange(pct);
+    });
+    slider.on('start', function(e) {
+      gui.dispatchEvent('simplify_drag_start'); // trigger intersection control to hide
+    }).on('end', function(e) {
+      gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
+    });
+
+    // init text box showing simplify pct
+    text = new ClickText(el.findChild(".simplify-control .clicktext"));
+    text.bounds(0, 1);
+    text.formatter(function(val) {
+      if (isNaN(val)) return '-';
+      var pct = val * 100;
+      var decimals = 0;
+      if (pct <= 0) decimals = 1;
+      else if (pct < 0.001) decimals = 4;
+      else if (pct < 0.01) decimals = 3;
+      else if (pct < 1) decimals = 2;
+      else if (pct < 100) decimals = 1;
+      return utils.formatNumber(pct, decimals) + "%";
+    });
+
+    text.parser(function(s) {
+      return parseFloat(s) / 100;
+    });
+
+    text.value(0);
+    text.on('change', function(e) {
+      var pct = e.value;
+      slider.pct(toSliderPct(pct));
+      onChange(pct);
+      gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
+    });
+
+    control.reset = function() {
+      control.value(1);
+      el.hide();
+      menu.hide();
+      gui.container.removeClass('simplify');
+    };
+
+    control.value = function(val) {
+      if (!isNaN(val)) {
+        // TODO: validate
+        _value = val;
+        slider.pct(toSliderPct(val));
+        text.value(val);
+      }
+      return _value;
+    };
+
+    control.value(_value);
+
+    function turnOn() {
+      var target = model.getActiveLayer();
+      var arcs = target.dataset.arcs;
+      if (!internal.layerHasPaths(target.layer)) {
+        gui.alert("This layer can not be simplified");
+        return;
+      }
+      if (arcs.getVertexData().zz) {
+        // TODO: try to avoid calculating pct (slow);
+        showSlider(); // need to show slider before setting; TODO: fix
+        fromPct = internal.getThresholdFunction(arcs, false);
+        control.value(arcs.getRetainedPct());
+
+      } else {
+        showMenu();
       }
     }
-    Object.keys(styleIndex).forEach(function(key) {
-      var item = styleIndex[key];
-      drawPaths(item.shapes, startPath, draw, item.style);
-    });
+
+    function showMenu() {
+      var dataset = model.getActiveLayer().dataset;
+      var showPlanarOpt = !dataset.arcs.isPlanar();
+      var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
+      menu.findChild('.planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
+      menu.findChild('.planar-opt').node().checked = !opts.spherical;
+      menu.findChild('.import-retain-opt').node().checked = opts.keep_shapes;
+      menu.findChild('input[value=' + opts.method + ']').node().checked = true;
+      menu.show();
+    }
+
+    function turnOff() {
+      menu.hide();
+      control.reset();
+    }
+
+    function onSubmit() {
+      var dataset = model.getActiveLayer().dataset;
+      var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
+      var delay = 0;
+      if (showMsg) {
+        delay = 35;
+        gui.showProgressMessage('Calculating');
+      }
+      menu.hide();
+      setTimeout(function() {
+        var opts = getSimplifyOptions();
+        mapshaper.simplify(dataset, opts);
+        gui.session.simplificationApplied(getSimplifyOptionsAsString());
+        model.updated({
+          // trigger filtered arc rebuild without redraw if pct is 1
+          simplify_method: opts.percentage == 1,
+          simplify: opts.percentage < 1
+        });
+        showSlider();
+        fromPct = internal.getThresholdFunction(dataset.arcs, false);
+        gui.clearProgressMessage();
+      }, delay);
+    }
+
+    function showSlider() {
+      el.show();
+      gui.container.addClass('simplify'); // for resizing, hiding layer label, etc.
+    }
+
+    function getSimplifyOptions() {
+      var method = menu.findChild('input[name=method]:checked').attr('value') || null;
+      return {
+        method: method,
+        percentage: _value,
+        no_repair: true,
+        keep_shapes: !!menu.findChild('.import-retain-opt').node().checked,
+        planar: !!menu.findChild('.planar-opt').node().checked
+      };
+    }
+
+    function getSimplifyOptionsAsString() {
+      var opts = getSimplifyOptions();
+      var str = 'percentage=' + opts.percentage;
+      if (opts.method == 'visvalingam' || opts.method == 'dp') str += ' ' + opts.method;
+      if (opts.no_repair) str += ' no-repair';
+      if (opts.keep_shapes) str += ' keep-shapes';
+      if (opts.planar) str += ' planar';
+      return str;
+    }
+
+    function toSliderPct(p) {
+      p = Math.sqrt(p);
+      var pct = 1 - p;
+      return pct;
+    }
+
+    function fromSliderPct(p) {
+      var pct = 1 - p;
+      return pct * pct;
+    }
+
+    function onChange(pct) {
+      if (_value != pct) {
+        _value = pct;
+        model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+        gui.session.updateSimplificationPct(pct);
+        model.updated({'simplify_amount': true});
+      }
+    }
   };
 
-  function drawPaths(shapes, begin, draw, style) {
-    begin(_ctx, style);
-    for (var i=0, n=shapes.length; i<n; i++) {
-      draw(shapes[i], _ctx);
+  function saveZipFile(zipfileName, files, done) {
+    var zip = window.zip; // assumes zip library is loaded globally
+    var toAdd = files;
+    var zipWriter;
+    try {
+      zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
+        zipWriter = writer;
+        nextFile();
+      }, zipError);
+    } catch(e) {
+      done("This browser doesn't support Zip file creation.");
     }
-    endPath(_ctx, style);
+
+    function zipError(err) {
+      var str = "Error creating Zip file";
+      var msg = '';
+      // error events thrown by Zip library seem to be missing a message
+      if (err && err.message) {
+        msg = err.message;
+      }
+      if (msg) {
+        str += ": " + msg;
+      }
+      done(str);
+    }
+
+    function nextFile() {
+      if (toAdd.length === 0) {
+        zipWriter.close(function(blob) {
+          saveBlobToDownloadFolder(zipfileName, blob, done);
+        });
+      } else {
+        var obj = toAdd.pop(),
+            blob = new Blob([obj.content]);
+        zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
+      }
+    }
   }
 
-  _self.drawSquareDots = function(shapes, style) {
-    var t = getScaledTransform(_ext),
-        scaleRatio = getDotScale2(shapes, _ext),
-        size = Math.ceil((style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio),
-        styler = style.styler || null,
-        xmax = _canvas.width + size,
-        ymax = _canvas.height + size,
-        color = style.dotColor || "black",
-        shp, x, y, i, j, n, m,
-        mx = t.mx,
-        my = t.my,
-        bx = t.bx,
-        by = t.by;
-    if (size === 0) return;
-    if (size <= 4 && !styler) {
-      // optimized drawing of many small same-colored dots
-      _self.drawSquareDotsFaster(shapes, color, size, t);
+  function saveFilesToServer(paths, data, done) {
+    var i = -1;
+    next();
+    function next(err) {
+      i++;
+      if (err) return done(err);
+      if (i >= data.length) return done();
+      saveBlobToServer(paths[i], new Blob([data[i]]), next);
+    }
+  }
+
+  function saveBlobToServer(path, blob, done) {
+    var q = '?file=' + encodeURIComponent(path);
+    var url = window.location.origin + '/save' + q;
+    window.fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: blob
+    }).then(function(resp) {
+      if (resp.status == 400) {
+        return resp.text();
+      }
+    }).then(function(err) {
+      done(err);
+    }).catch(function(resp) {
+      done('connection to server was lost');
+    });
+  }
+
+  function saveBlobToDownloadFolder(filename, blob, done) {
+    var anchor, blobUrl;
+    if (window.navigator.msSaveBlob) {
+      window.navigator.msSaveBlob(blob, filename);
+      return done();
+    }
+    try {
+      blobUrl = URL.createObjectURL(blob);
+    } catch(e) {
+      done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
       return;
     }
-    _ctx.fillStyle = color;
-    for (i=0, n=shapes.length; i<n; i++) {
-      if (styler !== null) { // e.g. selected points
-        styler(style, i);
-        size = style.dotSize * scaleRatio;
-        _ctx.fillStyle = style.dotColor;
-      }
-      shp = shapes[i];
-      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        x = shp[j][0] * mx + bx;
-        y = shp[j][1] * my + by;
-        if (x > -size && y > -size && x < xmax && y < ymax) {
-          drawSquare(x, y, size, _ctx);
-        }
-      }
-    }
-  };
-
-  _self.drawSquareDotsFaster = function(shapes, color, size, t) {
-    var w = _canvas.width,
-        h = _canvas.height,
-        rgba = _pixelColor(color),
-        // imageData = _ctx.createImageData(w, h),
-        imageData = _ctx.getImageData(0, 0, w, h),
-        pixels = new Uint32Array(imageData.data.buffer),
-        shp, x, y, i, j, n, m,
-        mx = t.mx,
-        my = t.my,
-        bx = t.bx,
-        by = t.by;
-    for (i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        x = shp[j][0] * mx + bx;
-        y = shp[j][1] * my + by;
-        if (x >= 0 && y >= 0 && x <= w && y <= h) {
-          drawSquareFaster(x, y, rgba, size, pixels, w, h);
-        }
-      }
-    }
-    _ctx.putImageData(imageData, 0, 0);
-  };
-
-  // color: 32-bit integer value containing rgba channel values
-  // size: pixels on a side (assume integer)
-  // x, y: non-integer center coordinates
-  // pixels: Uint32Array of pixel colors
-  // w, h: Size of canvas
-  function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
-    var xmin = (x - size * 0.5) | 0;
-    var ymin = (y - size * 0.5) | 0;
-    var xmax = xmin + size - 1;
-    var ymax = ymin + size - 1;
-    var c, r;
-    for (c = xmin; c <= xmax; c++) {
-      if (c < 0 || c >= w) continue;
-      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
-        pixels[r * w + c] = rgba;
-      }
-    }
+    anchor = El('a').attr('href', '#').appendTo('body').node();
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
+        false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+    setTimeout(function() {
+      // Revoke blob url to release memory; timeout needed in firefox
+      URL.revokeObjectURL(blobUrl);
+      anchor.parentNode.removeChild(anchor);
+      done();
+    }, 400);
   }
 
-  // TODO: consider using drawPathShapes(), which draws paths in batches
-  // for faster Canvas rendering. Downside: changes stacking order, which
-  // is bad if circles are graduated.
-  _self.drawPoints = function(shapes, style) {
-    var t = getScaledTransform(_ext),
-        scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
-        startPath = getPathStart(_ext),
-        styler = style.styler || null,
-        shp, p,
-        mx = t.mx,
-        my = t.my,
-        bx = t.bx,
-        by = t.by;
-
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      if (styler) styler(style, i);
-      startPath(_ctx, style);
-      if (!shp || style.radius > 0 === false) continue;
-      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
-        p = shp[j];
-        drawCircle(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
-      }
-      endPath(_ctx, style);
-    }
-  };
-
-  _self.drawArcs = function(arcs, style, filter) {
-    var startPath = getPathStart(_ext, getLineScale(_ext)),
-        t = getScaledTransform(_ext),
-        ctx = _ctx,
-        batch = 25, // render paths in batches of this size (an optimization)
-        count = 0,
-        n = arcs.size(),
-        i, iter;
-
-    startPath(ctx, style);
-    for (i=0; i<n; i++) {
-      if (filter && !filter(i)) continue;
-      if (++count % batch === 0) {
-        endPath(ctx, style);
-        startPath(ctx, style);
-      }
-      iter = protectIterForDrawing(arcs.getArcIter(i), _ext);
-      drawPath(iter, t, ctx, 0.6);
-    }
-    endPath(ctx, style);
-  };
-
-  function getStyleKey(style) {
-    return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-      '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
-      (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
-  }
-
-  return _self;
-}
-
-function getScaledLineScale(ext) {
-  return ext.getSymbolScale() || getLineScale(ext);
-}
-
-// Vary line width according to zoom ratio.
-// For performance and clarity don't start widening until zoomed quite far in.
-function getLineScale(ext) {
-  var mapScale = ext.scale(),
-      s = 1;
-  if (mapScale < 0.5) {
-    s *= Math.pow(mapScale + 0.5, 0.35);
-  } else if (mapScale > 100) {
-    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
-      s *= Math.pow(mapScale - 99, 0.10);
-  }
-  return s;
-}
-
-function getDotScale(ext) {
-  return Math.pow(getLineScale(ext), 0.7);
-}
-
-function getDotScale2(shapes, ext) {
-  var pixRatio = GUI.getPixelRatio();
-  var scale = ext.scale();
-  var side = Math.min(ext.width(), ext.height());
-  var bounds = ext.getBounds();
-  var topTier = 50000;
-  var test, n, k, j;
-  if (scale >= 2) {
-    test = function(p) {
-      return bounds.containsPoint(p[0], p[1]);
+  function MessageProxy(gui) {
+    // replace stop function
+    var stop = function() {
+      // Show a popup error message, then throw an error
+      var msg = GUI.formatMessageArgs(arguments);
+      gui.alert(msg);
+      throw new Error(msg);
     };
-  }
-  n = internal.countPoints2(shapes, test, topTier + 2); // short-circuit point counting above top threshold
-  k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
-  j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
-  return getDotScale(ext) * k * j * pixRatio;
-}
 
-function getScaledTransform(ext) {
-  var t = ext.getTransform(GUI.getPixelRatio());
-  // A recent Chrome update (v80?) seems to have introduced a performance
-  // regression causing slow object property access.
-  // the effect is intermittent and pretty mysterious.
-  return {
-    mx: t.mx,
-    my: t.my,
-    bx: t.bx,
-    by: t.by
-  };
-}
+    // Replace error function in mapshaper lib
+    var error = function() {
+      stop.apply(null, utils.toArray(arguments));
+    };
 
-function drawCircle(x, y, radius, ctx) {
-  if (radius > 0) {
-    ctx.moveTo(x + radius, y);
-    ctx.arc(x, y, radius, 0, Math.PI * 2, true);
-  }
-}
+    var message = function() {
+      internal.logArgs(arguments); // reset default
+    };
 
-function drawSquare(x, y, size, ctx) {
-  var offs = size / 2;
-  if (size > 0) {
-    x = Math.round(x - offs);
-    y = Math.round(y - offs);
-    size = Math.ceil(size);
-    ctx.fillRect(x, y, size, size);
-  }
-}
-
-function drawPath(vec, t, ctx, minLen) {
-  // copy to local variables because of odd performance regression in Chrome 80
-  var mx = t.mx,
-      my = t.my,
-      bx = t.bx,
-      by = t.by;
-  var x, y, xp, yp;
-  if (!vec.hasNext()) return;
-  minLen = utils.isNonNegNumber(minLen) ? minLen : 0.4;
-  x = xp = vec.x * mx + bx;
-  y = yp = vec.y * my + by;
-  ctx.moveTo(x, y);
-  while (vec.hasNext()) {
-    x = vec.x * mx + bx;
-    y = vec.y * my + by;
-    if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
-      ctx.lineTo(x, y);
-      xp = x;
-      yp = y;
-    }
-  }
-}
-
-function getShapePencil(arcs, ext) {
-  var t = getScaledTransform(ext);
-  var iter = new internal.ShapeIter(arcs);
-  return function(shp, ctx) {
-    for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
-      iter.init(shp[i]);
-      // 0.2 trades visible seams for performance
-      drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
-    }
-  };
-}
-
-function protectIterForDrawing(iter, ext) {
-  var bounds, k;
-  if (ext.scale() > 100) {
-    // clip to rectangle when zoomed far in (canvas stops drawing shapes when
-    // the coordinates become too large)
-    // scale the bbox to avoid large fp errors
-    // (affects projected datasets when zoomed very far in)
-    // k too large, long segments won't render; too small, segments will jump around
-    // TODO: consider converting to pixels before clipping
-    k = Math.pow(ext.scale(), 0.45);
-    bounds = ext.getBounds(k);
-    iter = new internal.PointIter(internal.clipIterByBounds(iter, bounds));
-  }
-  return iter;
-}
-
-function getPathStart(ext, lineScale) {
-  var pixRatio = GUI.getPixelRatio();
-  if (!lineScale) lineScale = 1;
-  return function(ctx, style) {
-    var strokeWidth;
-    ctx.beginPath();
-    if (style.opacity >= 0) {
-      ctx.globalAlpha = style.opacity;
-    }
-    if (style.strokeWidth > 0) {
-      strokeWidth = style.strokeWidth;
-      if (pixRatio > 1) {
-        // bump up thin lines on retina, but not to more than 1px (too slow)
-        strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
-      }
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = strokeWidth * lineScale;
-      ctx.strokeStyle = style.strokeColor;
-      if (style.lineDash){
-        ctx.lineCap = 'butt';
-        ctx.setLineDash(style.lineDash.split(' '));
-      }
-    }
-    if (style.fillColor) {
-      ctx.fillStyle = style.fillColor;
-    }
-  };
-}
-
-function endPath(ctx, style) {
-  if (style.fillColor) ctx.fill();
-  if (style.strokeWidth > 0) {
-    ctx.stroke();
-    if (style.lineDash) {
-      ctx.lineCap = 'round';
-      ctx.setLineDash([]);
-    }
-  }
-  if (style.opacity >= 0) ctx.globalAlpha = 1;
-  ctx.closePath();
-}
-
-
-// Create low-detail versions of large arc collections for faster rendering
-// at zoomed-out scales.
-function MultiScaleArcCollection(unfilteredArcs) {
-  var size = unfilteredArcs.getPointCount(),
-      filteredArcs, filteredSegLen;
-
-  // Only generate low-detail arcs for larger datasets
-  if (size > 5e5) {
-    if (!!unfilteredArcs.getVertexData().zz) {
-      // Use precalculated simplification data for vertex filtering, if available
-      filteredArcs = initFilteredArcs(unfilteredArcs);
-      filteredSegLen = internal.getAvgSegment(filteredArcs);
-    } else {
-      // Use fast simplification as a fallback
-      filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
-      filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
-    }
+    internal.setLoggingFunctions(message, error, stop);
   }
 
-  function initFilteredArcs(arcs) {
-    var filterPct = 0.08;
-    var nth = Math.ceil(arcs.getPointCount() / 5e5);
-    var currInterval = arcs.getRetainedInterval();
-    var filterZ = arcs.getThresholdByPct(filterPct, nth);
-    var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
-    arcs.setRetainedInterval(currInterval); // reset current simplification
-    return filteredArcs;
-  }
-
-  unfilteredArcs.getScaledArcs = function(ext) {
-    if (filteredArcs) {
-      // match simplification of unfiltered arcs
-      filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
-    }
-    // switch to filtered version of arcs at small scales
-    var unitsPerPixel = 1/ext.getTransform().mx,
-        useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
-    return useFiltering ? filteredArcs : unfilteredArcs;
-  };
-
-  return unfilteredArcs;
-}
-
-
-function getDisplayLayerForTable(table) {
-  var n = table.size(),
-      cellWidth = 12,
-      cellHeight = 5,
-      gutter = 6,
-      arcs = [],
-      shapes = [],
-      aspectRatio = 1.1,
-      x, y, col, row, blockSize;
-
-  if (n > 10000) {
-    arcs = null;
-    gutter = 0;
-    cellWidth = 4;
-    cellHeight = 4;
-    aspectRatio = 1.45;
-  } else if (n > 5000) {
-    cellWidth = 5;
-    gutter = 3;
-    aspectRatio = 1.45;
-  } else if (n > 1000) {
-    gutter = 3;
-    cellWidth = 8;
-    aspectRatio = 1.3;
-  }
-
-  if (n < 25) {
-    blockSize = n;
-  } else {
-    blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
-  }
-
-  for (var i=0; i<n; i++) {
-    row = i % blockSize;
-    col = Math.floor(i / blockSize);
-    x = col * (cellWidth + gutter);
-    y = cellHeight * (blockSize - row);
-    if (arcs) {
-      arcs.push(getArc(x, y, cellWidth, cellHeight));
-      shapes.push([[i]]);
-    } else {
-      shapes.push([[x, y]]);
-    }
-  }
-
-  function getArc(x, y, w, h) {
-    return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
-  }
-
-  return {
-    layer: {
-      geometry_type: arcs ? 'polygon' : 'point',
-      shapes: shapes,
-      data: table
-    },
-    arcs: arcs ? new internal.ArcCollection(arcs) : null
-  };
-}
-
-
-// Assumes projections are available
-
-function needReprojectionForDisplay(sourceCRS, displayCRS) {
-  if (!sourceCRS || !displayCRS) {
-    return false;
-  }
-  if (internal.crsAreEqual(sourceCRS, displayCRS)) {
-    return false;
-  }
-  return true;
-}
-
-function projectArcsForDisplay_v1(arcs, src, dest) {
-  var copy = arcs.getCopy(); // need to flatten first?
-  var proj = internal.getProjTransform(src, dest);
-  internal.projectArcs(copy, proj); // need to densify arcs?
-  return copy;
-}
-
-function projectArcsForDisplay(arcs, src, dest) {
-  var copy = arcs.getCopy(); // need to flatten first?
-  var proj = internal.getProjTransform2(src, dest);
-  internal.projectArcs2(copy, proj); // need to densify arcs?
-  return copy;
-}
-
-function projectPointsForDisplay(lyr, src, dest) {
-  var copy = utils.extend({}, lyr);
-  var proj = internal.getProjTransform2(src, dest);
-  copy.shapes = internal.cloneShapes(lyr.shapes);
-  internal.projectPointLayer(copy, proj);
-  return copy;
-}
-
-// displayCRS: CRS to use for display, or null (which clears any current display CRS)
-function projectDisplayLayer(lyr, displayCRS) {
-  var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
-  var lyr2;
-  if (!lyr.geographic || !sourceCRS) {
-    return lyr;
-  }
-  if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
-    return lyr;
-  }
-  lyr2 = getMapLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
-  // kludge: copy projection-related properties to original layer
-  lyr.dynamic_crs = lyr2.dynamic_crs;
-  lyr.layer = lyr2.layer;
-  if (lyr.style && lyr.style.ids) {
-    // re-apply layer filter
-    lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
-  }
-  lyr.bounds = lyr2.bounds;
-  lyr.arcs = lyr2.arcs;
-  return lyr;
-}
-
-// Update map extent and trigger redraw, after a new display CRS has been applied
-function projectMapExtent(ext, src, dest, newBounds) {
-  var oldBounds = ext.getBounds();
-  var oldScale = ext.scale();
-  var newCP, proj;
-
-  // if source or destination CRS is unknown, show full extent
-  // if map is at full extent, show full extent
-  // TODO: handle case that scale is 1 and map is panned away from center
-  if (ext.scale() == 1 || !dest) {
-    ext.setBounds(newBounds);
-    ext.home(); // sets full extent and triggers redraw
-  } else {
-    // if map is zoomed, stay centered on the same geographic location, at the same relative scale
-    proj = internal.getProjTransform2(src, dest);
-    newCP = proj(oldBounds.centerX(), oldBounds.centerY());
-    ext.setBounds(newBounds);
-    if (!newCP) {
-      // projection of center point failed; use center of bounds
-      // (also consider just resetting the view using ext.home())
-      newCP = [newBounds.centerX(), newBounds.centerY()];
-    }
-    ext.recenter(newCP[0], newCP[1], oldScale);
-  }
-}
-
-// Called from console; for testing dynamic crs
-function setDisplayProjection(gui, cmd) {
-  var arg = cmd.replace(/^projd[ ]*/, '');
-  if (arg) {
-    gui.map.setDisplayCRS(internal.getCRS(arg));
-  } else {
-    gui.map.setDisplayCRS(null);
-  }
-}
-
-// Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
-function findEmptyArcs(arcs) {
-  var nn = arcs.getVertexData().nn;
-  var ids = [];
-  for (var i=0, n=nn.length; i<n; i++) {
-    if (nn[i] === 0) {
-      ids.push(i);
-    }
-  }
-  return ids;
-}
-
-
-// Wrap a layer in an object along with information needed for rendering
-function getMapLayer(layer, dataset, opts) {
-  var obj = {
-    layer: null,
-    arcs: null,
-    // display_arcs: null,
-    style: null,
-    source: {
-      layer: layer,
-      dataset: dataset
-    },
-    empty: internal.getFeatureCount(layer) === 0
-  };
-
-  var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
-  var displayCRS = opts.crs || null;
-  var displayArcs = dataset.displayArcs;
-  var emptyArcs;
-
-  // Assume that dataset.displayArcs is in the display CRS
-  // (it should have been deleted upstream if reprojection is needed)
-  if (dataset.arcs && !displayArcs) {
-    // project arcs, if needed
-    if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
-      displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
-    } else {
-      displayArcs = dataset.arcs;
-    }
-
-    // init filtered arcs
-    dataset.displayArcs = new MultiScaleArcCollection(displayArcs);
-  }
-
-  if (internal.layerHasFurniture(layer)) {
-    obj.furniture = true;
-    obj.furniture_type = internal.getFurnitureLayerType(layer);
-    obj.layer = layer;
-    // treating furniture layers (other than frame) as tabular for now,
-    // so there is something to show if they are selected
-    obj.tabular = obj.furniture_type != 'frame';
-  } else if (obj.empty) {
-    obj.layer = {shapes: []}; // ideally we should avoid empty layers
-  } else if (!layer.geometry_type) {
-    obj.tabular = true;
-  } else {
-    obj.geographic = true;
-    obj.layer = layer;
-    obj.arcs = displayArcs;
-  }
-
-  if (obj.tabular) {
-    utils.extend(obj, getDisplayLayerForTable(layer.data));
-  }
-
-  // dynamic reprojection (arcs were already reprojected above)
-  if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
-    obj.dynamic_crs = displayCRS;
-    if (internal.layerHasPoints(layer)) {
-      obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
-    } else if (internal.layerHasPaths(layer)) {
-      emptyArcs = findEmptyArcs(displayArcs);
-      if (emptyArcs.length > 0) {
-        // Don't try to draw paths containing coordinates that failed to project
-        obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
-      }
-    }
-  }
-
-  obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
-  return obj;
-}
-
-
-function getDisplayBounds(lyr, arcs) {
-  var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
-      bounds = arcBounds, // default display extent: all arcs in the dataset
-      lyrBounds;
-
-  if (lyr.geometry_type == 'point') {
-    lyrBounds = internal.getLayerBounds(lyr);
-    if (lyrBounds && lyrBounds.hasBounds()) {
-      if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
-        bounds = lyrBounds;
+  function WriteFilesProxy(gui) {
+    // replace CLI version of writeFiles()
+    internal.replaceWriteFiles(function(files, opts, done) {
+      var filename;
+      if (!utils.isArray(files) || files.length === 0) {
+        done("Nothing to export");
+      } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
+        var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
+        var data = utils.pluck(files, 'content');
+        saveFilesToServer(paths, data, function(err) {
+          var msg;
+          if (err) {
+            msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
+            msg += "<br>Saving to download folder instead.";
+            gui.alert(msg);
+            // fall back to standard method if saving to server fails
+            internal.writeFiles(files, {save_to_download_folder: true}, done);
+          } else {
+            if (files.length >= 1) {
+              gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+            }
+            done();
+          }
+        });
+      } else if (files.length == 1) {
+        saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
       } else {
-        // if a point layer has no extent (e.g. contains only a single point),
-        // then merge with arc bounds, to place the point in context.
-        bounds = arcBounds.mergeBounds(lyrBounds);
+        filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+        saveZipFile(filename + ".zip", files, done);
+      }
+    });
+  }
+
+  // Replaces functions for reading from files with functions that try to match
+  // already-loaded datasets.
+  //
+  function ImportFileProxy(gui) {
+    var model = gui.model;
+
+    // Try to match an imported dataset or layer.
+    // TODO: think about handling import options
+    function find(src) {
+      var datasets = model.getDatasets();
+      var retn = datasets.reduce(function(memo, d) {
+        var lyr;
+        if (memo) return memo; // already found a match
+        // try to match import filename of this dataset
+        if (d.info.input_files[0] == src) return d;
+        // try to match name of a layer in this dataset
+        lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
+        return lyr ? internal.isolateLayer(lyr, d) : null;
+      }, null);
+      if (!retn) stop("Missing data layer [" + src + "]");
+      return retn;
+    }
+
+    internal.replaceImportFile(function(src, opts) {
+      var dataset = find(src);
+      // Return a copy with layers duplicated, so changes won't affect original layers
+      // This makes an (unsafe) assumption that the dataset arcs won't be changed...
+      // need to rethink this.
+      return utils.defaults({
+        layers: dataset.layers.map(internal.copyLayer)
+      }, dataset);
+    });
+  }
+
+  // load Proj.4 CRS definition files dynamically
+  //
+  internal.setProjectionLoader(function(opts, done) {
+    var mproj = require('mproj');
+    var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.crs || ''].join(' '));
+    // skip loaded libs
+    libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
+    loadProjLibs(libs, done);
+  });
+
+  function loadProjLibs(libs, done) {
+    var mproj = require('mproj');
+    var i = 0;
+    next();
+
+    function next() {
+      var libName = libs[i];
+      var content, req;
+      if (!libName) return done();
+      req = new XMLHttpRequest();
+      req.addEventListener('load', function(e) {
+        if (req.status == 200) {
+          content = req.response;
+        }
+      });
+      req.addEventListener('loadend', function() {
+        if (content) {
+          mproj.internal.mproj_insert_libcache(libName, content);
+        }
+        // TODO: consider stopping with an error message if no content was loaded
+        // (currently, a less specific error will occur when mapshaper tries to use the library)
+        next();
+      });
+      req.open('GET', 'assets/' + libName);
+      req.send();
+      i++;
+    }
+  }
+
+  // Assumes projections are available
+
+  function needReprojectionForDisplay(sourceCRS, displayCRS) {
+    if (!sourceCRS || !displayCRS) {
+      return false;
+    }
+    if (internal.crsAreEqual(sourceCRS, displayCRS)) {
+      return false;
+    }
+    return true;
+  }
+
+  function projectArcsForDisplay(arcs, src, dest) {
+    var copy = arcs.getCopy(); // need to flatten first?
+    var proj = internal.getProjTransform2(src, dest);
+    internal.projectArcs2(copy, proj); // need to densify arcs?
+    return copy;
+  }
+
+  function projectPointsForDisplay(lyr, src, dest) {
+    var copy = utils.extend({}, lyr);
+    var proj = internal.getProjTransform2(src, dest);
+    copy.shapes = internal.cloneShapes(lyr.shapes);
+    internal.projectPointLayer(copy, proj);
+    return copy;
+  }
+
+
+  // Update map extent and trigger redraw, after a new display CRS has been applied
+  function projectMapExtent(ext, src, dest, newBounds) {
+    var oldBounds = ext.getBounds();
+    var oldScale = ext.scale();
+    var newCP, proj;
+
+    // if source or destination CRS is unknown, show full extent
+    // if map is at full extent, show full extent
+    // TODO: handle case that scale is 1 and map is panned away from center
+    if (ext.scale() == 1 || !dest) {
+      ext.setBounds(newBounds);
+      ext.home(); // sets full extent and triggers redraw
+    } else {
+      // if map is zoomed, stay centered on the same geographic location, at the same relative scale
+      proj = internal.getProjTransform2(src, dest);
+      newCP = proj(oldBounds.centerX(), oldBounds.centerY());
+      ext.setBounds(newBounds);
+      if (!newCP) {
+        // projection of center point failed; use center of bounds
+        // (also consider just resetting the view using ext.home())
+        newCP = [newBounds.centerX(), newBounds.centerY()];
+      }
+      ext.recenter(newCP[0], newCP[1], oldScale);
+    }
+  }
+
+  // Called from console; for testing dynamic crs
+  function setDisplayProjection(gui, cmd) {
+    var arg = cmd.replace(/^projd[ ]*/, '');
+    if (arg) {
+      gui.map.setDisplayCRS(internal.getCRS(arg));
+    } else {
+      gui.map.setDisplayCRS(null);
+    }
+  }
+
+  function Console(gui) {
+    var model = gui.model;
+    var CURSOR = '$ ';
+    var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
+    var el = gui.container.findChild('.console').hide();
+    var content = el.findChild('.console-buffer');
+    var log = El('div').appendTo(content);
+    var line = El('div').addClass('command-line').appendTo(content);
+    var cursor = El('span').appendTo(line).text(CURSOR);
+    var input = El('span').appendTo(line)
+      .addClass('input-field')
+      .attr('spellcheck', false)
+      .attr('autocorrect', false)
+      .attr('contentEditable', true)
+      .on('focus', receiveFocus)
+      .on('paste', onPaste);
+    var history = [];
+    var historyId = 0;
+    var _isOpen = false;
+    var btn = gui.container.findChild('.console-btn').on('click', toggle);
+
+    // expose this function, so other components can run commands (e.g. box tool)
+    this.runMapshaperCommands = runMapshaperCommands;
+
+    consoleMessage(PROMPT);
+    gui.keyboard.on('keydown', onKeyDown);
+    window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
+
+    GUI.onClick(el, function(e) {
+      var targ = El(e.target);
+      if (targ.hasClass('console-window') || targ.hasClass('command-line')) {
+        input.node().focus(); // focus if user clicks blank part of console
+      }
+    });
+
+    function toggle() {
+      if (_isOpen) turnOff();
+      else turnOn();
+    }
+
+    function getHistory() {
+      var hist;
+      try {
+        hist = JSON.parse(window.localStorage.getItem('console_history'));
+      } catch(e) {}
+      return hist && hist.length > 0 ? hist : [];
+    }
+
+    function saveHistory(history) {
+      try {
+        history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
+        window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
+      } catch(e) {}
+    }
+
+    function toLog(str, cname) {
+      var msg = El('div').text(str).appendTo(log);
+      if (cname) {
+        msg.addClass(cname);
+      }
+      scrollDown();
+    }
+
+    function turnOn() {
+      if (!_isOpen && !model.isEmpty()) {
+        btn.addClass('active');
+        _isOpen = true;
+        // use console for messages while open
+        // TODO: find a solution for logging problem when switching between multiple
+        // gui instances with the console open. E.g. console could close
+        // when an instance loses focus.
+        internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop);
+        gui.container.addClass('console-open');
+        gui.dispatchEvent('resize');
+        el.show();
+        input.node().focus();
+        history = getHistory();
+      }
+    }
+
+    function turnOff() {
+      if (_isOpen) {
+        btn.removeClass('active');
+        _isOpen = false;
+        if (GUI.isActiveInstance(gui)) {
+          MessageProxy(gui); // reset stop, message and error functions
+        }
+        el.hide();
+        input.node().blur();
+        saveHistory(history);
+        gui.container.removeClass('console-open');
+        gui.dispatchEvent('resize');
+      }
+    }
+
+    function onPaste(e) {
+      // paste plain text (remove any copied HTML tags)
+      e.preventDefault();
+      var str = (e.originalEvent || e).clipboardData.getData('text/plain');
+      document.execCommand("insertHTML", false, str);
+    }
+
+    function receiveFocus() {
+      placeCursor();
+    }
+
+    function placeCursor() {
+      var el = input.node();
+      var range, selection;
+      if (readCommandLine().length > 0) {
+        // move cursor to end of text
+        range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false); //collapse the range to the end point.
+        selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+
+    function scrollDown() {
+      var el = content.parent().node();
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function metaKey(e) {
+      return e.metaKey || e.ctrlKey || e.altKey;
+    }
+
+    function isTextInput(el) {
+      return el && el.type != 'radio' && el.type != 'checkbox';
+    }
+
+    function onKeyDown(evt) {
+      var e = evt.originalEvent,
+          kc = e.keyCode,
+          inputEl = GUI.getInputElement(),
+          typing = isTextInput(inputEl),
+          typingInConsole = inputEl && inputEl == input.node(),
+          inputText = readCommandLine(),
+          capture = false;
+
+      // esc key
+      if (kc == 27) {
+        if (typing) {
+          inputEl.blur();
+        }
+        if (gui.getMode()) {
+          gui.clearMode(); // esc closes any open panels
+        } else {
+          turnOff();
+        }
+        capture = true;
+
+      // l/r arrow keys while not typing in a text field
+      } else if ((kc == 37 || kc == 39) && (!typing || typingInConsole && !inputText)) {
+        if (kc == 37) {
+          model.selectPrevLayer();
+        } else {
+          model.selectNextLayer();
+        }
+
+      // delete key while not inputting text
+      } else if (kc == 8 && !typing) {
+        capture = true; // prevent delete from leaving page
+
+      // any key while console is open and not typing in a non-console field
+      // TODO: prevent console from blocking <enter> for menus
+      } else if (_isOpen && (typingInConsole || !typing)) {
+        capture = true;
+        gui.clearMode(); // close any panels that  might be open
+
+        if (kc == 13) { // enter
+          onEnter();
+        } else if (kc == 9) { // tab
+          tabComplete();
+        } else if (kc == 38) {
+          back();
+        } else if (kc == 40) {
+          forward();
+        } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
+          // space bar closes if nothing has been typed
+          turnOff();
+        } else if (!typing && e.target != input.node() && !metaKey(e)) {
+          // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
+          // or user is typing in a different input area somewhere
+          input.node().focus();
+          capture = false;
+        } else if (/\n\n$/.test(inputText) && e.key && e.key.length == 1) {
+          // Convert double newline to single on first typing after \ continuation
+          // (for compatibility with Firefox; see onEnter() function)
+          // Assumes that cursor is at end of text (TODO: remove this assumption)
+          toCommandLine(inputText.substr(0, inputText.length - 1) + e.key);
+        } else {
+          capture = false; // normal typing
+        }
+
+      // various shortcuts (while not typing in an input field or editable el)
+      } else if (!typing) {
+         if (kc == 32) { // space bar opens console
+          capture = true;
+          turnOn();
+        // } else if (kc == 73) { // letter i opens inspector
+        //   gui.dispatchEvent('interaction_toggle');
+        } else if (kc == 72) { // letter h resets map extent
+          gui.dispatchEvent('map_reset');
+        } else if (kc == 13) {
+          gui.dispatchEvent('enter_key', evt); // signal for default buttons on any open menus
+        }
+      }
+
+      if (capture) {
+        e.preventDefault();
+      }
+    }
+
+    function tabComplete() {
+      var line = readCommandLine(),
+          match = /\w+$/.exec(line),
+          stub = match ? match[0] : '',
+          names, name;
+      if (!stub) return;
+      names = getCompletionWords();
+      names = names.filter(function(name) {
+        return name.indexOf(stub) === 0;
+      });
+      if (names.length > 0) {
+        name = internal.getCommonFileBase(names);
+        if (name.length > stub.length) {
+          toCommandLine(line.substring(0, match.index) + name);
+        }
+      }
+    }
+
+    // get active layer field names and other layer names
+    function getCompletionWords() {
+      var lyr = model.getActiveLayer().layer;
+      var fieldNames = lyr.data ? lyr.data.getFields() : [];
+      var lyrNames = findOtherLayerNames(lyr);
+      return fieldNames.concat(lyrNames).concat(fieldNames);
+    }
+
+    function findOtherLayerNames(lyr) {
+      return model.getLayers().reduce(function(memo, o) {
+        var name = o.layer.name;
+        if (name && name != lyr.name) {
+          memo.push(name);
+        }
+        return memo;
+      }, []);
+    }
+
+    function readCommandLine() {
+      // return input.node().textContent.trim();
+      return input.node().textContent;
+    }
+
+    function toCommandLine(str) {
+      input.node().textContent = str;
+      placeCursor();
+    }
+
+    function peekHistory(i) {
+      var idx = history.length - 1 - (i || 0);
+      return idx >= 0 ? history[idx] : null;
+    }
+
+    function toHistory(str) {
+      if (historyId > 0) { // if we're back in the history stack
+        if (peekHistory() === '') {
+          // remove empty string (which may have been appended when user started going back)
+          history.pop();
+        }
+        historyId = 0; // move back to the top of the stack
+      }
+      if (str && str != peekHistory()) {
+        history.push(str);
+      }
+    }
+
+    function fromHistory() {
+      toCommandLine(peekHistory(historyId));
+    }
+
+    function back() {
+      if (history.length === 0) return;
+      if (historyId === 0) {
+        history.push(readCommandLine());
+      }
+      historyId = Math.min(history.length - 1, historyId + 1);
+      fromHistory();
+    }
+
+    function forward() {
+      if (historyId <= 0) return;
+      historyId--;
+      fromHistory();
+      if (historyId === 0) {
+        history.pop();
+      }
+    }
+
+    function clear() {
+      log.empty();
+      scrollDown();
+    }
+
+    function getCommandFlags(commands) {
+      return commands.reduce(function(memo, cmd) {
+        memo[cmd.name] = true;
+        return memo;
+      }, {});
+    }
+
+    function onEnter() {
+      var str = readCommandLine();
+      var wrap = /\\\n?$/.test(str); // \n? is to workaround odd Chrome behavior (newline appears after eol backslash)
+      if (wrap) {
+        toCommandLine(str.trim() + '\n\n'); // two newlines needed in all tested browsers
+      } else {
+        submit(str);
+      }
+    }
+
+    function submit(str) {
+      // remove newlines
+      // TODO: remove other whitespace at beginning + end of lines
+      var cmd = str.replace(/\\?\n/g, '').trim();
+      toLog(CURSOR + str);
+      toCommandLine('');
+      if (cmd) {
+        if (cmd == 'clear') {
+          clear();
+        } else if (cmd == 'tips') {
+          printExamples();
+        } else if (cmd == 'history') {
+          toLog(gui.session.toCommandLineString());
+        } else if (cmd == 'layers') {
+          message("Available layers:",
+            internal.getFormattedLayerList(model));
+        } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
+          turnOff();
+        } else if (/^projd/.test(cmd)) {
+          // set the display CRS (for testing)
+          setDisplayProjection(gui, cmd);
+        } else {
+          line.hide(); // hide cursor while command is being run
+          runMapshaperCommands(cmd, function(err) {
+            if (err) {
+              onError(err);
+            }
+            line.show();
+            input.node().focus();
+          });
+        }
+        toHistory(str);
+      }
+    }
+
+    function runMapshaperCommands(str, done) {
+      var commands;
+      try {
+        commands = internal.parseConsoleCommands(str);
+        // don't add info commands to console history
+        // (for one thing, they interfere with target resetting)
+        commands = internal.runAndRemoveInfoCommands(commands);
+      } catch (e) {
+        return done(e, {});
+      }
+      if (commands.length === 0) return done();
+      applyParsedCommands(commands, function(err, flags) {
+        if (!err) {
+          gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+        }
+        if (flags) {
+          model.updated(flags); // info commands do not return flags
+        }
+        done(err);
+      });
+    }
+
+    function applyParsedCommands(commands, done) {
+      var active = model.getActiveLayer(),
+          prevArcs = active.dataset.arcs,
+          prevArcCount = prevArcs ? prevArcs.size() : 0;
+
+      internal.runParsedCommands(commands, model, function(err) {
+        var flags = getCommandFlags(commands),
+            active2 = model.getActiveLayer(),
+            postArcs = active2.dataset.arcs,
+            postArcCount = postArcs ? postArcs.size() : 0,
+            sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
+
+        // restore default logging options, in case they were changed by the command
+        internal.setStateVar('QUIET', false);
+        internal.setStateVar('VERBOSE', false);
+
+        // kludge to signal map that filtered arcs need refreshing
+        // TODO: find a better solution, outside the console
+        if (!sameArcs) {
+          flags.arc_count = true;
+        }
+        if (active.layer != active2.layer) {
+          flags.select = true;
+        }
+        // signal the map to update even if an error has occured, because the
+        // commands may have partially succeeded and changes may have occured to
+        // the data.
+        done(err, flags);
+      });
+    }
+
+    function onError(err) {
+      if (utils.isString(err)) {
+        consoleStop(err);
+      } else if (err.name == 'UserError') ; else if (err.name) {
+        // log stack trace to browser console
+        console.error(err.stack);
+        // log to console window
+        consoleWarning(err.message);
+      }
+    }
+
+    function consoleStop() {
+      var msg = GUI.formatMessageArgs(arguments);
+      consoleWarning(msg);
+      throw new UserError(msg);
+    }
+
+    function consoleWarning() {
+      var msg = GUI.formatMessageArgs(arguments);
+      toLog(msg, 'console-error');
+    }
+
+    function consoleMessage() {
+      var msg = GUI.formatMessageArgs(arguments);
+      if (internal.loggingEnabled() && !internal.getStateVar('QUIET')) {
+        toLog(msg, 'console-message');
+      }
+    }
+
+    function consoleError() {
+      var msg = GUI.formatMessageArgs(arguments);
+      throw new Error(msg);
+    }
+
+    function printExample(comment, command) {
+      toLog(comment, 'console-message');
+      toLog(command, 'console-example');
+    }
+
+    function printExamples() {
+      printExample("See a list of all console commands", "$ help");
+      printExample("Get help using a single command", "$ help innerlines");
+      printExample("Get information about imported datasets", "$ info");
+      printExample("Display browser session as shell commands", "$ history");
+      printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
+      printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
+      printExample("Clear the console", "$ clear");
+    }
+
+  }
+
+  function AlertControl(gui) {
+    var el;
+    gui.addMode('alert', function() {}, turnOff);
+
+    gui.alert = function(str) {
+      var infoBox;
+      if (!el) {
+        el = El('div').appendTo('body').addClass('error-wrapper');
+        infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+        El('p').addClass('error-message').appendTo(infoBox);
+        El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
+      }
+      el.findChild('.error-message').html(str);
+      gui.enterMode('alert');
+    };
+
+    function turnOff() {
+      if (el) {
+        el.remove();
+        el = null;
       }
     }
   }
 
-  if (!bounds || !bounds.hasBounds()) { // empty layer
-    bounds = new Bounds();
-  }
-  return bounds;
-}
+  function RepairControl(gui) {
+    var map = gui.map,
+        model = gui.model,
+        el = gui.container.findChild(".intersection-display"),
+        readout = el.findChild(".intersection-count"),
+        repairBtn = el.findChild(".repair-btn"),
+        // keeping a reference to current arcs and intersections, so intersections
+        // don't need to be recalculated when 'repair' button is pressed.
+        _currArcs,
+        _currXX;
 
+    gui.on('simplify_drag_start', hide);
+    gui.on('simplify_drag_end', updateAsync);
 
-function HighlightBox(el) {
-  var box = El('div').addClass('zoom-box').appendTo(el),
-      show = box.show.bind(box), // original show() function
-      stroke = 2;
-  box.hide();
-  box.show = function(x1, y1, x2, y2) {
-    var w = Math.abs(x1 - x2),
-        h = Math.abs(y1 - y2);
-    box.css({
-      top: Math.min(y1, y2),
-      left: Math.min(x1, x2),
-      width: Math.max(w - stroke * 2, 1),
-      height: Math.max(h - stroke * 2, 1)
+    model.on('update', function(e) {
+      var flags = e.flags;
+      var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
+          flags.affine || flags.points || flags['merge-layers'] || flags.select;
+      if (needUpdate) {
+        if (flags.select) ; else {
+          // delete any cached intersection data
+          e.dataset.info.intersections = null;
+        }
+        updateAsync();
+      }
     });
-    show();
-  };
-  return box;
-}
 
-
-function MapNav(gui, ext, mouse) {
-  var wheel = new MouseWheel(mouse),
-      zoomTween = new Tween(Tween.sineInOut),
-      boxDrag = false,
-      zoomScale = 1.5,
-      zoomScaleMultiplier = 1,
-      inBtn, outBtn,
-      dragStartEvt,
-      _fx, _fy; // zoom foci, [0,1]
-
-  this.setZoomFactor = function(k) {
-    zoomScaleMultiplier = k || 1;
-  };
-
-  this.zoomToBbox = zoomToBbox;
-
-  if (gui.options.homeControl) {
-    gui.buttons.addButton("#home-icon").on('click', function() {
-      if (disabled()) return;
-      gui.dispatchEvent('map_reset');
+    repairBtn.on('click', function() {
+      var fixed = internal.repairIntersections(_currArcs, _currXX);
+      showIntersections(fixed, _currArcs);
+      repairBtn.addClass('disabled');
+      model.updated({repair: true});
+      gui.session.simplificationRepair();
     });
-  }
 
-  if (gui.options.zoomControl) {
-    inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
-    outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
-    ext.on('change', function() {
-      inBtn.classed('disabled', ext.scale() >= ext.maxScale());
-    });
-  }
-
-  gui.on('map_reset', function() {
-    ext.home();
-  });
-
-  zoomTween.on('change', function(e) {
-    ext.zoomToExtent(e.value, _fx, _fy);
-  });
-
-  mouse.on('dblclick', function(e) {
-    if (disabled()) return;
-    zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
-  });
-
-  mouse.on('dragstart', function(e) {
-    if (disabled()) return;
-    if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
-    // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
-    boxDrag = !!e.shiftKey;
-    if (boxDrag) {
-      dragStartEvt = e;
-      gui.dispatchEvent('box_drag_start');
+    function hide() {
+      el.hide();
+      map.setIntersectionLayer(null);
     }
-  });
 
-  mouse.on('drag', function(e) {
-    if (disabled()) return;
-    if (boxDrag) {
-      gui.dispatchEvent('box_drag', getBoxData(e));
+    function enabledForDataset(dataset) {
+      var info = dataset.info || {};
+      var opts = info.import_options || {};
+      return !opts.no_repair && !info.no_intersections;
+    }
+
+    // Delay intersection calculation, so map can redraw after previous
+    // operation (e.g. layer load, simplification change)
+    function updateAsync() {
+      reset();
+      setTimeout(updateSync, 10);
+    }
+
+    function updateSync() {
+      var e = model.getActiveLayer();
+      var dataset = e.dataset;
+      var arcs = dataset && dataset.arcs;
+      var XX, showBtn;
+      var opts = {
+        unique: true,
+        tolerance: 0
+      };
+      if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
+      if (arcs.getRetainedInterval() > 0) {
+        // TODO: cache these intersections
+        XX = internal.findSegmentIntersections(arcs, opts);
+        showBtn = XX.length > 0;
+      } else { // no simplification
+        XX = dataset.info.intersections;
+        if (!XX) {
+          // cache intersections at 0 simplification, to avoid recalculating
+          // every time the simplification slider is set to 100% or the layer is selected at 100%
+          XX = dataset.info.intersections = internal.findSegmentIntersections(arcs, opts);
+        }
+        showBtn = false;
+      }
+      el.show();
+      showIntersections(XX, arcs);
+      repairBtn.classed('disabled', !showBtn);
+    }
+
+    function reset() {
+      _currArcs = null;
+      _currXX = null;
+      hide();
+    }
+
+    function dismiss() {
+      var dataset = model.getActiveLayer().dataset;
+      dataset.info.intersections = null;
+      dataset.info.no_intersections = true;
+      reset();
+    }
+
+    function showIntersections(XX, arcs) {
+      var n = XX.length, pointLyr;
+      _currXX = XX;
+      _currArcs = arcs;
+      if (n > 0) {
+        // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
+        pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
+        map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
+        readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
+        readout.findChild('.close-btn').on('click', dismiss);
+      } else {
+        map.setIntersectionLayer(null);
+        readout.html('');
+      }
+    }
+  }
+
+  utils.inherit(RepairControl, EventDispatcher);
+
+  function updateLayerStackOrder(layers) {
+    // 1. assign ascending ids to unassigned layers above the range of other layers
+    layers.forEach(function(o, i) {
+      if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
+    });
+    // 2. sort in ascending order
+    layers.sort(function(a, b) {
+      return a.layer.stack_id - b.layer.stack_id;
+    });
+    // 3. assign consecutve ids
+    layers.forEach(function(o, i) {
+      o.layer.stack_id = i + 1;
+    });
+    return layers;
+  }
+
+  function sortLayersForMenuDisplay(layers) {
+    layers = updateLayerStackOrder(layers);
+    return layers.reverse();
+  }
+
+  // Export buttons and their behavior
+  var ExportControl = function(gui) {
+    var model = gui.model;
+    var unsupportedMsg = "Exporting is not supported in this browser";
+    var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
+    var checkboxes = []; // array of layer checkboxes
+    var exportBtn = gui.container.findChild('.export-btn');
+    new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
+
+    if (!GUI.exportIsSupported()) {
+      exportBtn.on('click', function() {
+        gui.alert(unsupportedMsg);
+      });
+
+      internal.writeFiles = function() {
+        error(unsupportedMsg);
+      };
     } else {
-      ext.pan(e.dx, e.dy);
+      new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
+      gui.addMode('export', turnOn, turnOff, exportBtn);
+      gui.keyboard.onMenuSubmit(menu, onExportClick);
     }
-  });
 
-  mouse.on('dragend', function(e) {
-    var bbox;
-    if (disabled()) return;
-    if (boxDrag) {
-      boxDrag = false;
-      gui.dispatchEvent('box_drag_end', getBoxData(e));
+    function onExportClick() {
+      gui.showProgressMessage('Exporting');
+      gui.clearMode();
+      setTimeout(function() {
+        exportMenuSelection(function(err) {
+          if (err) {
+            if (utils.isString(err)) {
+              gui.alert(err);
+            } else {
+              // stack seems to change if Error is logged directly
+              console.error(err.stack);
+              gui.alert("Export failed for an unknown reason");
+            }
+          }
+          gui.clearProgressMessage();
+        });
+      }, 20);
     }
-  });
 
-  wheel.on('mousewheel', function(e) {
-    var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
-    var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
-        delta = e.direction > 0 ? k : 1 / k;
-    if (disabled()) return;
-    ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
-  });
-
-  function swapElements(arr, i, j) {
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
-
-  function getBoxData(e) {
-    var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
-    var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
-    var tmp;
-    if (pageBox[0] > pageBox[2]) {
-      swapElements(pageBox, 0, 2);
-      swapElements(mapBox, 0, 2);
+    function getExportOpts() {
+      return GUI.parseFreeformOptions(getExportOptsAsString(), 'o');
     }
-    if (pageBox[1] > pageBox[3]) {
-      swapElements(pageBox, 1, 3);
-      swapElements(mapBox, 1, 3);
+
+    function getExportOptsAsString() {
+      var freeform = menu.findChild('.advanced-options').node().value;
+      if (/format=/.test(freeform) === false) {
+        freeform += ' format=' + getSelectedFormat();
+      }
+      return freeform.trim();
     }
-    return {
-      map_bbox: mapBox,
-      page_bbox: pageBox
+
+    // @done function(string|Error|null)
+    function exportMenuSelection(done) {
+      var opts, files;
+      try {
+        opts = getExportOpts();
+        // ignoring command line "target" option
+        files = internal.exportTargetLayers(getTargetLayers(), opts);
+        gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
+      } catch(e) {
+        return done(e);
+      }
+      internal.writeFiles(files, opts, done);
+    }
+
+    function initLayerMenu() {
+      var list = menu.findChild('.export-layer-list').empty();
+      var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
+      var objects = model.getLayers().map(function(o, i) {
+        var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
+        return {layer: o.layer, html: html};
+      });
+      sortLayersForMenuDisplay(objects);
+      checkboxes = objects.map(function(o) {
+        return El('div').html(o.html).appendTo(list).findChild('input').node();
+      });
+      menu.findChild('.export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
+    }
+
+    function getInputFormats() {
+      return model.getDatasets().reduce(function(memo, d) {
+        var fmts = d.info && d.info.input_formats || [];
+        return memo.concat(fmts);
+      }, []);
+    }
+
+    function getDefaultExportFormat() {
+      var dataset = model.getActiveLayer().dataset;
+      return dataset.info && dataset.info.input_formats &&
+          dataset.info.input_formats[0] || 'geojson';
+    }
+
+    function initFormatMenu() {
+      var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
+      var formats = utils.uniq(defaults.concat(getInputFormats()));
+      var items = formats.map(function(fmt) {
+        return utils.format('<div><label><input type="radio" name="format" value="%s"' +
+          ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
+      });
+      menu.findChild('.export-formats').html(items.join('\n'));
+      menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
+    }
+
+    function turnOn() {
+      initLayerMenu();
+      initFormatMenu();
+      menu.show();
+    }
+
+    function turnOff() {
+      menu.hide();
+    }
+
+    function getSelectedFormat() {
+      return menu.findChild('.export-formats input:checked').node().value;
+    }
+
+    function getTargetLayerIds() {
+      return checkboxes.reduce(function(memo, box, i) {
+        if (box.checked) memo.push(box.value);
+        return memo;
+      }, []);
+    }
+
+    function getTargetLayers() {
+      var ids = getTargetLayerIds().join(',');
+      return ids ? model.findCommandTargets(ids) : [];
+    }
+  };
+
+  function DomCache() {
+    var cache = {};
+    var used = {};
+
+    this.contains = function(html) {
+      return html in cache;
+    };
+
+    this.use = function(html) {
+      var el = used[html] = cache[html];
+      return el;
+    };
+
+    this.cleanup = function() {
+      cache = used;
+      used = {};
+    };
+
+    this.add = function(html, el) {
+      used[html] = el;
     };
   }
 
-  function disabled() {
-    return !!gui.options.disableNavigation;
-  }
+  function LayerControl(gui) {
+    var map = gui.map;
+    var model = gui.model;
+    var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
+    var btn = gui.container.findChild('.layer-control-btn');
+    var buttonLabel = btn.findChild('.layer-name');
+    var isOpen = false;
+    var cache = new DomCache();
+    var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
 
-  function zoomIn() {
-    if (disabled()) return;
-    zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
-  }
+    // layer repositioning
+    var dragTargetId = null;
+    var dragging = false;
+    var layerOrderSlug;
 
-  function zoomOut() {
-    if (disabled()) return;
-    zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
-  }
+    gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
+    model.on('update', function(e) {
+      updateMenuBtn();
+      if (isOpen) render();
+    });
 
-  // @box Bounds with pixels from t,l corner of map area.
-  function zoomToBbox(bbox) {
-    var bounds = new Bounds(bbox),
-        pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
-        fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
-        fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
-    zoomByPct(1 / pct, fx, fy);
-  }
+    el.on('mouseup', stopDragging);
+    el.on('mouseleave', stopDragging);
 
-  // @pct Change in scale (2 = 2x zoom)
-  // @fx, @fy zoom focus, [0, 1]
-  function zoomByPct(pct, fx, fy) {
-    var w = ext.getBounds().width();
-    _fx = fx;
-    _fy = fy;
-    zoomTween.start(w, w / pct, 400);
-  }
-}
+    // init layer visibility button
+    pinAll.on('click', function() {
+      var allOn = testAllLayersPinned();
+      model.getLayers().forEach(function(target) {
+        map.setLayerVisibility(target, !allOn);
+      });
+      El.findAll('.pinnable', el.node()).forEach(function(item) {
+        El(item).classed('pinned', !allOn);
+      });
+      map.redraw();
+    });
 
-
-function MapExtent(_position) {
-  var _scale = 1,
-      _cx, _cy, // center in geographic units
-      _contentBounds,
-      _self = this,
-      _frame;
-
-  _position.on('resize', function(e) {
-    if (_contentBounds) {
-      onChange({resize: true});
+    function updatePinAllButton() {
+      pinAll.classed('pinned', testAllLayersPinned());
     }
-  });
 
-  this.reset = function() {
-    recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
-  };
-
-  this.home = function() {
-    recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
-  };
-
-  this.pan = function(xpix, ypix) {
-    var t = this.getTransform();
-    recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
-  };
-
-  // Zoom to @w (width of the map viewport in coordinates)
-  // @xpct, @ypct: optional focus, [0-1]...
-  this.zoomToExtent = function(w, xpct, ypct) {
-    if (arguments.length < 3) {
-      xpct = 0.5;
-      ypct = 0.5;
+    function testAllLayersPinned() {
+      var yes = true;
+      model.forEachLayer(function(lyr, dataset) {
+        if (isPinnable(lyr) && !map.isVisibleLayer(lyr)) {
+          yes = false;
+        }
+      });
+      return yes;
     }
-    var b = this.getBounds(),
-        scale = limitScale(b.width() / w * _scale),
-        fx = b.xmin + xpct * b.width(),
-        fy = b.ymax - ypct * b.height(),
-        dx = b.centerX() - fx,
-        dy = b.centerY() - fy,
-        ds = _scale / scale,
-        dx2 = dx * ds,
-        dy2 = dy * ds,
-        cx = fx + dx2,
-        cy = fy + dy2;
-    recenter(cx, cy, scale);
-  };
 
-  this.zoomByPct = function(pct, xpct, ypct) {
-    this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);
-  };
-
-  this.resize = _position.resize;
-  this.width = _position.width;
-  this.height = _position.height;
-  this.position = _position.position;
-  this.recenter = recenter;
-
-  // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
-  this.scale = function() {
-    return _scale;
-  };
-
-  this.maxScale = maxScale;
-
-  this.getPixelSize = function() {
-    return 1 / this.getTransform().mx;
-  };
-
-  // Get params for converting geographic coords to pixel coords
-  this.getTransform = function(pixScale) {
-    // get transform (y-flipped);
-    var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
-    if (pixScale) {
-      viewBounds.xmax *= pixScale;
-      viewBounds.ymax *= pixScale;
+    function findLayerById(id) {
+      return model.findLayer(function(lyr, dataset) {
+        return lyr.menu_id == id;
+      });
     }
-    return this.getBounds().getTransform(viewBounds, true);
-  };
 
-  // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
-  this.getBounds = function(k) {
-    if (!_contentBounds) return new Bounds();
-    return calcBounds(_cx, _cy, _scale / (k || 1));
-  };
+    function getLayerOrderSlug() {
+      return sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
+        return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
+      }).join('');
+    }
 
-  // Update the extent of 'full' zoom without navigating the current view
-  this.setBounds = function(b) {
-    var prev = _contentBounds;
-    if (!b.hasBounds()) return; // kludge
-    _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
-    if (prev) {
-      _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
+    function clearClass(name) {
+      var targ = el.findChild('.' + name);
+      if (targ) targ.removeClass(name);
+    }
+
+    function stopDragging() {
+      clearClass('dragging');
+      clearClass('drag-target');
+      clearClass('insert-above');
+      clearClass('insert-below');
+      dragTargetId = layerOrderSlug = null;
+      if (dragging) {
+        render(); // in case menu changed...
+        dragging = false;
+      }
+    }
+
+    function insertLayer(dragId, dropId, above) {
+      var dragLyr = findLayerById(dragId);
+      var dropLyr = findLayerById(dropId);
+      var slug;
+      if (dragId == dropId) return;
+      dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
+      slug = getLayerOrderSlug();
+      if (slug != layerOrderSlug) {
+        layerOrderSlug = slug;
+        map.redraw();
+      }
+    }
+
+    function turnOn() {
+      isOpen = true;
+      el.findChild('div.info-box-scrolled').css('max-height', El('body').height() - 80);
+      render();
+      el.show();
+    }
+
+    function turnOff() {
+      stopDragging();
+      isOpen = false;
+      el.hide();
+    }
+
+    function updateMenuBtn() {
+      var name = model.getActiveLayer().layer.name || "[unnamed layer]";
+      buttonLabel.html(name + " &nbsp;&#9660;");
+    }
+
+    function render() {
+      var list = el.findChild('.layer-list');
+      var uniqIds = {};
+      var pinnableCount = 0;
+      var layerCount = 0;
+      list.empty();
+      model.forEachLayer(function(lyr, dataset) {
+        // Assign a unique id to each layer, so html strings
+        // can be used as unique identifiers for caching rendered HTML, and as
+        // an id for layer menu event handlers
+        if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
+          lyr.menu_id = utils.getUniqueName();
+        }
+        uniqIds[lyr.menu_id] = true;
+        if (isPinnable(lyr)) pinnableCount++;
+        layerCount++;
+      });
+
+      if (pinnableCount < 2) {
+        pinAll.hide();
+      } else {
+        pinAll.show();
+        updatePinAllButton();
+      }
+
+      sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
+        var lyr = o.layer;
+        var opts = {
+          show_source: layerCount < 5,
+          pinnable: pinnableCount > 1 && isPinnable(lyr)
+        };
+        var html, element;
+        html = renderLayer(lyr, o.dataset, opts);
+        if (cache.contains(html)) {
+          element = cache.use(html);
+        } else {
+          element = El('div').html(html).firstChild();
+          initMouseEvents(element, lyr.menu_id, opts.pinnable);
+          cache.add(html, element);
+        }
+        list.appendChild(element);
+      });
+    }
+
+    cache.cleanup();
+
+    function renderLayer(lyr, dataset, opts) {
+      var warnings = getWarnings(lyr, dataset);
+      var classes = 'layer-item';
+      var html;
+
+      if (opts.pinnable) classes += ' pinnable';
+      if (map.isActiveLayer(lyr)) classes += ' active';
+      if (map.isVisibleLayer(lyr)) classes += ' pinned';
+
+      html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
+      html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
+      if (opts.show_source) {
+        html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
+      }
+      html += rowHTML('contents', describeLyr(lyr));
+      if (warnings) {
+        html += rowHTML('problems', warnings, 'layer-problems');
+      }
+      html += '<img class="close-btn" draggable="false" src="images/close.png">';
+      if (opts.pinnable) {
+        html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
+        html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function initMouseEvents(entry, id, pinnable) {
+      entry.on('mouseover', init);
+      function init() {
+        entry.removeEventListener('mouseover', init);
+        initMouseEvents2(entry, id, pinnable);
+      }
+    }
+
+    function initLayerDragging(entry, id) {
+
+      // support layer drag-drop
+      entry.on('mousemove', function(e) {
+        var rect, insertionClass;
+        if (!e.buttons && (dragging || dragTargetId)) { // button is up
+          stopDragging();
+        }
+        if (e.buttons && !dragTargetId) {
+          dragTargetId = id;
+          entry.addClass('drag-target');
+        }
+        if (!dragTargetId) {
+          return;
+        }
+        if (dragTargetId != id) {
+          // signal to redraw menu later; TODO: improve
+          dragging = true;
+        }
+        rect = entry.node().getBoundingClientRect();
+        insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
+        if (!entry.hasClass(insertionClass)) {
+          clearClass('dragging');
+          clearClass('insert-above');
+          clearClass('insert-below');
+          entry.addClass('dragging');
+          entry.addClass(insertionClass);
+          insertLayer(dragTargetId, id, insertionClass == 'insert-above');
+        }
+      });
+    }
+
+    function initMouseEvents2(entry, id, pinnable) {
+
+      initLayerDragging(entry, id);
+
+      // init delete button
+      GUI.onClick(entry.findChild('img.close-btn'), function(e) {
+        var target = findLayerById(id);
+        e.stopPropagation();
+        if (map.isVisibleLayer(target.layer)) {
+          // TODO: check for double map refresh after model.deleteLayer() below
+          map.setLayerVisibility(target, false);
+        }
+        model.deleteLayer(target.layer, target.dataset);
+      });
+
+      if (pinnable) {
+        // init pin button
+        GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+          var target = findLayerById(id);
+          e.stopPropagation();
+          if (map.isVisibleLayer(target.layer)) {
+            map.setLayerVisibility(target, false);
+            entry.removeClass('pinned');
+          } else {
+            map.setLayerVisibility(target, true);
+            entry.addClass('pinned');
+          }
+          updatePinAllButton();
+          map.redraw();
+        });
+
+        // catch click event on pin button
+        GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+          e.stopPropagation();
+        });
+      }
+
+      // init name editor
+      new ClickText2(entry.findChild('.layer-name'))
+        .on('change', function(e) {
+          var target = findLayerById(id);
+          var str = cleanLayerName(this.value());
+          this.value(getDisplayName(str));
+          target.layer.name = str;
+          gui.session.layerRenamed(target.layer, str);
+          updateMenuBtn();
+        });
+
+      // init click-to-select
+      GUI.onClick(entry, function() {
+        var target = findLayerById(id);
+        // don't select if user is typing or dragging
+        if (!GUI.getInputElement() && !dragging) {
+          gui.clearMode();
+          if (!map.isActiveLayer(target.layer)) {
+            model.selectLayer(target.layer, target.dataset);
+          }
+        }
+      });
+    }
+
+    function describeLyr(lyr) {
+      var n = internal.getFeatureCount(lyr),
+          str, type;
+      if (lyr.data && !lyr.shapes) {
+        type = 'data record';
+      } else if (lyr.geometry_type) {
+        type = lyr.geometry_type + ' feature';
+      }
+      if (type) {
+        str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
+      } else {
+        str = "[empty]";
+      }
+      return str;
+    }
+
+    function getWarnings(lyr, dataset) {
+      var file = internal.getLayerSourceFile(lyr, dataset);
+      var missing = [];
+      var msg;
+      if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
+        if (!lyr.data) {
+          missing.push('.dbf');
+        }
+        if (!dataset.info.prj && !dataset.info.crs) {
+          missing.push('.prj');
+        }
+      }
+      if (missing.length) {
+        msg = 'missing ' + missing.join(' and ') + ' data';
+      }
+      return msg;
+    }
+
+    function describeSrc(lyr, dataset) {
+      return internal.getLayerSourceFile(lyr, dataset);
+    }
+
+    function getDisplayName(name) {
+      return name || '[unnamed]';
+    }
+
+    function isPinnable(lyr) {
+      return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
+    }
+
+
+    function cleanLayerName(raw) {
+      return raw.replace(/[\n\t/\\]/g, '')
+        .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+    }
+
+    function rowHTML(c1, c2, cname) {
+      return utils.format('<div class="row%s"><div class="col1">%s</div>' +
+        '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
+    }
+  }
+
+  function SessionHistory(gui) {
+    var commands = [];
+
+    // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes
+    this.unsavedChanges = function() {
+      return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
+    };
+
+    this.fileImported = function(file, optStr) {
+      var cmd = '-i ' + file;
+      if (optStr) {
+        cmd += ' ' + optStr;
+      }
+      commands.push(cmd);
+    };
+
+    this.layerRenamed = function(lyr, name) {
+      var currTarget = getCurrentTarget();
+      var layerTarget = getTargetFromLayer(lyr);
+      if (currTarget == layerTarget) {
+        commands.push('-rename-layers ' + name);
+      } else {
+        commands.push('-rename-layers ' + name + ' target=' + layerTarget);
+        commands.push('-target ' + currTarget);
+      }
+    };
+
+    this.consoleCommands = function(str) {
+      commands.push(str); // todo: split commands?
+    };
+
+    this.simplificationApplied = function(optStr) {
+      commands.push('-simplify ' + optStr);
+    };
+
+    this.simplificationRepair = function() {
+      //  TODO: improve this... repair does not necessarily apply to most recent
+      //  simplification command
+      //  consider adding a (hidden) repair command to handle this event
+      var i = indexOfLastCommand('-simplify');
+      if (i > -1) {
+        commands[i] = commands[i].replace(' no-repair', '');
+      }
+    };
+
+    this.updateSimplificationPct = function(pct) {
+      var i = indexOfLastCommand('-simplify');
+      if (i > -1) {
+        commands[i] = commands[i].replace(/percentage=[^ ]+/, 'percentage=' + pct);
+      }
+    };
+
+    this.layersExported = function(ids, optStr) {
+      var layers = gui.model.getLayers();
+      var cmd = '-o';
+      if (layers.length > 1) {
+        cmd += ' target=' + ids.map(getTargetFromId).join(',');
+      }
+      if (optStr) {
+        cmd += ' ' + optStr;
+      }
+      commands.push(cmd);
+    };
+
+    this.setTargetLayer = function(lyr) {
+      var layers = gui.model.getLayers();
+      if (layers.length > 1) {
+        if (indexOfLastCommand('-target') == commands.length - 1) {
+          commands.pop(); // if last commands was -target, remove it
+        }
+        commands.push('-target ' + getTargetFromLayer(lyr));
+      }
+    };
+
+    this.toCommandLineString = function() {
+      var str = commands.join(' \\\n  ');
+      return 'mapshaper ' + str;
+    };
+
+    function getCurrentTarget() {
+      return getTargetFromLayer(gui.model.getActiveLayer().layer);
+    }
+
+    function indexOfLastCommand(cmd) {
+      return commands.reduce(function(memo, str, i) {
+        return str.indexOf(cmd) === 0 ? i : memo;
+      }, -1);
+    }
+
+    function getTargetFromId(id) {
+      var layers = gui.model.getLayers();
+      return getTargetFromLayer(layers[id - 1].layer);
+    }
+
+    function getTargetFromLayer(lyr) {
+      var id = internal.getLayerTargetId(gui.model, lyr);
+      return internal.formatOptionValue(id);
+    }
+  }
+
+  function SidebarButtons(gui) {
+    var root = gui.container.findChild('.mshp-main-map');
+    var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
+    var _hidden = true;
+    gui.on('active', updateVisibility);
+    gui.on('inactive', updateVisibility);
+
+    // @iconRef: selector for an (svg) button icon
+    this.addButton = function(iconRef) {
+      var btn = initButton(iconRef).addClass('nav-btn');
+      btn.appendTo(buttons);
+      return btn;
+    };
+
+    this.show = function() {
+      _hidden = false;
+      updateVisibility();
+    };
+
+    this.hide = function() {
+      _hidden = true;
+      updateVisibility();
+    };
+
+    var initButton = this.initButton = function(iconRef) {
+      var icon = El('body').findChild(iconRef).node().cloneNode(true);
+      var btn = El('div')
+        .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
+      btn.appendChild(icon);
+      if (icon.hasAttribute('id')) icon.removeAttribute('id');
+      return btn;
+    };
+
+    function updateVisibility() {
+      if (GUI.isActiveInstance(gui) && !_hidden) {
+        buttons.show();
+      } else {
+        buttons.hide();
+      }
+    }
+  }
+
+  function ModeButton(modes, el, name) {
+    var btn = El(el),
+        active = false;
+    modes.on('mode', function(e) {
+      active = e.name == name;
+      if (active) {
+        btn.addClass('active');
+      } else {
+        btn.removeClass('active');
+      }
+    });
+
+    btn.on('click', function() {
+      modes.enterMode(active ? null : name);
+    });
+  }
+
+  function ModeSwitcher() {
+    var self = this;
+    var mode = null;
+
+    self.getMode = function() {
+      return mode;
+    };
+
+    // return a function to trigger this mode
+    self.addMode = function(name, enter, exit, btn) {
+      self.on('mode', function(e) {
+        if (e.prev == name) {
+          exit();
+        }
+        if (e.name == name) {
+          enter();
+        }
+      });
+      if (btn) {
+        new ModeButton(self, btn, name);
+      }
+    };
+
+    self.addMode(null, function() {}, function() {}); // null mode
+
+    self.clearMode = function() {
+      self.enterMode(null);
+    };
+
+    self.enterMode = function(next) {
+      var prev = mode;
+      if (next != prev) {
+        mode = next;
+        self.dispatchEvent('mode', {name: next, prev: prev});
+      }
+    };
+  }
+
+  utils.inherit(ModeSwitcher, EventDispatcher);
+
+  function KeyboardEvents(gui) {
+    var self = this;
+    document.addEventListener('keydown', function(e) {
+      if (!GUI.isActiveInstance(gui)) return;
+      self.dispatchEvent('keydown', {originalEvent: e});
+    });
+
+    this.onMenuSubmit = function(menuEl, cb) {
+      gui.on('enter_key', function(e) {
+        if (menuEl.visible()) {
+          e.originalEvent.stopPropagation();
+          cb();
+        }
+      });
+    };
+  }
+
+  utils.inherit(KeyboardEvents, EventDispatcher);
+
+  function InteractionMode(gui) {
+
+    var menus = {
+      standard: ['info', 'data', 'selection', 'box', 'off'],
+      table: ['info', 'data', 'selection', 'off'],
+      labels: ['info', 'data', 'selection', 'box', 'labels', 'location', 'off'],
+      points: ['info', 'data', 'selection', 'box', 'location', 'off']
+    };
+
+    // mode name -> menu text lookup
+    var labels = {
+      info: 'inspect attributes',
+      box: 'shift-drag box tool',
+      data: 'edit attributes',
+      labels: 'position labels',
+      location: 'drag points',
+      selection: 'select features',
+      off: 'turn off'
+    };
+    var btn, menu;
+    var _menuTimeout;
+
+    // state variables
+    var _editMode = 'off';
+    var _prevMode = 'info'; // stored mode for re-opening menu
+    var _menuOpen = false;
+
+    // Only render edit mode button/menu if this option is present
+    if (gui.options.inspectorControl) {
+      btn = gui.buttons.addButton('#pointer-icon');
+      menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
+
+      // tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
+
+      btn.on('mouseleave', function() {
+        btn.removeClass('hover');
+        // tab.hide();
+        autoClose();
+      });
+
+      btn.on('mouseenter', function() {
+        btn.addClass('hover');
+        if (_editMode != 'off') {
+          clearTimeout(_menuTimeout);
+          openMenu();
+          // tab.show();
+        }
+      });
+
+      // tab.on('mouseenter', openMenu);
+
+      btn.on('click', function(e) {
+        if (active()) {
+          setMode('off');
+          closeMenu();
+        } else if (_menuOpen) {
+          closeMenu();
+        } else {
+          if (_editMode == 'off') {
+            // turn on interaction when menu opens
+            // (could this be confusing?)
+            setMode(openWithMode());
+          }
+          clearTimeout(_menuTimeout);
+          openMenu();
+        }
+        e.stopPropagation();
+      });
+    }
+
+    this.turnOff = function() {
+      setMode('off');
+    };
+
+    this.getMode = getInteractionMode;
+
+    this.setMode = function(mode) {
+      // TODO: check that this mode is valid for the current dataset
+      if (mode in labels) {
+        setMode(mode);
+      }
+    };
+
+    gui.model.on('update', function(e) {
+      // change mode if active layer doesn't support the current mode
+      updateCurrentMode();
+      if (_menuOpen) {
+        renderMenu();
+      }
+    }, null, -1); // low priority?
+
+    function active() {
+      return _editMode && _editMode != 'off';
+    }
+
+    function getAvailableModes() {
+      var o = gui.model.getActiveLayer();
+      if (!o || !o.layer) {
+        return menus.standard; // TODO: more sensible handling of missing layer
+      }
+      if (!internal.layerHasGeometry(o.layer)) {
+        return menus.table;
+      }
+      if (internal.layerHasLabels(o.layer)) {
+        return menus.labels;
+      }
+      if (internal.layerHasPoints(o.layer)) {
+        return menus.points;
+      }
+      return menus.standard;
+    }
+
+    function getInteractionMode() {
+      return active() ? _editMode : 'off';
+    }
+
+    function renderMenu() {
+      if (!menu) return;
+      var modes = getAvailableModes();
+      menu.empty();
+      modes.forEach(function(mode) {
+        var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
+        link.on('click', function(e) {
+          if (_editMode == mode) {
+            closeMenu();
+          } else if (_editMode != mode) {
+            setMode(mode);
+            closeMenu(mode == 'off' ? 200 : 350);
+          }
+          e.stopPropagation();
+        });
+      });
+      updateModeDisplay();
+    }
+
+    // if current editing mode is not available, switch to another mode
+    function updateCurrentMode() {
+      var modes = getAvailableModes();
+      if (modes.indexOf(_editMode) == -1) {
+        setMode('off');
+      }
+    }
+
+    function openWithMode() {
+      if (getAvailableModes().indexOf(_prevMode) > -1) {
+        return _prevMode;
+      }
+      return 'info';
+    }
+
+    function openMenu() {
+      clearTimeout(_menuTimeout);
+      // if (!_menuOpen && _editMode != 'off') {
+      if (!_menuOpen) {
+        // tab.hide();
+        _menuOpen = true;
+        updateAppearance();
+      }
+    }
+
+    function autoClose() {
+      clearTimeout(_menuTimeout);
+      _menuTimeout = setTimeout(closeMenu, 300);
+    }
+
+    function closeMenu(delay) {
+      if (!_menuOpen) return;
+      _menuOpen = false;
+      setTimeout(function() {
+        _menuOpen = false;
+        updateAppearance();
+      }, delay || 0);
+    }
+
+    function setMode(mode) {
+      var changed = mode != _editMode;
+      // if (mode == 'off') tab.hide();
+      if (changed) {
+        menu.classed('active', mode != 'off');
+        if (_editMode != 'off') {
+          _prevMode = _editMode; // save edit mode so we can re-open control with the same mode
+        }
+        _editMode = mode;
+        onModeChange();
+        updateAppearance();
+      }
+    }
+
+    function onModeChange() {
+      gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
+    }
+
+    function updateAppearance() {
+      if (!menu) return;
+      if (_menuOpen) {
+        btn.addClass('open');
+        renderMenu();
+      } else {
+        btn.removeClass('hover');
+        btn.removeClass('open');
+        // menu.hide();
+      }
+      btn.classed('selected', active() || _menuOpen);
+    }
+
+    function updateModeDisplay() {
+      El.findAll('.nav-menu-item').forEach(function(el) {
+        el = El(el);
+        el.classed('selected', el.attr('data-name') == _editMode);
+      });
+    }
+  }
+
+  function Model(gui) {
+    var self = new internal.Catalog();
+    var deleteLayer = self.deleteLayer;
+    utils.extend(self, EventDispatcher.prototype);
+
+    // override Catalog method (so -drop command will work in web console)
+    self.deleteLayer = function(lyr, dataset) {
+      var active, flags;
+      deleteLayer.call(self, lyr, dataset);
+      if (self.isEmpty()) {
+        // refresh browser if deleted layer was the last layer
+        window.location.href = window.location.href.toString();
+      } else {
+        // trigger event to update layer list and, if needed, the map view
+        flags = {};
+        active = self.getActiveLayer();
+        if (active.layer != lyr) {
+          flags.select = true;
+        }
+        internal.cleanupArcs(active.dataset);
+        if (internal.layerHasPaths(lyr)) {
+          flags.arc_count = true; // looks like a kludge, try to remove
+        }
+        self.updated(flags, active.layer, active.dataset);
+      }
+    };
+
+    self.updated = function(flags) {
+      var targets = self.getDefaultTargets();
+      var active = self.getActiveLayer();
+      if (internal.countTargetLayers(targets) > 1) {
+        self.setDefaultTarget([active.layer], active.dataset);
+        gui.session.setTargetLayer(active.layer); // add -target command to target single layer
+      }
+      if (flags.select) {
+        self.dispatchEvent('select', active);
+      }
+      self.dispatchEvent('update', utils.extend({flags: flags}, active));
+    };
+
+    self.selectLayer = function(lyr, dataset) {
+      if (self.getActiveLayer().layer == lyr) return;
+      self.setDefaultTarget([lyr], dataset);
+      self.updated({select: true});
+      gui.session.setTargetLayer(lyr);
+    };
+
+    self.selectNextLayer = function() {
+      var next = self.findNextLayer(self.getActiveLayer().layer);
+      if (next) self.selectLayer(next.layer, next.dataset);
+    };
+
+    self.selectPrevLayer = function() {
+      var prev = self.findPrevLayer(self.getActiveLayer().layer);
+      if (prev) self.selectLayer(prev.layer, prev.dataset);
+    };
+
+    return self;
+  }
+
+  function getShapeHitTest(displayLayer, ext) {
+    var geoType = displayLayer.layer.geometry_type;
+    var test;
+    if (geoType == 'point' && displayLayer.style.type == 'styled') {
+      test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
+    } else if (geoType == 'point') {
+      test = pointTest;
+    } else if (geoType == 'polyline') {
+      test = polylineTest;
+    } else if (geoType == 'polygon') {
+      test = polygonTest;
     } else {
-      _cx = b.centerX();
-      _cy = b.centerY();
+      error("Unexpected geometry type:", geoType);
     }
-  };
+    return test;
 
-  this.translateCoords = function(x, y) {
-    return this.getTransform().transform(x, y);
-  };
+    // Convert pixel distance to distance in coordinate units.
+    function getHitBuffer(pix) {
+      return pix / ext.getTransform().mx;
+    }
 
-  this.setFrame = function(frame) {
-    _frame = frame || null;
-  };
+    // reduce hit threshold when zoomed out
+    function getZoomAdjustedHitBuffer(pix, minPix) {
+      var scale = ext.scale();
+      if (scale < 1) {
+        pix *= scale;
+      }
+      if (minPix > 0 && pix < minPix) pix = minPix;
+      return getHitBuffer(pix);
+    }
 
-  this.getFrame = function() {
-    return _frame || null;
-  };
+    function polygonTest(x, y) {
+      var maxDist = getZoomAdjustedHitBuffer(5, 1),
+          cands = findHitCandidates(x, y, maxDist),
+          hits = [],
+          cand;
+      for (var i=0; i<cands.length; i++) {
+        cand = cands[i];
+        if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
+          hits.push(cand.id);
+        }
+      }
+      if (cands.length > 0 && hits.length === 0) {
+        // secondary detection: proximity, if not inside a polygon
+        sortByDistance(x, y, cands, displayLayer.arcs);
+        hits = pickNearestCandidates(cands, 0, maxDist);
+      }
+      return hits;
+    }
 
-  this.getSymbolScale = function() {
-    if (!_frame) return 0;
-    var bounds = new Bounds(_frame.bbox);
-    var bounds2 = bounds.clone().transform(this.getTransform());
-    return bounds2.width() / _frame.width;
-  };
+    function pickNearestCandidates(sorted, bufDist, maxDist) {
+      var hits = [],
+          cand, minDist;
+      for (var i=0; i<sorted.length; i++) {
+        cand = sorted[i];
+        if (cand.dist < maxDist !== true) {
+          break;
+        } else if (i === 0) {
+          minDist = cand.dist;
+        } else if (cand.dist - minDist > bufDist) {
+          break;
+        }
+        hits.push(cand.id);
+      }
+      return hits;
+    }
 
-  this.translatePixelCoords = function(x, y) {
-    return this.getTransform().invert().transform(x, y);
-  };
+    function polylineTest(x, y) {
+      var maxDist = getZoomAdjustedHitBuffer(15, 2),
+          bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
+          cands = findHitCandidates(x, y, maxDist);
+      sortByDistance(x, y, cands, displayLayer.arcs);
+      return pickNearestCandidates(cands, bufDist, maxDist);
+    }
 
-  function recenter(cx, cy, scale, data) {
-    scale = scale ? limitScale(scale) : _scale;
-    if (!(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx;
-      _cy = cy;
-      _scale = scale;
-      onChange(data);
+    function sortByDistance(x, y, cands, arcs) {
+      for (var i=0; i<cands.length; i++) {
+        cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+      }
+      utils.sortOn(cands, 'dist');
+    }
+
+    function pointTest(x, y) {
+      var bullseyeDist = 2, // hit all points w/in 2 px
+          tinyDist = 0.5,
+          toPx = ext.getTransform().mx,
+          hits = [],
+          hitThreshold = 25,
+          newThreshold = Infinity;
+
+      internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+        var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
+        if (dist > hitThreshold) return;
+        // got a hit
+        if (dist < newThreshold) {
+          // start a collection of hits
+          hits = [id];
+          hitThreshold = Math.max(bullseyeDist, dist + tinyDist);
+          newThreshold = dist < bullseyeDist ? -1 : dist - tinyDist;
+        } else {
+          // add to hits if inside bullseye or is same dist as previous hit
+          hits.push(id);
+        }
+      });
+      // console.log(hitThreshold, bullseye);
+      return hits;
+    }
+
+    function getRadiusFunction(style) {
+      var o = {};
+      if (style.styler) {
+        return function(i) {
+          style.styler(o, i);
+          return o.radius || 0;
+        };
+      }
+      return function() {return style.radius || 0;};
+    }
+
+    function getGraduatedCircleTest(radius) {
+      return function(x, y) {
+        var hits = [],
+            margin = getHitBuffer(12),
+            limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
+            directHit = false,
+            hitRadius = 0,
+            hitDist;
+        internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+          var distSq = geom.distanceSq(x, y, p[0], p[1]);
+          var isHit = false;
+          var isOver, isNear, r, d, rpix;
+          if (distSq > limit * limit) return;
+          rpix = radius(id);
+          r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
+          d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
+          isOver = d < 0;
+          isNear = d < margin;
+          if (!isNear || rpix > 0 === false) {
+            isHit = false;
+          } else if (hits.length === 0) {
+            isHit = isNear;
+          } else if (!directHit && isOver) {
+            isHit = true;
+          } else if (directHit && isOver) {
+            isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
+          } else if (!directHit && !isOver) {
+            // closest to bubble edge wins
+            isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
+          }
+          if (isHit) {
+            if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
+              hits = [];
+            }
+            hitRadius = r;
+            hitDist = d;
+            directHit = isOver;
+            hits.push(id);
+          }
+        });
+        return hits;
+      };
+    }
+
+    function findHitCandidates(x, y, dist) {
+      var arcs = displayLayer.arcs,
+          index = {},
+          cands = [],
+          bbox = [];
+      displayLayer.layer.shapes.forEach(function(shp, shpId) {
+        var cand;
+        for (var i = 0, n = shp && shp.length; i < n; i++) {
+          arcs.getSimpleShapeBounds2(shp[i], bbox);
+          if (x + dist < bbox[0] || x - dist > bbox[2] ||
+            y + dist < bbox[1] || y - dist > bbox[3]) {
+            continue; // bbox non-intersection
+          }
+          cand = index[shpId];
+          if (!cand) {
+            cand = index[shpId] = {shape: [], id: shpId, dist: 0};
+            cands.push(cand);
+          }
+          cand.shape.push(shp[i]);
+        }
+      });
+      return cands;
     }
   }
 
-  function onChange(data) {
-    data = data || {};
-    _self.dispatchEvent('change', data);
+  function getSymbolNodeId(node) {
+    return parseInt(node.getAttribute('data-id'));
   }
 
-  // stop zooming before rounding errors become too obvious
-  function maxScale() {
-    var minPixelScale = 1e-16;
-    var xmax = maxAbs(_contentBounds.xmin, _contentBounds.xmax, _contentBounds.centerX());
-    var ymax = maxAbs(_contentBounds.ymin, _contentBounds.ymax, _contentBounds.centerY());
-    var xscale = _contentBounds.width() / _position.width() / xmax / minPixelScale;
-    var yscale = _contentBounds.height() / _position.height() / ymax / minPixelScale;
-    return Math.min(xscale, yscale);
+  function getSvgSymbolTransform(xy, ext) {
+    var scale = ext.getSymbolScale();
+    var p = ext.translateCoords(xy[0], xy[1]);
+    return internal.svg.getTransform(p, scale);
   }
 
-  function maxAbs() {
-    return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
+  function repositionSymbols(elements, layer, ext) {
+    var el, idx, p;
+    for (var i=0, n=elements.length; i<n; i++) {
+      el = elements[i];
+      idx = getSymbolNodeId(el);
+      p = layer.shapes[idx];
+      if (!p) continue;
+      el.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
+    }
   }
 
-  function limitScale(scale) {
-    return Math.min(scale, maxScale());
+  function renderSymbols(lyr, ext, type) {
+    var records = lyr.data.getRecords();
+    var symbols = lyr.shapes.map(function(shp, i) {
+      var d = records[i];
+      var obj = type == 'label' ? internal.svg.importStyledLabel(d) :
+          internal.svg.importSymbol(d['svg-symbol']);
+      if (!obj || !shp) return null;
+      obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
+      obj.properties['data-id'] = i;
+      return obj;
+    });
+    var obj = internal.getEmptyLayerForSVG(lyr, {});
+    obj.children = symbols;
+    return internal.svg.stringify(obj);
   }
 
-  function calcBounds(cx, cy, scale) {
-    var bounds, w, h;
-    if (_frame) {
-      bounds = fillOutFrameBounds(_frame);
+  function getSvgHitTest(displayLayer) {
+
+    return function(pointerEvent) {
+      // target could be a part of an SVG symbol, or the SVG element, or something else
+      var target = pointerEvent.originalEvent.target;
+      var symbolNode = getSymbolNode(target);
+      if (!symbolNode) {
+        return null;
+      }
+      return {
+        targetId: getSymbolNodeId(symbolNode), // TODO: some validation on id
+        targetSymbol: symbolNode,
+        targetNode: target,
+        container: symbolNode.parentNode
+      };
+    };
+
+    // target: event target (could be any DOM element)
+    function getSymbolNode(target) {
+      var node = target;
+      while (node && nodeHasSymbolTagType(node)) {
+        if (isSymbolNode(node)) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return null;
+    }
+
+    // TODO: switch to attribute detection
+    function nodeHasSymbolTagType(node) {
+      var tag = node.tagName;
+      return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
+        tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
+    }
+
+    function isSymbolNode(node) {
+      return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
+    }
+
+  }
+
+  function getPointerHitTest(mapLayer, ext) {
+    var shapeTest, svgTest;
+    if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
+      return null;
+    }
+    shapeTest = getShapeHitTest(mapLayer, ext);
+    svgTest = getSvgHitTest();
+
+    // e: pointer event
+    return function(e) {
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var data = {
+        ids: shapeTest(p[0], p[1]) || []
+      };
+      var svgData = svgTest(e); // null or a data object
+      if (svgData) { // mouse is over an SVG symbol
+        utils.extend(data, svgData);
+        // placing symbol id in front of any other hits
+        data.ids = utils.uniq([svgData.targetId].concat(data.ids));
+      }
+      data.id = data.ids.length > 0 ? data.ids[0] : -1;
+      return data;
+    };
+  }
+
+  function InteractiveSelection(gui, ext, mouse) {
+    var self = new EventDispatcher();
+    var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
+    var selectionIds = [];
+    var active = false;
+    var interactionMode;
+    var targetLayer;
+    var hitTest;
+    // event priority is higher than navigation, so stopping propagation disables
+    // pan navigation
+    var priority = 2;
+
+    self.setLayer = function(mapLayer) {
+      hitTest = getPointerHitTest(mapLayer, ext);
+      if (!hitTest) {
+        hitTest = function() {return {ids: []};};
+      }
+      targetLayer = mapLayer;
+      // deselect any  selection
+      // TODO: maintain selection if layer & shapes have not changed
+      updateSelectionState(null);
+    };
+
+    function turnOn(mode) {
+      interactionMode = mode;
+      active = true;
+    }
+
+    function turnOff() {
+      if (active) {
+        updateSelectionState(null); // no hit data, no event
+        active = false;
+      }
+    }
+
+    function selectable() {
+      return interactionMode == 'selection';
+    }
+
+    function pinnable() {
+      return clickable() && interactionMode != 'selection';
+    }
+
+    function draggable() {
+      return interactionMode == 'location' || interactionMode == 'labels';
+    }
+
+    function clickable() {
+      // click used to pin popup and select features
+      return interactionMode == 'data' || interactionMode == 'info' || interactionMode == 'selection';
+    }
+
+    self.getHitId = function() {return storedData.id;};
+
+    // Get a reference to the active layer, so listeners to hit events can interact
+    // with data and shapes
+    self.getHitTarget = function() {
+      return targetLayer;
+    };
+
+    self.addSelectionIds = function(ids) {
+      turnOn('selection');
+      selectionIds = utils.uniq(selectionIds.concat(ids));
+      ids = utils.uniq(storedData.ids.concat(ids));
+      updateSelectionState({ids: ids});
+    };
+
+    self.clearSelection = function() {
+      updateSelectionState(null);
+    };
+
+    self.clearHover = function() {
+      updateSelectionState(mergeHoverData({ids: []}));
+    };
+
+    self.getSelectionIds = function() {
+      return selectionIds.concat();
+    };
+
+    self.getTargetDataTable = function() {
+      var targ = self.getHitTarget();
+      return targ && targ.layer.data || null;
+    };
+
+    self.getSwitchHandler = function(diff) {
+      return function() {
+        self.switchSelection(diff);
+      };
+    };
+
+    self.switchSelection = function(diff) {
+      var i = storedData.ids.indexOf(storedData.id);
+      var n = storedData.ids.length;
+      if (i < 0 || n < 2) return;
+      if (diff != 1 && diff != -1) {
+        diff = 1;
+      }
+      storedData.id = storedData.ids[(i + diff + n) % n];
+      triggerHitEvent('change');
+    };
+
+    // make sure popup is unpinned and turned off when switching editing modes
+    // (some modes do not support pinning)
+    gui.on('interaction_mode_change', function(e) {
+      updateSelectionState(null);
+      if (e.mode == 'off' || e.mode == 'box') {
+        turnOff();
+      } else {
+        turnOn(e.mode);
+      }
+    });
+
+    gui.on('box_drag_start', function() {
+      self.clearHover();
+    });
+
+    mouse.on('dblclick', handlePointerEvent, null, priority);
+    mouse.on('dragstart', handlePointerEvent, null, priority);
+    mouse.on('drag', handlePointerEvent, null, priority);
+    mouse.on('dragend', handlePointerEvent, null, priority);
+
+    mouse.on('click', function(e) {
+      if (!hitTest || !active) return;
+      e.stopPropagation();
+
+      // TODO: move pinning to inspection control?
+      if (clickable()) {
+        updateSelectionState(mergeClickData(hitTest(e)));
+      }
+      triggerHitEvent('click', e.data);
+    }, null, priority);
+
+    // Hits are re-detected on 'hover' (if hit detection is active)
+    mouse.on('hover', function(e) {
+      if (storedData.pinned || !hitTest || !active) return;
+      if (!isOverMap(e)) {
+        // mouse is off of map viewport -- clear any current hover ids
+        updateSelectionState(mergeHoverData({ids:[]}));
+      } else if (e.hover) {
+        // mouse is hovering directly over map area -- update hit detection
+        updateSelectionState(mergeHoverData(hitTest(e)));
+      }
+    }, null, priority);
+
+    function noHitData() {return {ids: [], id: -1, pinned: false};}
+
+    function mergeClickData(hitData) {
+      // mergeCurrentState(hitData);
+      // TOGGLE pinned state under some conditions
+      var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+      hitData.id = id;
+      if (pinnable()) {
+        if (!storedData.pinned && id > -1) {
+          hitData.pinned = true; // add pin
+        } else if (storedData.pinned && storedData.id == id) {
+          delete hitData.pinned; // remove pin
+          // hitData.id = -1; // keep highlighting (pointer is still hovering)
+        } else if (storedData.pinned && id > -1) {
+          hitData.pinned = true; // stay pinned, switch id
+        }
+      }
+      if (selectable()) {
+        if (id > -1) {
+          selectionIds = toggleId(id, selectionIds);
+        }
+        hitData.ids = selectionIds;
+      }
+      return hitData;
+    }
+
+    function mergeHoverData(hitData) {
+      if (storedData.pinned) {
+        hitData.id = storedData.id;
+        hitData.pinned = true;
+      } else {
+        hitData.id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+      }
+      if (selectable()) {
+        hitData.ids = selectionIds;
+        // kludge to inhibit hover effect while dragging a box
+        if (gui.keydown) hitData.id = -1;
+      }
+      return hitData;
+    }
+
+    function toggleId(id, ids) {
+      if (ids.indexOf(id) > -1) {
+        return utils.difference(ids, [id]);
+      }
+      return [id].concat(ids);
+    }
+
+    // If hit ids have changed, update stored hit ids and fire 'hover' event
+    // evt: (optional) mouse event
+    function updateSelectionState(newData) {
+      var nonEmpty = newData && (newData.ids.length || newData.id > -1);
+      if (!newData) {
+        newData = noHitData();
+        selectionIds = [];
+      }
+      if (!testHitChange(storedData, newData)) {
+        return;
+      }
+      storedData = newData;
+      gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
+      if (active) {
+        triggerHitEvent('change');
+      }
+    }
+
+    // check if an event is used in the current interaction mode
+    function eventIsEnabled(type) {
+      if (type == 'click' && !clickable()) {
+        return false;
+      }
+      if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !draggable()) {
+        return false;
+      }
+      return true;
+    }
+
+    function isOverMap(e) {
+      return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
+    }
+
+    function handlePointerEvent(e) {
+      if (!hitTest || !active) return;
+      if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
+      // don't block pan and other navigation in modes when they are not being used
+      if (eventIsEnabled(e.type)) {
+        e.stopPropagation(); // block navigation
+        triggerHitEvent(e.type, e.data);
+      }
+    }
+
+    // d: event data (may be a pointer event object, an ordinary object or null)
+    function triggerHitEvent(type, d) {
+      // Merge stored hit data into the event data
+      var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+      self.dispatchEvent(type, eventData);
+    }
+
+    // Test if two hit data objects are equivalent
+    function testHitChange(a, b) {
+      // check change in 'container', e.g. so moving from anchor hit to label hit
+      //   is detected
+      if (sameIds(a.ids, b.ids) && a.container == b.container && a.pinned == b.pinned && a.id == b.id) {
+        return false;
+      }
+      return true;
+    }
+
+    function sameIds(a, b) {
+      if (a.length != b.length) return false;
+      for (var i=0; i<a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    return self;
+  }
+
+  function CoordinatesDisplay(gui, ext, mouse) {
+    var readout = gui.container.findChild('.coordinate-info').hide();
+    var enabled = false;
+
+    gui.model.on('select', function(e) {
+      enabled = !!e.layer.geometry_type; // no display on tabular layers
+      readout.hide();
+    });
+
+    readout.on('copy', function(e) {
+      // remove selection on copy (using timeout or else copy is cancelled)
+      setTimeout(function() {
+        window.getSelection().removeAllRanges();
+      }, 50);
+    });
+
+    // clear coords when map pans
+    ext.on('change', function() {
+      clearCoords();
+      // shapes may change along with map scale
+      // target = lyr ? lyr.getDisplayLayer() : null;
+    });
+
+    mouse.on('leave', clearCoords);
+
+    mouse.on('click', function(e) {
+      if (!enabled) return;
+      GUI.selectElement(readout.node());
+    });
+
+    mouse.on('hover', onMouseChange);
+    mouse.on('drag', onMouseChange, null, 10); // high priority so editor doesn't block propagation
+
+    function onMouseChange(e) {
+      if (!enabled) return;
+      if (isOverMap(e)) {
+        displayCoords(ext.translatePixelCoords(e.x, e.y));
+      } else {
+        clearCoords();
+      }
+    }
+
+    function displayCoords(p) {
+      var decimals = internal.getBoundsPrecisionForDisplay(ext.getBounds().toArray());
+      var str = internal.getRoundedCoordString(p, decimals);
+      readout.text(str).show();
+    }
+
+    function clearCoords() {
+      readout.hide();
+    }
+
+    function isOverMap(e) {
+      return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
+    }
+  }
+
+  function getTimerFunction() {
+    return typeof requestAnimationFrame == 'function' ?
+      requestAnimationFrame : function(cb) {setTimeout(cb, 25);};
+  }
+
+  function Timer() {
+    var self = this,
+        running = false,
+        busy = false,
+        tickTime, startTime, duration;
+
+    this.start = function(ms) {
+      var now = +new Date();
+      duration = ms || Infinity;
+      startTime = now;
+      running = true;
+      if (!busy) startTick(now);
+    };
+
+    this.stop = function() {
+      running = false;
+    };
+
+    function startTick(now) {
+      busy = true;
+      tickTime = now;
+      getTimerFunction()(onTick);
+    }
+
+    function onTick() {
+      var now = +new Date(),
+          elapsed = now - startTime,
+          pct = Math.min((elapsed + 10) / duration, 1),
+          done = pct >= 1;
+      if (!running) { // interrupted
+        busy = false;
+        return;
+      }
+      if (done) running = false;
+      self.dispatchEvent('tick', {
+        elapsed: elapsed,
+        pct: pct,
+        done: done,
+        time: now,
+        tickTime: now - tickTime
+      });
+      busy = false;
+      if (running) startTick(now);
+    }
+  }
+
+  utils.inherit(Timer, EventDispatcher);
+
+  function Tween(ease) {
+    var self = this,
+        timer = new Timer(),
+        start, end;
+
+    timer.on('tick', onTick);
+
+    this.start = function(a, b, duration) {
+      start = a;
+      end = b;
+      timer.start(duration || 500);
+    };
+
+    function onTick(e) {
+      var pct = ease ? ease(e.pct) : e.pct,
+          val = end * pct + start * (1 - pct);
+      self.dispatchEvent('change', {value: val});
+    }
+  }
+
+  utils.inherit(Tween, EventDispatcher);
+
+  Tween.sineInOut = function(n) {
+    return 0.5 - Math.cos(n * Math.PI) / 2;
+  };
+
+  Tween.quadraticOut = function(n) {
+    return 1 - Math.pow((1 - n), 2);
+  };
+
+  function ElementPosition(ref) {
+    var self = this,
+        el = El(ref),
+        pageX = 0,
+        pageY = 0,
+        width = 0,
+        height = 0;
+
+    el.on('mouseover', update);
+    if (window.onorientationchange) window.addEventListener('orientationchange', update);
+    window.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+
+    // trigger an update, e.g. when map container is resized
+    this.update = function() {
+      update();
+    };
+
+    this.resize = function(w, h) {
+      el.css('width', w).css('height', h);
+      update();
+    };
+
+    this.width = function() { return width; };
+    this.height = function() { return height; };
+    this.position = function() {
+      return {
+        element: el.node(),
+        pageX: pageX,
+        pageY: pageY,
+        width: width,
+        height: height
+      };
+    };
+
+    function update() {
+      var div = el.node(),
+          xy = getPageXY(div),
+          w = div.clientWidth,
+          h = div.clientHeight,
+          x = xy.x,
+          y = xy.y,
+          resized = w != width || h != height,
+          moved = x != pageX || y != pageY;
+      if (resized || moved) {
+        pageX = x;
+        pageY = y;
+        width = w;
+        height = h;
+        self.dispatchEvent('change', self.position());
+        if (resized) {
+          self.dispatchEvent('resize', self.position());
+        }
+      }
+    }
+    update();
+  }
+
+  utils.inherit(ElementPosition, EventDispatcher);
+
+  function MouseWheelDirection() {
+    var ptime = 0;
+    var getAverage;
+
+    // use avg of three values, as a buffer against single anomalous values
+    return function(e, time) {
+      var dir = 0;
+      var avg;
+      if (e.wheelDelta) dir = e.wheelDelta > 0 ? 1 : -1;
+      else if (e.detail) dir = e.detail > 0 ? -1 : 1;
+      if (time - ptime > 300) getAverage = LimitedAverage(3); // reset
+      ptime = time;
+      avg = getAverage(dir) || dir; // handle average == 0
+      return avg > 0 ? 1 : -1;
+    };
+  }
+
+  function LimitedAverage(maxSize) {
+    var arr = [];
+    return function(val) {
+      var sum = 0,
+          i = -1;
+      arr.push(val);
+      if (arr.length > maxSize) arr.shift();
+      while (++i < arr.length) {
+        sum += arr[i];
+      }
+      return sum / arr.length;
+    };
+  }
+
+  // @mouse: MouseArea object
+  function MouseWheel(mouse) {
+    var self = this,
+        active = false,
+        timer = new Timer().addEventListener('tick', onTick),
+        sustainInterval = 150,
+        fadeDelay = 70,
+        eventTime = 0,
+        getAverageRate = LimitedAverage(10),
+        getWheelDirection = MouseWheelDirection(),
+        wheelDirection;
+
+    if (window.onmousewheel !== undefined) { // ie, webkit
+      window.addEventListener('mousewheel', handleWheel, {passive: false});
+    } else { // firefox
+      window.addEventListener('DOMMouseScroll', handleWheel);
+    }
+
+    function updateSustainInterval(eventRate) {
+      var fadeInterval = 80;
+      fadeDelay = eventRate + 50; // adding a little extra time helps keep trackpad scrolling smooth in Firefox
+      sustainInterval = fadeDelay + fadeInterval;
+    }
+
+    function handleWheel(evt) {
+      var now = +new Date();
+      wheelDirection = getWheelDirection(evt, now);
+      if (evt.ctrlKey) {
+        // Prevent pinch-zoom in Chrome (doesn't work in Safari, though)
+        evt.preventDefault();
+        evt.stopImmediatePropagation();
+      }
+      if (!mouse.isOver()) return;
+      evt.preventDefault();
+      if (!active) {
+        active = true;
+        self.dispatchEvent('mousewheelstart');
+      } else {
+        updateSustainInterval(getAverageRate(now - eventTime));
+      }
+      eventTime = now;
+      timer.start(sustainInterval);
+    }
+
+    function onTick(evt) {
+      var tickInterval = evt.time - eventTime,
+          multiplier = evt.tickTime / 25,
+          fadeFactor = 0,
+          obj;
+      if (tickInterval > fadeDelay) {
+        fadeFactor = Math.min(1, (tickInterval - fadeDelay) / (sustainInterval - fadeDelay));
+      }
+      if (evt.done) {
+        active = false;
+      } else {
+        if (fadeFactor > 0) {
+          // Decelerate towards the end of the sustain interval (for smoother zooming)
+          multiplier *= Tween.quadraticOut(1 - fadeFactor);
+        }
+        obj = utils.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
+        self.dispatchEvent('mousewheel', obj);
+      }
+    }
+  }
+
+  utils.inherit(MouseWheel, EventDispatcher);
+
+
+  function MouseArea(element, pos) {
+    var _pos = pos || new ElementPosition(element),
+        _areaPos = _pos.position(),
+        _self = this,
+        _dragging = false,
+        _isOver = false,
+        _disabled = false,
+        _prevEvt,
+        _downEvt;
+
+    _pos.on('change', function() {_areaPos = _pos.position();});
+    // TODO: think about touch events
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mouseup', onMouseUp);
+    element.addEventListener('mouseover', onAreaEnter);
+    element.addEventListener('mousemove', onAreaEnter);
+    element.addEventListener('mouseout', onAreaOut);
+    element.addEventListener('mousedown', onAreaDown);
+    element.addEventListener('dblclick', onAreaDblClick);
+
+    this.enable = function() {
+      if (!_disabled) return;
+      _disabled = false;
+      element.style.pointerEvents = 'auto';
+    };
+
+    this.stopDragging = function() {
+      if (_downEvt) {
+        if (_dragging) stopDragging(_downEvt);
+        _downEvt = null;
+      }
+    };
+
+    this.disable = function() {
+      if (_disabled) return;
+      _disabled = true;
+      if (_isOver) onAreaOut();
+      this.stopDragging();
+      element.style.pointerEvents = 'none';
+    };
+
+    this.isOver = function() {
+      return _isOver;
+    };
+
+    this.isDown = function() {
+      return !!_downEvt;
+    };
+
+    this.mouseData = function() {
+      return utils.extend({}, _prevEvt);
+    };
+
+    function onAreaDown(e) {
+      e.preventDefault(); // prevent text selection cursor on drag
+    }
+
+    function onAreaEnter() {
+      if (!_isOver) {
+        _isOver = true;
+        _self.dispatchEvent('enter');
+      }
+    }
+
+    function onAreaOut() {
+      _isOver = false;
+      _self.dispatchEvent('leave');
+    }
+
+    function onMouseUp(e) {
+      var evt = procMouseEvent(e),
+          elapsed, dx, dy;
+      if (_dragging) {
+        stopDragging(evt);
+      }
+      if (_downEvt) {
+        elapsed = evt.time - _downEvt.time;
+        dx = evt.pageX - _downEvt.pageX;
+        dy = evt.pageY - _downEvt.pageY;
+        if (_isOver && elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
+          _self.dispatchEvent('click', evt);
+        }
+        _downEvt = null;
+      }
+    }
+
+    function stopDragging(evt) {
+      _dragging = false;
+      _self.dispatchEvent('dragend', evt);
+    }
+
+    function onMouseDown(e) {
+     if (e.button != 2 && e.which != 3) { // ignore right-click
+        _downEvt = procMouseEvent(e);
+      }
+    }
+
+    function onMouseMove(e) {
+      var evt = procMouseEvent(e);
+      if (!_dragging && _downEvt && _downEvt.hover) {
+        _dragging = true;
+        _self.dispatchEvent('dragstart', evt);
+      }
+      if (evt.dx === 0 && evt.dy === 0) return; // seen in Chrome
+      if (_dragging) {
+        var obj = {
+          dragX: evt.pageX - _downEvt.pageX,
+          dragY: evt.pageY - _downEvt.pageY
+        };
+        _self.dispatchEvent('drag', utils.extend(obj, evt));
+      } else {
+        _self.dispatchEvent('hover', evt);
+      }
+    }
+
+    function onAreaDblClick(e) {
+      if (_isOver) _self.dispatchEvent('dblclick', procMouseEvent(e));
+    }
+
+    function procMouseEvent(e) {
+      var pageX = e.pageX,
+          pageY = e.pageY,
+          prev = _prevEvt;
+      _prevEvt = {
+        originalEvent: e,
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        time: +new Date(),
+        pageX: pageX,
+        pageY: pageY,
+        hover: _isOver,
+        x: pageX - _areaPos.pageX,
+        y: pageY - _areaPos.pageY,
+        dx: prev ? pageX - prev.pageX : 0,
+        dy: prev ? pageY - prev.pageY : 0
+      };
+      return _prevEvt;
+    }
+  }
+
+  utils.inherit(MouseArea, EventDispatcher);
+
+  function MapNav(gui, ext, mouse) {
+    var wheel = new MouseWheel(mouse),
+        zoomTween = new Tween(Tween.sineInOut),
+        boxDrag = false,
+        zoomScale = 1.5,
+        zoomScaleMultiplier = 1,
+        inBtn, outBtn,
+        dragStartEvt,
+        _fx, _fy; // zoom foci, [0,1]
+
+    this.setZoomFactor = function(k) {
+      zoomScaleMultiplier = k || 1;
+    };
+
+    this.zoomToBbox = zoomToBbox;
+
+    if (gui.options.homeControl) {
+      gui.buttons.addButton("#home-icon").on('click', function() {
+        if (disabled()) return;
+        gui.dispatchEvent('map_reset');
+      });
+    }
+
+    if (gui.options.zoomControl) {
+      inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
+      outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
+      ext.on('change', function() {
+        inBtn.classed('disabled', ext.scale() >= ext.maxScale());
+      });
+    }
+
+    gui.on('map_reset', function() {
+      ext.home();
+    });
+
+    zoomTween.on('change', function(e) {
+      ext.zoomToExtent(e.value, _fx, _fy);
+    });
+
+    mouse.on('dblclick', function(e) {
+      if (disabled()) return;
+      zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
+    });
+
+    mouse.on('dragstart', function(e) {
+      if (disabled()) return;
+      if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
+      // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+      boxDrag = !!e.shiftKey;
+      if (boxDrag) {
+        dragStartEvt = e;
+        gui.dispatchEvent('box_drag_start');
+      }
+    });
+
+    mouse.on('drag', function(e) {
+      if (disabled()) return;
+      if (boxDrag) {
+        gui.dispatchEvent('box_drag', getBoxData(e));
+      } else {
+        ext.pan(e.dx, e.dy);
+      }
+    });
+
+    mouse.on('dragend', function(e) {
+      if (disabled()) return;
+      if (boxDrag) {
+        boxDrag = false;
+        gui.dispatchEvent('box_drag_end', getBoxData(e));
+      }
+    });
+
+    wheel.on('mousewheel', function(e) {
+      var tickFraction = 0.11; // 0.15; // fraction of zoom step per wheel event;
+      var k = 1 + (tickFraction * e.multiplier * zoomScaleMultiplier),
+          delta = e.direction > 0 ? k : 1 / k;
+      if (disabled()) return;
+      ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
+    });
+
+    function swapElements(arr, i, j) {
+      var tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+
+    function getBoxData(e) {
+      var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
+      var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
+      if (pageBox[0] > pageBox[2]) {
+        swapElements(pageBox, 0, 2);
+        swapElements(mapBox, 0, 2);
+      }
+      if (pageBox[1] > pageBox[3]) {
+        swapElements(pageBox, 1, 3);
+        swapElements(mapBox, 1, 3);
+      }
+      return {
+        map_bbox: mapBox,
+        page_bbox: pageBox
+      };
+    }
+
+    function disabled() {
+      return !!gui.options.disableNavigation;
+    }
+
+    function zoomIn() {
+      if (disabled()) return;
+      zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
+    }
+
+    function zoomOut() {
+      if (disabled()) return;
+      zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
+    }
+
+    // @box Bounds with pixels from t,l corner of map area.
+    function zoomToBbox(bbox) {
+      var bounds = new Bounds(bbox),
+          pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
+          fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
+          fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
+      zoomByPct(1 / pct, fx, fy);
+    }
+
+    // @pct Change in scale (2 = 2x zoom)
+    // @fx, @fy zoom focus, [0, 1]
+    function zoomByPct(pct, fx, fy) {
+      var w = ext.getBounds().width();
+      _fx = fx;
+      _fy = fy;
+      zoomTween.start(w, w / pct, 400);
+    }
+  }
+
+  function HighlightBox(el) {
+    var box = El('div').addClass('zoom-box').appendTo(el),
+        show = box.show.bind(box), // original show() function
+        stroke = 2;
+    box.hide();
+    box.show = function(x1, y1, x2, y2) {
+      var w = Math.abs(x1 - x2),
+          h = Math.abs(y1 - y2);
+      box.css({
+        top: Math.min(y1, y2),
+        left: Math.min(x1, x2),
+        width: Math.max(w - stroke * 2, 1),
+        height: Math.max(h - stroke * 2, 1)
+      });
+      show();
+    };
+    return box;
+  }
+
+  function SelectionTool(gui, ext, hit) {
+    var popup = gui.container.findChild('.selection-tool-options');
+    var box = new HighlightBox('body');
+    var _on = false;
+
+    gui.addMode('selection_tool', turnOn, turnOff);
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode === 'selection') {
+        gui.enterMode('selection_tool');
+      } else if (gui.getMode() == 'selection_tool') {
+        gui.clearMode();
+      }
+    });
+
+    gui.on('box_drag', function(e) {
+      if (!_on) return;
+      var b = e.page_bbox;
+      box.show(b[0], b[1], b[2], b[3]);
+    });
+
+    gui.on('box_drag_end', function(e) {
+      if (!_on) return;
+      box.hide();
+      var bboxPixels = e.map_bbox;
+      var bbox = bboxToCoords(bboxPixels);
+      var active = gui.model.getActiveLayer();
+      var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
+      if (!ids.length) return;
+      hit.addSelectionIds(ids);
+    });
+
+    function turnOn() {
+      _on = true;
+    }
+
+    function bboxToCoords(bbox) {
+      var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+      var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+      return [a[0], b[1], b[0], a[1]];
+    }
+
+    function turnOff() {
+      reset();
+      _on = false;
+      if (gui.interaction.getMode() == 'selection') {
+        // mode change was not initiated by interactive menu -- turn off interactivity
+        gui.interaction.turnOff();
+      }
+    }
+
+    function reset() {
+      popup.hide();
+      hit.clearSelection();
+    }
+
+    hit.on('change', function(e) {
+      if (e.mode != 'selection') return;
+      var ids = hit.getSelectionIds();
+      if (ids.length > 0) {
+        // enter this mode when we're ready to show the selection options
+        // (this closes any other active mode, e.g. box_tool)
+        gui.enterMode('selection_tool');
+        popup.show();
+      } else {
+        popup.hide();
+      }
+    });
+
+    new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
+      var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), true) + '"';
+      runCommand(cmd);
+      hit.clearSelection();
+    });
+
+    new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
+      var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), false) + '"';
+      runCommand(cmd);
+      hit.clearSelection();
+    });
+
+    new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
+      var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds(), false) +
+        ' ? \'1\' : \'2\'" -split split_id';
+      runCommand(cmd);
+      hit.clearSelection();
+    });
+
+    new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
+      hit.clearSelection();
+    });
+
+    function getFilterExp(ids, invert) {
+      return JSON.stringify(ids) + '.indexOf(this.id) ' + (invert ? '== -1' : '> -1');
+    }
+
+    function runCommand(cmd) {
+      if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
+      reset();
+    }
+  }
+
+  // @onNext: handler for switching between multiple records
+  function Popup(gui, onNext, onPrev) {
+    var self = new EventDispatcher();
+    var parent = gui.container.findChild('.mshp-main-map');
+    var el = El('div').addClass('popup').appendTo(parent).hide();
+    var content = El('div').addClass('popup-content').appendTo(el);
+    // multi-hit display and navigation
+    var tab = El('div').addClass('popup-tab').appendTo(el).hide();
+    var nav = El('div').addClass('popup-nav').appendTo(tab);
+    var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
+    var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
+    var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
+
+    nextLink.on('click', onNext);
+    prevLink.on('click', onPrev);
+
+    // table can be null (if layer has no attribute data) or a DataTable
+    self.show = function(id, ids, table, pinned, editable) {
+      var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
+      var maxHeight = parent.node().clientHeight - 36;
+      self.hide(); // clean up if panel is already open
+      render(content, rec, table, editable);
+      if (ids && ids.length > 1) {
+        showNav(id, ids, pinned);
+      } else {
+        tab.hide();
+      }
+      el.show();
+      if (content.node().clientHeight > maxHeight) {
+        content.css('height:' + maxHeight + 'px');
+      }
+    };
+
+    self.hide = function() {
+      // make sure any pending edits are made before re-rendering popup
+      // TODO: only blur popup fields
+      GUI.blurActiveElement();
+      content.empty();
+      content.node().removeAttribute('style'); // remove inline height
+      el.hide();
+    };
+
+    return self;
+
+    function showNav(id, ids, pinned) {
+      var num = ids.indexOf(id) + 1;
+      navInfo.text(' ' + num + ' / ' + ids.length + ' ');
+      nextLink.css('display', pinned ? 'inline-block' : 'none');
+      prevLink.css('display', pinned && ids.length > 2 ? 'inline-block' : 'none');
+      tab.show();
+    }
+
+    function render(el, rec, table, editable) {
+      var tableEl = El('table').addClass('selectable'),
+          rows = 0;
+      utils.forEachProperty(rec, function(v, k) {
+        var type;
+        // missing GeoJSON fields are set to undefined on import; skip these
+        if (v !== undefined) {
+          type = getFieldType(v, k, table);
+          renderRow(tableEl, rec, k, type, editable);
+          rows++;
+        }
+      });
+      if (rows > 0) {
+        tableEl.appendTo(el);
+      } else {
+        // Some individual features can have undefined values for some or all of
+        // their data properties (properties are set to undefined when an input JSON file
+        // has inconsistent fields, or after force-merging layers with inconsistent fields).
+        el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
+            table && table.getFields().length > 0 ? 'feature': 'layer'));
+      }
+    }
+
+    function renderRow(table, rec, key, type, editable) {
+      var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
+      var val = rec[key];
+      var str = formatInspectorValue(val, type);
+      var cell = El('tr')
+          .appendTo(table)
+          .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
+          .findChild('.value');
+      setFieldClass(cell, val, type);
+      if (editable) {
+        editItem(cell, rec, key, type);
+      }
+    }
+
+    function setFieldClass(el, val, type) {
+      var isNum = type ? type == 'number' : utils.isNumber(val);
+      var isNully = val === undefined || val === null || val !== val;
+      var isEmpty = val === '';
+      el.classed('num-field', isNum);
+      el.classed('object-field', type == 'object');
+      el.classed('null-value', isNully);
+      el.classed('empty', isEmpty);
+    }
+
+    function editItem(el, rec, key, type) {
+      var input = new ClickText2(el),
+          strval = formatInspectorValue(rec[key], type),
+          parser = getInputParser(type);
+      el.parent().addClass('editable-cell');
+      el.addClass('colored-text dot-underline');
+      input.on('change', function(e) {
+        var val2 = parser(input.value()),
+            strval2 = formatInspectorValue(val2, type);
+        if (strval == strval2) ; else if (val2 === null && type != 'object') { // allow null objects
+          // invalid value; revert to previous value
+          input.value(strval);
+        } else {
+          // field content has changed
+          strval = strval2;
+          rec[key] = val2;
+          input.value(strval);
+          setFieldClass(el, val2, type);
+          self.dispatchEvent('update', {field: key, value: val2});
+        }
+      });
+    }
+  }
+
+  function formatInspectorValue(val, type) {
+    var str;
+    if (type == 'object') {
+      str = val ? JSON.stringify(val) : "";
     } else {
-      bounds = fillOut(_contentBounds);
+      str = String(val);
     }
-    w = bounds.width() / scale;
-    h = bounds.height() / scale;
-    return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+    return str;
   }
 
-  // Calculate viewport bounds from frame data
-  function fillOutFrameBounds(frame) {
-    var bounds = new Bounds(frame.bbox);
-    var kx = _position.width() / frame.width;
-    var ky = _position.height() / frame.height;
-    bounds.scale(kx, ky);
-    return bounds;
-  }
-
-  function padBounds(b, margin) {
-    var wpix = _position.width() - 2 * margin,
-        hpix = _position.height() - 2 * margin,
-        xpad, ypad, b2;
-    if (wpix <= 0 || hpix <= 0) {
-      return new Bounds(0, 0, 0, 0);
+  var inputParsers = {
+    string: function(raw) {
+      return raw;
+    },
+    number: function(raw) {
+      var val = Number(raw);
+      if (raw == 'NaN') {
+        val = NaN;
+      } else if (isNaN(val)) {
+        val = null;
+      }
+      return val;
+    },
+    object: function(raw) {
+      var val = null;
+      try {
+        val = JSON.parse(raw);
+      } catch(e) {}
+      return val;
+    },
+    boolean: function(raw) {
+      var val = null;
+      if (raw == 'true') {
+        val = true;
+      } else if (raw == 'false') {
+        val = false;
+      }
+      return val;
+    },
+    multiple: function(raw) {
+      var val = Number(raw);
+      return isNaN(val) ? raw : val;
     }
-    b = b.clone();
-    b2 = b.clone();
-    b2.fillOut(wpix / hpix);
-    xpad = b2.width() / wpix * margin;
-    ypad = b2.height() / hpix * margin;
-    b.padBounds(xpad, ypad, xpad, ypad);
-    return b;
+  };
+
+  function getInputParser(type) {
+    return inputParsers[type || 'multiple'];
   }
 
-  // Pad bounds vertically or horizontally to match viewport aspect ratio
-  function fillOut(b) {
-    var wpix = _position.width(),
-        hpix = _position.height();
-    b = b.clone();
-    b.fillOut(wpix / hpix);
-    return b;
+  function getFieldType(val, key, table) {
+    // if a field has a null value, look at entire column to identify type
+    return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
   }
-}
 
-utils.inherit(MapExtent, EventDispatcher);
+  function InspectionControl2(gui, hit) {
+    var model = gui.model;
+    var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
+    var _self = new EventDispatcher();
+
+    // state variables
+    var _pinned = false;
+    var _highId = -1;
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode == 'off') {
+        turnOff();
+      }
+      // TODO: update popup if currently pinned
+    });
+
+    // inspector and label editing aren't fully synced - stop inspecting if label editor starts
+    // REMOVED
+    // gui.on('label_editor_on', function() {
+    // });
+
+    _popup.on('update', function(e) {
+      var d = e.data;
+      d.i = _highId; // need to add record id
+      _self.dispatchEvent('data_change', d);
+    });
+
+    gui.keyboard.on('keydown', function(evt) {
+      var e = evt.originalEvent;
+      var kc = e.keyCode, n, id;
+      if (!inspecting() || !hit.getHitTarget()) return;
+
+      // esc key closes (unless in an editing mode)
+      if (e.keyCode == 27 && inspecting() && !gui.getMode()) {
+        turnOff();
+        return;
+      }
+
+      if (_pinned && !GUI.getInputElement()) {
+        // an element is selected and user is not editing text
+
+        if (kc == 37 || kc == 39) {
+          // arrow keys advance pinned feature
+          n = internal.getFeatureCount(hit.getHitTarget().layer);
+          if (n > 1) {
+            if (kc == 37) {
+              id = (_highId + n - 1) % n;
+            } else {
+              id = (_highId + 1) % n;
+            }
+            inspect(id, true);
+            e.stopPropagation();
+          }
+        } else if (kc == 8) {
+          // delete key
+          // to help protect against inadvertent deletion, don't delete
+          // when console is open or a popup menu is open
+          if (!gui.getMode() && !gui.consoleIsOpen()) {
+            deletePinnedFeature();
+          }
+        }
+      }
+    }, !!'capture'); // preempt the layer control's arrow key handler
+
+    hit.on('change', function(e) {
+      var ids;
+      if (!inspecting()) return;
+      ids = e.mode == 'selection' ? null : e.ids;
+      inspect(e.id, e.pinned, ids);
+    });
+
+    function showInspector(id, ids, pinned) {
+      var target = hit.getHitTarget();
+      var editable = pinned && gui.interaction.getMode() == 'data';
+      // if (target && target.layer.data) {
+      if (target && target.layer) { // show popup even if layer has no attribute data
+        _popup.show(id, ids, target.layer.data, pinned, editable);
+      }
+    }
+
+    // @id Id of a feature in the active layer, or -1
+    function inspect(id, pin, ids) {
+      _pinned = pin;
+      if (id > -1 && inspecting()) {
+        showInspector(id, ids, pin);
+      } else {
+        _popup.hide();
+      }
+    }
+
+    // does the attribute inspector appear on rollover
+    function inspecting() {
+      return gui.interaction && gui.interaction.getMode() != 'off';
+    }
+
+    function turnOff() {
+      inspect(-1); // clear the map
+    }
+
+    function deletePinnedFeature() {
+      var lyr = model.getActiveLayer().layer;
+      console.log("delete; pinned?", _pinned, "id:", _highId);
+      if (!_pinned || _highId == -1) return;
+      lyr.shapes.splice(_highId, 1);
+      if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
+      inspect(-1);
+      model.updated({flags: 'filter'});
+    }
+
+    return _self;
+  }
+
+  function isMultilineLabel(textNode) {
+    return textNode.childNodes.length > 1;
+  }
+
+  function toggleTextAlign(textNode, rec) {
+    var curr = rec['text-anchor'] || 'middle';
+    var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+    updateTextAnchor(value, textNode, rec);
+  }
+
+  function findSvgRoot(el) {
+    while (el && el.tagName != 'html' && el.tagName != 'body') {
+      if (el.tagName == 'svg') return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  // p: pixel coordinates of label anchor
+  function autoUpdateTextAnchor(textNode, rec, p) {
+    var svg = findSvgRoot(textNode);
+    var rect = textNode.getBoundingClientRect();
+    var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
+    var xpct = (labelCenterX - p[0]) / rect.width; // offset of label center from anchor center
+    var value = xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
+    updateTextAnchor(value, textNode, rec);
+  }
+
+  // @value: optional position to set; if missing, auto-set
+  function updateTextAnchor(value, textNode, rec) {
+    var rect = textNode.getBoundingClientRect();
+    var width = rect.width;
+    var curr = rec['text-anchor'] || 'middle';
+    var xshift = 0;
+
+    // console.log("anchor() curr:", curr, "xpct:", xpct, "left:", rect.left, "anchorX:", anchorX, "targ:", targ, "dx:", xshift)
+    if (curr == 'middle' && value == 'end' || curr == 'start' && value == 'middle') {
+      xshift = width / 2;
+    } else if (curr == 'middle' && value == 'start' || curr == 'end' && value == 'middle') {
+      xshift = -width / 2;
+    } else if (curr == 'start' && value == 'end') {
+      xshift = width;
+    } else if (curr == 'end' && value == 'start') {
+      xshift = -width;
+    }
+    if (xshift) {
+      rec['text-anchor'] = value;
+      applyDelta(rec, 'dx', xshift);
+    }
+  }
+
+  // handle either numeric strings or numbers in fields
+  function applyDelta(rec, key, delta) {
+    var currVal = rec[key];
+    var isString = utils.isString(currVal);
+    var newVal = (+currVal + delta) || 0;
+    rec[key] = isString ? String(newVal) : newVal;
+  }
+
+  function filterLayerByIds(lyr, ids) {
+    var shapes;
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils.defaults({shapes: shapes, data: null}, lyr);
+    }
+    return lyr;
+  }
+
+  function getDisplayCoordsById(id, layer, ext) {
+    var coords = getPointCoordsById(id, layer);
+    return ext.translateCoords(coords[0], coords[1]);
+  }
+
+  function getPointCoordsById(id, layer) {
+    var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
+    if (!coords || coords.length != 1) {
+      return null;
+    }
+    return coords[0];
+  }
+
+  function translateDeltaDisplayCoords(dx, dy, ext) {
+    var a = ext.translatePixelCoords(0, 0);
+    var b = ext.translatePixelCoords(dx, dy);
+    return [b[0] - a[0], b[1] - a[1]];
+  }
+
+  function SymbolDragging2(gui, ext, hit) {
+    // var targetTextNode; // text node currently being dragged
+    var dragging = false;
+    var activeRecord;
+    var activeId = -1;
+    var self = new EventDispatcher();
+
+    initDragging();
+
+    return self;
+
+    function labelEditingEnabled() {
+      return gui.interaction && gui.interaction.getMode() == 'labels' ? true : false;
+    }
+
+    function locationEditingEnabled() {
+      return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
+    }
+
+    // update symbol by re-rendering it
+    function updateSymbol2(node, d, id) {
+      var o = internal.svg.importStyledLabel(d); // TODO: symbol support
+      var activeLayer = hit.getHitTarget().layer;
+      var xy = activeLayer.shapes[id][0];
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      var node2;
+      o.properties.transform = getSvgSymbolTransform(xy, ext);
+      o.properties['data-id'] = id;
+      // o.properties['class'] = 'selected';
+      g.innerHTML = internal.svg.stringify(o);
+      node2 = g.firstChild;
+      node.parentNode.replaceChild(node2, node);
+      return node2;
+    }
+
+    function initDragging() {
+
+      // inspector and label editing aren't fully synced - stop editing if inspector opens
+      // gui.on('inspector_on', function() {
+      //   stopEditing();
+      // });
+
+      gui.on('interaction_mode_change', function(e) {
+        if (e.mode != 'labels') {
+          stopDragging();
+        }
+      });
+
+      // down event on svg
+      // a: off text
+      //    -> stop editing
+      // b: on text
+      //    1: not editing -> nop
+      //    2: on selected text -> start dragging
+      //    3: on other text -> stop dragging, select new text
+
+      hit.on('dragstart', function(e) {
+        if (labelEditingEnabled()) {
+          onLabelDragStart(e);
+        } else if (locationEditingEnabled()) {
+          onLocationDragStart(e);
+        }
+      });
+
+      hit.on('drag', function(e) {
+        if (labelEditingEnabled()) {
+          onLabelDrag(e);
+        } else if (locationEditingEnabled()) {
+          onLocationDrag(e);
+        }
+      });
+
+      hit.on('dragend', function(e) {
+        if (locationEditingEnabled()) {
+          onLocationDragEnd(e);
+          stopDragging();
+        } else if (labelEditingEnabled()) {
+          stopDragging();
+        }
+      });
+
+      hit.on('click', function(e) {
+        if (labelEditingEnabled()) {
+          onLabelClick(e);
+        }
+      });
+
+      function onLocationDragStart(e) {
+        if (e.id >= 0) {
+          dragging = true;
+          triggerGlobalEvent('symbol_dragstart', e);
+        }
+      }
+
+      function onLocationDrag(e) {
+        var lyr = hit.getHitTarget().layer;
+        // get reference to
+        var p = getPointCoordsById(e.id, hit.getHitTarget().layer);
+        if (!p) return;
+        var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
+        p[0] += diff[0];
+        p[1] += diff[1];
+        self.dispatchEvent('location_change'); // signal map to redraw
+        triggerGlobalEvent('symbol_drag', e);
+      }
+
+      function onLocationDragEnd(e) {
+        triggerGlobalEvent('symbol_dragend', e);
+      }
+
+      function onLabelClick(e) {
+        var textNode = getTextTarget3(e);
+        var rec = getLabelRecordById(e.id);
+        if (textNode && rec && isMultilineLabel(textNode)) {
+          toggleTextAlign(textNode, rec);
+          updateSymbol2(textNode, rec, e.id);
+          // e.stopPropagation(); // prevent pin/unpin on popup
+        }
+      }
+
+      function triggerGlobalEvent(type, e) {
+        if (e.id >= 0) {
+          // fire event to signal external editor that symbol coords have changed
+          gui.dispatchEvent(type, {FID: e.id, layer_name: hit.getHitTarget().layer.name});
+        }
+      }
+
+      function getLabelRecordById(id) {
+        var table = hit.getTargetDataTable();
+        if (id >= 0 === false || !table) return null;
+        // add dx and dy properties, if not available
+        if (!table.fieldExists('dx')) {
+          table.addField('dx', 0);
+        }
+        if (!table.fieldExists('dy')) {
+          table.addField('dy', 0);
+        }
+        if (!table.fieldExists('text-anchor')) {
+          table.addField('text-anchor', '');
+        }
+        return table.getRecordAt(id);
+      }
+
+      function onLabelDragStart(e) {
+        var textNode = getTextTarget3(e);
+        var table = hit.getTargetDataTable();
+        if (!textNode || !table) return;
+        activeId = e.id;
+        activeRecord = getLabelRecordById(activeId);
+        dragging = true;
+      }
+
+      function onLabelDrag(e) {
+        var scale = ext.getSymbolScale() || 1;
+        var textNode;
+        if (!dragging) return;
+        if (e.id != activeId) {
+          error("Mismatched hit ids:", e.id, activeId);
+        }
+        applyDelta(activeRecord, 'dx', e.dx / scale);
+        applyDelta(activeRecord, 'dy', e.dy / scale);
+        textNode = getTextTarget3(e);
+        if (!isMultilineLabel(textNode)) {
+          // update anchor position of single-line labels based on label position
+          // relative to anchor point, for better placement when eventual display font is
+          // different from mapshaper's font.
+          autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
+        }
+        // updateSymbol(targetTextNode, activeRecord);
+        updateSymbol2(textNode, activeRecord, activeId);
+      }
+
+      function getSymbolNodeById(id, parent) {
+        // TODO: optimize selector
+        var sel = '[data-id="' + id + '"]';
+        return parent.querySelector(sel);
+      }
 
 
-var MapStyle = (function() {
+      function getTextTarget3(e) {
+        if (e.id > -1 === false || !e.container) return null;
+        return getSymbolNodeById(e.id, e.container);
+      }
+
+      // svg.addEventListener('mousedown', function(e) {
+      //   var textTarget = getTextTarget(e);
+      //   downEvt = e;
+      //   if (!textTarget) {
+      //     stopEditing();
+      //   } else if (!editing) {
+      //     // nop
+      //   } else if (textTarget == targetTextNode) {
+      //     startDragging();
+      //   } else {
+      //     startDragging();
+      //     editTextNode(textTarget);
+      //   }
+      // });
+
+      // up event on svg
+      // a: currently dragging text
+      //   -> stop dragging
+      // b: clicked on a text feature
+      //   -> start editing it
+
+
+      // svg.addEventListener('mouseup', function(e) {
+      //   var textTarget = getTextTarget(e);
+      //   var isClick = isClickEvent(e, downEvt);
+      //   if (isClick && textTarget && textTarget == targetTextNode &&
+      //       activeRecord && isMultilineLabel(targetTextNode)) {
+      //     toggleTextAlign(targetTextNode, activeRecord);
+      //     updateSymbol();
+      //   }
+      //   if (dragging) {
+      //     stopDragging();
+      //    } else if (isClick && textTarget) {
+      //     editTextNode(textTarget);
+      //   }
+      // });
+
+      // block dbl-click navigation when editing
+      // mouse.on('dblclick', function(e) {
+      //   if (editing) e.stopPropagation();
+      // }, null, eventPriority);
+
+      // mouse.on('dragstart', function(e) {
+      //   onLabelDrag(e);
+      // }, null, eventPriority);
+
+      // mouse.on('drag', function(e) {
+      //   var scale = ext.getSymbolScale() || 1;
+      //   onLabelDrag(e);
+      //   if (!dragging || !activeRecord) return;
+      //   applyDelta(activeRecord, 'dx', e.dx / scale);
+      //   applyDelta(activeRecord, 'dy', e.dy / scale);
+      //   if (!isMultilineLabel(targetTextNode)) {
+      //     // update anchor position of single-line labels based on label position
+      //     // relative to anchor point, for better placement when eventual display font is
+      //     // different from mapshaper's font.
+      //     updateTextAnchor(targetTextNode, activeRecord);
+      //   }
+      //   // updateSymbol(targetTextNode, activeRecord);
+      //   targetTextNode = updateSymbol2(targetTextNode, activeRecord, activeId);
+      // }, null, eventPriority);
+
+      // mouse.on('dragend', function(e) {
+      //   onLabelDrag(e);
+      //   stopDragging();
+      // }, null, eventPriority);
+
+
+      // function onLabelDrag(e) {
+      //   if (dragging) {
+      //     e.stopPropagation();
+      //   }
+      // }
+    }
+
+    function stopDragging() {
+      dragging = false;
+      activeId = -1;
+      activeRecord = null;
+      // targetTextNode = null;
+      // svg.removeAttribute('class');
+    }
+
+
+    // function deselectText(el) {
+    //   el.removeAttribute('class');
+    // }
+
+    // function selectText(el) {
+    //   el.setAttribute('class', 'selected');
+    // }
+
+
+  }
+
   var darkStroke = "#334",
       lightStroke = "#b7d9ea",
       violet = "#cc6acc",
       violetFill = "rgba(249, 170, 249, 0.32)",
-      gold = "#efc100",
       black = "black",
       grey = "#888",
-      selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 180, 255, 0.2)",
       activeStyle = { // outline style for the active layer
         type: 'outline',
@@ -2585,32 +5664,6 @@ var MapStyle = (function() {
           strokeWidth: 2.5
         }
       },
-      selectionStyles = {
-        polygon: {
-          fillColor: selectionFill,
-          strokeColor: gold,
-          strokeWidth: 1
-        }, point:  {
-          dotColor: gold,
-          dotSize: 6
-        }, polyline:  {
-          strokeColor: gold,
-          strokeWidth: 1.5
-        }
-      },
-      selectionHoverStyles = {
-        polygon: {
-          fillColor: selectionFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: black,
-          dotSize: 6
-        }, polyline:  {
-          strokeColor: black,
-          strokeWidth: 2
-        }
-      },
       pinnedStyles = {
         polygon: {
           fillColor: violetFill,
@@ -2625,34 +5678,33 @@ var MapStyle = (function() {
         }
       };
 
-  return {
-    getIntersectionStyle: function(lyr) {
-      return utils.extend({}, intersectionStyle);
-    },
-    getReferenceStyle: function(lyr) {
-      var style;
-      if (internal.layerHasCanvasDisplayStyle(lyr)) {
-        style = internal.getCanvasDisplayStyle(lyr);
-      } else if (internal.layerHasLabels(lyr)) {
-        style = {dotSize: 0}; // no reference dots if labels are visible
-      } else {
-        style = utils.extend({}, referenceStyle);
-      }
-      return style;
-    },
-    getActiveStyle: function(lyr) {
-      var style;
-      if (internal.layerHasCanvasDisplayStyle(lyr)) {
-        style = internal.getCanvasDisplayStyle(lyr);
-      } else if (internal.layerHasLabels(lyr)) {
-        style = utils.extend({}, activeStyleForLabels);
-      } else {
-        style = utils.extend({}, activeStyle);
-      }
-      return style;
-    },
-    getOverlayStyle: getOverlayStyle
-  };
+  function getIntersectionStyle(lyr) {
+    return utils.extend({}, intersectionStyle);
+  }
+
+  function getReferenceStyle(lyr) {
+    var style;
+    if (layerHasCanvasDisplayStyle(lyr)) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr)) {
+      style = {dotSize: 0}; // no reference dots if labels are visible
+    } else {
+      style = utils.extend({}, referenceStyle);
+    }
+    return style;
+  }
+
+  function getActiveStyle(lyr) {
+    var style;
+    if (layerHasCanvasDisplayStyle(lyr)) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr)) {
+      style = utils.extend({}, activeStyleForLabels);
+    } else {
+      style = utils.extend({}, activeStyle);
+    }
+    return style;
+  }
 
 
   // Returns a display style for the overlay layer. This style displays any
@@ -2693,9 +5745,9 @@ var MapStyle = (function() {
       styles.push(style);
     }
 
-    if (internal.layerHasCanvasDisplayStyle(lyr)) {
+    if (layerHasCanvasDisplayStyle(lyr)) {
       if (type == 'point') {
-        overlayStyle = internal.wrapOverlayStyle(internal.getCanvasDisplayStyle(lyr), overlayStyle);
+        overlayStyle = wrapOverlayStyle(getCanvasDisplayStyle(lyr), overlayStyle);
       }
       overlayStyle.type = 'styled';
     }
@@ -2703,5288 +5755,1930 @@ var MapStyle = (function() {
     overlayStyle.overlay = true;
     return ids.length > 0 ? overlayStyle : null;
   }
-}());
 
-// Modify style to use scaled circle instead of dot symbol
-internal.wrapOverlayStyle = function(style, hoverStyle) {
-  var styler = function(obj, i) {
-    var dotColor;
-    var id = obj.ids ? obj.ids[i] : -1;
-    obj.strokeWidth = 0; // kludge to support setting minimum stroke width
-    style.styler(obj, id);
-    if (hoverStyle.styler) {
-      hoverStyle.styler(obj, i);
-    }
-    dotColor = obj.dotColor;
-    if (obj.radius && dotColor) {
-      obj.radius += 0.4;
-      // delete obj.fillColor; // only show outline
-      obj.fillColor = dotColor; // comment out to only highlight stroke
-      obj.strokeColor = dotColor;
-      obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
-      obj.opacity = 1;
-    }
-  };
-  return {styler: styler};
-};
-
-internal.getCanvasDisplayStyle = function(lyr) {
-  var styleIndex = {
-        opacity: 'opacity',
-        r: 'radius',
-        fill: 'fillColor',
-        stroke: 'strokeColor',
-        'stroke-width': 'strokeWidth',
-        'stroke-dasharray': 'lineDash'
-      },
-      // array of field names of relevant svg display properties
-      fields = internal.getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
-      records = lyr.data.getRecords();
-  var styler = function(style, i) {
-    var rec = records[i];
-    var fname, val;
-    for (var j=0; j<fields.length; j++) {
-      fname = fields[j];
-      val = rec && rec[fname];
-      if (val == 'none') {
-        val = 'transparent'; // canvas equivalent of CSS 'none'
+  // Modify style to use scaled circle instead of dot symbol
+  function wrapOverlayStyle(style, hoverStyle) {
+    var styler = function(obj, i) {
+      var dotColor;
+      var id = obj.ids ? obj.ids[i] : -1;
+      obj.strokeWidth = 0; // kludge to support setting minimum stroke width
+      style.styler(obj, id);
+      if (hoverStyle.styler) {
+        hoverStyle.styler(obj, i);
       }
-      // convert svg property name to mapshaper style equivalent
-      style[styleIndex[fname]] = val;
-    }
-
-    if (style.strokeWidth && !style.strokeColor) {
-      style.strokeColor = 'black';
-    }
-    if (!('strokeWidth' in style) && style.strokeColor) {
-      style.strokeWidth = 1;
-    }
-    if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
-      style.fillColor = 'black';
-    }
-  };
-  return {styler: styler, type: 'styled'};
-};
-
-// check if layer should be displayed with styles
-internal.layerHasCanvasDisplayStyle = function(lyr) {
-  var fields = internal.getCanvasStyleFields(lyr);
-  if (lyr.geometry_type == 'point') {
-    return fields.indexOf('r') > -1; // require 'r' field for point symbols
-  }
-  return utils.difference(fields, ['opacity', 'class']).length > 0;
-};
-
-
-internal.getCanvasStyleFields = function(lyr) {
-  var fields = lyr.data ? lyr.data.getFields() : [];
-  return internal.svg.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
-};
-
-
-
-
-function getSvgSymbolTransform(xy, ext) {
-  var scale = ext.getSymbolScale();
-  var p = ext.translateCoords(xy[0], xy[1]);
-  return internal.svg.getTransform(p, scale);
-}
-
-function repositionSymbols(elements, layer, ext) {
-  var el, idx, p;
-  for (var i=0, n=elements.length; i<n; i++) {
-    el = elements[i];
-    idx = getSymbolNodeId(el);
-    p = layer.shapes[idx];
-    if (!p) continue;
-    el.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
-  }
-}
-
-function renderSymbols(lyr, ext, type) {
-  var records = lyr.data.getRecords();
-  var symbols = lyr.shapes.map(function(shp, i) {
-    var d = records[i];
-    var obj = type == 'label' ? internal.svg.importStyledLabel(d) :
-        internal.svg.importSymbol(d['svg-symbol']);
-    if (!obj || !shp) return null;
-    obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
-    obj.properties['data-id'] = i;
-    return obj;
-  });
-  var obj = internal.getEmptyLayerForSVG(lyr, {});
-  obj.children = symbols;
-  return internal.svg.stringify(obj);
-}
-
-
-function getSvgFurnitureTransform(ext) {
-  var scale = ext.getSymbolScale();
-  var frame = ext.getFrame();
-  var p = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
-  return internal.svg.getTransform(p, scale);
-}
-
-function repositionFurniture(container, layer, ext) {
-  var g = El.findAll('.mapshaper-svg-furniture', container)[0];
-  g.setAttribute('transform', getSvgFurnitureTransform(ext));
-}
-
-function renderFurniture(lyr, ext) {
-  var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
-  var obj = internal.getEmptyLayerForSVG(lyr, {});
-  if (!frame) {
-    stop('Missing map frame data');
-  }
-  obj.properties.transform = getSvgFurnitureTransform(ext);
-  obj.properties.class = 'mapshaper-svg-furniture';
-  obj.children = internal.svg.importFurniture(internal.getFurnitureLayerData(lyr), frame);
-  return internal.svg.stringify(obj);
-}
-
-
-function SvgDisplayLayer(gui, ext, mouse) {
-  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  var el = El(svg);
-
-  el.clear = function() {
-    while (svg.childNodes.length > 0) {
-      svg.removeChild(svg.childNodes[0]);
-    }
-  };
-
-  el.reposition = function(target, type) {
-    resize(ext);
-    reposition(target, type, ext);
-  };
-
-  el.drawLayer = function(target, type) {
-    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    var html = '';
-    // generate a unique id so layer can be identified when symbols are repositioned
-    // use it as a class name to avoid id collisions
-    var id = utils.getUniqueName();
-    var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
-    g.setAttribute('class', classNames.join(' '));
-    target.svg_id = id;
-    resize(ext);
-    if (type == 'label' || type == 'symbol') {
-      html = renderSymbols(target.layer, ext, type);
-    } else if (type == 'furniture') {
-      html = renderFurniture(target.layer, ext);
-    }
-    g.innerHTML = html;
-    svg.append(g);
-
-    // prevent svg hit detection on inactive layers
-    if (!target.active) {
-      g.style.pointerEvents = 'none';
-    }
-  };
-
-  function reposition(target, type, ext) {
-    var container = el.findChild('.' + target.svg_id).node();
-    var elements;
-    if (type == 'label' || type == 'symbol') {
-      elements = type == 'label' ? container.getElementsByTagName('text') :
-          El.findAll('.mapshaper-svg-symbol', container);
-      repositionSymbols(elements, target.layer, ext);
-    } else if (type == 'furniture') {
-      repositionFurniture(container, target.layer, ext);
-    }
-  }
-
-  function resize(ext) {
-    svg.style.width = ext.width() + 'px';
-    svg.style.height = ext.height() + 'px';
-  }
-
-  return el;
-}
-
-
-function LayerStack(gui, container, ext, mouse) {
-  var el = El(container),
-      _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
-      _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
-      _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
-      _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el), // labels, _ext;
-      _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
-      _ext = ext;
-
-  // don't let furniture container block events to symbol layers
-  _furniture.css('pointer-events', 'none');
-
-  this.drawOverlay2Layer = function(lyr) {
-    drawSingleCanvasLayer(lyr, _overlay2Canv);
-  };
-
-  this.drawOverlayLayer = function(lyr) {
-    drawSingleCanvasLayer(lyr, _overlayCanv);
-  };
-
-  this.drawContentLayers = function(layers, onlyNav) {
-    _activeCanv.prep(_ext);
-    if (!onlyNav) {
-      _svg.clear();
-    }
-    layers.forEach(function(target) {
-      if (layerUsesCanvas(target.layer)) {
-        drawCanvasLayer(target, _activeCanv);
+      dotColor = obj.dotColor;
+      if (obj.radius && dotColor) {
+        obj.radius += 0.4;
+        // delete obj.fillColor; // only show outline
+        obj.fillColor = dotColor; // comment out to only highlight stroke
+        obj.strokeColor = dotColor;
+        obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
+        obj.opacity = 1;
       }
-      if (layerUsesSVG(target.layer)) {
-        drawSvgLayer(target, onlyNav);
-      }
-    });
-  };
-
-  this.drawFurnitureLayers = function(layers, onlyNav) {
-    if (!onlyNav) {
-      _furniture.clear();
-    }
-    layers.forEach(function(target) {
-      if (onlyNav) {
-        _furniture.reposition(target, 'furniture');
-      } else {
-        _furniture.drawLayer(target, 'furniture');
-      }
-    });
-  };
-
-  function layerUsesCanvas(layer) {
-    // TODO: return false if a label layer does not have dots
-    return !internal.layerHasSvgSymbols(layer);
+    };
+    return {styler: styler};
   }
 
-  function layerUsesSVG(layer) {
-    return internal.layerHasLabels(layer) || internal.layerHasSvgSymbols(layer);
-  }
-
-  function drawCanvasLayer(target, canv) {
-    if (target.style.type == 'outline') {
-      drawOutlineLayerToCanvas(target, canv, ext);
-    } else {
-      drawStyledLayerToCanvas(target, canv, ext);
-    }
-  }
-
-  function drawSvgLayer(target, onlyNav) {
-    var type;
-    if (internal.layerHasLabels(target.layer)) {
-      type = 'label';
-    } else if (internal.layerHasSvgSymbols(target.layer)) {
-      type = 'symbol';
-    }
-    if (onlyNav) {
-      _svg.reposition(target, type);
-    } else {
-      _svg.drawLayer(target, type);
-    }
-  }
-
-  function drawSingleCanvasLayer(target, canv) {
-    if (!target) {
-      canv.hide();
-    } else {
-      canv.prep(_ext);
-      drawCanvasLayer(target, canv);
-    }
-  }
-}
-
-
-internal.updateLayerStackOrder = function(layers) {
-  // 1. assign ascending ids to unassigned layers above the range of other layers
-  layers.forEach(function(o, i) {
-    if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
-  });
-  // 2. sort in ascending order
-  layers.sort(function(a, b) {
-    return a.layer.stack_id - b.layer.stack_id;
-  });
-  // 3. assign consecutve ids
-  layers.forEach(function(o, i) {
-    o.layer.stack_id = i + 1;
-  });
-  return layers;
-};
-
-internal.sortLayersForMenuDisplay = function(layers) {
-  layers = internal.updateLayerStackOrder(layers);
-  return layers.reverse();
-};
-
-
-
-function CoordinatesDisplay(gui, ext, mouse) {
-  var readout = gui.container.findChild('.coordinate-info').hide();
-  var enabled = false;
-
-  gui.model.on('select', function(e) {
-    enabled = !!e.layer.geometry_type; // no display on tabular layers
-    readout.hide();
-  });
-
-  readout.on('copy', function(e) {
-    // remove selection on copy (using timeout or else copy is cancelled)
-    setTimeout(function() {
-      getSelection().removeAllRanges();
-    }, 50);
-  });
-
-  // clear coords when map pans
-  ext.on('change', function() {
-    clearCoords();
-    // shapes may change along with map scale
-    // target = lyr ? lyr.getDisplayLayer() : null;
-  });
-
-  mouse.on('leave', clearCoords);
-
-  mouse.on('click', function(e) {
-    if (!enabled) return;
-    GUI.selectElement(readout.node());
-  });
-
-  mouse.on('hover', onMouseChange);
-  mouse.on('drag', onMouseChange, null, 10); // high priority so editor doesn't block propagation
-
-  function onMouseChange(e) {
-    if (!enabled) return;
-    if (isOverMap(e)) {
-      displayCoords(ext.translatePixelCoords(e.x, e.y));
-    } else {
-      clearCoords();
-    }
-  }
-
-  function displayCoords(p) {
-    var decimals = internal.getBoundsPrecisionForDisplay(ext.getBounds().toArray());
-    var str = internal.getRoundedCoordString(p, decimals);
-    readout.text(str).show();
-  }
-
-  function clearCoords() {
-    readout.hide();
-  }
-
-  function isOverMap(e) {
-    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-  }
-}
-
-
-// @onNext: handler for switching between multiple records
-function Popup(gui, onNext, onPrev) {
-  var self = new EventDispatcher();
-  var parent = gui.container.findChild('.mshp-main-map');
-  var el = El('div').addClass('popup').appendTo(parent).hide();
-  var content = El('div').addClass('popup-content').appendTo(el);
-  // multi-hit display and navigation
-  var tab = El('div').addClass('popup-tab').appendTo(el).hide();
-  var nav = El('div').addClass('popup-nav').appendTo(tab);
-  var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
-  var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
-  var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
-
-  nextLink.on('click', onNext);
-  prevLink.on('click', onPrev);
-
-  // table can be null (if layer has no attribute data) or a DataTable
-  self.show = function(id, ids, table, pinned, editable) {
-    var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
-    var maxHeight = parent.node().clientHeight - 36;
-    self.hide(); // clean up if panel is already open
-    render(content, rec, table, editable);
-    if (ids && ids.length > 1) {
-      showNav(id, ids, pinned);
-    } else {
-      tab.hide();
-    }
-    el.show();
-    if (content.node().clientHeight > maxHeight) {
-      content.css('height:' + maxHeight + 'px');
-    }
-  };
-
-  self.hide = function() {
-    // make sure any pending edits are made before re-rendering popup
-    // TODO: only blur popup fields
-    GUI.blurActiveElement();
-    content.empty();
-    content.node().removeAttribute('style'); // remove inline height
-    el.hide();
-  };
-
-  return self;
-
-  function showNav(id, ids, pinned) {
-    var num = ids.indexOf(id) + 1;
-    navInfo.text(' ' + num + ' / ' + ids.length + ' ');
-    nextLink.css('display', pinned ? 'inline-block' : 'none');
-    prevLink.css('display', pinned && ids.length > 2 ? 'inline-block' : 'none');
-    tab.show();
-  }
-
-  function render(el, rec, table, editable) {
-    var tableEl = El('table').addClass('selectable'),
-        rows = 0;
-    utils.forEachProperty(rec, function(v, k) {
-      var type;
-      // missing GeoJSON fields are set to undefined on import; skip these
-      if (v !== undefined) {
-        type = internal.getFieldType(v, k, table);
-        renderRow(tableEl, rec, k, type, editable);
-        rows++;
-      }
-    });
-    if (rows > 0) {
-      tableEl.appendTo(el);
-    } else {
-      // Some individual features can have undefined values for some or all of
-      // their data properties (properties are set to undefined when an input JSON file
-      // has inconsistent fields, or after force-merging layers with inconsistent fields).
-      el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
-          table && table.getFields().length > 0 ? 'feature': 'layer'));
-    }
-  }
-
-  function renderRow(table, rec, key, type, editable) {
-    var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
-    var val = rec[key];
-    var str = internal.formatInspectorValue(val, type);
-    var cell = El('tr')
-        .appendTo(table)
-        .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
-        .findChild('.value');
-    setFieldClass(cell, val, type);
-    if (editable) {
-      editItem(cell, rec, key, type);
-    }
-  }
-
-  function setFieldClass(el, val, type) {
-    var isNum = type ? type == 'number' : utils.isNumber(val);
-    var isNully = val === undefined || val === null || val !== val;
-    var isEmpty = val === '';
-    el.classed('num-field', isNum);
-    el.classed('object-field', type == 'object');
-    el.classed('null-value', isNully);
-    el.classed('empty', isEmpty);
-  }
-
-  function editItem(el, rec, key, type) {
-    var input = new ClickText2(el),
-        strval = internal.formatInspectorValue(rec[key], type),
-        parser = internal.getInputParser(type);
-    el.parent().addClass('editable-cell');
-    el.addClass('colored-text dot-underline');
-    input.on('change', function(e) {
-      var val2 = parser(input.value()),
-          strval2 = internal.formatInspectorValue(val2, type);
-      if (strval == strval2) {
-        // contents unchanged
-      } else if (val2 === null && type != 'object') { // allow null objects
-        // invalid value; revert to previous value
-        input.value(strval);
-      } else {
-        // field content has changed
-        strval = strval2;
-        rec[key] = val2;
-        input.value(strval);
-        setFieldClass(el, val2, type);
-        self.dispatchEvent('update', {field: key, value: val2});
-      }
-    });
-  }
-}
-
-internal.formatInspectorValue = function(val, type) {
-  var str;
-  if (type == 'object') {
-    str = val ? JSON.stringify(val) : "";
-  } else {
-    str = String(val);
-  }
-  return str;
-};
-
-internal.inputParsers = {
-  string: function(raw) {
-    return raw;
-  },
-  number: function(raw) {
-    var val = Number(raw);
-    if (raw == 'NaN') {
-      val = NaN;
-    } else if (isNaN(val)) {
-      val = null;
-    }
-    return val;
-  },
-  object: function(raw) {
-    var val = null;
-    try {
-      val = JSON.parse(raw);
-    } catch(e) {}
-    return val;
-  },
-  boolean: function(raw) {
-    var val = null;
-    if (raw == 'true') {
-      val = true;
-    } else if (raw == 'false') {
-      val = false;
-    }
-    return val;
-  },
-  multiple: function(raw) {
-    var val = Number(raw);
-    return isNaN(val) ? raw : val;
-  }
-};
-
-internal.getInputParser = function(type) {
-  return internal.inputParsers[type || 'multiple'];
-};
-
-internal.getFieldType = function(val, key, table) {
-  // if a field has a null value, look at entire column to identify type
-  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
-};
-
-
-function InspectionControl2(gui, hit) {
-  var model = gui.model;
-  var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
-  var _self = new EventDispatcher();
-
-  // state variables
-  var _pinned = false;
-  var _highId = -1;
-
-  gui.on('interaction_mode_change', function(e) {
-    if (e.mode == 'off') {
-      turnOff();
-    }
-    // TODO: update popup if currently pinned
-  });
-
-  // inspector and label editing aren't fully synced - stop inspecting if label editor starts
-  // REMOVED
-  // gui.on('label_editor_on', function() {
-  // });
-
-  _popup.on('update', function(e) {
-    var d = e.data;
-    d.i = _highId; // need to add record id
-    _self.dispatchEvent('data_change', d);
-  });
-
-  // replace cli inspect command
-  // TODO: support multiple editors on the page
-  // REMOVING gui output for -inspect command
-  /*
-  api.inspect = function(lyr, arcs, opts) {
-    var ids;
-    if (!_target) return; // control is disabled (selected layer is hidden, etc)
-    if (lyr != model.getActiveLayer().layer) {
-      error("Only the active layer can be targeted");
-    }
-    ids = internal.selectFeatures(lyr, arcs, opts);
-    if (ids.length === 0) {
-      message("No features were selected");
-      return;
-    }
-    _selectionIds = ids;
-    turnOn();
-    inspect(ids[0], true);
-  };
-  */
-
-  gui.keyboard.on('keydown', function(evt) {
-    var e = evt.originalEvent;
-    var kc = e.keyCode, n, id;
-    if (!inspecting() || !hit.getHitTarget()) return;
-
-    // esc key closes (unless in an editing mode)
-    if (e.keyCode == 27 && inspecting() && !gui.getMode()) {
-      turnOff();
-      return;
-    }
-
-    if (_pinned && !GUI.getInputElement()) {
-      // an element is selected and user is not editing text
-
-      if (kc == 37 || kc == 39) {
-        // arrow keys advance pinned feature
-        n = internal.getFeatureCount(hit.getHitTarget().layer);
-        if (n > 1) {
-          if (kc == 37) {
-            id = (_highId + n - 1) % n;
-          } else {
-            id = (_highId + 1) % n;
-          }
-          inspect(id, true);
-          e.stopPropagation();
+  function getCanvasDisplayStyle(lyr) {
+    var styleIndex = {
+          opacity: 'opacity',
+          r: 'radius',
+          fill: 'fillColor',
+          stroke: 'strokeColor',
+          'stroke-width': 'strokeWidth',
+          'stroke-dasharray': 'lineDash'
+        },
+        // array of field names of relevant svg display properties
+        fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+        records = lyr.data.getRecords();
+    var styler = function(style, i) {
+      var rec = records[i];
+      var fname, val;
+      for (var j=0; j<fields.length; j++) {
+        fname = fields[j];
+        val = rec && rec[fname];
+        if (val == 'none') {
+          val = 'transparent'; // canvas equivalent of CSS 'none'
         }
-      } else if (kc == 8) {
-        // delete key
-        // to help protect against inadvertent deletion, don't delete
-        // when console is open or a popup menu is open
-        if (!gui.getMode() && !gui.consoleIsOpen()) {
-          deletePinnedFeature();
+        // convert svg property name to mapshaper style equivalent
+        style[styleIndex[fname]] = val;
+      }
+
+      if (style.strokeWidth && !style.strokeColor) {
+        style.strokeColor = 'black';
+      }
+      if (!('strokeWidth' in style) && style.strokeColor) {
+        style.strokeWidth = 1;
+      }
+      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
+        style.fillColor = 'black';
+      }
+    };
+    return {styler: styler, type: 'styled'};
+  }
+
+  // check if layer should be displayed with styles
+  function layerHasCanvasDisplayStyle(lyr) {
+    var fields = getCanvasStyleFields(lyr);
+    if (lyr.geometry_type == 'point') {
+      return fields.indexOf('r') > -1; // require 'r' field for point symbols
+    }
+    return utils.difference(fields, ['opacity', 'class']).length > 0;
+  }
+
+
+  function getCanvasStyleFields(lyr) {
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    return internal.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
+  }
+
+  function MapExtent(_position) {
+    var _scale = 1,
+        _cx, _cy, // center in geographic units
+        _contentBounds,
+        _self = this,
+        _frame;
+
+    _position.on('resize', function(e) {
+      if (_contentBounds) {
+        onChange({resize: true});
+      }
+    });
+
+    this.reset = function() {
+      recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
+    };
+
+    this.home = function() {
+      recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
+    };
+
+    this.pan = function(xpix, ypix) {
+      var t = this.getTransform();
+      recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
+    };
+
+    // Zoom to @w (width of the map viewport in coordinates)
+    // @xpct, @ypct: optional focus, [0-1]...
+    this.zoomToExtent = function(w, xpct, ypct) {
+      if (arguments.length < 3) {
+        xpct = 0.5;
+        ypct = 0.5;
+      }
+      var b = this.getBounds(),
+          scale = limitScale(b.width() / w * _scale),
+          fx = b.xmin + xpct * b.width(),
+          fy = b.ymax - ypct * b.height(),
+          dx = b.centerX() - fx,
+          dy = b.centerY() - fy,
+          ds = _scale / scale,
+          dx2 = dx * ds,
+          dy2 = dy * ds,
+          cx = fx + dx2,
+          cy = fy + dy2;
+      recenter(cx, cy, scale);
+    };
+
+    this.zoomByPct = function(pct, xpct, ypct) {
+      this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);
+    };
+
+    this.resize = _position.resize;
+    this.width = _position.width;
+    this.height = _position.height;
+    this.position = _position.position;
+    this.recenter = recenter;
+
+    // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
+    this.scale = function() {
+      return _scale;
+    };
+
+    this.maxScale = maxScale;
+
+    this.getPixelSize = function() {
+      return 1 / this.getTransform().mx;
+    };
+
+    // Get params for converting geographic coords to pixel coords
+    this.getTransform = function(pixScale) {
+      // get transform (y-flipped);
+      var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+      if (pixScale) {
+        viewBounds.xmax *= pixScale;
+        viewBounds.ymax *= pixScale;
+      }
+      return this.getBounds().getTransform(viewBounds, true);
+    };
+
+    // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
+    this.getBounds = function(k) {
+      if (!_contentBounds) return new Bounds();
+      return calcBounds(_cx, _cy, _scale / (k || 1));
+    };
+
+    // Update the extent of 'full' zoom without navigating the current view
+    this.setBounds = function(b) {
+      var prev = _contentBounds;
+      if (!b.hasBounds()) return; // kludge
+      _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
+      if (prev) {
+        _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
+      } else {
+        _cx = b.centerX();
+        _cy = b.centerY();
+      }
+    };
+
+    this.translateCoords = function(x, y) {
+      return this.getTransform().transform(x, y);
+    };
+
+    this.setFrame = function(frame) {
+      _frame = frame || null;
+    };
+
+    this.getFrame = function() {
+      return _frame || null;
+    };
+
+    this.getSymbolScale = function() {
+      if (!_frame) return 0;
+      var bounds = new Bounds(_frame.bbox);
+      var bounds2 = bounds.clone().transform(this.getTransform());
+      return bounds2.width() / _frame.width;
+    };
+
+    this.translatePixelCoords = function(x, y) {
+      return this.getTransform().invert().transform(x, y);
+    };
+
+    function recenter(cx, cy, scale, data) {
+      scale = scale ? limitScale(scale) : _scale;
+      if (!(cx == _cx && cy == _cy && scale == _scale)) {
+        _cx = cx;
+        _cy = cy;
+        _scale = scale;
+        onChange(data);
+      }
+    }
+
+    function onChange(data) {
+      data = data || {};
+      _self.dispatchEvent('change', data);
+    }
+
+    // stop zooming before rounding errors become too obvious
+    function maxScale() {
+      var minPixelScale = 1e-16;
+      var xmax = maxAbs(_contentBounds.xmin, _contentBounds.xmax, _contentBounds.centerX());
+      var ymax = maxAbs(_contentBounds.ymin, _contentBounds.ymax, _contentBounds.centerY());
+      var xscale = _contentBounds.width() / _position.width() / xmax / minPixelScale;
+      var yscale = _contentBounds.height() / _position.height() / ymax / minPixelScale;
+      return Math.min(xscale, yscale);
+    }
+
+    function maxAbs() {
+      return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
+    }
+
+    function limitScale(scale) {
+      return Math.min(scale, maxScale());
+    }
+
+    function calcBounds(cx, cy, scale) {
+      var bounds, w, h;
+      if (_frame) {
+        bounds = fillOutFrameBounds(_frame);
+      } else {
+        bounds = fillOut(_contentBounds);
+      }
+      w = bounds.width() / scale;
+      h = bounds.height() / scale;
+      return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+    }
+
+    // Calculate viewport bounds from frame data
+    function fillOutFrameBounds(frame) {
+      var bounds = new Bounds(frame.bbox);
+      var kx = _position.width() / frame.width;
+      var ky = _position.height() / frame.height;
+      bounds.scale(kx, ky);
+      return bounds;
+    }
+
+    function padBounds(b, margin) {
+      var wpix = _position.width() - 2 * margin,
+          hpix = _position.height() - 2 * margin,
+          xpad, ypad, b2;
+      if (wpix <= 0 || hpix <= 0) {
+        return new Bounds(0, 0, 0, 0);
+      }
+      b = b.clone();
+      b2 = b.clone();
+      b2.fillOut(wpix / hpix);
+      xpad = b2.width() / wpix * margin;
+      ypad = b2.height() / hpix * margin;
+      b.padBounds(xpad, ypad, xpad, ypad);
+      return b;
+    }
+
+    // Pad bounds vertically or horizontally to match viewport aspect ratio
+    function fillOut(b) {
+      var wpix = _position.width(),
+          hpix = _position.height();
+      b = b.clone();
+      b.fillOut(wpix / hpix);
+      return b;
+    }
+  }
+
+  utils.inherit(MapExtent, EventDispatcher);
+
+  // TODO: consider moving this upstream
+  function getArcsForRendering(obj, ext) {
+    var dataset = obj.source.dataset;
+    var sourceArcs = dataset.arcs;
+    if (obj.geographic && dataset.displayArcs) {
+      return dataset.displayArcs.getScaledArcs(ext);
+    }
+    return obj.arcs;
+  }
+
+  function drawOutlineLayerToCanvas(obj, canv, ext) {
+    var arcs;
+    var style = obj.style;
+    var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+    var filter;
+    if (internal.layerHasPaths(obj.layer)) {
+      if (!obj.arcCounts) {
+        obj.arcCounts = new Uint8Array(obj.arcs.size());
+        internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
+      }
+      if (obj.arcCounts) {
+        arcs = getArcsForRendering(obj, ext);
+        if (lightStyle.strokeColor) {
+          filter = getArcFilter(arcs, ext, false, obj.arcCounts);
+          canv.drawArcs(arcs, lightStyle, filter);
+        }
+        if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
+          filter = getArcFilter(arcs, ext, true, obj.arcCounts);
+          canv.drawArcs(arcs, darkStyle, filter);
         }
       }
     }
-  }, !!'capture'); // preempt the layer control's arrow key handler
-
-  hit.on('change', function(e) {
-    var ids;
-    if (!inspecting()) return;
-    ids = e.mode == 'selection' ? null : e.ids;
-    inspect(e.id, e.pinned, ids);
-  });
-
-  function showInspector(id, ids, pinned) {
-    var target = hit.getHitTarget();
-    var editable = pinned && gui.interaction.getMode() == 'data';
-    // if (target && target.layer.data) {
-    if (target && target.layer) { // show popup even if layer has no attribute data
-      _popup.show(id, ids, target.layer.data, pinned, editable);
+    if (obj.layer.geometry_type == 'point') {
+      canv.drawSquareDots(obj.layer.shapes, style);
     }
   }
 
-  // @id Id of a feature in the active layer, or -1
-  function inspect(id, pin, ids) {
-    _pinned = pin;
-    if (id > -1 && inspecting()) {
-      showInspector(id, ids, pin);
-    } else {
-      _popup.hide();
-    }
-  }
-
-  // does the attribute inspector appear on rollover
-  function inspecting() {
-    return gui.interaction && gui.interaction.getMode() != 'off';
-  }
-
-  function turnOff() {
-    inspect(-1); // clear the map
-  }
-
-  function deletePinnedFeature() {
-    var lyr = model.getActiveLayer().layer;
-    console.log("delete; pinned?", _pinned, "id:", _highId);
-    if (!_pinned || _highId == -1) return;
-    lyr.shapes.splice(_highId, 1);
-    if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
-    inspect(-1);
-    model.updated({flags: 'filter'});
-  }
-
-  return _self;
-}
-
-
-function isMultilineLabel(textNode) {
-  return textNode.childNodes.length > 1;
-}
-
-function toggleTextAlign(textNode, rec) {
-  var curr = rec['text-anchor'] || 'middle';
-  var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
-  updateTextAnchor(value, textNode, rec);
-}
-
-// Set an attribute on a <text> node and any child <tspan> elements
-// (mapshaper's svg labels require tspans to have the same x and dx values
-//  as the enclosing text node)
-function setMultilineAttribute(textNode, name, value) {
-  var n = textNode.childNodes.length;
-  var i = -1;
-  var child;
-  textNode.setAttribute(name, value);
-  while (++i < n) {
-    child = textNode.childNodes[i];
-    if (child.tagName == 'tspan') {
-      child.setAttribute(name, value);
-    }
-  }
-}
-
-function findSvgRoot(el) {
-  while (el && el.tagName != 'html' && el.tagName != 'body') {
-    if (el.tagName == 'svg') return el;
-    el = el.parentNode;
-  }
-  return null;
-}
-
-// p: pixel coordinates of label anchor
-function autoUpdateTextAnchor(textNode, rec, p) {
-  var svg = findSvgRoot(textNode);
-  var rect = textNode.getBoundingClientRect();
-  var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
-  var xpct = (labelCenterX - p[0]) / rect.width; // offset of label center from anchor center
-  var value = xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
-  updateTextAnchor(value, textNode, rec);
-}
-
-// @value: optional position to set; if missing, auto-set
-function updateTextAnchor(value, textNode, rec) {
-  var rect = textNode.getBoundingClientRect();
-  var width = rect.width;
-  var curr = rec['text-anchor'] || 'middle';
-  var xshift = 0;
-
-  // console.log("anchor() curr:", curr, "xpct:", xpct, "left:", rect.left, "anchorX:", anchorX, "targ:", targ, "dx:", xshift)
-  if (curr == 'middle' && value == 'end' || curr == 'start' && value == 'middle') {
-    xshift = width / 2;
-  } else if (curr == 'middle' && value == 'start' || curr == 'end' && value == 'middle') {
-    xshift = -width / 2;
-  } else if (curr == 'start' && value == 'end') {
-    xshift = width;
-  } else if (curr == 'end' && value == 'start') {
-    xshift = -width;
-  }
-  if (xshift) {
-    rec['text-anchor'] = value;
-    applyDelta(rec, 'dx', xshift);
-  }
-}
-
-
-// handle either numeric strings or numbers in fields
-function applyDelta(rec, key, delta) {
-  var currVal = rec[key];
-  var isString = utils.isString(currVal);
-  var newVal = (+currVal + delta) || 0;
-  rec[key] = isString ? String(newVal) : newVal;
-}
-
-
-function getSymbolNodeId(node) {
-  return parseInt(node.getAttribute('data-id'));
-}
-
-function getSymbolNodeById(id, parent) {
-  // TODO: optimize selector
-  var sel = '[data-id="' + id + '"]';
-  return parent.querySelector(sel);
-}
-
-
-
-
-function getDisplayCoordsById(id, layer, ext) {
-  var coords = getPointCoordsById(id, layer);
-  return ext.translateCoords(coords[0], coords[1]);
-}
-
-function getPointCoordsById(id, layer) {
-  var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
-  if (!coords || coords.length != 1) {
-    return null;
-  }
-  return coords[0];
-}
-
-function translateDeltaDisplayCoords(dx, dy, ext) {
-  var a = ext.translatePixelCoords(0, 0);
-  var b = ext.translatePixelCoords(dx, dy);
-  return [b[0] - a[0], b[1] - a[1]];
-}
-
-
-function SymbolDragging2(gui, ext, hit) {
-  // var targetTextNode; // text node currently being dragged
-  var dragging = false;
-  var activeRecord;
-  var activeId = -1;
-  var self = new EventDispatcher();
-
-  initDragging();
-
-  return self;
-
-  function labelEditingEnabled() {
-    return gui.interaction && gui.interaction.getMode() == 'labels' ? true : false;
-  }
-
-  function locationEditingEnabled() {
-    return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
-  }
-
-  // update symbol by setting attributes
-  function updateSymbol(node, d) {
-    var a = d['text-anchor'];
-    if (a) node.setAttribute('text-anchor', a);
-    setMultilineAttribute(node, 'dx', d.dx || 0);
-    node.setAttribute('y', d.dy || 0);
-  }
-
-  // update symbol by re-rendering it
-  function updateSymbol2(node, d, id) {
-    var o = internal.svg.importStyledLabel(d); // TODO: symbol support
-    var activeLayer = hit.getHitTarget().layer;
-    var xy = activeLayer.shapes[id][0];
-    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    var node2;
-    o.properties.transform = getSvgSymbolTransform(xy, ext);
-    o.properties['data-id'] = id;
-    // o.properties['class'] = 'selected';
-    g.innerHTML = internal.svg.stringify(o);
-    node2 = g.firstChild;
-    node.parentNode.replaceChild(node2, node);
-    return node2;
-  }
-
-  function initDragging() {
-    var downEvt;
-    var eventPriority = 1;
-
-    // inspector and label editing aren't fully synced - stop editing if inspector opens
-    // gui.on('inspector_on', function() {
-    //   stopEditing();
-    // });
-
-    gui.on('interaction_mode_change', function(e) {
-      if (e.mode != 'labels') {
-        stopDragging();
-      }
-    });
-
-    // down event on svg
-    // a: off text
-    //    -> stop editing
-    // b: on text
-    //    1: not editing -> nop
-    //    2: on selected text -> start dragging
-    //    3: on other text -> stop dragging, select new text
-
-    hit.on('dragstart', function(e) {
-      if (labelEditingEnabled()) {
-        onLabelDragStart(e);
-      } else if (locationEditingEnabled()) {
-        onLocationDragStart(e);
-      }
-    });
-
-    hit.on('drag', function(e) {
-      if (labelEditingEnabled()) {
-        onLabelDrag(e);
-      } else if (locationEditingEnabled()) {
-        onLocationDrag(e);
-      }
-    });
-
-    hit.on('dragend', function(e) {
-      if (locationEditingEnabled()) {
-        onLocationDragEnd(e);
-        stopDragging();
-      } else if (labelEditingEnabled()) {
-        stopDragging();
-      }
-    });
-
-    hit.on('click', function(e) {
-      if (labelEditingEnabled()) {
-        onLabelClick(e);
-      }
-    });
-
-    function onLocationDragStart(e) {
-      if (e.id >= 0) {
-        dragging = true;
-        triggerGlobalEvent('symbol_dragstart', e);
-      }
-    }
-
-    function onLocationDrag(e) {
-      var lyr = hit.getHitTarget().layer;
-      // get reference to
-      var p = getPointCoordsById(e.id, hit.getHitTarget().layer);
-      if (!p) return;
-      var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
-      p[0] += diff[0];
-      p[1] += diff[1];
-      self.dispatchEvent('location_change'); // signal map to redraw
-      triggerGlobalEvent('symbol_drag', e);
-    }
-
-    function onLocationDragEnd(e) {
-      triggerGlobalEvent('symbol_dragend', e);
-    }
-
-    function onLabelClick(e) {
-      var textNode = getTextTarget3(e);
-      var rec = getLabelRecordById(e.id);
-      if (textNode && rec && isMultilineLabel(textNode)) {
-        toggleTextAlign(textNode, rec);
-        updateSymbol2(textNode, rec, e.id);
-        // e.stopPropagation(); // prevent pin/unpin on popup
-      }
-    }
-
-    function triggerGlobalEvent(type, e) {
-      if (e.id >= 0) {
-        // fire event to signal external editor that symbol coords have changed
-        gui.dispatchEvent(type, {FID: e.id, layer_name: hit.getHitTarget().layer.name});
-      }
-    }
-
-    function getLabelRecordById(id) {
-      var table = hit.getTargetDataTable();
-      if (id >= 0 === false || !table) return null;
-      // add dx and dy properties, if not available
-      if (!table.fieldExists('dx')) {
-        table.addField('dx', 0);
-      }
-      if (!table.fieldExists('dy')) {
-        table.addField('dy', 0);
-      }
-      if (!table.fieldExists('text-anchor')) {
-        table.addField('text-anchor', '');
-      }
-      return table.getRecordAt(id);
-    }
-
-    function onLabelDragStart(e) {
-      var textNode = getTextTarget3(e);
-      var table = hit.getTargetDataTable();
-      if (!textNode || !table) return;
-      activeId = e.id;
-      activeRecord = getLabelRecordById(activeId);
-      dragging = true;
-      downEvt = e;
-    }
-
-    function onLabelDrag(e) {
-      var scale = ext.getSymbolScale() || 1;
-      var textNode;
-      if (!dragging) return;
-      if (e.id != activeId) {
-        error("Mismatched hit ids:", e.id, activeId);
-      }
-      applyDelta(activeRecord, 'dx', e.dx / scale);
-      applyDelta(activeRecord, 'dy', e.dy / scale);
-      textNode = getTextTarget3(e);
-      if (!isMultilineLabel(textNode)) {
-        // update anchor position of single-line labels based on label position
-        // relative to anchor point, for better placement when eventual display font is
-        // different from mapshaper's font.
-        autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
-      }
-      // updateSymbol(targetTextNode, activeRecord);
-      updateSymbol2(textNode, activeRecord, activeId);
-    }
-
-    function getTextTarget3(e) {
-      if (e.id > -1 === false || !e.container) return null;
-      return getSymbolNodeById(e.id, e.container);
-    }
-
-    function getTextTarget2(e) {
-      var el = e && e.targetSymbol || null;
-      if (el && el.tagName == 'tspan') {
-        el = el.parentNode;
-      }
-      return el && el.tagName == 'text' ? el : null;
-    }
-
-    function getTextTarget(e) {
-      var el = e.target;
-      if (el.tagName == 'tspan') {
-        el = el.parentNode;
-      }
-      return el.tagName == 'text' ? el : null;
-    }
-
-    // svg.addEventListener('mousedown', function(e) {
-    //   var textTarget = getTextTarget(e);
-    //   downEvt = e;
-    //   if (!textTarget) {
-    //     stopEditing();
-    //   } else if (!editing) {
-    //     // nop
-    //   } else if (textTarget == targetTextNode) {
-    //     startDragging();
-    //   } else {
-    //     startDragging();
-    //     editTextNode(textTarget);
-    //   }
-    // });
-
-    // up event on svg
-    // a: currently dragging text
-    //   -> stop dragging
-    // b: clicked on a text feature
-    //   -> start editing it
-
-
-    // svg.addEventListener('mouseup', function(e) {
-    //   var textTarget = getTextTarget(e);
-    //   var isClick = isClickEvent(e, downEvt);
-    //   if (isClick && textTarget && textTarget == targetTextNode &&
-    //       activeRecord && isMultilineLabel(targetTextNode)) {
-    //     toggleTextAlign(targetTextNode, activeRecord);
-    //     updateSymbol();
-    //   }
-    //   if (dragging) {
-    //     stopDragging();
-    //    } else if (isClick && textTarget) {
-    //     editTextNode(textTarget);
-    //   }
-    // });
-
-    // block dbl-click navigation when editing
-    // mouse.on('dblclick', function(e) {
-    //   if (editing) e.stopPropagation();
-    // }, null, eventPriority);
-
-    // mouse.on('dragstart', function(e) {
-    //   onLabelDrag(e);
-    // }, null, eventPriority);
-
-    // mouse.on('drag', function(e) {
-    //   var scale = ext.getSymbolScale() || 1;
-    //   onLabelDrag(e);
-    //   if (!dragging || !activeRecord) return;
-    //   applyDelta(activeRecord, 'dx', e.dx / scale);
-    //   applyDelta(activeRecord, 'dy', e.dy / scale);
-    //   if (!isMultilineLabel(targetTextNode)) {
-    //     // update anchor position of single-line labels based on label position
-    //     // relative to anchor point, for better placement when eventual display font is
-    //     // different from mapshaper's font.
-    //     updateTextAnchor(targetTextNode, activeRecord);
-    //   }
-    //   // updateSymbol(targetTextNode, activeRecord);
-    //   targetTextNode = updateSymbol2(targetTextNode, activeRecord, activeId);
-    // }, null, eventPriority);
-
-    // mouse.on('dragend', function(e) {
-    //   onLabelDrag(e);
-    //   stopDragging();
-    // }, null, eventPriority);
-
-
-    // function onLabelDrag(e) {
-    //   if (dragging) {
-    //     e.stopPropagation();
-    //   }
-    // }
-  }
-
-  function stopDragging() {
-    dragging = false;
-    activeId = -1;
-    activeRecord = null;
-    // targetTextNode = null;
-    // svg.removeAttribute('class');
-  }
-
-  function isClickEvent(up, down) {
-    var elapsed = Math.abs(down.timeStamp - up.timeStamp);
-    var dx = up.screenX - down.screenX;
-    var dy = up.screenY - down.screenY;
-    var dist = Math.sqrt(dx * dx + dy * dy);
-    return dist <= 4 && elapsed < 300;
-  }
-
-
-  // function deselectText(el) {
-  //   el.removeAttribute('class');
-  // }
-
-  // function selectText(el) {
-  //   el.setAttribute('class', 'selected');
-  // }
-
-
-}
-
-
-function BoxTool(gui, ext, mouse, nav) {
-  var self = new EventDispatcher();
-  var box = new HighlightBox('body');
-  var popup = gui.container.findChild('.box-tool-options');
-  var coords = popup.findChild('.box-coords');
-  var _on = false;
-  var bbox, bboxPixels;
-
-  var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
-    if (coords.visible()) hideCoords(); else showCoords();
-  });
-
-  new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
-    reset();
-  });
-
-  // Removing zoom-in button -- cumbersome way to zoom
-  // new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
-  //   nav.zoomToBbox(bboxPixels);
-  //   reset();
-  // });
-
-  new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
-    gui.enterMode('selection_tool');
-    gui.interaction.setMode('selection');
-    // kludge to pass bbox to the selection tool
-    gui.dispatchEvent('box_drag_end', {map_bbox: bboxPixels});
-  });
-
-  // Removing button for creating a layer containing a single rectangle.
-  // You can get the bbox with the Info button and create a rectangle in the console
-  // using -rectangle bbox=<coordinates>
-  // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
-  //   runCommand('-rectangle bbox=' + bbox.join(','));
-  // });
-
-  new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-    runCommand('-clip bbox2=' + bbox.join(','));
-  });
-
-  gui.addMode('box_tool', turnOn, turnOff);
-
-  gui.on('interaction_mode_change', function(e) {
-    // console.log('mode change', e.mode)
-    if (e.mode === 'box') {
-      gui.enterMode('box_tool');
-    } else if (gui.getMode() == 'box_tool') {
-      gui.clearMode();
-    }
-  });
-
-  ext.on('change', function() {
-    if (!_on || !box.visible()) return;
-    var b = bboxToPixels(bbox);
-    var pos = ext.position();
-    var dx = pos.pageX,
-        dy = pos.pageY;
-    box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
-  });
-
-  gui.on('box_drag_start', function() {
-    box.classed('zooming', zoomDragging());
-    hideCoords();
-  });
-
-  gui.on('box_drag', function(e) {
-    var b = e.page_bbox;
-    if (_on || zoomDragging()) {
-      box.show(b[0], b[1], b[2], b[3]);
-    }
-  });
-
-  gui.on('box_drag_end', function(e) {
-    bboxPixels = e.map_bbox;
-    if (zoomDragging()) {
-      box.hide();
-      nav.zoomToBbox(bboxPixels);
-    } else if (_on) {
-      bbox = bboxToCoords(bboxPixels);
-      // round coords, for nicer 'info' display
-      // (rounded precision should be sub-pixel)
-      bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
-      popup.show();
-    }
-  });
-
-  function zoomDragging() {
-    return !_on && gui.getMode() != 'selection_tool';
-  }
-
-  function runCommand(cmd) {
-    if (gui.console) {
-      gui.console.runMapshaperCommands(cmd, function(err) {
-        reset();
-      });
-    }
-    // reset(); // TODO: exit interactive mode
-  }
-
-  function showCoords() {
-    El(infoBtn.node()).addClass('selected-btn');
-    coords.text(bbox.join(','));
-    coords.show();
-    GUI.selectElement(coords.node());
-  }
-
-  function hideCoords() {
-    El(infoBtn.node()).removeClass('selected-btn');
-    coords.hide();
-  }
-
-  function turnOn() {
-    _on = true;
-  }
-
-  function turnOff() {
-    if (gui.interaction.getMode() == 'box') {
-      // mode change was not initiated by interactive menu -- turn off interactivity
-      gui.interaction.turnOff();
-    }
-    _on = false;
-    reset();
-  }
-
-  function reset() {
-    box.hide();
-    popup.hide();
-    hideCoords();
-  }
-
-  function bboxToCoords(bbox) {
-    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
-  }
-
-  function bboxToPixels(bbox) {
-    var a = ext.translateCoords(bbox[0], bbox[1]);
-    var b = ext.translateCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
-  }
-
-  return self;
-}
-
-
-
-function SelectionTool(gui, ext, hit) {
-  var popup = gui.container.findChild('.selection-tool-options');
-  var box = new HighlightBox('body');
-  var _on = false;
-
-  gui.addMode('selection_tool', turnOn, turnOff);
-
-  gui.on('interaction_mode_change', function(e) {
-    if (e.mode === 'selection') {
-      gui.enterMode('selection_tool');
-    } else if (gui.getMode() == 'selection_tool') {
-      gui.clearMode();
-    }
-  });
-
-  gui.on('box_drag', function(e) {
-    if (!_on) return;
-    var b = e.page_bbox;
-    box.show(b[0], b[1], b[2], b[3]);
-  });
-
-  gui.on('box_drag_end', function(e) {
-    if (!_on) return;
-    box.hide();
-    bboxPixels = e.map_bbox;
-    var bbox = bboxToCoords(bboxPixels);
-    var active = gui.model.getActiveLayer();
-    var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
-    if (!ids.length) return;
-    hit.addSelectionIds(ids);
-  });
-
-  function turnOn() {
-    _on = true;
-  }
-
-  function bboxToCoords(bbox) {
-    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
-  }
-
-  function turnOff() {
-    reset();
-    _on = false;
-    if (gui.interaction.getMode() == 'selection') {
-      // mode change was not initiated by interactive menu -- turn off interactivity
-      gui.interaction.turnOff();
-    }
-  }
-
-  function reset() {
-    popup.hide();
-    hit.clearSelection();
-  }
-
-  hit.on('change', function(e) {
-    if (e.mode != 'selection') return;
-    var ids = hit.getSelectionIds();
-    if (ids.length > 0) {
-      // enter this mode when we're ready to show the selection options
-      // (this closes any other active mode, e.g. box_tool)
-      gui.enterMode('selection_tool');
-      popup.show();
-    } else {
-      popup.hide();
-    }
-  });
-
-  new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), true) + '"';
-    runCommand(cmd);
-    hit.clearSelection();
-  });
-
-  new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-    var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), false) + '"';
-    runCommand(cmd);
-    hit.clearSelection();
-  });
-
-  new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-    var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds(), false) +
-      ' ? \'1\' : \'2\'" -split split_id';
-    runCommand(cmd);
-    hit.clearSelection();
-  });
-
-  new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
-    hit.clearSelection();
-  });
-
-  function getFilterExp(ids, invert) {
-    return JSON.stringify(ids) + '.indexOf(this.id) ' + (invert ? '== -1' : '> -1');
-  }
-
-  function runCommand(cmd) {
-    if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
-    reset();
-  }
-}
-
-
-
-
-function getShapeHitTest(displayLayer, ext) {
-  var geoType = displayLayer.layer.geometry_type;
-  var test;
-  if (geoType == 'point' && displayLayer.style.type == 'styled') {
-    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
-  } else if (geoType == 'point') {
-    test = pointTest;
-  } else if (geoType == 'polyline') {
-    test = polylineTest;
-  } else if (geoType == 'polygon') {
-    test = polygonTest;
-  } else {
-    error("Unexpected geometry type:", geoType);
-  }
-  return test;
-
-  // Convert pixel distance to distance in coordinate units.
-  function getHitBuffer(pix) {
-    return pix / ext.getTransform().mx;
-  }
-
-  // reduce hit threshold when zoomed out
-  function getZoomAdjustedHitBuffer(pix, minPix) {
-    var scale = ext.scale();
-    if (scale < 1) {
-      pix *= scale;
-    }
-    if (minPix > 0 && pix < minPix) pix = minPix;
-    return getHitBuffer(pix);
-  }
-
-  function polygonTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(5, 1),
-        cands = findHitCandidates(x, y, maxDist),
-        hits = [],
-        cand, hitId;
-    for (var i=0; i<cands.length; i++) {
-      cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
-        hits.push(cand.id);
-      }
-    }
-    if (cands.length > 0 && hits.length === 0) {
-      // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, displayLayer.arcs);
-      hits = pickNearestCandidates(cands, 0, maxDist);
-    }
-    return hits;
-  }
-
-  function pickNearestCandidates(sorted, bufDist, maxDist) {
-    var hits = [],
-        cand, minDist;
-    for (var i=0; i<sorted.length; i++) {
-      cand = sorted[i];
-      if (cand.dist < maxDist !== true) {
-        break;
-      } else if (i === 0) {
-        minDist = cand.dist;
-      } else if (cand.dist - minDist > bufDist) {
-        break;
-      }
-      hits.push(cand.id);
-    }
-    return hits;
-  }
-
-  function polylineTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(15, 2),
-        bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
-        cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, displayLayer.arcs);
-    return pickNearestCandidates(cands, bufDist, maxDist);
-  }
-
-  function sortByDistance(x, y, cands, arcs) {
-    for (var i=0; i<cands.length; i++) {
-      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
-    }
-    utils.sortOn(cands, 'dist');
-  }
-
-  function pointTest(x, y) {
-    var bullseyeDist = 2, // hit all points w/in 2 px
-        tinyDist = 0.5,
-        toPx = ext.getTransform().mx,
-        hits = [],
-        hitThreshold = 25,
-        newThreshold = Infinity;
-
-    internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-      var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
-      if (dist > hitThreshold) return;
-      // got a hit
-      if (dist < newThreshold) {
-        // start a collection of hits
-        hits = [id];
-        hitThreshold = Math.max(bullseyeDist, dist + tinyDist);
-        newThreshold = dist < bullseyeDist ? -1 : dist - tinyDist;
+  function drawStyledLayerToCanvas(obj, canv, ext) {
+    // TODO: add filter for out-of-view shapes
+    var style = obj.style;
+    var layer = obj.layer;
+    var arcs, filter;
+    if (layer.geometry_type == 'point') {
+      if (style.type == 'styled') {
+        canv.drawPoints(layer.shapes, style);
       } else {
-        // add to hits if inside bullseye or is same dist as previous hit
-        hits.push(id);
+        canv.drawSquareDots(layer.shapes, style);
       }
-    });
-    // console.log(hitThreshold, bullseye);
-    return hits;
+    } else {
+      arcs = getArcsForRendering(obj, ext);
+      filter = getShapeFilter(arcs, ext);
+      canv.drawPathShapes(layer.shapes, arcs, style, filter);
+    }
   }
 
-  function getRadiusFunction(style) {
-    var o = {};
-    if (style.styler) {
-      return function(i) {
-        style.styler(o, i);
-        return o.radius || 0;
+
+  // Return a function for testing if an arc should be drawn in the current view
+  function getArcFilter(arcs, ext, usedFlag, arcCounts) {
+    var minPathLen = 0.5 * ext.getPixelSize(),
+        geoBounds = ext.getBounds(),
+        geoBBox = geoBounds.toArray(),
+        allIn = geoBounds.contains(arcs.getBounds());
+    // don't continue dropping paths if user zooms out farther than full extent
+    if (ext.scale() < 1) minPathLen *= ext.scale();
+    return function(i) {
+        var visible = true;
+        if (usedFlag != arcCounts[i] > 0) { // show either used or unused arcs
+          visible = false;
+        } else if (arcs.arcIsSmaller(i, minPathLen)) {
+          visible = false;
+        } else if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) {
+          visible = false;
+        }
+        return visible;
       };
     }
-    return function() {return style.radius || 0;};
+
+  // Return a function for testing if a shape should be drawn in the current view
+  function getShapeFilter(arcs, ext) {
+    var viewBounds = ext.getBounds();
+    var bounds = new Bounds();
+    if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
+    return function(shape) {
+      bounds.empty();
+      arcs.getMultiShapeBounds(shape, bounds);
+      return viewBounds.intersects(bounds);
+    };
   }
 
-  function getGraduatedCircleTest(radius) {
-    return function(x, y) {
-      var hits = [],
-          margin = getHitBuffer(12),
-          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
-          directHit = false,
-          hitRadius = 0,
-          hitDist;
-      internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-        var distSq = geom.distanceSq(x, y, p[0], p[1]);
-        var isHit = false;
-        var isOver, isNear, r, d, rpix;
-        if (distSq > limit * limit) return;
-        rpix = radius(id);
-        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
-        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
-        isOver = d < 0;
-        isNear = d < margin;
-        if (!isNear || rpix > 0 === false) {
-          isHit = false;
-        } else if (hits.length === 0) {
-          isHit = isNear;
-        } else if (!directHit && isOver) {
-          isHit = true;
-        } else if (directHit && isOver) {
-          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
-        } else if (!directHit && !isOver) {
-          // closest to bubble edge wins
-          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
+  function getPixelColorFunction() {
+    var canv = El('canvas').node();
+    canv.width = canv.height = 1;
+    return function(col) {
+      var ctx = canv.getContext('2d');
+      var pixels;
+      ctx.fillStyle = col;
+      ctx.fillRect(0, 0, 1, 1);
+      pixels = new Uint32Array(ctx.getImageData(0, 0, 1, 1).data.buffer);
+      return pixels[0];
+    };
+  }
+
+  function DisplayCanvas() {
+    var _self = El('canvas'),
+        _canvas = _self.node(),
+        _ctx = _canvas.getContext('2d'),
+        _pixelColor = getPixelColorFunction(),
+        _ext;
+
+    _self.prep = function(extent) {
+      var w = extent.width(),
+          h = extent.height(),
+          pixRatio = GUI.getPixelRatio();
+      _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+      _canvas.width = w * pixRatio;
+      _canvas.height = h * pixRatio;
+      _self.classed('retina', pixRatio == 2);
+      _self.show();
+      _ext = extent;
+    };
+
+    /*
+    // Original function, not optimized
+    _self.drawPathShapes = function(shapes, arcs, style) {
+      var startPath = getPathStart(_ext),
+          drawPath = getShapePencil(arcs, _ext),
+          styler = style.styler || null;
+      for (var i=0, n=shapes.length; i<n; i++) {
+        if (styler) styler(style, i);
+        startPath(_ctx, style);
+        drawPath(shapes[i], _ctx);
+        endPath(_ctx, style);
+      }
+    };
+    */
+
+
+    // Optimized to draw paths in same-style batches (faster Canvas drawing)
+    _self.drawPathShapes = function(shapes, arcs, style, filter) {
+      var styleIndex = {};
+      var batchSize = 1500;
+      var startPath = getPathStart(_ext, getScaledLineScale(_ext));
+      var draw = getShapePencil(arcs, _ext);
+      var key, item;
+      var styler = style.styler || null;
+      for (var i=0; i<shapes.length; i++) {
+        if (filter && !filter(shapes[i])) continue;
+        if (styler) styler(style, i);
+        key = getStyleKey(style);
+        if (key in styleIndex === false) {
+          styleIndex[key] = {
+            style: utils.defaults({}, style),
+            shapes: []
+          };
         }
-        if (isHit) {
-          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
-            hits = [];
+        item = styleIndex[key];
+        item.shapes.push(shapes[i]);
+        // overlays should not be batched, so transparency of overlapping shapes
+        // is drawn correctly
+        if (item.shapes.length >= batchSize || style.overlay) {
+          drawPaths(item.shapes, startPath, draw, item.style);
+          item.shapes = [];
+        }
+      }
+      Object.keys(styleIndex).forEach(function(key) {
+        var item = styleIndex[key];
+        drawPaths(item.shapes, startPath, draw, item.style);
+      });
+    };
+
+    function drawPaths(shapes, begin, draw, style) {
+      begin(_ctx, style);
+      for (var i=0, n=shapes.length; i<n; i++) {
+        draw(shapes[i], _ctx);
+      }
+      endPath(_ctx, style);
+    }
+
+    _self.drawSquareDots = function(shapes, style) {
+      var t = getScaledTransform(_ext),
+          scaleRatio = getDotScale2(shapes, _ext),
+          size = Math.ceil((style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio),
+          styler = style.styler || null,
+          xmax = _canvas.width + size,
+          ymax = _canvas.height + size,
+          color = style.dotColor || "black",
+          shp, x, y, i, j, n, m,
+          mx = t.mx,
+          my = t.my,
+          bx = t.bx,
+          by = t.by;
+      if (size === 0) return;
+      if (size <= 4 && !styler) {
+        // optimized drawing of many small same-colored dots
+        _self.drawSquareDotsFaster(shapes, color, size, t);
+        return;
+      }
+      _ctx.fillStyle = color;
+      for (i=0, n=shapes.length; i<n; i++) {
+        if (styler !== null) { // e.g. selected points
+          styler(style, i);
+          size = style.dotSize * scaleRatio;
+          _ctx.fillStyle = style.dotColor;
+        }
+        shp = shapes[i];
+        for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+          x = shp[j][0] * mx + bx;
+          y = shp[j][1] * my + by;
+          if (x > -size && y > -size && x < xmax && y < ymax) {
+            drawSquare(x, y, size, _ctx);
           }
-          hitRadius = r;
-          hitDist = d;
-          directHit = isOver;
-          hits.push(id);
+        }
+      }
+    };
+
+    _self.drawSquareDotsFaster = function(shapes, color, size, t) {
+      var w = _canvas.width,
+          h = _canvas.height,
+          rgba = _pixelColor(color),
+          // imageData = _ctx.createImageData(w, h),
+          imageData = _ctx.getImageData(0, 0, w, h),
+          pixels = new Uint32Array(imageData.data.buffer),
+          shp, x, y, i, j, n, m,
+          mx = t.mx,
+          my = t.my,
+          bx = t.bx,
+          by = t.by;
+      for (i=0, n=shapes.length; i<n; i++) {
+        shp = shapes[i];
+        for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+          x = shp[j][0] * mx + bx;
+          y = shp[j][1] * my + by;
+          if (x >= 0 && y >= 0 && x <= w && y <= h) {
+            drawSquareFaster(x, y, rgba, size, pixels, w, h);
+          }
+        }
+      }
+      _ctx.putImageData(imageData, 0, 0);
+    };
+
+    // color: 32-bit integer value containing rgba channel values
+    // size: pixels on a side (assume integer)
+    // x, y: non-integer center coordinates
+    // pixels: Uint32Array of pixel colors
+    // w, h: Size of canvas
+    function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
+      var xmin = (x - size * 0.5) | 0;
+      var ymin = (y - size * 0.5) | 0;
+      var xmax = xmin + size - 1;
+      var ymax = ymin + size - 1;
+      var c, r;
+      for (c = xmin; c <= xmax; c++) {
+        if (c < 0 || c >= w) continue;
+        for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
+          pixels[r * w + c] = rgba;
+        }
+      }
+    }
+
+    // TODO: consider using drawPathShapes(), which draws paths in batches
+    // for faster Canvas rendering. Downside: changes stacking order, which
+    // is bad if circles are graduated.
+    _self.drawPoints = function(shapes, style) {
+      var t = getScaledTransform(_ext),
+          scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
+          startPath = getPathStart(),
+          styler = style.styler || null,
+          shp, p,
+          mx = t.mx,
+          my = t.my,
+          bx = t.bx,
+          by = t.by;
+
+      for (var i=0, n=shapes.length; i<n; i++) {
+        shp = shapes[i];
+        if (styler) styler(style, i);
+        startPath(_ctx, style);
+        if (!shp || style.radius > 0 === false) continue;
+        for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
+          p = shp[j];
+          drawCircle(p[0] * mx + bx, p[1] * my + by, style.radius * scale, _ctx);
+        }
+        endPath(_ctx, style);
+      }
+    };
+
+    _self.drawArcs = function(arcs, style, filter) {
+      var startPath = getPathStart(_ext, getLineScale(_ext)),
+          t = getScaledTransform(_ext),
+          ctx = _ctx,
+          batch = 25, // render paths in batches of this size (an optimization)
+          count = 0,
+          n = arcs.size(),
+          i, iter;
+
+      startPath(ctx, style);
+      for (i=0; i<n; i++) {
+        if (filter && !filter(i)) continue;
+        if (++count % batch === 0) {
+          endPath(ctx, style);
+          startPath(ctx, style);
+        }
+        iter = protectIterForDrawing(arcs.getArcIter(i), _ext);
+        drawPath(iter, t, ctx, 0.6);
+      }
+      endPath(ctx, style);
+    };
+
+    function getStyleKey(style) {
+      return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
+        '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
+        (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
+    }
+
+    return _self;
+  }
+
+  function getScaledLineScale(ext) {
+    return ext.getSymbolScale() || getLineScale(ext);
+  }
+
+  // Vary line width according to zoom ratio.
+  // For performance and clarity don't start widening until zoomed quite far in.
+  function getLineScale(ext) {
+    var mapScale = ext.scale(),
+        s = 1;
+    if (mapScale < 0.5) {
+      s *= Math.pow(mapScale + 0.5, 0.35);
+    } else if (mapScale > 100) {
+      if (!internal.getStateVar('DEBUG')) // thin lines for debugging
+        s *= Math.pow(mapScale - 99, 0.10);
+    }
+    return s;
+  }
+
+  function getDotScale(ext) {
+    return Math.pow(getLineScale(ext), 0.7);
+  }
+
+  function countPoints(shapes, test, max) {
+    var count = 0;
+    var i, n, j, m, shp;
+    max = max || Infinity;
+    for (i=0, n=shapes.length; i<n && count<=max; i++) {
+      shp = shapes[i];
+      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+        if (!test || test(shp[j])) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+
+  function getDotScale2(shapes, ext) {
+    var pixRatio = GUI.getPixelRatio();
+    var scale = ext.scale();
+    var side = Math.min(ext.width(), ext.height());
+    var bounds = ext.getBounds();
+    var topTier = 50000;
+    var test, n, k, j;
+    if (scale >= 2) {
+      test = function(p) {
+        return bounds.containsPoint(p[0], p[1]);
+      };
+    }
+    n = countPoints(shapes, test, topTier + 2); // short-circuit point counting above top threshold
+    k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+    j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
+    return getDotScale(ext) * k * j * pixRatio;
+  }
+
+  function getScaledTransform(ext) {
+    var t = ext.getTransform(GUI.getPixelRatio());
+    // A recent Chrome update (v80?) seems to have introduced a performance
+    // regression causing slow object property access.
+    // the effect is intermittent and pretty mysterious.
+    return {
+      mx: t.mx,
+      my: t.my,
+      bx: t.bx,
+      by: t.by
+    };
+  }
+
+  function drawCircle(x, y, radius, ctx) {
+    if (radius > 0) {
+      ctx.moveTo(x + radius, y);
+      ctx.arc(x, y, radius, 0, Math.PI * 2, true);
+    }
+  }
+
+  function drawSquare(x, y, size, ctx) {
+    var offs = size / 2;
+    if (size > 0) {
+      x = Math.round(x - offs);
+      y = Math.round(y - offs);
+      size = Math.ceil(size);
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+
+  function drawPath(vec, t, ctx, minLen) {
+    // copy to local variables because of odd performance regression in Chrome 80
+    var mx = t.mx,
+        my = t.my,
+        bx = t.bx,
+        by = t.by;
+    var x, y, xp, yp;
+    if (!vec.hasNext()) return;
+    minLen = utils.isNonNegNumber(minLen) ? minLen : 0.4;
+    x = xp = vec.x * mx + bx;
+    y = yp = vec.y * my + by;
+    ctx.moveTo(x, y);
+    while (vec.hasNext()) {
+      x = vec.x * mx + bx;
+      y = vec.y * my + by;
+      if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
+        ctx.lineTo(x, y);
+        xp = x;
+        yp = y;
+      }
+    }
+  }
+
+  function getShapePencil(arcs, ext) {
+    var t = getScaledTransform(ext);
+    var iter = new internal.ShapeIter(arcs);
+    return function(shp, ctx) {
+      for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
+        iter.init(shp[i]);
+        // 0.2 trades visible seams for performance
+        drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
+      }
+    };
+  }
+
+  function protectIterForDrawing(iter, ext) {
+    var bounds, k;
+    if (ext.scale() > 100) {
+      // clip to rectangle when zoomed far in (canvas stops drawing shapes when
+      // the coordinates become too large)
+      // scale the bbox to avoid large fp errors
+      // (affects projected datasets when zoomed very far in)
+      // k too large, long segments won't render; too small, segments will jump around
+      // TODO: consider converting to pixels before clipping
+      k = Math.pow(ext.scale(), 0.45);
+      bounds = ext.getBounds(k);
+      iter = new internal.PointIter(internal.clipIterByBounds(iter, bounds));
+    }
+    return iter;
+  }
+
+  function getPathStart(ext, lineScale) {
+    var pixRatio = GUI.getPixelRatio();
+    if (!lineScale) lineScale = 1;
+    return function(ctx, style) {
+      var strokeWidth;
+      ctx.beginPath();
+      if (style.opacity >= 0) {
+        ctx.globalAlpha = style.opacity;
+      }
+      if (style.strokeWidth > 0) {
+        strokeWidth = style.strokeWidth;
+        if (pixRatio > 1) {
+          // bump up thin lines on retina, but not to more than 1px (too slow)
+          strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
+        }
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = strokeWidth * lineScale;
+        ctx.strokeStyle = style.strokeColor;
+        if (style.lineDash){
+          ctx.lineCap = 'butt';
+          ctx.setLineDash(style.lineDash.split(' '));
+        }
+      }
+      if (style.fillColor) {
+        ctx.fillStyle = style.fillColor;
+      }
+    };
+  }
+
+  function endPath(ctx, style) {
+    if (style.fillColor) ctx.fill();
+    if (style.strokeWidth > 0) {
+      ctx.stroke();
+      if (style.lineDash) {
+        ctx.lineCap = 'round';
+        ctx.setLineDash([]);
+      }
+    }
+    if (style.opacity >= 0) ctx.globalAlpha = 1;
+    ctx.closePath();
+  }
+
+  function getSvgFurnitureTransform(ext) {
+    var scale = ext.getSymbolScale();
+    var frame = ext.getFrame();
+    var p = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
+    return internal.svg.getTransform(p, scale);
+  }
+
+  function repositionFurniture(container, layer, ext) {
+    var g = El.findAll('.mapshaper-svg-furniture', container)[0];
+    g.setAttribute('transform', getSvgFurnitureTransform(ext));
+  }
+
+  function renderFurniture(lyr, ext) {
+    var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
+    var obj = internal.getEmptyLayerForSVG(lyr, {});
+    if (!frame) {
+      stop('Missing map frame data');
+    }
+    obj.properties.transform = getSvgFurnitureTransform(ext);
+    obj.properties.class = 'mapshaper-svg-furniture';
+    obj.children = internal.importFurniture(internal.getFurnitureLayerData(lyr), frame);
+    return internal.svg.stringify(obj);
+  }
+
+  function SvgDisplayLayer(gui, ext, mouse) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    var el = El(svg);
+
+    el.clear = function() {
+      while (svg.childNodes.length > 0) {
+        svg.removeChild(svg.childNodes[0]);
+      }
+    };
+
+    el.reposition = function(target, type) {
+      resize(ext);
+      reposition(target, type, ext);
+    };
+
+    el.drawLayer = function(target, type) {
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      var html = '';
+      // generate a unique id so layer can be identified when symbols are repositioned
+      // use it as a class name to avoid id collisions
+      var id = utils.getUniqueName();
+      var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
+      g.setAttribute('class', classNames.join(' '));
+      target.svg_id = id;
+      resize(ext);
+      if (type == 'label' || type == 'symbol') {
+        html = renderSymbols(target.layer, ext, type);
+      } else if (type == 'furniture') {
+        html = renderFurniture(target.layer, ext);
+      }
+      g.innerHTML = html;
+      svg.append(g);
+
+      // prevent svg hit detection on inactive layers
+      if (!target.active) {
+        g.style.pointerEvents = 'none';
+      }
+    };
+
+    function reposition(target, type, ext) {
+      var container = el.findChild('.' + target.svg_id).node();
+      var elements;
+      if (type == 'label' || type == 'symbol') {
+        elements = type == 'label' ? container.getElementsByTagName('text') :
+            El.findAll('.mapshaper-svg-symbol', container);
+        repositionSymbols(elements, target.layer, ext);
+      } else if (type == 'furniture') {
+        repositionFurniture(container, target.layer, ext);
+      }
+    }
+
+    function resize(ext) {
+      svg.style.width = ext.width() + 'px';
+      svg.style.height = ext.height() + 'px';
+    }
+
+    return el;
+  }
+
+  function LayerStack(gui, container, ext, mouse) {
+    var el = El(container),
+        _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
+        _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
+        _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
+        _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el), // labels, _ext;
+        _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
+        _ext = ext;
+
+    // don't let furniture container block events to symbol layers
+    _furniture.css('pointer-events', 'none');
+
+    this.drawOverlay2Layer = function(lyr) {
+      drawSingleCanvasLayer(lyr, _overlay2Canv);
+    };
+
+    this.drawOverlayLayer = function(lyr) {
+      drawSingleCanvasLayer(lyr, _overlayCanv);
+    };
+
+    this.drawContentLayers = function(layers, onlyNav) {
+      _activeCanv.prep(_ext);
+      if (!onlyNav) {
+        _svg.clear();
+      }
+      layers.forEach(function(target) {
+        if (layerUsesCanvas(target.layer)) {
+          drawCanvasLayer(target, _activeCanv);
+        }
+        if (layerUsesSVG(target.layer)) {
+          drawSvgLayer(target, onlyNav);
         }
       });
-      return hits;
     };
+
+    this.drawFurnitureLayers = function(layers, onlyNav) {
+      if (!onlyNav) {
+        _furniture.clear();
+      }
+      layers.forEach(function(target) {
+        if (onlyNav) {
+          _furniture.reposition(target, 'furniture');
+        } else {
+          _furniture.drawLayer(target, 'furniture');
+        }
+      });
+    };
+
+    function layerUsesCanvas(layer) {
+      // TODO: return false if a label layer does not have dots
+      return !internal.layerHasSvgSymbols(layer);
+    }
+
+    function layerUsesSVG(layer) {
+      return internal.layerHasLabels(layer) || internal.layerHasSvgSymbols(layer);
+    }
+
+    function drawCanvasLayer(target, canv) {
+      if (target.style.type == 'outline') {
+        drawOutlineLayerToCanvas(target, canv, ext);
+      } else {
+        drawStyledLayerToCanvas(target, canv, ext);
+      }
+    }
+
+    function drawSvgLayer(target, onlyNav) {
+      var type;
+      if (internal.layerHasLabels(target.layer)) {
+        type = 'label';
+      } else if (internal.layerHasSvgSymbols(target.layer)) {
+        type = 'symbol';
+      }
+      if (onlyNav) {
+        _svg.reposition(target, type);
+      } else {
+        _svg.drawLayer(target, type);
+      }
+    }
+
+    function drawSingleCanvasLayer(target, canv) {
+      if (!target) {
+        canv.hide();
+      } else {
+        canv.prep(_ext);
+        drawCanvasLayer(target, canv);
+      }
+    }
   }
 
-  function findHitCandidates(x, y, dist) {
-    var arcs = displayLayer.arcs,
-        index = {},
-        cands = [],
-        bbox = [];
-    displayLayer.layer.shapes.forEach(function(shp, shpId) {
-      var cand;
-      for (var i = 0, n = shp && shp.length; i < n; i++) {
-        arcs.getSimpleShapeBounds2(shp[i], bbox);
-        if (x + dist < bbox[0] || x - dist > bbox[2] ||
-          y + dist < bbox[1] || y - dist > bbox[3]) {
-          continue; // bbox non-intersection
-        }
-        cand = index[shpId];
-        if (!cand) {
-          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
-          cands.push(cand);
-        }
-        cand.shape.push(shp[i]);
+  function BoxTool(gui, ext, mouse, nav) {
+    var self = new EventDispatcher();
+    var box = new HighlightBox('body');
+    var popup = gui.container.findChild('.box-tool-options');
+    var coords = popup.findChild('.box-coords');
+    var _on = false;
+    var bbox, bboxPixels;
+
+    var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
+      if (coords.visible()) hideCoords(); else showCoords();
+    });
+
+    new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
+      reset();
+    });
+
+    // Removing zoom-in button -- cumbersome way to zoom
+    // new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
+    //   nav.zoomToBbox(bboxPixels);
+    //   reset();
+    // });
+
+    new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+      gui.enterMode('selection_tool');
+      gui.interaction.setMode('selection');
+      // kludge to pass bbox to the selection tool
+      gui.dispatchEvent('box_drag_end', {map_bbox: bboxPixels});
+    });
+
+    // Removing button for creating a layer containing a single rectangle.
+    // You can get the bbox with the Info button and create a rectangle in the console
+    // using -rectangle bbox=<coordinates>
+    // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
+    //   runCommand('-rectangle bbox=' + bbox.join(','));
+    // });
+
+    new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
+      runCommand('-clip bbox2=' + bbox.join(','));
+    });
+
+    gui.addMode('box_tool', turnOn, turnOff);
+
+    gui.on('interaction_mode_change', function(e) {
+      // console.log('mode change', e.mode)
+      if (e.mode === 'box') {
+        gui.enterMode('box_tool');
+      } else if (gui.getMode() == 'box_tool') {
+        gui.clearMode();
       }
     });
-    return cands;
-  }
-}
 
+    ext.on('change', function() {
+      if (!_on || !box.visible()) return;
+      var b = bboxToPixels(bbox);
+      var pos = ext.position();
+      var dx = pos.pageX,
+          dy = pos.pageY;
+      box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
+    });
 
-function getSvgHitTest(displayLayer) {
+    gui.on('box_drag_start', function() {
+      box.classed('zooming', zoomDragging());
+      hideCoords();
+    });
 
-  return function(pointerEvent) {
-    // target could be a part of an SVG symbol, or the SVG element, or something else
-    var target = pointerEvent.originalEvent.target;
-    var symbolNode = getSymbolNode(target);
-    if (!symbolNode) {
-      return null;
+    gui.on('box_drag', function(e) {
+      var b = e.page_bbox;
+      if (_on || zoomDragging()) {
+        box.show(b[0], b[1], b[2], b[3]);
+      }
+    });
+
+    gui.on('box_drag_end', function(e) {
+      bboxPixels = e.map_bbox;
+      if (zoomDragging()) {
+        box.hide();
+        nav.zoomToBbox(bboxPixels);
+      } else if (_on) {
+        bbox = bboxToCoords(bboxPixels);
+        // round coords, for nicer 'info' display
+        // (rounded precision should be sub-pixel)
+        bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+        popup.show();
+      }
+    });
+
+    function zoomDragging() {
+      return !_on && gui.getMode() != 'selection_tool';
     }
+
+    function runCommand(cmd) {
+      if (gui.console) {
+        gui.console.runMapshaperCommands(cmd, function(err) {
+          reset();
+        });
+      }
+      // reset(); // TODO: exit interactive mode
+    }
+
+    function showCoords() {
+      El(infoBtn.node()).addClass('selected-btn');
+      coords.text(bbox.join(','));
+      coords.show();
+      GUI.selectElement(coords.node());
+    }
+
+    function hideCoords() {
+      El(infoBtn.node()).removeClass('selected-btn');
+      coords.hide();
+    }
+
+    function turnOn() {
+      _on = true;
+    }
+
+    function turnOff() {
+      if (gui.interaction.getMode() == 'box') {
+        // mode change was not initiated by interactive menu -- turn off interactivity
+        gui.interaction.turnOff();
+      }
+      _on = false;
+      reset();
+    }
+
+    function reset() {
+      box.hide();
+      popup.hide();
+      hideCoords();
+    }
+
+    function bboxToCoords(bbox) {
+      var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+      var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+      return [a[0], b[1], b[0], a[1]];
+    }
+
+    function bboxToPixels(bbox) {
+      var a = ext.translateCoords(bbox[0], bbox[1]);
+      var b = ext.translateCoords(bbox[2], bbox[3]);
+      return [a[0], b[1], b[0], a[1]];
+    }
+
+    return self;
+  }
+
+  // Create low-detail versions of large arc collections for faster rendering
+  // at zoomed-out scales.
+  function MultiScaleArcCollection(unfilteredArcs) {
+    var size = unfilteredArcs.getPointCount(),
+        filteredArcs, filteredSegLen;
+
+    // Only generate low-detail arcs for larger datasets
+    if (size > 5e5) {
+      if (!!unfilteredArcs.getVertexData().zz) {
+        // Use precalculated simplification data for vertex filtering, if available
+        filteredArcs = initFilteredArcs(unfilteredArcs);
+        filteredSegLen = internal.getAvgSegment(filteredArcs);
+      } else {
+        // Use fast simplification as a fallback
+        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
+        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
+      }
+    }
+
+    function initFilteredArcs(arcs) {
+      var filterPct = 0.08;
+      var nth = Math.ceil(arcs.getPointCount() / 5e5);
+      var currInterval = arcs.getRetainedInterval();
+      var filterZ = arcs.getThresholdByPct(filterPct, nth);
+      var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
+      arcs.setRetainedInterval(currInterval); // reset current simplification
+      return filteredArcs;
+    }
+
+    unfilteredArcs.getScaledArcs = function(ext) {
+      if (filteredArcs) {
+        // match simplification of unfiltered arcs
+        filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
+      }
+      // switch to filtered version of arcs at small scales
+      var unitsPerPixel = 1/ext.getTransform().mx,
+          useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
+      return useFiltering ? filteredArcs : unfilteredArcs;
+    };
+
+    return unfilteredArcs;
+  }
+
+  function getDisplayLayerForTable(table) {
+    var n = table.size(),
+        cellWidth = 12,
+        cellHeight = 5,
+        gutter = 6,
+        arcs = [],
+        shapes = [],
+        aspectRatio = 1.1,
+        x, y, col, row, blockSize;
+
+    if (n > 10000) {
+      arcs = null;
+      gutter = 0;
+      cellWidth = 4;
+      cellHeight = 4;
+      aspectRatio = 1.45;
+    } else if (n > 5000) {
+      cellWidth = 5;
+      gutter = 3;
+      aspectRatio = 1.45;
+    } else if (n > 1000) {
+      gutter = 3;
+      cellWidth = 8;
+      aspectRatio = 1.3;
+    }
+
+    if (n < 25) {
+      blockSize = n;
+    } else {
+      blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
+    }
+
+    for (var i=0; i<n; i++) {
+      row = i % blockSize;
+      col = Math.floor(i / blockSize);
+      x = col * (cellWidth + gutter);
+      y = cellHeight * (blockSize - row);
+      if (arcs) {
+        arcs.push(getArc(x, y, cellWidth, cellHeight));
+        shapes.push([[i]]);
+      } else {
+        shapes.push([[x, y]]);
+      }
+    }
+
+    function getArc(x, y, w, h) {
+      return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
+    }
+
     return {
-      targetId: getSymbolNodeId(symbolNode), // TODO: some validation on id
-      targetSymbol: symbolNode,
-      targetNode: target,
-      container: symbolNode.parentNode
+      layer: {
+        geometry_type: arcs ? 'polygon' : 'point',
+        shapes: shapes,
+        data: table
+      },
+      arcs: arcs ? new internal.ArcCollection(arcs) : null
     };
-  };
+  }
 
-  // target: event target (could be any DOM element)
-  function getSymbolNode(target) {
-    var node = target;
-    while (node && nodeHasSymbolTagType(node)) {
-      if (isSymbolNode(node)) {
-        return node;
+  // displayCRS: CRS to use for display, or null (which clears any current display CRS)
+  function projectDisplayLayer(lyr, displayCRS) {
+    var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
+    var lyr2;
+    if (!lyr.geographic || !sourceCRS) {
+      return lyr;
+    }
+    if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
+      return lyr;
+    }
+    lyr2 = getDisplayLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
+    // kludge: copy projection-related properties to original layer
+    lyr.dynamic_crs = lyr2.dynamic_crs;
+    lyr.layer = lyr2.layer;
+    if (lyr.style && lyr.style.ids) {
+      // re-apply layer filter
+      lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
+    }
+    lyr.bounds = lyr2.bounds;
+    lyr.arcs = lyr2.arcs;
+  }
+
+
+  // Wrap a layer in an object along with information needed for rendering
+  function getDisplayLayer(layer, dataset, opts) {
+    var obj = {
+      layer: null,
+      arcs: null,
+      // display_arcs: null,
+      style: null,
+      source: {
+        layer: layer,
+        dataset: dataset
+      },
+      empty: internal.getFeatureCount(layer) === 0
+    };
+
+    var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
+    var displayCRS = opts.crs || null;
+    var displayArcs = dataset.displayArcs;
+    var emptyArcs;
+
+    // Assume that dataset.displayArcs is in the display CRS
+    // (it should have been deleted upstream if reprojection is needed)
+    if (dataset.arcs && !displayArcs) {
+      // project arcs, if needed
+      if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+        displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
+      } else {
+        displayArcs = dataset.arcs;
       }
-      node = node.parentElement;
+
+      // init filtered arcs
+      dataset.displayArcs = new MultiScaleArcCollection(displayArcs);
     }
-    return null;
-  }
 
-  // TODO: switch to attribute detection
-  function nodeHasSymbolTagType(node) {
-    var tag = node.tagName;
-    return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
-      tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
-  }
-
-  function isSymbolNode(node) {
-    return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
-  }
-
-  function isSymbolChildNode(node) {
-
-  }
-
-  function getChildId(childNode) {
-
-  }
-
-  function getSymbolId(symbolNode) {
-
-  }
-
-  function getFeatureId(symbolNode) {
-
-  }
-
-}
-
-
-
-function getPointerHitTest(mapLayer, ext) {
-  var shapeTest, svgTest, targetLayer;
-  if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
-    return null;
-  }
-  shapeTest = getShapeHitTest(mapLayer, ext);
-  svgTest = getSvgHitTest(mapLayer);
-
-  // e: pointer event
-  return function(e) {
-    var p = ext.translatePixelCoords(e.x, e.y);
-    var data = {
-      ids: shapeTest(p[0], p[1]) || []
-    };
-    var svgData = svgTest(e); // null or a data object
-    if (svgData) { // mouse is over an SVG symbol
-      utils.extend(data, svgData);
-      // placing symbol id in front of any other hits
-      data.ids = utils.uniq([svgData.targetId].concat(data.ids));
-    }
-    data.id = data.ids.length > 0 ? data.ids[0] : -1;
-    return data;
-  };
-}
-
-
-function InteractiveSelection(gui, ext, mouse) {
-  var self = new EventDispatcher();
-  var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
-  var selectionIds = [];
-  var active = false;
-  var interactionMode;
-  var targetLayer;
-  var hitTest;
-  // event priority is higher than navigation, so stopping propagation disables
-  // pan navigation
-  var priority = 2;
-
-  self.setLayer = function(mapLayer) {
-    hitTest = getPointerHitTest(mapLayer, ext);
-    if (!hitTest) {
-      hitText = function() {return {ids: []};};
-    }
-    targetLayer = mapLayer;
-    // deselect any  selection
-    // TODO: maintain selection if layer & shapes have not changed
-    updateSelectionState(null);
-  };
-
-  function turnOn(mode) {
-    interactionMode = mode;
-    active = true;
-  }
-
-  function turnOff() {
-    if (active) {
-      updateSelectionState(null); // no hit data, no event
-      active = false;
-    }
-  }
-
-  function selectable() {
-    return interactionMode == 'selection';
-  }
-
-  function pinnable() {
-    return clickable() && interactionMode != 'selection';
-  }
-
-  function draggable() {
-    return interactionMode == 'location' || interactionMode == 'labels';
-  }
-
-  function clickable() {
-    // click used to pin popup and select features
-    return interactionMode == 'data' || interactionMode == 'info' || interactionMode == 'selection';
-  }
-
-  self.getHitId = function() {return storedData.id;};
-
-  // Get a reference to the active layer, so listeners to hit events can interact
-  // with data and shapes
-  self.getHitTarget = function() {
-    return targetLayer;
-  };
-
-  self.addSelectionIds = function(ids) {
-    turnOn('selection');
-    selectionIds = utils.uniq(selectionIds.concat(ids));
-    ids = utils.uniq(storedData.ids.concat(ids));
-    updateSelectionState({ids: ids});
-  };
-
-  self.clearSelection = function() {
-    updateSelectionState(null);
-  };
-
-  self.clearHover = function() {
-    updateSelectionState(mergeHoverData({ids: []}));
-  };
-
-  self.getSelectionIds = function() {
-    return selectionIds.concat();
-  };
-
-  self.getTargetDataTable = function() {
-    var targ = self.getHitTarget();
-    return targ && targ.layer.data || null;
-  };
-
-  self.getSwitchHandler = function(diff) {
-    return function() {
-      self.switchSelection(diff);
-    };
-  };
-
-  self.switchSelection = function(diff) {
-    var i = storedData.ids.indexOf(storedData.id);
-    var n = storedData.ids.length;
-    if (i < 0 || n < 2) return;
-    if (diff != 1 && diff != -1) {
-      diff = 1;
-    }
-    storedData.id = storedData.ids[(i + diff + n) % n];
-    triggerHitEvent('change');
-  };
-
-  // make sure popup is unpinned and turned off when switching editing modes
-  // (some modes do not support pinning)
-  gui.on('interaction_mode_change', function(e) {
-    updateSelectionState(null);
-    if (e.mode == 'off' || e.mode == 'box') {
-      turnOff();
+    if (internal.layerHasFurniture(layer)) {
+      obj.furniture = true;
+      obj.furniture_type = internal.getFurnitureLayerType(layer);
+      obj.layer = layer;
+      // treating furniture layers (other than frame) as tabular for now,
+      // so there is something to show if they are selected
+      obj.tabular = obj.furniture_type != 'frame';
+    } else if (obj.empty) {
+      obj.layer = {shapes: []}; // ideally we should avoid empty layers
+    } else if (!layer.geometry_type) {
+      obj.tabular = true;
     } else {
-      turnOn(e.mode);
+      obj.geographic = true;
+      obj.layer = layer;
+      obj.arcs = displayArcs;
     }
-  });
 
-  gui.on('box_drag_start', function() {
-    self.clearHover();
-  });
-
-  mouse.on('dblclick', handlePointerEvent, null, priority);
-  mouse.on('dragstart', handlePointerEvent, null, priority);
-  mouse.on('drag', handlePointerEvent, null, priority);
-  mouse.on('dragend', handlePointerEvent, null, priority);
-
-  mouse.on('click', function(e) {
-    if (!hitTest || !active) return;
-    e.stopPropagation();
-
-    // TODO: move pinning to inspection control?
-    if (clickable()) {
-      updateSelectionState(mergeClickData(hitTest(e)));
+    if (obj.tabular) {
+      utils.extend(obj, getDisplayLayerForTable(layer.data));
     }
-    triggerHitEvent('click', e.data);
-  }, null, priority);
 
-  // Hits are re-detected on 'hover' (if hit detection is active)
-  mouse.on('hover', function(e) {
-    if (storedData.pinned || !hitTest || !active) return;
-    if (!isOverMap(e)) {
-      // mouse is off of map viewport -- clear any current hover ids
-      updateSelectionState(mergeHoverData({ids:[]}));
-    } else if (e.hover) {
-      // mouse is hovering directly over map area -- update hit detection
-      updateSelectionState(mergeHoverData(hitTest(e)));
-    } else {
-      // mouse is over map viewport but not directly over map (e.g. hovering
-      // over popup) -- don't update hit detection
-    }
-  }, null, priority);
-
-  function noHitData() {return {ids: [], id: -1, pinned: false};}
-
-  function mergeClickData(hitData) {
-    // mergeCurrentState(hitData);
-    // TOGGLE pinned state under some conditions
-    var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
-    hitData.id = id;
-    if (pinnable()) {
-      if (!storedData.pinned && id > -1) {
-        hitData.pinned = true; // add pin
-      } else if (storedData.pinned && storedData.id == id) {
-        delete hitData.pinned; // remove pin
-        // hitData.id = -1; // keep highlighting (pointer is still hovering)
-      } else if (storedData.pinned && id > -1) {
-        hitData.pinned = true; // stay pinned, switch id
+    // dynamic reprojection (arcs were already reprojected above)
+    if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
+      obj.dynamic_crs = displayCRS;
+      if (internal.layerHasPoints(layer)) {
+        obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+      } else if (internal.layerHasPaths(layer)) {
+        emptyArcs = findEmptyArcs(displayArcs);
+        if (emptyArcs.length > 0) {
+          // Don't try to draw paths containing coordinates that failed to project
+          obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
+        }
       }
     }
-    if (selectable()) {
-      if (id > -1) {
-        selectionIds = toggleId(id, selectionIds);
+
+    obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
+    return obj;
+  }
+
+
+  function getDisplayBounds(lyr, arcs) {
+    var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
+        bounds = arcBounds, // default display extent: all arcs in the dataset
+        lyrBounds;
+
+    if (lyr.geometry_type == 'point') {
+      lyrBounds = internal.getLayerBounds(lyr);
+      if (lyrBounds && lyrBounds.hasBounds()) {
+        if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
+          bounds = lyrBounds;
+        } else {
+          // if a point layer has no extent (e.g. contains only a single point),
+          // then merge with arc bounds, to place the point in context.
+          bounds = arcBounds.mergeBounds(lyrBounds);
+        }
       }
-      hitData.ids = selectionIds;
     }
-    return hitData;
+
+    if (!bounds || !bounds.hasBounds()) { // empty layer
+      bounds = new Bounds();
+    }
+    return bounds;
   }
 
-  function mergeHoverData(hitData) {
-    if (storedData.pinned) {
-      hitData.id = storedData.id;
-      hitData.pinned = true;
-    } else {
-      hitData.id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
+  // Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
+  function findEmptyArcs(arcs) {
+    var nn = arcs.getVertexData().nn;
+    var ids = [];
+    for (var i=0, n=nn.length; i<n; i++) {
+      if (nn[i] === 0) {
+        ids.push(i);
+      }
     }
-    if (selectable()) {
-      hitData.ids = selectionIds;
-      // kludge to inhibit hover effect while dragging a box
-      if (gui.keydown) hitData.id = -1;
-    }
-    return hitData;
+    return ids;
   }
 
-  function toggleId(id, ids) {
-    if (ids.indexOf(id) > -1) {
-      return utils.difference(ids, [id]);
+  utils.inherit(MshpMap, EventDispatcher);
+
+  function MshpMap(gui) {
+    var opts = gui.options,
+        el = gui.container.findChild('.map-layers').node(),
+        position = new ElementPosition(el),
+        model = gui.model,
+        map = this,
+        _mouse = new MouseArea(el, position),
+        _ext = new MapExtent(position),
+        _hit = new InteractiveSelection(gui, _ext, _mouse),
+        _nav = new MapNav(gui, _ext, _mouse),
+        _boxTool = new BoxTool(gui, _ext, _mouse, _nav),
+        _selectionTool = new SelectionTool(gui, _ext, _hit),
+        _visibleLayers = [], // cached visible map layers
+        _fullBounds = null,
+        _intersectionLyr, _activeLyr, _overlayLyr,
+        _inspector, _stack, _editor,
+        _dynamicCRS;
+
+    if (gui.options.showMouseCoordinates) {
+      new CoordinatesDisplay(gui, _ext, _mouse);
     }
-    return [id].concat(ids);
-  }
+    _mouse.disable(); // wait for gui.focus() to activate mouse events
 
-  // If hit ids have changed, update stored hit ids and fire 'hover' event
-  // evt: (optional) mouse event
-  function updateSelectionState(newData) {
-    var nonEmpty = newData && (newData.ids.length || newData.id > -1);
-    if (!newData) {
-      newData = noHitData();
-      selectionIds = [];
-    }
-    if (!testHitChange(storedData, newData)) {
-      return;
-    }
-    storedData = newData;
-    gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
-    if (active) {
-      triggerHitEvent('change');
-    }
-  }
-
-  // check if an event is used in the current interaction mode
-  function eventIsEnabled(type) {
-    if (type == 'click' && !clickable()) {
-      return false;
-    }
-    if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !draggable()) {
-      return false;
-    }
-    return true;
-  }
-
-  function isOverMap(e) {
-    return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-  }
-
-  function handlePointerEvent(e) {
-    if (!hitTest || !active) return;
-    if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
-    // don't block pan and other navigation in modes when they are not being used
-    if (eventIsEnabled(e.type)) {
-      e.stopPropagation(); // block navigation
-      triggerHitEvent(e.type, e.data);
-    }
-  }
-
-  // d: event data (may be a pointer event object, an ordinary object or null)
-  function triggerHitEvent(type, d) {
-    // Merge stored hit data into the event data
-    var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
-    self.dispatchEvent(type, eventData);
-  }
-
-  // Test if two hit data objects are equivalent
-  function testHitChange(a, b) {
-    // check change in 'container', e.g. so moving from anchor hit to label hit
-    //   is detected
-    if (sameIds(a.ids, b.ids) && a.container == b.container && a.pinned == b.pinned && a.id == b.id) {
-      return false;
-    }
-    return true;
-  }
-
-  function sameIds(a, b) {
-    if (a.length != b.length) return false;
-    for (var i=0; i<a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-
-  return self;
-}
-
-
-utils.inherit(MshpMap, EventDispatcher);
-
-function MshpMap(gui) {
-  var opts = gui.options,
-      el = gui.container.findChild('.map-layers').node(),
-      position = new ElementPosition(el),
-      model = gui.model,
-      map = this,
-      _mouse = new MouseArea(el, position),
-      _ext = new MapExtent(position),
-      _hit = new InteractiveSelection(gui, _ext, _mouse),
-      _nav = new MapNav(gui, _ext, _mouse),
-      _boxTool = new BoxTool(gui, _ext, _mouse, _nav),
-      _selectionTool = new SelectionTool(gui, _ext, _hit),
-      _visibleLayers = [], // cached visible map layers
-      _fullBounds = null,
-      _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _editor,
-      _dynamicCRS;
-
-  if (gui.options.showMouseCoordinates) {
-    new CoordinatesDisplay(gui, _ext, _mouse);
-  }
-  _mouse.disable(); // wait for gui.focus() to activate mouse events
-
-  model.on('select', function(e) {
-    _intersectionLyr = null;
-    _overlayLyr = null;
-  });
-
-  gui.on('active', function() {
-    _mouse.enable();
-  });
-
-  gui.on('inactive', function() {
-    _mouse.disable();
-  });
-
-  model.on('update', onUpdate);
-
-  // Currently used to show dots at line intersections
-  this.setIntersectionLayer = function(lyr, dataset) {
-    if (lyr) {
-      _intersectionLyr = getMapLayer(lyr, dataset, getDisplayOptions());
-      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
-    } else {
+    model.on('select', function(e) {
       _intersectionLyr = null;
-    }
-    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
-  };
+      _overlayLyr = null;
+    });
 
-  this.setLayerVisibility = function(target, isVisible) {
-    var lyr = target.layer;
-    lyr.visibility = isVisible ? 'visible' : 'hidden';
-    // if (_inspector && isActiveLayer(lyr)) {
-    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
-    // }
-    if (isActiveLayer(lyr)) {
-      _hit.setLayer(isVisible ? _activeLyr : null);
-    }
-  };
+    gui.on('active', function() {
+      _mouse.enable();
+    });
 
-  this.getCenterLngLat = function() {
-    var bounds = _ext.getBounds();
-    var crs = this.getDisplayCRS();
-    // TODO: handle case where active layer is a frame layer
-    if (!bounds.hasBounds() || !crs) {
-      return null;
-    }
-    return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
-  };
+    gui.on('inactive', function() {
+      _mouse.disable();
+    });
 
-  this.getDisplayCRS = function() {
-    var crs;
-    if (_activeLyr && _activeLyr.geographic) {
-      crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
-    }
-    return crs || null;
-  };
+    model.on('update', onUpdate);
 
-  this.getExtent = function() {return _ext;};
-  this.isActiveLayer = isActiveLayer;
-  this.isVisibleLayer = isVisibleLayer;
+    // Currently used to show dots at line intersections
+    this.setIntersectionLayer = function(lyr, dataset) {
+      if (lyr) {
+        _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
+        _intersectionLyr.style = getIntersectionStyle(_intersectionLyr.layer);
+      } else {
+        _intersectionLyr = null;
+      }
+      _stack.drawOverlay2Layer(_intersectionLyr); // also hides
+    };
 
-  // called by layer menu after layer visibility is updated
-  this.redraw = function() {
-    updateVisibleMapLayers();
-    drawLayers();
-  };
+    this.setLayerVisibility = function(target, isVisible) {
+      var lyr = target.layer;
+      lyr.visibility = isVisible ? 'visible' : 'hidden';
+      // if (_inspector && isActiveLayer(lyr)) {
+      //   _inspector.updateLayer(isVisible ? _activeLyr : null);
+      // }
+      if (isActiveLayer(lyr)) {
+        _hit.setLayer(isVisible ? _activeLyr : null);
+      }
+    };
 
-  // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
-  // crs: a CRS object or string, or null to clear the current setting
-  this.setDisplayCRS = function(crs) {
-    // TODO: update bounds of frame layer, if there is a frame layer
-    var oldCRS = this.getDisplayCRS();
-    var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
-    // TODO: handle case that old and new CRS are the same
-    _dynamicCRS = newCRS;
-    if (!_activeLyr) return; // stop here if no layers have been selected
+    this.getCenterLngLat = function() {
+      var bounds = _ext.getBounds();
+      var crs = this.getDisplayCRS();
+      // TODO: handle case where active layer is a frame layer
+      if (!bounds.hasBounds() || !crs) {
+        return null;
+      }
+      return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+    };
 
-    // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
-    clearAllDisplayArcs();
+    this.getDisplayCRS = function() {
+      var crs;
+      if (_activeLyr && _activeLyr.geographic) {
+        crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
+      }
+      return crs || null;
+    };
 
-    // Reproject all visible map layers
-    if (_activeLyr) _activeLyr = projectDisplayLayer(_activeLyr, newCRS);
-    if (_intersectionLyr) _intersectionLyr = projectDisplayLayer(_intersectionLyr, newCRS);
-    if (_overlayLyr) {
-      _overlayLyr = projectDisplayLayer(_overlayLyr, newCRS);
-    }
-    updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
-    updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
+    this.getExtent = function() {return _ext;};
+    this.isActiveLayer = isActiveLayer;
+    this.isVisibleLayer = isVisibleLayer;
 
-    // Update map extent (also triggers redraw)
-    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
-  };
+    // called by layer menu after layer visibility is updated
+    this.redraw = function() {
+      updateVisibleMapLayers();
+      drawLayers();
+    };
 
-  // Refresh map display in response to data changes, layer selection, etc.
-  function onUpdate(e) {
-    var prevLyr = _activeLyr || null;
-    var fullBounds;
-    var needReset;
+    // Set or clear a CRS to use for display, without reprojecting the underlying dataset(s).
+    // crs: a CRS object or string, or null to clear the current setting
+    this.setDisplayCRS = function(crs) {
+      // TODO: update bounds of frame layer, if there is a frame layer
+      var oldCRS = this.getDisplayCRS();
+      var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+      // TODO: handle case that old and new CRS are the same
+      _dynamicCRS = newCRS;
+      if (!_activeLyr) return; // stop here if no layers have been selected
 
-    if (!prevLyr) {
-      initMap(); // first call
-    }
-
-    if (arcsMayHaveChanged(e.flags)) {
-      // regenerate filtered arcs the next time they are needed for rendering
-      // delete e.dataset.displayArcs;
+      // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
       clearAllDisplayArcs();
 
-      // reset simplification after projection (thresholds have changed)
-      // TODO: preserve simplification pct (need to record pct before change)
-      if (e.flags.proj && e.dataset.arcs) {
-        e.dataset.arcs.setRetainedPct(1);
+      // Reproject all visible map layers
+      if (_activeLyr) projectDisplayLayer(_activeLyr, newCRS);
+      if (_intersectionLyr) projectDisplayLayer(_intersectionLyr, newCRS);
+      if (_overlayLyr) {
+        projectDisplayLayer(_overlayLyr, newCRS);
       }
-    }
+      updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
+      updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
 
-    if (e.flags.simplify_method) { // no redraw needed
-      return false;
-    }
-
-    if (e.flags.simplify_amount || e.flags.redraw_only) { // only redraw (slider drag)
-      drawLayers();
-      return;
-    }
-
-    _activeLyr = getMapLayer(e.layer, e.dataset, getDisplayOptions());
-    _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
-    _activeLyr.active = true;
-    // if (_inspector) _inspector.updateLayer(_activeLyr);
-    _hit.setLayer(_activeLyr);
-    updateVisibleMapLayers();
-    fullBounds = getFullBounds();
-
-    if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
-      needReset = true;
-    } else {
-      needReset = GUI.mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds());
-    }
-
-    if (isFrameView()) {
-      _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
-      _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
-      needReset = true; // snap to frame extent
-    } else {
-      _nav.setZoomFactor(1);
-    }
-    _ext.setBounds(fullBounds); // update 'home' button extent
-    _fullBounds = fullBounds;
-    if (needReset) {
-      _ext.reset();
-    }
-    drawLayers();
-    map.dispatchEvent('updated');
-  }
-
-  // Initialization just before displaying the map for the first time
-  function initMap() {
-    _ext.resize();
-    _stack = new LayerStack(gui, el, _ext, _mouse);
-    gui.buttons.show();
-
-    if (opts.inspectorControl) {
-      _inspector = new InspectionControl2(gui, _hit);
-      _inspector.on('data_change', function(e) {
-        // refresh the display if a style variable has been changed interactively
-        if (internal.svg.isSupportedSvgStyleProperty(e.field)) {
-          drawLayers();
-        }
-      });
-    }
-
-    if (true) { // TODO: add option to disable?
-      _editor = new SymbolDragging2(gui, _ext, _hit);
-      _editor.on('location_change', function(e) {
-        // TODO: optimize redrawing
-        drawLayers();
-      });
-    }
-
-    _ext.on('change', function(e) {
-      if (e.reset) return; // don't need to redraw map here if extent has been reset
-      if (isFrameView()) {
-        updateFrameExtent();
-      }
-      drawLayers(true);
-    });
-
-    _hit.on('change', function(e) {
-      // draw highlight effect for hover and select
-      _overlayLyr = getMapLayerOverlay(_activeLyr, e);
-      _stack.drawOverlayLayer(_overlayLyr);
-    });
-
-    gui.on('resize', function() {
-      position.update(); // kludge to detect new map size after console toggle
-    });
-  }
-
-  function getDisplayOptions() {
-    return {
-      crs: _dynamicCRS
+      // Update map extent (also triggers redraw)
+      projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
     };
-  }
 
-  // Test if an update may have affected the visible shape of arcs
-  // @flags Flags from update event
-  function arcsMayHaveChanged(flags) {
-    return flags.simplify_method || flags.simplify || flags.proj ||
-      flags.arc_count || flags.repair || flags.clip || flags.erase ||
-      flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-      flags.union || flags.mosaic || flags.snap || flags.clean || false;
-  }
+    // Refresh map display in response to data changes, layer selection, etc.
+    function onUpdate(e) {
+      var prevLyr = _activeLyr || null;
+      var fullBounds;
+      var needReset;
 
-  // Update map frame after user navigates the map in frame edit mode
-  function updateFrameExtent() {
-    var frameLyr = internal.findFrameLayer(model);
-    var rec = frameLyr.data.getRecordAt(0);
-    var viewBounds = _ext.getBounds();
-    var w = viewBounds.width() * rec.width / _ext.width();
-    var h = w * rec.height / rec.width;
-    var cx = viewBounds.centerX();
-    var cy = viewBounds.centerY();
-    rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
-    _ext.setFrame(getFrameData());
-    _ext.setBounds(new Bounds(rec.bbox));
-    _ext.reset();
-  }
-
-  function getFullBounds() {
-    var b = new Bounds();
-    var marginPct = 0.025;
-    var pad = 1e-4;
-    if (isPreviewView()) {
-      return internal.getFrameLayerBounds(internal.findFrameLayer(model));
-    }
-    getDrawableContentLayers().forEach(function(lyr) {
-      b.mergeBounds(lyr.bounds);
-      if (isTableView()) {
-        marginPct = getTableMargin(lyr.layer);
+      if (!prevLyr) {
+        initMap(); // first call
       }
-    });
-    if (!b.hasBounds()) {
-      // assign bounds to empty layers, to prevent rendering errors downstream
-      b.setBounds(0,0,0,0);
-    }
-    // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
-    b.padBounds(pad,pad,pad,pad);
-    // add margin
-    b.scale(1 + marginPct * 2);
-    return b;
-  }
 
-  // Calculate margin when displaying content at full zoom, as pct of screen size
-  function getTableMargin(lyr) {
-    var n = internal.getFeatureCount(lyr);
-    var pct = 0.04;
-    if (n < 5) {
-      pct = 0.2;
-    } else if (n < 100) {
-      pct = 0.1;
-    }
-    return pct;
-  }
+      if (arcsMayHaveChanged(e.flags)) {
+        // regenerate filtered arcs the next time they are needed for rendering
+        // delete e.dataset.displayArcs;
+        clearAllDisplayArcs();
 
-  function isActiveLayer(lyr) {
-    return _activeLyr && lyr == _activeLyr.source.layer || false;
-  }
-
-  function isVisibleLayer(lyr) {
-    if (isActiveLayer(lyr)) {
-      return lyr.visibility != 'hidden';
-    }
-    return lyr.visibility == 'visible';
-  }
-
-  function isVisibleDataLayer(lyr) {
-    return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
-  }
-
-  function isFrameLayer(lyr) {
-    return !!(lyr && lyr == internal.findFrameLayer(model));
-  }
-
-  function isTableView() {
-    return !isPreviewView() && !!_activeLyr.tabular;
-  }
-
-  function isPreviewView() {
-    var frameLyr = internal.findFrameLayer(model);
-    return !!frameLyr; //  && isVisibleLayer(frameLyr)
-  }
-
-  // Frame view means frame layer is visible and active (selected)
-  function isFrameView() {
-    var frameLyr = internal.findFrameLayer(model);
-    return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
-  }
-
-  function getFrameData() {
-    var frameLyr = internal.findFrameLayer(model);
-    return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
-  }
-
-  function clearAllDisplayArcs() {
-    model.getDatasets().forEach(function(o) {
-      delete o.displayArcs;
-    });
-  }
-
-  function updateVisibleMapLayers() {
-    var layers = [];
-    model.getLayers().forEach(function(o) {
-      if (!isVisibleLayer(o.layer)) return;
-      if (isActiveLayer(o.layer)) {
-        layers.push(_activeLyr);
-      } else if (!isTableView()) {
-        layers.push(getMapLayer(o.layer, o.dataset, getDisplayOptions()));
-      }
-    });
-    _visibleLayers = layers;
-  }
-
-  function getVisibleMapLayers() {
-    return _visibleLayers;
-  }
-
-  function findActiveLayer(layers) {
-    return layers.filter(function(o) {
-      return o == _activeLyr;
-    });
-  }
-
-  function getDrawableContentLayers() {
-    var layers = getVisibleMapLayers();
-    if (isTableView()) return findActiveLayer(layers);
-    return layers.filter(function(o) {
-      return !!o.geographic;
-    });
-  }
-
-  function getDrawableFurnitureLayers(layers) {
-    if (!isPreviewView()) return [];
-    return getVisibleMapLayers().filter(function(o) {
-      return internal.isFurnitureLayer(o);
-    });
-  }
-
-  function updateLayerStyles(layers) {
-    layers.forEach(function(mapLayer, i) {
-      if (mapLayer.active) {
-        // assume: style is already assigned
-        if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
-        // if (false) { // always show ghosted arcs
-          // kludge to hide ghosted layers when reference layers are present
-          // TODO: consider never showing ghosted layers (which appear after
-          // commands like dissolve and filter).
-          mapLayer.style = utils.defaults({
-            strokeColors: [null, mapLayer.style.strokeColors[1]]
-          }, mapLayer.style);
+        // reset simplification after projection (thresholds have changed)
+        // TODO: preserve simplification pct (need to record pct before change)
+        if (e.flags.proj && e.dataset.arcs) {
+          e.dataset.arcs.setRetainedPct(1);
         }
-      } else {
-        if (mapLayer.layer == _activeLyr.layer) {
-          console.error("Error: shared map layer");
-        }
-        mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
       }
-    });
-  }
 
-  function sortMapLayers(layers) {
-    layers.sort(function(a, b) {
-      // assume that each layer has a stack_id (assigned by updateLayerStackOrder())
-      return a.source.layer.stack_id - b.source.layer.stack_id;
-    });
-  }
-
-  // onlyNav (bool): only map extent has changed, symbols are unchanged
-  function drawLayers(onlyNav) {
-    var contentLayers = getDrawableContentLayers();
-    var furnitureLayers = getDrawableFurnitureLayers();
-    if (!(_ext.width() > 0 && _ext.height() > 0)) {
-      // TODO: track down source of these errors
-      console.error("[drawLayers()] Collapsed map container, unable to draw.");
-      return;
-    }
-    if (!onlyNav) {
-      // kludge to handle layer visibility toggling
-      _ext.setFrame(isPreviewView() ? getFrameData() : null);
-      _ext.setBounds(getFullBounds());
-      updateLayerStyles(contentLayers);
-      // update stack_id property of all layers
-      internal.updateLayerStackOrder(model.getLayers());
-    }
-    sortMapLayers(contentLayers);
-    _stack.drawContentLayers(contentLayers, onlyNav);
-    // draw intersection dots
-    _stack.drawOverlay2Layer(_intersectionLyr);
-    // draw hover & selection effects
-    _stack.drawOverlayLayer(_overlayLyr);
-    // _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
-    _stack.drawFurnitureLayers(furnitureLayers); // re-render on nav, because scalebars
-  }
-}
-
-function getMapLayerOverlay(obj, e) {
-  var style = MapStyle.getOverlayStyle(obj.layer, e);
-  if (!style) return null;
-  return utils.defaults({
-    layer: filterLayerByIds(obj.layer, style.ids),
-    style: style
-  }, obj);
-}
-
-function filterLayerByIds(lyr, ids) {
-  var shapes;
-  if (lyr.shapes) {
-    shapes = ids.map(function(id) {
-      return lyr.shapes[id];
-    });
-    return utils.defaults({shapes: shapes}, lyr);
-  }
-  return lyr;
-}
-
-// Test if map should be re-framed to show updated layer
-GUI.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var viewportPct = GUI.getIntersectionPct(newBounds, mapBounds);
-  var contentPct = GUI.getIntersectionPct(mapBounds, newBounds);
-  var boundsChanged = !prevBounds.equals(newBounds);
-  var inView = newBounds.intersects(mapBounds);
-  var areaChg = newBounds.area() / prevBounds.area();
-  if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
-  if (!inView) return true; // reset if layer is out-of-view
-  if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
-  if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
-  return false;
-};
-
-// TODO: move to utilities file
-GUI.getBoundsIntersection = function(a, b) {
-  var c = new Bounds();
-  if (a.intersects(b)) {
-    c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
-    Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
-  }
-  return c;
-};
-
-// Returns proportion of bb2 occupied by bb1
-GUI.getIntersectionPct = function(bb1, bb2) {
-  return GUI.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
-};
-
-
-function InteractionMode(gui) {
-
-  var menus = {
-    standard: ['info', 'data', 'selection', 'box', 'off'],
-    table: ['info', 'data', 'selection', 'off'],
-    labels: ['info', 'data', 'selection', 'box', 'labels', 'location', 'off'],
-    points: ['info', 'data', 'selection', 'box', 'location', 'off']
-  };
-
-  var prompts = {
-    box: 'Shift-drag to draw a box',
-    data: 'Click-select features to edit their attributes',
-    selection: 'Click-select or shift-drag to select features'
-  };
-
-  // mode name -> menu text lookup
-  var labels = {
-    info: 'inspect attributes',
-    box: 'shift-drag box tool',
-    data: 'edit attributes',
-    labels: 'position labels',
-    location: 'drag points',
-    selection: 'select features',
-    off: 'turn off'
-  };
-  var btn, menu, tab;
-  var _menuTimeout;
-
-  // state variables
-  var _editMode = 'off';
-  var _prevMode = 'info'; // stored mode for re-opening menu
-  var _menuOpen = false;
-
-  // Only render edit mode button/menu if this option is present
-  if (gui.options.inspectorControl) {
-    btn = gui.buttons.addButton('#pointer-icon');
-    menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
-
-    // tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
-
-    btn.on('mouseleave', function() {
-      btn.removeClass('hover');
-      // tab.hide();
-      autoClose();
-    });
-
-    btn.on('mouseenter', function() {
-      btn.addClass('hover');
-      if (_editMode != 'off') {
-        clearTimeout(_menuTimeout);
-        openMenu();
-        // tab.show();
-      }
-    });
-
-    // tab.on('mouseenter', openMenu);
-
-    btn.on('click', function(e) {
-      if (active()) {
-        setMode('off');
-        closeMenu();
-      } else if (_menuOpen) {
-        closeMenu();
-      } else {
-        if (_editMode == 'off') {
-          // turn on interaction when menu opens
-          // (could this be confusing?)
-          setMode(openWithMode());
-        }
-        clearTimeout(_menuTimeout);
-        openMenu();
-      }
-      e.stopPropagation();
-    });
-  }
-
-  this.turnOff = function() {
-    setMode('off');
-  };
-
-  this.getMode = getInteractionMode;
-
-  this.setMode = function(mode) {
-    // TODO: check that this mode is valid for the current dataset
-    if (mode in labels) {
-      setMode(mode);
-    }
-  };
-
-  gui.model.on('update', function(e) {
-    // change mode if active layer doesn't support the current mode
-    updateCurrentMode();
-    if (_menuOpen) {
-      renderMenu();
-    }
-  }, null, -1); // low priority?
-
-  function active() {
-    return _editMode && _editMode != 'off';
-  }
-
-  function getAvailableModes() {
-    var o = gui.model.getActiveLayer();
-    if (!o || !o.layer) {
-      return menus.standard; // TODO: more sensible handling of missing layer
-    }
-    if (!internal.layerHasGeometry(o.layer)) {
-      return menus.table;
-    }
-    if (internal.layerHasLabels(o.layer)) {
-      return menus.labels;
-    }
-    if (internal.layerHasPoints(o.layer)) {
-      return menus.points;
-    }
-    return menus.standard;
-  }
-
-  function getInteractionMode() {
-    return active() ? _editMode : 'off';
-  }
-
-  function renderMenu() {
-    if (!menu) return;
-    var modes = getAvailableModes();
-    menu.empty();
-    modes.forEach(function(mode) {
-      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
-      link.on('click', function(e) {
-        if (_editMode == mode) {
-          closeMenu();
-        } else if (_editMode != mode) {
-          setMode(mode);
-          closeMenu(mode == 'off' ? 200 : 350);
-        }
-        e.stopPropagation();
-      });
-    });
-    updateModeDisplay();
-  }
-
-  // if current editing mode is not available, switch to another mode
-  function updateCurrentMode() {
-    var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1) {
-      setMode('off');
-    }
-  }
-
-  function openWithMode() {
-    if (getAvailableModes().indexOf(_prevMode) > -1) {
-      return _prevMode;
-    }
-    return 'info';
-  }
-
-  function openMenu() {
-    clearTimeout(_menuTimeout);
-    // if (!_menuOpen && _editMode != 'off') {
-    if (!_menuOpen) {
-      // tab.hide();
-      _menuOpen = true;
-      updateAppearance();
-    }
-  }
-
-  function autoClose() {
-    clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 300);
-  }
-
-  function closeMenu(delay) {
-    if (!_menuOpen) return;
-    _menuOpen = false;
-    setTimeout(function() {
-      _menuOpen = false;
-      updateAppearance();
-    }, delay || 0);
-  }
-
-  function setMode(mode) {
-    var changed = mode != _editMode;
-    // if (mode == 'off') tab.hide();
-    if (changed) {
-      menu.classed('active', mode != 'off');
-      if (_editMode != 'off') {
-        _prevMode = _editMode; // save edit mode so we can re-open control with the same mode
-      }
-      _editMode = mode;
-      onModeChange();
-      updateAppearance();
-    }
-  }
-
-  function onModeChange() {
-    gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
-  }
-
-  function updateAppearance() {
-    if (!menu) return;
-    if (_menuOpen) {
-      btn.addClass('open');
-      renderMenu();
-    } else {
-      btn.removeClass('hover');
-      btn.removeClass('open');
-      // menu.hide();
-    }
-    btn.classed('selected', active() || _menuOpen);
-  }
-
-  function updateModeDisplay() {
-    El.findAll('.nav-menu-item').forEach(function(el) {
-      el = El(el);
-      el.classed('selected', el.attr('data-name') == _editMode);
-    });
-  }
-}
-
-
-
-function SidebarButtons(gui) {
-  var root = gui.container.findChild('.mshp-main-map');
-  var buttons = El('div').addClass('nav-buttons').appendTo(root).hide();
-  var _hidden = true;
-  gui.on('active', updateVisibility);
-  gui.on('inactive', updateVisibility);
-
-  // @iconRef: selector for an (svg) button icon
-  this.addButton = function(iconRef) {
-    var btn = initButton(iconRef).addClass('nav-btn');
-    btn.appendTo(buttons);
-    return btn;
-  };
-
-  this.show = function() {
-    _hidden = false;
-    updateVisibility();
-  };
-
-  this.hide = function() {
-    _hidden = true;
-    updateVisibility();
-  };
-
-  var initButton = this.initButton = function(iconRef) {
-    var icon = El('body').findChild(iconRef).node().cloneNode(true);
-    var btn = El('div')
-      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
-    btn.appendChild(icon);
-    if (icon.hasAttribute('id')) icon.removeAttribute('id');
-    return btn;
-  };
-
-  function updateVisibility() {
-    if (GUI.isActiveInstance(gui) && !_hidden) {
-      buttons.show();
-    } else {
-      buttons.hide();
-    }
-  }
-}
-
-
-
-function SessionHistory(gui) {
-  var commands = [];
-
-  // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes
-  this.unsavedChanges = function() {
-    return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
-  };
-
-  this.fileImported = function(file, optStr) {
-    var cmd = '-i ' + file;
-    if (optStr) {
-      cmd += ' ' + optStr;
-    }
-    commands.push(cmd);
-  };
-
-  this.layerRenamed = function(lyr, name) {
-    var currTarget = getCurrentTarget();
-    var layerTarget = getTargetFromLayer(lyr);
-    if (currTarget == layerTarget) {
-      commands.push('-rename-layers ' + name);
-    } else {
-      commands.push('-rename-layers ' + name + ' target=' + layerTarget);
-      commands.push('-target ' + currTarget);
-    }
-  };
-
-  this.consoleCommands = function(str) {
-    commands.push(str); // todo: split commands?
-  };
-
-  this.simplificationApplied = function(optStr) {
-    commands.push('-simplify ' + optStr);
-  };
-
-  this.simplificationRepair = function() {
-    //  TODO: improve this... repair does not necessarily apply to most recent
-    //  simplification command
-    //  consider adding a (hidden) repair command to handle this event
-    var i = indexOfLastCommand('-simplify');
-    if (i > -1) {
-      commands[i] = commands[i].replace(' no-repair', '');
-    }
-  };
-
-  this.updateSimplificationPct = function(pct) {
-    var i = indexOfLastCommand('-simplify');
-    if (i > -1) {
-      commands[i] = commands[i].replace(/percentage=[^ ]+/, 'percentage=' + pct);
-    }
-  };
-
-  this.layersExported = function(ids, optStr) {
-    var layers = gui.model.getLayers();
-    var cmd = '-o';
-    if (layers.length > 1) {
-      cmd += ' target=' + ids.map(getTargetFromId).join(',');
-    }
-    if (optStr) {
-      cmd += ' ' + optStr;
-    }
-    commands.push(cmd);
-  };
-
-  this.setTargetLayer = function(lyr) {
-    var layers = gui.model.getLayers();
-    if (layers.length > 1) {
-      if (indexOfLastCommand('-target') == commands.length - 1) {
-        commands.pop(); // if last commands was -target, remove it
-      }
-      commands.push('-target ' + getTargetFromLayer(lyr));
-    }
-  };
-
-  this.toCommandLineString = function() {
-    var str = commands.join(' \\\n  ');
-    return 'mapshaper ' + str;
-  };
-
-  function getCurrentTarget() {
-    return getTargetFromLayer(gui.model.getActiveLayer().layer);
-  }
-
-  function indexOfLastCommand(cmd) {
-    return commands.reduce(function(memo, str, i) {
-      return str.indexOf(cmd) === 0 ? i : memo;
-    }, -1);
-  }
-
-  function getTargetFromId(id) {
-    var layers = gui.model.getLayers();
-    return getTargetFromLayer(layers[id - 1].layer);
-  }
-
-  function getTargetFromLayer(lyr) {
-    var id = internal.getLayerTargetId(gui.model, lyr);
-    return internal.formatOptionValue(id);
-  }
-}
-
-
-GUI.isActiveInstance = function(gui) {
-  return gui == GUI.__active;
-};
-
-function GuiInstance(container, opts) {
-  var gui = new ModeSwitcher();
-  opts = utils.extend({
-    // defaults
-    homeControl: true,
-    zoomControl: true,
-    inspectorControl: true,
-    disableNavigation: false,
-    showMouseCoordinates: true,
-    focus: true
-  }, opts);
-
-  gui.options = opts;
-  gui.container = El(container);
-  gui.model = new Model(gui);
-  gui.keyboard = new KeyboardEvents(gui);
-  gui.buttons = new SidebarButtons(gui);
-  gui.map = new MshpMap(gui);
-  gui.interaction = new InteractionMode(gui);
-  gui.session = new SessionHistory(gui);
-
-  gui.showProgressMessage = function(msg) {
-    if (!gui.progressMessage) {
-      gui.progressMessage = El('div').addClass('progress-message')
-        .appendTo('body');
-    }
-    El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
-  };
-
-  gui.clearProgressMessage = function() {
-    if (gui.progressMessage) gui.progressMessage.hide();
-  };
-
-  gui.consoleIsOpen = function() {
-    return gui.container.hasClass('console-open');
-  };
-
-  // Make this instance interactive and editable
-  gui.focus = function() {
-    var curr = GUI.__active;
-    if (curr == gui) return;
-    if (curr) {
-      curr.blur();
-    }
-    GUI.__active = gui;
-    MessageProxy(gui);
-    ImportFileProxy(gui);
-    WriteFilesProxy(gui);
-    gui.dispatchEvent('active');
-  };
-
-  gui.blur = function() {
-    if (GUI.isActiveInstance(gui)) {
-      GUI.__active = null;
-      gui.dispatchEvent('inactive');
-    }
-  };
-
-  // switch between multiple gui instances on mouse click
-  gui.container.node().addEventListener('mouseup', function(e) {
-    if (GUI.isActiveInstance(gui)) return;
-    e.stopPropagation();
-    gui.focus();
-  }, true); // use capture
-
-  if (opts.focus) {
-    gui.focus();
-  }
-
-  return gui;
-}
-
-
-
-function AlertControl(gui) {
-  var el;
-  gui.addMode('alert', function() {}, turnOff);
-
-  gui.alert = function(str) {
-    var infoBox;
-    if (!el) {
-      el = El('div').appendTo('body').addClass('error-wrapper');
-      infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
-      El('p').addClass('error-message').appendTo(infoBox);
-      El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
-    }
-    el.findChild('.error-message').html(str);
-    gui.enterMode('alert');
-  };
-
-  function turnOff() {
-    if (el) {
-      el.remove();
-      el = null;
-    }
-  }
-}
-
-
-// TODO: switch all ClickText to ClickText2
-
-// @ref Reference to an element containing a text node
-function ClickText2(ref) {
-  var self = this;
-  var selected = false;
-  var el = El(ref).on('mousedown', init);
-
-  function init() {
-    el.removeEventListener('mousedown', init);
-    el.attr('contentEditable', true)
-    .attr('spellcheck', false)
-    .attr('autocorrect', false)
-    .on('focus', function(e) {
-      el.addClass('editing');
-      selected = false;
-    }).on('blur', function(e) {
-      el.removeClass('editing');
-      self.dispatchEvent('change');
-      getSelection().removeAllRanges();
-    }).on('keydown', function(e) {
-      if (e.keyCode == 13) { // enter
-        e.stopPropagation();
-        e.preventDefault();
-        this.blur();
-      }
-    }).on('click', function(e) {
-      if (!selected && getSelection().isCollapsed) {
-        GUI.selectElement(el.node());
-      }
-      selected = true;
-      e.stopPropagation();
-    });
-  }
-
-  this.value = function(str) {
-    if (utils.isString(str)) {
-      el.node().textContent = str;
-    } else {
-      return el.node().textContent;
-    }
-  };
-}
-
-utils.inherit(ClickText2, EventDispatcher);
-
-// @ref reference to a text input element
-function ClickText(ref) {
-  var _el = El(ref);
-  var _self = this;
-  var _max = Infinity,
-      _min = -Infinity,
-      _formatter = function(v) {return String(v);},
-      _validator = function(v) {return !isNaN(v);},
-      _parser = function(s) {return parseFloat(s);},
-      _value = 0;
-
-  _el.on('blur', onblur);
-  _el.on('keydown', onpress);
-
-  function onpress(e) {
-    if (e.keyCode == 27) { // esc
-      _self.value(_value); // reset input field to current value
-      _el.el.blur();
-    } else if (e.keyCode == 13) { // enter
-      _el.el.blur();
-    }
-  }
-
-  // Validate input contents.
-  // Update internal value and fire 'change' if valid
-  //
-  function onblur() {
-    var val = _parser(_el.el.value);
-    if (val === _value) {
-      // return;
-    }
-    if (_validator(val)) {
-      _self.value(val);
-      _self.dispatchEvent('change', {value:_self.value()});
-    } else {
-      _self.value(_value);
-      _self.dispatchEvent('error'); // TODO: improve
-    }
-  }
-
-  this.bounds = function(min, max) {
-    _min = min;
-    _max = max;
-    return this;
-  };
-
-  this.validator = function(f) {
-    _validator = f;
-    return this;
-  };
-
-  this.formatter = function(f) {
-    _formatter = f;
-    return this;
-  };
-
-  this.parser = function(f) {
-    _parser = f;
-    return this;
-  };
-
-  this.text = function() {return _el.el.value;};
-
-  this.value = function(arg) {
-    if (arg == void 0) {
-      // var valStr = this.el.value;
-      // return _parser ? _parser(valStr) : parseFloat(valStr);
-      return _value;
-    }
-    var val = utils.clamp(arg, _min, _max);
-    if (!_validator(val)) {
-      error("ClickText#value() invalid value:", arg);
-    } else {
-      _value = val;
-    }
-    _el.el.value = _formatter(val);
-    return this;
-  };
-}
-
-utils.inherit(ClickText, EventDispatcher);
-
-
-function Checkbox(ref) {
-  var _el = El(ref);
-}
-
-utils.inherit(Checkbox, EventDispatcher);
-
-function SimpleButton(ref) {
-  var _el = El(ref),
-      _self = this,
-      _active = !_el.hasClass('disabled');
-
-  _el.on('click', function(e) {
-    if (_active) _self.dispatchEvent('click');
-    return false;
-  });
-
-  this.active = function(a) {
-    if (a === void 0) return _active;
-    if (a !== _active) {
-      _active = a;
-      _el.toggleClass('disabled');
-    }
-    return this;
-  };
-
-  this.node = function() {return _el.node();};
-
-  function isVisible() {
-    var el = _el.node();
-    return el.offsetParent !== null;
-  }
-}
-
-utils.inherit(SimpleButton, EventDispatcher);
-
-
-function draggable(ref) {
-  var xdown, ydown;
-  var el = El(ref),
-      dragging = false,
-      obj = new EventDispatcher();
-  Browser.undraggable(el.node());
-  el.on('mousedown', function(e) {
-    xdown = e.pageX;
-    ydown = e.pageY;
-    window.addEventListener('mousemove', onmove);
-    window.addEventListener('mouseup', onrelease);
-  });
-
-  function onrelease(e) {
-    window.removeEventListener('mousemove', onmove);
-    window.removeEventListener('mouseup', onrelease);
-    if (dragging) {
-      dragging = false;
-      obj.dispatchEvent('dragend');
-    }
-  }
-
-  function onmove(e) {
-    if (!dragging) {
-      dragging = true;
-      obj.dispatchEvent('dragstart');
-    }
-    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
-  }
-  return obj;
-}
-
-function Slider(ref, opts) {
-  var _el = El(ref);
-  var _self = this;
-  var defaults = {
-    space: 7
-  };
-  opts = utils.extend(defaults, opts);
-
-  var _pct = 0;
-  var _track,
-      _handle,
-      _handleLeft = opts.space;
-
-  function size() {
-    return _track ? _track.width() - opts.space * 2 : 0;
-  }
-
-  this.track = function(ref) {
-    if (ref && !_track) {
-      _track = El(ref);
-      _handleLeft = _track.el.offsetLeft + opts.space;
-      updateHandlePos();
-    }
-    return _track;
-  };
-
-  this.handle = function(ref) {
-    var startX;
-    if (ref && !_handle) {
-      _handle = El(ref);
-      draggable(_handle)
-        .on('drag', function(e) {
-          setHandlePos(startX + e.dx, true);
-        })
-        .on('dragstart', function(e) {
-          startX = position();
-          _self.dispatchEvent('start');
-        })
-        .on('dragend', function(e) {
-          _self.dispatchEvent('end');
-        });
-      updateHandlePos();
-    }
-    return _handle;
-  };
-
-  function position() {
-    return Math.round(_pct * size());
-  }
-
-  this.pct = function(pct) {
-    if (pct >= 0 && pct <= 1) {
-      _pct = pct;
-      updateHandlePos();
-    }
-    return _pct;
-  };
-
-  function setHandlePos(x, fire) {
-    x = utils.clamp(x, 0, size());
-    var pct = x / size();
-    if (pct != _pct) {
-      _pct = pct;
-      _handle.css('left', _handleLeft + x);
-      _self.dispatchEvent('change', {pct: _pct});
-    }
-  }
-
-  function updateHandlePos() {
-    var x = _handleLeft + Math.round(position());
-    if (_handle) _handle.css('left', x);
-  }
-}
-
-utils.inherit(Slider, EventDispatcher);
-
-
-
-// Returns a function for converting simplification ratio [0-1] to an interval value.
-// If the dataset is large, the value is an approximation (for speed while using slider)
-internal.getThresholdFunction = function(arcs) {
-  var size = arcs.getPointCount(),
-      nth = Math.ceil(size / 5e5),
-      sortedThresholds = arcs.getRemovableThresholds(nth);
-      // Sort simplification thresholds for all non-endpoint vertices
-      // for quick conversion of simplification percentage to threshold value.
-      // For large datasets, use every nth point, for faster sorting.
-      // utils.quicksort(sortedThresholds, false); // descending
-      utils.quicksort(sortedThresholds, true); // ascending
-
-  return function(pct) {
-    var n = sortedThresholds.length;
-    var rank = internal.retainedPctToRank(pct, sortedThresholds.length);
-    if (rank < 1) return 0;
-    if (rank > n) return Infinity;
-    return sortedThresholds[rank-1];
-  };
-};
-
-// Return integer rank of n (1-indexed) or 0 if pct <= 0 or n+1 if pct >= 1
-internal.retainedPctToRank = function(pct, n) {
-  var rank;
-  if (n === 0 || pct >= 1) {
-    rank = 0;
-  } else if (pct <= 0) {
-    rank = n + 1;
-  } else {
-    rank = Math.floor((1 - pct) * (n + 2));
-  }
-  return rank;
-};
-
-// nth (optional): sample every nth threshold (use estimate for speed)
-internal.getThresholdByPct = function(pct, arcs, nth) {
-  var tmp = arcs.getRemovableThresholds(nth),
-      rank = internal.retainedPctToRank(pct, tmp.length);
-  if (rank < 1) return 0;
-  if (rank > tmp.length) return Infinity;
-  return utils.findValueByRank(tmp, rank);
-};
-
-
-/*
-How changes in the simplify control should affect other components
-
-data calculated, 100% simplification
- -> [map] filtered arcs update
-
-data calculated, <100% simplification
- -> [map] filtered arcs update, redraw; [repair] intersection update
-
-change via text field
- -> [map] redraw; [repair] intersection update
-
-slider drag start
- -> [repair] hide display
-
-slider drag
- -> [map] redraw
-
-slider drag end
- -> [repair] intersection update
-
-*/
-
-var SimplifyControl = function(gui) {
-  var model = gui.model;
-  var control = {};
-  var _value = 1;
-  var el = gui.container.findChild('.simplify-control-wrapper');
-  var menu = gui.container.findChild('.simplify-options');
-  var slider, text, fromPct;
-
-  // init settings menu
-  new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
-  new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
-    if (el.visible()) {
-      // cancel just hides menu if slider is visible
-      menu.hide();
-    } else {
-      gui.clearMode();
-    }
-  });
-  new SimpleButton(el.findChild('.simplify-settings-btn')).on('click', function() {
-    if (menu.visible()) {
-      menu.hide();
-    } else {
-      showMenu();
-    }
-  });
-  gui.keyboard.onMenuSubmit(menu, onSubmit);
-
-  // init simplify button and mode
-  gui.addMode('simplify', turnOn, turnOff, gui.container.findChild('.simplify-btn'));
-  model.on('select', function() {
-    if (gui.getMode() == 'simplify') gui.clearMode();
-  });
-
-  // exit simplify mode when user clicks off the visible part of the menu
-  menu.on('click', GUI.handleDirectEvent(gui.clearMode));
-
-  // init slider
-  slider = new Slider(el.findChild(".simplify-control .slider"));
-  slider.handle(el.findChild(".simplify-control .handle"));
-  slider.track(el.findChild(".simplify-control .track"));
-  slider.on('change', function(e) {
-    var pct = fromSliderPct(e.pct);
-    text.value(pct);
-    pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
-    onChange(pct);
-  });
-  slider.on('start', function(e) {
-    gui.dispatchEvent('simplify_drag_start'); // trigger intersection control to hide
-  }).on('end', function(e) {
-    gui.dispatchEvent('simplify_drag_end'); // trigger intersection control to redraw
-  });
-
-  // init text box showing simplify pct
-  text = new ClickText(el.findChild(".simplify-control .clicktext"));
-  text.bounds(0, 1);
-  text.formatter(function(val) {
-    if (isNaN(val)) return '-';
-    var pct = val * 100;
-    var decimals = 0;
-    if (pct <= 0) decimals = 1;
-    else if (pct < 0.001) decimals = 4;
-    else if (pct < 0.01) decimals = 3;
-    else if (pct < 1) decimals = 2;
-    else if (pct < 100) decimals = 1;
-    return utils.formatNumber(pct, decimals) + "%";
-  });
-
-  text.parser(function(s) {
-    return parseFloat(s) / 100;
-  });
-
-  text.value(0);
-  text.on('change', function(e) {
-    var pct = e.value;
-    slider.pct(toSliderPct(pct));
-    onChange(pct);
-    gui.dispatchEvent('simplify_drag_end'); // (kludge) trigger intersection control to redraw
-  });
-
-  control.reset = function() {
-    control.value(1);
-    el.hide();
-    menu.hide();
-    gui.container.removeClass('simplify');
-  };
-
-  control.value = function(val) {
-    if (!isNaN(val)) {
-      // TODO: validate
-      _value = val;
-      slider.pct(toSliderPct(val));
-      text.value(val);
-    }
-    return _value;
-  };
-
-  control.value(_value);
-
-  function turnOn() {
-    var target = model.getActiveLayer();
-    var arcs = target.dataset.arcs;
-    if (!internal.layerHasPaths(target.layer)) {
-      gui.alert("This layer can not be simplified");
-      return;
-    }
-    if (arcs.getVertexData().zz) {
-      // TODO: try to avoid calculating pct (slow);
-      showSlider(); // need to show slider before setting; TODO: fix
-      fromPct = internal.getThresholdFunction(arcs, false);
-      control.value(arcs.getRetainedPct());
-
-    } else {
-      showMenu();
-    }
-  }
-
-  function showMenu() {
-    var dataset = model.getActiveLayer().dataset;
-    var showPlanarOpt = !dataset.arcs.isPlanar();
-    var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
-    menu.findChild('.planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
-    menu.findChild('.planar-opt').node().checked = !opts.spherical;
-    menu.findChild('.import-retain-opt').node().checked = opts.keep_shapes;
-    menu.findChild('input[value=' + opts.method + ']').node().checked = true;
-    menu.show();
-  }
-
-  function turnOff() {
-    menu.hide();
-    control.reset();
-  }
-
-  function onSubmit() {
-    var dataset = model.getActiveLayer().dataset;
-    var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
-    var delay = 0;
-    if (showMsg) {
-      delay = 35;
-      gui.showProgressMessage('Calculating');
-    }
-    menu.hide();
-    setTimeout(function() {
-      var opts = getSimplifyOptions();
-      mapshaper.simplify(dataset, opts);
-      gui.session.simplificationApplied(getSimplifyOptionsAsString());
-      model.updated({
-        // trigger filtered arc rebuild without redraw if pct is 1
-        simplify_method: opts.percentage == 1,
-        simplify: opts.percentage < 1
-      });
-      showSlider();
-      fromPct = internal.getThresholdFunction(dataset.arcs, false);
-      gui.clearProgressMessage();
-    }, delay);
-  }
-
-  function showSlider() {
-    el.show();
-    gui.container.addClass('simplify'); // for resizing, hiding layer label, etc.
-  }
-
-  function getSimplifyOptions() {
-    var method = menu.findChild('input[name=method]:checked').attr('value') || null;
-    return {
-      method: method,
-      percentage: _value,
-      no_repair: true,
-      keep_shapes: !!menu.findChild('.import-retain-opt').node().checked,
-      planar: !!menu.findChild('.planar-opt').node().checked
-    };
-  }
-
-  function getSimplifyOptionsAsString() {
-    var opts = getSimplifyOptions();
-    var str = 'percentage=' + opts.percentage;
-    if (opts.method == 'visvalingam' || opts.method == 'dp') str += ' ' + opts.method;
-    if (opts.no_repair) str += ' no-repair';
-    if (opts.keep_shapes) str += ' keep-shapes';
-    if (opts.planar) str += ' planar';
-    return str;
-  }
-
-  function toSliderPct(p) {
-    p = Math.sqrt(p);
-    var pct = 1 - p;
-    return pct;
-  }
-
-  function fromSliderPct(p) {
-    var pct = 1 - p;
-    return pct * pct;
-  }
-
-  function onChange(pct) {
-    if (_value != pct) {
-      _value = pct;
-      model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
-      gui.session.updateSimplificationPct(pct);
-      model.updated({'simplify_amount': true});
-      updateSliderDisplay();
-    }
-  }
-
-  function updateSliderDisplay() {
-    // TODO: display resolution and vertex count
-    // var dataset = model.getActiveLayer().dataset;
-    // var interval = dataset.arcs.getRetainedInterval();
-  }
-};
-
-
-// Assume zip.js is loaded and zip is defined globally
-
-// @file: Zip file
-// @cb: function(err, <files>)
-//
-GUI.readZipFile = function(file, cb) {
-  var _files = [];
-  zip.createReader(new zip.BlobReader(file), importZipContent, onError);
-
-  function onError(err) {
-    cb(err);
-  }
-
-  function onDone() {
-    cb(null, _files);
-  }
-
-  function importZipContent(reader) {
-    var _entries;
-    reader.getEntries(readEntries);
-
-    function readEntries(entries) {
-      _entries = entries || [];
-      readNext();
-    }
-
-    function readNext() {
-      if (_entries.length > 0) {
-        readEntry(_entries.pop());
-      } else {
-        reader.close();
-        onDone();
-      }
-    }
-
-    function readEntry(entry) {
-      var filename = entry.filename,
-          isValid = !entry.directory && GUI.isReadableFileType(filename) &&
-              !/^__MACOSX/.test(filename); // ignore "resource-force" files
-      if (isValid) {
-        entry.getData(new zip.BlobWriter(), function(file) {
-          file.name = filename; // Give the Blob a name, like a File object
-          _files.push(file);
-          readNext();
-        });
-      } else {
-        readNext();
-      }
-    }
-  }
-};
-
-
-
-function CatalogControl(gui, catalog, onSelect) {
-  var self = this,
-      container = gui.container.findChild('.file-catalog'),
-      cols = catalog.cols,
-      enabled = true,
-      items = catalog.items,
-      n = items.length,
-      row = 0,
-      html;
-
-  this.reset = function() {
-    enabled = true;
-    container.removeClass('downloading');
-    this.progress(-1);
-  };
-
-  this.progress = function() {}; // set by click handler
-
-  if (n > 0 === false) {
-    console.error("Catalog is missing array of items");
-    return;
-  }
-
- gui.container.addClass('catalog-mode');
-
-  if (!cols) {
-    cols = Math.ceil(Math.sqrt(n));
-  }
-  rows = Math.ceil(n / cols);
-
-  html = '<table>';
-  if (catalog.title) {
-    html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
-  }
-  while (row < rows) {
-    html += renderRow(items.slice(row * cols, row * cols + cols));
-    row++;
-  }
-  html += '</table>';
-  container.node().innerHTML = html;
-  gui.container.findChildren('.file-catalog td').forEach(function(el, i) {
-    el.on('click', function() {
-      selectItem(el, i);
-    });
-  });
-
-  // Generate onprogress callback to show a progress indicator
-  function getProgressFunction(el) {
-    var visible = false,
-        i = 0;
-    return function(pct) {
-      i++;
-      if (i == 2 && pct < 0.5) {
-        // only show progress bar if file will take a while to load
-        visible = true;
-      }
-      if (pct == -1) {
-        // kludge to reset progress bar
-        el.removeClass('downloading');
-        pct = 0;
-      }
-      if (visible) {
-        el.css('background-size', (Math.round(pct * 100) + '% 100%'));
-      }
-    };
-  }
-
-  function renderRow(items) {
-    var tds = items.map(function(o, col) {
-      var i = row * cols + col;
-      return renderCell(o, i);
-    });
-    return '<tr>' + tds.join('') + '</tr>';
-  }
-
-  function selectItem(el,i) {
-    var pageUrl = window.location.href.toString().replace(/[?#].*/, '').replace(/\/$/, '') + '/';
-    var item = items[i];
-    var urls = item.files.map(function(file) {
-      var url = (item.url || '') + file;
-      if (/^http/.test(url) === false) {
-        // assume relative url
-        url = pageUrl + '/' + url;
-      }
-      return url;
-    });
-    if (enabled) { // only respond to first click
-      self.progress = getProgressFunction(el);
-      el.addClass('downloading');
-      container.addClass('downloading');
-      enabled = false;
-      onSelect(urls);
-    }
-  }
-
-  function renderCell(item, i) {
-    var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
-    return utils.format(template, i, item.title, item.subtitle || '');
-  }
-
-}
-
-
-// @cb function(<FileList>)
-function DropControl(el, cb) {
-  var area = El(el);
-  area.on('dragleave', ondragleave)
-      .on('dragover', ondragover)
-      .on('drop', ondrop);
-  function ondragleave(e) {
-    block(e);
-    out();
-  }
-  function ondragover(e) {
-    // blocking drag events enables drop event
-    block(e);
-    over();
-  }
-  function ondrop(e) {
-    block(e);
-    out();
-    cb(e.dataTransfer.files);
-  }
-  function over() {
-    area.addClass('dragover');
-  }
-  function out() {
-    area.removeClass('dragover');
-  }
-  function block(e) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-}
-
-// @el DOM element for select button
-// @cb function(<FileList>)
-function FileChooser(el, cb) {
-  var btn = El(el).on('click', function() {
-    input.el.click();
-  });
-  var input = El('form')
-    .addClass('file-control').appendTo('body')
-    .newChild('input')
-    .attr('type', 'file')
-    .attr('multiple', 'multiple')
-    .on('change', onchange);
-
-  function onchange(e) {
-    var files = e.target.files;
-    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
-    if (files) {
-      // disable the button while files are being processed
-      btn.addClass('selected');
-      input.attr('disabled', true);
-      cb(files);
-      btn.removeClass('selected');
-      input.attr('disabled', false);
-    }
-  }
-}
-
-function ImportControl(gui, opts) {
-  var model = gui.model;
-  var importCount = 0;
-  var useQuickView = opts.quick_view; // may be set by mapshaper-gui
-  var queuedFiles = [];
-  var manifestFiles = opts.files || [];
-  var cachedFiles = {};
-  var catalog;
-
-  if (opts.catalog) {
-    catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
-  }
-
-  new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
-  new DropControl('body', receiveFiles); // default drop area is entire page
-  new DropControl('#import-drop', receiveFiles);
-  new DropControl('#import-quick-drop', receiveFilesQuickView);
-  new FileChooser('#file-selection-btn', receiveFiles);
-  new FileChooser('#import-buttons .add-btn', receiveFiles);
-  new FileChooser('#add-file-btn', receiveFiles);
-
-  gui.keyboard.onMenuSubmit(El('#import-options'), onSubmit);
-
-  gui.addMode('import', turnOn, turnOff);
-  gui.enterMode('import');
-
-  gui.on('mode', function(e) {
-    // re-open import opts if leaving alert or console modes and nothing has been imported yet
-    if (!e.name && model.isEmpty()) {
-      gui.enterMode('import');
-    }
-  });
-
-  function findMatchingShp(filename) {
-    // use case-insensitive matching
-    var base = utils.getPathBase(filename).toLowerCase();
-    return model.getDatasets().filter(function(d) {
-      var fname = d.info.input_files && d.info.input_files[0] || "";
-      var ext = utils.getFileExtension(fname).toLowerCase();
-      var base2 = utils.getPathBase(fname).toLowerCase();
-      return base == base2 && ext == 'shp';
-    });
-  }
-
-  function turnOn() {
-    if (manifestFiles.length > 0) {
-      downloadFiles(manifestFiles, true);
-      manifestFiles = [];
-    } else if (model.isEmpty()) {
-      gui.container.addClass('splash-screen');
-    }
-  }
-
-  function turnOff() {
-    var target;
-    if (catalog) catalog.reset(); // re-enable clickable catalog
-    if (importCount > 0) {
-      // display last layer of last imported dataset
-      // target = model.getDefaultTargets()[0];
-      // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
-      model.updated({select: true});
-    }
-    gui.clearProgressMessage();
-    importCount = 0;
-    useQuickView = false; // unset 'quick view' mode, if on
-    close();
-  }
-
-  function close() {
-    clearQueuedFiles();
-    cachedFiles = {};
-  }
-
-  function clearQueuedFiles() {
-    queuedFiles = [];
-    gui.container.removeClass('queued-files');
-    gui.container.findChild('.dropped-file-list').empty();
-  }
-
-  function addFilesToQueue(files) {
-    var index = {};
-    queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
-      // filter out unreadable types and dupes
-      if (GUI.isReadableFileType(f.name) && f.name in index === false) {
-        index[f.name] = true;
-        memo.push(f);
-      }
-      return memo;
-    }, []);
-  }
-
-  // When a Shapefile component is at the head of the queue, move the entire
-  // Shapefile to the front of the queue, sorted in reverse alphabetical order,
-  // (a kludge), so .shp is read before .dbf and .prj
-  // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
-  // TODO: import Shapefile parts without relying on this kludge
-  function sortQueue(queue) {
-    var nextFile = queue[0];
-    var basename, parts;
-    if (!isShapefilePart(nextFile.name)) {
-      return queue;
-    }
-    basename = utils.getFileBase(nextFile.name).toLowerCase();
-    parts = [];
-    queue = queue.filter(function(file) {
-      if (utils.getFileBase(file.name).toLowerCase() == basename) {
-        parts.push(file);
+      if (e.flags.simplify_method) { // no redraw needed
         return false;
       }
-      return true;
-    });
-    parts.sort(function(a, b) {
-      // Sorting on LC filename so Shapefiles with mixed-case
-      // extensions are sorted correctly
-      return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
-    });
-    return parts.concat(queue);
+
+      if (e.flags.simplify_amount || e.flags.redraw_only) { // only redraw (slider drag)
+        drawLayers();
+        return;
+      }
+
+      _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
+      _activeLyr.style = getActiveStyle(_activeLyr.layer);
+      _activeLyr.active = true;
+      // if (_inspector) _inspector.updateLayer(_activeLyr);
+      _hit.setLayer(_activeLyr);
+      updateVisibleMapLayers();
+      fullBounds = getFullBounds();
+
+      if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+        needReset = true;
+      } else {
+        needReset = GUI.mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds());
+      }
+
+      if (isFrameView()) {
+        _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
+        _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
+        needReset = true; // snap to frame extent
+      } else {
+        _nav.setZoomFactor(1);
+      }
+      _ext.setBounds(fullBounds); // update 'home' button extent
+      _fullBounds = fullBounds;
+      if (needReset) {
+        _ext.reset();
+      }
+      drawLayers();
+      map.dispatchEvent('updated');
+    }
+
+    // Initialization just before displaying the map for the first time
+    function initMap() {
+      _ext.resize();
+      _stack = new LayerStack(gui, el, _ext, _mouse);
+      gui.buttons.show();
+
+      if (opts.inspectorControl) {
+        _inspector = new InspectionControl2(gui, _hit);
+        _inspector.on('data_change', function(e) {
+          // refresh the display if a style variable has been changed interactively
+          if (internal.isSupportedSvgStyleProperty(e.field)) {
+            drawLayers();
+          }
+        });
+      }
+
+      { // TODO: add option to disable?
+        _editor = new SymbolDragging2(gui, _ext, _hit);
+        _editor.on('location_change', function(e) {
+          // TODO: optimize redrawing
+          drawLayers();
+        });
+      }
+
+      _ext.on('change', function(e) {
+        if (e.reset) return; // don't need to redraw map here if extent has been reset
+        if (isFrameView()) {
+          updateFrameExtent();
+        }
+        drawLayers(true);
+      });
+
+      _hit.on('change', function(e) {
+        // draw highlight effect for hover and select
+        _overlayLyr = getDisplayLayerOverlay(_activeLyr, e);
+        _stack.drawOverlayLayer(_overlayLyr);
+      });
+
+      gui.on('resize', function() {
+        position.update(); // kludge to detect new map size after console toggle
+      });
+    }
+
+    function getDisplayOptions() {
+      return {
+        crs: _dynamicCRS
+      };
+    }
+
+    // Test if an update may have affected the visible shape of arcs
+    // @flags Flags from update event
+    function arcsMayHaveChanged(flags) {
+      return flags.simplify_method || flags.simplify || flags.proj ||
+        flags.arc_count || flags.repair || flags.clip || flags.erase ||
+        flags.slice || flags.affine || flags.rectangle || flags.buffer ||
+        flags.union || flags.mosaic || flags.snap || flags.clean || false;
+    }
+
+    // Update map frame after user navigates the map in frame edit mode
+    function updateFrameExtent() {
+      var frameLyr = internal.findFrameLayer(model);
+      var rec = frameLyr.data.getRecordAt(0);
+      var viewBounds = _ext.getBounds();
+      var w = viewBounds.width() * rec.width / _ext.width();
+      var h = w * rec.height / rec.width;
+      var cx = viewBounds.centerX();
+      var cy = viewBounds.centerY();
+      rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
+      _ext.setFrame(getFrameData());
+      _ext.setBounds(new Bounds(rec.bbox));
+      _ext.reset();
+    }
+
+    function getFullBounds() {
+      var b = new Bounds();
+      var marginPct = 0.025;
+      var pad = 1e-4;
+      if (isPreviewView()) {
+        return internal.getFrameLayerBounds(internal.findFrameLayer(model));
+      }
+      getDrawableContentLayers().forEach(function(lyr) {
+        b.mergeBounds(lyr.bounds);
+        if (isTableView()) {
+          marginPct = getTableMargin(lyr.layer);
+        }
+      });
+      if (!b.hasBounds()) {
+        // assign bounds to empty layers, to prevent rendering errors downstream
+        b.setBounds(0,0,0,0);
+      }
+      // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+      b.padBounds(pad,pad,pad,pad);
+      // add margin
+      b.scale(1 + marginPct * 2);
+      return b;
+    }
+
+    // Calculate margin when displaying content at full zoom, as pct of screen size
+    function getTableMargin(lyr) {
+      var n = internal.getFeatureCount(lyr);
+      var pct = 0.04;
+      if (n < 5) {
+        pct = 0.2;
+      } else if (n < 100) {
+        pct = 0.1;
+      }
+      return pct;
+    }
+
+    function isActiveLayer(lyr) {
+      return _activeLyr && lyr == _activeLyr.source.layer || false;
+    }
+
+    function isVisibleLayer(lyr) {
+      if (isActiveLayer(lyr)) {
+        return lyr.visibility != 'hidden';
+      }
+      return lyr.visibility == 'visible';
+    }
+
+    function isTableView() {
+      return !isPreviewView() && !!_activeLyr.tabular;
+    }
+
+    function isPreviewView() {
+      var frameLyr = internal.findFrameLayer(model);
+      return !!frameLyr; //  && isVisibleLayer(frameLyr)
+    }
+
+    // Frame view means frame layer is visible and active (selected)
+    function isFrameView() {
+      var frameLyr = internal.findFrameLayer(model);
+      return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
+    }
+
+    function getFrameData() {
+      var frameLyr = internal.findFrameLayer(model);
+      return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+    }
+
+    function clearAllDisplayArcs() {
+      model.getDatasets().forEach(function(o) {
+        delete o.displayArcs;
+      });
+    }
+
+    function updateVisibleMapLayers() {
+      var layers = [];
+      model.getLayers().forEach(function(o) {
+        if (!isVisibleLayer(o.layer)) return;
+        if (isActiveLayer(o.layer)) {
+          layers.push(_activeLyr);
+        } else if (!isTableView()) {
+          layers.push(getDisplayLayer(o.layer, o.dataset, getDisplayOptions()));
+        }
+      });
+      _visibleLayers = layers;
+    }
+
+    function getVisibleMapLayers() {
+      return _visibleLayers;
+    }
+
+    function findActiveLayer(layers) {
+      return layers.filter(function(o) {
+        return o == _activeLyr;
+      });
+    }
+
+    function getDrawableContentLayers() {
+      var layers = getVisibleMapLayers();
+      if (isTableView()) return findActiveLayer(layers);
+      return layers.filter(function(o) {
+        return !!o.geographic;
+      });
+    }
+
+    function getDrawableFurnitureLayers(layers) {
+      if (!isPreviewView()) return [];
+      return getVisibleMapLayers().filter(function(o) {
+        return internal.isFurnitureLayer(o);
+      });
+    }
+
+    function updateLayerStyles(layers) {
+      layers.forEach(function(mapLayer, i) {
+        if (mapLayer.active) {
+          // assume: style is already assigned
+          if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
+          // if (false) { // always show ghosted arcs
+            // kludge to hide ghosted layers when reference layers are present
+            // TODO: consider never showing ghosted layers (which appear after
+            // commands like dissolve and filter).
+            mapLayer.style = utils.defaults({
+              strokeColors: [null, mapLayer.style.strokeColors[1]]
+            }, mapLayer.style);
+          }
+        } else {
+          if (mapLayer.layer == _activeLyr.layer) {
+            console.error("Error: shared map layer");
+          }
+          mapLayer.style = getReferenceStyle(mapLayer.layer);
+        }
+      });
+    }
+
+    function sortMapLayers(layers) {
+      layers.sort(function(a, b) {
+        // assume that each layer has a stack_id (assigned by updateLayerStackOrder())
+        return a.source.layer.stack_id - b.source.layer.stack_id;
+      });
+    }
+
+    // onlyNav (bool): only map extent has changed, symbols are unchanged
+    function drawLayers(onlyNav) {
+      var contentLayers = getDrawableContentLayers();
+      var furnitureLayers = getDrawableFurnitureLayers();
+      if (!(_ext.width() > 0 && _ext.height() > 0)) {
+        // TODO: track down source of these errors
+        console.error("[drawLayers()] Collapsed map container, unable to draw.");
+        return;
+      }
+      if (!onlyNav) {
+        // kludge to handle layer visibility toggling
+        _ext.setFrame(isPreviewView() ? getFrameData() : null);
+        _ext.setBounds(getFullBounds());
+        updateLayerStyles(contentLayers);
+        // update stack_id property of all layers
+        updateLayerStackOrder(model.getLayers());
+      }
+      sortMapLayers(contentLayers);
+      _stack.drawContentLayers(contentLayers, onlyNav);
+      // draw intersection dots
+      _stack.drawOverlay2Layer(_intersectionLyr);
+      // draw hover & selection effects
+      _stack.drawOverlayLayer(_overlayLyr);
+      // _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
+      _stack.drawFurnitureLayers(furnitureLayers); // re-render on nav, because scalebars
+    }
   }
 
-  function showQueuedFiles() {
-    var list = gui.container.findChild('.dropped-file-list').empty();
-    queuedFiles.forEach(function(f) {
-      El('<p>').text(f.name).appendTo(list);
-    });
+  function getDisplayLayerOverlay(obj, e) {
+    var style = getOverlayStyle(obj.layer, e);
+    if (!style) return null;
+    return utils.defaults({
+      layer: filterLayerByIds(obj.layer, style.ids),
+      style: style
+    }, obj);
   }
 
-  function receiveFilesQuickView(files) {
-    useQuickView = true;
-    receiveFiles(files);
+  // Test if map should be re-framed to show updated layer
+  GUI.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
+    var viewportPct = GUI.getIntersectionPct(newBounds, mapBounds);
+    var contentPct = GUI.getIntersectionPct(mapBounds, newBounds);
+    var boundsChanged = !prevBounds.equals(newBounds);
+    var inView = newBounds.intersects(mapBounds);
+    var areaChg = newBounds.area() / prevBounds.area();
+    if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
+    if (!inView) return true; // reset if layer is out-of-view
+    if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
+    if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
+    return false;
+  };
+
+  // TODO: move to utilities file
+  GUI.getBoundsIntersection = function(a, b) {
+    var c = new Bounds();
+    if (a.intersects(b)) {
+      c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
+      Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
+    }
+    return c;
+  };
+
+  // Returns proportion of bb2 occupied by bb1
+  GUI.getIntersectionPct = function(bb1, bb2) {
+    return GUI.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+  };
+
+  function GuiInstance(container, opts) {
+    var gui = new ModeSwitcher();
+    opts = utils.extend({
+      // defaults
+      homeControl: true,
+      zoomControl: true,
+      inspectorControl: true,
+      disableNavigation: false,
+      showMouseCoordinates: true,
+      focus: true
+    }, opts);
+
+    gui.options = opts;
+    gui.container = El(container);
+    gui.model = new Model(gui);
+    gui.keyboard = new KeyboardEvents(gui);
+    gui.buttons = new SidebarButtons(gui);
+    gui.map = new MshpMap(gui);
+    gui.interaction = new InteractionMode(gui);
+    gui.session = new SessionHistory(gui);
+
+    gui.showProgressMessage = function(msg) {
+      if (!gui.progressMessage) {
+        gui.progressMessage = El('div').addClass('progress-message')
+          .appendTo('body');
+      }
+      El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
+    };
+
+    gui.clearProgressMessage = function() {
+      if (gui.progressMessage) gui.progressMessage.hide();
+    };
+
+    gui.consoleIsOpen = function() {
+      return gui.container.hasClass('console-open');
+    };
+
+    // Make this instance interactive and editable
+    gui.focus = function() {
+      var curr = GUI.__active;
+      if (curr == gui) return;
+      if (curr) {
+        curr.blur();
+      }
+      GUI.__active = gui;
+      MessageProxy(gui);
+      ImportFileProxy(gui);
+      WriteFilesProxy(gui);
+      gui.dispatchEvent('active');
+    };
+
+    gui.blur = function() {
+      if (GUI.isActiveInstance(gui)) {
+        GUI.__active = null;
+        gui.dispatchEvent('inactive');
+      }
+    };
+
+    // switch between multiple gui instances on mouse click
+    gui.container.node().addEventListener('mouseup', function(e) {
+      if (GUI.isActiveInstance(gui)) return;
+      e.stopPropagation();
+      gui.focus();
+    }, true); // use capture
+
+    if (opts.focus) {
+      gui.focus();
+    }
+
+    return gui;
   }
 
-  function receiveFiles(files) {
-    var prevSize = queuedFiles.length;
-    files = handleZipFiles(utils.toArray(files));
-    addFilesToQueue(files);
-    if (queuedFiles.length === 0) return;
-    gui.enterMode('import');
+  // This is the entry point for bundling mapshaper's web UI
 
-    if (useQuickView) {
-      onSubmit();
+  onload(function() {
+    if (!GUI.browserIsSupported()) {
+      El("#mshp-not-supported").show();
+      return;
+    }
+    startEditing();
+    if (window.location.hostname == 'localhost') {
+      window.addEventListener('beforeunload', function() {
+        // send termination signal for gui.js
+        var req = new XMLHttpRequest();
+        req.open('GET', '/close');
+        req.send();
+      });
+    }
+  });
+
+  function getImportOpts() {
+    var vars = GUI.getUrlVars();
+    var opts = {};
+    var manifest = window.mapshaper.manifest || {}; // kludge -- bin/mapshaper-gui sets this
+    if (Array.isArray(manifest)) {
+      // old-style manifest: an array of filenames
+      opts.files = manifest;
+    } else if (manifest.files) {
+      opts.files = manifest.files.concat();
+      opts.quick_view = !!manifest.quick_view;
     } else {
-      gui.container.addClass('queued-files');
-      El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
-      showQueuedFiles();
+      opts.files = [];
     }
-  }
-
-  function filesMayContainPaths(files) {
-    return utils.some(files, function(f) {
-        var type = internal.guessInputFileType(f.name);
-        return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
-    });
-  }
-
-  function onSubmit() {
-    gui.container.removeClass('queued-files');
-    gui.container.removeClass('splash-screen');
-    procNextQueuedFile();
-  }
-
-  function addDataset(dataset) {
-    if (!datasetIsEmpty(dataset)) {
-      model.addDataset(dataset);
-      importCount++;
+    if (vars.files) {
+      opts.files = opts.files.concat(vars.files.split(','));
     }
-    procNextQueuedFile();
-  }
-
-  function datasetIsEmpty(dataset) {
-    return dataset.layers.every(function(lyr) {
-      return internal.getFeatureCount(lyr) === 0;
-    });
-  }
-
-  function procNextQueuedFile() {
-    if (queuedFiles.length === 0) {
-      gui.clearMode();
-    } else {
-      queuedFiles = sortQueue(queuedFiles);
-      readFile(queuedFiles.shift());
+    if (manifest.catalog) {
+      opts.catalog = manifest.catalog;
     }
-  }
-
-  // TODO: support .cpg
-  function isShapefilePart(name) {
-    return /\.(shp|shx|dbf|prj)$/i.test(name);
-  }
-
-
-  function readImportOpts() {
-    if (useQuickView) return {};
-    var freeform = El('#import-options .advanced-options').node().value,
-        opts = GUI.parseFreeformOptions(freeform, 'i');
-    opts.no_repair = !El("#repair-intersections-opt").node().checked;
-    opts.snap = !!El("#snap-points-opt").node().checked;
+    opts.display_all = !!manifest.display_all;
     return opts;
   }
 
-  // for CLI output
-  function readImportOptsAsString() {
-    if (useQuickView) return '';
-    var freeform = El('#import-options .advanced-options').node().value;
-    var opts = readImportOpts();
-    if (opts.snap) freeform = 'snap ' + freeform;
-    return freeform.trim();
-  }
+  var startEditing = function() {
+    var dataLoaded = false,
+        importOpts = getImportOpts(),
+        gui = new GuiInstance('body');
 
-  // @file a File object
-  function readFile(file) {
-    var name = file.name,
-        reader = new FileReader(),
-        useBinary = internal.isSupportedBinaryInputType(name) ||
-          internal.isZipFile(name) ||
-          internal.guessInputFileType(name) == 'json' ||
-          internal.guessInputFileType(name) == 'text';
+    new AlertControl(gui);
+    new RepairControl(gui);
+    new SimplifyControl(gui);
+    new ImportControl(gui, importOpts);
+    new ExportControl(gui);
+    new LayerControl(gui);
+    gui.console = new Console(gui);
 
-    reader.addEventListener('loadend', function(e) {
-      if (!reader.result) {
-        handleImportError("Web browser was unable to load the file.", name);
-      } else {
-        importFileContent(name, reader.result);
-      }
-    });
-    if (useBinary) {
-      reader.readAsArrayBuffer(file);
-    } else {
-      // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
-      reader.readAsText(file, 'UTF-8');
-    }
-  }
+    startEditing = function() {};
 
-  function importFileContent(fileName, content) {
-    var fileType = internal.guessInputType(fileName, content),
-        importOpts = readImportOpts(),
-        matches = findMatchingShp(fileName),
-        dataset, lyr;
-
-    // Add dbf data to a previously imported .shp file with a matching name
-    // (.shp should have been queued before .dbf)
-    if (fileType == 'dbf' && matches.length > 0) {
-      // find an imported .shp layer that is missing attribute data
-      // (if multiple matches, try to use the most recently imported one)
-      dataset = matches.reduce(function(memo, d) {
-        if (!d.layers[0].data) {
-          memo = d;
-        }
-        return memo;
-      }, null);
-      if (dataset) {
-        lyr = dataset.layers[0];
-        lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
-        if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
-          stop("Different number of records in .shp and .dbf files");
-        }
-        if (!lyr.geometry_type) {
-          // kludge: trigger display of table cells if .shp has null geometry
-          // TODO: test case if lyr is not the current active layer
-          model.updated({});
-        }
-        procNextQueuedFile();
-        return;
-      }
-    }
-
-    if (fileType == 'shx') {
-      // save .shx for use when importing .shp
-      // (queue should be sorted so that .shx is processed before .shp)
-      cachedFiles[fileName.toLowerCase()] = {filename: fileName, content: content};
-      procNextQueuedFile();
-      return;
-    }
-
-    // Add .prj file to previously imported .shp file
-    if (fileType == 'prj') {
-      matches.forEach(function(d) {
-        if (!d.info.prj) {
-          d.info.prj = content;
-        }
-      });
-      procNextQueuedFile();
-      return;
-    }
-
-    importNewDataset(fileType, fileName, content, importOpts);
-  }
-
-  function importNewDataset(fileType, fileName, content, importOpts) {
-    var size = content.byteLength || content.length, // ArrayBuffer or string
-        delay = 0;
-
-    // show importing message if file is large
-    if (size > 4e7) {
-      gui.showProgressMessage('Importing');
-      delay = 35;
-    }
-    setTimeout(function() {
-      var dataset;
-      var input = {};
-      try {
-        input[fileType] = {filename: fileName, content: content};
-        if (fileType == 'shp') {
-          // shx file should already be cached, if it was added together with the shp
-          input.shx = cachedFiles[fileName.replace(/shp$/i, 'shx').toLowerCase()] || null;
-        }
-        dataset = internal.importContent(input, importOpts);
-        // save import options for use by repair control, etc.
-        dataset.info.import_options = importOpts;
-        gui.session.fileImported(fileName, readImportOptsAsString());
-        addDataset(dataset);
-
-      } catch(e) {
-        handleImportError(e, fileName);
-      }
-    }, delay);
-  }
-
-  function handleImportError(e, fileName) {
-    var msg = utils.isString(e) ? e : e.message;
-    if (fileName) {
-      msg = "Error importing <i>" + fileName + "</i><br>" + msg;
-    }
-    clearQueuedFiles();
-    gui.alert(msg);
-    console.error(e);
-  }
-
-  function handleZipFiles(files) {
-    return files.filter(function(file) {
-      var isZip = internal.isZipFile(file.name);
-      if (isZip) {
-        importZipFile(file);
-      }
-      return !isZip;
-    });
-  }
-
-  function importZipFile(file) {
-    // gui.showProgressMessage('Importing');
-    setTimeout(function() {
-      GUI.readZipFile(file, function(err, files) {
-        if (err) {
-          handleImportError(err, file.name);
-        } else {
-          // don't try to import .txt files from zip files
-          // (these would be parsed as dsv and throw errows)
-          files = files.filter(function(f) {
-            return !/\.txt$/i.test(f.name);
+    gui.model.on('select', function() {
+      if (!dataLoaded) {
+        dataLoaded = true;
+        El('#mode-buttons').show();
+        if (importOpts.display_all) {
+          gui.model.getLayers().forEach(function(o) {
+            gui.map.setLayerVisibility(o, true);
           });
-          receiveFiles(files);
-        }
-      });
-    }, 35);
-  }
-
-  function prepFilesForDownload(names) {
-    var items = names.map(function(name) {
-      var isUrl = /:\/\//.test(name);
-      var item = {name: name};
-      if (isUrl) {
-        item.url = name;
-        item.basename = GUI.getUrlFilename(name);
-
-      } else {
-        item.basename = name;
-        // Assume non-urls are local files loaded via gui-gui
-        item.url = '/data/' + name;
-        item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
-      }
-      return GUI.isReadableFileType(item.basename) ? item : null;
-    });
-    return items.filter(Boolean);
-  }
-
-  function downloadFiles(paths) {
-    var items = prepFilesForDownload(paths);
-    utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
-      if (err) {
-        gui.alert(err);
-      } else if (!files.length) {
-        gui.clearMode();
-      } else {
-        receiveFiles(files);
-      }
-    });
-  }
-
-  function downloadNextFile(memo, item, next) {
-    var req = new XMLHttpRequest();
-    var blob;
-    req.responseType = 'blob';
-    req.addEventListener('load', function(e) {
-      if (req.status == 200) {
-        blob = req.response;
-      }
-    });
-    req.addEventListener('progress', function(e) {
-      var pct = e.loaded / e.total;
-      if (catalog) catalog.progress(pct);
-    });
-    req.addEventListener('loadend', function() {
-      var err;
-      if (req.status == 404) {
-        err = "Not&nbsp;found:&nbsp;" + item.name;
-      } else if (!blob) {
-        // Errors like DNS lookup failure, no CORS headers, no network connection
-        // all are status 0 - it seems impossible to show a more specific message
-        // actual reason is displayed on the console
-        err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
-      } else {
-        blob.name = item.basename;
-        memo.push(blob);
-      }
-      next(err, memo);
-    });
-    req.open('GET', item.url);
-    req.send();
-  }
-}
-
-
-function saveZipFile(zipfileName, files, done) {
-  var toAdd = files;
-  var zipWriter;
-  try {
-    zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
-      zipWriter = writer;
-      nextFile();
-    }, zipError);
-  } catch(e) {
-    done("This browser doesn't support Zip file creation.");
-  }
-
-  function zipError(err) {
-    var str = "Error creating Zip file";
-    var msg = '';
-    // error events thrown by Zip library seem to be missing a message
-    if (err && err.message) {
-      msg = err.message;
-    }
-    if (msg) {
-      str += ": " + msg;
-    }
-    done(str);
-  }
-
-  function nextFile() {
-    if (toAdd.length === 0) {
-      zipWriter.close(function(blob) {
-        saveBlobToDownloadFolder(zipfileName, blob, done);
-      });
-    } else {
-      var obj = toAdd.pop(),
-          blob = new Blob([obj.content]);
-      zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
-    }
-  }
-}
-
-function saveFilesToServer(paths, data, done) {
-  var i = -1;
-  next();
-  function next(err) {
-    i++;
-    if (err) return done(err);
-    if (i >= data.length) return done();
-    saveBlobToServer(paths[i], new Blob([data[i]]), next);
-  }
-}
-
-function saveBlobToServer(path, blob, done) {
-  var q = '?file=' + encodeURIComponent(path);
-  var url = window.location.origin + '/save' + q;
-  fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    body: blob
-  }).then(function(resp) {
-    if (resp.status == 400) {
-      return resp.text();
-    }
-  }).then(function(err) {
-    done(err);
-  }).catch(function(resp) {
-    done('connection to server was lost');
-  });
-}
-
-function saveBlobToDownloadFolder(filename, blob, done) {
-  var anchor, blobUrl;
-  if (window.navigator.msSaveBlob) {
-    window.navigator.msSaveBlob(blob, filename);
-    return done();
-  }
-  try {
-    blobUrl = URL.createObjectURL(blob);
-  } catch(e) {
-    done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
-    return;
-  }
-  anchor = El('a').attr('href', '#').appendTo('body').node();
-  anchor.href = blobUrl;
-  anchor.download = filename;
-  var clickEvent = document.createEvent("MouseEvent");
-  clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
-      false, false, false, 0, null);
-  anchor.dispatchEvent(clickEvent);
-  setTimeout(function() {
-    // Revoke blob url to release memory; timeout needed in firefox
-    URL.revokeObjectURL(blobUrl);
-    anchor.parentNode.removeChild(anchor);
-    done();
-  }, 400);
-}
-
-
-// Export buttons and their behavior
-var ExportControl = function(gui) {
-  var model = gui.model;
-  var unsupportedMsg = "Exporting is not supported in this browser";
-  var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
-  var checkboxes = []; // array of layer checkboxes
-  var exportBtn = gui.container.findChild('.export-btn');
-  new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
-
-  if (!GUI.exportIsSupported()) {
-    exportBtn.on('click', function() {
-      gui.alert(unsupportedMsg);
-    });
-
-    internal.writeFiles = function() {
-      error(unsupportedMsg);
-    };
-  } else {
-    new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
-    gui.addMode('export', turnOn, turnOff, exportBtn);
-    gui.keyboard.onMenuSubmit(menu, onExportClick);
-  }
-
-  function onExportClick() {
-    gui.showProgressMessage('Exporting');
-    gui.clearMode();
-    setTimeout(function() {
-      exportMenuSelection(function(err) {
-        if (err) {
-          if (utils.isString(err)) {
-            gui.alert(err);
-          } else {
-            // stack seems to change if Error is logged directly
-            console.error(err.stack);
-            gui.alert("Export failed for an unknown reason");
-          }
-        }
-        gui.clearProgressMessage();
-      });
-    }, 20);
-  }
-
-  function getExportOpts() {
-    return GUI.parseFreeformOptions(getExportOptsAsString(), 'o');
-  }
-
-  function getExportOptsAsString() {
-    var freeform = menu.findChild('.advanced-options').node().value;
-    if (/format=/.test(freeform) === false) {
-      freeform += ' format=' + getSelectedFormat();
-    }
-    return freeform.trim();
-  }
-
-  // @done function(string|Error|null)
-  function exportMenuSelection(done) {
-    var opts, files;
-    try {
-      opts = getExportOpts();
-      // ignoring command line "target" option
-      files = internal.exportTargetLayers(getTargetLayers(), opts);
-      gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
-    } catch(e) {
-      return done(e);
-    }
-    internal.writeFiles(files, opts, done);
-  }
-
-  function initLayerMenu() {
-    var list = menu.findChild('.export-layer-list').empty();
-    var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
-    var objects = model.getLayers().map(function(o, i) {
-      var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
-      return {layer: o.layer, html: html};
-    });
-    internal.sortLayersForMenuDisplay(objects);
-    checkboxes = objects.map(function(o) {
-      return El('div').html(o.html).appendTo(list).findChild('input').node();
-    });
-    menu.findChild('.export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
-  }
-
-  function getInputFormats() {
-    return model.getDatasets().reduce(function(memo, d) {
-      var fmts = d.info && d.info.input_formats || [];
-      return memo.concat(fmts);
-    }, []);
-  }
-
-  function getDefaultExportFormat() {
-    var dataset = model.getActiveLayer().dataset;
-    return dataset.info && dataset.info.input_formats &&
-        dataset.info.input_formats[0] || 'geojson';
-  }
-
-  function initFormatMenu() {
-    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
-    var formats = utils.uniq(defaults.concat(getInputFormats()));
-    var items = formats.map(function(fmt) {
-      return utils.format('<div><label><input type="radio" name="format" value="%s"' +
-        ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
-    });
-    menu.findChild('.export-formats').html(items.join('\n'));
-    menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
-  }
-
-  function turnOn() {
-    initLayerMenu();
-    initFormatMenu();
-    menu.show();
-  }
-
-  function turnOff() {
-    menu.hide();
-  }
-
-  function getSelectedFormat() {
-    return menu.findChild('.export-formats input:checked').node().value;
-  }
-
-  function getTargetLayerIds() {
-    return checkboxes.reduce(function(memo, box, i) {
-      if (box.checked) memo.push(box.value);
-      return memo;
-    }, []);
-  }
-
-  function getTargetLayers() {
-    var ids = getTargetLayerIds().join(',');
-    return ids ? model.findCommandTargets(ids) : [];
-  }
-};
-
-
-function RepairControl(gui) {
-  var map = gui.map,
-      model = gui.model,
-      el = gui.container.findChild(".intersection-display"),
-      readout = el.findChild(".intersection-count"),
-      repairBtn = el.findChild(".repair-btn"),
-      // keeping a reference to current arcs and intersections, so intersections
-      // don't need to be recalculated when 'repair' button is pressed.
-      _currArcs,
-      _currXX;
-
-  gui.on('simplify_drag_start', hide);
-  gui.on('simplify_drag_end', updateAsync);
-
-  model.on('update', function(e) {
-    var flags = e.flags;
-    var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
-        flags.affine || flags.points || flags['merge-layers'] || flags.select;
-    if (needUpdate) {
-      if (flags.select) {
-        // preserve cached intersections
-      } else {
-        // delete any cached intersection data
-        e.dataset.info.intersections = null;
-      }
-      updateAsync();
-    }
-  });
-
-  repairBtn.on('click', function() {
-    var fixed = internal.repairIntersections(_currArcs, _currXX);
-    showIntersections(fixed, _currArcs);
-    repairBtn.addClass('disabled');
-    model.updated({repair: true});
-    gui.session.simplificationRepair();
-  });
-
-  function hide() {
-    el.hide();
-    map.setIntersectionLayer(null);
-  }
-
-  function enabledForDataset(dataset) {
-    var info = dataset.info || {};
-    var opts = info.import_options || {};
-    return !opts.no_repair && !info.no_intersections;
-  }
-
-  // Delay intersection calculation, so map can redraw after previous
-  // operation (e.g. layer load, simplification change)
-  function updateAsync() {
-    reset();
-    setTimeout(updateSync, 10);
-  }
-
-  function updateSync() {
-    var e = model.getActiveLayer();
-    var dataset = e.dataset;
-    var arcs = dataset && dataset.arcs;
-    var XX, showBtn;
-    var opts = {
-      unique: true,
-      tolerance: 0
-    };
-    if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
-    if (arcs.getRetainedInterval() > 0) {
-      // TODO: cache these intersections
-      XX = internal.findSegmentIntersections(arcs, opts);
-      showBtn = XX.length > 0;
-    } else { // no simplification
-      XX = dataset.info.intersections;
-      if (!XX) {
-        // cache intersections at 0 simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs, opts);
-      }
-      showBtn = false;
-    }
-    el.show();
-    showIntersections(XX, arcs);
-    repairBtn.classed('disabled', !showBtn);
-  }
-
-  function reset() {
-    _currArcs = null;
-    _currXX = null;
-    hide();
-  }
-
-  function dismiss() {
-    var dataset = model.getActiveLayer().dataset;
-    dataset.info.intersections = null;
-    dataset.info.no_intersections = true;
-    reset();
-  }
-
-  function showIntersections(XX, arcs) {
-    var n = XX.length, pointLyr;
-    _currXX = XX;
-    _currArcs = arcs;
-    if (n > 0) {
-      // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
-      pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
-      map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-      readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
-      readout.findChild('.close-btn').on('click', dismiss);
-    } else {
-      map.setIntersectionLayer(null);
-      readout.html('');
-    }
-  }
-}
-
-utils.inherit(RepairControl, EventDispatcher);
-
-
-function DomCache() {
-  var cache = {};
-  var used = {};
-
-  this.contains = function(html) {
-    return html in cache;
-  };
-
-  this.use = function(html) {
-    var el = used[html] = cache[html];
-    return el;
-  };
-
-  this.cleanup = function() {
-    cache = used;
-    used = {};
-  };
-
-  this.add = function(html, el) {
-    used[html] = el;
-  };
-}
-
-
-function LayerControl(gui) {
-  var map = gui.map;
-  var model = gui.model;
-  var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
-  var btn = gui.container.findChild('.layer-control-btn');
-  var buttonLabel = btn.findChild('.layer-name');
-  var isOpen = false;
-  var cache = new DomCache();
-  var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
-
-  // layer repositioning
-  var dragTargetId = null;
-  var dragging = false;
-  var layerOrderSlug;
-
-  gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
-  model.on('update', function(e) {
-    updateMenuBtn();
-    if (isOpen) render();
-  });
-
-  el.on('mouseup', stopDragging);
-  el.on('mouseleave', stopDragging);
-
-  // init layer visibility button
-  pinAll.on('click', function() {
-    var allOn = testAllLayersPinned();
-    model.getLayers().forEach(function(target) {
-      map.setLayerVisibility(target, !allOn);
-    });
-    El.findAll('.pinnable', el.node()).forEach(function(item) {
-      El(item).classed('pinned', !allOn);
-    });
-    map.redraw();
-  });
-
-  function updatePinAllButton() {
-    pinAll.classed('pinned', testAllLayersPinned());
-  }
-
-  function testAllLayersPinned() {
-    var yes = true;
-    model.forEachLayer(function(lyr, dataset) {
-      if (isPinnable(lyr) && !map.isVisibleLayer(lyr)) {
-        yes = false;
-      }
-    });
-    return yes;
-  }
-
-  function findLayerById(id) {
-    return model.findLayer(function(lyr, dataset) {
-      return lyr.menu_id == id;
-    });
-  }
-
-  function getLayerOrderSlug() {
-    return internal.sortLayersForMenuDisplay(model.getLayers()).map(function(o) {
-      return map.isVisibleLayer(o.layer) ? o.layer.menu_id : '';
-    }).join('');
-  }
-
-  function clearClass(name) {
-    var targ = el.findChild('.' + name);
-    if (targ) targ.removeClass(name);
-  }
-
-  function stopDragging() {
-    clearClass('dragging');
-    clearClass('drag-target');
-    clearClass('insert-above');
-    clearClass('insert-below');
-    dragTargetId = layerOrderSlug = null;
-    if (dragging) {
-      render(); // in case menu changed...
-      dragging = false;
-    }
-  }
-
-  function insertLayer(dragId, dropId, above) {
-    var dragLyr = findLayerById(dragId);
-    var dropLyr = findLayerById(dropId);
-    var slug;
-    if (dragId == dropId) return;
-    dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
-    slug = getLayerOrderSlug();
-    if (slug != layerOrderSlug) {
-      layerOrderSlug = slug;
-      map.redraw();
-    }
-  }
-
-  function turnOn() {
-    isOpen = true;
-    el.findChild('div.info-box-scrolled').css('max-height', El('body').height() - 80);
-    render();
-    el.show();
-  }
-
-  function turnOff() {
-    stopDragging();
-    isOpen = false;
-    el.hide();
-  }
-
-  function updateMenuBtn() {
-    var name = model.getActiveLayer().layer.name || "[unnamed layer]";
-    buttonLabel.html(name + " &nbsp;&#9660;");
-  }
-
-  function render() {
-    var list = el.findChild('.layer-list');
-    var uniqIds = {};
-    var pinnableCount = 0;
-    var layerCount = 0;
-    list.empty();
-    model.forEachLayer(function(lyr, dataset) {
-      // Assign a unique id to each layer, so html strings
-      // can be used as unique identifiers for caching rendered HTML, and as
-      // an id for layer menu event handlers
-      if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-        lyr.menu_id = utils.getUniqueName();
-      }
-      uniqIds[lyr.menu_id] = true;
-      if (isPinnable(lyr)) pinnableCount++;
-      layerCount++;
-    });
-
-    if (pinnableCount < 2) {
-      pinAll.hide();
-    } else {
-      pinAll.show();
-      updatePinAllButton();
-    }
-
-    internal.sortLayersForMenuDisplay(model.getLayers()).forEach(function(o) {
-      var lyr = o.layer;
-      var opts = {
-        show_source: layerCount < 5,
-        pinnable: pinnableCount > 1 && isPinnable(lyr)
-      };
-      var html, element;
-      html = renderLayer(lyr, o.dataset, opts);
-      if (cache.contains(html)) {
-        element = cache.use(html);
-      } else {
-        element = El('div').html(html).firstChild();
-        initMouseEvents(element, lyr.menu_id, opts.pinnable);
-        cache.add(html, element);
-      }
-      list.appendChild(element);
-    });
-  }
-
-  cache.cleanup();
-
-  function renderLayer(lyr, dataset, opts) {
-    var warnings = getWarnings(lyr, dataset);
-    var classes = 'layer-item';
-    var entry, html;
-
-    if (opts.pinnable) classes += ' pinnable';
-    if (map.isActiveLayer(lyr)) classes += ' active';
-    if (map.isVisibleLayer(lyr)) classes += ' pinned';
-
-    html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
-    if (opts.show_source) {
-      html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
-    }
-    html += rowHTML('contents', describeLyr(lyr));
-    if (warnings) {
-      html += rowHTML('problems', warnings, 'layer-problems');
-    }
-    html += '<img class="close-btn" draggable="false" src="images/close.png">';
-    if (opts.pinnable) {
-      html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
-      html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function initMouseEvents(entry, id, pinnable) {
-    entry.on('mouseover', init);
-    function init() {
-      entry.removeEventListener('mouseover', init);
-      initMouseEvents2(entry, id, pinnable);
-    }
-  }
-
-  function initLayerDragging(entry, id) {
-
-    // support layer drag-drop
-    entry.on('mousemove', function(e) {
-      var rect, insertionClass;
-      if (!e.buttons && (dragging || dragTargetId)) { // button is up
-        stopDragging();
-      }
-      if (e.buttons && !dragTargetId) {
-        dragTargetId = id;
-        entry.addClass('drag-target');
-      }
-      if (!dragTargetId) {
-        return;
-      }
-      if (dragTargetId != id) {
-        // signal to redraw menu later; TODO: improve
-        dragging = true;
-      }
-      rect = entry.node().getBoundingClientRect();
-      insertionClass = e.pageY - rect.top < rect.height / 2 ? 'insert-above' : 'insert-below';
-      if (!entry.hasClass(insertionClass)) {
-        clearClass('dragging');
-        clearClass('insert-above');
-        clearClass('insert-below');
-        entry.addClass('dragging');
-        entry.addClass(insertionClass);
-        insertLayer(dragTargetId, id, insertionClass == 'insert-above');
-      }
-    });
-  }
-
-  function initMouseEvents2(entry, id, pinnable) {
-
-    initLayerDragging(entry, id);
-
-    // init delete button
-    GUI.onClick(entry.findChild('img.close-btn'), function(e) {
-      var target = findLayerById(id);
-      e.stopPropagation();
-      if (map.isVisibleLayer(target.layer)) {
-        // TODO: check for double map refresh after model.deleteLayer() below
-        map.setLayerVisibility(target, false);
-      }
-      model.deleteLayer(target.layer, target.dataset);
-    });
-
-    if (pinnable) {
-      // init pin button
-      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
-        var target = findLayerById(id);
-        e.stopPropagation();
-        if (map.isVisibleLayer(target.layer)) {
-          map.setLayerVisibility(target, false);
-          entry.removeClass('pinned');
-        } else {
-          map.setLayerVisibility(target, true);
-          entry.addClass('pinned');
-        }
-        updatePinAllButton();
-        map.redraw();
-      });
-
-      // catch click event on pin button
-      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
-        e.stopPropagation();
-      });
-    }
-
-    // init name editor
-    new ClickText2(entry.findChild('.layer-name'))
-      .on('change', function(e) {
-        var target = findLayerById(id);
-        var str = cleanLayerName(this.value());
-        this.value(getDisplayName(str));
-        target.layer.name = str;
-        gui.session.layerRenamed(target.layer, str);
-        updateMenuBtn();
-      });
-
-    // init click-to-select
-    GUI.onClick(entry, function() {
-      var target = findLayerById(id);
-      // don't select if user is typing or dragging
-      if (!GUI.getInputElement() && !dragging) {
-        gui.clearMode();
-        if (!map.isActiveLayer(target.layer)) {
-          model.selectLayer(target.layer, target.dataset);
         }
       }
     });
-  }
-
-  function describeLyr(lyr) {
-    var n = internal.getFeatureCount(lyr),
-        str, type;
-    if (lyr.data && !lyr.shapes) {
-      type = 'data record';
-    } else if (lyr.geometry_type) {
-      type = lyr.geometry_type + ' feature';
-    }
-    if (type) {
-      str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
-    } else {
-      str = "[empty]";
-    }
-    return str;
-  }
-
-  function getWarnings(lyr, dataset) {
-    var file = internal.getLayerSourceFile(lyr, dataset);
-    var missing = [];
-    var msg;
-    if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
-      if (!lyr.data) {
-        missing.push('.dbf');
-      }
-      if (!dataset.info.prj && !dataset.info.crs) {
-        missing.push('.prj');
-      }
-    }
-    if (missing.length) {
-      msg = 'missing ' + missing.join(' and ') + ' data';
-    }
-    return msg;
-  }
-
-  function describeSrc(lyr, dataset) {
-    return internal.getLayerSourceFile(lyr, dataset);
-  }
-
-  function getDisplayName(name) {
-    return name || '[unnamed]';
-  }
-
-  function isPinnable(lyr) {
-    return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
-  }
-
-
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
-  }
-
-  function rowHTML(c1, c2, cname) {
-    return utils.format('<div class="row%s"><div class="col1">%s</div>' +
-      '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
-  }
-}
-
-
-function Console(gui) {
-  var model = gui.model;
-  var CURSOR = '$ ';
-  var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
-  var el = gui.container.findChild('.console').hide();
-  var content = el.findChild('.console-buffer');
-  var log = El('div').appendTo(content);
-  var line = El('div').addClass('command-line').appendTo(content);
-  var cursor = El('span').appendTo(line).text(CURSOR);
-  var input = El('span').appendTo(line)
-    .addClass('input-field')
-    .attr('spellcheck', false)
-    .attr('autocorrect', false)
-    .attr('contentEditable', true)
-    .on('focus', receiveFocus)
-    .on('paste', onPaste);
-  var history = [];
-  var historyId = 0;
-  var _isOpen = false;
-  var btn = gui.container.findChild('.console-btn').on('click', toggle);
-
-  // expose this function, so other components can run commands (e.g. box tool)
-  this.runMapshaperCommands = runMapshaperCommands;
-
-  consoleMessage(PROMPT);
-  gui.keyboard.on('keydown', onKeyDown);
-  window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
-
-  GUI.onClick(el, function(e) {
-    var targ = El(e.target);
-    if (targ.hasClass('console-window') || targ.hasClass('command-line')) {
-      input.node().focus(); // focus if user clicks blank part of console
-    }
-  });
-
-  function toggle() {
-    if (_isOpen) turnOff();
-    else turnOn();
-  }
-
-  function getHistory() {
-    var hist;
-    try {
-      hist = JSON.parse(localStorage.getItem('console_history'));
-    } catch(e) {}
-    return hist && hist.length > 0 ? hist : [];
-  }
-
-  function saveHistory(history) {
-    try {
-      history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-      localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
-    } catch(e) {}
-  }
-
-  function toLog(str, cname) {
-    var msg = El('div').text(str).appendTo(log);
-    if (cname) {
-      msg.addClass(cname);
-    }
-    scrollDown();
-  }
-
-  function turnOn() {
-    if (!_isOpen && !model.isEmpty()) {
-      btn.addClass('active');
-      _isOpen = true;
-      // use console for messages while open
-      // TODO: find a solution for logging problem when switching between multiple
-      // gui instances with the console open. E.g. console could close
-      // when an instance loses focus.
-      stop = internal.stop = consoleStop;
-      error = internal.error = consoleError;
-      message = internal.message = consoleMessage;
-      gui.container.addClass('console-open');
-      gui.dispatchEvent('resize');
-      el.show();
-      input.node().focus();
-      history = getHistory();
-    }
-  }
-
-  function turnOff() {
-    if (_isOpen) {
-      btn.removeClass('active');
-      _isOpen = false;
-      if (GUI.isActiveInstance(gui)) {
-        MessageProxy(gui); // reset stop, message and error functions
-      }
-      el.hide();
-      input.node().blur();
-      saveHistory(history);
-      gui.container.removeClass('console-open');
-      gui.dispatchEvent('resize');
-    }
-  }
-
-  function onPaste(e) {
-    // paste plain text (remove any copied HTML tags)
-    e.preventDefault();
-    var str = (e.originalEvent || e).clipboardData.getData('text/plain');
-    document.execCommand("insertHTML", false, str);
-  }
-
-  function receiveFocus() {
-    placeCursor();
-  }
-
-  function placeCursor() {
-    var el = input.node();
-    var range, selection;
-    if (readCommandLine().length > 0) {
-      // move cursor to end of text
-      range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false); //collapse the range to the end point.
-      selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-  }
-
-  function scrollDown() {
-    var el = content.parent().node();
-    el.scrollTop = el.scrollHeight;
-  }
-
-  function metaKey(e) {
-    return e.metaKey || e.ctrlKey || e.altKey;
-  }
-
-  function isTextInput(el) {
-    return el && el.type != 'radio' && el.type != 'checkbox';
-  }
-
-  function onKeyDown(evt) {
-    var e = evt.originalEvent,
-        kc = e.keyCode,
-        inputEl = GUI.getInputElement(),
-        typing = isTextInput(inputEl),
-        typingInConsole = inputEl && inputEl == input.node(),
-        inputText = readCommandLine(),
-        capture = false;
-
-    // esc key
-    if (kc == 27) {
-      if (typing) {
-        inputEl.blur();
-      }
-      if (gui.getMode()) {
-        gui.clearMode(); // esc closes any open panels
-      } else {
-        turnOff();
-      }
-      capture = true;
-
-    // l/r arrow keys while not typing in a text field
-    } else if ((kc == 37 || kc == 39) && (!typing || typingInConsole && !inputText)) {
-      if (kc == 37) {
-        model.selectPrevLayer();
-      } else {
-        model.selectNextLayer();
-      }
-
-    // delete key while not inputting text
-    } else if (kc == 8 && !typing) {
-      capture = true; // prevent delete from leaving page
-
-    // any key while console is open and not typing in a non-console field
-    // TODO: prevent console from blocking <enter> for menus
-    } else if (_isOpen && (typingInConsole || !typing)) {
-      capture = true;
-      gui.clearMode(); // close any panels that  might be open
-
-      if (kc == 13) { // enter
-        onEnter();
-      } else if (kc == 9) { // tab
-        tabComplete();
-      } else if (kc == 38) {
-        back();
-      } else if (kc == 40) {
-        forward();
-      } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
-        // space bar closes if nothing has been typed
-        turnOff();
-      } else if (!typing && e.target != input.node() && !metaKey(e)) {
-        // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
-        // or user is typing in a different input area somewhere
-        input.node().focus();
-        capture = false;
-      } else if (/\n\n$/.test(inputText) && e.key && e.key.length == 1) {
-        // Convert double newline to single on first typing after \ continuation
-        // (for compatibility with Firefox; see onEnter() function)
-        // Assumes that cursor is at end of text (TODO: remove this assumption)
-        toCommandLine(inputText.substr(0, inputText.length - 1) + e.key);
-      } else {
-        capture = false; // normal typing
-      }
-
-    // various shortcuts (while not typing in an input field or editable el)
-    } else if (!typing) {
-       if (kc == 32) { // space bar opens console
-        capture = true;
-        turnOn();
-      // } else if (kc == 73) { // letter i opens inspector
-      //   gui.dispatchEvent('interaction_toggle');
-      } else if (kc == 72) { // letter h resets map extent
-        gui.dispatchEvent('map_reset');
-      } else if (kc == 13) {
-        gui.dispatchEvent('enter_key', evt); // signal for default buttons on any open menus
-      }
-    }
-
-    if (capture) {
-      e.preventDefault();
-    }
-  }
-
-  function tabComplete() {
-    var line = readCommandLine(),
-        match = /\w+$/.exec(line),
-        stub = match ? match[0] : '',
-        names, name;
-    if (!stub) return;
-    names = getCompletionWords();
-    names = names.filter(function(name) {
-      return name.indexOf(stub) === 0;
-    });
-    if (names.length > 0) {
-      name = utils.getCommonFileBase(names);
-      if (name.length > stub.length) {
-        toCommandLine(line.substring(0, match.index) + name);
-      }
-    }
-  }
-
-  // get active layer field names and other layer names
-  function getCompletionWords() {
-    var lyr = model.getActiveLayer().layer;
-    var fieldNames = lyr.data ? lyr.data.getFields() : [];
-    var lyrNames = findOtherLayerNames(lyr);
-    return fieldNames.concat(lyrNames).concat(fieldNames);
-  }
-
-  function findOtherLayerNames(lyr) {
-    return model.getLayers().reduce(function(memo, o) {
-      var name = o.layer.name;
-      if (name && name != lyr.name) {
-        memo.push(name);
-      }
-      return memo;
-    }, []);
-  }
-
-  function readCommandLine() {
-    // return input.node().textContent.trim();
-    return input.node().textContent;
-  }
-
-  function toCommandLine(str) {
-    input.node().textContent = str;
-    placeCursor();
-  }
-
-  function peekHistory(i) {
-    var idx = history.length - 1 - (i || 0);
-    return idx >= 0 ? history[idx] : null;
-  }
-
-  function toHistory(str) {
-    if (historyId > 0) { // if we're back in the history stack
-      if (peekHistory() === '') {
-        // remove empty string (which may have been appended when user started going back)
-        history.pop();
-      }
-      historyId = 0; // move back to the top of the stack
-    }
-    if (str && str != peekHistory()) {
-      history.push(str);
-    }
-  }
-
-  function fromHistory() {
-    toCommandLine(peekHistory(historyId));
-  }
-
-  function back() {
-    if (history.length === 0) return;
-    if (historyId === 0) {
-      history.push(readCommandLine());
-    }
-    historyId = Math.min(history.length - 1, historyId + 1);
-    fromHistory();
-  }
-
-  function forward() {
-    if (historyId <= 0) return;
-    historyId--;
-    fromHistory();
-    if (historyId === 0) {
-      history.pop();
-    }
-  }
-
-  function clear() {
-    log.empty();
-    scrollDown();
-  }
-
-  function getCommandFlags(commands) {
-    return commands.reduce(function(memo, cmd) {
-      memo[cmd.name] = true;
-      return memo;
-    }, {});
-  }
-
-  function onEnter() {
-    var str = readCommandLine();
-    var wrap = /\\\n?$/.test(str); // \n? is to workaround odd Chrome behavior (newline appears after eol backslash)
-    if (wrap) {
-      toCommandLine(str.trim() + '\n\n'); // two newlines needed in all tested browsers
-    } else {
-      submit(str);
-    }
-  }
-
-  // display char codes in string (for debugging console input)
-  function strCodes(str) {
-    return str.split('').map(function(c) {return c.charCodeAt(0);}).join(',');
-  }
-
-  function submit(str) {
-    // remove newlines
-    // TODO: remove other whitespace at beginning + end of lines
-    var cmd = str.replace(/\\?\n/g, '').trim();
-    toLog(CURSOR + str);
-    toCommandLine('');
-    if (cmd) {
-      if (cmd == 'clear') {
-        clear();
-      } else if (cmd == 'tips') {
-        printExamples();
-      } else if (cmd == 'history') {
-        toLog(gui.session.toCommandLineString());
-      } else if (cmd == 'layers') {
-        message("Available layers:",
-          internal.getFormattedLayerList(model));
-      } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        turnOff();
-      } else if (/^projd/.test(cmd)) {
-        // set the display CRS (for testing)
-        setDisplayProjection(gui, cmd);
-      } else {
-        line.hide(); // hide cursor while command is being run
-        runMapshaperCommands(cmd, function(err) {
-          if (err) {
-            onError(err);
-          }
-          line.show();
-          input.node().focus();
-        });
-      }
-      toHistory(str);
-    }
-  }
-
-  function runMapshaperCommands(str, done) {
-    var commands;
-    try {
-      commands = internal.parseConsoleCommands(str);
-      // don't add info commands to console history
-      // (for one thing, they interfere with target resetting)
-      commands = internal.runAndRemoveInfoCommands(commands);
-    } catch (e) {
-      return done(e, {});
-    }
-    if (commands.length === 0) return done();
-    applyParsedCommands(commands, function(err, flags) {
-      if (!err) {
-        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
-      }
-      if (flags) {
-        model.updated(flags); // info commands do not return flags
-      }
-      done(err);
-    });
-  }
-
-  function applyParsedCommands(commands, done) {
-    var active = model.getActiveLayer(),
-        prevArcs = active.dataset.arcs,
-        prevArcCount = prevArcs ? prevArcs.size() : 0;
-
-    internal.runParsedCommands(commands, model, function(err) {
-      var flags = getCommandFlags(commands),
-          active2 = model.getActiveLayer(),
-          postArcs = active2.dataset.arcs,
-          postArcCount = postArcs ? postArcs.size() : 0,
-          sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
-
-      // restore default logging options, in case they were changed by the command
-      internal.setStateVar('QUIET', false);
-      internal.setStateVar('VERBOSE', false);
-
-      // kludge to signal map that filtered arcs need refreshing
-      // TODO: find a better solution, outside the console
-      if (!sameArcs) {
-        flags.arc_count = true;
-      }
-      if (active.layer != active2.layer) {
-        flags.select = true;
-      }
-      // signal the map to update even if an error has occured, because the
-      // commands may have partially succeeded and changes may have occured to
-      // the data.
-      done(err, flags);
-    });
-  }
-
-  function onError(err) {
-    if (utils.isString(err)) {
-      consoleStop(err);
-    } else if (err.name == 'UserError') {
-      // stop() has already been called, don't need to log
-    } else if (err.name) {
-      // log stack trace to browser console
-      console.error(err.stack);
-      // log to console window
-      consoleWarning(err.message);
-    }
-  }
-
-  function consoleStop() {
-    var msg = GUI.formatMessageArgs(arguments);
-    consoleWarning(msg);
-    throw new UserError(msg);
-  }
-
-  function consoleWarning() {
-    var msg = GUI.formatMessageArgs(arguments);
-    toLog(msg, 'console-error');
-  }
-
-  function consoleMessage() {
-    var msg = GUI.formatMessageArgs(arguments);
-    if (internal.LOGGING && !internal.getStateVar('QUIET')) {
-      toLog(msg, 'console-message');
-    }
-  }
-
-  function consoleError() {
-    var msg = GUI.formatMessageArgs(arguments);
-    throw new Error(msg);
-  }
-
-  function printExample(comment, command) {
-    toLog(comment, 'console-message');
-    toLog(command, 'console-example');
-  }
-
-  function printExamples() {
-    printExample("See a list of all console commands", "$ help");
-    printExample("Get help using a single command", "$ help innerlines");
-    printExample("Get information about imported datasets", "$ info");
-    printExample("Display browser session as shell commands", "$ history");
-    printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
-    printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
-    printExample("Clear the console", "$ clear");
-  }
-
-}
-
-
-Browser.onload(function() {
-  if (!GUI.browserIsSupported()) {
-    El("#mshp-not-supported").show();
-    return;
-  }
-  startEditing();
-  if (window.location.hostname == 'localhost') {
-    window.addEventListener('beforeunload', function() {
-      // send termination signal for gui.js
-      var req = new XMLHttpRequest();
-      req.open('GET', '/close');
-      req.send();
-    });
-  }
-});
-
-function getImportOpts() {
-  var vars = GUI.getUrlVars();
-  var manifest = mapshaper.manifest || {};
-  var opts = {};
-  if (Array.isArray(manifest)) {
-    // old-style manifest: an array of filenames
-    opts.files = manifest;
-  } else if (manifest.files) {
-    opts.files = manifest.files.concat();
-    opts.quick_view = !!manifest.quick_view;
-  } else {
-    opts.files = [];
-  }
-  if (vars.files) {
-    opts.files = opts.files.concat(vars.files.split(','));
-  }
-  if (manifest.catalog) {
-    opts.catalog = manifest.catalog;
-  }
-  opts.display_all = !!manifest.display_all;
-  return opts;
-}
-
-var startEditing = function() {
-  var dataLoaded = false,
-      importOpts = getImportOpts(),
-      gui = new GuiInstance('body');
-
-  new AlertControl(gui);
-  new RepairControl(gui);
-  new SimplifyControl(gui);
-  new ImportControl(gui, importOpts);
-  new ExportControl(gui);
-  new LayerControl(gui);
-  gui.console = new Console(gui);
-
-  startEditing = function() {};
-
-  gui.model.on('select', function() {
-    if (!dataLoaded) {
-      dataLoaded = true;
-      El('#mode-buttons').show();
-      if (importOpts.display_all) {
-        gui.model.getLayers().forEach(function(o) {
-          gui.map.setLayerVisibility(o, true);
-        });
-      }
-    }
-  });
-};
+  };
 
 }());
