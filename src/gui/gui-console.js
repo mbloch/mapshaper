@@ -166,6 +166,9 @@ export function Console(gui) {
         model.selectNextLayer();
       }
 
+    // shift key -- don't do anything (need to interoperate with shift-drag box tools)
+    } else if (kc == 16) {
+
     // delete key while not inputting text
     } else if (kc == 8 && !typing) {
       capture = true; // prevent delete from leaving page

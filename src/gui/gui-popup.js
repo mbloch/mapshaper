@@ -38,9 +38,9 @@ export function Popup(gui, onNext, onPrev) {
   };
 
   self.hide = function() {
+    if (!el.visible()) return;
     // make sure any pending edits are made before re-rendering popup
-    // TODO: only blur popup fields
-    GUI.blurActiveElement();
+    GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
     content.empty();
     content.node().removeAttribute('style'); // remove inline height
     el.hide();

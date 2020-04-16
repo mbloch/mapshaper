@@ -1,4 +1,3 @@
-
 // TODO: remove this constant, use actual data from dataset CRS
 //       also consider using ellipsoidal formulas when appropriate
 export var R = 6378137;

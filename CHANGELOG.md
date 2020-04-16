@@ -1,3 +1,6 @@
+v0.5.1
+* Web interface tweaks.
+
 v0.5.0
 * Refactored the codebase to use ES modules.
 * Switched to the "rollup" module bundler.
@@ -11,8 +14,7 @@ v0.4.162
 * -filter-fields now sets the order of fields in CSV output.
 
 v0.4.161
-* Adjusted the pointer interaction interface.
-* Now, the -filter-fields command sets the field order of exported CSV.
+* Tweaked the pointer interaction interface.
 
 v0.4.160
 * Bug fixes
