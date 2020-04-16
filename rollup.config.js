@@ -4,7 +4,10 @@ const onBundle = {
   buildEnd() {
     // copy mapshaper.js to www/
     const fs = require('fs');
-    fs.writeFileSync('www/mapshaper.js', fs.readFileSync('mapshaper.js'));
+    const path = require('path');
+    const src = path.join(__dirname, 'mapshaper.js');
+    const dest = path.join(__dirname, 'www/mapshaper.js');
+    fs.writeFileSync(dest, fs.readFileSync(src));
   }
 };
 
