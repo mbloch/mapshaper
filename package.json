@@ -23,12 +23,11 @@
 	},
 	"scripts": {
 		"test": "node node_modules/mocha/bin/mocha --check-leaks -R dot",
-		"build": "node_modules/rollup/dist/bin/rollup --config; cp mapshaper.js www",
-		"pretest": "npm run build",
+		"build": "node_modules/.bin/rollup --config",
 		"prepublishOnly": "npm test",
 		"postpublish": "./release",
 		"browserify": "node_modules/.bin/browserify -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -o www/modules.js",
-		"watch": "nodemon --watch src --exec npm run build"
+		"watch": "node_modules/.bin/rollup --config --watch"
 	},
 	"main": "./mapshaper.js",
 	"files": [
