@@ -780,6 +780,7 @@
     var isString = type == 's',
         isHex = type == 'x' || type == 'X',
         isInt = type == 'd' || type == 'i',
+        isFloat = type == 'f',
         isNumber = !isString;
 
     var sign = "",
@@ -1444,7 +1445,9 @@
         h = this.height(),
         currAspect = w / h,
         pad;
-    if (isNaN(aspect) || aspect <= 0) ; else if (currAspect < aspect) { // fill out x dimension
+    if (isNaN(aspect) || aspect <= 0) {
+      // error condition; don't pad
+    } else if (currAspect < aspect) { // fill out x dimension
       pad = h * aspect - w;
       this.xmin -= (1 - focusX) * pad;
       this.xmax += focusX * pad;
@@ -2256,6 +2259,10 @@
     return ay + (x - ax) * (by - ay) / (bx - ax);
   }
 
+  function getXIntercept(y, ax, ay, bx, by) {
+    return ax + (y - ay) * (bx - ax) / (by - ay);
+  }
+
   // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
   // Return 0: outside; 1: inside; -1: on boundary
   //
@@ -2296,7 +2303,9 @@
         yInt;
 
     // case: p is entirely above, left or right of segment
-    if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) ;
+    if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) {
+        // no intersection
+    }
     // case: px aligned with a segment vertex
     else if (x === ax || x === bx) {
       // case: vertical segment or collapsed segment
@@ -2660,7 +2669,28 @@
     }
     // Detect cross intersection
     cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+    if (cross && touches) {
+      // Removed this call -- using multiple snap/cut passes seems more
+      // effective for repairing real-world datasets.
+      // return reconcileCrossAndTouches(cross, touches, eps);
+    }
     return touches || cross || null;
+  }
+
+  function reconcileCrossAndTouches(cross, touches, eps) {
+    var hits;
+    eps = eps || 0;
+    if (touches.length > 2) {
+      // two touches and a cross: cross should be between the touches, intersection at touches
+      hits = touches;
+    } else if (distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
+      // cross is very close to touch point (e.g. small overshoot): intersection at touch point
+      hits = touches;
+    } else {
+      // one touch and one cross: use both points
+      hits = touches.concat(cross);
+    }
+    return hits;
   }
 
 
@@ -3093,6 +3123,8 @@
         groups.push([path]);
       } else if (path.area * sign < 0) {
         holes.push(path);
+      } else {
+        // Zero-area ring, skipping
       }
     });
 
@@ -3769,6 +3801,9 @@
       bounds = getPointBounds(lyr.shapes);
     } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
       bounds = getPathBounds$1(lyr.shapes, arcs);
+    } else {
+      // just return null if layer has no bounds
+      // error("Layer is missing a valid geometry type");
     }
     return bounds;
   }
@@ -3868,6 +3903,25 @@
       floats[1] = y;
       h = u[0] ^ u[1];
       h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+      return (h & 0x7fffffff) % lim;
+    };
+  }
+
+  // Get function to Hash a single coordinate to a non-negative integer
+  function getXHash(size) {
+    var buf = new ArrayBuffer(8),
+        floats = new Float64Array(buf),
+        uints = new Uint32Array(buf),
+        lim = size | 0;
+    if (lim > 0 === false) {
+      throw new Error("Invalid size param: " + size);
+    }
+
+    return function(x) {
+      var h;
+      floats[0] = x;
+      h = uints[0] ^ uints[1];
+      h = h << 5 ^ h >> 7;
       return (h & 0x7fffffff) % lim;
     };
   }
@@ -4341,6 +4395,8 @@
           // xx2.pop();
           // yy2.pop();
           // zz2.pop();
+        } else if (n2 === 0) {
+          // collapsed arc... ignoring
         }
         nn2[arcId] = n2;
       }
@@ -4613,7 +4669,9 @@
     this.setThresholds = function(thresholds) {
       var n = this.getPointCount(),
           zz = null;
-      if (!thresholds) ; else if (thresholds.length == n) {
+      if (!thresholds) {
+        // nop
+      } else if (thresholds.length == n) {
         zz = thresholds;
       } else if (thresholds.length == this.size()) {
         zz = flattenThresholds(thresholds, n);
@@ -4838,7 +4896,7 @@
           flags = new Uint8Array(chains.length),
           arr = [];
       utils.forEach(chains, function(nextIdx, thisIdx) {
-        var node, p;
+        var node, x, y, p;
         if (flags[thisIdx] == 1) return;
         p = getEndpoint(thisIdx);
         if (!p) return; // endpoints of an excluded arc
@@ -4917,7 +4975,9 @@
       var ids = [];
       var filtered = !!filter;
       var nextId = nextConnectedArc(arcId);
-      if (filtered && !filter(arcId)) ;
+      if (filtered && !filter(arcId)) {
+        // return ids;
+      }
       while (nextId != arcId) {
         if (!filtered || filter(nextId)) {
           ids.push(nextId);
@@ -5108,7 +5168,9 @@
         absId = absArcId(arcId);
         fw = arcId === absId;
 
-        if (arcs.arcIsDegenerate(arcId)) ; else if (arcStatus[absId] !== 0) {
+        if (arcs.arcIsDegenerate(arcId)) {
+          // arc has collapsed -- skip
+        } else if (arcStatus[absId] !== 0) {
           // arc has already been translated -- skip
           newArc = null;
         } else {
@@ -6169,7 +6231,8 @@
   // @chars String of chars to look for in @str
   function getCharScore(str, chars) {
     var index = {},
-        count = 0;
+        count = 0,
+        score;
     str = str.toLowerCase();
     for (var i=0, n=chars.length; i<n; i++) {
       index[chars[i]] = 1;
@@ -7453,7 +7516,9 @@
       readPartSizes: function() {
         var sizes = [];
         var partLen, startId, bin;
-        if (this.pointCount === 0) ; else if (this.partCount == 1) {
+        if (this.pointCount === 0) {
+          // no parts
+        } else if (this.partCount == 1) {
           // single-part type or multi-part type with one part
           sizes.push(this.pointCount);
         } else {
@@ -8490,6 +8555,8 @@
           // TODO: test edge case: exitArcId occurs twice in the path
           pathIndex.clearId(exitArcId);
           exitArcIndexes.push(idx);
+        } else {
+          // TODO: investigate why this happens
         }
       }
       if (exitArcIndexes.length < 2) {
@@ -8773,6 +8840,7 @@
       var arcs;
       var layers;
       var lyr = {name: ''};
+      var snapDist;
 
       if (dupeCount > 0) {
         verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
@@ -8925,7 +8993,9 @@
     // TODO: test cases: null shape; non-null shape with no valid parts
     reader.forEachShape(function(shp) {
       importer.startShape();
-      if (shp.isNull) ; else if (type == 'point') {
+      if (shp.isNull) {
+        // skip
+      } else if (type == 'point') {
         importer.importPoints(shp.readPoints());
       } else {
         shp.stream(importer);
@@ -9745,6 +9815,8 @@
       Object.keys(mixins).forEach(function(key) {
         // Catch name collisions between data fields and user-defined functions
         var d = Object.getOwnPropertyDescriptor(mixins, key);
+        if (key in env) {
+        }
         if (d.get) {
           // copy accessor function from mixins to context
           Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
@@ -9933,6 +10005,18 @@
     };
   }
 
+  // May be useful in the future to implement reading a range of CSV records
+  function skipDelimLines(reader, lines) {
+    // TODO: divide lines into batches, to prevent exceeding maximum buffer size
+    var buf = reader.readSync();
+    var retn = readLinesFromBuffer(buf, lines);
+    if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
+      reader.expandBuffer(); // buffer oflo, grow the buffer and try again
+      return skipDelimLines(reader, lines);
+    }
+    reader.advance(retn.bytesRead);
+  }
+
   function readLinesAsString(reader, lines, encoding) {
     var buf = reader.readSync();
     var retn = readLinesFromBuffer(buf, lines);
@@ -9953,6 +10037,7 @@
 
   function readLinesFromBuffer(buf, linesToRead) {
     var CR = 13, LF = 10, DQUOTE = 34,
+        inQuotedText = false,
         lineCount = 0,
         bufLen = buf.length,
         i, c;
@@ -9960,7 +10045,9 @@
     lineCount++;
     for (i=0; i < bufLen && lineCount <= linesToRead; i++) {
       c = buf[i];
-      if (c == DQUOTE) ; else if (c == CR || c == LF) {
+      if (c == DQUOTE) {
+        inQuotedText = !inQuotedText;
+      } else if (c == CR || c == LF) {
         if (c == CR && i + 1 < bufLen && buf[i + 1] == LF) {
           // first half of CRLF pair: advance one byte
           i++;
@@ -10023,7 +10110,9 @@
       c = text.charCodeAt(i);
       if (c == DQUOTE) {
         inQuotedText = !inQuotedText;
-      } else if (inQuotedText) ; else if (c == DELIM) {
+      } else if (inQuotedText) {
+        //
+      } else if (c == DELIM) {
         captureField(fieldStart, i);
         startFieldAt(i + 1);
       } else if (c == CR || c == LF) {
@@ -10066,7 +10155,7 @@
     // TODO: remove duplication with importJSON()
     var readFromFile = !data.content && data.content !== '',
         content = data.content,
-        reader, records, delimiter, table;
+        filter, reader, records, delimiter, table;
     opts = opts || {};
 
     // // read content of all but very large files into a buffer
@@ -10082,7 +10171,9 @@
       // Web API may import as ArrayBuffer, to support larger files
       reader = new BufferReader(content);
       content = null;
-    } else if (utils.isString(content)) ; else {
+    } else if (utils.isString(content)) {
+      // import as string
+    } else {
       error("Unexpected object type");
     }
 
@@ -10288,7 +10379,8 @@
 
   function GeoJSONParser(opts) {
     var idField = opts.id_field || GeoJSON.ID_FIELD,
-        importer = new PathImporter(opts);
+        importer = new PathImporter(opts),
+        dataset;
 
     this.parseObject = function(o) {
       var geom, rec;
@@ -10583,6 +10675,7 @@
         shapes = [], // topological ids
         types = [],
         dataNulls = 0,
+        shapeNulls = 0,
         collectionType = null,
         shapeId;
 
@@ -10599,19 +10692,24 @@
       if (geom.type) {
         this.addShape(geom);
       }
+      if (shapes[shapeId] === null) {
+        shapeNulls++;
+      }
     };
 
     this.addShape = function(geom) {
       var curr = shapes[shapeId];
       var type = GeoJSON.translateGeoJSONType(geom.type);
-      var shape;
+      var shape, importer;
       if (geom.type == "GeometryCollection") {
         geom.geometries.forEach(this.addShape, this);
       } else if (type) {
         this.setGeometryType(type);
         shape = TopoJSON.shapeImporters[geom.type](geom, arcs);
         // TODO: better shape validation
-        if (!shape || !shape.length) ; else if (!Array.isArray(shape[0])) {
+        if (!shape || !shape.length) {
+          // do nothing
+        } else if (!Array.isArray(shape[0])) {
           stop("Invalid TopoJSON", geom.type, "geometry");
         } else {
           shapes[shapeId] = curr ? curr.concat(shape) : shape;
@@ -10898,7 +10996,9 @@
 
   function identifyJSONObject(o) {
     var fmt = null;
-    if (!o) ; else if (o.type == 'Topology') {
+    if (!o) {
+      //
+    } else if (o.type == 'Topology') {
       fmt = 'topojson';
     } else if (o.type) {
       fmt = 'geojson';
@@ -10978,13 +11078,13 @@
           stop('Expected an array at JSON path:', opts.json_path);
         }
       }
-      retn.format = identifyJSONObject(content);
+      retn.format = identifyJSONObject(content, opts);
       if (retn.format == 'topojson') {
         retn.dataset = importTopoJSON(content, opts);
       } else if (retn.format == 'geojson') {
         retn.dataset = importGeoJSON(content, opts);
       } else if (retn.format == 'json') {
-        retn.dataset = importJSONTable(content);
+        retn.dataset = importJSONTable(content, opts);
       } else {
         stop("Unknown JSON format");
       }
@@ -11386,7 +11486,7 @@
   //    filename: String or null
   //
   function importContent(obj, opts) {
-    var dataset, fileFmt, data;
+    var dataset, content, fileFmt, data;
     opts = opts || {};
     if (obj.json) {
       data = importJSON(obj.json, opts);
@@ -11923,6 +12023,10 @@
       } else {
         errors = projectArcs2(dataset.arcs, proj);
       }
+      if (errors > 0) {
+        // TODO: implement this (null arcs have zero length)
+        // internal.removeShapesWithNullArcs(dataset);
+      }
     }
   }
 
@@ -11933,6 +12037,23 @@
     editShapes(lyr.shapes, function(p) {
       return proj(p[0], p[1]); // removes points that fail to project
     });
+  }
+
+  function projectArcs(arcs, proj) {
+    var data = arcs.getVertexData(),
+        xx = data.xx,
+        yy = data.yy,
+        // old simplification data  will not be optimal after reprojection;
+        // re-using for now to avoid error in web ui
+        zz = data.zz,
+        p;
+
+    for (var i=0, n=xx.length; i<n; i++) {
+      p = proj(xx[i], yy[i]);
+      xx[i] = p[0];
+      yy[i] = p[1];
+    }
+    arcs.updateVertexData(data.nn, xx, yy, zz);
   }
 
   function projectArcs2(arcs, proj) {
@@ -12021,7 +12142,9 @@
   var _writeFiles = function(exports, opts, cb) {
     if (exports.length > 0 === false) {
       message("No files to save");
-    } else if (opts.dry_run) ; else if (opts.stdout) {
+    } else if (opts.dry_run) {
+      // no output
+    } else if (opts.stdout) {
       // Pass callback for asynchronous output (synchronous output to stdout can
       // trigger EAGAIN error, e.g. when piped to less)
       return cli.writeFile('/dev/stdout', exports[0].content, cb);
@@ -12300,7 +12423,7 @@
     var properties = exportProperties(lyr.data, opts),
         shapes = lyr.shapes,
         ids = exportIds(lyr.data, opts),
-        stringify;
+        items, stringify;
 
     if (ofmt) {
       stringify = opts.prettify ?
@@ -12392,7 +12515,7 @@
     var geojson = {};
     var layers = dataset.layers;
     var useFeatures = useFeatureCollection(layers, opts);
-    var collection, bbox, collname;
+    var parts, collection, bbox, collname;
 
     if (useFeatures) {
       geojson.type = 'FeatureCollection';
@@ -12521,6 +12644,8 @@
       // "If the value of CRS is null, no CRS can be assumed"
       // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
       jsonObj.crs = null;
+    } else {
+      // crs property not set: assuming WGS84
     }
   }
 
@@ -12615,6 +12740,11 @@
     return !!type && (type in furnitureRenderers);
   }
 
+  // @mapLayer a map layer object
+  function isFurnitureLayer(mapLayer) {
+    return !!mapLayer.furniture;
+  }
+
   // @lyr dataset layer
   function getFurnitureLayerType(lyr) {
     var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
@@ -12659,7 +12789,7 @@
     var targetShapes = [];
     var otherShapes = [];
     var targetPoints = [];
-    var targetFlags, otherFlags, transform;
+    var targetFlags, otherFlags, transform, transformOpts;
     dataset.layers.filter(layerHasGeometry).forEach(function(lyr) {
       var hits = [],
           misses = [],
@@ -13064,7 +13194,9 @@
   }
 
   function setAttribute(obj, k, v) {
-    if (k == 'r') ; else {
+    if (k == 'r') {
+      // assigned by importPoint()
+    } else {
       if (!obj.properties) obj.properties = {};
       obj.properties[k] = v;
       if (k == 'stroke-dasharray' && v) {
@@ -13101,6 +13233,15 @@
 
   function importLineString(coords) {
     var d = stringifyLineStringCoords(coords);
+    return {
+      tag: 'path',
+      properties: {d: d}
+    };
+  }
+
+
+  function importMultiLineString(coords) {
+    var d = coords.map(stringifyLineStringCoords).join(' ');
     return {
       tag: 'path',
       properties: {d: d}
@@ -13175,6 +13316,7 @@
 
   // d: svg-symbol object from feature data object
   function importSymbol(d, xy) {
+    var renderer;
     if (!d) {
       return getEmptySymbol();
     }
@@ -13336,6 +13478,15 @@
     }
     height = width / aspectRatio;
     return [Math.round(width), Math.round(height)];
+  }
+
+  function getDatasetDisplayBounds(dataset) {
+    var frameLyr = findFrameLayerInDataset(dataset);
+    if (frameLyr) {
+      // TODO: check for coordinate issues (non-intersection with other layers, etc)
+      return getFrameLayerBounds(frameLyr);
+    }
+    return getDatasetBounds(dataset);
   }
 
   // @lyr dataset layer
@@ -13606,7 +13757,7 @@
     }
 
     function getSvgFile(href) {
-      var res, content;
+      var res, content, fs;
       if (href.indexOf('http') === 0) {
         res  = require('sync-request')('GET', href, {timeout: 1000});
         content = res.getBody().toString();
@@ -13761,7 +13912,7 @@
   function exportLayerForSVG(lyr, dataset, opts) {
     var layerObj = getEmptyLayerForSVG(lyr, opts);
     if (layerHasFurniture(lyr)) {
-      layerObj.children = exportFurnitureForSVG(lyr, dataset);
+      layerObj.children = exportFurnitureForSVG(lyr, dataset, opts);
     } else {
       layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
     }
@@ -13783,6 +13934,7 @@
     var geojson = exportDatasetAsGeoJSON(d, opts);
     var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
     var children = importGeoJSONFeatures(features, opts);
+    var data;
     if (opts.svg_data && lyr.data) {
       addDataAttributesToSVG(children, lyr.data, opts.svg_data);
     }
@@ -14095,7 +14247,7 @@
   function exportShapefile(dataset, opts) {
     return dataset.layers.reduce(function(files, lyr) {
       var prj = exportPrjFile(lyr, dataset);
-      files = files.concat(exportShpAndShxFiles(lyr, dataset));
+      files = files.concat(exportShpAndShxFiles(lyr, dataset, opts));
       files = files.concat(exportDbfFile(lyr, dataset, opts));
       if (prj) files.push(prj);
       return files;
@@ -14762,11 +14914,11 @@
     }
 
     if (opts.cut_table) {
-      files = exportDataTables(dataset.layers).concat(files);
+      files = exportDataTables(dataset.layers, opts).concat(files);
     }
 
     if (opts.extension) {
-      opts.extension = fixFileExtension(opts.extension);
+      opts.extension = fixFileExtension(opts.extension, outFmt);
     }
 
     validateLayerData(dataset.layers);
@@ -15049,7 +15201,8 @@
   }
 
   function validateProjOpts(cmd) {
-    var _ = cmd._;
+    var _ = cmd._,
+        proj4 = [];
 
     if (_.length > 0 && !cmd.options.crs) {
       cmd.options.crs = _.join(' ');
@@ -15294,7 +15447,7 @@
       var commandDefs = getCommands(),
           commands = [], cmd,
           argv = cleanArgv(raw),
-          cmdName, cmdDef;
+          cmdName, cmdDef, opt;
 
       if (argv.length == 1 && tokenIsCommandName(argv[0])) {
         // show help if only a command name is given
@@ -15363,7 +15516,11 @@
           // token looks like name=value style option
           parts = splitAssignment(token);
           optDef = findOptionDefn(parts[0], cmdDef);
-          if (!optDef) ; else if (optDef.type == 'flag' || optDef.assign_to) {
+          if (!optDef) {
+            // left-hand identifier is not a recognized option...
+            // assignment to an unrecognized identifier could be an expression
+            // (e.g. -each 'id=$.id') -- handle this case below
+          } else if (optDef.type == 'flag' || optDef.assign_to) {
             stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
           } else {
             argv.unshift(parts[1]);
@@ -15521,7 +15678,9 @@
         var lines = [];
         var description = opt.describe;
         var label;
-        if (!description) ; else if (opt.label) {
+        if (!description) {
+          // empty
+        } else if (opt.label) {
           lines.push([opt.label, description]);
         } else if (opt.name == cmd.default) {
           label = opt.name + '=';
@@ -17475,6 +17634,10 @@
     return toId;
   }
 
+  function chooseRighthandPath2(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
+    return chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
+  }
+
   // TODO: consider using simpler internal.chooseRighthandPath2()
   // Returns 1 if node->a, return 2 if node->b, else return 0
   // TODO: better handling of identical angles (better -- avoid creating them)
@@ -17531,6 +17694,29 @@
     getRightmostArc: getRightmostArc,
     chooseRighthandVector: chooseRighthandVector
   });
+
+  // Functions for redrawing polygons for clipping / erasing / flattening / division
+  // These functions use 8 bit codes to control forward and reverse traversal of each arc.
+  //
+  // Function of path bits 0-7:
+  // 0: is fwd path hidden or visible? (0=hidden, 1=visible)
+  // 1: is fwd path open or closed for traversal? (0=closed, 1=open)
+  // 2: unused
+  // 3: unused
+  // 4: is rev path hidden or visible?
+  // 5: is rev path open or closed for traversal?
+  // 6: unused
+  // 7: unused
+  //
+  // Example codes:
+  // 0x3 (3): forward path is visible and open, reverse path is hidden and closed
+  // 0x10 (16): forward path is hidden and closed, reverse path is visible and closed
+  //
+
+  var FWD_VISIBLE = 0x1;
+  var FWD_OPEN = 0x2;
+  var REV_VISIBLE = 0x10;
+  var REV_OPEN = 0x20;
 
   function setBits(bits, arcBits, mask) {
     return (bits & ~mask) | (arcBits & mask);
@@ -17646,7 +17832,8 @@
 
     return function(startId) {
       var path = [],
-          nextId, candId = startId;
+          nextId, msg,
+          candId = startId;
 
       do {
         if (useRoute(candId)) {
@@ -17999,7 +18186,7 @@
           last: wrap(pass)
         },
         len = getFeatureCount(lyr),
-        calc1, calc2;
+        calc1, calc2, result;
 
     if (lyr.geometry_type) {
       // add functions related to layer geometry (e.g. for subdivide())
@@ -18617,7 +18804,7 @@
     } else if (lyr.geometry_type == 'polygon') {
       dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
     } else if (lyr.geometry_type == 'polyline') {
-      dissolveShapes = dissolvePolylineGeometry(lyr, getGroupId, arcs);
+      dissolveShapes = dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
     } else if (lyr.geometry_type == 'point') {
       dissolveShapes = dissolvePointGeometry(lyr, getGroupId, opts);
     }
@@ -18790,7 +18977,10 @@
       shapeIndex[shapeId] = shapeIndex[shapeId].filter(function(tileId2) {
         return tileId2 != tileId;
       });
-      if (shapeIndex[shapeId].length > 0 === false) ;
+      if (shapeIndex[shapeId].length > 0 === false) {
+        // TODO: make sure to test the case where a shape becomes empty
+        // error("empty shape")
+      }
     }
   }
 
@@ -19010,6 +19200,17 @@
     return stripes > 0 ? stripes : 1;
   }
 
+  // Old method calculates average segment length -- slow
+  function calcSegmentIntersectionStripeCount_old(arcs) {
+    var yrange = arcs.getBounds().height(),
+        segLen = getAvgSegment2(arcs)[1], // slow
+        count = 1;
+    if (segLen > 0 && yrange > 0) {
+      count = Math.ceil(yrange / segLen / 20);
+    }
+    return count || 1;
+  }
+
   // Find intersections among a group of line segments
   //
   // TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
@@ -19085,6 +19286,20 @@
       i += 2;
     }
     return intersections;
+
+    // @p is an [x, y] location along a segment defined by ids @id1 and @id2
+    // return array [i, j] where i and j are the same endpoint ids with i <= j
+    // if @p coincides with an endpoint, return the id of that endpoint twice
+    function getEndpointIds(id1, id2, p) {
+      var i = id1 < id2 ? id1 : id2,
+          j = i === id1 ? id2 : id1;
+      if (xx[i] == p[0] && yy[i] == p[1]) {
+        j = i;
+      } else if (xx[j] == p[0] && yy[j] == p[1]) {
+        i = j;
+      }
+      return [i, j];
+    }
   }
 
   function formatIntersection(xy, s1, s2, xx, yy) {
@@ -19464,7 +19679,11 @@
       while (pointId < points.length && points[pointId].i <= j) {
         p = points[pointId];
         pp = filtered[filtered.length - 1]; // previous point
-        if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) ; else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) ; else {
+        if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) {
+          // clip point is an arc endpoint -- discard
+        } else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) {
+          // clip point is a duplicate -- discard
+        } else {
           filtered.push(p);
         }
         pointId++;
@@ -20019,6 +20238,7 @@
     var divide = getHoleDivider(nodes);
     // temp vars
     var currHoles; // arc ids of all holes in shape
+    var currShapeId;
     var currRingBbox;
     var tilesInShape; // accumulator for tile ids of tiles in current shape
     var ringIndex = new IdTestIndex(arcs.size());
@@ -20029,6 +20249,7 @@
       var cw = [], ccw = [], retn;
       tilesInShape = [];
       currHoles = [];
+      currShapeId = shapeId;
       if (opts.no_holes) {
         divide(shp, cw, ccw);
         // ccw.forEach(internal.reversePath);
@@ -20288,6 +20509,21 @@
     return composeDissolveLayer(lyr, shapes2, getGroupId, opts);
   }
 
+  function getArcLayer(arcs, name) {
+    var records = [];
+    var lyr = {
+      geometry_type: 'polyline',
+      shapes: [],
+      name: name
+    };
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      lyr.shapes.push([[i]]);
+      records.push({arc_id: i});
+    }
+    lyr.data = new DataTable(records);
+    return lyr;
+  }
+
   function composeMosaicLayer(lyr, shapes2) {
     var records = shapes2.map(function(shp, i) {
       return {tile_id: i};
@@ -20310,6 +20546,7 @@
   }
 
   function getGapRemovalMessage(removed, retained, areaLabel) {
+    var msg;
     if (removed > 0 === false) return '';
     return utils.format('Closed %,d / %,d gap%s using %s',
         removed, removed + retained, utils.pluralSuffix(removed), areaLabel);
@@ -20352,7 +20589,10 @@
       }
     }
     dissolved = pathfind(rings.concat(holes), 'dissolve');
-    if (dissolved.length > 1) ;
+    if (dissolved.length > 1) {
+      // Commenting-out nesting order repair -- new method should prevent nesting errors
+      // dissolved = internal.fixNestingErrors(dissolved, arcs);
+    }
     return dissolved.length > 0 ? dissolved : null;
   }
 
@@ -20509,6 +20749,10 @@
     // polyline output could be used for debugging
     var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
 
+    function polygonCoords(ring) {
+      return [ring];
+    }
+
     function pathBufferCoords(pathArcs, dist) {
       var pathCoords = maker(pathArcs, dist);
       var revPathArcs;
@@ -20538,8 +20782,24 @@
     var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
     var pathIter = new ShapeIter(arcs);
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
+    var tolerance;
+    // TODO: implement other join styles than round
+
+    function updateTolerance(dist) {
+
+    }
 
     function addRoundJoin(arr, x, y, startDir, angle, dist) {
+      var increment = 10;
+      var endDir = startDir + angle;
+      var dir = startDir + increment;
+      while (dir < endDir) {
+        addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+        dir += increment;
+      }
+    }
+
+    function addRoundJoin2(arr, x, y, startDir, angle, dist) {
       var increment = 10;
       var endDir = startDir + angle;
       var dir = startDir + increment;
@@ -20565,6 +20825,9 @@
       var prev = arr[arr.length - 1];
       if (!veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
         arr.push(p);
+      } else {
+        //var dist = geom.distance2D(prev[0], prev[1], p[0], p[1]);
+        //console.log(dist)
       }
     }
 
@@ -20692,7 +20955,9 @@
       hit = bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
       if (hit) {
         // TODO: handle collinear segments
-        if (hit.length != 2) ;
+        if (hit.length != 2) {
+          // console.log("COLLINEAR", hit)
+        }
         // segments intersect -- replace two internal segment endpoints with xx point
         while (arr.length > idx + 1) arr.pop();
         // TODO: check proximity of hit to several points
@@ -20780,6 +21045,13 @@
       var p = [o.lon2, o.lat2];
       return p;
     };
+  }
+
+  function getGeodeticDistanceFunction(dataset, highPrecision) {
+    var P = getDatasetCRS(dataset);
+    if (!isLatLngCRS(P)) {
+      return getPlanarSegmentEndpoint;
+    }
   }
 
   // Useful for determining if a segment that intersects another segment is
@@ -20880,8 +21152,14 @@
     var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
     var pathIter = new ShapeIter(arcs);
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
+    var tolerance;
     var partials, left, center;
     var bounds;
+    // TODO: implement other join styles than round
+
+    function updateTolerance(dist) {
+
+    }
 
     function addRoundJoin(x, y, startDir, angle, dist) {
       var increment = 10;
@@ -20919,7 +21197,29 @@
       var prev = arr[arr.length - 1];
       if (!veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
         arr.push(p);
+      } else {
+        //var dist = geom.distance2D(prev[0], prev[1], p[0], p[1]);
+        //console.log(dist)
       }
+    }
+
+    function makeCap(x, y, direction, dist) {
+      if (capStyle == 'flat') {
+        return [[x, y]];
+      }
+      return makeRoundCap(x, y, direction, dist);
+    }
+
+    function makeRoundCap(x, y, segmentDir, dist) {
+      var points = [];
+      var increment = 10;
+      var startDir = segmentDir - 90;
+      var angle = increment;
+      while (angle < 180) {
+        points.push(geod(x, y, startDir + angle, dist));
+        angle += increment;
+      }
+      return points;
     }
 
     // get angle between two extruded segments in degrees
@@ -20957,6 +21257,8 @@
             //
             finishPartial();
             break;
+          } else {
+            // console.log('HIT', internal.segmentTurn(a, b, c, d))
           }
           // TODO: handle collinear segments (consider creating new partial)
           // if (hit.length != 2) console.log('COLLINEAR', hit)
@@ -21017,7 +21319,7 @@
     return function(path, dist) {
       var x0, y0, x1, y1, x2, y2;
       var p1, p2;
-      var bearing, prevBearing, joinAngle;
+      var bearing, prevBearing, firstBearing, joinAngle;
       partials = [];
       left = [];
       center = [];
@@ -21043,7 +21345,9 @@
 
         if (center.length === 0) {
           // first loop, second point in this partial
-          if (partials.length === 0) ;
+          if (partials.length === 0) {
+            firstBearing = bearing;
+          }
           left.push(p1, p2);
           center.push([x1, y1], [x2, y2]);
         } else {
@@ -21204,9 +21508,9 @@
         if (lyr.geometry_type == 'polygon') {
           cleanPolygonLayerGeometry(lyr, dataset, opts);
         } else if (lyr.geometry_type == 'polyline') {
-          cleanPolylineLayerGeometry(lyr, dataset);
+          cleanPolylineLayerGeometry(lyr, dataset, opts);
         } else if (lyr.geometry_type == 'point') {
-          cleanPointLayerGeometry(lyr);
+          cleanPointLayerGeometry(lyr, dataset, opts);
         }
         if (!opts.allow_empty) {
           cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
@@ -21271,7 +21575,7 @@
 
     function onPart(ids) {
       var n = ids.length;
-      var id;
+      var id, connected;
       var ids2 = [];
       for (var i=0; i<n; i++) {
         // check each segment of the current part (equivalent to a LineString)
@@ -21471,6 +21775,23 @@
     return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
   }
 
+  // TODO: remove this obsolete dissolve code (still used by clip)
+
+  function concatShapes(shapes) {
+    return shapes.reduce(function(memo, shape) {
+      extendShape(memo, shape);
+      return memo;
+    }, []);
+  }
+
+  function extendShape(dest, src) {
+    if (src) {
+      for (var i=0, n=src.length; i<n; i++) {
+        dest.push(src[i]);
+      }
+    }
+  }
+
   // TODO: to prevent invalid holes,
   // could erase the holes from the space-enclosing rings.
   function appendHolesToRings(cw, ccw) {
@@ -21649,7 +21970,11 @@
       // var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
       if (targetRoute == 3) {
         // special cases where clip route and target route both follow this arc
-        if (clipRoute == 1) ; else if (clipRoute == 2 && type == 'erase') ; else {
+        if (clipRoute == 1) {
+          // 1. clip/erase polygon blocks this route, not usable
+        } else if (clipRoute == 2 && type == 'erase') {
+          // 2. route is on the boundary between two erase polygons, not usable
+        } else {
           usable = true;
         }
 
@@ -22707,7 +23032,7 @@
       var groups = groupsByValue[val];
       var maxIdx;
       if (groups.length < 2) return;
-      maxIdx = indexOfMaxValue(groups);
+      maxIdx = indexOfMaxValue(groups, 'weight');
       if (maxIdx == -1) return; // error condition...
       groups
         .filter(function(group, i) {return i != maxIdx;})
@@ -22874,7 +23199,7 @@
 
 
   function getJoinFilterCalcFunction(exp, data) {
-    var values, max, min, context, calc;
+    var values, counts, max, min, context, calc, n;
 
     context = {
       isMax: function(val) {
@@ -23279,7 +23604,7 @@
       var n = d ? +d[opts.field] : 0;
       var coords = null;
       if (n > 0) {
-        coords = createInnerPoints(shp, arcs);
+        coords = createInnerPoints(shp, arcs, n);
       }
       shapes.push(coords);
     });
@@ -23293,7 +23618,7 @@
     if (!shp || shp.length != 1) {
       return null; // TODO: support polygons with holes and multipart polygons
     }
-    return fillPolygonWithDots(shp, arcs);
+    return fillPolygonWithDots(shp, arcs, n);
   }
 
 
@@ -23394,6 +23719,7 @@
   };
 
   function validateExternalCommand(defn) {
+    var targetTypes = ['layer', 'layers'];
     if (typeof defn.command != 'function') {
       stop('Expected "command" parameter function');
     }
@@ -23730,6 +24056,44 @@
     message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
   };
 
+  function buildIslandIndex(lyr, arcs, ringTest) {
+    // index of all islands
+    // (all rings are considered to belong to an island)
+    var islandIndex = [];
+    // this index maps id of first arc in each ring to
+    // an island in islandIndex
+    var firstArcIndex = new ArcToIdIndex(arcs);
+    var shpId;
+    var parts;
+
+    lyr.shapes.forEach(function(shp, i) {
+      if (!shp) return;
+      shpId = i;
+      forEachShapePart(parts, eachRing);
+
+    });
+
+    function eachRing(ring, ringId, shp) {
+      var area = geom.getPathArea(ring, arcs);
+      var firstArcId = ring[0];
+      if (area <= 0) return; // skip holes (really?)
+      var islandId = firstArcIndex.getId(firstArcId);
+      var islandData;
+      if (islandId == -1) {
+        islandData = {
+          area: 0
+        };
+        islandId = islandIndex.length;
+        islandIndex.push(islandData);
+      } else {
+        islandData = islandIndex[islandId];
+      }
+      islandData.area += area;
+
+    }
+
+  }
+
 
   function filterIslands2(lyr, arcs, ringTest) {
     var removed = 0;
@@ -23752,6 +24116,27 @@
     };
     editShapes(lyr.shapes, pathFilter);
     return removed;
+  }
+
+  function ArcToIdIndex(arcs) {
+    var n = arcs.size();
+    var fwdArcIndex = new Int32Array(n);
+    var revArcIndex = new Int32Array(n);
+    utils.initializeArray(fwdArcIndex, -1);
+    utils.initializeArray(revArcIndex, -1);
+    this.setId = function(arcId, id) {
+      if (arcId >= 0) {
+        fwdArcIndex[arcId] = id;
+      } else {
+        revArcIndex[~arcId] = id;
+      }
+    };
+
+    this.getId = function(arcId) {
+      var i = absArcId(arcId);
+      if (i < n === false) return -1;
+      return (arcId < 0 ? revArcIndex : fwdArcIndex)[i];
+    };
   }
 
   cmd.filterFields = function(lyr, names) {
@@ -23836,13 +24221,13 @@
   }
 
   function joinPolygonsToPoints(targetLyr, polygonLyr, arcs, opts) {
-    var joinFunction = getPointToPolygonsFunction(targetLyr, polygonLyr, arcs);
+    var joinFunction = getPointToPolygonsFunction(targetLyr, polygonLyr, arcs, opts);
     prepJoinLayers(targetLyr, polygonLyr);
     return joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
   }
 
   function joinPointsToPoints(targetLyr, srcLyr, opts) {
-    var joinFunction = getPointToPointFunction(targetLyr, srcLyr);
+    var joinFunction = getPointToPointFunction(targetLyr, srcLyr, opts);
     prepJoinLayers(targetLyr, srcLyr);
     return joinTables(targetLyr.data, srcLyr.data, joinFunction, opts);
   }
@@ -23869,9 +24254,10 @@
 
   function getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, opts) {
     // Build a reverse lookup table for mapping polygon ids to point ids.
-    var joinFunction = getPointToPolygonsFunction(pointLyr, polygonLyr, arcs);
+    var joinFunction = getPointToPolygonsFunction(pointLyr, polygonLyr, arcs, opts);
     var index = [];
     var firstMatch = !!opts.first_match; // a point is assigned to the first matching polygon
+    var hits, polygonId;
     pointLyr.shapes.forEach(function(shp, pointId) {
       var polygonIds = joinFunction(pointId);
       var n = polygonIds ? polygonIds.length : 0;
@@ -23903,6 +24289,24 @@
       var shp = points[pointId],
           polygonIds = shp ? index.findEnclosingShapes(shp[0]) : [];
       return polygonIds.length > 0 ? polygonIds : null;
+    };
+  }
+
+
+  // TODO: remove (replaced by getPointToPolygonsFunction())
+  function getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts) {
+    var index = new PathIndex(polygonLyr.shapes, arcs),
+        points = pointLyr.shapes;
+
+    // @i id of a point feature
+    return function(i) {
+      var shp = points[i],
+          shpId = -1;
+      if (shp) {
+        // TODO: handle multiple hits
+        shpId = index.findEnclosingShape(shp[0]);
+      }
+      return shpId == -1 ? null : [shpId];
     };
   }
 
@@ -24069,7 +24473,7 @@
   }
 
   cmd.graticule = function(dataset, opts) {
-    var graticule = createGraticule();
+    var graticule = createGraticule(opts);
     var dest, src;
     if (dataset) {
       // project graticule to match dataset
@@ -24228,6 +24632,16 @@
     return count;
   }
 
+  function countRings(shapes, arcs) {
+    var holes = 0, rings = 0;
+    editShapes(shapes, function(ids) {
+      var area = geom.getPlanarPathArea(ids, arcs);
+      if (area > 0) rings++;
+      if (area < 0) holes++;
+    });
+    return {rings: rings, holes: holes};
+  }
+
   function getLayerInfo(lyr, dataset) {
     var data = getLayerData(lyr, dataset);
     var str = '';
@@ -24325,6 +24739,22 @@
     return str;
   }
 
+  function getSimplificationInfo(arcs) {
+    var nodeCount = new NodeCollection(arcs).size();
+    // get count of non-node vertices
+    var internalVertexCount = countInteriorVertices(arcs);
+  }
+
+  function countInteriorVertices(arcs) {
+    var count = 0;
+    arcs.forEach2(function(i, n) {
+      if (n > 2) {
+        count += n - 2;
+      }
+    });
+    return count;
+  }
+
   var Info = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getLayerData: getLayerData,
@@ -24366,6 +24796,7 @@
 
   function convertShapesToSegments(lyr, dataset) {
     var arcs = dataset.arcs;
+    var features = [];
     var geojson = {type: 'FeatureCollection', features: []};
     var test = getArcPresenceTest(lyr.shapes, arcs);
     var arcId;
@@ -24460,6 +24891,7 @@
       var key = function(a, b) {
         var arec = data[a];
         var brec = data[b];
+        var aval, bval;
         if (!arec || !brec || arec[field] === brec[field]) {
           return null;
         }
@@ -24779,7 +25211,7 @@
     var rxp = /^([nsew+-]?)([0-9.]+)[d°]? ?([0-9.]*)['′]? ?([0-9.]*)["″]? ?([nsew]?)$/i;
     var match = rxp.exec(str.trim());
     var d = NaN;
-    var deg, min, sec;
+    var deg, min, sec, inv;
     if (match) {
       deg = match[2] || '0';
       min = match[3] || '0';
@@ -24844,17 +25276,17 @@
       // TODO: consider making attributed points, including distance from origin
       destLyr.shapes = interpolatedPointsFromVertices(srcLyr, dataset, opts);
     } else if (opts.vertices) {
-      destLyr.shapes = pointsFromVertices(srcLyr, arcs);
+      destLyr.shapes = pointsFromVertices(srcLyr, arcs, opts);
     } else if (opts.vertices2) {
-      destLyr.shapes = pointsFromVertices2(srcLyr, arcs);
+      destLyr.shapes = pointsFromVertices2(srcLyr, arcs, opts);
     } else if (opts.endpoints) {
-      destLyr.shapes = pointsFromEndpoints(srcLyr, arcs);
+      destLyr.shapes = pointsFromEndpoints(srcLyr, arcs, opts);
     } else if (opts.x || opts.y) {
       destLyr.shapes = pointsFromDataTable(srcLyr.data, opts);
     } else if (srcLyr.geometry_type == 'polygon') {
       destLyr.shapes = pointsFromPolygons(srcLyr, arcs, opts);
     } else if (srcLyr.geometry_type == 'polyline') {
-      destLyr.shapes = pointsFromPolylines(srcLyr, arcs);
+      destLyr.shapes = pointsFromPolylines(srcLyr, arcs, opts);
     } else if (!srcLyr.geometry_type) {
       destLyr.shapes = pointsFromDataTableAuto(srcLyr.data);
     } else {
@@ -25029,7 +25461,7 @@
 
   function pointsFromPolylines(lyr, arcs, opts) {
     return lyr.shapes.map(function(shp) {
-      var p = polylineToPoint(shp, arcs);
+      var p = polylineToPoint(shp, arcs, opts);
       return p ? [[p.x, p.y]] : null;
     });
   }
@@ -25519,6 +25951,8 @@
     } else if (opts.rows > 0 && opts.cols > 0) {
       params.rows = opts.rows;
       params.cols = opts.cols;
+    } else {
+      // error, handled later
     }
     if (opts.bbox) {
       params.bbox = opts.bbox;
@@ -25754,7 +26188,7 @@
         getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
       bounds = applyRectangleOptions(bounds, crs, opts);
       if (!bounds) return null;
-      return convertBboxToGeoJSON(bounds.toArray());
+      return convertBboxToGeoJSON(bounds.toArray(), opts);
     });
     var geojson = {
       type: 'FeatureCollection',
@@ -25792,7 +26226,7 @@
   };
 
   cmd.rectangle = function(source, opts) {
-    var bounds, crs, sourceInfo;
+    var offsets, bounds, crs, coords, sourceInfo;
     if (source) {
       bounds = getLayerBounds(source.layer, source.dataset.arcs);
       sourceInfo = source.dataset.info;
@@ -25805,7 +26239,7 @@
     if (!bounds || !bounds.hasBounds()) {
       stop('Missing rectangle extent');
     }
-    var geojson = convertBboxToGeoJSON(bounds.toArray());
+    var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
     var dataset = importGeoJSON(geojson, {});
     dataset.layers[0].name = opts.name || 'rectangle';
     if (sourceInfo) {
@@ -26162,12 +26596,13 @@
         collapsedRings = 0,
         max = 0,
         sum = 0,
+        sumSq = 0,
         iprev = -1,
         jprev = -1,
         measures = [],
         angles = [],
         zz = arcs.getVertexData().zz,
-        stats;
+        count, stats;
 
     arcs.forEachSegment(function(i, j, xx, yy) {
       var ax, ay, bx, by, d2, d, skipped, angle, tmp;
@@ -26201,6 +26636,7 @@
           tmp = distSq(xx[i], yy[i], ax, ay, bx, by);
           d2 = Math.max(d2, tmp);
         }
+        sumSq += d2;
         d = Math.sqrt(d2);
         sum += d;
         measures.push(d);
@@ -26623,6 +27059,8 @@
       if (replacements.length == 1) {
         replacements = unwindIntersection(replacements[0], zlim, data.zz);
         changes++;
+      } else  {
+        // either 0 or multiple intersections detected
       }
 
       for (i=0; i<replacements.length; i++) {
@@ -27371,7 +27809,9 @@
       addBezierArcControlPoints(coords[0][0], coords[0][1], curve);
     }
 
-    if (d.effect == "fade") ;
+    if (d.effect == "fade") {
+      // TODO
+    }
     return obj;
   };
 
@@ -27383,6 +27823,10 @@
   function getStrokeArrowCoords(len) {
     var stalk = [[0, 0], [0, -len]];
     return [stalk];
+  }
+
+  function getFilledArrowCoords(d) {
+    // TODO
   }
 
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
@@ -27608,7 +28052,7 @@
     if (opts.interval) {
       getShapeThreshold = getVariableIntervalFunction(opts.interval, lyr, dataset, opts);
     } else if (opts.percentage) {
-      getShapeThreshold = getVariablePercentageFunction(opts.percentage, lyr, dataset);
+      getShapeThreshold = getVariablePercentageFunction(opts.percentage, lyr, dataset, opts);
     } else if (opts.resolution) {
       getShapeThreshold = getVariableResolutionFunction(opts.resolution, lyr, dataset, opts);
     } else {
@@ -27706,7 +28150,7 @@
         setId = !!opts.id_field, // assign id but, don't split to layers
         fieldName = opts.id_field || "__split__",
         classify = getShapeClassifier(getLayerBounds(lyr, arcs), opts.cols, opts.rows),
-        properties;
+        properties, layers;
 
     if (!type) {
       stop("Layer has no geometry");
@@ -28607,6 +29051,10 @@
     return q == 0 || q == 2 || q == 4 || q == 6;
   }
 
+  function isEdgeSector(q) {
+    return q == 1 || q == 3 || q == 5 || q == 7;
+  }
+
   // Number of CCW turns to normalize
   function getSectorRotation(q) {
     return q > 1 && q < 8 ? Math.floor(q / 2) : 0;
@@ -28655,6 +29103,10 @@
     points.push(getCornerBySector(q, bbox));
   }
 
+  function projectPointToEdge(p, s1, s2) {
+    return s1[0] == s2[0] ? [s1[0], p[1]] : [p[0], s1[1]];
+  }
+
   function addClippedPoint(points, p1, p2, bbox) {
     var q1 = p1 ? getPointSector(p1[0], p1[1], bbox) : -1;
     var q2 = getPointSector(p2[0], p2[1], bbox);
@@ -28668,18 +29120,21 @@
       // segment is fully within box
       points.push(p2);
 
-    } else if (q1 == q2) ; else if (q1 == -1) {
+    } else if (q1 == q2) {
+      // segment is fully within one outer sector (ignore it)
+
+    } else if (q1 == -1) {
       // p2 is first point in the path
       if (q2 == 8) {
         points.push(p2);
-      } else if ( isCornerSector(q2)) {
+      } else if (closed && isCornerSector(q2)) {
         addCornerPoint(points, q2, bbox);
       }
 
     } else if (q1 == 8) {
       // segment leaves box
       addSegmentBoundsIntersection(points, p1, p2, bbox);
-      if ( isCornerSector(q2)) {
+      if (closed && isCornerSector(q2)) {
         addCornerPoint(points, q2, bbox);
       }
 
@@ -28699,9 +29154,12 @@
       q2 = rotateSector(rot, q2);
       if (q1 == 0) {
         // first point is in a corner sector
-        if (q2 === 0 || q2 === 1 || q2 === 7) ; else if (q2 == 2 || q2 == 6) {
+        if (q2 === 0 || q2 === 1 || q2 === 7) {
+          // move to adjacent side -- no point
+
+        } else if (q2 == 2 || q2 == 6) {
           // move to adjacent corner
-          addCornerPoint(points, q2, bbox);
+          if (closed) addCornerPoint(points, q2, bbox);
 
         } else if (q2 == 3) {
           // far left edge (intersection or left corner)
@@ -28719,7 +29177,7 @@
               addCornerPoint(points, 2, bbox);
             }
           }
-          addCornerPoint(points, q2, bbox);
+          if (closed) addCornerPoint(points, q2, bbox);
 
         } else if (q2 == 5) {
           // far right edge (intersection or right corner)
@@ -28739,7 +29197,7 @@
         } else if (q2 == 4) {
           // to far left corner
           if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
-          addCornerPoint(points, 4, bbox);
+          if (closed) addCornerPoint(points, 4, bbox);
 
         } else if (q2 == 5) {
           // to opposite side
@@ -28748,7 +29206,7 @@
         } else if (q2 == 6) {
           // to far right corner
           if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 0, bbox);
-          addCornerPoint(points, 6, bbox);
+          if (closed) addCornerPoint(points, 6, bbox);
 
         } else if (q2 == 7) {
           // to right side

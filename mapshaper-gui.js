@@ -466,6 +466,11 @@
     el.className = el.className.replace(rxp, "$2");
   }
 
+  function replaceClass(el, c1, c2) {
+    var r1 = getClassNameRxp(c1);
+    el.className = el.className.replace(r1, '$1' + c2 + '$2');
+  }
+
   var cssDiv = document.createElement('div');
   function mergeCSS(s1, s2) {
     cssDiv.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
@@ -907,6 +912,9 @@
     //
     function onblur() {
       var val = _parser(_el.el.value);
+      if (val === _value) {
+        // return;
+      }
       if (_validator(val)) {
         _self.value(val);
         _self.dispatchEvent('change', {value:_self.value()});
@@ -985,6 +993,11 @@
     };
 
     this.node = function() {return _el.node();};
+
+    function isVisible() {
+      var el = _el.node();
+      return el.offsetParent !== null;
+    }
   }
 
   utils.inherit(SimpleButton, EventDispatcher);
@@ -1095,7 +1108,7 @@
 
     function turnOn() {
       if (manifestFiles.length > 0) {
-        downloadFiles(manifestFiles);
+        downloadFiles(manifestFiles, true);
         manifestFiles = [];
       } else if (model.isEmpty()) {
         gui.container.addClass('splash-screen');
@@ -1103,6 +1116,7 @@
     }
 
     function turnOff() {
+      var target;
       if (catalog) catalog.reset(); // re-enable clickable catalog
       if (importCount > 0) {
         // display last layer of last imported dataset
@@ -1531,7 +1545,7 @@
         _handle = El(ref);
         draggable(_handle)
           .on('drag', function(e) {
-            setHandlePos(startX + e.dx);
+            setHandlePos(startX + e.dx, true);
           })
           .on('dragstart', function(e) {
             startX = position();
@@ -1797,7 +1811,14 @@
         model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
         gui.session.updateSimplificationPct(pct);
         model.updated({'simplify_amount': true});
+        updateSliderDisplay();
       }
+    }
+
+    function updateSliderDisplay() {
+      // TODO: display resolution and vertex count
+      // var dataset = model.getActiveLayer().dataset;
+      // var interval = dataset.arcs.getRetainedInterval();
     }
   };
 
@@ -2035,6 +2056,13 @@
     return true;
   }
 
+  function projectArcsForDisplay_v1(arcs, src, dest) {
+    var copy = arcs.getCopy(); // need to flatten first?
+    var proj = internal.getProjTransform(src, dest);
+    internal.projectArcs(copy, proj); // need to densify arcs?
+    return copy;
+  }
+
   function projectArcsForDisplay(arcs, src, dest) {
     var copy = arcs.getCopy(); // need to flatten first?
     var proj = internal.getProjTransform2(src, dest);
@@ -2249,6 +2277,9 @@
           model.selectNextLayer();
         }
 
+      // shift key -- don't do anything (need to interoperate with shift-drag box tools)
+      } else if (kc == 16) {
+
       // delete key while not inputting text
       } else if (kc == 8 && !typing) {
         capture = true; // prevent delete from leaving page
@@ -2411,6 +2442,11 @@
       }
     }
 
+    // display char codes in string (for debugging console input)
+    function strCodes(str) {
+      return str.split('').map(function(c) {return c.charCodeAt(0);}).join(',');
+    }
+
     function submit(str) {
       // remove newlines
       // TODO: remove other whitespace at beginning + end of lines
@@ -2502,7 +2538,9 @@
     function onError(err) {
       if (utils.isString(err)) {
         consoleStop(err);
-      } else if (err.name == 'UserError') ; else if (err.name) {
+      } else if (err.name == 'UserError') {
+        // stop() has already been called, don't need to log
+      } else if (err.name) {
         // log stack trace to browser console
         console.error(err.stack);
         // log to console window
@@ -2593,7 +2631,9 @@
       var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
           flags.affine || flags.points || flags['merge-layers'] || flags.select;
       if (needUpdate) {
-        if (flags.select) ; else {
+        if (flags.select) {
+          // preserve cached intersections
+        } else {
           // delete any cached intersection data
           e.dataset.info.intersections = null;
         }
@@ -3023,7 +3063,7 @@
     function renderLayer(lyr, dataset, opts) {
       var warnings = getWarnings(lyr, dataset);
       var classes = 'layer-item';
-      var html;
+      var entry, html;
 
       if (opts.pinnable) classes += ' pinnable';
       if (map.isActiveLayer(lyr)) classes += ' active';
@@ -3060,10 +3100,16 @@
       // support layer drag-drop
       entry.on('mousemove', function(e) {
         var rect, insertionClass;
-        if (!e.buttons && (dragging || dragTargetId)) { // button is up
+        // stop dragging when mouse button is released
+        if (!e.buttons && (dragging || dragTargetId)) {
           stopDragging();
         }
+        // start dragging when button is first pressed
         if (e.buttons && !dragTargetId) {
+          // don't start dragging if pointer is over the close button
+          // (before, clicking this button wqs finicky -- the mouse had to remain
+          // perfectly still between mousedown and mouseup)
+          if (El(e.target).hasClass('close-btn')) return;
           dragTargetId = id;
           entry.addClass('drag-target');
         }
@@ -3433,6 +3479,12 @@
       points: ['info', 'data', 'selection', 'box', 'location', 'off']
     };
 
+    var prompts = {
+      box: 'Shift-drag to draw a box',
+      data: 'Click-select features to edit their attributes',
+      selection: 'Click-select or shift-drag to select features'
+    };
+
     // mode name -> menu text lookup
     var labels = {
       info: 'inspect attributes',
@@ -3443,7 +3495,7 @@
       selection: 'select features',
       off: 'turn off'
     };
-    var btn, menu;
+    var btn, menu, tab;
     var _menuTimeout;
 
     // state variables
@@ -3732,7 +3784,7 @@
       var maxDist = getZoomAdjustedHitBuffer(5, 1),
           cands = findHitCandidates(x, y, maxDist),
           hits = [],
-          cand;
+          cand, hitId;
       for (var i=0; i<cands.length; i++) {
         cand = cands[i];
         if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
@@ -3962,15 +4014,31 @@
       return node.hasAttribute('data-id') && (node.tagName == 'text' || node.tagName == 'g');
     }
 
+    function isSymbolChildNode(node) {
+
+    }
+
+    function getChildId(childNode) {
+
+    }
+
+    function getSymbolId(symbolNode) {
+
+    }
+
+    function getFeatureId(symbolNode) {
+
+    }
+
   }
 
   function getPointerHitTest(mapLayer, ext) {
-    var shapeTest, svgTest;
+    var shapeTest, svgTest, targetLayer;
     if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
       return null;
     }
     shapeTest = getShapeHitTest(mapLayer, ext);
-    svgTest = getSvgHitTest();
+    svgTest = getSvgHitTest(mapLayer);
 
     // e: pointer event
     return function(e) {
@@ -4130,6 +4198,9 @@
       } else if (e.hover) {
         // mouse is hovering directly over map area -- update hit detection
         updateSelectionState(mergeHoverData(hitTest(e)));
+      } else {
+        // mouse is over map viewport but not directly over map (e.g. hovering
+        // over popup) -- don't update hit detection
       }
     }, null, priority);
 
@@ -4760,6 +4831,7 @@
     });
 
     mouse.on('dragend', function(e) {
+      var bbox;
       if (disabled()) return;
       if (boxDrag) {
         boxDrag = false;
@@ -4784,6 +4856,7 @@
     function getBoxData(e) {
       var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
       var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
+      var tmp;
       if (pageBox[0] > pageBox[2]) {
         swapElements(pageBox, 0, 2);
         swapElements(mapBox, 0, 2);
@@ -4986,9 +5059,9 @@
     };
 
     self.hide = function() {
+      if (!el.visible()) return;
       // make sure any pending edits are made before re-rendering popup
-      // TODO: only blur popup fields
-      GUI.blurActiveElement();
+      GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
       content.empty();
       content.node().removeAttribute('style'); // remove inline height
       el.hide();
@@ -5060,7 +5133,9 @@
       input.on('change', function(e) {
         var val2 = parser(input.value()),
             strval2 = formatInspectorValue(val2, type);
-        if (strval == strval2) ; else if (val2 === null && type != 'object') { // allow null objects
+        if (strval == strval2) {
+          // contents unchanged
+        } else if (val2 === null && type != 'object') { // allow null objects
           // invalid value; revert to previous value
           input.value(strval);
         } else {
@@ -5251,6 +5326,22 @@
     updateTextAnchor(value, textNode, rec);
   }
 
+  // Set an attribute on a <text> node and any child <tspan> elements
+  // (mapshaper's svg labels require tspans to have the same x and dx values
+  //  as the enclosing text node)
+  function setMultilineAttribute(textNode, name, value) {
+    var n = textNode.childNodes.length;
+    var i = -1;
+    var child;
+    textNode.setAttribute(name, value);
+    while (++i < n) {
+      child = textNode.childNodes[i];
+      if (child.tagName == 'tspan') {
+        child.setAttribute(name, value);
+      }
+    }
+  }
+
   function findSvgRoot(el) {
     while (el && el.tagName != 'html' && el.tagName != 'body') {
       if (el.tagName == 'svg') return el;
@@ -5349,6 +5440,14 @@
       return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
     }
 
+    // update symbol by setting attributes
+    function updateSymbol(node, d) {
+      var a = d['text-anchor'];
+      if (a) node.setAttribute('text-anchor', a);
+      setMultilineAttribute(node, 'dx', d.dx || 0);
+      node.setAttribute('y', d.dy || 0);
+    }
+
     // update symbol by re-rendering it
     function updateSymbol2(node, d, id) {
       var o = internal.svg.importStyledLabel(d); // TODO: symbol support
@@ -5366,6 +5465,8 @@
     }
 
     function initDragging() {
+      var downEvt;
+      var eventPriority = 1;
 
       // inspector and label editing aren't fully synced - stop editing if inspector opens
       // gui.on('inspector_on', function() {
@@ -5480,6 +5581,7 @@
         activeId = e.id;
         activeRecord = getLabelRecordById(activeId);
         dragging = true;
+        downEvt = e;
       }
 
       function onLabelDrag(e) {
@@ -5512,6 +5614,22 @@
       function getTextTarget3(e) {
         if (e.id > -1 === false || !e.container) return null;
         return getSymbolNodeById(e.id, e.container);
+      }
+
+      function getTextTarget2(e) {
+        var el = e && e.targetSymbol || null;
+        if (el && el.tagName == 'tspan') {
+          el = el.parentNode;
+        }
+        return el && el.tagName == 'text' ? el : null;
+      }
+
+      function getTextTarget(e) {
+        var el = e.target;
+        if (el.tagName == 'tspan') {
+          el = el.parentNode;
+        }
+        return el.tagName == 'text' ? el : null;
       }
 
       // svg.addEventListener('mousedown', function(e) {
@@ -5597,6 +5715,14 @@
       // svg.removeAttribute('class');
     }
 
+    function isClickEvent(up, down) {
+      var elapsed = Math.abs(down.timeStamp - up.timeStamp);
+      var dx = up.screenX - down.screenX;
+      var dy = up.screenY - down.screenY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      return dist <= 4 && elapsed < 300;
+    }
+
 
     // function deselectText(el) {
     //   el.removeAttribute('class');
@@ -5613,8 +5739,10 @@
       lightStroke = "#b7d9ea",
       violet = "#cc6acc",
       violetFill = "rgba(249, 170, 249, 0.32)",
+      gold = "#efc100",
       black = "black",
       grey = "#888",
+      selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 180, 255, 0.2)",
       activeStyle = { // outline style for the active layer
         type: 'outline',
@@ -5662,6 +5790,32 @@
         }, polyline:  {
           strokeColor: grey,
           strokeWidth: 2.5
+        }
+      },
+      selectionStyles = {
+        polygon: {
+          fillColor: selectionFill,
+          strokeColor: gold,
+          strokeWidth: 1
+        }, point:  {
+          dotColor: gold,
+          dotSize: 6
+        }, polyline:  {
+          strokeColor: gold,
+          strokeWidth: 1.5
+        }
+      },
+      selectionHoverStyles = {
+        polygon: {
+          fillColor: selectionFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black,
+          dotSize: 6
+        }, polyline:  {
+          strokeColor: black,
+          strokeWidth: 2
         }
       },
       pinnedStyles = {
@@ -6097,7 +6251,8 @@
     var minPathLen = 0.5 * ext.getPixelSize(),
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
-        allIn = geoBounds.contains(arcs.getBounds());
+        allIn = geoBounds.contains(arcs.getBounds()),
+        visible;
     // don't continue dropping paths if user zooms out farther than full extent
     if (ext.scale() < 1) minPathLen *= ext.scale();
     return function(i) {
@@ -6301,7 +6456,7 @@
     _self.drawPoints = function(shapes, style) {
       var t = getScaledTransform(_ext),
           scale = GUI.getPixelRatio() * (_ext.getSymbolScale() || 1),
-          startPath = getPathStart(),
+          startPath = getPathStart(_ext),
           styler = style.styler || null,
           shp, p,
           mx = t.mx,
@@ -7277,7 +7432,7 @@
         });
       }
 
-      { // TODO: add option to disable?
+      if (true) { // TODO: add option to disable?
         _editor = new SymbolDragging2(gui, _ext, _hit);
         _editor.on('location_change', function(e) {
           // TODO: optimize redrawing
@@ -7379,6 +7534,14 @@
         return lyr.visibility != 'hidden';
       }
       return lyr.visibility == 'visible';
+    }
+
+    function isVisibleDataLayer(lyr) {
+      return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
+    }
+
+    function isFrameLayer(lyr) {
+      return !!(lyr && lyr == internal.findFrameLayer(model));
     }
 
     function isTableView() {
