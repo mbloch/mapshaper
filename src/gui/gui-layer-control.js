@@ -201,10 +201,16 @@ export function LayerControl(gui) {
     // support layer drag-drop
     entry.on('mousemove', function(e) {
       var rect, insertionClass;
-      if (!e.buttons && (dragging || dragTargetId)) { // button is up
+      // stop dragging when mouse button is released
+      if (!e.buttons && (dragging || dragTargetId)) {
         stopDragging();
       }
+      // start dragging when button is first pressed
       if (e.buttons && !dragTargetId) {
+        // don't start dragging if pointer is over the close button
+        // (before, clicking this button wqs finicky -- the mouse had to remain
+        // perfectly still between mousedown and mouseup)
+        if (El(e.target).hasClass('close-btn')) return;
         dragTargetId = id;
         entry.addClass('drag-target');
       }
