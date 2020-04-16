@@ -1,7 +1,7 @@
 
 const onBundle = {
   name: 'onbundle',
-  buildEnd() {
+  writeBundle() {
     // copy mapshaper.js to www/
     const fs = require('fs');
     const path = require('path');
