@@ -171,7 +171,7 @@ function validDataAttributeValue(val) {
 //   return name;
 // };
 
-function getEmptyLayerForSVG(lyr, opts) {
+export function getEmptyLayerForSVG(lyr, opts) {
   var layerObj = {
     tag: 'g',
     properties: {id: (opts.id_prefix || '') + lyr.name},
