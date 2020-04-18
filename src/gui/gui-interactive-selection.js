@@ -1,6 +1,8 @@
 import { getPointerHitTest } from './gui-hit-test';
 import { utils } from './gui-core';
 import { EventDispatcher } from './gui-events';
+import { GUI } from './gui-lib';
+import { internal } from './gui-core';
 
 export function InteractiveSelection(gui, ext, mouse) {
   var self = new EventDispatcher();
@@ -13,6 +15,40 @@ export function InteractiveSelection(gui, ext, mouse) {
   // event priority is higher than navigation, so stopping propagation disables
   // pan navigation
   var priority = 2;
+
+  // init keyboard controls for pinned features
+  gui.keyboard.on('keydown', function(evt) {
+    var e = evt.originalEvent;
+
+    if (gui.interaction.getMode() == 'off' || !targetLayer) return;
+
+    // esc key clears selection (unless in an editing mode -- esc key also exits current mode)
+    if (e.keyCode == 27 && !gui.getMode()) {
+      self.clearSelection();
+      return;
+    }
+
+    // ignore keypress if no feature is selected or user is editing text
+    if (pinnedId() == -1 || GUI.getInputElement()) return;
+
+    if (e.keyCode == 37 || e.keyCode == 39) {
+      // L/R arrow keys
+      // advance pinned feature
+      advanceSelectedFeature(e.keyCode == 37 ? -1 : 1);
+      e.stopPropagation();
+
+    } else if (e.keyCode == 8) {
+      // DELETE key
+      // delete pinned feature
+      // to help protect against inadvertent deletion, don't delete
+      // when console is open or a popup menu is open
+      if (!gui.getMode() && !gui.consoleIsOpen()) {
+        internal.deleteFeatureById(targetLayer.layer, pinnedId());
+        self.clearSelection();
+        gui.model.updated({flags: 'filter'}); // signal map to update
+      }
+    }
+  }, !!'capture'); // preempt the layer control's arrow key handler
 
   self.setLayer = function(mapLayer) {
     hitTest = getPointerHitTest(mapLayer, ext);
@@ -83,22 +119,32 @@ export function InteractiveSelection(gui, ext, mouse) {
     return targ && targ.layer.data || null;
   };
 
-  self.getSwitchHandler = function(diff) {
+  // get function for selecting next or prev feature within the current set of
+  // selected features
+  self.getSwitchTrigger = function(diff) {
     return function() {
-      self.switchSelection(diff);
+      switchWithinSelection(diff);
     };
   };
 
-  self.switchSelection = function(diff) {
-    var i = storedData.ids.indexOf(storedData.id);
+  // diff: 1 or -1
+  function advanceSelectedFeature(diff) {
+    var n = internal.getFeatureCount(targetLayer.layer);
+    if (n < 2 || pinnedId() == -1) return;
+    storedData.id = (pinnedId() + n + diff) % n;
+    storedData.ids = [storedData.id];
+    triggerHitEvent('change');
+  }
+
+  // diff: 1 or -1
+  function switchWithinSelection(diff) {
+    var id = pinnedId();
+    var i = storedData.ids.indexOf(id);
     var n = storedData.ids.length;
     if (i < 0 || n < 2) return;
-    if (diff != 1 && diff != -1) {
-      diff = 1;
-    }
     storedData.id = storedData.ids[(i + diff + n) % n];
     triggerHitEvent('change');
-  };
+  }
 
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
@@ -185,6 +231,10 @@ export function InteractiveSelection(gui, ext, mouse) {
       if (gui.keydown) hitData.id = -1;
     }
     return hitData;
+  }
+
+  function pinnedId() {
+    return storedData.pinned ? storedData.id : -1;
   }
 
   function toggleId(id, ids) {

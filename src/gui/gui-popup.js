@@ -4,8 +4,8 @@ import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
 
-// @onNext: handler for switching between multiple records
-export function Popup(gui, onNext, onPrev) {
+// toNext, toPrev: trigger functions for switching between multiple records
+export function Popup(gui, toNext, toPrev) {
   var self = new EventDispatcher();
   var parent = gui.container.findChild('.mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
@@ -18,14 +18,15 @@ export function Popup(gui, onNext, onPrev) {
   var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
   var refresh = null;
 
-  nextLink.on('click', onNext);
-  prevLink.on('click', onPrev);
+  nextLink.on('click', toNext);
+  prevLink.on('click', toPrev);
   gui.on('popup-needs-refresh', function() {
     if (refresh) refresh();
   });
 
-  // table can be null (if layer has no attribute data) or a DataTable
-  self.show = function(id, ids, table, pinned, editable) {
+  self.show = function(id, ids, lyr, pinned) {
+    var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
+    var editable = pinned && gui.interaction.getMode() == 'data';
     var maxHeight = parent.node().clientHeight - 36;
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)

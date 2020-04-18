@@ -1,71 +1,19 @@
 import { Popup } from './gui-popup';
 import { EventDispatcher } from './gui-events';
-import { internal } from './gui-core';
-import { GUI } from './gui-lib';
 
 export function InspectionControl2(gui, hit) {
-  var model = gui.model;
-  var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
+  var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
   var _self = new EventDispatcher();
-
-  // state variables
-  var _pinned = false;
-  var _highId = -1;
 
   gui.on('interaction_mode_change', function(e) {
     if (e.mode == 'off') {
-      turnOff();
+      inspect(-1); // clear the popup
     }
-    // TODO: update popup if currently pinned
   });
-
-  // inspector and label editing aren't fully synced - stop inspecting if label editor starts
-  // REMOVED
-  // gui.on('label_editor_on', function() {
-  // });
 
   _popup.on('update', function(e) {
-    var d = e.data;
-    d.i = _highId; // need to add record id
-    _self.dispatchEvent('data_change', d);
+    _self.dispatchEvent('data_change', e.data); // let map know which field has changed
   });
-
-  gui.keyboard.on('keydown', function(evt) {
-    var e = evt.originalEvent;
-    var kc = e.keyCode, n, id;
-    if (!inspecting() || !hit.getHitTarget()) return;
-
-    // esc key closes (unless in an editing mode)
-    if (e.keyCode == 27 && inspecting() && !gui.getMode()) {
-      turnOff();
-      return;
-    }
-
-    if (_pinned && !GUI.getInputElement()) {
-      // an element is selected and user is not editing text
-
-      if (kc == 37 || kc == 39) {
-        // arrow keys advance pinned feature
-        n = internal.getFeatureCount(hit.getHitTarget().layer);
-        if (n > 1) {
-          if (kc == 37) {
-            id = (_highId + n - 1) % n;
-          } else {
-            id = (_highId + 1) % n;
-          }
-          inspect(id, true);
-          e.stopPropagation();
-        }
-      } else if (kc == 8) {
-        // delete key
-        // to help protect against inadvertent deletion, don't delete
-        // when console is open or a popup menu is open
-        if (!gui.getMode() && !gui.consoleIsOpen()) {
-          deletePinnedFeature();
-        }
-      }
-    }
-  }, !!'capture'); // preempt the layer control's arrow key handler
 
   hit.on('change', function(e) {
     var ids;
@@ -74,20 +22,11 @@ export function InspectionControl2(gui, hit) {
     inspect(e.id, e.pinned, ids);
   });
 
-  function showInspector(id, ids, pinned) {
-    var target = hit.getHitTarget();
-    var editable = pinned && gui.interaction.getMode() == 'data';
-    // if (target && target.layer.data) {
-    if (target && target.layer) { // show popup even if layer has no attribute data
-      _popup.show(id, ids, target.layer.data, pinned, editable);
-    }
-  }
-
-  // @id Id of a feature in the active layer, or -1
+  // id: Id of a feature in the active layer, or -1
   function inspect(id, pin, ids) {
-    _pinned = pin;
-    if (id > -1 && inspecting()) {
-      showInspector(id, ids, pin);
+    var target = hit.getHitTarget();
+    if (id > -1 && inspecting() && target && target.layer) {
+      _popup.show(id, ids, target.layer, pin);
     } else {
       _popup.hide();
     }
@@ -96,20 +35,6 @@ export function InspectionControl2(gui, hit) {
   // does the attribute inspector appear on rollover
   function inspecting() {
     return gui.interaction && gui.interaction.getMode() != 'off';
-  }
-
-  function turnOff() {
-    inspect(-1); // clear the map
-  }
-
-  function deletePinnedFeature() {
-    var lyr = model.getActiveLayer().layer;
-    console.log("delete; pinned?", _pinned, "id:", _highId);
-    if (!_pinned || _highId == -1) return;
-    lyr.shapes.splice(_highId, 1);
-    if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
-    inspect(-1);
-    model.updated({flags: 'filter'});
   }
 
   return _self;

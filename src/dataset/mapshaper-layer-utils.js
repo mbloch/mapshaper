@@ -50,6 +50,11 @@ export function layerHasNonNullShapes(lyr) {
   });
 }
 
+export function deleteFeatureById(lyr, i) {
+  if (lyr.shapes) lyr.shapes.splice(i, 1);
+  if (lyr.data) lyr.data.getRecords().splice(i, 1);
+}
+
 // TODO: move elsewhere (moved here from mapshaper-point-utils to avoid circular dependency)
 export function transformPointsInLayer(lyr, f) {
   if (layerHasPoints(lyr)) {
