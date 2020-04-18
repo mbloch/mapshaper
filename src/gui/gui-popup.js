@@ -16,16 +16,24 @@ export function Popup(gui, onNext, onPrev) {
   var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
   var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
+  var refresh = null;
 
   nextLink.on('click', onNext);
   prevLink.on('click', onPrev);
+  gui.on('popup-needs-refresh', function() {
+    if (refresh) refresh();
+  });
 
   // table can be null (if layer has no attribute data) or a DataTable
   self.show = function(id, ids, table, pinned, editable) {
-    var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
     var maxHeight = parent.node().clientHeight - 36;
-    self.hide(); // clean up if panel is already open
-    render(content, rec, table, editable);
+    // stash a function for refreshing the current popup when data changes
+    // while the popup is being displayed (e.g. while dragging a label)
+    refresh = function() {
+      var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
+      render(content, rec, table, editable);
+    };
+    refresh();
     if (ids && ids.length > 1) {
       showNav(id, ids, pinned);
     } else {
@@ -38,7 +46,8 @@ export function Popup(gui, onNext, onPrev) {
   };
 
   self.hide = function() {
-    if (!el.visible()) return;
+    if (!isOpen()) return;
+    refresh = null;
     // make sure any pending edits are made before re-rendering popup
     GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
     content.empty();
@@ -47,6 +56,10 @@ export function Popup(gui, onNext, onPrev) {
   };
 
   return self;
+
+  function isOpen() {
+    return el.visible();
+  }
 
   function showNav(id, ids, pinned) {
     var num = ids.indexOf(id) + 1;
@@ -59,6 +72,8 @@ export function Popup(gui, onNext, onPrev) {
   function render(el, rec, table, editable) {
     var tableEl = El('table').addClass('selectable'),
         rows = 0;
+    // self.hide(); // clean up if panel is already open
+    el.empty(); // clean up if panel is already open
     utils.forEachProperty(rec, function(v, k) {
       var type;
       // missing GeoJSON fields are set to undefined on import; skip these

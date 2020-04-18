@@ -396,6 +396,8 @@ export function Console(gui) {
   function applyParsedCommands(commands, done) {
     var active = model.getActiveLayer(),
         prevArcs = active.dataset.arcs,
+        prevTable = active.layer.data,
+        prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0;
 
     internal.runParsedCommands(commands, model, function(err) {
@@ -403,6 +405,9 @@ export function Console(gui) {
           active2 = model.getActiveLayer(),
           postArcs = active2.dataset.arcs,
           postArcCount = postArcs ? postArcs.size() : 0,
+          postTable = active2.layer.data,
+          postTableSize = postTable ? postTable.size() : 0,
+          sameTable = prevTable == postTable && prevTableSize == postTableSize,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
       // restore default logging options, in case they were changed by the command
@@ -413,6 +418,9 @@ export function Console(gui) {
       // TODO: find a better solution, outside the console
       if (!sameArcs) {
         flags.arc_count = true;
+      }
+      if (sameTable) {
+        flags.same_table = true;
       }
       if (active.layer != active2.layer) {
         flags.select = true;

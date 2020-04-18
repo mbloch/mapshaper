@@ -44,6 +44,7 @@ export function SymbolDragging2(gui, ext, hit) {
     g.innerHTML = internal.svg.stringify(o);
     node2 = g.firstChild;
     node.parentNode.replaceChild(node2, node);
+    gui.dispatchEvent('popup-needs-refresh');
     return node2;
   }
 

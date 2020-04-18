@@ -62,7 +62,7 @@ function updateTextAnchor(value, textNode, rec) {
   }
   if (xshift) {
     rec['text-anchor'] = value;
-    applyDelta(rec, 'dx', xshift);
+    applyDelta(rec, 'dx', Math.round(xshift));
   }
 }
 

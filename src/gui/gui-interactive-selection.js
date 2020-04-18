@@ -20,9 +20,6 @@ export function InteractiveSelection(gui, ext, mouse) {
       hitTest = function() {return {ids: []};};
     }
     targetLayer = mapLayer;
-    // deselect any  selection
-    // TODO: maintain selection if layer & shapes have not changed
-    updateSelectionState(null);
   };
 
   function turnOn(mode) {

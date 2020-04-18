@@ -77,6 +77,7 @@ export function MshpMap(gui) {
     // }
     if (isActiveLayer(lyr)) {
       _hit.setLayer(isVisible ? _activeLyr : null);
+      _hit.clearSelection();
     }
   };
 
@@ -170,6 +171,12 @@ export function MshpMap(gui) {
     _activeLyr.active = true;
     // if (_inspector) _inspector.updateLayer(_activeLyr);
     _hit.setLayer(_activeLyr);
+    if (e.flags.same_table) {
+      // data may have changed; if popup is open, it needs to be refreshed
+      gui.dispatchEvent('popup-needs-refresh');
+    } else {
+      _hit.clearSelection();
+    }
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
