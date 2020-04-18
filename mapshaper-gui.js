@@ -2507,6 +2507,8 @@
     function applyParsedCommands(commands, done) {
       var active = model.getActiveLayer(),
           prevArcs = active.dataset.arcs,
+          prevTable = active.layer.data,
+          prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0;
 
       internal.runParsedCommands(commands, model, function(err) {
@@ -2514,6 +2516,9 @@
             active2 = model.getActiveLayer(),
             postArcs = active2.dataset.arcs,
             postArcCount = postArcs ? postArcs.size() : 0,
+            postTable = active2.layer.data,
+            postTableSize = postTable ? postTable.size() : 0,
+            sameTable = prevTable == postTable && prevTableSize == postTableSize,
             sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
         // restore default logging options, in case they were changed by the command
@@ -2524,6 +2529,9 @@
         // TODO: find a better solution, outside the console
         if (!sameArcs) {
           flags.arc_count = true;
+        }
+        if (sameTable) {
+          flags.same_table = true;
         }
         if (active.layer != active2.layer) {
           flags.select = true;
@@ -4069,15 +4077,46 @@
     // pan navigation
     var priority = 2;
 
+    // init keyboard controls for pinned features
+    gui.keyboard.on('keydown', function(evt) {
+      var e = evt.originalEvent;
+
+      if (gui.interaction.getMode() == 'off' || !targetLayer) return;
+
+      // esc key clears selection (unless in an editing mode -- esc key also exits current mode)
+      if (e.keyCode == 27 && !gui.getMode()) {
+        self.clearSelection();
+        return;
+      }
+
+      // ignore keypress if no feature is selected or user is editing text
+      if (pinnedId() == -1 || GUI.getInputElement()) return;
+
+      if (e.keyCode == 37 || e.keyCode == 39) {
+        // L/R arrow keys
+        // advance pinned feature
+        advanceSelectedFeature(e.keyCode == 37 ? -1 : 1);
+        e.stopPropagation();
+
+      } else if (e.keyCode == 8) {
+        // DELETE key
+        // delete pinned feature
+        // to help protect against inadvertent deletion, don't delete
+        // when console is open or a popup menu is open
+        if (!gui.getMode() && !gui.consoleIsOpen()) {
+          internal.deleteFeatureById(targetLayer.layer, pinnedId());
+          self.clearSelection();
+          gui.model.updated({flags: 'filter'}); // signal map to update
+        }
+      }
+    }, !!'capture'); // preempt the layer control's arrow key handler
+
     self.setLayer = function(mapLayer) {
       hitTest = getPointerHitTest(mapLayer, ext);
       if (!hitTest) {
         hitTest = function() {return {ids: []};};
       }
       targetLayer = mapLayer;
-      // deselect any  selection
-      // TODO: maintain selection if layer & shapes have not changed
-      updateSelectionState(null);
     };
 
     function turnOn(mode) {
@@ -4141,22 +4180,32 @@
       return targ && targ.layer.data || null;
     };
 
-    self.getSwitchHandler = function(diff) {
+    // get function for selecting next or prev feature within the current set of
+    // selected features
+    self.getSwitchTrigger = function(diff) {
       return function() {
-        self.switchSelection(diff);
+        switchWithinSelection(diff);
       };
     };
 
-    self.switchSelection = function(diff) {
-      var i = storedData.ids.indexOf(storedData.id);
+    // diff: 1 or -1
+    function advanceSelectedFeature(diff) {
+      var n = internal.getFeatureCount(targetLayer.layer);
+      if (n < 2 || pinnedId() == -1) return;
+      storedData.id = (pinnedId() + n + diff) % n;
+      storedData.ids = [storedData.id];
+      triggerHitEvent('change');
+    }
+
+    // diff: 1 or -1
+    function switchWithinSelection(diff) {
+      var id = pinnedId();
+      var i = storedData.ids.indexOf(id);
       var n = storedData.ids.length;
       if (i < 0 || n < 2) return;
-      if (diff != 1 && diff != -1) {
-        diff = 1;
-      }
       storedData.id = storedData.ids[(i + diff + n) % n];
       triggerHitEvent('change');
-    };
+    }
 
     // make sure popup is unpinned and turned off when switching editing modes
     // (some modes do not support pinning)
@@ -4243,6 +4292,10 @@
         if (gui.keydown) hitData.id = -1;
       }
       return hitData;
+    }
+
+    function pinnedId() {
+      return storedData.pinned ? storedData.id : -1;
     }
 
     function toggleId(id, ids) {
@@ -5025,8 +5078,8 @@
     }
   }
 
-  // @onNext: handler for switching between multiple records
-  function Popup(gui, onNext, onPrev) {
+  // toNext, toPrev: trigger functions for switching between multiple records
+  function Popup(gui, toNext, toPrev) {
     var self = new EventDispatcher();
     var parent = gui.container.findChild('.mshp-main-map');
     var el = El('div').addClass('popup').appendTo(parent).hide();
@@ -5037,16 +5090,25 @@
     var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
     var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
     var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
+    var refresh = null;
 
-    nextLink.on('click', onNext);
-    prevLink.on('click', onPrev);
+    nextLink.on('click', toNext);
+    prevLink.on('click', toPrev);
+    gui.on('popup-needs-refresh', function() {
+      if (refresh) refresh();
+    });
 
-    // table can be null (if layer has no attribute data) or a DataTable
-    self.show = function(id, ids, table, pinned, editable) {
-      var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
+    self.show = function(id, ids, lyr, pinned) {
+      var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
+      var editable = pinned && gui.interaction.getMode() == 'data';
       var maxHeight = parent.node().clientHeight - 36;
-      self.hide(); // clean up if panel is already open
-      render(content, rec, table, editable);
+      // stash a function for refreshing the current popup when data changes
+      // while the popup is being displayed (e.g. while dragging a label)
+      refresh = function() {
+        var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
+        render(content, rec, table, editable);
+      };
+      refresh();
       if (ids && ids.length > 1) {
         showNav(id, ids, pinned);
       } else {
@@ -5059,7 +5121,8 @@
     };
 
     self.hide = function() {
-      if (!el.visible()) return;
+      if (!isOpen()) return;
+      refresh = null;
       // make sure any pending edits are made before re-rendering popup
       GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
       content.empty();
@@ -5068,6 +5131,10 @@
     };
 
     return self;
+
+    function isOpen() {
+      return el.visible();
+    }
 
     function showNav(id, ids, pinned) {
       var num = ids.indexOf(id) + 1;
@@ -5080,6 +5147,8 @@
     function render(el, rec, table, editable) {
       var tableEl = El('table').addClass('selectable'),
           rows = 0;
+      // self.hide(); // clean up if panel is already open
+      el.empty(); // clean up if panel is already open
       utils.forEachProperty(rec, function(v, k) {
         var type;
         // missing GeoJSON fields are set to undefined on import; skip these
@@ -5205,68 +5274,18 @@
   }
 
   function InspectionControl2(gui, hit) {
-    var model = gui.model;
-    var _popup = new Popup(gui, hit.getSwitchHandler(1), hit.getSwitchHandler(-1));
+    var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
     var _self = new EventDispatcher();
-
-    // state variables
-    var _pinned = false;
-    var _highId = -1;
 
     gui.on('interaction_mode_change', function(e) {
       if (e.mode == 'off') {
-        turnOff();
+        inspect(-1); // clear the popup
       }
-      // TODO: update popup if currently pinned
     });
-
-    // inspector and label editing aren't fully synced - stop inspecting if label editor starts
-    // REMOVED
-    // gui.on('label_editor_on', function() {
-    // });
 
     _popup.on('update', function(e) {
-      var d = e.data;
-      d.i = _highId; // need to add record id
-      _self.dispatchEvent('data_change', d);
+      _self.dispatchEvent('data_change', e.data); // let map know which field has changed
     });
-
-    gui.keyboard.on('keydown', function(evt) {
-      var e = evt.originalEvent;
-      var kc = e.keyCode, n, id;
-      if (!inspecting() || !hit.getHitTarget()) return;
-
-      // esc key closes (unless in an editing mode)
-      if (e.keyCode == 27 && inspecting() && !gui.getMode()) {
-        turnOff();
-        return;
-      }
-
-      if (_pinned && !GUI.getInputElement()) {
-        // an element is selected and user is not editing text
-
-        if (kc == 37 || kc == 39) {
-          // arrow keys advance pinned feature
-          n = internal.getFeatureCount(hit.getHitTarget().layer);
-          if (n > 1) {
-            if (kc == 37) {
-              id = (_highId + n - 1) % n;
-            } else {
-              id = (_highId + 1) % n;
-            }
-            inspect(id, true);
-            e.stopPropagation();
-          }
-        } else if (kc == 8) {
-          // delete key
-          // to help protect against inadvertent deletion, don't delete
-          // when console is open or a popup menu is open
-          if (!gui.getMode() && !gui.consoleIsOpen()) {
-            deletePinnedFeature();
-          }
-        }
-      }
-    }, !!'capture'); // preempt the layer control's arrow key handler
 
     hit.on('change', function(e) {
       var ids;
@@ -5275,20 +5294,11 @@
       inspect(e.id, e.pinned, ids);
     });
 
-    function showInspector(id, ids, pinned) {
-      var target = hit.getHitTarget();
-      var editable = pinned && gui.interaction.getMode() == 'data';
-      // if (target && target.layer.data) {
-      if (target && target.layer) { // show popup even if layer has no attribute data
-        _popup.show(id, ids, target.layer.data, pinned, editable);
-      }
-    }
-
-    // @id Id of a feature in the active layer, or -1
+    // id: Id of a feature in the active layer, or -1
     function inspect(id, pin, ids) {
-      _pinned = pin;
-      if (id > -1 && inspecting()) {
-        showInspector(id, ids, pin);
+      var target = hit.getHitTarget();
+      if (id > -1 && inspecting() && target && target.layer) {
+        _popup.show(id, ids, target.layer, pin);
       } else {
         _popup.hide();
       }
@@ -5297,20 +5307,6 @@
     // does the attribute inspector appear on rollover
     function inspecting() {
       return gui.interaction && gui.interaction.getMode() != 'off';
-    }
-
-    function turnOff() {
-      inspect(-1); // clear the map
-    }
-
-    function deletePinnedFeature() {
-      var lyr = model.getActiveLayer().layer;
-      console.log("delete; pinned?", _pinned, "id:", _highId);
-      if (!_pinned || _highId == -1) return;
-      lyr.shapes.splice(_highId, 1);
-      if (lyr.data) lyr.data.getRecords().splice(_highId, 1);
-      inspect(-1);
-      model.updated({flags: 'filter'});
     }
 
     return _self;
@@ -5379,7 +5375,7 @@
     }
     if (xshift) {
       rec['text-anchor'] = value;
-      applyDelta(rec, 'dx', xshift);
+      applyDelta(rec, 'dx', Math.round(xshift));
     }
   }
 
@@ -5461,6 +5457,7 @@
       g.innerHTML = internal.svg.stringify(o);
       node2 = g.firstChild;
       node.parentNode.replaceChild(node2, node);
+      gui.dispatchEvent('popup-needs-refresh');
       return node2;
     }
 
@@ -7298,6 +7295,7 @@
       // }
       if (isActiveLayer(lyr)) {
         _hit.setLayer(isVisible ? _activeLyr : null);
+        _hit.clearSelection();
       }
     };
 
@@ -7391,6 +7389,12 @@
       _activeLyr.active = true;
       // if (_inspector) _inspector.updateLayer(_activeLyr);
       _hit.setLayer(_activeLyr);
+      if (e.flags.same_table) {
+        // data may have changed; if popup is open, it needs to be refreshed
+        gui.dispatchEvent('popup-needs-refresh');
+      } else {
+        _hit.clearSelection();
+      }
       updateVisibleMapLayers();
       fullBounds = getFullBounds();
 

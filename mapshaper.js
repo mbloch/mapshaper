@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.0";
+  var VERSION = "0.5.1";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -3613,6 +3613,11 @@
     });
   }
 
+  function deleteFeatureById(lyr, i) {
+    if (lyr.shapes) lyr.shapes.splice(i, 1);
+    if (lyr.data) lyr.data.getRecords().splice(i, 1);
+  }
+
   // TODO: move elsewhere (moved here from mapshaper-point-utils to avoid circular dependency)
   function transformPointsInLayer(lyr, f) {
     if (layerHasPoints(lyr)) {
@@ -3826,6 +3831,7 @@
     layerHasPaths: layerHasPaths,
     layerHasPoints: layerHasPoints,
     layerHasNonNullShapes: layerHasNonNullShapes,
+    deleteFeatureById: deleteFeatureById,
     transformPointsInLayer: transformPointsInLayer,
     getFeatureCount: getFeatureCount,
     layerIsEmpty: layerIsEmpty,
@@ -14072,6 +14078,7 @@
     exportLayerForSVG: exportLayerForSVG,
     validateSvgDataFields: validateSvgDataFields,
     exportDataAttributesForSVG: exportDataAttributesForSVG,
+    getEmptyLayerForSVG: getEmptyLayerForSVG,
     layerHasSvgSymbols: layerHasSvgSymbols,
     layerHasLabels: layerHasLabels
   });
