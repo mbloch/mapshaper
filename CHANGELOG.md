@@ -1,3 +1,6 @@
+v0.5.2
+* Web interface bug fixes.
+
 v0.5.1
 * Web interface tweaks.
 
