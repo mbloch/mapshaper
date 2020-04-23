@@ -7,6 +7,27 @@ var assert = require('assert'),
 describe('mapshaper-dissolve.js', function () {
 
   describe('-dissolve command', function () {
+
+    it('Fix: dissolve a layer with no attributes', function(done) {
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+        }, {
+          type: 'Polygon',
+          coordinates: [[[1, 0], [0, 1], [1, 1], [1, 0]]]
+        }]
+      };
+      api.applyCommands('-i input.json -dissolve -o', {'input.json': input}, function(err, out) {
+        assert(!err);
+        var output = JSON.parse(out['input.json']);
+        assert.equal(output.geometries.length, 1);
+        done();
+      });
+    });
+
+
     it('multipart option with polylines', function(done) {
       var input = {
         type: 'GeometryCollection',
