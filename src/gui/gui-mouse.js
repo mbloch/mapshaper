@@ -4,19 +4,21 @@ import { utils } from './gui-core';
 import { ElementPosition } from './gui-element-position';
 
 function MouseWheelDirection() {
-  var ptime = 0;
-  var getAverage;
+  var prevTime = 0;
+  var getAvgDir;
 
+  // returns 1, -1 or 0 to indicate direction of scroll
   // use avg of three values, as a buffer against single anomalous values
-  return function(e, time) {
-    var dir = 0;
+  return function(e, now) {
+    var delta = e.wheelDelta || -e.detail || 0;
+    var dir = delta > 0 && 1 || delta < 0 && -1 || 0;
     var avg;
-    if (e.wheelDelta) dir = e.wheelDelta > 0 ? 1 : -1;
-    else if (e.detail) dir = e.detail > 0 ? -1 : 1;
-    if (time - ptime > 300) getAverage = LimitedAverage(3); // reset
-    ptime = time;
-    avg = getAverage(dir) || dir; // handle average == 0
-    return avg > 0 ? 1 : -1;
+    if (!getAvgDir || now - prevTime > 300) {
+      getAvgDir =  LimitedAverage(3); // reset if wheel has paused
+    }
+    prevTime = now;
+    avg = getAvgDir(dir) || dir; // handle average == 0
+    return avg > 0 && 1 || avg < 0 && -1 || 0;
   };
 }
 
@@ -67,6 +69,10 @@ export function MouseWheel(mouse) {
       evt.stopImmediatePropagation();
     }
     if (!mouse.isOver()) return;
+    if (wheelDirection === 0) {
+      // first event may not have a direction, e.g. if 'smooth scrolling' is on
+      return;
+    }
     evt.preventDefault();
     if (!active) {
       active = true;
