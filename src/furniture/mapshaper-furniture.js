@@ -9,7 +9,7 @@ export function layerHasFurniture(lyr) {
 }
 
 // @mapLayer a map layer object
-function isFurnitureLayer(mapLayer) {
+export function isFurnitureLayer(mapLayer) {
   return !!mapLayer.furniture;
 }
 
