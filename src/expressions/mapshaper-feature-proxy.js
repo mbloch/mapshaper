@@ -25,7 +25,8 @@ export function initFeatureProxy(lyr, arcs) {
   // all contexts have this.id and this.layer_name
   addGetters(ctx, {
     id: function() { return _id; },
-    layer_name: function() { return lyr.name || ''; }
+    layer_name: function() { return lyr.name || ''; },
+    layer: function() { return {name: lyr.name, data: _records};}
   });
 
   if (_records) {
