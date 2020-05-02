@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.1";
+  var VERSION = "0.5.2";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9473,7 +9473,8 @@
     // all contexts have this.id and this.layer_name
     addGetters(ctx, {
       id: function() { return _id; },
-      layer_name: function() { return lyr.name || ''; }
+      layer_name: function() { return lyr.name || ''; },
+      layer: function() { return {name: lyr.name, data: _records};}
     });
 
     if (_records) {
@@ -9852,8 +9853,8 @@
   }
 
   function getBaseContext() {
-    var obj = {};
     // Mask global properties (is this effective/worth doing?)
+    var obj = {globalThis: void 0}; // some globals are not iterable
     (function() {
       for (var key in this) {
         obj[key] = void 0;
@@ -11993,7 +11994,7 @@
   // Converts layer ids and .prj files to CRS defn
   // Returns projection defn
   function getCrsInfo(name, catalog) {
-    var dataset, sources, info = {};
+    var dataset, source, info = {};
     if (/\.prj$/i.test(name)) {
       dataset = importFile(name, {});
       if (dataset) {
@@ -12001,9 +12002,9 @@
         info.crs = parsePrj(info.prj);
       }
     } else {
-      sources = catalog.findCommandTargets(name);
-      if (sources.length > 0) {
-        dataset = sources[0].dataset;
+      source = catalog.findSingleLayer(name);
+      if (source) {
+        dataset = source.dataset;
         info.crs = getDatasetCRS(dataset);
         info.prj = dataset.info.prj; // may be undefined
         // defn = internal.crsToProj4(P);
@@ -12773,6 +12774,7 @@
     __proto__: null,
     furnitureRenderers: furnitureRenderers,
     layerHasFurniture: layerHasFurniture,
+    isFurnitureLayer: isFurnitureLayer,
     getFurnitureLayerType: getFurnitureLayerType,
     getFurnitureLayerData: getFurnitureLayerData,
     importFurniture: importFurniture
@@ -15078,46 +15080,64 @@
     }, []);
   }
 
-  function findCommandTargets(catalog, pattern, type) {
+  function findCommandTargets(layers, pattern, type) {
     var targets = [];
-    var layers = utils.pluck(catalog.getLayers(), 'layer');
-    var matches = findMatchingLayers(layers, pattern);
-    if (type) matches = matches.filter(function(lyr) {return lyr.geometry_type == type;});
-    catalog.getDatasets().forEach(function(dataset) {
-      var layers = dataset.layers.filter(function(lyr) {
-        return matches.indexOf(lyr) > -1;
-      });
-      if (layers.length > 0) {
-        targets.push({
-          layers: layers,
-          dataset: dataset
-        });
+    var matches = findMatchingLayers(layers, pattern, true);
+    if (type) {
+      matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
+    }
+    // assign target_id to matched layers
+    // (kludge so layers can be sorted in the order that they match; used by -o command)
+    layers.forEach(function(o) {o.layer.target_id = -1;});
+    matches.forEach(function(o, i) {o.layer.target_id = i;});
+    return groupLayersByDataset(matches);
+  }
+
+  // arr: array of {layer: <>, dataset: <>} objects
+  function groupLayersByDataset(arr) {
+    var datasets = [];
+    var targets = [];
+    arr.forEach(function(o) {
+      var i = datasets.indexOf(o.dataset);
+      if (i == -1) {
+        datasets.push(o.dataset);
+        targets.push({layers: [o.layer], dataset: o.dataset});
+      } else {
+        targets[i].layers.push(o.layer);
       }
     });
     return targets;
   }
 
-  // @pattern is a layer identifier or a comma-sep. list of identifiers.
+  // layers: array of {layer: <>, dataset: <>} objects
+  // pattern: is a layer identifier or a comma-sep. list of identifiers.
   // An identifier is a literal name, a pattern containing "*" wildcard or
   // a 1-based index (1..n)
-  function findMatchingLayers(layers, pattern) {
-    var matches = [];
+  function findMatchingLayers(layers, pattern, throws) {
+    var matchedLayers = [];
+    var unmatchedIds = [];
     var index = {};
     pattern.split(',').forEach(function(subpattern, i) {
       var test = getLayerMatch(subpattern);
-      layers.forEach(function(lyr, layerId) {
-        // if (matches.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
-        if (layerId in index) return;
-        if (test(lyr, layerId + 1)) {  // layers are 1-indexed
-          lyr.target_id = matches.length;
-          matches.push(lyr);
+      var matched = false;
+      layers.forEach(function(o, layerId) {
+        // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
+        if (layerId in index) {
+          matched = true;
+        } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
+          matchedLayers.push(o);
           index[layerId] = true;
-        } else {
-          lyr.target_id = -1;
+          matched = true;
         }
       });
+      if (matched == false) {
+        unmatchedIds.push(subpattern);
+      }
     });
-    return matches;
+    if (throws && unmatchedIds.length) {
+      stop(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
+    }
+    return matchedLayers;
   }
 
   function getLayerMatch(pattern) {
@@ -17342,13 +17362,9 @@
   }
 
   function findCommandSource(sourceName, catalog, opts) {
-    var sources = catalog.findCommandTargets(sourceName);
-    var sourceDataset, source;
-    if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-      stop(utils.format('Source [%s] matched multiple layers', sourceName));
-    } else if (sources.length == 1) {
-      source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
-    } else {
+    var source = catalog.findSingleLayer(sourceName);
+    var sourceDataset;
+    if (!source) {
       // assuming opts.source is a filename
       // don't need to build topology, because:
       //    join -- don't need topology
@@ -17423,10 +17439,16 @@
     };
 
     this.findCommandTargets = function(pattern, type) {
-      if (pattern) {
-        return findCommandTargets(this, pattern, type);
+      if (!pattern) return this.getDefaultTargets() || [];
+      return findCommandTargets(this.getLayers(), pattern, type);
+    };
+
+    this.findSingleLayer = function(pattern) {
+      var matches = findMatchingLayers(this.getLayers(), pattern);
+      if (matches.length > 1) {
+        stop('Ambiguous pattern (multiple layers were matched):', pattern);
       }
-      return this.getDefaultTargets() || [];
+      return matches[0] || null;
     };
 
     this.removeDataset = function(dataset) {
