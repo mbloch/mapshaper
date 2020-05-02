@@ -229,8 +229,8 @@ function getExpressionContext(lyr, mixins, opts) {
 }
 
 export function getBaseContext() {
-  var obj = {};
   // Mask global properties (is this effective/worth doing?)
+  var obj = {globalThis: void 0}; // some globals are not iterable
   (function() {
     for (var key in this) {
       obj[key] = void 0;
