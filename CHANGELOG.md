@@ -1,3 +1,6 @@
+v0.5.3
+* An error is triggered if a layer id from a target= option or the -target command does not match any layer.
+
 v0.5.2
 * Web interface bug fixes.
 
