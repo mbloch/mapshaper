@@ -1,4 +1,4 @@
-import { error } from '../utils/mapshaper-logging';
+import { error, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 
 // convert targets from [{layers: [...], dataset: <>}, ...] format to
@@ -12,46 +12,64 @@ export function expandCommandTargets(targets) {
   }, []);
 }
 
-export function findCommandTargets(catalog, pattern, type) {
+export function findCommandTargets(layers, pattern, type) {
   var targets = [];
-  var layers = utils.pluck(catalog.getLayers(), 'layer');
-  var matches = findMatchingLayers(layers, pattern);
-  if (type) matches = matches.filter(function(lyr) {return lyr.geometry_type == type;});
-  catalog.getDatasets().forEach(function(dataset) {
-    var layers = dataset.layers.filter(function(lyr) {
-      return matches.indexOf(lyr) > -1;
-    });
-    if (layers.length > 0) {
-      targets.push({
-        layers: layers,
-        dataset: dataset
-      });
+  var matches = findMatchingLayers(layers, pattern, true);
+  if (type) {
+    matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
+  }
+  // assign target_id to matched layers
+  // (kludge so layers can be sorted in the order that they match; used by -o command)
+  layers.forEach(function(o) {o.layer.target_id = -1;});
+  matches.forEach(function(o, i) {o.layer.target_id = i;});
+  return groupLayersByDataset(matches);
+}
+
+// arr: array of {layer: <>, dataset: <>} objects
+function groupLayersByDataset(arr) {
+  var datasets = [];
+  var targets = [];
+  arr.forEach(function(o) {
+    var i = datasets.indexOf(o.dataset);
+    if (i == -1) {
+      datasets.push(o.dataset);
+      targets.push({layers: [o.layer], dataset: o.dataset});
+    } else {
+      targets[i].layers.push(o.layer);
     }
   });
   return targets;
 }
 
-// @pattern is a layer identifier or a comma-sep. list of identifiers.
+// layers: array of {layer: <>, dataset: <>} objects
+// pattern: is a layer identifier or a comma-sep. list of identifiers.
 // An identifier is a literal name, a pattern containing "*" wildcard or
 // a 1-based index (1..n)
-export function findMatchingLayers(layers, pattern) {
-  var matches = [];
+export function findMatchingLayers(layers, pattern, throws) {
+  var matchedLayers = [];
+  var unmatchedIds = [];
   var index = {};
   pattern.split(',').forEach(function(subpattern, i) {
     var test = getLayerMatch(subpattern);
-    layers.forEach(function(lyr, layerId) {
-      // if (matches.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
-      if (layerId in index) return;
-      if (test(lyr, layerId + 1)) {  // layers are 1-indexed
-        lyr.target_id = matches.length;
-        matches.push(lyr);
+    var matched = false;
+    layers.forEach(function(o, layerId) {
+      // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
+      if (layerId in index) {
+        matched = true;
+      } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
+        matchedLayers.push(o);
         index[layerId] = true;
-      } else {
-        lyr.target_id = -1;
+        matched = true;
       }
     });
+    if (matched == false) {
+      unmatchedIds.push(subpattern);
+    }
   });
-  return matches;
+  if (throws && unmatchedIds.length) {
+    stop(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
+  }
+  return matchedLayers;
 }
 
 export function getLayerMatch(pattern) {

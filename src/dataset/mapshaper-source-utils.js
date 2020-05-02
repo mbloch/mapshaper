@@ -28,13 +28,9 @@ function nameIsInterpolated(name) {
 }
 
 export function findCommandSource(sourceName, catalog, opts) {
-  var sources = catalog.findCommandTargets(sourceName);
-  var sourceDataset, source;
-  if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-    stop(utils.format('Source [%s] matched multiple layers', sourceName));
-  } else if (sources.length == 1) {
-    source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
-  } else {
+  var source = catalog.findSingleLayer(sourceName);
+  var sourceDataset;
+  if (!source) {
     // assuming opts.source is a filename
     // don't need to build topology, because:
     //    join -- don't need topology

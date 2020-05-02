@@ -78,7 +78,7 @@ cmd.proj = function(dataset, destInfo, opts) {
 // Converts layer ids and .prj files to CRS defn
 // Returns projection defn
 export function getCrsInfo(name, catalog) {
-  var dataset, sources, info = {};
+  var dataset, source, info = {};
   if (/\.prj$/i.test(name)) {
     dataset = importFile(name, {});
     if (dataset) {
@@ -86,9 +86,9 @@ export function getCrsInfo(name, catalog) {
       info.crs = parsePrj(info.prj);
     }
   } else {
-    sources = catalog.findCommandTargets(name);
-    if (sources.length > 0) {
-      dataset = sources[0].dataset;
+    source = catalog.findSingleLayer(name);
+    if (source) {
+      dataset = source.dataset;
       info.crs = getDatasetCRS(dataset);
       info.prj = dataset.info.prj; // may be undefined
       // defn = internal.crsToProj4(P);

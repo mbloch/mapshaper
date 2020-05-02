@@ -22,12 +22,12 @@
 		"node": ">=6.0.0"
 	},
 	"scripts": {
-		"test": "node node_modules/mocha/bin/mocha --check-leaks -R dot",
-		"build": "node_modules/.bin/rollup --config",
+		"test": "mocha --check-leaks -R dot",
+		"build": "rollup --config",
 		"prepublishOnly": "npm test",
 		"postpublish": "./release",
-		"browserify": "node_modules/.bin/browserify -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -o www/modules.js",
-		"watch": "node_modules/.bin/rollup --config --watch"
+		"browserify": "browserify -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -o www/modules.js",
+		"watch": "rollup --config --watch"
 	},
 	"main": "./mapshaper.js",
 	"files": [

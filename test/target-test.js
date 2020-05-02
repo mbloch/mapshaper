@@ -3,6 +3,23 @@ var api = require('../'),
 
 describe('mapshaper-target.js', function () {
 
+  it('error is thrown if target is not found', function(done) {
+    var cmd = "-i test/data/three_points.shp -i test/data/text/states.csv -target counties -o";
+    api.applyCommands(cmd, {}, function(err, output) {
+      assert(err.name, 'UserError');
+      done();
+    })
+  })
+
+  it('error is thrown if target= option is not found', function(done) {
+    var cmd = "-i test/data/three_points.shp -i test/data/text/states.csv -o target=counties";
+    api.applyCommands(cmd, {}, function(err, output) {
+      assert(err.name, 'UserError');
+      done();
+    })
+  })
+
+
   it('target second of two datasets', function(done) {
     var cmd = "-i test/data/three_points.shp -i test/data/text/states.csv -target states -o";
     api.applyCommands(cmd, {}, function(err, output) {

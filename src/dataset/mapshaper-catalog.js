@@ -1,5 +1,6 @@
 
-import { findCommandTargets } from '../dataset/mapshaper-target-utils';
+import { findCommandTargets, findMatchingLayers } from '../dataset/mapshaper-target-utils';
+import { stop } from '../utils/mapshaper-logging';
 
 // Catalog contains zero or more multi-layer datasets
 // One layer is always "active", corresponding to the currently selected
@@ -52,10 +53,16 @@ export function Catalog() {
   };
 
   this.findCommandTargets = function(pattern, type) {
-    if (pattern) {
-      return findCommandTargets(this, pattern, type);
+    if (!pattern) return this.getDefaultTargets() || [];
+    return findCommandTargets(this.getLayers(), pattern, type);
+  };
+
+  this.findSingleLayer = function(pattern) {
+    var matches = findMatchingLayers(this.getLayers(), pattern);
+    if (matches.length > 1) {
+      stop('Ambiguous pattern (multiple layers were matched):', pattern);
     }
-    return this.getDefaultTargets() || [];
+    return matches[0] || null;
   };
 
   this.removeDataset = function(dataset) {
