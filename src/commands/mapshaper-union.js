@@ -10,11 +10,14 @@ cmd.union = function(targetLayers, targetDataset, opts) {
   if (targetLayers.length < 2) {
     stop('Command requires at least two target layers');
   }
+  targetLayers.forEach(requirePolygonLayer);
+
+  // Need to add cuts before creating merged layer (arc ids may change)
+  var nodes = addIntersectionCuts(targetDataset, opts);
   var allFields = [];
   var allShapes = [];
   var layerData = [];
   targetLayers.forEach(function(lyr, i) {
-    requirePolygonLayer(lyr);
     var fields = lyr.data ? lyr.data.getFields() : [];
     if (opts.fields) {
       fields = opts.fields.indexOf('*') > 1 ? fields :
@@ -37,7 +40,6 @@ cmd.union = function(targetLayers, targetDataset, opts) {
     geometry_type: 'polygon',
     shapes: allShapes
   };
-  var nodes = addIntersectionCuts(targetDataset, opts);
   var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
   var mosaicShapes = mosaicIndex.mosaic;
   var mosaicRecords = mosaicShapes.map(function(shp, i) {

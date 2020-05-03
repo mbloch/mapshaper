@@ -129,7 +129,7 @@ export function PathImporter(opts) {
     }
     setShapeType('polygon');
     if (isHole === true && area > 0 || isHole === false && area < 0) {
-      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+      verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
       points.reverse();
     }
     this.importPath(points);

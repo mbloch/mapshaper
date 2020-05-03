@@ -13,7 +13,6 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   var shapes = lyr.shapes;
   var divide = getHoleDivider(nodes);
   var mosaic = buildPolygonMosaic(nodes).mosaic;
-
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
@@ -29,6 +28,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   this.nodes = nodes; // kludge
   this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
   this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
+
   // Assign shape ids to mosaic tile shapes.
   shapes.forEach(function(shp, shapeId) {
     var tileIds = shapeTiler.getTilesInShape(shp, shapeId);

@@ -103,6 +103,7 @@ export function requireDataFields(table, fields) {
 
 export function layerTypeMessage(lyr, defaultMsg, customMsg) {
   var msg;
+  // check that custom msg is a string (could be an index if require function is called by forEach)
   if (customMsg && utils.isString(customMsg)) {
     msg = customMsg;
   } else {

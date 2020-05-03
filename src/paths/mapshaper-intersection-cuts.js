@@ -55,6 +55,7 @@ export function addIntersectionCuts(dataset, _opts) {
       cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
+
   // Further clean-up -- remove duplicate and missing arcs
   nodes = cleanArcReferences(dataset);
 
