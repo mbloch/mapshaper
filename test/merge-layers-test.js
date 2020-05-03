@@ -6,6 +6,40 @@ describe('mapshaper-merge-layers.js', function () {
 
   describe('-merge-layers command', function() {
 
+    it('handles combination of shape + non-shape layers', function(done) {
+      // a has a shape and no properties, b has properties and no shape
+      var a = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [0, 0]
+        }]
+      };
+      var b = 'a,b\n1,2';
+      var cmd = '-i a.json b.csv combine-files -merge-layers force -o c.json';
+      api.applyCommands(cmd, {'a.json': a, 'b.csv': b}, function(err, out) {
+        var json = JSON.parse(out['c.json']);
+        assert.deepEqual(json, {
+          type: "FeatureCollection",
+          features: [{
+            type: 'Feature',
+            properties: {},  // a, b are given undefined values internally, which are not included in GeoJSON export
+            geometry: {
+              type: 'Point',
+              coordinates: [0, 0]
+            }
+          }, {
+            type: 'Feature',
+            properties: {a: 1, b: 2},
+            geometry: null
+          }]
+        })
+        done();
+      });
+
+
+    });
+
     it('handles empty layers', function(done) {
       var a = 'id\n1',
           b = 'id\n2',

@@ -39,7 +39,11 @@ function getMergedLayersGeometryType(layers) {
 
 function mergeShapesFromLayers(layers) {
   return layers.reduce(function(memo, lyr) {
-    return memo.concat(lyr.shapes);
+    var shapes = lyr.shapes || [];
+    var n = getFeatureCount(lyr);
+    var i = -1;
+    while (++i < n) memo.push(shapes[i] || null); // add null shapes if layer has no shapes
+    return memo;
   }, []);
 }
 
