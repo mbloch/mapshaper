@@ -3666,6 +3666,7 @@
 
   function layerTypeMessage(lyr, defaultMsg, customMsg) {
     var msg;
+    // check that custom msg is a string (could be an index if require function is called by forEach)
     if (customMsg && utils.isString(customMsg)) {
       msg = customMsg;
     } else {
@@ -8822,7 +8823,7 @@
       }
       setShapeType('polygon');
       if (isHole === true && area > 0 || isHole === false && area < 0) {
-        verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+        verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
         points.reverse();
       }
       this.importPath(points);
@@ -12313,7 +12314,11 @@
 
   function mergeShapesFromLayers(layers) {
     return layers.reduce(function(memo, lyr) {
-      return memo.concat(lyr.shapes);
+      var shapes = lyr.shapes || [];
+      var n = getFeatureCount(lyr);
+      var i = -1;
+      while (++i < n) memo.push(shapes[i] || null); // add null shapes if layer has no shapes
+      return memo;
     }, []);
   }
 
@@ -19414,6 +19419,7 @@
         cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
       }
     });
+
     // Further clean-up -- remove duplicate and missing arcs
     nodes = cleanArcReferences(dataset);
 
@@ -20381,7 +20387,6 @@
     var shapes = lyr.shapes;
     var divide = getHoleDivider(nodes);
     var mosaic = buildPolygonMosaic(nodes).mosaic;
-
     // map arc ids to tile ids
     var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
     // keep track of which tiles have been assigned to shapes
@@ -20397,6 +20402,7 @@
     this.nodes = nodes; // kludge
     this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
     this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
+
     // Assign shape ids to mosaic tile shapes.
     shapes.forEach(function(shp, shapeId) {
       var tileIds = shapeTiler.getTilesInShape(shp, shapeId);
@@ -27916,11 +27922,14 @@
     if (targetLayers.length < 2) {
       stop('Command requires at least two target layers');
     }
+    targetLayers.forEach(requirePolygonLayer);
+
+    // Need to add cuts before creating merged layer (arc ids may change)
+    var nodes = addIntersectionCuts(targetDataset, opts);
     var allFields = [];
     var allShapes = [];
     var layerData = [];
     targetLayers.forEach(function(lyr, i) {
-      requirePolygonLayer(lyr);
       var fields = lyr.data ? lyr.data.getFields() : [];
       if (opts.fields) {
         fields = opts.fields.indexOf('*') > 1 ? fields :
@@ -27943,7 +27952,6 @@
       geometry_type: 'polygon',
       shapes: allShapes
     };
-    var nodes = addIntersectionCuts(targetDataset, opts);
     var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
     var mosaicShapes = mosaicIndex.mosaic;
     var mosaicRecords = mosaicShapes.map(function(shp, i) {
