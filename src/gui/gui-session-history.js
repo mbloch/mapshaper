@@ -2,10 +2,18 @@ import { internal } from './gui-core';
 
 export function SessionHistory(gui) {
   var commands = [];
+  // commands that can be ignored when checking for unsaved changes
+  var nonEditingCommands = 'i,target,info,version,verbose,projections,inspect,help,h,encodings,calc'.split(',');
 
-  // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes
   this.unsavedChanges = function() {
-    return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
+    var cmd, cmdName;
+    for (var i=commands.length - 1; i >= 0; i--) {
+      cmdName = getCommandName(commands[i]);
+      if (cmdName == 'o') break;
+      if (nonEditingCommands.includes(cmdName)) continue;
+      return true;
+    }
+    return false;
   };
 
   this.fileImported = function(file, optStr) {
@@ -52,6 +60,11 @@ export function SessionHistory(gui) {
     }
   };
 
+  this.dataValueUpdated = function(id, field, value) {
+    var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' where='this.id == ${id}'`;
+    commands.push(cmd);
+  };
+
   this.layersExported = function(ids, optStr) {
     var layers = gui.model.getLayers();
     var cmd = '-o';
@@ -78,6 +91,12 @@ export function SessionHistory(gui) {
     var str = commands.join(' \\\n  ');
     return 'mapshaper ' + str;
   };
+
+  function getCommandName(cmd) {
+    var rxp = /^-([a-z0-9-]+)/;
+    var match = rxp.exec(cmd);
+    return match ? match[1] : null;
+  }
 
   function getCurrentTarget() {
     return getTargetFromLayer(gui.model.getActiveLayer().layer);

@@ -17,6 +17,7 @@ export function Popup(gui, toNext, toPrev) {
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
   var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
   var refresh = null;
+  var currId = -1;
 
   nextLink.on('click', toNext);
   prevLink.on('click', toPrev);
@@ -28,6 +29,7 @@ export function Popup(gui, toNext, toPrev) {
     var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
     var editable = pinned && gui.interaction.getMode() == 'data';
     var maxHeight = parent.node().clientHeight - 36;
+    currId = id;
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
@@ -49,6 +51,7 @@ export function Popup(gui, toNext, toPrev) {
   self.hide = function() {
     if (!isOpen()) return;
     refresh = null;
+    currId = -1;
     // make sure any pending edits are made before re-rendering popup
     GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
     content.empty();
@@ -139,7 +142,7 @@ export function Popup(gui, toNext, toPrev) {
         rec[key] = val2;
         input.value(strval);
         setFieldClass(el, val2, type);
-        self.dispatchEvent('update', {field: key, value: val2});
+        self.dispatchEvent('update', {field: key, value: val2, id: currId});
       }
     });
   }

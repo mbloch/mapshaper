@@ -18,14 +18,6 @@ onload(function() {
     return;
   }
   startEditing();
-  if (window.location.hostname == 'localhost') {
-    window.addEventListener('beforeunload', function() {
-      // send termination signal for gui.js
-      var req = new XMLHttpRequest();
-      req.open('GET', '/close');
-      req.send();
-    });
-  }
 });
 
 function getImportOpts() {
@@ -65,6 +57,22 @@ var startEditing = function() {
   gui.console = new Console(gui);
 
   startEditing = function() {};
+
+  window.addEventListener('beforeunload', function(e) {
+    if (gui.session.unsavedChanges()) {
+      e.returnValue = 'Sure you want to leave?';
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('unload', function(e) {
+    if (window.location.hostname == 'localhost') {
+      // send termination signal for gui.js
+      var req = new XMLHttpRequest();
+      req.open('GET', '/close');
+      req.send();
+    }
+  });
 
   gui.model.on('select', function() {
     if (!dataLoaded) {

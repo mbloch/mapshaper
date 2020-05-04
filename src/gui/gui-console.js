@@ -30,7 +30,7 @@ export function Console(gui) {
 
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
-  window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
+  window.addEventListener('beforeunload', saveHistory); // save history if console is open on refresh
 
   GUI.onClick(el, function(e) {
     var targ = El(e.target);
@@ -52,7 +52,7 @@ export function Console(gui) {
     return hist && hist.length > 0 ? hist : [];
   }
 
-  function saveHistory(history) {
+  function saveHistory() {
     try {
       history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
       window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
@@ -93,7 +93,7 @@ export function Console(gui) {
       }
       el.hide();
       input.node().blur();
-      saveHistory(history);
+      saveHistory();
       gui.container.removeClass('console-open');
       gui.dispatchEvent('resize');
     }

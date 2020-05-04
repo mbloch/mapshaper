@@ -211,7 +211,9 @@ export function MshpMap(gui) {
     if (opts.inspectorControl) {
       _inspector = new InspectionControl2(gui, _hit);
       _inspector.on('data_change', function(e) {
-        // refresh the display if a style variable has been changed interactively
+        // Add an entry to the session history
+        gui.session.dataValueUpdated(e.id, e.field, e.value);
+        // Refresh the display if a style variable has been changed interactively
         if (internal.isSupportedSvgStyleProperty(e.field)) {
           drawLayers();
         }
