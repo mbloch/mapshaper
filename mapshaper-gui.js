@@ -2141,7 +2141,7 @@
 
     consoleMessage(PROMPT);
     gui.keyboard.on('keydown', onKeyDown);
-    window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
+    window.addEventListener('beforeunload', saveHistory); // save history if console is open on refresh
 
     GUI.onClick(el, function(e) {
       var targ = El(e.target);
@@ -2163,7 +2163,7 @@
       return hist && hist.length > 0 ? hist : [];
     }
 
-    function saveHistory(history) {
+    function saveHistory() {
       try {
         history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
         window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
@@ -2204,7 +2204,7 @@
         }
         el.hide();
         input.node().blur();
-        saveHistory(history);
+        saveHistory();
         gui.container.removeClass('console-open');
         gui.dispatchEvent('resize');
       }
@@ -3262,10 +3262,18 @@
 
   function SessionHistory(gui) {
     var commands = [];
+    // commands that can be ignored when checking for unsaved changes
+    var nonEditingCommands = 'i,target,info,version,verbose,projections,inspect,help,h,encodings,calc'.split(',');
 
-    // TODO: prompt for confirmation when user closes browser tab and there are unsaved changes
     this.unsavedChanges = function() {
-      return commands.length > 0 && commands[commands.length-1].indexOf('-o ') == -1;
+      var cmd, cmdName;
+      for (var i=commands.length - 1; i >= 0; i--) {
+        cmdName = getCommandName(commands[i]);
+        if (cmdName == 'o') break;
+        if (nonEditingCommands.includes(cmdName)) continue;
+        return true;
+      }
+      return false;
     };
 
     this.fileImported = function(file, optStr) {
@@ -3312,6 +3320,11 @@
       }
     };
 
+    this.dataValueUpdated = function(id, field, value) {
+      var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' where='this.id == ${id}'`;
+      commands.push(cmd);
+    };
+
     this.layersExported = function(ids, optStr) {
       var layers = gui.model.getLayers();
       var cmd = '-o';
@@ -3338,6 +3351,12 @@
       var str = commands.join(' \\\n  ');
       return 'mapshaper ' + str;
     };
+
+    function getCommandName(cmd) {
+      var rxp = /^-([a-z0-9-]+)/;
+      var match = rxp.exec(cmd);
+      return match ? match[1] : null;
+    }
 
     function getCurrentTarget() {
       return getTargetFromLayer(gui.model.getActiveLayer().layer);
@@ -5097,6 +5116,7 @@
     var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
     var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
     var refresh = null;
+    var currId = -1;
 
     nextLink.on('click', toNext);
     prevLink.on('click', toPrev);
@@ -5108,6 +5128,7 @@
       var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
       var editable = pinned && gui.interaction.getMode() == 'data';
       var maxHeight = parent.node().clientHeight - 36;
+      currId = id;
       // stash a function for refreshing the current popup when data changes
       // while the popup is being displayed (e.g. while dragging a label)
       refresh = function() {
@@ -5129,6 +5150,7 @@
     self.hide = function() {
       if (!isOpen()) return;
       refresh = null;
+      currId = -1;
       // make sure any pending edits are made before re-rendering popup
       GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
       content.empty();
@@ -5219,7 +5241,7 @@
           rec[key] = val2;
           input.value(strval);
           setFieldClass(el, val2, type);
-          self.dispatchEvent('update', {field: key, value: val2});
+          self.dispatchEvent('update', {field: key, value: val2, id: currId});
         }
       });
     }
@@ -7435,7 +7457,9 @@
       if (opts.inspectorControl) {
         _inspector = new InspectionControl2(gui, _hit);
         _inspector.on('data_change', function(e) {
-          // refresh the display if a style variable has been changed interactively
+          // Add an entry to the session history
+          gui.session.dataValueUpdated(e.id, e.field, e.value);
+          // Refresh the display if a style variable has been changed interactively
           if (internal.isSupportedSvgStyleProperty(e.field)) {
             drawLayers();
           }
@@ -7793,14 +7817,6 @@
       return;
     }
     startEditing();
-    if (window.location.hostname == 'localhost') {
-      window.addEventListener('beforeunload', function() {
-        // send termination signal for gui.js
-        var req = new XMLHttpRequest();
-        req.open('GET', '/close');
-        req.send();
-      });
-    }
   });
 
   function getImportOpts() {
@@ -7840,6 +7856,22 @@
     gui.console = new Console(gui);
 
     startEditing = function() {};
+
+    window.addEventListener('beforeunload', function(e) {
+      if (gui.session.unsavedChanges()) {
+        e.returnValue = 'There are unsaved changes.';
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('unload', function(e) {
+      if (window.location.hostname == 'localhost') {
+        // send termination signal for mapshaper-gui
+        var req = new XMLHttpRequest();
+        req.open('GET', '/close');
+        req.send();
+      }
+    });
 
     gui.model.on('select', function() {
       if (!dataLoaded) {
