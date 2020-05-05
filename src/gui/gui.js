@@ -60,14 +60,14 @@ var startEditing = function() {
 
   window.addEventListener('beforeunload', function(e) {
     if (gui.session.unsavedChanges()) {
-      e.returnValue = 'Sure you want to leave?';
+      e.returnValue = 'There are unsaved changes.';
       e.preventDefault();
     }
   });
 
   window.addEventListener('unload', function(e) {
     if (window.location.hostname == 'localhost') {
-      // send termination signal for gui.js
+      // send termination signal for mapshaper-gui
       var req = new XMLHttpRequest();
       req.open('GET', '/close');
       req.send();

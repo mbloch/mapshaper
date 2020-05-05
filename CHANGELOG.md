@@ -1,3 +1,7 @@
+v0.5.5
+* Prompt the user before closing the browser tab, if data has changed since the session began or since the last export.
+* Include interactive data edits in the web ui console's "history" output.
+
 v0.5.4
 * Bug fixes
 
