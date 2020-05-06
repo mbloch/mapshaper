@@ -29,7 +29,7 @@ describe('mapshaper-affine.js', function () {
         }]
       };
 
-      api.applyCommands('-i polygons.json -affine shift=2,1 where=name=="b" -o',
+      api.applyCommands('-i polygons.json -affine shift=2,1 where=name=="b" -o gj2008',
           {'polygons.json': geojson}, function(err, output) {
             var geojson = JSON.parse(output['polygons.json']);
             assert.deepEqual(geojson.features[0].geometry.coordinates, [[[0, 1], [1, 0], [0, 0], [0, 1]]]);

@@ -64,7 +64,7 @@ describe('mapshaper-clip-erase.js', function () {
           }
         };
 
-        api.applyCommands('-i data -clip target=a bbox=-1,-1,1.5,1.5 -o format=geojson target=*', {data: boxes}, function(err, output) {
+        api.applyCommands('-i data -clip target=a bbox=-1,-1,1.5,1.5 -o format=geojson gj2008 target=*', {data: boxes}, function(err, output) {
           var a = JSON.parse(output['a.json']);
           var b = JSON.parse(output['b.json']);
           assert.deepEqual(a.features[0].geometry.coordinates, [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]])
@@ -86,7 +86,7 @@ describe('mapshaper-clip-erase.js', function () {
           coordinates: [[[0, 0], [0, 1], [2, 1], [2, 0], [0, 0]]]
         }
 
-        api.applyCommands('-i clipper.json -i clipped.json -clip clipper -o target=*', {'clipper.json': clipper, 'clipped.json': clipped}, function(err, output) {
+        api.applyCommands('-i clipper.json -i clipped.json -clip clipper -o gj2008 target=*', {'clipper.json': clipper, 'clipped.json': clipped}, function(err, output) {
           var clipped2 = JSON.parse(output['clipped.json']);
           var clipper2 = JSON.parse(output['clipper.json']);
           assert.deepEqual(clipper2.geometries[0].coordinates, [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]])
@@ -107,7 +107,7 @@ describe('mapshaper-clip-erase.js', function () {
           type: "Polygon",
           coordinates: [[[-5,0.4],[-4,0.4],[-4,8.673617379884035e-19],[-5,0],[-5,0.4]]]
         };
-        api.applyCommands('-i poly.json -clip bbox=-10,0,0,10 -o', {'poly.json': polygon}, function(err, output) {
+        api.applyCommands('-i poly.json -clip bbox=-10,0,0,10 -o gj2008', {'poly.json': polygon}, function(err, output) {
           if (err) throw err
           var geojson = JSON.parse(output['poly.json']);
           var coords = geojson.geometries[0].coordinates[0];
@@ -122,7 +122,7 @@ describe('mapshaper-clip-erase.js', function () {
           type: "Polygon",
           coordinates: [[[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,-1.734723475976807e-18],[-0.9,0.4]]]
         };
-        api.applyCommands('-i poly.json -clip bbox=-1,0,0,1 -o', {'poly.json': polygon}, function(err, output) {
+        api.applyCommands('-i poly.json -clip bbox=-1,0,0,1 -o gj2008', {'poly.json': polygon}, function(err, output) {
           var geojson = JSON.parse(output['poly.json']);
           var coords = geojson.geometries[0].coordinates[0];
           // slightly out-of-range coordinates are tolerated now

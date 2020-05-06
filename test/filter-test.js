@@ -56,7 +56,7 @@ describe('mapshaper-filter.js', function () {
     })
 
     it ('-filter remove-empty', function(done) {
-      api.applyCommands('-filter remove-empty', geojson, function(err, json) {
+      api.applyCommands('-filter remove-empty -o gj2008', geojson, function(err, json) {
         var output = JSON.parse(json);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0], geojson.features[0])

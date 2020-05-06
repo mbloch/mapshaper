@@ -40,7 +40,7 @@ describe("mapshaper-variable-simplify.js", function() {
     };
 
     it ('remove one box, retain the other', function(done) {
-      var cmd='-i data.json -each "id = this.id" -simplify variable percentage="id === 0 ? \'100%\' : \'0%\'" -o';
+      var cmd='-i data.json -each "id = this.id" -simplify variable percentage="id === 0 ? \'100%\' : \'0%\'" -o gj2008';
       api.applyCommands(cmd, {'data.json': boxes}, function(err, output) {
         var data2 = JSON.parse(output['data.json']);
         var target = {
@@ -71,7 +71,7 @@ describe("mapshaper-variable-simplify.js", function() {
           coordinates: [[0, 0], [0, 1], [1, 1]]
         }]
       };
-      var cmd = '-i data.json -simplify percentage=\'this.id == 0 ? "0%" : "100%"\' variable -o';
+      var cmd = '-i data.json -simplify percentage=\'this.id == 0 ? "0%" : "100%"\' variable -o gj2008';
       api.applyCommands(cmd, {'data.json': lines}, function(err, output) {
         var data2 = JSON.parse(output['data.json']);
         assert.deepEqual(data2, lines);

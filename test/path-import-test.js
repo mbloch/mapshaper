@@ -22,7 +22,7 @@ describe('mapshaper-path-import.js', function () {
         }]
       };
 
-      api.applyCommands('-o', src, function(err, data) {
+      api.applyCommands('-o gj2008', src, function(err, data) {
         assert.deepEqual(JSON.parse(data), target);
         done();
       });

@@ -64,7 +64,7 @@ describe('mapshaper-filter-islands.js', function () {
     });
 
     it ('-filter-islands remove-empty', function(done) {
-      api.applyCommands('-filter-islands min-area=0.5 remove-empty', geojson, function(err, json) {
+      api.applyCommands('-filter-islands min-area=0.5 remove-empty -o gj2008', geojson, function(err, json) {
         var output = JSON.parse(json);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0],
@@ -78,7 +78,7 @@ describe('mapshaper-filter-islands.js', function () {
         type: 'Polygon',
         coordinates: [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]]
       };
-      api.applyCommands('-filter-islands min-area=1', geojson, function(err, json) {
+      api.applyCommands('-filter-islands min-area=1 -o gj2008', geojson, function(err, json) {
         var output = JSON.parse(json);
         assert.equal(output.features.length, 2);
         assert.deepEqual(output.features[0].geometry, target);
@@ -91,7 +91,7 @@ describe('mapshaper-filter-islands.js', function () {
         type: 'Polygon',
         coordinates: [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]]
       };
-      api.applyCommands('-filter-islands min-vertices=4', geojson, function(err, json) {
+      api.applyCommands('-filter-islands min-vertices=4 -o gj2008', geojson, function(err, json) {
         var output = JSON.parse(json);
         assert.equal(output.features.length, 2);
         assert.deepEqual(output.features[0].geometry, target);
@@ -100,7 +100,7 @@ describe('mapshaper-filter-islands.js', function () {
     })
 
     it ('-filter-islands (combined options)', function(done) {
-      api.applyCommands('-filter-islands remove-empty min-vertices=8', geojson, function(err, json) {
+      api.applyCommands('-filter-islands remove-empty min-vertices=8 -o gj2008', geojson, function(err, json) {
         var output = JSON.parse(json);
         var target = {type: 'GeometryCollection', geometries: []}; // empty output
         assert.deepEqual(output, target);

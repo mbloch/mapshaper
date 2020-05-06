@@ -264,7 +264,12 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('rfc7946', {
-      describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
+      // deprecated -- this is now the default
+      // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
+      type: 'flag'
+    })
+    .option('gj2008', {
+      describe: '(GeoJSON) use the original 2008 GeoJSON spec',
       type: 'flag'
     })
     .option('combine-layers', {

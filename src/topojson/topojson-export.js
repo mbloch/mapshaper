@@ -11,7 +11,6 @@ import { filterEmptyArcs, getAvgSegment2 } from '../paths/mapshaper-path-utils';
 import { getFeatureCount, transformPointsInLayer, layerHasPoints } from '../dataset/mapshaper-layer-utils';
 import { exportIds } from '../geojson/geojson-export';
 import { exportProperties } from '../geojson/geojson-export';
-import { exportCRS } from '../geojson/geojson-export';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { transformDatasetToPixels } from '../geom/mapshaper-pixel-transform';
@@ -92,8 +91,6 @@ TopoJSON.exportTopology = function(dataset, opts) {
     return objects;
   }, {});
 
-  // retain crs data if relevant
-  exportCRS(dataset, topology);
   if (opts.metadata) {
     topology.metadata = exportMetadata(dataset);
   }

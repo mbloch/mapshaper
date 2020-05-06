@@ -13,7 +13,7 @@ describe('x_clipping_bug', function () {
           type: "Polygon",
           coordinates: [[[-0.9,0.4],[-0.4,0.4],[-0.4,0],[-0.9,-1.734723475976807e-18],[-0.9,0.4]]]
         };
-        api.applyCommands('-clip bbox=-1,0,0,1 -debug', polygon, function(err, output) {
+        api.applyCommands('-clip bbox=-1,0,0,1 -debug -o gj2008', polygon, function(err, output) {
           var geojson = JSON.parse(output);
           var coords = geojson.geometries[0].coordinates[0];
 

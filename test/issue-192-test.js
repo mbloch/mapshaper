@@ -100,7 +100,7 @@ describe('Issue #192: Error clipping a polyline layer', function () {
       coordinates: [[[1, 0], [1, 2], [2, 2], [2, 0], [1, 0]]]
     };
 
-    var cmd = '-i b.json -i a.json -clip b -o';
+    var cmd = '-i b.json -i a.json -clip b -o gj2008';
 
     api.applyCommands(cmd, {'a.json': a, 'b.json': b}, function(err, output) {
       var geom = JSON.parse(output['a.json']);

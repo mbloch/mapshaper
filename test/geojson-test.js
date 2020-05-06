@@ -296,15 +296,16 @@ describe('mapshaper-geojson.js', function () {
 
     describe('-o rfc7946 option', function () {
 
-      it('Default coordinate precision is 6 decimals', function() {
-        var input = {
-          type: 'MultiPoint',
-          coordinates: [[4.000000000000001, 3.999999999999], [0.123456789,-9.87654321]]
-        };
-        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {rfc7946: true})[0].content.toString();
-        var coords = output.match(/"coordinates.*\]\]/)[0];
-        assert.equal(coords, '"coordinates":[[4,4],[0.123457,-9.876543]]');
-      });
+      // DISABLING automatic precision for now
+      // it('Default coordinate precision is 6 decimals', function() {
+      //   var input = {
+      //     type: 'MultiPoint',
+      //     coordinates: [[4.000000000000001, 3.999999999999], [0.123456789,-9.87654321]]
+      //   };
+      //   var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {rfc7946: true})[0].content.toString();
+      //   var coords = output.match(/"coordinates.*\]\]/)[0];
+      //   assert.equal(coords, '"coordinates":[[4,4],[0.123457,-9.876543]]');
+      // });
 
       it('A warning is generated for non-lat-long datasets', function() {
         var input = {
@@ -428,7 +429,7 @@ describe('mapshaper-geojson.js', function () {
           type: 'Polygon',
           coordinates: [[[2, 2], [2, 3], [3, 2], [2, 2]]]
         };
-        api.applyCommands('-i a.json b.json combine-files -o combine-layers', {'a.json': a, 'b.json': b}, function(err, output) {
+        api.applyCommands('-i a.json b.json combine-files -o gj2008 combine-layers', {'a.json': a, 'b.json': b}, function(err, output) {
           assert.deepEqual(JSON.parse(output['output.json']), {
             type: 'GeometryCollection',
             geometries: [a, b]
@@ -525,7 +526,8 @@ describe('mapshaper-geojson.js', function () {
       }];
       var opts = {
         cut_table: true,
-        format: 'geojson'
+        format: 'geojson',
+        gj2008: true
       };
       var files = api.internal.exportFileContent({layers:[lyr], arcs:arcs}, opts);
       assert.deepEqual(JSON.parse(files[0].content), geojson);
@@ -553,7 +555,8 @@ describe('mapshaper-geojson.js', function () {
       var opts = {
         drop_table: true,
         id_field: 'FID',
-        format: 'geojson'
+        format: 'geojson',
+        gj2008: true
       };
       var files = api.internal.exportFileContent({layers:[lyr], arcs:arcs}, opts);
       assert.deepEqual(JSON.parse(files[0].content), geojson);
@@ -664,42 +667,44 @@ describe('mapshaper-geojson.js', function () {
         type: 'Point',
         coordinates: [0, 0]
       };
-      api.applyCommands('', input, function(err, data) {
+      api.applyCommands('-o gj2008', input, function(err, data) {
         var output = JSON.parse(data);
         assert.deepEqual(output.crs, crs);
         done();
       })
     });
 
-    it('preserve null crs', function(done) {
-      var input = {
-        crs: null,
-        type: 'Point',
-        coordinates: [0, 0]
-      };
-      api.applyCommands('', input, function(err, data) {
-        var output = JSON.parse(data);
-        assert.strictEqual(output.crs, null);
-        done();
-      })
-    });
+    // REMOVING obsolete crs test
+    // it('preserve null crs', function(done) {
+    //   var input = {
+    //     crs: null,
+    //     type: 'Point',
+    //     coordinates: [0, 0]
+    //   };
+    //   api.applyCommands('', input, function(err, data) {
+    //     var output = JSON.parse(data);
+    //     assert.strictEqual(output.crs, null);
+    //     done();
+    //   })
+    // });
 
-    it('set crs to null if data is projected', function(done) {
-      var crs = {
-        "type": "name",
-        "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
-      };
-      var input = {
-        crs: crs,
-        type: 'Point',
-        coordinates: [0, 0]
-      };
-      api.applyCommands('-proj +proj=merc', input, function(err, data) {
-        var output = JSON.parse(data);
-        assert.strictEqual(output.crs, null);
-        done();
-      })
-    });
+    // REMOVING obsolete crs test
+    // it('set crs to null if data is projected', function(done) {
+    //   var crs = {
+    //     "type": "name",
+    //     "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
+    //   };
+    //   var input = {
+    //     crs: crs,
+    //     type: 'Point',
+    //     coordinates: [0, 0]
+    //   };
+    //   api.applyCommands('-proj +proj=merc', input, function(err, data) {
+    //     var output = JSON.parse(data);
+    //     assert.strictEqual(output.crs, null);
+    //     done();
+    //   })
+    // });
 
     it('do not set crs to null if coords were transformed to latlong', function(done) {
       var input = {

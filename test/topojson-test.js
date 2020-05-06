@@ -45,27 +45,28 @@ describe('topojson-export.js and topojson-import.js', function () {
     })
   })
 
-  it('preserve top-level crs', function(done) {
-    var crs = {
-      "type": "name",
-      "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
-    };
-    var input = {
-      crs: crs,
-      type: 'Topology',
-      objects: {
-        point: {
-          type: 'Point',
-          coordinates: [0, 0]
-        }
-      }
-    };
-    api.applyCommands('', input, function(err, data) {
-      var output = JSON.parse(data);
-      assert.deepEqual(output.crs, crs);
-      done();
-    })
-  });
+  // NO LONGER PRESERVING non-standard crs property
+  // it('preserve top-level crs', function(done) {
+  //   var crs = {
+  //     "type": "name",
+  //     "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
+  //   };
+  //   var input = {
+  //     crs: crs,
+  //     type: 'Topology',
+  //     objects: {
+  //       point: {
+  //         type: 'Point',
+  //         coordinates: [0, 0]
+  //       }
+  //     }
+  //   };
+  //   api.applyCommands('', input, function(err, data) {
+  //     var output = JSON.parse(data);
+  //     assert.deepEqual(output.crs, crs);
+  //     done();
+  //   })
+  // });
 
   describe('exportProperties', function () {
     it('use id_field option', function () {

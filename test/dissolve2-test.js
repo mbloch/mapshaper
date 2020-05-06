@@ -14,7 +14,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
 
     function test(input, args, expect, done) {
       var expectArray = Array.isArray(expect);
-      var cmd = '-i in.json -dissolve2 ' + args + ' -o out.json';
+      var cmd = '-i in.json -dissolve2 ' + args + ' -o gj2008 out.json';
       api.applyCommands(cmd, {'in.json': input}, function(err, output) {
         var out = JSON.parse(output['out.json']);
         var result = out.geometries || out.features;
@@ -130,7 +130,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       type: 'Polygon',
       coordinates: [[[0,0], [0,1], [0.1, 1.1], [0, 1.2], [0, 2], [2,2], [2, 0], [0, 0]]]
     };
-    api.applyCommands('-i in.json -simplify planar interval=0.5 -dissolve2 -o out.json', {'in.json': input}, function(err, output) {
+    api.applyCommands('-i in.json -simplify planar interval=0.5 -dissolve2 -o gj2008 out.json', {'in.json': input}, function(err, output) {
       var json = JSON.parse(output['out.json']);
       assert.deepEqual(json.geometries[0].coordinates, [[[0,0], [0, 2], [2,2], [2, 0], [0, 0]]])
       done();
@@ -155,7 +155,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
         "coordinates": [[[0, 0], [0, 3], [3, 3], [3, 0], [0, 0]]]
       };
 
-      api.applyCommands('-i inner.json outer.json combine-files -merge-layers -dissolve2 -o out.json',
+      api.applyCommands('-i inner.json outer.json combine-files -merge-layers -dissolve2 -o gj2008 out.json',
         {'inner.json': innerRing, 'outer.json': outerRing}, function(err, output) {
           var json = JSON.parse(output['out.json']);
           assert.deepEqual(json.geometries[0], target)
@@ -183,7 +183,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
         coordinates: [[[-1,-1], [-1, 4], [4, 4], [4, -1], [-1, -1]],  [[1.1, 1.1], [1.9, 1.1], [1.9, 1.9], [1.1, 1.9], [1.1, 1.1]]]
       };
 
-      api.applyCommands('-i input.json -dissolve2 gap-fill-area=0 -o out.json',
+      api.applyCommands('-i input.json -dissolve2 gap-fill-area=0 -o gj2008 out.json',
         {'input.json': input}, function(err, output) {
           var json = JSON.parse(output['out.json']);
           assert.deepEqual(json.geometries[0], target);
@@ -208,7 +208,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
         coordinates:  [[[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]], [[1, 1], [2, 1], [2, 4], [5, 4], [5, 5], [1, 5], [1, 1]]]
       };
 
-      api.applyCommands('-i input.json -dissolve2 -o out.json', {'input.json': poly}, function(err, output) {
+      api.applyCommands('-i input.json -dissolve2 -o gj2008 out.json', {'input.json': poly}, function(err, output) {
         output = JSON.parse(output['out.json']).geometries[0];
         assert.deepEqual(output, target);
         done();

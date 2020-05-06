@@ -9,7 +9,7 @@ describe('Features with invalid point coordinates are imported without geometry'
   };
 
   it('.shp with large negative values', function (done) {
-    var cmd = '-i test/data/issues/invalid_coords/invalid_coordinates.shp -o out.json';
+    var cmd = '-i test/data/issues/invalid_coords/invalid_coordinates.shp -o gj2008 out.json';
     api.applyCommands(cmd, {}, function(err, out) {
       assert.deepEqual(JSON.parse(out['out.json']).features[0], target);
       done();

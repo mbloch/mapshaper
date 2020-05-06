@@ -11,7 +11,7 @@ describe("mapshaper-keep-shapes.js", function() {
         coordinates: [[[0, 0], [0, 1], [0.5, 0], [0, -1], [0, 0]]]
       }
       var expect = poly;
-      var cmd = '-i poly.json -simplify keep-shapes dp 0% -o';
+      var cmd = '-i poly.json -simplify keep-shapes dp 0% -o gj2008';
       api.applyCommands(cmd, {'poly.json': poly}, function(err, output) {
         var result = JSON.parse(output['poly.json']).geometries[0];
         assert.deepEqual(result, poly);
@@ -25,7 +25,7 @@ describe("mapshaper-keep-shapes.js", function() {
         coordinates: [[[-1e-11, 0], [0, 1], [0.5, 0], [0, -1], [-1e-11, 0]]]
       }
       var expect = poly;
-      var cmd = '-i poly.json -simplify keep-shapes dp 0% -o';
+      var cmd = '-i poly.json -simplify keep-shapes dp 0% -o gj2008';
       api.applyCommands(cmd, {'poly.json': poly}, function(err, output) {
         var result = JSON.parse(output['poly.json']).geometries[0];
         assert.deepEqual(result, poly);

@@ -100,7 +100,7 @@ describe('mapshaper-clean.js', function () {
     })
 
     it('polygon rings that share an edge are merged', function (done) {
-      var cmd = '-i test/data/features/clean/ex12_ogc.geojson -filter-fields -clean -o out.json';
+      var cmd = '-i test/data/features/clean/ex12_ogc.geojson -filter-fields -clean -o gj2008 out.json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['out.json']);
         var target = {
@@ -116,7 +116,7 @@ describe('mapshaper-clean.js', function () {
     })
 
     it('cuts are removed', function (done) {
-      var cmd = '-i test/data/features/clean/ex13_ogc.json -clean -o out.json';
+      var cmd = '-i test/data/features/clean/ex13_ogc.json -clean -o gj2008 out.json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['out.json']);
         var target = {
@@ -134,7 +134,7 @@ describe('mapshaper-clean.js', function () {
     })
 
     it('spikes are removed', function (done) {
-      var cmd = '-i test/data/features/clean/ex14_ogc.json -filter-fields -clean -o out.json';
+      var cmd = '-i test/data/features/clean/ex14_ogc.json -filter-fields -clean -o gj2008 out.json';
       api.applyCommands(cmd, {}, function(err, out) {
         var json = JSON.parse(out['out.json']);
         var target = {
@@ -337,7 +337,7 @@ describe('mapshaper-clean.js', function () {
             coordinates: [[[0, 1], [1, 1], [1, 0], [0, 0], [0, 1]]]
           }
         }]};
-      api.applyCommands('-i poly.json -clean -o', {'poly.json': input}, function(err, output) {
+      api.applyCommands('-i poly.json -clean -o gj2008', {'poly.json': input}, function(err, output) {
         var poly2 = JSON.parse(output['poly.json']);
         assert.deepEqual(poly2, expected);
         done();
@@ -370,7 +370,7 @@ describe('mapshaper-clean.js', function () {
         geometry: null
       }]};
 
-    api.applyCommands('-i poly.json -clean allow-empty -o', {'poly.json': input}, function(err, output) {
+    api.applyCommands('-i poly.json -clean allow-empty -o gj2008', {'poly.json': input}, function(err, output) {
       var poly2 = JSON.parse(output['poly.json']);
       assert.deepEqual(poly2, input);
       done();
@@ -379,7 +379,7 @@ describe('mapshaper-clean.js', function () {
 
 
   it('Removes overlapping section in GeoJSON input', function(done) {
-    api.applyCommands('-i test/data/features/clean/ex6.json -clean -o out.json', null, function(err, data) {
+    api.applyCommands('-i test/data/features/clean/ex6.json -clean -o gj2008 out.json', null, function(err, data) {
       var geojson = JSON.parse(data['out.json']);
       var a = geojson.geometries[0].coordinates;
       var b = geojson.geometries[1].coordinates;

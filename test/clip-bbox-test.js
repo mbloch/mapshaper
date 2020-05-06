@@ -62,7 +62,7 @@ describe('-clip bbox2=<bbox>', function () {
       }]
     }
     var bbox = [2, 2, 5, 5];
-    var cmd = '-i input.json -clip bbox2=2,2,5,5 -o clipped.json';
+    var cmd = '-i input.json -clip bbox2=2,2,5,5 -o gj2008 clipped.json';
     api.applyCommands(cmd, {'input.json': input}, function(err, out) {
       var geometries = JSON.parse(out['clipped.json']).geometries;
       assert.deepEqual(geometries[0].coordinates, expect.geometries[0].coordinates);

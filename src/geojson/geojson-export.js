@@ -16,16 +16,24 @@ import { Buffer } from '../utils/mapshaper-node-buffer';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
 export default GeoJSON;
 
+// switch to RFC 7946-compatible output (while retaining the original export function,
+// so numerous tests will continue to work)
+export function exportGeoJSON2(dataset, opts) {
+  opts = utils.extend({}, opts);
+  opts.rfc7946 = !opts.gj2008; // use RFC 7946 as the default
+  return exportGeoJSON(dataset, opts);
+}
+
 export function exportGeoJSON(dataset, opts) {
   opts = opts || {};
   var extension = opts.extension || "json";
   var layerGroups, warn;
 
-  // Apply coordinate precision, if relevant
-  if (opts.precision || opts.rfc7946) {
+  // Apply coordinate precision
+  // TODO: consider 0.000001 as a default (recommended by RFC 7946)
+  if (opts.precision) {
     dataset = copyDatasetForExport(dataset);
-    // using 6 decimals as default RFC 7946 precision
-    setCoordinatePrecision(dataset, opts.precision || 0.000001);
+    setCoordinatePrecision(dataset, opts.precision);
   }
 
   if (opts.rfc7946) {
@@ -109,8 +117,8 @@ export function getRFC7946Warnings(dataset) {
   var P = getDatasetCRS(dataset);
   var str;
   if (!P || !isLatLngCRS(P)) {
-    str = 'RFC 7946 warning: non-WGS84 coordinates.';
-    if (P) str += ' Use "-proj wgs84" to convert.';
+    str = 'RFC 7946 warning: non-WGS84 GeoJSON output.';
+    if (P) str += ' Tip: use "-proj wgs84" to convert.';
   }
   return str;
 }
@@ -164,8 +172,7 @@ export function exportDatasetAsGeoJSON(dataset, opts, ofmt) {
   }
 
   if (!opts.rfc7946) {
-    // partial support for crs property (eliminated in RFC 7946)
-    exportCRS(dataset, geojson);
+    preserveOriginalCRS(dataset, geojson);
   }
 
   if (opts.bbox) {
@@ -247,6 +254,8 @@ GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;
   var groups = groupPolygonRings(obj.pathData, opts.invert_y);
+  // invert_y is used internally for SVG generation
+  // mapshaper's internal winding order is the opposite of RFC 7946
   var reverse = opts.rfc7946 && !opts.invert_y;
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
@@ -269,22 +278,25 @@ GeoJSON.exporters = {
   point: GeoJSON.exportPointGeom
 };
 
-// @jsonObj is a top-level GeoJSON or TopoJSON object
-// TODO: generate crs if projection is known
-// TODO: handle case of non-WGS84 geodetic coordinates
-export function exportCRS(dataset, jsonObj) {
+// To preserve some backwards compatibility with old-style GeoJSON files,
+// pass through any original CRS object if the crs has not been set by mapshaper
+// jsonObj: a top-level GeoJSON or TopoJSON object
+//
+export function preserveOriginalCRS(dataset, jsonObj) {
   var info = dataset.info || {};
   if (!info.crs && 'input_geojson_crs' in info) {
     // use input geojson crs if available and coords have not changed
     jsonObj.crs = info.input_geojson_crs;
-  } else if (info.crs && !isLatLngCRS(info.crs)) {
-    // Setting output crs to null if coords have been projected
-    // "If the value of CRS is null, no CRS can be assumed"
-    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
-    jsonObj.crs = null;
-  } else {
-    // crs property not set: assuming WGS84
+
   }
+
+  // Removing the following (seems ineffectual at best)
+  // else if (info.crs && !isLatLngCRS(info.crs)) {
+  //   // Setting output crs to null if coords have been projected
+  //   // "If the value of CRS is null, no CRS can be assumed"
+  //   // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
+  //   jsonObj.crs = null;
+  // }
 }
 
 export function useFeatureCollection(layers, opts) {

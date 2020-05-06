@@ -21,7 +21,7 @@ describe('mapshaper-mosaic.js', function () {
       [[[ 1, 2 ], [ 2, 2 ], [ 2, 1 ], [ 1, 1 ], [ 1, 2 ]]];
     var o3 =
       [[[ 2, 1 ], [ 2, 2 ], [ 1, 2 ], [ 1, 3 ], [ 3, 3 ], [ 3, 1 ], [ 2, 1 ]]];
-    var cmd = '-i input.json -mosaic -o';
+    var cmd = '-i input.json -mosaic -o gj2008';
     api.applyCommands(cmd, {'input.json': figure1}, function(err, out) {
       var output = JSON.parse(out['input.json']);
 

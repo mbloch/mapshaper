@@ -15,7 +15,7 @@ describe('mapshaper-shape.js', function () {
   })
 
   it ('create a polygon with closed and offsets= option', function(done) {
-    api.applyCommands('-shape coordinates=10,10 offsets=0,10,10,0,0,-10 closed -o out.json', {}, function(err, output) {
+    api.applyCommands('-shape coordinates=10,10 offsets=0,10,10,0,0,-10 closed -o out.json gj2008', {}, function(err, output) {
       var line = JSON.parse(output['out.json']).geometries[0];
       assert.deepEqual(line, {
         type: 'Polygon',
@@ -26,7 +26,7 @@ describe('mapshaper-shape.js', function () {
   })
 
   it ('create a polygon from coordinates', function(done) {
-    api.applyCommands('-shape coordinates=10,10,10,20,20,20,20,10,10,10 -o out.json', {}, function(err, output) {
+    api.applyCommands('-shape coordinates=10,10,10,20,20,20,20,10,10,10 -o out.json gj2008', {}, function(err, output) {
       var line = JSON.parse(output['out.json']).geometries[0];
       assert.deepEqual(line, {
         type: 'Polygon',

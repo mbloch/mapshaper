@@ -34,7 +34,7 @@ describe('Issue #337 (incorrect polygon erasure)', function () {
 
 
   it ('clip test: empty geometry', function(done) {
-    var cmd = '-i target.json -i clip.json -clip target=target clip -o';
+    var cmd = '-i target.json -i clip.json -clip target=target clip -o gj2008';
     api.applyCommands(cmd, {'target.json': target, 'clip.json': clip}, function(err, output) {
       var json = JSON.parse(output['target.json']);
       assert.deepEqual(json.geometries, []); // empty output
@@ -43,7 +43,7 @@ describe('Issue #337 (incorrect polygon erasure)', function () {
   });
 
   it ('erase test: original geometry unmodified', function(done) {
-    var cmd = '-i target.json -i clip.json -erase target=target clip -o';
+    var cmd = '-i target.json -i clip.json -erase target=target clip -o gj2008';
     api.applyCommands(cmd, {'target.json': target, 'clip.json': clip}, function(err, output) {
       var json = JSON.parse(output['target.json']);
       assert.deepEqual(json.geometries, [target]); // output identical to original shape

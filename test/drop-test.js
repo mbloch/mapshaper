@@ -71,7 +71,7 @@ describe('mapshaper-drop.js', function () {
     it('No error if -rectangle command is run after all layers are dropped', function (done) {
       var a = 'a,b,c,d\n1,2,3,4\n';
       var b = 'e\n5\n';
-      api.applyCommands('-i a.csv b.csv combine-files -drop target=* -rectangle bbox=0,0,1,1 -o target=* format=geojson', {'a.csv': a, 'b.csv': b}, function(err, output) {
+      api.applyCommands('-i a.csv b.csv combine-files -drop target=* -rectangle bbox=0,0,1,1 -o target=* format=geojson gj2008', {'a.csv': a, 'b.csv': b}, function(err, output) {
         var geo = JSON.parse(output['rectangle.json']);
         assert.deepEqual(Object.keys(output), ['rectangle.json'])
         assert.deepEqual(geo.geometries[0], {

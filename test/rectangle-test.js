@@ -55,7 +55,7 @@ describe('mapshaper-rectangle.js', function () {
   });
 
   it ('create a rectangle using -rectangle bbox= and offset=', function(done) {
-    api.applyCommands('-rectangle bbox=1,1,4,4 offset=1 -o out.json', {}, function(err, out) {
+    api.applyCommands('-rectangle bbox=1,1,4,4 offset=1 -o gj2008 out.json', {}, function(err, out) {
       var geom = JSON.parse(out['out.json']).geometries[0];
       assert.deepEqual(geom, {
         type: 'Polygon',
@@ -70,7 +70,7 @@ describe('mapshaper-rectangle.js', function () {
       type: 'LineString',
       coordinates: [[0, 1], [1, 2], [2, 1], [1, 0]]
     };
-    api.applyCommands('-i in.json -rectangle offset=50%,100%,150%,200% -o out.json',
+    api.applyCommands('-i in.json -rectangle offset=50%,100%,150%,200% -o gj2008 out.json',
         {'in.json': geom}, function(err, output) {
       var geom = JSON.parse(output['out.json']);
       var expect = {

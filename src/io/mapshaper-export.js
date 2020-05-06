@@ -4,7 +4,7 @@ import { exportDbf } from '../shapefile/dbf-export';
 import { exportDelim } from '../text/mapshaper-delim-export';
 import { exportShapefile } from '../shapefile/shp-export';
 import { exportTopoJSON } from '../topojson/topojson-export';
-import { exportGeoJSON } from '../geojson/geojson-export';
+import { exportGeoJSON2 } from '../geojson/geojson-export';
 import { exportJSON } from '../datatable/mapshaper-json-table';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport, copyDatasetForRenaming } from '../dataset/mapshaper-dataset-utils';
@@ -125,7 +125,7 @@ export function exportFileContent(dataset, opts) {
 }
 
 var exporters = {
-  geojson: exportGeoJSON,
+  geojson: exportGeoJSON2,
   topojson: exportTopoJSON,
   shapefile: exportShapefile,
   dsv: exportDelim,
