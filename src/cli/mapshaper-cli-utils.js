@@ -12,9 +12,10 @@ var cli = {};
 export default cli;
 
 cli.isFile = function(path, cache) {
+  if (cache && (path in cache)) return true;
   if (runningInBrowser()) return false;
   var ss = cli.statSync(path);
-  return cache && (path in cache) || ss && ss.isFile() || false;
+  return ss && ss.isFile() || false;
 };
 
 // cli.fileSize = function(path) {
