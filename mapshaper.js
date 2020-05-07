@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.4";
+  var VERSION = "0.5.5";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -7748,9 +7748,10 @@
   var cli = {};
 
   cli.isFile = function(path, cache) {
+    if (cache && (path in cache)) return true;
     if (runningInBrowser()) return false;
     var ss = cli.statSync(path);
-    return cache && (path in cache) || ss && ss.isFile() || false;
+    return ss && ss.isFile() || false;
   };
 
   // cli.fileSize = function(path) {
@@ -12390,19 +12391,30 @@
     }, null) || '';
   }
 
+  // switch to RFC 7946-compatible output (while retaining the original export function,
+  // so numerous tests will continue to work)
+  function exportGeoJSON2(dataset, opts) {
+    opts = utils.extend({}, opts);
+    opts.v2 = !opts.gj2008; // use RFC 7946 as the default
+    return exportGeoJSON(dataset, opts);
+  }
+
   function exportGeoJSON(dataset, opts) {
     opts = opts || {};
     var extension = opts.extension || "json";
     var layerGroups, warn;
 
-    // Apply coordinate precision, if relevant
+    // Apply coordinate precision
+    // rfc7946 flag is deprecated (default output is now RFC 7946 compatible)
+    // the flag is used here to preserve backwards compatibility
+    // (the rfc7946 flag applies a default precision threshold, even though rounding
+    // coordinates is only a recommendation, not a requirement of RFC 7946)
     if (opts.precision || opts.rfc7946) {
       dataset = copyDatasetForExport(dataset);
-      // using 6 decimals as default RFC 7946 precision
       setCoordinatePrecision(dataset, opts.precision || 0.000001);
     }
 
-    if (opts.rfc7946) {
+    if (opts.v2 || opts.rfc7946) {
       warn = getRFC7946Warnings(dataset);
       if (warn) message(warn);
     }
@@ -12483,8 +12495,8 @@
     var P = getDatasetCRS(dataset);
     var str;
     if (!P || !isLatLngCRS(P)) {
-      str = 'RFC 7946 warning: non-WGS84 coordinates.';
-      if (P) str += ' Use "-proj wgs84" to convert.';
+      str = 'RFC 7946 warning: non-WGS84 GeoJSON output.';
+      if (P) str += ' Tip: use "-proj wgs84" to convert.';
     }
     return str;
   }
@@ -12537,13 +12549,12 @@
       collname = 'geometries';
     }
 
-    if (!opts.rfc7946) {
-      // partial support for crs property (eliminated in RFC 7946)
-      exportCRS(dataset, geojson);
+    if (opts.gj2008) {
+      preserveOriginalCRS(dataset, geojson);
     }
 
     if (opts.bbox) {
-      bbox = getDatasetBbox(dataset, opts.rfc7946);
+      bbox = getDatasetBbox(dataset, opts.rfc7946 || opts.v2);
       if (bbox) {
         geojson.bbox = bbox;
       }
@@ -12621,7 +12632,9 @@
     var obj = exportPathData(ids, arcs, "polygon");
     if (obj.pointCount === 0) return null;
     var groups = groupPolygonRings(obj.pathData, opts.invert_y);
-    var reverse = opts.rfc7946 && !opts.invert_y;
+    // invert_y is used internally for SVG generation
+    // mapshaper's internal winding order is the opposite of RFC 7946
+    var reverse = (opts.rfc7946 || opts.v2) && !opts.invert_y;
     var coords = groups.map(function(paths) {
       return paths.map(function(path) {
         if (reverse) path.points.reverse();
@@ -12643,22 +12656,25 @@
     point: GeoJSON.exportPointGeom
   };
 
-  // @jsonObj is a top-level GeoJSON or TopoJSON object
-  // TODO: generate crs if projection is known
-  // TODO: handle case of non-WGS84 geodetic coordinates
-  function exportCRS(dataset, jsonObj) {
+  // To preserve some backwards compatibility with old-style GeoJSON files,
+  // pass through any original CRS object if the crs has not been set by mapshaper
+  // jsonObj: a top-level GeoJSON or TopoJSON object
+  //
+  function preserveOriginalCRS(dataset, jsonObj) {
     var info = dataset.info || {};
     if (!info.crs && 'input_geojson_crs' in info) {
       // use input geojson crs if available and coords have not changed
       jsonObj.crs = info.input_geojson_crs;
-    } else if (info.crs && !isLatLngCRS(info.crs)) {
-      // Setting output crs to null if coords have been projected
-      // "If the value of CRS is null, no CRS can be assumed"
-      // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
-      jsonObj.crs = null;
-    } else {
-      // crs property not set: assuming WGS84
+
     }
+
+    // Removing the following (seems ineffectual at best)
+    // else if (info.crs && !isLatLngCRS(info.crs)) {
+    //   // Setting output crs to null if coords have been projected
+    //   // "If the value of CRS is null, no CRS can be assumed"
+    //   // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
+    //   jsonObj.crs = null;
+    // }
   }
 
   function useFeatureCollection(layers, opts) {
@@ -12732,12 +12748,13 @@
   var GeojsonExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
     'default': GeoJSON,
+    exportGeoJSON2: exportGeoJSON2,
     exportGeoJSON: exportGeoJSON,
     exportLayerAsGeoJSON: exportLayerAsGeoJSON,
     getRFC7946Warnings: getRFC7946Warnings,
     getDatasetBbox: getDatasetBbox,
     exportDatasetAsGeoJSON: exportDatasetAsGeoJSON,
-    exportCRS: exportCRS,
+    preserveOriginalCRS: preserveOriginalCRS,
     useFeatureCollection: useFeatureCollection,
     exportProperties: exportProperties,
     getIdField: getIdField,
@@ -14597,8 +14614,6 @@
       return objects;
     }, {});
 
-    // retain crs data if relevant
-    exportCRS(dataset, topology);
     if (opts.metadata) {
       topology.metadata = exportMetadata(dataset);
     }
@@ -14950,7 +14965,7 @@
   }
 
   var exporters = {
-    geojson: exportGeoJSON,
+    geojson: exportGeoJSON2,
     topojson: exportTopoJSON,
     shapefile: exportShapefile,
     dsv: exportDelim,
@@ -16126,7 +16141,14 @@
         type: 'number'
       })
       .option('rfc7946', {
-        describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
+        // obsolete -- rfc 7946 compatible outptu is now the default.
+        // This option also rounds coordinates to 7 decimals. I'm retaining the
+        // option for backwards compatibility.
+        // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
+        type: 'flag'
+      })
+      .option('gj2008', {
+        describe: '(GeoJSON) use original GeoJSON spec (not RFC 7946)',
         type: 'flag'
       })
       .option('combine-layers', {
