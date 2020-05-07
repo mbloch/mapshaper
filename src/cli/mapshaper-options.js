@@ -264,12 +264,14 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('rfc7946', {
-      // deprecated -- this is now the default
+      // obsolete -- rfc 7946 compatible outptu is now the default.
+      // This option also rounds coordinates to 7 decimals. I'm retaining the
+      // option for backwards compatibility.
       // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
       type: 'flag'
     })
     .option('gj2008', {
-      describe: '(GeoJSON) use the original 2008 GeoJSON spec',
+      describe: '(GeoJSON) use original GeoJSON spec (not RFC 7946)',
       type: 'flag'
     })
     .option('combine-layers', {
