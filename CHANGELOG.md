@@ -1,3 +1,8 @@
+v0.5.6
+* Default GeoJSON output now complies with RFC 7946 with respect to polygon winding order and antimeridian-crossing bounding boxes. This means that space-enclosing rings are CCW and holes are CW. This is the opposite of how mapshaper used to output polygon rings without the rfc7946 flag.
+* Added a gj2008 flag to the output command (-o gj2008). This flag maintains compatibility with the way Mapshaper used to output GeoJSON: CW rings, CCW holes, and bbox arrays that are always [xmin, ymin, xmax, ymax].
+* The old rfc7946 flag is no longer useful, but is retained for backwards compatibility. This flag (as before) truncates coordinates to 6 decimal places. Now, using this flag is equivalent to adding precision=0.000001 to the output command.
+
 v0.5.5
 * Prompt the user before closing the browser tab, if data has changed since the session began or since the last export.
 * Include interactive data edits in the web ui console's "history" output.
