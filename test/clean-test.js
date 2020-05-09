@@ -443,6 +443,49 @@ describe('mapshaper-clean.js', function () {
     })
   })
 
+  describe('rewind option', function () {
+    it('holes outside of rings are converted to rings', function (done) {
+      var input = {
+        type: 'Polygon',
+        coordinates: [
+          [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]], [[2, 0], [2, 1], [3, 1], [3, 0], [2, 0]]
+        ]
+      };
+      api.applyCommands('-i in.json -clean rewind -o out.json', {'in.json': input}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.deepEqual(json.geometries[0], {
+          type: 'MultiPolygon',
+          coordinates: [
+            [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+            [[[2, 0], [3, 0], [3, 1], [2, 1], [2, 0]]]
+          ]
+        })
+        done();
+      });
+    })
+
+    it('without rewind, holes outside of rings are removed', function (done) {
+      var input = {
+        type: 'Polygon',
+        coordinates: [
+          [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]], [[2, 0], [2, 1], [3, 1], [3, 0], [2, 0]]
+        ]
+      };
+      api.applyCommands('-i in.json -clean -o out.json', {'in.json': input}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.deepEqual(json.geometries[0], {
+          type: 'Polygon',
+          coordinates: [
+            [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]
+          ]
+        })
+        done();
+      });
+    })
+
+
+  })
+
   describe('cleanLayers()', function() {
 
     describe('Fig. 1', function() {

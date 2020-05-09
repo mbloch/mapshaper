@@ -2,22 +2,31 @@ import { forEachShapePart } from '../paths/mapshaper-shape-utils';
 import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
 import { dissolvePolygonGroups2 } from '../dissolve/mapshaper-polygon-dissolve2';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
-import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
+import { layerHasGeometry, layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { rewindPolygons } from '../polygons/mapshaper-ring-nesting';
 import { NodeCollection } from '../topology/mapshaper-nodes';
+import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 
-cmd.cleanLayers = function(layers, dataset, opts) {
+cmd.cleanLayers = function(layers, dataset, optsArg) {
+  var opts = optsArg || {};
+  var deepClean = !opts.only_arcs;
+  var pathClean = utils.some(layers, layerHasPaths);
   var nodes;
-  opts = opts || {};
   if (opts.debug) {
     addIntersectionCuts(dataset, opts);
     return;
   }
-  if (!opts.arcs) { // arcs option only removes unused arcs
-    nodes = addIntersectionCuts(dataset, opts);
-    layers.forEach(function(lyr) {
-      if (!layerHasGeometry(lyr)) return;
+  layers.forEach(function(lyr) {
+    if (!layerHasGeometry(lyr)) return;
+    if (lyr.geometry_type == 'polygon' && opts.rewind) {
+      rewindPolygons(lyr, dataset.arcs);
+    }
+    if (deepClean) {
+      if (!nodes) {
+        nodes = addIntersectionCuts(dataset, opts);
+      }
       if (lyr.geometry_type == 'polygon') {
         cleanPolygonLayerGeometry(lyr, dataset, opts);
       } else if (lyr.geometry_type == 'polyline') {
@@ -25,13 +34,13 @@ cmd.cleanLayers = function(layers, dataset, opts) {
       } else if (lyr.geometry_type == 'point') {
         cleanPointLayerGeometry(lyr, dataset, opts);
       }
-      if (!opts.allow_empty) {
-        cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
-      }
-    });
-  }
+    }
+    if (!opts.allow_empty) {
+      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+    }
+  });
 
-  if (!opts.no_arc_dissolve && dataset.arcs) {
+  if (!opts.no_arc_dissolve && pathClean && dataset.arcs) {
     // remove leftover endpoints within contiguous lines
     dissolveArcs(dataset);
   }

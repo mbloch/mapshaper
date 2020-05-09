@@ -388,12 +388,17 @@ export function getOptionParser() {
 
   parser.command('clean')
     .describe('fixes geometry issues, such as polygon overlaps and gaps')
+
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
     .option('snap-interval', snapIntervalOpt)
     .option('no-snap', noSnapOpt)
     .option('allow-empty', {
-      describe: 'allow null geometries (removed by default)',
+      describe: 'keep null geometries (removed by default)',
+      type: 'flag'
+    })
+    .option('rewind', {
+      describe: 'fix errors in the CW/CCW winding order of polygon rings',
       type: 'flag'
     })
     // TODO: consider making this the standard way of removing null geometry
@@ -402,8 +407,11 @@ export function getOptionParser() {
     //   describe: 'remove features with null geometry',
     //   type: 'flag'
     // })
-    .option('arcs', {
-      describe: 'remove unused arcs',
+    .option('arcs', { // old name for arcs-only
+      alias_to: 'only-arcs'
+    })
+    .option('only-arcs', {
+      describe: 'delete unused arcs but don\'t remove gaps and overlaps',
       type: 'flag'
     })
     .option('debug', {
