@@ -1,3 +1,6 @@
+v0.5.7
+* Added "rewind" flag to the -clean command. This option fixes winding-order errors by converting holes that are outside of any ring into space-enclosing rings, and rings that are nested directly inside of other rings into donut holes.
+
 v0.5.6
 * Default GeoJSON output now complies with RFC 7946 with respect to polygon winding order and antimeridian-crossing bounding boxes. This means that space-enclosing rings are CCW and holes are CW. This is the opposite of how mapshaper used to output polygon rings without the rfc7946 flag.
 * Added a gj2008 flag to the output command (-o gj2008). This flag maintains compatibility with the way Mapshaper used to output GeoJSON: CW rings, CCW holes, and bbox arrays that are always [xmin, ymin, xmax, ymax].
