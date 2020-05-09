@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.5";
+  var VERSION = "0.5.6";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -16265,12 +16265,17 @@
 
     parser.command('clean')
       .describe('fixes geometry issues, such as polygon overlaps and gaps')
+
       .option('gap-fill-area', minGapAreaOpt)
       .option('sliver-control', sliverControlOpt)
       .option('snap-interval', snapIntervalOpt)
       .option('no-snap', noSnapOpt)
       .option('allow-empty', {
-        describe: 'allow null geometries (removed by default)',
+        describe: 'keep null geometries (removed by default)',
+        type: 'flag'
+      })
+      .option('rewind', {
+        describe: 'fix errors in the CW/CCW winding order of polygon rings',
         type: 'flag'
       })
       // TODO: consider making this the standard way of removing null geometry
@@ -16279,8 +16284,11 @@
       //   describe: 'remove features with null geometry',
       //   type: 'flag'
       // })
-      .option('arcs', {
-        describe: 'remove unused arcs',
+      .option('arcs', { // old name for arcs-only
+        alias_to: 'only-arcs'
+      })
+      .option('only-arcs', {
+        describe: 'delete unused arcs but don\'t remove gaps and overlaps',
         type: 'flag'
       })
       .option('debug', {
@@ -21551,17 +21559,107 @@
     return outputLayers;
   }
 
-  cmd.cleanLayers = function(layers, dataset, opts) {
+  // Delete rings that are nested directly inside an enclosing ring with the same winding direction
+  // Does not remove unenclosed CCW rings (currently this causes problems when
+  //   rounding coordinates for SVG and TopoJSON output)
+  // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
+  //
+  function fixNestingErrors(rings, arcs) {
+    if (rings.length <= 1) return rings;
+    var ringData = getPathMetadata(rings, arcs, 'polygon');
+    // convert rings to shapes for PathIndex
+    var shapes = rings.map(function(ids) {return [ids];});
+    var index = new PathIndex(shapes, arcs);
+    return rings.filter(ringIsValid);
+
+    function ringIsValid(ids, i) {
+      var containerId = index.findSmallestEnclosingPolygon(ids);
+      var ringIsCW, containerIsCW;
+      var valid = true;
+      if (containerId > -1) {
+        ringIsCW = ringData[i].area > 0;
+        containerIsCW = ringData[containerId].area > 0;
+        if (containerIsCW == ringIsCW) {
+          // reject rings with same chirality as their containing ring
+          valid = false;
+        }
+      }
+      return valid;
+    }
+  }
+
+  // Set winding order of polygon rings so that outer rings are CW, first-order
+  // nested rings are CCW, etc.
+  function rewindPolygons(lyr, arcs) {
+    lyr.shapes = lyr.shapes.map(function(shp) {
+      if (!shp) return null;
+      return rewindPolygon(shp, arcs);
+    });
+  }
+
+  // Update winding order of rings in a polygon so that outermost rings are
+  // CW and nested rings alternate between CCW and CW.
+  function rewindPolygon(rings, arcs) {
+    var ringData = getPathMetadata(rings, arcs, 'polygon');
+
+    // Sort rings by area, from large to small
+    ringData.sort(function(a, b) {
+      return Math.abs(b.area) - Math.abs(a.area);
+    });
+    // If a ring is contained by one or more rings, set it to the opposite
+    //   direction as its immediate parent
+    // If a ring is not contained, make it CW.
+    ringData.forEach(function(ring, i) {
+      var shouldBeCW = true;
+      var j = i;
+      var largerRing;
+      while (--j >= 0) {
+        largerRing = ringData[j];
+        if (testRingInRing(ring, largerRing, arcs)) {
+          // set to opposite of containing ring
+          shouldBeCW = largerRing.area > 0 ? false : true;
+          break;
+        }
+      }
+      setRingWinding(ring, shouldBeCW);
+    });
+    return ringData.map(function(data) { return data.ids; });
+  }
+
+  // data: a ring data object
+  function setRingWinding(data, cw) {
+    var isCW = data.area > 0;
+    if (isCW != cw) {
+      data.area = -data.area;
+      reversePath(data.ids);
+    }
+  }
+
+  // a, b: two ring data objects (from getPathMetadata);
+  function testRingInRing(a, b, arcs) {
+    if (b.bounds.contains(a.bounds) === false) return false;
+    var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
+    return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
+  }
+
+  cmd.cleanLayers = function(layers, dataset, optsArg) {
+    var opts = optsArg || {};
+    var deepClean = !opts.only_arcs;
+    var pathClean = utils.some(layers, layerHasPaths);
     var nodes;
-    opts = opts || {};
     if (opts.debug) {
       addIntersectionCuts(dataset, opts);
       return;
     }
-    if (!opts.arcs) { // arcs option only removes unused arcs
-      nodes = addIntersectionCuts(dataset, opts);
-      layers.forEach(function(lyr) {
-        if (!layerHasGeometry(lyr)) return;
+    layers.forEach(function(lyr) {
+      if (!layerHasGeometry(lyr)) return;
+      if (lyr.geometry_type == 'polygon' && opts.rewind) {
+        rewindPolygons(lyr, dataset.arcs);
+      }
+      if (deepClean) {
+        if (!nodes) {
+          nodes = addIntersectionCuts(dataset, opts);
+        }
         if (lyr.geometry_type == 'polygon') {
           cleanPolygonLayerGeometry(lyr, dataset, opts);
         } else if (lyr.geometry_type == 'polyline') {
@@ -21569,13 +21667,13 @@
         } else if (lyr.geometry_type == 'point') {
           cleanPointLayerGeometry(lyr, dataset, opts);
         }
-        if (!opts.allow_empty) {
-          cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
-        }
-      });
-    }
+      }
+      if (!opts.allow_empty) {
+        cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+      }
+    });
 
-    if (!opts.no_arc_dissolve && dataset.arcs) {
+    if (!opts.no_arc_dissolve && pathClean && dataset.arcs) {
       // remove leftover endpoints within contiguous lines
       dissolveArcs(dataset);
     }
@@ -21748,89 +21846,6 @@
     __proto__: null,
     clipPolylines: clipPolylines
   });
-
-  // Delete rings that are nested directly inside an enclosing ring with the same winding direction
-  // Does not remove unenclosed CCW rings (currently this causes problems when
-  //   rounding coordinates for SVG and TopoJSON output)
-  // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
-  //
-  function fixNestingErrors(rings, arcs) {
-    if (rings.length <= 1) return rings;
-    var ringData = getPathMetadata(rings, arcs, 'polygon');
-    // convert rings to shapes for PathIndex
-    var shapes = rings.map(function(ids) {return [ids];});
-    var index = new PathIndex(shapes, arcs);
-    return rings.filter(ringIsValid);
-
-    function ringIsValid(ids, i) {
-      var containerId = index.findSmallestEnclosingPolygon(ids);
-      var ringIsCW, containerIsCW;
-      var valid = true;
-      if (containerId > -1) {
-        ringIsCW = ringData[i].area > 0;
-        containerIsCW = ringData[containerId].area > 0;
-        if (containerIsCW == ringIsCW) {
-          // reject rings with same chirality as their containing ring
-          valid = false;
-        }
-      }
-      return valid;
-    }
-  }
-
-  // Set winding order of polygon rings so that outer rings are CW, first-order
-  // nested rings are CCW, etc.
-  function rewindPolygons(lyr, arcs) {
-    lyr.shapes = lyr.shapes.map(function(shp) {
-      if (!shp) return null;
-      return rewindPolygon(shp, arcs);
-    });
-  }
-
-  // Update winding order of rings in a polygon so that outermost rings are
-  // CW and nested rings alternate between CCW and CW.
-  function rewindPolygon(rings, arcs) {
-    var ringData = getPathMetadata(rings, arcs, 'polygon');
-
-    // Sort rings by area, from large to small
-    ringData.sort(function(a, b) {
-      return Math.abs(b.area) - Math.abs(a.area);
-    });
-    // If a ring is contained by one or more rings, set it to the opposite
-    //   direction as its immediate parent
-    // If a ring is not contained, make it CW.
-    ringData.forEach(function(ring, i) {
-      var shouldBeCW = true;
-      var j = i;
-      var largerRing;
-      while (--j >= 0) {
-        largerRing = ringData[j];
-        if (testRingInRing(ring, largerRing, arcs)) {
-          // set to opposite of containing ring
-          shouldBeCW = largerRing.area > 0 ? false : true;
-          break;
-        }
-      }
-      setRingWinding(ring, shouldBeCW);
-    });
-    return ringData.map(function(data) { return data.ids; });
-  }
-
-  // data: a ring data object
-  function setRingWinding(data, cw) {
-    var isCW = data.area > 0;
-    if (isCW != cw) {
-      data.area = -data.area;
-      reversePath(data.ids);
-    }
-  }
-
-  // a, b: two ring data objects (from getPathMetadata);
-  function testRingInRing(a, b, arcs) {
-    if (b.bounds.contains(a.bounds) === false) return false;
-    var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
-    return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
-  }
 
   // TODO: remove this obsolete dissolve code (still used by clip)
 
