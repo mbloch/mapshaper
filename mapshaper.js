@@ -6171,6 +6171,17 @@
     printEncodings: printEncodings
   });
 
+  function detectEncodingFromBOM(bytes) {
+    // utf8 EF BB BF
+    // utf16be FE FF
+    // utf16le FF FE
+    var n = bytes.length;
+    if (n >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) return 'utf16be';
+    if (n >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) return 'utf16le';
+    if (n >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[1] == 0xBF) return 'utf8';
+    return '';
+  }
+
   // Try to detect the encoding of some sample text.
   // Returns an encoding name or null.
   // @samples Array of buffers containing sample text fields
@@ -10164,7 +10175,7 @@
     // TODO: remove duplication with importJSON()
     var readFromFile = !data.content && data.content !== '',
         content = data.content,
-        filter, reader, records, delimiter, table;
+        filter, reader, records, delimiter, table, encoding;
     opts = opts || {};
 
     // // read content of all but very large files into a buffer
@@ -10174,7 +10185,6 @@
     // }
 
     if (readFromFile) {
-      // try to read data incrementally from file, if content is missing
       reader = new FileReader(data.filename);
     } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
       // Web API may import as ArrayBuffer, to support larger files
@@ -10186,11 +10196,18 @@
       error("Unexpected object type");
     }
 
-    if (reader && !encodingIsAsciiCompat(opts.encoding)) {
-      // Currently, incremental reading assumes ascii-compatible data.
-      // Incompatible encodings must be parsed as strings.
-      content = reader.toString(opts.encoding);
-      reader = null;
+    if (reader) {
+      encoding = detectEncodingFromBOM(reader.readSync(0, Math.min(reader.size(), 3)));
+      // Files in some encodings have to be converted to strings before parsing
+      // Other encodings are similar enough to ascii that CSV can be parsed
+      // byte-by-byte.
+      if (encoding == 'utf16be' || encoding == 'utf16le') {
+        content = trimBOM(reader.toString(encoding));
+        reader = null;
+      } else if (opts.encoding && !encodingIsAsciiCompat(opts.encoding)) {
+        content = reader.toString(opts.encoding);
+        reader = null;
+      }
     }
 
     if (reader) {
@@ -11011,7 +11028,7 @@
       fmt = 'topojson';
     } else if (o.type) {
       fmt = 'geojson';
-    } else if (utils.isArray(o) || o.json_path) {
+    } else if (utils.isArray(o)) {
       fmt = 'json';
     }
     return fmt;
@@ -11023,7 +11040,12 @@
     return importer.done();
   }
 
-  function importJSONFile(reader, opts) {
+  // Parse GeoJSON directly from a binary data source (supports parsing larger files
+  // than the maximum JS string length) or return a string with the entire
+  // contents of the file.
+  // reader: a binary file reader
+  //
+  function readJSONFile(reader, opts) {
     var str = readFirstChars(reader, 1000);
     var type = identifyJSONString(str, opts);
     var dataset, retn;
@@ -11047,7 +11069,7 @@
     var content = data.content,
         filename = data.filename,
         retn = {filename: filename},
-        reader;
+        reader, fmt;
 
     if (!content) {
       reader = new FileReader(filename);
@@ -11063,7 +11085,7 @@
     }
 
     if (reader) {
-      data = importJSONFile(reader, opts);
+      data = readJSONFile(reader, opts);
       if (data.dataset) {
         retn.dataset = data.dataset;
         retn.format = data.format;
@@ -11083,20 +11105,23 @@
       }
       if (opts.json_path) {
         content = selectFromObject(content, opts.json_path);
-        if (Array.isArray(content) === false) {
-          stop('Expected an array at JSON path:', opts.json_path);
+        fmt = identifyJSONObject(content, opts);
+        if (!fmt) {
+          stop('Unexpected object type at JSON path:', opts.json_path);
         }
+      } else {
+        fmt = identifyJSONObject(content, opts);
       }
-      retn.format = identifyJSONObject(content, opts);
-      if (retn.format == 'topojson') {
+      if (fmt == 'topojson') {
         retn.dataset = importTopoJSON(content, opts);
-      } else if (retn.format == 'geojson') {
+      } else if (fmt == 'geojson') {
         retn.dataset = importGeoJSON(content, opts);
-      } else if (retn.format == 'json') {
+      } else if (fmt == 'json') {
         retn.dataset = importJSONTable(content, opts);
       } else {
         stop("Unknown JSON format");
       }
+      retn.format = fmt;
     }
 
     return retn;
@@ -11104,7 +11129,7 @@
 
   // path: path from top-level to the target object
   function selectFromObject(o, path) {
-    var arrayRxp = /(.*)\[([0-9]+)\]$/;
+    var arrayRxp = /(.*)\[([0-9]+)\]$/; // bracket
     var separator = path.indexOf('/') > 0 ? '/' : '.';
     var parts = path.split(separator);
     var subpath, array, match;
@@ -15686,9 +15711,10 @@
       function formatLines(lines) {
         var colWidth = calcColWidth(lines);
         var gutter = '  ';
+        var indent = runningInBrowser() ? '' : '  ';
         var helpStr = lines.map(function(line) {
           if (Array.isArray(line)) {
-            line = '  ' + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
+            line = indent + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
           }
           return line;
         }).join('\n');
@@ -15698,11 +15724,11 @@
       function getSingleCommandLines(cmd) {
         var lines = [];
         // command name
-        lines.push('Command', getCommandLine(cmd));
+        lines.push('COMMAND', getCommandLine(cmd));
 
         // options
         if (cmd.options.length > 0) {
-          lines.push('', 'Options');
+          lines.push('', 'OPTIONS');
           cmd.options.forEach(function(opt) {
             lines = lines.concat(getOptionLines(opt, cmd));
           });
@@ -15710,7 +15736,7 @@
 
         // examples
         if (cmd.examples) {
-          lines.push('', 'Example' + (cmd.examples.length > 1 ? 's' : ''));
+          lines.push('', 'EXAMPLE' + (cmd.examples.length > 1 ? 'S' : ''));
           cmd.examples.forEach(function(ex, i) {
             if (i > 0) lines.push('');
             ex.split('\n').forEach(function(line, i) {
@@ -16407,7 +16433,7 @@
       .option('no-replace', noReplaceOpt);
 
     parser.command('divide')
-      .describe('divide lines by polygons, copy data from polygons to lines')
+      .describe('divide lines by polygons, copy polygon data to lines')
       .option('fields', {
         describe: 'fields to copy (comma-sep.) (default is all but key field)',
         type: 'strings'
