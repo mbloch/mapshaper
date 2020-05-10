@@ -1,6 +1,7 @@
 import { isInvalidFieldName, deleteFields } from '../datatable/mapshaper-data-utils';
 import { readDelimRecordsFromString, readDelimRecords } from '../text/mapshaper-delim-reader';
-import { encodingIsAsciiCompat } from '../text/mapshaper-encodings';
+import { encodingIsAsciiCompat, trimBOM } from '../text/mapshaper-encodings';
+import { detectEncodingFromBOM } from '../text/mapshaper-encoding-detection';
 import utils from '../utils/mapshaper-utils';
 import { error, message } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -18,7 +19,7 @@ export function importDelim2(data, opts) {
   // TODO: remove duplication with importJSON()
   var readFromFile = !data.content && data.content !== '',
       content = data.content,
-      filter, reader, records, delimiter, table;
+      filter, reader, records, delimiter, table, encoding;
   opts = opts || {};
 
   // // read content of all but very large files into a buffer
@@ -28,7 +29,6 @@ export function importDelim2(data, opts) {
   // }
 
   if (readFromFile) {
-    // try to read data incrementally from file, if content is missing
     reader = new FileReader(data.filename);
   } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
     // Web API may import as ArrayBuffer, to support larger files
@@ -40,11 +40,18 @@ export function importDelim2(data, opts) {
     error("Unexpected object type");
   }
 
-  if (reader && !encodingIsAsciiCompat(opts.encoding)) {
-    // Currently, incremental reading assumes ascii-compatible data.
-    // Incompatible encodings must be parsed as strings.
-    content = reader.toString(opts.encoding);
-    reader = null;
+  if (reader) {
+    encoding = detectEncodingFromBOM(reader.readSync(0, Math.min(reader.size(), 3)));
+    // Files in some encodings have to be converted to strings before parsing
+    // Other encodings are similar enough to ascii that CSV can be parsed
+    // byte-by-byte.
+    if (encoding == 'utf16be' || encoding == 'utf16le') {
+      content = trimBOM(reader.toString(encoding));
+      reader = null;
+    } else if (opts.encoding && !encodingIsAsciiCompat(opts.encoding)) {
+      content = reader.toString(opts.encoding);
+      reader = null;
+    }
   }
 
   if (reader) {

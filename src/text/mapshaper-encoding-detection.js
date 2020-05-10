@@ -1,6 +1,17 @@
 
 import { decodeString } from '../text/mapshaper-encodings';
 
+export function detectEncodingFromBOM(bytes) {
+  // utf8 EF BB BF
+  // utf16be FE FF
+  // utf16le FF FE
+  var n = bytes.length;
+  if (n >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) return 'utf16be';
+  if (n >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) return 'utf16le';
+  if (n >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[1] == 0xBF) return 'utf8';
+  return '';
+}
+
 // Try to detect the encoding of some sample text.
 // Returns an encoding name or null.
 // @samples Array of buffers containing sample text fields

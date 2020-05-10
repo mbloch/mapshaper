@@ -14,6 +14,35 @@ function fixPath(p) {
 
 describe('mapshaper-delim-import.js', function() {
 
+  describe('Auto-detecting UTF-8 and UTF-16 with BOM', function () {
+    var content = `election_dt	county_name	polling_place_id	polling_place_name	precinct_name	house_num	street_name	city	state	zip
+11/05/2019	ALAMANCE	1	ALAMANCE CIVITAN CLUB HOUSE	COBLE	3328	DOCTOR PICKETT RD	BURLINGTON	NC	27215`;
+
+    it('utf16be sample', function (done) {
+      var cmd = '-i test/data/text/utf16_le_bom.csv -o out.tsv'; //
+      api.applyCommands(cmd, {}, function(err, output) {
+        assert.equal(output['out.tsv'], content);
+        done();
+      });
+    })
+
+    it('utf16le sample', function (done) {
+      var cmd = '-i test/data/text/utf16_be_bom.csv -o out.tsv'; //
+      api.applyCommands(cmd, {}, function(err, output) {
+        assert.equal(output['out.tsv'], content);
+        done();
+      });
+    })
+
+    it('utf8 sample', function (done) {
+      var cmd = '-i test/data/text/utf8_bom.csv -o out.tsv'; //
+      api.applyCommands(cmd, {}, function(err, output) {
+        assert.equal(output['out.tsv'], content);
+        done();
+      });
+    })
+  })
+
   describe('csv decoding with -i', function () {
     it('-i csv-lines= csv-field-names= csv-fields= options', function(done) {
       var cmd = '-i test/data/text/states.csv csv-fields=A,D ' +
@@ -120,8 +149,8 @@ LOS ANGELES,,`;
 
 
   function importRecords(str, opts) {
-      var dataset = api.internal.importDelim(str, opts);
-      return dataset.layers[0].data.getRecords();
+    var dataset = api.internal.importDelim(str, opts);
+    return dataset.layers[0].data.getRecords();
   }
 
   describe('importDelim()', function() {
@@ -186,7 +215,7 @@ LOS ANGELES,,`;
       stringifyEqual(importRecords(',foo,\na,b,c\n'), [{foo:'b'}]);
     })
 
-   it('ignore whitespace column names', function() {
+    it('ignore whitespace column names', function() {
       stringifyEqual(importRecords(' ,  ,foo, \na,b,c,d\n'), [{foo: 'c'}]);
     })
   })
@@ -225,16 +254,6 @@ LOS ANGELES,,`;
         assert.ok(output['output.csv'].indexOf(',') > -1); // got commas
         done();
       })
-    })
-  })
-
-  false && describe('Auto-detecting UTF-8 and UTF-16 with BOM', function () {
-    it('utf16be sample', function (done) {
-      var cmd = '-i test/data/text/utf16_le_bom.csv -o out.csv'; //
-      api.applyCommands(cmd, {}, function(err, output) {
-        console.log(output['out.csv']);
-        done();
-      });
     })
   })
 
