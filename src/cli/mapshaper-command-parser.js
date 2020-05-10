@@ -1,6 +1,7 @@
 import { parseStringList, parseColorList, cleanArgv } from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop, print, error } from '../utils/mapshaper-logging';
+import { runningInBrowser } from '../mapshaper-state';
 
 export function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
@@ -240,9 +241,10 @@ export function CommandParser() {
     function formatLines(lines) {
       var colWidth = calcColWidth(lines);
       var gutter = '  ';
+      var indent = runningInBrowser() ? '' : '  ';
       var helpStr = lines.map(function(line) {
         if (Array.isArray(line)) {
-          line = '  ' + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
+          line = indent + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
         }
         return line;
       }).join('\n');
@@ -252,11 +254,11 @@ export function CommandParser() {
     function getSingleCommandLines(cmd) {
       var lines = [];
       // command name
-      lines.push('Command', getCommandLine(cmd));
+      lines.push('COMMAND', getCommandLine(cmd));
 
       // options
       if (cmd.options.length > 0) {
-        lines.push('', 'Options');
+        lines.push('', 'OPTIONS');
         cmd.options.forEach(function(opt) {
           lines = lines.concat(getOptionLines(opt, cmd));
         });
@@ -264,7 +266,7 @@ export function CommandParser() {
 
       // examples
       if (cmd.examples) {
-        lines.push('', 'Example' + (cmd.examples.length > 1 ? 's' : ''));
+        lines.push('', 'EXAMPLE' + (cmd.examples.length > 1 ? 'S' : ''));
         cmd.examples.forEach(function(ex, i) {
           if (i > 0) lines.push('');
           ex.split('\n').forEach(function(line, i) {

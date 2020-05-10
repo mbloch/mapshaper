@@ -530,7 +530,7 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('divide')
-    .describe('divide lines by polygons, copy data from polygons to lines')
+    .describe('divide lines by polygons, copy polygon data to lines')
     .option('fields', {
       describe: 'fields to copy (comma-sep.) (default is all but key field)',
       type: 'strings'

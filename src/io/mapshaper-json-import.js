@@ -35,7 +35,7 @@ export function identifyJSONObject(o) {
     fmt = 'topojson';
   } else if (o.type) {
     fmt = 'geojson';
-  } else if (utils.isArray(o) || o.json_path) {
+  } else if (utils.isArray(o)) {
     fmt = 'json';
   }
   return fmt;
@@ -47,7 +47,12 @@ export function importGeoJSONFile(fileReader, opts) {
   return importer.done();
 }
 
-function importJSONFile(reader, opts) {
+// Parse GeoJSON directly from a binary data source (supports parsing larger files
+// than the maximum JS string length) or return a string with the entire
+// contents of the file.
+// reader: a binary file reader
+//
+function readJSONFile(reader, opts) {
   var str = readFirstChars(reader, 1000);
   var type = identifyJSONString(str, opts);
   var dataset, retn;
@@ -71,7 +76,7 @@ export function importJSON(data, opts) {
   var content = data.content,
       filename = data.filename,
       retn = {filename: filename},
-      reader;
+      reader, fmt;
 
   if (!content) {
     reader = new FileReader(filename);
@@ -87,7 +92,7 @@ export function importJSON(data, opts) {
   }
 
   if (reader) {
-    data = importJSONFile(reader, opts);
+    data = readJSONFile(reader, opts);
     if (data.dataset) {
       retn.dataset = data.dataset;
       retn.format = data.format;
@@ -107,20 +112,23 @@ export function importJSON(data, opts) {
     }
     if (opts.json_path) {
       content = selectFromObject(content, opts.json_path);
-      if (Array.isArray(content) === false) {
-        stop('Expected an array at JSON path:', opts.json_path);
+      fmt = identifyJSONObject(content, opts);
+      if (!fmt) {
+        stop('Unexpected object type at JSON path:', opts.json_path);
       }
+    } else {
+      fmt = identifyJSONObject(content, opts);
     }
-    retn.format = identifyJSONObject(content, opts);
-    if (retn.format == 'topojson') {
+    if (fmt == 'topojson') {
       retn.dataset = importTopoJSON(content, opts);
-    } else if (retn.format == 'geojson') {
+    } else if (fmt == 'geojson') {
       retn.dataset = importGeoJSON(content, opts);
-    } else if (retn.format == 'json') {
+    } else if (fmt == 'json') {
       retn.dataset = importJSONTable(content, opts);
     } else {
       stop("Unknown JSON format");
     }
+    retn.format = fmt;
   }
 
   return retn;
@@ -128,7 +136,7 @@ export function importJSON(data, opts) {
 
 // path: path from top-level to the target object
 function selectFromObject(o, path) {
-  var arrayRxp = /(.*)\[([0-9]+)\]$/;
+  var arrayRxp = /(.*)\[([0-9]+)\]$/; // bracket
   var separator = path.indexOf('/') > 0 ? '/' : '.';
   var parts = path.split(separator);
   var subpath, array, match;

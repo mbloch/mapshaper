@@ -34,6 +34,24 @@ describe('mapshaper-import.js', function () {
       });
     });
 
+    it('import GeoJSON data', function(done) {
+      var data = {
+        point: {
+          type: 'Feature',
+          properties: {id: 'foo'},
+          geometry: {
+            type: 'Point',
+            coordinates: [3, 2]
+          }
+        }
+      };
+      api.applyCommands('-i data.json json-path=point -o', {'data.json': data}, function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        assert.deepEqual(json.features[0], data.point);
+        done();
+      })
+    });
+
     it('nested path, string input', function(done) {
       var data = JSON.stringify({
         data: {
