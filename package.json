@@ -38,7 +38,7 @@
 		"!.DS_Store"
 	],
 	"dependencies": {
-		"cookies": "^0.7.1",
+		"cookies": "^0.8.0",
 		"flatbush": "^3.2.1",
 		"iconv-lite": "0.4.24",
 		"mproj": "0.0.26",
