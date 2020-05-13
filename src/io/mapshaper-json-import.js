@@ -136,7 +136,7 @@ export function importJSON(data, opts) {
 
 // path: path from top-level to the target object
 function selectFromObject(o, path) {
-  var arrayRxp = /(.*)\[([0-9]+)\]$/; // bracket
+  var arrayRxp = /(.*)\[([0-9]+)\]$/; // array bracket notation w/ index
   var separator = path.indexOf('/') > 0 ? '/' : '.';
   var parts = path.split(separator);
   var subpath, array, match;

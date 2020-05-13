@@ -140,17 +140,17 @@ export function DisplayCanvas() {
   };
   */
 
-
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
   _self.drawPathShapes = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
     var startPath = getPathStart(_ext, getScaledLineScale(_ext));
     var draw = getShapePencil(arcs, _ext);
-    var key, item;
+    var key, item, shp;
     var styler = style.styler || null;
     for (var i=0; i<shapes.length; i++) {
-      if (filter && !filter(shapes[i])) continue;
+      shp = shapes[i];
+      if (!shp || filter && !filter(shp)) continue;
       if (styler) styler(style, i);
       key = getStyleKey(style);
       if (key in styleIndex === false) {
@@ -160,7 +160,7 @@ export function DisplayCanvas() {
         };
       }
       item = styleIndex[key];
-      item.shapes.push(shapes[i]);
+      item.shapes.push(shp);
       // overlays should not be batched, so transparency of overlapping shapes
       // is drawn correctly
       if (item.shapes.length >= batchSize || style.overlay) {
