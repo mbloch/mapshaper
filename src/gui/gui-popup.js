@@ -87,8 +87,21 @@ export function Popup(gui, toNext, toPrev) {
         rows++;
       }
     });
+
     if (rows > 0) {
       tableEl.appendTo(el);
+
+      tableEl.on('copy', function(e) {
+        // remove leading or trailing tabs that sometimes get copied when
+        // selecting from a table
+        var pasted = window.getSelection().toString();
+        var cleaned = pasted.replace(/^\t/, '').replace(/\t$/, '');
+        if (pasted != cleaned && !window.clipboardData) { // ignore ie
+          (e.clipboardData || e.originalEvent.clipboardData).setData("text", cleaned);
+          e.preventDefault(); // don't copy original string with tabs
+        }
+      });
+
     } else {
       // Some individual features can have undefined values for some or all of
       // their data properties (properties are set to undefined when an input JSON file
