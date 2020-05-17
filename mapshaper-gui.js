@@ -5186,8 +5186,21 @@
           rows++;
         }
       });
+
       if (rows > 0) {
         tableEl.appendTo(el);
+
+        tableEl.on('copy', function(e) {
+          // remove leading or trailing tabs that sometimes get copied when
+          // selecting from a table
+          var pasted = window.getSelection().toString();
+          var cleaned = pasted.replace(/^\t/, '').replace(/\t$/, '');
+          if (pasted != cleaned && !window.clipboardData) { // ignore ie
+            (e.clipboardData || e.originalEvent.clipboardData).setData("text", cleaned);
+            e.preventDefault(); // don't copy original string with tabs
+          }
+        });
+
       } else {
         // Some individual features can have undefined values for some or all of
         // their data properties (properties are set to undefined when an input JSON file
@@ -6352,17 +6365,17 @@
     };
     */
 
-
     // Optimized to draw paths in same-style batches (faster Canvas drawing)
     _self.drawPathShapes = function(shapes, arcs, style, filter) {
       var styleIndex = {};
       var batchSize = 1500;
       var startPath = getPathStart(_ext, getScaledLineScale(_ext));
       var draw = getShapePencil(arcs, _ext);
-      var key, item;
+      var key, item, shp;
       var styler = style.styler || null;
       for (var i=0; i<shapes.length; i++) {
-        if (filter && !filter(shapes[i])) continue;
+        shp = shapes[i];
+        if (!shp || filter && !filter(shp)) continue;
         if (styler) styler(style, i);
         key = getStyleKey(style);
         if (key in styleIndex === false) {
@@ -6372,7 +6385,7 @@
           };
         }
         item = styleIndex[key];
-        item.shapes.push(shapes[i]);
+        item.shapes.push(shp);
         // overlays should not be batched, so transparency of overlapping shapes
         // is drawn correctly
         if (item.shapes.length >= batchSize || style.overlay) {

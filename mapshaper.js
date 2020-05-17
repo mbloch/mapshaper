@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.6";
+  var VERSION = "0.5.8";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -6178,7 +6178,7 @@
     var n = bytes.length;
     if (n >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) return 'utf16be';
     if (n >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) return 'utf16le';
-    if (n >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[1] == 0xBF) return 'utf8';
+    if (n >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) return 'utf8';
     return '';
   }
 
@@ -11129,7 +11129,7 @@
 
   // path: path from top-level to the target object
   function selectFromObject(o, path) {
-    var arrayRxp = /(.*)\[([0-9]+)\]$/; // bracket
+    var arrayRxp = /(.*)\[([0-9]+)\]$/; // array bracket notation w/ index
     var separator = path.indexOf('/') > 0 ? '/' : '.';
     var parts = path.split(separator);
     var subpath, array, match;
@@ -12308,6 +12308,8 @@
   });
 
   // Merge layers, checking for incompatible geometries and data fields.
+  // Assumes that input layers are members of the same dataset (and therefore
+  // share the same ArcCollection, if layers have paths).
   cmd.mergeLayers = function(layersArg, opts) {
     var layers = layersArg.filter(getFeatureCount); // ignore empty layers
     var merged = {};
@@ -12317,7 +12319,7 @@
       message('Use the target= option to specify multiple layers for merging');
       return layers.concat();
     }
-    merged.data = mergeDataFromLayers(layers, opts.force);
+    merged.data = mergeDataFromLayers(layers, opts);
     merged.name = mergeLayerNames(layers);
     merged.geometry_type = getMergedLayersGeometryType(layers);
     if (merged.geometry_type) {
@@ -12348,53 +12350,57 @@
     }, []);
   }
 
-  function mergeDataFromLayers(layers, force) {
+  function mergeDataFromLayers(layers, opts) {
     var allFields = utils.uniq(layers.reduce(function(memo, lyr) {
       return memo.concat(lyr.data ? lyr.data.getFields() : []);
     }, []));
     if (allFields.length === 0) return null; // no data in any fields
-    var missingFields = checkMergeLayersInconsistentFields(allFields, layers, force);
     var mergedRecords = layers.reduce(function(memo, lyr) {
       var records = lyr.data ? lyr.data.getRecords() : new DataTable(getFeatureCount(lyr)).getRecords();
       return memo.concat(records);
     }, []);
+    var missingFields = findInconsistentFields(allFields, layers);
+    handleMissingFields(missingFields, opts);
+    checkInconsistentFieldTypes(allFields, layers);
     if (missingFields.length > 0) {
       fixInconsistentFields(mergedRecords);
     }
     return new DataTable(mergedRecords);
   }
 
-  function checkMergeLayersInconsistentFields(allFields, layers, force) {
+  // handle fields that are missing from one or more layers
+  // (warn if force-merging, else error)
+  function handleMissingFields(missingFields, opts) {
     var msg;
-    // handle fields that are missing from one or more layers
-    // (warn if force-merging, else error)
-    var missingFields = utils.uniq(layers.reduce(function(memo, lyr) {
-      return memo.concat(utils.difference(allFields, lyr.data ? lyr.data.getFields() : []));
-    }, []));
     if (missingFields.length > 0) {
       msg = '[' + missingFields.join(', ') + ']';
       msg = (missingFields.length == 1 ? 'Field ' + msg + ' is missing' : 'Fields ' + msg + ' are missing') + ' from one or more layers';
-      if (force) {
-        message('Warning: ' + msg);
-      } else {
+      if (!opts.force) {
         stop(msg);
+      } else if (opts.verbose !== false) {
+        message('Warning: ' + msg);
       }
     }
-    // check for fields with incompatible data types (e.g. number, string)
-    checkMergeLayersFieldTypes(allFields, layers);
+  }
+
+  function findInconsistentFields(allFields, layers) {
+    var missingFields = utils.uniq(layers.reduce(function(memo, lyr) {
+      return memo.concat(utils.difference(allFields, lyr.data ? lyr.data.getFields() : []));
+    }, []));
     return missingFields;
   }
 
-  function checkMergeLayersFieldTypes(fields, layers) {
+  // check for fields with incompatible data types (e.g. number, string)
+  function checkInconsistentFieldTypes(fields, layers) {
     fields.forEach(function(key) {
-      var types = checkFieldTypes(key, layers);
+      var types = findFieldTypes(key, layers);
       if (types.length > 1) {
         stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
       }
     });
   }
 
-  function checkFieldTypes(key, layers) {
+  function findFieldTypes(key, layers) {
     // ignores empty-type fields
     return layers.reduce(function(memo, lyr) {
       var type = lyr.data ? getColumnType(key, lyr.data.getRecords()) : null;
@@ -16398,6 +16404,7 @@
         type: 'flag',
         describe: 'make multipart features instead of dissolving'
       })
+      .option('where', whereOpt)
       .option('group-points', {
         type: 'flag',
         describe: '[points] group points instead of converting to centroids'
@@ -18217,6 +18224,35 @@
     getModeData: getModeData
   });
 
+  // Get a copy of a layer containing a subset of the layer's features,
+  // given a "where" expression in the options object
+  function getLayerSelection(lyr, arcs, opts) {
+    var lyr2 = utils.extend({}, lyr);
+    var filterOpts = {
+          expression: opts.where,
+          invert: !!opts.invert,
+          verbose: false,   // don't print status message
+          no_replace: opts.no_replace // copy features if original features will be retained
+        };
+    return cmd.filterFeatures(lyr2, arcs, filterOpts);
+  }
+
+  // Used to run -dissolve with the where= option; could be generalized to support
+  // other commands
+  function applyCommandToLayerSelection(commandFunc, lyr, arcs, opts) {
+    if (!opts || !opts.where) {
+      error('Missing required "where" parameter');
+    }
+    var filter = compileValueExpression(opts.where, lyr, arcs);
+    var subsetLyr = getLayerSelection(lyr, arcs, opts);
+    var cmdOpts = utils.defaults({where: null}, opts); // prevent infinite recursion
+    var outputLyr = commandFunc(subsetLyr, arcs, cmdOpts);
+    var filterOpts = utils.defaults({invert: true}, opts);
+    var filteredLyr = getLayerSelection(lyr, arcs, filterOpts);
+    var merged = cmd.mergeLayers([filteredLyr, outputLyr], {verbose: false, force: true});
+    return merged[0];
+  }
+
   // Calculate an expression across a group of features, print and return the result
   // Supported functions include sum(), average(), max(), min(), median(), count()
   // Functions receive an expression to be applied to each feature (like the -each command)
@@ -18229,11 +18265,7 @@
         result, compiled, defs;
     if (opts.where) {
       // TODO: implement no_replace option for filter() instead of this
-      lyr = {
-        shapes: lyr.shapes,
-        data: lyr.data
-      };
-      cmd.filterFeatures(lyr, arcs, {expression: opts.where});
+      lyr = getLayerSelection(lyr, arcs, opts);
       msg += ' where ' + opts.where;
     }
     // Save any assigned variables to the defs object, so they will be available
@@ -18887,6 +18919,9 @@
   cmd.dissolve = function(lyr, arcs, opts) {
     var dissolveShapes, getGroupId;
     opts = utils.extend({}, opts);
+    if (opts.where) {
+      return applyCommandToLayerSelection(cmd.dissolve, lyr, arcs, opts);
+    }
     if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
     getGroupId = getCategoryClassifier(opts.fields, lyr.data);
     if (opts.multipart || opts.group_points) {
