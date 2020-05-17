@@ -1,3 +1,6 @@
+v0.5.9
+* Added "where=" option to the -dissolve command, for dissolving a subset of features in a layer.
+
 v0.5.8
 * Automatically detect encoding of CSV files when byte-order-mark (BOM) is present.
 * Extend "json-path" option to support importing GeoJSON and TopoJSON data that is nested inside a larger JSON object.
