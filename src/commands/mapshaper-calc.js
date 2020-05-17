@@ -2,6 +2,7 @@ import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getMode } from '../utils/mapshaper-calc-utils';
+import { getLayerSelection } from '../dataset/mapshaper-command-utils';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { getStateVar } from '../mapshaper-state';
@@ -19,11 +20,7 @@ cmd.calc = function(lyr, arcs, opts) {
       result, compiled, defs;
   if (opts.where) {
     // TODO: implement no_replace option for filter() instead of this
-    lyr = {
-      shapes: lyr.shapes,
-      data: lyr.data
-    };
-    cmd.filterFeatures(lyr, arcs, {expression: opts.where});
+    lyr = getLayerSelection(lyr, arcs, opts);
     msg += ' where ' + opts.where;
   }
   // Save any assigned variables to the defs object, so they will be available

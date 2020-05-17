@@ -495,6 +495,7 @@ export function getOptionParser() {
       type: 'flag',
       describe: 'make multipart features instead of dissolving'
     })
+    .option('where', whereOpt)
     .option('group-points', {
       type: 'flag',
       describe: '[points] group points instead of converting to centroids'

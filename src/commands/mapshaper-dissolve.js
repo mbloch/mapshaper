@@ -5,6 +5,7 @@ import { dissolvePointGeometry } from '../dissolve/mapshaper-point-dissolve';
 import { dissolvePolylineGeometry } from '../dissolve/mapshaper-polyline-dissolve';
 import { dissolvePolygonGeometry } from '../dissolve/mapshaper-polygon-dissolve';
 import { getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
+import { applyCommandToLayerSelection } from '../dataset/mapshaper-command-utils';
 import utils from '../utils/mapshaper-utils';
 import { message } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
@@ -18,6 +19,9 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 cmd.dissolve = function(lyr, arcs, opts) {
   var dissolveShapes, getGroupId;
   opts = utils.extend({}, opts);
+  if (opts.where) {
+    return applyCommandToLayerSelection(cmd.dissolve, lyr, arcs, opts);
+  }
   if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
   getGroupId = getCategoryClassifier(opts.fields, lyr.data);
   if (opts.multipart || opts.group_points) {

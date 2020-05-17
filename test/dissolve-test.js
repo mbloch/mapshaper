@@ -8,6 +8,54 @@ describe('mapshaper-dissolve.js', function () {
 
   describe('-dissolve command', function () {
 
+    it('where= options dissolves a subset of features', function(done) {
+      var input = 'id,x,y\na,0,0\na,1,1\nb,2,2\nb,3,3';
+      var cmd = '-i points.csv -points -dissolve planar id where=\'id == "a"\' -o format=geojson';
+      var expect = {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [2,2]
+            },
+            "properties": {
+              "id": "b",
+              "x": 2,
+              "y": 2
+            }
+          },
+          {
+            "type": "Feature",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [3,3]
+            },
+            "properties": {
+              "id": "b",
+              "x": 3,
+              "y": 3
+            }
+          },
+          {
+            "type": "Feature",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [0.5, 0.5]
+            },
+            "properties": {
+              "id": "a"
+            }
+          }
+        ]
+      };
+      api.applyCommands(cmd, {'points.csv': input}, function(err, out) {
+        var json = JSON.parse(out['points.json']);
+        assert.deepEqual(json, expect);
+        done();
+      });
+    });
+
     it('Fix: dissolve a layer with no attributes', function(done) {
       var input = {
         type: 'GeometryCollection',
