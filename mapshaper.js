@@ -16643,6 +16643,14 @@
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
+    parser.command('inlay')
+      .describe('inscribe a polygon layer inside another polygon layer')
+      .option('source', {
+        DEFAULT: true,
+        describe: 'file or layer containing polygons to inlay'
+      })
+      .option('target', targetOpt);
+
     parser.command('innerlines')
       .describe('convert polygons to polylines along shared edges')
       .flag('no_arg')
@@ -18243,7 +18251,6 @@
     if (!opts || !opts.where) {
       error('Missing required "where" parameter');
     }
-    var filter = compileValueExpression(opts.where, lyr, arcs);
     var subsetLyr = getLayerSelection(lyr, arcs, opts);
     var cmdOpts = utils.defaults({where: null}, opts); // prevent infinite recursion
     var outputLyr = commandFunc(subsetLyr, arcs, cmdOpts);
@@ -24895,6 +24902,25 @@
     formatTableValue: formatTableValue
   });
 
+  // TODO: make sure that the inlay shapes and data are not shared
+  cmd.inlay = function(targetLayers, src, targetDataset, opts) {
+    var mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, src, opts);
+    var inlayLyr = mergedDataset.layers[mergedDataset.layers.length - 1];
+    requirePolygonLayer(inlayLyr);
+    targetLayers.forEach(requirePolygonLayer);
+    var eraseSrc = {layer: inlayLyr, dataset: mergedDataset};
+    var erasedLayers = cmd.eraseLayers(targetLayers, eraseSrc, mergedDataset, opts);
+    var outputLayers = erasedLayers.map(function(lyr0) {
+      // similar to applyCommandToLayerSelection() (mapshaper-command-utils.js)
+      var lyr1 = copyLayer(inlayLyr);
+      var lyr2 = cmd.mergeLayers([lyr0, lyr1], {force: true})[0];
+      lyr2.name = lyr0.name;
+      return lyr2;
+    });
+    targetDataset.arcs = mergedDataset.arcs;
+    return outputLayers;
+  };
+
   cmd.lines = function(lyr, dataset, opts) {
     opts = opts || {};
     if (lyr.geometry_type == 'point') {
@@ -28591,6 +28617,9 @@
 
       } else if (name == 'info') {
         cmd.printInfo(expandCommandTargets(targets));
+
+      } else if (name == 'inlay') {
+        outputLayers = cmd.inlay(targetLayers, source, targetDataset, opts);
 
       } else if (name == 'inspect') {
         applyCommandToEachLayer(cmd.inspect, targetLayers, arcs, opts);
