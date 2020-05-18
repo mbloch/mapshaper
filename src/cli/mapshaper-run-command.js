@@ -42,6 +42,7 @@ import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
 import '../commands/mapshaper-include';
 import '../commands/mapshaper-info';
+import '../commands/mapshaper-inlay';
 import '../commands/mapshaper-innerlines';
 import '../commands/mapshaper-inspect';
 import '../commands/mapshaper-join';
@@ -241,6 +242,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'info') {
       cmd.printInfo(expandCommandTargets(targets));
+
+    } else if (name == 'inlay') {
+      outputLayers = cmd.inlay(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'inspect') {
       applyCommandToEachLayer(cmd.inspect, targetLayers, arcs, opts);

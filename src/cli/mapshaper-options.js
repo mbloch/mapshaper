@@ -734,6 +734,14 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('inlay')
+    .describe('inscribe a polygon layer inside another polygon layer')
+    .option('source', {
+      DEFAULT: true,
+      describe: 'file or layer containing polygons to inlay'
+    })
+    .option('target', targetOpt);
+
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
     .flag('no_arg')

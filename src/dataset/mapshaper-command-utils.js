@@ -23,7 +23,6 @@ export function applyCommandToLayerSelection(commandFunc, lyr, arcs, opts) {
   if (!opts || !opts.where) {
     error('Missing required "where" parameter');
   }
-  var filter = compileValueExpression(opts.where, lyr, arcs);
   var subsetLyr = getLayerSelection(lyr, arcs, opts);
   var cmdOpts = utils.defaults({where: null}, opts); // prevent infinite recursion
   var outputLyr = commandFunc(subsetLyr, arcs, cmdOpts);
