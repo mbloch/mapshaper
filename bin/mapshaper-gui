@@ -1,54 +1,28 @@
 #!/usr/bin/env node
 
-var http = require("http"),
+var defaultPort = 5555,
+    program = require('commander')
+      .name('mapshaper-gui')
+      .usage('[options] [file ...]')
+      .option('-p, --port <port>', 'http port of server on localhost', defaultPort)
+      .option('-q, --quick-view', 'load files with default options, bypassing import dialog')
+      .option('-s, --direct-save', 'save files outside the browser\'s download folder')
+      .option('-f, --force-save', 'allow overwriting input files with output files')
+      .option('-a, --display-all', 'turn on visibility of all layers')
+      .helpOption('-h, --help', 'show this help message')
+      .version(require('../package.json').version)
+      .parse(),
+    opts = program.opts(),
+    http = require("http"),
     path = require("path"),
     url = require("url"),
     fs = require("fs"),
     Cookies = require("cookies"),
     opn = require("opn"),
-    optimist = require("optimist"),
-    defaultPort = 5555,
     webRoot = path.join(__dirname, "../www"),
-    opts = optimist.usage("Usage: $ mapshaper-gui [options] [file ...]")
-      .options("h", {
-        alias: "help",
-        describe: "show this help message",
-        'boolean': true
-      })
-      .options("p", {
-        alias: "port",
-        default: defaultPort,
-        describe: "http port of server on localhost"
-      })
-      .options("q", {
-        alias: "quick-view",
-        describe: "load files with default options (bypasses import dialog)",
-        'boolean': true
-      })
-      .options("s", {
-        alias: "direct-save",
-        describe: "allow saving files directly (outside Download folder)",
-        'boolean': true
-      })
-      .options("f", {
-        alias: "force-save",
-        describe: "allow overwriting input files with output files",
-        'boolean': true
-      })
-      .options("a", {
-        alias: "display-all",
-        describe: "turn on visibility of all layers",
-        'boolean': true
-      })
-      .check(function(argv) {
-        if (argv.h) {
-          optimist.showHelp();
-          process.exit(0);
-        }
-      }).argv,
     port = parseInt(opts.port, 10) || defaultPort,
+    dataFiles = expandShapefiles(program.args),
     probeCount = 0,
-    dataFiles = expandShapefiles(opts._),
     sessionId = null;
 
 validateFiles(dataFiles);
@@ -87,7 +61,7 @@ function startServer(port) {
         process.exit(0);
       }, 200);
     } else if (uri == "/manifest.js") {
-      if (!sessionId && opts.s) {
+      if (!sessionId && opts.directSave) {
         // create a session id for authenticating requests to save files
         // (see saveContent())
         sessionId = getRandomSessionId();
@@ -201,7 +175,7 @@ function validateOutputFile(file) {
   if (relPath.indexOf('..') > -1) {
     return 'parent directories are blocked';
   }
-  if (!opts.f) {
+  if (!opts.forceSave) {
     for (var i=0; i<dataFiles.length; i++) {
       if (!path.relative(file, dataFiles[i])) {
         return 'tried to overwrite a source file';
@@ -213,9 +187,9 @@ function validateOutputFile(file) {
 
 function getManifestJS(files, opts) {
   var o = {files: files};
-  if (opts.s) o.allow_saving = true;
-  if (opts.a) o.display_all = true;
-  if (opts.q) o.quick_view = true;
+  if (opts.directSave) o.allow_saving = true;
+  if (opts.displayAll) o.display_all = true;
+  if (opts.quickView) o.quick_view = true;
   return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 
