@@ -1,3 +1,6 @@
+v0.5.10
+* Added -inlay command, for inscribing the contents of a second polygon layer into the target polygon layer.
+
 v0.5.9
 * Added "where=" option to the -dissolve command, for dissolving a subset of features in a layer.
 
