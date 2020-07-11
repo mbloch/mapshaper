@@ -1,7 +1,7 @@
 
 import { preserveContext } from '../mapshaper-state';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
-import { stop, error } from '../utils/mapshaper-logging';
+import { stop, error, message } from '../utils/mapshaper-logging';
 import { Buffer } from '../utils/mapshaper-node-buffer';
 import utils from '../utils/mapshaper-utils';
 import { getStateVar, runningInBrowser } from '../mapshaper-state';
@@ -47,13 +47,25 @@ cli.readFile = function(fname, encoding, cache) {
   return content;
 };
 
-// @content Buffer or string
-cli.writeFile = function(path, content, cb) {
+cli.createDirIfNeeded = function(fname) {
+  var odir = parseLocalPath(fname).directory;
+  if (!odir || cli.isDirectory(odir)) return;
+  try {
+    require('fs').mkdirSync(odir, {recursive: true});
+    message('Created output directory:', odir);
+  } catch(e) {
+    stop('Unable to create output directory:', odir);
+  }
+};
+
+// content: Buffer or string
+cli.writeFile = function(fname, content, cb) {
   var fs = require('rw');
+  cli.createDirIfNeeded(fname);
   if (cb) {
-    fs.writeFile(path, content, preserveContext(cb));
+    fs.writeFile(fname, content, preserveContext(cb));
   } else {
-    fs.writeFileSync(path, content);
+    fs.writeFileSync(fname, content);
   }
 };
 

@@ -124,7 +124,9 @@ export function validateOutputOpts(cmd) {
   } else if (arg) {
     if (pathInfo.directory) {
       o.directory = pathInfo.directory;
-      cli.validateOutputDir(o.directory);
+      // no longer checking for missing directory
+      // (cli.writeFile() now creates directories that don't exist)
+      // cli.validateOutputDir(o.directory);
     }
     o.file = pathInfo.filename;
     if (filenameIsUnsupportedOutputType(o.file)) {
