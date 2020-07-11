@@ -73,9 +73,9 @@ export function compileCalcExpression(lyr, arcs, exp) {
   }
 
   calc1 = compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
-      no_assign: true, quiet: true});
+      no_assign: true, no_warn: true});
   calc2 = compileFeatureExpression(exp, {data: lyr.data}, null,
-      {returns: true, context: ctx2, quiet: true});
+      {returns: true, context: ctx2, no_warn: true});
 
   // @destRec: optional destination record for assignments
   return function(ids, destRec) {

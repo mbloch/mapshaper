@@ -149,7 +149,7 @@ export function compileExpressionToFunction(exp, opts) {
   try {
     func = new Function("$$record,$$env",  functionBody);
   } catch(e) {
-    if (opts.quiet) throw e;
+    // if (opts.quiet) throw e;
     stop(e.name, "in expression [" + exp + "]");
   }
   return func;
@@ -169,7 +169,7 @@ function getExpressionFunction(exp, lyr, arcs, opts) {
     try {
       val = func.call(ctx.$, rec, ctx);
     } catch(e) {
-      if (opts.quiet) throw e;
+      // if (opts.quiet) throw e;
       stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return val;
@@ -213,8 +213,8 @@ function getExpressionContext(lyr, mixins, opts) {
   return Object.keys(env).reduce(function(memo, key) {
     if (key in memo) {
       // property has already been set (probably by a mixin, above): skip
-      // "quiet" option used in calc= expressions
-      if (!opts.quiet) {
+      // "no_warn" option used in calc= expressions
+      if (!opts.no_warn) {
         if (typeof memo[key] == 'function' && fields.indexOf(key) > -1) {
           message('Warning: ' + key + '() function is hiding a data field with the same name');
         } else {
