@@ -13,14 +13,23 @@ cmd.uniq = function(lyr, arcs, opts) {
       keepFlags = [],
       verbose = !!opts.verbose,
       invert = !!opts.invert,
+      index = !!opts.index,
       records = lyr.data ? lyr.data.getRecords() : null,
       filter = function(d, i) {return keepFlags[i];};
+
 
   utils.repeat(n, function(i) {
     var val = compiled(i);
     var count = val in counts ? counts[val] + 1 : 1;
     var keep = count <= maxCount;
-    if (invert) keep = !keep;
+    var rec;
+    if (index) {
+      keep = true;
+      rec = records && records[i];
+      if (rec) rec.index = count;
+    } else if (invert) {
+      keep = !keep;
+    }
     keepFlags[i] = keep;
     counts[val] = count;
     if (verbose && !keep) {

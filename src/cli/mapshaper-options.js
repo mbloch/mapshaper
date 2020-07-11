@@ -176,7 +176,7 @@ export function getOptionParser() {
     })
     .option('json-path', {
       old_alias: 'json-subtree',
-      describe: '[JSON] path to an array of data records; separator is /'
+      describe: '[JSON] path to JSON input data; separator is /'
     });
 
   parser.command('o')
@@ -1270,6 +1270,10 @@ export function getOptionParser() {
     .option('max-count', {
       type: 'number',
       describe: 'max features with the same id (default is 1)'
+    })
+    .option('index', {
+      // describe: 'add an index instead of filtering'
+      type: 'flag'
     })
     .option('invert', invertOpt)
     .option('verbose', {
