@@ -22,7 +22,7 @@
 		"node": ">=6.0.0"
 	},
 	"scripts": {
-		"test": "mocha --check-leaks -R dot",
+		"test": "mocha --parallel --check-leaks -R dot",
 		"build": "rollup --config",
 		"prepublishOnly": "npm test",
 		"postpublish": "./release",
@@ -52,7 +52,7 @@
 		"csv-spectrum": "^1.0.0",
 		"deep-eql": ">=0.1.3",
 		"esm": "^3.2.25",
-		"mocha": "^7.2.0",
+		"mocha": "^8.0.1",
 		"rollup": "^2.3.0",
 		"shell-quote": "^1.6.1",
 		"underscore": "^1.9.0"
