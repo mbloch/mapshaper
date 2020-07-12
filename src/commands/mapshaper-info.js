@@ -28,7 +28,32 @@ cmd.printInfo = function(layers) {
 };
 
 function measureLongestLine(str) {
-  return Math.max.apply(null, str.split('\n').map(function(line) {return line.length;}));
+  return Math.max.apply(null, str.split('\n').map(function(line) {return stringDisplayWidth(line);}));
+}
+
+function stringDisplayWidth(str) {
+  var w = 0;
+  for (var i = 0, n=str.length; i < n; i++) {
+    w += charDisplayWidth(str.charCodeAt(i));
+  }
+  return w;
+}
+
+// see https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
+// this is a simplified version, focusing on double-width CJK chars and ignoring nonprinting etc chars
+function charDisplayWidth(c) {
+  if (c >= 0x1100 &&
+    (c <= 0x115f || c == 0x2329 || c == 0x232a ||
+    (c >= 0x2e80 && c <= 0xa4cf && c != 0x303f) || /* CJK ... Yi */
+    (c >= 0xac00 && c <= 0xd7a3) || /* Hangul Syllables */
+    (c >= 0xf900 && c <= 0xfaff) || /* CJK Compatibility Ideographs */
+    (c >= 0xfe10 && c <= 0xfe19) || /* Vertical forms */
+    (c >= 0xfe30 && c <= 0xfe6f) || /* CJK Compatibility Forms */
+    (c >= 0xff00 && c <= 0xff60) || /* Fullwidth Forms */
+    (c >= 0xffe0 && c <= 0xffe6) ||
+    (c >= 0x20000 && c <= 0x2fffd) ||
+    (c >= 0x30000 && c <= 0x3fffd))) return 2;
+  return 1;
 }
 
 export function getLayerData(lyr, dataset) {
@@ -120,12 +145,15 @@ function formatAttributeTable(data, i) {
   var sepLine = sepStr + '\n';
   var table = sepLine;
   col1Arr.forEach(function(col1, i) {
-    table += ' ' + utils.rpad(col1, col1Chars, ' ') + ' | ' +
+    var w = stringDisplayWidth(col1);
+    table += ' ' + col1 + utils.rpad('', col1Chars - w, ' ') + ' | ' +
       col2Arr[i] + '\n';
     if (i === 0) table += sepLine; // separator after first line
   });
   return table + sepLine;
 }
+
+
 
 function formatNumber(val) {
   return val + '';
@@ -133,7 +161,8 @@ function formatNumber(val) {
 
 function maxChars(arr) {
   return arr.reduce(function(memo, str) {
-    return str.length > memo ? str.length : memo;
+    var w = stringDisplayWidth(str);
+    return w > memo ? w : memo;
   }, 0);
 }
 
