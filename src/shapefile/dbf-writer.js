@@ -1,5 +1,5 @@
 
-import { encodeString, decodeString } from '../text/mapshaper-encodings';
+import { encodeString, decodeString, stringIsAscii } from '../text/mapshaper-encodings';
 import { findFieldNames, getUniqFieldNames } from '../datatable/mapshaper-data-utils';
 import { error, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
@@ -45,14 +45,12 @@ var bufferPool = new BufferPool();
 function exportRecords(records, encoding, fieldOrder) {
   var rows = records.length;
   var fields = findFieldNames(records, fieldOrder);
-  var dbfFields = convertFieldNames(fields);
+  var dataEncoding = encoding || 'utf8';
+  var headerEncoding = stringIsAscii(fields.join('')) ? 'ascii' : dataEncoding;
+  var fieldNames = convertFieldNames(fields, headerEncoding);
+  var fieldBuffers = encodeFieldNames(fieldNames, headerEncoding); // array of 11-byte buffers
   var fieldData = fields.map(function(name, i) {
-    var info = getFieldInfo(records, name, encoding || 'utf8');
-    var name2 = dbfFields[i];
-    info.name = name2;
-    if (name != name2) {
-      message('Changed field name from "' + name + '" to "' + name2 + '"');
-    }
+    var info = getFieldInfo(records, name, dataEncoding);
     if (info.warning) {
       message('[' + name + '] ' + info.warning);
     }
@@ -81,8 +79,9 @@ function exportRecords(records, encoding, fieldOrder) {
 
 
   // field subrecords
-  fieldData.reduce(function(recordOffset, obj) {
-    bin.writeCString(obj.name, 11);
+  fieldData.reduce(function(recordOffset, obj, i) {
+    // bin.writeCString(obj.name, 11);
+    bin.writeBuffer(fieldBuffers[i], 11, 0);
     bin.writeUint8(obj.type.charCodeAt(0));
     bin.writeUint32(recordOffset);
     bin.writeUint8(obj.size);
@@ -218,15 +217,41 @@ function initStringField(info, arr, name, encoding) {
   }
 }
 
-function convertFieldNames(names) {
-  return getUniqFieldNames(names.map(cleanFieldName), 10);
+// Convert string names to 11-byte buffers terminated by 0
+function encodeFieldNames(names, encoding) {
+  return names.map(function(name) {
+    var encoded = encodeString(name, encoding);
+    var encLen = encoded.length;
+    var buf = utils.createBuffer(11);
+    for (var i=0; i < 11; i++) {
+      buf[i] = i < 10 && encLen >= i - 1 ? encoded[i] : 0;
+    }
+    return buf;
+  });
+}
+
+// Truncate and dedup field names
+//
+function convertFieldNames(names, encoding) {
+  var names2 = getUniqFieldNames(names.map(cleanFieldName), 10, encoding);
+  names2.forEach(function(name2, i) {
+    if (names[i] != name2) {
+      message('Changed field name from "' + names[i] + '" to "' + name2 + '"');
+    }
+  });
+  return names2;
 }
 
 // Replace non-alphanumeric characters with _ and merge adjacent _
 // See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
 // TODO: decide whether or not to avoid initial numerals
-function cleanFieldName(name) {
+function cleanFieldName_v1(name) {
   return name.replace(/[^A-Za-z0-9]+/g, '_');
+}
+
+// Support non-ascii field names
+function cleanFieldName(name) {
+  return name.replace(/[-\s]+/g, '_');
 }
 
 function getFieldInfo(arr, name, encoding) {

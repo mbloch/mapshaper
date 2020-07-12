@@ -1,5 +1,6 @@
 
 import utils from '../utils/mapshaper-utils';
+import { encodeString } from '../text/mapshaper-encodings';
 
 // Not a general-purpose deep copy function
 export function copyRecord(o) {
@@ -18,7 +19,6 @@ export function copyRecord(o) {
   }
   return o2;
 }
-
 
 export function getValueType(val) {
   var type = null;
@@ -99,13 +99,15 @@ export function isInvalidFieldName(f) {
 // @fields Array of field names
 // @maxLen (optional) Maximum chars in name
 //
-export function getUniqFieldNames(fields, maxLen) {
+export function getUniqFieldNames(fields, maxLen, encoding) {
   var used = {};
   return fields.map(function(name) {
     var i = 0,
         validName;
     do {
-      validName = adjustFieldName(name, maxLen, i);
+      validName = encoding && encoding != 'ascii' ?
+        adjustEncodedFieldName(name, maxLen, i, encoding) :
+        adjustFieldName(name, maxLen, i);
       i++;
     } while ((validName in used) ||
       // don't replace an existing valid field name with a truncated name
@@ -140,6 +142,18 @@ function adjustFieldName(name, maxLen, i) {
       suff = '_' + suff;
     }
     name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+}
+
+// Truncate and/or uniqify a name (if relevant params are present)
+function adjustEncodedFieldName(name, maxLen, i, encoding) {
+  var suff = i ? String(i) : '';
+  var name2 = name + suff;
+  var buf = encodeString(name2, encoding);
+  if (buf.length > (maxLen || 256)) {
+    name = name.substr(0, name.length - 1);
+    return adjustEncodedFieldName(name, maxLen, i, encoding);
   }
   return name2;
 }

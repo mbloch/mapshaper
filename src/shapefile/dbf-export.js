@@ -19,7 +19,7 @@ export function exportDbfFile(lyr, dataset, opts) {
     data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
   }
   // dbfs should have at least one column; add id field if none
-  if (data.getFields().length === 0) {
+  if (data.isEmpty()) {
     data.addIdField();
   }
   if (data.exportAsDbf) {

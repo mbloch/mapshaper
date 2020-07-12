@@ -1,7 +1,7 @@
 import { detectEncoding, decodeSamples } from '../text/mapshaper-encoding-detection';
 import utils from '../utils/mapshaper-utils';
 import { BinArray } from '../utils/mapshaper-binarray';
-import { bufferToString, standardizeEncodingName } from '../text/mapshaper-encodings';
+import { bufferToString, standardizeEncodingName, decodeString } from '../text/mapshaper-encodings';
 import { formatStringsAsGrid, stop, message } from '../utils/mapshaper-logging';
 import { getUniqFieldNames } from '../datatable/mapshaper-data-utils';
 import { error } from '../utils/mapshaper-logging';
@@ -49,6 +49,7 @@ function lookupCodePage(lid) {
 // }
 
 function readStringBytes(bin, size, buf) {
+  var start = bin.position();
   var count = 0, c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
@@ -65,6 +66,7 @@ function readStringBytes(bin, size, buf) {
   while (count > 0 && buf[count-1] == 32) {
     count--;
   }
+  bin.position(start + size);
   return count;
 }
 
@@ -150,14 +152,17 @@ export default function DbfReader(src, encodingArg) {
   }
   var bin = new BinArray(src);
   var header = readHeader(bin);
-  var encoding = encodingArg || null;
+
+  // encoding and fields are set on first access
+  var fields;
+  var encoding;
 
   this.size = function() {return header.recordCount;};
 
   this.readRow = function(i) {
     // create record reader on-the-fly
     // (delays encoding detection until we need to read data)
-    return getRecordReader(header.fields)(i);
+    return getRecordReader()(i);
   };
 
   this.getFields = getFieldNames;
@@ -165,19 +170,43 @@ export default function DbfReader(src, encodingArg) {
   this.getBuffer = function() {return bin.buffer();};
 
   this.deleteField = function(f) {
-    header.fields = header.fields.filter(function(field) {
+    prepareToRead();
+    fields = fields.filter(function(field) {
       return field.name != f;
     });
   };
 
   this.readRows = function() {
-    var reader = getRecordReader(header.fields);
+    var reader = getRecordReader();
     var data = [];
     for (var r=0, n=this.size(); r<n; r++) {
       data.push(reader(r));
     }
     return data;
   };
+
+  // Prepare to read from table:
+  // * determine encoding
+  // * convert encoded field names to strings
+  //   (DBF standard is ascii names, but ArcGIS etc. support encoded names)
+  //
+  function prepareToRead() {
+    if (fields) return; // already initialized
+    var headerEncoding = 'ascii';
+    initEncoding();
+    if (getNonAsciiHeaders().length > 0) {
+      headerEncoding = getEncoding();
+    }
+    fields = header.fields.map(function(f) {
+      var copy = utils.extend({}, f);
+      copy.name = decodeString(f.namebuf, headerEncoding);
+      return copy;
+    });
+    // Uniqify header names
+    getUniqFieldNames(utils.pluck(fields, 'name')).forEach(function(name2, i) {
+      fields[i].name = name2;
+    });
+  }
 
   function readHeader(bin) {
     bin.position(0).littleEndian();
@@ -213,17 +242,15 @@ export default function DbfReader(src, encodingArg) {
       message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
     }
 
-    // Uniqify header names
-    getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
-      header.fields[i].name = name2;
-    });
-
     return header;
   }
 
   function readFieldHeader(bin) {
+    var buf = utils.createBuffer(11);
+    var chars = readStringBytes(bin, 11, buf);
     return {
-      name: bin.readCString(11),
+      // name: bin.readCString(11),
+      namebuf: utils.createBuffer(buf.slice(0, chars)),
       type: String.fromCharCode(bin.readUint8()),
       address: bin.readUint32(),
       size: bin.readUint8(),
@@ -235,22 +262,25 @@ export default function DbfReader(src, encodingArg) {
   }
 
   function getFieldNames() {
-    return utils.pluck(header.fields, 'name');
+    prepareToRead();
+    return utils.pluck(fields, 'name');
   }
 
   function getRowOffset(r) {
     return header.dataOffset + header.recordSize * r;
   }
 
-  function getEncoding() {
+  function initEncoding() {
+    encoding = encodingArg || findStringEncoding();
     if (!encoding) {
-      encoding = findStringEncoding();
-      if (!encoding) {
-        // fall back to utf8 if detection fails (so GUI can continue without further errors)
-        encoding = 'utf8';
-        stop("Unable to auto-detect the text encoding of the DBF file.\n" + ENCODING_PROMPT);
-      }
+      // fall back to utf8 if detection fails (so GUI can continue without further errors)
+      encoding = 'utf8';
+      stop("Unable to auto-detect the text encoding of the DBF file.\n" + ENCODING_PROMPT);
     }
+  }
+
+  function getEncoding() {
+    if (!encoding) initEncoding();
     return encoding;
   }
 
@@ -272,7 +302,8 @@ export default function DbfReader(src, encodingArg) {
     return pos;
   }
 
-  function getRecordReader(fields) {
+  function getRecordReader() {
+    prepareToRead();
     var readers = fields.map(getFieldReader),
         eofOffs = findEofPos(bin),
         create = getRecordConstructor(),
@@ -353,6 +384,16 @@ export default function DbfReader(src, encodingArg) {
     return encoding;
   }
 
+  function getNonAsciiHeaders() {
+    var arr = [];
+    header.fields.forEach(function(f) {
+      if (bufferContainsHighBit(f.namebuf, f.namebuf.length)) {
+        arr.push(f.namebuf);
+      }
+    });
+    return arr;
+  }
+
   // Return up to @size buffers containing text samples
   // with at least one byte outside the 7-bit ascii range.
   function getNonAsciiSamples(size) {
@@ -363,6 +404,8 @@ export default function DbfReader(src, encodingArg) {
     var buf = utils.createBuffer(256);
     var index = {};
     var f, chars, sample, hash;
+    // include non-ascii field names, if any
+    samples = getNonAsciiHeaders();
     for (var r=0, rows=header.recordCount; r<rows; r++) {
       for (var c=0, cols=stringFields.length; c<cols; c++) {
         if (samples.length >= size) break;

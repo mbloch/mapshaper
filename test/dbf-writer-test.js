@@ -23,10 +23,15 @@ describe('dbf-writer.js', function () {
   })
 
   describe('convertFieldNames()', function() {
-    it ('changes non-alphanumeric characters and truncates', function() {
-      var names = ['中国北京', 'brewery:kölsch'];
-      var names2 = Dbf.convertFieldNames(names);
-      assert.deepEqual(names2, ['_', 'brewery_k_'])
+    it ('utf-8 encoding fits three Chinese characters', function() {
+      var names = ['一二三四五', '一二三四五六'];
+      var names2 = Dbf.convertFieldNames(names, 'utf8');
+      assert.deepEqual(names2, ['一二三', '一二三1']); // truncated, deduped
+    })
+    it ('gbk encoding fits five Chinese characters', function() {
+      var names = ['一二三四五', '一二三四五六'];
+      var names2 = Dbf.convertFieldNames(names, 'gbk');
+      assert.deepEqual(names2, ['一二三四五', '一二三四1']);
     })
   })
 

@@ -23,6 +23,19 @@ export function validateEncoding(enc) {
   return enc;
 }
 
+export function stringsAreAscii(arr) {
+  return stringIsAscii(arr.join(''));
+}
+
+export function stringIsAscii(str) {
+  var c;
+  for (var i=0, n=str.length; i<n; i++) {
+    c = str.charCodeAt(i);
+    if (c >= 128) return false;
+  }
+  return true;
+}
+
 export function encodingIsUtf8(enc) {
   // treating utf-8 as default
   return !enc || /^utf-?8$/i.test(String(enc));

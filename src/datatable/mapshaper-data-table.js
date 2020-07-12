@@ -74,6 +74,10 @@ DataTable.prototype = {
     return findFieldNames(this.getRecords());
   },
 
+  isEmpty: function() {
+    return this.getFields().length === 0 || this.size() === 0;
+  },
+
   update: function(f) {
     var records = this.getRecords();
     for (var i=0, n=records.length; i<n; i++) {

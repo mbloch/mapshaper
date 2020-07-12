@@ -57,6 +57,10 @@ export function ShapefileTable(buf, encoding) {
     return reader ? reader.getFields() : table.getFields();
   };
 
+  this.isEmpty = function() {
+    return reader ? this.size() === 0 : table.isEmpty();
+  };
+
   this.size = function() {
     return reader ? reader.size() : table.size();
   };
