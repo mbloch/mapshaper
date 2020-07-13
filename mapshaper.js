@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.8";
+  var VERSION = "0.5.10";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -3307,6 +3307,160 @@
     findMaxPartCount: findMaxPartCount
   });
 
+  // List of encodings supported by iconv-lite:
+  // https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
+
+  var iconv = require('iconv-lite');
+  var toUtf8 = getNativeEncoder('utf8');
+  var fromUtf8 = getNativeDecoder('utf8');
+
+  // Return list of supported encodings
+  function getEncodings() {
+    iconv.encodingExists('ascii'); // make iconv load its encodings
+    return Object.keys(iconv.encodings);
+  }
+
+  function validateEncoding(enc) {
+    if (!encodingIsSupported(enc)) {
+      stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
+    }
+    return enc;
+  }
+
+  function stringsAreAscii(arr) {
+    return stringIsAscii(arr.join(''));
+  }
+
+  function stringIsAscii(str) {
+    var c;
+    for (var i=0, n=str.length; i<n; i++) {
+      c = str.charCodeAt(i);
+      if (c >= 128) return false;
+    }
+    return true;
+  }
+
+  function encodingIsUtf8(enc) {
+    // treating utf-8 as default
+    return !enc || /^utf-?8$/i.test(String(enc));
+  }
+
+  // Identify the most common encodings that are supersets of ascii at the
+  // single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
+  // (this allows identifying line breaks and other ascii patterns in buffers)
+  function encodingIsAsciiCompat(enc) {
+    enc = standardizeEncodingName(enc);
+    // gb.* selects the Guo Biao encodings
+    // big5 in not compatible -- second byte starts at 0x40
+    return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
+  }
+
+  // Ex. convert UTF-8 to utf8
+  function standardizeEncodingName(enc) {
+    return (enc || '').toLowerCase().replace(/[_-]/g, '');
+  }
+
+  // Similar to Buffer#toString(); tries to speed up utf8 conversion in
+  // web browser (when using browserify Buffer shim)
+  function bufferToString(buf, enc, start, end) {
+    if (start >= 0) {
+      buf = buf.slice(start, end);
+    }
+    return decodeString(buf, enc);
+  }
+
+  function getNativeEncoder(enc) {
+    var encoder = null;
+    enc = standardizeEncodingName(enc);
+    if (enc != 'utf8') {
+      // TODO: support more encodings if TextEncoder is available
+      return null;
+    }
+    if (typeof TextEncoder != 'undefined') {
+      encoder = new TextEncoder(enc);
+    }
+    return function(str) {
+      // Convert Uint8Array from encoder to Buffer (fix for issue #216)
+      return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
+    };
+  }
+
+  function encodeString(str, enc) {
+    // TODO: faster ascii encoding?
+    var buf;
+    if (encodingIsUtf8(enc)) {
+      buf = toUtf8(str);
+    } else {
+      buf = iconv.encode(str, enc);
+    }
+    return buf;
+  }
+
+  function getNativeDecoder(enc) {
+    var decoder = null;
+    enc = standardizeEncodingName(enc);
+    if (enc != 'utf8') {
+      // TODO: support more encodings if TextDecoder is available
+      return null;
+    }
+    if (typeof TextDecoder != 'undefined') {
+      decoder = new TextDecoder(enc);
+    }
+    return function(buf) {
+      return decoder ? decoder.decode(buf) : buf.toString(enc);
+    };
+  }
+
+  // @buf a Node Buffer
+  function decodeString(buf, enc) {
+    var str;
+    if (encodingIsUtf8(enc)) {
+      str = fromUtf8(buf);
+    } else {
+      str = iconv.decode(buf, enc);
+    }
+    return str;
+  }
+
+  function encodingIsSupported(raw) {
+    var enc = standardizeEncodingName(raw);
+    return getEncodings().includes(enc);
+  }
+
+  function trimBOM(str) {
+    // remove BOM if present
+    if (str.charCodeAt(0) == 0xfeff) {
+      str = str.substr(1);
+    }
+    return str;
+  }
+
+  function printEncodings() {
+    var encodings = getEncodings().filter(function(name) {
+      // filter out some aliases and non-applicable encodings
+      return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
+    });
+    encodings.sort();
+    print("Supported encodings:\n" + formatStringsAsGrid(encodings));
+  }
+
+  var Encodings = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getEncodings: getEncodings,
+    validateEncoding: validateEncoding,
+    stringsAreAscii: stringsAreAscii,
+    stringIsAscii: stringIsAscii,
+    encodingIsUtf8: encodingIsUtf8,
+    encodingIsAsciiCompat: encodingIsAsciiCompat,
+    standardizeEncodingName: standardizeEncodingName,
+    bufferToString: bufferToString,
+    encodeString: encodeString,
+    decodeString: decodeString,
+    encodingIsSupported: encodingIsSupported,
+    trimBOM: trimBOM,
+    printEncodings: printEncodings
+  });
+
   // Not a general-purpose deep copy function
   function copyRecord(o) {
     var o2 = {}, key, val;
@@ -3324,7 +3478,6 @@
     }
     return o2;
   }
-
 
   function getValueType(val) {
     var type = null;
@@ -3405,13 +3558,15 @@
   // @fields Array of field names
   // @maxLen (optional) Maximum chars in name
   //
-  function getUniqFieldNames(fields, maxLen) {
+  function getUniqFieldNames(fields, maxLen, encoding) {
     var used = {};
     return fields.map(function(name) {
       var i = 0,
           validName;
       do {
-        validName = adjustFieldName(name, maxLen, i);
+        validName = encoding && encoding != 'ascii' ?
+          adjustEncodedFieldName(name, maxLen, i, encoding) :
+          adjustFieldName(name, maxLen, i);
         i++;
       } while ((validName in used) ||
         // don't replace an existing valid field name with a truncated name
@@ -3446,6 +3601,18 @@
         suff = '_' + suff;
       }
       name2 = name.substr(0, maxLen - suff.length) + suff;
+    }
+    return name2;
+  }
+
+  // Truncate and/or uniqify a name (if relevant params are present)
+  function adjustEncodedFieldName(name, maxLen, i, encoding) {
+    var suff = i ? String(i) : '';
+    var name2 = name + suff;
+    var buf = encodeString(name2, encoding);
+    if (buf.length > (maxLen || 256)) {
+      name = name.substr(0, name.length - 1);
+      return adjustEncodedFieldName(name, maxLen, i, encoding);
     }
     return name2;
   }
@@ -3550,6 +3717,10 @@
 
     getFields: function() {
       return findFieldNames(this.getRecords());
+    },
+
+    isEmpty: function() {
+      return this.getFields().length === 0 || this.size() === 0;
     },
 
     update: function(f) {
@@ -6032,145 +6203,6 @@
     }
   }
 
-  // List of encodings supported by iconv-lite:
-  // https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
-
-  var iconv = require('iconv-lite');
-  var toUtf8 = getNativeEncoder('utf8');
-  var fromUtf8 = getNativeDecoder('utf8');
-
-  // Return list of supported encodings
-  function getEncodings() {
-    iconv.encodingExists('ascii'); // make iconv load its encodings
-    return Object.keys(iconv.encodings);
-  }
-
-  function validateEncoding(enc) {
-    if (!encodingIsSupported(enc)) {
-      stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
-    }
-    return enc;
-  }
-
-  function encodingIsUtf8(enc) {
-    // treating utf-8 as default
-    return !enc || /^utf-?8$/i.test(String(enc));
-  }
-
-  // Identify the most common encodings that are supersets of ascii at the
-  // single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
-  // (this allows identifying line breaks and other ascii patterns in buffers)
-  function encodingIsAsciiCompat(enc) {
-    enc = standardizeEncodingName(enc);
-    // gb.* selects the Guo Biao encodings
-    // big5 in not compatible -- second byte starts at 0x40
-    return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
-  }
-
-  // Ex. convert UTF-8 to utf8
-  function standardizeEncodingName(enc) {
-    return (enc || '').toLowerCase().replace(/[_-]/g, '');
-  }
-
-  // Similar to Buffer#toString(); tries to speed up utf8 conversion in
-  // web browser (when using browserify Buffer shim)
-  function bufferToString(buf, enc, start, end) {
-    if (start >= 0) {
-      buf = buf.slice(start, end);
-    }
-    return decodeString(buf, enc);
-  }
-
-  function getNativeEncoder(enc) {
-    var encoder = null;
-    enc = standardizeEncodingName(enc);
-    if (enc != 'utf8') {
-      // TODO: support more encodings if TextEncoder is available
-      return null;
-    }
-    if (typeof TextEncoder != 'undefined') {
-      encoder = new TextEncoder(enc);
-    }
-    return function(str) {
-      // Convert Uint8Array from encoder to Buffer (fix for issue #216)
-      return encoder ? Buffer.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
-    };
-  }
-
-  function encodeString(str, enc) {
-    // TODO: faster ascii encoding?
-    var buf;
-    if (encodingIsUtf8(enc)) {
-      buf = toUtf8(str);
-    } else {
-      buf = iconv.encode(str, enc);
-    }
-    return buf;
-  }
-
-  function getNativeDecoder(enc) {
-    var decoder = null;
-    enc = standardizeEncodingName(enc);
-    if (enc != 'utf8') {
-      // TODO: support more encodings if TextDecoder is available
-      return null;
-    }
-    if (typeof TextDecoder != 'undefined') {
-      decoder = new TextDecoder(enc);
-    }
-    return function(buf) {
-      return decoder ? decoder.decode(buf) : buf.toString(enc);
-    };
-  }
-
-  // @buf a Node Buffer
-  function decodeString(buf, enc) {
-    var str;
-    if (encodingIsUtf8(enc)) {
-      str = fromUtf8(buf);
-    } else {
-      str = iconv.decode(buf, enc);
-    }
-    return str;
-  }
-
-  function encodingIsSupported(raw) {
-    var enc = standardizeEncodingName(raw);
-    return getEncodings().includes(enc);
-  }
-
-  function trimBOM(str) {
-    // remove BOM if present
-    if (str.charCodeAt(0) == 0xfeff) {
-      str = str.substr(1);
-    }
-    return str;
-  }
-
-  function printEncodings() {
-    var encodings = getEncodings().filter(function(name) {
-      // filter out some aliases and non-applicable encodings
-      return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
-    });
-    encodings.sort();
-    print("Supported encodings:\n" + formatStringsAsGrid(encodings));
-  }
-
-  var Encodings = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getEncodings: getEncodings,
-    validateEncoding: validateEncoding,
-    encodingIsUtf8: encodingIsUtf8,
-    encodingIsAsciiCompat: encodingIsAsciiCompat,
-    standardizeEncodingName: standardizeEncodingName,
-    bufferToString: bufferToString,
-    encodeString: encodeString,
-    decodeString: decodeString,
-    encodingIsSupported: encodingIsSupported,
-    trimBOM: trimBOM,
-    printEncodings: printEncodings
-  });
-
   function detectEncodingFromBOM(bytes) {
     // utf8 EF BB BF
     // utf16be FE FF
@@ -6594,6 +6626,7 @@
   // }
 
   function readStringBytes(bin, size, buf) {
+    var start = bin.position();
     var count = 0, c;
     for (var i=0; i<size; i++) {
       c = bin.readUint8();
@@ -6610,6 +6643,7 @@
     while (count > 0 && buf[count-1] == 32) {
       count--;
     }
+    bin.position(start + size);
     return count;
   }
 
@@ -6695,14 +6729,17 @@
     }
     var bin = new BinArray(src);
     var header = readHeader(bin);
-    var encoding = encodingArg || null;
+
+    // encoding and fields are set on first access
+    var fields;
+    var encoding;
 
     this.size = function() {return header.recordCount;};
 
     this.readRow = function(i) {
       // create record reader on-the-fly
       // (delays encoding detection until we need to read data)
-      return getRecordReader(header.fields)(i);
+      return getRecordReader()(i);
     };
 
     this.getFields = getFieldNames;
@@ -6710,19 +6747,43 @@
     this.getBuffer = function() {return bin.buffer();};
 
     this.deleteField = function(f) {
-      header.fields = header.fields.filter(function(field) {
+      prepareToRead();
+      fields = fields.filter(function(field) {
         return field.name != f;
       });
     };
 
     this.readRows = function() {
-      var reader = getRecordReader(header.fields);
+      var reader = getRecordReader();
       var data = [];
       for (var r=0, n=this.size(); r<n; r++) {
         data.push(reader(r));
       }
       return data;
     };
+
+    // Prepare to read from table:
+    // * determine encoding
+    // * convert encoded field names to strings
+    //   (DBF standard is ascii names, but ArcGIS etc. support encoded names)
+    //
+    function prepareToRead() {
+      if (fields) return; // already initialized
+      var headerEncoding = 'ascii';
+      initEncoding();
+      if (getNonAsciiHeaders().length > 0) {
+        headerEncoding = getEncoding();
+      }
+      fields = header.fields.map(function(f) {
+        var copy = utils.extend({}, f);
+        copy.name = decodeString(f.namebuf, headerEncoding);
+        return copy;
+      });
+      // Uniqify header names
+      getUniqFieldNames(utils.pluck(fields, 'name')).forEach(function(name2, i) {
+        fields[i].name = name2;
+      });
+    }
 
     function readHeader(bin) {
       bin.position(0).littleEndian();
@@ -6758,17 +6819,15 @@
         message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
       }
 
-      // Uniqify header names
-      getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
-        header.fields[i].name = name2;
-      });
-
       return header;
     }
 
     function readFieldHeader(bin) {
+      var buf = utils.createBuffer(11);
+      var chars = readStringBytes(bin, 11, buf);
       return {
-        name: bin.readCString(11),
+        // name: bin.readCString(11),
+        namebuf: utils.createBuffer(buf.slice(0, chars)),
         type: String.fromCharCode(bin.readUint8()),
         address: bin.readUint32(),
         size: bin.readUint8(),
@@ -6780,22 +6839,25 @@
     }
 
     function getFieldNames() {
-      return utils.pluck(header.fields, 'name');
+      prepareToRead();
+      return utils.pluck(fields, 'name');
     }
 
     function getRowOffset(r) {
       return header.dataOffset + header.recordSize * r;
     }
 
-    function getEncoding() {
+    function initEncoding() {
+      encoding = encodingArg || findStringEncoding();
       if (!encoding) {
-        encoding = findStringEncoding();
-        if (!encoding) {
-          // fall back to utf8 if detection fails (so GUI can continue without further errors)
-          encoding = 'utf8';
-          stop("Unable to auto-detect the text encoding of the DBF file.\n" + ENCODING_PROMPT);
-        }
+        // fall back to utf8 if detection fails (so GUI can continue without further errors)
+        encoding = 'utf8';
+        stop("Unable to auto-detect the text encoding of the DBF file.\n" + ENCODING_PROMPT);
       }
+    }
+
+    function getEncoding() {
+      if (!encoding) initEncoding();
       return encoding;
     }
 
@@ -6817,7 +6879,8 @@
       return pos;
     }
 
-    function getRecordReader(fields) {
+    function getRecordReader() {
+      prepareToRead();
       var readers = fields.map(getFieldReader),
           eofOffs = findEofPos(bin),
           create = getRecordConstructor(),
@@ -6898,6 +6961,16 @@
       return encoding;
     }
 
+    function getNonAsciiHeaders() {
+      var arr = [];
+      header.fields.forEach(function(f) {
+        if (bufferContainsHighBit(f.namebuf, f.namebuf.length)) {
+          arr.push(f.namebuf);
+        }
+      });
+      return arr;
+    }
+
     // Return up to @size buffers containing text samples
     // with at least one byte outside the 7-bit ascii range.
     function getNonAsciiSamples(size) {
@@ -6908,6 +6981,8 @@
       var buf = utils.createBuffer(256);
       var index = {};
       var f, chars, sample, hash;
+      // include non-ascii field names, if any
+      samples = getNonAsciiHeaders();
       for (var r=0, rows=header.recordCount; r<rows; r++) {
         for (var c=0, cols=stringFields.length; c<cols; c++) {
           if (samples.length >= size) break;
@@ -6968,14 +7043,12 @@
   function exportRecords(records, encoding, fieldOrder) {
     var rows = records.length;
     var fields = findFieldNames(records, fieldOrder);
-    var dbfFields = convertFieldNames(fields);
+    var dataEncoding = encoding || 'utf8';
+    var headerEncoding = stringIsAscii(fields.join('')) ? 'ascii' : dataEncoding;
+    var fieldNames = convertFieldNames(fields, headerEncoding);
+    var fieldBuffers = encodeFieldNames(fieldNames, headerEncoding); // array of 11-byte buffers
     var fieldData = fields.map(function(name, i) {
-      var info = getFieldInfo(records, name, encoding || 'utf8');
-      var name2 = dbfFields[i];
-      info.name = name2;
-      if (name != name2) {
-        message('Changed field name from "' + name + '" to "' + name2 + '"');
-      }
+      var info = getFieldInfo(records, name, dataEncoding);
       if (info.warning) {
         message('[' + name + '] ' + info.warning);
       }
@@ -7004,8 +7077,9 @@
 
 
     // field subrecords
-    fieldData.reduce(function(recordOffset, obj) {
-      bin.writeCString(obj.name, 11);
+    fieldData.reduce(function(recordOffset, obj, i) {
+      // bin.writeCString(obj.name, 11);
+      bin.writeBuffer(fieldBuffers[i], 11, 0);
       bin.writeUint8(obj.type.charCodeAt(0));
       bin.writeUint32(recordOffset);
       bin.writeUint8(obj.size);
@@ -7141,15 +7215,41 @@
     }
   }
 
-  function convertFieldNames(names) {
-    return getUniqFieldNames(names.map(cleanFieldName), 10);
+  // Convert string names to 11-byte buffers terminated by 0
+  function encodeFieldNames(names, encoding) {
+    return names.map(function(name) {
+      var encoded = encodeString(name, encoding);
+      var encLen = encoded.length;
+      var buf = utils.createBuffer(11);
+      for (var i=0; i < 11; i++) {
+        buf[i] = i < 10 && encLen >= i - 1 ? encoded[i] : 0;
+      }
+      return buf;
+    });
+  }
+
+  // Truncate and dedup field names
+  //
+  function convertFieldNames(names, encoding) {
+    var names2 = getUniqFieldNames(names.map(cleanFieldName), 10, encoding);
+    names2.forEach(function(name2, i) {
+      if (names[i] != name2) {
+        message('Changed field name from "' + names[i] + '" to "' + name2 + '"');
+      }
+    });
+    return names2;
   }
 
   // Replace non-alphanumeric characters with _ and merge adjacent _
   // See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
   // TODO: decide whether or not to avoid initial numerals
-  function cleanFieldName(name) {
+  function cleanFieldName_v1(name) {
     return name.replace(/[^A-Za-z0-9]+/g, '_');
+  }
+
+  // Support non-ascii field names
+  function cleanFieldName(name) {
+    return name.replace(/[-\s]+/g, '_');
   }
 
   function getFieldInfo(arr, name, encoding) {
@@ -7344,6 +7444,10 @@
 
     this.getFields = function() {
       return reader ? reader.getFields() : table.getFields();
+    };
+
+    this.isEmpty = function() {
+      return reader ? this.size() === 0 : table.isEmpty();
     };
 
     this.size = function() {
@@ -7794,13 +7898,25 @@
     return content;
   };
 
-  // @content Buffer or string
-  cli.writeFile = function(path, content, cb) {
+  cli.createDirIfNeeded = function(fname) {
+    var odir = parseLocalPath(fname).directory;
+    if (!odir || cli.isDirectory(odir)) return;
+    try {
+      require('fs').mkdirSync(odir, {recursive: true});
+      message('Created output directory:', odir);
+    } catch(e) {
+      stop('Unable to create output directory:', odir);
+    }
+  };
+
+  // content: Buffer or string
+  cli.writeFile = function(fname, content, cb) {
     var fs = require('rw');
+    cli.createDirIfNeeded(fname);
     if (cb) {
-      fs.writeFile(path, content, preserveContext(cb));
+      fs.writeFile(fname, content, preserveContext(cb));
     } else {
-      fs.writeFileSync(path, content);
+      fs.writeFileSync(fname, content);
     }
   };
 
@@ -9786,7 +9902,7 @@
     try {
       func = new Function("$$record,$$env",  functionBody);
     } catch(e) {
-      if (opts.quiet) throw e;
+      // if (opts.quiet) throw e;
       stop(e.name, "in expression [" + exp + "]");
     }
     return func;
@@ -9806,7 +9922,7 @@
       try {
         val = func.call(ctx.$, rec, ctx);
       } catch(e) {
-        if (opts.quiet) throw e;
+        // if (opts.quiet) throw e;
         stop(e.name, "in expression [" + exp + "]:", e.message);
       }
       return val;
@@ -9850,8 +9966,8 @@
     return Object.keys(env).reduce(function(memo, key) {
       if (key in memo) {
         // property has already been set (probably by a mixin, above): skip
-        // "quiet" option used in calc= expressions
-        if (!opts.quiet) {
+        // "no_warn" option used in calc= expressions
+        if (!opts.no_warn) {
           if (typeof memo[key] == 'function' && fields.indexOf(key) > -1) {
             message('Warning: ' + key + '() function is hiding a data field with the same name');
           } else {
@@ -13129,7 +13245,7 @@
   function parseStyleExpression(strVal, lyr) {
     var func;
     try {
-      func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), quiet: true});
+      func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), no_warn: true});
       func(0); // check for runtime errors (e.g. undefined variables)
     } catch(e) {
       func = null;
@@ -14155,7 +14271,7 @@
       data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
     }
     // dbfs should have at least one column; add id field if none
-    if (data.getFields().length === 0) {
+    if (data.isEmpty()) {
       data.addIdField();
     }
     if (data.exportAsDbf) {
@@ -15346,7 +15462,9 @@
     } else if (arg) {
       if (pathInfo.directory) {
         o.directory = pathInfo.directory;
-        cli.validateOutputDir(o.directory);
+        // no longer checking for missing directory
+        // (cli.writeFile() now creates directories that don't exist)
+        // cli.validateOutputDir(o.directory);
       }
       o.file = pathInfo.filename;
       if (filenameIsUnsupportedOutputType(o.file)) {
@@ -16085,7 +16203,7 @@
       })
       .option('json-path', {
         old_alias: 'json-subtree',
-        describe: '[JSON] path to an array of data records; separator is /'
+        describe: '[JSON] path to JSON input data; separator is /'
       });
 
     parser.command('o')
@@ -17179,6 +17297,10 @@
       .option('max-count', {
         type: 'number',
         describe: 'max features with the same id (default is 1)'
+      })
+      .option('index', {
+        // describe: 'add an index instead of filtering'
+        type: 'flag'
       })
       .option('invert', invertOpt)
       .option('verbose', {
@@ -18325,9 +18447,9 @@
     }
 
     calc1 = compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
-        no_assign: true, quiet: true});
+        no_assign: true, no_warn: true});
     calc2 = compileFeatureExpression(exp, {data: lyr.data}, null,
-        {returns: true, context: ctx2, quiet: true});
+        {returns: true, context: ctx2, no_warn: true});
 
     // @destRec: optional destination record for assignments
     return function(ids, destRec) {
@@ -24736,7 +24858,32 @@
   };
 
   function measureLongestLine(str) {
-    return Math.max.apply(null, str.split('\n').map(function(line) {return line.length;}));
+    return Math.max.apply(null, str.split('\n').map(function(line) {return stringDisplayWidth(line);}));
+  }
+
+  function stringDisplayWidth(str) {
+    var w = 0;
+    for (var i = 0, n=str.length; i < n; i++) {
+      w += charDisplayWidth(str.charCodeAt(i));
+    }
+    return w;
+  }
+
+  // see https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
+  // this is a simplified version, focusing on double-width CJK chars and ignoring nonprinting etc chars
+  function charDisplayWidth(c) {
+    if (c >= 0x1100 &&
+      (c <= 0x115f || c == 0x2329 || c == 0x232a ||
+      (c >= 0x2e80 && c <= 0xa4cf && c != 0x303f) || /* CJK ... Yi */
+      (c >= 0xac00 && c <= 0xd7a3) || /* Hangul Syllables */
+      (c >= 0xf900 && c <= 0xfaff) || /* CJK Compatibility Ideographs */
+      (c >= 0xfe10 && c <= 0xfe19) || /* Vertical forms */
+      (c >= 0xfe30 && c <= 0xfe6f) || /* CJK Compatibility Forms */
+      (c >= 0xff00 && c <= 0xff60) || /* Fullwidth Forms */
+      (c >= 0xffe0 && c <= 0xffe6) ||
+      (c >= 0x20000 && c <= 0x2fffd) ||
+      (c >= 0x30000 && c <= 0x3fffd))) return 2;
+    return 1;
   }
 
   function getLayerData(lyr, dataset) {
@@ -24828,12 +24975,15 @@
     var sepLine = sepStr + '\n';
     var table = sepLine;
     col1Arr.forEach(function(col1, i) {
-      table += ' ' + utils.rpad(col1, col1Chars, ' ') + ' | ' +
+      var w = stringDisplayWidth(col1);
+      table += ' ' + col1 + utils.rpad('', col1Chars - w, ' ') + ' | ' +
         col2Arr[i] + '\n';
       if (i === 0) table += sepLine; // separator after first line
     });
     return table + sepLine;
   }
+
+
 
   function formatNumber$1(val) {
     return val + '';
@@ -24841,7 +24991,8 @@
 
   function maxChars(arr) {
     return arr.reduce(function(memo, str) {
-      return str.length > memo ? str.length : memo;
+      var w = stringDisplayWidth(str);
+      return w > memo ? w : memo;
     }, 0);
   }
 
@@ -28133,14 +28284,23 @@
         keepFlags = [],
         verbose = !!opts.verbose,
         invert = !!opts.invert,
+        index = !!opts.index,
         records = lyr.data ? lyr.data.getRecords() : null,
         filter = function(d, i) {return keepFlags[i];};
+
 
     utils.repeat(n, function(i) {
       var val = compiled(i);
       var count = val in counts ? counts[val] + 1 : 1;
       var keep = count <= maxCount;
-      if (invert) keep = !keep;
+      var rec;
+      if (index) {
+        keep = true;
+        rec = records && records[i];
+        if (rec) rec.index = count;
+      } else if (invert) {
+        keep = !keep;
+      }
       keepFlags[i] = keep;
       counts[val] = count;
       if (verbose && !keep) {
