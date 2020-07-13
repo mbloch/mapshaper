@@ -1,3 +1,8 @@
+v0.5.11
+* Added "-uniq index" option, which adds an "index" property for indexing duplicate features instead of deleting them.
+* Added support for reading and writing non-ascii field names in Shapefiles.
+* Now, the -o command can create new subdirectories for output files.
+
 v0.5.10
 * Added -inlay command, for inscribing the contents of a second polygon layer into the target polygon layer.
 
