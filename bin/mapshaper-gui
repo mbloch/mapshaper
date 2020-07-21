@@ -140,12 +140,27 @@ function readPostData(req, cb) {
   });
 }
 
+function findInputFile(ofile) {
+  var matches = dataFiles.filter(function(ifile) {
+    return path.parse(ifile).base == ofile;
+  });
+  return matches.length == 1 ? matches[0] : null;
+}
+
 function saveContent(req, res) {
   var requestId = new Cookies(req, res).get('session_id'),
       ip = req.connection.remoteAddress,
       urlData = url.parse(req.url),
       query = require('querystring').parse(urlData.query),
       file = query.file;
+
+  if (opts.forceSave) {
+    // match output file to input file (including original path to the input file)
+    // otherwise, the output file will be saved to the cwd instead of replacing the
+    // original file.
+    file = findInputFile(file) || file;
+  }
+
   // Only requests containing a cookie with the original session id are allowed to save.
   // This should limit direct saving to the user who is running mapshaper-gui,
   // preventing another user who has the URL of this Node service from saving.
