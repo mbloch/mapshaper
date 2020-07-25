@@ -3974,14 +3974,27 @@
     return internal.svg.getTransform(p, scale);
   }
 
+
   function repositionSymbols(elements, layer, ext) {
-    var el, idx, p;
+    var el, idx, shp, p, displayOn, inView, displayBounds;
     for (var i=0, n=elements.length; i<n; i++) {
       el = elements[i];
       idx = getSymbolNodeId(el);
-      p = layer.shapes[idx];
-      if (!p) continue;
-      el.setAttribute('transform', getSvgSymbolTransform(p[0], ext));
+      shp = layer.shapes[idx];
+      if (!shp) continue;
+      p = shp[0];
+      // OPTIMIZATION: only display symbols that are in view
+      // quick-and-dirty hit-test: expand the extent rectangle by a percentage.
+      //   very large symbols will disappear before they're completely out of view
+      displayBounds = ext.getBounds(1.15);
+      displayOn = !el.hasAttribute('display') || el.getAttribute('display') == 'block';
+      inView = displayBounds.containsPoint(p[0], p[1]);
+      if (inView) {
+        if (!displayOn) el.setAttribute('display', 'block');
+        el.setAttribute('transform', getSvgSymbolTransform(p, ext));
+      } else {
+        if (displayOn) el.setAttribute('display', 'none');
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.10";
+  var VERSION = "0.5.11";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9766,6 +9766,12 @@
     return compileFeatureExpression(exp, lyr, arcs, opts);
   }
 
+  function cleanExpression(exp) {
+    // workaround for problem in GNU Make v4: end-of-line backslashes inside
+    // quoted strings are left in the string (other shell environments remove them)
+    return exp.replace(/\\\n/g, ' ');
+  }
+
   function compileFeaturePairFilterExpression(exp, lyr, arcs) {
     var func = compileFeaturePairExpression(exp, lyr, arcs);
     return function(idA, idB) {
@@ -9777,7 +9783,8 @@
     };
   }
 
-  function compileFeaturePairExpression(exp, lyr, arcs) {
+  function compileFeaturePairExpression(rawExp, lyr, arcs) {
+    var exp = cleanExpression(rawExp);
     var ctx = getExpressionContext(lyr);
     var A = getProxyFactory(lyr, arcs);
     var B = getProxyFactory(lyr, arcs);
@@ -9832,7 +9839,7 @@
 
   function compileFeatureExpression(rawExp, lyr, arcs, opts_) {
     var opts = utils.extend({}, opts_),
-        exp = rawExp || '',
+        exp = cleanExpression(rawExp || ''),
         mutable = !opts.no_assign, // block assignment expressions
         vars = getAssignedVars(exp),
         func, records;
@@ -9996,6 +10003,7 @@
   var Expressions = /*#__PURE__*/Object.freeze({
     __proto__: null,
     compileValueExpression: compileValueExpression,
+    cleanExpression: cleanExpression,
     compileFeaturePairFilterExpression: compileFeaturePairFilterExpression,
     compileFeaturePairExpression: compileFeaturePairExpression,
     compileFeatureExpression: compileFeatureExpression,
