@@ -1,3 +1,6 @@
+v0.5.12
+* Bug fixes
+
 v0.5.11
 * Added "-uniq index" option, which adds an "index" property for indexing duplicate features instead of deleting them.
 * Added support for reading and writing non-ascii field names in Shapefiles.

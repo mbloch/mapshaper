@@ -13,6 +13,12 @@ export function compileValueExpression(exp, lyr, arcs, opts) {
   return compileFeatureExpression(exp, lyr, arcs, opts);
 }
 
+export function cleanExpression(exp) {
+  // workaround for problem in GNU Make v4: end-of-line backslashes inside
+  // quoted strings are left in the string (other shell environments remove them)
+  return exp.replace(/\\\n/g, ' ');
+}
+
 export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
   var func = compileFeaturePairExpression(exp, lyr, arcs);
   return function(idA, idB) {
@@ -24,7 +30,8 @@ export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
   };
 }
 
-export function compileFeaturePairExpression(exp, lyr, arcs) {
+export function compileFeaturePairExpression(rawExp, lyr, arcs) {
+  var exp = cleanExpression(rawExp);
   var ctx = getExpressionContext(lyr);
   var A = getProxyFactory(lyr, arcs);
   var B = getProxyFactory(lyr, arcs);
@@ -79,7 +86,7 @@ export function compileFeaturePairExpression(exp, lyr, arcs) {
 
 export function compileFeatureExpression(rawExp, lyr, arcs, opts_) {
   var opts = utils.extend({}, opts_),
-      exp = rawExp || '',
+      exp = cleanExpression(rawExp || ''),
       mutable = !opts.no_assign, // block assignment expressions
       vars = getAssignedVars(exp),
       func, records;
