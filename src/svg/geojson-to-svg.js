@@ -81,7 +81,7 @@ function importMultiPath(coords, importer) {
   return o;
 }
 
-function importLineString(coords) {
+export function importLineString(coords) {
   var d = stringifyLineStringCoords(coords);
   return {
     tag: 'path',
@@ -90,7 +90,7 @@ function importLineString(coords) {
 }
 
 
-function importMultiLineString(coords) {
+export function importMultiLineString(coords) {
   var d = coords.map(stringifyLineStringCoords).join(' ');
   return {
     tag: 'path',
@@ -156,7 +156,7 @@ function getEmptySymbol() {
 }
 
 
-function renderSymbol(d, x, y) {
+export function renderSymbol(d, x, y) {
   var renderer = symbolRenderers[d.type];
    if (!renderer) {
     stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');

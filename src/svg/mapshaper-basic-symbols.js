@@ -2,6 +2,8 @@
 import { importStyledLabel, importPoint, applyStyleAttributes, importLineString, importMultiLineString, renderSymbol } from '../svg/geojson-to-svg';
 import { symbolRenderers } from '../svg/svg-common';
 
+export { symbolRenderers };
+
 symbolRenderers.circle = function(d, x, y) {
   var o = importPoint([x, y], d, {});
   applyStyleAttributes(o, 'Point', d);
