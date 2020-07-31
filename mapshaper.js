@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.11";
+  var VERSION = "0.5.12";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -12251,8 +12251,16 @@
     var xy = getAvgSegment2(arcs),
         bb = arcs.getBounds(),
         a = proj(bb.centerX(), bb.centerY()),
-        b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]);
-    return geom.distance2D(a[0], a[1], b[0], b[1]);
+        b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
+        c = proj(bb.centerX(), bb.ymin), // right center
+        d = proj(bb.xmax, bb.centerY()), // bottom center
+        // interval A: based on average segment length
+        intervalA = geom.distance2D(a[0], a[1], b[0], b[1]),
+        // interval B: a fraction of avg bbox side length
+        // (added this for bbox densification)
+        intervalB = (geom.distance2D(a[0], a[1], c[0], c[1]) +
+          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000;
+    return Math.min(intervalA, intervalB);
   }
 
   // Interpolate points into a projected line segment if needed to prevent large
@@ -13592,8 +13600,11 @@
     __proto__: null,
     importGeoJSONFeatures: importGeoJSONFeatures,
     applyStyleAttributes: applyStyleAttributes,
+    importLineString: importLineString,
+    importMultiLineString: importMultiLineString,
     importStyledLabel: importStyledLabel,
     importLabel: importLabel,
+    renderSymbol: renderSymbol,
     importSymbol: importSymbol,
     importPoint: importPoint,
     importPolygon: importPolygon
@@ -26757,6 +26768,65 @@
     if (opts.init) {
       runGlobalExpression(opts.init, targets);
     }
+  };
+
+  symbolRenderers.circle = function(d, x, y) {
+    var o = importPoint([x, y], d, {});
+    applyStyleAttributes(o, 'Point', d);
+    return [o];
+  };
+
+  symbolRenderers.label = function(d, x, y) {
+    var o = importStyledLabel(d, [x, y]);
+    return [o];
+  };
+
+  symbolRenderers.image = function(d, x, y) {
+    var w = d.width || 20,
+        h = d.height || 20;
+    var o = {
+      tag: 'image',
+      properties: {
+        width: w,
+        height: h,
+        x: x - w / 2,
+        y: y - h / 2,
+        href: d.href || ''
+      }
+    };
+    return [o];
+  };
+
+  symbolRenderers.square = function(d, x, y) {
+    var o = importPoint([x, y], d, {point_symbol: 'square'});
+    applyStyleAttributes(o, 'Point', d);
+    return [o];
+  };
+
+  symbolRenderers.line = function(d, x, y) {
+    var coords, o;
+    coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
+    o = importLineString(coords);
+    applyStyleAttributes(o, 'LineString', d);
+    return [o];
+  };
+
+  symbolRenderers.polyline = function(d, x, y) {
+    var coords = d.coordinates || [];
+    var o = importMultiLineString(coords);
+    applyStyleAttributes(o, 'LineString', d);
+    return [o];
+  };
+
+  symbolRenderers.group = function(d, x, y) {
+    return (d.parts || []).reduce(function(memo, o) {
+      var sym = renderSymbol(o, x, y);
+      if (d.chained) {
+        x += (o.dx || 0);
+        y += (o.dy || 0);
+      }
+      return memo.concat(sym);
+    }, []);
   };
 
   cmd.scalebar = function(catalog, opts) {
