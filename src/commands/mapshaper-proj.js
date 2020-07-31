@@ -184,8 +184,16 @@ function getDefaultDensifyInterval(arcs, proj) {
   var xy = getAvgSegment2(arcs),
       bb = arcs.getBounds(),
       a = proj(bb.centerX(), bb.centerY()),
-      b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]);
-  return geom.distance2D(a[0], a[1], b[0], b[1]);
+      b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
+      c = proj(bb.centerX(), bb.ymin), // right center
+      d = proj(bb.xmax, bb.centerY()), // bottom center
+      // interval A: based on average segment length
+      intervalA = geom.distance2D(a[0], a[1], b[0], b[1]),
+      // interval B: a fraction of avg bbox side length
+      // (added this for bbox densification)
+      intervalB = (geom.distance2D(a[0], a[1], c[0], c[1]) +
+        geom.distance2D(a[0], a[1], d[0], d[1])) / 5000;
+  return Math.min(intervalA, intervalB);
 }
 
 // Interpolate points into a projected line segment if needed to prevent large
