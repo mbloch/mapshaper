@@ -1,3 +1,6 @@
+v0.5.13
+* Bug fixes
+
 v0.5.12
 * Bug fixes
 
