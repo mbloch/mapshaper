@@ -5991,7 +5991,9 @@
           fill: 'fillColor',
           stroke: 'strokeColor',
           'stroke-width': 'strokeWidth',
-          'stroke-dasharray': 'lineDash'
+          'stroke-dasharray': 'lineDash',
+          'stroke-opacity': 'strokeOpacity',
+          'fill-opacity': 'fillOpacity'
         },
         // array of field names of relevant svg display properties
         fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
@@ -6552,8 +6554,11 @@
 
     function getStyleKey(style) {
       return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-        '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
-        (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
+        '~' + (style.lineDash ? style.lineDash + '~' : '') +
+        (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
+        (style.fillColor || '') +
+        (style.fillOpacity ? '~' + style.fillOpacity : '') +
+        (style.opacity < 1 ? '~' + style.opacity : '');
     }
 
     return _self;
@@ -6702,9 +6707,9 @@
     return function(ctx, style) {
       var strokeWidth;
       ctx.beginPath();
-      if (style.opacity >= 0) {
-        ctx.globalAlpha = style.opacity;
-      }
+      // if (style.opacity >= 0) {
+      //   ctx.globalAlpha = style.opacity;
+      // }
       if (style.strokeWidth > 0) {
         strokeWidth = style.strokeWidth;
         if (pixRatio > 1) {
@@ -6727,15 +6732,23 @@
   }
 
   function endPath(ctx, style) {
-    if (style.fillColor) ctx.fill();
+    var fo = style.opacity >= 0 ? style.opacity : 1,
+        so = fo;
+    if (style.strokeOpacity >= 0) so *= style.strokeOpacity;
+    if (style.fillOpacity >= 0) fo *= style.fillOpacity;
+    if (style.fillColor) {
+      ctx.globalAlpha = fo;
+      ctx.fill();
+    }
     if (style.strokeWidth > 0) {
+      ctx.globalAlpha = so;
       ctx.stroke();
       if (style.lineDash) {
         ctx.lineCap = 'round';
         ctx.setLineDash([]);
       }
     }
-    if (style.opacity >= 0) ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
     ctx.closePath();
   }
 

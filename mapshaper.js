@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.12";
+  var VERSION = "0.5.13";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -10099,6 +10099,9 @@
       retn.headers = parseDelimText(str.slice(0, i), delim)[0];
       str = str.substr(i);
     }
+    if (opts.csv_dedup_fields) {
+      retn.headers = utils.uniqifyNames(retn.headers);
+    }
     if (opts.csv_filter) {
       retn.row_filter = getDelimRecordFilterFunction(opts.csv_filter);
     }
@@ -13170,6 +13173,8 @@
     stroke: 'color',
     'stroke-dasharray': 'dasharray',
     'stroke-width': 'number',
+    'stroke-opacity': 'number',
+    'fill-opacity': 'number',
     'text-anchor': null
   };
 
@@ -13184,7 +13189,7 @@
 
   }, stylePropertyTypes);
 
-  var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
+  var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
   var propertiesBySymbolType = {
     polygon: utils.arrayToIndex(commonProperties.concat('fill')),
@@ -16213,6 +16218,10 @@
         type: 'strings',
         describe: '[CSV] comma-sep. list of field names to assign each column'
       })
+      .option('csv-dedup-fields', {
+        type: 'flag',
+        describe: '[CSV] rename fields with duplicate names'
+      })
       .option('csv-filter', {
         describe: '[CSV] JS expression for filtering records'
       })
@@ -17223,6 +17232,12 @@
       })
       .option('stroke-dasharray', {
         describe: 'stroke dashes. Examples: "4" "2 4"'
+      })
+      .option('stroke-opacity', {
+        describe: 'stroke opacity'
+      })
+      .option('fill-opacity', {
+        describe: 'fill opacity'
       })
       .option('opacity', {
         describe: 'opacity; example: 0.5'
@@ -23063,7 +23078,7 @@
   };
 
   function isReservedName(name) {
-    return /^(stroke|stroke-width|stroke-dasharray|fill|opacity|r|class)$/.test(name);
+    return /^(stroke|stroke-width|stroke-dasharray|stroke-opacity|fill|fill-opacity|opacity|r|class)$/.test(name);
   }
 
   function getColorizerFunction(opts) {
