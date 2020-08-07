@@ -90,6 +90,9 @@ export function parseDelimHeaderSection(str, delim, opts) {
     retn.headers = parseDelimText(str.slice(0, i), delim)[0];
     str = str.substr(i);
   }
+  if (opts.csv_dedup_fields) {
+    retn.headers = utils.uniqifyNames(retn.headers);
+  }
   if (opts.csv_filter) {
     retn.row_filter = getDelimRecordFilterFunction(opts.csv_filter);
   }

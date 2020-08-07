@@ -44,6 +44,17 @@ describe('mapshaper-delim-import.js', function() {
   })
 
   describe('csv decoding with -i', function () {
+
+    it('-i csv-dedup-fields', function(done) {
+      var csv = 'foo,foo,foo\na,b,c';
+      var cmd = '-i csv-dedup-fields csv.csv -o';
+      api.applyCommands(cmd, {'csv.csv': csv}, function(err, out) {
+        var str = out['csv.csv'];
+        assert.equal(str, 'foo1,foo2,foo3\na,b,c');
+        done();
+      });
+    })
+
     it('-i csv-lines= csv-field-names= csv-fields= options', function(done) {
       var cmd = '-i test/data/text/states.csv csv-fields=A,D ' +
         'csv-field-names=A,B,C,D,E,F csv-skip-lines=1 csv-lines=2 -o format=json';

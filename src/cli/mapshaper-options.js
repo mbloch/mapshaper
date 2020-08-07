@@ -167,6 +167,10 @@ export function getOptionParser() {
       type: 'strings',
       describe: '[CSV] comma-sep. list of field names to assign each column'
     })
+    .option('csv-dedup-fields', {
+      type: 'flag',
+      describe: '[CSV] rename fields with duplicate names'
+    })
     .option('csv-filter', {
       describe: '[CSV] JS expression for filtering records'
     })
