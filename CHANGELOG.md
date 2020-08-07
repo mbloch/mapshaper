@@ -1,3 +1,7 @@
+v0.5.14
+* Added -i csv-dedup-fields to deduplicate CSV fields with identical names.
+* Added -style stroke-opacity and -style fill-opacity options.
+
 v0.5.13
 * Bug fixes
 

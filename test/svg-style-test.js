@@ -88,6 +88,8 @@ describe('mapshaper-svg-style.js', function () {
       var opts = {
         stroke: 'baz',
         'stroke-width': 'foo / 2',
+        'stroke-opacity': 'foo / 2',
+        'fill-opacity': 'foo / 4',
         fill: 'bar == "a" ? "pink" : "green"'
       };
       var target = [{
@@ -96,6 +98,8 @@ describe('mapshaper-svg-style.js', function () {
         baz: 'white',
         stroke: 'white',
         'stroke-width': 1,
+        'stroke-opacity': 1,
+        'fill-opacity': 0.5,
         fill: 'pink'
       }, {
         foo: 0.5,
@@ -103,6 +107,8 @@ describe('mapshaper-svg-style.js', function () {
         baz: 'black',
         stroke: 'black',
         'stroke-width': 0.25,
+        'stroke-opacity': 0.25,
+        'fill-opacity': 0.125,
         fill: 'green'
       }];
       api.svgStyle(lyr, {}, opts);

@@ -15,7 +15,7 @@ cmd.colorizer = function(opts) {
 };
 
 function isReservedName(name) {
-  return /^(stroke|stroke-width|stroke-dasharray|fill|opacity|r|class)$/.test(name);
+  return /^(stroke|stroke-width|stroke-dasharray|stroke-opacity|fill|fill-opacity|opacity|r|class)$/.test(name);
 }
 
 export function getColorizerFunction(opts) {

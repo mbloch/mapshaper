@@ -205,7 +205,9 @@ function getCanvasDisplayStyle(lyr) {
         fill: 'fillColor',
         stroke: 'strokeColor',
         'stroke-width': 'strokeWidth',
-        'stroke-dasharray': 'lineDash'
+        'stroke-dasharray': 'lineDash',
+        'stroke-opacity': 'strokeOpacity',
+        'fill-opacity': 'fillOpacity'
       },
       // array of field names of relevant svg display properties
       fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),

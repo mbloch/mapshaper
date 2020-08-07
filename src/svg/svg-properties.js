@@ -23,6 +23,8 @@ var stylePropertyTypes = {
   stroke: 'color',
   'stroke-dasharray': 'dasharray',
   'stroke-width': 'number',
+  'stroke-opacity': 'number',
+  'fill-opacity': 'number',
   'text-anchor': null
 };
 
@@ -37,7 +39,7 @@ var symbolPropertyTypes = utils.extend({
 
 }, stylePropertyTypes);
 
-var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray'.split(',');
+var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
 var propertiesBySymbolType = {
   polygon: utils.arrayToIndex(commonProperties.concat('fill')),
