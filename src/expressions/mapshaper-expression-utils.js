@@ -1,4 +1,5 @@
 import utils from '../utils/mapshaper-utils';
+import { blend } from '../color/blending';
 
 export default {
   round: function(val, dig) {
@@ -7,5 +8,6 @@ export default {
     while(dig-- > 0) k *= 10;
     return Math.round(val * k) / k;
   },
-  sprintf: utils.format
+  sprintf: utils.format,
+  blend: blend
 };

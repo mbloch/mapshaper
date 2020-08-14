@@ -196,7 +196,7 @@ function getExpressionContext(lyr, mixins, opts) {
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];
   opts = opts || {};
-  utils.extend(env, expressionUtils); // mix in round(), sprintf()
+  utils.extend(env, expressionUtils); // mix in round(), sprintf(), etc.
   if (lyr.data) {
     // default to null values when a data field is missing
     nullifyUnsetProperties(fields, env);
