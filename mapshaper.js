@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.13";
+  var VERSION = "0.5.14";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9231,6 +9231,335 @@
     filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
   });
 
+  // Returns undefined if not found
+  function lookupColorName(str) {
+    return colors[str.toLowerCase().replace(/[ -]+/g, '')];
+  }
+
+  var colors = {
+    aliceblue: '#f0f8ff',
+    antiquewhite: '#faebd7',
+    aqua: '#00ffff',
+    aquamarine: '#7fffd4',
+    azure: '#f0ffff',
+    beige: '#f5f5dc',
+    bisque: '#ffe4c4',
+    black: '#000000',
+    blanchedalmond: '#ffebcd',
+    blue: '#0000ff',
+    blueviolet: '#8a2be2',
+    brown: '#a52a2a',
+    burlywood: '#deb887',
+    cadetblue: '#5f9ea0',
+    chartreuse: '#7fff00',
+    chocolate: '#d2691e',
+    coral: '#ff7f50',
+    cornflowerblue: '#6495ed',
+    cornsilk: '#fff8dc',
+    crimson: '#dc143c',
+    cyan: '#00ffff',
+    darkblue: '#00008b',
+    darkcyan: '#008b8b',
+    darkgoldenrod: '#b8860b',
+    darkgray: '#a9a9a9',
+    darkgreen: '#006400',
+    darkgrey: '#a9a9a9',
+    darkkhaki: '#bdb76b',
+    darkmagenta: '#8b008b',
+    darkolivegreen: '#556b2f',
+    darkorange: '#ff8c00',
+    darkorchid: '#9932cc',
+    darkred: '#8b0000',
+    darksalmon: '#e9967a',
+    darkseagreen: '#8fbc8f',
+    darkslateblue: '#483d8b',
+    darkslategray: '#2f4f4f',
+    darkslategrey: '#2f4f4f',
+    darkturquoise: '#00ced1',
+    darkviolet: '#9400d3',
+    deeppink: '#ff1493',
+    deepskyblue: '#00bfff',
+    dimgray: '#696969',
+    dimgrey: '#696969',
+    dodgerblue: '#1e90ff',
+    firebrick: '#b22222',
+    floralwhite: '#fffaf0',
+    forestgreen: '#228b22',
+    fuchsia: '#ff00ff',
+    gainsboro: '#dcdcdc',
+    ghostwhite: '#f8f8ff',
+    gold: '#ffd700',
+    goldenrod: '#daa520',
+    gray: '#808080',
+    green: '#008000',
+    greenyellow: '#adff2f',
+    grey: '#808080',
+    honeydew: '#f0fff0',
+    hotpink: '#ff69b4',
+    indianred: '#cd5c5c',
+    indigo: '#4b0082',
+    ivory: '#fffff0',
+    khaki: '#f0e68c',
+    lavender: '#e6e6fa',
+    lavenderblush: '#fff0f5',
+    lawngreen: '#7cfc00',
+    lemonchiffon: '#fffacd',
+    lightblue: '#add8e6',
+    lightcoral: '#f08080',
+    lightcyan: '#e0ffff',
+    lightgoldenrodyellow: '#fafad2',
+    lightgray: '#d3d3d3',
+    lightgreen: '#90ee90',
+    lightgrey: '#d3d3d3',
+    lightpink: '#ffb6c1',
+    lightsalmon: '#ffa07a',
+    lightseagreen: '#20b2aa',
+    lightskyblue: '#87cefa',
+    lightslategray: '#778899',
+    lightslategrey: '#778899',
+    lightsteelblue: '#b0c4de',
+    lightyellow: '#ffffe0',
+    lime: '#00ff00',
+    limegreen: '#32cd32',
+    linen: '#faf0e6',
+    magenta: '#ff00ff',
+    maroon: '#800000',
+    mediumaquamarine: '#66cdaa',
+    mediumblue: '#0000cd',
+    mediumorchid: '#ba55d3',
+    mediumpurple: '#9370db',
+    mediumseagreen: '#3cb371',
+    mediumslateblue: '#7b68ee',
+    mediumspringgreen: '#00fa9a',
+    mediumturquoise: '#48d1cc',
+    mediumvioletred: '#c71585',
+    midnightblue: '#191970',
+    mintcream: '#f5fffa',
+    mistyrose: '#ffe4e1',
+    moccasin: '#ffe4b5',
+    navajowhite: '#ffdead',
+    navy: '#000080',
+    oldlace: '#fdf5e6',
+    olive: '#808000',
+    olivedrab: '#6b8e23',
+    orange: '#ffa500',
+    orangered: '#ff4500',
+    orchid: '#da70d6',
+    palegoldenrod: '#eee8aa',
+    palegreen: '#98fb98',
+    paleturquoise: '#afeeee',
+    palevioletred: '#db7093',
+    papayawhip: '#ffefd5',
+    peachpuff: '#ffdab9',
+    peru: '#cd853f',
+    pink: '#ffc0cb',
+    plum: '#dda0dd',
+    powderblue: '#b0e0e6',
+    purple: '#800080',
+    rebeccapurple: '#663399',
+    red: '#ff0000',
+    rosybrown: '#bc8f8f',
+    royalblue: '#4169e1',
+    saddlebrown: '#8b4513',
+    salmon: '#fa8072',
+    sandybrown: '#f4a460',
+    seagreen: '#2e8b57',
+    seashell: '#fff5ee',
+    sienna: '#a0522d',
+    silver: '#c0c0c0',
+    skyblue: '#87ceeb',
+    slateblue: '#6a5acd',
+    slategray: '#708090',
+    slategrey: '#708090',
+    snow: '#fffafa',
+    springgreen: '#00ff7f',
+    steelblue: '#4682b4',
+    tan: '#d2b48c',
+    teal: '#008080',
+    thistle: '#d8bfd8',
+    tomato: '#ff6347',
+    turquoise: '#40e0d0',
+    violet: '#ee82ee',
+    wheat: '#f5deb3',
+    white: '#ffffff',
+    whitesmoke: '#f5f5f5',
+    yellow: '#ffff00',
+    yellowgreen: '#9acd32'
+  };
+
+  var rgbaRxp = /^rgba?\(([!\)]+)\)/;
+  var hexRxp = /^#([a-f0-9]{3,8})/i;
+
+  function parseColor(arg) {
+    arg = arg ? String(arg) : '';
+    var hexStr = hexRxp.test(arg) ? arg : lookupColorName(arg);
+    var rgb = null;
+    if (hexStr) rgb = parseHexColor(hexStr);
+    else if (rgbaRxp.test(arg)) rgb = parseRGBA(arg);
+    if (!testRGB(rgb)) stop("Unsupported color:", arg);
+    return rgb;
+  }
+
+  function testRGB(o) {
+    return !!o && testChannel(o.r) && testChannel(o.g) && testChannel(o.b) &&
+      testAlpha(o.a);
+  }
+
+  function testAlpha(a) {
+    return a >= 0 && a <= 1;
+  }
+
+  function testChannel(c) {
+    return c >= 0 && c < 256; // allow fractional values
+  }
+
+  function parseRGBA(arg) {
+    var str = rgbaRxp.exec(arg)[1];
+    var parts = str.split(',').map(function(part) { return parseFloat(part); });
+    return {
+      r: parts[0],
+      g: parts[1],
+      b: parts[2],
+      a: parts[3] >= 0 ? parts[3] : 1
+    };
+  }
+
+  function formatColor(o) {
+    return o.a < 1 ? formatRGBA(o) : formatHexColor(o);
+  }
+
+  function formatHexColor(o) {
+    return "#" + formatHexChannel(o.r) + formatHexChannel(o.g) + formatHexChannel(o.b);
+
+  }
+
+  function formatRGBA(o) {
+    var rgb = snapHexChannel(o.r) + ',' + snapHexChannel(o.g) + ',' + snapHexChannel(o.b);
+    return o.a < 1 ?
+      'rgba(' + rgb + ',' + snapAlpha(o.a) + ')' :
+      'rgb(' + rgb + ')';
+  }
+
+  function snapAlpha(a) {
+    a = +a || 0;
+    a = Math.round(a * 1000) / 1000; // round to thousandths
+    return utils.clamp(a, 0, 1);
+  }
+
+  function snapHexChannel(arg) {
+    return Math.round(utils.clamp(+arg || 0, 0, 255));
+  }
+
+  // arg: should be number in 0-255 range
+  function formatHexChannel(arg) {
+    return snapHexChannel(arg).toString(16).padStart(2, '0');
+  }
+
+  // returns {r, g, b} object
+  function parseHexColor(str) {
+    var hex = hexRxp.exec(str)[1];
+    if (hex.length == 3 || hex.length == 4) {
+      hex = hex.split('').map(function(c) { return c + c; });
+    }
+    if (hex.length != 6 && hex.length != 8) return null;
+    return {
+      r: parseInt(hex.substr(1, 2), 16),
+      g: parseInt(hex.substr(3, 2), 16),
+      b: parseInt(hex.substr(5, 2), 16),
+      a: hex.length == 8 ? parseInt(hex.substr(7, 2), 16) / 255 : 1
+    };
+  }
+
+  function toHSV(rgb) {
+    var r = rgb.r,
+        g = rgb.g,
+        b = rgb.b,
+        max = Math.max(r, g, b),
+        min = Math.min(r, g, b),
+        diff = max - min,
+        h;
+    if (diff === 0) {
+      h = 0;
+    } else if (r == max) {
+      h = (g - b) / diff;
+    } else if (g == max) {
+      h = (b - r) / diff + 2;
+    } else {
+      h = (r - g) / diff + 4;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+    return {
+      h: h,
+      s: max == 0 ? 0 : 255 * (1 - min / max),
+      v: max,
+      a: rgb.a
+    };
+  }
+
+  function fromHSV(hsv) {
+    var h = hsv.h,
+        s = hsv.s / 255,
+        v = hsv.v,
+        hi = Math.floor(h / 60) % 6,
+        f = h / 60 - Math.floor(h / 60),
+        p = (v * (1 - s)),
+        q = (v * (1 - f * s)),
+        t = (v * (1 - (1 - f) * s)),
+        r, g, b;
+    if (hi === 0) {
+      r = v; g = t; b = p;
+    } else if (hi == 1) {
+      r = q; g = v; b = p;
+    } else if (hi == 2) {
+      r = p; g = v; b = t;
+    } else if (hi == 3) {
+      r = p; g = q; b = v;
+    } else if (hi == 4) {
+      r = t; g = p; b = v;
+    } else {
+      r = v; g = p; b = q;
+    }
+    return {
+      r: r,
+      g: g,
+      b: b,
+      a: hsv.a
+    };
+  }
+
+  function blend() {
+    var args = Array.from(arguments);
+    var colors = [],
+        weights = [],
+        col, weight, i;
+    for (i=0; i<args.length; i+= 2) {
+      colors.push(parseColor(args[i]));
+      weights.push(+args[i + 1] || 0);
+    }
+    weights = normalizeWeights(weights);
+    if (!weights) return '#eee';
+    var blended = colors.reduce(function(memo, rgb, i) {
+      var w = weights[i];
+      memo.r += rgb.r * w;
+      memo.g += rgb.g * w;
+      memo.b += rgb.b * w;
+      return memo;
+    }, {r: 0, g: 0, b: 0});
+    // console.log(blended, colors, weights)
+    return formatColor(blended);
+  }
+
+  function normalizeWeights(weights) {
+    var sum = utils.sum(weights);
+    if (sum > 0 === false) {
+      return null;
+    }
+    return weights.map(function(w) {
+      return w / sum;
+    });
+  }
+
   var expressionUtils = {
     round: function(val, dig) {
       var k = 1;
@@ -9238,7 +9567,8 @@
       while(dig-- > 0) k *= 10;
       return Math.round(val * k) / k;
     },
-    sprintf: utils.format
+    sprintf: utils.format,
+    blend: blend
   };
 
   function simplifyArcsFast(arcs, dist) {
@@ -9949,7 +10279,7 @@
     var ctx = {};
     var fields = lyr.data ? lyr.data.getFields() : [];
     opts = opts || {};
-    utils.extend(env, expressionUtils); // mix in round(), sprintf()
+    utils.extend(env, expressionUtils); // mix in round(), sprintf(), etc.
     if (lyr.data) {
       // default to null values when a data field is missing
       nullifyUnsetProperties(fields, env);
@@ -13153,6 +13483,65 @@
     addBezierArcControlPoints: addBezierArcControlPoints
   });
 
+  function parseHatch(str) {
+    // example
+    // black 1px red 1px
+    var parts = String(str).trim().split(/[, ]+/),
+        col1 = parts[0],
+        col2 = parts[2],
+        w1 = parseInt(parts[1]),
+        w2 = parseInt(parts[3]);
+    if (!w1 || !w2) return null;
+    return {
+      colors: [col1, col2],
+      widths: [w1, w2]
+    };
+  }
+
+  function getHashId(str) {
+    return 'hash_' + str.replace(/[()# ,]/g, ''); // remove some chars that occur in colors
+  }
+
+  // properties: properties object of a path data object (prior to conversion to SVG)
+  // symbols: array of definition objects
+  //
+  function convertFillHatch(properties, symbols) {
+    var hashStr = properties['fill-hatch'];
+    var hashId = getHashId(hashStr);
+    var hash = utils.find(symbols, function(o) { return o.id == hashId; });
+    delete properties['fill-hatch'];
+    if (!hash) {
+      hash = makeSVGHatchFill(hashStr, hashId);
+      if (!hash) return;
+      symbols.push(hash);
+    }
+    properties.fill = hash.href;
+  }
+
+  function makeSVGHatchFill(hashStr, id) {
+    var hash = parseHatch(hashStr);
+    if (!hash) return null;
+    var tileWidth = Math.round(hash.widths[0] + hash.widths[1]),
+        halfWidth = tileWidth / 2,
+        strokeWidth = Math.round(hash.widths[1]),
+        y = strokeWidth - (strokeWidth % 2 == 0 ? 0 : 0.5),
+        d = 'M ' + (-halfWidth) + ',' + y + ' l ' + (2 * tileWidth) + ',0',
+        svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ tileWidth }" height="${ tileWidth }" patternTransform="rotate(-45 ${ halfWidth } ${ halfWidth })">
+      <rect x="0" y="0" width="${ tileWidth }" height="${ tileWidth }" fill="${ hash.colors[0] }"></rect>
+      <path stroke="${ hash.colors[1] }" stroke-width="${ strokeWidth }" d="${ d }"></path></pattern>`;
+    return {
+      svg: svg,
+      id: id,
+      href: `url(#${ id })`
+    };
+  }
+
+  var SvgHatch = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    parseHatch: parseHatch,
+    convertFillHatch: convertFillHatch
+  });
+
   // parsing hints for -style command cli options
   // null values indicate the lack of a function for parsing/identifying this property
   // (in which case a heuristic is used for distinguishing a string literal from an expression)
@@ -13161,6 +13550,7 @@
     dx: 'measure',
     dy: 'measure',
     fill: 'color',
+    'fill-hatch': 'hatch',
     'font-family': null,
     'font-size': null,
     'font-style': null,
@@ -13192,7 +13582,7 @@
   var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
   var propertiesBySymbolType = {
-    polygon: utils.arrayToIndex(commonProperties.concat('fill')),
+    polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-hatch')),
     polyline: utils.arrayToIndex(commonProperties),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
@@ -13288,12 +13678,18 @@
       val = isSvgMeasure(strVal) ? parseSvgMeasure(strVal) : null;
     } else if (type == 'dasharray') {
       val = isDashArray(strVal) ? strVal : null;
+    } else if (type == 'hatch') {
+      val = isHatch(strVal) ? strVal : null;
     }
     //  else {
     //   // unknown type -- assume literal value
     //   val = strVal;
     // }
     return val;
+  }
+
+  function isHatch(str) {
+    return !!parseHatch(str);
   }
 
   function isDashArray(str) {
@@ -13328,7 +13724,6 @@
     findPropertiesBySymbolGeom: findPropertiesBySymbolGeom,
     getSymbolDataAccessor: getSymbolDataAccessor,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
-    isDashArray: isDashArray,
     isSvgClassName: isSvgClassName,
     isSvgNumber: isSvgNumber,
     isSvgMeasure: isSvgMeasure,
@@ -13881,129 +14276,6 @@
     calcOutputSizeInPixels: calcOutputSizeInPixels
   });
 
-  // public domain implementation
-  // source: https://github.com/jbt/js-crypto
-  function sha1(str1){
-    for (
-      var blockstart = 0,
-        i = 0,
-        W = [],
-        A, B, C, D, F, G,
-        H = [A=0x67452301, B=0xEFCDAB89, ~A, ~B, 0xC3D2E1F0],
-        word_array = [],
-        temp2,
-        s = unescape(encodeURI(str1)),
-        str_len = s.length;
-
-      i <= str_len;
-    ){
-      word_array[i >> 2] |= (s.charCodeAt(i)||128) << (8 * (3 - i++ % 4));
-    }
-    word_array[temp2 = ((str_len + 8) >> 2) | 15] = str_len << 3;
-
-    for (; blockstart <= temp2; blockstart += 16) {
-      A = H; i = 0;
-
-      for (; i < 80;
-        A = [[
-          (G = ((s = A[0]) << 5 | s >>> 27) + A[4] + (W[i] = (i<16) ? ~~word_array[blockstart + i] : G << 1 | G >>> 31) + 1518500249) + ((B = A[1]) & (C = A[2]) | ~B & (D = A[3])),
-          F = G + (B ^ C ^ D) + 341275144,
-          G + (B & C | B & D | C & D) + 882459459,
-          F + 1535694389
-        ][0|((i++) / 20)] | 0, s, B << 30 | B >>> 2, C, D]
-      ) {
-        G = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
-      }
-
-      for(i = 5; i; ) H[--i] = H[i] + A[i] | 0;
-    }
-
-    for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
-    return str1;
-  }
-
-  function embedImages(obj, symbols) {
-    // Same-origin policy is an obstacle to embedding images in web UI
-    if (runningInBrowser()) return;
-    procNode(obj);
-
-    function procNode(obj) {
-      if (obj.tag == 'image') {
-        if (/\.svg/.test(obj.properties.href || '')) {
-          embedSvgImage(obj);
-        }
-      } else if (obj.children) {
-        obj.children.forEach(procNode);
-      }
-    }
-
-    function embedSvgImage(obj) {
-      var id = addImage(obj.properties.href);
-      obj.tag = 'use';
-      obj.properties.href = '#' + id;
-    }
-
-    function addImage(href) {
-      var item = utils.find(symbols, function(item) {return item.href == href;});
-      if (!item) {
-        item = {
-          href: href,
-          id: urlToId(href) // generating id from href, to try to support multiple inline svgs on page
-        };
-        // item.svg = convertSvgToSymbol(getSvgFile(href), item.id) + '\n';
-        item.svg = convertSvg(getSvgFile(href), item.id) + '\n';
-        symbols.push(item);
-      }
-      return item.id;
-    }
-
-    function getSvgFile(href) {
-      var res, content, fs;
-      if (href.indexOf('http') === 0) {
-        res  = require('sync-request')('GET', href, {timeout: 1000});
-        content = res.getBody().toString();
-      } else if (require('fs').existsSync(href)) { // assume href is a relative path
-        content = require('fs').readFileSync(href, 'utf8');
-      } else {
-        stop("Invalid SVG location:", href);
-      }
-      return content;
-    }
-
-    /*
-    function convertSvgToSymbol(svg, id) {
-      svg = svg.replace(/[^]*<svg/, '<svg');
-      // Remove inkscape tags (there were errors caused when namespaces were
-      // stripped when converting <svg> to <symbol> ... this may be futile, may
-      // have to go back to embedding entire SVG document instead of using symbols)
-      svg = svg.replace(/<metadata[^]*?metadata>/, '');
-      svg = svg.replace(/<sodipodi[^>]*>/, '');
-      // convert <svg> to <symbol>
-      svg = svg.replace(/^<svg[^>]*>/, function(a) {
-        var viewBox = a.match(/viewBox=".*?"/)[0];
-        return '<symbol id="' + id + '" ' + viewBox + '>';
-      });
-      svg = svg.replace('svg>', 'symbol>');
-      return svg;
-    }
-    */
-
-    function convertSvg(svg, id) {
-      // Remove stuff before <svg> tag
-      svg = svg.replace(/[^]*<svg/, '<svg');
-      return svg.replace(/^<svg[^>]*>/, function(a) {
-        // set id property of <svg>
-        a = a.replace(/ id="[^"]*"/, '');
-        a = a.replace(/<svg/, '<svg id="' + id + '"');
-        return a;
-      });
-    }
-  }
-
-  function urlToId(url) {
-    return sha1(url).substr(0, 12);
-  }
-
   function stringify(obj) {
     var svg, joinStr;
     if (!obj || !obj.tag) return '';
@@ -14059,11 +14331,132 @@
 
   var SvgStringify = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    embedImages: embedImages,
     stringify: stringify,
     stringEscape: stringEscape,
     stringifyProperties: stringifyProperties
   });
+
+  // public domain implementation
+  // source: https://github.com/jbt/js-crypto
+  function sha1(str1){
+    for (
+      var blockstart = 0,
+        i = 0,
+        W = [],
+        A, B, C, D, F, G,
+        H = [A=0x67452301, B=0xEFCDAB89, ~A, ~B, 0xC3D2E1F0],
+        word_array = [],
+        temp2,
+        s = unescape(encodeURI(str1)),
+        str_len = s.length;
+
+      i <= str_len;
+    ){
+      word_array[i >> 2] |= (s.charCodeAt(i)||128) << (8 * (3 - i++ % 4));
+    }
+    word_array[temp2 = ((str_len + 8) >> 2) | 15] = str_len << 3;
+
+    for (; blockstart <= temp2; blockstart += 16) {
+      A = H; i = 0;
+
+      for (; i < 80;
+        A = [[
+          (G = ((s = A[0]) << 5 | s >>> 27) + A[4] + (W[i] = (i<16) ? ~~word_array[blockstart + i] : G << 1 | G >>> 31) + 1518500249) + ((B = A[1]) & (C = A[2]) | ~B & (D = A[3])),
+          F = G + (B ^ C ^ D) + 341275144,
+          G + (B & C | B & D | C & D) + 882459459,
+          F + 1535694389
+        ][0|((i++) / 20)] | 0, s, B << 30 | B >>> 2, C, D]
+      ) {
+        G = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
+      }
+
+      for(i = 5; i; ) H[--i] = H[i] + A[i] | 0;
+    }
+
+    for(str1 = ''; i < 40; )str1 += (H[i >> 3] >> (7 - i++ % 8) * 4 & 15).toString(16);
+    return str1;
+  }
+
+  // convert object properties to definitions for images and hatch fills
+  function convertPropertiesToDefinitions(obj, symbols) {
+    procNode(obj);
+
+    function procNode(obj) {
+      if (obj.tag == 'path' && obj.properties['fill-hatch']) {
+        convertFillHatch(obj.properties, symbols);
+      }
+      if (obj.tag == 'image' && !runningInBrowser()) {
+        // Same-origin policy prevents embedding images in the web UI
+        if (/\.svg/.test(obj.properties.href || '')) {
+          convertSvgImage(obj, symbols);
+        }
+      } else if (obj.children) {
+        obj.children.forEach(procNode);
+      }
+    }
+  }
+
+  function convertSvgImage(obj, symbols) {
+    var href = obj.properties.href;
+    var item = utils.find(symbols, function(item) {return item.href == href;});
+    if (!item) {
+      item = {
+        href: href,
+        id: urlToId(href) // generating id from href, to try to support multiple inline svgs on page
+      };
+      item.svg = convertSvg(getSvgFile(href), item.id) + '\n';
+      symbols.push(item);
+    }
+    obj.tag = 'use';
+    obj.properties.href = '#' + item.id;
+  }
+
+  // TODO: download SVG files asynchronously
+  function getSvgFile(href) {
+    var res, content, fs;
+    if (href.indexOf('http') === 0) {
+      res  = require('sync-request')('GET', href, {timeout: 1000});
+      content = res.getBody().toString();
+    } else if (require('fs').existsSync(href)) { // assume href is a relative path
+      content = require('fs').readFileSync(href, 'utf8');
+    } else {
+      stop("Invalid SVG location:", href);
+    }
+    return content;
+  }
+
+  /*
+  function convertSvgToSymbol(svg, id) {
+    svg = svg.replace(/[^]*<svg/, '<svg');
+    // Remove inkscape tags (there were errors caused when namespaces were
+    // stripped when converting <svg> to <symbol> ... this may be futile, may
+    // have to go back to embedding entire SVG document instead of using symbols)
+    svg = svg.replace(/<metadata[^]*?metadata>/, '');
+    svg = svg.replace(/<sodipodi[^>]*>/, '');
+    // convert <svg> to <symbol>
+    svg = svg.replace(/^<svg[^>]*>/, function(a) {
+      var viewBox = a.match(/viewBox=".*?"/)[0];
+      return '<symbol id="' + id + '" ' + viewBox + '>';
+    });
+    svg = svg.replace('svg>', 'symbol>');
+    return svg;
+  }
+  */
+
+  function convertSvg(svg, id) {
+    // Remove stuff before <svg> tag
+    svg = svg.replace(/[^]*<svg/, '<svg');
+    return svg.replace(/^<svg[^>]*>/, function(a) {
+      // set id property of <svg>
+      a = a.replace(/ id="[^"]*"/, '');
+      a = a.replace(/<svg/, '<svg id="' + id + '"');
+      return a;
+    });
+  }
+
+  function urlToId(url) {
+    return sha1(url).substr(0, 12);
+  }
 
   //
   //
@@ -14089,7 +14482,7 @@
 
     svg = dataset.layers.map(function(lyr) {
       var obj = exportLayerForSVG(lyr, dataset, opts);
-      embedImages(obj, symbols);
+      convertPropertiesToDefinitions(obj, symbols);
       return stringify(obj);
     }).join('\n');
     if (symbols.length > 0) {
@@ -17232,6 +17625,9 @@
       })
       .option('stroke-dasharray', {
         describe: 'stroke dashes. Examples: "4" "2 4"'
+      })
+      .option('fill-hatch', {
+
       })
       .option('stroke-opacity', {
         describe: 'stroke opacity'
@@ -29857,7 +30253,8 @@
     TopojsonExport,
     TopojsonImport,
     Topology,
-    Units
+    Units,
+    SvgHatch
   );
 
   // The entry point for the core mapshaper module

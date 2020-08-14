@@ -5990,6 +5990,7 @@
           r: 'radius',
           fill: 'fillColor',
           stroke: 'strokeColor',
+          'fill-hatch': 'fillHatch',
           'stroke-width': 'strokeWidth',
           'stroke-dasharray': 'lineDash',
           'stroke-opacity': 'strokeOpacity',
@@ -6558,6 +6559,7 @@
         (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
         (style.fillColor || '') +
         (style.fillOpacity ? '~' + style.fillOpacity : '') +
+        (style.fillHatch ? '~' + style.fillHatch : '') +
         (style.opacity < 1 ? '~' + style.opacity : '');
     }
 
@@ -6725,7 +6727,10 @@
           ctx.setLineDash(style.lineDash.split(' '));
         }
       }
-      if (style.fillColor) {
+
+      if (style.fillHatch) {
+        ctx.fillStyle = getCanvasFillHatch(style);
+      } else if (style.fillColor) {
         ctx.fillStyle = style.fillColor;
       }
     };
@@ -6736,7 +6741,7 @@
         so = fo;
     if (style.strokeOpacity >= 0) so *= style.strokeOpacity;
     if (style.fillOpacity >= 0) fo *= style.fillOpacity;
-    if (style.fillColor) {
+    if (style.fillColor || style.fillHatch) {
       ctx.globalAlpha = fo;
       ctx.fill();
     }
@@ -6751,6 +6756,45 @@
     ctx.globalAlpha = 1;
     ctx.closePath();
   }
+
+
+  var getCanvasFillHatch = (function() {
+    var hatches = {};
+
+    function getFill(style) {
+      var hash = internal.parseHatch(style.fillHatch);
+      if (!hash) return null;
+      var width = hash.widths[0] + hash.widths[1];
+      var strokePct = hash.widths[1] / width;
+      var tileSize = Math.round(width * Math.sqrt(2) * GUI.getPixelRatio());
+      var stripeSize = strokePct * tileSize * Math.sqrt(2) / 2;
+      var canv = document.createElement('canvas');
+      var ctx = canv.getContext('2d');
+      canv.setAttribute('width', tileSize);
+      canv.setAttribute('height', tileSize);
+      ctx.lineWidth = stripeSize;
+      ctx.fillStyle = hash.colors[0];
+      ctx.fillRect(0, 0, tileSize, tileSize);
+      ctx.strokeStyle = hash.colors[1];
+      ctx.moveTo(-tileSize * 0.5, tileSize);
+      ctx.lineTo(tileSize, -tileSize * 0.5);
+      ctx.moveTo(0, tileSize * 1.5);
+      ctx.lineTo(tileSize * 1.5, 0);
+      ctx.stroke();
+      return ctx.createPattern(canv, 'repeat');
+    }
+
+    return function(style) {
+      var id = style.fillHatch;
+      var fill = hatches[id];
+      if (fill === undefined) {
+        fill = getFill(style);
+        hatches[id] = fill;
+      }
+      return fill || style.fill || '#000'; // use fill if hatches are invalid
+    };
+
+  }());
 
   function getSvgFurnitureTransform(ext) {
     var scale = ext.getSymbolScale();
