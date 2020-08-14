@@ -204,6 +204,7 @@ function getCanvasDisplayStyle(lyr) {
         r: 'radius',
         fill: 'fillColor',
         stroke: 'strokeColor',
+        'fill-hatch': 'fillHatch',
         'stroke-width': 'strokeWidth',
         'stroke-dasharray': 'lineDash',
         'stroke-opacity': 'strokeOpacity',

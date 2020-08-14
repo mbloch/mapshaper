@@ -7,7 +7,8 @@ import { transformDatasetToPixels } from '../geom/mapshaper-pixel-transform';
 import { copyDataset } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, error, stop } from '../utils/mapshaper-logging';
-import { embedImages, stringify } from '../svg/svg-stringify';
+import { stringify } from '../svg/svg-stringify';
+import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 
@@ -35,7 +36,7 @@ export function exportSVG(dataset, opts) {
 
   svg = dataset.layers.map(function(lyr) {
     var obj = exportLayerForSVG(lyr, dataset, opts);
-    embedImages(obj, symbols);
+    convertPropertiesToDefinitions(obj, symbols);
     return stringify(obj);
   }).join('\n');
   if (symbols.length > 0) {

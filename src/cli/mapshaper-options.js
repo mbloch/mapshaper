@@ -1182,6 +1182,9 @@ export function getOptionParser() {
     .option('stroke-dasharray', {
       describe: 'stroke dashes. Examples: "4" "2 4"'
     })
+    .option('fill-hatch', {
+
+    })
     .option('stroke-opacity', {
       describe: 'stroke opacity'
     })

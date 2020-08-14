@@ -2,6 +2,7 @@ import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { getStateVar } from '../mapshaper-state';
+import { parseHatch } from '../svg/svg-hatch';
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
@@ -11,6 +12,7 @@ var stylePropertyTypes = {
   dx: 'measure',
   dy: 'measure',
   fill: 'color',
+  'fill-hatch': 'hatch',
   'font-family': null,
   'font-size': null,
   'font-style': null,
@@ -42,7 +44,7 @@ var symbolPropertyTypes = utils.extend({
 var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
 var propertiesBySymbolType = {
-  polygon: utils.arrayToIndex(commonProperties.concat('fill')),
+  polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-hatch')),
   polyline: utils.arrayToIndex(commonProperties),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
@@ -138,6 +140,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = isSvgMeasure(strVal) ? parseSvgMeasure(strVal) : null;
   } else if (type == 'dasharray') {
     val = isDashArray(strVal) ? strVal : null;
+  } else if (type == 'hatch') {
+    val = isHatch(strVal) ? strVal : null;
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -146,7 +150,11 @@ function parseSvgLiteralValue(strVal, type) {
   return val;
 }
 
-export function isDashArray(str) {
+function isHatch(str) {
+  return !!parseHatch(str);
+}
+
+function isDashArray(str) {
   return /^[0-9]+( [0-9]+)*$/.test(str);
 }
 
