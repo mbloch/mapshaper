@@ -1,3 +1,7 @@
+v0.5.15
+* Added experimental "blend()" function to the expression context, for doing weighted-average blending of two or more rgb colors. Function signature is: blend(col1, weight1, col2, weight2, ...)
+* Added limited support for hatched polygon fills, using -style fill-hatch="" syntax. Example hatch string: "black 2px #eee 2px"
+
 v0.5.14
 * Added -i csv-dedup-fields to deduplicate CSV fields with identical names.
 * Added -style stroke-opacity and -style fill-opacity options.
