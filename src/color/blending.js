@@ -21,7 +21,6 @@ export function blend() {
     memo.b += rgb.b * w;
     return memo;
   }, {r: 0, g: 0, b: 0});
-  // console.log(blended, colors, weights)
   return formatColor(blended);
 }
 

@@ -22,7 +22,7 @@
 		"node": ">=6.0.0"
 	},
 	"scripts": {
-		"test": "mocha --parallel --check-leaks -R dot",
+		"test": "mocha -r esm --parallel --jobs 4 --check-leaks -R dot",
 		"build": "rollup --config",
 		"prepublishOnly": "npm test",
 		"postpublish": "./release",
