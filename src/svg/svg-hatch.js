@@ -2,19 +2,20 @@ import utils from '../utils/mapshaper-utils';
 
 export function parseHatch(str) {
   // examples
-  // black 1px red 1px
+  // black 1px red 1px white 1px
   // -45deg #eee 3 rgb(0,0,0) 1
-  var splitRxp = /[, ]+(?![^(]*\))/; // don't split rgb(...) colors
-  var parts = String(str).trim().split(splitRxp),
-      rot = parts.length == 5 ? parseInt(parts.shift()) : 45,
-      col1 = parts[0],
-      col2 = parts[2],
-      w1 = parseInt(parts[1]),
-      w2 = parseInt(parts[3]);
-  if (!w1 || !w2) return null;
+  var splitRxp = /[, ]+(?![^(]*\))/, // don't split rgb(...) colors
+      parts = String(str).trim().split(splitRxp),
+      rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
+      colors = [], widths = [];
+  for (var i=0; i<parts.length; i+=2) {
+    colors.push(parts[i]);
+    widths.push(parseInt(parts[i+1]));
+  }
+  if (Math.min.apply(null, widths) < 1) return null;
   return {
-    colors: [col1, col2],
-    widths: [w1, w2],
+    colors: colors,
+    widths: widths,
     rotation: rot
   };
 }
@@ -42,13 +43,13 @@ export function convertFillHatch(properties, symbols) {
 function makeSVGHatchFill(hatchStr, id) {
   var hatch = parseHatch(hatchStr);
   if (!hatch) return null;
-  var w1 = hatch.widths[0],
-      w2 = hatch.widths[1],
-      size = Math.round(w1 + w2),
-      svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="${ size }" patternTransform="rotate(${ hatch.rotation } ${ size/2 } ${ size/2 })">
-      <rect x="0" y="0" width="${ w1 }" height="${ size }" fill="${ hatch.colors[0] }"></rect>
-      <rect x="${ w1 }" y="0" width="${ w2 }" height="${ size }" fill="${ hatch.colors[1] }"></rect>
-      </pattern>`;
+  var size = utils.sum(hatch.widths);
+  var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="10" patternTransform="rotate(${ hatch.rotation })">`;
+  for (var i=0, x=0; i<hatch.widths.length; i++) {
+    svg += `<rect x="${ x }" y="0" width="${ hatch.widths[i] }" height="10" fill="${ hatch.colors[i] }"></rect>`;
+    x += hatch.widths[i];
+  }
+  svg += '</pattern>';
   return {
     svg: svg,
     id: id,

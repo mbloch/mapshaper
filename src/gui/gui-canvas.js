@@ -528,23 +528,24 @@ function getCanvasFillHatch(style) {
 }
 
 function makeHatchFill(style) {
-  var hash = internal.parseHatch(style.fillHatch);
-  if (!hash) return null;
+  var hatch = internal.parseHatch(style.fillHatch);
+  if (!hatch) return null;
+  var size = utils.sum(hatch.widths);
   var res = GUI.getPixelRatio();
-  var w1 = hash.widths[0] * res;
-  var w2 = hash.widths[1] * res;
-  var size = w1 + w2;
   var canv = document.createElement('canvas');
   var ctx = canv.getContext('2d');
-  canv.setAttribute('width', size);
-  canv.setAttribute('height', size);
-  ctx.fillStyle = hash.colors[0];
-  ctx.fillRect(0, 0, w1, size);
-  ctx.fillStyle = hash.colors[1];
-  ctx.fillRect(w1, 0, w2, size);
+  var w;
+  canv.setAttribute('width', size * res);
+  canv.setAttribute('height', 10);
+  for (var i=0, x=0; i<hatch.widths.length; i++) {
+    w = hatch.widths[i] * res;
+    ctx.fillStyle = hatch.colors[i];
+    ctx.fillRect(x, 0, x + w, 10);
+    x += w;
+  }
   var pattern = ctx.createPattern(canv, 'repeat');
-  if (hash.rotation) {
-    pattern.setTransform(new DOMMatrix('rotate(' + hash.rotation + 'deg)'));
+  if (hatch.rotation) {
+    pattern.setTransform(new DOMMatrix('rotate(' + hatch.rotation + 'deg)'));
   }
   return pattern;
 }
