@@ -2,7 +2,7 @@ import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { lookupColorName } from '../color/color-names';
 
-var rgbaRxp = /^rgba?\(([!\)]+)\)/;
+var rgbaRxp = /^rgba?\(([^)]+)\)/;
 var hexRxp = /^#([a-f0-9]{3,8})/i;
 
 export function parseColor(arg) {
