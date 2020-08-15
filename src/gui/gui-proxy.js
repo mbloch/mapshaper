@@ -94,7 +94,7 @@ export function ImportFileProxy(gui) {
 //
 internal.setProjectionLoader(function(opts, done) {
   var mproj = require('mproj');
-  var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.crs || ''].join(' '));
+  var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
   // skip loaded libs
   libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
   loadProjLibs(libs, done);

@@ -84,7 +84,7 @@ export function validateProjOpts(cmd) {
     error("Received one or more unexpected parameters: " + _.join(', '));
   }
 
-  if (!(cmd.options.crs || cmd.options.match || cmd.options.from)) {
+  if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
     stop("Missing projection data");
   }
 }

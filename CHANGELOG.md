@@ -1,3 +1,7 @@
+v0.5.17
+* Added support for rotation parameter to "fill-hatch=" style, e.g. fill-hatch="-45deg #eee 2px #999 2px"
+* Renamed -proj "from=" option to "init=". This better describes the option's function, which is to set the coordinate system of a dataset without touching the coordinates.
+
 v0.5.16
 * Updated dependencies
 

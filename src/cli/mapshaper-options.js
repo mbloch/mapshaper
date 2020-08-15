@@ -959,6 +959,10 @@ export function getOptionParser() {
       alias_to: 'match'
     })
     .option('from', {
+      alias_to: 'init',
+      describe: '(deprecated) alias for init='
+    })
+    .option('init', {
       describe: 'set source CRS (if unset) using a string, .prj or layer id'
     })
     .option('densify', {

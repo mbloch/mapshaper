@@ -297,9 +297,9 @@ export function runCommand(command, catalog, cb) {
           targets.forEach(function(targ) {
             var destArg = opts.match || opts.crs || opts.projection;
             var srcInfo, destInfo;
-            if (opts.from) {
-              srcInfo = getCrsInfo(opts.from, catalog);
-              if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
+            if (opts.init) {
+              srcInfo = getCrsInfo(opts.init, catalog);
+              if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
               setDatasetCRS(targ.dataset, srcInfo);
             }
             if (destArg) {
