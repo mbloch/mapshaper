@@ -2009,7 +2009,7 @@
   //
   internal.setProjectionLoader(function(opts, done) {
     var mproj = require('mproj');
-    var libs = internal.findProjLibs([opts.from || '', opts.match || '', opts.crs || ''].join(' '));
+    var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
     // skip loaded libs
     libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
     loadProjLibs(libs, done);
@@ -6757,44 +6757,38 @@
     ctx.closePath();
   }
 
+  var hatches = {};
 
-  var getCanvasFillHatch = (function() {
-    var hatches = {};
-
-    function getFill(style) {
-      var hash = internal.parseHatch(style.fillHatch);
-      if (!hash) return null;
-      var width = hash.widths[0] + hash.widths[1];
-      var strokePct = hash.widths[1] / width;
-      var tileSize = Math.round(width * Math.sqrt(2) * GUI.getPixelRatio());
-      var stripeSize = strokePct * tileSize * Math.sqrt(2) / 2;
-      var canv = document.createElement('canvas');
-      var ctx = canv.getContext('2d');
-      canv.setAttribute('width', tileSize);
-      canv.setAttribute('height', tileSize);
-      ctx.lineWidth = stripeSize;
-      ctx.fillStyle = hash.colors[0];
-      ctx.fillRect(0, 0, tileSize, tileSize);
-      ctx.strokeStyle = hash.colors[1];
-      ctx.moveTo(-tileSize * 0.5, tileSize);
-      ctx.lineTo(tileSize, -tileSize * 0.5);
-      ctx.moveTo(0, tileSize * 1.5);
-      ctx.lineTo(tileSize * 1.5, 0);
-      ctx.stroke();
-      return ctx.createPattern(canv, 'repeat');
+  function getCanvasFillHatch(style) {
+    var fill = hatches[style.fillHatch];
+    if (fill === undefined) {
+      fill = makeHatchFill(style);
+      hatches[style.fillHatch] = fill;
     }
+    return fill || style.fill || '#000'; // use fill if hatches are invalid
+  }
 
-    return function(style) {
-      var id = style.fillHatch;
-      var fill = hatches[id];
-      if (fill === undefined) {
-        fill = getFill(style);
-        hatches[id] = fill;
-      }
-      return fill || style.fill || '#000'; // use fill if hatches are invalid
-    };
-
-  }());
+  function makeHatchFill(style) {
+    var hash = internal.parseHatch(style.fillHatch);
+    if (!hash) return null;
+    var res = GUI.getPixelRatio();
+    var w1 = hash.widths[0] * res;
+    var w2 = hash.widths[1] * res;
+    var size = w1 + w2;
+    var canv = document.createElement('canvas');
+    var ctx = canv.getContext('2d');
+    canv.setAttribute('width', size);
+    canv.setAttribute('height', size);
+    ctx.fillStyle = hash.colors[0];
+    ctx.fillRect(0, 0, w1, size);
+    ctx.fillStyle = hash.colors[1];
+    ctx.fillRect(w1, 0, w2, size);
+    var pattern = ctx.createPattern(canv, 'repeat');
+    if (hash.rotation) {
+      pattern.setTransform(new DOMMatrix('rotate(' + hash.rotation + 'deg)'));
+    }
+    return pattern;
+  }
 
   function getSvgFurnitureTransform(ext) {
     var scale = ext.getSymbolScale();

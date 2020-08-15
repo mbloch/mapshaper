@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.14";
+  var VERSION = "0.5.16";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9387,7 +9387,7 @@
     yellowgreen: '#9acd32'
   };
 
-  var rgbaRxp = /^rgba?\(([!\)]+)\)/;
+  var rgbaRxp = /^rgba?\(([^)]+)\)/;
   var hexRxp = /^#([a-f0-9]{3,8})/i;
 
   function parseColor(arg) {
@@ -9463,9 +9463,9 @@
     }
     if (hex.length != 6 && hex.length != 8) return null;
     return {
-      r: parseInt(hex.substr(1, 2), 16),
-      g: parseInt(hex.substr(3, 2), 16),
-      b: parseInt(hex.substr(5, 2), 16),
+      r: parseInt(hex.substr(0, 2), 16),
+      g: parseInt(hex.substr(2, 2), 16),
+      b: parseInt(hex.substr(4, 2), 16),
       a: hex.length == 8 ? parseInt(hex.substr(7, 2), 16) / 255 : 1
     };
   }
@@ -9546,7 +9546,6 @@
       memo.b += rgb.b * w;
       return memo;
     }, {r: 0, g: 0, b: 0});
-    // console.log(blended, colors, weights)
     return formatColor(blended);
   }
 
@@ -13484,9 +13483,12 @@
   });
 
   function parseHatch(str) {
-    // example
+    // examples
     // black 1px red 1px
-    var parts = String(str).trim().split(/[, ]+/),
+    // -45deg #eee 3 rgb(0,0,0) 1
+    var splitRxp = /[, ]+(?![^(]*\))/; // don't split rgb(...) colors
+    var parts = String(str).trim().split(splitRxp),
+        rot = parts.length == 5 ? parseInt(parts.shift()) : 45,
         col1 = parts[0],
         col2 = parts[2],
         w1 = parseInt(parts[1]),
@@ -13494,41 +13496,41 @@
     if (!w1 || !w2) return null;
     return {
       colors: [col1, col2],
-      widths: [w1, w2]
+      widths: [w1, w2],
+      rotation: rot
     };
   }
 
   function getHashId(str) {
-    return 'hash_' + str.replace(/[()# ,]/g, ''); // remove some chars that occur in colors
+    return ('hash_' + str).replace(/[()# ,_]+/g, '_'); // replace some chars that occur in colors
   }
 
   // properties: properties object of a path data object (prior to conversion to SVG)
   // symbols: array of definition objects
   //
   function convertFillHatch(properties, symbols) {
-    var hashStr = properties['fill-hatch'];
-    var hashId = getHashId(hashStr);
+    var hatchStr = properties['fill-hatch'];
+    var hashId = getHashId(hatchStr);
     var hash = utils.find(symbols, function(o) { return o.id == hashId; });
     delete properties['fill-hatch'];
     if (!hash) {
-      hash = makeSVGHatchFill(hashStr, hashId);
+      hash = makeSVGHatchFill(hatchStr, hashId);
       if (!hash) return;
       symbols.push(hash);
     }
     properties.fill = hash.href;
   }
 
-  function makeSVGHatchFill(hashStr, id) {
-    var hash = parseHatch(hashStr);
-    if (!hash) return null;
-    var tileWidth = Math.round(hash.widths[0] + hash.widths[1]),
-        halfWidth = tileWidth / 2,
-        strokeWidth = Math.round(hash.widths[1]),
-        y = strokeWidth - (strokeWidth % 2 == 0 ? 0 : 0.5),
-        d = 'M ' + (-halfWidth) + ',' + y + ' l ' + (2 * tileWidth) + ',0',
-        svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ tileWidth }" height="${ tileWidth }" patternTransform="rotate(-45 ${ halfWidth } ${ halfWidth })">
-      <rect x="0" y="0" width="${ tileWidth }" height="${ tileWidth }" fill="${ hash.colors[0] }"></rect>
-      <path stroke="${ hash.colors[1] }" stroke-width="${ strokeWidth }" d="${ d }"></path></pattern>`;
+  function makeSVGHatchFill(hatchStr, id) {
+    var hatch = parseHatch(hatchStr);
+    if (!hatch) return null;
+    var w1 = hatch.widths[0],
+        w2 = hatch.widths[1],
+        size = Math.round(w1 + w2),
+        svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="${ size }" patternTransform="rotate(${ hatch.rotation } ${ size/2 } ${ size/2 })">
+      <rect x="0" y="0" width="${ w1 }" height="${ size }" fill="${ hatch.colors[0] }"></rect>
+      <rect x="${ w1 }" y="0" width="${ w2 }" height="${ size }" fill="${ hatch.colors[1] }"></rect>
+      </pattern>`;
     return {
       svg: svg,
       id: id,
@@ -15839,7 +15841,7 @@
       error("Received one or more unexpected parameters: " + _.join(', '));
     }
 
-    if (!(cmd.options.crs || cmd.options.match || cmd.options.from)) {
+    if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
       stop("Missing projection data");
     }
   }
@@ -17403,6 +17405,10 @@
         alias_to: 'match'
       })
       .option('from', {
+        alias_to: 'init',
+        describe: '(deprecated) alias for init='
+      })
+      .option('init', {
         describe: 'set source CRS (if unset) using a string, .prj or layer id'
       })
       .option('densify', {
@@ -29321,9 +29327,9 @@
             targets.forEach(function(targ) {
               var destArg = opts.match || opts.crs || opts.projection;
               var srcInfo, destInfo;
-              if (opts.from) {
-                srcInfo = getCrsInfo(opts.from, catalog);
-                if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
+              if (opts.init) {
+                srcInfo = getCrsInfo(opts.init, catalog);
+                if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
                 setDatasetCRS(targ.dataset, srcInfo);
               }
               if (destArg) {
