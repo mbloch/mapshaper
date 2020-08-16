@@ -58,15 +58,17 @@ export function MshpMap(gui) {
 
   model.on('update', onUpdate);
 
-  // Currently used to show dots at line intersections
+  // Update display of segment intersections
   this.setIntersectionLayer = function(lyr, dataset) {
+    if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
       _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
       _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
     } else {
       _intersectionLyr = null;
     }
-    _stack.drawOverlay2Layer(_intersectionLyr); // also hides
+    // TODO: try to avoid redrawing layers twice (in some situations)
+    drawLayers();
   };
 
   this.setLayerVisibility = function(target, isVisible) {
@@ -223,7 +225,7 @@ export function MshpMap(gui) {
     if (true) { // TODO: add option to disable?
       _editor = new SymbolDragging2(gui, _ext, _hit);
       _editor.on('location_change', function(e) {
-        // TODO: optimize redrawing
+        // TODO: look into optimizing, so only changed symbol is redrawn
         drawLayers();
       });
     }
@@ -233,13 +235,14 @@ export function MshpMap(gui) {
       if (isFrameView()) {
         updateFrameExtent();
       }
-      drawLayers(true);
+      drawLayers('nav');
     });
 
     _hit.on('change', function(e) {
       // draw highlight effect for hover and select
       _overlayLyr = getDisplayLayerOverlay(_activeLyr, e);
-      _stack.drawOverlayLayer(_overlayLyr);
+      drawLayers('hover');
+      // _stack.drawOverlayLayer(_overlayLyr);
     });
 
     gui.on('resize', function() {
@@ -425,31 +428,37 @@ export function MshpMap(gui) {
     });
   }
 
-  // onlyNav (bool): only map extent has changed, symbols are unchanged
-  function drawLayers(onlyNav) {
+  // action:
+  //   'nav'      map was panned/zoomed -- only map extent has changed
+  //   'hover'    highlight has changed -- only draw overlay
+  //   (default)  anything could have changed
+  function drawLayers(action) {
+    var layersMayHaveChanged = !action;
     var contentLayers = getDrawableContentLayers();
     var furnitureLayers = getDrawableFurnitureLayers();
     if (!(_ext.width() > 0 && _ext.height() > 0)) {
       // TODO: track down source of these errors
-      console.error("[drawLayers()] Collapsed map container, unable to draw.");
+      console.error("Collapsed map container, unable to draw.");
       return;
     }
-    if (!onlyNav) {
+    if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
       _ext.setBounds(getFullBounds());
       updateLayerStyles(contentLayers);
-      // update stack_id property of all layers
-      updateLayerStackOrder(model.getLayers());
+      updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
     }
     sortMapLayers(contentLayers);
-    _stack.drawContentLayers(contentLayers, onlyNav);
-    // draw intersection dots
-    _stack.drawOverlay2Layer(_intersectionLyr);
-    // draw hover & selection effects
-    _stack.drawOverlayLayer(_overlayLyr);
-    // _stack.drawFurnitureLayers(furnitureLayers, onlyNav);
-    _stack.drawFurnitureLayers(furnitureLayers); // re-render on nav, because scalebars
+    if (_intersectionLyr) {
+      contentLayers = contentLayers.concat(_intersectionLyr);
+    }
+    // RENDERING
+    // draw main content layers
+    _stack.drawMainLayers(contentLayers, action);
+    // draw hover & selection overlay
+    _stack.drawOverlayLayer(_overlayLyr, action);
+    // draw furniture
+    _stack.drawFurnitureLayers(furnitureLayers, action);
   }
 }
 

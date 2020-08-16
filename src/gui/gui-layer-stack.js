@@ -5,62 +5,72 @@ import { El } from './gui-el';
 
 export function LayerStack(gui, container, ext, mouse) {
   var el = El(container),
-      _activeCanv = new DisplayCanvas().appendTo(el),  // data layer shapes
-      _overlayCanv = new DisplayCanvas().appendTo(el), // data layer shapes
-      _overlay2Canv = new DisplayCanvas().appendTo(el),  // line intersection dots
-      _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el), // labels, _ext;
-      _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),  // scalebar, etc
+      _mainCanv = new DisplayCanvas().appendTo(el),
+      _overlayCanv = new DisplayCanvas().appendTo(el),
+      _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el),
+      _furniture = new SvgDisplayLayer(gui, ext, null).appendTo(el),
       _ext = ext;
 
   // don't let furniture container block events to symbol layers
   _furniture.css('pointer-events', 'none');
 
-  this.drawOverlay2Layer = function(lyr) {
-    drawSingleCanvasLayer(lyr, _overlay2Canv);
-  };
-
-  this.drawOverlayLayer = function(lyr) {
-    drawSingleCanvasLayer(lyr, _overlayCanv);
-  };
-
-  this.drawContentLayers = function(layers, onlyNav) {
-    _activeCanv.prep(_ext);
-    if (!onlyNav) {
+  this.drawMainLayers = function(layers, action) {
+    if (skipMainLayerRedraw(action)) return;
+    _mainCanv.prep(_ext);
+    if (action != 'nav') {
       _svg.clear();
     }
-    layers.forEach(function(target) {
-      if (layerUsesCanvas(target.layer)) {
-        drawCanvasLayer(target, _activeCanv);
+    layers.forEach(function(lyr) {
+      var svgType = getSvgLayerType(lyr.layer);
+      if (!svgType || svgType == 'label') { // svg labels may have canvas dots
+        drawCanvasLayer(lyr, _mainCanv);
       }
-      if (layerUsesSVG(target.layer)) {
-        drawSvgLayer(target, onlyNav);
+      if (svgType && action == 'nav') {
+        _svg.reposition(lyr, svgType);
+      } else if (svgType) {
+        _svg.drawLayer(lyr, svgType);
       }
     });
   };
 
-  this.drawFurnitureLayers = function(layers, onlyNav) {
-    if (!onlyNav) {
+  // Draw highlight effect for hover and selection
+  // Highlights get drawn on the main canvas most of the time, because redrawing
+  //   is noticeably slower during animations with multiple canvases.
+  // Highlights are drawn on a separate canvas while hovering, because this
+  //   is generally faster than redrawing all of the shapes.
+  this.drawOverlayLayer = function(lyr, action) {
+    if (action == 'hover' && lyr) {
+      _overlayCanv.prep(_ext);
+      drawCanvasLayer(lyr, _overlayCanv);
+    } else {
+      _overlayCanv.hide();
+      drawCanvasLayer(lyr, _mainCanv);
+    }
+  };
+
+  this.drawFurnitureLayers = function(layers, action) {
+    // re-render if action == 'nav', because scalebars get resized
+    var noRedraw = action == 'hover';
+    if (!noRedraw) {
       _furniture.clear();
     }
-    layers.forEach(function(target) {
-      if (onlyNav) {
-        _furniture.reposition(target, 'furniture');
+    layers.forEach(function(lyr) {
+      if (noRedraw) {
+        _furniture.reposition(lyr, 'furniture');
       } else {
-        _furniture.drawLayer(target, 'furniture');
+        _furniture.drawLayer(lyr, 'furniture');
       }
     });
   };
 
-  function layerUsesCanvas(layer) {
-    // TODO: return false if a label layer does not have dots
-    return !internal.layerHasSvgSymbols(layer);
-  }
-
-  function layerUsesSVG(layer) {
-    return internal.layerHasLabels(layer) || internal.layerHasSvgSymbols(layer);
+  // kludge: skip rendering base layers if hovering, except on first hover
+  // (because highlight shapes may be rendered to the main canvas)
+  function skipMainLayerRedraw(action) {
+    return action == 'hover' && _overlayCanv.visible();
   }
 
   function drawCanvasLayer(target, canv) {
+    if (!target) return;
     if (target.style.type == 'outline') {
       drawOutlineLayerToCanvas(target, canv, ext);
     } else {
@@ -68,26 +78,13 @@ export function LayerStack(gui, container, ext, mouse) {
     }
   }
 
-  function drawSvgLayer(target, onlyNav) {
-    var type;
-    if (internal.layerHasLabels(target.layer)) {
+  function getSvgLayerType(layer) {
+    var type = null;
+    if (internal.layerHasLabels(layer)) {
       type = 'label';
-    } else if (internal.layerHasSvgSymbols(target.layer)) {
+    } else if (internal.layerHasSvgSymbols(layer)) {
       type = 'symbol';
     }
-    if (onlyNav) {
-      _svg.reposition(target, type);
-    } else {
-      _svg.drawLayer(target, type);
-    }
-  }
-
-  function drawSingleCanvasLayer(target, canv) {
-    if (!target) {
-      canv.hide();
-    } else {
-      canv.prep(_ext);
-      drawCanvasLayer(target, canv);
-    }
+    return type;
   }
 }

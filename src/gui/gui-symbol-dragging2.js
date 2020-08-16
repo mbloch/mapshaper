@@ -3,6 +3,7 @@ import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTex
 import { error, internal } from './gui-core';
 import { translateDeltaDisplayCoords, getPointCoordsById, getDisplayCoordsById } from './gui-map-utils';
 import { EventDispatcher } from './gui-events';
+import { findNearestVertex, findVertexIds, getVertexCoords, setVertexCoords } from '../paths/mapshaper-vertex-utils';
 
 export function SymbolDragging2(gui, ext, hit) {
   // var targetTextNode; // text node currently being dragged
@@ -10,6 +11,7 @@ export function SymbolDragging2(gui, ext, hit) {
   var activeRecord;
   var activeId = -1;
   var self = new EventDispatcher();
+  var activeVertexIds = null; // for vertex dragging
 
   initDragging();
 
@@ -21,6 +23,10 @@ export function SymbolDragging2(gui, ext, hit) {
 
   function locationEditingEnabled() {
     return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
+  }
+
+  function vertexEditingEnabled() {
+    return gui.interaction && gui.interaction.getMode() == 'vertices' ? true : false;
   }
 
   // update symbol by setting attributes
@@ -76,6 +82,8 @@ export function SymbolDragging2(gui, ext, hit) {
         onLabelDragStart(e);
       } else if (locationEditingEnabled()) {
         onLocationDragStart(e);
+      } else if (vertexEditingEnabled()) {
+        onVertexDragStart(e);
       }
     });
 
@@ -84,6 +92,8 @@ export function SymbolDragging2(gui, ext, hit) {
         onLabelDrag(e);
       } else if (locationEditingEnabled()) {
         onLocationDrag(e);
+      } else if (vertexEditingEnabled()) {
+        onVertexDrag(e);
       }
     });
 
@@ -92,6 +102,9 @@ export function SymbolDragging2(gui, ext, hit) {
         onLocationDragEnd(e);
         stopDragging();
       } else if (labelEditingEnabled()) {
+        stopDragging();
+      } else if (vertexEditingEnabled()) {
+        onVertexDragEnd(e);
         stopDragging();
       }
     });
@@ -109,9 +122,14 @@ export function SymbolDragging2(gui, ext, hit) {
       }
     }
 
+    function onVertexDragStart(e) {
+      if (e.id >= 0) {
+        dragging = true;
+      }
+    }
+
     function onLocationDrag(e) {
       var lyr = hit.getHitTarget().layer;
-      // get reference to
       var p = getPointCoordsById(e.id, hit.getHitTarget().layer);
       if (!p) return;
       var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
@@ -121,8 +139,28 @@ export function SymbolDragging2(gui, ext, hit) {
       triggerGlobalEvent('symbol_drag', e);
     }
 
+    function onVertexDrag(e) {
+      var target = hit.getHitTarget();
+      var p = ext.translatePixelCoords(e.x, e.y);
+      if (!activeVertexIds) {
+        var p2 = findNearestVertex(p[0], p[1], target.layer.shapes[e.id], target.arcs);
+        activeVertexIds = findVertexIds(p2.x, p2.y, target.arcs);
+      }
+      if (!activeVertexIds) return; // ignore error condition
+      activeVertexIds.forEach(function(idx) {
+        setVertexCoords(p[0], p[1], idx, target.arcs);
+      });
+      self.dispatchEvent('location_change'); // signal map to redraw
+    }
+
     function onLocationDragEnd(e) {
       triggerGlobalEvent('symbol_dragend', e);
+    }
+
+    function onVertexDragEnd(e) {
+      // kludge to get dataset to recalculate internal bounding boxes
+      hit.getHitTarget().arcs.transformPoints(function() {});
+      activeVertexIds = null;
     }
 
     function onLabelClick(e) {

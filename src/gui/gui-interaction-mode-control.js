@@ -5,6 +5,7 @@ export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'data', 'selection', 'box', 'off'],
+    lines: ['info', 'data', 'selection', 'box', 'vertices', 'off'],
     table: ['info', 'data', 'selection', 'off'],
     labels: ['info', 'data', 'selection', 'box', 'labels', 'location', 'off'],
     points: ['info', 'data', 'selection', 'box', 'location', 'off']
@@ -23,6 +24,7 @@ export function InteractionMode(gui) {
     data: 'edit attributes',
     labels: 'position labels',
     location: 'drag points',
+    vertices: 'drag vertices',
     selection: 'select features',
     off: 'turn off'
   };
@@ -115,6 +117,9 @@ export function InteractionMode(gui) {
     }
     if (internal.layerHasPoints(o.layer)) {
       return menus.points;
+    }
+    if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polyline') {
+      return menus.lines;
     }
     return menus.standard;
   }

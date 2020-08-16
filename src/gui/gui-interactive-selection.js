@@ -79,7 +79,7 @@ export function InteractiveSelection(gui, ext, mouse) {
   }
 
   function draggable() {
-    return interactionMode == 'location' || interactionMode == 'labels';
+    return interactionMode == 'vertices' || interactionMode == 'location' || interactionMode == 'labels';
   }
 
   function clickable() {
