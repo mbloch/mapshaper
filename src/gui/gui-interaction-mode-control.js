@@ -4,11 +4,11 @@ import { internal } from './gui-core';
 export function InteractionMode(gui) {
 
   var menus = {
-    standard: ['info', 'data', 'selection', 'box', 'off'],
-    lines: ['info', 'data', 'selection', 'box', 'vertices', 'off'],
-    table: ['info', 'data', 'selection', 'off'],
-    labels: ['info', 'data', 'selection', 'box', 'labels', 'location', 'off'],
-    points: ['info', 'data', 'selection', 'box', 'location', 'off']
+    standard: ['info', 'selection', 'data', 'box', 'off'],
+    lines: ['info', 'selection', 'data', 'box', 'vertices', 'off'],
+    table: ['info', 'selection', 'data', 'off'],
+    labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'off'],
+    points: ['info', 'selection', 'data', 'box', 'location', 'off']
   };
 
   var prompts = {
@@ -19,7 +19,7 @@ export function InteractionMode(gui) {
 
   // mode name -> menu text lookup
   var labels = {
-    info: 'inspect attributes',
+    info: 'inspect features',
     box: 'shift-drag box tool',
     data: 'edit attributes',
     labels: 'position labels',
@@ -28,12 +28,11 @@ export function InteractionMode(gui) {
     selection: 'select features',
     off: 'turn off'
   };
-  var btn, menu, tab;
+  var btn, menu;
   var _menuTimeout;
 
   // state variables
   var _editMode = 'off';
-  var _prevMode = 'info'; // stored mode for re-opening menu
   var _menuOpen = false;
 
   // Only render edit mode button/menu if this option is present
@@ -41,24 +40,20 @@ export function InteractionMode(gui) {
     btn = gui.buttons.addButton('#pointer-icon');
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
-    // tab = gui.buttons.initButton('#info-menu-icon').addClass('nav-sub-btn').appendTo(btn.node());
-
     btn.on('mouseleave', function() {
       btn.removeClass('hover');
-      // tab.hide();
-      autoClose();
+      closeMenu(400);
     });
 
     btn.on('mouseenter', function() {
       btn.addClass('hover');
+      if (_menuOpen) {
+        clearTimeout(_menuTimeout); // prevent timed closing
+      }
       if (_editMode != 'off') {
-        clearTimeout(_menuTimeout);
         openMenu();
-        // tab.show();
       }
     });
-
-    // tab.on('mouseenter', openMenu);
 
     btn.on('click', function(e) {
       if (active()) {
@@ -67,12 +62,6 @@ export function InteractionMode(gui) {
       } else if (_menuOpen) {
         closeMenu();
       } else {
-        if (_editMode == 'off') {
-          // turn on interaction when menu opens
-          // (could this be confusing?)
-          setMode(openWithMode());
-        }
-        clearTimeout(_menuTimeout);
         openMenu();
       }
       e.stopPropagation();
@@ -133,18 +122,20 @@ export function InteractionMode(gui) {
     var modes = getAvailableModes();
     menu.empty();
     modes.forEach(function(mode) {
+      // don't show "turn off" link if not currently editing
+      if (_editMode == 'off' && mode == 'off') return;
       var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
       link.on('click', function(e) {
         if (_editMode == mode) {
           closeMenu();
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(mode == 'off' ? 200 : 350);
+          closeMenu(mode == 'off' ? 120 : 500);
         }
         e.stopPropagation();
       });
     });
-    updateModeDisplay();
+    updateSelectionHighlight();
   }
 
   // if current editing mode is not available, switch to another mode
@@ -155,48 +146,36 @@ export function InteractionMode(gui) {
     }
   }
 
-  function openWithMode() {
-    if (getAvailableModes().indexOf(_prevMode) > -1) {
-      return _prevMode;
-    }
-    return 'info';
-  }
-
   function openMenu() {
     clearTimeout(_menuTimeout);
-    // if (!_menuOpen && _editMode != 'off') {
     if (!_menuOpen) {
-      // tab.hide();
       _menuOpen = true;
-      updateAppearance();
+      renderMenu();
+      updateArrowButton();
     }
   }
 
-  function autoClose() {
-    clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(closeMenu, 300);
-  }
-
+  // Calling with a delay lets users see the menu update after clicking a selection,
+  // and prevents the menu from closing immediately if the pointer briefly drifts
+  // off the menu while hovering.
+  //
   function closeMenu(delay) {
     if (!_menuOpen) return;
-    _menuOpen = false;
-    setTimeout(function() {
+    clearTimeout(_menuTimeout);
+    _menuTimeout = setTimeout(function() {
       _menuOpen = false;
-      updateAppearance();
+      updateArrowButton();
     }, delay || 0);
   }
 
   function setMode(mode) {
     var changed = mode != _editMode;
-    // if (mode == 'off') tab.hide();
     if (changed) {
       menu.classed('active', mode != 'off');
-      if (_editMode != 'off') {
-        _prevMode = _editMode; // save edit mode so we can re-open control with the same mode
-      }
       _editMode = mode;
       onModeChange();
-      updateAppearance();
+      updateArrowButton();
+      updateSelectionHighlight();
     }
   }
 
@@ -204,20 +183,19 @@ export function InteractionMode(gui) {
     gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
   }
 
-  function updateAppearance() {
+  // Update button highlight and selected menu item highlight (if any)
+  function updateArrowButton() {
     if (!menu) return;
     if (_menuOpen) {
       btn.addClass('open');
-      renderMenu();
     } else {
       btn.removeClass('hover');
       btn.removeClass('open');
-      // menu.hide();
     }
     btn.classed('selected', active() || _menuOpen);
   }
 
-  function updateModeDisplay() {
+  function updateSelectionHighlight() {
     El.findAll('.nav-menu-item').forEach(function(el) {
       el = El(el);
       el.classed('selected', el.attr('data-name') == _editMode);
