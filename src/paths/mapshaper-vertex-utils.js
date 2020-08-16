@@ -16,7 +16,26 @@ export function findVertexIds(x, y, arcs) {
 
 export function getVertexCoords(i, arcs) {
   var data = arcs.getVertexData();
-  return {x: data.xx[i], y: data.yy[i]};
+  return [data.xx[i], data.yy[i]];
+}
+
+export function vertexIsArcEnd(idx, arcs) {
+  // Test whether the vertex at index @idx is the endpoint of an arc
+  var data = arcs.getVertexData(),
+      ii = data.ii,
+      nn = data.nn;
+  for (var j=0, n=ii.length; j<n; j++) {
+    if (idx === ii[j] + nn[j] - 1) return true;
+  }
+  return false;
+}
+
+export function vertexIsArcStart(idx, arcs) {
+  var ii = arcs.getVertexData().ii;
+  for (var j=0, n=ii.length; j<n; j++) {
+    if (idx === ii[j]) return true;
+  }
+  return false;
 }
 
 export function setVertexCoords(x, y, i, arcs) {

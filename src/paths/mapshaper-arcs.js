@@ -391,16 +391,6 @@ export function ArcCollection() {
     return _ii[absId] + nth;
   };
 
-  // Test whether the vertex at index @idx is the endpoint of an arc
-  this.pointIsEndpoint = function(idx) {
-    var ii = _ii,
-        nn = _nn;
-    for (var j=0, n=ii.length; j<n; j++) {
-      if (idx === ii[j] || idx === ii[j] + nn[j] - 1) return true;
-    }
-    return false;
-  };
-
   // Tests if arc endpoints have same x, y coords
   // (arc may still have collapsed);
   this.arcIsClosed = function(arcId) {

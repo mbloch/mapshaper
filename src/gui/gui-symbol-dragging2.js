@@ -3,7 +3,7 @@ import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTex
 import { error, internal } from './gui-core';
 import { translateDeltaDisplayCoords, getPointCoordsById, getDisplayCoordsById } from './gui-map-utils';
 import { EventDispatcher } from './gui-events';
-import { findNearestVertex, findVertexIds, getVertexCoords, setVertexCoords } from '../paths/mapshaper-vertex-utils';
+import { findNearestVertex, findVertexIds, getVertexCoords, setVertexCoords, vertexIsArcStart, vertexIsArcEnd } from '../paths/mapshaper-vertex-utils';
 
 export function SymbolDragging2(gui, ext, hit) {
   // var targetTextNode; // text node currently being dragged
@@ -147,10 +147,32 @@ export function SymbolDragging2(gui, ext, hit) {
         activeVertexIds = findVertexIds(p2.x, p2.y, target.arcs);
       }
       if (!activeVertexIds) return; // ignore error condition
+      if (gui.keyboard.shiftIsPressed()) {
+        snapEndpointCoords(p, target.arcs);
+      }
       activeVertexIds.forEach(function(idx) {
         setVertexCoords(p[0], p[1], idx, target.arcs);
       });
       self.dispatchEvent('location_change'); // signal map to redraw
+    }
+
+    function snapEndpointCoords(p, arcs) {
+      var p2, p3, dx, dy;
+      activeVertexIds.forEach(function(idx) {
+        if (vertexIsArcStart(idx, arcs)) {
+          p2 = getVertexCoords(idx + 1, arcs);
+        } else if (vertexIsArcEnd(idx, arcs)) {
+          p2 = getVertexCoords(idx - 1, arcs);
+        }
+      });
+      if (!p2) return;
+      dx = p2[0] - p[0];
+      dy = p2[1] - p[1];
+      if (Math.abs(dx) > Math.abs(dy)) {
+        p[1] = p2[1]; // snap y coord
+      } else {
+        p[0] = p2[0];
+      }
     }
 
     function onLocationDragEnd(e) {
