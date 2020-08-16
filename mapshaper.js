@@ -4779,16 +4779,6 @@
       return _ii[absId] + nth;
     };
 
-    // Test whether the vertex at index @idx is the endpoint of an arc
-    this.pointIsEndpoint = function(idx) {
-      var ii = _ii,
-          nn = _nn;
-      for (var j=0, n=ii.length; j<n; j++) {
-        if (idx === ii[j] || idx === ii[j] + nn[j] - 1) return true;
-      }
-      return false;
-    };
-
     // Tests if arc endpoints have same x, y coords
     // (arc may still have collapsed);
     this.arcIsClosed = function(arcId) {
@@ -13484,19 +13474,20 @@
 
   function parseHatch(str) {
     // examples
-    // black 1px red 1px
+    // black 1px red 1px white 1px
     // -45deg #eee 3 rgb(0,0,0) 1
-    var splitRxp = /[, ]+(?![^(]*\))/; // don't split rgb(...) colors
-    var parts = String(str).trim().split(splitRxp),
-        rot = parts.length == 5 ? parseInt(parts.shift()) : 45,
-        col1 = parts[0],
-        col2 = parts[2],
-        w1 = parseInt(parts[1]),
-        w2 = parseInt(parts[3]);
-    if (!w1 || !w2) return null;
+    var splitRxp = /[, ]+(?![^(]*\))/, // don't split rgb(...) colors
+        parts = String(str).trim().split(splitRxp),
+        rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
+        colors = [], widths = [];
+    for (var i=0; i<parts.length; i+=2) {
+      colors.push(parts[i]);
+      widths.push(parseInt(parts[i+1]));
+    }
+    if (Math.min.apply(null, widths) < 1) return null;
     return {
-      colors: [col1, col2],
-      widths: [w1, w2],
+      colors: colors,
+      widths: widths,
       rotation: rot
     };
   }
@@ -13524,13 +13515,13 @@
   function makeSVGHatchFill(hatchStr, id) {
     var hatch = parseHatch(hatchStr);
     if (!hatch) return null;
-    var w1 = hatch.widths[0],
-        w2 = hatch.widths[1],
-        size = Math.round(w1 + w2),
-        svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="${ size }" patternTransform="rotate(${ hatch.rotation } ${ size/2 } ${ size/2 })">
-      <rect x="0" y="0" width="${ w1 }" height="${ size }" fill="${ hatch.colors[0] }"></rect>
-      <rect x="${ w1 }" y="0" width="${ w2 }" height="${ size }" fill="${ hatch.colors[1] }"></rect>
-      </pattern>`;
+    var size = utils.sum(hatch.widths);
+    var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="10" patternTransform="rotate(${ hatch.rotation })">`;
+    for (var i=0, x=0; i<hatch.widths.length; i++) {
+      svg += `<rect x="${ x }" y="0" width="${ hatch.widths[i] }" height="10" fill="${ hatch.colors[i] }"></rect>`;
+      x += hatch.widths[i];
+    }
+    svg += '</pattern>';
     return {
       svg: svg,
       id: id,
@@ -17275,6 +17266,10 @@
       .option('each', eachOpt2)
       .option('segments', {
         describe: 'convert paths to segments, for debugging',
+        type: 'flag'
+      })
+      .option('callouts', {
+        // describe: 'convert points to lines for editing in the GUI',
         type: 'flag'
       })
       .option('arcs', {
@@ -25510,7 +25505,10 @@
 
   cmd.lines = function(lyr, dataset, opts) {
     opts = opts || {};
-    if (lyr.geometry_type == 'point') {
+    if (opts.callouts) {
+      requirePointLayer(lyr);
+      return pointsToCallouts(lyr, dataset, opts);
+    } else if (lyr.geometry_type == 'point') {
       return pointsToLines(lyr, dataset, opts);
     } else if (opts.segments) {
       return [convertShapesToSegments(lyr, dataset)];
@@ -25572,6 +25570,33 @@
     var geojson = opts.groupby ?
       groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
       pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
+    var dataset2 = importGeoJSON(geojson);
+    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+    if (!opts.no_replace) {
+      outputLayers[0].name = lyr.name || outputLayers[0].name;
+    }
+    return outputLayers;
+  }
+
+  function pointsToCallouts(lyr, dataset, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var calloutLen = getLayerBounds(lyr).width() / 50;
+    var pointToSegment = function(p) {
+      return [p, [p[0] + calloutLen, p[1]]];
+    };
+    var geojson = {
+      type: 'FeatureCollection',
+      features: lyr.shapes.map(function(shp, i) {
+        return {
+          type: 'Feature',
+          properties: records ? records[i] : null,
+          geometry: {
+            type: 'MultiLineString',
+            coordinates: shp.map(pointToSegment)
+          }
+        };
+      })
+    };
     var dataset2 = importGeoJSON(geojson);
     var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
     if (!opts.no_replace) {
@@ -25970,6 +25995,68 @@
     return d;
   }
 
+  // Find ids of vertices with identical coordinates to x,y in an ArcCollection
+  // Caveat: does not exclude vertices that are not visible at the
+  //   current level of simplification.
+  function findVertexIds(x, y, arcs) {
+    var data = arcs.getVertexData(),
+        xx = data.xx,
+        yy = data.yy,
+        ids = [];
+    for (var i=0, n=xx.length; i<n; i++) {
+      if (xx[i] == x && yy[i] == y) ids.push(i);
+    }
+    return ids;
+  }
+
+  function getVertexCoords(i, arcs) {
+    var data = arcs.getVertexData();
+    return [data.xx[i], data.yy[i]];
+  }
+
+  function vertexIsArcEnd(idx, arcs) {
+    // Test whether the vertex at index @idx is the endpoint of an arc
+    var data = arcs.getVertexData(),
+        ii = data.ii,
+        nn = data.nn;
+    for (var j=0, n=ii.length; j<n; j++) {
+      if (idx === ii[j] + nn[j] - 1) return true;
+    }
+    return false;
+  }
+
+  function vertexIsArcStart(idx, arcs) {
+    var ii = arcs.getVertexData().ii;
+    for (var j=0, n=ii.length; j<n; j++) {
+      if (idx === ii[j]) return true;
+    }
+    return false;
+  }
+
+  function setVertexCoords(x, y, i, arcs) {
+    var data = arcs.getVertexData();
+    data.xx[i] = x;
+    data.yy[i] = y;
+  }
+
+  function findNearestVertex(x, y, shp, arcs, spherical) {
+    var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
+        minLen = Infinity,
+        minX, minY, dist, iter;
+    for (var i=0; i<shp.length; i++) {
+      iter = arcs.getShapeIter(shp[i]);
+      while (iter.hasNext()) {
+        dist = calcLen(x, y, iter.x, iter.y);
+        if (dist < minLen) {
+          minLen = dist;
+          minX = iter.x;
+          minY = iter.y;
+        }
+      }
+    }
+    return minLen < Infinity ? {x: minX, y: minY} : null;
+  }
+
   // Returns x,y coordinates of the vertex that is closest to the bbox center point
   //   (uses part with the largest-area bbox in )
   // TODO: explore other methods for replacing a polyline with a point.
@@ -25978,25 +26065,8 @@
     var part = !shp ? null : (shp.length == 1 ? shp[0] : findLongestPolylinePart(shp, arcs, spherical));
     if (!part) return null;
     var bbox = arcs.getSimpleShapeBounds(part);
-    var p = findNearestPolylineVertex(bbox.centerX(), bbox.centerY(), part, arcs, spherical);
+    var p = findNearestVertex(bbox.centerX(), bbox.centerY(), [part], arcs, spherical);
     return p;
-  }
-
-  function findNearestPolylineVertex(x, y, path, arcs, spherical) {
-    var minLen = Infinity,
-        minX, minY,
-        iter = arcs.getShapeIter(path),
-        calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
-        dist;
-    while (iter.hasNext()) {
-      dist = calcLen(x, y, iter.x, iter.y);
-      if (dist < minLen) {
-        minLen = dist;
-        minX = iter.x;
-        minY = iter.y;
-      }
-    }
-    return minLen < Infinity ? {x: minX, y: minY} : null;
   }
 
   function findLongestPolylinePart(shp, arcs, spherical) {
