@@ -831,6 +831,10 @@ export function getOptionParser() {
       describe: 'convert paths to segments, for debugging',
       type: 'flag'
     })
+    .option('callouts', {
+      // describe: 'convert points to lines for editing in the GUI',
+      type: 'flag'
+    })
     .option('arcs', {
       describe: 'convert paths to arcs, for debugging',
       type: 'flag'

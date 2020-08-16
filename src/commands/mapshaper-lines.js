@@ -1,6 +1,6 @@
 import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
 import { compileFeaturePairExpression, compileFeaturePairFilterExpression } from '../expressions/mapshaper-expressions';
-import { requireDataField, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { requireDataField, requirePolygonLayer, requirePointLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { aggregateDataRecords, getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
@@ -14,7 +14,10 @@ import utils from '../utils/mapshaper-utils';
 
 cmd.lines = function(lyr, dataset, opts) {
   opts = opts || {};
-  if (lyr.geometry_type == 'point') {
+  if (opts.callouts) {
+    requirePointLayer(lyr);
+    return pointsToCallouts(lyr, dataset, opts);
+  } else if (lyr.geometry_type == 'point') {
     return pointsToLines(lyr, dataset, opts);
   } else if (opts.segments) {
     return [convertShapesToSegments(lyr, dataset)];
@@ -76,6 +79,33 @@ function pointsToLines(lyr, dataset, opts) {
   var geojson = opts.groupby ?
     groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
     pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
+  var dataset2 = importGeoJSON(geojson);
+  var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+  if (!opts.no_replace) {
+    outputLayers[0].name = lyr.name || outputLayers[0].name;
+  }
+  return outputLayers;
+}
+
+function pointsToCallouts(lyr, dataset, opts) {
+  var records = lyr.data ? lyr.data.getRecords() : null;
+  var calloutLen = getLayerBounds(lyr).width() / 50;
+  var pointToSegment = function(p) {
+    return [p, [p[0] + calloutLen, p[1]]];
+  };
+  var geojson = {
+    type: 'FeatureCollection',
+    features: lyr.shapes.map(function(shp, i) {
+      return {
+        type: 'Feature',
+        properties: records ? records[i] : null,
+        geometry: {
+          type: 'MultiLineString',
+          coordinates: shp.map(pointToSegment)
+        }
+      };
+    })
+  };
   var dataset2 = importGeoJSON(geojson);
   var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
   if (!opts.no_replace) {
