@@ -1065,7 +1065,7 @@ img.close-btn:hover,
 	display: none;
 	pointer-events: none;
 	padding-top: 4px;
-	top: 28px;
+	top: 22px;
 	right: -6px;
 }
 
@@ -1075,22 +1075,21 @@ img.close-btn:hover,
 }
 
 .nav-menu-item {
-	background-color: white;
+	background-color: #fff;
 	color: #0774a5; /* .colored-text color */
 	float: right;
 	clear: right;
 	white-space: nowrap;
 	display: inline-block;
-	padding: 2px 6px;
+	padding: 2px 7px 4px 7px;
 	line-height: 13px;
 	cursor: pointer;
 }
 
-
 .nav-menu-item.selected,
 .nav-menu-item:hover:not(.nav-menu-title) {
 	color: black;
-	font-weight: bold;
+	font-weight: 700;
 }
 
 /* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
@@ -1106,17 +1105,16 @@ img.close-btn:hover,
 	line-height: 1;
 }
 
+.nav-btn.selected {
+	background-color: black;
+	border-radius: 4px;
+}
 .nav-btn.hover:not(.disabled) svg * {
 	fill: black;
 }
 
 .nav-btn.selected:not(.disabled) svg * {
 	fill: white;
-}
-
-.nav-btn.selected {
-	background-color: black;
-	border-radius: 4px;
 }
 
 .nav-btn.disabled {

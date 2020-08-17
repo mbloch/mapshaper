@@ -3633,8 +3633,11 @@
       menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
       btn.on('mouseleave', function() {
-        btn.removeClass('hover');
-        closeMenu(400);
+        if (!_menuOpen) {
+          btn.removeClass('hover');
+        } else {
+          closeMenu(400);
+        }
       });
 
       btn.on('mouseenter', function() {
@@ -3722,7 +3725,7 @@
             closeMenu();
           } else if (_editMode != mode) {
             setMode(mode);
-            closeMenu(mode == 'off' ? 120 : 500);
+            closeMenu(mode == 'off' ? 120 : 400);
           }
           e.stopPropagation();
         });
@@ -3781,10 +3784,10 @@
       if (_menuOpen) {
         btn.addClass('open');
       } else {
-        btn.removeClass('hover');
         btn.removeClass('open');
       }
-      btn.classed('selected', active() || _menuOpen);
+      btn.classed('hover', _menuOpen);
+      btn.classed('selected', active() && !_menuOpen);
     }
 
     function updateSelectionHighlight() {
