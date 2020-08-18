@@ -44,7 +44,7 @@ export function InteractionMode(gui) {
       if (!_menuOpen) {
         btn.removeClass('hover');
       } else {
-        closeMenu(400);
+        closeMenu(200);
       }
     });
 
@@ -141,7 +141,7 @@ export function InteractionMode(gui) {
     updateSelectionHighlight();
   }
 
-  // if current editing mode is not available, switch to another mode
+  // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
     if (modes.indexOf(_editMode) == -1) {

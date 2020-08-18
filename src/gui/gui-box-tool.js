@@ -48,7 +48,6 @@ export function BoxTool(gui, ext, mouse, nav) {
   gui.addMode('box_tool', turnOn, turnOff);
 
   gui.on('interaction_mode_change', function(e) {
-    // console.log('mode change', e.mode)
     if (e.mode === 'box') {
       gui.enterMode('box_tool');
     } else if (gui.getMode() == 'box_tool') {

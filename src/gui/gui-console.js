@@ -177,8 +177,10 @@ export function Console(gui) {
     // TODO: prevent console from blocking <enter> for menus
     } else if (_isOpen && (typingInConsole || !typing)) {
       capture = true;
-      gui.clearMode(); // close any panels that  might be open
-
+      // clearMode() causes some of the arrow-button modes to be cancelled,
+      // which is irksome...
+      // // gui.clearMode(); // close any panels that  might be open
+      //
       if (kc == 13) { // enter
         onEnter();
       } else if (kc == 9) { // tab
@@ -387,6 +389,11 @@ export function Console(gui) {
         gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
       }
       if (flags) {
+        // if the command may have changed data, and a tool with an edit mode is being used,
+        // close the tool. (we may need a better way to allow the console and other tools
+        // to be used at the same time).
+        gui.clearMode();
+
         model.updated(flags); // info commands do not return flags
       }
       done(err);

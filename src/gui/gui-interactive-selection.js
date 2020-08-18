@@ -180,17 +180,26 @@ export function InteractiveSelection(gui, ext, mouse) {
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
     if (storedData.pinned || !hitTest || !active) return;
-    if (!isOverMap(e)) {
-      // mouse is off of map viewport -- clear any current hover ids
-      updateSelectionState(mergeHoverData({ids:[]}));
-    } else if (e.hover) {
+    if (e.hover && isOverMap(e)) {
       // mouse is hovering directly over map area -- update hit detection
       updateSelectionState(mergeHoverData(hitTest(e)));
+    } else if (targetIsPopup(e.originalEvent.target)) {
+      // don't update hit detection if mouse is over the popup (this will cause
+      //  popup to flicker on and off)
     } else {
-      // mouse is over map viewport but not directly over map (e.g. hovering
-      // over popup) -- don't update hit detection
+      updateSelectionState(mergeHoverData({ids:[]}));
     }
   }, null, priority);
+
+  function targetIsPopup(target) {
+    while (target.parentNode && target != target.parentNode) {
+      if (target.className && String(target.className).indexOf('popup') > -1) {
+        return true;
+      }
+      target = target.parentNode;
+    }
+    return false;
+  }
 
   function noHitData() {return {ids: [], id: -1, pinned: false};}
 
