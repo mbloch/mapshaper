@@ -211,7 +211,7 @@ body {
 	pointer-events: none;
 }
 
-.selection-tool-options .btn {
+.selection-tool-options .info-box {
 	pointer-events: initial;
 }
 

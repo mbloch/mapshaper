@@ -183,17 +183,17 @@ export function InteractiveSelection(gui, ext, mouse) {
     if (e.hover && isOverMap(e)) {
       // mouse is hovering directly over map area -- update hit detection
       updateSelectionState(mergeHoverData(hitTest(e)));
-    } else if (targetIsPopup(e.originalEvent.target)) {
-      // don't update hit detection if mouse is over the popup (this will cause
-      //  popup to flicker on and off)
+    } else if (targetIsRollover(e.originalEvent.target)) {
+      // don't update hit detection if mouse is over the rollover (to prevent
+      // on-off flickering)
     } else {
       updateSelectionState(mergeHoverData({ids:[]}));
     }
   }, null, priority);
 
-  function targetIsPopup(target) {
+  function targetIsRollover(target) {
     while (target.parentNode && target != target.parentNode) {
-      if (target.className && String(target.className).indexOf('popup') > -1) {
+      if (target.className && String(target.className).indexOf('rollover') > -1) {
         return true;
       }
       target = target.parentNode;

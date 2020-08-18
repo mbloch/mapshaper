@@ -19,6 +19,8 @@ export function Popup(gui, toNext, toPrev) {
   var refresh = null;
   var currId = -1;
 
+  el.addClass('rollover'); // used as a sentinel for the hover function
+
   nextLink.on('click', toNext);
   prevLink.on('click', toPrev);
   gui.on('popup-needs-refresh', function() {
