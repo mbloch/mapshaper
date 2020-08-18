@@ -4,11 +4,11 @@ import { internal } from './gui-core';
 export function InteractionMode(gui) {
 
   var menus = {
-    standard: ['info', 'selection', 'data', 'box', 'off'],
-    lines: ['info', 'selection', 'data', 'box', 'vertices', 'off'],
-    table: ['info', 'selection', 'data', 'off'],
-    labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'off'],
-    points: ['info', 'selection', 'data', 'box', 'location', 'off']
+    standard: ['info', 'selection', 'data', 'box'],
+    lines: ['info', 'selection', 'data', 'box', 'vertices'],
+    table: ['info', 'selection', 'data'],
+    labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
+    points: ['info', 'selection', 'data', 'box', 'location']
   };
 
   var prompts = {
@@ -52,10 +52,12 @@ export function InteractionMode(gui) {
       btn.addClass('hover');
       if (_menuOpen) {
         clearTimeout(_menuTimeout); // prevent timed closing
-      }
-      if (_editMode != 'off') {
+      } else {
         openMenu();
       }
+      // if (_editMode != 'off') {
+      //   openMenu();
+      // }
     });
 
     btn.on('click', function(e) {
@@ -130,10 +132,12 @@ export function InteractionMode(gui) {
       var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
       link.on('click', function(e) {
         if (_editMode == mode) {
-          closeMenu();
+          // closeMenu();
+          setMode('off');
         } else if (_editMode != mode) {
           setMode(mode);
-          closeMenu(mode == 'off' ? 120 : 400);
+          if (mode == 'off') closeMenu(120); // only close if turning off
+          // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
         }
         e.stopPropagation();
       });

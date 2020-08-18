@@ -1086,10 +1086,13 @@ img.close-btn:hover,
 	cursor: pointer;
 }
 
-.nav-menu-item.selected,
 .nav-menu-item:hover:not(.nav-menu-title) {
+	font-weight: bold;
+}
+
+.nav-menu-item.selected {
 	color: black;
-	font-weight: 700;
+	font-weight: bold;
 }
 
 /* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
