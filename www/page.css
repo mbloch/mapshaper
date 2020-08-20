@@ -1074,6 +1074,7 @@ img.close-btn:hover,
 	pointer-events: inherit;
 }
 
+
 .nav-menu-item {
 	background-color: #fff;
 	color: #0774a5; /* .colored-text color */
@@ -1086,7 +1087,8 @@ img.close-btn:hover,
 	cursor: pointer;
 }
 
-.nav-menu-item:hover:not(.nav-menu-title) {
+.nav-menu-item:hover,
+.nav-btn:hover .nav-sub-menu:not(.active):not(:hover) .nav-menu-item[data-name=info] {
 	font-weight: bold;
 }
 

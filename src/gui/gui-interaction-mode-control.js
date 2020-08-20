@@ -66,7 +66,7 @@ export function InteractionMode(gui) {
         closeMenu();
       } else if (_menuOpen) {
         setMode('info'); // select info (inspect) as the default
-        closeMenu(350);
+        // closeMenu(350);
       } else {
         openMenu();
       }
@@ -200,7 +200,8 @@ export function InteractionMode(gui) {
       btn.removeClass('open');
     }
     btn.classed('hover', _menuOpen);
-    btn.classed('selected', active() && !_menuOpen);
+    // btn.classed('selected', active() && !_menuOpen);
+    btn.classed('selected', active());
   }
 
   function updateSelectionHighlight() {
