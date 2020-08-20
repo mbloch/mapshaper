@@ -65,7 +65,8 @@ export function InteractionMode(gui) {
         setMode('off');
         closeMenu();
       } else if (_menuOpen) {
-        closeMenu();
+        setMode('info'); // select info (inspect) as the default
+        closeMenu(350);
       } else {
         openMenu();
       }
