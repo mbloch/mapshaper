@@ -274,6 +274,9 @@ export function getOptionParser() {
       // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
       type: 'flag'
     })
+    // .option('winding', {
+    //   describe: '(GeoJSON) set polygon winding order (use CW with d3-geo)'
+    // })
     .option('gj2008', {
       describe: '(GeoJSON) use original GeoJSON spec (not RFC 7946)',
       type: 'flag'
@@ -1191,7 +1194,7 @@ export function getOptionParser() {
       describe: 'stroke dashes. Examples: "4" "2 4"'
     })
     .option('fill-hatch', {
-
+      describe: 'use a hatched fill; ex: "45deg grey 2px blue 2px"'
     })
     .option('stroke-opacity', {
       describe: 'stroke opacity'
