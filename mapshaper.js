@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.16";
+  var VERSION = "0.5.18";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1582,34 +1582,6 @@
     forEachPoint: forEachPoint
   });
 
-  // Returns a search function
-  // Receives array of objects to index; objects must have a 'bounds' member
-  //    that is a Bounds object.
-  function getBoundsSearchFunction(boxes) {
-    var index, Flatbush;
-    if (!boxes.length) {
-      // Unlike rbush, flatbush doesn't allow size 0 indexes; workaround
-      return function() {return [];};
-    }
-    Flatbush = require('flatbush');
-    index = new Flatbush(boxes.length);
-    boxes.forEach(function(ring) {
-      var b = ring.bounds;
-      index.add(b.xmin, b.ymin, b.xmax, b.ymax);
-    });
-    index.finish();
-
-    function idxToObj(i) {
-      return boxes[i];
-    }
-
-    // Receives xmin, ymin, xmax, ymax parameters
-    // Returns subset of original @bounds array
-    return function(a, b, c, d) {
-      return index.search(a, b, c, d).map(idxToObj);
-    };
-  }
-
   function absArcId(arcId) {
     return arcId >= 0 ? arcId : ~arcId;
   }
@@ -3103,77 +3075,7 @@
     return shape2.length > 0 ? shape2 : null;
   }
 
-  // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
-  // Assumes outer rings are CW and inner (hole) rings are CCW, unless
-  //   the reverseWinding flag is set.
-  // @paths array of objects with path metadata -- see internal.exportPathData()
-  //
-  // TODO: Improve reliability. Currently uses winding order, area and bbox to
-  //   identify holes and their enclosures -- could be confused by some strange
-  //   geometry.
-  //
-  function groupPolygonRings(paths, reverseWinding) {
-    var holes = [],
-        groups = [],
-        sign = reverseWinding ? -1 : 1,
-        boundsQuery;
-
-    (paths || []).forEach(function(path) {
-      if (path.area * sign > 0) {
-        groups.push([path]);
-      } else if (path.area * sign < 0) {
-        holes.push(path);
-      } else {
-        // Zero-area ring, skipping
-      }
-    });
-
-    if (holes.length === 0) {
-      return groups;
-    }
-
-    // Using a spatial index to improve performance when the current feature
-    // contains many holes and space-filling rings.
-    // (Thanks to @simonepri for providing an example implementation in PR #248)
-    boundsQuery = getBoundsSearchFunction(groups.map(function(group, i) {
-      return {
-        bounds: group[0].bounds,
-        idx: i
-      };
-    }));
-
-    // Group each hole with its containing ring
-    holes.forEach(function(hole) {
-      var containerId = -1,
-          containerArea = 0,
-          holeArea = hole.area * -sign,
-          b = hole.bounds,
-          // Find rings that might contain this hole
-          candidates = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
-          ring, ringId, ringArea, isContained;
-      // Group this hole with the smallest-area ring that contains it.
-      // (Assumes that if a ring's bbox contains a hole, then the ring also
-      //  contains the hole).
-      for (var i=0, n=candidates.length; i<n; i++) {
-        ringId = candidates[i].idx;
-        ring = groups[ringId][0];
-        ringArea = ring.area * sign;
-        isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
-        if (isContained && (containerArea === 0 || ringArea < containerArea)) {
-          containerArea = ringArea;
-          containerId = ringId;
-        }
-      }
-      if (containerId == -1) {
-        debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
-      } else {
-        groups[containerId].push(hole);
-      }
-    });
-
-    return groups;
-  }
-
+  // Return an array of information about each part/ring in a polygon or polyline shape
   function getPathMetadata(shape, arcs, type) {
     var data = [],
         ids;
@@ -3222,7 +3124,6 @@
     forEachSegmentInPath: forEachSegmentInPath,
     traversePaths: traversePaths,
     filterEmptyArcs: filterEmptyArcs,
-    groupPolygonRings: groupPolygonRings,
     getPathMetadata: getPathMetadata,
     quantizeArcs: quantizeArcs
   });
@@ -12676,6 +12577,606 @@
     getOutputPaths: getOutputPaths
   });
 
+  // Returns a search function
+  // Receives array of objects to index; objects must have a 'bounds' member
+  //    that is a Bounds object.
+  function getBoundsSearchFunction(boxes) {
+    var index, Flatbush;
+    if (!boxes.length) {
+      // Unlike rbush, flatbush doesn't allow size 0 indexes; workaround
+      return function() {return [];};
+    }
+    Flatbush = require('flatbush');
+    index = new Flatbush(boxes.length);
+    boxes.forEach(function(ring) {
+      var b = ring.bounds;
+      index.add(b.xmin, b.ymin, b.xmax, b.ymax);
+    });
+    index.finish();
+
+    function idxToObj(i) {
+      return boxes[i];
+    }
+
+    // Receives xmin, ymin, xmax, ymax parameters
+    // Returns subset of original @bounds array
+    return function(a, b, c, d) {
+      return index.search(a, b, c, d).map(idxToObj);
+    };
+  }
+
+  // @xx array of x coords
+  // @ids an array of segment endpoint ids [a0, b0, a1, b1, ...]
+  // Sort @ids in place so that xx[a(n)] <= xx[b(n)] and xx[a(n)] <= xx[a(n+1)]
+  function sortSegmentIds(xx, ids) {
+    orderSegmentIds(xx, ids);
+    quicksortSegmentIds(xx, ids, 0, ids.length-2);
+  }
+
+  function orderSegmentIds(xx, ids, spherical) {
+    function swap(i, j) {
+      var tmp = ids[i];
+      ids[i] = ids[j];
+      ids[j] = tmp;
+    }
+    for (var i=0, n=ids.length; i<n; i+=2) {
+      if (xx[ids[i]] > xx[ids[i+1]]) {
+        swap(i, i+1);
+      }
+    }
+  }
+
+  function insertionSortSegmentIds(arr, ids, start, end) {
+    var id, id2;
+    for (var j = start + 2; j <= end; j+=2) {
+      id = ids[j];
+      id2 = ids[j+1];
+      for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
+        ids[i+2] = ids[i];
+        ids[i+3] = ids[i+1];
+      }
+      ids[i+2] = id;
+      ids[i+3] = id2;
+    }
+  }
+
+  function quicksortSegmentIds (a, ids, lo, hi) {
+    var i = lo,
+        j = hi,
+        pivot, tmp;
+    while (i < hi) {
+      pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
+      while (i <= j) {
+        while (a[ids[i]] < pivot) i+=2;
+        while (a[ids[j]] > pivot) j-=2;
+        if (i <= j) {
+          tmp = ids[i];
+          ids[i] = ids[j];
+          ids[j] = tmp;
+          tmp = ids[i+1];
+          ids[i+1] = ids[j+1];
+          ids[j+1] = tmp;
+          i+=2;
+          j-=2;
+        }
+      }
+
+      if (j - lo < 40) insertionSortSegmentIds(a, ids, lo, j);
+      else quicksortSegmentIds(a, ids, lo, j);
+      if (hi - i < 40) {
+        insertionSortSegmentIds(a, ids, i, hi);
+        return;
+      }
+      lo = i;
+      j = hi;
+    }
+  }
+
+  // PolygonIndex indexes the coordinates in one polygon feature for efficient
+  // point-in-polygon tests
+
+  function PolygonIndex(shape, arcs, opts) {
+    var data = arcs.getVertexData(),
+        polygonBounds = arcs.getMultiShapeBounds(shape),
+        boundsLeft,
+        xminIds, xmaxIds, // vertex ids of segment endpoints
+        bucketCount,
+        bucketOffsets,
+        bucketWidth;
+
+    init();
+
+    // Return 0 if outside, 1 if inside, -1 if on boundary
+    this.pointInPolygon = function(x, y) {
+      if (!polygonBounds.containsPoint(x, y)) {
+        return false;
+      }
+      var bucketId = getBucketId(x);
+      var count = countCrosses(x, y, bucketId);
+      if (bucketId > 0) {
+        count += countCrosses(x, y, bucketId - 1);
+      }
+      count += countCrosses(x, y, bucketCount); // check oflo bucket
+      if (isNaN(count)) return -1;
+      return count % 2 == 1 ? 1 : 0;
+    };
+
+    function countCrosses(x, y, bucketId) {
+      var offs = bucketOffsets[bucketId],
+          count = 0,
+          xx = data.xx,
+          yy = data.yy,
+          n, a, b;
+      if (bucketId == bucketCount) { // oflo bucket
+        n = xminIds.length - offs;
+      } else {
+        n = bucketOffsets[bucketId + 1] - offs;
+      }
+      for (var i=0; i<n; i++) {
+        a = xminIds[i + offs];
+        b = xmaxIds[i + offs];
+        count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+      }
+      return count;
+    }
+
+    function getBucketId(x) {
+      var i = Math.floor((x - boundsLeft) / bucketWidth);
+      if (i < 0) i = 0;
+      if (i >= bucketCount) i = bucketCount - 1;
+      return i;
+    }
+
+    function getBucketCount(segCount) {
+      // default is this many segs per bucket (average)
+      // var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 200;
+      // using more segs/bucket for more complex shapes, based on trial and error
+      var buckets = Math.pow(segCount, 0.75) / 10;
+      return Math.ceil(buckets);
+    }
+
+    function init() {
+      var xx = data.xx,
+          segCount = 0,
+          segId = 0,
+          bucketId = -1,
+          prevBucketId,
+          segments,
+          head, tail,
+          a, b, i, j, xmin, xmax;
+
+      // get array of segments as [s0p0, s0p1, s1p0, s1p1, ...], sorted by xmin coordinate
+      forEachSegmentInShape(shape, arcs, function() {
+        segCount++;
+      });
+      segments = new Uint32Array(segCount * 2);
+      i = 0;
+      forEachSegmentInShape(shape, arcs, function(a, b, xx, yy) {
+        segments[i++] = a;
+        segments[i++] = b;
+      });
+      sortSegmentIds(xx, segments);
+
+      // assign segments to buckets according to xmin coordinate
+      xminIds = new Uint32Array(segCount);
+      xmaxIds = new Uint32Array(segCount);
+      bucketCount = getBucketCount(segCount);
+      bucketOffsets = new Uint32Array(bucketCount + 1); // add an oflo bucket
+      boundsLeft = xx[segments[0]]; // xmin of first segment
+      bucketWidth = (xx[segments[segments.length - 2]] - boundsLeft) / bucketCount;
+      head = 0; // insertion index for next segment in the current bucket
+      tail = segCount - 1; // insertion index for next segment in oflo bucket
+
+      while (segId < segCount) {
+        j = segId * 2;
+        a = segments[j];
+        b = segments[j+1];
+        xmin = xx[a];
+        xmax = xx[b];
+        prevBucketId = bucketId;
+        bucketId = getBucketId(xmin);
+
+        while (bucketId > prevBucketId) {
+          prevBucketId++;
+          bucketOffsets[prevBucketId] = head;
+        }
+
+        if (xmax - xmin >= 0 === false) error("Invalid segment");
+        if (getBucketId(xmax) - bucketId > 1) {
+          // if segment extends to more than two buckets, put it in the oflo bucket
+          xminIds[tail] = a;
+          xmaxIds[tail] = b;
+          tail--; // oflo bucket fills from right to left
+        } else {
+          // else place segment in a bucket based on x coord of leftmost endpoint
+          xminIds[head] = a;
+          xmaxIds[head] = b;
+          head++;
+        }
+        segId++;
+      }
+      bucketOffsets[bucketCount] = head;
+      if (head != tail + 1) error("Segment indexing error");
+    }
+  }
+
+  // PathIndex supports several kinds of spatial query on a layer of polyline or polygon shapes
+  function PathIndex(shapes, arcs) {
+    var boundsQuery = getBoundsSearchFunction(getRingData(shapes, arcs));
+    var totalArea = getPathBounds$1(shapes, arcs).area();
+
+    function getRingData(shapes, arcs) {
+      var arr = [];
+      shapes.forEach(function(shp, shpId) {
+        var n = shp ? shp.length : 0;
+        for (var i=0; i<n; i++) {
+          arr.push({
+            ids: shp[i],
+            id: shpId,
+            bounds: arcs.getSimpleShapeBounds(shp[i])
+          });
+        }
+      });
+      return arr;
+    }
+
+    // Returns shape ids of all polygons that intersect point p
+    // (p is inside a ring or on the boundary)
+    this.findEnclosingShapes = function(p) {
+      var ids = [];
+      var cands = findPointHitCandidates(p);
+      var groups = groupItemsByShapeId(cands);
+      groups.forEach(function(group) {
+        if (testPointInRings(p, group)) {
+          ids.push(group[0].id);
+        }
+      });
+      return ids;
+    };
+
+    // Returns shape id of a polygon that intersects p or -1
+    // (If multiple intersections, returns one of the polygons)
+    this.findEnclosingShape = function(p) {
+      var shpId = -1;
+      var groups = groupItemsByShapeId(findPointHitCandidates(p));
+      groups.forEach(function(group) {
+        if (testPointInRings(p, group)) {
+          shpId = group[0].id;
+        }
+      });
+      return shpId;
+    };
+
+    // Returns shape ids of polygons that contain an arc
+    // (arcs that are )
+    // Assumes that input arc is either inside, outside or coterminous with indexed
+    // arcs (i.e. input arc does not cross an indexed arc)
+    this.findShapesEnclosingArc = function(arcId) {
+      var p = getTestPoint([arcId]);
+      return this.findEnclosingShapes(p);
+    };
+
+    this.findPointEnclosureCandidates = function(p, buffer) {
+      var items = findPointHitCandidates(p, buffer);
+      return utils.pluck(items, 'id');
+    };
+
+    this.pointIsEnclosed = function(p) {
+      return testPointInRings(p, findPointHitCandidates(p));
+    };
+
+    // Finds the polygon containing the smallest ring that entirely contains @ring
+    // Assumes ring boundaries do not cross.
+    // Unhandled edge case:
+    //   two rings share at least one segment but are not congruent.
+    // @ring: array of arc ids
+    // Returns id of enclosing polygon or -1 if none found
+    this.findSmallestEnclosingPolygon = function(ring) {
+      var bounds = arcs.getSimpleShapeBounds(ring);
+      var p = getTestPoint(ring);
+      var smallest;
+      var cands = findPointHitCandidates(p);
+      cands.forEach(function(cand) {
+        if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
+          !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
+          !(smallest && smallest.bounds.area() < cand.bounds.area())) {
+              if (testPointInRing(p, cand)) {
+                smallest = cand;
+              }
+            }
+      });
+
+      return smallest ? smallest.id : -1;
+    };
+
+    this.arcIsEnclosed = function(arcId) {
+      return this.pointIsEnclosed(getTestPoint([arcId]));
+    };
+
+    // Test if a polygon ring is contained within an indexed ring
+    // Not a true polygon-in-polygon test
+    // Assumes that the target ring does not cross an indexed ring at any point
+    // or share a segment with an indexed ring. (Intersecting rings should have
+    // been detected previously).
+    //
+    this.pathIsEnclosed = function(pathIds) {
+      return this.pointIsEnclosed(getTestPoint(pathIds));
+    };
+
+    // return array of paths that are contained within a path, or null if none
+    // @pathIds Array of arc ids comprising a closed path
+    this.findEnclosedPaths = function(pathIds) {
+      var b = arcs.getSimpleShapeBounds(pathIds),
+          cands = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
+          paths = [],
+          index;
+
+      if (cands.length > 6) {
+        index = new PolygonIndex([pathIds], arcs);
+      }
+      cands.forEach(function(cand) {
+        var p = getTestPoint(cand.ids);
+        var isEnclosed = b.containsPoint(p[0], p[1]) && (index ?
+          index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
+        if (isEnclosed) {
+          paths.push(cand.ids);
+        }
+      });
+      return paths.length > 0 ? paths : null;
+    };
+
+    this.findPathsInsideShape = function(shape) {
+      var paths = []; // list of enclosed paths
+      shape.forEach(function(ids) {
+        var enclosed = this.findEnclosedPaths(ids);
+        if (enclosed) {
+          // any paths that are enclosed by an even number of rings are removed from list
+          // (given normal topology, such paths are inside holes)
+          paths = xorArrays(paths, enclosed);
+        }
+      }, this);
+      return paths.length > 0 ? paths : null;
+    };
+
+    function testPointInRing(p, cand) {
+      if (!cand.bounds.containsPoint(p[0], p[1])) return false;
+      if (!cand.index && cand.bounds.area() > totalArea * 0.01) {
+        // index larger polygons (because they are slower to test via pointInRing()
+        //    and they are more likely to be involved in repeated hit tests).
+        cand.index = new PolygonIndex([cand.ids], arcs);
+      }
+      return cand.index ?
+          cand.index.pointInPolygon(p[0], p[1]) :
+          geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+    }
+
+    //
+    function testPointInRings(p, cands) {
+      var isOn = false,
+          isIn = false;
+      cands.forEach(function(cand) {
+        var inRing = testPointInRing(p, cand);
+        if (inRing == -1) {
+          isOn = true;
+        } else if (inRing == 1) {
+          isIn = !isIn;
+        }
+      });
+      return isOn || isIn;
+    }
+
+    function groupItemsByShapeId(items) {
+      var groups = [],
+          group, item;
+      if (items.length > 0) {
+        items.sort(function(a, b) {return a.id - b.id;});
+        for (var i=0; i<items.length; i++) {
+          item = items[i];
+          if (i === 0 || item.id != items[i-1].id) {
+            groups.push(group=[]);
+          }
+          group.push(item);
+        }
+      }
+      return groups;
+    }
+
+    function findPointHitCandidates(p, buffer) {
+      var b = buffer > 0 ? buffer : 0;
+      var x = p[0], y = p[1];
+      return boundsQuery(p[0] - b, p[1] - b, p[0] + b, p[1] + b);
+    }
+
+    // Find a point on a ring to use for point-in-polygon testing
+    function getTestPoint(ring) {
+      // Use the point halfway along first segment rather than an endpoint
+      // (because ring might still be enclosed if a segment endpoint touches an indexed ring.)
+      // The returned point should work for point-in-polygon testing if two rings do not
+      // share any common segments (which should be true for topological datasets)
+      // TODO: consider alternative of finding an internal point of @ring (slower but
+      //   potentially more reliable).
+      var arcId = ring[0],
+          p0 = arcs.getVertex(arcId, 0),
+          p1 = arcs.getVertex(arcId, 1);
+      return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
+    }
+
+    // concatenate arrays, removing elements that are in both
+    function xorArrays(a, b) {
+      var xor = [], i;
+      for (i=0; i<a.length; i++) {
+        if (b.indexOf(a[i]) == -1) xor.push(a[i]);
+      }
+      for (i=0; i<b.length; i++) {
+        if (a.indexOf(b[i]) == -1) xor.push(b[i]);
+      }
+      return xor;
+    }
+  }
+
+  // Delete rings that are nested directly inside an enclosing ring with the same winding direction
+  // Does not remove unenclosed CCW rings (currently this causes problems when
+  //   rounding coordinates for SVG and TopoJSON output)
+  // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
+  //
+  function fixNestingErrors(rings, arcs) {
+    if (rings.length <= 1) return rings;
+    var ringData = getPathMetadata(rings, arcs, 'polygon');
+    // convert rings to shapes for PathIndex
+    var shapes = rings.map(function(ids) {return [ids];});
+    var index = new PathIndex(shapes, arcs);
+    return rings.filter(ringIsValid);
+
+    function ringIsValid(ids, i) {
+      var containerId = index.findSmallestEnclosingPolygon(ids);
+      var ringIsCW, containerIsCW;
+      var valid = true;
+      if (containerId > -1) {
+        ringIsCW = ringData[i].area > 0;
+        containerIsCW = ringData[containerId].area > 0;
+        if (containerIsCW == ringIsCW) {
+          // reject rings with same chirality as their containing ring
+          valid = false;
+        }
+      }
+      return valid;
+    }
+  }
+
+  // Set winding order of polygon rings so that outer rings are CW, first-order
+  // nested rings are CCW, etc.
+  function rewindPolygons(lyr, arcs) {
+    lyr.shapes = lyr.shapes.map(function(shp) {
+      if (!shp) return null;
+      return rewindPolygon(shp, arcs);
+    });
+  }
+
+  // Update winding order of rings in a polygon so that outermost rings are
+  // CW and nested rings alternate between CCW and CW.
+  function rewindPolygon(rings, arcs) {
+    var ringData = getPathMetadata(rings, arcs, 'polygon');
+
+    // Sort rings by area, from large to small
+    ringData.sort(function(a, b) {
+      return Math.abs(b.area) - Math.abs(a.area);
+    });
+    // If a ring is contained by one or more rings, set it to the opposite
+    //   direction as its immediate parent
+    // If a ring is not contained, make it CW.
+    ringData.forEach(function(ring, i) {
+      var shouldBeCW = true;
+      var j = i;
+      var largerRing;
+      while (--j >= 0) {
+        largerRing = ringData[j];
+        if (testRingInRing(ring, largerRing, arcs)) {
+          // set to opposite of containing ring
+          shouldBeCW = largerRing.area > 0 ? false : true;
+          break;
+        }
+      }
+      setRingWinding(ring, shouldBeCW);
+    });
+    return ringData.map(function(data) { return data.ids; });
+  }
+
+  // data: a ring data object
+  function setRingWinding(data, cw) {
+    var isCW = data.area > 0;
+    if (isCW != cw) {
+      data.area = -data.area;
+      reversePath(data.ids);
+    }
+  }
+
+  // a, b: two ring data objects (from getPathMetadata);
+  function testRingInRing(a, b, arcs) {
+    if (b.bounds.contains(a.bounds) === false) return false;
+    var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
+    return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
+  }
+
+  // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
+  // Assumes outer rings are CW and inner (hole) rings are CCW, unless
+  //   the reverseWinding flag is set.
+  // @paths array of objects with path metadata -- see internal.exportPathData()
+  //
+  // TODO: Improve reliability. Currently uses winding order, area and bbox to
+  //   identify holes and their enclosures -- could be confused by some strange
+  //   geometry.
+  //
+  function groupPolygonRings(paths, arcs, reverseWinding) {
+    var holes = [],
+        groups = [],
+        sign = reverseWinding ? -1 : 1,
+        boundsQuery;
+
+    (paths || []).forEach(function(path) {
+      if (path.area * sign > 0) {
+        groups.push([path]);
+      } else if (path.area * sign < 0) {
+        holes.push(path);
+      } else {
+        // Zero-area ring, skipping
+      }
+    });
+
+    if (holes.length === 0) {
+      return groups;
+    }
+
+    // Using a spatial index to improve performance when the current feature
+    // contains many holes and space-filling rings.
+    // (Thanks to @simonepri for providing an example implementation in PR #248)
+    boundsQuery = getBoundsSearchFunction(groups.map(function(group, i) {
+      return {
+        bounds: group[0].bounds,
+        idx: i
+      };
+    }));
+
+    // Group each hole with its containing ring
+    holes.forEach(function(hole) {
+      var containerId = -1,
+          containerArea = 0,
+          holeArea = hole.area * -sign,
+          b = hole.bounds,
+          // Find rings that might contain this hole
+          candidates = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
+          ring, ringId, ringArea, isContained;
+
+      // Group this hole with the smallest-area ring that contains it.
+      // (Assumes that if a ring's bbox contains a hole, then the ring also
+      //  contains the hole).
+      for (var i=0, n=candidates.length; i<n; i++) {
+        ringId = candidates[i].idx;
+        ring = groups[ringId][0];
+        ringArea = ring.area * sign;
+        isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
+        if (isContained && candidates.length > 1 && !testRingInRing(hole, ring, arcs)) {
+          // Using a more precise ring-in-ring test in the unusual case that
+          // this hole is contained within the bounding box of multiple rings.
+          // TODO: consider doing a ring-in-ring test even when there is only one
+          // candidate ring, based on bbox-in-bbox test (this may affect performance
+          // with some datasets).
+          continue;
+        }
+        if (isContained && (containerArea === 0 || ringArea < containerArea)) {
+          containerArea = ringArea;
+          containerId = ringId;
+        }
+      }
+      if (containerId == -1) {
+        debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
+      } else {
+        groups[containerId].push(hole);
+      }
+    });
+
+    return groups;
+  }
+
   function exportPointData(points) {
     var data, path;
     if (!points || points.length === 0) {
@@ -13116,7 +13617,7 @@
   GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
     var obj = exportPathData(ids, arcs, "polygon");
     if (obj.pointCount === 0) return null;
-    var groups = groupPolygonRings(obj.pathData, opts.invert_y);
+    var groups = groupPolygonRings(obj.pathData, arcs, opts.invert_y);
     // invert_y is used internally for SVG generation
     // mapshaper's internal winding order is the opposite of RFC 7946
     var reverse = (opts.rfc7946 || opts.v2) && !opts.invert_y;
@@ -15067,7 +15568,7 @@
 
   function explodePolygon(shape, arcs, reverseWinding) {
     var paths = getPathMetadata(shape, arcs, "polygon");
-    var groups = groupPolygonRings(paths, reverseWinding);
+    var groups = groupPolygonRings(paths, arcs, reverseWinding);
     return groups.map(function(group) {
       return group.map(function(ring) {
         return ring.ids;
@@ -15086,11 +15587,7 @@
   }
 
   function cloneProperties(obj) {
-    var clone = {};
-    for (var key in obj) {
-      clone[key] = obj[key];
-    }
-    return clone;
+    return Object.assign({}, obj);
   }
 
   var Explode = /*#__PURE__*/Object.freeze({
@@ -16711,6 +17208,9 @@
         // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
         type: 'flag'
       })
+      // .option('winding', {
+      //   describe: '(GeoJSON) set polygon winding order (use CW with d3-geo)'
+      // })
       .option('gj2008', {
         describe: '(GeoJSON) use original GeoJSON spec (not RFC 7946)',
         type: 'flag'
@@ -17628,7 +18128,7 @@
         describe: 'stroke dashes. Examples: "4" "2 4"'
       })
       .option('fill-hatch', {
-
+        describe: 'use a hatched fill; ex: "45deg grey 2px blue 2px"'
       })
       .option('stroke-opacity', {
         describe: 'stroke opacity'
@@ -19669,73 +20169,6 @@
     }
   }
 
-  // @xx array of x coords
-  // @ids an array of segment endpoint ids [a0, b0, a1, b1, ...]
-  // Sort @ids in place so that xx[a(n)] <= xx[b(n)] and xx[a(n)] <= xx[a(n+1)]
-  function sortSegmentIds(xx, ids) {
-    orderSegmentIds(xx, ids);
-    quicksortSegmentIds(xx, ids, 0, ids.length-2);
-  }
-
-  function orderSegmentIds(xx, ids, spherical) {
-    function swap(i, j) {
-      var tmp = ids[i];
-      ids[i] = ids[j];
-      ids[j] = tmp;
-    }
-    for (var i=0, n=ids.length; i<n; i+=2) {
-      if (xx[ids[i]] > xx[ids[i+1]]) {
-        swap(i, i+1);
-      }
-    }
-  }
-
-  function insertionSortSegmentIds(arr, ids, start, end) {
-    var id, id2;
-    for (var j = start + 2; j <= end; j+=2) {
-      id = ids[j];
-      id2 = ids[j+1];
-      for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
-        ids[i+2] = ids[i];
-        ids[i+3] = ids[i+1];
-      }
-      ids[i+2] = id;
-      ids[i+3] = id2;
-    }
-  }
-
-  function quicksortSegmentIds (a, ids, lo, hi) {
-    var i = lo,
-        j = hi,
-        pivot, tmp;
-    while (i < hi) {
-      pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
-      while (i <= j) {
-        while (a[ids[i]] < pivot) i+=2;
-        while (a[ids[j]] > pivot) j-=2;
-        if (i <= j) {
-          tmp = ids[i];
-          ids[i] = ids[j];
-          ids[j] = tmp;
-          tmp = ids[i+1];
-          ids[i+1] = ids[j+1];
-          ids[j+1] = tmp;
-          i+=2;
-          j-=2;
-        }
-      }
-
-      if (j - lo < 40) insertionSortSegmentIds(a, ids, lo, j);
-      else quicksortSegmentIds(a, ids, lo, j);
-      if (hi - i < 40) {
-        insertionSortSegmentIds(a, ids, i, hi);
-        return;
-      }
-      lo = i;
-      j = hi;
-    }
-  }
-
   // Convert an array of intersections into an ArcCollection (for display)
   //
 
@@ -20396,348 +20829,6 @@
     filterSortedCutPoints: filterSortedCutPoints,
     findClippingPoints: findClippingPoints
   });
-
-  // PolygonIndex indexes the coordinates in one polygon feature for efficient
-  // point-in-polygon tests
-
-  function PolygonIndex(shape, arcs, opts) {
-    var data = arcs.getVertexData(),
-        polygonBounds = arcs.getMultiShapeBounds(shape),
-        boundsLeft,
-        xminIds, xmaxIds, // vertex ids of segment endpoints
-        bucketCount,
-        bucketOffsets,
-        bucketWidth;
-
-    init();
-
-    // Return 0 if outside, 1 if inside, -1 if on boundary
-    this.pointInPolygon = function(x, y) {
-      if (!polygonBounds.containsPoint(x, y)) {
-        return false;
-      }
-      var bucketId = getBucketId(x);
-      var count = countCrosses(x, y, bucketId);
-      if (bucketId > 0) {
-        count += countCrosses(x, y, bucketId - 1);
-      }
-      count += countCrosses(x, y, bucketCount); // check oflo bucket
-      if (isNaN(count)) return -1;
-      return count % 2 == 1 ? 1 : 0;
-    };
-
-    function countCrosses(x, y, bucketId) {
-      var offs = bucketOffsets[bucketId],
-          count = 0,
-          xx = data.xx,
-          yy = data.yy,
-          n, a, b;
-      if (bucketId == bucketCount) { // oflo bucket
-        n = xminIds.length - offs;
-      } else {
-        n = bucketOffsets[bucketId + 1] - offs;
-      }
-      for (var i=0; i<n; i++) {
-        a = xminIds[i + offs];
-        b = xmaxIds[i + offs];
-        count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
-      }
-      return count;
-    }
-
-    function getBucketId(x) {
-      var i = Math.floor((x - boundsLeft) / bucketWidth);
-      if (i < 0) i = 0;
-      if (i >= bucketCount) i = bucketCount - 1;
-      return i;
-    }
-
-    function getBucketCount(segCount) {
-      // default is this many segs per bucket (average)
-      // var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 200;
-      // using more segs/bucket for more complex shapes, based on trial and error
-      var buckets = Math.pow(segCount, 0.75) / 10;
-      return Math.ceil(buckets);
-    }
-
-    function init() {
-      var xx = data.xx,
-          segCount = 0,
-          segId = 0,
-          bucketId = -1,
-          prevBucketId,
-          segments,
-          head, tail,
-          a, b, i, j, xmin, xmax;
-
-      // get array of segments as [s0p0, s0p1, s1p0, s1p1, ...], sorted by xmin coordinate
-      forEachSegmentInShape(shape, arcs, function() {
-        segCount++;
-      });
-      segments = new Uint32Array(segCount * 2);
-      i = 0;
-      forEachSegmentInShape(shape, arcs, function(a, b, xx, yy) {
-        segments[i++] = a;
-        segments[i++] = b;
-      });
-      sortSegmentIds(xx, segments);
-
-      // assign segments to buckets according to xmin coordinate
-      xminIds = new Uint32Array(segCount);
-      xmaxIds = new Uint32Array(segCount);
-      bucketCount = getBucketCount(segCount);
-      bucketOffsets = new Uint32Array(bucketCount + 1); // add an oflo bucket
-      boundsLeft = xx[segments[0]]; // xmin of first segment
-      bucketWidth = (xx[segments[segments.length - 2]] - boundsLeft) / bucketCount;
-      head = 0; // insertion index for next segment in the current bucket
-      tail = segCount - 1; // insertion index for next segment in oflo bucket
-
-      while (segId < segCount) {
-        j = segId * 2;
-        a = segments[j];
-        b = segments[j+1];
-        xmin = xx[a];
-        xmax = xx[b];
-        prevBucketId = bucketId;
-        bucketId = getBucketId(xmin);
-
-        while (bucketId > prevBucketId) {
-          prevBucketId++;
-          bucketOffsets[prevBucketId] = head;
-        }
-
-        if (xmax - xmin >= 0 === false) error("Invalid segment");
-        if (getBucketId(xmax) - bucketId > 1) {
-          // if segment extends to more than two buckets, put it in the oflo bucket
-          xminIds[tail] = a;
-          xmaxIds[tail] = b;
-          tail--; // oflo bucket fills from right to left
-        } else {
-          // else place segment in a bucket based on x coord of leftmost endpoint
-          xminIds[head] = a;
-          xmaxIds[head] = b;
-          head++;
-        }
-        segId++;
-      }
-      bucketOffsets[bucketCount] = head;
-      if (head != tail + 1) error("Segment indexing error");
-    }
-  }
-
-  // PathIndex supports several kinds of spatial query on a layer of polyline or polygon shapes
-  function PathIndex(shapes, arcs) {
-    var boundsQuery = getBoundsSearchFunction(getRingData(shapes, arcs));
-    var totalArea = getPathBounds$1(shapes, arcs).area();
-
-    function getRingData(shapes, arcs) {
-      var arr = [];
-      shapes.forEach(function(shp, shpId) {
-        var n = shp ? shp.length : 0;
-        for (var i=0; i<n; i++) {
-          arr.push({
-            ids: shp[i],
-            id: shpId,
-            bounds: arcs.getSimpleShapeBounds(shp[i])
-          });
-        }
-      });
-      return arr;
-    }
-
-    // Returns shape ids of all polygons that intersect point p
-    // (p is inside a ring or on the boundary)
-    this.findEnclosingShapes = function(p) {
-      var ids = [];
-      var cands = findPointHitCandidates(p);
-      var groups = groupItemsByShapeId(cands);
-      groups.forEach(function(group) {
-        if (testPointInRings(p, group)) {
-          ids.push(group[0].id);
-        }
-      });
-      return ids;
-    };
-
-    // Returns shape id of a polygon that intersects p or -1
-    // (If multiple intersections, returns one of the polygons)
-    this.findEnclosingShape = function(p) {
-      var shpId = -1;
-      var groups = groupItemsByShapeId(findPointHitCandidates(p));
-      groups.forEach(function(group) {
-        if (testPointInRings(p, group)) {
-          shpId = group[0].id;
-        }
-      });
-      return shpId;
-    };
-
-    // Returns shape ids of polygons that contain an arc
-    // (arcs that are )
-    // Assumes that input arc is either inside, outside or coterminous with indexed
-    // arcs (i.e. input arc does not cross an indexed arc)
-    this.findShapesEnclosingArc = function(arcId) {
-      var p = getTestPoint([arcId]);
-      return this.findEnclosingShapes(p);
-    };
-
-    this.findPointEnclosureCandidates = function(p, buffer) {
-      var items = findPointHitCandidates(p, buffer);
-      return utils.pluck(items, 'id');
-    };
-
-    this.pointIsEnclosed = function(p) {
-      return testPointInRings(p, findPointHitCandidates(p));
-    };
-
-    // Finds the polygon containing the smallest ring that entirely contains @ring
-    // Assumes ring boundaries do not cross.
-    // Unhandled edge case:
-    //   two rings share at least one segment but are not congruent.
-    // @ring: array of arc ids
-    // Returns id of enclosing polygon or -1 if none found
-    this.findSmallestEnclosingPolygon = function(ring) {
-      var bounds = arcs.getSimpleShapeBounds(ring);
-      var p = getTestPoint(ring);
-      var smallest;
-      var cands = findPointHitCandidates(p);
-      cands.forEach(function(cand) {
-        if (cand.bounds.contains(bounds) && // skip partially intersecting bboxes (can't be enclosures)
-          !cand.bounds.sameBounds(bounds) && // skip self, congruent and reversed-congruent rings
-          !(smallest && smallest.bounds.area() < cand.bounds.area())) {
-              if (testPointInRing(p, cand)) {
-                smallest = cand;
-              }
-            }
-      });
-
-      return smallest ? smallest.id : -1;
-    };
-
-    this.arcIsEnclosed = function(arcId) {
-      return this.pointIsEnclosed(getTestPoint([arcId]));
-    };
-
-    // Test if a polygon ring is contained within an indexed ring
-    // Not a true polygon-in-polygon test
-    // Assumes that the target ring does not cross an indexed ring at any point
-    // or share a segment with an indexed ring. (Intersecting rings should have
-    // been detected previously).
-    //
-    this.pathIsEnclosed = function(pathIds) {
-      return this.pointIsEnclosed(getTestPoint(pathIds));
-    };
-
-    // return array of paths that are contained within a path, or null if none
-    // @pathIds Array of arc ids comprising a closed path
-    this.findEnclosedPaths = function(pathIds) {
-      var b = arcs.getSimpleShapeBounds(pathIds),
-          cands = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
-          paths = [],
-          index;
-
-      if (cands.length > 6) {
-        index = new PolygonIndex([pathIds], arcs);
-      }
-      cands.forEach(function(cand) {
-        var p = getTestPoint(cand.ids);
-        var isEnclosed = b.containsPoint(p[0], p[1]) && (index ?
-          index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
-        if (isEnclosed) {
-          paths.push(cand.ids);
-        }
-      });
-      return paths.length > 0 ? paths : null;
-    };
-
-    this.findPathsInsideShape = function(shape) {
-      var paths = []; // list of enclosed paths
-      shape.forEach(function(ids) {
-        var enclosed = this.findEnclosedPaths(ids);
-        if (enclosed) {
-          // any paths that are enclosed by an even number of rings are removed from list
-          // (given normal topology, such paths are inside holes)
-          paths = xorArrays(paths, enclosed);
-        }
-      }, this);
-      return paths.length > 0 ? paths : null;
-    };
-
-    function testPointInRing(p, cand) {
-      if (!cand.bounds.containsPoint(p[0], p[1])) return false;
-      if (!cand.index && cand.bounds.area() > totalArea * 0.01) {
-        // index larger polygons (because they are slower to test via pointInRing()
-        //    and they are more likely to be involved in repeated hit tests).
-        cand.index = new PolygonIndex([cand.ids], arcs);
-      }
-      return cand.index ?
-          cand.index.pointInPolygon(p[0], p[1]) :
-          geom.testPointInRing(p[0], p[1], cand.ids, arcs);
-    }
-
-    //
-    function testPointInRings(p, cands) {
-      var isOn = false,
-          isIn = false;
-      cands.forEach(function(cand) {
-        var inRing = testPointInRing(p, cand);
-        if (inRing == -1) {
-          isOn = true;
-        } else if (inRing == 1) {
-          isIn = !isIn;
-        }
-      });
-      return isOn || isIn;
-    }
-
-    function groupItemsByShapeId(items) {
-      var groups = [],
-          group, item;
-      if (items.length > 0) {
-        items.sort(function(a, b) {return a.id - b.id;});
-        for (var i=0; i<items.length; i++) {
-          item = items[i];
-          if (i === 0 || item.id != items[i-1].id) {
-            groups.push(group=[]);
-          }
-          group.push(item);
-        }
-      }
-      return groups;
-    }
-
-    function findPointHitCandidates(p, buffer) {
-      var b = buffer > 0 ? buffer : 0;
-      var x = p[0], y = p[1];
-      return boundsQuery(p[0] - b, p[1] - b, p[0] + b, p[1] + b);
-    }
-
-    // Find a point on a ring to use for point-in-polygon testing
-    function getTestPoint(ring) {
-      // Use the point halfway along first segment rather than an endpoint
-      // (because ring might still be enclosed if a segment endpoint touches an indexed ring.)
-      // The returned point should work for point-in-polygon testing if two rings do not
-      // share any common segments (which should be true for topological datasets)
-      // TODO: consider alternative of finding an internal point of @ring (slower but
-      //   potentially more reliable).
-      var arcId = ring[0],
-          p0 = arcs.getVertex(arcId, 0),
-          p1 = arcs.getVertex(arcId, 1);
-      return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
-    }
-
-    // concatenate arrays, removing elements that are in both
-    function xorArrays(a, b) {
-      var xor = [], i;
-      for (i=0; i<a.length; i++) {
-        if (b.indexOf(a[i]) == -1) xor.push(a[i]);
-      }
-      for (i=0; i<b.length; i++) {
-        if (a.indexOf(b[i]) == -1) xor.push(b[i]);
-      }
-      return xor;
-    }
-  }
 
   // Create a mosaic layer from a dataset (useful for debugging commands like -clean
   //    that create a mosaic as an intermediate data structure)
@@ -22178,89 +22269,6 @@
       lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
     }
     return outputLayers;
-  }
-
-  // Delete rings that are nested directly inside an enclosing ring with the same winding direction
-  // Does not remove unenclosed CCW rings (currently this causes problems when
-  //   rounding coordinates for SVG and TopoJSON output)
-  // Assumes ring boundaries do not overlap (should be true after e.g. dissolving)
-  //
-  function fixNestingErrors(rings, arcs) {
-    if (rings.length <= 1) return rings;
-    var ringData = getPathMetadata(rings, arcs, 'polygon');
-    // convert rings to shapes for PathIndex
-    var shapes = rings.map(function(ids) {return [ids];});
-    var index = new PathIndex(shapes, arcs);
-    return rings.filter(ringIsValid);
-
-    function ringIsValid(ids, i) {
-      var containerId = index.findSmallestEnclosingPolygon(ids);
-      var ringIsCW, containerIsCW;
-      var valid = true;
-      if (containerId > -1) {
-        ringIsCW = ringData[i].area > 0;
-        containerIsCW = ringData[containerId].area > 0;
-        if (containerIsCW == ringIsCW) {
-          // reject rings with same chirality as their containing ring
-          valid = false;
-        }
-      }
-      return valid;
-    }
-  }
-
-  // Set winding order of polygon rings so that outer rings are CW, first-order
-  // nested rings are CCW, etc.
-  function rewindPolygons(lyr, arcs) {
-    lyr.shapes = lyr.shapes.map(function(shp) {
-      if (!shp) return null;
-      return rewindPolygon(shp, arcs);
-    });
-  }
-
-  // Update winding order of rings in a polygon so that outermost rings are
-  // CW and nested rings alternate between CCW and CW.
-  function rewindPolygon(rings, arcs) {
-    var ringData = getPathMetadata(rings, arcs, 'polygon');
-
-    // Sort rings by area, from large to small
-    ringData.sort(function(a, b) {
-      return Math.abs(b.area) - Math.abs(a.area);
-    });
-    // If a ring is contained by one or more rings, set it to the opposite
-    //   direction as its immediate parent
-    // If a ring is not contained, make it CW.
-    ringData.forEach(function(ring, i) {
-      var shouldBeCW = true;
-      var j = i;
-      var largerRing;
-      while (--j >= 0) {
-        largerRing = ringData[j];
-        if (testRingInRing(ring, largerRing, arcs)) {
-          // set to opposite of containing ring
-          shouldBeCW = largerRing.area > 0 ? false : true;
-          break;
-        }
-      }
-      setRingWinding(ring, shouldBeCW);
-    });
-    return ringData.map(function(data) { return data.ids; });
-  }
-
-  // data: a ring data object
-  function setRingWinding(data, cw) {
-    var isCW = data.area > 0;
-    if (isCW != cw) {
-      data.area = -data.area;
-      reversePath(data.ids);
-    }
-  }
-
-  // a, b: two ring data objects (from getPathMetadata);
-  function testRingInRing(a, b, arcs) {
-    if (b.bounds.contains(a.bounds) === false) return false;
-    var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
-    return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
   }
 
   cmd.cleanLayers = function(layers, dataset, optsArg) {

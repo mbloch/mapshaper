@@ -2375,8 +2375,10 @@
       // TODO: prevent console from blocking <enter> for menus
       } else if (_isOpen && (typingInConsole || !typing)) {
         capture = true;
-        gui.clearMode(); // close any panels that  might be open
-
+        // clearMode() causes some of the arrow-button modes to be cancelled,
+        // which is irksome...
+        // // gui.clearMode(); // close any panels that  might be open
+        //
         if (kc == 13) { // enter
           onEnter();
         } else if (kc == 9) { // tab
@@ -2585,6 +2587,11 @@
           gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
         }
         if (flags) {
+          // if the command may have changed data, and a tool with an edit mode is being used,
+          // close the tool. (we may need a better way to allow the console and other tools
+          // to be used at the same time).
+          gui.clearMode();
+
           model.updated(flags); // info commands do not return flags
         }
         done(err);
@@ -3596,11 +3603,11 @@
   function InteractionMode(gui) {
 
     var menus = {
-      standard: ['info', 'selection', 'data', 'box', 'off'],
-      lines: ['info', 'selection', 'data', 'box', 'vertices', 'off'],
-      table: ['info', 'selection', 'data', 'off'],
-      labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'off'],
-      points: ['info', 'selection', 'data', 'box', 'location', 'off']
+      standard: ['info', 'selection', 'data', 'box'],
+      lines: ['info', 'selection', 'data', 'box', 'vertices'],
+      table: ['info', 'selection', 'data'],
+      labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
+      points: ['info', 'selection', 'data', 'box', 'location']
     };
 
     var prompts = {
@@ -3636,7 +3643,7 @@
         if (!_menuOpen) {
           btn.removeClass('hover');
         } else {
-          closeMenu(400);
+          closeMenu(200);
         }
       });
 
@@ -3644,10 +3651,12 @@
         btn.addClass('hover');
         if (_menuOpen) {
           clearTimeout(_menuTimeout); // prevent timed closing
-        }
-        if (_editMode != 'off') {
+        } else {
           openMenu();
         }
+        // if (_editMode != 'off') {
+        //   openMenu();
+        // }
       });
 
       btn.on('click', function(e) {
@@ -3655,7 +3664,8 @@
           setMode('off');
           closeMenu();
         } else if (_menuOpen) {
-          closeMenu();
+          setMode('info'); // select info (inspect) as the default
+          // closeMenu(350);
         } else {
           openMenu();
         }
@@ -3722,10 +3732,12 @@
         var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
         link.on('click', function(e) {
           if (_editMode == mode) {
-            closeMenu();
+            // closeMenu();
+            setMode('off');
           } else if (_editMode != mode) {
             setMode(mode);
-            closeMenu(mode == 'off' ? 120 : 400);
+            if (mode == 'off') closeMenu(120); // only close if turning off
+            // closeMenu(mode == 'off' ? 120 : 400); // close after selecting
           }
           e.stopPropagation();
         });
@@ -3733,7 +3745,7 @@
       updateSelectionHighlight();
     }
 
-    // if current editing mode is not available, switch to another mode
+    // if current editing mode is not available, turn off the tool
     function updateCurrentMode() {
       var modes = getAvailableModes();
       if (modes.indexOf(_editMode) == -1) {
@@ -3787,7 +3799,8 @@
         btn.removeClass('open');
       }
       btn.classed('hover', _menuOpen);
-      btn.classed('selected', active() && !_menuOpen);
+      // btn.classed('selected', active() && !_menuOpen);
+      btn.classed('selected', active());
     }
 
     function updateSelectionHighlight() {
@@ -4355,17 +4368,26 @@
     // Hits are re-detected on 'hover' (if hit detection is active)
     mouse.on('hover', function(e) {
       if (storedData.pinned || !hitTest || !active) return;
-      if (!isOverMap(e)) {
-        // mouse is off of map viewport -- clear any current hover ids
-        updateSelectionState(mergeHoverData({ids:[]}));
-      } else if (e.hover) {
+      if (e.hover && isOverMap(e)) {
         // mouse is hovering directly over map area -- update hit detection
         updateSelectionState(mergeHoverData(hitTest(e)));
+      } else if (targetIsRollover(e.originalEvent.target)) {
+        // don't update hit detection if mouse is over the rollover (to prevent
+        // on-off flickering)
       } else {
-        // mouse is over map viewport but not directly over map (e.g. hovering
-        // over popup) -- don't update hit detection
+        updateSelectionState(mergeHoverData({ids:[]}));
       }
     }, null, priority);
+
+    function targetIsRollover(target) {
+      while (target.parentNode && target != target.parentNode) {
+        if (target.className && String(target.className).indexOf('rollover') > -1) {
+          return true;
+        }
+        target = target.parentNode;
+      }
+      return false;
+    }
 
     function noHitData() {return {ids: [], id: -1, pinned: false};}
 
@@ -5212,6 +5234,8 @@
     var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
     var refresh = null;
     var currId = -1;
+
+    el.addClass('rollover'); // used as a sentinel for the hover function
 
     nextLink.on('click', toNext);
     prevLink.on('click', toPrev);
@@ -7537,34 +7561,6 @@
     getPathCentroid: getPathCentroid
   });
 
-  // Returns a search function
-  // Receives array of objects to index; objects must have a 'bounds' member
-  //    that is a Bounds object.
-  function getBoundsSearchFunction(boxes) {
-    var index, Flatbush;
-    if (!boxes.length) {
-      // Unlike rbush, flatbush doesn't allow size 0 indexes; workaround
-      return function() {return [];};
-    }
-    Flatbush = require('flatbush');
-    index = new Flatbush(boxes.length);
-    boxes.forEach(function(ring) {
-      var b = ring.bounds;
-      index.add(b.xmin, b.ymin, b.xmax, b.ymax);
-    });
-    index.finish();
-
-    function idxToObj(i) {
-      return boxes[i];
-    }
-
-    // Receives xmin, ymin, xmax, ymax parameters
-    // Returns subset of original @bounds array
-    return function(a, b, c, d) {
-      return index.search(a, b, c, d).map(idxToObj);
-    };
-  }
-
   function absArcId(arcId) {
     return arcId >= 0 ? arcId : ~arcId;
   }
@@ -7815,77 +7811,7 @@
     return shape2.length > 0 ? shape2 : null;
   }
 
-  // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
-  // Assumes outer rings are CW and inner (hole) rings are CCW, unless
-  //   the reverseWinding flag is set.
-  // @paths array of objects with path metadata -- see internal.exportPathData()
-  //
-  // TODO: Improve reliability. Currently uses winding order, area and bbox to
-  //   identify holes and their enclosures -- could be confused by some strange
-  //   geometry.
-  //
-  function groupPolygonRings(paths, reverseWinding) {
-    var holes = [],
-        groups = [],
-        sign = reverseWinding ? -1 : 1,
-        boundsQuery;
-
-    (paths || []).forEach(function(path) {
-      if (path.area * sign > 0) {
-        groups.push([path]);
-      } else if (path.area * sign < 0) {
-        holes.push(path);
-      } else {
-        // Zero-area ring, skipping
-      }
-    });
-
-    if (holes.length === 0) {
-      return groups;
-    }
-
-    // Using a spatial index to improve performance when the current feature
-    // contains many holes and space-filling rings.
-    // (Thanks to @simonepri for providing an example implementation in PR #248)
-    boundsQuery = getBoundsSearchFunction(groups.map(function(group, i) {
-      return {
-        bounds: group[0].bounds,
-        idx: i
-      };
-    }));
-
-    // Group each hole with its containing ring
-    holes.forEach(function(hole) {
-      var containerId = -1,
-          containerArea = 0,
-          holeArea = hole.area * -sign,
-          b = hole.bounds,
-          // Find rings that might contain this hole
-          candidates = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
-          ring, ringId, ringArea, isContained;
-      // Group this hole with the smallest-area ring that contains it.
-      // (Assumes that if a ring's bbox contains a hole, then the ring also
-      //  contains the hole).
-      for (var i=0, n=candidates.length; i<n; i++) {
-        ringId = candidates[i].idx;
-        ring = groups[ringId][0];
-        ringArea = ring.area * sign;
-        isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
-        if (isContained && (containerArea === 0 || ringArea < containerArea)) {
-          containerArea = ringArea;
-          containerId = ringId;
-        }
-      }
-      if (containerId == -1) {
-        debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
-      } else {
-        groups[containerId].push(hole);
-      }
-    });
-
-    return groups;
-  }
-
+  // Return an array of information about each part/ring in a polygon or polyline shape
   function getPathMetadata(shape, arcs, type) {
     var data = [],
         ids;
@@ -10242,7 +10168,6 @@
     gui.addMode('box_tool', turnOn, turnOff);
 
     gui.on('interaction_mode_change', function(e) {
-      // console.log('mode change', e.mode)
       if (e.mode === 'box') {
         gui.enterMode('box_tool');
       } else if (gui.getMode() == 'box_tool') {
