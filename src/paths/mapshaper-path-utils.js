@@ -1,8 +1,7 @@
 
-import { getBoundsSearchFunction } from '../geom/mapshaper-bounds-search';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { absArcId } from '../paths/mapshaper-arc-utils';
-import { error, debug } from '../utils/mapshaper-logging';
+import { error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 
@@ -233,77 +232,7 @@ export function filterEmptyArcs(shape, coords) {
   return shape2.length > 0 ? shape2 : null;
 }
 
-// Bundle holes with their containing rings for Topo/GeoJSON polygon export.
-// Assumes outer rings are CW and inner (hole) rings are CCW, unless
-//   the reverseWinding flag is set.
-// @paths array of objects with path metadata -- see internal.exportPathData()
-//
-// TODO: Improve reliability. Currently uses winding order, area and bbox to
-//   identify holes and their enclosures -- could be confused by some strange
-//   geometry.
-//
-export function groupPolygonRings(paths, reverseWinding) {
-  var holes = [],
-      groups = [],
-      sign = reverseWinding ? -1 : 1,
-      boundsQuery;
-
-  (paths || []).forEach(function(path) {
-    if (path.area * sign > 0) {
-      groups.push([path]);
-    } else if (path.area * sign < 0) {
-      holes.push(path);
-    } else {
-      // Zero-area ring, skipping
-    }
-  });
-
-  if (holes.length === 0) {
-    return groups;
-  }
-
-  // Using a spatial index to improve performance when the current feature
-  // contains many holes and space-filling rings.
-  // (Thanks to @simonepri for providing an example implementation in PR #248)
-  boundsQuery = getBoundsSearchFunction(groups.map(function(group, i) {
-    return {
-      bounds: group[0].bounds,
-      idx: i
-    };
-  }));
-
-  // Group each hole with its containing ring
-  holes.forEach(function(hole) {
-    var containerId = -1,
-        containerArea = 0,
-        holeArea = hole.area * -sign,
-        b = hole.bounds,
-        // Find rings that might contain this hole
-        candidates = boundsQuery(b.xmin, b.ymin, b.xmax, b.ymax),
-        ring, ringId, ringArea, isContained;
-    // Group this hole with the smallest-area ring that contains it.
-    // (Assumes that if a ring's bbox contains a hole, then the ring also
-    //  contains the hole).
-    for (var i=0, n=candidates.length; i<n; i++) {
-      ringId = candidates[i].idx;
-      ring = groups[ringId][0];
-      ringArea = ring.area * sign;
-      isContained = ring.bounds.contains(hole.bounds) && ringArea > holeArea;
-      if (isContained && (containerArea === 0 || ringArea < containerArea)) {
-        containerArea = ringArea;
-        containerId = ringId;
-      }
-    }
-    if (containerId == -1) {
-      debug("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
-    } else {
-      groups[containerId].push(hole);
-    }
-  });
-
-  return groups;
-}
-
+// Return an array of information about each part/ring in a polygon or polyline shape
 export function getPathMetadata(shape, arcs, type) {
   var data = [],
       ids;

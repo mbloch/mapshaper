@@ -2,6 +2,21 @@ var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-explode.js', function () {
+
+  it('nesting fix', function(done) {
+    // test fix for a bug that caused a hole to sometimes be assigned to the wrong
+    // polygon when the hole was w/in the bbox of multiple rings.
+    var json = require('fs').readFileSync('test/data/features/explode/ex2_nesting.json');
+    var cmd = '-i data.json -explode -o';
+    api.applyCommands(cmd, {'data.json': json}, function(err, out) {
+      var json = JSON.parse(out['data.json']);
+      assert.equal(json.geometries[0].coordinates.length, 3)
+      assert.equal(json.geometries[1].coordinates.length, 2)
+      done();
+    });
+
+  })
+
   describe('explodeFeatures()', function () {
     it('point layer', function () {
 

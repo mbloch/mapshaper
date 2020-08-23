@@ -1,3 +1,6 @@
+v0.5.19
+* Bug fix and UI tweaks
+
 v0.5.18
 * Added support for hatches with more than two colors.
 * Added 'drag vertices' interaction mode for line layers, as a precursor to a future callout line tool.

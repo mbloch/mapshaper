@@ -1,5 +1,5 @@
 import { reversePath } from '../paths/mapshaper-path-utils';
-import { groupPolygonRings } from '../paths/mapshaper-path-utils';
+import { groupPolygonRings } from '../polygons/mapshaper-ring-nesting';
 import { getPathMetadata } from '../paths/mapshaper-path-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import cmd from '../mapshaper-cmd';
@@ -49,7 +49,7 @@ function explodeShape(shp) {
 
 export function explodePolygon(shape, arcs, reverseWinding) {
   var paths = getPathMetadata(shape, arcs, "polygon");
-  var groups = groupPolygonRings(paths, reverseWinding);
+  var groups = groupPolygonRings(paths, arcs, reverseWinding);
   return groups.map(function(group) {
     return group.map(function(ring) {
       return ring.ids;
@@ -68,9 +68,5 @@ function explodePolygonNaive(shape, arcs) {
 }
 
 function cloneProperties(obj) {
-  var clone = {};
-  for (var key in obj) {
-    clone[key] = obj[key];
-  }
-  return clone;
+  return Object.assign({}, obj);
 }

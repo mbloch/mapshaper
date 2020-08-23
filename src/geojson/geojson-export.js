@@ -1,4 +1,5 @@
-import { groupPolygonRings, traversePaths } from '../paths/mapshaper-path-utils';
+import { traversePaths } from '../paths/mapshaper-path-utils';
+import { groupPolygonRings } from '../polygons/mapshaper-ring-nesting';
 import { exportPathData } from '../paths/mapshaper-path-export';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { layerHasPoints, layerHasPaths } from '../dataset/mapshaper-layer-utils';
@@ -256,7 +257,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;
-  var groups = groupPolygonRings(obj.pathData, opts.invert_y);
+  var groups = groupPolygonRings(obj.pathData, arcs, opts.invert_y);
   // invert_y is used internally for SVG generation
   // mapshaper's internal winding order is the opposite of RFC 7946
   var reverse = (opts.rfc7946 || opts.v2) && !opts.invert_y;
