@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.18";
+  var VERSION = "0.5.19";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13102,10 +13102,6 @@
   //   the reverseWinding flag is set.
   // @paths array of objects with path metadata -- see internal.exportPathData()
   //
-  // TODO: Improve reliability. Currently uses winding order, area and bbox to
-  //   identify holes and their enclosures -- could be confused by some strange
-  //   geometry.
-  //
   function groupPolygonRings(paths, arcs, reverseWinding) {
     var holes = [],
         groups = [],
@@ -13211,6 +13207,7 @@
         var iter = arcs.getShapeIter(arcIds),
             path = exportPathCoords(iter),
             valid = true;
+        path.ids = arcIds;
         if (type == 'polygon') {
           path.area = geom.getPlanarPathArea2(path.points);
           valid = path.pointCount > 3 && path.area !== 0;
