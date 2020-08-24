@@ -1,3 +1,6 @@
+v0.5.20
+* Fix for bug introduced in previous version
+
 v0.5.19
 * Bug fix and UI tweaks
 

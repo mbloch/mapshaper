@@ -14,7 +14,17 @@ describe('mapshaper-explode.js', function () {
       assert.equal(json.geometries[1].coordinates.length, 2)
       done();
     });
+  })
 
+  it('nesting function fix', function(done) {
+    // Quick test for issue #433, relating to invalid data being passed to
+    // a function in mapshaper-ring-nesting.js
+    var json = require('fs').readFileSync('test/data/features/explode/ex2_nesting.json');
+    var cmd = '-i data.json  -o';
+    api.applyCommands(cmd, {'data.json': json}, function(err, out) {
+      assert(!err);
+      done();
+    });
   })
 
   describe('explodeFeatures()', function () {

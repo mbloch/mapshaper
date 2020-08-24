@@ -92,10 +92,6 @@ function testRingInRing(a, b, arcs) {
 //   the reverseWinding flag is set.
 // @paths array of objects with path metadata -- see internal.exportPathData()
 //
-// TODO: Improve reliability. Currently uses winding order, area and bbox to
-//   identify holes and their enclosures -- could be confused by some strange
-//   geometry.
-//
 export function groupPolygonRings(paths, arcs, reverseWinding) {
   var holes = [],
       groups = [],

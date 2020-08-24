@@ -37,6 +37,7 @@ export function exportPathData(shape, arcs, type) {
       var iter = arcs.getShapeIter(arcIds),
           path = exportPathCoords(iter),
           valid = true;
+      path.ids = arcIds;
       if (type == 'polygon') {
         path.area = geom.getPlanarPathArea2(path.points);
         valid = path.pointCount > 3 && path.area !== 0;
