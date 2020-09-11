@@ -1,3 +1,8 @@
+v0.5.21
+* Renamed -style fill-hatch= option to -style fill-pattern=
+* Reversed order of hatch fill arguments. "black 2px white 2px" changes to "2px black 2px white".
+* Added patterns for dots and squares. "dots 2px black 5px white" gives 2px black dots with 5px spacing on a white background. "squares 2px black 5px white" gives squares instead of round dots. Both patterns can take multiple colors and an optional rotation: "squares 45deg 2px black red blue 5px white".
+
 v0.5.20
 * Fix for bug introduced in previous version
 
