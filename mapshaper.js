@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.19";
+  var VERSION = "0.5.20";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -10005,9 +10005,11 @@
 
   function compileFeaturePairExpression(rawExp, lyr, arcs) {
     var exp = cleanExpression(rawExp);
-    var ctx = getExpressionContext(lyr);
-    var A = getProxyFactory(lyr, arcs);
-    var B = getProxyFactory(lyr, arcs);
+    // don't add layer data to the context
+    // (fields are not added to the pair expression context)
+    var ctx = getExpressionContext({});
+    var getA = getProxyFactory(lyr, arcs);
+    var getB = getProxyFactory(lyr, arcs);
     var vars = getAssignedVars(exp);
     var functionBody = "with($$env){with($$record){return " + exp + "}}";
     var func;
@@ -10025,7 +10027,7 @@
     function getProxyFactory(lyr, arcs) {
       var records = lyr.data ? lyr.data.getRecords() : [];
       var getFeatureById = initFeatureProxy(lyr, arcs);
-      function Proxy(id) {}
+      function Proxy() {}
 
       return function(id) {
         var proxy;
@@ -10042,8 +10044,8 @@
     // rec - optional data record
     return function(idA, idB, rec) {
       var val;
-      ctx.A = A(idA);
-      ctx.B = B(idB);
+      ctx.A = getA(idA);
+      ctx.B = getB(idB);
       if (rec) {
         // initialize new fields to null so assignments work
         nullifyUnsetProperties(vars, rec);
@@ -13970,24 +13972,87 @@
     addBezierArcControlPoints: addBezierArcControlPoints
   });
 
-  function parseHatch(str) {
-    // examples
-    // black 1px red 1px white 1px
-    // -45deg #eee 3 rgb(0,0,0) 1
-    var splitRxp = /[, ]+(?![^(]*\))/, // don't split rgb(...) colors
-        parts = String(str).trim().split(splitRxp),
-        rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
-        colors = [], widths = [];
-    for (var i=0; i<parts.length; i+=2) {
-      colors.push(parts[i]);
-      widths.push(parseInt(parts[i+1]));
+  /* example patterns
+  hatches 1px black 1px red 1px white
+  1px black 1px red 1px white // same as above (hatches is default)
+  45deg 2px black 2px red     // hatch direction
+  dots 2px black 5px white    // 2px black dots with 5px spacing on white
+  dots 2px blue 2px red 5px white  // blue and red alternating dots
+  */
+  function parsePattern(str) {
+    if (!str) return null;
+    var parts = splitPattern(str);
+    var first = parts[0] || '';
+    var obj = null;
+    // accept variations on type names (dot, dots, square, squares, hatch, hatches, hatched)
+    if (first.startsWith('dot')) {
+      parts[0] = 'dots';
+      obj = parseDots(parts, str);
+    } else if (first.startsWith('square')) {
+      parts[0] = 'squares';
+      obj = parseDots(parts, str);
+    } else if (first.startsWith('hatch')) {
+      parts[0] = 'hatches';
+      obj = parseHatches(parts, str);
+    } else if (!isNaN(parseFloat(first))) {
+      parts.unshift('hatches');
+      obj = parseHatches(parts, str); // hatches is the default, name can be omitted
     }
-    if (Math.min.apply(null, widths) < 1) return null;
+    if (!obj) {
+      // consider
+      message('Invalid pattern, ignoring:', str);
+    }
+    return obj;
+  }
+
+  function parseHatches(parts, str) {
+    // examples
+    // 1px red 1px white 1px black
+    // -45deg 3 #eee 3 rgb(0,0,0)
+    var type = parts.shift();
+    var rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
+        colors = [], widths = [], a, b;
+    for (var i=0; i<parts.length; i+=2) {
+      widths.push(parseInt(parts[i]));
+      colors.push(parts[i+1]);
+    }
+    if (Math.min.apply(null, widths) > 0 === false) return null;
     return {
+      type: 'hatches',
       colors: colors,
       widths: widths,
       rotation: rot
     };
+  }
+
+  function parseDots(parts, str) {
+    var colors = [];
+    var type = parts.shift();
+    var rot = 0;
+    if (parseInt(parts[1]) > 0) { // if rotation is present, there are two numbers
+      rot = parseInt(parts.shift());
+    }
+    var size = parseInt(parts.shift());
+    var bg = parts.pop();
+    var spacing = parseInt(parts.pop());
+    while (parts.length > 0) {
+      colors.push(parts.shift());
+    }
+    if (size > 0 === false || spacing >= 0 === false) return null;
+    if (colors.length === 0) return null;
+    return {
+      type: type,
+      colors: colors, // last color is background
+      size: size,
+      spacing: spacing,
+      background: bg,
+      rotation: rot
+    };
+  }
+
+  function splitPattern(str) {
+    var splitRxp = /[, ]+(?![^(]*\))/; // don't split rgb(...) colors
+    return String(str).trim().split(splitRxp);
   }
 
   function getHashId(str) {
@@ -13997,22 +14062,30 @@
   // properties: properties object of a path data object (prior to conversion to SVG)
   // symbols: array of definition objects
   //
-  function convertFillHatch(properties, symbols) {
-    var hatchStr = properties['fill-hatch'];
+  function convertFillPattern(properties, symbols) {
+    var hatchStr = properties['fill-pattern'];
     var hashId = getHashId(hatchStr);
     var hash = utils.find(symbols, function(o) { return o.id == hashId; });
-    delete properties['fill-hatch'];
+    delete properties['fill-pattern'];
     if (!hash) {
-      hash = makeSVGHatchFill(hatchStr, hashId);
+      hash = makeSVGPatternFill(hatchStr, hashId);
       if (!hash) return;
       symbols.push(hash);
     }
     properties.fill = hash.href;
   }
 
-  function makeSVGHatchFill(hatchStr, id) {
-    var hatch = parseHatch(hatchStr);
-    if (!hatch) return null;
+  function makeSVGPatternFill(str, id) {
+    var data = parsePattern(str);
+    if (!data) return null;
+    if (data.type == 'hatches') {
+      return makeSVGHatchFill(data, id);
+    } else if (data.type == 'dots' || data.type == 'squares') {
+      return makeSVGDotFill(data, id);
+    }
+  }
+
+  function makeSVGHatchFill(hatch, id) {
     var size = utils.sum(hatch.widths);
     var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="10" patternTransform="rotate(${ hatch.rotation })">`;
     for (var i=0, x=0; i<hatch.widths.length; i++) {
@@ -14027,10 +14100,45 @@
     };
   }
 
+  function makeCircle(x, y, size, fill) {
+    const r = size / 2;
+    return `<circle cx="${x + r}" cy="${y + r}" r="${r}" fill="${ fill }"></circle>`;
+  }
+
+  function makeSquare(x, y, size, fill) {
+    return `<rect x="${x}" y="${y}" width="${ size }" height="${ size }" fill="${ fill }"></rect>`;
+  }
+
+  function makeSVGDotFill(obj, id) {
+    var dotSize = obj.size;
+    var colorCount = obj.colors.length;
+    var dotDist = dotSize + obj.spacing;
+    var sideLen = dotDist * colorCount;
+    var dotsPerTile = colorCount * colorCount;
+    var x = 0, y = 0;
+    var makeSymbol = obj.type == 'squares' ? makeSquare : makeCircle;
+    var transform = obj.rotation ? `patternTransform="rotate(${ obj.rotation })"` : '';
+    var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" ${transform} width="${ sideLen }" height="${ sideLen }">`;
+    svg += `<rect x="0" y="0" width="${ sideLen }" height="${ sideLen }" fill="${ obj.background }"></rect>`;
+    for (var i=0; i<dotsPerTile; i++) {
+      svg += makeSymbol(x, y, dotSize, obj.colors[(i + Math.floor(i / colorCount)) % colorCount]);
+      x = ((i + 1) % colorCount) * dotDist;
+      if (x == 0) y += dotDist;
+    }
+    svg += '</pattern>';
+    return {
+      svg: svg,
+      id: id,
+      href: `url(#${ id })`
+    };
+  }
+
   var SvgHatch = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    parseHatch: parseHatch,
-    convertFillHatch: convertFillHatch
+    parsePattern: parsePattern,
+    parseHatches: parseHatches,
+    parseDots: parseDots,
+    convertFillPattern: convertFillPattern
   });
 
   // parsing hints for -style command cli options
@@ -14041,12 +14149,12 @@
     dx: 'measure',
     dy: 'measure',
     fill: 'color',
-    'fill-hatch': 'hatch',
+    'fill-pattern': 'pattern',
     'font-family': null,
     'font-size': null,
     'font-style': null,
     'font-weight': null,
-    'label-text': null,  // not a CSS property
+    'label-text': null,  // leaving this null
     'letter-spacing': 'measure',
     'line-height': 'measure',
     opacity: 'number',
@@ -14073,7 +14181,7 @@
   var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
   var propertiesBySymbolType = {
-    polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-hatch')),
+    polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
     polyline: utils.arrayToIndex(commonProperties),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
@@ -14122,6 +14230,15 @@
     };
   }
 
+  // need a test that identifies any expression but doesn't get triggered by:
+  // * invalid patterns: dots 45deg black 3px red
+  // * ???
+  //
+  function mightBeExpression(str, fields) {
+    if (fields.indexOf(str.trim()) > -1) return true;
+    return /[(){}.+-/*?:&|=\[]/.test(str);
+  }
+
   function getSymbolPropertyAccessor(strVal, svgName, lyr) {
     var typeHint = symbolPropertyTypes[svgName];
     var fields = lyr.data ? lyr.data.getFields() : [];
@@ -14131,8 +14248,8 @@
     if (typeHint && fields.indexOf(strVal) === -1) {
       literalVal = parseSvgLiteralValue(strVal, typeHint);
     }
-    if (literalVal === null) {
-      accessor = parseStyleExpression(strVal, lyr);
+    if (literalVal === null && mightBeExpression(strVal, fields)) {
+      accessor = parseStyleExpression(strVal, lyr); // no longer throws an error
     }
     if (!accessor && literalVal === null && !typeHint) {
       // We don't have a type rule for detecting an invalid value, so we're
@@ -14169,8 +14286,8 @@
       val = isSvgMeasure(strVal) ? parseSvgMeasure(strVal) : null;
     } else if (type == 'dasharray') {
       val = isDashArray(strVal) ? strVal : null;
-    } else if (type == 'hatch') {
-      val = isHatch(strVal) ? strVal : null;
+    } else if (type == 'pattern') {
+      val = isPattern(strVal) ? strVal : null;
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -14179,8 +14296,8 @@
     return val;
   }
 
-  function isHatch(str) {
-    return !!parseHatch(str);
+  function isPattern(str) {
+    return !!parsePattern(str);
   }
 
   function isDashArray(str) {
@@ -14214,6 +14331,7 @@
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
     findPropertiesBySymbolGeom: findPropertiesBySymbolGeom,
     getSymbolDataAccessor: getSymbolDataAccessor,
+    mightBeExpression: mightBeExpression,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
     isSvgClassName: isSvgClassName,
     isSvgNumber: isSvgNumber,
@@ -14873,8 +14991,8 @@
     procNode(obj);
 
     function procNode(obj) {
-      if (obj.tag == 'path' && obj.properties['fill-hatch']) {
-        convertFillHatch(obj.properties, symbols);
+      if (obj.tag == 'path' && obj.properties['fill-pattern']) {
+        convertFillPattern(obj.properties, symbols);
       }
       if (obj.tag == 'image' && !runningInBrowser()) {
         // Same-origin policy prevents embedding images in the web UI
@@ -18115,6 +18233,15 @@
       .option('fill', {
         describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
       })
+      .option('fill-pattern', {
+        describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'
+      })
+      .option('fill-opacity', {
+        describe: 'fill opacity'
+      })
+      .option('fill-hatch', {
+        alias_to: 'fill-pattern'
+      })
       .option('stroke', {
         describe: 'stroke color'
       })
@@ -18124,14 +18251,8 @@
       .option('stroke-dasharray', {
         describe: 'stroke dashes. Examples: "4" "2 4"'
       })
-      .option('fill-hatch', {
-        describe: 'use a hatched fill; ex: "45deg grey 2px blue 2px"'
-      })
       .option('stroke-opacity', {
         describe: 'stroke opacity'
-      })
-      .option('fill-opacity', {
-        describe: 'fill opacity'
       })
       .option('opacity', {
         describe: 'opacity; example: 0.5'
