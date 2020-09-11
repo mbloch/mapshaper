@@ -32,9 +32,11 @@ export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
 
 export function compileFeaturePairExpression(rawExp, lyr, arcs) {
   var exp = cleanExpression(rawExp);
-  var ctx = getExpressionContext(lyr);
-  var A = getProxyFactory(lyr, arcs);
-  var B = getProxyFactory(lyr, arcs);
+  // don't add layer data to the context
+  // (fields are not added to the pair expression context)
+  var ctx = getExpressionContext({});
+  var getA = getProxyFactory(lyr, arcs);
+  var getB = getProxyFactory(lyr, arcs);
   var vars = getAssignedVars(exp);
   var functionBody = "with($$env){with($$record){return " + exp + "}}";
   var func;
@@ -52,7 +54,7 @@ export function compileFeaturePairExpression(rawExp, lyr, arcs) {
   function getProxyFactory(lyr, arcs) {
     var records = lyr.data ? lyr.data.getRecords() : [];
     var getFeatureById = initFeatureProxy(lyr, arcs);
-    function Proxy(id) {}
+    function Proxy() {}
 
     return function(id) {
       var proxy;
@@ -69,8 +71,8 @@ export function compileFeaturePairExpression(rawExp, lyr, arcs) {
   // rec - optional data record
   return function(idA, idB, rec) {
     var val;
-    ctx.A = A(idA);
-    ctx.B = B(idB);
+    ctx.A = getA(idA);
+    ctx.B = getB(idB);
     if (rec) {
       // initialize new fields to null so assignments work
       nullifyUnsetProperties(vars, rec);

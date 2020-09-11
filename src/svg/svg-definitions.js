@@ -1,6 +1,6 @@
 import { sha1 } from '../utils/mapshaper-sha1';
 import { runningInBrowser } from '../mapshaper-state';
-import { convertFillHatch } from '../svg/svg-hatch';
+import { convertFillPattern } from '../svg/svg-hatch';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 
@@ -9,8 +9,8 @@ export function convertPropertiesToDefinitions(obj, symbols) {
   procNode(obj);
 
   function procNode(obj) {
-    if (obj.tag == 'path' && obj.properties['fill-hatch']) {
-      convertFillHatch(obj.properties, symbols);
+    if (obj.tag == 'path' && obj.properties['fill-pattern']) {
+      convertFillPattern(obj.properties, symbols);
     }
     if (obj.tag == 'image' && !runningInBrowser()) {
       // Same-origin policy prevents embedding images in the web UI

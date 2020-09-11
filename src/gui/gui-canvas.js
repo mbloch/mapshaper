@@ -318,7 +318,7 @@ export function DisplayCanvas() {
       (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
       (style.fillColor || '') +
       (style.fillOpacity ? '~' + style.fillOpacity : '') +
-      (style.fillHatch ? '~' + style.fillHatch : '') +
+      (style.fillPattern ? '~' + style.fillPattern : '') +
       (style.opacity < 1 ? '~' + style.opacity : '');
   }
 
@@ -487,7 +487,7 @@ function getPathStart(ext, lineScale) {
       }
     }
 
-    if (style.fillHatch) {
+    if (style.fillPattern) {
       ctx.fillStyle = getCanvasFillHatch(style);
     } else if (style.fillColor) {
       ctx.fillStyle = style.fillColor;
@@ -500,7 +500,7 @@ function endPath(ctx, style) {
       so = fo;
   if (style.strokeOpacity >= 0) so *= style.strokeOpacity;
   if (style.fillOpacity >= 0) fo *= style.fillOpacity;
-  if (style.fillColor || style.fillHatch) {
+  if (style.fillColor || style.fillPattern) {
     ctx.globalAlpha = fo;
     ctx.fill();
   }
@@ -519,33 +519,65 @@ function endPath(ctx, style) {
 var hatches = {};
 
 function getCanvasFillHatch(style) {
-  var fill = hatches[style.fillHatch];
+  var fill = hatches[style.fillPattern];
   if (fill === undefined) {
-    fill = makeHatchFill(style);
-    hatches[style.fillHatch] = fill;
+    fill = makePatternFill(style);
+    hatches[style.fillPattern] = fill;
   }
   return fill || style.fill || '#000'; // use fill if hatches are invalid
 }
 
-function makeHatchFill(style) {
-  var hatch = internal.parseHatch(style.fillHatch);
-  if (!hatch) return null;
-  var size = utils.sum(hatch.widths);
+function makeDotFill(o, canv, ctx) {
   var res = GUI.getPixelRatio();
-  var canv = document.createElement('canvas');
-  var ctx = canv.getContext('2d');
+  var dotSize = Math.max.apply(null, o.sizes) * res;
+  var r = dotSize / 2;
+  var n = o.sizes.length;
+  var dist = dotSize + o.spacing * res;
+  var side = dist * n;
+  var dots = n * n;
+  var x = 0, y = 0;
+  canv.setAttribute('width', side);
+  canv.setAttribute('height', side);
+  ctx.fillStyle = o.background;
+  ctx.fillRect(0, 0, side, side);
+  for (var i=0; i<dots; i++) {
+    if (o.type == 'dots') ctx.beginPath();
+    ctx.fillStyle = o.colors[(i + Math.floor(i / n)) % n];
+    if (o.type == 'dots') {
+      ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
+    } else {
+      ctx.fillRect(x, y, dotSize, dotSize);
+    }
+    if (o.type == 'dots') ctx.fill();
+    x = ((i + 1) % n) * dist;
+    if (x == 0) y += dist;
+  }
+}
+
+function makeHatchFill(o, canv, ctx) {
+  var size = utils.sum(o.widths);
+  var res = GUI.getPixelRatio();
   var w;
   canv.setAttribute('width', size * res);
   canv.setAttribute('height', 10);
-  for (var i=0, x=0; i<hatch.widths.length; i++) {
-    w = hatch.widths[i] * res;
-    ctx.fillStyle = hatch.colors[i];
+  for (var i=0, x=0; i<o.widths.length; i++) {
+    w = o.widths[i] * res;
+    ctx.fillStyle = o.colors[i];
     ctx.fillRect(x, 0, x + w, 10);
     x += w;
   }
+}
+
+function makePatternFill(style) {
+  var o = internal.parsePattern(style.fillPattern);
+  if (!o) return null;
+  var canv = document.createElement('canvas');
+  var ctx = canv.getContext('2d');
+  if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, canv, ctx);
+  if (o.type == 'hatches') makeHatchFill(o, canv, ctx);
   var pattern = ctx.createPattern(canv, 'repeat');
-  if (hatch.rotation) {
-    pattern.setTransform(new DOMMatrix('rotate(' + hatch.rotation + 'deg)'));
+  if (o.rotation) {
+    pattern.setTransform(new DOMMatrix('rotate(' + o.rotation + 'deg)'));
   }
   return pattern;
 }

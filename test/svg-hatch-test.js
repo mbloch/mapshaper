@@ -1,10 +1,44 @@
-import { parseHatch } from '../src/svg/svg-hatch.js'
+import { parsePattern } from '../src/svg/svg-hatch.js'
 import assert from 'assert';
 
 describe('svg-hatch.js', function () {
-  describe('parseHatch()()', function () {
-    it('0 #eee 2 black 1', function () {
-      assert.deepEqual(parseHatch('0 #eee 2 black 1'), {
+  describe('parsePattern()()', function () {
+
+    it('dot pattern', function() {
+      assert.deepEqual(parsePattern('dots 1px black 3px white'), {
+        type: 'dots',
+        colors: ['black'],
+        background: 'white',
+        spacing: 3,
+        sizes: [1],
+        rotation: 0
+      })
+    })
+
+    it('dot pattern with "dot"', function() {
+      assert.deepEqual(parsePattern('dot 1px black 3px white'), {
+        type: 'dots',
+        colors: ['black'],
+        background: 'white',
+        spacing: 3,
+        sizes: [1],
+        rotation: 0
+      })
+    })
+
+   it('squares pattern', function() {
+      assert.deepEqual(parsePattern('squares 2px black 2px #c00 3px white'), {
+        type: 'squares',
+        colors: ['black', '#c00'],
+        background: 'white',
+        spacing: 3,
+        sizes: [2,2],
+        rotation: 0
+      })
+    })
+    it('0 2 #eee 1 black', function () {
+      assert.deepEqual(parsePattern('0 2 #eee 1 black'), {
+        type: 'hatches',
         colors: ['#eee', 'black'],
         widths: [2, 1],
         rotation: 0
@@ -12,7 +46,8 @@ describe('svg-hatch.js', function () {
     })
 
     it('45 deg is default rotation', function () {
-      assert.deepEqual(parseHatch('#444444 2 rgba(0,0,0) 2'), {
+      assert.deepEqual(parsePattern('2 #444444 2 rgba(0,0,0)'), {
+        type: 'hatches',
         colors: ['#444444', 'rgba(0,0,0)'],
         widths: [2, 2],
         rotation: 45
@@ -20,7 +55,8 @@ describe('svg-hatch.js', function () {
     })
 
     it('supports more than 2 stripes', function () {
-      assert.deepEqual(parseHatch('90deg green 5 gold 2 black 9'), {
+      assert.deepEqual(parsePattern('90deg 5 green 2 gold 9 black'), {
+        type: 'hatches',
         colors: ['green', 'gold', 'black'],
         widths: [5, 2, 9],
         rotation: 90
@@ -28,9 +64,12 @@ describe('svg-hatch.js', function () {
     })
 
     it('invalid stripe width', function () {
-      assert.strictEqual(parseHatch('#eee 0 black 1'), null);
+      assert.strictEqual(parsePattern('0 #eee 1 black'), null);
     })
 
+    it('invalid argument order', function () {
+      assert.strictEqual(parsePattern('#eee 0 black 1'), null);
+    })
   })
 })
 

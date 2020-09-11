@@ -1184,6 +1184,15 @@ export function getOptionParser() {
     .option('fill', {
       describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
     })
+    .option('fill-pattern', {
+      describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'
+    })
+    .option('fill-opacity', {
+      describe: 'fill opacity'
+    })
+    .option('fill-hatch', {
+      alias_to: 'fill-pattern'
+    })
     .option('stroke', {
       describe: 'stroke color'
     })
@@ -1193,14 +1202,8 @@ export function getOptionParser() {
     .option('stroke-dasharray', {
       describe: 'stroke dashes. Examples: "4" "2 4"'
     })
-    .option('fill-hatch', {
-      describe: 'use a hatched fill; ex: "45deg grey 2px blue 2px"'
-    })
     .option('stroke-opacity', {
       describe: 'stroke opacity'
-    })
-    .option('fill-opacity', {
-      describe: 'fill opacity'
     })
     .option('opacity', {
       describe: 'opacity; example: 0.5'

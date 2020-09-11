@@ -2,7 +2,7 @@ import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { getStateVar } from '../mapshaper-state';
-import { parseHatch } from '../svg/svg-hatch';
+import { parsePattern } from '../svg/svg-hatch';
 
 // parsing hints for -style command cli options
 // null values indicate the lack of a function for parsing/identifying this property
@@ -12,12 +12,12 @@ var stylePropertyTypes = {
   dx: 'measure',
   dy: 'measure',
   fill: 'color',
-  'fill-hatch': 'hatch',
+  'fill-pattern': 'pattern',
   'font-family': null,
   'font-size': null,
   'font-style': null,
   'font-weight': null,
-  'label-text': null,  // not a CSS property
+  'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
   'line-height': 'measure',
   opacity: 'number',
@@ -44,7 +44,7 @@ var symbolPropertyTypes = utils.extend({
 var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
 var propertiesBySymbolType = {
-  polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-hatch')),
+  polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
   polyline: utils.arrayToIndex(commonProperties),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
@@ -93,6 +93,15 @@ export function getSymbolDataAccessor(lyr, opts) {
   };
 }
 
+// need a test that identifies any expression but doesn't get triggered by:
+// * invalid patterns: dots 45deg black 3px red
+// * ???
+//
+export function mightBeExpression(str, fields) {
+  if (fields.indexOf(str.trim()) > -1) return true;
+  return /[(){}.+-/*?:&|=\[]/.test(str);
+}
+
 export function getSymbolPropertyAccessor(strVal, svgName, lyr) {
   var typeHint = symbolPropertyTypes[svgName];
   var fields = lyr.data ? lyr.data.getFields() : [];
@@ -102,8 +111,8 @@ export function getSymbolPropertyAccessor(strVal, svgName, lyr) {
   if (typeHint && fields.indexOf(strVal) === -1) {
     literalVal = parseSvgLiteralValue(strVal, typeHint);
   }
-  if (literalVal === null) {
-    accessor = parseStyleExpression(strVal, lyr);
+  if (literalVal === null && mightBeExpression(strVal, fields)) {
+    accessor = parseStyleExpression(strVal, lyr); // no longer throws an error
   }
   if (!accessor && literalVal === null && !typeHint) {
     // We don't have a type rule for detecting an invalid value, so we're
@@ -140,8 +149,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = isSvgMeasure(strVal) ? parseSvgMeasure(strVal) : null;
   } else if (type == 'dasharray') {
     val = isDashArray(strVal) ? strVal : null;
-  } else if (type == 'hatch') {
-    val = isHatch(strVal) ? strVal : null;
+  } else if (type == 'pattern') {
+    val = isPattern(strVal) ? strVal : null;
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -150,8 +159,8 @@ function parseSvgLiteralValue(strVal, type) {
   return val;
 }
 
-function isHatch(str) {
-  return !!parseHatch(str);
+function isPattern(str) {
+  return !!parsePattern(str);
 }
 
 function isDashArray(str) {
