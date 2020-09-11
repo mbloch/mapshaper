@@ -529,9 +529,9 @@ function getCanvasFillHatch(style) {
 
 function makeDotFill(o, canv, ctx) {
   var res = GUI.getPixelRatio();
-  var dotSize = Math.max.apply(null, o.sizes) * res;
+  var dotSize = o.size * res;
   var r = dotSize / 2;
-  var n = o.sizes.length;
+  var n = o.colors.length;
   var dist = dotSize + o.spacing * res;
   var side = dist * n;
   var dots = n * n;

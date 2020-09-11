@@ -55,23 +55,24 @@ export function parseHatches(parts, str) {
 }
 
 export function parseDots(parts, str) {
-  var sizes = [];
   var colors = [];
   var type = parts.shift();
-  var rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 0;
-  for (var i=0; i<parts.length; i+= 2) {
-    sizes.push(parseInt(parts[i]));
-    colors.push(parts[i + 1]);
+  var rot = 0;
+  if (parseInt(parts[1]) > 0) { // if rotation is present, there are two numbers
+    rot = parseInt(parts.shift());
   }
-  var spacing = sizes.pop();
-  var bg = colors.pop();
-  if (Math.min.apply(null, sizes) > 0 === false) return null;
-  if (spacing >= 0 === false) return null;
-  if (colors.length === 0 || colors.length > 10) return null;
+  var size = parseInt(parts.shift());
+  var bg = parts.pop();
+  var spacing = parseInt(parts.pop());
+  while (parts.length > 0) {
+    colors.push(parts.shift());
+  }
+  if (size > 0 === false || spacing >= 0 === false) return null;
+  if (colors.length === 0) return null;
   return {
     type: type,
     colors: colors, // last color is background
-    sizes: sizes,
+    size: size,
     spacing: spacing,
     background: bg,
     rotation: rot
@@ -138,8 +139,8 @@ function makeSquare(x, y, size, fill) {
 }
 
 function makeSVGDotFill(obj, id) {
-  var dotSize = Math.max.apply(null, obj.sizes); // make all dots the same size
-  var colorCount = obj.sizes.length;
+  var dotSize = obj.size;
+  var colorCount = obj.colors.length;
   var dotDist = dotSize + obj.spacing;
   var sideLen = dotDist * colorCount;
   var dotsPerTile = colorCount * colorCount;

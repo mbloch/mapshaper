@@ -10,7 +10,7 @@ describe('svg-hatch.js', function () {
         colors: ['black'],
         background: 'white',
         spacing: 3,
-        sizes: [1],
+        size: 1,
         rotation: 0
       })
     })
@@ -21,18 +21,18 @@ describe('svg-hatch.js', function () {
         colors: ['black'],
         background: 'white',
         spacing: 3,
-        sizes: [1],
+        size: 1,
         rotation: 0
       })
     })
 
    it('squares pattern', function() {
-      assert.deepEqual(parsePattern('squares 2px black 2px #c00 3px white'), {
+      assert.deepEqual(parsePattern('squares 2px black #c00 3px white'), {
         type: 'squares',
         colors: ['black', '#c00'],
         background: 'white',
         spacing: 3,
-        sizes: [2,2],
+        size: 2,
         rotation: 0
       })
     })
