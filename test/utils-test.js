@@ -4,6 +4,14 @@ var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-utils.js', function () {
+  describe('formatDateISO()', function () {
+    it('rounds to minutes', function () {
+      assert.equal(utils.formatDateISO(new Date('2020-10-01T02:59:00.000Z')), '2020-10-01T02:59Z')
+    })
+    it('preserves seconds', function() {
+      assert.equal(utils.formatDateISO(new Date('2020-10-01T02:59:51.424Z')), '2020-10-01T02:59:51.424Z')
+    })
+  })
   describe('extendBuffer()', function () {
     it('extends a Float64 buffer', function () {
       var src = new Float64Array([1, 2, 3]);

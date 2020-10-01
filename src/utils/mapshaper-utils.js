@@ -50,6 +50,11 @@ export function isBoolean(obj) {
   return obj === true || obj === false;
 }
 
+export function formatDateISO(d) {
+  if (!isDate(d)) return '';
+  return d.toISOString().replace(':00.000Z', 'Z');
+}
+
 // Convert an array-like object to an Array, or make a copy if @obj is an Array
 export function toArray(obj) {
   var arr;

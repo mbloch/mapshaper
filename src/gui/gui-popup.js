@@ -166,7 +166,7 @@ export function Popup(gui, toNext, toPrev) {
 function formatInspectorValue(val, type) {
   var str;
   if (type == 'date') {
-    str = JSON.stringify(val).replace(/"/g, '');
+    str = utils.formatDateISO(val);
   } else if (type == 'object') {
     str = val ? JSON.stringify(val) : "";
   } else {

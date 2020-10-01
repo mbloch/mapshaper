@@ -193,7 +193,7 @@ export function formatTableValue(val, integralChars) {
   } else if (utils.isString(val)) {
     str = formatString(val);
   } else if (utils.isDate(val)) {
-    str = JSON.stringify(val).replace(/"/g, '') + ' (Date)';
+    str = utils.formatDateISO(val) + ' (Date)';
   } else if (utils.isObject(val)) { // if {} or [], display JSON
     str = JSON.stringify(val);
   } else {
