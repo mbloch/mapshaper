@@ -10,6 +10,7 @@ export var ExportControl = function(gui) {
   var unsupportedMsg = "Exporting is not supported in this browser";
   var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
   var checkboxes = []; // array of layer checkboxes
+  var toggleBtn = null; // checkbox <input> for toggling layer selection
   var exportBtn = gui.container.findChild('.export-btn');
   new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
 
@@ -60,11 +61,15 @@ export var ExportControl = function(gui) {
 
   // @done function(string|Error|null)
   function exportMenuSelection(done) {
-    var opts, files;
+    var opts, files, layers;
     try {
       opts = getExportOpts();
       // ignoring command line "target" option
-      files = internal.exportTargetLayers(getTargetLayers(), opts);
+      layers = getTargetLayers();
+      if (layers.length === 0) {
+        return done('No layers were selected');
+      }
+      files = internal.exportTargetLayers(layers, opts);
       gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
     } catch(e) {
       return done(e);
@@ -79,11 +84,58 @@ export var ExportControl = function(gui) {
       var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
       return {layer: o.layer, html: html};
     });
+    var toggleHtml = utils.format(template, 'toggle', 'Select All');
+
+    // only add a 'select all' button for three or more layers
+    if (objects.length > 2) {
+      toggleBtn = El('div').html(toggleHtml).appendTo(list).findChild('input').node();
+      toggleBtn.addEventListener('click', function() {
+        var state = getSelectionState();
+        if (state == 'all') {
+          setLayerSelection(false);
+        } else {
+          setLayerSelection(true);
+        }
+        updateToggleBtn();
+      });
+    }
+
     sortLayersForMenuDisplay(objects);
     checkboxes = objects.map(function(o) {
-      return El('div').html(o.html).appendTo(list).findChild('input').node();
+      var box = El('div').html(o.html).appendTo(list).findChild('input').node();
+      box.addEventListener('click', updateToggleBtn);
+      return box;
     });
     menu.findChild('.export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
+  }
+
+  function setLayerSelection(checked) {
+    checkboxes.forEach(function(box) {
+      box.checked = !!checked;
+    });
+  }
+
+  function updateToggleBtn() {
+    if (!toggleBtn) return;
+    var state = getSelectionState();
+    // style of intermediate state doesn't look right in Chrome -- removing
+    if (state == 'all') {
+      toggleBtn.checked = true;
+      //toggleBtn.indeterminate = false;
+    } else if (state == 'some') {
+      toggleBtn.checked = false;
+      //toggleBtn.indeterminate = true;
+    } else {
+      toggleBtn.checked = false;
+      //toggleBtn.indeterminate = false;
+    }
+  }
+
+  function getSelectionState() {
+    var count = getTargetLayerIds().length;
+    if (count == checkboxes.length) return 'all';
+    if (count === 0) return 'none';
+    return 'some';
   }
 
   function getInputFormats() {
@@ -129,6 +181,12 @@ export var ExportControl = function(gui) {
       if (box.checked) memo.push(box.value);
       return memo;
     }, []);
+  }
+
+  function toggleSelection() {
+    checkboxes.forEach(function(box) {
+      box.checked = true;
+    });
   }
 
   function getTargetLayers() {
