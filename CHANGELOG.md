@@ -1,3 +1,7 @@
+v0.5.22
+* Added a "Select All" checkbox to the web UI export menu when there are more than two layers.
+* Improved -info display and interactive editing of Date objects.
+
 v0.5.21
 * Renamed -style fill-hatch= option to -style fill-pattern=
 * Reversed order of hatch fill arguments. "black 2px white 2px" changes to "2px black 2px white".
