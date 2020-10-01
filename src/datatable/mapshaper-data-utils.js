@@ -28,6 +28,8 @@ export function getValueType(val) {
     type = 'number';
   } else if (utils.isBoolean(val)) {
     type = 'boolean';
+  } else if (utils.isDate(val)) {
+    type = 'date';
   } else if (utils.isObject(val)) {
     type = 'object';
   }

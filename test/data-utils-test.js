@@ -2,6 +2,14 @@ var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-data-utils.js', function () {
+
+  describe('getValueType()', function() {
+    var getValueType = api.internal.getValueType;
+    it('Date objects are type "date"', function() {
+      assert.equal(getValueType(new Date()), 'date');
+    });
+  })
+
   describe('fixInconsistentFields()', function () {
 
     it('csv output contains all fields from inconsistent JSON table', function(done) {

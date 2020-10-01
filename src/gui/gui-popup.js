@@ -165,7 +165,9 @@ export function Popup(gui, toNext, toPrev) {
 
 function formatInspectorValue(val, type) {
   var str;
-  if (type == 'object') {
+  if (type == 'date') {
+    str = JSON.stringify(val).replace(/"/g, '');
+  } else if (type == 'object') {
     str = val ? JSON.stringify(val) : "";
   } else {
     str = String(val);
@@ -174,6 +176,10 @@ function formatInspectorValue(val, type) {
 }
 
 var inputParsers = {
+  date: function(raw) {
+    var d = new Date(raw);
+    return isNaN(+d) ? null : d;
+  },
   string: function(raw) {
     return raw;
   },

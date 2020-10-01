@@ -42,6 +42,10 @@ export function isString(obj) {
   // TODO: replace w/ something better.
 }
 
+export function isDate(obj) {
+  return !!obj && obj.getTime === Date.prototype.getTime;
+}
+
 export function isBoolean(obj) {
   return obj === true || obj === false;
 }
