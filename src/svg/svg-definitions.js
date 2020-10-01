@@ -3,6 +3,7 @@ import { runningInBrowser } from '../mapshaper-state';
 import { convertFillPattern } from '../svg/svg-hatch';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import { fetchFile } from '../svg/svg-fetch';
 
 // convert object properties to definitions for images and hatch fills
 export function convertPropertiesToDefinitions(obj, symbols) {
@@ -42,8 +43,7 @@ function convertSvgImage(obj, symbols) {
 function getSvgFile(href) {
   var res, content, fs;
   if (href.indexOf('http') === 0) {
-    res  = require('sync-request')('GET', href, {timeout: 1000});
-    content = res.getBody().toString();
+    content = fetchFile(href);
   } else if (require('fs').existsSync(href)) { // assume href is a relative path
     content = require('fs').readFileSync(href, 'utf8');
   } else {
