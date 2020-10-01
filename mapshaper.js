@@ -1,5 +1,5 @@
 (function () {
-  var VERSION = "0.5.20";
+  var VERSION = "0.5.22";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13,6 +13,7 @@
     get isNumber () { return isNumber; },
     get isInteger () { return isInteger; },
     get isString () { return isString; },
+    get isDate () { return isDate; },
     get isBoolean () { return isBoolean; },
     get toArray () { return toArray; },
     get isArrayLike () { return isArrayLike; },
@@ -125,6 +126,10 @@
   function isString(obj) {
     return obj != null && obj.toString === String.prototype.toString;
     // TODO: replace w/ something better.
+  }
+
+  function isDate(obj) {
+    return !!obj && obj.getTime === Date.prototype.getTime;
   }
 
   function isBoolean(obj) {
@@ -3388,6 +3393,8 @@
       type = 'number';
     } else if (utils.isBoolean(val)) {
       type = 'boolean';
+    } else if (utils.isDate(val)) {
+      type = 'date';
     } else if (utils.isObject(val)) {
       type = 'object';
     }
@@ -14986,6 +14993,15 @@
     return str1;
   }
 
+  var cache = {};
+  function fetchFile(url) {
+    if (url in cache) return cache[url];
+    var res  = require('sync-request')('GET', url, {timeout: 2000});
+    var content = res.getBody().toString();
+    cache[url] = content;
+    return content;
+  }
+
   // convert object properties to definitions for images and hatch fills
   function convertPropertiesToDefinitions(obj, symbols) {
     procNode(obj);
@@ -15024,8 +15040,7 @@
   function getSvgFile(href) {
     var res, content, fs;
     if (href.indexOf('http') === 0) {
-      res  = require('sync-request')('GET', href, {timeout: 1000});
-      content = res.getBody().toString();
+      content = fetchFile(href);
     } else if (require('fs').existsSync(href)) { // assume href is a relative path
       content = require('fs').readFileSync(href, 'utf8');
     } else {
@@ -25579,6 +25594,8 @@
         formatNumber$1(val);
     } else if (utils.isString(val)) {
       str = formatString(val);
+    } else if (utils.isDate(val)) {
+      str = JSON.stringify(val).replace(/"/g, '') + ' (Date)';
     } else if (utils.isObject(val)) { // if {} or [], display JSON
       str = JSON.stringify(val);
     } else {
