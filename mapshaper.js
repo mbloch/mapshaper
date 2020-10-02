@@ -1,4 +1,5 @@
 (function () {
+
   var VERSION = "0.5.22";
 
 
@@ -15,6 +16,7 @@
     get isString () { return isString; },
     get isDate () { return isDate; },
     get isBoolean () { return isBoolean; },
+    get formatDateISO () { return formatDateISO; },
     get toArray () { return toArray; },
     get isArrayLike () { return isArrayLike; },
     get addslashes () { return addslashes; },
@@ -134,6 +136,11 @@
 
   function isBoolean(obj) {
     return obj === true || obj === false;
+  }
+
+  function formatDateISO(d) {
+    if (!isDate(d)) return '';
+    return d.toISOString().replace(':00.000Z', 'Z');
   }
 
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
@@ -1147,7 +1154,7 @@
 
   function verbose() {
     if (getStateVar('VERBOSE')) {
-      message.apply(null, messageArgs(arguments));
+      message.apply(null, arguments);
     }
   }
 
@@ -8849,7 +8856,8 @@
       }
       setShapeType('polygon');
       if (isHole === true && area > 0 || isHole === false && area < 0) {
-        verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
+        // GeoJSON rings may be either direction -- no point in logging reversal
+        // verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
         points.reverse();
       }
       this.importPath(points);
@@ -14001,6 +14009,8 @@
     } else if (first.startsWith('hatch')) {
       parts[0] = 'hatches';
       obj = parseHatches(parts, str);
+    } else if (first.startsWith('dash')) {
+      obj = parseDashes(parts, str);
     } else if (!isNaN(parseFloat(first))) {
       parts.unshift('hatches');
       obj = parseHatches(parts, str); // hatches is the default, name can be omitted
@@ -14012,8 +14022,51 @@
     return obj;
   }
 
+  function parseDashes(parts, str) {
+    // format:
+    // "dashes" dash-len dash-space width color1 [color2...] space bg-color
+    // examples:
+    // dashes 4px 3px 1px black 4px white
+    var type = parts.shift();
+    var colors = [];
+    var background = parts.pop();
+    var spacing = parseInt(parts.pop());
+    var tmp;
+    while (parts.length > 0) {
+      tmp = parts.pop();
+      if (isSize(tmp)) {
+        parts.push(tmp);
+        break;
+      } else {
+        colors.push(tmp);
+      }
+    }
+    var width = parseInt(parts.pop());
+    var dashes = [parseInt(parts.pop()), parseInt(parts.pop())].reverse();
+    var rotation = 45;
+    if (parts.length > 0) {
+      rotation = parseInt(parts.pop());
+    }
+    if (parts.length > 0) {
+      return null;
+    }
+    if (width > 0 === false) return null;
+    return {
+      type: 'dashes',
+      tileSize: [colors.length * (width + spacing), utils.sum(dashes)],
+      colors: colors,
+      width: width,
+      dashes: dashes,
+      spacing: spacing,
+      background: background,
+      rotation: rotation
+    };
+  }
+
   function parseHatches(parts, str) {
-    // examples
+    // format:
+    // [hatches] [rotation] width1 color1 [width2 color2 ...]
+    // examples:
     // 1px red 1px white 1px black
     // -45deg 3 #eee 3 rgb(0,0,0)
     var type = parts.shift();
@@ -14025,6 +14078,7 @@
     }
     if (Math.min.apply(null, widths) > 0 === false) return null;
     return {
+      tileSize: [utils.sum(widths), 10],
       type: 'hatches',
       colors: colors,
       widths: widths,
@@ -14032,11 +14086,20 @@
     };
   }
 
+  function isSize(str) {
+    return parseInt(str) > 0;
+  }
+
   function parseDots(parts, str) {
+    // format:
+    // "dots"|"squares" [rotation] size color1 [color2 ...] spacing bg-color
+    // examples:
+    // dots 45deg 2px red blue 5px white
+    // squares 3px black 1px white
     var colors = [];
     var type = parts.shift();
     var rot = 0;
-    if (parseInt(parts[1]) > 0) { // if rotation is present, there are two numbers
+    if (isSize(parts[1])) { // if rotation is present, there are two numbers
       rot = parseInt(parts.shift());
     }
     var size = parseInt(parts.shift());
@@ -14047,9 +14110,11 @@
     }
     if (size > 0 === false || spacing >= 0 === false) return null;
     if (colors.length === 0) return null;
+    var side = colors.length * (size + spacing);
     return {
       type: type,
-      colors: colors, // last color is background
+      tileSize: [side, side],
+      colors: colors,
       size: size,
       spacing: spacing,
       background: bg,
@@ -14058,7 +14123,9 @@
   }
 
   function splitPattern(str) {
-    var splitRxp = /[, ]+(?![^(]*\))/; // don't split rgb(...) colors
+    // split apart space and comma-delimited tokens
+    // ... but don't split rgb(...) colors
+    var splitRxp = /[, ]+(?![^(]*\))/;
     return String(str).trim().split(splitRxp);
   }
 
@@ -14083,28 +14150,65 @@
   }
 
   function makeSVGPatternFill(str, id) {
-    var data = parsePattern(str);
-    if (!data) return null;
-    if (data.type == 'hatches') {
-      return makeSVGHatchFill(data, id);
-    } else if (data.type == 'dots' || data.type == 'squares') {
-      return makeSVGDotFill(data, id);
+    var o = parsePattern(str);
+    var svg;
+    if (!o) return null;
+    if (o.type == 'hatches') {
+      svg = makeHatchPatternSVG(o);
+    } else if (o.type == 'dots' || o.type == 'squares') {
+      svg = makeDotPatternSVG(o);
+    } else if (o.type == 'dashes') {
+      svg = makeDashPatternSVG(o);
     }
-  }
-
-  function makeSVGHatchFill(hatch, id) {
-    var size = utils.sum(hatch.widths);
-    var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ size }" height="10" patternTransform="rotate(${ hatch.rotation })">`;
-    for (var i=0, x=0; i<hatch.widths.length; i++) {
-      svg += `<rect x="${ x }" y="0" width="${ hatch.widths[i] }" height="10" fill="${ hatch.colors[i] }"></rect>`;
-      x += hatch.widths[i];
-    }
-    svg += '</pattern>';
     return {
-      svg: svg,
+      svg: wrapSVGPattern(o, id, svg),
       id: id,
       href: `url(#${ id })`
     };
+  }
+
+  function wrapSVGPattern(o, id, str) {
+    var w = o.tileSize[0];
+    var h = o.tileSize[1];
+    var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${ w }" height="${ h }" patternTransform="rotate(${ o.rotation })">`;
+    if (o.background) {
+      svg += `<rect x="0" y="0" width="${ w }" height="${ h }" fill="${ o.background }"></rect>`;
+    }
+    return svg + str + '</pattern>';
+  }
+
+  function makeDashPatternSVG(o) {
+    var svg = '';
+    for (var i=0, x=0; i<o.colors.length; i++) {
+      svg += `<rect x="${ x }" y="0" width="${ o.width }" height="${ o.dashes[0] }" fill="${ o.colors[i] }"></rect>`;
+      x += o.width + o.spacing;
+    }
+    return svg;
+  }
+
+  function makeHatchPatternSVG(o) {
+    var h = o.tileSize[1];
+    var svg = '';
+    for (var i=0, x=0; i<o.widths.length; i++) {
+      svg += `<rect x="${ x }" y="0" width="${ o.widths[i] }" height="${ h }" fill="${ o.colors[i] }"></rect>`;
+      x += o.widths[i];
+    }
+    return svg;
+  }
+
+  function makeDotPatternSVG(o) {
+    var dotSize = o.size;
+    var colorCount = o.colors.length;
+    var dotDist = dotSize + o.spacing;
+    var dotsPerTile = colorCount * colorCount;
+    var makeSymbol = o.type == 'squares' ? makeSquare : makeCircle;
+    var svg = '';
+    for (var i=0, x=0, y=0; i<dotsPerTile; i++) {
+      svg += makeSymbol(x, y, dotSize, o.colors[(i + Math.floor(i / colorCount)) % colorCount]);
+      x = ((i + 1) % colorCount) * dotDist;
+      if (x === 0) y += dotDist;
+    }
+    return svg;
   }
 
   function makeCircle(x, y, size, fill) {
@@ -14116,33 +14220,10 @@
     return `<rect x="${x}" y="${y}" width="${ size }" height="${ size }" fill="${ fill }"></rect>`;
   }
 
-  function makeSVGDotFill(obj, id) {
-    var dotSize = obj.size;
-    var colorCount = obj.colors.length;
-    var dotDist = dotSize + obj.spacing;
-    var sideLen = dotDist * colorCount;
-    var dotsPerTile = colorCount * colorCount;
-    var x = 0, y = 0;
-    var makeSymbol = obj.type == 'squares' ? makeSquare : makeCircle;
-    var transform = obj.rotation ? `patternTransform="rotate(${ obj.rotation })"` : '';
-    var svg = `<pattern id="${id}" patternUnits="userSpaceOnUse" ${transform} width="${ sideLen }" height="${ sideLen }">`;
-    svg += `<rect x="0" y="0" width="${ sideLen }" height="${ sideLen }" fill="${ obj.background }"></rect>`;
-    for (var i=0; i<dotsPerTile; i++) {
-      svg += makeSymbol(x, y, dotSize, obj.colors[(i + Math.floor(i / colorCount)) % colorCount]);
-      x = ((i + 1) % colorCount) * dotDist;
-      if (x == 0) y += dotDist;
-    }
-    svg += '</pattern>';
-    return {
-      svg: svg,
-      id: id,
-      href: `url(#${ id })`
-    };
-  }
-
   var SvgHatch = /*#__PURE__*/Object.freeze({
     __proto__: null,
     parsePattern: parsePattern,
+    parseDashes: parseDashes,
     parseHatches: parseHatches,
     parseDots: parseDots,
     convertFillPattern: convertFillPattern
@@ -21272,7 +21353,6 @@
     var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
 
     var weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
-
     this.mosaic = mosaic;
     this.nodes = nodes; // kludge
     this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
@@ -24291,9 +24371,9 @@
       message(utils.format("%d/%d source records were skipped", skipped, m));
     }
     if (collisions > 0) {
-      message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
+      message(utils.format('%d/%d target records were matched by multiple source records (many-to-one relationship)', collisions, n));
       if (collisionFields.length > 0) {
-        message(utils.format('Found inconsistent values in field%s [%s] during many-to-one join', utils.pluralSuffix(collisionFields.length), collisionFields.join(', ')));
+        message(utils.format('Inconsistent values were found in field%s [%s] during many-to-one join. Values in the first joining record were used.', utils.pluralSuffix(collisionFields.length), collisionFields.join(',')));
       }
     }
   }
@@ -25595,7 +25675,7 @@
     } else if (utils.isString(val)) {
       str = formatString(val);
     } else if (utils.isDate(val)) {
-      str = JSON.stringify(val).replace(/"/g, '') + ' (Date)';
+      str = utils.formatDateISO(val) + ' (Date)';
     } else if (utils.isObject(val)) { // if {} or [], display JSON
       str = JSON.stringify(val);
     } else {

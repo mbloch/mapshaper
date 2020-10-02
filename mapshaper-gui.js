@@ -1,4 +1,5 @@
 (function () {
+
   var utils$1 = /*#__PURE__*/Object.freeze({
     __proto__: null,
     get default () { return utils$1; },
@@ -12,6 +13,7 @@
     get isString () { return isString; },
     get isDate () { return isDate; },
     get isBoolean () { return isBoolean; },
+    get formatDateISO () { return formatDateISO; },
     get toArray () { return toArray; },
     get isArrayLike () { return isArrayLike; },
     get addslashes () { return addslashes; },
@@ -3030,12 +3032,6 @@
       }, []);
     }
 
-    function toggleSelection() {
-      checkboxes.forEach(function(box) {
-        box.checked = true;
-      });
-    }
-
     function getTargetLayers() {
       var ids = getTargetLayerIds().join(',');
       return ids ? model.findCommandTargets(ids) : [];
@@ -5441,7 +5437,7 @@
   function formatInspectorValue(val, type) {
     var str;
     if (type == 'date') {
-      str = JSON.stringify(val).replace(/"/g, '');
+      str = utils.formatDateISO(val);
     } else if (type == 'object') {
       str = val ? JSON.stringify(val) : "";
     } else {
@@ -6124,7 +6120,7 @@
 
   function verbose() {
     if (getStateVar('VERBOSE')) {
-      message$1.apply(null, messageArgs(arguments));
+      message$1.apply(null, arguments);
     }
   }
 
@@ -6240,6 +6236,11 @@
 
   function isBoolean(obj) {
     return obj === true || obj === false;
+  }
+
+  function formatDateISO(d) {
+    if (!isDate(d)) return '';
+    return d.toISOString().replace(':00.000Z', 'Z');
   }
 
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
@@ -9963,7 +9964,7 @@
       }
 
       if (style.fillPattern) {
-        ctx.fillStyle = getCanvasFillHatch(style);
+        ctx.fillStyle = getCanvasFillPattern(style);
       } else if (style.fillColor) {
         ctx.fillStyle = style.fillColor;
       }
@@ -9993,7 +9994,7 @@
 
   var hatches = {};
 
-  function getCanvasFillHatch(style) {
+  function getCanvasFillPattern(style) {
     var fill = hatches[style.fillPattern];
     if (fill === undefined) {
       fill = makePatternFill(style);
@@ -10002,19 +10003,46 @@
     return fill || style.fill || '#000'; // use fill if hatches are invalid
   }
 
-  function makeDotFill(o, canv, ctx) {
+  function makePatternFill(style) {
+    var o = internal.parsePattern(style.fillPattern);
+    if (!o) return null;
+    var canv = document.createElement('canvas');
+    var ctx = canv.getContext('2d');
     var res = GUI.getPixelRatio();
+    var w = o.tileSize[0] * res;
+    var h = o.tileSize[1] * res;
+    canv.setAttribute('width', w);
+    canv.setAttribute('height', h);
+    if (o.background) {
+      ctx.fillStyle = o.background;
+      ctx.fillRect(0, 0, w, h);
+    }
+    if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, res);
+    if (o.type == 'dashes') makeDashFill(o, ctx, res);
+    if (o.type == 'hatches') makeHatchFill(o, ctx, res);
+    var pattern = ctx.createPattern(canv, 'repeat');
+    if (o.rotation) {
+      pattern.setTransform(new DOMMatrix('rotate(' + o.rotation + 'deg)'));
+    }
+    return pattern;
+  }
+
+  function makeDashFill(o, ctx, res) {
+    var x = 0;
+    for (var i=0; i<o.colors.length; i++) {
+      ctx.fillStyle = o.colors[i];
+      ctx.fillRect(x, 0, o.width * res, o.dashes[0] * res);
+      x += res * (o.spacing + o.width);
+    }
+  }
+
+  function makeDotFill(o, ctx, res) {
     var dotSize = o.size * res;
     var r = dotSize / 2;
     var n = o.colors.length;
     var dist = dotSize + o.spacing * res;
-    var side = dist * n;
     var dots = n * n;
     var x = 0, y = 0;
-    canv.setAttribute('width', side);
-    canv.setAttribute('height', side);
-    ctx.fillStyle = o.background;
-    ctx.fillRect(0, 0, side, side);
     for (var i=0; i<dots; i++) {
       if (o.type == 'dots') ctx.beginPath();
       ctx.fillStyle = o.colors[(i + Math.floor(i / n)) % n];
@@ -10029,32 +10057,15 @@
     }
   }
 
-  function makeHatchFill(o, canv, ctx) {
-    var size = utils.sum(o.widths);
-    var res = GUI.getPixelRatio();
+  function makeHatchFill(o, ctx, res) {
+    var h = o.tileSize[1] * res;
     var w;
-    canv.setAttribute('width', size * res);
-    canv.setAttribute('height', 10);
     for (var i=0, x=0; i<o.widths.length; i++) {
       w = o.widths[i] * res;
       ctx.fillStyle = o.colors[i];
-      ctx.fillRect(x, 0, x + w, 10);
+      ctx.fillRect(x, 0, x + w, h);
       x += w;
     }
-  }
-
-  function makePatternFill(style) {
-    var o = internal.parsePattern(style.fillPattern);
-    if (!o) return null;
-    var canv = document.createElement('canvas');
-    var ctx = canv.getContext('2d');
-    if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, canv, ctx);
-    if (o.type == 'hatches') makeHatchFill(o, canv, ctx);
-    var pattern = ctx.createPattern(canv, 'repeat');
-    if (o.rotation) {
-      pattern.setTransform(new DOMMatrix('rotate(' + o.rotation + 'deg)'));
-    }
-    return pattern;
   }
 
   function getSvgFurnitureTransform(ext) {
