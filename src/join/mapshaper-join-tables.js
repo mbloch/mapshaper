@@ -183,9 +183,9 @@ function printJoinMessage(matches, n, joins, m, skipped, collisions, collisionFi
     message(utils.format("%d/%d source records were skipped", skipped, m));
   }
   if (collisions > 0) {
-    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
+    message(utils.format('%d/%d target records were matched by multiple source records (many-to-one relationship)', collisions, n));
     if (collisionFields.length > 0) {
-      message(utils.format('Found inconsistent values in field%s [%s] during many-to-one join', utils.pluralSuffix(collisionFields.length), collisionFields.join(', ')));
+      message(utils.format('Inconsistent values were found in field%s [%s] during many-to-one join. Values in the first joining record were used.', utils.pluralSuffix(collisionFields.length), collisionFields.join(',')));
     }
   }
 }

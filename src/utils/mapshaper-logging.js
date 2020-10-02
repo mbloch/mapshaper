@@ -59,7 +59,7 @@ export function print() {
 
 export function verbose() {
   if (getStateVar('VERBOSE')) {
-    message.apply(null, messageArgs(arguments));
+    message.apply(null, arguments);
   }
 }
 

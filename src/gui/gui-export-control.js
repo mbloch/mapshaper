@@ -183,12 +183,6 @@ export var ExportControl = function(gui) {
     }, []);
   }
 
-  function toggleSelection() {
-    checkboxes.forEach(function(box) {
-      box.checked = true;
-    });
-  }
-
   function getTargetLayers() {
     var ids = getTargetLayerIds().join(',');
     return ids ? model.findCommandTargets(ids) : [];

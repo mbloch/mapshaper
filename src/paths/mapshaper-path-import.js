@@ -129,7 +129,8 @@ export function PathImporter(opts) {
     }
     setShapeType('polygon');
     if (isHole === true && area > 0 || isHole === false && area < 0) {
-      verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
+      // GeoJSON rings may be either direction -- no point in logging reversal
+      // verbose("Reversing", isHole ? "a CW hole" : "a CCW ring");
       points.reverse();
     }
     this.importPath(points);

@@ -7,6 +7,7 @@ import { IdLookupIndex } from '../indexing/mapshaper-id-lookup-index';
 import { PolygonTiler } from '../polygons/mapshaper-polygon-tiler';
 import { error } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
+import { T } from '../utils/mapshaper-timing';
 
 export function MosaicIndex(lyr, nodes, optsArg) {
   var opts = optsArg || {};
@@ -23,7 +24,6 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
 
   var weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
-
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
   this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
