@@ -22,8 +22,14 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
   var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
-
-  var weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
+  var weightFunction = null;
+  if (!opts.simple && opts.flat) {
+    // opts.simple is an optimization when dissolving everything into one polygon
+    // using -dissolve2. In this situation, we don't need a weight function.
+    // Otherwise, if polygons are being dissolved into multiple groups,
+    // we use a function to assign tiles in overlapping areas to a single shape.
+    weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
+  }
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
   this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command

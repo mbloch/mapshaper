@@ -720,8 +720,8 @@ describe('mapshaper-clean.js', function () {
 
       it ('should remove overlapping portion of smaller ring', function() {
         var shapes = [[[0, 1]], [[2, 3]]];
-        var target = [[[0, ~2], [1, 2]], [[3, ~1]]];
-        var target = [[[0, ~2]], [[2, 3]]]
+        //var target = [[[0, ~2]], [[2, 3]]]
+        var target = [[[0, ~2]], [[3, 2]]]; // changed tile traversal in mapshaper-polygon-tiler.js
         var output = clean(shapes, arcs);
         // console.log(output)
         assert.deepEqual(output, target);

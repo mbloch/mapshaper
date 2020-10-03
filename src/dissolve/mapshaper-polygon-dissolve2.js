@@ -68,7 +68,11 @@ function getGapRemovalMessage(removed, retained, areaLabel) {
 export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
   var arcFilter = getArcPresenceTest(lyr.shapes, dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
-  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
+  var mosaicOpts = {
+    flat: true,
+    simple: groups.length == 1
+  };
+  var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
   var sliverOpts = utils.extend({sliver_control: 1}, opts);
   var filterData = getSliverFilter(lyr, dataset, sliverOpts);
   var cleanupData = mosaicIndex.removeGaps(filterData.filter);

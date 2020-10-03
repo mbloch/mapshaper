@@ -15,8 +15,10 @@ export function TileShapeIndex(mosaic, opts) {
   // index that maps shape ids to tile ids
   var shapeIndex = [];
 
-  this.getTileIdsByShapeId = function(id) {
-    return shapeIndex[id];
+  this.getTileIdsByShapeId = function(shapeId) {
+    var ids = shapeIndex[shapeId];
+    // need to filter out tile ids that have been set to -1 (indicating removal)
+    return ids ? ids.filter(function(id) {return id >= 0;}) : [];
   };
 
   // assumes index has been flattened
@@ -77,7 +79,7 @@ export function TileShapeIndex(mosaic, opts) {
       // pick the best shape if we have a weight function
       if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
         // replace existing shape reference
-        removeTileFromShape(tileId, singleId);
+        removeTileFromShape(tileId, singleId); // bottleneck when overlaps are many
         singleIndex[tileId] = singleId;
         singleId = -1;
       } else {
@@ -114,6 +116,17 @@ export function TileShapeIndex(mosaic, opts) {
   }
 
   function removeTileFromShape(tileId, shapeId) {
+    var tileIds = shapeIndex[shapeId];
+    for (var i=0; i<tileIds.length; i++) {
+      if (tileIds[i] === tileId) {
+        tileIds[i] = -1;
+        break;
+      }
+    }
+  }
+
+  // This function was a bottleneck in datasets with many overlaps
+  function removeTileFromShape_old(tileId, shapeId) {
     shapeIndex[shapeId] = shapeIndex[shapeId].filter(function(tileId2) {
       return tileId2 != tileId;
     });

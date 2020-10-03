@@ -58,31 +58,24 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     visitedTileIndex.clearIds(tilesInShape);
   }
 
-  // ids: an array of arcIds
+  // optimized version: traversal without recursion (to avoid call stack oflo, excessive gc, etc)
   function procArcIds(ids) {
-    var tileIds = [], tileId;
-    for (var i=0, n=ids.length; i<n; i++) {
-      tileId = procRingArc(ids[i]);
-      if (tileId > -1) tileIds.push(tileId);
+    var stack = ids.concat();
+    var arcId, tileId;
+    while (stack.length > 0) {
+      arcId = stack.pop();
+      tileId = procRingArc(arcId);
+      if (tileId >= 0) {
+        accumulateTraversibleArcIds(stack, mosaic[tileId]);
+      }
     }
-    if (tileIds.length > 0) traverseFromTiles(tileIds);
-  }
-
-  function traverseFromTiles(tileIds) {
-    // breadth-first traversal, to prevent call stack overflow when there is
-    // a large number of tiles within a ring (due to many partially overlapping rings)
-    var arcIds = [];
-    for (var i=0, n=tileIds.length; i<n; i++) {
-      accumulateTraversibleArcIds(arcIds, mosaic[tileIds[i]]);
-    }
-    if (arcIds.length > 0) procArcIds(arcIds);
   }
 
   function accumulateTraversibleArcIds(ids, tile) {
     var arcId, ring;
-    for (var j=0; j<tile.length; j++) {
+    for (var j=0, n=tile.length; j<n; j++) {
       ring = tile[j];
-      for (var i=0; i<ring.length; i++) {
+      for (var i=0, m=ring.length; i<m; i++) {
         arcId = ring[i];
         if (arcIsTraversible(arcId)) {
           ids.push(~arcId);
@@ -93,23 +86,19 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
 
   function arcIsTraversible(tileArc) {
     var neighborArc = ~tileArc;
-    // don't cross boundary of the current ring or of any hole in the current shape
-    var traversible = !(holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc)  ||
-      ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc));
-    if (traversible && arcs.arcIsContained(absArcId(neighborArc), currRingBbox) === false) {
-      debug('Out-of-bounds traversal error in arc', tileArc);
-      traversible = false;
-    }
+    var traversible = !(ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc) || holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc));
     return traversible;
   }
 
   function procRingArc(arcId) {
     var tileId = arcTileIndex.getShapeIdByArcId(arcId);
-    if (arcs.arcIsContained(absArcId(arcId), currRingBbox) === false) {
-      debug('Out-of-bounds ring arc', arcId);
-      tileId = -1;
-    }
     if (tileId == -1 || visitedTileIndex.hasId(tileId)) return -1;
+    if (arcs.arcIsContained(absArcId(arcId), currRingBbox) === false) {
+      // don't cross boundary of the current ring or of any hole in the current shape
+      // TODO: this indicates a geometry bug that should be fixed
+      debug('Out-of-bounds ring arc', arcId);
+      return -1;
+    }
     visitedTileIndex.setId(tileId);
     tilesInShape.push(tileId);
     return tileId;
