@@ -1,3 +1,6 @@
+v0.5.24
+* Performance improvements
+
 v0.5.23
 * Added "dashes" fill pattern. The pattern "dashes 5px 4px 1px black 5px white" creates 1-pixel dashed lines spaced 5px apart, with 5px dashes at 4px intervals.
 
