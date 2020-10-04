@@ -20274,8 +20274,10 @@
     // index that maps shape ids to tile ids
     var shapeIndex = [];
 
-    this.getTileIdsByShapeId = function(id) {
-      return shapeIndex[id];
+    this.getTileIdsByShapeId = function(shapeId) {
+      var ids = shapeIndex[shapeId];
+      // need to filter out tile ids that have been set to -1 (indicating removal)
+      return ids ? ids.filter(function(id) {return id >= 0;}) : [];
     };
 
     // assumes index has been flattened
@@ -20336,7 +20338,7 @@
         // pick the best shape if we have a weight function
         if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
           // replace existing shape reference
-          removeTileFromShape(tileId, singleId);
+          removeTileFromShape(tileId, singleId); // bottleneck when overlaps are many
           singleIndex[tileId] = singleId;
           singleId = -1;
         } else {
@@ -20373,6 +20375,17 @@
     }
 
     function removeTileFromShape(tileId, shapeId) {
+      var tileIds = shapeIndex[shapeId];
+      for (var i=0; i<tileIds.length; i++) {
+        if (tileIds[i] === tileId) {
+          tileIds[i] = -1;
+          break;
+        }
+      }
+    }
+
+    // This function was a bottleneck in datasets with many overlaps
+    function removeTileFromShape_old(tileId, shapeId) {
       shapeIndex[shapeId] = shapeIndex[shapeId].filter(function(tileId2) {
         return tileId2 != tileId;
       });
@@ -21275,31 +21288,24 @@
       visitedTileIndex.clearIds(tilesInShape);
     }
 
-    // ids: an array of arcIds
+    // optimized version: traversal without recursion (to avoid call stack oflo, excessive gc, etc)
     function procArcIds(ids) {
-      var tileIds = [], tileId;
-      for (var i=0, n=ids.length; i<n; i++) {
-        tileId = procRingArc(ids[i]);
-        if (tileId > -1) tileIds.push(tileId);
+      var stack = ids.concat();
+      var arcId, tileId;
+      while (stack.length > 0) {
+        arcId = stack.pop();
+        tileId = procRingArc(arcId);
+        if (tileId >= 0) {
+          accumulateTraversibleArcIds(stack, mosaic[tileId]);
+        }
       }
-      if (tileIds.length > 0) traverseFromTiles(tileIds);
-    }
-
-    function traverseFromTiles(tileIds) {
-      // breadth-first traversal, to prevent call stack overflow when there is
-      // a large number of tiles within a ring (due to many partially overlapping rings)
-      var arcIds = [];
-      for (var i=0, n=tileIds.length; i<n; i++) {
-        accumulateTraversibleArcIds(arcIds, mosaic[tileIds[i]]);
-      }
-      if (arcIds.length > 0) procArcIds(arcIds);
     }
 
     function accumulateTraversibleArcIds(ids, tile) {
       var arcId, ring;
-      for (var j=0; j<tile.length; j++) {
+      for (var j=0, n=tile.length; j<n; j++) {
         ring = tile[j];
-        for (var i=0; i<ring.length; i++) {
+        for (var i=0, m=ring.length; i<m; i++) {
           arcId = ring[i];
           if (arcIsTraversible(arcId)) {
             ids.push(~arcId);
@@ -21310,23 +21316,19 @@
 
     function arcIsTraversible(tileArc) {
       var neighborArc = ~tileArc;
-      // don't cross boundary of the current ring or of any hole in the current shape
-      var traversible = !(holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc)  ||
-        ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc));
-      if (traversible && arcs.arcIsContained(absArcId(neighborArc), currRingBbox) === false) {
-        debug('Out-of-bounds traversal error in arc', tileArc);
-        traversible = false;
-      }
+      var traversible = !(ringIndex.hasId(tileArc) || ringIndex.hasId(neighborArc) || holeIndex.hasId(tileArc) || holeIndex.hasId(neighborArc));
       return traversible;
     }
 
     function procRingArc(arcId) {
       var tileId = arcTileIndex.getShapeIdByArcId(arcId);
-      if (arcs.arcIsContained(absArcId(arcId), currRingBbox) === false) {
-        debug('Out-of-bounds ring arc', arcId);
-        tileId = -1;
-      }
       if (tileId == -1 || visitedTileIndex.hasId(tileId)) return -1;
+      if (arcs.arcIsContained(absArcId(arcId), currRingBbox) === false) {
+        // don't cross boundary of the current ring or of any hole in the current shape
+        // TODO: this indicates a geometry bug that should be fixed
+        debug('Out-of-bounds ring arc', arcId);
+        return -1;
+      }
       visitedTileIndex.setId(tileId);
       tilesInShape.push(tileId);
       return tileId;
@@ -21351,8 +21353,14 @@
     var tileShapeIndex = new TileShapeIndex(mosaic, opts);
     // assign tiles to shapes
     var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
-
-    var weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
+    var weightFunction = null;
+    if (!opts.simple && opts.flat) {
+      // opts.simple is an optimization when dissolving everything into one polygon
+      // using -dissolve2. In this situation, we don't need a weight function.
+      // Otherwise, if polygons are being dissolved into multiple groups,
+      // we use a function to assign tiles in overlapping areas to a single shape.
+      weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
+    }
     this.mosaic = mosaic;
     this.nodes = nodes; // kludge
     this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
@@ -21545,7 +21553,11 @@
   function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
     var arcFilter = getArcPresenceTest(lyr.shapes, dataset.arcs);
     var nodes = new NodeCollection(dataset.arcs, arcFilter);
-    var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
+    var mosaicOpts = {
+      flat: true,
+      simple: groups.length == 1
+    };
+    var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
     var sliverOpts = utils.extend({sliver_control: 1}, opts);
     var filterData = getSliverFilter(lyr, dataset, sliverOpts);
     var cleanupData = mosaicIndex.removeGaps(filterData.filter);
@@ -25713,7 +25725,7 @@
     var inlayLyr = mergedDataset.layers[mergedDataset.layers.length - 1];
     requirePolygonLayer(inlayLyr);
     targetLayers.forEach(requirePolygonLayer);
-    var eraseSrc = {layer: inlayLyr, dataset: mergedDataset};
+    var eraseSrc = {layer: copyLayer(inlayLyr), dataset: mergedDataset};
     var erasedLayers = cmd.eraseLayers(targetLayers, eraseSrc, mergedDataset, opts);
     var outputLayers = erasedLayers.map(function(lyr0) {
       // similar to applyCommandToLayerSelection() (mapshaper-command-utils.js)
