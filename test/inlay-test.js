@@ -27,4 +27,20 @@ describe('mapshaper-inset.js', function () {
       done();
     });
   });
+
+  it('bugfix for winding-order problem', function(done) {
+    var inner = 'test/data/features/inlay/ex2_Jackson_city.json';
+    var outer = 'test/data/features/inlay/ex2_Jackson_county.json';
+    var cmd = `-i ${outer} -inlay ${inner} -each 'area = this.area' -o merged.json`;
+    api.applyCommands(cmd, function(err, out) {
+      var json = JSON.parse(out['merged.json']);
+      var features = json.features;
+      assert.equal(features.length, 2);
+      assert.equal(features[0].properties.LABEL, 'Jackson County');
+      assert.equal(features[1].properties.LABEL, 'City of Jackson');
+      assert(features[1].properties.area > 28410719); // area was negative before the fix
+      done();
+    })
+
+  })
 });

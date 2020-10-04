@@ -8,7 +8,7 @@ cmd.inlay = function(targetLayers, src, targetDataset, opts) {
   var inlayLyr = mergedDataset.layers[mergedDataset.layers.length - 1];
   requirePolygonLayer(inlayLyr);
   targetLayers.forEach(requirePolygonLayer);
-  var eraseSrc = {layer: inlayLyr, dataset: mergedDataset};
+  var eraseSrc = {layer: copyLayer(inlayLyr), dataset: mergedDataset};
   var erasedLayers = cmd.eraseLayers(targetLayers, eraseSrc, mergedDataset, opts);
   var outputLayers = erasedLayers.map(function(lyr0) {
     // similar to applyCommandToLayerSelection() (mapshaper-command-utils.js)
