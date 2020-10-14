@@ -17,7 +17,7 @@ export function RepairControl(gui) {
 
   model.on('update', function(e) {
     var flags = e.flags;
-    var needUpdate = flags.simplify || flags.proj || flags.arc_count ||
+    var needUpdate = flags.simplify || flags.proj || flags.arc_count || flags.snap ||
         flags.affine || flags.points || flags['merge-layers'] || flags.select;
     if (needUpdate) {
       if (flags.select) {

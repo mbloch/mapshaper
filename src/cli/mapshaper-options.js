@@ -1116,10 +1116,15 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('snap')
-    // .describe('snap vertices')
+    .describe('snap together nearby vertices')
     .option('interval', {
+      describe: 'snap together vertices within a tolerance (default is small)',
       DEFAULT: true,
       type: 'distance'
+    })
+    .option('precision', {
+      describe: 'round all coordinates to a given decimal precision (e.g. 0.000001)',
+      type: 'number'
     })
     .option('target', targetOpt);
 

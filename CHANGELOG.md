@@ -1,3 +1,6 @@
+v0.5.25
+* Added -snap command, with both interval= and precision= options.
+
 v0.5.24
 * Performance improvements
 
