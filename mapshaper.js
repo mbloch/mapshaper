@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.22";
+  var VERSION = "0.5.24";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -18261,10 +18261,15 @@
       .option('no-replace', noReplaceOpt);
 
     parser.command('snap')
-      // .describe('snap vertices')
+      .describe('snap together nearby vertices')
       .option('interval', {
+        describe: 'snap together vertices within a tolerance (default is small)',
         DEFAULT: true,
         type: 'distance'
+      })
+      .option('precision', {
+        describe: 'round all coordinates to a given decimal precision (e.g. 0.000001)',
+        type: 'number'
       })
       .option('target', targetOpt);
 
@@ -28750,20 +28755,25 @@
 
   cmd.snap = function(dataset, opts) {
     var interval = 0;
+    var snapCount = 0;
     var arcs = dataset.arcs;
     var arcBounds = arcs && arcs.getBounds();
     if (!arcBounds || !arcBounds.hasBounds()) {
       stop('Dataset is missing path data');
     }
-    if (opts.interval) {
+    if (opts.precision) {
+      setCoordinatePrecision(dataset, opts.precision);
+    } else if (opts.interval) {
       interval = convertIntervalParam(opts.interval, getDatasetCRS(dataset));
     } else {
       interval = getHighPrecisionSnapInterval(arcBounds.toArray());
     }
     arcs.flatten(); // bake in any simplification
-    var snapCount = snapCoordsByInterval(arcs, interval);
-    message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
-    if (snapCount > 0) {
+    if (interval > 0) {
+      snapCount = snapCoordsByInterval(arcs, interval);
+      message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
+    }
+    if (snapCount > 0 || opts.precision) {
       arcs.dedupCoords();
       buildTopology(dataset);
     }
