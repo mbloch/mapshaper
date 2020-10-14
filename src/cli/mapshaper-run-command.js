@@ -328,7 +328,7 @@ export function runCommand(command, catalog, cb) {
       applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
-      cmd.renameLayers(targetLayers, opts.names);
+      cmd.renameLayers(targetLayers, opts.names, catalog);
 
     } else if (name == 'require') {
       cmd.require(targets, opts);

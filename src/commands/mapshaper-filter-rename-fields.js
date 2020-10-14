@@ -27,7 +27,7 @@ function mapFieldNames(names) {
     var parts = str.split('='),
         dest = utils.trimQuotes(parts[0]),
         src = parts.length > 1 ? utils.trimQuotes(parts[1]) : dest;
-    if (!src || !dest) stop("Invalid field description:", str);
+    if (!src || !dest) stop("Invalid name assignment:", str);
     memo[src] = dest;
     return memo;
   }, {});

@@ -307,6 +307,10 @@ export function getOptionParser() {
       describe: '(SVG/TopoJSON) output area in pix. (alternative to width=)',
       type: 'number'
     })
+    .option('fit-bbox', {
+      type: 'bbox',
+      describe: '(TopoJSON) scale and shift coordinates to fit a bbox'
+    })
     .option('svg-scale', {
       describe: '(SVG) source units per pixel (alternative to width= option)',
       type: 'number'
@@ -1007,7 +1011,7 @@ export function getOptionParser() {
     .option('fields', {
       DEFAULT: true,
       type: 'strings',
-      describe: 'fields to rename (comma-sep.), e.g. \'fips=STATE_FIPS,st=state\''
+      describe: 'list of replacements (comma-sep.), e.g. \'fips=STATE_FIPS,st=state\''
     })
     .option('target', targetOpt);
 
@@ -1016,7 +1020,7 @@ export function getOptionParser() {
     .option('names', {
       DEFAULT: true,
       type: 'strings',
-      describe: 'new layer name(s) (comma-sep. list)'
+      describe: 'list of replacements (comma-sep.)'
     })
     .option('target', targetOpt);
 

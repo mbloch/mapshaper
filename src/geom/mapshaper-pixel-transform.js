@@ -44,6 +44,8 @@ export function parseMarginOption(opt) {
 export function calcOutputSizeInPixels(bounds, opts) {
   var padX = 0,
       padY = 0,
+      offX = 0,
+      offY = 0,
       width = bounds.width(),
       height = bounds.height(),
       margins = parseMarginOption(opts.margin),
@@ -54,7 +56,22 @@ export function calcOutputSizeInPixels(bounds, opts) {
       wy = 0.5, // vertical padding distribution
       widthPx, heightPx, size, kx, ky;
 
-  if (opts.svg_scale > 0) {
+  if (opts.fit_bbox) {
+    // scale + shift content to fit within a bbox
+    offX = opts.fit_bbox[0];
+    offY = opts.fit_bbox[1];
+    widthPx = opts.fit_bbox[2] - offX;
+    heightPx = opts.fit_bbox[3] - offY;
+    if (width / height > widthPx / heightPx) {
+      // data is wider than fit box...
+      // scale the data to fit widthwise
+      heightPx = 0;
+    } else {
+      widthPx = 0; // fit the data to the height
+    }
+    marginX = marginY = 0; // TODO: support margins
+
+  } else if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
     widthPx = width / opts.svg_scale + marginX;
@@ -111,5 +128,5 @@ export function calcOutputSizeInPixels(bounds, opts) {
     error("Missing valid margin parameters");
   }
 
-  return new Bounds(0, 0, widthPx, heightPx);
+  return new Bounds(offX, offY, widthPx + offX, heightPx + offY);
 }

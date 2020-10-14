@@ -1,3 +1,7 @@
+v0.5.26
+* Added support for assignment syntax to -rename-layers, like the -rename-fields syntax (e.g. -rename-layers states=adm1,counties=adm2).
+* Added -o fit-bbox= option for TopoJSON export, which scales and shifts the coordinates of the exported data to fit within a given bounding box.
+
 v0.5.25
 * Added -snap command, with both interval= and precision= options.
 

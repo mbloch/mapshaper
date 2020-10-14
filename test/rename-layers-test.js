@@ -36,6 +36,22 @@ describe('mapshaper-rename-layers.js', function () {
     })
   })
 
+  it ('Supports assignment syntax like -rename-fields', function(done) {
+    var a = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+    };
+    var b = {
+      type: 'Point',
+      coordinates: [3, 3]
+    };
+    api.applyCommands('-i a.json -i b.json -rename-layers c=a,d=b -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['c.json']).geometries[0], a);
+      assert.deepEqual(JSON.parse(output['d.json']).geometries[0], b);
+      done();
+    })
+  })
+
   it ('Matches unnamed layer', function(done) {
     var a = {
       type: 'Polygon',

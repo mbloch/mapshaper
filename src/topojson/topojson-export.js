@@ -36,6 +36,8 @@ export function exportTopoJSON(dataset, opts) {
   if (opts.width > 0 || opts.height > 0) {
     opts = utils.defaults({invert_y: true}, opts);
     transformDatasetToPixels(dataset, opts);
+  } else if (opts.fit_bbox) {
+    transformDatasetToPixels(dataset, {fit_bbox: opts.fit_bbox});
   }
 
   if (opts.precision) {
