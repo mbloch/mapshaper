@@ -14896,6 +14896,8 @@
   function calcOutputSizeInPixels(bounds, opts) {
     var padX = 0,
         padY = 0,
+        offX = 0,
+        offY = 0,
         width = bounds.width(),
         height = bounds.height(),
         margins = parseMarginOption(opts.margin),
@@ -14906,7 +14908,22 @@
         wy = 0.5, // vertical padding distribution
         widthPx, heightPx, size, kx, ky;
 
-    if (opts.svg_scale > 0) {
+    if (opts.fit_bbox) {
+      // scale + shift content to fit within a bbox
+      offX = opts.fit_bbox[0];
+      offY = opts.fit_bbox[1];
+      widthPx = opts.fit_bbox[2] - offX;
+      heightPx = opts.fit_bbox[3] - offY;
+      if (width / height > widthPx / heightPx) {
+        // data is wider than fit box...
+        // scale the data to fit widthwise
+        heightPx = 0;
+      } else {
+        widthPx = 0; // fit the data to the height
+      }
+      marginX = marginY = 0; // TODO: support margins
+
+    } else if (opts.svg_scale > 0) {
       // alternative to using a fixed width (e.g. when generating multiple files
       // at a consistent geographic scale)
       widthPx = width / opts.svg_scale + marginX;
@@ -14963,7 +14980,7 @@
       error("Missing valid margin parameters");
     }
 
-    return new Bounds(0, 0, widthPx, heightPx);
+    return new Bounds(offX, offY, widthPx + offX, heightPx + offY);
   }
 
   var PixelTransform = /*#__PURE__*/Object.freeze({
@@ -15824,6 +15841,8 @@
     if (opts.width > 0 || opts.height > 0) {
       opts = utils.defaults({invert_y: true}, opts);
       transformDatasetToPixels(dataset, opts);
+    } else if (opts.fit_bbox) {
+      transformDatasetToPixels(dataset, {fit_bbox: opts.fit_bbox});
     }
 
     if (opts.precision) {
@@ -17452,6 +17471,10 @@
         describe: '(SVG/TopoJSON) output area in pix. (alternative to width=)',
         type: 'number'
       })
+      .option('fit-bbox', {
+        type: 'bbox',
+        describe: '(TopoJSON) scale and shift coordinates to fit a bbox'
+      })
       .option('svg-scale', {
         describe: '(SVG) source units per pixel (alternative to width= option)',
         type: 'number'
@@ -18152,7 +18175,7 @@
       .option('fields', {
         DEFAULT: true,
         type: 'strings',
-        describe: 'fields to rename (comma-sep.), e.g. \'fips=STATE_FIPS,st=state\''
+        describe: 'list of replacements (comma-sep.), e.g. \'fips=STATE_FIPS,st=state\''
       })
       .option('target', targetOpt);
 
@@ -18161,7 +18184,7 @@
       .option('names', {
         DEFAULT: true,
         type: 'strings',
-        describe: 'new layer name(s) (comma-sep. list)'
+        describe: 'list of replacements (comma-sep.)'
       })
       .option('target', targetOpt);
 
@@ -25094,7 +25117,7 @@
       var parts = str.split('='),
           dest = utils.trimQuotes(parts[0]),
           src = parts.length > 1 ? utils.trimQuotes(parts[1]) : dest;
-      if (!src || !dest) stop("Invalid field description:", str);
+      if (!src || !dest) stop("Invalid name assignment:", str);
       memo[src] = dest;
       return memo;
     }, {});
@@ -27362,7 +27385,24 @@
     applyAspectRatio: applyAspectRatio
   });
 
-  cmd.renameLayers = function(layers, names) {
+  cmd.renameLayers = function(layers, names, catalog) {
+    if (names && names.join('').indexOf('=') > -1) {
+      renameByAssignment(names, catalog);
+    } else {
+      renameTargetLayers(names, layers);
+    }
+  };
+
+  function renameByAssignment(names, catalog) {
+    var index = mapLayerNames(names);
+    catalog.forEachLayer(function(lyr) {
+      if (index[lyr.name]) {
+        lyr.name = index[lyr.name];
+      }
+    });
+  }
+
+  function renameTargetLayers(names, layers) {
     var nameCount = names && names.length || 0;
     var name = '';
     var suffix = '';
@@ -27375,7 +27415,19 @@
       }
       lyr.name = name + suffix;
     });
-  };
+  }
+
+  // TODO: remove duplication with mapFieldNames()
+  function mapLayerNames(names) {
+    return (names || []).reduce(function(memo, str) {
+      var parts = str.split('='),
+          dest = utils.trimQuotes(parts[0]),
+          src = utils.trimQuotes(parts[1] || '');
+      if (!src) stop("Invalid name assignment:", str);
+      memo[src] = dest;
+      return memo;
+    }, {});
+  }
 
   // Parse an array or a string of command line tokens into an array of
   // command objects.
@@ -29673,7 +29725,7 @@
         applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
       } else if (name == 'rename-layers') {
-        cmd.renameLayers(targetLayers, opts.names);
+        cmd.renameLayers(targetLayers, opts.names, catalog);
 
       } else if (name == 'require') {
         cmd.require(targets, opts);
