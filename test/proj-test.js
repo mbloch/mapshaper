@@ -4,6 +4,20 @@ var api = require("..");
 var helpers = require('./helpers');
 
 describe('mapshaper-proj.js', function() {
+  describe('dynamic projection definition using -calc', function () {
+    it('set tmerc origin', function (done) {
+      var csv = 'id,x,y\na,1,2\nb,3,4';
+      var cmd = '-i data.csv -points -calc "PROJ = `+proj=tmerc +lon_0=${this.layer.bbox.cx} +lat_0=${this.layer.bbox.cy}`" -proj PROJ -o data.shp';
+      api.applyCommands(cmd, {'data.csv': csv}, function(err, out) {
+        var prj = out['data.prj'];
+        assert(prj.includes('Transverse_Mercator'));
+        assert(prj.includes('PARAMETER["central_meridian",2]'))
+        assert(prj.includes('PARAMETER["latitude_of_origin",3]'))
+        done();
+      });
+    })
+  })
+
   describe('-proj EPSG:XXXX form works', function () {
     it('-proj EPSG:3395', function (done) {
       var input = 'lat,lng\n0,0';

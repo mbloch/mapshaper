@@ -1,10 +1,10 @@
 
-import expressionUtils from '../expressions/mapshaper-expression-utils';
+import { addUtils } from '../expressions/mapshaper-expression-utils';
 import { initFeatureProxy } from '../expressions/mapshaper-feature-proxy';
+import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, stop } from '../utils/mapshaper-logging';
-
 
 // Compiled expression returns a value
 export function compileValueExpression(exp, lyr, arcs, opts) {
@@ -166,13 +166,16 @@ export function compileExpressionToFunction(exp, opts) {
 
 function getExpressionFunction(exp, lyr, arcs, opts) {
   var getFeatureById = initFeatureProxy(lyr, arcs);
+  var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
   var ctx = getExpressionContext(lyr, opts.context, opts);
   var func = compileExpressionToFunction(exp, opts);
   return function(rec, i) {
     var val;
-    // Assigning feature object to '$' -- this should maybe be removed, it is
-    // also exposed as "this".
-    ctx.$ = getFeatureById(i);
+    // Assigning feature/layer proxy to '$' -- maybe this should be removed,
+    // since it is also exposed as "this".
+    // (kludge) i is undefined in calc expressions ... we still
+    //   may need layer data (but not single-feature data)
+    ctx.$ = i >= 0 ? getFeatureById(i) : layerOnlyProxy;
     ctx._ = ctx; // provide access to functions when masked by variable names
     ctx.d = rec || null; // expose data properties a la d3 (also exposed as this.properties)
     try {
@@ -198,7 +201,7 @@ function getExpressionContext(lyr, mixins, opts) {
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];
   opts = opts || {};
-  utils.extend(env, expressionUtils); // mix in round(), sprintf(), etc.
+  addUtils(env); // mix in round(), sprintf(), etc.
   if (lyr.data) {
     // default to null values when a data field is missing
     nullifyUnsetProperties(fields, env);

@@ -1,18 +1,16 @@
 
 import { findAnchorPoint } from '../points/mapshaper-anchor-points';
 import { getInnerPctCalcFunction } from '../geom/mapshaper-perimeter-calc';
-import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
-import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { layerHasPaths, layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
+import { addGetters } from '../expressions/mapshaper-expression-utils';
 import { stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 
-function addGetters(obj, getters) {
-  Object.keys(getters).forEach(function(name) {
-    Object.defineProperty(obj, name, {get: getters[name]});
-  });
-}
 
+// Returns a function to return a feature proxy by id
+// (the proxy appears as "this" or "$" in a feature expression)
 export function initFeatureProxy(lyr, arcs) {
   var hasPoints = layerHasPoints(lyr),
       hasPaths = arcs && layerHasPaths(lyr),
@@ -22,14 +20,14 @@ export function initFeatureProxy(lyr, arcs) {
       calcInnerPct,
       _bounds, _centroid, _innerXY, _xy, _ids, _id;
 
-  // all contexts have this.id and this.layer_name
+  // all contexts have this.id and this.layer
   addGetters(ctx, {
-    id: function() { return _id; },
-    layer_name: function() { return lyr.name || ''; },
-    layer: function() { return {name: lyr.name, data: _records};}
+    id: function() { return _id; }
   });
+  addLayerGetters(ctx, lyr, arcs);
 
   if (_records) {
+    // add r/w member "properties"
     Object.defineProperty(ctx, 'properties',
       {set: function(obj) {
         if (utils.isObject(obj)) {

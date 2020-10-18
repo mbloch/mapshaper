@@ -455,7 +455,6 @@ function outputLayersAreDifferent(output, input) {
   });
 }
 
-
 // Apply a command to an array of target layers
 function applyCommandToEachLayer(func, targetLayers) {
   var args = utils.toArray(arguments).slice(2);

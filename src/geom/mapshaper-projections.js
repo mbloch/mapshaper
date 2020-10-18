@@ -2,6 +2,8 @@ import { AlbersUSA, parseCustomProjection } from '../geom/mapshaper-custom-proje
 import { stop, print } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getStateVar } from '../mapshaper-state';
+
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 
@@ -131,6 +133,9 @@ export function getProjDefn(str) {
     defn = projectionAliases[str];  // defn is a function
   } else if (looksLikeInitString(str)) {
     defn = '+init=' + str.toLowerCase();
+  } else if (str in getStateVar('defs')) {
+    // a proj4 alias could be dynamically created in a -calc expression
+    defn = getStateVar('defs')[str];
   } else {
     defn = parseCustomProjection(str);
   }

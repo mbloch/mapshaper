@@ -2,7 +2,41 @@ var assert = require('assert'),
     api = require("../"),
     ArcCollection = api.internal.ArcCollection;
 
-describe('mapshaper-each-calc.js', function () {
+describe('mapshaper-each.js', function () {
+
+  describe('-each command', function () {
+
+    it('layer.name works', function (done) {
+      var csv = 'id\na\nb';
+      var cmd = '-i data.csv -each "name = `${this.layer.name}_${id}`" -o format=json';
+      api.applyCommands(cmd, {'data.csv': csv}, function(err, out) {
+        var data = JSON.parse(out['data.json']);
+        assert.deepEqual(data, [{id: 'a', name: 'data_a'}, {id: 'b', name: 'data_b'}]);
+        done();
+      });
+    })
+
+    it('layer.bbox works', function (done) {
+      var csv = 'id,x,y\na,1,2\nb,3,4';
+      var cmd = '-i data.csv -points -dissolve multipart -each "bbox = this.layer.bbox.join(`,`)" -o format=json';
+      api.applyCommands(cmd, {'data.csv': csv}, function(err, out) {
+        var data = JSON.parse(out['data.json']);
+        assert.deepEqual(data, [{bbox: '1,2,3,4'}]);
+        done();
+      });
+    })
+
+    it('layer.bbox properties cx, cy, height, width', function (done) {
+      var csv = 'id,x,y\na,1,2\nb,3,4';
+      var cmd = '-i data.csv -points -dissolve multipart -each "cx = this.layer.bbox.cx, cy = this.layer.bbox.cy, height = this.layer.bbox.height, width = this.layer.bbox.width" -o format=json';
+      api.applyCommands(cmd, {'data.csv': csv}, function(err, out) {
+        var data = JSON.parse(out['data.json']);
+        assert.deepEqual(data, [{cx: 2, cy: 3, width: 2, height: 2}]);
+        done();
+      });
+    })
+
+  })
 
   describe('evaluateEachFeature()', function () {
     var nullArcs = new api.internal.ArcCollection([]);

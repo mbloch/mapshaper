@@ -1,6 +1,5 @@
 import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
-import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
-import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { getLayerBounds, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getMode } from '../utils/mapshaper-calc-utils';
 import { getLayerSelection } from '../dataset/mapshaper-command-utils';
 import cmd from '../mapshaper-cmd';
@@ -74,7 +73,11 @@ export function compileCalcExpression(lyr, arcs, exp) {
 
   calc1 = compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
       no_assign: true, no_warn: true});
-  calc2 = compileFeatureExpression(exp, {data: lyr.data}, null,
+  // changed data-only layer to full layer to expose layer geometry, etc
+  // (why not do this originally?)
+  // calc2 = compileFeatureExpression(exp, {data: lyr.data}, null,
+  //     {returns: true, context: ctx2, no_warn: true});
+  calc2 = compileFeatureExpression(exp, lyr, arcs,
       {returns: true, context: ctx2, no_warn: true});
 
   // @destRec: optional destination record for assignments
