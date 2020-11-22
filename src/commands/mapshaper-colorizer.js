@@ -88,11 +88,21 @@ function validateSequentialBreaks(breaks) {
   }
 }
 
+
 export function getSequentialColorFunction(colors, breaks, round) {
   if (colors.length != breaks.length + 1) {
     stop("Number of colors should be one more than number of class breaks");
   }
-  validateSequentialBreaks(breaks);
+  // validate breaks
+  // Accepts repeated values -- should this be allowed?
+  if (testAscendingNumbers(breaks)) {
+    // normal state
+  } else if (testDescendingNumbers(breaks)) {
+    breaks = breaks.concat().reverse();
+    colors = colors.concat().reverse();
+  } else {
+    stop('Invalid class breaks:', breaks.join(','));
+  }
   return function(val) {
     var i = -1;
     if (Number(val) === val) { // exclude null, NaN, strings, etc.
@@ -103,6 +113,20 @@ export function getSequentialColorFunction(colors, breaks, round) {
   };
 }
 
+function arraysAreIdentical(a, b) {
+  for (var i=0; i<a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return a.length == b.length;
+}
+
+function testAscendingNumbers(arr) {
+  return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat)));
+}
+
+function testDescendingNumbers(arr) {
+  return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
+}
 // breaks: threshold values between ranges (ascending order)
 // Returns array index of a sequential range, or -1 if @val not numeric
 function getClassId(val, breaks) {

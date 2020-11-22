@@ -32,7 +32,7 @@ export function editArcs(arcs, onPoint) {
       retn = cb(append, x, y, xp, yp, i++);
       if (retn === false) {
         valid = false;
-        // assumes that it's ok for the arc iterator to be interupted.
+        // assumes that it's ok for the arc iterator to be interrupted.
         break;
       }
       xp = x;

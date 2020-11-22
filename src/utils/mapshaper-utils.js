@@ -492,9 +492,10 @@ export function sortOn(arr) {
 
 // Sort array of values that can be compared with < > operators (strings, numbers)
 // null, undefined and NaN are sorted to the end of the array
+// default order is ascending
 //
-export function genericSort(arr, asc) {
-  var compare = getGenericComparator(asc);
+export function genericSort(arr, ascending) {
+  var compare = getGenericComparator(ascending);
   Array.prototype.sort.call(arr, compare);
   return arr;
 }
