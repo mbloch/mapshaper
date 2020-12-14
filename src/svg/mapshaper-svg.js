@@ -18,7 +18,7 @@ export function exportSVG(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg %s ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
-  var symbols = [];
+  var defs = [];
   var size, svg;
 
   // TODO: consider moving this logic to mapshaper-export.js
@@ -36,12 +36,14 @@ export function exportSVG(dataset, opts) {
 
   svg = dataset.layers.map(function(lyr) {
     var obj = exportLayerForSVG(lyr, dataset, opts);
-    convertPropertiesToDefinitions(obj, symbols);
+    convertPropertiesToDefinitions(obj, defs);
     return stringify(obj);
   }).join('\n');
-  if (symbols.length > 0) {
+  if (defs.length > 0) {
+    svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
+  }
+  if (svg.includes('xlink:')) {
     namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
-    svg = '<defs>\n' + utils.pluck(symbols, 'svg').join('') + '</defs>\n' + svg;
   }
   svg = utils.format(template, namespace, size[0], size[1], 0, 0, size[0], size[1], svg);
   return [{
@@ -180,6 +182,9 @@ export function getEmptyLayerForSVG(lyr, opts) {
   };
 
   // override default black fill for layers that might have open paths
+  // TODO: set fill="none" in SVG symbols, not on the container
+  //   (setting fill=none on the container overrides the default black fill
+  //   on paths, which may alter the appearance of SVG icons loaded from external URLs).
   if (lyr.geometry_type == 'polyline' || layerHasSvgSymbols(lyr)) {
     layerObj.properties.fill = 'none';
   }
