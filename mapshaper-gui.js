@@ -2249,7 +2249,8 @@
       var hist;
       try {
         hist = JSON.parse(window.localStorage.getItem('console_history'));
-      } catch(e) {}
+      } catch(e) {
+      }
       return hist && hist.length > 0 ? hist : [];
     }
 
@@ -2257,7 +2258,8 @@
       try {
         history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
         window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
-      } catch(e) {}
+      } catch(e) {
+      }
     }
 
     function toLog(str, cname) {
@@ -6680,9 +6682,10 @@
 
   // Sort array of values that can be compared with < > operators (strings, numbers)
   // null, undefined and NaN are sorted to the end of the array
+  // default order is ascending
   //
-  function genericSort(arr, asc) {
-    var compare = getGenericComparator(asc);
+  function genericSort(arr, ascending) {
+    var compare = getGenericComparator(ascending);
     Array.prototype.sort.call(arr, compare);
     return arr;
   }
