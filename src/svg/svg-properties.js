@@ -36,9 +36,13 @@ var symbolPropertyTypes = utils.extend({
   type: null,
   length: 'number', // e.g. arrow length
   rotation: 'number',
-  curve: 'number', // degrees of arc
+  'arrow-head-angle': 'number',
+  'arrow-head-width': 'number',
+  'arrow-stem-width': 'number',
+  'arrow-stem-curve': 'number', // degrees of arc
+  'arrow-stem-taper': 'number',
+  'arrow-scaling': 'number',
   effect: null // e.g. "fade"
-
 }, stylePropertyTypes);
 
 var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
@@ -74,7 +78,7 @@ export function getSymbolDataAccessor(lyr, opts) {
   var properties = [];
 
   Object.keys(opts).forEach(function(optName) {
-    var svgName = optName.replace('_', '-');
+    var svgName = optName.replace(/_/g, '-');
     if (!isSupportedSvgSymbolProperty(svgName)) {
       return;
     }

@@ -1,24 +1,38 @@
 
 import { getAffineTransform } from '../commands/mapshaper-affine';
+import { getRoundingFunction } from '../geom/mapshaper-rounding';
+
+var roundCoord = getRoundingFunction(0.01);
 
 function stringifyVertex(p) {
-  return p[0] + ' ' + p[1]; // TODO: round coords by default?
+  return ' ' + roundCoord(p[0]) + ' ' + roundCoord(p[1]);
 }
 
 function stringifyCP(p) {
-  return p[2].toFixed(2) + ' ' + p[3].toFixed(2);
+  return ' ' + roundCoord(p[2]) + ' ' + roundCoord(p[3]);
+}
+
+function isCubicCtrl(p) {
+  return p.length > 2 && p[2] == 'C';
 }
 
 export function stringifyLineStringCoords(coords) {
-  var p1 = coords[0];
-  var d;
-  if (coords.length === 0) {
-    d = '';
-  } else if (coords.length == 2 && coords[0].length == 4 && coords[1].length == 4) {
-    // cubic bezier control point coordinates are appended to [x, y] vertex coordinates.
-    d = stringifyBezierArc(coords);
-  } else {
-    d = 'M ' + coords.map(stringifyVertex).join(' ');
+  if (coords.length === 0) return '';
+  var d = 'M';
+  var fromCurve = false;
+  var p, i, n;
+  for (i=0, n=coords.length; i<n; i++) {
+    p = coords[i];
+    if (isCubicCtrl(p)) {
+      // TODO: add defensive check
+      d += ' C' + stringifyVertex(p) + stringifyVertex(coords[++i]) + stringifyVertex(coords[++i]);
+      fromCurve = true;
+    } else if (fromCurve) {
+      d += ' L' + stringifyVertex(p);
+      fromCurve = false;
+    } else {
+      d += stringifyVertex(p);
+    }
   }
   return d;
 }
@@ -26,8 +40,8 @@ export function stringifyLineStringCoords(coords) {
 function stringifyBezierArc(coords) {
   var p1 = coords[0],
       p2 = coords[1];
-  return 'M ' + stringifyVertex(p1) + ' C ' + stringifyCP(p1) + ' ' +
-          stringifyCP(p2) + ' ' + stringifyVertex(p2);
+  return 'M' + stringifyVertex(p1) + ' C' + stringifyCP(p1) +
+          stringifyCP(p2) + stringifyVertex(p2);
 }
 
 export function findArcCenter(p1, p2, degrees) {
@@ -37,9 +51,12 @@ export function findArcCenter(p1, p2, degrees) {
   return cp;
 }
 
-export function addBezierArcControlPoints(p1, p2, degrees) {
+// export function addBezierArcControlPoints(p1, p2, degrees) {
+export function addBezierArcControlPoints(points, degrees) {
   // source: https://stackoverflow.com/questions/734076/how-to-best-approximate-a-geometrical-arc-with-a-bezier-curve
-  var cp = findArcCenter(p1, p2, degrees),
+  var p2 = points.pop(),
+      p1 = points.pop(),
+      cp = findArcCenter(p1, p2, degrees),
       xc = cp[0],
       yc = cp[1],
       ax = p1[0] - xc,
@@ -50,8 +67,8 @@ export function addBezierArcControlPoints(p1, p2, degrees) {
       q2 = q1 + ax * bx + ay * by,
       k2 = 4/3 * (Math.sqrt(2 * q1 * q2) - q2) / (ax * by - ay * bx);
 
-  p1.push(xc + ax - k2 * ay);
-  p1.push(yc + ay + k2 * ax);
-  p2.push(xc + bx + k2 * by);
-  p2.push(yc + by - k2 * bx);
+  points.push(p1);
+  points.push([xc + ax - k2 * ay, yc + ay + k2 * ax, 'C']);
+  points.push([xc + bx + k2 * by, yc + by - k2 * bx, 'C']);
+  points.push(p2);
 }

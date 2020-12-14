@@ -148,17 +148,17 @@ function getHashId(str) {
 }
 
 // properties: properties object of a path data object (prior to conversion to SVG)
-// symbols: array of definition objects
+// defs: array of definition objects
 //
-export function convertFillPattern(properties, symbols) {
+export function convertFillPattern(properties, defs) {
   var hatchStr = properties['fill-pattern'];
   var hashId = getHashId(hatchStr);
-  var hash = utils.find(symbols, function(o) { return o.id == hashId; });
+  var hash = utils.find(defs, function(o) { return o.id == hashId; });
   delete properties['fill-pattern'];
   if (!hash) {
     hash = makeSVGPatternFill(hatchStr, hashId);
     if (!hash) return;
-    symbols.push(hash);
+    defs.push(hash);
   }
   properties.fill = hash.href;
 }

@@ -18,7 +18,10 @@ describe('mapshaper-symbols.js', function () {
         stroke: 'blue',
         'stroke-width': 1.5
       };
-      assert.deepEqual(output, target);
+      assert.equal(output.type, 'polyline');
+      // arrow changed to add head... this just tests the stem
+      // TODO: test arrowhead coords
+      assert.deepEqual(output.coordinates[0], [[0, 0], [0, -10]]);
     })
 
   })

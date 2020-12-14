@@ -28,6 +28,8 @@ export function getPointFeatureBounds(shape, bounds) {
   return bounds;
 }
 
+// Iterate over each [x,y] point in a layer
+// shapes: one layer's "shapes" array
 export function forEachPoint(shapes, cb) {
   var i, n, j, m, shp;
   for (i=0, n=shapes.length; i<n; i++) {

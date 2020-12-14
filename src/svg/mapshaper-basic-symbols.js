@@ -1,5 +1,5 @@
 
-import { importStyledLabel, importPoint, applyStyleAttributes, importLineString, importMultiLineString, renderSymbol } from '../svg/geojson-to-svg';
+import { importStyledLabel, importPoint, applyStyleAttributes, importLineString, importMultiLineString, importPolygon, renderSymbol } from '../svg/geojson-to-svg';
 import { symbolRenderers } from '../svg/svg-common';
 
 export { symbolRenderers };
@@ -49,6 +49,13 @@ symbolRenderers.polyline = function(d, x, y) {
   var coords = d.coordinates || [];
   var o = importMultiLineString(coords);
   applyStyleAttributes(o, 'LineString', d);
+  return [o];
+};
+
+symbolRenderers.polygon = function(d, x, y) {
+  var coords = d.coordinates || [];
+  var o = importPolygon(coords);
+  applyStyleAttributes(o, 'Polygon', d);
   return [o];
 };
 

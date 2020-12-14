@@ -48,7 +48,8 @@ export function Console(gui) {
     var hist;
     try {
       hist = JSON.parse(window.localStorage.getItem('console_history'));
-    } catch(e) {}
+    } catch(e) {
+    }
     return hist && hist.length > 0 ? hist : [];
   }
 
@@ -56,7 +57,8 @@ export function Console(gui) {
     try {
       history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
       window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
-    } catch(e) {}
+    } catch(e) {
+    }
   }
 
   function toLog(str, cname) {

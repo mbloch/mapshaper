@@ -1262,8 +1262,13 @@ export function getOptionParser() {
     .option('fill', {})
     .option('length', {})
     .option('rotation', {})
-    .option('curve', {})
     .option('effect', {})
+    .option('arrow-head-angle', {})
+    .option('arrow-stem-width', {})
+    .option('arrow-head-width', {})
+    .option('arrow-stem-curve', {})
+    .option('arrow-stem-taper', {})
+    .option('arrow-scaling', {})
     .option('where', whereOpt)
     .option('target', targetOpt);
     // .option('name', nameOpt);
