@@ -24,6 +24,7 @@ export function GeoJSONReader(reader) {
     var obj = readObject(offset);
     var json;
     while (obj) {
+      reader.resetBuffer();
       try {
         json = JSON.parse(obj.text);
       } catch(e) {

@@ -43,6 +43,11 @@ function Reader(str, chunkLen) {
     chunkLen *= 2;
     return this;
   };
+
+  this.resetBuffer = function() {
+    chunkLen = 256;
+    return this;
+  };
 }
 
 Reader.prototype.findString = api.internal.FileReader.prototype.findString;

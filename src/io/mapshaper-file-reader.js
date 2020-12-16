@@ -81,6 +81,11 @@ export function FileReader(path, opts) {
     return this;
   };
 
+  this.resetBuffer = function() {
+    DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x40000;
+    return this;
+  };
+
   // Read to BinArray (for compatibility with ShpReader)
   this.readToBinArray = function(start, length) {
     if (updateCache(start, length)) {
