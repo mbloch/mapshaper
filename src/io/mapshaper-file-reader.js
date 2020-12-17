@@ -76,8 +76,16 @@ export function FileReader(path, opts) {
 
   getStateVar('input_files').push(path); // bit of a kludge
 
+  // Double the default size of the Buffer returned by readSync()
   this.expandBuffer = function() {
     DEFAULT_BUFFER_LEN *= 2;
+    if (DEFAULT_BUFFER_LEN * 2 > DEFAULT_CACHE_LEN) {
+      // Keep the file cache larger than the default buffer size.
+      // This fixes a performance bug caused when the size of the buffer returned by
+      // readSync() grows as large as the file cache, causing each subsequent
+      // call to readSync() to trigger a call to fs.readFileSync()
+      DEFAULT_CACHE_LEN = DEFAULT_BUFFER_LEN * 2;
+    }
     return this;
   };
 
@@ -90,17 +98,19 @@ export function FileReader(path, opts) {
     return binArr;
   };
 
-  // Read to Buffer
+  // Returns a Buffer containing a string of bytes read from the file
+  // start: file offset of the first byte
+  // length: (optional) length of the returned Buffer
   this.readSync = function(start, length) {
     if (length > 0 === false) {
-      // use default (but variable) size if length is not specified
+      // use default size if length is not specified
       length = DEFAULT_BUFFER_LEN;
-      if (start + length > fileLen) {
-        length = fileLen - start; // truncate at eof
-      }
-      if (length === 0) {
-        return utils.createBuffer(0); // kludge to allow reading up to eof
-      }
+    }
+    if (start + length > fileLen) {
+      length = fileLen - start; // truncate at eof
+    }
+    if (length === 0) {
+      return utils.createBuffer(0); // kludge to allow reading up to eof
     }
     updateCache(start, length);
     return cache.slice(start - cacheOffs, start - cacheOffs + length);
@@ -123,18 +133,20 @@ export function FileReader(path, opts) {
     }
   };
 
-  // Receive offset and length of byte string that must be read
-  // Return true if cache was updated, or false
-  function updateCache(fileOffs, bufLen) {
+  // Update the file cache (if necessary) so that a given range of bytes is available.
+  // Receive: offset and length of byte string that must be read
+  // Returns: true if cache was updated, or false
+  function updateCache(fileOffs, bytesNeeded) {
     var headroom = fileLen - fileOffs,
         bytesRead, bytesToRead;
-    if (headroom < bufLen || headroom < 0) {
+    if (headroom < bytesNeeded || headroom < 0) {
       error("Tried to read past end-of-file");
     }
-    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bufLen) {
+    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bytesNeeded) {
+      // cache contains enough data to satisfy the request (no need to read from disk)
       return false;
     }
-    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bufLen);
+    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bytesNeeded);
     if (headroom < bytesToRead) {
       bytesToRead = headroom;
     }

@@ -15,11 +15,20 @@ function parseTest(input, output) {
   assert.deepEqual(features, output);
 }
 
+function testReadingFromFile(file, readerOpts) {
+  var reader = new FileReader(file, readerOpts);
+  var features = [];
+  var contents = require('fs').readFileSync(file, 'utf8');
+  var target = JSON.parse(contents).features;
+  new GeoJSONReader(reader).readObjects(function(feat) {features.push(feat)});
+  assert.deepEqual(features, target);
+}
+
 describe('geojson-reader.js', function () {
 
   describe('GeoJSONReader()', function () {
 
-    describe('parseFile()', function () {
+    describe('readObjects()', function () {
       it('test1', function () {
         var json = {
           type: "Point",
@@ -52,15 +61,12 @@ describe('geojson-reader.js', function () {
       })
 
       it('file reading test', function() {
-        var file = 'test/data/three_points.geojson';
-        var reader = new FileReader(file);
-        var features = [];
-        var contents = require('fs').readFileSync(file, 'utf8');
-        var target = JSON.parse(contents).features;
-        new GeoJSONReader(reader).readObjects(function(feat) {features.push(feat)});
-        assert.deepEqual(features, target);
-
+        testReadingFromFile('test/data/three_points.geojson', null);
       });
+
+      it('file reading with buffer expansion', function() {
+        testReadingFromFile('test/data/two_states.json', {cacheSize: 2, bufferSize: 2});
+      })
     })
 
     describe('readObject()', function () {
