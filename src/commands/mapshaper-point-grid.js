@@ -70,7 +70,7 @@ function createPointGrid(opts) {
     y0 = bbox[1] + dy / 2;
   }
 
-  if (dx > 0 === false || dy > 0 === false) {
+  if (dx <= 0 || dy <= 0) {
     stop('Invalid grid parameters');
   }
 
