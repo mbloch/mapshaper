@@ -1,3 +1,6 @@
+v0.5.28
+* Fixed a performance bug that caused importing of some large GeoJSON files to be very slow.
+
 v0.5.27
 * Added layer.bbox property to JS expression context.
 * Added support for listing class breaks in descending order in -colorizer command.
