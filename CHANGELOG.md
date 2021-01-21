@@ -1,3 +1,7 @@
+v0.5.29
+* Added -classify command, with support for classifying data values using sequential (quantile and equal-area) and categorical methods. Built-in support for named color schemes from d3.
+* Added -colors command, which prints the names of built-in d3 color schemes.
+
 v0.5.28
 * Fixed a performance bug that caused importing of some large GeoJSON files to be very slow.
 
