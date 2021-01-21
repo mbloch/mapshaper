@@ -9,6 +9,9 @@
     get clamp () { return clamp; },
     get isArray () { return isArray; },
     get isNumber () { return isNumber; },
+    get isValidNumber () { return isValidNumber; },
+    get isFiniteNumber () { return isFiniteNumber; },
+    get isNonNegNumber () { return isNonNegNumber; },
     get isInteger () { return isInteger; },
     get isString () { return isString; },
     get isDate () { return isDate; },
@@ -78,8 +81,6 @@
     get extendBuffer () { return extendBuffer; },
     get mergeNames () { return mergeNames; },
     get findStringPrefix () { return findStringPrefix; },
-    get isFiniteNumber () { return isFiniteNumber; },
-    get isNonNegNumber () { return isNonNegNumber; },
     get parsePercent () { return parsePercent; },
     get formatVersionedName () { return formatVersionedName; },
     get uniqifyNames () { return uniqifyNames; },
@@ -6217,10 +6218,27 @@
     return Array.isArray(obj);
   }
 
-  // NaN -> true
+  // Is obj a valid number or NaN? (test if obj is type number)
   function isNumber(obj) {
-    // return toString.call(obj) == '[object Number]'; // ie8 breaks?
     return obj != null && obj.constructor == Number;
+  }
+
+  function isValidNumber(val) {
+    return isNumber(val) && !isNaN(val);
+  }
+
+  // Similar to isFinite() but does not coerce strings or other types
+  function isFiniteNumber(val) {
+    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
+  }
+
+  // This uses type conversion
+  // export function isFiniteNumber(val) {
+  //   return val > -Infinity && val < Infinity;
+  // }
+
+  function isNonNegNumber(val) {
+    return isNumber(val) && val >= 0;
   }
 
   function isInteger(obj) {
@@ -7052,15 +7070,6 @@
       if (a[i] !== b[i]) break;
     }
     return a.substr(0, i);
-  }
-
-  // Similar to isFinite() but does not convert strings or other types
-  function isFiniteNumber(val) {
-    return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
-  }
-
-  function isNonNegNumber(val) {
-    return val === 0 || val > 0 && val.constructor == Number;
   }
 
   function parsePercent(o) {

@@ -12,6 +12,9 @@
     get clamp () { return clamp; },
     get isArray () { return isArray; },
     get isNumber () { return isNumber; },
+    get isValidNumber () { return isValidNumber; },
+    get isFiniteNumber () { return isFiniteNumber; },
+    get isNonNegNumber () { return isNonNegNumber; },
     get isInteger () { return isInteger; },
     get isString () { return isString; },
     get isDate () { return isDate; },
@@ -81,8 +84,6 @@
     get extendBuffer () { return extendBuffer; },
     get mergeNames () { return mergeNames; },
     get findStringPrefix () { return findStringPrefix; },
-    get isFiniteNumber () { return isFiniteNumber; },
-    get isNonNegNumber () { return isNonNegNumber; },
     get parsePercent () { return parsePercent; },
     get formatVersionedName () { return formatVersionedName; },
     get uniqifyNames () { return uniqifyNames; },
@@ -115,10 +116,27 @@
     return Array.isArray(obj);
   }
 
-  // NaN -> true
+  // Is obj a valid number or NaN? (test if obj is type number)
   function isNumber(obj) {
-    // return toString.call(obj) == '[object Number]'; // ie8 breaks?
     return obj != null && obj.constructor == Number;
+  }
+
+  function isValidNumber(val) {
+    return isNumber(val) && !isNaN(val);
+  }
+
+  // Similar to isFinite() but does not coerce strings or other types
+  function isFiniteNumber(val) {
+    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
+  }
+
+  // This uses type conversion
+  // export function isFiniteNumber(val) {
+  //   return val > -Infinity && val < Infinity;
+  // }
+
+  function isNonNegNumber(val) {
+    return isNumber(val) && val >= 0;
   }
 
   function isInteger(obj) {
@@ -950,15 +968,6 @@
       if (a[i] !== b[i]) break;
     }
     return a.substr(0, i);
-  }
-
-  // Similar to isFinite() but does not convert strings or other types
-  function isFiniteNumber(val) {
-    return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
-  }
-
-  function isNonNegNumber(val) {
-    return val === 0 || val > 0 && val.constructor == Number;
   }
 
   function parsePercent(o) {
@@ -3494,6 +3503,12 @@
     });
   }
 
+  function getFieldValues(records, field) {
+    return records.map(function(rec) {
+      return rec ? rec[field] : undefined;
+    });
+  }
+
   function getUniqFieldValues(records, field) {
     var index = {};
     var values = [];
@@ -3560,6 +3575,7 @@
     deleteFields: deleteFields,
     isInvalidFieldName: isInvalidFieldName,
     getUniqFieldNames: getUniqFieldNames,
+    getFieldValues: getFieldValues,
     getUniqFieldValues: getUniqFieldValues,
     applyFieldOrder: applyFieldOrder,
     findFieldNames: findFieldNames
@@ -17696,6 +17712,65 @@
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
+    parser.command('classify')
+      .describe('apply sequential or categorical classification to a data field')
+      .option('field', {
+        DEFAULT: true
+      })
+      .option('save-as', {
+          describe: 'name of output field'
+      })
+      .option('values', {
+        describe: 'list of values to assign to classes',
+        type: 'strings'
+      })
+      .option('colors', {
+        describe: 'list of CSS colors (alternative to values=, can interpolate)',
+        type: 'colors'
+      })
+      .option('color-scheme', {
+        describe: 'name of a predefined color scheme (see -colors command)'
+      })
+      .option('null-value', {
+        describe: 'value (or color) to use for invalid or missing data'
+      })
+      .option('quantile', {
+        describe: 'use quantile classification',
+        type: 'flag'
+      })
+      .option('equal-interval', {
+        describe: 'use equal interval classification',
+        type: 'flag'
+      })
+      .option('breaks', {
+        describe: 'user-defined class breaks',
+        type: 'numbers'
+      })
+      .option('classes', {
+        describe: 'number of classes (can be inferred from other options)',
+        type: 'integer'
+      })
+      .option('invert', {
+        describe: 'reverse the order of colors/values',
+        type: 'flag'
+      })
+      .option('continuous', {
+        describe: 'output continuous interpolated values (experimental)',
+        type: 'flag'
+      })
+      .option('precision', {
+        describe: 'round data values before classification (e.g. 0.1)',
+        type: 'number'
+      })
+      .option('categories', {
+        describe: 'list of data values for categorical color scheme',
+        type: 'strings'
+      })
+      .option('other', {
+        describe: 'default value for categorical scheme (defaults to null-value)'
+      })
+      .option('target', targetOpt);
+
     parser.command('clean')
       .describe('fixes geometry issues, such as polygon overlaps and gaps')
 
@@ -18804,6 +18879,9 @@
       })
       .option('where', whereOpt)
       .option('target', targetOpt);
+
+    parser.command('colors')
+      .describe('print list of color scheme names');
 
     parser.command('encodings')
       .describe('print list of supported text encodings (for .dbf import)');
@@ -22668,6 +22746,424 @@
     return outputLayers;
   }
 
+  var categorical = 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10'.split(',');
+  var sequential = 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd'.split(',');
+  var rainbow = 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma'.split(',');
+  var diverging = 'BrBG,PRGn,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral'.split(',');
+
+  function testLib() {
+    var lib = require('d3-scale-chromatic');
+    schemes(categorical);
+    schemes(sequential);
+    schemes(diverging);
+    interpolators(sequential);
+    interpolators(rainbow);
+    interpolators(diverging);
+
+    function schemes(arr) {
+      arr.forEach(function(name) {
+        if (!lib['scheme' + name]) {
+          message('Warning: missing data for', name);
+        }
+      });
+    }
+
+    function interpolators(arr) {
+      arr.forEach(function(name) {
+        if (!lib['interpolate' + name]) {
+          message('Missing interpolator for', name);
+        }
+      });
+    }
+  }
+
+  function printColorSchemeNames() {
+    testLib();
+    print('Built-in color schemes (from d3):');
+    print ('Categorical\n' + formatStringsAsGrid(categorical));
+    print ('\nSequential\n' + formatStringsAsGrid(sequential));
+    print ('\nDiverging\n' + formatStringsAsGrid(diverging));
+    print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(rainbow));
+  }
+
+  function getCategoricalColorScheme(name, n) {
+    if (categorical.includes(name) === false) {
+      stop(name, 'is not a categorical color scheme');
+    }
+    var colors = require('d3-scale-chromatic')['scheme' + name];
+    if (n > colors.length) {
+      stop(name, 'does not contain', n, 'colors');
+    }
+    return colors.slice(0, n);
+  }
+
+  function isColorSchemeName(name) {
+    return categorical.concat(sequential).concat(rainbow).concat(diverging).includes(name);
+  }
+
+  // Make an interpolated color ramp (when number of colors is less than the
+  // number of classes).
+  function fillOutRamp(colors, classes) {
+    var numPairs = colors.length - 1;
+    var breaksPerPair = (classes - colors.length) / numPairs;
+    if (!utils.isInteger(breaksPerPair)) {
+      // TODO: handle this without erroring
+      stop('Number of classes does not evenly match number of colors');
+    }
+    var colorPairs = getColorPairs(colors);
+    var ramp = colorPairs.reduce(function(memo, pair, i) {
+      if (i === 0) {
+        memo.push(pair[0]);
+      }
+      memo = memo.concat(findIntermediateColors(pair[0], pair[1], breaksPerPair));
+      memo.push(pair[1]);
+      return memo;
+    }, []);
+    return ramp;
+  }
+
+  function getColorPairs(colors) {
+    var pairs = [];
+    for (var i=1; i<colors.length; i++) {
+      pairs.push([colors[i-1], colors[i]]);
+    }
+    return pairs;
+  }
+
+  function findIntermediateColors(a, b, n) {
+    var d3 = require('d3-interpolate');
+    var interpolate = d3.interpolate(a, b);
+    var colors = [];
+    for (var i=0; i<n; i++) {
+      colors.push(interpolate((i + 1) / (n + 1)));
+    }
+    return colors;
+  }
+
+  function getColorRamp(name, n) {
+    var lib = require('d3-scale-chromatic');
+    var ramps = lib['scheme' + name];
+    var interpolate = lib['interpolate' + name];
+    if (!ramps && !interpolate) {
+      stop('Unknown color scheme name:', name);
+    }
+    if (categorical.includes(name)) {
+      stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
+    }
+    if (ramps && ramps[n]) {
+      return ramps[n];
+    }
+    return getInterpolatedRamp(interpolate, n);
+  }
+
+  function getInterpolatedRamp(interpolate, n) {
+    if (n > 0 === false || !utils.isInteger(n)) {
+      error('Expected a positive integer');
+    }
+    var margin = 1 / (n + 2);
+    var interval = (1 - margin * 2) / (n - 1);
+    var ramp = [];
+    for (var i=0; i<n; i++) {
+      ramp.push(interpolate(margin + interval * i));
+    }
+    return ramp;
+  }
+
+  // categories: strings to match in the data
+  function getCategoricalClassifier(categories, values, otherVal, nullVal) {
+    return function(val) {
+      var i = categories.indexOf(val);
+      if (i >= 0) return values[i];
+      if (val) return otherVal;
+      return nullVal;
+    };
+  }
+
+  function getDataRange(values) {
+    var ascending = getAscendingNumbers(values);
+    if (ascending.length > 0 === false) {
+      return [-Infinity, Infinity]; // throw error instead?
+    }
+    return [ascending[0], ascending[ascending.length - 1]];
+  }
+
+  // uses linear interpolation between breakpoints
+  // (perhaps not ideal for long-tail distributions)
+  function getContinuousClassifier(breaks, range, values, nullVal) {
+    var d3 = require('d3-interpolate');
+    var minVal = range[0];
+    var maxVal = range[1];
+    var interpolators = [];
+    for (var i=1; i<values.length; i++) {
+      interpolators.push(d3.interpolate(values[i-1], values[i]));
+    }
+    if (values.length != breaks.length + 2) {
+      stop('Number of values should be two more than the number of breaks');
+    }
+    return function(val) {
+      var n = breaks.length;
+      var min, max, j;
+      if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
+        return nullVal;
+      }
+      for (var i=0; i<=n; i++) {
+        max = i === n ? maxVal : breaks[i];
+        if (i === n || val < max) {
+          min = i === 0 ? minVal : breaks[i-1];
+          j = (val - min) / (max - min);
+          return interpolators[i](j);
+        }
+      }
+      error('Range error');
+    };
+  }
+
+  function getSequentialClassifier(breaks, values, nullVal, round) {
+    if (values.length != breaks.length + 1) {
+      stop("Number of values should be one more than number of class breaks");
+    }
+    // validate breaks
+    // Accepts repeated values -- should this be allowed?
+    if (testAscendingNumbers(breaks)) {
+      // normal state
+    } else if (testDescendingNumbers(breaks)) {
+      breaks = breaks.concat().reverse();
+      values = values.concat().reverse();
+    } else {
+      stop('Invalid class breaks:', breaks.join(','));
+    }
+    return function(val) {
+      var i = -1;
+      if (Number(val) === val) { // exclude null, NaN, strings, etc.
+        if (round) val = val(round);
+        i = getClassId(val, breaks);
+      }
+      return i > -1 && i < values.length ? values[i] : nullVal;
+    };
+  }
+
+  function getEqualIntervalBreaks(values, numBreaks) {
+    var numRanges = numBreaks + 1,
+        ascending = getAscendingNumbers(values),
+        minVal = ascending[0],
+        maxVal = ascending[ascending.length - 1],
+        interval = (maxVal - minVal) / numRanges,
+        breaks = [],
+        i;
+    for (i = 1; i<numRanges; i++) {
+      breaks.push(minVal + i * interval);
+    }
+    return breaks;
+  }
+
+  function getQuantileBreaks(values, numBreaks) {
+    var numRanges = numBreaks + 1;
+    var ascending = getAscendingNumbers(values);
+    var n = ascending.length / numRanges;
+    var breaks = [];
+    var i, j;
+    for (i = 1; i<numRanges; i++) {
+      j = Math.floor(i * n);
+      breaks.push(ascending[j]);
+    }
+    return breaks;
+  }
+
+  function getAscendingNumbers(values) {
+    var numbers = values.filter(utils.isFiniteNumber);
+    utils.genericSort(numbers, true);
+    return numbers;
+  }
+
+  function arraysAreIdentical(a, b) {
+    for (var i=0; i<a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return a.length == b.length;
+  }
+
+  function testAscendingNumbers(arr) {
+    return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat)));
+  }
+
+  function testDescendingNumbers(arr) {
+    return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
+  }
+
+  // breaks: threshold values between ranges (ascending order)
+  // Returns array index of a sequential range, or -1 if @val not numeric
+  function getClassId(val, breaks) {
+    var i = 0;
+    if (!utils.isValidNumber(val)) {
+      return -1;
+    }
+    while (i < breaks.length && val >= breaks[i]) i++;
+    return i;
+  }
+
+  cmd.classify = function(lyr, optsArg) {
+    var opts = optsArg || {};
+    var dataField = opts.field;
+    requireDataField(lyr.data, dataField);
+    var records = lyr.data && lyr.data.getRecords();
+    var dataValues = getFieldValues(records, dataField);
+    var colorScheme = opts.color_scheme || null;
+    var classes = opts.classes || null; // number of classes
+    var nullValue = opts.null_value || null;
+    var nullColor = nullValue || 'white';
+    var classValues, classify;
+
+    if (opts.breaks) {
+      // TODO: check for invalid combinations of breaks= and classes=
+      classes = opts.breaks + 1;
+    }
+
+    if (colorScheme) {
+      // using a named color scheme: generate a ramp
+      if (!isColorSchemeName(colorScheme)) {
+        stop('Unknown color scheme:', colorScheme);
+      }
+      if (opts.categories) {
+        classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
+        classes = classValues.length;
+      } else if (classes > 0 === false) {
+        stop('color-scheme= option requires classes= or breaks=');
+      } else {
+        classValues = getColorRamp(colorScheme, classes);
+      }
+      nullValue = nullColor;
+      printColors(classValues);
+
+    } else if (opts.colors) {
+      // using a list of colors: interpolate more colors if needed
+      if (classes && classes > opts.colors.length) {
+        // interpolate colors if number of classes is given and doesn't match
+        // the number of colors
+        classValues = fillOutRamp(opts.colors, classes);
+      } else {
+        classValues = opts.colors;
+      }
+      nullValue = nullColor;
+
+    } else if (opts.values) {
+      // assigning values for each class
+      classValues = parseValues(opts.values);
+
+    } else if (classes > 1) {
+      // assigning indexes for each class
+      classValues = getIndexValues(opts.classes);
+      nullValue = -1;
+    }
+
+    if (!classValues || classValues.length > 0 === false) {
+      stop('Missing a valid number of classes');
+    }
+
+    if (opts.invert) {
+      // utils.genericSort(breaks, false);
+      utils.genericSort(classValues, false);
+    }
+
+    if (opts.categories) {
+      // categorical color scheme
+      classify = getCategoricalClassifier(opts.categories, classValues, opts.other, nullValue);
+
+    } else {
+      // sequential color scheme
+      classify = getNumericalClassifier(dataValues, classValues, nullValue, opts);
+    }
+
+    if (opts.save_as) {
+      dataValues.forEach(function(val, i) {
+        var r = records[i] || {};
+        r[opts.save_as] = classify(val);
+      });
+    } else {
+      message('Use save-as=<field> to save output to a field');
+    }
+  };
+
+  function getNumericalClassifier(dataValues, classValues, nullValue, opts) {
+    // continuously interpolated colors/values use one fewer breakpoint than
+    // discreetly classed values
+    var numBreaks = opts.continuous ? classValues.length - 2 : classValues.length - 1;
+    var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+    var breaks;
+
+    if (round) {
+      dataValues = dataValues.map(round);
+    }
+
+    if (opts.breaks) {
+      // user-defined breaks
+      breaks = opts.breaks;
+    } else if (opts.equal_interval) {
+      breaks = getEqualIntervalBreaks(dataValues, numBreaks);
+    } else if (opts.quantile) {
+      breaks = getQuantileBreaks(dataValues, numBreaks);
+    } else {
+      stop('Missing a classification type');
+    }
+
+    var dataRange = getDataRange(dataValues);
+
+    message('Data range:', dataRange);
+    message('Computed breaks:', breaks);
+    printDistributionInfo(breaks, dataValues);
+
+    return opts.continuous ?
+      getContinuousClassifier(breaks, dataRange, classValues, nullValue) :
+      getSequentialClassifier(breaks, classValues, nullValue);
+  }
+
+  // arr: an array of strings
+  function parseValues(strings) {
+    var values = strings;
+    if (strings.every(utils.parseNumber)) {
+      values = strings.map(function(str) {
+        return +str;
+      });
+    }
+    return values;
+  }
+
+  function printColors(colors) {
+    var d3 = require('d3-color');
+    var arr = colors.map(function(col) { return d3.color(col).formatHex(); });
+    message('Colors:', arr);
+  }
+
+  function printDistributionInfo(breaks, values) {
+    var dist = getDistributionData(breaks, values);
+    message('Distribution:', dist.join(','));
+    if (dist.nulls) {
+      message('Null values:', dist.nulls);
+    }
+  }
+
+  function getDistributionData(breaks, values) {
+    var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
+    var nulls = 0;
+    values.forEach(function(val) {
+      var i = getClassId(val, breaks);
+      if (i == -1) {
+        nulls++;
+      } else {
+        arr[i]++;
+      }
+    });
+    arr.nulls = nulls;
+    return arr;
+  }
+
+  function getIndexValues(n) {
+    var vals = [];
+    for (var i=0; i<n; i++) {
+      vals.push(i);
+    }
+    return vals;
+  }
+
   cmd.cleanLayers = function(layers, dataset, optsArg) {
     var opts = optsArg || {};
     var deepClean = !opts.only_arcs;
@@ -23895,17 +24391,20 @@
     if (opts.random) {
       colorFunction = getRandomColorFunction(opts.colors);
     } else if (opts.breaks) {
-      colorFunction = getSequentialColorFunction(opts.colors, opts.breaks, round);
+      if (opts.colors.length != opts.breaks.length + 1) {
+        stop("Number of colors should be one more than number of class breaks");
+      }
+      colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
     } else if (opts.categories) {
-      colorFunction = getCategoricalColorFunction(opts.colors, opts.other, opts.categories);
+      if (opts.colors.length != opts.categories.length) {
+        stop("Number of colors should be equal to the number of categories");
+      }
+      colorFunction = getCategoricalClassifier(opts.categories, opts.colors, opts.other, nodataColor);
     } else {
       stop("Missing categories= or breaks= parameter");
     }
 
-    return function(val) {
-      var col = colorFunction(val);
-      return col || nodataColor;
-    };
+    return colorFunction;
   }
 
   function fastStringHash(val) {
@@ -23931,84 +24430,9 @@
     };
   }
 
-
-  function getCategoricalColorFunction(colors, otherColor, keys) {
-    if (colors.length != keys.length) {
-      stop("Number of colors should be equal to the number of categories");
-    }
-
-    return function(val) {
-      var i = keys.indexOf(val);
-      if (i >= 0) return colors[i];
-      return val && otherColor ? otherColor : null;
-    };
-  }
-
-  function validateSequentialBreaks(breaks) {
-    // Accepts repeated values -- should this be allowed?
-    var arr2 = breaks.map(parseFloat);
-    utils.genericSort(arr2);
-    for (var i=0; i<breaks.length; i++) {
-      if (breaks[i] !== arr2[i]) stop('Invalid class breaks:', breaks.join(','));
-    }
-  }
-
-
-  function getSequentialColorFunction(colors, breaks, round) {
-    if (colors.length != breaks.length + 1) {
-      stop("Number of colors should be one more than number of class breaks");
-    }
-    // validate breaks
-    // Accepts repeated values -- should this be allowed?
-    if (testAscendingNumbers(breaks)) {
-      // normal state
-    } else if (testDescendingNumbers(breaks)) {
-      breaks = breaks.concat().reverse();
-      colors = colors.concat().reverse();
-    } else {
-      stop('Invalid class breaks:', breaks.join(','));
-    }
-    return function(val) {
-      var i = -1;
-      if (Number(val) === val) { // exclude null, NaN, strings, etc.
-        if (round) val = val(round);
-        i = getClassId(val, breaks);
-      }
-      return i > -1 && i < colors.length ? colors[i] : null;
-    };
-  }
-
-  function arraysAreIdentical(a, b) {
-    for (var i=0; i<a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return a.length == b.length;
-  }
-
-  function testAscendingNumbers(arr) {
-    return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat)));
-  }
-
-  function testDescendingNumbers(arr) {
-    return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
-  }
-  // breaks: threshold values between ranges (ascending order)
-  // Returns array index of a sequential range, or -1 if @val not numeric
-  function getClassId(val, breaks) {
-    var minVal = -Infinity,
-        maxVal = Infinity,
-        i = 0;
-    if (!(val >= minVal && val <= maxVal)) {
-      return -1;
-    }
-    while (i < breaks.length && val >= breaks[i]) i++;
-    return i;
-  }
-
   var Colorizer = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getColorizerFunction: getColorizerFunction,
-    getSequentialColorFunction: getSequentialColorFunction
+    getColorizerFunction: getColorizerFunction
   });
 
   // This function creates a continuous mosaic of data values in a
@@ -29781,6 +30205,9 @@
       } else if (name == 'calc') {
         applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
 
+      } else if (name == 'classify') {
+        applyCommandToEachLayer(cmd.classify, targetLayers, opts);
+
       } else if (name == 'clean') {
         cmd.cleanLayers(targetLayers, targetDataset, opts);
 
@@ -30379,6 +30806,8 @@
         print(typeof VERSION == 'undefined' ? '' : VERSION);
       } else if (cmd.name == 'encodings') {
         printEncodings();
+      } else if (cmd.name == 'colors') {
+        printColorSchemeNames();
       } else if (cmd.name == 'projections') {
         printProjections();
       } else {
