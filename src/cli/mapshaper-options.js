@@ -400,6 +400,7 @@ export function getOptionParser() {
   parser.command('classify')
     .describe('apply sequential or categorical classification to a data field')
     .option('field', {
+      describe: 'name of field to classify',
       DEFAULT: true
     })
     .option('save-as', {
@@ -428,7 +429,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('breaks', {
-      describe: 'user-defined class breaks',
+      describe: 'user-defined sequential class breaks',
       type: 'numbers'
     })
     .option('classes', {
