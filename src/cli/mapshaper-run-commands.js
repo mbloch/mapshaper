@@ -1,6 +1,7 @@
 import { runCommand } from '../cli/mapshaper-run-command';
 import { printProjections } from '../geom/mapshaper-projections';
 import { printEncodings } from '../text/mapshaper-encodings';
+import { printColorSchemeNames } from '../color/color-schemes';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { guessInputContentType } from '../io/mapshaper-file-types';
 import { error, UserError, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
@@ -300,6 +301,8 @@ export function runAndRemoveInfoCommands(commands) {
       print(typeof VERSION == 'undefined' ? '' : VERSION);
     } else if (cmd.name == 'encodings') {
       printEncodings();
+    } else if (cmd.name == 'colors') {
+      printColorSchemeNames();
     } else if (cmd.name == 'projections') {
       printProjections();
     } else {

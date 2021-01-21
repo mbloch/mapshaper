@@ -2,6 +2,8 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { getStateVar } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
+import { getSequentialClassifier, getCategoricalClassifier }
+  from '../classification/mapshaper-classification';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
 cmd.colorizer = function(opts) {
@@ -30,17 +32,20 @@ export function getColorizerFunction(opts) {
   if (opts.random) {
     colorFunction = getRandomColorFunction(opts.colors);
   } else if (opts.breaks) {
-    colorFunction = getSequentialColorFunction(opts.colors, opts.breaks, round);
+    if (opts.colors.length != opts.breaks.length + 1) {
+      stop("Number of colors should be one more than number of class breaks");
+    }
+    colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
   } else if (opts.categories) {
-    colorFunction = getCategoricalColorFunction(opts.colors, opts.other, opts.categories);
+    if (opts.colors.length != opts.categories.length) {
+      stop("Number of colors should be equal to the number of categories");
+    }
+    colorFunction = getCategoricalClassifier(opts.categories, opts.colors, opts.other, nodataColor);
   } else {
     stop("Missing categories= or breaks= parameter");
   }
 
-  return function(val) {
-    var col = colorFunction(val);
-    return col || nodataColor;
-  };
+  return colorFunction;
 }
 
 function fastStringHash(val) {
@@ -64,78 +69,4 @@ function getRandomColorFunction(colors) {
         Math.floor(Math.random() * n) : fastStringHash(val) % n;
     return colors[i];
   };
-}
-
-
-function getCategoricalColorFunction(colors, otherColor, keys) {
-  if (colors.length != keys.length) {
-    stop("Number of colors should be equal to the number of categories");
-  }
-
-  return function(val) {
-    var i = keys.indexOf(val);
-    if (i >= 0) return colors[i];
-    return val && otherColor ? otherColor : null;
-  };
-}
-
-function validateSequentialBreaks(breaks) {
-  // Accepts repeated values -- should this be allowed?
-  var arr2 = breaks.map(parseFloat);
-  utils.genericSort(arr2);
-  for (var i=0; i<breaks.length; i++) {
-    if (breaks[i] !== arr2[i]) stop('Invalid class breaks:', breaks.join(','));
-  }
-}
-
-
-export function getSequentialColorFunction(colors, breaks, round) {
-  if (colors.length != breaks.length + 1) {
-    stop("Number of colors should be one more than number of class breaks");
-  }
-  // validate breaks
-  // Accepts repeated values -- should this be allowed?
-  if (testAscendingNumbers(breaks)) {
-    // normal state
-  } else if (testDescendingNumbers(breaks)) {
-    breaks = breaks.concat().reverse();
-    colors = colors.concat().reverse();
-  } else {
-    stop('Invalid class breaks:', breaks.join(','));
-  }
-  return function(val) {
-    var i = -1;
-    if (Number(val) === val) { // exclude null, NaN, strings, etc.
-      if (round) val = val(round);
-      i = getClassId(val, breaks);
-    }
-    return i > -1 && i < colors.length ? colors[i] : null;
-  };
-}
-
-function arraysAreIdentical(a, b) {
-  for (var i=0; i<a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return a.length == b.length;
-}
-
-function testAscendingNumbers(arr) {
-  return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat)));
-}
-
-function testDescendingNumbers(arr) {
-  return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
-}
-// breaks: threshold values between ranges (ascending order)
-// Returns array index of a sequential range, or -1 if @val not numeric
-function getClassId(val, breaks) {
-  var minVal = -Infinity,
-      maxVal = Infinity,
-      i = 0;
-  if (!(val >= minVal && val <= maxVal)) {
-    return -1;
-  }
-  while (i < breaks.length && val >= breaks[i]) i++;
-  return i;
 }

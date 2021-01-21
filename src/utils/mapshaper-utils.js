@@ -27,10 +27,27 @@ export function isArray(obj) {
   return Array.isArray(obj);
 }
 
-// NaN -> true
+// Is obj a valid number or NaN? (test if obj is type number)
 export function isNumber(obj) {
-  // return toString.call(obj) == '[object Number]'; // ie8 breaks?
   return obj != null && obj.constructor == Number;
+}
+
+export function isValidNumber(val) {
+  return isNumber(val) && !isNaN(val);
+}
+
+// Similar to isFinite() but does not coerce strings or other types
+export function isFiniteNumber(val) {
+  return isValidNumber(val) && val !== Infinity && val !== -Infinity;
+}
+
+// This uses type conversion
+// export function isFiniteNumber(val) {
+//   return val > -Infinity && val < Infinity;
+// }
+
+export function isNonNegNumber(val) {
+  return isNumber(val) && val >= 0;
 }
 
 export function isInteger(obj) {
@@ -862,15 +879,6 @@ export function findStringPrefix(a, b) {
     if (a[i] !== b[i]) break;
   }
   return a.substr(0, i);
-}
-
-// Similar to isFinite() but does not convert strings or other types
-export function isFiniteNumber(val) {
-  return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
-}
-
-export function isNonNegNumber(val) {
-  return val === 0 || val > 0 && val.constructor == Number;
 }
 
 export function parsePercent(o) {

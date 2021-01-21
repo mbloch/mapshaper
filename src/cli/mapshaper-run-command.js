@@ -17,6 +17,7 @@ import cmd from '../mapshaper-cmd';
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-buffer';
 import '../commands/mapshaper-calc';
+import '../commands/mapshaper-classify';
 import '../commands/mapshaper-clean';
 import '../commands/mapshaper-clip-erase';
 import '../commands/mapshaper-cluster';
@@ -160,6 +161,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'calc') {
       applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
+
+    } else if (name == 'classify') {
+      applyCommandToEachLayer(cmd.classify, targetLayers, opts);
 
     } else if (name == 'clean') {
       cmd.cleanLayers(targetLayers, targetDataset, opts);

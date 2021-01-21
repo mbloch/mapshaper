@@ -119,6 +119,12 @@ export function getUniqFieldNames(fields, maxLen, encoding) {
   });
 }
 
+export function getFieldValues(records, field) {
+  return records.map(function(rec) {
+    return rec ? rec[field] : undefined;
+  });
+}
+
 export function getUniqFieldValues(records, field) {
   var index = {};
   var values = [];

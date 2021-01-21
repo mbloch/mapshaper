@@ -397,6 +397,65 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('classify')
+    .describe('apply sequential or categorical classification to a data field')
+    .option('field', {
+      DEFAULT: true
+    })
+    .option('save-as', {
+        describe: 'name of output field'
+    })
+    .option('values', {
+      describe: 'list of values to assign to classes',
+      type: 'strings'
+    })
+    .option('colors', {
+      describe: 'list of CSS colors (alternative to values=, can interpolate)',
+      type: 'colors'
+    })
+    .option('color-scheme', {
+      describe: 'name of a predefined color scheme (see -colors command)'
+    })
+    .option('null-value', {
+      describe: 'value (or color) to use for invalid or missing data'
+    })
+    .option('quantile', {
+      describe: 'use quantile classification',
+      type: 'flag'
+    })
+    .option('equal-interval', {
+      describe: 'use equal interval classification',
+      type: 'flag'
+    })
+    .option('breaks', {
+      describe: 'user-defined class breaks',
+      type: 'numbers'
+    })
+    .option('classes', {
+      describe: 'number of classes (can be inferred from other options)',
+      type: 'integer'
+    })
+    .option('invert', {
+      describe: 'reverse the order of colors/values',
+      type: 'flag'
+    })
+    .option('continuous', {
+      describe: 'output continuous interpolated values (experimental)',
+      type: 'flag'
+    })
+    .option('precision', {
+      describe: 'round data values before classification (e.g. 0.1)',
+      type: 'number'
+    })
+    .option('categories', {
+      describe: 'list of data values for categorical color scheme',
+      type: 'strings'
+    })
+    .option('other', {
+      describe: 'default value for categorical scheme (defaults to null-value)'
+    })
+    .option('target', targetOpt);
+
   parser.command('clean')
     .describe('fixes geometry issues, such as polygon overlaps and gaps')
 
@@ -1505,6 +1564,9 @@ export function getOptionParser() {
     })
     .option('where', whereOpt)
     .option('target', targetOpt);
+
+  parser.command('colors')
+    .describe('print list of color scheme names');
 
   parser.command('encodings')
     .describe('print list of supported text encodings (for .dbf import)');
