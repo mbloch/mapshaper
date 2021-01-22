@@ -17715,6 +17715,7 @@
     parser.command('classify')
       .describe('apply sequential or categorical classification to a data field')
       .option('field', {
+        describe: 'name of field to classify',
         DEFAULT: true
       })
       .option('save-as', {
@@ -17743,7 +17744,7 @@
         type: 'flag'
       })
       .option('breaks', {
-        describe: 'user-defined class breaks',
+        describe: 'user-defined sequential class breaks',
         type: 'numbers'
       })
       .option('classes', {
@@ -22801,45 +22802,6 @@
     return categorical.concat(sequential).concat(rainbow).concat(diverging).includes(name);
   }
 
-  // Make an interpolated color ramp (when number of colors is less than the
-  // number of classes).
-  function fillOutRamp(colors, classes) {
-    var numPairs = colors.length - 1;
-    var breaksPerPair = (classes - colors.length) / numPairs;
-    if (!utils.isInteger(breaksPerPair)) {
-      // TODO: handle this without erroring
-      stop('Number of classes does not evenly match number of colors');
-    }
-    var colorPairs = getColorPairs(colors);
-    var ramp = colorPairs.reduce(function(memo, pair, i) {
-      if (i === 0) {
-        memo.push(pair[0]);
-      }
-      memo = memo.concat(findIntermediateColors(pair[0], pair[1], breaksPerPair));
-      memo.push(pair[1]);
-      return memo;
-    }, []);
-    return ramp;
-  }
-
-  function getColorPairs(colors) {
-    var pairs = [];
-    for (var i=1; i<colors.length; i++) {
-      pairs.push([colors[i-1], colors[i]]);
-    }
-    return pairs;
-  }
-
-  function findIntermediateColors(a, b, n) {
-    var d3 = require('d3-interpolate');
-    var interpolate = d3.interpolate(a, b);
-    var colors = [];
-    for (var i=0; i<n; i++) {
-      colors.push(interpolate((i + 1) / (n + 1)));
-    }
-    return colors;
-  }
-
   function getColorRamp(name, n) {
     var lib = require('d3-scale-chromatic');
     var ramps = lib['scheme' + name];
@@ -22916,6 +22878,26 @@
       }
       error('Range error');
     };
+  }
+
+  // return an array of n values
+  // assumes that values can be interpolated by d3-interpolate
+  // (colors and numbers should work)
+  function interpolateValuesToClasses(values, n) {
+    if (values.length == n) return values;
+    var d3 = require('d3-interpolate');
+    var numPairs = values.length - 1;
+    var output = [values[0]];
+    var k, j, t, intVal;
+    for (var i=1; i<n-1; i++) {
+      k = i / (n-1) * numPairs;
+      j = Math.floor(k);
+      t = k - j;
+      intVal = d3.interpolate(values[j], values[j+1])(t);
+      output.push(intVal);
+    }
+    output.push(values[values.length - 1]);
+    return output;
   }
 
   function getSequentialClassifier(breaks, values, nullVal, round) {
@@ -23014,8 +22996,8 @@
     var classValues, classify;
 
     if (opts.breaks) {
-      // TODO: check for invalid combinations of breaks= and classes=
-      classes = opts.breaks + 1;
+      // TODO: check for invalid combinations of breaks= and classes= options
+      classes = opts.breaks.length + 1;
     }
 
     if (colorScheme) {
@@ -23025,6 +23007,7 @@
       }
       if (opts.categories) {
         classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
+        message('Colors:', formatValuesForLogging(classValues));
         classes = classValues.length;
       } else if (classes > 0 === false) {
         stop('color-scheme= option requires classes= or breaks=');
@@ -23032,32 +23015,30 @@
         classValues = getColorRamp(colorScheme, classes);
       }
       nullValue = nullColor;
-      printColors(classValues);
 
     } else if (opts.colors) {
-      // using a list of colors: interpolate more colors if needed
-      if (classes && classes > opts.colors.length) {
-        // interpolate colors if number of classes is given and doesn't match
-        // the number of colors
-        classValues = fillOutRamp(opts.colors, classes);
-      } else {
-        classValues = opts.colors;
-      }
+      classValues = opts.colors;
       nullValue = nullColor;
 
     } else if (opts.values) {
-      // assigning values for each class
       classValues = parseValues(opts.values);
 
     } else if (classes > 1) {
-      // assigning indexes for each class
-      classValues = getIndexValues(opts.classes);
+      // no values were given: assign indexes for each class
+      classValues = getIndexValues(classes);
       nullValue = -1;
     }
 
     if (!classValues || classValues.length > 0 === false) {
       stop('Missing a valid number of classes');
     }
+
+    if (classes > 1 && classValues.length != classes) {
+      // TODO: check for non-interpolatable value types (e.g. boolean, text)
+      classValues = interpolateValuesToClasses(classValues, classes);
+      message('Interpolated values:', formatValuesForLogging(classValues));
+    }
+
 
     if (opts.invert) {
       // utils.genericSort(breaks, false);
@@ -23127,10 +23108,16 @@
     return values;
   }
 
-  function printColors(colors) {
+  function formatValuesForLogging(arr) {
+    if (arr.some(val => utils.isString(val) && val.indexOf('rgb(') === 0)) {
+      return formatColorsAsHex(arr);
+    }
+    return arr;
+  }
+
+  function formatColorsAsHex(colors) {
     var d3 = require('d3-color');
-    var arr = colors.map(function(col) { return d3.color(col).formatHex(); });
-    message('Colors:', arr);
+    return colors.map(function(col) { return d3.color(col).formatHex(); });
   }
 
   function printDistributionInfo(breaks, values) {
