@@ -57,45 +57,6 @@ export function isColorSchemeName(name) {
   return categorical.concat(sequential).concat(rainbow).concat(diverging).includes(name);
 }
 
-// Make an interpolated color ramp (when number of colors is less than the
-// number of classes).
-export function fillOutRamp(colors, classes) {
-  var numPairs = colors.length - 1;
-  var breaksPerPair = (classes - colors.length) / numPairs;
-  if (!utils.isInteger(breaksPerPair)) {
-    // TODO: handle this without erroring
-    stop('Number of classes does not evenly match number of colors');
-  }
-  var colorPairs = getColorPairs(colors);
-  var ramp = colorPairs.reduce(function(memo, pair, i) {
-    if (i === 0) {
-      memo.push(pair[0]);
-    }
-    memo = memo.concat(findIntermediateColors(pair[0], pair[1], breaksPerPair));
-    memo.push(pair[1]);
-    return memo;
-  }, []);
-  return ramp;
-}
-
-function getColorPairs(colors) {
-  var pairs = [];
-  for (var i=1; i<colors.length; i++) {
-    pairs.push([colors[i-1], colors[i]]);
-  }
-  return pairs;
-}
-
-function findIntermediateColors(a, b, n) {
-  var d3 = require('d3-interpolate');
-  var interpolate = d3.interpolate(a, b);
-  var colors = [];
-  for (var i=0; i<n; i++) {
-    colors.push(interpolate((i + 1) / (n + 1)));
-  }
-  return colors;
-}
-
 export function getColorRamp(name, n) {
   var lib = require('d3-scale-chromatic');
   var ramps = lib['scheme' + name];

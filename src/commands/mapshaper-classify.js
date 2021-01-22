@@ -3,8 +3,8 @@ import utils from '../utils/mapshaper-utils';
 import { requireDataField } from '../dataset/mapshaper-layer-utils';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
-import { isColorSchemeName, getColorRamp, fillOutRamp, getCategoricalColorScheme } from '../color/color-schemes';
-import { getSequentialClassifier, getContinuousClassifier, getCategoricalClassifier, getQuantileBreaks, getEqualIntervalBreaks, getClassId, getDataRange } from '../classification/mapshaper-classification';
+import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
+import { getSequentialClassifier, getContinuousClassifier, getCategoricalClassifier, getQuantileBreaks, getEqualIntervalBreaks, getClassId, getDataRange, interpolateValuesToClasses } from '../classification/mapshaper-classification';
 import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
@@ -20,8 +20,8 @@ cmd.classify = function(lyr, optsArg) {
   var classValues, classify;
 
   if (opts.breaks) {
-    // TODO: check for invalid combinations of breaks= and classes=
-    classes = opts.breaks + 1;
+    // TODO: check for invalid combinations of breaks= and classes= options
+    classes = opts.breaks.length + 1;
   }
 
   if (colorScheme) {
@@ -31,6 +31,7 @@ cmd.classify = function(lyr, optsArg) {
     }
     if (opts.categories) {
       classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
+      message('Colors:', formatValuesForLogging(classValues));
       classes = classValues.length;
     } else if (classes > 0 === false) {
       stop('color-scheme= option requires classes= or breaks=');
@@ -38,32 +39,30 @@ cmd.classify = function(lyr, optsArg) {
       classValues = getColorRamp(colorScheme, classes);
     }
     nullValue = nullColor;
-    printColors(classValues);
 
   } else if (opts.colors) {
-    // using a list of colors: interpolate more colors if needed
-    if (classes && classes > opts.colors.length) {
-      // interpolate colors if number of classes is given and doesn't match
-      // the number of colors
-      classValues = fillOutRamp(opts.colors, classes);
-    } else {
-      classValues = opts.colors;
-    }
+    classValues = opts.colors;
     nullValue = nullColor;
 
   } else if (opts.values) {
-    // assigning values for each class
     classValues = parseValues(opts.values);
 
   } else if (classes > 1) {
-    // assigning indexes for each class
-    classValues = getIndexValues(opts.classes);
+    // no values were given: assign indexes for each class
+    classValues = getIndexValues(classes);
     nullValue = -1;
   }
 
   if (!classValues || classValues.length > 0 === false) {
     stop('Missing a valid number of classes');
   }
+
+  if (classes > 1 && classValues.length != classes) {
+    // TODO: check for non-interpolatable value types (e.g. boolean, text)
+    classValues = interpolateValuesToClasses(classValues, classes);
+    message('Interpolated values:', formatValuesForLogging(classValues));
+  }
+
 
   if (opts.invert) {
     // utils.genericSort(breaks, false);
@@ -133,10 +132,16 @@ function parseValues(strings) {
   return values;
 }
 
-function printColors(colors) {
+function formatValuesForLogging(arr) {
+  if (arr.some(val => utils.isString(val) && val.indexOf('rgb(') === 0)) {
+    return formatColorsAsHex(arr);
+  }
+  return arr;
+}
+
+function formatColorsAsHex(colors) {
   var d3 = require('d3-color');
-  var arr = colors.map(function(col) { return d3.color(col).formatHex(); });
-  message('Colors:', arr);
+  return colors.map(function(col) { return d3.color(col).formatHex(); });
 }
 
 function printDistributionInfo(breaks, values) {

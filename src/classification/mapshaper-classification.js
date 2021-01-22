@@ -50,6 +50,26 @@ export function getContinuousClassifier(breaks, range, values, nullVal) {
   };
 }
 
+// return an array of n values
+// assumes that values can be interpolated by d3-interpolate
+// (colors and numbers should work)
+export function interpolateValuesToClasses(values, n) {
+  if (values.length == n) return values;
+  var d3 = require('d3-interpolate');
+  var numPairs = values.length - 1;
+  var output = [values[0]];
+  var k, j, t, intVal;
+  for (var i=1; i<n-1; i++) {
+    k = i / (n-1) * numPairs;
+    j = Math.floor(k);
+    t = k - j;
+    intVal = d3.interpolate(values[j], values[j+1])(t);
+    output.push(intVal);
+  }
+  output.push(values[values.length - 1]);
+  return output;
+}
+
 export function getSequentialClassifier(breaks, values, nullVal, round) {
   if (values.length != breaks.length + 1) {
     stop("Number of values should be one more than number of class breaks");

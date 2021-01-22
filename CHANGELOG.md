@@ -1,3 +1,6 @@
+v0.5.30
+* Improved support in -classify for interpolation, including interpolation of numbers as well as colors.
+
 v0.5.29
 * Added -classify command, with support for classifying data values using sequential (quantile and equal-area) and categorical methods. Built-in support for named color schemes from d3.
 * Added -colors command, which prints the names of built-in d3 color schemes.
