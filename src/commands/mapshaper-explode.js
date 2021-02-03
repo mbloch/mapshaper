@@ -1,9 +1,11 @@
 import { reversePath } from '../paths/mapshaper-path-utils';
+import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { groupPolygonRings } from '../polygons/mapshaper-ring-nesting';
 import { getPathMetadata } from '../paths/mapshaper-path-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
+import { message } from '../utils/mapshaper-logging';
 
 cmd.explodeFeatures = function(lyr, arcs, opts) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
@@ -38,8 +40,20 @@ cmd.explodeFeatures = function(lyr, arcs, opts) {
   if (explodedProperties !== null) {
     explodedLyr.data = new DataTable(explodedProperties);
   }
+
+  printMessage(lyr, explodedLyr);
+
   return explodedLyr;
 };
+
+function printMessage(pre, post) {
+var n1 = getFeatureCount(pre),
+    n2 = getFeatureCount(post),
+    msg = utils.format('Exploded %,d feature%s into %,d feature%s',
+      n1, utils.pluralSuffix(n1), n2,
+      utils.pluralSuffix(n2));
+  message(msg);
+}
 
 function explodeShape(shp) {
   return shp.map(function(part) {
