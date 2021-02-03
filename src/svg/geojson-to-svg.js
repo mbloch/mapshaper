@@ -106,8 +106,13 @@ export function importStyledLabel(rec, p) {
   return o;
 }
 
+function toLabelString(val) {
+  if (val || val === 0 || val === false) return String(val);
+  return '';
+}
+
 export function importLabel(rec, p) {
-  var line = rec['label-text'] || '';
+  var line = toLabelString(rec['label-text']);
   var morelines, obj;
   // Accepting \n (two chars) as an alternative to the newline character
   // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)

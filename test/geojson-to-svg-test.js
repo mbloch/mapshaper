@@ -336,6 +336,18 @@ describe('geojson-to-svg.js', function () {
       }
       assert.deepEqual(obj, target);
     })
+
+    it('(bugfix) converts numeric 0 to string', function () {
+      var str = 'line one\nline two\\nline three<br>line four';
+      var obj = SVG.importLabel({'label-text': 0}, [1, 2])
+      var target = {
+        tag: 'text',
+        value: '0',
+        properties: {transform: 'translate(1 2)', x: 0, y: 0}
+      }
+      assert.deepEqual(obj, target);
+    })
+
   })
 
 })
