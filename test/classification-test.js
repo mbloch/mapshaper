@@ -1,11 +1,39 @@
 import {
   getSequentialClassifier,
-  interpolateValuesToClasses
+  interpolateValuesToClasses,
+  getContinuousClassifier,
+  getQuantileBreaks,
+  getDistributionData
 } from '../src/classification/mapshaper-classification';
 var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-classification.js', function () {
+
+  describe('getQuantileBreaks()', function () {
+    it('creates equal-sized classes (when possible)', function () {
+      var values = (Array(125)).fill(null).map(Math.random);
+      var breaks = getQuantileBreaks(values, 4);
+      var dist = getDistributionData(breaks, values);
+      assert.deepEqual(dist.concat(), [25,25,25,25,25]);
+      assert.strictEqual(dist.nulls, 0);
+    })
+  })
+
+  describe('getContinuousClassifier()', function () {
+    it('uses piecewise linear interpolation', function () {
+      var f = getContinuousClassifier([1, 2, 4], [0, 8], [5, 6, 7, 8, 9], null);
+      assert.equal(f(1), 6);
+      assert.equal(f(0), 5);
+      assert.equal(f(8), 9);
+      assert.strictEqual(f(9), null);
+      assert.strictEqual(f(undefined), null);
+      assert.equal(f(3), 7.5)
+      assert.equal(f(6), 8.5)
+      assert.equal(f(0.5), 5.5)
+    })
+  })
+
   describe('interpolateValuesToClasses', function () {
     it('no interpolation if none needed', function () {
       var out = interpolateValuesToClasses([0, 1, 2], 3);

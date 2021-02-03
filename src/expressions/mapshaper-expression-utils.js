@@ -9,9 +9,29 @@ export function addUtils(env) {
       while(dig-- > 0) k *= 10;
       return Math.round(val * k) / k;
     },
+    int_median: interpolated_median,
     sprintf: utils.format,
     blend: blend
   });
+}
+
+// piecewise linear interpolation (for a special project)
+export function interpolated_median(counts, breaks) {
+  if (!counts || !breaks || counts.length != breaks.length - 1) return null;
+  var total = utils.sum(counts);
+  var medianIdx = Math.floor(total / 2);
+  var lowerCount = 0, upperCount, lowerValue, upperValue, t;
+  for (var i=1; i<breaks.length; i++) {
+    lowerValue = breaks[i-1];
+    upperValue = breaks[i];
+    upperCount = lowerCount + counts[i-1];
+    if (medianIdx <= upperCount) {
+      t = (medianIdx - lowerCount) / (upperCount - lowerCount);
+      return lowerValue + t * (upperValue - lowerValue);
+    }
+    lowerCount = upperCount;
+  }
+  return null;
 }
 
 export function addGetters(obj, getters) {

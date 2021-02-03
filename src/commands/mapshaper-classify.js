@@ -4,7 +4,7 @@ import { requireDataField } from '../dataset/mapshaper-layer-utils';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
 import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
-import { getSequentialClassifier, getContinuousClassifier, getCategoricalClassifier, getQuantileBreaks, getEqualIntervalBreaks, getClassId, getDataRange, interpolateValuesToClasses } from '../classification/mapshaper-classification';
+import { getSequentialClassifier, getContinuousClassifier, getCategoricalClassifier, getQuantileBreaks, getEqualIntervalBreaks, getClassId, getDataRange, interpolateValuesToClasses, getDistributionData } from '../classification/mapshaper-classification';
 import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
@@ -152,20 +152,6 @@ function printDistributionInfo(breaks, values) {
   }
 }
 
-function getDistributionData(breaks, values) {
-  var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
-  var nulls = 0;
-  values.forEach(function(val) {
-    var i = getClassId(val, breaks);
-    if (i == -1) {
-      nulls++;
-    } else {
-      arr[i]++;
-    }
-  });
-  arr.nulls = nulls;
-  return arr;
-}
 
 function getIndexValues(n) {
   var vals = [];

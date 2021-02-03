@@ -40,6 +40,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
   var ctx1 = { // context for first phase (capturing values for each feature)
         count: assign,
         sum: captureNum,
+        sums: capture,
         average: captureNum,
         median: captureNum,
         min: captureNum,
@@ -52,6 +53,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
       ctx2 = { // context for second phase (calculating results)
         count: wrap(function() {return rowNo;}, 0),
         sum: wrap(utils.sum, 0),
+        sums: wrap(sums),
         median: wrap(utils.findMedian),
         min: wrap(min),
         max: wrap(max),
@@ -96,6 +98,18 @@ export function compileCalcExpression(lyr, arcs, exp) {
 
   function max(arr) {
     return utils.getArrayBounds(arr).max;
+  }
+
+  function sums(arr) {
+    var n = arr && arr.length ? arr[0].length : 0;
+    var output = utils.initializeArray(Array(n), 0);
+    arr.forEach(function(arr) {
+      if (!arr || !arr.length) return;
+      for (var i=0; i<n; i++) {
+        output[i] += +arr[i] || 0;
+      }
+    });
+    return output;
   }
 
   function min(arr) {
