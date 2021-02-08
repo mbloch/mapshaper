@@ -17,15 +17,14 @@ export function RepairControl(gui) {
 
   model.on('update', function(e) {
     var flags = e.flags;
-    var needUpdate = flags.simplify || flags.proj || flags.arc_count || flags.snap ||
-        flags.affine || flags.points || flags['merge-layers'] || flags.select;
-    if (needUpdate) {
-      if (flags.select) {
-        // preserve cached intersections
-      } else {
-        // delete any cached intersection data
-        e.dataset.info.intersections = null;
-      }
+    var intersectionsMayHaveChanged = flags.simplify || flags.proj ||
+        flags.arc_count || flags.snap || flags.affine || flags.points || flags['merge-layers'];
+    if (intersectionsMayHaveChanged) {
+      // delete any cached intersection data, to trigger re-calculation
+      e.dataset.info.intersections = null;
+      updateAsync();
+    } else if (flags.select) {
+      // new active layer, but no editing commands were run -- use cached intersections (if available)
       updateAsync();
     }
   });

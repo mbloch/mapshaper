@@ -432,6 +432,8 @@ export function Console(gui) {
         flags.same_table = true;
       }
       if (active.layer != active2.layer) {
+        // this can get set after some commands that don't set a new target
+        // (e.g. -dissolve)
         flags.select = true;
       }
       // signal the map to update even if an error has occured, because the

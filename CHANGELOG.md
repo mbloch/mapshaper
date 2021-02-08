@@ -1,3 +1,6 @@
+v0.5.32
+* Bug fixes
+
 v0.5.31
 * Now, -clean command can merge contiguous parts of polyline features, for example, sections of roadway in which each (sub-feature) part is a simple line segment.
 * Added `int_median()` function to the expression context, for calculating medians using piecewise linear interpolation (e.g. median income from range data).
