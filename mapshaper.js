@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.28";
+  var VERSION = "0.5.30";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9508,9 +9508,29 @@
         while(dig-- > 0) k *= 10;
         return Math.round(val * k) / k;
       },
+      int_median: interpolated_median,
       sprintf: utils.format,
       blend: blend
     });
+  }
+
+  // piecewise linear interpolation (for a special project)
+  function interpolated_median(counts, breaks) {
+    if (!counts || !breaks || counts.length != breaks.length - 1) return null;
+    var total = utils.sum(counts);
+    var medianIdx = Math.floor(total / 2);
+    var lowerCount = 0, upperCount, lowerValue, upperValue, t;
+    for (var i=1; i<breaks.length; i++) {
+      lowerValue = breaks[i-1];
+      upperValue = breaks[i];
+      upperCount = lowerCount + counts[i-1];
+      if (medianIdx <= upperCount) {
+        t = (medianIdx - lowerCount) / (upperCount - lowerCount);
+        return lowerValue + t * (upperValue - lowerValue);
+      }
+      lowerCount = upperCount;
+    }
+    return null;
   }
 
   function addGetters(obj, getters) {
@@ -14667,8 +14687,13 @@
     return o;
   }
 
+  function toLabelString(val) {
+    if (val || val === 0 || val === false) return String(val);
+    return '';
+  }
+
   function importLabel(rec, p) {
-    var line = rec['label-text'] || '';
+    var line = toLabelString(rec['label-text']);
     var morelines, obj;
     // Accepting \n (two chars) as an alternative to the newline character
     // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
@@ -15936,8 +15961,20 @@
     if (explodedProperties !== null) {
       explodedLyr.data = new DataTable(explodedProperties);
     }
+
+    printMessage(lyr, explodedLyr);
+
     return explodedLyr;
   };
+
+  function printMessage(pre, post) {
+  var n1 = getFeatureCount(pre),
+      n2 = getFeatureCount(post),
+      msg = utils.format('Exploded %,d feature%s into %,d feature%s',
+        n1, utils.pluralSuffix(n1), n2,
+        utils.pluralSuffix(n2));
+    message(msg);
+  }
 
   function explodeShape(shp) {
     return shp.map(function(part) {
@@ -19807,6 +19844,7 @@
     var ctx1 = { // context for first phase (capturing values for each feature)
           count: assign,
           sum: captureNum,
+          sums: capture,
           average: captureNum,
           median: captureNum,
           min: captureNum,
@@ -19819,6 +19857,7 @@
         ctx2 = { // context for second phase (calculating results)
           count: wrap(function() {return rowNo;}, 0),
           sum: wrap(utils.sum, 0),
+          sums: wrap(sums),
           median: wrap(utils.findMedian),
           min: wrap(min),
           max: wrap(max),
@@ -19863,6 +19902,18 @@
 
     function max(arr) {
       return utils.getArrayBounds(arr).max;
+    }
+
+    function sums(arr) {
+      var n = arr && arr.length ? arr[0].length : 0;
+      var output = utils.initializeArray(Array(n), 0);
+      arr.forEach(function(arr) {
+        if (!arr || !arr.length) return;
+        for (var i=0; i<n; i++) {
+          output[i] += +arr[i] || 0;
+        }
+      });
+      return output;
     }
 
     function min(arr) {
@@ -21461,18 +21512,44 @@
 
   // Map positive or negative integer ids to non-negative integer ids
 
-  function IdLookupIndex(n) {
+  function IdLookupIndex(n, clearable) {
     var fwdIndex = new Int32Array(n);
     var revIndex = new Int32Array(n);
+    var setList = [];
     utils.initializeArray(fwdIndex, -1);
     utils.initializeArray(revIndex, -1);
 
     this.setId = function(id, val) {
+      if (clearable && !this.hasId(id)) {
+        setList.push(id);
+      }
       if (id < 0) {
         revIndex[~id] = val;
       } else {
         fwdIndex[id] = val;
       }
+    };
+
+    this.clear = function() {
+      if (!clearable) {
+        error('Index is not clearable');
+      }
+      setList.forEach(function(id) {
+        this.setId(id, -1);
+      }, this);
+      setList = [];
+    };
+
+    this.clearId = function(id) {
+      if (!this.hasId) {
+        error('Tried to clear an unset id');
+      }
+      this.setId(id, -1);
+    };
+
+    this.hasId = function(id) {
+      var val = this.getId(id);
+      return val > -1;
     };
 
     this.getId = function(id) {
@@ -22951,6 +23028,21 @@
     return breaks;
   }
 
+  function getDistributionData(breaks, values) {
+    var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
+    var nulls = 0;
+    values.forEach(function(val) {
+      var i = getClassId(val, breaks);
+      if (i == -1) {
+        nulls++;
+      } else {
+        arr[i]++;
+      }
+    });
+    arr.nulls = nulls;
+    return arr;
+  }
+
   function getAscendingNumbers(values) {
     var numbers = values.filter(utils.isFiniteNumber);
     utils.genericSort(numbers, true);
@@ -23009,9 +23101,11 @@
         classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
         message('Colors:', formatValuesForLogging(classValues));
         classes = classValues.length;
-      } else if (classes > 0 === false) {
-        stop('color-scheme= option requires classes= or breaks=');
       } else {
+        if (classes > 0 === false) {
+          // stop('color-scheme= option requires classes= or breaks=');
+          classes = 4; // use a default number of classes
+        }
         classValues = getColorRamp(colorScheme, classes);
       }
       nullValue = nullColor;
@@ -23128,20 +23222,6 @@
     }
   }
 
-  function getDistributionData(breaks, values) {
-    var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
-    var nulls = 0;
-    values.forEach(function(val) {
-      var i = getClassId(val, breaks);
-      if (i == -1) {
-        nulls++;
-      } else {
-        arr[i]++;
-      }
-    });
-    arr.nulls = nulls;
-    return arr;
-  }
 
   function getIndexValues(n) {
     var vals = [];
@@ -23149,6 +23229,140 @@
       vals.push(i);
     }
     return vals;
+  }
+
+  // Assumes intersection cuts have been added and duplicated points removed
+  // TODO: consider closing undershoots (see mapshaper-undershoots.js)
+  function cleanPolylineLayerGeometry(lyr, dataset, opts) {
+    var arcs = dataset.arcs;
+    var filter = getArcPresenceTest(lyr.shapes, arcs);
+    var nodes = new NodeCollection(arcs, filter);
+    var endpointIndex = new IdLookupIndex(arcs.size(), true);
+    lyr.shapes = lyr.shapes.map(function(shp, i) {
+      if (!shp) return null;
+      shp = divideShapeAtNodes(shp, nodes);
+      // try to combine parts that form a contiguous line
+      // (some datasets may use a separate part for each segment)
+      return combineContiguousParts(shp, nodes, endpointIndex);
+    });
+  }
+
+  function divideShapeAtNodes(shp, nodes) {
+    var shape = [];
+    forEachShapePart(shp, onPart);
+    return shape;
+
+    function onPart(ids) {
+      var n = ids.length;
+      var id, connected;
+      var ids2 = [];
+      for (var i=0; i<n; i++) {
+        // check each segment of the current part (equivalent to a LineString)
+        id = ids[i];
+        ids2.push(id);
+        if (i < n-1 && nodes.getConnectedArcs(id).length > 1) {
+          // divide the current part if the front endpoint of the current segment
+          // touches any other segment than the next segment in this part
+          // TODO: consider not dividing if the intersection does not involve
+          // the current feature (ie. it is not a self-intersection).
+          // console.log('connections:', nodes.getConnectedArcs(id))
+          shape.push(ids2);
+          ids2 = [];
+        }
+      }
+      if (ids2.length > 0) shape.push(ids2);
+    }
+  }
+
+  function combineContiguousParts(parts, nodes, endpointIndex) {
+    if (parts.length < 2) return parts;
+
+    // Index the terminal arcs of this group of polyline parts
+    parts.forEach(function(ids, i) {
+      var tailId = ~ids[0]; // index the reversed arc (so it points outwards)
+      var headId = ids[ids.length - 1];
+      endpointIndex.setId(tailId, i);
+      endpointIndex.setId(headId, i);
+    });
+
+    // combine parts that can be merged without changing feature topology
+    parts.forEach(function(ids, i) {
+      var tailId = ~ids[0];
+      var headId = ids[ids.length - 1];
+      procEndpoint(tailId, i);
+      procEndpoint(headId, i);
+    });
+
+    endpointIndex.clear(); // clear the index so it can be re-used
+    return parts.filter(function(ids) { return !!ids; });
+
+    function procEndpoint(endpointId, sourcePartId) {
+      var joins = 0;
+      var endpointId2, partId2;
+      var indexedPartId = endpointIndex.getId(endpointId);
+      nodes.forEachConnectedArc(endpointId, function(arcId) {
+        if (!endpointIndex.hasId(arcId)) return;
+        partId2 = endpointIndex.getId(arcId);
+        endpointId2 = arcId;
+        joins++;
+      });
+      if (joins == 1 && sourcePartId > partId2) {
+        extendPolylinePart(parts, partId2, endpointId2, indexedPartId, endpointId);
+        // update indexed part id of joining endpoint
+        endpointIndex.setId(endpointId, partId2);
+        // update indexed part id of other endpoint
+        var ids = parts[indexedPartId];
+        var otherEndpointId = getOtherEndpointId(ids, endpointId);
+        endpointIndex.setId(otherEndpointId, partId2);
+        parts[indexedPartId] = null;
+      }
+    }
+  }
+
+  function getOtherEndpointId(ids, endpointId) {
+    var headId = ~ids[0];
+    var tailId = ids[ids.length-1];
+    if (endpointId == headId) return tailId;
+    else if (endpointId == tailId) return headId;
+    error('Indexing error');
+  }
+
+  function extendPolylinePart(parts, partId1, endpoint1, partId2, endpoint2) {
+    var ids1 = parts[partId1];
+    var ids2 = parts[partId2];
+    var joinToTail, joinFromTail;
+    if (~endpoint1 == ids1[0]) {
+      joinToTail = true;
+    } else if (endpoint1 == ids1[ids1.length-1]) {
+      joinToTail = false;
+    } else {
+      error('Index error');
+    }
+    if (~endpoint2 == ids2[0]) {
+      joinFromTail = true;
+    } else if (endpoint2 == ids2[ids2.length-1]) {
+      joinFromTail = false;
+    } else {
+      error('Index error 2');
+    }
+    if (!joinFromTail) {
+      ids2 = reversePath(ids2.concat());
+    }
+    if (joinToTail) {
+      prependPath(ids1, ids2);
+    } else {
+      appendPath(ids1, ids2);
+    }
+  }
+
+  function prependPath(target, source) {
+    source = reversePath(source.concat());
+    var args = [0, 0].concat(source);
+    target.splice.apply(target, args);
+  }
+
+  function appendPath(target, source) {
+    target.push.apply(target, source);
   }
 
   cmd.cleanLayers = function(layers, dataset, optsArg) {
@@ -23221,41 +23435,6 @@
       if (key in index) return;
       index[key] = true;
       parts.push(p);
-    }
-  }
-
-  // Assumes intersection cuts have been added and duplicated points removed
-  // TODO: consider closing undershoots (see mapshaper-undershoots.js)
-  function cleanPolylineLayerGeometry(lyr, dataset, opts) {
-    var filter = getArcPresenceTest(lyr.shapes, dataset.arcs);
-    var nodes = new NodeCollection(dataset.arcs, filter);
-    var shape;
-    lyr.shapes = lyr.shapes.map(function(shp, i) {
-      if (!shp) return null;
-      shape = [];
-      forEachShapePart(shp, onPart);
-      return shape;
-    });
-
-    function onPart(ids) {
-      var n = ids.length;
-      var id, connected;
-      var ids2 = [];
-      for (var i=0; i<n; i++) {
-        // check each segment of the current part (equivalent to a LineString)
-        id = ids[i];
-        ids2.push(id);
-        if (i < n-1 && nodes.getConnectedArcs(id).length > 1) {
-          // divide the current part if the front endpoint of the current segment
-          // touches any other segment than the next segment in this part
-          // TODO: consider not dividing if the intersection does not involve
-          // the current feature (ie. it is not a self-intersection).
-          // console.log('connections:', nodes.getConnectedArcs(id))
-          shape.push(ids2);
-          ids2 = [];
-        }
-      }
-      if (ids2.length > 0) shape.push(ids2);
     }
   }
 
