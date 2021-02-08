@@ -33,9 +33,11 @@ cmd.classify = function(lyr, optsArg) {
       classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
       message('Colors:', formatValuesForLogging(classValues));
       classes = classValues.length;
-    } else if (classes > 0 === false) {
-      stop('color-scheme= option requires classes= or breaks=');
     } else {
+      if (classes > 0 === false) {
+        // stop('color-scheme= option requires classes= or breaks=');
+        classes = 4; // use a default number of classes
+      }
       classValues = getColorRamp(colorScheme, classes);
     }
     nullValue = nullColor;
