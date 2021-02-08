@@ -23281,14 +23281,13 @@
     parts.forEach(function(ids, i) {
       var tailId = ~ids[0]; // index the reversed arc (so it points outwards)
       var headId = ids[ids.length - 1];
+      // edge case: an endpoint arc is shared by multiple parts
+      // only processing the first of such parts, skipping subsequent parts
+      // (this should be an exceptional case... should probably investigate
+      // why this happens and handle this better)
+      if (endpointIndex.hasId(tailId) || endpointIndex.hasId(headId)) return;
       endpointIndex.setId(tailId, i);
       endpointIndex.setId(headId, i);
-    });
-
-    // combine parts that can be merged without changing feature topology
-    parts.forEach(function(ids, i) {
-      var tailId = ~ids[0];
-      var headId = ids[ids.length - 1];
       procEndpoint(tailId, i);
       procEndpoint(headId, i);
     });
@@ -23298,15 +23297,17 @@
 
     function procEndpoint(endpointId, sourcePartId) {
       var joins = 0;
-      var endpointId2, partId2;
+      var partId2 = -1;
+      var endpointId2;
       var indexedPartId = endpointIndex.getId(endpointId);
       nodes.forEachConnectedArc(endpointId, function(arcId) {
-        if (!endpointIndex.hasId(arcId)) return;
-        partId2 = endpointIndex.getId(arcId);
-        endpointId2 = arcId;
+        if (endpointIndex.hasId(arcId)) {
+          partId2 = endpointIndex.getId(arcId);
+          endpointId2 = arcId;
+        }
         joins++;
       });
-      if (joins == 1 && sourcePartId > partId2) {
+      if (joins == 1 && partId2 > -1 && partId2 < sourcePartId) {
         extendPolylinePart(parts, partId2, endpointId2, indexedPartId, endpointId);
         // update indexed part id of joining endpoint
         endpointIndex.setId(endpointId, partId2);
@@ -23314,7 +23315,9 @@
         var ids = parts[indexedPartId];
         var otherEndpointId = getOtherEndpointId(ids, endpointId);
         endpointIndex.setId(otherEndpointId, partId2);
-        parts[indexedPartId] = null;
+        if (indexedPartId != partId2) {
+          parts[indexedPartId] = null;
+        }
       }
     }
   }
