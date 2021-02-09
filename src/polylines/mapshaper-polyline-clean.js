@@ -11,20 +11,54 @@ export function cleanPolylineLayerGeometry(lyr, dataset, opts) {
   var arcs = dataset.arcs;
   var filter = getArcPresenceTest(lyr.shapes, arcs);
   var nodes = new NodeCollection(arcs, filter);
-  var endpointIndex = new IdLookupIndex(arcs.size(), true);
+  var arcIndex = new IdLookupIndex(arcs.size(), true);
   lyr.shapes = lyr.shapes.map(function(shp, i) {
     if (!shp) return null;
+    // split parts at nodes (where multiple arcs intersect)
     shp = divideShapeAtNodes(shp, nodes);
+
+    // remove multiple references to the same arc within the same part
+    // (this could happen if the path doubles back to form a spike)
+    arcIndex.clear();
+    shp = uniqifyArcs(shp, arcIndex);
+
     // try to combine parts that form a contiguous line
     // (some datasets may use a separate part for each segment)
-    return combineContiguousParts(shp, nodes, endpointIndex);
+    arcIndex.clear();
+    shp = combineContiguousParts(shp, nodes, arcIndex);
+    return shp;
   });
 }
 
+function uniqifyArcs(shp, index) {
+  var shp2 = shp.reduce(function(memo, ids) {
+    addUnusedArcs(memo, ids, index);
+    return memo;
+  }, []);
+  return shp2.length > 0 ? shp2 : null;
+}
+
+function addUnusedArcs(shp, ids, index) {
+  var part = [], arcId;
+  for (var i=0; i<ids.length; i++) {
+    arcId = ids[i];
+    if (!index.hasId(arcId)) {
+      part.push(arcId);
+    } else if (part.length > 0) {
+      shp.push(part);
+      part = [];
+    }
+    index.setId(arcId, i);
+    index.setId(~arcId, i);
+  }
+  if (part.length > 0) shp.push(part);
+}
+
+
 function divideShapeAtNodes(shp, nodes) {
-  var shape = [];
+  var shp2 = [];
   forEachShapePart(shp, onPart);
-  return shape;
+  return shp2;
 
   function onPart(ids) {
     var n = ids.length;
@@ -40,11 +74,11 @@ function divideShapeAtNodes(shp, nodes) {
         // TODO: consider not dividing if the intersection does not involve
         // the current feature (ie. it is not a self-intersection).
         // console.log('connections:', nodes.getConnectedArcs(id))
-        shape.push(ids2);
+        shp2.push(ids2);
         ids2 = [];
       }
     }
-    if (ids2.length > 0) shape.push(ids2);
+    if (ids2.length > 0) shp2.push(ids2);
   }
 }
 
@@ -59,14 +93,15 @@ function combineContiguousParts(parts, nodes, endpointIndex) {
     // only processing the first of such parts, skipping subsequent parts
     // (this should be an exceptional case... should probably investigate
     // why this happens and handle this better)
-    if (endpointIndex.hasId(tailId) || endpointIndex.hasId(headId)) return;
+    if (endpointIndex.hasId(tailId) || endpointIndex.hasId(headId)) {
+      error('Indexing error');
+    }
     endpointIndex.setId(tailId, i);
     endpointIndex.setId(headId, i);
     procEndpoint(tailId, i);
     procEndpoint(headId, i);
   });
 
-  endpointIndex.clear(); // clear the index so it can be re-used
   return parts.filter(function(ids) { return !!ids; });
 
   function procEndpoint(endpointId, sourcePartId) {

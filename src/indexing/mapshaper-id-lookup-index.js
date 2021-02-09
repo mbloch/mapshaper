@@ -5,12 +5,13 @@ import { error } from '../utils/mapshaper-logging';
 export function IdLookupIndex(n, clearable) {
   var fwdIndex = new Int32Array(n);
   var revIndex = new Int32Array(n);
+  var index = this;
   var setList = [];
   utils.initializeArray(fwdIndex, -1);
   utils.initializeArray(revIndex, -1);
 
   this.setId = function(id, val) {
-    if (clearable && !this.hasId(id)) {
+    if (clearable && !index.hasId(id)) {
       setList.push(id);
     }
     if (id < 0) {
@@ -25,20 +26,20 @@ export function IdLookupIndex(n, clearable) {
       error('Index is not clearable');
     }
     setList.forEach(function(id) {
-      this.setId(id, -1);
-    }, this);
+      index.setId(id, -1);
+    });
     setList = [];
   };
 
   this.clearId = function(id) {
-    if (!this.hasId) {
+    if (!index.hasId(id)) {
       error('Tried to clear an unset id');
     }
-    this.setId(id, -1);
+    index.setId(id, -1);
   };
 
   this.hasId = function(id) {
-    var val = this.getId(id);
+    var val = index.getId(id);
     return val > -1;
   };
 

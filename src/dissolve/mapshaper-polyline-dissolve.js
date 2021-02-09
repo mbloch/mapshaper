@@ -2,8 +2,7 @@ import { traversePaths } from '../paths/mapshaper-path-utils';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 
-// Dissolve polyline features, but also organize arcs into as few parts as possible,
-// with the arcs in each part laid out in connected sequence
+// Dissolve polyline features
 export function dissolvePolylineGeometry(lyr, getGroupId, arcs, opts) {
   var groups = getPolylineDissolveGroups(lyr.shapes, getGroupId);
   var dissolve = getPolylineDissolver(arcs);

@@ -20,6 +20,58 @@ function cleanArcs(dataset) {
 
 describe('mapshaper-clean.js', function () {
 
+  describe('clean polylines', function () {
+    it('contiguous parts are combined', function(done) {
+      var data = {
+        type: 'MultiLineString',
+        coordinates: [[[0,0], [1,0]], [[3,0], [2,0]], [[2,0], [1,0]]]
+      };
+      var cmd = '-i data.json -clean -o';
+      api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        var obj = json.geometries[0];
+        assert.equal(obj.type, 'LineString');
+        assert.deepEqual(obj.coordinates, [[0,0], [1,0], [2,0], [3,0]]);
+        done();
+      });
+    })
+
+    it('duplicate arcs are uniqified', function(done) {
+      var data = {
+        type: 'MultiLineString',
+        coordinates: [[[0,0], [1,0]], [[1,0], [1,1]], [[1,1], [1,0]]]
+      };
+      var cmd = '-i data.json -clean -o';
+      api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        var obj = json.geometries[0];
+        assert.deepEqual(obj, {
+          type: 'LineString',
+          coordinates: [[0,0], [1,0], [1,1]]
+        })
+        done();
+      });
+    })
+
+    it('feature is split at node', function (done) {
+      // current behavior retains a doubled-back spike
+      // TODO: remove one of the duplicate segments
+      var data = {
+        type: 'LineString',
+        coordinates: [[0,0], [1,0], [1,1], [1,0], [2,0]]
+      };
+      var cmd = '-i data.json -clean -o';
+      api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+        var json = JSON.parse(out['data.json']);
+        var obj = json.geometries[0];
+        assert.equal(obj.type, 'MultiLineString');
+        assert.equal(obj.coordinates.length, 3);
+        assert.deepEqual(obj.coordinates[0], [[0,0], [1,0]]);
+        done();
+      });
+    })
+  })
+
   describe('Tests based on sample datasets (real-world and made up)', function () {
     it('clean/ex3.json -- all polygons are retained', function (done) {
       var cmd = '-i test/data/features/clean/ex3.json -clean -o clean.json';
