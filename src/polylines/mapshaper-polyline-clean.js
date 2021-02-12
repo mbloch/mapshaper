@@ -19,6 +19,7 @@ export function cleanPolylineLayerGeometry(lyr, dataset, opts) {
 
     // remove multiple references to the same arc within the same part
     // (this could happen if the path doubles back to form a spike)
+    // TODO: remove spikes within a single arc
     arcIndex.clear();
     shp = uniqifyArcs(shp, arcIndex);
 
@@ -73,7 +74,6 @@ function divideShapeAtNodes(shp, nodes) {
         // touches any other segment than the next segment in this part
         // TODO: consider not dividing if the intersection does not involve
         // the current feature (ie. it is not a self-intersection).
-        // console.log('connections:', nodes.getConnectedArcs(id))
         shp2.push(ids2);
         ids2 = [];
       }

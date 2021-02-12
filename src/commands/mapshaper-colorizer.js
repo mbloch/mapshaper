@@ -2,7 +2,7 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { getStateVar } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
-import { getSequentialClassifier, getCategoricalClassifier }
+import { getSequentialClassifier, getCategoricalClassifier, getDiscreteValueGetter }
   from '../classification/mapshaper-classification';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
@@ -35,17 +35,33 @@ export function getColorizerFunction(opts) {
     if (opts.colors.length != opts.breaks.length + 1) {
       stop("Number of colors should be one more than number of class breaks");
     }
-    colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
+    colorFunction = getSequentialColorFunction(opts.breaks, opts.colors, nodataColor, round);
   } else if (opts.categories) {
     if (opts.colors.length != opts.categories.length) {
       stop("Number of colors should be equal to the number of categories");
     }
-    colorFunction = getCategoricalClassifier(opts.categories, opts.colors, opts.other, nodataColor);
+    colorFunction = getCategoricalColorFunction(opts.categories, opts.colors, opts.other, nodataColor);
   } else {
     stop("Missing categories= or breaks= parameter");
   }
 
   return colorFunction;
+}
+
+function getSequentialColorFunction(breaks, colors, nullVal, round) {
+  var classify = getSequentialClassifier(breaks, round);
+  var toColor = getDiscreteValueGetter(colors, nullVal);
+  return function(val) {
+    return toColor(classify(val));
+  };
+}
+
+function getCategoricalColorFunction(categories, colors, otherVal, nullVal) {
+  var classify = getCategoricalClassifier(categories);
+  var toColor = getDiscreteValueGetter(colors, nullVal, otherVal);
+  return function(val) {
+    return toColor(classify(val));
+  };
 }
 
 function fastStringHash(val) {

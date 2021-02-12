@@ -77,7 +77,8 @@ function getInterpolatedRamp(interpolate, n) {
   if (n > 0 === false || !utils.isInteger(n)) {
     error('Expected a positive integer');
   }
-  var margin = 1 / (n + 2);
+  // var margin = 0; // use full range
+  var margin = 1 / (n + 4);
   var interval = (1 - margin * 2) / (n - 1);
   var ramp = [];
   for (var i=0; i<n; i++) {

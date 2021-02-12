@@ -1,3 +1,8 @@
+v0.5.33
+* Add -classify hybrid, which picks evenly spaced internal class breaks and quantiles for the first and last buckets
+* Add -classify nice, which is similar to the "hybrid" classification scheme, but tries to pick round class break values.
+* Bug fixes
+
 v0.5.32
 * Bug fixes
 

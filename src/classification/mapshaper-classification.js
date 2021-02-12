@@ -1,15 +1,49 @@
 import utils from '../utils/mapshaper-utils';
 import { stop, error } from '../utils/mapshaper-logging';
 
-// categories: strings to match in the data
-export function getCategoricalClassifier(categories, values, otherVal, nullVal) {
-  return function(val) {
-    var i = categories.indexOf(val);
-    if (i >= 0) return values[i];
-    if (val) return otherVal;
-    return nullVal;
+// convert an index (0 ... n-1, -1, -2) to a corresponding discreet value
+export function getDiscreteValueGetter(values, nullValue, otherValue) {
+  var n = values.length;
+  return function(i) {
+    if (i >= 0 && i < n) {
+      return values[i];
+    }
+    if (i == -2) {
+      return otherValue === undefined ? nullValue : otherValue;
+    }
+    return nullValue;
   };
 }
+
+// convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
+export function getInterpolatedValueGetter(values, nullValue) {
+  var d3 = require('d3-interpolate');
+  var interpolators = [];
+  var tmax = values.length - 1;
+  for (var i=1; i<values.length; i++) {
+    interpolators.push(d3.interpolate(values[i-1], values[i]));
+  }
+  return function(t) {
+    if (t == -1) return nullValue;
+    if ((t >= 0 && t <= tmax) === false) {
+      error('Range error');
+    }
+    var i = t == tmax ? tmax - 1 : Math.floor(t);
+    var j = t == tmax ? 1 : t % 1;
+    return interpolators[i](j);
+  };
+}
+
+// categories: strings to match in the data
+export function getCategoricalClassifier(categories) {
+  return function(val) {
+    var i = categories.indexOf(val);
+    if (i >= 0) return i;
+    if (val) return -2; // field contains an 'other' value
+    return -1; // field is empty (null value)
+  };
+}
+
 
 export function getDataRange(values) {
   var ascending = getAscendingNumbers(values);
@@ -21,29 +55,23 @@ export function getDataRange(values) {
 
 // uses linear interpolation between breakpoints
 // (perhaps not ideal for long-tail distributions)
-export function getContinuousClassifier(breaks, range, values, nullVal) {
-  var d3 = require('d3-interpolate');
+// breaks: array of (0 or more) inner breakpoints
+// range: [min, max] range of the dataset
+export function getContinuousClassifier(breaks, range) {
   var minVal = range[0];
   var maxVal = range[1];
-  var interpolators = [];
-  for (var i=1; i<values.length; i++) {
-    interpolators.push(d3.interpolate(values[i-1], values[i]));
-  }
-  if (values.length != breaks.length + 2) {
-    stop('Number of values should be two more than the number of breaks');
-  }
   return function(val) {
     var n = breaks.length;
     var min, max, j;
     if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
-      return nullVal;
+      return -1;
     }
     for (var i=0; i<=n; i++) {
       max = i === n ? maxVal : breaks[i];
       if (i === n || val < max) {
         min = i === 0 ? minVal : breaks[i-1];
         j = (val - min) / (max - min);
-        return interpolators[i](j);
+        return i + j;
       }
     }
     error('Range error');
@@ -70,17 +98,18 @@ export function interpolateValuesToClasses(values, n) {
   return output;
 }
 
-export function getSequentialClassifier(breaks, values, nullVal, round) {
-  if (values.length != breaks.length + 1) {
-    stop("Number of values should be one more than number of class breaks");
-  }
+export function getSequentialClassifier(breaks, round) {
+  var inverted = false; // breaks are in descending sequence
+  // if (values.length != breaks.length + 1) {
+  //   stop("Number of values should be one more than number of class breaks");
+  // }
   // validate breaks
   // Accepts repeated values -- should this be allowed?
   if (testAscendingNumbers(breaks)) {
     // normal state
   } else if (testDescendingNumbers(breaks)) {
     breaks = breaks.concat().reverse();
-    values = values.concat().reverse();
+    inverted = true;
   } else {
     stop('Invalid class breaks:', breaks.join(','));
   }
@@ -90,7 +119,10 @@ export function getSequentialClassifier(breaks, values, nullVal, round) {
       if (round) val = val(round);
       i = getClassId(val, breaks);
     }
-    return i > -1 && i < values.length ? values[i] : nullVal;
+    if (inverted && i > -1) {
+      i = breaks.length - i;
+    }
+    return i;
   };
 }
 
@@ -118,6 +150,22 @@ export function getQuantileBreaks(values, numBreaks) {
     j = Math.floor(i * n);
     breaks.push(ascending[j]);
   }
+  return breaks;
+}
+
+// inner breaks have equal-interval spacing
+// first and last bucket are sized like quantiles (they are sized to contain
+// a proportional share of the data)
+export function getHybridBreaks(values, numBreaks) {
+  var quantileBreaks = getQuantileBreaks(values, numBreaks);
+  if (numBreaks < 3) return quantileBreaks;
+  var lowerBreak = quantileBreaks[0];
+  var upperBreak = quantileBreaks[quantileBreaks.length-1];
+  var innerValues = values.filter(function(val) {
+    return val >= lowerBreak && val < upperBreak;
+  });
+  var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
+  var breaks = [lowerBreak].concat(innerBreaks).concat(upperBreak);
   return breaks;
 }
 

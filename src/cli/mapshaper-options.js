@@ -428,6 +428,18 @@ export function getOptionParser() {
       describe: 'use equal interval classification',
       type: 'flag'
     })
+    .option('hybrid', {
+      describe: 'hybrid classification (equal-interval inside, quantile outside)',
+      type: 'flag'
+    })
+    .option('nice', {
+      describe: 'find rounded, equal-interval breaks',
+      type: 'flag'
+    })
+    .option('tidy', {
+      describe: 'tidy classification (round breaks, equally spaced)',
+      type: 'flag'
+    })
     .option('breaks', {
       describe: 'user-defined sequential class breaks',
       type: 'numbers'

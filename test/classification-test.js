@@ -1,6 +1,8 @@
 import {
   getSequentialClassifier,
   interpolateValuesToClasses,
+  getInterpolatedValueGetter,
+  getDiscreteValueGetter,
   getContinuousClassifier,
   getQuantileBreaks,
   getDistributionData
@@ -9,6 +11,10 @@ var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-classification.js', function () {
+
+  describe('getInterpolatedValueGetter()', function () {
+
+  })
 
   describe('getQuantileBreaks()', function () {
     it('creates equal-sized classes (when possible)', function () {
@@ -22,7 +28,9 @@ describe('mapshaper-classification.js', function () {
 
   describe('getContinuousClassifier()', function () {
     it('uses piecewise linear interpolation', function () {
-      var f = getContinuousClassifier([1, 2, 4], [0, 8], [5, 6, 7, 8, 9], null);
+      var classify = getContinuousClassifier([1, 2, 4], [0, 8]);
+      var classToValue = getInterpolatedValueGetter([5, 6, 7, 8, 9], null);
+      var f = function(val) { return classToValue(classify(val)) };
       assert.equal(f(1), 6);
       assert.equal(f(0), 5);
       assert.equal(f(8), 9);
@@ -31,6 +39,16 @@ describe('mapshaper-classification.js', function () {
       assert.equal(f(3), 7.5)
       assert.equal(f(6), 8.5)
       assert.equal(f(0.5), 5.5)
+      assert.equal(f(8), 9)
+    })
+
+    it('handles a single class', function() {
+      var classify = getContinuousClassifier([], [0, 8]);
+      var classToValue = getInterpolatedValueGetter([5,10], null);
+      var f = function(val) { return classToValue(classify(val)) };
+      assert.equal(f(0), 5);
+      assert.equal(f(8), 10);
+      assert.equal(f(4), 7.5);
     })
   })
 
@@ -61,28 +79,27 @@ describe('mapshaper-classification.js', function () {
   })
 
   describe('getSequentialClassifier()', function () {
-    it('non-numeric data should not be coerced to numbers', function () {
-      var f = getSequentialClassifier([10], ['red', 'blue'], null);
-      assert.strictEqual(f(0), 'red');
-      assert.strictEqual(f(null), null);
-      assert.strictEqual(f(), null);
-      assert.strictEqual(f(NaN), null);
-      assert.strictEqual(f([0]), null);
-      assert.strictEqual(f("0"), null);
-      assert.strictEqual(f(""), null);
-      assert.strictEqual(f([]), null);
-      assert.strictEqual(f({}), null);
+    it('non-numeric data is classified as -1', function () {
+      var f = getSequentialClassifier([10]);
+      assert.strictEqual(f(0), 0);
+      assert.strictEqual(f(null), -1);
+      assert.strictEqual(f(), -1);
+      assert.strictEqual(f(NaN), -1);
+      assert.strictEqual(f([0]), -1);
+      assert.strictEqual(f("0"), -1);
+      assert.strictEqual(f(""), -1);
+      assert.strictEqual(f([]), -1);
+      assert.strictEqual(f({}), -1);
     })
 
-    it('all color classes are reachable', function () {
-      var f = getSequentialClassifier([0, 10], ['red', 'white', 'blue']);
-      assert.strictEqual(f(-1), 'red');
-      assert.strictEqual(f(0), 'white');
-      assert.strictEqual(f(5), 'white');
-      assert.strictEqual(f(10), 'blue');
-      assert.strictEqual(f(15), 'blue');
+    it('all classes are reachable', function () {
+      var f = getSequentialClassifier([0, 10]);
+      assert.strictEqual(f(-1), 0);
+      assert.strictEqual(f(0), 1);
+      assert.strictEqual(f(5), 1);
+      assert.strictEqual(f(10), 2);
+      assert.strictEqual(f(15), 2);
     })
   })
-
 
 })

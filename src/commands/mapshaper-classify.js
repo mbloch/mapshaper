@@ -4,7 +4,21 @@ import { requireDataField } from '../dataset/mapshaper-layer-utils';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
 import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
-import { getSequentialClassifier, getContinuousClassifier, getCategoricalClassifier, getQuantileBreaks, getEqualIntervalBreaks, getClassId, getDataRange, interpolateValuesToClasses, getDistributionData } from '../classification/mapshaper-classification';
+import {
+  getSequentialClassifier,
+  getContinuousClassifier,
+  getCategoricalClassifier,
+  getQuantileBreaks,
+  getEqualIntervalBreaks,
+  getHybridBreaks,
+  getClassId,
+  getDataRange,
+  interpolateValuesToClasses,
+  getDistributionData,
+  getDiscreteValueGetter,
+  getInterpolatedValueGetter
+} from '../classification/mapshaper-classification';
+import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
 import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
@@ -16,8 +30,8 @@ cmd.classify = function(lyr, optsArg) {
   var colorScheme = opts.color_scheme || null;
   var classes = opts.classes || null; // number of classes
   var nullValue = opts.null_value || null;
-  var nullColor = nullValue || 'white';
-  var classValues, classify;
+  var looksLikeColors = !!opts.colors || !!opts.color_scheme;
+  var classValues, classify, classToValue, outputField;
 
   if (opts.breaks) {
     // TODO: check for invalid combinations of breaks= and classes= options
@@ -40,11 +54,9 @@ cmd.classify = function(lyr, optsArg) {
       }
       classValues = getColorRamp(colorScheme, classes);
     }
-    nullValue = nullColor;
 
   } else if (opts.colors) {
     classValues = opts.colors;
-    nullValue = nullColor;
 
   } else if (opts.values) {
     classValues = parseValues(opts.values);
@@ -55,42 +67,63 @@ cmd.classify = function(lyr, optsArg) {
     nullValue = -1;
   }
 
-  if (!classValues || classValues.length > 0 === false) {
+  if (looksLikeColors) {
+    nullValue = nullValue || '#eee';
+  }
+
+  if (!classValues || classValues.length > 1 === false) {
     stop('Missing a valid number of classes');
   }
 
   if (classes > 1 && classValues.length != classes) {
     // TODO: check for non-interpolatable value types (e.g. boolean, text)
     classValues = interpolateValuesToClasses(classValues, classes);
-    message('Interpolated values:', formatValuesForLogging(classValues));
   }
 
-
   if (opts.invert) {
-    // utils.genericSort(breaks, false);
-    utils.genericSort(classValues, false);
+    classValues = classValues.concat().reverse();
+  }
+
+  if (looksLikeColors) {
+    message('Colors:', formatValuesForLogging(classValues));
   }
 
   if (opts.categories) {
     // categorical color scheme
-    classify = getCategoricalClassifier(opts.categories, classValues, opts.other, nullValue);
-
+    classify = getCategoricalClassifier(opts.categories);
   } else {
     // sequential color scheme
-    classify = getNumericalClassifier(dataValues, classValues, nullValue, opts);
+    classify = getNumericalClassifier(dataValues, classValues, opts);
   }
 
-  if (opts.save_as) {
-    dataValues.forEach(function(val, i) {
-      var r = records[i] || {};
-      r[opts.save_as] = classify(val);
-    });
+  if (opts.continuous && !opts.categories) {
+    classToValue = getInterpolatedValueGetter(classValues, nullValue);
   } else {
-    message('Use save-as=<field> to save output to a field');
+    classToValue = getDiscreteValueGetter(classValues, nullValue, opts.other);
   }
+
+  if (looksLikeColors && lyr.geometry_type == 'polyline') {
+    outputField = 'stroke';
+  } else if (looksLikeColors) {
+    outputField = 'fill';
+  } else {
+    outputField = 'class';
+  }
+  if (opts.save_as) {
+    outputField = opts.save_as;
+  } else {
+    message(`Output was saved to "${outputField}" field (use save-as= to change)`);
+    // message('Use save-as=<field> to save to a different field');
+  }
+  dataValues.forEach(function(val, i) {
+    var r = records[i] || {};
+    var t = classify(val);
+    r[outputField] = classToValue(t);
+  });
+
 };
 
-function getNumericalClassifier(dataValues, classValues, nullValue, opts) {
+function getNumericalClassifier(dataValues, classValues, opts) {
   // continuously interpolated colors/values use one fewer breakpoint than
   // discreetly classed values
   var numBreaks = opts.continuous ? classValues.length - 2 : classValues.length - 1;
@@ -101,26 +134,29 @@ function getNumericalClassifier(dataValues, classValues, nullValue, opts) {
     dataValues = dataValues.map(round);
   }
 
-  if (opts.breaks) {
+  if (numBreaks === 0) {
+    breaks = [];
+  } else if (opts.breaks) {
     // user-defined breaks
     breaks = opts.breaks;
   } else if (opts.equal_interval) {
     breaks = getEqualIntervalBreaks(dataValues, numBreaks);
   } else if (opts.quantile) {
     breaks = getQuantileBreaks(dataValues, numBreaks);
+  } else if (opts.hybrid) {
+    breaks = getHybridBreaks(dataValues, numBreaks);
+  } else if (opts.nice) {
+    breaks = getNiceBreaks(dataValues, numBreaks);
   } else {
     stop('Missing a classification type');
   }
 
   var dataRange = getDataRange(dataValues);
-
-  message('Data range:', dataRange);
-  message('Computed breaks:', breaks);
-  printDistributionInfo(breaks, dataValues);
+  printDistributionInfo(dataValues, dataRange, breaks);
 
   return opts.continuous ?
-    getContinuousClassifier(breaks, dataRange, classValues, nullValue) :
-    getSequentialClassifier(breaks, classValues, nullValue);
+    getContinuousClassifier(breaks, dataRange) :
+    getSequentialClassifier(breaks, round);
 }
 
 // arr: an array of strings
@@ -146,14 +182,15 @@ function formatColorsAsHex(colors) {
   return colors.map(function(col) { return d3.color(col).formatHex(); });
 }
 
-function printDistributionInfo(breaks, values) {
+function printDistributionInfo(values, range, breaks) {
   var dist = getDistributionData(breaks, values);
+  message('Computed breaks:', breaks);
   message('Distribution:', dist.join(','));
+  message('Data range:', range);
   if (dist.nulls) {
     message('Null values:', dist.nulls);
   }
 }
-
 
 function getIndexValues(n) {
   var vals = [];
