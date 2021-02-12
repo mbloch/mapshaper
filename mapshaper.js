@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.30";
+  var VERSION = "0.5.32";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -17780,6 +17780,18 @@
         describe: 'use equal interval classification',
         type: 'flag'
       })
+      .option('hybrid', {
+        describe: 'hybrid classification (equal-interval inside, quantile outside)',
+        type: 'flag'
+      })
+      .option('nice', {
+        describe: 'find rounded, equal-interval breaks',
+        type: 'flag'
+      })
+      .option('tidy', {
+        describe: 'tidy classification (round breaks, equally spaced)',
+        type: 'flag'
+      })
       .option('breaks', {
         describe: 'user-defined sequential class breaks',
         type: 'numbers'
@@ -20193,8 +20205,7 @@
     return memo;
   }
 
-  // Dissolve polyline features, but also organize arcs into as few parts as possible,
-  // with the arcs in each part laid out in connected sequence
+  // Dissolve polyline features
   function dissolvePolylineGeometry(lyr, getGroupId, arcs, opts) {
     var groups = getPolylineDissolveGroups(lyr.shapes, getGroupId);
     var dissolve = getPolylineDissolver(arcs);
@@ -21515,12 +21526,13 @@
   function IdLookupIndex(n, clearable) {
     var fwdIndex = new Int32Array(n);
     var revIndex = new Int32Array(n);
+    var index = this;
     var setList = [];
     utils.initializeArray(fwdIndex, -1);
     utils.initializeArray(revIndex, -1);
 
     this.setId = function(id, val) {
-      if (clearable && !this.hasId(id)) {
+      if (clearable && !index.hasId(id)) {
         setList.push(id);
       }
       if (id < 0) {
@@ -21535,20 +21547,20 @@
         error('Index is not clearable');
       }
       setList.forEach(function(id) {
-        this.setId(id, -1);
-      }, this);
+        index.setId(id, -1);
+      });
       setList = [];
     };
 
     this.clearId = function(id) {
-      if (!this.hasId) {
+      if (!index.hasId(id)) {
         error('Tried to clear an unset id');
       }
-      this.setId(id, -1);
+      index.setId(id, -1);
     };
 
     this.hasId = function(id) {
-      var val = this.getId(id);
+      var val = index.getId(id);
       return val > -1;
     };
 
@@ -22899,7 +22911,8 @@
     if (n > 0 === false || !utils.isInteger(n)) {
       error('Expected a positive integer');
     }
-    var margin = 1 / (n + 2);
+    // var margin = 0; // use full range
+    var margin = 1 / (n + 4);
     var interval = (1 - margin * 2) / (n - 1);
     var ramp = [];
     for (var i=0; i<n; i++) {
@@ -22908,15 +22921,49 @@
     return ramp;
   }
 
-  // categories: strings to match in the data
-  function getCategoricalClassifier(categories, values, otherVal, nullVal) {
-    return function(val) {
-      var i = categories.indexOf(val);
-      if (i >= 0) return values[i];
-      if (val) return otherVal;
-      return nullVal;
+  // convert an index (0 ... n-1, -1, -2) to a corresponding discreet value
+  function getDiscreteValueGetter(values, nullValue, otherValue) {
+    var n = values.length;
+    return function(i) {
+      if (i >= 0 && i < n) {
+        return values[i];
+      }
+      if (i == -2) {
+        return otherValue === undefined ? nullValue : otherValue;
+      }
+      return nullValue;
     };
   }
+
+  // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
+  function getInterpolatedValueGetter(values, nullValue) {
+    var d3 = require('d3-interpolate');
+    var interpolators = [];
+    var tmax = values.length - 1;
+    for (var i=1; i<values.length; i++) {
+      interpolators.push(d3.interpolate(values[i-1], values[i]));
+    }
+    return function(t) {
+      if (t == -1) return nullValue;
+      if ((t >= 0 && t <= tmax) === false) {
+        error('Range error');
+      }
+      var i = t == tmax ? tmax - 1 : Math.floor(t);
+      var j = t == tmax ? 1 : t % 1;
+      return interpolators[i](j);
+    };
+  }
+
+  // categories: strings to match in the data
+  function getCategoricalClassifier(categories) {
+    return function(val) {
+      var i = categories.indexOf(val);
+      if (i >= 0) return i;
+      if (val) return -2; // field contains an 'other' value
+      return -1; // field is empty (null value)
+    };
+  }
+
 
   function getDataRange(values) {
     var ascending = getAscendingNumbers(values);
@@ -22928,29 +22975,23 @@
 
   // uses linear interpolation between breakpoints
   // (perhaps not ideal for long-tail distributions)
-  function getContinuousClassifier(breaks, range, values, nullVal) {
-    var d3 = require('d3-interpolate');
+  // breaks: array of (0 or more) inner breakpoints
+  // range: [min, max] range of the dataset
+  function getContinuousClassifier(breaks, range) {
     var minVal = range[0];
     var maxVal = range[1];
-    var interpolators = [];
-    for (var i=1; i<values.length; i++) {
-      interpolators.push(d3.interpolate(values[i-1], values[i]));
-    }
-    if (values.length != breaks.length + 2) {
-      stop('Number of values should be two more than the number of breaks');
-    }
     return function(val) {
       var n = breaks.length;
       var min, max, j;
       if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
-        return nullVal;
+        return -1;
       }
       for (var i=0; i<=n; i++) {
         max = i === n ? maxVal : breaks[i];
         if (i === n || val < max) {
           min = i === 0 ? minVal : breaks[i-1];
           j = (val - min) / (max - min);
-          return interpolators[i](j);
+          return i + j;
         }
       }
       error('Range error');
@@ -22977,17 +23018,18 @@
     return output;
   }
 
-  function getSequentialClassifier(breaks, values, nullVal, round) {
-    if (values.length != breaks.length + 1) {
-      stop("Number of values should be one more than number of class breaks");
-    }
+  function getSequentialClassifier(breaks, round) {
+    var inverted = false; // breaks are in descending sequence
+    // if (values.length != breaks.length + 1) {
+    //   stop("Number of values should be one more than number of class breaks");
+    // }
     // validate breaks
     // Accepts repeated values -- should this be allowed?
     if (testAscendingNumbers(breaks)) {
       // normal state
     } else if (testDescendingNumbers(breaks)) {
       breaks = breaks.concat().reverse();
-      values = values.concat().reverse();
+      inverted = true;
     } else {
       stop('Invalid class breaks:', breaks.join(','));
     }
@@ -22997,7 +23039,10 @@
         if (round) val = val(round);
         i = getClassId(val, breaks);
       }
-      return i > -1 && i < values.length ? values[i] : nullVal;
+      if (inverted && i > -1) {
+        i = breaks.length - i;
+      }
+      return i;
     };
   }
 
@@ -23025,6 +23070,22 @@
       j = Math.floor(i * n);
       breaks.push(ascending[j]);
     }
+    return breaks;
+  }
+
+  // inner breaks have equal-interval spacing
+  // first and last bucket are sized like quantiles (they are sized to contain
+  // a proportional share of the data)
+  function getHybridBreaks(values, numBreaks) {
+    var quantileBreaks = getQuantileBreaks(values, numBreaks);
+    if (numBreaks < 3) return quantileBreaks;
+    var lowerBreak = quantileBreaks[0];
+    var upperBreak = quantileBreaks[quantileBreaks.length-1];
+    var innerValues = values.filter(function(val) {
+      return val >= lowerBreak && val < upperBreak;
+    });
+    var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
+    var breaks = [lowerBreak].concat(innerBreaks).concat(upperBreak);
     return breaks;
   }
 
@@ -23075,6 +23136,125 @@
     return i;
   }
 
+  var scaledIntervals =
+    [10,12,15,18,20,22,25,30,35,40,45,50,60,70,80,90,100];
+  var precisions =
+    [10, 2, 5, 2,10, 2, 5,10, 5,10, 5,50,10,10,10,10,10];
+
+
+  function getNormalPrecision(scaledInterval) {
+    var i = scaledIntervals.indexOf(scaledInterval);
+    return precisions[i] || error('Unknown error');
+  }
+
+  // return a weighting (0-1) to add strength to classifications that use
+  // rounder numbers
+  function getRoundnessScore(interval, precision) {
+    return precision >= 50 && 1 || precision >= 10 && 0.9 || precision >= 5 && 0.8 || 0.7;
+  }
+
+  function getNiceBreaks(values, numBreaks) {
+    var quantileBreaks = getQuantileBreaks(values, numBreaks);
+    var lowerBreak = quantileBreaks[0];
+    var upperBreak = quantileBreaks[quantileBreaks.length-1];
+    var data = getCandidateBreaks(lowerBreak, upperBreak, numBreaks);
+    // add distribution data and quality metric to each candidate
+    data.forEach(function(o) {
+      var distribution = getDistributionData(o.breaks, values);
+      o.distribution = getDistributionData(o.breaks, values);
+      o.quality = o.roundness * evaluateDistribution(o.distribution);
+    });
+    utils.sortOn(data, 'quality', false);
+    return data[0].breaks;
+  }
+
+  function evaluateDistribution(distribution) {
+    var ideal = utils.sum(distribution) / distribution.length;
+    var first = distribution[0];
+    var last = distribution[distribution.length - 1];
+    var q = (bucketScore(ideal, first) + bucketScore(ideal, last)) / 2;
+    return q;
+  }
+
+  // downweight buckets the more they deviate from an ideal size
+  function bucketScore(ideal, actual) {
+    if (actual > ideal) {
+      return ideal / actual;
+    } else {
+      return ideal / (2 * ideal - actual);
+    }
+  }
+
+  function getCandidateBreaks(lowerBreak, upperBreak, numBreaks) {
+    var cands = [];
+    // calculate rounding using equal interval, when possible
+    var maxBreak = Math.max(Math.abs(lowerBreak), Math.abs(upperBreak));
+    var subRange = numBreaks >= 2 ?
+        (upperBreak - lowerBreak) / (numBreaks - 1) : maxBreak;
+    var scale = getRangeScale(subRange);
+    var scaledRange = scale * subRange;
+    var scaledIntervals = getNiceIntervals(scaledRange);
+    scaledIntervals.forEach(function(scaledInterval) {
+      var scaledPrecision = getNormalPrecision(scaledInterval);
+      var interval = scaledInterval / scale;
+      var precision = scaledPrecision / scale;
+      var fenceposts = getBreakFenceposts(lowerBreak, precision);
+      fenceposts.forEach(function(lowBound) {
+        cands.push({
+          interval: interval,
+          precision: precision,
+          roundness: getRoundnessScore(scaledInterval, scaledPrecision),
+          breaks: getRoundBreaks(lowBound, interval, numBreaks)
+        });
+      });
+    });
+    return cands;
+  }
+
+  function getRoundBreaks(lowerBreak, interval, numBreaks) {
+    var breaks = [lowerBreak];
+    for (var i=1; i<numBreaks; i++) {
+      breaks.push(lowerBreak + interval * i);
+    }
+    return breaks;
+  }
+
+  function getBreakFenceposts(val, precision) {
+    var boundVal = getRoundingFunction(precision)(val);
+    var boundVal2 = boundVal + (val > boundVal ? precision : -precision);
+    var fenceposts = boundVal < boundVal2 ? [boundVal, boundVal2] : [boundVal2, boundVal];
+    return fenceposts;
+  }
+
+  function getNiceIntervals(scaledRange) {
+    var intervals = scaledIntervals;
+    var lower, upper;
+    for (var i=1; i<intervals.length; i++) {
+      lower = intervals[i-1];
+      upper = intervals[i];
+      if (scaledRange >= lower && scaledRange <= upper) {
+        return [lower, upper];
+      }
+    }
+    error('Range error');
+  }
+
+  function getRangeScale(range) {
+    var s = 1;
+    if (range > 0.0001 === false || range < 1e9 === false) {
+      stop('Data range error');
+    }
+    while (range > 100) {
+      range /= 10;
+      s /= 10;
+    }
+    while (range < 10) {
+      range *= 10;
+      s *= 10;
+    }
+    return s;
+  }
+
   cmd.classify = function(lyr, optsArg) {
     var opts = optsArg || {};
     var dataField = opts.field;
@@ -23084,8 +23264,8 @@
     var colorScheme = opts.color_scheme || null;
     var classes = opts.classes || null; // number of classes
     var nullValue = opts.null_value || null;
-    var nullColor = nullValue || 'white';
-    var classValues, classify;
+    var looksLikeColors = !!opts.colors || !!opts.color_scheme;
+    var classValues, classify, classToValue, outputField;
 
     if (opts.breaks) {
       // TODO: check for invalid combinations of breaks= and classes= options
@@ -23108,11 +23288,9 @@
         }
         classValues = getColorRamp(colorScheme, classes);
       }
-      nullValue = nullColor;
 
     } else if (opts.colors) {
       classValues = opts.colors;
-      nullValue = nullColor;
 
     } else if (opts.values) {
       classValues = parseValues(opts.values);
@@ -23123,42 +23301,63 @@
       nullValue = -1;
     }
 
-    if (!classValues || classValues.length > 0 === false) {
+    if (looksLikeColors) {
+      nullValue = nullValue || '#eee';
+    }
+
+    if (!classValues || classValues.length > 1 === false) {
       stop('Missing a valid number of classes');
     }
 
     if (classes > 1 && classValues.length != classes) {
       // TODO: check for non-interpolatable value types (e.g. boolean, text)
       classValues = interpolateValuesToClasses(classValues, classes);
-      message('Interpolated values:', formatValuesForLogging(classValues));
     }
 
-
     if (opts.invert) {
-      // utils.genericSort(breaks, false);
-      utils.genericSort(classValues, false);
+      classValues = classValues.concat().reverse();
+    }
+
+    if (looksLikeColors) {
+      message('Colors:', formatValuesForLogging(classValues));
     }
 
     if (opts.categories) {
       // categorical color scheme
-      classify = getCategoricalClassifier(opts.categories, classValues, opts.other, nullValue);
-
+      classify = getCategoricalClassifier(opts.categories);
     } else {
       // sequential color scheme
-      classify = getNumericalClassifier(dataValues, classValues, nullValue, opts);
+      classify = getNumericalClassifier(dataValues, classValues, opts);
     }
 
-    if (opts.save_as) {
-      dataValues.forEach(function(val, i) {
-        var r = records[i] || {};
-        r[opts.save_as] = classify(val);
-      });
+    if (opts.continuous && !opts.categories) {
+      classToValue = getInterpolatedValueGetter(classValues, nullValue);
     } else {
-      message('Use save-as=<field> to save output to a field');
+      classToValue = getDiscreteValueGetter(classValues, nullValue, opts.other);
     }
+
+    if (looksLikeColors && lyr.geometry_type == 'polyline') {
+      outputField = 'stroke';
+    } else if (looksLikeColors) {
+      outputField = 'fill';
+    } else {
+      outputField = 'class';
+    }
+    if (opts.save_as) {
+      outputField = opts.save_as;
+    } else {
+      message(`Output was saved to "${outputField}" field (use save-as= to change)`);
+      // message('Use save-as=<field> to save to a different field');
+    }
+    dataValues.forEach(function(val, i) {
+      var r = records[i] || {};
+      var t = classify(val);
+      r[outputField] = classToValue(t);
+    });
+
   };
 
-  function getNumericalClassifier(dataValues, classValues, nullValue, opts) {
+  function getNumericalClassifier(dataValues, classValues, opts) {
     // continuously interpolated colors/values use one fewer breakpoint than
     // discreetly classed values
     var numBreaks = opts.continuous ? classValues.length - 2 : classValues.length - 1;
@@ -23169,26 +23368,29 @@
       dataValues = dataValues.map(round);
     }
 
-    if (opts.breaks) {
+    if (numBreaks === 0) {
+      breaks = [];
+    } else if (opts.breaks) {
       // user-defined breaks
       breaks = opts.breaks;
     } else if (opts.equal_interval) {
       breaks = getEqualIntervalBreaks(dataValues, numBreaks);
     } else if (opts.quantile) {
       breaks = getQuantileBreaks(dataValues, numBreaks);
+    } else if (opts.hybrid) {
+      breaks = getHybridBreaks(dataValues, numBreaks);
+    } else if (opts.nice) {
+      breaks = getNiceBreaks(dataValues, numBreaks);
     } else {
       stop('Missing a classification type');
     }
 
     var dataRange = getDataRange(dataValues);
-
-    message('Data range:', dataRange);
-    message('Computed breaks:', breaks);
-    printDistributionInfo(breaks, dataValues);
+    printDistributionInfo(dataValues, dataRange, breaks);
 
     return opts.continuous ?
-      getContinuousClassifier(breaks, dataRange, classValues, nullValue) :
-      getSequentialClassifier(breaks, classValues, nullValue);
+      getContinuousClassifier(breaks, dataRange) :
+      getSequentialClassifier(breaks, round);
   }
 
   // arr: an array of strings
@@ -23214,14 +23416,15 @@
     return colors.map(function(col) { return d3.color(col).formatHex(); });
   }
 
-  function printDistributionInfo(breaks, values) {
+  function printDistributionInfo(values, range, breaks) {
     var dist = getDistributionData(breaks, values);
+    message('Computed breaks:', breaks);
     message('Distribution:', dist.join(','));
+    message('Data range:', range);
     if (dist.nulls) {
       message('Null values:', dist.nulls);
     }
   }
-
 
   function getIndexValues(n) {
     var vals = [];
@@ -23237,20 +23440,55 @@
     var arcs = dataset.arcs;
     var filter = getArcPresenceTest(lyr.shapes, arcs);
     var nodes = new NodeCollection(arcs, filter);
-    var endpointIndex = new IdLookupIndex(arcs.size(), true);
+    var arcIndex = new IdLookupIndex(arcs.size(), true);
     lyr.shapes = lyr.shapes.map(function(shp, i) {
       if (!shp) return null;
+      // split parts at nodes (where multiple arcs intersect)
       shp = divideShapeAtNodes(shp, nodes);
+
+      // remove multiple references to the same arc within the same part
+      // (this could happen if the path doubles back to form a spike)
+      // TODO: remove spikes within a single arc
+      arcIndex.clear();
+      shp = uniqifyArcs(shp, arcIndex);
+
       // try to combine parts that form a contiguous line
       // (some datasets may use a separate part for each segment)
-      return combineContiguousParts(shp, nodes, endpointIndex);
+      arcIndex.clear();
+      shp = combineContiguousParts(shp, nodes, arcIndex);
+      return shp;
     });
   }
 
+  function uniqifyArcs(shp, index) {
+    var shp2 = shp.reduce(function(memo, ids) {
+      addUnusedArcs(memo, ids, index);
+      return memo;
+    }, []);
+    return shp2.length > 0 ? shp2 : null;
+  }
+
+  function addUnusedArcs(shp, ids, index) {
+    var part = [], arcId;
+    for (var i=0; i<ids.length; i++) {
+      arcId = ids[i];
+      if (!index.hasId(arcId)) {
+        part.push(arcId);
+      } else if (part.length > 0) {
+        shp.push(part);
+        part = [];
+      }
+      index.setId(arcId, i);
+      index.setId(~arcId, i);
+    }
+    if (part.length > 0) shp.push(part);
+  }
+
+
   function divideShapeAtNodes(shp, nodes) {
-    var shape = [];
+    var shp2 = [];
     forEachShapePart(shp, onPart);
-    return shape;
+    return shp2;
 
     function onPart(ids) {
       var n = ids.length;
@@ -23265,12 +23503,11 @@
           // touches any other segment than the next segment in this part
           // TODO: consider not dividing if the intersection does not involve
           // the current feature (ie. it is not a self-intersection).
-          // console.log('connections:', nodes.getConnectedArcs(id))
-          shape.push(ids2);
+          shp2.push(ids2);
           ids2 = [];
         }
       }
-      if (ids2.length > 0) shape.push(ids2);
+      if (ids2.length > 0) shp2.push(ids2);
     }
   }
 
@@ -23285,14 +23522,15 @@
       // only processing the first of such parts, skipping subsequent parts
       // (this should be an exceptional case... should probably investigate
       // why this happens and handle this better)
-      if (endpointIndex.hasId(tailId) || endpointIndex.hasId(headId)) return;
+      if (endpointIndex.hasId(tailId) || endpointIndex.hasId(headId)) {
+        error('Indexing error');
+      }
       endpointIndex.setId(tailId, i);
       endpointIndex.setId(headId, i);
       procEndpoint(tailId, i);
       procEndpoint(headId, i);
     });
 
-    endpointIndex.clear(); // clear the index so it can be re-used
     return parts.filter(function(ids) { return !!ids; });
 
     function procEndpoint(endpointId, sourcePartId) {
@@ -24563,17 +24801,33 @@
       if (opts.colors.length != opts.breaks.length + 1) {
         stop("Number of colors should be one more than number of class breaks");
       }
-      colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
+      colorFunction = getSequentialColorFunction(opts.breaks, opts.colors, nodataColor, round);
     } else if (opts.categories) {
       if (opts.colors.length != opts.categories.length) {
         stop("Number of colors should be equal to the number of categories");
       }
-      colorFunction = getCategoricalClassifier(opts.categories, opts.colors, opts.other, nodataColor);
+      colorFunction = getCategoricalColorFunction(opts.categories, opts.colors, opts.other, nodataColor);
     } else {
       stop("Missing categories= or breaks= parameter");
     }
 
     return colorFunction;
+  }
+
+  function getSequentialColorFunction(breaks, colors, nullVal, round) {
+    var classify = getSequentialClassifier(breaks, round);
+    var toColor = getDiscreteValueGetter(colors, nullVal);
+    return function(val) {
+      return toColor(classify(val));
+    };
+  }
+
+  function getCategoricalColorFunction(categories, colors, otherVal, nullVal) {
+    var classify = getCategoricalClassifier(categories);
+    var toColor = getDiscreteValueGetter(colors, nullVal, otherVal);
+    return function(val) {
+      return toColor(classify(val));
+    };
   }
 
   function fastStringHash(val) {
