@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.32";
+  var VERSION = "0.5.33";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -11330,6 +11330,7 @@
       var start = reader.findString('"features"', bytesToSearch) ||
           reader.findString('"geometries"', bytesToSearch);
       // Assume single Feature or geometry if collection not found
+      // (this works for ndjson files too)
       var offset = start ? start.offset : 0;
       readObjects(offset, onObject);
     };
@@ -11419,6 +11420,11 @@
     }
   }
 
+  function stringifyAsNDJSON(o) {
+    var str = JSON.stringify(o);
+    return str.replace(/\n/g, '\n').replace(/\r/g, '\r');
+  }
+
   function getFormattedStringify(numArrayKeys) {
     var keyIndex = utils.arrayToIndex(numArrayKeys);
     var sentinel = '\u1000\u2FD5\u0310';
@@ -11449,6 +11455,7 @@
 
   var Stringify = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    stringifyAsNDJSON: stringifyAsNDJSON,
     getFormattedStringify: getFormattedStringify
   });
 
@@ -11475,8 +11482,15 @@
   }
 
   function exportJSONTable(lyr, opts) {
-    var stringify = opts && opts.prettify ? getFormattedStringify([]) : JSON.stringify;
-    return stringify(lyr.data.getRecords());
+    opts = opts || {};
+    var records = lyr.data.getRecords();
+    if (opts.ndjson) {
+      return records.map(stringifyAsNDJSON).join('\n');
+    }
+    if (opts.prettify) {
+      return getFormattedStringify([])(records);
+    }
+    return JSON.stringify(records);
   }
 
   var JsonTable = /*#__PURE__*/Object.freeze({
@@ -13570,10 +13584,12 @@
         ids = exportIds(lyr.data, opts),
         items, stringify;
 
-    if (ofmt) {
-      stringify = opts.prettify ?
-        getFormattedStringify(['bbox', 'coordinates']) :
-        JSON.stringify;
+    if (opts.ndjson) {
+      stringify = stringifyAsNDJSON;
+    } else if (opts.prettify) {
+      stringify = getFormattedStringify(['bbox', 'coordinates']);
+    } else {
+      stringify = JSON.stringify;
     }
 
     if (properties && shapes && properties.length !== shapes.length) {
@@ -13660,14 +13676,12 @@
     var geojson = {};
     var layers = dataset.layers;
     var useFeatures = useFeatureCollection(layers, opts);
-    var parts, collection, bbox, collname;
+    var collection, bbox;
 
     if (useFeatures) {
       geojson.type = 'FeatureCollection';
-      collname = 'features';
     } else {
       geojson.type = 'GeometryCollection';
-      collname = 'geometries';
     }
 
     if (opts.gj2008) {
@@ -13688,22 +13702,42 @@
 
     if (opts.geojson_type == 'Feature' && collection.length == 1) {
       return collection[0];
+    } else if (opts.ndjson) {
+      return GeoJSON.formatCollectionAsNDJSON(collection);
     } else if (ofmt) {
-      return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
+      return GeoJSON.formatCollection(geojson, collection);
     } else {
-      geojson[collname] = collection;
+      geojson[collectionName(geojson.type)] = collection;
       return geojson;
     }
   }
 
-  GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
-    // collection is an array of individual GeoJSON Feature|geometry strings or buffers
-    var head = JSON.stringify(container).replace(/\}$/, ', "' + collType + '": [\n');
+  function collectionName(type) {
+    if (type == 'FeatureCollection') return 'features';
+    if (type == 'GeometryCollection') return 'geometries';
+    error('Invalid collection type:', type);
+  }
+
+  // collection: an array of Buffers, one per feature
+  GeoJSON.formatCollectionAsNDJSON = function(collection) {
+    var delim = utils.createBuffer('\n', 'utf8');
+    var parts = collection.reduce(function(memo, buf, i) {
+      if (i > 0) memo.push(delim);
+      memo.push(buf);
+      return memo;
+    }, []);
+    return Buffer.concat(parts);
+  };
+
+  // collection: an array of individual GeoJSON Features or geometries as strings or buffers
+  GeoJSON.formatCollection = function(container, collection) {
+    var head = JSON.stringify(container).replace(/\}$/, ', "' + collectionName(container.type) + '": [\n');
     var tail = '\n]}';
-    if (ofmt == 'buffer') {
-      return GeoJSON.joinOutputBuffers(head, tail, collection);
+    if (utils.isString(collection[0])) {
+      return head + collection.join(',\n') + tail;
     }
-    return head + collection.join(',\n') + tail;
+    // assume buffers
+    return GeoJSON.joinOutputBuffers(head, tail, collection);
   };
 
   GeoJSON.joinOutputBuffers = function(head, tail, collection) {
@@ -17593,7 +17627,7 @@
       })
       .option('prettify', {
         type: 'flag',
-        describe: '(Topo/GeoJSON) format output for readability'
+        describe: '(Topo/GeoJSON/JSON) format output for readability'
       })
       .option('singles', {
         describe: '(TopoJSON) save each target layer as a separate file',
@@ -17639,6 +17673,10 @@
       })
       .option('geojson-type', {
         describe: '(GeoJSON) FeatureCollection, GeometryCollection or Feature'
+      })
+      .option('ndjson', {
+        describe: '(GeoJSON/JSON) output newline-delimited features or records',
+        type: 'flag'
       })
       .option('width', {
         describe: '(SVG/TopoJSON) pixel width of output (SVG default is 800)',
@@ -17756,7 +17794,7 @@
         DEFAULT: true
       })
       .option('save-as', {
-          describe: 'name of output field'
+          describe: 'name of output field (default is fill|stroke|class)'
       })
       .option('values', {
         describe: 'list of values to assign to classes',
@@ -17772,21 +17810,24 @@
       .option('null-value', {
         describe: 'value (or color) to use for invalid or missing data'
       })
+      .option('method', {
+        describe: 'one of: quantile, nice, equal-interval, hybrid'
+      })
       .option('quantile', {
-        describe: 'use quantile classification',
-        type: 'flag'
+        describe: 'shortcut for method=quantile (the default)',
+        assign_to: 'method'
       })
       .option('equal-interval', {
-        describe: 'use equal interval classification',
-        type: 'flag'
+        describe: 'short for method=equal-interval',
+        assign_to: 'method'
       })
-      .option('hybrid', {
-        describe: 'hybrid classification (equal-interval inside, quantile outside)',
-        type: 'flag'
-      })
+      // .option('hybrid', {
+      //   describe: 'short for method=hybrid (equal-interval inner breaks + quantile outliers)',
+      //   assign_to: 'method'
+      // })
       .option('nice', {
-        describe: 'find rounded, equal-interval breaks',
-        type: 'flag'
+        describe: 'short for method=nice (rounded, equal inner breaks)',
+        assign_to: 'method'
       })
       .option('tidy', {
         describe: 'tidy classification (round breaks, equally spaced)',
@@ -17807,6 +17848,9 @@
       .option('continuous', {
         describe: 'output continuous interpolated values (experimental)',
         type: 'flag'
+      })
+      .option('index-field', {
+        describe: 'apply pre-calculated classes (0 ... n-1, -1)'
       })
       .option('precision', {
         describe: 'round data values before classification (e.g. 0.1)',
@@ -23257,47 +23301,76 @@
 
   cmd.classify = function(lyr, optsArg) {
     var opts = optsArg || {};
-    var dataField = opts.field;
-    requireDataField(lyr.data, dataField);
     var records = lyr.data && lyr.data.getRecords();
-    var dataValues = getFieldValues(records, dataField);
-    var colorScheme = opts.color_scheme || null;
-    var classes = opts.classes || null; // number of classes
     var nullValue = opts.null_value || null;
     var looksLikeColors = !!opts.colors || !!opts.color_scheme;
-    var classValues, classify, classToValue, outputField;
+    var classValues, classify, classToValue;
+    var numBuckets, numValues, dataValues;
+    var dataField, outputField;
 
-    if (opts.breaks) {
-      // TODO: check for invalid combinations of breaks= and classes= options
-      classes = opts.breaks.length + 1;
+    // validate explicitly set classes
+    if (opts.classes) {
+      if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
+        stop('Invalid classes= value:', opts.classes);
+      }
+      numBuckets = opts.classes;
     }
 
-    if (colorScheme) {
+    // TODO: better validation of breaks values
+    if (opts.breaks) {
+      numBuckets = opts.breaks.length + 1;
+    }
+
+    if (opts.index_field) {
+      dataField = opts.index_field;
+      numBuckets = validateClassIndexField(records, opts.index_field);
+
+    } else if (opts.field) {
+      dataField = opts.field;
+
+    } else {
+      stop('Missing a data field to classify');
+    }
+
+    requireDataField(lyr.data, dataField);
+
+    if (numBuckets) {
+      numValues = opts.continuous ? numBuckets + 1 : numBuckets;
+    }
+
+    if (opts.color_scheme) {
       // using a named color scheme: generate a ramp
-      if (!isColorSchemeName(colorScheme)) {
-        stop('Unknown color scheme:', colorScheme);
+      if (!isColorSchemeName(opts.color_scheme)) {
+        stop('Unknown color scheme:', opts.color_scheme);
       }
       if (opts.categories) {
-        classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
+        classValues = getCategoricalColorScheme(opts.color_scheme, opts.categories.length);
         message('Colors:', formatValuesForLogging(classValues));
-        classes = classValues.length;
+        numBuckets = numValues = classValues.length;
       } else {
-        if (classes > 0 === false) {
+        if (!numBuckets) {
           // stop('color-scheme= option requires classes= or breaks=');
-          classes = 4; // use a default number of classes
+          numBuckets = 4; // use a default number of classes
+          numValues = opts.continuous ? numBuckets + 1 : numBuckets;
         }
-        classValues = getColorRamp(colorScheme, classes);
+        classValues = getColorRamp(opts.color_scheme, numValues);
       }
 
-    } else if (opts.colors) {
-      classValues = opts.colors;
+    } else if (opts.colors || opts.values) {
+      classValues = opts.values ? parseValues(opts.values) : opts.colors;
+      if (!numValues) {
+        numValues = classValues.length;
+        numBuckets = opts.continuous ? numValues - 1 : numValues;
+      }
+      if (classValues.length != numValues && numValues > 1) {
+        // TODO: handle numValues == 1
+        // TODO: check for non-interpolatable value types (e.g. boolean, text)
+        classValues = interpolateValuesToClasses(classValues, numValues);
+      }
 
-    } else if (opts.values) {
-      classValues = parseValues(opts.values);
-
-    } else if (classes > 1) {
+    } else if (numValues > 1) {
       // no values were given: assign indexes for each class
-      classValues = getIndexValues(classes);
+      classValues = getIndexValues(numValues);
       nullValue = -1;
     }
 
@@ -23305,13 +23378,8 @@
       nullValue = nullValue || '#eee';
     }
 
-    if (!classValues || classValues.length > 1 === false) {
+    if (numValues > 1 === false) {
       stop('Missing a valid number of classes');
-    }
-
-    if (classes > 1 && classValues.length != classes) {
-      // TODO: check for non-interpolatable value types (e.g. boolean, text)
-      classValues = interpolateValuesToClasses(classValues, classes);
     }
 
     if (opts.invert) {
@@ -23322,46 +23390,77 @@
       message('Colors:', formatValuesForLogging(classValues));
     }
 
-    if (opts.categories) {
-      // categorical color scheme
+    // get a function to convert input data to class indexes
+    //
+    if (opts.index_field) {
+      // data is pre-classified... just read the index from a field
+      classify = getIndexClassifier(numBuckets);
+    } else if (opts.categories) {
+      // categorical classification
       classify = getCategoricalClassifier(opts.categories);
     } else {
-      // sequential color scheme
-      classify = getNumericalClassifier(dataValues, classValues, opts);
+      // sequential classification
+      classify = getNumericalClassifier(getFieldValues(records, dataField), numBuckets, opts);
     }
 
+    // get a function to convert class indexes to output values
+    //
     if (opts.continuous && !opts.categories) {
       classToValue = getInterpolatedValueGetter(classValues, nullValue);
     } else {
       classToValue = getDiscreteValueGetter(classValues, nullValue, opts.other);
     }
 
-    if (looksLikeColors && lyr.geometry_type == 'polyline') {
-      outputField = 'stroke';
-    } else if (looksLikeColors) {
-      outputField = 'fill';
+    // get the name of the output field
+    //
+    if (looksLikeColors) {
+      outputField = lyr.geometry_type == 'polyline' ? 'stroke' : 'fill';
     } else {
       outputField = 'class';
     }
     if (opts.save_as) {
-      outputField = opts.save_as;
+      outputField = opts.save_as; // override the default field name
     } else {
       message(`Output was saved to "${outputField}" field (use save-as= to change)`);
       // message('Use save-as=<field> to save to a different field');
     }
-    dataValues.forEach(function(val, i) {
-      var r = records[i] || {};
-      var t = classify(val);
-      r[outputField] = classToValue(t);
-    });
 
+    records.forEach(function(d, i) {
+      d = d || {};
+      d[outputField] = classToValue(classify(d[dataField]));
+    });
   };
 
-  function getNumericalClassifier(dataValues, classValues, opts) {
+  // returns the number of classes, based on the largest class index found
+  function validateClassIndexField(records, name) {
+    var invalid = [];
+    var maxId = -1;
+    records.forEach(function(d) {
+      var val = (d || {})[name];
+      if (!utils.isInteger(val) || val < -2) {
+        invalid.push(val);
+      } else {
+        maxId = Math.max(maxId, val);
+      }
+    });
+    if (invalid.length > 0) {
+      stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
+    }
+    return maxId + 1;
+  }
+
+  function getIndexClassifier(numBuckets) {
+    return function(val) {
+      return utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
+    };
+  }
+
+  function getNumericalClassifier(dataValues, numBuckets, opts) {
     // continuously interpolated colors/values use one fewer breakpoint than
     // discreetly classed values
-    var numBreaks = opts.continuous ? classValues.length - 2 : classValues.length - 1;
+    var numBreaks = numBuckets - 1;
     var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+    var method = opts.method || 'quantile';
     var breaks;
 
     if (round) {
@@ -23373,16 +23472,16 @@
     } else if (opts.breaks) {
       // user-defined breaks
       breaks = opts.breaks;
-    } else if (opts.equal_interval) {
+    } else if (method == 'equal-interval') {
       breaks = getEqualIntervalBreaks(dataValues, numBreaks);
-    } else if (opts.quantile) {
+    } else if (method == 'quantile') {
       breaks = getQuantileBreaks(dataValues, numBreaks);
-    } else if (opts.hybrid) {
+    } else if (method == 'hybrid') {
       breaks = getHybridBreaks(dataValues, numBreaks);
-    } else if (opts.nice) {
+    } else if (method == 'nice') {
       breaks = getNiceBreaks(dataValues, numBreaks);
     } else {
-      stop('Missing a classification type');
+      stop('Unknown classification method:', method);
     }
 
     var dataRange = getDataRange(dataValues);
@@ -23393,6 +23492,7 @@
       getSequentialClassifier(breaks, round);
   }
 
+  // convert strings to numbers if they all parse as numbers
   // arr: an array of strings
   function parseValues(strings) {
     var values = strings;
@@ -23413,7 +23513,11 @@
 
   function formatColorsAsHex(colors) {
     var d3 = require('d3-color');
-    return colors.map(function(col) { return d3.color(col).formatHex(); });
+    return colors.map(function(col) {
+      var o = d3.color(col);
+      if (!o) stop('Unable to parse color:', col);
+      return o.formatHex();
+    });
   }
 
   function printDistributionInfo(values, range, breaks) {
