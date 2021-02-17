@@ -1,3 +1,7 @@
+v0.5.34
+* Add -o ndjson flag, to output GeoJSON and JSON records in NDJSON format.
+* Improvements to -classify command
+
 v0.5.33
 * Add -classify hybrid, which picks evenly spaced internal class breaks and quantiles for the first and last buckets
 * Add -classify nice, which is similar to the "hybrid" classification scheme, but tries to pick round class break values.
