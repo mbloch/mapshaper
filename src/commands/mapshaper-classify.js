@@ -23,47 +23,76 @@ import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
   var opts = optsArg || {};
-  var dataField = opts.field;
-  requireDataField(lyr.data, dataField);
   var records = lyr.data && lyr.data.getRecords();
-  var dataValues = getFieldValues(records, dataField);
-  var colorScheme = opts.color_scheme || null;
-  var classes = opts.classes || null; // number of classes
   var nullValue = opts.null_value || null;
   var looksLikeColors = !!opts.colors || !!opts.color_scheme;
-  var classValues, classify, classToValue, outputField;
+  var classValues, classify, classToValue;
+  var numBuckets, numValues, dataValues;
+  var dataField, outputField;
 
-  if (opts.breaks) {
-    // TODO: check for invalid combinations of breaks= and classes= options
-    classes = opts.breaks.length + 1;
+  // validate explicitly set classes
+  if (opts.classes) {
+    if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
+      stop('Invalid classes= value:', opts.classes);
+    }
+    numBuckets = opts.classes;
   }
 
-  if (colorScheme) {
+  // TODO: better validation of breaks values
+  if (opts.breaks) {
+    numBuckets = opts.breaks.length + 1;
+  }
+
+  if (opts.index_field) {
+    dataField = opts.index_field;
+    numBuckets = validateClassIndexField(records, opts.index_field);
+
+  } else if (opts.field) {
+    dataField = opts.field;
+
+  } else {
+    stop('Missing a data field to classify');
+  }
+
+  requireDataField(lyr.data, dataField);
+
+  if (numBuckets) {
+    numValues = opts.continuous ? numBuckets + 1 : numBuckets;
+  }
+
+  if (opts.color_scheme) {
     // using a named color scheme: generate a ramp
-    if (!isColorSchemeName(colorScheme)) {
-      stop('Unknown color scheme:', colorScheme);
+    if (!isColorSchemeName(opts.color_scheme)) {
+      stop('Unknown color scheme:', opts.color_scheme);
     }
     if (opts.categories) {
-      classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
+      classValues = getCategoricalColorScheme(opts.color_scheme, opts.categories.length);
       message('Colors:', formatValuesForLogging(classValues));
-      classes = classValues.length;
+      numBuckets = numValues = classValues.length;
     } else {
-      if (classes > 0 === false) {
+      if (!numBuckets) {
         // stop('color-scheme= option requires classes= or breaks=');
-        classes = 4; // use a default number of classes
+        numBuckets = 4; // use a default number of classes
+        numValues = opts.continuous ? numBuckets + 1 : numBuckets;
       }
-      classValues = getColorRamp(colorScheme, classes);
+      classValues = getColorRamp(opts.color_scheme, numValues);
     }
 
-  } else if (opts.colors) {
-    classValues = opts.colors;
+  } else if (opts.colors || opts.values) {
+    classValues = opts.values ? parseValues(opts.values) : opts.colors;
+    if (!numValues) {
+      numValues = classValues.length;
+      numBuckets = opts.continuous ? numValues - 1 : numValues;
+    }
+    if (classValues.length != numValues && numValues > 1) {
+      // TODO: handle numValues == 1
+      // TODO: check for non-interpolatable value types (e.g. boolean, text)
+      classValues = interpolateValuesToClasses(classValues, numValues);
+    }
 
-  } else if (opts.values) {
-    classValues = parseValues(opts.values);
-
-  } else if (classes > 1) {
+  } else if (numValues > 1) {
     // no values were given: assign indexes for each class
-    classValues = getIndexValues(classes);
+    classValues = getIndexValues(numValues);
     nullValue = -1;
   }
 
@@ -71,13 +100,8 @@ cmd.classify = function(lyr, optsArg) {
     nullValue = nullValue || '#eee';
   }
 
-  if (!classValues || classValues.length > 1 === false) {
+  if (numValues > 1 === false) {
     stop('Missing a valid number of classes');
-  }
-
-  if (classes > 1 && classValues.length != classes) {
-    // TODO: check for non-interpolatable value types (e.g. boolean, text)
-    classValues = interpolateValuesToClasses(classValues, classes);
   }
 
   if (opts.invert) {
@@ -88,46 +112,77 @@ cmd.classify = function(lyr, optsArg) {
     message('Colors:', formatValuesForLogging(classValues));
   }
 
-  if (opts.categories) {
-    // categorical color scheme
+  // get a function to convert input data to class indexes
+  //
+  if (opts.index_field) {
+    // data is pre-classified... just read the index from a field
+    classify = getIndexClassifier(numBuckets);
+  } else if (opts.categories) {
+    // categorical classification
     classify = getCategoricalClassifier(opts.categories);
   } else {
-    // sequential color scheme
-    classify = getNumericalClassifier(dataValues, classValues, opts);
+    // sequential classification
+    classify = getNumericalClassifier(getFieldValues(records, dataField), numBuckets, opts);
   }
 
+  // get a function to convert class indexes to output values
+  //
   if (opts.continuous && !opts.categories) {
     classToValue = getInterpolatedValueGetter(classValues, nullValue);
   } else {
     classToValue = getDiscreteValueGetter(classValues, nullValue, opts.other);
   }
 
-  if (looksLikeColors && lyr.geometry_type == 'polyline') {
-    outputField = 'stroke';
-  } else if (looksLikeColors) {
-    outputField = 'fill';
+  // get the name of the output field
+  //
+  if (looksLikeColors) {
+    outputField = lyr.geometry_type == 'polyline' ? 'stroke' : 'fill';
   } else {
     outputField = 'class';
   }
   if (opts.save_as) {
-    outputField = opts.save_as;
+    outputField = opts.save_as; // override the default field name
   } else {
     message(`Output was saved to "${outputField}" field (use save-as= to change)`);
     // message('Use save-as=<field> to save to a different field');
   }
-  dataValues.forEach(function(val, i) {
-    var r = records[i] || {};
-    var t = classify(val);
-    r[outputField] = classToValue(t);
-  });
 
+  records.forEach(function(d, i) {
+    d = d || {};
+    d[outputField] = classToValue(classify(d[dataField]));
+  });
 };
 
-function getNumericalClassifier(dataValues, classValues, opts) {
+// returns the number of classes, based on the largest class index found
+function validateClassIndexField(records, name) {
+  var invalid = [];
+  var maxId = -1;
+  records.forEach(function(d) {
+    var val = (d || {})[name];
+    if (!utils.isInteger(val) || val < -2) {
+      invalid.push(val);
+    } else {
+      maxId = Math.max(maxId, val);
+    }
+  });
+  if (invalid.length > 0) {
+    stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
+  }
+  return maxId + 1;
+}
+
+function getIndexClassifier(numBuckets) {
+  return function(val) {
+    return utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
+  };
+}
+
+function getNumericalClassifier(dataValues, numBuckets, opts) {
   // continuously interpolated colors/values use one fewer breakpoint than
   // discreetly classed values
-  var numBreaks = opts.continuous ? classValues.length - 2 : classValues.length - 1;
+  var numBreaks = numBuckets - 1;
   var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+  var method = opts.method || 'quantile';
   var breaks;
 
   if (round) {
@@ -139,16 +194,16 @@ function getNumericalClassifier(dataValues, classValues, opts) {
   } else if (opts.breaks) {
     // user-defined breaks
     breaks = opts.breaks;
-  } else if (opts.equal_interval) {
+  } else if (method == 'equal-interval') {
     breaks = getEqualIntervalBreaks(dataValues, numBreaks);
-  } else if (opts.quantile) {
+  } else if (method == 'quantile') {
     breaks = getQuantileBreaks(dataValues, numBreaks);
-  } else if (opts.hybrid) {
+  } else if (method == 'hybrid') {
     breaks = getHybridBreaks(dataValues, numBreaks);
-  } else if (opts.nice) {
+  } else if (method == 'nice') {
     breaks = getNiceBreaks(dataValues, numBreaks);
   } else {
-    stop('Missing a classification type');
+    stop('Unknown classification method:', method);
   }
 
   var dataRange = getDataRange(dataValues);
@@ -159,6 +214,7 @@ function getNumericalClassifier(dataValues, classValues, opts) {
     getSequentialClassifier(breaks, round);
 }
 
+// convert strings to numbers if they all parse as numbers
 // arr: an array of strings
 function parseValues(strings) {
   var values = strings;

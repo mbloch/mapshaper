@@ -241,7 +241,7 @@ export function getOptionParser() {
     })
     .option('prettify', {
       type: 'flag',
-      describe: '(Topo/GeoJSON) format output for readability'
+      describe: '(Topo/GeoJSON/JSON) format output for readability'
     })
     .option('singles', {
       describe: '(TopoJSON) save each target layer as a separate file',
@@ -287,6 +287,10 @@ export function getOptionParser() {
     })
     .option('geojson-type', {
       describe: '(GeoJSON) FeatureCollection, GeometryCollection or Feature'
+    })
+    .option('ndjson', {
+      describe: '(GeoJSON/JSON) output newline-delimited features or records',
+      type: 'flag'
     })
     .option('width', {
       describe: '(SVG/TopoJSON) pixel width of output (SVG default is 800)',
@@ -404,7 +408,7 @@ export function getOptionParser() {
       DEFAULT: true
     })
     .option('save-as', {
-        describe: 'name of output field'
+        describe: 'name of output field (default is fill|stroke|class)'
     })
     .option('values', {
       describe: 'list of values to assign to classes',
@@ -420,21 +424,24 @@ export function getOptionParser() {
     .option('null-value', {
       describe: 'value (or color) to use for invalid or missing data'
     })
+    .option('method', {
+      describe: 'one of: quantile, nice, equal-interval, hybrid'
+    })
     .option('quantile', {
-      describe: 'use quantile classification',
-      type: 'flag'
+      describe: 'shortcut for method=quantile (the default)',
+      assign_to: 'method'
     })
     .option('equal-interval', {
-      describe: 'use equal interval classification',
-      type: 'flag'
+      describe: 'short for method=equal-interval',
+      assign_to: 'method'
     })
-    .option('hybrid', {
-      describe: 'hybrid classification (equal-interval inside, quantile outside)',
-      type: 'flag'
-    })
+    // .option('hybrid', {
+    //   describe: 'short for method=hybrid (equal-interval inner breaks + quantile outliers)',
+    //   assign_to: 'method'
+    // })
     .option('nice', {
-      describe: 'find rounded, equal-interval breaks',
-      type: 'flag'
+      describe: 'short for method=nice (rounded, equal inner breaks)',
+      assign_to: 'method'
     })
     .option('tidy', {
       describe: 'tidy classification (round breaks, equally spaced)',
@@ -455,6 +462,9 @@ export function getOptionParser() {
     .option('continuous', {
       describe: 'output continuous interpolated values (experimental)',
       type: 'flag'
+    })
+    .option('index-field', {
+      describe: 'apply pre-calculated classes (0 ... n-1, -1)'
     })
     .option('precision', {
       describe: 'round data values before classification (e.g. 0.1)',
