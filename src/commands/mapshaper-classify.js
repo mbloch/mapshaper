@@ -235,7 +235,11 @@ function formatValuesForLogging(arr) {
 
 function formatColorsAsHex(colors) {
   var d3 = require('d3-color');
-  return colors.map(function(col) { return d3.color(col).formatHex(); });
+  return colors.map(function(col) {
+    var o = d3.color(col);
+    if (!o) stop('Unable to parse color:', col);
+    return o.formatHex();
+  });
 }
 
 function printDistributionInfo(values, range, breaks) {
