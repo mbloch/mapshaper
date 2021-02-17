@@ -4,7 +4,7 @@ import { exportPathData } from '../paths/mapshaper-path-export';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { layerHasPoints, layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { isLatLngCRS, getDatasetCRS } from '../geom/mapshaper-projections';
-import { getFormattedStringify } from '../geojson/mapshaper-stringify';
+import { getFormattedStringify, stringifyAsNDJSON } from '../geojson/mapshaper-stringify';
 import { mergeLayerNames } from '../commands/mapshaper-merge-layers';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport } from '../dataset/mapshaper-dataset-utils';
@@ -75,10 +75,12 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
       ids = exportIds(lyr.data, opts),
       items, stringify;
 
-  if (ofmt) {
-    stringify = opts.prettify ?
-      getFormattedStringify(['bbox', 'coordinates']) :
-      JSON.stringify;
+  if (opts.ndjson) {
+    stringify = stringifyAsNDJSON;
+  } else if (opts.prettify) {
+    stringify = getFormattedStringify(['bbox', 'coordinates']);
+  } else {
+    stringify = JSON.stringify;
   }
 
   if (properties && shapes && properties.length !== shapes.length) {
@@ -165,14 +167,12 @@ export function exportDatasetAsGeoJSON(dataset, opts, ofmt) {
   var geojson = {};
   var layers = dataset.layers;
   var useFeatures = useFeatureCollection(layers, opts);
-  var parts, collection, bbox, collname;
+  var collection, bbox;
 
   if (useFeatures) {
     geojson.type = 'FeatureCollection';
-    collname = 'features';
   } else {
     geojson.type = 'GeometryCollection';
-    collname = 'geometries';
   }
 
   if (opts.gj2008) {
@@ -193,22 +193,42 @@ export function exportDatasetAsGeoJSON(dataset, opts, ofmt) {
 
   if (opts.geojson_type == 'Feature' && collection.length == 1) {
     return collection[0];
+  } else if (opts.ndjson) {
+    return GeoJSON.formatCollectionAsNDJSON(collection);
   } else if (ofmt) {
-    return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
+    return GeoJSON.formatCollection(geojson, collection);
   } else {
-    geojson[collname] = collection;
+    geojson[collectionName(geojson.type)] = collection;
     return geojson;
   }
 }
 
-GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
-  // collection is an array of individual GeoJSON Feature|geometry strings or buffers
-  var head = JSON.stringify(container).replace(/\}$/, ', "' + collType + '": [\n');
+function collectionName(type) {
+  if (type == 'FeatureCollection') return 'features';
+  if (type == 'GeometryCollection') return 'geometries';
+  error('Invalid collection type:', type);
+}
+
+// collection: an array of Buffers, one per feature
+GeoJSON.formatCollectionAsNDJSON = function(collection) {
+  var delim = utils.createBuffer('\n', 'utf8');
+  var parts = collection.reduce(function(memo, buf, i) {
+    if (i > 0) memo.push(delim);
+    memo.push(buf);
+    return memo;
+  }, []);
+  return Buffer.concat(parts);
+};
+
+// collection: an array of individual GeoJSON Features or geometries as strings or buffers
+GeoJSON.formatCollection = function(container, collection) {
+  var head = JSON.stringify(container).replace(/\}$/, ', "' + collectionName(container.type) + '": [\n');
   var tail = '\n]}';
-  if (ofmt == 'buffer') {
-    return GeoJSON.joinOutputBuffers(head, tail, collection);
+  if (utils.isString(collection[0])) {
+    return head + collection.join(',\n') + tail;
   }
-  return head + collection.join(',\n') + tail;
+  // assume buffers
+  return GeoJSON.joinOutputBuffers(head, tail, collection);
 };
 
 GeoJSON.joinOutputBuffers = function(head, tail, collection) {

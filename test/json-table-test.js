@@ -17,6 +17,15 @@ describe('mapshaper-json-table.js', function () {
 
   describe('applyCommands() tests', function () {
 
+    it('ndjson output', function(done) {
+      var input = [{a: 'foo'}, {b: 'bar'}];
+      api.applyCommands('-i data.json -o ndjson', {'data.json': input}, function(err, out) {
+        var str = out['data.json'].toString();
+        assert.equal(str, '{"a":"foo"}\n{"b":"bar"}');
+        done();
+      })
+    });
+
     it('json -> csv', function(done) {
       var json = [{id: 0}, {id: 1}];
       api.applyCommands('-o format=csv', json, function(err, data) {

@@ -14,6 +14,7 @@ export function GeoJSONReader(reader) {
     var start = reader.findString('"features"', bytesToSearch) ||
         reader.findString('"geometries"', bytesToSearch);
     // Assume single Feature or geometry if collection not found
+    // (this works for ndjson files too)
     var offset = start ? start.offset : 0;
     readObjects(offset, onObject);
   };

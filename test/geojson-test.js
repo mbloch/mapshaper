@@ -10,6 +10,60 @@ function fixPath(p) {
 
 describe('mapshaper-geojson.js', function () {
 
+  describe('ndjson input', function () {
+    // TODO: support reading ndjson
+    false && it('reads features from an ndjson string', function (done) {
+      var a = {
+        type: 'Feature',
+        properties: {id: 1},
+        geometry: null
+      };
+      var b = {
+        type: 'Feature',
+        properties: {id: 2},
+        geometry: null
+      };
+      var json = JSON.stringify(a) + '\n' + JSON.stringify(b);
+      var buf = Buffer.from(json);
+      var cmd = '-i data.json -o';
+      api.applyCommands(cmd, {'data.json': buf}, function(err, out) {
+        console.log(err, out)
+        done();
+      });
+    })
+  })
+
+  describe('-o ndjson option', function () {
+    it('outputs ndjson features', function (done) {
+      var data = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {id: 1},
+          geometry: {
+            type: 'Point',
+            coordinates: [0, 1]
+          }
+        }, {
+          type: 'Feature',
+          properties: {id: 2},
+          geometry: null
+        }]
+      }
+      var cmd = '-i data.json -o ndjson';
+      api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+        var json = out['data.json'].toString();
+        var lines = json.split('\n');
+        assert.equal(lines.length, 2);
+        assert.equal(lines[0][0], '{')
+        assert.equal(lines[1][0], '{')
+        assert.equal(lines[0].slice(-1), '}')
+        assert.equal(lines[1].slice(-1), '}')
+        done();
+      });
+    })
+  })
+
   describe('getDatasetBbox()', function() {
 
     describe('RFC 7946 bbox', function() {

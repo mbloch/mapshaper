@@ -1,4 +1,4 @@
-import { getFormattedStringify } from '../geojson/mapshaper-stringify';
+import { getFormattedStringify, stringifyAsNDJSON } from '../geojson/mapshaper-stringify';
 import { fixInconsistentFields } from '../datatable/mapshaper-data-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 
@@ -25,6 +25,13 @@ export function exportJSON(dataset, opts) {
 }
 
 export function exportJSONTable(lyr, opts) {
-  var stringify = opts && opts.prettify ? getFormattedStringify([]) : JSON.stringify;
-  return stringify(lyr.data.getRecords());
+  opts = opts || {};
+  var records = lyr.data.getRecords();
+  if (opts.ndjson) {
+    return records.map(stringifyAsNDJSON).join('\n');
+  }
+  if (opts.prettify) {
+    return getFormattedStringify([])(records);
+  }
+  return JSON.stringify(records);
 }

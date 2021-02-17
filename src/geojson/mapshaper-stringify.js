@@ -1,6 +1,11 @@
 
 import utils from '../utils/mapshaper-utils';
 
+export function stringifyAsNDJSON(o) {
+  var str = JSON.stringify(o);
+  return str.replace(/\n/g, '\n').replace(/\r/g, '\r');
+}
+
 export function getFormattedStringify(numArrayKeys) {
   var keyIndex = utils.arrayToIndex(numArrayKeys);
   var sentinel = '\u1000\u2FD5\u0310';
