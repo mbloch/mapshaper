@@ -1,7 +1,6 @@
 import { cleanupArcs, replaceLayers } from '../dataset/mapshaper-dataset-utils';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
-import { setDatasetCRS, initProjLibrary } from '../geom/mapshaper-projections';
-import { getCrsInfo } from '../commands/mapshaper-proj';
+import { initProjLibrary } from '../geom/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
@@ -299,17 +298,7 @@ export function runCommand(command, catalog, cb) {
         var err = null;
         try {
           targets.forEach(function(targ) {
-            var destArg = opts.match || opts.crs || opts.projection;
-            var srcInfo, destInfo;
-            if (opts.init) {
-              srcInfo = getCrsInfo(opts.init, catalog);
-              if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
-              setDatasetCRS(targ.dataset, srcInfo);
-            }
-            if (destArg) {
-              destInfo = getCrsInfo(destArg, catalog);
-              cmd.proj(targ.dataset, destInfo, opts);
-            }
+            cmd.proj(targ.dataset, catalog, opts);
           });
         } catch(e) {
           err = e;

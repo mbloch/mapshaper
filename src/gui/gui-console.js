@@ -56,7 +56,9 @@ export function Console(gui) {
   function saveHistory() {
     try {
       history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-      window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
+      if (history.length) {
+        window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
+      }
     } catch(e) {
     }
   }

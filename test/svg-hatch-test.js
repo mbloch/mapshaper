@@ -2,7 +2,7 @@ import { parsePattern } from '../src/svg/svg-hatch.js'
 import assert from 'assert';
 
 describe('svg-hatch.js', function () {
-  describe('parsePattern()()', function () {
+  describe('parsePattern()', function () {
 
     it('dot pattern', function() {
       assert.deepEqual(parsePattern('dots 1px black 3px white'), {

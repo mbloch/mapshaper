@@ -1,7 +1,15 @@
 import { getAvgSegment2 } from '../paths/mapshaper-path-utils';
 import { editArcs } from '../paths/mapshaper-arc-editor';
 import { editShapes, cloneShapes } from '../paths/mapshaper-shape-utils';
-import { getProjTransform2, getCRS, parsePrj, crsAreEqual, getDatasetCRS } from '../geom/mapshaper-projections';
+import {
+  getProjTransform2,
+  getCRS,
+  parsePrj,
+  crsAreEqual,
+  getDatasetCRS,
+  setDatasetCRS
+} from '../geom/mapshaper-projections';
+import { expandProjDefn } from '../geom/mapshaper-projection-params';
 import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { runningInBrowser } from '../mapshaper-state';
@@ -11,8 +19,25 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 
+cmd.proj = function(dataset, catalog, opts) {
+  var srcInfo, destInfo, destStr;
+  if (opts.init) {
+    srcInfo = getCrsInfo(opts.init, catalog);
+    if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
+    setDatasetCRS(dataset, srcInfo);
+  }
+  if (opts.match) {
+    destInfo = getCrsInfo(opts.match, catalog);
+  } else if (opts.crs) {
+    destStr = expandProjDefn(opts.crs, dataset);
+    destInfo = getCrsInfo(destStr);
+  }
+  if (destInfo) {
+    projCmd(dataset, destInfo, opts);
+  }
+};
 
-cmd.proj = function(dataset, destInfo, opts) {
+function projCmd(dataset, destInfo, opts) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
   var modifyCopy = runningInBrowser(),
@@ -71,10 +96,10 @@ cmd.proj = function(dataset, destInfo, opts) {
     // replace original layers with modified layers
     utils.extend(lyr, target.layers[i]);
   });
-};
+}
 
 
-// @source: a layer identifier, .prj file or projection defn
+// name: a layer identifier, .prj file or projection defn
 // Converts layer ids and .prj files to CRS defn
 // Returns projection defn
 export function getCrsInfo(name, catalog) {
@@ -85,18 +110,17 @@ export function getCrsInfo(name, catalog) {
       info.prj = dataset.info.prj;
       info.crs = parsePrj(info.prj);
     }
-  } else {
-    source = catalog.findSingleLayer(name);
-    if (source) {
-      dataset = source.dataset;
-      info.crs = getDatasetCRS(dataset);
-      info.prj = dataset.info.prj; // may be undefined
-      // defn = internal.crsToProj4(P);
-    } else {
-      // assume name is a projection defn
-      info.crs = getCRS(name);
-    }
+    return info;
   }
+  if (catalog && (source = catalog.findSingleLayer(name))) {
+    dataset = source.dataset;
+    info.crs = getDatasetCRS(dataset);
+    info.prj = dataset.info.prj; // may be undefined
+    // defn = internal.crsToProj4(P);
+    return info;
+  }
+  // assume name is a projection defn
+  info.crs = getCRS(name);
   return info;
 }
 
