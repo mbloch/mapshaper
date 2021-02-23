@@ -61,7 +61,7 @@ function groupPolygons2(lyr, getGroupId) {
 function getGapRemovalMessage(removed, retained, areaLabel) {
   var msg;
   if (removed > 0 === false) return '';
-  return utils.format('Closed %,d / %,d gap%s using %s',
+  return utils.format('Removed %,d / %,d sliver%s using %s',
       removed, removed + retained, utils.pluralSuffix(removed), areaLabel);
 }
 
