@@ -1,24 +1,16 @@
 import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { requireDataField } from '../dataset/mapshaper-layer-utils';
-import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
 import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
 import {
   getSequentialClassifier,
-  getContinuousClassifier,
   getCategoricalClassifier,
-  getQuantileBreaks,
-  getEqualIntervalBreaks,
-  getHybridBreaks,
-  getClassId,
-  getDataRange,
   interpolateValuesToClasses,
   getDistributionData,
   getDiscreteValueGetter,
   getInterpolatedValueGetter
 } from '../classification/mapshaper-classification';
-import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
 import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
@@ -118,11 +110,9 @@ cmd.classify = function(lyr, optsArg) {
     // data is pre-classified... just read the index from a field
     classify = getIndexClassifier(numBuckets);
   } else if (opts.categories) {
-    // categorical classification
     classify = getCategoricalClassifier(opts.categories);
   } else {
-    // sequential classification
-    classify = getNumericalClassifier(getFieldValues(records, dataField), numBuckets, opts);
+    classify = getSequentialClassifier(getFieldValues(records, dataField), numBuckets, opts);
   }
 
   // get a function to convert class indexes to output values
@@ -177,43 +167,6 @@ function getIndexClassifier(numBuckets) {
   };
 }
 
-function getNumericalClassifier(dataValues, numBuckets, opts) {
-  // continuously interpolated colors/values use one fewer breakpoint than
-  // discreetly classed values
-  var numBreaks = numBuckets - 1;
-  var round = opts.precision ? getRoundingFunction(opts.precision) : null;
-  var method = opts.method || 'quantile';
-  var breaks;
-
-  if (round) {
-    dataValues = dataValues.map(round);
-  }
-
-  if (numBreaks === 0) {
-    breaks = [];
-  } else if (opts.breaks) {
-    // user-defined breaks
-    breaks = opts.breaks;
-  } else if (method == 'equal-interval') {
-    breaks = getEqualIntervalBreaks(dataValues, numBreaks);
-  } else if (method == 'quantile') {
-    breaks = getQuantileBreaks(dataValues, numBreaks);
-  } else if (method == 'hybrid') {
-    breaks = getHybridBreaks(dataValues, numBreaks);
-  } else if (method == 'nice') {
-    breaks = getNiceBreaks(dataValues, numBreaks);
-  } else {
-    stop('Unknown classification method:', method);
-  }
-
-  var dataRange = getDataRange(dataValues);
-  printDistributionInfo(dataValues, dataRange, breaks);
-
-  return opts.continuous ?
-    getContinuousClassifier(breaks, dataRange) :
-    getSequentialClassifier(breaks, round);
-}
-
 // convert strings to numbers if they all parse as numbers
 // arr: an array of strings
 function parseValues(strings) {
@@ -242,15 +195,6 @@ function formatColorsAsHex(colors) {
   });
 }
 
-function printDistributionInfo(values, range, breaks) {
-  var dist = getDistributionData(breaks, values);
-  message('Computed breaks:', breaks);
-  message('Distribution:', dist.join(','));
-  message('Data range:', range);
-  if (dist.nulls) {
-    message('Null values:', dist.nulls);
-  }
-}
 
 function getIndexValues(n) {
   var vals = [];

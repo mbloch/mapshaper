@@ -2,7 +2,7 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { getStateVar } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
-import { getSequentialClassifier, getCategoricalClassifier, getDiscreteValueGetter }
+import { getDiscreteClassifier, getCategoricalClassifier, getDiscreteValueGetter }
   from '../classification/mapshaper-classification';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
@@ -49,7 +49,7 @@ export function getColorizerFunction(opts) {
 }
 
 function getSequentialColorFunction(breaks, colors, nullVal, round) {
-  var classify = getSequentialClassifier(breaks, round);
+  var classify = getDiscreteClassifier(breaks, round);
   var toColor = getDiscreteValueGetter(colors, nullVal);
   return function(val) {
     return toColor(classify(val));

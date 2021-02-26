@@ -1,34 +1,72 @@
 import {
   getSequentialClassifier,
+  getDiscreteClassifier,
   interpolateValuesToClasses,
   getInterpolatedValueGetter,
   getDiscreteValueGetter,
   getContinuousClassifier,
   getQuantileBreaks,
-  getDistributionData
+  getClassRanges,
+  getDistributionData,
+  getAscendingNumbers
 } from '../src/classification/mapshaper-classification';
 var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-classification.js', function () {
 
-  describe('getInterpolatedValueGetter()', function () {
+  describe('getClassRanges()', function () {
+    it('test 1', function() {
+      var data = [0,1,1,3,4];
+      var breaks = [1, 4];
+      var out = getClassRanges(breaks, data);
+      assert.deepEqual(out, [[0,0], [1,3], [4,4]])
+    })
 
+    it('test 2', function() {
+      var data = [0,1,1,3,4];
+      var breaks = [-1, 7];
+      var out = getClassRanges(breaks, data);
+      assert.deepEqual(out, [[-1, -1], [0, 4], [7, 7]])
+    })
+
+    it('test 3', function() {
+      var data = [1,1,2,2,3,3,4,4,5,5];
+      var breaks = [2, 4];
+      var out = getClassRanges(breaks, data);
+      assert.deepEqual(out, [[1, 1], [2, 3], [4, 5]])
+    });
+
+    it('test 4', function() {
+      var data = [1, 2, 3, 9, 10];
+      var breaks = [5, 8];
+      var out = getClassRanges(breaks, data);
+      assert.deepEqual(out, [[1, 3], [5,8], [9, 10]])
+    });
+
+  })
+
+  describe('getDistributionData()', function () {
+    it('test 1', function () {
+      var data = [0, 3, 4, 4, 9, 10];
+      var breaks = [3, 5, 9];
+      var out = getDistributionData(breaks, data);
+      assert.deepEqual(out, [1, 3, 0, 2]);
+    })
   })
 
   describe('getQuantileBreaks()', function () {
     it('creates equal-sized classes (when possible)', function () {
-      var values = (Array(125)).fill(null).map(Math.random);
+      var values = getAscendingNumbers((Array(125)).fill(null).map(Math.random));
       var breaks = getQuantileBreaks(values, 4);
       var dist = getDistributionData(breaks, values);
       assert.deepEqual(dist.concat(), [25,25,25,25,25]);
-      assert.strictEqual(dist.nulls, 0);
     })
   })
 
   describe('getContinuousClassifier()', function () {
     it('uses piecewise linear interpolation', function () {
-      var classify = getContinuousClassifier([1, 2, 4], [0, 8]);
+      var classify = getContinuousClassifier([1, 2, 4], 0, 8);
       var classToValue = getInterpolatedValueGetter([5, 6, 7, 8, 9], null);
       var f = function(val) { return classToValue(classify(val)) };
       assert.equal(f(1), 6);
@@ -43,7 +81,7 @@ describe('mapshaper-classification.js', function () {
     })
 
     it('handles a single class', function() {
-      var classify = getContinuousClassifier([], [0, 8]);
+      var classify = getContinuousClassifier([], 0, 8);
       var classToValue = getInterpolatedValueGetter([5,10], null);
       var f = function(val) { return classToValue(classify(val)) };
       assert.equal(f(0), 5);
@@ -78,9 +116,9 @@ describe('mapshaper-classification.js', function () {
 
   })
 
-  describe('getSequentialClassifier()', function () {
+  describe('getDiscreteClassifier()', function () {
     it('non-numeric data is classified as -1', function () {
-      var f = getSequentialClassifier([10]);
+      var f = getDiscreteClassifier([10]);
       assert.strictEqual(f(0), 0);
       assert.strictEqual(f(null), -1);
       assert.strictEqual(f(), -1);
@@ -93,7 +131,7 @@ describe('mapshaper-classification.js', function () {
     })
 
     it('all classes are reachable', function () {
-      var f = getSequentialClassifier([0, 10]);
+      var f = getDiscreteClassifier([0, 10]);
       assert.strictEqual(f(-1), 0);
       assert.strictEqual(f(0), 1);
       assert.strictEqual(f(5), 1);

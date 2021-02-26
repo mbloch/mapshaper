@@ -1,3 +1,6 @@
+v0.5.35
+* Calculate projection params based on data extent for four projections, by running -proj lcc|aea|tmerc|etmerc (experimental).
+
 v0.5.34
 * Add -o ndjson flag, to output GeoJSON and JSON records in NDJSON format.
 * Improvements to -classify command

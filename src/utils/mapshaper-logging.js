@@ -95,6 +95,22 @@ export function UserError(msg) {
   return err;
 }
 
+export function formatColumns(arr, alignments) {
+  var widths = arr.reduce(function(memo, line) {
+    return line.map(function(str, i) {
+      return memo ? Math.max(memo[i], str.length) : str.length;
+    });
+  }, null);
+  return arr.map(function(line) {
+    line = line.map(function(str, i) {
+      var rt = alignments && alignments[i] == 'right';
+      var pad = (rt ? str.padStart : str.padEnd).bind(str);
+      return pad(widths[i], ' ');
+    });
+    return '  ' + line.join(' ');
+  }).join('\n');
+}
+
 // Format an array of (preferably short) strings in columns for console logging.
 export function formatStringsAsGrid(arr) {
   // TODO: variable column width

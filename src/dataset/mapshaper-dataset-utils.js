@@ -13,7 +13,7 @@ export function splitDataset(dataset) {
     var split = {
       arcs: dataset.arcs,
       layers: [lyr],
-      info: dataset.info
+      info: utils.extend({}, dataset.info)
     };
     dissolveArcs(split); // replace arcs with filtered + dissolved copy
     return split;

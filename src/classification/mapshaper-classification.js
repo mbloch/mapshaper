@@ -1,5 +1,7 @@
 import utils from '../utils/mapshaper-utils';
-import { stop, error } from '../utils/mapshaper-logging';
+import { stop, error, message, formatColumns } from '../utils/mapshaper-logging';
+import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
+import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
 // convert an index (0 ... n-1, -1, -2) to a corresponding discreet value
 export function getDiscreteValueGetter(values, nullValue, otherValue) {
@@ -44,22 +46,10 @@ export function getCategoricalClassifier(categories) {
   };
 }
 
-
-export function getDataRange(values) {
-  var ascending = getAscendingNumbers(values);
-  if (ascending.length > 0 === false) {
-    return [-Infinity, Infinity]; // throw error instead?
-  }
-  return [ascending[0], ascending[ascending.length - 1]];
-}
-
 // uses linear interpolation between breakpoints
 // (perhaps not ideal for long-tail distributions)
 // breaks: array of (0 or more) inner breakpoints
-// range: [min, max] range of the dataset
-export function getContinuousClassifier(breaks, range) {
-  var minVal = range[0];
-  var maxVal = range[1];
+export function getContinuousClassifier(breaks, minVal, maxVal) {
   return function(val) {
     var n = breaks.length;
     var min, max, j;
@@ -98,7 +88,107 @@ export function interpolateValuesToClasses(values, n) {
   return output;
 }
 
-export function getSequentialClassifier(breaks, round) {
+export function getSequentialClassifier(dataValues, numBuckets, opts) {
+  // continuously interpolated colors/values use one fewer breakpoint than
+  // discreetly classed values
+  var numBreaks = numBuckets - 1;
+  var round = opts.precision ? getRoundingFunction(opts.precision) : null;
+  var method = opts.method || 'quantile';
+  var breaks;
+
+  if (round) {
+    dataValues = dataValues.map(round);
+  }
+
+  var ascending = getAscendingNumbers(dataValues);
+  var nullCount = dataValues.length - ascending.length;
+
+  if (numBreaks === 0) {
+    breaks = [];
+  } else if (opts.breaks) {
+    // user-defined breaks
+    breaks = opts.breaks;
+  } else if (method == 'equal-interval') {
+    breaks = getEqualIntervalBreaks(ascending, numBreaks);
+  } else if (method == 'quantile') {
+    breaks = getQuantileBreaks(ascending, numBreaks);
+  } else if (method == 'hybrid') {
+    breaks = getHybridBreaks(ascending, numBreaks);
+  } else if (method == 'nice') {
+    breaks = getNiceBreaks(ascending, numBreaks);
+    message('Nice breaks:', breaks);
+  } else {
+    stop('Unknown classification method:', method);
+  }
+
+  printDistributionInfo(ascending, breaks, nullCount);
+
+  return opts.continuous ?
+    getContinuousClassifier(breaks, ascending[0], ascending[ascending.length - 1]) :
+    getDiscreteClassifier(breaks, round);
+}
+
+export function getClassRanges(breaks, ascending) {
+  var ranges = [];
+  var ids, geBound, ltBound, limit, range;
+  for (var breakId=0, i=0; breakId <= breaks.length; breakId++) {
+    geBound = breakId === 0 ? -Infinity : breaks[breakId-1];
+    ltBound = breakId < breaks.length ? breaks[breakId] : Infinity;
+    ids = getClassRange(ascending, geBound, ltBound, i);
+    if (ids) {
+      // the usual case: a bucket containing >0 values
+      range = [ascending[ids[0]], ascending[ids[1]]];
+      i = ids[1];
+    } else if (breakId === 0) {
+      // left-most bucket, empty
+      range = [ltBound, ltBound];
+    } else if (breakId < breaks.length) {
+      // internal bucket, empty
+      range = [geBound, ltBound];
+    } else {
+      // right-most bucket, empty
+      range = [geBound, geBound];
+    }
+    ranges.push(range);
+  }
+  return ranges;
+}
+
+// Gets the first and last value in a sequential class (bucket)
+// Returns null if bucket is empty
+// i: an index into the array of sorted numbers,
+//    at or before the first number in the bucket
+function getClassRange(ascending, geBound, ltBound, i) {
+  var n = ascending.length;
+  var rangeStart = -1, rangeEnd = -1;
+  var val;
+  while (i < n) {
+    val = ascending[i];
+    if (val >= ltBound) break;
+    if (rangeStart == -1 && val >= geBound) {
+      rangeStart = i;
+    }
+    rangeEnd = i;
+    i++;
+  }
+  return rangeStart > -1 && rangeEnd > -1 ? [rangeStart, rangeEnd] : null;
+}
+
+function printDistributionInfo(ascending, breaks, nulls) {
+  var dist = getDistributionData(breaks, ascending);
+  var tableRows = getClassRanges(breaks, ascending).map(function(range, i) {
+    return [`${range[0]} - ${range[1]}`, `(${dist[i]})`];
+  });
+  tableRows.push(['null or non-numeric values', `(${nulls})`]);
+  // message('Computed breaks:', breaks);
+  // message('Distribution:', dist.join(','));
+  message('Data ranges and (feature counts):\n' + formatColumns(tableRows, ['left', 'right']));
+  if (nulls) {
+    // message('Null values:', nulls);
+  }
+}
+
+export function getDiscreteClassifier(breaks, round) {
   var inverted = false; // breaks are in descending sequence
   // if (values.length != breaks.length + 1) {
   //   stop("Number of values should be one more than number of class breaks");
@@ -126,9 +216,8 @@ export function getSequentialClassifier(breaks, round) {
   };
 }
 
-export function getEqualIntervalBreaks(values, numBreaks) {
+export function getEqualIntervalBreaks(ascending, numBreaks) {
   var numRanges = numBreaks + 1,
-      ascending = getAscendingNumbers(values),
       minVal = ascending[0],
       maxVal = ascending[ascending.length - 1],
       interval = (maxVal - minVal) / numRanges,
@@ -140,9 +229,8 @@ export function getEqualIntervalBreaks(values, numBreaks) {
   return breaks;
 }
 
-export function getQuantileBreaks(values, numBreaks) {
+export function getQuantileBreaks(ascending, numBreaks) {
   var numRanges = numBreaks + 1;
-  var ascending = getAscendingNumbers(values);
   var n = ascending.length / numRanges;
   var breaks = [];
   var i, j;
@@ -156,12 +244,12 @@ export function getQuantileBreaks(values, numBreaks) {
 // inner breaks have equal-interval spacing
 // first and last bucket are sized like quantiles (they are sized to contain
 // a proportional share of the data)
-export function getHybridBreaks(values, numBreaks) {
-  var quantileBreaks = getQuantileBreaks(values, numBreaks);
+export function getHybridBreaks(ascending, numBreaks) {
+  var quantileBreaks = getQuantileBreaks(ascending, numBreaks);
   if (numBreaks < 3) return quantileBreaks;
   var lowerBreak = quantileBreaks[0];
   var upperBreak = quantileBreaks[quantileBreaks.length-1];
-  var innerValues = values.filter(function(val) {
+  var innerValues = ascending.filter(function(val) {
     return val >= lowerBreak && val < upperBreak;
   });
   var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
@@ -169,22 +257,21 @@ export function getHybridBreaks(values, numBreaks) {
   return breaks;
 }
 
-export function getDistributionData(breaks, values) {
+export function getDistributionData(breaks, ascending) {
   var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
   var nulls = 0;
-  values.forEach(function(val) {
+  ascending.forEach(function(val) {
     var i = getClassId(val, breaks);
     if (i == -1) {
-      nulls++;
+      error('Indexing error');
     } else {
       arr[i]++;
     }
   });
-  arr.nulls = nulls;
   return arr;
 }
 
-function getAscendingNumbers(values) {
+export function getAscendingNumbers(values) {
   var numbers = values.filter(utils.isFiniteNumber);
   utils.genericSort(numbers, true);
   return numbers;
