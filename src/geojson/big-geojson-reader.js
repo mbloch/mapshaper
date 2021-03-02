@@ -9,6 +9,10 @@ const COMMA = new Uint8Array(Buffer.from(',', 'utf-8'))[0]
 const NEW_LINE = 10
 const NUMBER = new Uint8Array(Buffer.from('0123456789.', 'utf-8'))
 
+// rewrite of: nullish coalescing operator '??'
+// because mocha test doesn't know it yet
+const nco = (a,b) => (a !== null && a !== undefined) ? a : b
+
 /**
  * Wrapper class over a two dimensional array, which mimics to be a one dimensional array.
  * (So we can have arrays longer than max array length.)
@@ -336,11 +340,11 @@ export class BigGeoJSONReader {
       Find the next nearest index of char,
       from our bucket of chars. ('{', '}', '[', ']', 'Feature"')
       */
-      const min = Math.min(curvedBracketsOpen.get(curvedBracketsOpenIndex) ?? Infinity,
-        curvedBracketsClose.get(curvedBracketsCloseIndex) ?? Infinity,
-        squareBracketOpen.get(squareBracketOpenIndex) ?? Infinity,
-        squareBracketClose.get(squareBracketCloseIndex) ?? Infinity,
-        feature.get(featureIndex) ?? Infinity)
+      const min = Math.min(nco(curvedBracketsOpen.get(curvedBracketsOpenIndex), Infinity),
+        nco(curvedBracketsClose.get(curvedBracketsCloseIndex), Infinity),
+        nco(squareBracketOpen.get(squareBracketOpenIndex), Infinity),
+        nco(squareBracketClose.get(squareBracketCloseIndex), Infinity),
+        nco(feature.get(featureIndex), Infinity))
 
       if (curvedBracketsOpen.get(curvedBracketsOpenIndex) === min) {
         // if the next char is a open curved bracket
