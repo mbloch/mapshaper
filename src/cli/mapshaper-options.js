@@ -181,6 +181,10 @@ export function getOptionParser() {
     .option('json-path', {
       old_alias: 'json-subtree',
       describe: '[JSON] path to JSON input data; separator is /'
+    })
+    .option('big-geojson', {
+      describe: 'Use alternative reader, to read a FeatureCollection from a big (2GB+) GeoJSON file.',
+      type: 'flag'
     });
 
   parser.command('o')

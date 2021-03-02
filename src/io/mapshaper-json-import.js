@@ -1,5 +1,6 @@
 
 import { GeoJSONParser, importGeoJSON } from '../geojson/geojson-import';
+import { BigGeoJSONReader } from '../geojson/big-geojson-reader'
 import { BufferReader, FileReader, readFirstChars } from '../io/mapshaper-file-reader';
 import utils from '../utils/mapshaper-utils';
 import { importTopoJSON } from '../topojson/topojson-import';
@@ -43,7 +44,17 @@ export function identifyJSONObject(o) {
 
 export function importGeoJSONFile(fileReader, opts) {
   var importer = new GeoJSONParser(opts);
-  new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+
+  if (opts.big_geojson) {
+    for (const file of opts.files) {
+      const reader = new BigGeoJSONReader()
+      reader.loadGeoJSONFile(file)
+      reader.readObjects(importer.parseObject)
+    }
+  } else {
+    new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+  }
+
   return importer.done();
 }
 
