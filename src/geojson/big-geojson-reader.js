@@ -1,5 +1,5 @@
 const fs = require('fs')
-import { verbose } from '../utils/mapshaper-logging'
+import { verbose, printError, error } from '../utils/mapshaper-logging'
 import { T } from '../utils/mapshaper-timing'
 
 const SQUARE_BRACKET_OPEN = new Uint8Array(Buffer.from('[', 'utf-8'))[0]
@@ -188,8 +188,8 @@ class MyBigBuffer {
     try {
       json = JSON.parse(string)
     } catch (error) {
-      console.error(`Failed to parse string to json: ${string}`)
-      throw error
+      printError(`Failed to parse string to json: ${string}`)
+      error(error)
     }
 
     return json
@@ -207,8 +207,8 @@ class MyBigBuffer {
     try {
       json = JSON.parse(string)
     } catch (error) {
-      console.error(`Failed to parse string to json: ${string}`)
-      throw error
+      printError(`Failed to parse string to json: ${string}`)
+      error(error)
     }
 
     return json
@@ -243,7 +243,7 @@ class MyBigBuffer {
         } else if (stack.length === 0 && i === end) {
           result = lastElem
         } else {
-          throw new Error('Unexpected array closing.')
+          error('Unexpected array closing.')
         }
       } else if (NUMBER.includes(n)) {
         // find start and end index of number in buffer
@@ -258,13 +258,13 @@ class MyBigBuffer {
         if (stack.length > 0) {
           stack[stack.length - 1].push(num)
         } else {
-          throw new Error('Found number at unexpected position in array.')
+          error('Found number at unexpected position in array.')
         }
 
         // move i to end of number
         i = endIndex
       } else {
-        throw new Error(`Found unexpected byte in number array: ${n}`)
+        error(`Found unexpected byte in number array: ${n}`)
       }
     }
 
@@ -334,7 +334,7 @@ export class BigGeoJSONReader {
           squareBracketCloseIndex < squareBracketClose.length) {
       /*
       Find the next nearest index of char,
-      from our bucket of chars. ('{', '}', '[')
+      from our bucket of chars. ('{', '}', '[', ']', 'Feature"')
       */
       const min = Math.min(curvedBracketsOpen.get(curvedBracketsOpenIndex) ?? Infinity,
         curvedBracketsClose.get(curvedBracketsCloseIndex) ?? Infinity,
@@ -353,20 +353,25 @@ export class BigGeoJSONReader {
         if (stack.length > 0 && stack[stack.length - 1].char === '{') {
           curvedBracketsCloseIndex++
 
+          // double bang: get always an boolean; (undefined=false)
           const isFeature = !!stack[stack.length - 1].isFeature
           const coordinates = stack[stack.length - 1].coordinates
 
+          // last element on stack is '{': object-start
           const start = stack.pop().index
 
+          // if object is a feature, save feature start & end indices as well as the start and end indices of the coordinates array of the feature
           if (isFeature) {
             this.features.push({ start: start, end: min, coordinates: { start: coordinates[0], end: coordinates[1] } })
           }
         } else {
-          throw new Error('Unexpectd "}" character')
+          error('Unexpectd "}" character')
         }
       } else if (squareBracketOpen.get(squareBracketOpenIndex) === min) {
         // if the next char is a open square bracket
 
+        // ignore indices of arrays in arrays
+        // (nested coordinates array: we only have to save the indices of the most outer array)
         if (stack.length > 0 && stack[stack.length - 1].char === '[') {
           squareBracketOpenIndex++
           squareBracketCloseIndex++
@@ -379,7 +384,9 @@ export class BigGeoJSONReader {
 
         if (stack.length > 0 && stack[stack.length - 1].char === '[') {
           squareBracketCloseIndex++
+          // get start index of array
           const start = stack.pop().index
+          // if there is a feature object on the stack; add coordinates array start & end indices to it
           for (let i = stack.length - 1; i > -1; i--) {
             if (stack[i].isFeature) {
               stack[i].coordinates = [start, min]
@@ -387,20 +394,21 @@ export class BigGeoJSONReader {
             }
           }
         } else {
-          console.log(stack)
-          throw new Error('Unexpectd "]" character')
+          // printError(stack)
+          error('Unexpectd "]" character')
         }
       } else if (feature.get(featureIndex) === min) {
         // if the next char sequence is 'Feature"'
 
         if (stack.length > 0 && stack[stack.length - 1].char === '{') {
           featureIndex++
+          // mark the uppermost element on the stack as feature
           stack[stack.length - 1].isFeature = true
         } else {
-          throw new Error('Unexpected type: Feature property')
+          error('Unexpected type: Feature property')
         }
       } else {
-        throw new Error('Invalid Tree. Unexpected JSON control sequence.')
+        error('Invalid Tree. Unexpected JSON control sequence.')
       }
     }
     T.stop('interpret occurrences')
@@ -417,16 +425,18 @@ export class BigGeoJSONReader {
    * Then adds the seperately parsed coordinates array to the feature object.
    */
   * getFeatures () {
-    if (this.features.length < 1) throw new Error('No geojson file was loaded!')
+    if (this.features.length < 1) error('No geojson file was loaded!')
 
     // iterate over start/end indices of features
     for (const featureIndices of this.features) {
       const byteCount = featureIndices.end - featureIndices.start
 
+      // if byte count is smaller than a certain threshold, then just parse the whole feature directly to json
       if (byteCount < this.maxDirectJsonParseByteCount) {
         const json = this.bigBuffer.sliceToJSON(featureIndices.start, featureIndices.end)
         yield json
       } else {
+        // define buffer slices, to parse feature without the coordinates array
         const arr = [
           { start: featureIndices.start, end: featureIndices.coordinates.start },
           { start: featureIndices.coordinates.end, end: featureIndices.end }
@@ -448,6 +458,10 @@ export class BigGeoJSONReader {
     }
   }
 
+  /**
+   * Iterates over all features and calls the provided callback with each feature.
+   * @param {function} cb callback
+   */
   readObjects(cb) {
     for (const feature of this.getFeatures()) {
       cb(feature)
