@@ -445,7 +445,9 @@ export class BigGeoJSONReader {
         // parse feature without coordinates array to json
         const json = this.bigBuffer.multiSlicesToJSON(arr)
 
-        verbose('Found big feature. Parse coordinates array iteratively.')
+        // Math.pow(2, 20) = 1048576 = 1MB
+        const coordinatesArrMB = Math.ceil((featureIndices.coordinates.end - featureIndices.coordinates.start) / Math.pow(2, 20))
+        verbose(`Found big feature (${coordinatesArrMB}MB). Parse coordinates array iteratively.`)
         T.start()
         // parse coordinates array iteratively
         const coordinates = this.bigBuffer.parseNumberArray(featureIndices.coordinates.start, featureIndices.coordinates.end)
