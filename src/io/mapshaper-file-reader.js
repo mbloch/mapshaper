@@ -51,7 +51,7 @@ export function BufferReader(src) {
 
   this.readSync = function(start, length) {
     // TODO: consider using a default length like FileReader
-    return buffer().slice(start, length || bufSize);
+    return buffer().slice(start, length ? start + length : bufSize);
   };
 
   function buffer() {
@@ -106,6 +106,7 @@ export function FileReader(path, opts) {
       // use default size if length is not specified
       length = DEFAULT_BUFFER_LEN;
     }
+
     if (start + length > fileLen) {
       length = fileLen - start; // truncate at eof
     }

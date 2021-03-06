@@ -69,39 +69,6 @@ describe('geojson-reader.js', function () {
       })
     })
 
-    describe('readObject()', function () {
-      it('test1', function () {
-        var reader = new GeoJSONReader(new StringReader('{}'));
-        var target = {text: '{}', end: 2, start: 0};
-        assert.deepEqual(reader.readObject(0), target);
-      })
-
-      it('test2', function () {
-        var reader = new GeoJSONReader(new StringReader('{"foo": {"type": "Point"}}'));
-        var target = {text: '{"type": "Point"}', end: 25, start: 2};
-        assert.deepEqual(reader.readObject(6), target);
-      })
-
-      it('test3', function () {
-        var reader = new GeoJSONReader(new StringReader('{"foo": {"type": "Point"}}'));
-        var target = {text: '{"foo": {"type": "Point"}}', end: 26, start: 0};
-        assert.deepEqual(reader.readObject(0), target);
-      })
-
-      it('test4', function () {
-        var reader = new GeoJSONReader(new StringReader('{"a": "}""}\\"}"}'));
-        var target = {text: '{"a": "}\""}\\\"}"}', end: 16, start: 0};
-        assert.deepEqual(reader.readObject(0), target);
-      })
-
-      it('test5', function () {
-        var reader = new GeoJSONReader(new StringReader('[{"a": 0},\n{"b": 1}]'));
-        var target = {text: '{"b": 1}', end: 19, start: 2};
-        assert.deepEqual(reader.readObject(9), target);
-      })
-
-    })
-
   })
 
 })
