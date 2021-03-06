@@ -20,6 +20,28 @@ export function splitDataset(dataset) {
   });
 }
 
+export function splitApartLayers(dataset, layers) {
+  var datasets = [];
+  dataset.layers = dataset.layers.filter(function(lyr) {
+    if (!layers.includes(lyr)) {
+      return true;
+    }
+    var split = {
+      arcs: dataset.arcs,
+      layers: [lyr],
+      info: utils.extend({}, dataset.info)
+    };
+    dissolveArcs(split); // replace arcs with filtered + dissolved copy
+    datasets.push(split);
+    return false;
+  });
+  if (dataset.layers.length) {
+    dissolveArcs(dataset);
+    datasets.push(dataset);
+  }
+  return datasets;
+}
+
 // clone all layers, make a filtered copy of arcs
 export function copyDataset(dataset) {
   var d2 = utils.extend({}, dataset);

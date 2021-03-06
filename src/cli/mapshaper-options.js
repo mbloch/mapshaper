@@ -1240,6 +1240,10 @@ export function getOptionParser() {
       DEFAULT: true,
       describe: 'expression or field for grouping features and naming split layers'
     })
+    .option('apart', {
+      describe: 'save output layers to independent datasets',
+      type: 'flag'
+    })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 

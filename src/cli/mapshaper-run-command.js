@@ -1,4 +1,4 @@
-import { cleanupArcs, replaceLayers } from '../dataset/mapshaper-dataset-utils';
+import { cleanupArcs, replaceLayers, splitApartLayers } from '../dataset/mapshaper-dataset-utils';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { initProjLibrary } from '../geom/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
@@ -419,8 +419,19 @@ export function runCommand(command, catalog, cb) {
           dissolveArcs(targetDataset);
         }
       }
-      // use command output as new default target
-      catalog.setDefaultTarget(outputLayers, targetDataset);
+
+      if (opts.apart) {
+        catalog.setDefaultTargets(splitApartLayers( targetDataset, outputLayers).map(function(dataset) {
+          return {
+            dataset: dataset,
+            layers: dataset.layers.concat()
+          };
+        }));
+      } else {
+        // use command output as new default target
+        catalog.setDefaultTarget(outputLayers, targetDataset);
+      }
+
     }
 
 
