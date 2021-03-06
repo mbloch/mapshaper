@@ -1,3 +1,6 @@
+v0.5.36
+* Improved support for reading large GeoJSON files.
+
 v0.5.35
 * Calculate projection params based on data extent for four projections, by running -proj lcc|aea|tmerc|etmerc (experimental).
 
