@@ -1,3 +1,6 @@
+v0.5.37
+* Performance improvements for GeoJSON parsing.
+
 v0.5.36
 * Improved support for reading large GeoJSON files.
 
