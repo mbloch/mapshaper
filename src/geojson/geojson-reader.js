@@ -19,6 +19,14 @@ export function GeoJSONReader(reader) {
     var offset = start ? start.offset : 0;
     // console.time('read GeoJSON');
     parseObjects(reader, offset, onObject);
+    // parseObjects_native(reader, offset, onObject);
     // console.timeEnd('read GeoJSON');
   };
+}
+
+// Parse the entire file with JSON.parse() (for a performance comparison)
+function parseObjects_native(reader, offset, cb) {
+  var obj = JSON.parse(reader.toString());
+  var arr = obj.features || obj.geometries || [obj];
+  arr.forEach(o => cb(o));
 }

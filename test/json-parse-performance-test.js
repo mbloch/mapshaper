@@ -11,7 +11,12 @@ if (runMe) describe('json-parse.js performance', function () {
   it('test', function() {
     aa.forEach((a, i) => {
       var b = bb[i];
-      assert.deepEqual(a, b)
+      try {
+        assert.deepEqual(a, b)
+      } catch(e) {
+        console.log("failed at:", i);
+        throw e;
+      }
     })
   })
 

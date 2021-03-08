@@ -35,7 +35,7 @@ export function parseObjects(reader, offset, cb) {
   var src = ByteReader(reader, offset);
   seekObjectStart(src);
   while (src.peek() == LBRACE) {
-    cb(readObject(src)); // assumes parse errors will be caught and thrown
+    cb(readObject(src));
     readChar(src, COMMA);
   }
 }
@@ -50,11 +50,12 @@ function parseError(msg, i) {
 function unexpectedCharAt(tok, i) {
   var msg;
   if (tok == EOF) {
-    msg = 'Unexpected end of JSON input';
-  } else if (tok > 0 == false) {
-    msg = 'Unexpected token in JSON';
-  } else if (tok == DQUOTE) {
+    return parseError('Unexpected end of JSON input');
+  }
+  if (tok == DQUOTE) {
     msg = 'Unexpected string in JSON';
+  } else if (tok < 33 || tok > 126) { // not ascii glyph
+    msg = 'Unexpected token in JSON';
   } else {
     msg = 'Unexpected token ' + String.fromCharCode(tok) + ' in JSON';
   }
@@ -98,26 +99,37 @@ function readArray(src, read) {
   return arr;
 }
 
-// Read an array element
-// Optimized for reading pairs of coordinates (by far the most common
-// element in a typical GeoJSON file)
-function readArrayItem(src) {
+// Using this function instead of readValue() to read array elements
+// gives up to a 25% reduction in processing time.
+// (It is optimized for reading coordinates)
+function readArrayElement(src) {
   var i = src.index();
-  var a, b, c, d, e;
-  a = src.getChar();
-  if (a == LBRACK && isFirstNumChar(src.peek())) {
-    b = readNumber(src, true);
-    c = src.getChar();
+  var x, y, a, b;
+  if (src.getChar() == LBRACK && isFirstNumChar(src.peek())) {
+    x = readNumber(src);
+    a = src.getChar();
     skipWS(src);
-    d = readNumber(src, true);
-    e = src.getChar();
-    if (c == COMMA && e == RBRACK) {
-      return [b, d];
+    if (a == COMMA && isFirstNumChar(src.peek())) {
+      y = readNumber(src);
+      b = src.getChar();
+      if (b == RBRACK) {
+        return [x, y];
+      } else if (b == COMMA) {
+        return extendArray(src, [x, y]);
+      }
     }
   }
   // Fall back to general-purpose value reader
   src.index(i);
   return readValue(src);
+}
+
+function extendArray(src, arr) {
+  skipWS(src);
+  do {
+    arr.push(readValue(src));
+  } while(readAorB(src, COMMA, RBRACK) == COMMA);
+  return arr;
 }
 
 function eatChars(src, str) {
@@ -145,15 +157,16 @@ function readChar(src, tok) {
 // assumes no leading WS
 function readValue(src) {
   var c = src.peek();
-  if (isFirstNumChar(c)) return readNumber(src);
-  if (c == DQUOTE) return readString(src);
-  if (c == 110) return eatChars(src, "null") && null;
-  if (c == 116) return eatChars(src, "true") && true;
-  if (c == 102) return eatChars(src, "false") && false;
-  if (c == LBRACE) return readObject(src);
-  // if (c == LBRACK) return readArray(src, readValue);
-  if (c == LBRACK) return readArray(src, readArrayItem);
-  unexpectedCharAt(c, src.index());
+  var val;
+  if (isFirstNumChar(c)) val = readNumber(src);
+  else if (c == LBRACK) val = readArray(src, readArrayElement);
+  else if (c == DQUOTE) val = readString(src);
+  else if (c == LBRACE) val = readObject(src);
+  else if (c == 110) val = eatChars(src, "null") && null;
+  else if (c == 116) val = eatChars(src, "true") && true;
+  else if (c == 102) val = eatChars(src, "false") && false;
+  else unexpectedCharAt(c, src.index());
+  return val;
 }
 
 function readAorB(src, a, b) {
@@ -170,22 +183,27 @@ function readObject(src) {
   var c = readChar(src, RBRACE);
   var key;
   while (c != RBRACE) {
-    key = readString(src);
-    c = readChar(src, 58); // colon
-    if (c != 58) unexpectedCharAt(src.peek(), src.index());
-    o[key] = readValue(src);
+    key = readString(src, true); // use caching for faster key parsing
+    if (readChar(src, 58) != 58) { // colon
+      unexpectedCharAt(src.peek(), src.index());
+    }
+    // use caching with GeoJSON "type" params
+    o[key] = key == 'type' && src.peek() == DQUOTE ?
+      readString(src, true) : readValue(src);
     c = readAorB(src, COMMA, RBRACE);
   }
   return o;
 }
 
-function readString(src) {
-  src.update(); // refresh buffer, if needed
+function readString(src, caching) {
+  src.update(); // refresh buffer to make sure we don't run off the end
   var i = src.index();
   var n = 0;
+  var cache = src.cache;
   var escapeNext = false;
-  var path2 = false;
+  var fallback = false;
   var c = src.getChar();
+  var str;
   if (c != DQUOTE) {
     unexpectedCharAt(c, src.index() - 1);
   }
@@ -199,18 +217,34 @@ function readString(src) {
       escapeNext = false;
     } else if (c == 92) { // "\"
       escapeNext = true;
-      path2 = true;
+      fallback = true;
     } else if (c == 9 || c == 10 || c == 13 || c === 0) {
       // toString() escapes these (why?)
       // TODO: there may be other whitespace or non-printing chars like these
       // that aren't covered in the test suite
-      path2 = true;
+      fallback = true;
+    }
+    if (caching) {
+      if (!cache[c]) {
+        cache[c] = [];
+      }
+      cache = cache[c];
     }
     c = src.getChar();
   }
   src.update(); // refresh buffer again to prevent oflo, in case string was long
-  if (path2) return JSON.parse(src.toString(i, n + 2));
-  return src.toString(i + 1, n);
+  if (caching && cache[0]) {
+    return cache[0];
+  }
+  if (fallback) {
+    str = JSON.parse(src.toString(i, n + 2));
+  } else {
+    str = src.toString(i + 1, n);
+  }
+  if (caching) {
+    cache[0] = str;
+  }
+  return str;
 }
 
 function isDigit(c) {
@@ -227,7 +261,7 @@ function isNumChar(c) {
 
 // Number parsing for any valid number
 // This gives the correctly rounded result for numbers with >15 digits.
-function readNumber_slow(src, noThrow) {
+function readNumber_slow(src) {
   var i = src.index();
   var n = 0;
   while (isNumChar(src.getChar())) {
@@ -236,13 +270,13 @@ function readNumber_slow(src, noThrow) {
   src.back();
   var str = src.toString(i, n);
   var num = Number(str);
-  if (isNaN(num) && noThrow !== true) parseError('Invalid number in JSON', i);
+  if (isNaN(num)) parseError('Invalid number in JSON', i);
   return num;
 }
 
 // Parses numbers quickly, falls back to a slower method when
 // correct fp rounding is not assured.
-function readNumber(src, noThrow) {
+function readNumber(src) {
   var i = src.index();
   var num = 0;
   var den = 1;
@@ -250,14 +284,15 @@ function readNumber(src, noThrow) {
   var oflo = false;
   var invalid = false;
   var c = src.getChar();
-  var d0;
+  var d0, d;
   if (c === 45) {
     sign = -1;
     c = src.getChar();
   }
   d0 = c;
   while (isDigit(c)) {
-    num = num * 10 + c - 48;
+    d = c - 48;
+    num = num * 10 + d;
     c = src.getChar();
   }
   if (num > 0 && d0 === 48) {
@@ -265,13 +300,10 @@ function readNumber(src, noThrow) {
     invalid = true;
   }
   if (c == 46) { // "."
-    // c = src.getChar();
-    // if (!isDigit(c) || num === 0 && d0 != 48) {
-    //   invalid = true;
-    // }
     while (isDigit(c = src.getChar())) {
+      d = c - 48;
       den *= 10;
-      num = num * 10 + c - 48;
+      num = num * 10 + d;
     }
     if (den == 1 || d0 == 46) {
       // catch "1." "1.e" "-.1"
@@ -281,17 +313,26 @@ function readNumber(src, noThrow) {
   if (num === 0 && d0 != 48) {
     invalid = true; // catch "-";
   }
-  if (invalid && noThrow !== true) parseError('Invalid number in JSON', i);
-  if (num >= 0x20000000000000 || den > 1e22) { // 2 ^ 53
-    // May not have the same result as IEEE standard
-    // see: https://www.exploringbinary.com/fast-path-decimal-to-floating-point-conversion/
-    oflo = true;
+  if (invalid) parseError('Invalid number in JSON', i);
+  if (den > 1e22) oflo = true; // denominator gets rounded above this limit
+  if (num >= 0x20000000000000) { // 2^53
+    // Some numerators get rounded with > 52 bits of mantissa
+    // (When numerator or denominator are rounded, dividing them may
+    // not have the same result as JSON.parse() & the IEEE standard)
+    // See: https://www.exploringbinary.com/fast-path-decimal-to-floating-point-conversion/
+    if (num >= 0x40000000000000 || (d & 1) === 1) {
+      // We don't need to fall back to the slow routine
+      // for even numbers with 53 bits
+      // This optimization can reduce overall processing time by 15% for
+      // GeoJSON files with full-precision coordinates.
+      oflo = true;
+    }
   }
   if (oflo || c == 69 || c == 101) { // e|E
     // Exponents are uncommon in GeoJSON... simpler to use slow function
     // than to parse manually and check for overflow and rounding errors
     src.index(i);
-    return readNumber_slow(src, noThrow);
+    return readNumber_slow(src);
   }
   src.back();
   return sign * num / den;
@@ -307,6 +348,7 @@ function ByteReader(reader, start, reserveBytes) {
   var fileLen = reader.size();
   var i = 0;
   var obj = { peek, getChar, advance, back, toString, index, update };
+  obj.cache = []; // kludgy place to put the key cache
   update();
   return obj;
 
@@ -323,7 +365,7 @@ function ByteReader(reader, start, reserveBytes) {
     // causes a significant slowdown, as much as 20%)
     if (fileLen - (bufOffs + i) < RESERVE) {
       obj.peek = safePeek;
-      obj.next = safeGetChar;
+      obj.getChar = safeGetChar;
     }
 
     // if buffer reaches the end of the file, no update is required
@@ -345,8 +387,9 @@ function ByteReader(reader, start, reserveBytes) {
     return peek();
   }
   function safeGetChar() {
-    if (i + bufOffs >= fileLen) return EOF;
-    return getChar();
+    var c = safePeek();
+    i++;
+    return c;
   }
   function advance() {
     i++;

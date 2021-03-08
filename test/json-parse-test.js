@@ -27,7 +27,10 @@ var numbers = [
 var coordinates = [
   '[[1.2,0.2],[4.3,-54.3]]',
   '[[[1.2,0.2],[4.3,-54.3]],[[0.03,-20],[0.01,-0.01],[0,0.0]]]',
-  '[[26.482057582463895,10.433154888418336],[-35.726302957399604,-39.5829004894521],[24.588364401051606,16.357112560824532],[23.141129876644555,-49.17402188306126],[3.71313321551947,-38.81181966422922],[-26.718751399873142,-37.48084273223789],[-29.58025709607257,-45.81792210264535],[1.1922328732484146,-4.115867763306191],[8.116178342009576,48.08428411660084],[32.48171494205987,30.107830705822394]]'
+  '[[26.482057582463895,10.433154888418336],[-35.726302957399604,-39.5829004894521],[24.588364401051606,16.357112560824532],[23.141129876644555,-49.17402188306126],[3.71313321551947,-38.81181966422922],[-26.718751399873142,-37.48084273223789],[-29.58025709607257,-45.81792210264535],[1.1922328732484146,-4.115867763306191],[8.116178342009576,48.08428411660084],[32.48171494205987,30.107830705822394]]',
+  '[3.3, -0.2]',
+  '[[-32.0, -2.2, -2.1]]',
+  '[[2],\n[3,9, 0 ,2]]'
 ];
 
 var arrays = [
@@ -76,6 +79,9 @@ function testValidJSON(str) {
 
 describe('json-parse.js', function () {
 
+  // testValidJSON('[{"foo": "b"}, {"foo": "c"}]');
+  // return console.log('TEST')
+
   describe('valid JSON tests', function () {
     arrays.forEach(testValidJSON);
     coordinates.forEach(testValidJSON);
@@ -97,11 +103,12 @@ describe('json-parse.js', function () {
     });
     invalidFiles.forEach(file => {
       it(file, () => {
+        var buf = fs.readFileSync(dir + file);
+        var str = buf.toString('utf8');
         assert.throws(() => {
-          var buf = fs.readFileSync(dir + file);
-          var str = buf.toString('utf8');
           parse(buf);
         })
+
       });
 
     });
@@ -123,6 +130,8 @@ describe('json-parse.js', function () {
 
     test('try', 'Unexpected token y in JSON at position 2');
     test('.', 'Unexpected token . in JSON at position 0');
+    test('{"foo:4}', 'Unterminated string in JSON at position 1');
+    test('01', 'Invalid number in JSON at position 0');
   })
 
 
