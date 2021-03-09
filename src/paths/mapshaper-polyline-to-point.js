@@ -1,5 +1,48 @@
 import geom from '../geom/mapshaper-geom';
 import { findNearestVertex } from '../paths/mapshaper-vertex-utils';
+import { calcPathLen } from '../geom/mapshaper-path-geom';
+import { distance2D } from '../geom/mapshaper-basic-geom';
+import { error, stop } from '../utils/mapshaper-logging';
+import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
+
+// Returns x,y coordinates of the point that is at the midpoint of each polyline feature
+// Uses 2d cartesian geometry
+// TODO: optionally use spherical geometry
+export function polylineToMidpoints(shp, arcs, opts) {
+  if (!shp) return null;
+  var points = shp.map(function(path) {
+    return findPathMidpoint(path, arcs);
+  });
+  return points;
+}
+
+function findPathMidpoint(path, arcs) {
+  var halfLen = calcPathLen(path, arcs, false) / 2;
+  var partialLen = 0;
+  var done = false;
+  var p;
+  forEachSegmentInPath(path, arcs, function(i, j, xx, yy) {
+    var a = xx[i],
+        b = yy[i],
+        c = xx[j],
+        d = yy[j];
+    if (p) return;
+    if (halfLen > 0 === false) {
+      return [a, b];
+    }
+    var segLen = distance2D(a, b, c, d);
+    var k;
+    if (partialLen + segLen >= halfLen) {
+      k = (halfLen - partialLen) / segLen;
+      p = [a + k * (c - a), b + k * (d - b)];
+    }
+    partialLen += segLen;
+  });
+  if (!p) {
+    error('Geometry error');
+  }
+  return p;
+}
 
 // Returns x,y coordinates of the vertex that is closest to the bbox center point
 //   (uses part with the largest-area bbox in )

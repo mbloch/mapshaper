@@ -1005,6 +1005,10 @@ export function getOptionParser() {
       describe: 'capture unique endpoints of polygons and polylines',
       type: 'flag'
     })
+    .option('midpoints', {
+      describe: 'find the (planar) midpoint of each polyline',
+      type: 'flag'
+    })
     // WORK IN PROGRESS todo: create a point layer containing segment intersections
     .option('intersections', {
      // describe: 'capture line segment intersections of polygons and polylines',

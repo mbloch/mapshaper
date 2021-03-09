@@ -1,6 +1,7 @@
+import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
 import { parseDMS } from '../geom/mapshaper-dms';
 import { findAnchorPoint } from '../points/mapshaper-anchor-points';
-import { polylineToPoint } from '../paths/mapshaper-polyline-to-point';
+import { polylineToPoint, polylineToMidpoints } from '../paths/mapshaper-polyline-to-point';
 import { getDatasetCRS } from '../geom/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { calcSegmentIntersectionStripeCount } from '../paths/mapshaper-segment-intersection';
@@ -31,6 +32,9 @@ cmd.createPointLayer = function(srcLyr, dataset, opts) {
     destLyr.shapes = pointsFromDataTable(srcLyr.data, opts);
   } else if (srcLyr.geometry_type == 'polygon') {
     destLyr.shapes = pointsFromPolygons(srcLyr, arcs, opts);
+  } else if (opts.midpoints) {
+    requirePolylineLayer(srcLyr);
+    destLyr.shapes = midpointsFromPolylines(srcLyr, arcs, opts);
   } else if (srcLyr.geometry_type == 'polyline') {
     destLyr.shapes = pointsFromPolylines(srcLyr, arcs, opts);
   } else if (!srcLyr.geometry_type) {
@@ -203,6 +207,12 @@ function pointsFromEndpoints(lyr, arcs) {
       addPoint(arcs.getVertex(ids[i], -1));
     }
   }
+}
+
+function midpointsFromPolylines(lyr, arcs, opts) {
+  return lyr.shapes.map(function(shp) {
+    return polylineToMidpoints(shp, arcs, opts);
+  });
 }
 
 function pointsFromPolylines(lyr, arcs, opts) {

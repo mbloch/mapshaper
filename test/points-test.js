@@ -36,6 +36,24 @@ describe('mapshaper-points.js', function () {
     })
   })
 
+  it ('-points command with midpoints option', function(done) {
+    var a = {
+      type: 'MultiLineString',
+      coordinates: [[[2, 2], [3, 3], [4, 4]], [[0, 0], [0, -4]]]
+    };
+    var expected = {
+      type: 'GeometryCollection',
+      geometries: [{
+        type: 'MultiPoint',
+        coordinates: [[3, 3], [0, -2]]
+      }]
+    };
+    api.applyCommands('-i a.json -points midpoints -o', {'a.json': a}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['a.json']), expected);
+      done();
+    })
+  })
+
   it ('-points command with vertices option', function(done) {
     var a = {
       type: 'Polygon',
