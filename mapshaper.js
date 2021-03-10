@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.36";
+  var VERSION = "0.5.37";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -15750,6 +15750,10 @@
         describe: 'capture unique endpoints of polygons and polylines',
         type: 'flag'
       })
+      .option('midpoints', {
+        describe: 'find the (planar) midpoint of each polyline',
+        type: 'flag'
+      })
       // WORK IN PROGRESS todo: create a point layer containing segment intersections
       .option('intersections', {
        // describe: 'capture line segment intersections of polygons and polylines',
@@ -18247,21 +18251,37 @@
     importTopoJSON: importTopoJSON
   });
 
-  // A JSON parser for parsing arrays of objects like GeoJSON Features.
-  // Handles large files, limited by available memory
-  // Able to parse GeoJSON about twice as fast as JSON.parse() when coordinate
-  // precision is less than the maximum for double-precision f.p. numbers.
+  // This is a JSON parser optimized for GeoJSON files.
+  //
+  // The native JSON parser, JSON.parse(), is limited by the maximum string
+  // size, about ~536.8M chars in Node.
+  // (See https://github.com/v8/v8/blob/ea56bf5513d0cbd2a35a9035c5c2996272b8b728/src/objects/string.h#L365).
+  // This parser can parse much larger files -- it is limited by available memory.
+  //
+  // Performance:
+  // In Node, this parser is about twice as fast as JSON.parse() when parsing
+  // GeoJSON files containing mostly coordinate data and when coordinate precision
+  // is less than the float64 maximum. Similar files with full-precision
+  // coordinates see a smaller improvement. Files that contain mostly attribute
+  // data (e.g. a typical Point feature file) may be parsed a bit slower than
+  // JSON.parse().
   //
   // JSON parsing reference: https://www.json.org/json-en.html
-
-  var MAX_STRLEN = 0X100000, // 256k
-    LBRACE = 123, // {
+  //
+  var
+    LBRACE = 123,
     RBRACE = 125,
-    LBRACK = 91, // [
+    LBRACK = 91,
     RBRACK = 93,
     DQUOTE = 34,
-    COMMA = 44,
-    EOF = -1;
+    COMMA = 44;
+
+  var EOF; // undefined is used as an EOF marker
+
+  // RESERVE is the number of bytes to keep in read buffer
+  var RESERVE = 0X1000;
+  var BUFLEN = 1e7; // buffer chunk size
+  var MAX_STRLEN = 5e6;
 
   // Similar to JSON.parse()
   function parse(buf) {
@@ -18308,10 +18328,16 @@
     parseError(msg, i);
   }
 
+  function stringOverflow(i, c) {
+    if (c == EOF) {
+      parseError('Unterminated string in JSON', i);
+    }
+    parseError('Too-long string in JSON', i);
+  }
+
   function seekObjectStart(src) {
     var c = src.peek();
     var found = false;
-    src.update();
     var i = 0;
     while (c != EOF && i < MAX_STRLEN) {
       i++;
@@ -18333,20 +18359,20 @@
     while (isWS(src.peek())) src.advance();
   }
 
-  function readArray(src, read) {
+  function readArray(src) {
     var arr = [];
     src.advance(); // eat LBRACK
     var c = readChar(src, RBRACK);
     while (c != RBRACK) {
-      src.update();
-      arr.push(read(src));
+      src.refresh();
+      arr.push(readArrayElement(src));
       c = readAorB(src, COMMA, RBRACK);
     }
     return arr;
   }
 
   // Using this function instead of readValue() to read array elements
-  // gives up to a 25% reduction in processing time.
+  // gives up to a 25% reduction in overall processing time.
   // (It is optimized for reading coordinates)
   function readArrayElement(src) {
     var i = src.index();
@@ -18387,8 +18413,16 @@
     return true;
   }
 
-  // Read and return tok if tok is the next non-whitespace byte,
-  // else return null
+  function eatChar(src, char) {
+    var c = src.getChar();
+    if (c != char) {
+      unexpectedCharAt(c, src.index() - 1);
+    }
+  }
+
+  // Reads and returns tok if tok is the next non-whitespace byte,
+  // else returns null.
+  // Scans past WS chars, both before and after tok
   function readChar(src, tok) {
     skipWS(src);
     var c = src.peek();
@@ -18405,7 +18439,7 @@
     var c = src.peek();
     var val;
     if (isFirstNumChar(c)) val = readNumber(src);
-    else if (c == LBRACK) val = readArray(src, readArrayElement);
+    else if (c == LBRACK) val = readArray(src);
     else if (c == DQUOTE) val = readString(src);
     else if (c == LBRACE) val = readObject(src);
     else if (c == 110) val = eatChars(src, "null") && null;
@@ -18427,69 +18461,119 @@
     var o = {};
     src.advance(); // eat {
     var c = readChar(src, RBRACE);
-    var key;
+    var key, val;
     while (c != RBRACE) {
-      key = readString(src, true); // use caching for faster key parsing
+      key = readKey(src); // use caching for faster key parsing
       if (readChar(src, 58) != 58) { // colon
         unexpectedCharAt(src.peek(), src.index());
       }
       // use caching with GeoJSON "type" params
-      o[key] = key == 'type' && src.peek() == DQUOTE ?
-        readString(src, true) : readValue(src);
+      val = key == 'type' && src.peek() == DQUOTE ?
+        readKey(src) : readValue(src);
+      o[key] = val;
       c = readAorB(src, COMMA, RBRACE);
     }
     return o;
   }
 
-  function readString(src, caching) {
-    src.update(); // refresh buffer to make sure we don't run off the end
+  function growReserve() {
+    RESERVE *= 2;
+    return RESERVE <= MAX_STRLEN;
+  }
+
+  // Uses caching to speed up parsing of repeated strings.
+  // The caching scheme used here can give a 20% overall speed improvement
+  // when parsing files consisting mostly of attribute data (e.g. typical Point features)
+  function readKey(src) {
+    src.refresh();
+    var MAXLEN = 2000; // must be less than RESERVE
     var i = src.index();
-    var n = 0;
     var cache = src.cache;
     var escapeNext = false;
-    var fallback = false;
+    var n = 0;
+    eatChar(src, DQUOTE);
     var c = src.getChar();
-    var str;
-    if (c != DQUOTE) {
-      unexpectedCharAt(c, src.index() - 1);
-    }
-    c = src.getChar();
     while (c != DQUOTE || escapeNext === true) {
       n++;
-      if (c == EOF || n > MAX_STRLEN) {
-        parseError('Unterminated string in JSON', i);
+      if (n > MAXLEN) {
+        stringOverflow(i, c);
       }
       if (escapeNext) {
         escapeNext = false;
-      } else if (c == 92) { // "\"
+      } else if (c == 92) {
         escapeNext = true;
-        fallback = true;
-      } else if (c == 9 || c == 10 || c == 13 || c === 0) {
-        // toString() escapes these (why?)
-        // TODO: there may be other whitespace or non-printing chars like these
-        // that aren't covered in the test suite
-        fallback = true;
       }
-      if (caching) {
-        if (!cache[c]) {
-          cache[c] = [];
+      if (!cache[c]) {
+        cache[c] = [];
+      }
+      cache = cache[c];
+      c = src.getChar();
+    }
+    if (cache[0]) {
+      return cache[0];
+    }
+    src.index(i);
+    cache[0] = readString(src);
+    return cache[0];
+  }
+
+  // Fast path for reading strings.
+  // A slower fallback is used to read strings that are longer, non-ascii or
+  // contain escaped chars
+  function readString(src) {
+    src.refresh();
+    var i = src.index();
+    eatChar(src, DQUOTE);
+    var LIMIT = 256;
+    var n = 0;
+    var str = '';
+    var c = src.getChar();
+    while (c != DQUOTE) {
+      n++;
+      if (n > LIMIT || c == 92 || c < 32 || c > 126) {
+        src.index(i);
+        return readString_slow(src);
+      }
+      // String concatenation is faster than Buffer#toString()
+      // (as tested with typical strings found in GeoJSON)
+      str += String.fromCharCode(c);
+      c = src.getChar();
+    }
+    return str;
+  }
+
+  // Fallback for reading long strings, escaped strings, non-ascii strings, etc.
+  function readString_slow(src) {
+    var LIMIT = RESERVE - 2;
+    var i = src.index();
+    var n = 0;
+    var escapeNext = false;
+    eatChar(src, DQUOTE);
+    var c = src.getChar();
+    var str;
+    while (c != DQUOTE || escapeNext === true) {
+      n++;
+      if (n > LIMIT) {
+        // we've exceeded the number of reserved bytes
+        // expand the limit and try reading this string again
+        if (c == EOF || !growReserve()) {
+          stringOverflow(i, c);
         }
-        cache = cache[c];
+        src.index(i);
+        return readString(src);
+      }
+      if (escapeNext) {
+        escapeNext = false;
+      } else if (c == 92) {
+        escapeNext = true;
       }
       c = src.getChar();
     }
-    src.update(); // refresh buffer again to prevent oflo, in case string was long
-    if (caching && cache[0]) {
-      return cache[0];
-    }
-    if (fallback) {
-      str = JSON.parse(src.toString(i, n + 2));
-    } else {
-      str = src.toString(i + 1, n);
-    }
-    if (caching) {
-      cache[0] = str;
-    }
+    // skipping JSON.parse() is faster, but doesn't work when strings contain
+    // escapes or a handful of ascii control characters.
+    // str = src.toString(i + 1, n);
+    str = JSON.parse(src.toString(i, n + 2));
+    src.refresh();
     return str;
   }
 
@@ -18505,8 +18589,9 @@
     return c >= 48 && c <= 57 || c == 45 || c == 46 || c == 43 || c == 69 || c == 101;
   }
 
-  // Number parsing for any valid number
-  // This gives the correctly rounded result for numbers with >15 digits.
+  // Correctly parses any valid JSON number
+  // This function gives the correctly rounded result for numbers that are
+  // incorrectly rounded using the fast method (a subset of numbers with >15 digits).
   function readNumber_slow(src) {
     var i = src.index();
     var n = 0;
@@ -18564,11 +18649,11 @@
     if (num >= 0x20000000000000) { // 2^53
       // Some numerators get rounded with > 52 bits of mantissa
       // (When numerator or denominator are rounded, dividing them may
-      // not have the same result as JSON.parse() & the IEEE standard)
+      // not have the same result as JSON.parse() and the IEEE standard)
       // See: https://www.exploringbinary.com/fast-path-decimal-to-floating-point-conversion/
       if (num >= 0x40000000000000 || (d & 1) === 1) {
         // We don't need to fall back to the slow routine
-        // for even numbers with 53 bits
+        // for even integers with 53 bits
         // This optimization can reduce overall processing time by 15% for
         // GeoJSON files with full-precision coordinates.
         oflo = true;
@@ -18585,34 +18670,30 @@
   }
 
   // Wrap a FileReader to support reading files one byte at a time.
-  function ByteReader(reader, start, reserveBytes) {
-    // allow overriding the large default reserve limit for testing
-    var RESERVE = reserveBytes || (MAX_STRLEN + 2);
-    var BUFLEN = RESERVE * 100; // buffer chunk size
-    var buf = reader.readSync(start, BUFLEN);
-    var bufOffs = start;
+  function ByteReader(reader, start) {
     var fileLen = reader.size();
+    var bufOffs = start;
+    var buf = reader.readSync(bufOffs, BUFLEN);
     var i = 0;
-    var obj = { peek, getChar, advance, back, toString, index, update };
+    var obj = { peek, getChar, advance, back, toString, index, refresh };
     obj.cache = []; // kludgy place to put the key cache
-    update();
+    refresh();
     return obj;
 
     // This function should be called to make sure that the buffer has enough
-    // bytes remaining to read the maximum-sized string or any other reasonable
-    // content.
-    function update() {
+    // bytes remaining to read any reasonable JSON content.
+    function refresh() {
       // if RESERVE bytes are still available in the buffer, no update is required
-      var bufSpace = buf.length - i;
-      if (bufSpace >= RESERVE) return;
+      if (buf.length - i >= RESERVE) return;
 
-      // if we're close to the end of the file, start checking for overflow
-      // (we don't do this all the time because the bounds check on every read
-      // causes a significant slowdown, as much as 20%)
-      if (fileLen - (bufOffs + i) < RESERVE) {
-        obj.peek = safePeek;
-        obj.getChar = safeGetChar;
-      }
+      // CHANGE: now using undefined as an EOF marker, so a bounds check is unneeded
+      // // if we're close to the end of the file, start checking for overflow
+      // // (we don't do this all the time because the bounds check on every read
+      // // causes a significant slowdown, as much as 20%)
+      // if (fileLen - (bufOffs + i) < RESERVE) {
+      //   obj.peek = safePeek;
+      //   obj.getChar = safeGetChar;
+      // }
 
       // if buffer reaches the end of the file, no update is required
       if (bufOffs + buf.length >= fileLen) return;
@@ -18627,15 +18708,6 @@
     }
     function getChar() {
       return buf[i++];
-    }
-    function safePeek() {
-      if (i + bufOffs >= fileLen) return EOF;
-      return peek();
-    }
-    function safeGetChar() {
-      var c = safePeek();
-      i++;
-      return c;
     }
     function advance() {
       i++;
@@ -18653,6 +18725,23 @@
     }
   }
 
+  // Support for timing using T.start() and T.stop("message")
+  var T = {
+    stack: [],
+    start: function() {
+      T.stack.push(+new Date());
+    },
+    stop: function(note) {
+      var elapsed = (+new Date() - T.stack.pop());
+      var msg = elapsed + 'ms';
+      if (note) {
+        msg = note + " " + msg;
+      }
+      verbose(msg);
+      return elapsed;
+    }
+  };
+
   // Read GeoJSON Features or geometry objects from a file
   // @reader: a FileReader
   function GeoJSONReader(reader) {
@@ -18668,10 +18757,10 @@
       // Assume single Feature or geometry if collection not found
       // (this works for ndjson files too)
       var offset = start ? start.offset : 0;
-      // console.time('read GeoJSON');
+      T.start();
       parseObjects(reader, offset, onObject);
       // parseObjects_native(reader, offset, onObject);
-      // console.timeEnd('read GeoJSON');
+      T.stop('Parse GeoJSON');
     };
   }
 
@@ -19337,23 +19426,6 @@
     Catalog: Catalog,
     getFormattedLayerList: getFormattedLayerList
   });
-
-  // Support for timing using T.start() and T.stop("message")
-  var T = {
-    stack: [],
-    start: function() {
-      T.stack.push(+new Date());
-    },
-    stop: function(note) {
-      var elapsed = (+new Date() - T.stack.pop());
-      var msg = elapsed + 'ms';
-      if (note) {
-        msg = note + " " + msg;
-      }
-      verbose(msg);
-      return elapsed;
-    }
-  };
 
   // TODO: also delete positive-space rings nested inside holes
   function deleteHoles(lyr, arcs) {
@@ -27919,6 +27991,45 @@
     return minLen < Infinity ? {x: minX, y: minY} : null;
   }
 
+  // Returns x,y coordinates of the point that is at the midpoint of each polyline feature
+  // Uses 2d cartesian geometry
+  // TODO: optionally use spherical geometry
+  function polylineToMidpoints(shp, arcs, opts) {
+    if (!shp) return null;
+    var points = shp.map(function(path) {
+      return findPathMidpoint(path, arcs);
+    });
+    return points;
+  }
+
+  function findPathMidpoint(path, arcs) {
+    var halfLen = calcPathLen(path, arcs, false) / 2;
+    var partialLen = 0;
+    var done = false;
+    var p;
+    forEachSegmentInPath(path, arcs, function(i, j, xx, yy) {
+      var a = xx[i],
+          b = yy[i],
+          c = xx[j],
+          d = yy[j];
+      if (p) return;
+      if (halfLen > 0 === false) {
+        return [a, b];
+      }
+      var segLen = distance2D(a, b, c, d);
+      var k;
+      if (partialLen + segLen >= halfLen) {
+        k = (halfLen - partialLen) / segLen;
+        p = [a + k * (c - a), b + k * (d - b)];
+      }
+      partialLen += segLen;
+    });
+    if (!p) {
+      error('Geometry error');
+    }
+    return p;
+  }
+
   // Returns x,y coordinates of the vertex that is closest to the bbox center point
   //   (uses part with the largest-area bbox in )
   // TODO: explore other methods for replacing a polyline with a point.
@@ -27963,6 +28074,9 @@
       destLyr.shapes = pointsFromDataTable(srcLyr.data, opts);
     } else if (srcLyr.geometry_type == 'polygon') {
       destLyr.shapes = pointsFromPolygons(srcLyr, arcs, opts);
+    } else if (opts.midpoints) {
+      requirePolylineLayer(srcLyr);
+      destLyr.shapes = midpointsFromPolylines(srcLyr, arcs, opts);
     } else if (srcLyr.geometry_type == 'polyline') {
       destLyr.shapes = pointsFromPolylines(srcLyr, arcs, opts);
     } else if (!srcLyr.geometry_type) {
@@ -28135,6 +28249,12 @@
         addPoint(arcs.getVertex(ids[i], -1));
       }
     }
+  }
+
+  function midpointsFromPolylines(lyr, arcs, opts) {
+    return lyr.shapes.map(function(shp) {
+      return polylineToMidpoints(shp, arcs, opts);
+    });
   }
 
   function pointsFromPolylines(lyr, arcs, opts) {
