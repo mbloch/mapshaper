@@ -1,3 +1,6 @@
+v0.5.38
+* Added "-points midpoints" flag, to find the midpoints of polyline features.
+
 v0.5.37
 * Performance improvements for GeoJSON parsing.
 

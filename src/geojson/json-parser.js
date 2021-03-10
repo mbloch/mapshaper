@@ -26,7 +26,7 @@ var
   DQUOTE = 34,
   COMMA = 44;
 
-var EOF; // undefined
+var EOF; // undefined is used as an EOF marker
 
 // RESERVE is the number of bytes to keep in read buffer
 var RESERVE = 0X1000;
