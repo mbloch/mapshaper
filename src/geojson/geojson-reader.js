@@ -1,6 +1,7 @@
 import { bufferToString } from '../text/mapshaper-encodings';
 import { stop } from '../utils/mapshaper-logging';
 import { parseObjects } from '../geojson/json-parser';
+import { T } from '../utils/mapshaper-timing';
 
 // Read GeoJSON Features or geometry objects from a file
 // @reader: a FileReader
@@ -17,10 +18,10 @@ export function GeoJSONReader(reader) {
     // Assume single Feature or geometry if collection not found
     // (this works for ndjson files too)
     var offset = start ? start.offset : 0;
-    // console.time('read GeoJSON');
+    T.start();
     parseObjects(reader, offset, onObject);
     // parseObjects_native(reader, offset, onObject);
-    // console.timeEnd('read GeoJSON');
+    T.stop('Parse GeoJSON');
   };
 }
 
