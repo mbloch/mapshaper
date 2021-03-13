@@ -33,6 +33,7 @@ import { PathIndex } from './paths/mapshaper-path-index';
 import { PolygonIndex } from './polygons/mapshaper-polygon-index';
 import { ShpReader } from './shapefile/shp-reader';
 import { Transform } from './geom/mapshaper-transform';
+import { parse } from './geojson/json-parser';
 
 // Assign functions and objects exported from modules to the 'internal' namespace
 // to maintain compatibility with tests and to expose (some of) them to the GUI.
@@ -42,6 +43,7 @@ Object.assign(internal, {
   DbfReader,
   DouglasPeucker,
   geojson: GeoJSON,
+  json: { parse: parse },
   ShpType,
   topojson: TopoJSON,
   Visvalingam,

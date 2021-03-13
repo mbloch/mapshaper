@@ -28,12 +28,11 @@ var
 
 var EOF; // undefined is used as an EOF marker
 
-// RESERVE is the number of bytes to keep in read buffer
-var RESERVE = 0X1000;
+var RESERVE = 0X1000; // RESERVE is the number of bytes to keep in read buffer
 var BUFLEN = 1e7; // buffer chunk size
-var MAX_STRLEN = 5e6;
+var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
-// Similar to JSON.parse()
+// Parse from a Buffer -- similar to JSON.parse(), used for testing
 export function parse(buf) {
   var reader = new BufferReader(buf);
   var src = ByteReader(reader, 0);
@@ -86,19 +85,17 @@ function stringOverflow(i, c) {
 }
 
 function seekObjectStart(src) {
-  var c = src.peek();
-  var found = false;
+  var c = src.getChar();
   var i = 0;
-  while (c != EOF && i < MAX_STRLEN) {
+  while (c != EOF && i < RESERVE) {
     i++;
     if (c == LBRACE) {
-      found = true;
-      break;
+      src.back();
+      return true;
     }
-    src.advance();
-    c = src.peek();
+    c = src.getChar();
   }
-  return found;
+  return false;
 }
 
 function isWS(c) {
@@ -110,9 +107,9 @@ function skipWS(src) {
 }
 
 function readArray(src) {
-  var arr = [];
-  src.advance(); // eat LBRACK
-  var c = readChar(src, RBRACK);
+  var arr = [], c;
+  eatChar(src, LBRACK);
+  c = readChar(src, RBRACK);
   while (c != RBRACK) {
     src.refresh();
     arr.push(readArrayElement(src));
@@ -122,8 +119,8 @@ function readArray(src) {
 }
 
 // Using this function instead of readValue() to read array elements
-// gives up to a 25% reduction in overall processing time.
-// (It is optimized for reading coordinates)
+// gives up to a 25% reduction in overall processing time when parsing
+// coordinate-heavy GeoJSON files.
 function readArrayElement(src) {
   var i = src.index();
   var x, y, a, b;
@@ -146,6 +143,8 @@ function readArrayElement(src) {
   return readValue(src);
 }
 
+// TODO: add buffer refreshes to support very long arrays of numbers,
+// which may occur in TopoJSON files.
 function extendArray(src, arr) {
   skipWS(src);
   do {
@@ -155,10 +154,8 @@ function extendArray(src, arr) {
 }
 
 function eatChars(src, str) {
-  var c;
   for (var i = 0; i < str.length; i++) {
-    c = src.getChar();
-    if (c != str.charCodeAt(i)) unexpectedCharAt(c, src.index() - 1);
+    eatChar(src, str.charCodeAt(i));
   }
   return true;
 }
@@ -209,18 +206,17 @@ function readAorB(src, a, b) {
 
 function readObject(src) {
   var o = {};
-  src.advance(); // eat {
-  var c = readChar(src, RBRACE);
-  var key, val;
+  var key, c;
+  eatChar(src, LBRACE);
+  c = readChar(src, RBRACE);
   while (c != RBRACE) {
     key = readKey(src); // use caching for faster key parsing
-    if (readChar(src, 58) != 58) { // colon
-      unexpectedCharAt(src.peek(), src.index());
-    }
+    skipWS(src);
+    eatChar(src, 58);
+    skipWS(src);
     // use caching with GeoJSON "type" params
-    val = key == 'type' && src.peek() == DQUOTE ?
+    o[key] = key == 'type' && src.peek() == DQUOTE ?
       readKey(src) : readValue(src);
-    o[key] = val;
     c = readAorB(src, COMMA, RBRACE);
   }
   return o;
@@ -448,7 +444,7 @@ function ByteReader(reader, start) {
     // if buffer reaches the end of the file, no update is required
     if (bufOffs + buf.length >= fileLen) return;
 
-    // less than RESERVE bytes are unread in buffer -- update the buffer
+    // fewer than RESERVE bytes are unread in buffer -- update the buffer
     bufOffs += i;
     i = 0;
     buf = reader.readSync(bufOffs, BUFLEN);

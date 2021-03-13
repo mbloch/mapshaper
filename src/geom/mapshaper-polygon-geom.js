@@ -10,7 +10,7 @@ export function calcPolsbyPopperCompactness(area, perimeter) {
   return Math.abs(area) * Math.PI * 4 / (perimeter * perimeter);
 }
 
-// Larger values (less severe penalty) fthan Polsby Popper
+// Larger values (less severe penalty) than Polsby Popper
 export function calcSchwartzbergCompactness(area, perimeter) {
   if (perimeter <= 0) return 0;
   return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
