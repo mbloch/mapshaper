@@ -35,6 +35,7 @@ export function getNiceBreaks(values, numBreaks) {
   return data[0].breaks;
 }
 
+
 export function evaluateDistribution(distribution) {
   var ideal = utils.sum(distribution) / distribution.length;
   var first = distribution[0];
@@ -52,6 +53,14 @@ function bucketScore(ideal, actual) {
   }
 }
 
+// kludge to avoid rounding errors in break values
+function applyScale(normalVal, scale) {
+  if (scale < 1) {
+    return normalVal * Math.round(1 / scale);
+  }
+  return normalVal / scale;
+}
+
 function getCandidateBreaks(lowerBreak, upperBreak, numBreaks) {
   var cands = [];
   // calculate rounding using equal interval, when possible
@@ -63,8 +72,8 @@ function getCandidateBreaks(lowerBreak, upperBreak, numBreaks) {
   var scaledIntervals = getNiceIntervals(scaledRange);
   scaledIntervals.forEach(function(scaledInterval) {
     var scaledPrecision = getNormalPrecision(scaledInterval);
-    var interval = scaledInterval / scale;
-    var precision = scaledPrecision / scale;
+    var interval = applyScale(scaledInterval, scale);
+    var precision = applyScale(scaledPrecision, scale);
     var fenceposts = getBreakFenceposts(lowerBreak, precision);
     fenceposts.forEach(function(lowBound) {
       cands.push({
@@ -77,6 +86,7 @@ function getCandidateBreaks(lowerBreak, upperBreak, numBreaks) {
   });
   return cands;
 }
+
 
 function getRoundBreaks(lowerBreak, interval, numBreaks) {
   var breaks = [lowerBreak];
