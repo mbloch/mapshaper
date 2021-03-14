@@ -32,9 +32,15 @@ GUI.getUrlVars = function() {
   return q.split('&').reduce(function(memo, chunk) {
     var pair = chunk.split('=');
     var key = decodeURIComponent(pair[0]);
-    memo[key] = decodeURIComponent(pair[1]);
+    memo[key] = parseVal(pair[1]);
     return memo;
   }, {});
+
+  function parseVal(val) {
+    var str = val ? decodeURIComponent(val) : 'true';
+    if (str == 'true' || str == 'false') return JSON.parse(str);
+    return str;
+  }
 };
 
 // Assumes that URL path ends with a filename

@@ -29,7 +29,6 @@ function getImportOpts() {
     opts.files = manifest;
   } else if (manifest.files) {
     opts.files = manifest.files.concat();
-    opts.quick_view = !!manifest.quick_view;
   } else {
     opts.files = [];
   }
@@ -40,6 +39,8 @@ function getImportOpts() {
     opts.catalog = manifest.catalog;
   }
   opts.display_all = !!manifest.display_all;
+  opts.quick_view = vars['quick-view'] || !!manifest.quick_view;
+
   return opts;
 }
 
@@ -74,15 +75,15 @@ var startEditing = function() {
     }
   });
 
+  // Initial display configuration
   gui.model.on('select', function() {
-    if (!dataLoaded) {
-      dataLoaded = true;
-      El('#mode-buttons').show();
-      if (importOpts.display_all) {
-        gui.model.getLayers().forEach(function(o) {
-          gui.map.setLayerVisibility(o, true);
-        });
-      }
+    if (dataLoaded) return;
+    dataLoaded = true;
+    El('#mode-buttons').show();
+    if (importOpts.display_all) {
+      gui.model.getLayers().forEach(function(o) {
+        gui.map.setLayerPinning(o, true);
+      });
     }
   });
 };

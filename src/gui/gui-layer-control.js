@@ -29,11 +29,11 @@ export function LayerControl(gui) {
   el.on('mouseup', stopDragging);
   el.on('mouseleave', stopDragging);
 
-  // init layer visibility button
+  // init show/hide all button
   pinAll.on('click', function() {
     var allOn = testAllLayersPinned();
     model.getLayers().forEach(function(target) {
-      map.setLayerVisibility(target, !allOn);
+      map.setLayerPinning(target, !allOn);
     });
     El.findAll('.pinnable', el.node()).forEach(function(item) {
       El(item).classed('pinned', !allOn);
@@ -46,13 +46,13 @@ export function LayerControl(gui) {
   }
 
   function testAllLayersPinned() {
-    var yes = true;
+    var allPinned = true;
     model.forEachLayer(function(lyr, dataset) {
-      if (isPinnable(lyr) && !map.isVisibleLayer(lyr)) {
-        yes = false;
+      if (isPinnable(lyr) && !lyr.pinned) {
+        allPinned = false;
       }
     });
-    return yes;
+    return allPinned;
   }
 
   function findLayerById(id) {
@@ -168,7 +168,7 @@ export function LayerControl(gui) {
 
     if (opts.pinnable) classes += ' pinnable';
     if (map.isActiveLayer(lyr)) classes += ' active';
-    if (map.isVisibleLayer(lyr)) classes += ' pinned';
+    if (lyr.pinned) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
@@ -244,7 +244,7 @@ export function LayerControl(gui) {
       e.stopPropagation();
       if (map.isVisibleLayer(target.layer)) {
         // TODO: check for double map refresh after model.deleteLayer() below
-        map.setLayerVisibility(target, false);
+        map.setLayerPinning(target, false);
       }
       model.deleteLayer(target.layer, target.dataset);
     });
@@ -253,14 +253,10 @@ export function LayerControl(gui) {
       // init pin button
       GUI.onClick(entry.findChild('img.unpinned'), function(e) {
         var target = findLayerById(id);
+        var pinned = target.layer.pinned;
         e.stopPropagation();
-        if (map.isVisibleLayer(target.layer)) {
-          map.setLayerVisibility(target, false);
-          entry.removeClass('pinned');
-        } else {
-          map.setLayerVisibility(target, true);
-          entry.addClass('pinned');
-        }
+        map.setLayerPinning(target, !pinned);
+        entry.classed('pinned', !pinned);
         updatePinAllButton();
         map.redraw();
       });
@@ -340,7 +336,6 @@ export function LayerControl(gui) {
   function isPinnable(lyr) {
     return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
   }
-
 
   function cleanLayerName(raw) {
     return raw.replace(/[\n\t/\\]/g, '')

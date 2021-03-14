@@ -71,16 +71,8 @@ export function MshpMap(gui) {
     drawLayers();
   };
 
-  this.setLayerVisibility = function(target, isVisible) {
-    var lyr = target.layer;
-    lyr.visibility = isVisible ? 'visible' : 'hidden';
-    // if (_inspector && isActiveLayer(lyr)) {
-    //   _inspector.updateLayer(isVisible ? _activeLyr : null);
-    // }
-    if (isActiveLayer(lyr)) {
-      _hit.setLayer(isVisible ? _activeLyr : null);
-      _hit.clearSelection();
-    }
+  this.setLayerPinning = function(target, pinned) {
+    target.layer.pinned = !!pinned;
   };
 
   this.getCenterLngLat = function() {
@@ -321,10 +313,7 @@ export function MshpMap(gui) {
   }
 
   function isVisibleLayer(lyr) {
-    if (isActiveLayer(lyr)) {
-      return lyr.visibility != 'hidden';
-    }
-    return lyr.visibility == 'visible';
+    return isActiveLayer(lyr) || lyr.pinned;
   }
 
   function isVisibleDataLayer(lyr) {
