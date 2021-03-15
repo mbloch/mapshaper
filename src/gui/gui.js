@@ -38,9 +38,9 @@ function getImportOpts() {
   if (manifest.catalog) {
     opts.catalog = manifest.catalog;
   }
-  opts.display_all = !!manifest.display_all;
-  opts.quick_view = vars['quick-view'] || !!manifest.quick_view;
-
+  opts.display_all = vars['display-all'] || vars.a || !!manifest.display_all;
+  opts.quick_view = vars['quick-view'] || vars.q || !!manifest.quick_view;
+  opts.target = vars.target || manifest.target || null;
   return opts;
 }
 

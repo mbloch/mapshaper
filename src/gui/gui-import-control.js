@@ -67,6 +67,7 @@ function FileChooser(el, cb) {
 export function ImportControl(gui, opts) {
   var model = gui.model;
   var importCount = 0;
+  var importTotal = 0;
   var useQuickView = opts.quick_view; // may be set by mapshaper-gui
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
@@ -122,13 +123,11 @@ export function ImportControl(gui, opts) {
     var target;
     if (catalog) catalog.reset(); // re-enable clickable catalog
     if (importCount > 0) {
-      // display last layer of last imported dataset
-      // target = model.getDefaultTargets()[0];
-      // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
-      model.updated({select: true});
+      onImportComplete();
+      importTotal += importCount;
+      importCount = 0;
     }
     gui.clearProgressMessage();
-    importCount = 0;
     useQuickView = false; // unset 'quick view' mode, if on
     close();
   }
@@ -136,6 +135,19 @@ export function ImportControl(gui, opts) {
   function close() {
     clearQueuedFiles();
     cachedFiles = {};
+  }
+
+  function onImportComplete() {
+    // display last layer of last imported dataset
+    // target = model.getDefaultTargets()[0];
+    // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+    if (opts.target && importTotal === 0) {
+      var target = model.findCommandTargets(opts.target)[0];
+      if (target) {
+        model.setDefaultTarget([target.layers[0]], target.dataset);
+      }
+    }
+    model.updated({select: true});
   }
 
   function clearQueuedFiles() {

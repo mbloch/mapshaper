@@ -9,6 +9,7 @@ var defaultPort = 5555,
       .option('-s, --direct-save', 'save files outside the browser\'s download folder')
       .option('-f, --force-save', 'allow overwriting input files with output files')
       .option('-a, --display-all', 'turn on visibility of all layers')
+      .option('-t, --target <name>', 'name of layer to select initially')
       .helpOption('-h, --help', 'show this help message')
       .version(require('../package.json').version)
       .parse(),
@@ -202,6 +203,7 @@ function validateOutputFile(file) {
 
 function getManifestJS(files, opts) {
   var o = {files: files};
+  if (opts.target) o.target = opts.target;
   if (opts.directSave) o.allow_saving = true;
   if (opts.displayAll) o.display_all = true;
   if (opts.quickView) o.quick_view = true;
