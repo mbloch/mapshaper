@@ -51,7 +51,7 @@ export function parseObjects(reader, offset, cb) {
   seekObjectStart(src);
   while (src.peek() == LBRACE) {
     cb(readObject(src));
-    readChar(src, COMMA);
+    readToken(src, COMMA);
   }
 }
 
@@ -109,7 +109,7 @@ function skipWS(src) {
 function readArray(src) {
   var arr = [], c;
   eatChar(src, LBRACK);
-  c = readChar(src, RBRACK);
+  c = readToken(src, RBRACK);
   while (c != RBRACK) {
     src.refresh();
     arr.push(readArrayElement(src));
@@ -143,11 +143,10 @@ function readArrayElement(src) {
   return readValue(src);
 }
 
-// TODO: add buffer refreshes to support very long arrays of numbers,
-// which may occur in TopoJSON files.
 function extendArray(src, arr) {
   skipWS(src);
   do {
+    src.refresh(); // make make sure long arrays of numbers don't overflow
     arr.push(readValue(src));
   } while(readAorB(src, COMMA, RBRACK) == COMMA);
   return arr;
@@ -170,7 +169,7 @@ function eatChar(src, char) {
 // Reads and returns tok if tok is the next non-whitespace byte,
 // else returns null.
 // Scans past WS chars, both before and after tok
-function readChar(src, tok) {
+function readToken(src, tok) {
   skipWS(src);
   var c = src.peek();
   if (c === tok) {
@@ -208,8 +207,9 @@ function readObject(src) {
   var o = {};
   var key, c;
   eatChar(src, LBRACE);
-  c = readChar(src, RBRACE);
+  c = readToken(src, RBRACE);
   while (c != RBRACE) {
+    src.refresh();
     key = readKey(src); // use caching for faster key parsing
     skipWS(src);
     eatChar(src, 58);
@@ -231,7 +231,6 @@ function growReserve() {
 // The caching scheme used here can give a 20% overall speed improvement
 // when parsing files consisting mostly of attribute data (e.g. typical Point features)
 function readKey(src) {
-  src.refresh();
   var MAXLEN = 2000; // must be less than RESERVE
   var i = src.index();
   var cache = src.cache;
@@ -267,7 +266,6 @@ function readKey(src) {
 // A slower fallback is used to read strings that are longer, non-ascii or
 // contain escaped chars
 function readString(src) {
-  src.refresh();
   var i = src.index();
   eatChar(src, DQUOTE);
   var LIMIT = 256;
@@ -290,6 +288,7 @@ function readString(src) {
 
 // Fallback for reading long strings, escaped strings, non-ascii strings, etc.
 function readString_slow(src) {
+  src.refresh();
   var LIMIT = RESERVE - 2;
   var i = src.index();
   var n = 0;
@@ -306,7 +305,7 @@ function readString_slow(src) {
         stringOverflow(i, c);
       }
       src.index(i);
-      return readString(src);
+      return readString_slow(src);
     }
     if (escapeNext) {
       escapeNext = false;
@@ -334,6 +333,7 @@ function isFirstNumChar(c) {
 function isNumChar(c) {
   return c >= 48 && c <= 57 || c == 45 || c == 46 || c == 43 || c == 69 || c == 101;
 }
+
 
 // Correctly parses any valid JSON number
 // This function gives the correctly rounded result for numbers that are

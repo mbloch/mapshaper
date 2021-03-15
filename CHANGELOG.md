@@ -1,3 +1,7 @@
+v0.5.39
+* Added mapshaper-gui -t/--target option, for setting the initially selected layer.
+* Added query-string variables a/display-all, q/quick-view and target=, for customizing the initial view when sending someone a mapshaper url containing a list of files to display.
+
 v0.5.38
 * Added "-points midpoints" flag, to find the midpoints of polyline features.
 
