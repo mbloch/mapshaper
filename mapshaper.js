@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.37";
+  var VERSION = "0.5.38";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -2216,7 +2216,7 @@
     return Math.abs(area) * Math.PI * 4 / (perimeter * perimeter);
   }
 
-  // Larger values (less severe penalty) fthan Polsby Popper
+  // Larger values (less severe penalty) than Polsby Popper
   function calcSchwartzbergCompactness(area, perimeter) {
     if (perimeter <= 0) return 0;
     return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
@@ -18278,12 +18278,11 @@
 
   var EOF; // undefined is used as an EOF marker
 
-  // RESERVE is the number of bytes to keep in read buffer
-  var RESERVE = 0X1000;
+  var RESERVE = 0X1000; // RESERVE is the number of bytes to keep in read buffer
   var BUFLEN = 1e7; // buffer chunk size
-  var MAX_STRLEN = 5e6;
+  var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
-  // Similar to JSON.parse()
+  // Parse from a Buffer -- similar to JSON.parse(), used for testing
   function parse(buf) {
     var reader = new BufferReader(buf);
     var src = ByteReader(reader, 0);
@@ -18302,7 +18301,7 @@
     seekObjectStart(src);
     while (src.peek() == LBRACE) {
       cb(readObject(src));
-      readChar(src, COMMA);
+      readToken(src, COMMA);
     }
   }
 
@@ -18336,19 +18335,17 @@
   }
 
   function seekObjectStart(src) {
-    var c = src.peek();
-    var found = false;
+    var c = src.getChar();
     var i = 0;
-    while (c != EOF && i < MAX_STRLEN) {
+    while (c != EOF && i < RESERVE) {
       i++;
       if (c == LBRACE) {
-        found = true;
-        break;
+        src.back();
+        return true;
       }
-      src.advance();
-      c = src.peek();
+      c = src.getChar();
     }
-    return found;
+    return false;
   }
 
   function isWS(c) {
@@ -18360,9 +18357,9 @@
   }
 
   function readArray(src) {
-    var arr = [];
-    src.advance(); // eat LBRACK
-    var c = readChar(src, RBRACK);
+    var arr = [], c;
+    eatChar(src, LBRACK);
+    c = readToken(src, RBRACK);
     while (c != RBRACK) {
       src.refresh();
       arr.push(readArrayElement(src));
@@ -18372,8 +18369,8 @@
   }
 
   // Using this function instead of readValue() to read array elements
-  // gives up to a 25% reduction in overall processing time.
-  // (It is optimized for reading coordinates)
+  // gives up to a 25% reduction in overall processing time when parsing
+  // coordinate-heavy GeoJSON files.
   function readArrayElement(src) {
     var i = src.index();
     var x, y, a, b;
@@ -18399,16 +18396,15 @@
   function extendArray(src, arr) {
     skipWS(src);
     do {
+      src.refresh(); // make make sure long arrays of numbers don't overflow
       arr.push(readValue(src));
     } while(readAorB(src, COMMA, RBRACK) == COMMA);
     return arr;
   }
 
   function eatChars(src, str) {
-    var c;
     for (var i = 0; i < str.length; i++) {
-      c = src.getChar();
-      if (c != str.charCodeAt(i)) unexpectedCharAt(c, src.index() - 1);
+      eatChar(src, str.charCodeAt(i));
     }
     return true;
   }
@@ -18423,7 +18419,7 @@
   // Reads and returns tok if tok is the next non-whitespace byte,
   // else returns null.
   // Scans past WS chars, both before and after tok
-  function readChar(src, tok) {
+  function readToken(src, tok) {
     skipWS(src);
     var c = src.peek();
     if (c === tok) {
@@ -18459,18 +18455,18 @@
 
   function readObject(src) {
     var o = {};
-    src.advance(); // eat {
-    var c = readChar(src, RBRACE);
-    var key, val;
+    var key, c;
+    eatChar(src, LBRACE);
+    c = readToken(src, RBRACE);
     while (c != RBRACE) {
+      src.refresh();
       key = readKey(src); // use caching for faster key parsing
-      if (readChar(src, 58) != 58) { // colon
-        unexpectedCharAt(src.peek(), src.index());
-      }
+      skipWS(src);
+      eatChar(src, 58);
+      skipWS(src);
       // use caching with GeoJSON "type" params
-      val = key == 'type' && src.peek() == DQUOTE ?
+      o[key] = key == 'type' && src.peek() == DQUOTE ?
         readKey(src) : readValue(src);
-      o[key] = val;
       c = readAorB(src, COMMA, RBRACE);
     }
     return o;
@@ -18485,7 +18481,6 @@
   // The caching scheme used here can give a 20% overall speed improvement
   // when parsing files consisting mostly of attribute data (e.g. typical Point features)
   function readKey(src) {
-    src.refresh();
     var MAXLEN = 2000; // must be less than RESERVE
     var i = src.index();
     var cache = src.cache;
@@ -18521,7 +18516,6 @@
   // A slower fallback is used to read strings that are longer, non-ascii or
   // contain escaped chars
   function readString(src) {
-    src.refresh();
     var i = src.index();
     eatChar(src, DQUOTE);
     var LIMIT = 256;
@@ -18544,6 +18538,7 @@
 
   // Fallback for reading long strings, escaped strings, non-ascii strings, etc.
   function readString_slow(src) {
+    src.refresh();
     var LIMIT = RESERVE - 2;
     var i = src.index();
     var n = 0;
@@ -18560,7 +18555,7 @@
           stringOverflow(i, c);
         }
         src.index(i);
-        return readString(src);
+        return readString_slow(src);
       }
       if (escapeNext) {
         escapeNext = false;
@@ -18588,6 +18583,7 @@
   function isNumChar(c) {
     return c >= 48 && c <= 57 || c == 45 || c == 46 || c == 43 || c == 69 || c == 101;
   }
+
 
   // Correctly parses any valid JSON number
   // This function gives the correctly rounded result for numbers that are
@@ -18698,7 +18694,7 @@
       // if buffer reaches the end of the file, no update is required
       if (bufOffs + buf.length >= fileLen) return;
 
-      // less than RESERVE bytes are unread in buffer -- update the buffer
+      // fewer than RESERVE bytes are unread in buffer -- update the buffer
       bufOffs += i;
       i = 0;
       buf = reader.readSync(bufOffs, BUFLEN);
@@ -23172,6 +23168,7 @@
     return data[0].breaks;
   }
 
+
   function evaluateDistribution(distribution) {
     var ideal = utils.sum(distribution) / distribution.length;
     var first = distribution[0];
@@ -23189,6 +23186,14 @@
     }
   }
 
+  // kludge to avoid rounding errors in break values
+  function applyScale(normalVal, scale) {
+    if (scale < 1) {
+      return normalVal * Math.round(1 / scale);
+    }
+    return normalVal / scale;
+  }
+
   function getCandidateBreaks(lowerBreak, upperBreak, numBreaks) {
     var cands = [];
     // calculate rounding using equal interval, when possible
@@ -23200,8 +23205,8 @@
     var scaledIntervals = getNiceIntervals(scaledRange);
     scaledIntervals.forEach(function(scaledInterval) {
       var scaledPrecision = getNormalPrecision(scaledInterval);
-      var interval = scaledInterval / scale;
-      var precision = scaledPrecision / scale;
+      var interval = applyScale(scaledInterval, scale);
+      var precision = applyScale(scaledPrecision, scale);
       var fenceposts = getBreakFenceposts(lowerBreak, precision);
       fenceposts.forEach(function(lowBound) {
         cands.push({
@@ -23214,6 +23219,7 @@
     });
     return cands;
   }
+
 
   function getRoundBreaks(lowerBreak, interval, numBreaks) {
     var breaks = [lowerBreak];
@@ -32280,6 +32286,7 @@
     DbfReader,
     DouglasPeucker,
     geojson: GeoJSON,
+    json: { parse: parse },
     ShpType,
     topojson: TopoJSON,
     Visvalingam,

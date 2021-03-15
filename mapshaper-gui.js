@@ -238,9 +238,15 @@
     return q.split('&').reduce(function(memo, chunk) {
       var pair = chunk.split('=');
       var key = decodeURIComponent(pair[0]);
-      memo[key] = decodeURIComponent(pair[1]);
+      memo[key] = parseVal(pair[1]);
       return memo;
     }, {});
+
+    function parseVal(val) {
+      var str = val ? decodeURIComponent(val) : 'true';
+      if (str == 'true' || str == 'false') return JSON.parse(str);
+      return str;
+    }
   };
 
   // Assumes that URL path ends with a filename
@@ -1155,6 +1161,7 @@
   function ImportControl(gui, opts) {
     var model = gui.model;
     var importCount = 0;
+    var importTotal = 0;
     var useQuickView = opts.quick_view; // may be set by mapshaper-gui
     var queuedFiles = [];
     var manifestFiles = opts.files || [];
@@ -1210,13 +1217,11 @@
       var target;
       if (catalog) catalog.reset(); // re-enable clickable catalog
       if (importCount > 0) {
-        // display last layer of last imported dataset
-        // target = model.getDefaultTargets()[0];
-        // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
-        model.updated({select: true});
+        onImportComplete();
+        importTotal += importCount;
+        importCount = 0;
       }
       gui.clearProgressMessage();
-      importCount = 0;
       useQuickView = false; // unset 'quick view' mode, if on
       close();
     }
@@ -1224,6 +1229,19 @@
     function close() {
       clearQueuedFiles();
       cachedFiles = {};
+    }
+
+    function onImportComplete() {
+      // display last layer of last imported dataset
+      // target = model.getDefaultTargets()[0];
+      // model.selectLayer(target.layers[target.layers.length-1], target.dataset);
+      if (opts.target && importTotal === 0) {
+        var target = model.findCommandTargets(opts.target)[0];
+        if (target) {
+          model.setDefaultTarget([target.layers[0]], target.dataset);
+        }
+      }
+      model.updated({select: true});
     }
 
     function clearQueuedFiles() {
@@ -3091,11 +3109,11 @@
     el.on('mouseup', stopDragging);
     el.on('mouseleave', stopDragging);
 
-    // init layer visibility button
+    // init show/hide all button
     pinAll.on('click', function() {
       var allOn = testAllLayersPinned();
       model.getLayers().forEach(function(target) {
-        map.setLayerVisibility(target, !allOn);
+        map.setLayerPinning(target, !allOn);
       });
       El.findAll('.pinnable', el.node()).forEach(function(item) {
         El(item).classed('pinned', !allOn);
@@ -3108,13 +3126,13 @@
     }
 
     function testAllLayersPinned() {
-      var yes = true;
+      var allPinned = true;
       model.forEachLayer(function(lyr, dataset) {
-        if (isPinnable(lyr) && !map.isVisibleLayer(lyr)) {
-          yes = false;
+        if (isPinnable(lyr) && !lyr.pinned) {
+          allPinned = false;
         }
       });
-      return yes;
+      return allPinned;
     }
 
     function findLayerById(id) {
@@ -3230,7 +3248,7 @@
 
       if (opts.pinnable) classes += ' pinnable';
       if (map.isActiveLayer(lyr)) classes += ' active';
-      if (map.isVisibleLayer(lyr)) classes += ' pinned';
+      if (lyr.pinned) classes += ' pinned';
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
       html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
@@ -3306,7 +3324,7 @@
         e.stopPropagation();
         if (map.isVisibleLayer(target.layer)) {
           // TODO: check for double map refresh after model.deleteLayer() below
-          map.setLayerVisibility(target, false);
+          map.setLayerPinning(target, false);
         }
         model.deleteLayer(target.layer, target.dataset);
       });
@@ -3315,14 +3333,10 @@
         // init pin button
         GUI.onClick(entry.findChild('img.unpinned'), function(e) {
           var target = findLayerById(id);
+          var pinned = target.layer.pinned;
           e.stopPropagation();
-          if (map.isVisibleLayer(target.layer)) {
-            map.setLayerVisibility(target, false);
-            entry.removeClass('pinned');
-          } else {
-            map.setLayerVisibility(target, true);
-            entry.addClass('pinned');
-          }
+          map.setLayerPinning(target, !pinned);
+          entry.classed('pinned', !pinned);
           updatePinAllButton();
           map.redraw();
         });
@@ -3402,7 +3416,6 @@
     function isPinnable(lyr) {
       return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
     }
-
 
     function cleanLayerName(raw) {
       return raw.replace(/[\n\t/\\]/g, '')
@@ -7951,7 +7964,7 @@
     return Math.abs(area) * Math.PI * 4 / (perimeter * perimeter);
   }
 
-  // Larger values (less severe penalty) fthan Polsby Popper
+  // Larger values (less severe penalty) than Polsby Popper
   function calcSchwartzbergCompactness(area, perimeter) {
     if (perimeter <= 0) return 0;
     return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
@@ -10699,16 +10712,8 @@
       drawLayers();
     };
 
-    this.setLayerVisibility = function(target, isVisible) {
-      var lyr = target.layer;
-      lyr.visibility = isVisible ? 'visible' : 'hidden';
-      // if (_inspector && isActiveLayer(lyr)) {
-      //   _inspector.updateLayer(isVisible ? _activeLyr : null);
-      // }
-      if (isActiveLayer(lyr)) {
-        _hit.setLayer(isVisible ? _activeLyr : null);
-        _hit.clearSelection();
-      }
+    this.setLayerPinning = function(target, pinned) {
+      target.layer.pinned = !!pinned;
     };
 
     this.getCenterLngLat = function() {
@@ -10949,10 +10954,7 @@
     }
 
     function isVisibleLayer(lyr) {
-      if (isActiveLayer(lyr)) {
-        return lyr.visibility != 'hidden';
-      }
-      return lyr.visibility == 'visible';
+      return isActiveLayer(lyr) || lyr.pinned;
     }
 
     function isVisibleDataLayer(lyr) {
@@ -11219,7 +11221,6 @@
       opts.files = manifest;
     } else if (manifest.files) {
       opts.files = manifest.files.concat();
-      opts.quick_view = !!manifest.quick_view;
     } else {
       opts.files = [];
     }
@@ -11229,7 +11230,9 @@
     if (manifest.catalog) {
       opts.catalog = manifest.catalog;
     }
-    opts.display_all = !!manifest.display_all;
+    opts.display_all = vars['display-all'] || vars.a || !!manifest.display_all;
+    opts.quick_view = vars['quick-view'] || vars.q || !!manifest.quick_view;
+    opts.target = vars.target || manifest.target || null;
     return opts;
   }
 
@@ -11264,15 +11267,15 @@
       }
     });
 
+    // Initial display configuration
     gui.model.on('select', function() {
-      if (!dataLoaded) {
-        dataLoaded = true;
-        El('#mode-buttons').show();
-        if (importOpts.display_all) {
-          gui.model.getLayers().forEach(function(o) {
-            gui.map.setLayerVisibility(o, true);
-          });
-        }
+      if (dataLoaded) return;
+      dataLoaded = true;
+      El('#mode-buttons').show();
+      if (importOpts.display_all) {
+        gui.model.getLayers().forEach(function(o) {
+          gui.map.setLayerPinning(o, true);
+        });
       }
     });
   };
