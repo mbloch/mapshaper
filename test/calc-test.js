@@ -29,6 +29,20 @@ describe('mapshaper-calc.js', function () {
       assert.equal(result, -1);
     })
 
+    it ('every() works a bit like Array#every()', function() {
+      var result = evalCalcExpression(lyr1, null, 'every(foo > -2)');
+      var result2 = evalCalcExpression(lyr1, null, 'every(foo > 0)');
+      assert.strictEqual(result, true);
+      assert.strictEqual(result2, false);
+    })
+
+    it ('some() works a bit like Array#some()', function() {
+      var result = evalCalcExpression(lyr1, null, 'some(foo > 0)');
+      var result2 = evalCalcExpression(lyr1, null, 'some(foo > 10)');
+      assert.strictEqual(result, true);
+      assert.strictEqual(result2, false);
+    })
+
     it ('last() captures value of last record', function() {
       var result = evalCalcExpression(lyr1, null, 'last(foo)');
       assert.equal(result, 4);

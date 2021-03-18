@@ -48,6 +48,8 @@ export function compileCalcExpression(lyr, arcs, exp) {
         mode: capture,
         collect: capture,
         first: assignOnce,
+        every: every,
+        some: some,
         last: assign
       },
       ctx2 = { // context for second phase (calculating results)
@@ -61,6 +63,8 @@ export function compileCalcExpression(lyr, arcs, exp) {
         mode: wrap(getMode),
         collect: wrap(pass),
         first: wrap(pass),
+        every: wrap(pass, false),
+        some: wrap(pass, false),
         last: wrap(pass)
       },
       len = getFeatureCount(lyr),
@@ -161,6 +165,18 @@ export function compileCalcExpression(lyr, arcs, exp) {
     if (rowNo === 0) cols[colNo] = val;
     colNo++;
     return val;
+  }
+
+  function every(val) {
+    val = !!val;
+    cols[colNo] = rowNo === 0 ? val : cols[colNo] && val;
+    colNo++;
+  }
+
+  function some(val) {
+    val = !!val;
+    cols[colNo] = cols[colNo] || val;
+    colNo++;
   }
 
   function assign(val) {
