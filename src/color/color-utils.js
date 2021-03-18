@@ -5,7 +5,6 @@ import { lookupColorName } from '../color/color-names';
 var rgbaRxp = /^rgba?\(([^)]+)\)/;
 var hexRxp = /^#([a-f0-9]{3,8})/i;
 
-
 export function parseColor(arg) {
   arg = arg ? String(arg) : '';
   var hexStr = hexRxp.test(arg) ? arg : lookupColorName(arg);

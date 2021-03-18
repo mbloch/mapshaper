@@ -415,11 +415,16 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('colors', {
-      describe: 'list of CSS colors (alternative to values=, can interpolate)',
-      type: 'colors'
+      describe: 'list of CSS colors or color scheme name (see -colors)',
+      type: 'strings'
     })
     .option('color-scheme', {
-      describe: 'name of a predefined color scheme (see -colors command)'
+      // deprecated in favor of colors=
+      // describe: 'name of a predefined color scheme (see -colors command)'
+    })
+    .option('stops', {
+      describe: 'list of percentages (0-100) for limiting a color ramp',
+      type: 'numbers'
     })
     .option('null-value', {
       describe: 'value (or color) to use for invalid or missing data'
@@ -442,10 +447,6 @@ export function getOptionParser() {
     .option('nice', {
       describe: 'short for method=nice (rounded, equal inner breaks)',
       assign_to: 'method'
-    })
-    .option('tidy', {
-      describe: 'tidy classification (round breaks, equally spaced)',
-      type: 'flag'
     })
     .option('breaks', {
       describe: 'user-defined sequential class breaks',

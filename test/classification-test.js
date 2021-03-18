@@ -1,8 +1,6 @@
 import {
   getSequentialClassifier,
   getDiscreteClassifier,
-  interpolateValuesToClasses,
-  getInterpolatedValueGetter,
   getDiscreteValueGetter,
   getContinuousClassifier,
   getQuantileBreaks,
@@ -10,6 +8,10 @@ import {
   getDistributionData,
   getAscendingNumbers
 } from '../src/classification/mapshaper-classification';
+import {
+  getInterpolatedValueGetter
+} from '../src/classification/mapshaper-interpolation';
+
 var api = require('../'),
   assert = require('assert');
 
@@ -43,8 +45,8 @@ describe('mapshaper-classification.js', function () {
       var out = getClassRanges(breaks, data);
       assert.deepEqual(out, [[1, 3], [5,8], [9, 10]])
     });
-
   })
+
 
   describe('getDistributionData()', function () {
     it('test 1', function () {
@@ -88,32 +90,6 @@ describe('mapshaper-classification.js', function () {
       assert.equal(f(8), 10);
       assert.equal(f(4), 7.5);
     })
-  })
-
-  describe('interpolateValuesToClasses', function () {
-    it('no interpolation if none needed', function () {
-      var out = interpolateValuesToClasses([0, 1, 2], 3);
-      assert.deepEqual(out, [0, 1, 2])
-    })
-
-    it('fewer values than classes', function () {
-      var out = interpolateValuesToClasses([0, 2], 3);
-      assert.deepEqual(out, [0, 1, 2])
-      out = interpolateValuesToClasses([0, 2, 4], 5);
-      assert.deepEqual(out, [0, 1, 2, 3, 4]);
-    })
-
-    it('more values than classes', function () {
-      var out = interpolateValuesToClasses([1, 2, 3, 4, 5], 3);
-      assert.deepEqual(out, [1, 3, 5]);
-    })
-
-    it('interpolate colors', function() {
-      var out = interpolateValuesToClasses(['#000', '#222'], 3);
-      // not sure what the output should be... d3 returns 'rgb()' format
-      assert(out[1].includes('rgb('));
-    })
-
   })
 
   describe('getDiscreteClassifier()', function () {

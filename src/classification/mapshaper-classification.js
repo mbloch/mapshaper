@@ -2,6 +2,9 @@ import utils from '../utils/mapshaper-utils';
 import { stop, error, message, formatColumns } from '../utils/mapshaper-logging';
 import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
+import {
+  getInterpolatedValueGetter,
+  interpolateValuesToClasses } from '../classification/mapshaper-interpolation';
 
 // convert an index (0 ... n-1, -1, -2) to a corresponding discreet value
 export function getDiscreteValueGetter(values, nullValue, otherValue) {
@@ -17,24 +20,6 @@ export function getDiscreteValueGetter(values, nullValue, otherValue) {
   };
 }
 
-// convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
-export function getInterpolatedValueGetter(values, nullValue) {
-  var d3 = require('d3-interpolate');
-  var interpolators = [];
-  var tmax = values.length - 1;
-  for (var i=1; i<values.length; i++) {
-    interpolators.push(d3.interpolate(values[i-1], values[i]));
-  }
-  return function(t) {
-    if (t == -1) return nullValue;
-    if ((t >= 0 && t <= tmax) === false) {
-      error('Range error');
-    }
-    var i = t == tmax ? tmax - 1 : Math.floor(t);
-    var j = t == tmax ? 1 : t % 1;
-    return interpolators[i](j);
-  };
-}
 
 // categories: strings to match in the data
 export function getCategoricalClassifier(categories) {
@@ -66,26 +51,6 @@ export function getContinuousClassifier(breaks, minVal, maxVal) {
     }
     error('Range error');
   };
-}
-
-// return an array of n values
-// assumes that values can be interpolated by d3-interpolate
-// (colors and numbers should work)
-export function interpolateValuesToClasses(values, n) {
-  if (values.length == n) return values;
-  var d3 = require('d3-interpolate');
-  var numPairs = values.length - 1;
-  var output = [values[0]];
-  var k, j, t, intVal;
-  for (var i=1; i<n-1; i++) {
-    k = i / (n-1) * numPairs;
-    j = Math.floor(k);
-    t = k - j;
-    intVal = d3.interpolate(values[j], values[j+1])(t);
-    output.push(intVal);
-  }
-  output.push(values[values.length - 1]);
-  return output;
 }
 
 export function getSequentialClassifier(dataValues, numBuckets, opts) {

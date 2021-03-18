@@ -1,5 +1,6 @@
 import { formatStringsAsGrid } from '../utils/mapshaper-logging';
 import { print, stop, error, message } from '../utils/mapshaper-logging';
+import { getStoppedValues } from '../classification/mapshaper-interpolation';
 import utils from '../utils/mapshaper-utils';
 
 var categorical = 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10'.split(',');
@@ -57,10 +58,11 @@ export function isColorSchemeName(name) {
   return categorical.concat(sequential).concat(rainbow).concat(diverging).includes(name);
 }
 
-export function getColorRamp(name, n) {
+export function getColorRamp(name, n, stops) {
   var lib = require('d3-scale-chromatic');
   var ramps = lib['scheme' + name];
   var interpolate = lib['interpolate' + name];
+  var ramp;
   if (!ramps && !interpolate) {
     stop('Unknown color scheme name:', name);
   }
@@ -68,23 +70,23 @@ export function getColorRamp(name, n) {
     stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
   }
   if (ramps && ramps[n]) {
-    return ramps[n];
+    ramp = ramps[n];
+  } else {
+    ramp = getInterpolatedRamp(interpolate, n);
   }
-  return getInterpolatedRamp(interpolate, n);
+  if (stops) {
+    ramp = getStoppedValues(ramp, stops);
+  }
+  return ramp;
 }
 
 function getInterpolatedRamp(interpolate, n) {
   if (n > 0 === false || !utils.isInteger(n)) {
     error('Expected a positive integer');
   }
-  // margin can be set to use a restricted range
-  // TODO: make this a parameter
-  // var margin = 1 / (n + 4);
-  var margin = 0; // use full range
-  var interval = (1 - margin * 2) / (n - 1);
   var ramp = [];
   for (var i=0; i<n; i++) {
-    ramp.push(interpolate(margin + interval * i));
+    ramp.push(interpolate(i / (n - 1)));
   }
   return ramp;
 }

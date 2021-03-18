@@ -3,14 +3,18 @@ import utils from '../utils/mapshaper-utils';
 import { requireDataField } from '../dataset/mapshaper-layer-utils';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
 import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
+import { parseColor } from '../color/color-utils';
 import {
   getSequentialClassifier,
   getCategoricalClassifier,
-  interpolateValuesToClasses,
   getDistributionData,
   getDiscreteValueGetter,
-  getInterpolatedValueGetter
 } from '../classification/mapshaper-classification';
+import {
+  interpolateValuesToClasses,
+  getInterpolatedValueGetter
+} from '../classification/mapshaper-interpolation';
+
 import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
@@ -18,9 +22,11 @@ cmd.classify = function(lyr, optsArg) {
   var records = lyr.data && lyr.data.getRecords();
   var nullValue = opts.null_value || null;
   var looksLikeColors = !!opts.colors || !!opts.color_scheme;
+  var colorScheme;
   var classValues, classify, classToValue;
   var numBuckets, numValues, dataValues;
   var dataField, outputField;
+
 
   // validate explicitly set classes
   if (opts.classes) {
@@ -52,13 +58,23 @@ cmd.classify = function(lyr, optsArg) {
     numValues = opts.continuous ? numBuckets + 1 : numBuckets;
   }
 
+  // support both deprecated color-scheme= option and colors=<color-scheme> syntax
   if (opts.color_scheme) {
-    // using a named color scheme: generate a ramp
     if (!isColorSchemeName(opts.color_scheme)) {
       stop('Unknown color scheme:', opts.color_scheme);
     }
+    colorScheme = opts.color_scheme;
+  } else if (opts.colors && isColorSchemeName(opts.colors[0])) {
+    colorScheme = opts.colors[0];
+  } else if (opts.colors) {
+    opts.colors.forEach(parseColor); // validate colors -- error if unparsable
+  }
+
+  if (colorScheme) {
+    // using a named color scheme: generate a ramp
+
     if (opts.categories) {
-      classValues = getCategoricalColorScheme(opts.color_scheme, opts.categories.length);
+      classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
       message('Colors:', formatValuesForLogging(classValues));
       numBuckets = numValues = classValues.length;
     } else {
@@ -67,7 +83,7 @@ cmd.classify = function(lyr, optsArg) {
         numBuckets = 4; // use a default number of classes
         numValues = opts.continuous ? numBuckets + 1 : numBuckets;
       }
-      classValues = getColorRamp(opts.color_scheme, numValues);
+      classValues = getColorRamp(colorScheme, numValues, opts.stops);
     }
 
   } else if (opts.colors || opts.values) {
@@ -76,10 +92,10 @@ cmd.classify = function(lyr, optsArg) {
       numValues = classValues.length;
       numBuckets = opts.continuous ? numValues - 1 : numValues;
     }
-    if (classValues.length != numValues && numValues > 1) {
+    if ((classValues.length != numValues || opts.stops) && numValues > 1) {
       // TODO: handle numValues == 1
       // TODO: check for non-interpolatable value types (e.g. boolean, text)
-      classValues = interpolateValuesToClasses(classValues, numValues);
+      classValues = interpolateValuesToClasses(classValues, numValues, opts.stops);
     }
 
   } else if (numValues > 1) {
