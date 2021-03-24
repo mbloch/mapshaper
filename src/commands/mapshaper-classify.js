@@ -6,15 +6,17 @@ import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../c
 import { parseColor } from '../color/color-utils';
 import {
   getSequentialClassifier,
-  getCategoricalClassifier,
-  getDistributionData,
-  getDiscreteValueGetter,
-} from '../classification/mapshaper-classification';
+} from '../classification/mapshaper-sequential-classifier';
 import {
-  interpolateValuesToClasses,
-  getInterpolatedValueGetter
+  getCategoricalClassifier
+} from '../classification/mapshaper-categorical-classifier';
+import {
+  getIndexedClassifier,
+  validateClassIndexField
+} from '../classification/mapshaper-indexed-classifier';
+import {
+  interpolateValuesToClasses
 } from '../classification/mapshaper-interpolation';
-
 import cmd from '../mapshaper-cmd';
 
 cmd.classify = function(lyr, optsArg) {
@@ -23,10 +25,9 @@ cmd.classify = function(lyr, optsArg) {
   var nullValue = opts.null_value || null;
   var looksLikeColors = !!opts.colors || !!opts.color_scheme;
   var colorScheme;
-  var classValues, classify, classToValue;
-  var numBuckets, numValues, dataValues;
+  var classValues, classify;
+  var numBuckets, numValues;
   var dataField, outputField;
-
 
   // validate explicitly set classes
   if (opts.classes) {
@@ -90,7 +91,6 @@ cmd.classify = function(lyr, optsArg) {
     classValues = opts.values ? parseValues(opts.values) : opts.colors;
     if (!numValues) {
       numValues = classValues.length;
-      numBuckets = opts.continuous ? numValues - 1 : numValues;
     }
     if ((classValues.length != numValues || opts.stops) && numValues > 1) {
       // TODO: handle numValues == 1
@@ -124,19 +124,11 @@ cmd.classify = function(lyr, optsArg) {
   //
   if (opts.index_field) {
     // data is pre-classified... just read the index from a field
-    classify = getIndexClassifier(numBuckets);
+    classify = getIndexedClassifier(classValues, nullValue, opts);
   } else if (opts.categories) {
-    classify = getCategoricalClassifier(opts.categories);
+    classify = getCategoricalClassifier(classValues, nullValue, opts);
   } else {
-    classify = getSequentialClassifier(getFieldValues(records, dataField), numBuckets, opts);
-  }
-
-  // get a function to convert class indexes to output values
-  //
-  if (opts.continuous && !opts.categories) {
-    classToValue = getInterpolatedValueGetter(classValues, nullValue);
-  } else {
-    classToValue = getDiscreteValueGetter(classValues, nullValue, opts.other);
+    classify = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
   }
 
   // get the name of the output field
@@ -155,33 +147,10 @@ cmd.classify = function(lyr, optsArg) {
 
   records.forEach(function(d, i) {
     d = d || {};
-    d[outputField] = classToValue(classify(d[dataField]));
+    d[outputField] = classify(d[dataField]);
   });
 };
 
-// returns the number of classes, based on the largest class index found
-function validateClassIndexField(records, name) {
-  var invalid = [];
-  var maxId = -1;
-  records.forEach(function(d) {
-    var val = (d || {})[name];
-    if (!utils.isInteger(val) || val < -2) {
-      invalid.push(val);
-    } else {
-      maxId = Math.max(maxId, val);
-    }
-  });
-  if (invalid.length > 0) {
-    stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
-  }
-  return maxId + 1;
-}
-
-function getIndexClassifier(numBuckets) {
-  return function(val) {
-    return utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
-  };
-}
 
 // convert strings to numbers if they all parse as numbers
 // arr: an array of strings

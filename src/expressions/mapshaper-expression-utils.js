@@ -5,6 +5,7 @@ export function addUtils(env) {
   Object.assign(env, {
     round: function(val, dig) {
       var k = 1;
+      if (!val && val !== 0) return val; // don't coerce null to 0
       dig = dig | 0;
       while(dig-- > 0) k *= 10;
       return Math.round(val * k) / k;

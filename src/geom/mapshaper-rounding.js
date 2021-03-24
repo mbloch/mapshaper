@@ -3,6 +3,30 @@ import { error } from '../utils/mapshaper-logging';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import utils from '../utils/mapshaper-utils';
 
+export function roundToSignificantDigits(n, d) {
+  return +n.toPrecision(d);
+}
+
+export function roundToDigits(n, d) {
+  return +n.toFixed(d);
+}
+
+// inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
+export function getRoundingFunction(inc) {
+  if (!utils.isNumber(inc) || inc === 0) {
+    error("Rounding increment must be a non-zero number.");
+  }
+  var inv = 1 / inc;
+  if (inv > 1) inv = Math.round(inv);
+  return function(x) {
+    return Math.round(x * inv) / inv;
+    // these alternatives show rounding error after JSON.stringify()
+    // return Math.round(x / inc) / inv;
+    // return Math.round(x / inc) * inc;
+    // return Math.round(x * inv) * inc;
+  };
+}
+
 export function getBoundsPrecisionForDisplay(bbox) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
@@ -53,22 +77,3 @@ export function setCoordinatePrecision(dataset, precision) {
   return dataset;
 }
 
-// inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
-export function getRoundingFunction(inc) {
-  if (!utils.isNumber(inc) || inc === 0) {
-    error("Rounding increment must be a non-zero number.");
-  }
-  var inv = 1 / inc;
-  if (inv > 1) inv = Math.round(inv);
-  return function(x) {
-    return Math.round(x * inv) / inv;
-    // these alternatives show rounding error after JSON.stringify()
-    // return Math.round(x / inc) / inv;
-    // return Math.round(x / inc) * inc;
-    // return Math.round(x * inv) * inc;
-  };
-}
-
-export function roundToSignificantDigits(n, d) {
-  return +n.toPrecision(d);
-}

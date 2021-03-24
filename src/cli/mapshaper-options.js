@@ -402,7 +402,7 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('classify')
-    .describe('apply sequential or categorical classification to a data field')
+    .describe('apply sequential or categorical classification')
     .option('field', {
       describe: 'name of field to classify',
       DEFAULT: true
@@ -410,12 +410,12 @@ export function getOptionParser() {
     .option('save-as', {
         describe: 'name of output field (default is fill|stroke|class)'
     })
-    .option('values', {
-      describe: 'list of values to assign to classes',
-      type: 'strings'
-    })
     .option('colors', {
       describe: 'list of CSS colors or color scheme name (see -colors)',
+      type: 'strings'
+    })
+    .option('values', {
+      describe: 'values to assign to classes (alternative to colors=)',
       type: 'strings'
     })
     .option('color-scheme', {
@@ -423,7 +423,7 @@ export function getOptionParser() {
       // describe: 'name of a predefined color scheme (see -colors command)'
     })
     .option('stops', {
-      describe: 'list of percentages (0-100) for limiting a color ramp',
+      describe: 'a pair of values (0-100) for limiting a color ramp',
       type: 'numbers'
     })
     .option('null-value', {
@@ -433,19 +433,19 @@ export function getOptionParser() {
       describe: 'one of: quantile, nice, equal-interval, hybrid'
     })
     .option('quantile', {
-      describe: 'shortcut for method=quantile (the default)',
+      //describe: 'shortcut for method=quantile (the default)',
       assign_to: 'method'
     })
     .option('equal-interval', {
-      describe: 'short for method=equal-interval',
+      //describe: 'short for method=equal-interval',
       assign_to: 'method'
     })
-    // .option('hybrid', {
-    //   describe: 'short for method=hybrid (equal-interval inner breaks + quantile outliers)',
-    //   assign_to: 'method'
-    // })
+    .option('hybrid', {
+      // describe: 'short for method=hybrid (equal-interval inner breaks + quantile outliers)',
+      assign_to: 'method'
+    })
     .option('nice', {
-      describe: 'short for method=nice (rounded, equal inner breaks)',
+      //describe: 'short for method=nice (rounded, equal inner breaks)',
       assign_to: 'method'
     })
     .option('breaks', {
@@ -476,8 +476,37 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('other', {
-      describe: 'default value for categorical scheme (defaults to null-value)'
+      describe: 'default value for categorical scheme'
     })
+    .option('key', {type: 'flag'})
+    .option('key-style', {
+      describe: 'one of: simple, gradient, dataviz'
+    })
+    .option('key-name', {
+      describe: 'name of output SVG file'
+    })
+    .option('key-width', {
+      describe: 'width of key in pixels',
+      type: 'number'
+    })
+    .option('key-font-size', {
+      describe: 'label size in pixels',
+      type: 'number'
+    })
+    .option('key-tile-height', {
+      describe: 'height of color tiles in pixels',
+      type: 'number'
+    })
+    .option('key-tic-length', {
+      describe: 'length of tic mark in pixels'
+    })
+    .option('key-label-suffix', {
+      describe: 'string to append to each label'
+    })
+    .option('key-last-suffix', {
+      describe: 'string to append to last label'
+    })
+
     .option('target', targetOpt);
 
   parser.command('clean')

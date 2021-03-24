@@ -4,6 +4,7 @@ import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 
 export function writeFiles(exports, opts, cb) {
+  cb = cb || function() {};
   return _writeFiles(exports, opts, cb);
 }
 

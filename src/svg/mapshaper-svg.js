@@ -15,11 +15,18 @@ import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 //
 //
 export function exportSVG(dataset, opts) {
-  var template = '<?xml version="1.0"?>\n<svg %s ' +
-    'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
   var defs = [];
   var size, svg;
+  var style = '';
+
+  // kludge for map keys
+  if (opts.crisp_paths) {
+    style = `
+<style>
+  path {shape-rendering: crispEdges;}
+</style>`;
+  }
 
   // TODO: consider moving this logic to mapshaper-export.js
   if (opts.final) {
@@ -45,7 +52,12 @@ export function exportSVG(dataset, opts) {
   if (svg.includes('xlink:')) {
     namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
   }
-  svg = utils.format(template, namespace, size[0], size[1], 0, 0, size[0], size[1], svg);
+  var capStyle = opts.default_linecap || 'round';
+  var template = `<?xml version="1.0"?>
+<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="${capStyle}" stroke-linejoin="round">${style}
+${svg}
+</svg>`;
+  svg = utils.format(template,size[0], size[1], 0, 0, size[0], size[1]);
   return [{
     content: svg,
     filename: opts.file || getOutputFileBase(dataset) + '.svg'
@@ -175,9 +187,10 @@ function validDataAttributeValue(val) {
 // };
 
 export function getEmptyLayerForSVG(lyr, opts) {
+  var id = (opts.id_prefix || '') + (lyr.name || utils.getUniqueName('layer'));
   var layerObj = {
     tag: 'g',
-    properties: {id: (opts.id_prefix || '') + lyr.name},
+    properties: {id: id},
     children: []
   };
 

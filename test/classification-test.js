@@ -1,13 +1,16 @@
 import {
+  getDiscreteValueGetter
+} from '../src/classification/mapshaper-classification';
+import {
   getSequentialClassifier,
   getDiscreteClassifier,
-  getDiscreteValueGetter,
   getContinuousClassifier,
   getQuantileBreaks,
   getClassRanges,
   getDistributionData,
   getAscendingNumbers
-} from '../src/classification/mapshaper-classification';
+
+} from '../src/classification/mapshaper-sequential-classifier';
 import {
   getInterpolatedValueGetter
 } from '../src/classification/mapshaper-interpolation';

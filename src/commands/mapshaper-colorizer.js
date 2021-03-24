@@ -2,8 +2,9 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { getStateVar } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
-import { getDiscreteClassifier, getCategoricalClassifier, getDiscreteValueGetter }
-  from '../classification/mapshaper-classification';
+import { getCategoricalClassifier } from '../classification/mapshaper-categorical-classifier';
+import { getDiscreteValueGetter } from '../classification/mapshaper-classification';
+import { getDiscreteClassifier } from '../classification/mapshaper-sequential-classifier';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
 cmd.colorizer = function(opts) {
@@ -35,12 +36,12 @@ export function getColorizerFunction(opts) {
     if (opts.colors.length != opts.breaks.length + 1) {
       stop("Number of colors should be one more than number of class breaks");
     }
-    colorFunction = getSequentialColorFunction(opts.breaks, opts.colors, nodataColor, round);
+    colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
   } else if (opts.categories) {
     if (opts.colors.length != opts.categories.length) {
       stop("Number of colors should be equal to the number of categories");
     }
-    colorFunction = getCategoricalColorFunction(opts.categories, opts.colors, opts.other, nodataColor);
+    colorFunction = getCategoricalClassifier(opts.colors, nodataColor, opts);
   } else {
     stop("Missing categories= or breaks= parameter");
   }
@@ -48,7 +49,7 @@ export function getColorizerFunction(opts) {
   return colorFunction;
 }
 
-function getSequentialColorFunction(breaks, colors, nullVal, round) {
+function getSequentialClassifier(breaks, colors, nullVal, round) {
   var classify = getDiscreteClassifier(breaks, round);
   var toColor = getDiscreteValueGetter(colors, nullVal);
   return function(val) {

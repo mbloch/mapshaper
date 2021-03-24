@@ -1,7 +1,8 @@
-v0.5.40 (pending)
+v0.5.40
 * Added stops= option to the -classify command. This accepts a pair of percentages (e.g. stops=10,90) for reducing the range of a color ramp.
 * Deprecated -classify color-scheme= option. Instead, -classify colors= accepts color scheme names (e.g. -classify colors=Blues).
 * Added every() and some() functions to -calc and calc= expressions.
+* Added options for generating SVG map keys to the -classify command.
 
 v0.5.39
 * Added mapshaper-gui -t/--target option, for setting the initially selected layer.
