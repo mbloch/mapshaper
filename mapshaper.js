@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.38";
+  var VERSION = "0.5.39";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -6315,6 +6315,7 @@
   };
 
   function writeFiles(exports, opts, cb) {
+    cb = cb || function() {};
     return _writeFiles(exports, opts, cb);
   }
 
@@ -7211,6 +7212,30 @@
     }, null) || '';
   }
 
+  function roundToSignificantDigits(n, d) {
+    return +n.toPrecision(d);
+  }
+
+  function roundToDigits(n, d) {
+    return +n.toFixed(d);
+  }
+
+  // inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
+  function getRoundingFunction(inc) {
+    if (!utils.isNumber(inc) || inc === 0) {
+      error("Rounding increment must be a non-zero number.");
+    }
+    var inv = 1 / inc;
+    if (inv > 1) inv = Math.round(inv);
+    return function(x) {
+      return Math.round(x * inv) / inv;
+      // these alternatives show rounding error after JSON.stringify()
+      // return Math.round(x / inc) / inv;
+      // return Math.round(x / inc) * inc;
+      // return Math.round(x * inv) * inc;
+    };
+  }
+
   function getBoundsPrecisionForDisplay(bbox) {
     var w = bbox[2] - bbox[0],
         h = bbox[3] - bbox[1],
@@ -7261,35 +7286,16 @@
     return dataset;
   }
 
-  // inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
-  function getRoundingFunction(inc) {
-    if (!utils.isNumber(inc) || inc === 0) {
-      error("Rounding increment must be a non-zero number.");
-    }
-    var inv = 1 / inc;
-    if (inv > 1) inv = Math.round(inv);
-    return function(x) {
-      return Math.round(x * inv) / inv;
-      // these alternatives show rounding error after JSON.stringify()
-      // return Math.round(x / inc) / inv;
-      // return Math.round(x / inc) * inc;
-      // return Math.round(x * inv) * inc;
-    };
-  }
-
-  function roundToSignificantDigits(n, d) {
-    return +n.toPrecision(d);
-  }
-
   var Rounding = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    roundToSignificantDigits: roundToSignificantDigits,
+    roundToDigits: roundToDigits,
+    getRoundingFunction: getRoundingFunction,
     getBoundsPrecisionForDisplay: getBoundsPrecisionForDisplay,
     getRoundedCoordString: getRoundedCoordString,
     getRoundedCoords: getRoundedCoords,
     roundPoints: roundPoints,
-    setCoordinatePrecision: setCoordinatePrecision,
-    getRoundingFunction: getRoundingFunction,
-    roundToSignificantDigits: roundToSignificantDigits
+    setCoordinatePrecision: setCoordinatePrecision
   });
 
   var GeoJSON = {};
@@ -8420,7 +8426,6 @@
   var rgbaRxp = /^rgba?\(([^)]+)\)/;
   var hexRxp = /^#([a-f0-9]{3,8})/i;
 
-
   function parseColor(arg) {
     arg = arg ? String(arg) : '';
     var hexStr = hexRxp.test(arg) ? arg : lookupColorName(arg);
@@ -8594,6 +8599,7 @@
     Object.assign(env, {
       round: function(val, dig) {
         var k = 1;
+        if (!val && val !== 0) return val; // don't coerce null to 0
         dig = dig | 0;
         while(dig-- > 0) k *= 10;
         return Math.round(val * k) / k;
@@ -11066,11 +11072,18 @@
   //
   //
   function exportSVG(dataset, opts) {
-    var template = '<?xml version="1.0"?>\n<svg %s ' +
-      'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
     var defs = [];
     var size, svg;
+    var style = '';
+
+    // kludge for map keys
+    if (opts.crisp_paths) {
+      style = `
+<style>
+  path {shape-rendering: crispEdges;}
+</style>`;
+    }
 
     // TODO: consider moving this logic to mapshaper-export.js
     if (opts.final) {
@@ -11096,7 +11109,12 @@
     if (svg.includes('xlink:')) {
       namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
     }
-    svg = utils.format(template, namespace, size[0], size[1], 0, 0, size[0], size[1], svg);
+    var capStyle = opts.default_linecap || 'round';
+    var template = `<?xml version="1.0"?>
+<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="${capStyle}" stroke-linejoin="round">${style}
+${svg}
+</svg>`;
+    svg = utils.format(template,size[0], size[1], 0, 0, size[0], size[1]);
     return [{
       content: svg,
       filename: opts.file || getOutputFileBase(dataset) + '.svg'
@@ -11226,9 +11244,10 @@
   // };
 
   function getEmptyLayerForSVG(lyr, opts) {
+    var id = (opts.id_prefix || '') + (lyr.name || utils.getUniqueName('layer'));
     var layerObj = {
       tag: 'g',
-      properties: {id: (opts.id_prefix || '') + lyr.name},
+      properties: {id: id},
       children: []
     };
 
@@ -15147,7 +15166,7 @@
       .option('no-replace', noReplaceOpt);
 
     parser.command('classify')
-      .describe('apply sequential or categorical classification to a data field')
+      .describe('apply sequential or categorical classification')
       .option('field', {
         describe: 'name of field to classify',
         DEFAULT: true
@@ -15155,16 +15174,21 @@
       .option('save-as', {
           describe: 'name of output field (default is fill|stroke|class)'
       })
-      .option('values', {
-        describe: 'list of values to assign to classes',
+      .option('colors', {
+        describe: 'list of CSS colors or color scheme name (see -colors)',
         type: 'strings'
       })
-      .option('colors', {
-        describe: 'list of CSS colors (alternative to values=, can interpolate)',
-        type: 'colors'
+      .option('values', {
+        describe: 'values to assign to classes (alternative to colors=)',
+        type: 'strings'
       })
       .option('color-scheme', {
-        describe: 'name of a predefined color scheme (see -colors command)'
+        // deprecated in favor of colors=
+        // describe: 'name of a predefined color scheme (see -colors command)'
+      })
+      .option('stops', {
+        describe: 'a pair of values (0-100) for limiting a color ramp',
+        type: 'numbers'
       })
       .option('null-value', {
         describe: 'value (or color) to use for invalid or missing data'
@@ -15173,24 +15197,20 @@
         describe: 'one of: quantile, nice, equal-interval, hybrid'
       })
       .option('quantile', {
-        describe: 'shortcut for method=quantile (the default)',
+        //describe: 'shortcut for method=quantile (the default)',
         assign_to: 'method'
       })
       .option('equal-interval', {
-        describe: 'short for method=equal-interval',
+        //describe: 'short for method=equal-interval',
         assign_to: 'method'
       })
-      // .option('hybrid', {
-      //   describe: 'short for method=hybrid (equal-interval inner breaks + quantile outliers)',
-      //   assign_to: 'method'
-      // })
+      .option('hybrid', {
+        // describe: 'short for method=hybrid (equal-interval inner breaks + quantile outliers)',
+        assign_to: 'method'
+      })
       .option('nice', {
-        describe: 'short for method=nice (rounded, equal inner breaks)',
+        //describe: 'short for method=nice (rounded, equal inner breaks)',
         assign_to: 'method'
-      })
-      .option('tidy', {
-        describe: 'tidy classification (round breaks, equally spaced)',
-        type: 'flag'
       })
       .option('breaks', {
         describe: 'user-defined sequential class breaks',
@@ -15220,8 +15240,37 @@
         type: 'strings'
       })
       .option('other', {
-        describe: 'default value for categorical scheme (defaults to null-value)'
+        describe: 'default value for categorical scheme'
       })
+      .option('key', {type: 'flag'})
+      .option('key-style', {
+        describe: 'one of: simple, gradient, dataviz'
+      })
+      .option('key-name', {
+        describe: 'name of output SVG file'
+      })
+      .option('key-width', {
+        describe: 'width of key in pixels',
+        type: 'number'
+      })
+      .option('key-font-size', {
+        describe: 'label size in pixels',
+        type: 'number'
+      })
+      .option('key-tile-height', {
+        describe: 'height of color tiles in pixels',
+        type: 'number'
+      })
+      .option('key-tic-length', {
+        describe: 'length of tic mark in pixels'
+      })
+      .option('key-label-suffix', {
+        describe: 'string to append to each label'
+      })
+      .option('key-last-suffix', {
+        describe: 'string to append to last label'
+      })
+
       .option('target', targetOpt);
 
     parser.command('clean')
@@ -20077,6 +20126,8 @@
           mode: capture,
           collect: capture,
           first: assignOnce,
+          every: every,
+          some: some,
           last: assign
         },
         ctx2 = { // context for second phase (calculating results)
@@ -20090,6 +20141,8 @@
           mode: wrap(getMode),
           collect: wrap(pass),
           first: wrap(pass),
+          every: wrap(pass, false),
+          some: wrap(pass, false),
           last: wrap(pass)
         },
         len = getFeatureCount(lyr),
@@ -20190,6 +20243,18 @@
       if (rowNo === 0) cols[colNo] = val;
       colNo++;
       return val;
+    }
+
+    function every(val) {
+      val = !!val;
+      cols[colNo] = rowNo === 0 ? val : cols[colNo] && val;
+      colNo++;
+    }
+
+    function some(val) {
+      val = !!val;
+      cols[colNo] = cols[colNo] || val;
+      colNo++;
     }
 
     function assign(val) {
@@ -23049,6 +23114,78 @@
     return outputLayers;
   }
 
+  // TODO: support three or more stops
+  function getGradientFunction(stops) {
+    var min = stops[0] / 100,
+        max = stops[1] / 100;
+    if (stops.length != 2) {
+      stop('Only two stops are currently supported');
+    }
+    if (!(min >= 0 && max <= 1 && min < max)) {
+      stop('Invalid gradient stops:', stops);
+    }
+    return function(t) {
+      return t * (max - min) + min;
+    };
+  }
+
+  function getStoppedValues(values, stops) {
+    var interpolate = getInterpolatedValueGetter(values, null);
+    var n = values.length;
+    var fstop = getGradientFunction(stops);
+    var values2 = [];
+    var t, val;
+    for (var i=0; i<n; i++) {
+      t = fstop(i / (n - 1));
+      val = interpolate(t * (n - 1));
+      values2.push(val);
+    }
+    return values2;
+  }
+
+  // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
+  function getInterpolatedValueGetter(values, nullValue) {
+    var d3 = require('d3-interpolate');
+    var interpolators = [];
+    var tmax = values.length - 1;
+    for (var i=1; i<values.length; i++) {
+      interpolators.push(d3.interpolate(values[i-1], values[i]));
+    }
+    return function(t) {
+      if (t == -1) return nullValue;
+      if ((t >= 0 && t <= tmax) === false) {
+        error('Range error');
+      }
+      var i = t == tmax ? tmax - 1 : Math.floor(t);
+      var j = t == tmax ? 1 : t % 1;
+      return interpolators[i](j);
+    };
+  }
+
+  // return an array of n values
+  // assumes that values can be interpolated by d3-interpolate
+  // (colors and numbers should work)
+  function interpolateValuesToClasses(values, n, stops) {
+    if (values.length == n && !stops) return values;
+    var d3 = require('d3-interpolate');
+    var numPairs = values.length - 1;
+    var output = [values[0]];
+    var k, j, t, intVal;
+    for (var i=1; i<n-1; i++) {
+      k = i / (n-1) * numPairs;
+      j = Math.floor(k);
+      t = k - j;
+      // if (convert) t = convert(t);
+      intVal = d3.interpolate(values[j], values[j+1])(t);
+      output.push(intVal);
+    }
+    output.push(values[values.length - 1]);
+    if (stops) {
+      output = getStoppedValues(output, stops);
+    }
+    return output;
+  }
+
   var categorical = 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10'.split(',');
   var sequential = 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd'.split(',');
   var rainbow = 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma'.split(',');
@@ -23104,10 +23241,11 @@
     return categorical.concat(sequential).concat(rainbow).concat(diverging).includes(name);
   }
 
-  function getColorRamp(name, n) {
+  function getColorRamp(name, n, stops) {
     var lib = require('d3-scale-chromatic');
     var ramps = lib['scheme' + name];
     var interpolate = lib['interpolate' + name];
+    var ramp;
     if (!ramps && !interpolate) {
       stop('Unknown color scheme name:', name);
     }
@@ -23115,23 +23253,23 @@
       stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
     }
     if (ramps && ramps[n]) {
-      return ramps[n];
+      ramp = ramps[n];
+    } else {
+      ramp = getInterpolatedRamp(interpolate, n);
     }
-    return getInterpolatedRamp(interpolate, n);
+    if (stops) {
+      ramp = getStoppedValues(ramp, stops);
+    }
+    return ramp;
   }
 
   function getInterpolatedRamp(interpolate, n) {
     if (n > 0 === false || !utils.isInteger(n)) {
       error('Expected a positive integer');
     }
-    // margin can be set to use a restricted range
-    // TODO: make this a parameter
-    // var margin = 1 / (n + 4);
-    var margin = 0; // use full range
-    var interval = (1 - margin * 2) / (n - 1);
     var ramp = [];
     for (var i=0; i<n; i++) {
-      ramp.push(interpolate(margin + interval * i));
+      ramp.push(interpolate(i / (n - 1)));
     }
     return ramp;
   }
@@ -23279,84 +23417,328 @@
     };
   }
 
-  // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
-  function getInterpolatedValueGetter(values, nullValue) {
-    var d3 = require('d3-interpolate');
-    var interpolators = [];
-    var tmax = values.length - 1;
-    for (var i=1; i<values.length; i++) {
-      interpolators.push(d3.interpolate(values[i-1], values[i]));
+  function getOutputFunction(classValues, nullValue, opts) {
+    // get a function to convert class indexes to output values
+    //
+    if (opts.continuous) {
+      return getInterpolatedValueGetter(classValues, nullValue);
+    } else {
+      return  getDiscreteValueGetter(classValues, nullValue, opts.other);
     }
-    return function(t) {
-      if (t == -1) return nullValue;
-      if ((t >= 0 && t <= tmax) === false) {
-        error('Range error');
-      }
-      var i = t == tmax ? tmax - 1 : Math.floor(t);
-      var j = t == tmax ? 1 : t % 1;
-      return interpolators[i](j);
+  }
+
+  function getKeyStyle(type, opts) {
+    return {
+      width: opts.key_width || type == 'dataviz' && 500 || 300,
+      tileHeight: opts.key_tile_height || 10,
+      labelSuffix: opts.key_label_suffix || '',
+      lastSuffix: opts.key_last_suffix || '',
+      chartHeight: 90,
+      chartColor: '#ddd',
+      ticColor: 'rgba(0,0,0,0.3)',
+      ticLen: opts.key_tic_length >= 0 ? opts.key_tic_length : 6,
+      fontFamily: 'sans-serif',
+      fontSize: opts.key_font_size || 13,
+      textColor: '#555'
     };
   }
 
-  // categories: strings to match in the data
-  function getCategoricalClassifier(categories) {
-    return function(val) {
-      var i = categories.indexOf(val);
-      if (i >= 0) return i;
-      if (val) return -2; // field contains an 'other' value
-      return -1; // field is empty (null value)
-    };
-  }
-
-  // uses linear interpolation between breakpoints
-  // (perhaps not ideal for long-tail distributions)
-  // breaks: array of (0 or more) inner breakpoints
-  function getContinuousClassifier(breaks, minVal, maxVal) {
-    return function(val) {
-      var n = breaks.length;
-      var min, max, j;
-      if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
-        return -1;
-      }
-      for (var i=0; i<=n; i++) {
-        max = i === n ? maxVal : breaks[i];
-        if (i === n || val < max) {
-          min = i === 0 ? minVal : breaks[i-1];
-          j = (val - min) / (max - min);
-          return i + j;
-        }
-      }
-      error('Range error');
-    };
-  }
-
-  // return an array of n values
-  // assumes that values can be interpolated by d3-interpolate
-  // (colors and numbers should work)
-  function interpolateValuesToClasses(values, n) {
-    if (values.length == n) return values;
-    var d3 = require('d3-interpolate');
-    var numPairs = values.length - 1;
-    var output = [values[0]];
-    var k, j, t, intVal;
-    for (var i=1; i<n-1; i++) {
-      k = i / (n-1) * numPairs;
-      j = Math.floor(k);
-      t = k - j;
-      intVal = d3.interpolate(values[j], values[j+1])(t);
-      output.push(intVal);
+  function makeSimpleKey(colors, breaks, minVal, maxVal, opts) {
+    var style = getKeyStyle('simple', opts);
+    var tileWidth = style.width / colors.length;
+    var tileData = makeEqualTiles(tileWidth, style.tileHeight, colors);
+    var layers = [tileData];
+    var labels, tics, ticBreaks;
+    if (colors.length == breaks.length + 1) {
+      ticBreaks = getEvenlySpacedTicOffsets(breaks.length, style.width);
+      labels = getTicLabels(breaks, ticBreaks, 0, style.width, style);
+      tics = getTics(ticBreaks, 0, style.width, style);
+      layers.push(tics, labels);
+    } else if (colors.length == breaks.length + 2) {
+      style.ticLen = 2; // kludge for label spacing
+      labels = getInlineLabels(getFullBreaks(breaks, minVal, maxVal), style);
+      layers.push(labels);
     }
-    output.push(values[values.length - 1]);
-    return output;
+    exportKey(opts.key_name || 'simple-key', layers, style.width);
   }
 
-  function getSequentialClassifier(dataValues, numBuckets, opts) {
+  function makeDatavizKey(colors, breaks, ascending, opts) {
+    var style = getKeyStyle('dataviz', opts);
+    var minVal = ascending[0];
+    var maxVal = ascending[ascending.length - 1];
+    var partitions = getFullBreaks(breaks, minVal, maxVal);
+    var chart = getReferenceChart(ascending, style);
+    var tiles = getProportionalTiles(colors, breaks, minVal, maxVal, style);
+    var labels = getTicLabels(partitions, partitions, minVal, maxVal, style);
+    var tics = getTics(partitions, minVal, maxVal, style);
+    exportKey(opts.key_name || 'dataviz-key', [chart, tiles, tics, labels], style.width);
+  }
+
+  function makeGradientKey(classify, breaks, minVal, maxVal, opts) {
+    var style = getKeyStyle('gradient', opts);
+    var partitions = getFullBreaks(breaks, minVal, maxVal);
+    var gradient = makeGradient(classify, partitions, style);
+    var ticBreaks = getEvenlySpacedTicOffsets(breaks.length, style.width);
+    var labels = getTicLabels(breaks, ticBreaks, 0, style.width, style);
+    var tics = getTics(ticBreaks, 0, style.width, style);
+    var layers = [gradient, tics, labels];
+    exportKey(opts.key_name || 'gradient-key', layers, style.width);
+  }
+
+  // export function makeGradientDatavizKey(classify, breaks, ascending, opts) {
+  //   var style = getKeyStyle('dataviz', opts);
+  //   var minVal = ascending[0];
+  //   var maxVal = ascending[ascending.length - 1];
+  //   var partitions = getFullBreaks(breaks, minVal, maxVal);
+  //   var chart = getReferenceChart(ascending, style);
+  //   var gradient = makeGradient(classify, partitions, style);
+  //   // var tiles = getProportionalTiles(colors, breaks, minVal, maxVal, style);
+  //   var labels = getTicLabels(partitions, partitions, minVal, maxVal, style);
+  //   var tics = getTics(partitions, minVal, maxVal, style);
+  //   exportKey(opts.key_name || 'dataviz-key', [chart, gradient, tics, labels], style.width);
+  // }
+
+  function getXScale(keyWidth, minVal, maxVal) {
+    return function(val) {
+      return (val - minVal) / (maxVal - minVal) * keyWidth;
+    };
+  }
+
+  function getLabelTexts(values, style) {
+    var digits = getLabelDigits(values);
+    return values.map(function(val, i) {
+      var isLast = i == values.length - 1;
+      var suffix = isLast && style.lastSuffix || style.labelSuffix || '';
+      return roundToDigits(val, digits) + suffix;
+    });
+  }
+
+  function getLabelDigits(values) {
+    var min = values[0];
+    var max = values[values.length - 1];
+    var avg = (max - min) / values.length;
+    var d = 0;
+    if (avg < 1) d = 2;
+    else if (avg < 10) d = 1;
+    return d;
+  }
+
+  function getEvenlySpacedTicOffsets(n, width) {
+    var arr = [];
+    for (var i=0; i<n; i++) {
+      arr.push((i + 1) / (n + 1) * width);
+    }
+    return arr;
+  }
+
+  function getTics(breaks, minVal, maxVal, style) {
+    var getX = getXScale(style.width, minVal, maxVal);
+    var tics = [];
+    for (var i=0; i<breaks.length; i++) {
+      tics.push(makeTic(getX(breaks[i]), style));
+    }
+    return featuresToDataset(tics);
+  }
+
+  function getInlineLabels(values, style) {
+    var labels = [];
+    var texts = getLabelTexts(values, style);
+    var dx = getLabelShift(style);
+    var x;
+    for (var i=0; i<texts.length; i++) {
+      x = (i + 0.5) * style.width / texts.length;
+      labels.push(makeLabel(texts[i], x, style));
+    }
+    return featuresToDataset(labels);
+  }
+
+  function getLabelShift(style) {
+    // kludge to nudge numbers towards the tic
+    return style.labelSuffix ? 3 : 0;
+  }
+
+  function getFullBreaks(innerBreaks, minVal, maxVal) {
+    return [minVal].concat(innerBreaks, maxVal);
+  }
+
+  function getTicLabels(values, breaks, minVal, maxVal, style) {
+    var texts = getLabelTexts(values, style);
+    var getX = getXScale(style.width, minVal, maxVal);
+    var labels = [];
+    for (var i=0; i<breaks.length; i++) {
+      labels.push(makeLabel(texts[i], getX(breaks[i]), style));
+    }
+    return featuresToDataset(labels);
+  }
+
+  function getProportionalTiles(colors, breaks, minVal, maxVal, style) {
+    var arr = getFullBreaks(breaks, minVal, maxVal);
+    var getX = getXScale(style.width, minVal, maxVal);
+    var tiles = [];
+    var x, w;
+    for (var i=0; i<arr.length; i++) {
+      x = getX(arr[i]);
+      w = getX(arr[i+1]) - x;
+      tiles.push(makeTile(x, 0, w, style.tileHeight, colors[i]));
+    }
+    return featuresToDataset(tiles);
+  }
+
+  function getReferenceChart(ascending, style) {
+    var barWidth = 5;
+    var numBars = Math.floor(style.width / barWidth);
+    var breaks = getEqualIntervalBreaks(ascending, numBars - 1);
+    var counts = getDistributionData(breaks, ascending);
+    var maxCount = Math.max.apply(counts, counts);
+    var bars = [];
+    var y0 = style.tileHeight; // shift chart above the tiles
+    var c, h;
+    for (var i=0; i<numBars; i++) {
+      c = counts[i];
+      if (!c) continue;
+      h = c / maxCount * style.chartHeight;
+      bars.push(makeTile(i*barWidth, y0, barWidth, h , style.chartColor));
+    }
+    return featuresToDataset(bars);
+  }
+
+  function exportKey(name, datasets, width) {
+    var svgOpts = {
+      width: width,
+      crisp_paths: true,
+      default_linecap: 'butt'
+    };
+    var filename = name + (name.endsWith('.svg') ? '' : '.svg');
+    var dataset = datasets.length == 1 ? datasets[0] : mergeDatasets(datasets);
+    var output = exportSVG(dataset, svgOpts);
+    output[0].filename = filename;
+    writeFiles(output, {});
+  }
+
+  function featuresToDataset(features) {
+    var json = {
+      type: 'FeatureCollection',
+      features: features
+    };
+    return importGeoJSON(json);
+  }
+
+  function makeGradient(classify, partitions, style) {
+    var tiles = [];
+    var getVal = pixToValue(partitions, style.width);
+    var w = 2;
+    for (var x=0; x<style.width; x += w) {
+      tiles.push(makeTile(x, 0, w, style.tileHeight, classify(getVal(x))));
+    }
+    return featuresToDataset(tiles);
+  }
+
+  function pixToValue(partitions, keyWidth) {
+    var classes = partitions.length - 1;
+    var sectionWidth = keyWidth / classes;
+    return function(x) {
+      var i = Math.min(Math.floor(x / sectionWidth), classes - 1); // clamp
+      var k = (x - i * sectionWidth) / sectionWidth;
+      return partitions[i] * (1 - k) + partitions[i+1] * k;
+    };
+  }
+
+  function pixToValue2(partitions, keyWidth) {
+    var classes = partitions.length - 1;
+    var dataRange = partitions[classes] - partitions[0];
+    var pixBreaks = partitions.reduce(function(memo, val, i) {
+      var x;
+      if (i === 0) {
+        x = 0;
+      } else {
+        x = (partitions[i] - partitions[0]) / dataRange * keyWidth;
+      }
+      memo.push(x);
+      return memo;
+    }, []);
+    var sectionWidth = keyWidth / classes;
+    return function(x) {
+      var i = Math.min(Math.floor(x / sectionWidth), classes - 1); // clamp
+      var k = (x - i * sectionWidth) / sectionWidth;
+      return partitions[i] * (1 - k) + partitions[i+1] * k;
+    };
+  }
+
+
+  function makeEqualTiles(w, h, colors) {
+    var tiles = [];
+    for (var i=0; i<colors.length; i++) {
+      tiles.push(makeTile(i * w, 0, w, h, colors[i]));
+    }
+    return featuresToDataset(tiles);
+  }
+
+  function getRectangle(x, y, w, h) {
+    return [[x, y], [x, y+h], [x+w, y+h], [x+w, y], [x, y]];
+  }
+
+  function makeLabel(str, x, style) {
+    var y = -(style.ticLen + style.fontSize * 0.7 + 4);
+    var align;
+    if (x <= 0) {
+      align = 'start';
+    } else if (x >= style.width) {
+      align = 'end';
+    } else {
+      align = 'middle';
+      x += getLabelShift(style);
+    }
+    return {
+      type: 'Feature',
+      properties: {
+        'label-text': str,
+        'font-family': style.fontFamily,
+        'font-size': style.fontSize,
+        'text-anchor': align,
+        fill: style.textColor
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [x, y]
+      }
+    };
+  }
+
+  function makeTic(x, style) {
+    var y = style.tileHeight;
+    var h = style.tileHeight + style.ticLen;
+    return {
+      type: 'Feature',
+      properties: { stroke: style.ticColor },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[x, y], [x, y - h]]
+      }
+    };
+  }
+
+  function makeTile(x, y, w, h, fill) {
+    var coords = getRectangle(x, y, w, h);
+    return {
+      type: 'Feature',
+      properties: {fill: fill},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [coords]
+      }
+    };
+  }
+
+  function getSequentialClassifier(classValues, nullValue, dataValues, opts) {
+    var numValues = classValues.length;
+    var numBuckets = opts.continuous ? numValues - 1 : numValues;
+
     // continuously interpolated colors/values use one fewer breakpoint than
     // discreetly classed values
     var numBreaks = numBuckets - 1;
     var round = opts.precision ? getRoundingFunction(opts.precision) : null;
     var method = opts.method || 'quantile';
-    var breaks;
+    var breaks, classifier, dataToClass, classToValue;
 
     if (round) {
       dataValues = dataValues.map(round);
@@ -23364,6 +23746,8 @@
 
     var ascending = getAscendingNumbers(dataValues);
     var nullCount = dataValues.length - ascending.length;
+    var minVal = ascending[0];
+    var maxVal = ascending[ascending.length - 1];
 
     if (numBreaks === 0) {
       breaks = [];
@@ -23385,9 +23769,30 @@
 
     printDistributionInfo(ascending, breaks, nullCount);
 
-    return opts.continuous ?
-      getContinuousClassifier(breaks, ascending[0], ascending[ascending.length - 1]) :
-      getDiscreteClassifier(breaks, round);
+    if (opts.continuous) {
+      dataToClass = getContinuousClassifier(breaks, minVal, maxVal);
+    } else {
+      dataToClass = getDiscreteClassifier(breaks, round);
+    }
+    classToValue = getOutputFunction(classValues, nullValue, opts);
+    classifier = function(val) {
+      return classToValue(dataToClass(val));
+    };
+
+    // generate a key if we've got colors and a key style
+    if (opts.colors && (opts.key || opts.key_style)) {
+      if (opts.key_style == 'gradient' && opts.continuous) {
+        makeGradientKey(classifier, breaks, minVal, maxVal, opts);
+      // } else if (opts.key_style == 'dataviz' && opts.continuous) {
+      //   makeGradientDatavizKey(classifier, breaks, ascending, opts);
+      } else if (opts.key_style == 'dataviz') {
+        makeDatavizKey(classValues, breaks, ascending, opts);
+      } else if (opts.key || opts.key_style == 'simple') {
+        makeSimpleKey(classValues, breaks, minVal, maxVal, opts);
+      }
+    }
+
+    return classifier;
   }
 
   function getClassRanges(breaks, ascending) {
@@ -23478,6 +23883,28 @@
     };
   }
 
+  // uses linear interpolation between breakpoints
+  // (perhaps not ideal for long-tail distributions)
+  // breaks: array of (0 or more) inner breakpoints
+  function getContinuousClassifier(breaks, minVal, maxVal) {
+    return function(val) {
+      var n = breaks.length;
+      var min, max, j;
+      if (!utils.isValidNumber(val) || val < minVal || val > maxVal){
+        return -1;
+      }
+      for (var i=0; i<=n; i++) {
+        max = i === n ? maxVal : breaks[i];
+        if (i === n || val < max) {
+          min = i === 0 ? minVal : breaks[i-1];
+          j = (val - min) / (max - min);
+          return i + j;
+        }
+      }
+      error('Range error');
+    };
+  }
+
   function getEqualIntervalBreaks(ascending, numBreaks) {
     var numRanges = numBreaks + 1,
         minVal = ascending[0],
@@ -23565,13 +23992,61 @@
     return i;
   }
 
+  function getCategoricalClassifier(classValues, nullVal, opts) {
+    // categories: strings to match in the data
+    var categories = opts.categories;
+    var classToValue = getDiscreteValueGetter(classValues, nullVal, opts.other);
+    return function(val) {
+      var i = categories.indexOf(val);
+      var idx = -1;
+      if (i >= 0) {
+        idx = i;
+      } else if (val) {
+        idx = -2; // field contains an 'other' value
+      } else {
+        idx = -1; // field is empty (null value)
+      }
+      return classToValue(idx);
+    };
+  }
+
+  function getIndexedClassifier(values, nullVal, opts) {
+    // TODO: handle continuous classification
+    var numBuckets = values.length;
+    var classToValue = getOutputFunction(values, nullVal, opts);
+
+    return function(val) {
+      var idx = utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
+      return classToValue(idx);
+    };
+  }
+
+  // returns the number of classes, based on the largest class index found
+  function validateClassIndexField(records, name) {
+    var invalid = [];
+    var maxId = -1;
+    records.forEach(function(d) {
+      var val = (d || {})[name];
+      if (!utils.isInteger(val) || val < -2) {
+        invalid.push(val);
+      } else {
+        maxId = Math.max(maxId, val);
+      }
+    });
+    if (invalid.length > 0) {
+      stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
+    }
+    return maxId + 1;
+  }
+
   cmd.classify = function(lyr, optsArg) {
     var opts = optsArg || {};
     var records = lyr.data && lyr.data.getRecords();
     var nullValue = opts.null_value || null;
     var looksLikeColors = !!opts.colors || !!opts.color_scheme;
-    var classValues, classify, classToValue;
-    var numBuckets, numValues, dataValues;
+    var colorScheme;
+    var classValues, classify;
+    var numBuckets, numValues;
     var dataField, outputField;
 
     // validate explicitly set classes
@@ -23604,13 +24079,23 @@
       numValues = opts.continuous ? numBuckets + 1 : numBuckets;
     }
 
+    // support both deprecated color-scheme= option and colors=<color-scheme> syntax
     if (opts.color_scheme) {
-      // using a named color scheme: generate a ramp
       if (!isColorSchemeName(opts.color_scheme)) {
         stop('Unknown color scheme:', opts.color_scheme);
       }
+      colorScheme = opts.color_scheme;
+    } else if (opts.colors && isColorSchemeName(opts.colors[0])) {
+      colorScheme = opts.colors[0];
+    } else if (opts.colors) {
+      opts.colors.forEach(parseColor); // validate colors -- error if unparsable
+    }
+
+    if (colorScheme) {
+      // using a named color scheme: generate a ramp
+
       if (opts.categories) {
-        classValues = getCategoricalColorScheme(opts.color_scheme, opts.categories.length);
+        classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
         message('Colors:', formatValuesForLogging(classValues));
         numBuckets = numValues = classValues.length;
       } else {
@@ -23619,19 +24104,18 @@
           numBuckets = 4; // use a default number of classes
           numValues = opts.continuous ? numBuckets + 1 : numBuckets;
         }
-        classValues = getColorRamp(opts.color_scheme, numValues);
+        classValues = getColorRamp(colorScheme, numValues, opts.stops);
       }
 
     } else if (opts.colors || opts.values) {
       classValues = opts.values ? parseValues(opts.values) : opts.colors;
       if (!numValues) {
         numValues = classValues.length;
-        numBuckets = opts.continuous ? numValues - 1 : numValues;
       }
-      if (classValues.length != numValues && numValues > 1) {
+      if ((classValues.length != numValues || opts.stops) && numValues > 1) {
         // TODO: handle numValues == 1
         // TODO: check for non-interpolatable value types (e.g. boolean, text)
-        classValues = interpolateValuesToClasses(classValues, numValues);
+        classValues = interpolateValuesToClasses(classValues, numValues, opts.stops);
       }
 
     } else if (numValues > 1) {
@@ -23660,19 +24144,11 @@
     //
     if (opts.index_field) {
       // data is pre-classified... just read the index from a field
-      classify = getIndexClassifier(numBuckets);
+      classify = getIndexedClassifier(classValues, nullValue, opts);
     } else if (opts.categories) {
-      classify = getCategoricalClassifier(opts.categories);
+      classify = getCategoricalClassifier(classValues, nullValue, opts);
     } else {
-      classify = getSequentialClassifier(getFieldValues(records, dataField), numBuckets, opts);
-    }
-
-    // get a function to convert class indexes to output values
-    //
-    if (opts.continuous && !opts.categories) {
-      classToValue = getInterpolatedValueGetter(classValues, nullValue);
-    } else {
-      classToValue = getDiscreteValueGetter(classValues, nullValue, opts.other);
+      classify = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
     }
 
     // get the name of the output field
@@ -23691,33 +24167,10 @@
 
     records.forEach(function(d, i) {
       d = d || {};
-      d[outputField] = classToValue(classify(d[dataField]));
+      d[outputField] = classify(d[dataField]);
     });
   };
 
-  // returns the number of classes, based on the largest class index found
-  function validateClassIndexField(records, name) {
-    var invalid = [];
-    var maxId = -1;
-    records.forEach(function(d) {
-      var val = (d || {})[name];
-      if (!utils.isInteger(val) || val < -2) {
-        invalid.push(val);
-      } else {
-        maxId = Math.max(maxId, val);
-      }
-    });
-    if (invalid.length > 0) {
-      stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
-    }
-    return maxId + 1;
-  }
-
-  function getIndexClassifier(numBuckets) {
-    return function(val) {
-      return utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
-    };
-  }
 
   // convert strings to numbers if they all parse as numbers
   // arr: an array of strings
@@ -25123,12 +25576,12 @@
       if (opts.colors.length != opts.breaks.length + 1) {
         stop("Number of colors should be one more than number of class breaks");
       }
-      colorFunction = getSequentialColorFunction(opts.breaks, opts.colors, nodataColor, round);
+      colorFunction = getSequentialClassifier$1(opts.breaks, opts.colors, nodataColor, round);
     } else if (opts.categories) {
       if (opts.colors.length != opts.categories.length) {
         stop("Number of colors should be equal to the number of categories");
       }
-      colorFunction = getCategoricalColorFunction(opts.categories, opts.colors, opts.other, nodataColor);
+      colorFunction = getCategoricalClassifier(opts.colors, nodataColor, opts);
     } else {
       stop("Missing categories= or breaks= parameter");
     }
@@ -25136,7 +25589,7 @@
     return colorFunction;
   }
 
-  function getSequentialColorFunction(breaks, colors, nullVal, round) {
+  function getSequentialClassifier$1(breaks, colors, nullVal, round) {
     var classify = getDiscreteClassifier(breaks, round);
     var toColor = getDiscreteValueGetter(colors, nullVal);
     return function(val) {
