@@ -16,7 +16,7 @@ function getKeyStyle(type, opts) {
     chartHeight: 90,
     chartColor: '#ddd',
     ticColor: 'rgba(0,0,0,0.3)',
-    ticLen: opts.key_tic_length >= 0 ? opts.key_tic_length : 6,
+    ticLen: opts.key_tic_length >= 0 ? +opts.key_tic_length : 6,
     fontFamily: 'sans-serif',
     fontSize: opts.key_font_size || 13,
     textColor: '#555'

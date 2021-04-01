@@ -1,3 +1,6 @@
+v0.5.41
+* Fixed error parsing .prj files for southern UTM zones.
+
 v0.5.40
 * Added stops= option to the -classify command. This accepts a pair of percentages (e.g. stops=10,90) for reducing the range of a color ramp.
 * Deprecated -classify color-scheme= option. Instead, -classify colors= accepts color scheme names (e.g. -classify colors=Blues).

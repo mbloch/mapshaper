@@ -7,7 +7,7 @@ import { dissolvePolygonGeometry } from '../dissolve/mapshaper-polygon-dissolve'
 import { getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
 import { applyCommandToLayerSelection } from '../dataset/mapshaper-command-utils';
 import utils from '../utils/mapshaper-utils';
-import { message } from '../utils/mapshaper-logging';
+import { message, stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 import { DataTable } from '../datatable/mapshaper-data-table';
 
@@ -37,6 +37,9 @@ cmd.dissolve = function(lyr, arcs, opts) {
 };
 
 function makeMultipartShapes(lyr, getGroupId) {
+  if (!lyr.shapes || !lyr.geometry_type) {
+    stop('Layer is missing geometry');
+  }
   var shapes = cloneShapes(lyr.shapes);
   var shapes2 = [];
   lyr.shapes.forEach(function(shp, i) {
