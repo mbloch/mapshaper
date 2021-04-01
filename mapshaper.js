@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.39";
+  var VERSION = "0.5.40";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -20802,6 +20802,9 @@ ${svg}
   };
 
   function makeMultipartShapes(lyr, getGroupId) {
+    if (!lyr.shapes || !lyr.geometry_type) {
+      stop('Layer is missing geometry');
+    }
     var shapes = cloneShapes(lyr.shapes);
     var shapes2 = [];
     lyr.shapes.forEach(function(shp, i) {
@@ -23436,7 +23439,7 @@ ${svg}
       chartHeight: 90,
       chartColor: '#ddd',
       ticColor: 'rgba(0,0,0,0.3)',
-      ticLen: opts.key_tic_length >= 0 ? opts.key_tic_length : 6,
+      ticLen: opts.key_tic_length >= 0 ? +opts.key_tic_length : 6,
       fontFamily: 'sans-serif',
       fontSize: opts.key_font_size || 13,
       textColor: '#555'

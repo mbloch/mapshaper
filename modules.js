@@ -11668,7 +11668,7 @@ function wkt_to_utm(projcs) {
   function utm_params(projcs) {
     var match = WKT_UTM.exec(wkt_name_to_slug(projcs.NAME));
     var params = '+zone=' + match[1];
-    if (match[2] == 'S') params += ' +south';
+    if (match[2].toLowerCase() == 's') params += ' +south';
     return params;
   }
 }
