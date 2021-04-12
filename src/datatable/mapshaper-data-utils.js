@@ -175,8 +175,15 @@ export function applyFieldOrder(arr, option) {
   return arr;
 }
 
+export function getFirstNonEmptyRecord(records) {
+  for (var i=0, n=records ? records.length : 0; i<n; i++) {
+    if (records[i]) return records[i];
+  }
+  return null;
+}
+
 export function findFieldNames(records, order) {
-  var first = records[0];
+  var first = getFirstNonEmptyRecord(records);
   var names = first ? Object.keys(first) : [];
   return applyFieldOrder(names, order);
 }

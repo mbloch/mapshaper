@@ -5,6 +5,7 @@ import { getPathBounds, countArcsInShapes } from '../paths/mapshaper-path-utils'
 import { cloneShapes, editShapes } from '../paths/mapshaper-shape-utils';
 import { stop, formatStringsAsGrid } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { getFirstNonEmptyRecord } from '../datatable/mapshaper-data-utils';
 import utils from '../utils/mapshaper-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 
@@ -29,6 +30,10 @@ export function getLayerDataTable(lyr) {
     data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
   }
   return data;
+}
+
+export function layerHasNonNullData(lyr) {
+  return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
 }
 
 export function layerHasGeometry(lyr) {

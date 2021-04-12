@@ -1,3 +1,6 @@
+v0.5.42
+* Added -dots command for making dot density maps.
+
 v0.5.41
 * Fixed error parsing .prj files for southern UTM zones.
 
