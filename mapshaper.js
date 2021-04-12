@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.40";
+  var VERSION = "0.5.41";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -3576,8 +3576,15 @@
     return arr;
   }
 
+  function getFirstNonEmptyRecord(records) {
+    for (var i=0, n=records ? records.length : 0; i<n; i++) {
+      if (records[i]) return records[i];
+    }
+    return null;
+  }
+
   function findFieldNames(records, order) {
-    var first = records[0];
+    var first = getFirstNonEmptyRecord(records);
     var names = first ? Object.keys(first) : [];
     return applyFieldOrder(names, order);
   }
@@ -3595,6 +3602,7 @@
     getFieldValues: getFieldValues,
     getUniqFieldValues: getUniqFieldValues,
     applyFieldOrder: applyFieldOrder,
+    getFirstNonEmptyRecord: getFirstNonEmptyRecord,
     findFieldNames: findFieldNames
   });
 
@@ -3714,6 +3722,10 @@
       data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
     }
     return data;
+  }
+
+  function layerHasNonNullData(lyr) {
+    return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
   }
 
   function layerHasGeometry(lyr) {
@@ -3950,6 +3962,7 @@
     __proto__: null,
     insertFieldValues: insertFieldValues,
     getLayerDataTable: getLayerDataTable,
+    layerHasNonNullData: layerHasNonNullData,
     layerHasGeometry: layerHasGeometry,
     layerHasPaths: layerHasPaths,
     layerHasPoints: layerHasPoints,
@@ -15438,11 +15451,31 @@ ${svg}
       // .option('no-replace', noReplaceOpt);
 
     parser.command('dots')
-      .describe('')
-      .option('field', {
-        describe: 'field containing number of dots'
+      .describe('fill polygons with dots of one or more colors')
+      .option('fields', {
+        DEFAULT: true,
+        describe: 'one or more fields containing numbers of dots',
+        type: 'strings'
       })
-      .option('target', targetOpt);
+      .option('colors', {
+        describe: 'one or more colors',
+        type: 'strings'
+      })
+      .option('r', {
+        describe: 'radius of each dot in pixels',
+        type: 'number'
+      })
+      .option('spacing', {
+        describe: 'how evenly dots should be spaced (0-1, default is 1)',
+        type: 'number'
+      })
+      .option('random', {
+        describe: 'place dots randomly instead of spreading them out',
+        type: 'flag'
+      })
+      .option('target', targetOpt)
+      .option('name', nameOpt)
+      .option('no-replace', noReplaceOpt);
 
     parser.command('drop')
       .describe('delete layer(s) or elements within the target layer(s)')
@@ -26341,37 +26374,363 @@ ${svg}
     }
   }
 
-  cmd.dots = function(lyr, arcs, opts) {
-    requirePolygonLayer(lyr);
-    requireDataField(lyr, opts.field);
-    var records = lyr.data ? lyr.data.getRecords() : [];
-    var shapes = [];
-    lyr.shapes.forEach(function(shp, i) {
-      var d = records[i];
-      var n = d ? +d[opts.field] : 0;
-      var coords = null;
-      if (n > 0) {
-        coords = createInnerPoints(shp, arcs, n);
-      }
-      shapes.push(coords);
-    });
-    return {
-      type: 'point',
-      shapes: shapes
-    };
-  };
+  // TODO: optimize point-in-polygon tests for complex polygons and many points
+  // import { PathIndex } from '../paths/mapshaper-path-index';
 
-  function createInnerPoints(shp, arcs, n) {
-    if (!shp || shp.length != 1) {
-      return null; // TODO: support polygons with holes and multipart polygons
+  function placeDotsRandomly(shp, arcs, n) {
+    var bounds = arcs.getMultiShapeBounds(shp);
+    var coords = [];
+    for (var i=0; i<n; i++) {
+      coords.push(placeRandomDot(shp, arcs, bounds));
     }
-    return fillPolygonWithDots(shp, arcs, n);
+    return coords;
+  }
+
+  function placeRandomDot(shp, arcs, bounds) {
+    var limit = 100;
+    var i = 0;
+    var x, y;
+    while (++i < limit) {
+      x = bounds.xmin + Math.random() * bounds.width();
+      y = bounds.ymin + Math.random() * bounds.height();
+      if (testPointInPolygon(x, y, shp, arcs)) {
+        return [x, y];
+      }
+    }
+    return null;
   }
 
 
-  function fillPolygonWithDots(shp, arcs, n) {
-    var area = geom.getPlanarShapeArea(shp, arcs);
+  function placeDotsEvenly(shp, arcs, n, opts) {
+    if (n === 0) return [];
+    var shpArea = geom.getPlanarShapeArea(shp, arcs);
+    // TODO: also skip tiny sliver polygons?
+    if (shpArea > 0 === false) return [];
     var bounds = arcs.getMultiShapeBounds(shp);
+    var approxCells = Math.round(n * bounds.area() / shpArea);
+    var evenness = opts.spacing >= 0 ? Math.min(opts.spacing, 1) : 1;
+    var grid = new DotGrid(bounds, approxCells, evenness);
+    var coords = [];
+    for (var i=0; i<n; i++) {
+      coords.push(placeDot(shp, arcs, grid));
+    }
+    grid.done();
+    return coords;
+  }
+
+  function placeDot(shp, arcs, grid, bounds) {
+    var i = 0;
+    var limit = 100;
+    var p;
+    while (++i < limit) {
+      p = grid.getPoint();
+      if (!p) continue;
+      if (testPointInPolygon(p[0], p[1], shp, arcs)) {
+        grid.usePoint(p);
+        return p;
+      } else {
+        grid.rejectPoint(p);
+      }
+    }
+    return null;
+  }
+
+  function DotGrid(bounds, approxCells, evenness) {
+    var grid = [];
+    var x0 = bounds.xmin;
+    var y0 = bounds.ymin;
+    var w = bounds.width();
+    var h = bounds.height();
+    var cols = Math.round(Math.sqrt(approxCells * w / h));
+    var rows = Math.ceil(cols * h / w); // overshoots bbox height
+    var cells = cols * rows;
+    var nextId = -1;
+    var queuedCells = [];
+    var probesBeforeRelaxation = Math.ceil(cells) / 2;
+    var maxProbes = cells * 10;
+    var probedPoints = 0;
+    var queries = 0;
+    var api = {};
+
+    // set height to height of grid
+    h = w * rows / cols;
+
+    // Estimate of minimum distance between dots (based on a square grid)
+    // 0.6 seems adequate from trial-and-error... consider adding a bit more to
+    // be on the safe side. (run time increases fast)
+    var minDist = w / cols * 0.6 * evenness;
+
+    api.done = function() {
+      // console.log(`queries: ${queries}, probed: ${Math.round(probedPoints / queries * 100)}%`);
+    };
+
+    api.getPoint = function() {
+      var probes = 0;
+      var p, id;
+      queries++;
+      // first, try finding a point in each grid cell
+      // (for fast and even initial dot placement)
+      while (++nextId < cells) {
+        p = getRandomPointInCell(nextId);
+        if (pointIsUsable(p)) return p;
+        queuedCells.push(nextId);
+        // console.log('failed', nextId)
+      }
+      // this gives one more chance to fill empty cells that had
+      // collisions during the first pass
+      // (is this worth doing? does it tend to create clumping?)
+      while (queuedCells.length > 0) {
+        id = queuedCells.pop();
+        p = getRandomPointInCell(id);
+        // console.log('retry?', pointIsUsable(p))
+        if (pointIsUsable(p)) return p;
+        // if (Math.random() > 0.3) queuedCells.push(id);
+      }
+
+      // random dart-throwing
+      while (probes++ < maxProbes) {
+        p = getRandomPoint();
+        if (pointIsUsable(p)) {
+          probedPoints++;
+          return p;
+        }
+        if (probes % probesBeforeRelaxation === 0) {
+          // relax min dist after a number of failed probes
+          minDist *= 0.9;
+        }
+      }
+      return null;
+    };
+
+    api.rejectPoint = function(xy) {
+      addPointToCell(xy);
+    };
+
+    api.usePoint = function(xy) {
+      addPointToCell(xy);
+    };
+
+    return api;
+
+    function getRandomPointInCell(i) {
+      var r = getRow(i);
+      var c = getCol(i);
+      var x = (Math.random() + r) / rows * w + x0;
+      var y = (Math.random() + c) / cols * h + y0;
+      return [x, y];
+    }
+
+    function getJitteredCoord(i, n, range, offs) {
+      return (Math.random() + i) / n * range + offs;
+    }
+
+    function getRandomPoint() {
+      return getRandomPointInCell(getRandomCell());
+    }
+
+    function getRandomCell() {
+      return Math.floor(Math.random() * cells);
+    }
+
+
+    function addPointToCell(xy) {
+      var i = getCellIdx(xy);
+      var points = grid[i];
+      if (!points) {
+        points= grid[i] = [];
+      }
+      points.push(xy);
+    }
+
+    function getCellIdx(xy) {
+      var c = getPointCol(xy);
+      var r = getPointRow(xy);
+      return r * cols + c;
+    }
+
+    function pointIsUsable(xy) {
+      var c = getPointCol(xy),
+          r = getPointRow(xy);
+      var collision = testCollision(xy, c, r) ||
+        testCollision(xy, c+1, r) ||
+        testCollision(xy, c, r+1) ||
+        testCollision(xy, c-1, r) ||
+        testCollision(xy, c, r-1) ||
+        testCollision(xy, c+1, r+1) ||
+        testCollision(xy, c-1, r+1) ||
+        testCollision(xy, c-1, r-1) ||
+        testCollision(xy, c+1, r-1);
+      return !collision;
+    }
+
+    function testCollision(xy, c, r) {
+      if (c < 0 || r < 0 || c >= cols || r >= cols) return false;
+      var i = r * cols + c;
+      var points = grid[i];
+      if (!points || !testPointCollision(xy, points, minDist)) return false;
+      return true;
+    }
+
+    function testPointCollision(xy, points, dist) {
+      for (var i=0; i<points.length; i++) {
+        if (pointsAreTooClose(xy, points[i], dist)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function pointsAreTooClose(a, b, dist) {
+      var dx = a[0] - b[0];
+      var dy = a[1] - b[1];
+      return dx * dx + dy * dy < dist * dist;
+    }
+
+    function getPointCol(xy) {
+      var x = xy[0];
+      var dx = x - x0;
+      var c = Math.floor(dx / w);
+      return c; // todo: validate or clamp
+    }
+
+    function getPointRow(xy) {
+      var y = xy[1];
+      var dy = y - y0;
+      var r = Math.floor(dy / h);
+      return r; // todo: validate or clamp
+    }
+
+    function getCol(i) {
+      return Math.floor(i % cols);
+    }
+
+    function getRow(i) {
+      return Math.floor(i / cols);
+    }
+  }
+
+  cmd.dots = function(lyr, arcs, opts) {
+    requirePolygonLayer(lyr);
+    if (!Array.isArray(opts.fields)) {
+      stop("Missing required fields parameter");
+    }
+    if (!Array.isArray(opts.colors)) {
+      stop("Missing required colors parameter");
+    }
+    if (layerHasNonNullData(lyr)) {
+      opts.fields.forEach(function(f, i) {
+        requireDataField(lyr, f);
+      });
+    }
+    opts.colors.forEach(parseColor); // validate colors
+
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    var shapes2 = [];
+    var records2 = [];
+    lyr.shapes.forEach(function(shp, i) {
+      var d = records[i];
+      if (!d) return;
+      var data =  makeDotsForShape(shp, arcs, d, opts);
+      shapes2.push.apply(shapes2, data.shapes);
+      records2.push.apply(records2, data.attributes);
+    });
+
+    var lyr2 = {
+      name: opts.no_replace ? null : lyr.name,
+      geometry_type: 'point',
+      shapes: shapes2,
+      data: new DataTable(records2)
+    };
+    return [lyr2];
+  };
+
+  function makeDotsForShape(shp, arcs, d, opts) {
+    var retn = {
+      shapes: [],
+      attributes:[]
+    };
+    if (!shp) return retn;
+    var counts = opts.fields.map(function(f) {
+      return d[f] || 0;
+    });
+    var indexes = expandCounts(counts);
+    var dots = placeDots(shp, arcs, indexes.length, opts);
+
+    // randomize dot sequence so dots of the same color do not always overlap dots of
+    // other colors in dense areas.
+    // TODO: instead of random shuffling, interleave dot classes more regularly?
+    shuffle(indexes);
+    var idx, prevIdx = -1;
+    var coords;
+    for (var i=0; i<dots.length; i++) {
+      var p = dots[i];
+      if (!p) continue;
+      idx = indexes[i];
+      if (idx != prevIdx) {
+        prevIdx = idx;
+        retn.shapes.push(coords = []);
+        retn.attributes.push(getDataRecord(idx, opts));
+      }
+      coords.push(p);
+    }
+    return retn;
+  }
+
+  function placeDots(shp, arcs, n, opts) {
+    var makeDots = opts.random ? placeDotsRandomly : placeDotsEvenly;
+    // split apart multipart polygons for more efficient dot placement
+    var polys = shp.length > 1 ? explodePolygon(shp, arcs) : [shp];
+    var counts = apportionDotsByArea(polys, arcs, n);
+    var dots = [];
+    for (var i=0; i<polys.length; i++) {
+      dots = dots.concat(makeDots(polys[i], arcs, counts[i], opts));
+    }
+    return dots;
+  }
+
+  function apportionDotsByArea(polys, arcs, n) {
+    if (polys.length === 1) return [n];
+    var areas = polys.map(function(shp) {
+      return geom.getPlanarShapeArea(shp, arcs);
+    });
+    var remainingArea = utils.sum(areas);
+    var remainingDots = n;
+    return areas.map(function(area, i) {
+      var pct = area / remainingArea;
+      var count = Math.round(remainingDots * pct);
+      remainingDots -= count;
+      remainingArea -= area;
+      return count;
+    });
+  }
+
+  function expandCounts(counts) {
+    var arr = [];
+    counts.forEach(function(n, i) {
+      while (n-- > 0) arr.push(i);
+    });
+    return arr;
+  }
+
+  function shuffle(arr) {
+    var tmp, i, j;
+    for (i = arr.length - 1; i > 0; i--) {
+      j = Math.floor(Math.random() * (i + 1));
+      tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
+
+  function getDataRecord(i, opts) {
+    var o = {
+      fill: opts.colors[i],
+      r: opts.r || 2
+    };
+    if (opts.opacity < 1) {
+      o.opacity = opts.opacity;
+    }
+    return o;
   }
 
   cmd.drop2 = function(catalog, targets, opts) {
