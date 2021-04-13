@@ -688,13 +688,9 @@ export function getOptionParser() {
       describe: 'radius of each dot in pixels',
       type: 'number'
     })
-    .option('spacing', {
-      describe: 'how evenly dots should be spaced (0-1, default is 1)',
+    .option('evenness', {
+      describe: '(0-1) 0 is random placement, 1 is even placement; default is 1',
       type: 'number'
-    })
-    .option('random', {
-      describe: 'place dots randomly instead of spreading them out',
-      type: 'flag'
     })
     .option('target', targetOpt)
     .option('name', nameOpt)

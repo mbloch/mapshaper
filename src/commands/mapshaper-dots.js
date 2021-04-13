@@ -8,7 +8,7 @@ import { stop } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import utils from '../utils/mapshaper-utils';
 import { explodePolygon } from '../commands/mapshaper-explode';
-import { placeDotsEvenly, placeDotsRandomly } from '../points/mapshaper-dot-density';
+import { placeDotsInPolygon } from '../points/mapshaper-dot-density';
 
 cmd.dots = function(lyr, arcs, opts) {
   requirePolygonLayer(lyr);
@@ -62,12 +62,13 @@ function makeDotsForShape(shp, arcs, d, opts) {
   // TODO: instead of random shuffling, interleave dot classes more regularly?
   shuffle(indexes);
   var idx, prevIdx = -1;
+  var grouped = false;
   var coords;
   for (var i=0; i<dots.length; i++) {
     var p = dots[i];
     if (!p) continue;
     idx = indexes[i];
-    if (idx != prevIdx) {
+    if (!grouped || idx != prevIdx) {
       prevIdx = idx;
       retn.shapes.push(coords = []);
       retn.attributes.push(getDataRecord(idx, opts));
@@ -78,13 +79,12 @@ function makeDotsForShape(shp, arcs, d, opts) {
 }
 
 function placeDots(shp, arcs, n, opts) {
-  var makeDots = opts.random ? placeDotsRandomly : placeDotsEvenly;
   // split apart multipart polygons for more efficient dot placement
   var polys = shp.length > 1 ? explodePolygon(shp, arcs) : [shp];
   var counts = apportionDotsByArea(polys, arcs, n);
   var dots = [];
   for (var i=0; i<polys.length; i++) {
-    dots = dots.concat(makeDots(polys[i], arcs, counts[i], opts));
+    dots = dots.concat(placeDotsInPolygon(polys[i], arcs, counts[i], opts));
   }
   return dots;
 }

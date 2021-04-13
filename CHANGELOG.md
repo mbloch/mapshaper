@@ -1,3 +1,7 @@
+v0.5.43
+* Improved evenness of dot placement.
+* Replaced "random" and "spacing=" options with a single "evenness=" option, which varies from 0 (random placement) to 1 (very even).
+
 v0.5.42
 * Added -dots command for making dot density maps.
 
