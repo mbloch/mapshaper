@@ -15466,8 +15466,20 @@ ${svg}
         type: 'number'
       })
       .option('evenness', {
-        describe: '(0-1) 0 is random placement, 1 is even placement; default is 1',
+        describe: '(0-1) dot spacing, from random to even (default is 1)',
         type: 'number'
+      })
+      .option('per-dot', {
+        describe: 'number for scaling data values (e.g. 10 per dot)',
+        type: 'number'
+      })
+      .option('copy-fields', {
+        describe: 'list of fields to copy from polygons to dots',
+        type: 'strings'
+      })
+      .option('multipart', {
+        describe: 'combine groups of same-color dots into multi-part features',
+        type: 'flag'
       })
       .option('target', targetOpt)
       .option('name', nameOpt)
@@ -26370,6 +26382,156 @@ ${svg}
     }
   }
 
+  function MinHeap() {
+    return new Heap('min');
+  }
+
+  function MaxHeap() {
+    return new Heap('max');
+  }
+
+  // A heap data structure used for computing Visvalingam simplification data.
+  // type: 'max' or 'min' (min is default)
+  //
+  function Heap(type) {
+    var heapBuf = utils.expandoBuffer(Int32Array),
+        indexBuf = utils.expandoBuffer(Int32Array),
+        heavierThan = type == 'max' ? lessThan : greaterThan,
+        itemsInHeap = 0,
+        dataArr,
+        heapArr,
+        indexArr;
+
+    this.init = function(values) {
+      var i;
+      dataArr = values;
+      itemsInHeap = values.length;
+      heapArr = heapBuf(itemsInHeap);
+      indexArr = indexBuf(itemsInHeap);
+      for (i=0; i<itemsInHeap; i++) {
+        insertValue(i, i);
+      }
+      // place non-leaf items
+      for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
+        downHeap(i);
+      }
+    };
+
+    this.size = function() {
+      return itemsInHeap;
+    };
+
+    // Update a single value and re-heap
+    this.updateValue = function(valIdx, val) {
+      var heapIdx = indexArr[valIdx];
+      dataArr[valIdx] = val;
+      if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) {
+        error("Out-of-range heap index.");
+      }
+      downHeap(upHeap(heapIdx));
+    };
+
+    this.popValue = function() {
+      return dataArr[this.pop()];
+    };
+
+    this.getValue = function(idx) {
+      return dataArr[idx];
+    };
+
+    this.peek = function() {
+      return heapArr[0];
+    };
+
+    this.peekValue = function() {
+      return dataArr[heapArr[0]];
+    };
+
+    // Return the idx of the lowest-value item in the heap
+    this.pop = function() {
+      var popIdx;
+      if (itemsInHeap <= 0) {
+        error("Tried to pop from an empty heap.");
+      }
+      popIdx = heapArr[0];
+      insertValue(0, heapArr[--itemsInHeap]); // move last item in heap into root position
+      downHeap(0);
+      return popIdx;
+    };
+
+    function upHeap(idx) {
+      var parentIdx;
+      // Move item up in the heap until it's at the top or is not lighter than its parent
+      while (idx > 0) {
+        parentIdx = (idx - 1) >> 1;
+        if (heavierThan(idx, parentIdx)) {
+          break;
+        }
+        swapItems(idx, parentIdx);
+        idx = parentIdx;
+      }
+      return idx;
+    }
+
+    // Swap item at @idx with any lighter children
+    function downHeap(idx) {
+      var minIdx = compareDown(idx);
+
+      while (minIdx > idx) {
+        swapItems(idx, minIdx);
+        idx = minIdx; // descend in the heap
+        minIdx = compareDown(idx);
+      }
+    }
+
+    function swapItems(a, b) {
+      var i = heapArr[a];
+      insertValue(a, heapArr[b]);
+      insertValue(b, i);
+    }
+
+    // Associate a heap idx with the index of a value in data arr
+    function insertValue(heapIdx, valId) {
+      indexArr[valId] = heapIdx;
+      heapArr[heapIdx] = valId;
+    }
+
+    // comparator for Visvalingam min heap
+    // @a, @b: Indexes in @heapArr
+    function greaterThan(a, b) {
+      var idx1 = heapArr[a],
+          idx2 = heapArr[b],
+          val1 = dataArr[idx1],
+          val2 = dataArr[idx2];
+      // If values are equal, compare array indexes.
+      // This is not a requirement of the Visvalingam algorithm,
+      // but it generates output that matches Mahes Visvalingam's
+      // reference implementation.
+      // See https://hydra.hull.ac.uk/assets/hull:10874/content
+      return (val1 > val2 || val1 === val2 && idx1 > idx2);
+    }
+
+    // comparator for max heap
+    function lessThan(a, b) {
+      var idx1 = heapArr[a],
+          idx2 = heapArr[b];
+      return dataArr[idx1] < dataArr[idx2];
+    }
+
+    function compareDown(idx) {
+      var a = 2 * idx + 1,
+          b = a + 1,
+          n = itemsInHeap;
+      if (a < n && heavierThan(idx, a)) {
+        idx = a;
+      }
+      if (b < n && heavierThan(idx, b)) {
+        idx = b;
+      }
+      return idx;
+    }
+  }
+
   // TODO: optimize point-in-polygon tests for complex polygons and many points
   // import { PathIndex } from '../paths/mapshaper-path-index';
 
@@ -26434,33 +26596,43 @@ ${svg}
   }
 
   function DotGrid(bounds, approxQueries, evenness) {
-    var grid = [];
     var x0 = bounds.xmin;
     var y0 = bounds.ymin;
     var w = bounds.width();
     var h = bounds.height();
     var approxCells = approxQueries * 0.8;
-    var cols = Math.round(Math.sqrt(approxCells * w / h));
+    var cols = Math.round(Math.sqrt(approxCells * w / h)) || 1;
     var rows = Math.ceil(cols * h / w); // overshoots bbox height
+    var gridWidth = w;
+    var gridHeight = w * rows / cols;
     var cells = cols * rows;
-    var nextId = -1;
+    var cellId = -1;
+    var grid = initGrid(cells);
+    // data used by optimal method
     var bestPoints;
-    var probesBeforeRelaxation = Math.ceil(Math.pow(cells, 0.8));
-    var maxProbes = cells * 10;
+    var bestHeap;
+
+    // Estimate the initial distance threshold between dots (based on a square grid)
+    // When evenness == 1, the initial value should be larger than the final
+    //   spacing between dots, after all the dots are added.
+    // When evenness < 1 (dart-throwing mode) the distance threshold is reduced in
+    //   proportion to the value of evenness.
+    var k = Math.pow(evenness, 0.85); // applying a curve seems create a better scale
+    // From trial and error, 0.75 seems to give a good result.
+    var minDist = gridWidth / cols * 0.75 * k;
+
+    // metrics
     var queries = 0;
-
-    // set height to height of grid
-    h = w * rows / cols;
-
-    var k = Math.pow(evenness, 0.7); // seems to make a better transition
-    // Estimate of minimum distance between dots (based on a square grid)
-    // 0.7 seems about right from trial-and-error...
-    var minDist = w / cols * 0.7 * k;
+    var lastDistSq = 0;
+    var bestCount = 0;
 
     return {done: done, getPoint: getPoint};
 
     function done() {
-      // TODO: check placement metrics if debugging
+      // console.log( 'queries:', queries,'bestPct:', pct(bestCount, queries), "minDist:", Math.round(minDist), "lastDist:", Math.round(Math.sqrt(lastDistSq)));
+      function pct(a, b) {
+        return Math.round(a / b * 100) + '%';
+      }
     }
 
     function getPoint() {
@@ -26470,22 +26642,33 @@ ${svg}
       return getSpacedPoint();
     }
 
+    function initGrid(n) {
+      var arr = [];
+      for (var i=0; i<n; i++) arr.push([]);
+      return arr;
+    }
+
     function getOptimalPoint() {
       var p;
-      // first, try to place a point in each grid cell
-      // (for fast and even initial dot placement)
-      while (++nextId < cells) {
-        p = getRandomPointInCell(nextId);
+      // first, try to place a random but well-spaced point in each grid cell
+      // (to create an initial sparse structure that gets filled in later)
+      while (++cellId < cells) {
+        p = getRandomPointInCell(cellId);
         if (pointIsUsable(p)) {
           return usePoint(p);
         }
       }
-      // assumes that the point grid has already been seeded
+      // fill in the gaps of the initial placement, starting with the largest gap
+      if (!bestPoints) {
+        initBestPoints();
+      }
       return useBestPoint();
     }
 
     function getSpacedPoint() {
       // use dart-throwing, reject points that are within the minimum distance
+      var probesBeforeRelaxation = Math.ceil(Math.pow(cells, 0.8));
+      var maxProbes = cells * 10;
       var probes = 0;
       var p;
       while (probes++ < maxProbes) {
@@ -26504,83 +26687,113 @@ ${svg}
     // Add point to grid of used points
     function usePoint(p) {
       var i = pointToIdx(p);
-      var points = grid[i] || (grid[i] = []);
-      points.push(p);
+      grid[i].push(p);
       return p;
     }
 
     function useBestPoint() {
-      var maxDist = 0;
-      var bestId, p;
-      if (!bestPoints) {
-        bestPoints = initBestPoints();
-      }
-      for (var i=0; i<cells; i++) {
-        p = bestPoints[i];
-        if (p[2] > maxDist) {
-          maxDist = p[2];
-          bestId = i;
-        }
-      }
-      p = bestPoints[bestId].slice(0, 2); // remove distance member
+      var bestId = bestHeap.peek();
+      var p = bestPoints[bestId];
       usePoint(p); // add to grid of used points
-      updateBestPoints(p, bestId); // update best point of this cell and neighbors
+      updateNeighbors(p, bestId); // update best point of this cell and neighbors
+      lastDistSq = bestHeap.peekValue();
+      bestCount++;
       return p;
     }
 
     function initBestPoints() {
-      var bestPoints = [];
+      var values = [];
+      bestPoints = [];
+      var distSq;
       for (var i=0; i<cells; i++) {
-        bestPoints.push(findBestPointInCell(i));
+        distSq = findBestPointInCell(i);
+        values.push(distSq);
       }
-      return bestPoints;
+      bestHeap = new MaxHeap();
+      bestHeap.init(values);
     }
 
-    function updateBestPoints(p, i) {
+    function updateNeighbors(p, i) {
       var r = idxToRow(i);
       var c = idxToCol(i);
-      bestPoints[i] = findBestPointInCell(i);
-      updateBestPoint(p, c+1, r);
-      updateBestPoint(p, c, r+1);
-      updateBestPoint(p, c-1, r);
-      updateBestPoint(p, c, r-1);
-      updateBestPoint(p, c+1, r+1);
-      updateBestPoint(p, c-1, r+1);
-      updateBestPoint(p, c-1, r-1);
-      updateBestPoint(p, c+1, r-1);
+      updateBestPointInCell(i);
+      updateNeighbor(p, c+1, r);
+      updateNeighbor(p, c, r+1);
+      updateNeighbor(p, c-1, r);
+      updateNeighbor(p, c, r-1);
+      updateNeighbor(p, c+1, r+1);
+      updateNeighbor(p, c-1, r+1);
+      updateNeighbor(p, c-1, r-1);
+      updateNeighbor(p, c+1, r-1);
     }
 
-    function updateBestPoint(addedPt, c, r) {
+    function updateNeighbor(addedPt, c, r) {
       var i = colRowToIdx(c, r);
       if (i == -1) return;
       var bestPt = bestPoints[i];
       // don't need to update best point if the newly added point is too far away
-      // to have an effect
-      if (pointToPointDistSq(addedPt, bestPt) > bestPt[2]) return;
-      bestPoints[i] = findBestPointInCell(i);
+      // to have an effect.
+      // (about 80% of updates are skipped, typically)
+      if (distSq(addedPt, bestPt) < bestHeap.getValue(i)) {
+        updateBestPointInCell(i);
+      }
     }
 
-    function findBestPointInCell(i) {
-      var probes = 30;
+    function updateBestPointInCell(i) {
+      var distSq = findBestPointInCell(i);
+      bestHeap.updateValue(i, distSq);
+    }
+
+    function findBestPointInCell_v1(i) {
+      // randomly probe for the best point
+      var probes = 20;
       var maxDist = 0;
       var best, p, dist;
       while (probes-- > 0) {
         p = getRandomPointInCell(i);
-        dist = findDistanceFromNeighbors(p, i);
+        dist = findDistanceFromNeighbors(maxDist, p, i);
         if (dist > maxDist) {
           maxDist = dist;
           best = p;
         }
       }
-      best.push(maxDist); // add distance as third element in the point
-      return best;
+      bestPoints[i] = best;
+      return maxDist;
     }
 
-    function findDistanceFromNeighbors(xy, i) {
+    function findBestPointInCell(idx) {
+      // use a grid pattern to find the best point
+      var perSide = 5;
+      var maxDist = 0;
+      var best, p, dist;
+      for (var i=0, n=perSide*perSide; i<n; i++) {
+        p = getGridPointInCell(idx, i, perSide);
+        dist = findDistanceFromNeighbors(maxDist, p, idx);
+        if (dist > maxDist) {
+          maxDist = dist;
+          best = p;
+        }
+      }
+      bestPoints[idx] = best;
+      return maxDist;
+    }
+
+    function getGridPointInCell(cellIdx, i, n) {
+      var r = idxToRow(cellIdx);
+      var c = idxToCol(cellIdx);
+      var dx = (i % n + 0.5) / n;
+      var dy = (Math.floor(i / n) + 0.5) / n;
+      var x = (dx + c) / cols * w + x0;
+      var y = (dy + r) / rows * h + y0;
+      return [x, y];
+    }
+
+    function findDistanceFromNeighbors(memo, xy, i) {
       var dist = Infinity;
       var r = idxToRow(i);
       var c = idxToCol(i);
       dist = reduceDistance(dist, xy, c, r);
+      if (dist < memo) return 0; // 10-15% speedup
       dist = reduceDistance(dist, xy, c+1, r);
       dist = reduceDistance(dist, xy, c, r+1);
       dist = reduceDistance(dist, xy, c-1, r);
@@ -26595,19 +26808,20 @@ ${svg}
     function reduceDistance(memo, xy, c, r) {
       var i = colRowToIdx(c, r);
       if (i == -1) return memo; // off the edge
-      var distSq = pointToPointsDistSq(xy, grid[i] || []);
-      return Math.min(memo, distSq);
+      var distSq = pointToPointsDistSq(xy, grid[i]);
+      return distSq < memo ? distSq : memo;
     }
 
     function pointToPointsDistSq(xy, points) {
-      var dist = Infinity;
+      var minDist = Infinity, dist;
       for (var i=0; i<points.length; i++) {
-        dist = Math.min(dist, pointToPointDistSq(xy, points[i]));
+        dist = distSq(xy, points[i]);
+        if (dist < minDist) minDist = dist;
       }
-      return dist;
+      return minDist;
     }
 
-    function pointToPointDistSq(a, b) {
+    function distSq(a, b) {
       var dx = a[0] - b[0];
       var dy = a[1] - b[1];
       return dx * dx + dy * dy;
@@ -26649,14 +26863,13 @@ ${svg}
       var i = colRowToIdx(c, r);
       if (i == -1) return false;
       var points = grid[i];
-      if (!points || !testPointCollision(xy, points, minDist)) return false;
-      return true;
+      return testPointCollision(xy, points, minDist);
     }
 
     function testPointCollision(xy, points, dist) {
       var d2 = dist * dist;
       for (var i=0; i<points.length; i++) {
-        if (pointToPointDistSq(xy, points[i]) < d2) {
+        if (distSq(xy, points[i]) < d2) {
           return true;
         }
       }
@@ -26692,7 +26905,7 @@ ${svg}
     }
 
     function idxToCol(i) {
-      return Math.floor(i % cols);
+      return i % cols;
     }
 
     function idxToRow(i) {
@@ -26705,15 +26918,20 @@ ${svg}
     if (!Array.isArray(opts.fields)) {
       stop("Missing required fields parameter");
     }
-    if (!Array.isArray(opts.colors)) {
-      stop("Missing required colors parameter");
-    }
     if (layerHasNonNullData(lyr)) {
       opts.fields.forEach(function(f, i) {
         requireDataField(lyr, f);
       });
+      (opts.copy_fields || []).forEach(function(f) {
+        requireDataField(lyr, f);
+      });
     }
-    opts.colors.forEach(parseColor); // validate colors
+    // if (!Array.isArray(opts.colors)) {
+    //   stop("Missing required colors parameter");
+    // }
+    if (Array.isArray(opts.colors)) {
+      opts.colors.forEach(parseColor); // validate colors
+    }
 
     var records = lyr.data ? lyr.data.getRecords() : [];
     var shapes2 = [];
@@ -26735,14 +26953,18 @@ ${svg}
     return [lyr2];
   };
 
-  function makeDotsForShape(shp, arcs, d, opts) {
+  function makeDotsForShape(shp, arcs, rec, opts) {
     var retn = {
       shapes: [],
       attributes:[]
     };
     if (!shp) return retn;
     var counts = opts.fields.map(function(f) {
-      return d[f] || 0;
+      var val = rec[f] || 0;
+      if (opts.per_dot > 0) {
+        val = Math.round(val / opts.per_dot);
+      }
+      return val;
     });
     var indexes = expandCounts(counts);
     var dots = placeDots(shp, arcs, indexes.length, opts);
@@ -26752,16 +26974,16 @@ ${svg}
     // TODO: instead of random shuffling, interleave dot classes more regularly?
     shuffle(indexes);
     var idx, prevIdx = -1;
-    var grouped = false;
-    var coords;
+    var multipart = !!opts.multipart;
+    var coords, p;
     for (var i=0; i<dots.length; i++) {
-      var p = dots[i];
+      p = dots[i];
       if (!p) continue;
       idx = indexes[i];
-      if (!grouped || idx != prevIdx) {
+      if (!multipart || idx != prevIdx) {
         prevIdx = idx;
         retn.shapes.push(coords = []);
-        retn.attributes.push(getDataRecord(idx, opts));
+        retn.attributes.push(getDataRecord(idx, rec, opts));
       }
       coords.push(p);
     }
@@ -26813,13 +27035,21 @@ ${svg}
     }
   }
 
-  function getDataRecord(i, opts) {
-    var o = {
-      fill: opts.colors[i],
-      r: opts.r || 2
-    };
-    if (opts.opacity < 1) {
-      o.opacity = opts.opacity;
+  // i: dot class index
+  // d: properties of original polygon
+  // opts: dots command options
+  function getDataRecord(i, d, opts) {
+    var o = {};
+    if (opts.colors) {
+      o.fill = opts.colors[i];
+      o.r = opts.r || 1.5;
+    } else if (opts.r) {
+      o.r = opts.r;
+    }
+    if (opts.copy_fields) {
+      for (var j=0; j<opts.copy_fields.length; j++) {
+        o[opts.copy_fields[j]] = d[opts.copy_fields[j]];
+      }
     }
     return o;
   }
@@ -30501,126 +30731,6 @@ ${svg}
     var endpoints = arcs.size() * 2;
     var nodes = new NodeCollection(arcs).size();
     return arcs.getPointCount() - endpoints + nodes;
-  }
-
-  // A minheap data structure used for computing Visvalingam simplification data.
-  //
-  function Heap() {
-    var heapBuf = utils.expandoBuffer(Int32Array),
-        indexBuf = utils.expandoBuffer(Int32Array),
-        itemsInHeap = 0,
-        dataArr,
-        heapArr,
-        indexArr;
-
-    this.init = function(values) {
-      var i;
-      dataArr = values;
-      itemsInHeap = values.length;
-      heapArr = heapBuf(itemsInHeap);
-      indexArr = indexBuf(itemsInHeap);
-      for (i=0; i<itemsInHeap; i++) {
-        insertValue(i, i);
-      }
-      // place non-leaf items
-      for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
-        downHeap(i);
-      }
-    };
-
-    this.size = function() {
-      return itemsInHeap;
-    };
-
-    // Update a single value and re-heap
-    this.updateValue = function(valIdx, val) {
-      var heapIdx = indexArr[valIdx];
-      dataArr[valIdx] = val;
-      if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) {
-        error("Out-of-range heap index.");
-      }
-      downHeap(upHeap(heapIdx));
-    };
-
-    this.popValue = function() {
-      return dataArr[this.pop()];
-    };
-
-    // Return the idx of the lowest-value item in the heap
-    this.pop = function() {
-      var popIdx;
-      if (itemsInHeap <= 0) {
-        error("Tried to pop from an empty heap.");
-      }
-      popIdx = heapArr[0];
-      insertValue(0, heapArr[--itemsInHeap]); // move last item in heap into root position
-      downHeap(0);
-      return popIdx;
-    };
-
-    function upHeap(idx) {
-      var parentIdx;
-      // Move item up in the heap until it's at the top or is not lighter than its parent
-      while (idx > 0) {
-        parentIdx = (idx - 1) >> 1;
-        if (greaterThan(idx, parentIdx)) {
-          break;
-        }
-        swapItems(idx, parentIdx);
-        idx = parentIdx;
-      }
-      return idx;
-    }
-
-    // Swap item at @idx with any lighter children
-    function downHeap(idx) {
-      var minIdx = compareDown(idx);
-
-      while (minIdx > idx) {
-        swapItems(idx, minIdx);
-        idx = minIdx; // descend in the heap
-        minIdx = compareDown(idx);
-      }
-    }
-
-    function swapItems(a, b) {
-      var i = heapArr[a];
-      insertValue(a, heapArr[b]);
-      insertValue(b, i);
-    }
-
-    // Associate a heap idx with the index of a value in data arr
-    function insertValue(heapIdx, valId) {
-      indexArr[valId] = heapIdx;
-      heapArr[heapIdx] = valId;
-    }
-
-    // @a, @b: Indexes in @heapArr
-    function greaterThan(a, b) {
-      var idx1 = heapArr[a],
-          idx2 = heapArr[b],
-          val1 = dataArr[idx1],
-          val2 = dataArr[idx2];
-      // If values are equal, compare array indexes.
-      // This is not a requirement of the Visvalingam algorithm,
-      // but it generates output that matches Mahes Visvalingam's
-      // reference implementation.
-      // See https://hydra.hull.ac.uk/assets/hull:10874/content
-      return (val1 > val2 || val1 === val2 && idx1 > idx2);
-    }
-
-    function compareDown(idx) {
-      var a = 2 * idx + 1,
-          b = a + 1,
-          n = itemsInHeap;
-      if (a < n && greaterThan(idx, a)) {
-        idx = a;
-      }
-      if (b < n && greaterThan(idx, b)) {
-        idx = b;
-      }
-      return idx;
-    }
   }
 
   var Visvalingam = {};
