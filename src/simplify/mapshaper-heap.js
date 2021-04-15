@@ -1,11 +1,21 @@
 import utils from '../utils/mapshaper-utils';
 import { error } from '../utils/mapshaper-logging';
 
-// A minheap data structure used for computing Visvalingam simplification data.
+export function MinHeap() {
+  return new Heap('min');
+}
+
+export function MaxHeap() {
+  return new Heap('max');
+}
+
+// A heap data structure used for computing Visvalingam simplification data.
+// type: 'max' or 'min' (min is default)
 //
-export function Heap() {
+export function Heap(type) {
   var heapBuf = utils.expandoBuffer(Int32Array),
       indexBuf = utils.expandoBuffer(Int32Array),
+      heavierThan = type == 'max' ? lessThan : greaterThan,
       itemsInHeap = 0,
       dataArr,
       heapArr,
@@ -44,6 +54,18 @@ export function Heap() {
     return dataArr[this.pop()];
   };
 
+  this.getValue = function(idx) {
+    return dataArr[idx];
+  };
+
+  this.peek = function() {
+    return heapArr[0];
+  };
+
+  this.peekValue = function() {
+    return dataArr[heapArr[0]];
+  };
+
   // Return the idx of the lowest-value item in the heap
   this.pop = function() {
     var popIdx;
@@ -61,7 +83,7 @@ export function Heap() {
     // Move item up in the heap until it's at the top or is not lighter than its parent
     while (idx > 0) {
       parentIdx = (idx - 1) >> 1;
-      if (greaterThan(idx, parentIdx)) {
+      if (heavierThan(idx, parentIdx)) {
         break;
       }
       swapItems(idx, parentIdx);
@@ -93,6 +115,7 @@ export function Heap() {
     heapArr[heapIdx] = valId;
   }
 
+  // comparator for Visvalingam min heap
   // @a, @b: Indexes in @heapArr
   function greaterThan(a, b) {
     var idx1 = heapArr[a],
@@ -107,14 +130,21 @@ export function Heap() {
     return (val1 > val2 || val1 === val2 && idx1 > idx2);
   }
 
+  // comparator for max heap
+  function lessThan(a, b) {
+    var idx1 = heapArr[a],
+        idx2 = heapArr[b];
+    return dataArr[idx1] < dataArr[idx2];
+  }
+
   function compareDown(idx) {
     var a = 2 * idx + 1,
         b = a + 1,
         n = itemsInHeap;
-    if (a < n && greaterThan(idx, a)) {
+    if (a < n && heavierThan(idx, a)) {
       idx = a;
     }
-    if (b < n && greaterThan(idx, b)) {
+    if (b < n && heavierThan(idx, b)) {
       idx = b;
     }
     return idx;

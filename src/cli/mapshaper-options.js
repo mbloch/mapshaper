@@ -689,8 +689,20 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('evenness', {
-      describe: '(0-1) 0 is random placement, 1 is even placement; default is 1',
+      describe: '(0-1) dot spacing, from random to even (default is 1)',
       type: 'number'
+    })
+    .option('per-dot', {
+      describe: 'number for scaling data values (e.g. 10 per dot)',
+      type: 'number'
+    })
+    .option('copy-fields', {
+      describe: 'list of fields to copy from polygons to dots',
+      type: 'strings'
+    })
+    .option('multipart', {
+      describe: 'combine groups of same-color dots into multi-part features',
+      type: 'flag'
     })
     .option('target', targetOpt)
     .option('name', nameOpt)

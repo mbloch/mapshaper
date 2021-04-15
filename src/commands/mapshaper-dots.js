@@ -15,15 +15,20 @@ cmd.dots = function(lyr, arcs, opts) {
   if (!Array.isArray(opts.fields)) {
     stop("Missing required fields parameter");
   }
-  if (!Array.isArray(opts.colors)) {
-    stop("Missing required colors parameter");
-  }
   if (layerHasNonNullData(lyr)) {
     opts.fields.forEach(function(f, i) {
       requireDataField(lyr, f);
     });
+    (opts.copy_fields || []).forEach(function(f) {
+      requireDataField(lyr, f);
+    });
   }
-  opts.colors.forEach(parseColor); // validate colors
+  // if (!Array.isArray(opts.colors)) {
+  //   stop("Missing required colors parameter");
+  // }
+  if (Array.isArray(opts.colors)) {
+    opts.colors.forEach(parseColor); // validate colors
+  }
 
   var records = lyr.data ? lyr.data.getRecords() : [];
   var shapes2 = [];
@@ -45,14 +50,18 @@ cmd.dots = function(lyr, arcs, opts) {
   return [lyr2];
 };
 
-function makeDotsForShape(shp, arcs, d, opts) {
+function makeDotsForShape(shp, arcs, rec, opts) {
   var retn = {
     shapes: [],
     attributes:[]
   };
   if (!shp) return retn;
   var counts = opts.fields.map(function(f) {
-    return d[f] || 0;
+    var val = rec[f] || 0;
+    if (opts.per_dot > 0) {
+      val = Math.round(val / opts.per_dot);
+    }
+    return val;
   });
   var indexes = expandCounts(counts);
   var dots = placeDots(shp, arcs, indexes.length, opts);
@@ -62,16 +71,16 @@ function makeDotsForShape(shp, arcs, d, opts) {
   // TODO: instead of random shuffling, interleave dot classes more regularly?
   shuffle(indexes);
   var idx, prevIdx = -1;
-  var grouped = false;
-  var coords;
+  var multipart = !!opts.multipart;
+  var coords, p;
   for (var i=0; i<dots.length; i++) {
-    var p = dots[i];
+    p = dots[i];
     if (!p) continue;
     idx = indexes[i];
-    if (!grouped || idx != prevIdx) {
+    if (!multipart || idx != prevIdx) {
       prevIdx = idx;
       retn.shapes.push(coords = []);
-      retn.attributes.push(getDataRecord(idx, opts));
+      retn.attributes.push(getDataRecord(idx, rec, opts));
     }
     coords.push(p);
   }
@@ -123,13 +132,21 @@ function shuffle(arr) {
   }
 }
 
-function getDataRecord(i, opts) {
-  var o = {
-    fill: opts.colors[i],
-    r: opts.r || 2
-  };
-  if (opts.opacity < 1) {
-    o.opacity = opts.opacity;
+// i: dot class index
+// d: properties of original polygon
+// opts: dots command options
+export function getDataRecord(i, d, opts) {
+  var o = {};
+  if (opts.colors) {
+    o.fill = opts.colors[i];
+    o.r = opts.r || 1.5;
+  } else if (opts.r) {
+    o.r = opts.r;
+  }
+  if (opts.copy_fields) {
+    for (var j=0; j<opts.copy_fields.length; j++) {
+      o[opts.copy_fields[j]] = d[opts.copy_fields[j]];
+    }
   }
   return o;
 }
