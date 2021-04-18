@@ -26,7 +26,7 @@ export function findCommandTargets(layers, pattern, type) {
 }
 
 // arr: array of {layer: <>, dataset: <>} objects
-function groupLayersByDataset(arr) {
+export function groupLayersByDataset(arr) {
   var datasets = [];
   var targets = [];
   arr.forEach(function(o) {

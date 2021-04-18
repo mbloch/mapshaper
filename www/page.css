@@ -75,6 +75,10 @@ body {
 	border-bottom: 1px dotted #0774a5;
 }
 
+.dot-underline-black {
+	border-bottom: 1px dotted black;
+}
+
 .nav-btn * {
 	fill: #1385b7;
 }
@@ -803,7 +807,7 @@ img.close-btn:hover,
 	text-decoration: none;
 }
 
-.layer-item:hover:not(.active):not(.dragging) {
+.layer-menu .layer-item:hover:not(.active):not(.dragging) {
 	background-color: #f7f7f7;
 }
 

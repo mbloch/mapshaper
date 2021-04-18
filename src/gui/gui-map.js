@@ -3,7 +3,7 @@ import { CoordinatesDisplay } from './gui-coordinates-display';
 import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control2';
-import { updateLayerStackOrder } from './gui-layer-sorting';
+import { updateLayerStackOrder } from './gui-layer-utils';
 import { SymbolDragging2 } from './gui-symbol-dragging2';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';

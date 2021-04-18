@@ -1,4 +1,14 @@
 
+
+export function formatLayerNameForDisplay(name) {
+  return name || '[unnamed]';
+}
+
+export function cleanLayerName(raw) {
+  return raw.replace(/[\n\t/\\]/g, '')
+    .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+}
+
 export function updateLayerStackOrder(layers) {
   // 1. assign ascending ids to unassigned layers above the range of other layers
   layers.forEach(function(o, i) {

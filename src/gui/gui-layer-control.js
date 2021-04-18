@@ -1,5 +1,8 @@
 import { DomCache } from './gui-dom-cache';
-import { sortLayersForMenuDisplay } from './gui-layer-sorting';
+import {
+  sortLayersForMenuDisplay,
+  formatLayerNameForDisplay,
+  cleanLayerName } from './gui-layer-utils';
 import { utils, internal } from './gui-core';
 import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
@@ -171,7 +174,7 @@ export function LayerControl(gui) {
     if (lyr.pinned) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
+    html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
     if (opts.show_source) {
       html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
     }
@@ -235,7 +238,6 @@ export function LayerControl(gui) {
   }
 
   function initMouseEvents2(entry, id, pinnable) {
-
     initLayerDragging(entry, id);
 
     // init delete button
@@ -272,7 +274,7 @@ export function LayerControl(gui) {
       .on('change', function(e) {
         var target = findLayerById(id);
         var str = cleanLayerName(this.value());
-        this.value(getDisplayName(str));
+        this.value(formatLayerNameForDisplay(str));
         target.layer.name = str;
         gui.session.layerRenamed(target.layer, str);
         updateMenuBtn();
@@ -329,18 +331,12 @@ export function LayerControl(gui) {
     return internal.getLayerSourceFile(lyr, dataset);
   }
 
-  function getDisplayName(name) {
-    return name || '[unnamed]';
-  }
 
   function isPinnable(lyr) {
     return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
   }
 
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
-  }
+
 
   function rowHTML(c1, c2, cname) {
     return utils.format('<div class="row%s"><div class="col1">%s</div>' +
