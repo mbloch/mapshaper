@@ -1,3 +1,7 @@
+v0.5.45
+* [web ui] Made layer names in the export dialog settable.
+* Tuned parameters in the -dots command.
+
 v0.5.44
 * Added "per-dot=" option to the -dots command, for setting the value-to-dot ratio. To represent 100 people per dot on a population map, you would use per-dot=100.
 * Added "copy-fields=" option to -dots, to copy one or more data fields from the original polygon layer to the generated dot features.
