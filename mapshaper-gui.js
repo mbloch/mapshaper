@@ -2856,6 +2856,15 @@
 
   utils.inherit(RepairControl, EventDispatcher);
 
+  function formatLayerNameForDisplay(name) {
+    return name || '[unnamed]';
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+  }
+
   function updateLayerStackOrder(layers) {
     // 1. assign ascending ids to unassigned layers above the range of other layers
     layers.forEach(function(o, i) {
@@ -2877,12 +2886,1263 @@
     return layers.reverse();
   }
 
+  var Buffer = require('buffer').Buffer; // works with browserify
+
+  var uniqCount = 0;
+  function getUniqueName(prefix) {
+    return (prefix || "__id_") + (++uniqCount);
+  }
+
+  function isFunction(obj) {
+    return typeof obj == 'function';
+  }
+
+  function isObject(obj) {
+    return obj === Object(obj); // via underscore
+  }
+
+  function clamp(val, min, max) {
+    return val < min ? min : (val > max ? max : val);
+  }
+
+  function isArray(obj) {
+    return Array.isArray(obj);
+  }
+
+  // Is obj a valid number or NaN? (test if obj is type number)
+  function isNumber(obj) {
+    return obj != null && obj.constructor == Number;
+  }
+
+  function isValidNumber(val) {
+    return isNumber(val) && !isNaN(val);
+  }
+
+  // Similar to isFinite() but does not coerce strings or other types
+  function isFiniteNumber(val) {
+    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
+  }
+
+  // This uses type conversion
+  // export function isFiniteNumber(val) {
+  //   return val > -Infinity && val < Infinity;
+  // }
+
+  function isNonNegNumber(val) {
+    return isNumber(val) && val >= 0;
+  }
+
+  function isInteger(obj) {
+    return isNumber(obj) && ((obj | 0) === obj);
+  }
+
+  function isString(obj) {
+    return obj != null && obj.toString === String.prototype.toString;
+    // TODO: replace w/ something better.
+  }
+
+  function isDate(obj) {
+    return !!obj && obj.getTime === Date.prototype.getTime;
+  }
+
+  function isBoolean(obj) {
+    return obj === true || obj === false;
+  }
+
+  function formatDateISO(d) {
+    if (!isDate(d)) return '';
+    return d.toISOString().replace(':00.000Z', 'Z');
+  }
+
+  // Convert an array-like object to an Array, or make a copy if @obj is an Array
+  function toArray(obj) {
+    var arr;
+    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
+    try {
+      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
+    } catch(e) {
+      // support ie8
+      arr = [];
+      for (var i=0, n=obj.length; i<n; i++) {
+        arr[i] = obj[i];
+      }
+    }
+    return arr;
+  }
+
+  // Array like: has length property, is numerically indexed and mutable.
+  // TODO: try to detect objects with length property but no indexed data elements
+  function isArrayLike(obj) {
+    if (!obj) return false;
+    if (isArray(obj)) return true;
+    if (isString(obj)) return false;
+    if (obj.length === 0) return true;
+    if (obj.length > 0) return true;
+    return false;
+  }
+
+  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
+  function addslashes(str) {
+    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
+  }
+
+  // Escape a literal string to use in a regexp.
+  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
+  function regexEscape(str) {
+    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  }
+
+
+  // See https://github.com/janl/mustache.js/blob/master/mustache.js
+  var entityMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '/': '&#x2F;'
+  };
+  function htmlEscape(s) {
+    return String(s).replace(/[&<>"'\/]/g, function(s) {
+      return entityMap[s];
+    });
+  }
+
+  function defaults(dest) {
+    for (var i=1, n=arguments.length; i<n; i++) {
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (key in dest === false && src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  }
+
+  function extend(o) {
+    var dest = o || {},
+        n = arguments.length,
+        key, i, src;
+    for (i=1; i<n; i++) {
+      src = arguments[i] || {};
+      for (key in src) {
+        if (src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  }
+
+  // Pseudoclassical inheritance
+  //
+  // Inherit from a Parent function:
+  //    inherit(Child, Parent);
+  // Call parent's constructor (inside child constructor):
+  //    this.__super__([args...]);
+  function inherit(targ, src) {
+    var f = function() {
+      if (this.__super__ == f) {
+        // add __super__ of parent to front of lookup chain
+        // so parent class constructor can call its parent using this.__super__
+        this.__super__ = src.prototype.__super__;
+        // call parent constructor function. this.__super__ now points to parent-of-parent
+        src.apply(this, arguments);
+        // remove temp __super__, expose targ.prototype.__super__ again
+        delete this.__super__;
+      }
+    };
+
+    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
+    // Extend targ prototype instead of wiping it out --
+    //   in case inherit() is called after targ.prototype = {stuff}; statement
+    targ.prototype = extend(new f(), targ.prototype); //
+    targ.prototype.constructor = targ;
+    targ.prototype.__super__ = f;
+  }
+
+
+  // Call @iter on each member of an array (similar to Array#reduce(iter))
+  //    iter: function(memo, item, callback)
+  // Call @done when all members have been processed or if an error occurs
+  //    done: function(err, memo)
+  // @memo: Initial value
+  //
+  function reduceAsync(arr, memo, iter, done) {
+    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
+    var i=0;
+    next(null, memo);
+
+    function next(err, memo) {
+      // Detach next operation from call stack to prevent overflow
+      // Don't use setTimeout(, 0) if setImmediate is available
+      // (setTimeout() can introduce a long delay if previous operation was slow,
+      //    as of Node 0.10.32 -- a bug?)
+      if (err) {
+        return done(err, null);
+      }
+      call(function() {
+        if (i < arr.length === false) {
+          done(null, memo);
+        } else {
+          iter(memo, arr[i++], next);
+        }
+      }, 0);
+    }
+  }
+
+
+  // Append elements of @src array to @dest array
+  function merge(dest, src) {
+    if (!isArray(dest) || !isArray(src)) {
+      error$1("Usage: merge(destArray, srcArray);");
+    }
+    for (var i=0, n=src.length; i<n; i++) {
+      dest.push(src[i]);
+    }
+    return dest;
+  }
+
+  // Returns elements in arr and not in other
+  // (similar to underscore diff)
+  function difference(arr, other) {
+    var index = arrayToIndex(other);
+    return arr.filter(function(el) {
+      return !Object.prototype.hasOwnProperty.call(index, el);
+    });
+  }
+
+  function indexOf(arr, item) {
+    var nan = item !== item;
+    for (var i = 0, len = arr.length || 0; i < len; i++) {
+      if (arr[i] === item) return i;
+      if (nan && arr[i] !== arr[i]) return i;
+    }
+    return -1;
+  }
+
+  // Test a string or array-like object for existence of substring or element
+  function contains(container, item) {
+    if (isString(container)) {
+      return container.indexOf(item) != -1;
+    }
+    else if (isArrayLike(container)) {
+      return indexOf(container, item) != -1;
+    }
+    error$1("Expected Array or String argument");
+  }
+
+  function some(arr, test) {
+    return arr.reduce(function(val, item) {
+      return val || test(item); // TODO: short-circuit?
+    }, false);
+  }
+
+  function every(arr, test) {
+    return arr.reduce(function(val, item) {
+      return val && test(item);
+    }, true);
+  }
+
+  function find(arr, test, ctx) {
+    var matches = arr.filter(test, ctx);
+    return matches.length === 0 ? null : matches[0];
+  }
+
+  function range(len, start, inc) {
+    var arr = [],
+        v = start === void 0 ? 0 : start,
+        i = inc === void 0 ? 1 : inc;
+    while(len--) {
+      arr.push(v);
+      v += i;
+    }
+    return arr;
+  }
+
+  function repeat(times, func) {
+    var values = [],
+        val;
+    for (var i=0; i<times; i++) {
+      val = func(i);
+      if (val !== void 0) {
+        values[i] = val;
+      }
+    }
+    return values.length > 0 ? values : void 0;
+  }
+
+  // Calc sum, skip falsy and NaN values
+  // Assumes: no other non-numeric objects in array
+  //
+  function sum(arr, info) {
+    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
+    var tot = 0,
+        nan = 0,
+        val;
+    for (var i=0, n=arr.length; i<n; i++) {
+      val = arr[i];
+      if (val) {
+        tot += val;
+      } else if (isNaN(val)) {
+        nan++;
+      }
+    }
+    if (info) {
+      info.nan = nan;
+    }
+    return tot;
+  }
+
+  // Calculate min and max values of an array, ignoring NaN values
+  function getArrayBounds(arr) {
+    var min = Infinity,
+      max = -Infinity,
+      nan = 0, val;
+    for (var i=0, len=arr.length; i<len; i++) {
+      val = arr[i];
+      if (val !== val) nan++;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    return {
+      min: min,
+      max: max,
+      nan: nan
+    };
+  }
+
+  function uniq(src) {
+    var index = {};
+    return src.reduce(function(memo, el) {
+      if (el in index === false) {
+        index[el] = true;
+        memo.push(el);
+      }
+      return memo;
+    }, []);
+  }
+
+  function pluck(arr, key) {
+    return arr.map(function(obj) {
+      return obj[key];
+    });
+  }
+
+  function countValues(arr) {
+    return arr.reduce(function(memo, val) {
+      memo[val] = (val in memo) ? memo[val] + 1 : 1;
+      return memo;
+    }, {});
+  }
+
+  function indexOn(arr, k) {
+    return arr.reduce(function(index, o) {
+      index[o[k]] = o;
+      return index;
+    }, {});
+  }
+
+  function groupBy(arr, k) {
+    return arr.reduce(function(index, o) {
+      var keyval = o[k];
+      if (keyval in index) {
+        index[keyval].push(o);
+      } else {
+        index[keyval] = [o];
+      }
+      return index;
+    }, {});
+  }
+
+  function arrayToIndex(arr, val) {
+    var init = arguments.length > 1;
+    return arr.reduce(function(index, key) {
+      index[key] = init ? val : true;
+      return index;
+    }, {});
+  }
+
+  // Support for iterating over array-like objects, like typed arrays
+  function forEach(arr, func, ctx) {
+    if (!isArrayLike(arr)) {
+      throw new Error("#forEach() takes an array-like argument. " + arr);
+    }
+    for (var i=0, n=arr.length; i < n; i++) {
+      func.call(ctx, arr[i], i);
+    }
+  }
+
+  function forEachProperty(o, func, ctx) {
+    Object.keys(o).forEach(function(key) {
+      func.call(ctx, o[key], key);
+    });
+  }
+
+  function initializeArray(arr, init) {
+    for (var i=0, len=arr.length; i<len; i++) {
+      arr[i] = init;
+    }
+    return arr;
+  }
+
+  function replaceArray(arr, arr2) {
+    arr.splice(0, arr.length);
+    for (var i=0, n=arr2.length; i<n; i++) {
+      arr.push(arr2[i]);
+    }
+  }
+
+  function repeatString(src, n) {
+    var str = "";
+    for (var i=0; i<n; i++)
+      str += src;
+    return str;
+  }
+
+  function pluralSuffix(count) {
+    return count != 1 ? 's' : '';
+  }
+
+  function endsWith(str, ending) {
+      return str.indexOf(ending, str.length - ending.length) !== -1;
+  }
+
+  function lpad(str, size, pad) {
+    pad = pad || ' ';
+    str = String(str);
+    return repeatString(pad, size - str.length) + str;
+  }
+
+  function rpad(str, size, pad) {
+    pad = pad || ' ';
+    str = String(str);
+    return str + repeatString(pad, size - str.length);
+  }
+
+  function trim(str) {
+    return ltrim(rtrim(str));
+  }
+
+  var ltrimRxp = /^\s+/;
+  function ltrim(str) {
+    return str.replace(ltrimRxp, '');
+  }
+
+  var rtrimRxp = /\s+$/;
+  function rtrim(str) {
+    return str.replace(rtrimRxp, '');
+  }
+
+  function addThousandsSep(str) {
+    var fmt = '',
+        start = str[0] == '-' ? 1 : 0,
+        dec = str.indexOf('.'),
+        end = str.length,
+        ins = (dec == -1 ? end : dec) - 3;
+    while (ins > start) {
+      fmt = ',' + str.substring(ins, end) + fmt;
+      end = ins;
+      ins -= 3;
+    }
+    return str.substring(0, end) + fmt;
+  }
+
+  function numToStr(num, decimals) {
+    return decimals >= 0 ? num.toFixed(decimals) : String(num);
+  }
+
+  function formatNumber(num, decimals, nullStr, showPos) {
+    var fmt;
+    if (isNaN(num)) {
+      fmt = nullStr || '-';
+    } else {
+      fmt = numToStr(num, decimals);
+      fmt = addThousandsSep(fmt);
+      if (showPos && parseFloat(fmt) > 0) {
+        fmt = "+" + fmt;
+      }
+    }
+    return fmt;
+  }
+
+
+  // Sort an array of objects based on one or more properties.
+  // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
+  //
+  function sortOn(arr) {
+    var comparators = [];
+    for (var i=1; i<arguments.length; i+=2) {
+      comparators.push(getKeyComparator(arguments[i], arguments[i+1]));
+    }
+    arr.sort(function(a, b) {
+      var cmp = 0,
+          i = 0,
+          n = comparators.length;
+      while (i < n && cmp === 0) {
+        cmp = comparators[i](a, b);
+        i++;
+      }
+      return cmp;
+    });
+    return arr;
+  }
+
+  // Sort array of values that can be compared with < > operators (strings, numbers)
+  // null, undefined and NaN are sorted to the end of the array
+  // default order is ascending
+  //
+  function genericSort(arr, ascending) {
+    var compare = getGenericComparator(ascending);
+    Array.prototype.sort.call(arr, compare);
+    return arr;
+  }
+
+  function getSortedIds(arr, asc) {
+    var ids = range(arr.length);
+    sortArrayIndex(ids, arr, asc);
+    return ids;
+  }
+
+  function sortArrayIndex(ids, arr, asc) {
+    var compare = getGenericComparator(asc);
+    ids.sort(function(i, j) {
+      // added i, j comparison to guarantee that sort is stable
+      var cmp = compare(arr[i], arr[j]);
+      return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
+    });
+  }
+
+  function reorderArray(arr, idxs) {
+    var len = idxs.length;
+    var arr2 = [];
+    for (var i=0; i<len; i++) {
+      var idx = idxs[i];
+      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
+      arr2[i] = arr[idx];
+    }
+    replaceArray(arr, arr2);
+  }
+
+  function getKeyComparator(key, asc) {
+    var compare = getGenericComparator(asc);
+    return function(a, b) {
+      return compare(a[key], b[key]);
+    };
+  }
+
+  function getGenericComparator(asc) {
+    asc = asc !== false;
+    return function(a, b) {
+      var retn = 0;
+      if (b == null) {
+        retn = a == null ? 0 : -1;
+      } else if (a == null) {
+        retn = 1;
+      } else if (a < b) {
+        retn = asc ? -1 : 1;
+      } else if (a > b) {
+        retn = asc ? 1 : -1;
+      } else if (a !== a) {
+        retn = 1;
+      } else if (b !== b) {
+        retn = -1;
+      }
+      return retn;
+    };
+  }
+
+
+  // Generic in-place sort (null, NaN, undefined not handled)
+  function quicksort(arr, asc) {
+    quicksortPartition(arr, 0, arr.length-1);
+    if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
+    return arr;
+  }
+
+  // Moved out of quicksort() (saw >100% speedup in Chrome with deep recursion)
+  function quicksortPartition (a, lo, hi) {
+    var i = lo,
+        j = hi,
+        pivot, tmp;
+    while (i < hi) {
+      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) {
+          tmp = a[i];
+          a[i] = a[j];
+          a[j] = tmp;
+          i++;
+          j--;
+        }
+      }
+      if (lo < j) quicksortPartition(a, lo, j);
+      lo = i;
+      j = hi;
+    }
+  }
+
+
+  function findRankByValue(arr, value) {
+    if (isNaN(value)) return arr.length;
+    var rank = 1;
+    for (var i=0, n=arr.length; i<n; i++) {
+      if (value > arr[i]) rank++;
+    }
+    return rank;
+  }
+
+  function findValueByPct(arr, pct) {
+    var rank = Math.ceil((1-pct) * (arr.length));
+    return findValueByRank(arr, rank);
+  }
+
+  // See http://ndevilla.free.fr/median/median/src/wirth.c
+  // Elements of @arr are reordered
+  //
+  function findValueByRank(arr, rank) {
+    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
+
+    rank = clamp(rank | 0, 1, arr.length);
+    var k = rank - 1, // conv. rank to array index
+        n = arr.length,
+        l = 0,
+        m = n - 1,
+        i, j, val, tmp;
+
+    while (l < m) {
+      val = arr[k];
+      i = l;
+      j = m;
+      do {
+        while (arr[i] < val) {i++;}
+        while (val < arr[j]) {j--;}
+        if (i <= j) {
+          tmp = arr[i];
+          arr[i] = arr[j];
+          arr[j] = tmp;
+          i++;
+          j--;
+        }
+      } while (i <= j);
+      if (j < k) l = i;
+      if (k < i) m = j;
+    }
+    return arr[k];
+  }
+
+  //
+  //
+  function findMedian(arr) {
+    var n = arr.length,
+        rank = Math.floor(n / 2) + 1,
+        median = findValueByRank(arr, rank);
+    if ((n & 1) == 0) {
+      median = (median + findValueByRank(arr, rank - 1)) / 2;
+    }
+    return median;
+  }
+
+
+  function mean(arr) {
+    var count = 0,
+        avg = NaN,
+        val;
+    for (var i=0, n=arr.length; i<n; i++) {
+      val = arr[i];
+      if (isNaN(val)) continue;
+      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
+    }
+    return avg;
+  }
+
+
+  /*
+  A simplified version of printf formatting
+  Format codes: %[flags][width][.precision]type
+
+  supported flags:
+    +   add '+' before positive numbers
+    0   left-pad with '0'
+    '   Add thousands separator
+  width: 1 to many
+  precision: .(1 to many)
+  type:
+    s     string
+    di    integers
+    f     decimal numbers
+    xX    hexidecimal (unsigned)
+    %     literal '%'
+
+  Examples:
+    code    val    formatted
+    %+d     1      '+1'
+    %4i     32     '  32'
+    %04i    32     '0032'
+    %x      255    'ff'
+    %.2f    0.125  '0.13'
+    %'f     1000   '1,000'
+  */
+
+  // Usage: format(formatString, [values])
+  // Tip: When reusing the same format many times, use formatter() for 5x - 10x better performance
+  //
+  function format(fmt) {
+    var fn = formatter(fmt);
+    var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
+    return str;
+  }
+
+  function formatValue(val, matches) {
+    var flags = matches[1];
+    var padding = matches[2];
+    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+    var type = matches[4];
+    var isString = type == 's',
+        isHex = type == 'x' || type == 'X',
+        isInt = type == 'd' || type == 'i',
+        isFloat = type == 'f',
+        isNumber = !isString;
+
+    var sign = "",
+        padDigits = 0,
+        isZero = false,
+        isNeg = false;
+
+    var str, padChar, padStr;
+    if (isString) {
+      str = String(val);
+    }
+    else if (isHex) {
+      str = val.toString(16);
+      if (type == 'X')
+        str = str.toUpperCase();
+    }
+    else if (isNumber) {
+      str = numToStr(val, isInt ? 0 : decimals);
+      if (str[0] == '-') {
+        isNeg = true;
+        str = str.substr(1);
+      }
+      isZero = parseFloat(str) == 0;
+      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
+        str = addThousandsSep(str);
+      }
+      if (!isZero) { // BUG: sign is added when num rounds to 0
+        if (isNeg) {
+          sign = "\u2212"; // U+2212
+        } else if (flags.indexOf('+') != -1) {
+          sign = '+';
+        }
+      }
+    }
+
+    if (padding) {
+      var strLen = str.length + sign.length;
+      var minWidth = parseInt(padding, 10);
+      if (strLen < minWidth) {
+        padDigits = minWidth - strLen;
+        padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+        padStr = repeatString(padChar, padDigits);
+      }
+    }
+
+    if (padDigits == 0) {
+      str = sign + str;
+    } else if (padChar == '0') {
+      str = sign + padStr + str;
+    } else {
+      str = padStr + sign + str;
+    }
+    return str;
+  }
+
+  // Get a function for interpolating formatted values into a string.
+  function formatter(fmt) {
+    var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+    var literals = [],
+        formatCodes = [],
+        startIdx = 0,
+        prefix = "",
+        matches = codeRxp.exec(fmt),
+        literal;
+
+    while (matches) {
+      literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+      if (matches[0] == '%%') {
+        prefix += literal + '%';
+      } else {
+        literals.push(prefix + literal);
+        prefix = '';
+        formatCodes.push(matches);
+      }
+      startIdx = codeRxp.lastIndex;
+      matches = codeRxp.exec(fmt);
+    }
+    literals.push(prefix + fmt.substr(startIdx));
+
+    return function() {
+      var str = literals[0],
+          n = arguments.length;
+      if (n != formatCodes.length) {
+        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
+      }
+      for (var i=0; i<n; i++) {
+        str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
+      }
+      return str;
+    };
+  }
+
+  function wildcardToRegExp(name) {
+    var rxp = name.split('*').map(function(str) {
+      return regexEscape(str);
+    }).join('.*');
+    return new RegExp('^' + rxp + '$');
+  }
+
+  function createBuffer(arg, arg2) {
+    if (isInteger(arg)) {
+      return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
+    } else {
+      // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
+      return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
+    }
+  }
+
+  function expandoBuffer(constructor, rate) {
+    var capacity = 0,
+        k = rate >= 1 ? rate : 1.2,
+        buf;
+    return function(size) {
+      if (size > capacity) {
+        capacity = Math.ceil(size * k);
+        buf = constructor ? new constructor(capacity) : createBuffer(capacity);
+      }
+      return buf;
+    };
+  }
+
+  function copyElements(src, i, dest, j, n, rev) {
+    if (src === dest && j > i) error$1 ("copy error");
+    var inc = 1,
+        offs = 0;
+    if (rev) {
+      inc = -1;
+      offs = n - 1;
+    }
+    for (var k=0; k<n; k++, offs += inc) {
+      dest[k + j] = src[i + offs];
+    }
+  }
+
+  function extendBuffer(src, newLen, copyLen) {
+    var len = Math.max(src.length, newLen);
+    var n = copyLen || src.length;
+    var dest = new src.constructor(len);
+    copyElements(src, 0, dest, 0, n);
+    return dest;
+  }
+
+  function mergeNames(name1, name2) {
+    var merged;
+    if (name1 && name2) {
+      merged = findStringPrefix(name1, name2).replace(/[-_]$/, '');
+    }
+    return merged || '';
+  }
+
+  function findStringPrefix(a, b) {
+    var i = 0;
+    for (var n=a.length; i<n; i++) {
+      if (a[i] !== b[i]) break;
+    }
+    return a.substr(0, i);
+  }
+
+  function parsePercent(o) {
+    var str = String(o);
+    var isPct = str.indexOf('%') > 0;
+    var pct;
+    if (isPct) {
+      pct = Number(str.replace('%', '')) / 100;
+    } else {
+      pct = Number(str);
+    }
+    if (!(pct >= 0 && pct <= 1)) {
+      stop$1(format("Invalid percentage: %s", str));
+    }
+    return pct;
+  }
+
+  function formatVersionedName(name, i) {
+    var suffix = String(i);
+    if (/[0-9]$/.test(name)) {
+      suffix = '-' + suffix;
+    }
+    return name + suffix;
+  }
+
+  function uniqifyNames(names, formatter) {
+    var counts = countValues(names),
+        format = formatter || formatVersionedName,
+        names2 = [];
+
+    names.forEach(function(name) {
+      var i = 0,
+          candidate = name,
+          versionedName;
+      while (
+          names2.indexOf(candidate) > -1 || // candidate name has already been used
+          candidate == name && counts[candidate] > 1 || // duplicate unversioned names
+          candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
+        i++;
+        versionedName = format(name, i);
+        if (!versionedName || versionedName == candidate) {
+          throw new Error("Naming error"); // catch buggy versioning function
+        }
+        candidate = versionedName;
+      }
+      names2.push(candidate);
+    });
+    return names2;
+  }
+
+  // Remove comma separators from strings
+  // TODO: accept European-style numbers?
+  function cleanNumericString(str) {
+    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
+  }
+
+  // Assume: @raw is string, undefined or null
+  function parseString(raw) {
+    return raw ? raw : "";
+  }
+
+  // Assume: @raw is string, undefined or null
+  // Use null instead of NaN for unparsable values
+  // (in part because if NaN is used, empty strings get converted to "NaN"
+  // when re-exported).
+  function parseNumber(raw) {
+    var str = String(raw).trim();
+    var parsed = str ? Number(cleanNumericString(str)) : NaN;
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  function trimQuotes(raw) {
+    var len = raw.length, first, last;
+    if (len >= 2) {
+      first = raw.charAt(0);
+      last = raw.charAt(len-1);
+      if (first == '"' && last == '"' || first == "'" && last == "'") {
+        return raw.substr(1, len-2);
+      }
+    }
+    return raw;
+  }
+
+  var context = createContext(); // command context (persist for the current command cycle)
+
+  function runningInBrowser() {
+    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  }
+
+  function getStateVar(key) {
+    return context[key];
+  }
+
+  function setStateVar(key, val) {
+    context[key] = val;
+  }
+
+  function createContext() {
+    return {
+      DEBUG: false,
+      QUIET: false,
+      VERBOSE: false,
+      defs: {},
+      input_files: []
+    };
+  }
+
+  // Install a new set of context variables, clear them when an async callback is called.
+  // @cb callback function to wrap
+  // returns wrapped callback function
+  function createAsyncContext(cb) {
+    context = createContext();
+    return function() {
+      cb.apply(null, utils$1.toArray(arguments));
+      // clear context after cb(), so output/errors can be handled in current context
+      context = createContext();
+    };
+  }
+
+  // Save the current context, restore it when an async callback is called
+  // @cb callback function to wrap
+  // returns wrapped callback function
+  function preserveContext(cb) {
+    var ctx = context;
+    return function() {
+      context = ctx;
+      cb.apply(null, utils$1.toArray(arguments));
+    };
+  }
+
+  var LOGGING = false;
+  var STDOUT = false; // use stdout for status messages
+
+  // These three functions can be reset by GUI using setLoggingFunctions();
+  var _error = function() {
+    var msg = utils$1.toArray(arguments).join(' ');
+    throw new Error(msg);
+  };
+
+  var _stop = function() {
+    throw new UserError$1(formatLogArgs(arguments));
+  };
+
+  var _message = function() {
+    logArgs(arguments);
+  };
+
+  function enableLogging() {
+    LOGGING = true;
+  }
+
+  function loggingEnabled() {
+    return !!LOGGING;
+  }
+
+  // Handle an unexpected condition (internal error)
+  function error$1() {
+    _error.apply(null, utils$1.toArray(arguments));
+  }
+
+  // Handle an error caused by invalid input or misuse of API
+  function stop$1 () {
+    _stop.apply(null, utils$1.toArray(arguments));
+  }
+
+  // Print a status message
+  function message$1() {
+    _message.apply(null, messageArgs(arguments));
+  }
+
+  // A way for the GUI to replace the CLI logging functions
+  function setLoggingFunctions(message, error, stop) {
+    _message = message;
+    _error = error;
+    _stop = stop;
+  }
+
+
+  // print a message to stdout
+  function print() {
+    STDOUT = true; // tell logArgs() to print to stdout, not stderr
+    message$1.apply(null, arguments);
+    STDOUT = false;
+  }
+
+  function verbose() {
+    if (getStateVar('VERBOSE')) {
+      message$1.apply(null, arguments);
+    }
+  }
+
+  function debug() {
+    if (getStateVar('DEBUG')) {
+      logArgs(arguments);
+    }
+  }
+
+  function printError(err) {
+    var msg;
+    if (!LOGGING) return;
+    if (utils$1.isString(err)) {
+      err = new UserError$1(err);
+    }
+    if (err.name == 'UserError') {
+      msg = err.message;
+      if (!/Error/.test(msg)) {
+        msg = "Error: " + msg;
+      }
+      console.error(messageArgs([msg]).join(' '));
+      console.error("Run mapshaper -h to view help");
+    } else {
+      // not a user error (i.e. a bug in mapshaper)
+      console.error(err);
+      // throw err;
+    }
+  }
+
+  function UserError$1(msg) {
+    var err = new Error(msg);
+    err.name = 'UserError';
+    return err;
+  }
+
+  function formatColumns(arr, alignments) {
+    var widths = arr.reduce(function(memo, line) {
+      return line.map(function(str, i) {
+        return memo ? Math.max(memo[i], str.length) : str.length;
+      });
+    }, null);
+    return arr.map(function(line) {
+      line = line.map(function(str, i) {
+        var rt = alignments && alignments[i] == 'right';
+        var pad = (rt ? str.padStart : str.padEnd).bind(str);
+        return pad(widths[i], ' ');
+      });
+      return '  ' + line.join(' ');
+    }).join('\n');
+  }
+
+  // Format an array of (preferably short) strings in columns for console logging.
+  function formatStringsAsGrid(arr) {
+    // TODO: variable column width
+    var longest = arr.reduce(function(len, str) {
+          return Math.max(len, str.length);
+        }, 0),
+        colWidth = longest + 2,
+        perLine = Math.floor(80 / colWidth) || 1;
+    return arr.reduce(function(memo, name, i) {
+      var col = i % perLine;
+      if (i > 0 && col === 0) memo += '\n';
+      if (col < perLine - 1) { // right-pad all but rightmost column
+        name = utils$1.rpad(name, colWidth - 2, ' ');
+      }
+      return memo +  '  ' + name;
+    }, '');
+  }
+
+  // expose so GUI can use it
+  function formatLogArgs(args) {
+    return utils$1.toArray(args).join(' ');
+  }
+
+  function messageArgs(args) {
+    var arr = utils$1.toArray(args);
+    var cmd = getStateVar('current_command');
+    if (cmd && cmd != 'help') {
+      arr.unshift('[' + cmd + ']');
+    }
+    return arr;
+  }
+
+  function logArgs(args) {
+    if (LOGGING && !getStateVar('QUIET') && utils$1.isArrayLike(args)) {
+      (!STDOUT && console.error || console.log).call(console, formatLogArgs(args));
+    }
+  }
+
+  // convert targets from [{layers: [...], dataset: <>}, ...] format to
+  // [{layer: <>, dataset: <>}, ...] format
+  function expandCommandTargets(targets) {
+    return targets.reduce(function(memo, target) {
+      target.layers.forEach(function(lyr) {
+        memo.push({layer: lyr, dataset: target.dataset});
+      });
+      return memo;
+    }, []);
+  }
+
+  function findCommandTargets(layers, pattern, type) {
+    var targets = [];
+    var matches = findMatchingLayers(layers, pattern, true);
+    if (type) {
+      matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
+    }
+    // assign target_id to matched layers
+    // (kludge so layers can be sorted in the order that they match; used by -o command)
+    layers.forEach(function(o) {o.layer.target_id = -1;});
+    matches.forEach(function(o, i) {o.layer.target_id = i;});
+    return groupLayersByDataset(matches);
+  }
+
+  // arr: array of {layer: <>, dataset: <>} objects
+  function groupLayersByDataset(arr) {
+    var datasets = [];
+    var targets = [];
+    arr.forEach(function(o) {
+      var i = datasets.indexOf(o.dataset);
+      if (i == -1) {
+        datasets.push(o.dataset);
+        targets.push({layers: [o.layer], dataset: o.dataset});
+      } else {
+        targets[i].layers.push(o.layer);
+      }
+    });
+    return targets;
+  }
+
+  // layers: array of {layer: <>, dataset: <>} objects
+  // pattern: is a layer identifier or a comma-sep. list of identifiers.
+  // An identifier is a literal name, a pattern containing "*" wildcard or
+  // a 1-based index (1..n)
+  function findMatchingLayers(layers, pattern, throws) {
+    var matchedLayers = [];
+    var unmatchedIds = [];
+    var index = {};
+    pattern.split(',').forEach(function(subpattern, i) {
+      var test = getLayerMatch(subpattern);
+      var matched = false;
+      layers.forEach(function(o, layerId) {
+        // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
+        if (layerId in index) {
+          matched = true;
+        } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
+          matchedLayers.push(o);
+          index[layerId] = true;
+          matched = true;
+        }
+      });
+      if (matched == false) {
+        unmatchedIds.push(subpattern);
+      }
+    });
+    if (throws && unmatchedIds.length) {
+      stop$1(utils$1.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
+    }
+    return matchedLayers;
+  }
+
+  function getLayerMatch(pattern) {
+    var isIndex = utils$1.isInteger(Number(pattern));
+    var nameRxp = isIndex ? null : utils$1.wildcardToRegExp(pattern);
+    return function(lyr, i) {
+      return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
+    };
+  }
+
+  function countTargetLayers(targets) {
+    return targets.reduce(function(memo, target) {
+      return memo + target.layers.length;
+    }, 0);
+  }
+
+  // get an identifier for a layer that can be used in a target= option
+  // (returns name if layer has a unique name, or a numerical id)
+  function getLayerTargetId(catalog, lyr) {
+    var nameCount = 0,
+        name = lyr.name,
+        id;
+    catalog.getLayers().forEach(function(o, i) {
+      if (lyr.name && o.layer.name == lyr.name) nameCount++;
+      if (lyr == o.layer) id = String(i + 1);
+    });
+    if (!id) error$1('Layer not found');
+    return nameCount == 1 ? lyr.name : id;
+  }
+
   // Export buttons and their behavior
   var ExportControl = function(gui) {
     var model = gui.model;
     var unsupportedMsg = "Exporting is not supported in this browser";
     var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
-    var checkboxes = []; // array of layer checkboxes
+    var layersArr = [];
     var toggleBtn = null; // checkbox <input> for toggling layer selection
     var exportBtn = gui.container.findChild('.export-btn');
     new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
@@ -2901,18 +4161,40 @@
       gui.keyboard.onMenuSubmit(menu, onExportClick);
     }
 
+    function turnOn() {
+      layersArr = initLayerMenu();
+      initFormatMenu();
+      menu.show();
+    }
+
+    function turnOff() {
+      layersArr = [];
+      menu.hide();
+    }
+
+    function getSelectedLayers() {
+      var targets = layersArr.reduce(function(memo, o) {
+        return o.checkbox.checked ? memo.concat(o.target) : memo;
+      }, []);
+      return groupLayersByDataset(targets);
+    }
+
     function onExportClick() {
-      gui.showProgressMessage('Exporting');
+      var layers = getSelectedLayers();
+      if (layers.length === 0) {
+        return gui.alert('No layers were selected');
+      }
       gui.clearMode();
+      gui.showProgressMessage('Exporting');
       setTimeout(function() {
-        exportMenuSelection(function(err) {
+        exportMenuSelection(layers, function(err) {
           if (err) {
             if (utils.isString(err)) {
               gui.alert(err);
             } else {
               // stack seems to change if Error is logged directly
               console.error(err.stack);
-              gui.alert("Export failed for an unknown reason");
+              gui.alert('Export failed for an unknown reason');
             }
           }
           gui.clearProgressMessage();
@@ -2932,16 +4214,12 @@
       return freeform.trim();
     }
 
-    // @done function(string|Error|null)
-    function exportMenuSelection(done) {
-      var opts, files, layers;
+    // done: function(string|Error|null)
+    function exportMenuSelection(layers, done) {
+      var opts, files;
       try {
         opts = getExportOpts();
-        // ignoring command line "target" option
-        layers = getTargetLayers();
-        if (layers.length === 0) {
-          return done('No layers were selected');
-        }
+        // note: command line "target" option gets ignored
         files = internal.exportTargetLayers(layers, opts);
         gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
       } catch(e) {
@@ -2950,63 +4228,105 @@
       internal.writeFiles(files, opts, done);
     }
 
+    function initLayerItem(o, i) {
+      var template = '<input type="checkbox" value="%s" checked> <span class="layer-name dot-underline-black">%s</span>';
+      var target = {
+        dataset: o.dataset,
+        // shallow-copy layer, so it can be renamed in the export dialog
+        // without changing its name elsewhere
+        layer: Object.assign({}, o.layer)
+      };
+      var html = utils.format(template, i + 1, target.layer.name || '[unnamed layer]');
+      // return {layer: o.layer, html: html};
+      var el = El('div').html(html).addClass('layer-item');
+      var box = el.findChild('input').node();
+      box.addEventListener('click', updateToggleBtn);
+
+      new ClickText2(el.findChild('.layer-name'))
+        .on('change', function(e) {
+          var str = cleanLayerName(this.value());
+          this.value(formatLayerNameForDisplay(str));
+          target.layer.name = str;
+          // gui.session.layerRenamed(target.layer, str);
+        });
+
+
+      return {
+        target: target,
+        el: el,
+        checkbox: box
+      };
+    }
+
+    function initSelectAll() {
+      var toggleHtml = '<label><input type="checkbox" value="toggle" checked> Select All</label>';
+      var el = El('div').html(toggleHtml);
+      var btn = el.findChild('input').node();
+      toggleBtn = btn;
+
+      btn.addEventListener('click', function() {
+        var state = getSelectionState();
+        if (state == 'all') {
+          setLayerSelection(false);
+        } else {
+          setLayerSelection(true);
+        }
+        updateToggleBtn();
+      });
+      return el;
+    }
+
     function initLayerMenu() {
       var list = menu.findChild('.export-layer-list').empty();
-      var template = '<label><input type="checkbox" value="%s" checked> %s</label>';
-      var objects = model.getLayers().map(function(o, i) {
-        var html = utils.format(template, i + 1, o.layer.name || '[unnamed layer]');
-        return {layer: o.layer, html: html};
-      });
-      var toggleHtml = utils.format(template, 'toggle', 'Select All');
+      var layers = model.getLayers();
+      sortLayersForMenuDisplay(layers);
 
-      // only add a 'select all' button for three or more layers
-      if (objects.length > 2) {
-        toggleBtn = El('div').html(toggleHtml).appendTo(list).findChild('input').node();
-        toggleBtn.addEventListener('click', function() {
-          var state = getSelectionState();
-          if (state == 'all') {
-            setLayerSelection(false);
-          } else {
-            setLayerSelection(true);
-          }
-          updateToggleBtn();
-        });
+      if (layers.length > 2) {
+        // add select all toggle
+        list.appendChild(initSelectAll());
       }
 
-      sortLayersForMenuDisplay(objects);
-      checkboxes = objects.map(function(o) {
-        var box = El('div').html(o.html).appendTo(list).findChild('input').node();
-        box.addEventListener('click', updateToggleBtn);
-        return box;
+      // add layers to menu
+      var objects = layers.map(function(target, i) {
+        var o = initLayerItem(target, i);
+        list.appendChild(o.el);
+        return o;
       });
-      menu.findChild('.export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
+
+      // hide checkbox if only one layer
+      if (layers.length < 2) {
+        menu.findChild('.export-layers input').css('display', 'none');
+      }
+
+      // update menu title
+      gui.container.findChild('.export-layers .menu-title').html(layers.length == 1 ? 'Layer name' : 'Layers');
+
+      return objects;
     }
 
     function setLayerSelection(checked) {
-      checkboxes.forEach(function(box) {
-        box.checked = !!checked;
+      layersArr.forEach(function(o) {
+        o.checkbox.checked = !!checked;
       });
     }
 
     function updateToggleBtn() {
       if (!toggleBtn) return;
       var state = getSelectionState();
-      // style of intermediate state doesn't look right in Chrome -- removing
+      // style of intermediate checkbox state doesn't look right in Chrome --
+      // removing intermediate state, only using checked and unchecked states
       if (state == 'all') {
         toggleBtn.checked = true;
-        //toggleBtn.indeterminate = false;
       } else if (state == 'some') {
         toggleBtn.checked = false;
-        //toggleBtn.indeterminate = true;
       } else {
         toggleBtn.checked = false;
-        //toggleBtn.indeterminate = false;
       }
     }
 
     function getSelectionState() {
       var count = getTargetLayerIds().length;
-      if (count == checkboxes.length) return 'all';
+      if (count == layersArr.length) return 'all';
       if (count === 0) return 'none';
       return 'some';
     }
@@ -3035,31 +4355,17 @@
       menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
     }
 
-    function turnOn() {
-      initLayerMenu();
-      initFormatMenu();
-      menu.show();
-    }
-
-    function turnOff() {
-      menu.hide();
-    }
-
     function getSelectedFormat() {
       return menu.findChild('.export-formats input:checked').node().value;
     }
 
     function getTargetLayerIds() {
-      return checkboxes.reduce(function(memo, box, i) {
-        if (box.checked) memo.push(box.value);
+      return layersArr.reduce(function(memo, o, i) {
+        if (o.checkbox.checked) memo.push(o.checkbox.value);
         return memo;
       }, []);
     }
 
-    function getTargetLayers() {
-      var ids = getTargetLayerIds().join(',');
-      return ids ? model.findCommandTargets(ids) : [];
-    }
   };
 
   function DomCache() {
@@ -3251,7 +4557,7 @@
       if (lyr.pinned) classes += ' pinned';
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
-      html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>', 'row1');
+      html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
       if (opts.show_source) {
         html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
       }
@@ -3315,7 +4621,6 @@
     }
 
     function initMouseEvents2(entry, id, pinnable) {
-
       initLayerDragging(entry, id);
 
       // init delete button
@@ -3352,7 +4657,7 @@
         .on('change', function(e) {
           var target = findLayerById(id);
           var str = cleanLayerName(this.value());
-          this.value(getDisplayName(str));
+          this.value(formatLayerNameForDisplay(str));
           target.layer.name = str;
           gui.session.layerRenamed(target.layer, str);
           updateMenuBtn();
@@ -3409,18 +4714,12 @@
       return internal.getLayerSourceFile(lyr, dataset);
     }
 
-    function getDisplayName(name) {
-      return name || '[unnamed]';
-    }
 
     function isPinnable(lyr) {
       return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
     }
 
-    function cleanLayerName(raw) {
-      return raw.replace(/[\n\t/\\]/g, '')
-        .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
-    }
+
 
     function rowHTML(c1, c2, cname) {
       return utils.format('<div class="row%s"><div class="col1">%s</div>' +
@@ -6032,1158 +7331,6 @@
     pointSegDistSq2: pointSegDistSq2,
     containsBounds: containsBounds
   });
-
-  var Buffer = require('buffer').Buffer; // works with browserify
-
-  var context = createContext(); // command context (persist for the current command cycle)
-
-  function runningInBrowser() {
-    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
-  }
-
-  function getStateVar(key) {
-    return context[key];
-  }
-
-  function setStateVar(key, val) {
-    context[key] = val;
-  }
-
-  function createContext() {
-    return {
-      DEBUG: false,
-      QUIET: false,
-      VERBOSE: false,
-      defs: {},
-      input_files: []
-    };
-  }
-
-  // Install a new set of context variables, clear them when an async callback is called.
-  // @cb callback function to wrap
-  // returns wrapped callback function
-  function createAsyncContext(cb) {
-    context = createContext();
-    return function() {
-      cb.apply(null, utils$1.toArray(arguments));
-      // clear context after cb(), so output/errors can be handled in current context
-      context = createContext();
-    };
-  }
-
-  // Save the current context, restore it when an async callback is called
-  // @cb callback function to wrap
-  // returns wrapped callback function
-  function preserveContext(cb) {
-    var ctx = context;
-    return function() {
-      context = ctx;
-      cb.apply(null, utils$1.toArray(arguments));
-    };
-  }
-
-  var LOGGING = false;
-  var STDOUT = false; // use stdout for status messages
-
-  // These three functions can be reset by GUI using setLoggingFunctions();
-  var _error = function() {
-    var msg = utils$1.toArray(arguments).join(' ');
-    throw new Error(msg);
-  };
-
-  var _stop = function() {
-    throw new UserError$1(formatLogArgs(arguments));
-  };
-
-  var _message = function() {
-    logArgs(arguments);
-  };
-
-  function enableLogging() {
-    LOGGING = true;
-  }
-
-  function loggingEnabled() {
-    return !!LOGGING;
-  }
-
-  // Handle an unexpected condition (internal error)
-  function error$1() {
-    _error.apply(null, utils$1.toArray(arguments));
-  }
-
-  // Handle an error caused by invalid input or misuse of API
-  function stop$1 () {
-    _stop.apply(null, utils$1.toArray(arguments));
-  }
-
-  // Print a status message
-  function message$1() {
-    _message.apply(null, messageArgs(arguments));
-  }
-
-  // A way for the GUI to replace the CLI logging functions
-  function setLoggingFunctions(message, error, stop) {
-    _message = message;
-    _error = error;
-    _stop = stop;
-  }
-
-
-  // print a message to stdout
-  function print() {
-    STDOUT = true; // tell logArgs() to print to stdout, not stderr
-    message$1.apply(null, arguments);
-    STDOUT = false;
-  }
-
-  function verbose() {
-    if (getStateVar('VERBOSE')) {
-      message$1.apply(null, arguments);
-    }
-  }
-
-  function debug() {
-    if (getStateVar('DEBUG')) {
-      logArgs(arguments);
-    }
-  }
-
-  function printError(err) {
-    var msg;
-    if (!LOGGING) return;
-    if (utils$1.isString(err)) {
-      err = new UserError$1(err);
-    }
-    if (err.name == 'UserError') {
-      msg = err.message;
-      if (!/Error/.test(msg)) {
-        msg = "Error: " + msg;
-      }
-      console.error(messageArgs([msg]).join(' '));
-      console.error("Run mapshaper -h to view help");
-    } else {
-      // not a user error (i.e. a bug in mapshaper)
-      console.error(err);
-      // throw err;
-    }
-  }
-
-  function UserError$1(msg) {
-    var err = new Error(msg);
-    err.name = 'UserError';
-    return err;
-  }
-
-  function formatColumns(arr, alignments) {
-    var widths = arr.reduce(function(memo, line) {
-      return line.map(function(str, i) {
-        return memo ? Math.max(memo[i], str.length) : str.length;
-      });
-    }, null);
-    return arr.map(function(line) {
-      line = line.map(function(str, i) {
-        var rt = alignments && alignments[i] == 'right';
-        var pad = (rt ? str.padStart : str.padEnd).bind(str);
-        return pad(widths[i], ' ');
-      });
-      return '  ' + line.join(' ');
-    }).join('\n');
-  }
-
-  // Format an array of (preferably short) strings in columns for console logging.
-  function formatStringsAsGrid(arr) {
-    // TODO: variable column width
-    var longest = arr.reduce(function(len, str) {
-          return Math.max(len, str.length);
-        }, 0),
-        colWidth = longest + 2,
-        perLine = Math.floor(80 / colWidth) || 1;
-    return arr.reduce(function(memo, name, i) {
-      var col = i % perLine;
-      if (i > 0 && col === 0) memo += '\n';
-      if (col < perLine - 1) { // right-pad all but rightmost column
-        name = utils$1.rpad(name, colWidth - 2, ' ');
-      }
-      return memo +  '  ' + name;
-    }, '');
-  }
-
-  // expose so GUI can use it
-  function formatLogArgs(args) {
-    return utils$1.toArray(args).join(' ');
-  }
-
-  function messageArgs(args) {
-    var arr = utils$1.toArray(args);
-    var cmd = getStateVar('current_command');
-    if (cmd && cmd != 'help') {
-      arr.unshift('[' + cmd + ']');
-    }
-    return arr;
-  }
-
-  function logArgs(args) {
-    if (LOGGING && !getStateVar('QUIET') && utils$1.isArrayLike(args)) {
-      (!STDOUT && console.error || console.log).call(console, formatLogArgs(args));
-    }
-  }
-
-  var uniqCount = 0;
-  function getUniqueName(prefix) {
-    return (prefix || "__id_") + (++uniqCount);
-  }
-
-  function isFunction(obj) {
-    return typeof obj == 'function';
-  }
-
-  function isObject(obj) {
-    return obj === Object(obj); // via underscore
-  }
-
-  function clamp(val, min, max) {
-    return val < min ? min : (val > max ? max : val);
-  }
-
-  function isArray(obj) {
-    return Array.isArray(obj);
-  }
-
-  // Is obj a valid number or NaN? (test if obj is type number)
-  function isNumber(obj) {
-    return obj != null && obj.constructor == Number;
-  }
-
-  function isValidNumber(val) {
-    return isNumber(val) && !isNaN(val);
-  }
-
-  // Similar to isFinite() but does not coerce strings or other types
-  function isFiniteNumber(val) {
-    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
-  }
-
-  // This uses type conversion
-  // export function isFiniteNumber(val) {
-  //   return val > -Infinity && val < Infinity;
-  // }
-
-  function isNonNegNumber(val) {
-    return isNumber(val) && val >= 0;
-  }
-
-  function isInteger(obj) {
-    return isNumber(obj) && ((obj | 0) === obj);
-  }
-
-  function isString(obj) {
-    return obj != null && obj.toString === String.prototype.toString;
-    // TODO: replace w/ something better.
-  }
-
-  function isDate(obj) {
-    return !!obj && obj.getTime === Date.prototype.getTime;
-  }
-
-  function isBoolean(obj) {
-    return obj === true || obj === false;
-  }
-
-  function formatDateISO(d) {
-    if (!isDate(d)) return '';
-    return d.toISOString().replace(':00.000Z', 'Z');
-  }
-
-  // Convert an array-like object to an Array, or make a copy if @obj is an Array
-  function toArray(obj) {
-    var arr;
-    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
-    try {
-      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
-    } catch(e) {
-      // support ie8
-      arr = [];
-      for (var i=0, n=obj.length; i<n; i++) {
-        arr[i] = obj[i];
-      }
-    }
-    return arr;
-  }
-
-  // Array like: has length property, is numerically indexed and mutable.
-  // TODO: try to detect objects with length property but no indexed data elements
-  function isArrayLike(obj) {
-    if (!obj) return false;
-    if (isArray(obj)) return true;
-    if (isString(obj)) return false;
-    if (obj.length === 0) return true;
-    if (obj.length > 0) return true;
-    return false;
-  }
-
-  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
-  function addslashes(str) {
-    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
-  }
-
-  // Escape a literal string to use in a regexp.
-  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
-  function regexEscape(str) {
-    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-  }
-
-
-  // See https://github.com/janl/mustache.js/blob/master/mustache.js
-  var entityMap = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-    '/': '&#x2F;'
-  };
-  function htmlEscape(s) {
-    return String(s).replace(/[&<>"'\/]/g, function(s) {
-      return entityMap[s];
-    });
-  }
-
-  function defaults(dest) {
-    for (var i=1, n=arguments.length; i<n; i++) {
-      var src = arguments[i] || {};
-      for (var key in src) {
-        if (key in dest === false && src.hasOwnProperty(key)) {
-          dest[key] = src[key];
-        }
-      }
-    }
-    return dest;
-  }
-
-  function extend(o) {
-    var dest = o || {},
-        n = arguments.length,
-        key, i, src;
-    for (i=1; i<n; i++) {
-      src = arguments[i] || {};
-      for (key in src) {
-        if (src.hasOwnProperty(key)) {
-          dest[key] = src[key];
-        }
-      }
-    }
-    return dest;
-  }
-
-  // Pseudoclassical inheritance
-  //
-  // Inherit from a Parent function:
-  //    inherit(Child, Parent);
-  // Call parent's constructor (inside child constructor):
-  //    this.__super__([args...]);
-  function inherit(targ, src) {
-    var f = function() {
-      if (this.__super__ == f) {
-        // add __super__ of parent to front of lookup chain
-        // so parent class constructor can call its parent using this.__super__
-        this.__super__ = src.prototype.__super__;
-        // call parent constructor function. this.__super__ now points to parent-of-parent
-        src.apply(this, arguments);
-        // remove temp __super__, expose targ.prototype.__super__ again
-        delete this.__super__;
-      }
-    };
-
-    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // Extend targ prototype instead of wiping it out --
-    //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = extend(new f(), targ.prototype); //
-    targ.prototype.constructor = targ;
-    targ.prototype.__super__ = f;
-  }
-
-
-  // Call @iter on each member of an array (similar to Array#reduce(iter))
-  //    iter: function(memo, item, callback)
-  // Call @done when all members have been processed or if an error occurs
-  //    done: function(err, memo)
-  // @memo: Initial value
-  //
-  function reduceAsync(arr, memo, iter, done) {
-    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
-    var i=0;
-    next(null, memo);
-
-    function next(err, memo) {
-      // Detach next operation from call stack to prevent overflow
-      // Don't use setTimeout(, 0) if setImmediate is available
-      // (setTimeout() can introduce a long delay if previous operation was slow,
-      //    as of Node 0.10.32 -- a bug?)
-      if (err) {
-        return done(err, null);
-      }
-      call(function() {
-        if (i < arr.length === false) {
-          done(null, memo);
-        } else {
-          iter(memo, arr[i++], next);
-        }
-      }, 0);
-    }
-  }
-
-
-  // Append elements of @src array to @dest array
-  function merge(dest, src) {
-    if (!isArray(dest) || !isArray(src)) {
-      error$1("Usage: merge(destArray, srcArray);");
-    }
-    for (var i=0, n=src.length; i<n; i++) {
-      dest.push(src[i]);
-    }
-    return dest;
-  }
-
-  // Returns elements in arr and not in other
-  // (similar to underscore diff)
-  function difference(arr, other) {
-    var index = arrayToIndex(other);
-    return arr.filter(function(el) {
-      return !Object.prototype.hasOwnProperty.call(index, el);
-    });
-  }
-
-  function indexOf(arr, item) {
-    var nan = item !== item;
-    for (var i = 0, len = arr.length || 0; i < len; i++) {
-      if (arr[i] === item) return i;
-      if (nan && arr[i] !== arr[i]) return i;
-    }
-    return -1;
-  }
-
-  // Test a string or array-like object for existence of substring or element
-  function contains(container, item) {
-    if (isString(container)) {
-      return container.indexOf(item) != -1;
-    }
-    else if (isArrayLike(container)) {
-      return indexOf(container, item) != -1;
-    }
-    error$1("Expected Array or String argument");
-  }
-
-  function some(arr, test) {
-    return arr.reduce(function(val, item) {
-      return val || test(item); // TODO: short-circuit?
-    }, false);
-  }
-
-  function every(arr, test) {
-    return arr.reduce(function(val, item) {
-      return val && test(item);
-    }, true);
-  }
-
-  function find(arr, test, ctx) {
-    var matches = arr.filter(test, ctx);
-    return matches.length === 0 ? null : matches[0];
-  }
-
-  function range(len, start, inc) {
-    var arr = [],
-        v = start === void 0 ? 0 : start,
-        i = inc === void 0 ? 1 : inc;
-    while(len--) {
-      arr.push(v);
-      v += i;
-    }
-    return arr;
-  }
-
-  function repeat(times, func) {
-    var values = [],
-        val;
-    for (var i=0; i<times; i++) {
-      val = func(i);
-      if (val !== void 0) {
-        values[i] = val;
-      }
-    }
-    return values.length > 0 ? values : void 0;
-  }
-
-  // Calc sum, skip falsy and NaN values
-  // Assumes: no other non-numeric objects in array
-  //
-  function sum(arr, info) {
-    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
-    var tot = 0,
-        nan = 0,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (val) {
-        tot += val;
-      } else if (isNaN(val)) {
-        nan++;
-      }
-    }
-    if (info) {
-      info.nan = nan;
-    }
-    return tot;
-  }
-
-  // Calculate min and max values of an array, ignoring NaN values
-  function getArrayBounds(arr) {
-    var min = Infinity,
-      max = -Infinity,
-      nan = 0, val;
-    for (var i=0, len=arr.length; i<len; i++) {
-      val = arr[i];
-      if (val !== val) nan++;
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    return {
-      min: min,
-      max: max,
-      nan: nan
-    };
-  }
-
-  function uniq(src) {
-    var index = {};
-    return src.reduce(function(memo, el) {
-      if (el in index === false) {
-        index[el] = true;
-        memo.push(el);
-      }
-      return memo;
-    }, []);
-  }
-
-  function pluck(arr, key) {
-    return arr.map(function(obj) {
-      return obj[key];
-    });
-  }
-
-  function countValues(arr) {
-    return arr.reduce(function(memo, val) {
-      memo[val] = (val in memo) ? memo[val] + 1 : 1;
-      return memo;
-    }, {});
-  }
-
-  function indexOn(arr, k) {
-    return arr.reduce(function(index, o) {
-      index[o[k]] = o;
-      return index;
-    }, {});
-  }
-
-  function groupBy(arr, k) {
-    return arr.reduce(function(index, o) {
-      var keyval = o[k];
-      if (keyval in index) {
-        index[keyval].push(o);
-      } else {
-        index[keyval] = [o];
-      }
-      return index;
-    }, {});
-  }
-
-  function arrayToIndex(arr, val) {
-    var init = arguments.length > 1;
-    return arr.reduce(function(index, key) {
-      index[key] = init ? val : true;
-      return index;
-    }, {});
-  }
-
-  // Support for iterating over array-like objects, like typed arrays
-  function forEach(arr, func, ctx) {
-    if (!isArrayLike(arr)) {
-      throw new Error("#forEach() takes an array-like argument. " + arr);
-    }
-    for (var i=0, n=arr.length; i < n; i++) {
-      func.call(ctx, arr[i], i);
-    }
-  }
-
-  function forEachProperty(o, func, ctx) {
-    Object.keys(o).forEach(function(key) {
-      func.call(ctx, o[key], key);
-    });
-  }
-
-  function initializeArray(arr, init) {
-    for (var i=0, len=arr.length; i<len; i++) {
-      arr[i] = init;
-    }
-    return arr;
-  }
-
-  function replaceArray(arr, arr2) {
-    arr.splice(0, arr.length);
-    for (var i=0, n=arr2.length; i<n; i++) {
-      arr.push(arr2[i]);
-    }
-  }
-
-  function repeatString(src, n) {
-    var str = "";
-    for (var i=0; i<n; i++)
-      str += src;
-    return str;
-  }
-
-  function pluralSuffix(count) {
-    return count != 1 ? 's' : '';
-  }
-
-  function endsWith(str, ending) {
-      return str.indexOf(ending, str.length - ending.length) !== -1;
-  }
-
-  function lpad(str, size, pad) {
-    pad = pad || ' ';
-    str = String(str);
-    return repeatString(pad, size - str.length) + str;
-  }
-
-  function rpad(str, size, pad) {
-    pad = pad || ' ';
-    str = String(str);
-    return str + repeatString(pad, size - str.length);
-  }
-
-  function trim(str) {
-    return ltrim(rtrim(str));
-  }
-
-  var ltrimRxp = /^\s+/;
-  function ltrim(str) {
-    return str.replace(ltrimRxp, '');
-  }
-
-  var rtrimRxp = /\s+$/;
-  function rtrim(str) {
-    return str.replace(rtrimRxp, '');
-  }
-
-  function addThousandsSep(str) {
-    var fmt = '',
-        start = str[0] == '-' ? 1 : 0,
-        dec = str.indexOf('.'),
-        end = str.length,
-        ins = (dec == -1 ? end : dec) - 3;
-    while (ins > start) {
-      fmt = ',' + str.substring(ins, end) + fmt;
-      end = ins;
-      ins -= 3;
-    }
-    return str.substring(0, end) + fmt;
-  }
-
-  function numToStr(num, decimals) {
-    return decimals >= 0 ? num.toFixed(decimals) : String(num);
-  }
-
-  function formatNumber(num, decimals, nullStr, showPos) {
-    var fmt;
-    if (isNaN(num)) {
-      fmt = nullStr || '-';
-    } else {
-      fmt = numToStr(num, decimals);
-      fmt = addThousandsSep(fmt);
-      if (showPos && parseFloat(fmt) > 0) {
-        fmt = "+" + fmt;
-      }
-    }
-    return fmt;
-  }
-
-
-  // Sort an array of objects based on one or more properties.
-  // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
-  //
-  function sortOn(arr) {
-    var comparators = [];
-    for (var i=1; i<arguments.length; i+=2) {
-      comparators.push(getKeyComparator(arguments[i], arguments[i+1]));
-    }
-    arr.sort(function(a, b) {
-      var cmp = 0,
-          i = 0,
-          n = comparators.length;
-      while (i < n && cmp === 0) {
-        cmp = comparators[i](a, b);
-        i++;
-      }
-      return cmp;
-    });
-    return arr;
-  }
-
-  // Sort array of values that can be compared with < > operators (strings, numbers)
-  // null, undefined and NaN are sorted to the end of the array
-  // default order is ascending
-  //
-  function genericSort(arr, ascending) {
-    var compare = getGenericComparator(ascending);
-    Array.prototype.sort.call(arr, compare);
-    return arr;
-  }
-
-  function getSortedIds(arr, asc) {
-    var ids = range(arr.length);
-    sortArrayIndex(ids, arr, asc);
-    return ids;
-  }
-
-  function sortArrayIndex(ids, arr, asc) {
-    var compare = getGenericComparator(asc);
-    ids.sort(function(i, j) {
-      // added i, j comparison to guarantee that sort is stable
-      var cmp = compare(arr[i], arr[j]);
-      return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
-    });
-  }
-
-  function reorderArray(arr, idxs) {
-    var len = idxs.length;
-    var arr2 = [];
-    for (var i=0; i<len; i++) {
-      var idx = idxs[i];
-      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
-      arr2[i] = arr[idx];
-    }
-    replaceArray(arr, arr2);
-  }
-
-  function getKeyComparator(key, asc) {
-    var compare = getGenericComparator(asc);
-    return function(a, b) {
-      return compare(a[key], b[key]);
-    };
-  }
-
-  function getGenericComparator(asc) {
-    asc = asc !== false;
-    return function(a, b) {
-      var retn = 0;
-      if (b == null) {
-        retn = a == null ? 0 : -1;
-      } else if (a == null) {
-        retn = 1;
-      } else if (a < b) {
-        retn = asc ? -1 : 1;
-      } else if (a > b) {
-        retn = asc ? 1 : -1;
-      } else if (a !== a) {
-        retn = 1;
-      } else if (b !== b) {
-        retn = -1;
-      }
-      return retn;
-    };
-  }
-
-
-  // Generic in-place sort (null, NaN, undefined not handled)
-  function quicksort(arr, asc) {
-    quicksortPartition(arr, 0, arr.length-1);
-    if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
-    return arr;
-  }
-
-  // Moved out of quicksort() (saw >100% speedup in Chrome with deep recursion)
-  function quicksortPartition (a, lo, hi) {
-    var i = lo,
-        j = hi,
-        pivot, tmp;
-    while (i < hi) {
-      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
-      while (i <= j) {
-        while (a[i] < pivot) i++;
-        while (a[j] > pivot) j--;
-        if (i <= j) {
-          tmp = a[i];
-          a[i] = a[j];
-          a[j] = tmp;
-          i++;
-          j--;
-        }
-      }
-      if (lo < j) quicksortPartition(a, lo, j);
-      lo = i;
-      j = hi;
-    }
-  }
-
-
-  function findRankByValue(arr, value) {
-    if (isNaN(value)) return arr.length;
-    var rank = 1;
-    for (var i=0, n=arr.length; i<n; i++) {
-      if (value > arr[i]) rank++;
-    }
-    return rank;
-  }
-
-  function findValueByPct(arr, pct) {
-    var rank = Math.ceil((1-pct) * (arr.length));
-    return findValueByRank(arr, rank);
-  }
-
-  // See http://ndevilla.free.fr/median/median/src/wirth.c
-  // Elements of @arr are reordered
-  //
-  function findValueByRank(arr, rank) {
-    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
-
-    rank = clamp(rank | 0, 1, arr.length);
-    var k = rank - 1, // conv. rank to array index
-        n = arr.length,
-        l = 0,
-        m = n - 1,
-        i, j, val, tmp;
-
-    while (l < m) {
-      val = arr[k];
-      i = l;
-      j = m;
-      do {
-        while (arr[i] < val) {i++;}
-        while (val < arr[j]) {j--;}
-        if (i <= j) {
-          tmp = arr[i];
-          arr[i] = arr[j];
-          arr[j] = tmp;
-          i++;
-          j--;
-        }
-      } while (i <= j);
-      if (j < k) l = i;
-      if (k < i) m = j;
-    }
-    return arr[k];
-  }
-
-  //
-  //
-  function findMedian(arr) {
-    var n = arr.length,
-        rank = Math.floor(n / 2) + 1,
-        median = findValueByRank(arr, rank);
-    if ((n & 1) == 0) {
-      median = (median + findValueByRank(arr, rank - 1)) / 2;
-    }
-    return median;
-  }
-
-
-  function mean(arr) {
-    var count = 0,
-        avg = NaN,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (isNaN(val)) continue;
-      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
-    }
-    return avg;
-  }
-
-
-  /*
-  A simplified version of printf formatting
-  Format codes: %[flags][width][.precision]type
-
-  supported flags:
-    +   add '+' before positive numbers
-    0   left-pad with '0'
-    '   Add thousands separator
-  width: 1 to many
-  precision: .(1 to many)
-  type:
-    s     string
-    di    integers
-    f     decimal numbers
-    xX    hexidecimal (unsigned)
-    %     literal '%'
-
-  Examples:
-    code    val    formatted
-    %+d     1      '+1'
-    %4i     32     '  32'
-    %04i    32     '0032'
-    %x      255    'ff'
-    %.2f    0.125  '0.13'
-    %'f     1000   '1,000'
-  */
-
-  // Usage: format(formatString, [values])
-  // Tip: When reusing the same format many times, use formatter() for 5x - 10x better performance
-  //
-  function format(fmt) {
-    var fn = formatter(fmt);
-    var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
-    return str;
-  }
-
-  function formatValue(val, matches) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "",
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str, padChar, padStr;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      str = numToStr(val, isInt ? 0 : decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-        str = addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        padStr = repeatString(padChar, padDigits);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
-  }
-
-  // Get a function for interpolating formatted values into a string.
-  function formatter(fmt) {
-    var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-    var literals = [],
-        formatCodes = [],
-        startIdx = 0,
-        prefix = "",
-        matches = codeRxp.exec(fmt),
-        literal;
-
-    while (matches) {
-      literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      if (matches[0] == '%%') {
-        prefix += literal + '%';
-      } else {
-        literals.push(prefix + literal);
-        prefix = '';
-        formatCodes.push(matches);
-      }
-      startIdx = codeRxp.lastIndex;
-      matches = codeRxp.exec(fmt);
-    }
-    literals.push(prefix + fmt.substr(startIdx));
-
-    return function() {
-      var str = literals[0],
-          n = arguments.length;
-      if (n != formatCodes.length) {
-        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
-      }
-      for (var i=0; i<n; i++) {
-        str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
-      }
-      return str;
-    };
-  }
-
-  function wildcardToRegExp(name) {
-    var rxp = name.split('*').map(function(str) {
-      return regexEscape(str);
-    }).join('.*');
-    return new RegExp('^' + rxp + '$');
-  }
-
-  function createBuffer(arg, arg2) {
-    if (isInteger(arg)) {
-      return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
-    } else {
-      // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
-      return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
-    }
-  }
-
-  function expandoBuffer(constructor, rate) {
-    var capacity = 0,
-        k = rate >= 1 ? rate : 1.2,
-        buf;
-    return function(size) {
-      if (size > capacity) {
-        capacity = Math.ceil(size * k);
-        buf = constructor ? new constructor(capacity) : createBuffer(capacity);
-      }
-      return buf;
-    };
-  }
-
-  function copyElements(src, i, dest, j, n, rev) {
-    if (src === dest && j > i) error$1 ("copy error");
-    var inc = 1,
-        offs = 0;
-    if (rev) {
-      inc = -1;
-      offs = n - 1;
-    }
-    for (var k=0; k<n; k++, offs += inc) {
-      dest[k + j] = src[i + offs];
-    }
-  }
-
-  function extendBuffer(src, newLen, copyLen) {
-    var len = Math.max(src.length, newLen);
-    var n = copyLen || src.length;
-    var dest = new src.constructor(len);
-    copyElements(src, 0, dest, 0, n);
-    return dest;
-  }
-
-  function mergeNames(name1, name2) {
-    var merged;
-    if (name1 && name2) {
-      merged = findStringPrefix(name1, name2).replace(/[-_]$/, '');
-    }
-    return merged || '';
-  }
-
-  function findStringPrefix(a, b) {
-    var i = 0;
-    for (var n=a.length; i<n; i++) {
-      if (a[i] !== b[i]) break;
-    }
-    return a.substr(0, i);
-  }
-
-  function parsePercent(o) {
-    var str = String(o);
-    var isPct = str.indexOf('%') > 0;
-    var pct;
-    if (isPct) {
-      pct = Number(str.replace('%', '')) / 100;
-    } else {
-      pct = Number(str);
-    }
-    if (!(pct >= 0 && pct <= 1)) {
-      stop$1(format("Invalid percentage: %s", str));
-    }
-    return pct;
-  }
-
-  function formatVersionedName(name, i) {
-    var suffix = String(i);
-    if (/[0-9]$/.test(name)) {
-      suffix = '-' + suffix;
-    }
-    return name + suffix;
-  }
-
-  function uniqifyNames(names, formatter) {
-    var counts = countValues(names),
-        format = formatter || formatVersionedName,
-        names2 = [];
-
-    names.forEach(function(name) {
-      var i = 0,
-          candidate = name,
-          versionedName;
-      while (
-          names2.indexOf(candidate) > -1 || // candidate name has already been used
-          candidate == name && counts[candidate] > 1 || // duplicate unversioned names
-          candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
-        i++;
-        versionedName = format(name, i);
-        if (!versionedName || versionedName == candidate) {
-          throw new Error("Naming error"); // catch buggy versioning function
-        }
-        candidate = versionedName;
-      }
-      names2.push(candidate);
-    });
-    return names2;
-  }
-
-  // Remove comma separators from strings
-  // TODO: accept European-style numbers?
-  function cleanNumericString(str) {
-    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
-  }
-
-  // Assume: @raw is string, undefined or null
-  function parseString(raw) {
-    return raw ? raw : "";
-  }
-
-  // Assume: @raw is string, undefined or null
-  // Use null instead of NaN for unparsable values
-  // (in part because if NaN is used, empty strings get converted to "NaN"
-  // when re-exported).
-  function parseNumber(raw) {
-    var str = String(raw).trim();
-    var parsed = str ? Number(cleanNumericString(str)) : NaN;
-    return isNaN(parsed) ? null : parsed;
-  }
-
-  function trimQuotes(raw) {
-    var len = raw.length, first, last;
-    if (len >= 2) {
-      first = raw.charAt(0);
-      last = raw.charAt(len-1);
-      if (first == '"' && last == '"' || first == "'" && last == "'") {
-        return raw.substr(1, len-2);
-      }
-    }
-    return raw;
-  }
 
   function Transform() {
     this.mx = this.my = 1;
