@@ -77,6 +77,9 @@ function makeDotsForShape(shp, arcs, rec, opts) {
     p = dots[i];
     if (!p) continue;
     idx = indexes[i];
+    if (p.length === 3 && opts.debug) {
+      idx = p.pop(); // way to debug dot placement visually
+    }
     if (!multipart || idx != prevIdx) {
       prevIdx = idx;
       retn.shapes.push(coords = []);
@@ -139,7 +142,7 @@ export function getDataRecord(i, d, opts) {
   var o = {};
   if (opts.colors) {
     o.fill = opts.colors[i];
-    o.r = opts.r || 1.5;
+    o.r = opts.r || 1.3;
   } else if (opts.r) {
     o.r = opts.r;
   }

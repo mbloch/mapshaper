@@ -14,7 +14,7 @@ describe('mapshaper-dots.js', function () {
 
     it('colors option', function () {
       var out = getDataRecord(1, null, {colors: ['red', 'green']});
-      assert.deepEqual(out, {fill: 'green', r: 1.5})
+      assert.deepEqual(out, {fill: 'green', r: 1.3})
     })
 
   })

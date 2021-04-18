@@ -704,6 +704,7 @@ export function getOptionParser() {
       describe: 'combine groups of same-color dots into multi-part features',
       type: 'flag'
     })
+    .option('debug', {type: 'flag'})
     .option('target', targetOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt);
