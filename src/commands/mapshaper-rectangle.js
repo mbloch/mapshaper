@@ -18,7 +18,7 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
   var crs = getDatasetCRS(targetDataset);
   var records = targetLyr.data ? targetLyr.data.getRecords() : null;
   var geometries = targetLyr.shapes.map(function(shp) {
-    var bounds = targetLyr.geometryType == 'point' ?
+    var bounds = targetLyr.geometry_type == 'point' ?
       getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
     bounds = applyRectangleOptions(bounds, crs, opts);
     if (!bounds) return null;

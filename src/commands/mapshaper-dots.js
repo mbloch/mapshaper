@@ -37,8 +37,10 @@ cmd.dots = function(lyr, arcs, opts) {
     var d = records[i];
     if (!d) return;
     var data =  makeDotsForShape(shp, arcs, d, opts);
-    shapes2.push.apply(shapes2, data.shapes);
-    records2.push.apply(records2, data.attributes);
+    for (var j=0, n=data.shapes.length; j<n; j++) {
+      shapes2.push(data.shapes[j]);
+      records2.push(data.attributes[j]);
+    }
   });
 
   var lyr2 = {
