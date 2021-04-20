@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.44";
+  var VERSION = "0.5.45";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -6123,40 +6123,35 @@
     parsePrj: parsePrj
   });
 
-  function replaceFileExtension(path, ext) {
-    var info = parseLocalPath(path);
-    return info.pathbase + '.' + ext;
-  }
-
   function getPathSep(path) {
     // TODO: improve
     return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
   }
 
   // Parse the path to a file without using Node
-  // Assumes: not a directory path
+  // Guess if the path is a directory or file
   function parseLocalPath(path) {
-    var obj = {},
+    var obj = {
+          filename: '',
+          directory: '',
+          basename: '',
+          extension: ''
+        },
         sep = getPathSep(path),
         parts = path.split(sep),
-        i;
+        lastPart = parts.pop(),
+        // try to match typical extensions but reject directory names with dots
+        extRxp = /\.([a-z][a-z0-9]*)$/i;
 
-    if (parts.length == 1) {
-      obj.filename = parts[0];
-      obj.directory = "";
-    } else {
-      obj.filename = parts.pop();
+    if (extRxp.test(lastPart)) {
+      obj.filename = lastPart;
+      obj.extension = extRxp.exec(lastPart)[1];
+      obj.basename = lastPart.slice(0, lastPart.length - obj.extension.length - 1);
       obj.directory = parts.join(sep);
-    }
-    i = obj.filename.lastIndexOf('.');
-    if (i > -1) {
-      obj.extension = obj.filename.substr(i + 1);
-      obj.basename = obj.filename.substr(0, i);
-      obj.pathbase = path.substr(0, path.lastIndexOf('.'));
+    } else if (!lastPart) { // path ends with separator
+      obj.directory = parts.join(sep);
     } else {
-      obj.extension = "";
-      obj.basename = obj.filename;
-      obj.pathbase = path;
+      obj.directory = path;
     }
     return obj;
   }
@@ -6170,7 +6165,13 @@
   }
 
   function getPathBase(path) {
-    return parseLocalPath(path).pathbase;
+    var info =  parseLocalPath(path);
+    if (!info.extension) return path;
+    return path.slice(0, path.length - info.extension.length - 1);
+  }
+
+  function replaceFileExtension(path, ext) {
+    return getPathBase(path) + '.' + ext;
   }
 
   function getCommonFileBase(names) {
@@ -6191,11 +6192,11 @@
 
   var FilenameUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    replaceFileExtension: replaceFileExtension,
     parseLocalPath: parseLocalPath,
     getFileBase: getFileBase,
     getFileExtension: getFileExtension,
     getPathBase: getPathBase,
+    replaceFileExtension: replaceFileExtension,
     getCommonFileBase: getCommonFileBase,
     getOutputFileBase: getOutputFileBase
   });
@@ -19063,7 +19064,9 @@ ${svg}
     // Use file basename for layer name, except TopoJSON, which uses object names
     if (fileFmt != 'topojson') {
       dataset.layers.forEach(function(lyr) {
-        setLayerName(lyr, filenameToLayerName(data.filename || ''));
+        if (!lyr.name) {
+          lyr.name = filenameToLayerName(data.filename || '');
+        }
       });
     }
 
@@ -19125,13 +19128,6 @@ ${svg}
       name = obj.basename;
     }
     return name;
-  }
-
-  // initialize layer name using filename
-  function setLayerName(lyr, path) {
-    if (!lyr.name) {
-      lyr.name = getFileBase(path);
-    }
   }
 
   var Import = /*#__PURE__*/Object.freeze({
@@ -26583,7 +26579,7 @@ ${svg}
     return coords;
   }
 
-  function placeDot(shp, arcs, grid, bounds) {
+  function placeDot(shp, arcs, grid) {
     var i = 0;
     var limit = 100;
     var p;
@@ -27007,8 +27003,10 @@ ${svg}
       var d = records[i];
       if (!d) return;
       var data =  makeDotsForShape(shp, arcs, d, opts);
-      shapes2.push.apply(shapes2, data.shapes);
-      records2.push.apply(records2, data.attributes);
+      for (var j=0, n=data.shapes.length; j<n; j++) {
+        shapes2.push(data.shapes[j]);
+        records2.push(data.attributes[j]);
+      }
     });
 
     var lyr2 = {
@@ -30194,7 +30192,7 @@ ${svg}
     var crs = getDatasetCRS(targetDataset);
     var records = targetLyr.data ? targetLyr.data.getRecords() : null;
     var geometries = targetLyr.shapes.map(function(shp) {
-      var bounds = targetLyr.geometryType == 'point' ?
+      var bounds = targetLyr.geometry_type == 'point' ?
         getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
       bounds = applyRectangleOptions(bounds, crs, opts);
       if (!bounds) return null;
