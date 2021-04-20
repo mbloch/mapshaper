@@ -1,3 +1,7 @@
+v0.5.46
+* Fix for issue #476.
+
+
 v0.5.45
 * [web ui] Made layer names in the export dialog settable.
 * Tuned parameters in the -dots command.
