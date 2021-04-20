@@ -59,7 +59,9 @@ export function importContent(obj, opts) {
   // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
-      setLayerName(lyr, filenameToLayerName(data.filename || ''));
+      if (!lyr.name) {
+        lyr.name = filenameToLayerName(data.filename || '');
+      }
     });
   }
 
@@ -121,11 +123,4 @@ function filenameToLayerName(path) {
     name = obj.basename;
   }
   return name;
-}
-
-// initialize layer name using filename
-function setLayerName(lyr, path) {
-  if (!lyr.name) {
-    lyr.name = getFileBase(path);
-  }
 }

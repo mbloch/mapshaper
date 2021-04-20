@@ -52,7 +52,7 @@ function placeDotsEvenly(shp, arcs, n, evenness) {
   return coords;
 }
 
-function placeDot(shp, arcs, grid, bounds) {
+function placeDot(shp, arcs, grid) {
   var i = 0;
   var limit = 100;
   var p;
