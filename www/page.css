@@ -486,16 +486,21 @@ body.dragover #import-options-drop-area .drop-area {
 	text-align: center;
 }
 
+.info-box,.popup {
+	border-radius: 9px;
+	border: 1px solid #ddd;
+	box-shadow: 0 4px 6px rgba(0,0,0,0.35);
+	background-color: #fff;
+}
+
 .info-box {
 	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
-	background-color: #fff;
 	padding: 11px 15px 9px 15px;
 	vertical-align: top;
 	display: inline-block;
-	border: 1px solid #aaa;
-	border-radius: 9px;
+	/* border: 1px solid #aaa; */
 }
 
 .info-box h3 {
@@ -890,9 +895,6 @@ img.close-btn:hover,
 	z-index: 40;
 	top: 12px;
 	left: 12px;
-	background-color: white;
-	border: 1px solid #999;
-	border-radius: 9px;
 	padding: 5px 0;
 }
 

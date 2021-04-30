@@ -39,8 +39,6 @@ describe('mapshaper-path-import.js', function () {
       });
     })
 
-
   })
-
 
 })

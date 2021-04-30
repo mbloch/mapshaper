@@ -5,13 +5,15 @@ import { internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 
+// Controls both the shift-drag zoom-to-extent tool and the shift-drag editing tool
+
 export function BoxTool(gui, ext, mouse, nav) {
   var self = new EventDispatcher();
   var box = new HighlightBox('body');
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
   var _on = false;
-  var bbox, bboxPixels;
+  var bboxCoords, bboxPixels;
 
   var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
     if (coords.visible()) hideCoords(); else showCoords();
@@ -27,13 +29,6 @@ export function BoxTool(gui, ext, mouse, nav) {
   //   reset();
   // });
 
-  new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
-    gui.enterMode('selection_tool');
-    gui.interaction.setMode('selection');
-    // kludge to pass bbox to the selection tool
-    gui.dispatchEvent('box_drag_end', {map_bbox: bboxPixels});
-  });
-
   // Removing button for creating a layer containing a single rectangle.
   // You can get the bbox with the Info button and create a rectangle in the console
   // using -rectangle bbox=<coordinates>
@@ -41,8 +36,15 @@ export function BoxTool(gui, ext, mouse, nav) {
   //   runCommand('-rectangle bbox=' + bbox.join(','));
   // });
 
+  new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+    gui.enterMode('selection_tool');
+    gui.interaction.setMode('selection');
+    // kludge to pass bbox to the selection tool
+    gui.dispatchEvent('box_drag_end', {map_bbox: bboxPixels});
+  });
+
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-    runCommand('-clip bbox2=' + bbox.join(','));
+    runCommand('-clip bbox2=' + bboxCoords.join(','));
   });
 
   gui.addMode('box_tool', turnOn, turnOff);
@@ -55,9 +57,11 @@ export function BoxTool(gui, ext, mouse, nav) {
     }
   });
 
+  // Update the visible rectangle when the map view changes
+  // (e.g. during zooming or panning)
   ext.on('change', function() {
-    if (!_on || !box.visible()) return;
-    var b = bboxToPixels(bbox);
+    if (!_on || !box.visible() || !bboxCoords) return;
+    var b = coordsToPix(bboxCoords);
     var pos = ext.position();
     var dx = pos.pageX,
         dy = pos.pageY;
@@ -65,32 +69,31 @@ export function BoxTool(gui, ext, mouse, nav) {
   });
 
   gui.on('box_drag_start', function() {
-    box.classed('zooming', zoomDragging());
+    box.classed('zooming', inZoomMode());
     hideCoords();
   });
 
   gui.on('box_drag', function(e) {
     var b = e.page_bbox;
-    if (_on || zoomDragging()) {
+    bboxPixels = e.map_bbox;
+    bboxCoords = pixToCoords(bboxPixels);
+    if (_on || inZoomMode()) {
       box.show(b[0], b[1], b[2], b[3]);
     }
   });
 
   gui.on('box_drag_end', function(e) {
     bboxPixels = e.map_bbox;
-    if (zoomDragging()) {
+    bboxCoords = pixToCoords(bboxPixels);
+    if (inZoomMode()) {
       box.hide();
       nav.zoomToBbox(bboxPixels);
     } else if (_on) {
-      bbox = bboxToCoords(bboxPixels);
-      // round coords, for nicer 'info' display
-      // (rounded precision should be sub-pixel)
-      bbox = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
       popup.show();
     }
   });
 
-  function zoomDragging() {
+  function inZoomMode() {
     return !_on && gui.getMode() != 'selection_tool';
   }
 
@@ -105,7 +108,7 @@ export function BoxTool(gui, ext, mouse, nav) {
 
   function showCoords() {
     El(infoBtn.node()).addClass('selected-btn');
-    coords.text(bbox.join(','));
+    coords.text(bboxCoords.join(','));
     coords.show();
     GUI.selectElement(coords.node());
   }
@@ -134,13 +137,16 @@ export function BoxTool(gui, ext, mouse, nav) {
     hideCoords();
   }
 
-  function bboxToCoords(bbox) {
+  function pixToCoords(bbox) {
     var a = ext.translatePixelCoords(bbox[0], bbox[1]);
     var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
+    var bbox2 = [a[0], b[1], b[0], a[1]];
+    // round coords, for nicer 'info' display
+    // (rounded precision should be sub-pixel)
+    return internal.getRoundedCoords(bbox2, internal.getBoundsPrecisionForDisplay(bbox2));
   }
 
-  function bboxToPixels(bbox) {
+  function coordsToPix(bbox) {
     var a = ext.translateCoords(bbox[0], bbox[1]);
     var b = ext.translateCoords(bbox[2], bbox[3]);
     return [a[0], b[1], b[0], a[1]];
