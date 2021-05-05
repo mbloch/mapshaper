@@ -1,3 +1,6 @@
+v0.5.48
+* Update to Cupola projection.
+
 v0.5.47
 * Updated projections library to include the "Cupola" projection.
 
