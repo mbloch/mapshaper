@@ -49,7 +49,7 @@ cli.readFile = function(fname, encoding, cache) {
 
 cli.createDirIfNeeded = function(fname) {
   var odir = parseLocalPath(fname).directory;
-  if (!odir || cli.isDirectory(odir)) return;
+  if (!odir || cli.isDirectory(odir) || fname == '/dev/stdout') return;
   try {
     require('fs').mkdirSync(odir, {recursive: true});
     message('Created output directory:', odir);
