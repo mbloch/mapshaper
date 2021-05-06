@@ -1,5 +1,6 @@
 v0.5.49
 * Split polylines and lines that cross the rotated antimeridan when applying a world projection with a non-zero central meridian.
+* Fixed error when sending output to /dev/stdout.
 
 v0.5.48
 * Update to Cupola projection.
