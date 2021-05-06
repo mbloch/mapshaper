@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.45";
+  var VERSION = "0.5.49";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -4353,11 +4353,18 @@
         Math.min(bbox[2], 180), Math.min(bbox[3], 90));
   }
 
+  function getAntimeridian(lon0) {
+    var anti = lon0 - 180;
+    while (anti <= -180) anti += 360;
+    return anti;
+  }
+
   var LatLon = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getWorldBounds: getWorldBounds,
     probablyDecimalDegreeBounds: probablyDecimalDegreeBounds,
-    clampToWorldBounds: clampToWorldBounds
+    clampToWorldBounds: clampToWorldBounds,
+    getAntimeridian: getAntimeridian
   });
 
   // An interface for managing a collection of paths.
@@ -6241,7 +6248,7 @@
 
   cli.createDirIfNeeded = function(fname) {
     var odir = parseLocalPath(fname).directory;
-    if (!odir || cli.isDirectory(odir)) return;
+    if (!odir || cli.isDirectory(odir) || fname == '/dev/stdout') return;
     try {
       require('fs').mkdirSync(odir, {recursive: true});
       message('Created output directory:', odir);
@@ -22235,7 +22242,7 @@ ${svg}
     // Simple Features compliance
     dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
     var gapMessage = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
-    if (gapMessage) message(gapMessage);
+    if (gapMessage && !opts.quiet) message(gapMessage);
     return dissolvedShapes;
   }
 
@@ -24423,7 +24430,9 @@ ${svg}
     target.push.apply(target, source);
   }
 
-  cmd.cleanLayers = function(layers, dataset, optsArg) {
+  cmd.cleanLayers = cleanLayers;
+
+  function cleanLayers(layers, dataset, optsArg) {
     var opts = optsArg || {};
     var deepClean = !opts.only_arcs;
     var pathClean = utils.some(layers, layerHasPaths);
@@ -24450,7 +24459,7 @@ ${svg}
         }
       }
       if (!opts.allow_empty) {
-        cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+        cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: opts.verbose});
       }
     });
 
@@ -24458,7 +24467,7 @@ ${svg}
       // remove leftover endpoints within contiguous lines
       dissolveArcs(dataset);
     }
-  };
+  }
 
   function cleanPolygonLayerGeometry(lyr, dataset, opts) {
     var groups = lyr.shapes.map(function(shp, i) {
@@ -25242,6 +25251,7 @@ ${svg}
 
   var ClipErase = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    clipLayers: clipLayers,
     clipLayersByBBox: clipLayersByBBox,
     clipLayersByLayer: clipLayersByLayer,
     getClipMessage: getClipMessage
@@ -28027,6 +28037,130 @@ ${svg}
     }
   }
 
+  function getCrsSlug(P) {
+    return P.params.proj.param; // kludge
+  }
+
+  function isWorldProjection(P) {
+    return getWorldProjections().includes(getCrsSlug(P));
+  }
+
+  function isRotatedWorldProjection(P) {
+    return isWorldProjection(P) && P.lam0 !== 0;
+  }
+
+  // TODO: rename this function
+  // These are projections that cover the entire world and can be rotated horizontally
+  //
+  // not included
+  // bertin1953 (doesn't rotate)
+  // euler (world? seems to need more params)
+  // murd1,murd2,murd3 (missing param)
+  //
+  // not implemented
+  // bonne,cc,collg,comill,fahey,igh,larr,lask
+  //
+  function getWorldProjections() {
+    return 'robin,cupola,wintri,aitoff,apian,august,bacon,boggs,cea,crast,' +
+    'denoy,eck1,eck2,eck3,eck4,eck5,eck6,eqc,eqearth,fouc,gall,gilbert,gins8,goode,' +
+    'hammer,hatano,igh,kav5,kav7,loxim,mbt_fpp,mbt_fpq,mbt_fps,mbt_s,mbtfps,mill,' +
+    'moll,natearth,natearth2,nell,nell_h,ortel,patterson,putp1,putp2,putp3,putp3p,' +
+    'putp4p,putp5,putp5p,putp6,putp6p,qua_aut,times,vandg,vandg2,vandg3,vandg4,' +
+    'wag1,wag2,wag3,wag4,wag5,wag6,wag7,weren,wink1,wink2'.split();
+  }
+
+  function insertPreProjectionCuts(dataset, src, dest) {
+    if (isLatLngCRS(src) && isRotatedWorldProjection(dest)) {
+      insertVerticalCut(dataset, getAntimeridian(dest.lam0 * 180 / Math.PI));
+      return true;
+    }
+    return false;
+  }
+
+  function insertVerticalCut(dataset, lon) {
+    var pathLayers = dataset.layers.filter(layerHasPaths);
+    if (pathLayers.length === 0) return;
+    var e =1e-8;
+    var coords = [[lon+e, 90], [lon+e, -90], [lon-e, -90], [lon-e, 90], [lon+e, 90]];
+    var geojson = {
+      type: 'Polygon',
+      coordinates: [coords]
+    };
+    var clipDataset = importGeoJSON(geojson, {});
+    var clip = {
+      layer: clipDataset.layers[0],
+      dataset: clipDataset
+    };
+    var outputLayers = clipLayers(pathLayers, clip, dataset, 'erase', {});
+    pathLayers.forEach(function(lyr, i) {
+      var lyr2 = outputLayers[i];
+      lyr.shapes = lyr2.shapes;
+      lyr.data = lyr2.data;
+    });
+  }
+
+  function projectAndDensifyArcs(arcs, proj) {
+    var interval = getDefaultDensifyInterval(arcs, proj);
+    var p = [0, 0];
+    return editArcs(arcs, onPoint);
+
+    function onPoint(append, lng, lat, prevLng, prevLat, i) {
+      var prevX = p[0],
+          prevY = p[1];
+      p = proj(lng, lat);
+      if (!p) return false; // signal that current arc contains an error
+
+      // Don't try to densify shorter segments (optimization)
+      if (i > 0 && geom.distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
+        densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
+          .forEach(append);
+      }
+      append(p);
+    }
+  }
+
+  function getDefaultDensifyInterval(arcs, proj) {
+    var xy = getAvgSegment2(arcs),
+        bb = arcs.getBounds(),
+        a = proj(bb.centerX(), bb.centerY()),
+        b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
+        c = proj(bb.centerX(), bb.ymin), // right center
+        d = proj(bb.xmax, bb.centerY()), // bottom center
+        // interval A: based on average segment length
+        intervalA = geom.distance2D(a[0], a[1], b[0], b[1]),
+        // interval B: a fraction of avg bbox side length
+        // (added this for bbox densification)
+        intervalB = (geom.distance2D(a[0], a[1], c[0], c[1]) +
+          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000;
+    return Math.min(intervalA, intervalB);
+  }
+
+  // Interpolate points into a projected line segment if needed to prevent large
+  //   deviations from path of original unprojected segment.
+  // @points (optional) array of accumulated points
+  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
+    // Find midpoint between two endpoints and project it (assumes longitude does
+    // not wrap). TODO Consider bisecting along great circle path -- although this
+    // would not be good for boundaries that follow line of constant latitude.
+    var lng1 = (lng0 + lng2) / 2,
+        lat1 = (lat0 + lat2) / 2,
+        p = proj(lng1, lat1),
+        distSq;
+    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
+    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
+    points = points || [];
+    // Bisect current segment if the projected midpoint deviates from original
+    //   segment by more than the @interval parameter.
+    //   ... but don't bisect very small segments to prevent infinite recursion
+    //   (e.g. if projection function is discontinuous)
+    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
+      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
+      points.push(p);
+      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
+    }
+    return points;
+  }
+
   // Converts a Proj.4 projection name (e.g. lcc, tmerc) to a Proj.4 string
   // by picking parameters that are appropriate to the extent of the dataset
   // being projected (e.g. standard parallels, longitude of origin)
@@ -28127,11 +28261,11 @@ ${svg}
       target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
     }
 
-    target.layers = dataset.layers.filter(layerHasPoints).map(function(lyr) {
+    // target.layers = dataset.layers.filter(layerHasPoints).map(function(lyr) {
+    target.layers = dataset.layers.map(function(lyr) {
       if (modifyCopy) {
         originals.push(lyr);
-        lyr = utils.extend({}, lyr);
-        lyr.shapes = cloneShapes(lyr.shapes);
+        lyr = copyLayerShapes(lyr);
       }
       return lyr;
     });
@@ -28181,13 +28315,15 @@ ${svg}
 
   function projectDataset(dataset, src, dest, opts) {
     var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
-    var errors;
+    var errors, cuts;
     dataset.layers.forEach(function(lyr) {
       if (layerHasPoints(lyr)) {
         projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
       }
     });
     if (dataset.arcs) {
+      cuts = insertPreProjectionCuts(dataset, src, dest);
+
       if (opts.densify) {
         errors = projectAndDensifyArcs(dataset.arcs, proj);
       } else {
@@ -28197,9 +28333,23 @@ ${svg}
         // TODO: implement this (null arcs have zero length)
         // internal.removeShapesWithNullArcs(dataset);
       }
+
+      if (cuts) {
+        cleanProjectedLayers(dataset);
+      }
     }
   }
 
+  function cleanProjectedLayers(dataset) {
+    // heal cuts in previously split-apart polygons
+    // TODO: only clean affected polygons (cleaning all polygons can be slow)
+    var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
+    cleanLayers(polygonLayers, dataset, {no_arc_dissolve: true, verbose: false});
+    // remove unused arcs from polygon and polyline layers
+    // TODO: fix bug that leaves uncut arcs in the arc table
+    //   (e.g. when projecting a graticule)
+    dissolveArcs(dataset);
+  }
 
   // proj: function to project [x, y] point; should return null if projection fails
   // TODO: fatal error if no points project?
@@ -28239,68 +28389,6 @@ ${svg}
     }
   }
 
-  function projectAndDensifyArcs(arcs, proj) {
-    var interval = getDefaultDensifyInterval(arcs, proj);
-    var p = [0, 0];
-    return editArcs(arcs, onPoint);
-
-    function onPoint(append, lng, lat, prevLng, prevLat, i) {
-      var prevX = p[0],
-          prevY = p[1];
-      p = proj(lng, lat);
-      if (!p) return false; // signal that current arc contains an error
-
-      // Don't try to densify shorter segments (optimization)
-      if (i > 0 && geom.distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
-        densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
-          .forEach(append);
-      }
-      append(p);
-    }
-  }
-
-  function getDefaultDensifyInterval(arcs, proj) {
-    var xy = getAvgSegment2(arcs),
-        bb = arcs.getBounds(),
-        a = proj(bb.centerX(), bb.centerY()),
-        b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
-        c = proj(bb.centerX(), bb.ymin), // right center
-        d = proj(bb.xmax, bb.centerY()), // bottom center
-        // interval A: based on average segment length
-        intervalA = geom.distance2D(a[0], a[1], b[0], b[1]),
-        // interval B: a fraction of avg bbox side length
-        // (added this for bbox densification)
-        intervalB = (geom.distance2D(a[0], a[1], c[0], c[1]) +
-          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000;
-    return Math.min(intervalA, intervalB);
-  }
-
-  // Interpolate points into a projected line segment if needed to prevent large
-  //   deviations from path of original unprojected segment.
-  // @points (optional) array of accumulated points
-  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
-    // Find midpoint between two endpoints and project it (assumes longitude does
-    // not wrap). TODO Consider bisecting along great circle path -- although this
-    // would not be good for boundaries that follow line of constant latitude.
-    var lng1 = (lng0 + lng2) / 2,
-        lat1 = (lat0 + lat2) / 2,
-        p = proj(lng1, lat1),
-        distSq;
-    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
-    points = points || [];
-    // Bisect current segment if the projected midpoint deviates from original
-    //   segment by more than the @interval parameter.
-    //   ... but don't bisect very small segments to prevent infinite recursion
-    //   (e.g. if projection function is discontinuous)
-    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
-      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
-      points.push(p);
-      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
-    }
-    return points;
-  }
-
   var Proj = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getCrsInfo: getCrsInfo,
@@ -28308,36 +28396,60 @@ ${svg}
   });
 
   cmd.graticule = function(dataset, opts) {
-    var graticule = createGraticule(opts);
-    var dest, src;
+    var graticule, dest, src;
     if (dataset) {
       // project graticule to match dataset
       dest = getDatasetCRS(dataset);
       src = getCRS('wgs84');
       if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
+      graticule = createGraticuleForProjection(dest, opts);
       projectDataset(graticule, src, dest, {}); // TODO: densify?
+    } else {
+      graticule = createGraticule(0, opts);
     }
     return graticule;
   };
 
+  function createGraticuleForProjection(P, opts) {
+    var lon0 = 0;
+    // see mapshaper-spherical-cutting.js
+    if (isRotatedWorldProjection(P)) {
+      lon0 = P.lam0 * 180 / Math.PI;
+    }
+    return createGraticule(lon0, opts);
+  }
+
   // create graticule as a dataset
-  function createGraticule(opts) {
+  function createGraticule(lon0, opts) {
     var precision = 1; // degrees between each vertex
-    var step = 10;
-    var majorStep = 90;
-    var xn = Math.round(360 / step) + 1;
-    var yn = Math.round(180 / step) + 1;
-    var xx = utils.range(xn, -180, step);
-    var yy = utils.range(yn, -90, step);
+    var xstep = 10;
+    var ystep = 10;
+    var xstepMajor = 90;
+    var antimeridian = getAntimeridian(lon0);
+    var isRotated = lon0 != 0;
+    var e = 2e-8;
+    var xn = Math.round(360 / xstep) + (isRotated ? 0 : 1);
+    var yn = Math.round(180 / ystep) + 1;
+    var xx = utils.range(xn, -180, xstep);
+    var yy = utils.range(yn, -90, ystep);
     var meridians = xx.map(function(x) {
       var ymin = -90,
           ymax = 90;
-      if (x % majorStep !== 0) {
-        ymin += step;
-        ymax -= step;
+      if (isRotated && Math.abs(x - antimeridian) < xstep / 5) {
+        // skip meridians that are close to the enclosure of a rotated graticule
+        return null;
+      }
+      if (x % xstepMajor !== 0) {
+        ymin += ystep;
+        ymax -= ystep;
       }
       return createMeridian(x, ymin, ymax, precision);
-    });
+    }).filter(o => !!o);
+    if (isRotated) {
+      // this kludge adds
+      meridians.push(createMeridian(antimeridian - e, -90, 90, precision));
+      meridians.push(createMeridian(antimeridian + e, -90, 90, precision));
+    }
     var parallels = yy.map(function(y) {
       return createParallel(y, -180, 180, precision);
     });

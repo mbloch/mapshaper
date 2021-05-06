@@ -9695,6 +9695,7 @@ function pj_param(params, code) {
       obj = params[name],
       isset = obj !== void 0,
       val, param;
+
   if (type == 't') {
     val = isset;
   } else if (isset) {
@@ -14935,8 +14936,8 @@ function pj_msfn(sinphi, cosphi, es) {
 }
 
 
-pj_add(pj_aea, 'aea', 'Albers Equal Area', '\n\tConic Sph&Ell\n\tlat_1= lat_2=');
-pj_add(pj_leac, 'leac', 'Lambert Equal Area Conic', '\n\tConic, Sph&Ell\n\tlat_1= south');
+pj_add(pj_aea, 'aea', 'Albers Equal Area', 'Conic Sph&Ell\nlat_1= lat_2=');
+pj_add(pj_leac, 'leac', 'Lambert Equal Area Conic', 'Conic, Sph&Ell\nlat_1= south');
 
 function pj_aea(P) {
   var phi1 = pj_param(P.params, "rlat_1");
@@ -15129,7 +15130,7 @@ function aatan2(n, d) {
 }
 
 
-pj_add(pj_aeqd, 'aeqd', 'Azimuthal Equidistant', '\n\tAzi, Sph&Ell\n\tlat_0 guam');
+pj_add(pj_aeqd, 'aeqd', 'Azimuthal Equidistant', 'Azi, Sph&Ell\nlat_0 guam');
 
 function pj_aeqd(P) {
   var EPS10 = 1.e-10,
@@ -15340,7 +15341,7 @@ function pj_aeqd(P) {
 }
 
 
-pj_add(pj_airy, 'airy', 'Airy', '\n\tMisc Sph, no inv.\n\tno_cut lat_b=');
+pj_add(pj_airy, 'airy', 'Airy', 'Misc Sph, no inv.\nno_cut lat_b=');
 
 function pj_airy(P) {
   var EPS = 1e-10,
@@ -15425,8 +15426,8 @@ function pj_airy(P) {
 }
 
 
-pj_add(pj_wintri, 'wintri', 'Winkel Tripel', '\n\tMisc Sph\n\tlat_1');
-pj_add(pj_aitoff, 'aitoff', 'Aitoff', '\n\tMisc Sph');
+pj_add(pj_wintri, 'wintri', 'Winkel Tripel', 'Misc Sph\nlat_1');
+pj_add(pj_aitoff, 'aitoff', 'Aitoff', 'Misc Sph');
 
 function pj_wintri(P) {
   var Q = P.opaque = {mode: 1};
@@ -15529,7 +15530,7 @@ function pj_aitoff(P) {
 }
 
 
-pj_add(pj_august, 'august', 'August Epicycloidal', '\n\tMisc Sph, no inv.');
+pj_add(pj_august, 'august', 'August Epicycloidal', 'Misc Sph, no inv.');
 
 function pj_august(P) {
   P.fwd = s_fwd;
@@ -15550,9 +15551,9 @@ function pj_august(P) {
 }
 
 
-pj_add(pj_apian, 'apian', 'Apian Globular I', '\n\tMisc Sph, no inv.');
-pj_add(pj_ortel, 'ortel', 'Ortelius Oval', '\n\tMisc Sph, no inv.');
-pj_add(pj_bacon, 'bacon', 'Bacon Globular', '\n\tMisc Sph, no inv.');
+pj_add(pj_apian, 'apian', 'Apian Globular I', 'Misc Sph, no inv.');
+pj_add(pj_ortel, 'ortel', 'Ortelius Oval', 'Misc Sph, no inv.');
+pj_add(pj_bacon, 'bacon', 'Bacon Globular', 'Misc Sph, no inv.');
 
 function pj_bacon(P) {
   pj_bacon_init(P, true, false);
@@ -15600,7 +15601,7 @@ function pj_bacon_init(P, bacn, ortl) {
   Port to PROJ by Philippe Rivière, 21 September 2018
   Port to JavaScript by Matthew Bloch October 2018
 */
-pj_add(pj_bertin1953, 'bertin1953', 'Bertin 1953', "\n\tMisc Sph no inv.");
+pj_add(pj_bertin1953, 'bertin1953', 'Bertin 1953', 'Misc Sph no inv.');
 
 function pj_bertin1953(P) {
   var cos_delta_phi, sin_delta_phi, cos_delta_gamma, sin_delta_gamma;
@@ -15658,7 +15659,7 @@ function pj_bertin1953(P) {
 }
 
 
-pj_add(pj_boggs, 'boggs', 'Boggs Eumorphic', '\n\tPCyl., no inv., Sph.');
+pj_add(pj_boggs, 'boggs', 'Boggs Eumorphic', 'PCyl., no inv., Sph.');
 
 function pj_boggs(P) {
   var NITER = 20,
@@ -15691,7 +15692,7 @@ function pj_boggs(P) {
 }
 
 
-pj_add(pj_bonne, 'bonne', 'Bonne (Werner lat_1=90)', '\n\tConic Sph&Ell\n\tlat_1=');
+pj_add(pj_bonne, 'bonne', 'Bonne (Werner lat_1=90)', 'Conic Sph&Ell\nlat_1=');
 
 function pj_bonne(P) {
   var EPS10 = 1e-10;
@@ -15757,7 +15758,7 @@ function pj_bonne(P) {
 }
 
 
-pj_add(pj_cass, 'cass', 'Cassini', '\n\tCyl, Sph&Ell');
+pj_add(pj_cass, 'cass', 'Cassini', 'Cyl, Sph&Ell');
 
 function pj_cass(P) {
   var C1 = 0.16666666666666666666,
@@ -15846,7 +15847,7 @@ function pj_authlat(beta, APA) {
 }
 
 
-pj_add(pj_cea, 'cea', 'Equal Area Cylindrical', '\n\tCyl, Sph&Ell\n\tlat_ts=');
+pj_add(pj_cea, 'cea', 'Equal Area Cylindrical', 'Cyl, Sph&Ell\nlat_ts=');
 
 function pj_cea(P) {
   var t = 0, qp, apa;
@@ -15898,7 +15899,7 @@ function pj_cea(P) {
 }
 
 
-pj_add(pj_chamb, 'chamb', 'Chamberlin Trimetric', '\n\tMisc Sph, no inv.\n\tlat_1= lon_1= lat_2= lon_2= lat_3= lon_3=');
+pj_add(pj_chamb, 'chamb', 'Chamberlin Trimetric', 'Misc Sph, no inv.\nlat_1= lon_1= lat_2= lon_2= lat_3= lon_3=');
 
 function pj_chamb(P) {
   var THIRD  = 1/3,
@@ -16002,7 +16003,7 @@ function pj_chamb(P) {
 }
 
 
-pj_add(pj_crast, 'crast', 'Craster Parabolic (Putnins P4)', '\n\tPCyl., Sph.');
+pj_add(pj_crast, 'crast', 'Craster Parabolic (Putnins P4)', 'PCyl., Sph.');
 
 function pj_crast(P) {
   var XM = 0.97720502380583984317;
@@ -16027,31 +16028,28 @@ function pj_crast(P) {
 }
 
 
-pj_add(pj_cupola, 'cupola', 'Cupola', '\n\tMisc., Sph., NoInv.');
+pj_add(pj_cupola, 'cupola', 'Cupola', 'Misc., Sph., NoInv.');
 
 // Source: https://www.tandfonline.com/eprint/EE7Y8RK4GXA4ITWUTQPY/full?target=10.1080/23729333.2020.1862962
 // See also: http://www.at-a-lanta.nl/weia/cupola.html
 
 function pj_cupola(P) {
   var de = 0.5253;  // part of the equator on intermediate sphere, default = 1
-  var dp = 0.7264;  // sin of angle of polar line; default = 1
+  var dp = 0.7264;  // sin of angle of polar line, default = 1
   var ri = 1 / Math.sqrt(de * dp);
-  // height of the equator, can be negative, default = 0
-  var he = 0.4188;
-  // phi of projection center
-  var phi0 = 22 * DEG_TO_RAD;
-
-  // NOTE: Proj applies the +lon_0 (central meridian) parameter before passing
-  // coordinates to the projection function.
-  // TODO: Use 11.023 as default central meridian
-  // // var lam0 = 11.023 * DEG_TO_RAD;
-
+  var he = 0.4188; // height of equator (can be negative, default = 0)
   var se = 0.9701; // stretch in plane, default = 1
+  var phi0 = 22 * DEG_TO_RAD; // phi of projection center
   // center of projection on intermediate sphere
   var pc = calcP(phi0);
   var qc = calcQ(0);
   var spc = sin(pc);
   var cpc = cos(pc);
+
+  // apply default central meridian
+  if (!pj_param(P.params, 'tlon_0')) {
+    P.lam0 = 11.023 * DEG_TO_RAD;
+  }
 
   P.es = 0;
   P.fwd = s_fwd;
@@ -16078,7 +16076,7 @@ function pj_cupola(P) {
 }
 
 
-pj_add(pj_denoy, 'denoy', 'Denoyer Semi-Elliptical', '\n\tPCyl, Sph., no inv.');
+pj_add(pj_denoy, 'denoy', 'Denoyer Semi-Elliptical', 'PCyl, Sph., no inv.');
 
 function pj_denoy(P) {
   P.fwd = s_fwd;
@@ -16100,14 +16098,14 @@ function pj_denoy(P) {
 }
 
 
-pj_add(pj_eck1, 'eck1', 'Eckert I', '\n\tPCyl Sph');
-pj_add(pj_eck2, 'eck2', 'Eckert II', '\n\tPCyl Sph');
-pj_add(pj_eck3, 'eck3', 'Eckert III', '\n\tPCyl Sph');
-pj_add(pj_wag6, 'wag6', 'Wagner VI', '\n\tPCyl Sph');
-pj_add(pj_kav7, 'kav7', 'Kavraisky VII', '\n\tPCyl Sph');
-pj_add(pj_putp1, 'putp1', 'Putnins P1', '\n\tPCyl Sph');
-pj_add(pj_eck4, 'eck4', 'Eckert IV', '\n\tPCyl Sph');
-pj_add(pj_eck5, 'eck5', 'Eckert V', '\n\tPCyl Sph');
+pj_add(pj_eck1, 'eck1', 'Eckert I', 'PCyl Sph');
+pj_add(pj_eck2, 'eck2', 'Eckert II', 'PCyl Sph');
+pj_add(pj_eck3, 'eck3', 'Eckert III', 'PCyl Sph');
+pj_add(pj_wag6, 'wag6', 'Wagner VI', 'PCyl Sph');
+pj_add(pj_kav7, 'kav7', 'Kavraisky VII', 'PCyl Sph');
+pj_add(pj_putp1, 'putp1', 'Putnins P1', 'PCyl Sph');
+pj_add(pj_eck4, 'eck4', 'Eckert IV', 'PCyl Sph');
+pj_add(pj_eck5, 'eck5', 'Eckert V', 'PCyl Sph');
 
 function pj_eck1(P) {
   var FC = 0.92131773192356127802,
@@ -16276,7 +16274,7 @@ function pj_eck5(P) {
 }
 
 
-pj_add(pj_eqc, 'eqc', 'Equidistant Cylindrical (Plate Caree)', '\n\tCyl, Sph\n\tlat_ts=[, lat_0=0]');
+pj_add(pj_eqc, 'eqc', 'Equidistant Cylindrical (Plate Caree)', 'Cyl, Sph\nlat_ts=[, lat_0=0]');
 
 function pj_eqc(P) {
   var rc = cos(pj_param(P.params, "rlat_ts"));
@@ -16297,7 +16295,7 @@ function pj_eqc(P) {
 }
 
 
-pj_add(pj_eqdc, 'eqdc', 'Equidistant Conic', '\n\tConic, Sph&Ell\n\tlat_1= lat_2=');
+pj_add(pj_eqdc, 'eqdc', 'Equidistant Conic', 'Conic, Sph&Ell\nlat_1= lat_2=');
 
 function pj_eqdc(P) {
   var phi1, phi2, n, rho, rho0, c, en, ellips, cosphi, sinphi, secant;
@@ -16385,7 +16383,7 @@ function pj_eqdc(P) {
  * Code released August 2018
  * Ported to JavaScript and adapted for mapshaper-proj by Matthew Bloch August 2018
  */
-pj_add(pj_eqearth, 'eqearth', 'Equal Earth', "\n\tPCyl., Sph.");
+pj_add(pj_eqearth, 'eqearth', 'Equal Earth', 'PCyl., Sph.');
 
 function pj_eqearth(P) {
   var A1 = 1.340264,
@@ -16432,8 +16430,8 @@ function pj_eqearth(P) {
 }
 
 
-pj_add(pj_etmerc, 'etmerc', 'Extended Transverse Mercator', '\n\tCyl, Sph\n\tlat_ts=(0)\nlat_0=(0)');
-pj_add(pj_utm, 'utm', 'Universal Transverse Mercator (UTM)', '\n\tCyl, Sph\n\tzone= south');
+pj_add(pj_etmerc, 'etmerc', 'Extended Transverse Mercator', 'Cyl, Sph\nlat_ts=(0)\nlat_0=(0)');
+pj_add(pj_utm, 'utm', 'Universal Transverse Mercator (UTM)', 'Cyl, Sph\nzone= south');
 
 
 function pj_utm_zone(P) {
@@ -16654,7 +16652,7 @@ function pj_etmerc(P) {
 }
 
 
-pj_add(pj_gall, 'gall', 'Gall (Gall Stereographic)', '\n\tCyl, Sph');
+pj_add(pj_gall, 'gall', 'Gall (Gall Stereographic)', 'Cyl, Sph');
 
 function pj_gall(P) {
   var YF = 1.70710678118654752440,
@@ -16678,7 +16676,7 @@ function pj_gall(P) {
 }
 
 
-pj_add(pj_geocent, 'geocent', 'Geocentric', '\n\t');
+pj_add(pj_geocent, 'geocent', 'Geocentric', '');
 
 function pj_geocent(P) {
   P.is_geocent = true;
@@ -16699,7 +16697,7 @@ function pj_geocent(P) {
 
 // from
 
-pj_add(pj_gilbert, 'gilbert', 'Gilbert Two World Perspective', '\n\tPCyl., Sph., NoInv.\n\tlat_1=');
+pj_add(pj_gilbert, 'gilbert', 'Gilbert Two World Perspective', 'PCyl., Sph., NoInv.\nlat_1=');
 
 function pj_gilbert(P) {
   var lat1 = pj_param(P.params, 'tlat_1') ? pj_param(P.params, 'rlat_1') : 0,
@@ -16729,7 +16727,7 @@ function pj_gilbert(P) {
 }
 
 
-pj_add(pj_gins8, 'gins8', 'Ginsburg VIII (TsNIIGAiK)', '\n\tPCyl, Sph., no inv.');
+pj_add(pj_gins8, 'gins8', 'Ginsburg VIII (TsNIIGAiK)', 'PCyl, Sph., no inv.');
 
 function pj_gins8(P) {
   P.fwd = s_fwd;
@@ -16748,10 +16746,10 @@ function pj_gins8(P) {
 }
 
 
-pj_add(pj_gn_sinu, 'gn_sinu', 'General Sinusoidal Series', '\n\tPCyl, Sph.\n\tm= n=');
-pj_add(pj_sinu, 'sinu', 'Sinusoidal (Sanson-Flamsteed)', '\n\tPCyl, Sph&Ell');
-pj_add(pj_eck6, 'eck6', 'Eckert VI', '\n\tPCyl, Sph.\n\tm= n=');
-pj_add(pj_mbtfps, 'mbtfps', 'McBryde-Thomas Flat-Polar Sinusoidal', '\n\tPCyl, Sph.');
+pj_add(pj_gn_sinu, 'gn_sinu', 'General Sinusoidal Series', 'PCyl, Sph.\nm= n=');
+pj_add(pj_sinu, 'sinu', 'Sinusoidal (Sanson-Flamsteed)', 'PCyl, Sph&Ell');
+pj_add(pj_eck6, 'eck6', 'Eckert VI', 'PCyl, Sph.\nm= n=');
+pj_add(pj_mbtfps, 'mbtfps', 'McBryde-Thomas Flat-Polar Sinusoidal', 'PCyl, Sph.');
 
 function pj_gn_sinu(P) {
   if (pj_param(P.params, 'tn'), pj_param(P.params, 'tm')) {
@@ -16836,7 +16834,7 @@ function pj_sinu_init(P, m, n) {
 
 
 
-pj_add(pj_gnom, 'gnom', 'Gnomonic', '\n\tAzi, Sph.');
+pj_add(pj_gnom, 'gnom', 'Gnomonic', 'Azi, Sph.');
 
 function pj_gnom(P) {
   var EPS10 = 1.e-10,
@@ -16943,9 +16941,9 @@ function pj_gnom(P) {
 }
 
 
-pj_add(pj_moll, 'moll', 'Mollweide', '\n\tPCyl Sph');
-pj_add(pj_wag4, 'wag4', 'Wagner IV', '\n\tPCyl Sph');
-pj_add(pj_wag5, 'wag5', 'Wagner V', '\n\tPCyl Sph');
+pj_add(pj_moll, 'moll', 'Mollweide', 'PCyl Sph');
+pj_add(pj_wag4, 'wag4', 'Wagner IV', 'PCyl Sph');
+pj_add(pj_wag5, 'wag5', 'Wagner V', 'PCyl Sph');
 
 function pj_moll(P) {
   pj_moll_init(P, pj_moll_init_Q(P, M_HALFPI));
@@ -17013,7 +17011,7 @@ function pj_moll_init(P, Q) {
 }
 
 
-pj_add(pj_goode, 'goode', "Goode Homolosine", "\n\tPCyl, Sph.");
+pj_add(pj_goode, 'goode', 'Goode Homolosine', 'PCyl, Sph.');
 
 function pj_goode(P) {
   var Y_COR = 0.05280,
@@ -17045,7 +17043,7 @@ function pj_goode(P) {
 }
 
 
-pj_add(pj_hammer, 'hammer', 'Hammer & Eckert-Greifendorff', '\n\tMisc Sph, \n\tW= M=');
+pj_add(pj_hammer, 'hammer', 'Hammer & Eckert-Greifendorff', 'Misc Sph,\nW= M=');
 
 function pj_hammer(P) {
   var w, m, rm;
@@ -17086,7 +17084,7 @@ function pj_hammer(P) {
 }
 
 
-pj_add(pj_hatano, 'hatano', 'Hatano Asymmetrical Equal Area', '\n\tPCyl., Sph.');
+pj_add(pj_hatano, 'hatano', 'Hatano Asymmetrical Equal Area', 'PCyl., Sph.');
 
 function pj_hatano(P) {
   var NITER = 20;
@@ -17147,8 +17145,8 @@ function pj_hatano(P) {
 }
 
 
-pj_add(pj_healpix, 'healpix', 'HEALPix', '\n\tSph., Ellps.');
-pj_add(pj_rhealpix, 'rhealpix', 'rHEALPix', '\n\tSph., Ellps.\n\tnorth_square= south_square=');
+pj_add(pj_healpix, 'healpix', 'HEALPix', 'Sph., Ellps.');
+pj_add(pj_rhealpix, 'rhealpix', 'rHEALPix', 'Sph., Ellps.\nnorth_square= south_square=');
 
 function pj_rhealpix(P) {
   pj_healpix(P, true);
@@ -17619,7 +17617,7 @@ function pj_healpix(P, rhealpix) {
 }
 
 
-pj_add(pj_krovak, 'krovak', 'Krovak', '\n\tPCyl., Ellps.');
+pj_add(pj_krovak, 'krovak', 'Krovak', 'PCyl., Ellps.');
 
 function pj_krovak(P) {
   var u0, n0, g;
@@ -17712,7 +17710,7 @@ function pj_krovak(P) {
 }
 
 
-pj_add(pj_laea, 'laea', 'Lambert Azimuthal Equal Area', '\n\tAzi, Sph&Ell');
+pj_add(pj_laea, 'laea', 'Lambert Azimuthal Equal Area', 'Azi, Sph&Ell');
 
 function pj_laea(P) {
   var EPS10 = 1e-10,
@@ -17936,10 +17934,10 @@ function pj_laea(P) {
 }
 
 
-pj_add(pj_lonlat, 'lonlat', 'Lat/long (Geodetic)', '\n\t');
-pj_add(pj_lonlat, 'longlat', 'Lat/long (Geodetic alias)', '\n\t');
-pj_add(pj_lonlat, 'latlon', 'Lat/long (Geodetic alias)', '\n\t');
-pj_add(pj_lonlat, 'latlong', 'Lat/long (Geodetic alias)', '\n\t');
+pj_add(pj_lonlat, 'lonlat', 'Lat/long (Geodetic)', '');
+pj_add(pj_lonlat, 'longlat', 'Lat/long (Geodetic alias)', '');
+pj_add(pj_lonlat, 'latlon', 'Lat/long (Geodetic alias)', '');
+pj_add(pj_lonlat, 'latlong', 'Lat/long (Geodetic alias)', '');
 
 function pj_lonlat(P) {
   P.x0 = 0;
@@ -17967,7 +17965,7 @@ function pj_tsfn(phi, sinphi, e) {
 }
 
 
-pj_add(pj_lcc, 'lcc', 'Lambert Conformal Conic', '\n\tConic, Sph&Ell\n\tlat_1= and lat_2= or lat_0=');
+pj_add(pj_lcc, 'lcc', 'Lambert Conformal Conic', 'Conic, Sph&Ell\nlat_1= and lat_2= or lat_0=');
 
 function pj_lcc(P) {
   var EPS10 = 1e-10;
@@ -18055,7 +18053,7 @@ function pj_lcc(P) {
 }
 
 
-pj_add(pj_loxim, 'loxim', 'Loximuthal', '\n\tPCyl Sph');
+pj_add(pj_loxim, 'loxim', 'Loximuthal', 'PCyl Sph');
 
 function pj_loxim(P) {
   var EPS = 1e-8;
@@ -18096,7 +18094,7 @@ function pj_loxim(P) {
 }
 
 
-pj_add(pj_mbt_fpp, 'mbt_fpp', 'McBride-Thomas Flat-Polar Parabolic', '\n\tCyl., Sph.');
+pj_add(pj_mbt_fpp, 'mbt_fpp', 'McBride-Thomas Flat-Polar Parabolic', 'Cyl., Sph.');
 
 function pj_mbt_fpp(P) {
   var CS = 0.95257934441568037152,
@@ -18138,7 +18136,7 @@ function pj_mbt_fpp(P) {
 }
 
 
-pj_add(pj_mbt_fpq, 'mbt_fpq', 'McBryde-Thomas Flat-Polar Quartic', '\n\tCyl., Sph.');
+pj_add(pj_mbt_fpq, 'mbt_fpq', 'McBryde-Thomas Flat-Polar Quartic', 'Cyl., Sph.');
 
 function pj_mbt_fpq(P) {
   var NITER = 20,
@@ -18193,7 +18191,7 @@ function pj_mbt_fpq(P) {
 }
 
 
-pj_add(pj_mbt_fps, 'mbt_fps', 'McBryde-Thomas Flat-Pole Sine (No. 2)', '\n\tCyl., Sph.');
+pj_add(pj_mbt_fps, 'mbt_fps', 'McBryde-Thomas Flat-Pole Sine (No. 2)', 'Cyl., Sph.');
 
 function pj_mbt_fps(P) {
   var MAX_ITER = 10,
@@ -18254,15 +18252,15 @@ function pj_phi2(ts, e) {
 }
 
 
-pj_add(pj_merc, "merc", "Mercator", "\n\tCyl, Sph&Ell\n\tlat_ts=");
+pj_add(pj_merc, 'merc', 'Mercator', 'Cyl, Sph&Ell\nlat_ts=');
 
 function pj_merc(P) {
   var EPS10 = 1e-10;
   var phits = 0;
-  var is_phits = pj_param(P.params, "tlat_ts");
+  var is_phits = pj_param(P.params, 'tlat_ts');
 
   if (is_phits) {
-    phits = pj_param(P.params, "rlat_ts");
+    phits = pj_param(P.params, 'rlat_ts');
     if (phits >= M_HALFPI) {
       e_error(-24);
     }
@@ -18310,7 +18308,7 @@ function pj_merc(P) {
 }
 
 
-pj_add(pj_mill, 'mill', 'Miller Cylindrical', '\n\tCyl, Sph');
+pj_add(pj_mill, 'mill', 'Miller Cylindrical', 'Cyl, Sph');
 
 function pj_mill(P) {
 
@@ -18381,11 +18379,11 @@ function pj_zpolyd1(z, C, der) {
 }
 
 
-pj_add(pj_mil_os, 'mil_os', 'Miller Oblated Stereographic', '\n\tAzi(mod)');
-pj_add(pj_lee_os, 'lee_os', 'Lee Oblated Stereographic', '\n\tAzi(mod)');
-pj_add(pj_gs48, 'gs48', 'Mod Stereographic of 48 U.S.', '\n\tAzi(mod)');
-pj_add(pj_alsk, 'alsk', 'Mod Stereographic of Alaska', '\n\tAzi(mod)');
-pj_add(pj_gs50, 'gs50', 'Mod Stereographic of 50 U.S.', '\n\tAzi(mod)');
+pj_add(pj_mil_os, 'mil_os', 'Miller Oblated Stereographic', 'Azi(mod)');
+pj_add(pj_lee_os, 'lee_os', 'Lee Oblated Stereographic', 'Azi(mod)');
+pj_add(pj_gs48, 'gs48', 'Mod Stereographic of 48 U.S.', 'Azi(mod)');
+pj_add(pj_alsk, 'alsk', 'Mod Stereographic of Alaska', 'Azi(mod)');
+pj_add(pj_gs50, 'gs50', 'Mod Stereographic of 50 U.S.', 'Azi(mod)');
 
 function pj_mil_os(P) {
   var AB = [
@@ -18584,8 +18582,8 @@ function pj_mod_ster(P, zcoeff) {
 }
 
 
-pj_add(pj_natearth, 'natearth', 'Natural Earth', '\n\tPCyl., Sph.');
-pj_add(pj_natearth2, 'natearth2', 'Natural Earth 2', '\n\tPCyl., Sph.');
+pj_add(pj_natearth, 'natearth', 'Natural Earth', 'PCyl., Sph.');
+pj_add(pj_natearth2, 'natearth2', 'Natural Earth 2', 'PCyl., Sph.');
 
 function pj_natearth(P) {
   var A0 = 0.8707,
@@ -18703,7 +18701,7 @@ function pj_natearth2(P) {
 }
 
 
-pj_add(pj_nell, 'nell', 'Nell', '\n\tPCyl., Sph.');
+pj_add(pj_nell, 'nell', 'Nell', 'PCyl., Sph.');
 
 function pj_nell(P) {
   var MAX_ITER = 10;
@@ -18734,7 +18732,7 @@ function pj_nell(P) {
 }
 
 
-pj_add(pj_nell_h, 'nell_h', 'Nell-Hammer', '\n\tPCyl., Sph.');
+pj_add(pj_nell_h, 'nell_h', 'Nell-Hammer', 'PCyl., Sph.');
 
 function pj_nell_h(P) {
 var NITER = 9,
@@ -18766,8 +18764,8 @@ var NITER = 9,
 }
 
 
-pj_add(pj_nsper, 'nsper', 'Near-sided perspective', '\n\tAzi, Sph\n\th=');
-pj_add(pj_tpers, 'tpers', 'Tilted perspective', '\n\tAzi, Sph\n\ttilt= azi= h=');
+pj_add(pj_nsper, 'nsper', 'Near-sided perspective', 'Azi, Sph\nh=');
+pj_add(pj_tpers, 'tpers', 'Tilted perspective', 'Azi, Sph\ntilt= azi= h=');
 
 function pj_nsper(P) {
   pj_tpers_init(P, pj_param(P.params, "dh"));
@@ -18903,7 +18901,7 @@ function pj_tpers_init(P, height, tiltAngle, azimuth) {
 }
 
 
-pj_add(pj_nzmg, 'nzmg', 'New Zealand Map Grid', '\n\tfixed Earth');
+pj_add(pj_nzmg, 'nzmg', 'New Zealand Map Grid', 'fixed Earth');
 
 function pj_nzmg(P) {
   var EPSLN = 1e-10;
@@ -18972,11 +18970,11 @@ function pj_nzmg(P) {
 }
 
 
-pj_add(pj_ob_tran, 'ob_tran', 'General Oblique Transformation', "\n\tMisc Sph" +
-  "\n\to_proj= plus parameters for projection" +
-  "\n\to_lat_p= o_lon_p= (new pole) or" +
-  "\n\to_alpha= o_lon_c= o_lat_c= or" +
-  "\n\to_lon_1= o_lat_1= o_lon_2= o_lat_2=");
+pj_add(pj_ob_tran, 'ob_tran', 'General Oblique Transformation', 'Misc Sph\n' +
+  'o_proj= plus parameters for projection\n' +
+  'o_lat_p= o_lon_p= (new pole) or\n' +
+  'o_alpha= o_lon_c= o_lat_c= or\n' +
+  'o_lon_1= o_lat_1= o_lon_2= o_lat_2=');
 
 function pj_ob_tran(P) {
   var name, defn, P2;
@@ -19005,25 +19003,25 @@ function pj_ob_tran(P) {
     P.fr_meter = RAD_TO_DEG;
   }
 
-  if (pj_param(P.params, "to_alpha")) {
-    lamc  = pj_param(P.params, "ro_lon_c");
-    phic  = pj_param(P.params, "ro_lat_c");
-    alpha = pj_param(P.params, "ro_alpha");
+  if (pj_param(P.params, 'to_alpha')) {
+    lamc  = pj_param(P.params, 'ro_lon_c');
+    phic  = pj_param(P.params, 'ro_lat_c');
+    alpha = pj_param(P.params, 'ro_alpha');
 
     if (fabs(fabs(phic) - M_HALFPI) <= TOL) e_error(-32);
     lamp = lamc + aatan2(-cos(alpha), -sin(alpha) * sin(phic));
     phip = aasin(cos(phic) * sin(alpha));
 
-  } else if (pj_param(P.params, "to_lat_p")) { /* specified new pole */
-    lamp = pj_param(P.params, "ro_lon_p");
-    phip = pj_param(P.params, "ro_lat_p");
+  } else if (pj_param(P.params, 'to_lat_p')) { /* specified new pole */
+    lamp = pj_param(P.params, 'ro_lon_p');
+    phip = pj_param(P.params, 'ro_lat_p');
 
-  } else { /* specified new "equator" points */
+  } else { /* specified new 'equator' points */
 
-    lam1 = pj_param(P.params, "ro_lon_1");
-    phi1 = pj_param(P.params, "ro_lat_1");
-    lam2 = pj_param(P.params, "ro_lon_2");
-    phi2 = pj_param(P.params, "ro_lat_2");
+    lam1 = pj_param(P.params, 'ro_lon_1');
+    phi1 = pj_param(P.params, 'ro_lat_1');
+    lam2 = pj_param(P.params, 'ro_lon_2');
+    phi2 = pj_param(P.params, 'ro_lat_2');
     if (fabs(phi1 - phi2) <= TOL ||
         (con = fabs(phi1)) <= TOL ||
         fabs(con - M_HALFPI) <= TOL ||
@@ -19090,7 +19088,7 @@ function pj_ob_tran(P) {
 }
 
 
-pj_add(pj_ocea, 'ocea', 'Oblique Cylindrical Equal Area', '\n\tCyl, Sph lonc= alpha= or\n\tlat_1= lat_2= lon_1= lon_2=');
+pj_add(pj_ocea, 'ocea', 'Oblique Cylindrical Equal Area', 'Cyl, Sph lonc= alpha= or\nlat_1= lat_2= lon_1= lon_2=');
 
 function pj_ocea(P) {
   var phi_0 = 0,
@@ -19159,8 +19157,8 @@ function pj_ocea(P) {
 }
 
 
-pj_add(pj_omerc, 'omerc', 'Oblique Mercator', '\n\tCyl, Sph&Ell no_rot' +
-    '\n\talpha= [gamma=] [no_off] lonc= or\n\t lon_1= lat_1= lon_2= lat_2=');
+pj_add(pj_omerc, 'omerc', 'Oblique Mercator', 'Cyl, Sph&Ell no_rot\n' +
+    'alpha= [gamma=] [no_off] lonc= or\nlon_1= lat_1= lon_2= lat_2=');
 
 function pj_omerc(P) {
   var TOL = 1e-7;
@@ -19321,7 +19319,7 @@ function pj_omerc(P) {
 }
 
 
-pj_add(pj_ortho, 'ortho', 'Orthographic', '\n\tAzi, Sph.');
+pj_add(pj_ortho, 'ortho', 'Orthographic', 'Azi, Sph.');
 
 function pj_ortho(P) {
   var EPS10 = 1.e-10,
@@ -19413,7 +19411,7 @@ function pj_ortho(P) {
 }
 
 
-pj_add(pj_patterson, 'patterson', 'Patterson Cylindrical', '\n\tCyl., Sph.');
+pj_add(pj_patterson, 'patterson', 'Patterson Cylindrical', 'Cyl., Sph.');
 
 function pj_patterson(P) {
   var K1 = 1.0148,
@@ -19470,7 +19468,7 @@ function pj_patterson(P) {
 }
 
 
-pj_add(pj_poly, 'poly', 'Polyconic (American)', '\n\tConic, Sph&Ell');
+pj_add(pj_poly, 'poly', 'Polyconic (American)', 'Conic, Sph&Ell');
 
 function pj_poly(P) {
   var TOL = 1e-10,
@@ -19572,7 +19570,7 @@ function pj_poly(P) {
 }
 
 
-pj_add(pj_putp2, 'putp2', 'Putnins P2', '\n\tPCyl., Sph.');
+pj_add(pj_putp2, 'putp2', 'Putnins P2', 'PCyl., Sph.');
 
 function pj_putp2(P) {
   var C_x = 1.89490,
@@ -19613,8 +19611,8 @@ function pj_putp2(P) {
 }
 
 
-pj_add(pj_putp3, 'putp3', 'Putnins P3', '\n\tPCyl., Sph.');
-pj_add(pj_putp3p, 'putp3p', 'Putnins P3\'', '\n\tPCyl., Sph.');
+pj_add(pj_putp3, 'putp3', 'Putnins P3', 'PCyl., Sph.');
+pj_add(pj_putp3p, 'putp3p', 'Putnins P3\'', 'PCyl., Sph.');
 
 function pj_putp3p(P) {
   pj_putp3(P, true);
@@ -19640,8 +19638,8 @@ function pj_putp3(P, prime) {
 }
 
 
-pj_add(pj_putp4p, 'putp4p', 'Putnins P4\'', '\n\tPCyl., Sph.');
-pj_add(pj_weren, 'weren', 'Werenskiold I', '\n\tPCyl., Sph.');
+pj_add(pj_putp4p, 'putp4p', 'Putnins P4\'', 'PCyl., Sph.');
+pj_add(pj_weren, 'weren', 'Werenskiold I', 'PCyl., Sph.');
 
 function pj_putp4p(P) {
   pj_putp4p_init(P, 0.874038744, 3.883251825);
@@ -19673,8 +19671,8 @@ function pj_putp4p_init(P, C_x, C_y) {
 }
 
 
-pj_add(pj_putp5, 'putp5', 'Putnins P5', '\n\tPCyl., Sph.');
-pj_add(pj_putp5p, 'putp5p', 'Putnins P5\'', '\n\tPCyl., Sph.');
+pj_add(pj_putp5, 'putp5', 'Putnins P5', 'PCyl., Sph.');
+pj_add(pj_putp5p, 'putp5p', 'Putnins P5\'', 'PCyl., Sph.');
 
 function pj_putp5p(P) {
   pj_putp5(P, true);
@@ -19702,8 +19700,8 @@ function pj_putp5(P, prime) {
 }
 
 
-pj_add(pj_putp6, 'putp6', 'Putnins P6', '\n\tPCyl., Sph.');
-pj_add(pj_putp6p, 'putp6p', 'Putnins P6\'', '\n\tPCyl., Sph.');
+pj_add(pj_putp6, 'putp6', 'Putnins P6', 'PCyl., Sph.');
+pj_add(pj_putp6p, 'putp6p', 'Putnins P6\'', 'PCyl., Sph.');
 
 function pj_putp6p(P) {
   pj_putp6(P, true);
@@ -19760,7 +19758,7 @@ function pj_putp6(P, prime) {
 }
 
 
-pj_add(pj_qsc, 'qsc', 'Quadrilateralized Spherical Cube', '\n\tAzi, Sph.');
+pj_add(pj_qsc, 'qsc', 'Quadrilateralized Spherical Cube', 'Azi, Sph.');
 
 function pj_qsc(P) {
   var EPS10 = 1.e-10;
@@ -20104,7 +20102,7 @@ function pj_qsc(P) {
 }
 
 
-pj_add(pj_robin, 'robin', 'Robinson', "\n\tPCyl., Sph.");
+pj_add(pj_robin, 'robin', 'Robinson', 'PCyl., Sph.');
 
 function pj_robin(P) {
   var X = to_float([
@@ -20228,13 +20226,13 @@ function pj_robin(P) {
 }
 
 
-pj_add(pj_get_sconic('EULER'), 'euler', 'Euler', '\n\tConic, Sph\n\tlat_1= and lat_2=');
-pj_add(pj_get_sconic('MURD1'), 'murd1', 'Murdoch I', '\n\tConic, Sph\n\tlat_1= and lat_2=');
-pj_add(pj_get_sconic('MURD2'), 'murd2', 'Murdoch II', '\n\tConic, Sph\n\tlat_1= and lat_2=');
-pj_add(pj_get_sconic('MURD3'), 'murd3', 'Murdoch III', '\n\tConic, Sph\n\tlat_1= and lat_2=');
-pj_add(pj_get_sconic('PCONIC'), 'pconic', 'Perspective Conic', '\n\tConic, Sph\n\tlat_1= and lat_2=');
-pj_add(pj_get_sconic('TISSOT'), 'tissot', 'Tissot', '\n\tConic, Sph\n\tlat_1= and lat_2=');
-pj_add(pj_get_sconic('VITK1'), 'vitk1', 'Vitkovsky I', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('EULER'), 'euler', 'Euler', 'Conic, Sph\nlat_1= and lat_2=');
+pj_add(pj_get_sconic('MURD1'), 'murd1', 'Murdoch I', 'Conic, Sph\nlat_1= and lat_2=');
+pj_add(pj_get_sconic('MURD2'), 'murd2', 'Murdoch II', 'Conic, Sph\nlat_1= and lat_2=');
+pj_add(pj_get_sconic('MURD3'), 'murd3', 'Murdoch III', 'Conic, Sph\nlat_1= and lat_2=');
+pj_add(pj_get_sconic('PCONIC'), 'pconic', 'Perspective Conic', 'Conic, Sph\nlat_1= and lat_2=');
+pj_add(pj_get_sconic('TISSOT'), 'tissot', 'Tissot', 'Conic, Sph\nlat_1= and lat_2=');
+pj_add(pj_get_sconic('VITK1'), 'vitk1', 'Vitkovsky I', 'Conic, Sph\nlat_1= and lat_2=');
 
 function pj_get_sconic(type) {
   return function(P) {
@@ -20361,7 +20359,7 @@ function pj_sconic(P, type) {
 }
 
 
-pj_add(pj_somerc, 'somerc', 'Swiss. Obl. Mercator', '\n\tCyl, Ell\n\tFor CH1903');
+pj_add(pj_somerc, 'somerc', 'Swiss. Obl. Mercator', 'Cyl, Ell\nFor CH1903');
 
 function pj_somerc(P) {
   var K, c, hlf_e, kR, cosp0, sinp0;
@@ -20421,8 +20419,8 @@ function pj_somerc(P) {
 }
 
 
-pj_add(pj_stere, 'stere', 'Stereographic', '\n\tAzi, Sph&Ell\n\tlat_ts=');
-pj_add(pj_ups, 'ups', 'Universal Polar Stereographic', '\n\tAzi, Sph&Ell\n\tsouth');
+pj_add(pj_stere, 'stere', 'Stereographic', 'Azi, Sph&Ell\nlat_ts=');
+pj_add(pj_ups, 'ups', 'Universal Polar Stereographic', 'Azi, Sph&Ell\nsouth');
 
 function pj_ups(P) {
   P.phi0 = pj_param(P.params, "bsouth") ? -M_HALFPI : M_HALFPI;
@@ -20703,7 +20701,7 @@ function pj_inv_gauss(lp, en) {
 }
 
 
-pj_add(pj_sterea, 'sterea', 'Oblique Stereographic Alternative', '\n\tAzimuthal, Sph&Ell');
+pj_add(pj_sterea, 'sterea', 'Oblique Stereographic Alternative', 'Azimuthal, Sph&Ell');
 
 function pj_sterea(P) {
   var en = pj_gauss_ini(P.e, P.phi0),
@@ -20746,10 +20744,10 @@ function pj_sterea(P) {
 }
 
 
-pj_add(pj_kav5, 'kav5', 'Kavraisky V', '\n\tPCyl., Sph.');
-pj_add(pj_qua_aut, 'qua_aut', 'Quartic Authalic', '\n\tPCyl., Sph.');
-pj_add(pj_fouc, 'fouc', 'Foucaut', '\n\tPCyl., Sph.');
-pj_add(pj_mbt_s, 'mbt_s', 'McBryde-Thomas Flat-Polar Sine (No. 1)', '\n\tPCyl., Sph.');
+pj_add(pj_kav5, 'kav5', 'Kavraisky V', 'PCyl., Sph.');
+pj_add(pj_qua_aut, 'qua_aut', 'Quartic Authalic', 'PCyl., Sph.');
+pj_add(pj_fouc, 'fouc', 'Foucaut', 'PCyl., Sph.');
+pj_add(pj_mbt_s, 'mbt_s', 'McBryde-Thomas Flat-Polar Sine (No. 1)', 'PCyl., Sph.');
 
 function pj_kav5(P) {
   pj_sts(P, 1.50488, 1.35439, false);
@@ -20804,7 +20802,7 @@ function pj_sts(P, p, q, tan_mode) {
 }
 
 
-pj_add(pj_tcea, 'tcea', 'Transverse Cylindrical Equal Area', '\n\tCyl, Sph');
+pj_add(pj_tcea, 'tcea', 'Transverse Cylindrical Equal Area', 'Cyl, Sph');
 
 function pj_tcea(P) {
   P.es = 0;
@@ -20827,7 +20825,7 @@ function pj_tcea(P) {
 }
 
 
-pj_add(pj_times, 'times', 'Times', "\n\tCyl, Sph");
+pj_add(pj_times, 'times', 'Times', 'Cyl, Sph');
 
 function pj_times(P) {
   P.es = 0;
@@ -20846,7 +20844,7 @@ function pj_times(P) {
 }
 
 
-pj_add(pj_tmerc, 'tmerc', "Transverse Mercator", "\n\tCyl, Sph&Ell");
+pj_add(pj_tmerc, 'tmerc', 'Transverse Mercator', 'Cyl, Sph&Ell');
 
 function pj_tmerc(P) {
   var EPS10 = 1e-10,
@@ -20976,7 +20974,7 @@ function pj_tmerc(P) {
 }
 
 
-pj_add(pj_tpeqd, 'tpeqd', 'Two Point Equidistant', '\n\tMisc Sph\n\tlat_1= lon_1= lat_2= lon_2=');
+pj_add(pj_tpeqd, 'tpeqd', 'Two Point Equidistant', 'Misc Sph\nlat_1= lon_1= lat_2= lon_2=');
 
 function pj_tpeqd(P) {
   var cp1, sp1, cp2, sp2, ccs, cs, sc, r2z0, z02, dlam2;
@@ -21052,7 +21050,7 @@ function pj_tpeqd(P) {
 }
 
 
-pj_add(pj_urm5, 'urm5', 'Urmaev V', '\n\tPCyl., Sph., no inv.\n\tn= q= alpha=');
+pj_add(pj_urm5, 'urm5', 'Urmaev V', 'PCyl., Sph., no inv.\nn= q= alpha=');
 
 function pj_urm5(P) {
   var m, rmn, q3, n;
@@ -21079,8 +21077,8 @@ function pj_urm5(P) {
 }
 
 
-pj_add(pj_urmfps, 'urmfps', 'Urmaev Flat-Polar Sinusoidal', '\n\tPCyl, Sph.\n\tn=');
-pj_add(pj_wag1, 'wag1', 'Wagner I (Kavraisky VI)', '\n\tPCyl, Sph.');
+pj_add(pj_urmfps, 'urmfps', 'Urmaev Flat-Polar Sinusoidal', 'PCyl, Sph.\nn=');
+pj_add(pj_wag1, 'wag1', 'Wagner I (Kavraisky VI)', 'PCyl, Sph.');
 
 
 function pj_wag1(P) {
@@ -21115,10 +21113,10 @@ function pj_urmfps_init(P, n) {
 }
 
 
-pj_add(pj_vandg, 'vandg', 'van der Grinten (I)', '\n\tMisc Sph');
-pj_add(pj_vandg2, 'vandg2', 'van der Grinten II', '\n\tMisc Sph, no inv.');
-pj_add(pj_vandg3, 'vandg3', 'van der Grinten III', '\n\tMisc Sph, no inv.');
-pj_add(pj_vandg4, 'vandg4', 'van der Grinten IV', '\n\tMisc Sph, no inv.');
+pj_add(pj_vandg, 'vandg', 'van der Grinten (I)', 'Misc Sph');
+pj_add(pj_vandg2, 'vandg2', 'van der Grinten II', 'Misc Sph, no inv.');
+pj_add(pj_vandg3, 'vandg3', 'van der Grinten III', 'Misc Sph, no inv.');
+pj_add(pj_vandg4, 'vandg4', 'van der Grinten IV', 'Misc Sph, no inv.');
 
 function pj_vandg(P) {
   var TOL = 1.e-10,
@@ -21277,9 +21275,9 @@ function pj_vandg4(P) {
 }
 
 
-pj_add(pj_wag2, 'wag2', 'Wagner II', '\n\tPCyl., Sph.');
-pj_add(pj_wag3, 'wag3', 'Wagner III', '\n\tPCyl., Sph.\n\tlat_ts=');
-pj_add(pj_wag7, 'wag7', 'Wagner VII', '\n\tMisc Sph, no inv.');
+pj_add(pj_wag2, 'wag2', 'Wagner II', 'PCyl., Sph.');
+pj_add(pj_wag3, 'wag3', 'Wagner III', 'PCyl., Sph.\nlat_ts=');
+pj_add(pj_wag7, 'wag7', 'Wagner VII', 'Misc Sph, no inv.');
 
 function pj_wag2(P) {
   var C_x = 0.92483,
@@ -21336,8 +21334,8 @@ function pj_wag7(P) {
 
 
 
-pj_add(pj_wink1, 'wink1', 'Winkel I', '\n\tPCyl., Sph.\n\tlat_ts=');
-pj_add(pj_wink2, 'wink2', 'Winkel II', '\n\tPCyl., Sph., no inv.\n\tlat_1=');
+pj_add(pj_wink1, 'wink1', 'Winkel I', 'PCyl., Sph.\nlat_ts=');
+pj_add(pj_wink2, 'wink2', 'Winkel II', 'PCyl., Sph., no inv.\nlat_1=');
 
 function pj_wink1(P) {
   var cosphi1 = cos(pj_param(P.params, "rlat_ts"));
