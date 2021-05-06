@@ -158,7 +158,7 @@ function cleanProjectedLayers(dataset) {
   // heal cuts in previously split-apart polygons
   // TODO: only clean affected polygons (cleaning all polygons can be slow)
   var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
-  cleanLayers(polygonLayers, dataset, {no_arc_dissolve: true, quiet: true});
+  cleanLayers(polygonLayers, dataset, {no_arc_dissolve: true, verbose: false});
   // remove unused arcs from polygon and polyline layers
   // TODO: fix bug that leaves uncut arcs in the arc table
   //   (e.g. when projecting a graticule)

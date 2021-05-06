@@ -37,7 +37,7 @@ export function cleanLayers(layers, dataset, optsArg) {
       }
     }
     if (!opts.allow_empty) {
-      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true});
+      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: opts.verbose});
     }
   });
 
