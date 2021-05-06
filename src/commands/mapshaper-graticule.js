@@ -58,7 +58,8 @@ function createGraticule(lon0, opts) {
     return createMeridian(x, ymin, ymax, precision);
   }).filter(o => !!o);
   if (isRotated) {
-    // this kludge adds
+    // add meridian lines that will appear on the left and right sides of the
+    // projected graticule
     meridians.push(createMeridian(antimeridian - e, -90, 90, precision));
     meridians.push(createMeridian(antimeridian + e, -90, 90, precision));
   }
