@@ -1,12 +1,11 @@
 
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { convertIntervalParam } from '../geom/mapshaper-units';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS, requireProjectedDataset } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { requireProjectedDataset } from '../geom/mapshaper-projections';
 import { buildTopology } from '../topology/mapshaper-topology';
 cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   requireProjectedDataset(targetDataset);

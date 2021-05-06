@@ -1,4 +1,4 @@
-import {MixedProjection} from '../geom/mapshaper-mixed-projection';
+import {MixedProjection} from '../crs/mapshaper-mixed-projection';
 import utils from '../utils/mapshaper-utils';
 
 // str: a custom projection string, e.g.: "albersusa +PR"

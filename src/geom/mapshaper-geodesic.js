@@ -1,4 +1,4 @@
-import { isLatLngCRS, getDatasetCRS } from '../geom/mapshaper-projections';
+import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { error } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 

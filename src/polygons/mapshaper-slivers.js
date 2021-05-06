@@ -1,6 +1,6 @@
 
 import { roundToSignificantDigits } from '../geom/mapshaper-rounding';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertAreaParam, getAreaLabel } from '../geom/mapshaper-units';
 import geom from '../geom/mapshaper-geom';
 import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';

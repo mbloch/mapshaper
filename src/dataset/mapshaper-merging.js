@@ -1,4 +1,4 @@
-import { isLatLngCRS, getDatasetCRS } from '../geom/mapshaper-projections';
+import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { copyLayerShapes } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';

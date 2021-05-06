@@ -1,9 +1,8 @@
-import { AlbersUSA, parseCustomProjection } from '../geom/mapshaper-custom-projections';
+import { AlbersUSA, parseCustomProjection } from '../crs/mapshaper-custom-projections';
 import { stop, print } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getStateVar } from '../mapshaper-state';
-
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 

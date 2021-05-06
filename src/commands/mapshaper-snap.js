@@ -1,5 +1,5 @@
 import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { buildTopology } from '../topology/mapshaper-topology';

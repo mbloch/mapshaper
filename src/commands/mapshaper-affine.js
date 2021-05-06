@@ -5,7 +5,7 @@ import { forEachPoint } from '../points/mapshaper-point-utils';
 import { countArcsInShapes } from '../paths/mapshaper-path-utils';
 import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalPair } from '../geom/mapshaper-units';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import utils from '../utils/mapshaper-utils';

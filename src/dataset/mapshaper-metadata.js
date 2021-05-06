@@ -1,5 +1,5 @@
 
-import { getCRS, crsToProj4, getDatasetCRS } from '../geom/mapshaper-projections';
+import { getCRS, crsToProj4, getDatasetCRS } from '../crs/mapshaper-projections';
 
 export function importMetadata(dataset, obj) {
   if (obj.proj4) {

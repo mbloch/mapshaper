@@ -1,6 +1,6 @@
 
 import { compileValueExpression } from '../expressions/mapshaper-expressions';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertDistanceParam } from '../geom/mapshaper-units';
 import { parseMeasure2 } from '../geom/mapshaper-units';
 import { reversePath } from '../paths/mapshaper-path-utils';

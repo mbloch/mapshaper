@@ -1,5 +1,5 @@
 
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { snapCoords } from '../paths/mapshaper-snapping';
 import { layerHasPaths, divideFeaturesByType } from '../dataset/mapshaper-layer-utils';

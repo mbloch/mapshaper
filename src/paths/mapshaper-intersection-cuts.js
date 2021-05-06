@@ -3,7 +3,7 @@ import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/map
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { debug, error } from '../utils/mapshaper-logging';
 import { NodeCollection } from '../topology/mapshaper-nodes';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { layerHasPaths, getArcPresenceTest2 } from '../dataset/mapshaper-layer-utils';
 import { cleanShapes } from '../paths/mapshaper-path-repair-utils';
 import { buildTopology } from '../topology/mapshaper-topology';

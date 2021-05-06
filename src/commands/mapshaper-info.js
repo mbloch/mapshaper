@@ -1,6 +1,6 @@
 import { applyFieldOrder } from '../datatable/mapshaper-data-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
-import { getProjInfo } from '../geom/mapshaper-projections';
+import { getProjInfo } from '../crs/mapshaper-projections';
 import { getLayerBounds, getFeatureCount, getLayerSourceFile } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';

@@ -1,5 +1,5 @@
 import { convertIntervalParam, convertDistanceParam } from '../geom/mapshaper-units';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { printSimplifyInfo } from '../simplify/mapshaper-simplify-info';
 import { postSimplifyRepair } from '../simplify/mapshaper-post-simplify-repair';
 import cmd from '../mapshaper-cmd';

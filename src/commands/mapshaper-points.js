@@ -2,7 +2,7 @@ import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
 import { parseDMS } from '../geom/mapshaper-dms';
 import { findAnchorPoint } from '../points/mapshaper-anchor-points';
 import { polylineToPoint, polylineToMidpoints } from '../paths/mapshaper-polyline-to-point';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { calcSegmentIntersectionStripeCount } from '../paths/mapshaper-segment-intersection';
 import { calcSegmentIntersectionStripeCount2 } from '../paths/mapshaper-segment-intersection';

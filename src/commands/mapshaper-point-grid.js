@@ -1,6 +1,6 @@
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { convertIntervalParam } from '../geom/mapshaper-units';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 

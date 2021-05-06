@@ -1,6 +1,6 @@
 import { cleanupArcs, replaceLayers, splitApartLayers } from '../dataset/mapshaper-dataset-utils';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
-import { initProjLibrary } from '../geom/mapshaper-projections';
+import { initProjLibrary } from '../crs/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';

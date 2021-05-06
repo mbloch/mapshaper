@@ -1,7 +1,7 @@
 
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import geom from '../geom/mapshaper-geom';
 import { PathIndex } from '../paths/mapshaper-path-index';

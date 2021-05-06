@@ -8,8 +8,8 @@ import {
   crsAreEqual,
   getDatasetCRS,
   setDatasetCRS
-} from '../geom/mapshaper-projections';
-import { expandProjDefn } from '../geom/mapshaper-projection-params';
+} from '../crs/mapshaper-projections';
+import { expandProjDefn } from '../crs/mapshaper-projection-params';
 import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { runningInBrowser } from '../mapshaper-state';

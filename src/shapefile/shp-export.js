@@ -1,7 +1,7 @@
 import { exportPathData } from '../paths/mapshaper-path-export';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { findMaxPartCount } from '../paths/mapshaper-shape-utils';
-import { getDatasetCRS, crsToPrj } from '../geom/mapshaper-projections';
+import { getDatasetCRS, crsToPrj } from '../crs/mapshaper-projections';
 import { exportDbfFile } from '../shapefile/dbf-export';
 import { message, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';

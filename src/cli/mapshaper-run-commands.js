@@ -1,5 +1,5 @@
 import { runCommand } from '../cli/mapshaper-run-command';
-import { printProjections } from '../geom/mapshaper-projections';
+import { printProjections } from '../crs/mapshaper-projections';
 import { printEncodings } from '../text/mapshaper-encodings';
 import { printColorSchemeNames } from '../color/color-schemes';
 import { parseCommands } from '../cli/mapshaper-parse-commands';

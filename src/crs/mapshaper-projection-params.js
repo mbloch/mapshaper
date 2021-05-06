@@ -1,5 +1,5 @@
 import { stop, message } from '../utils/mapshaper-logging';
-import { isLatLngCRS , getDatasetCRS } from '../geom/mapshaper-projections';
+import { isLatLngCRS , getDatasetCRS } from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getBoundsPrecisionForDisplay } from '../geom/mapshaper-rounding';
 

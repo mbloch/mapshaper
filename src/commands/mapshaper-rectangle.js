@@ -1,6 +1,6 @@
 import cmd from '../mapshaper-cmd';
 import { convertFourSides } from '../geom/mapshaper-units';
-import { setDatasetCRS, getDatasetCRS, getCRS } from '../geom/mapshaper-projections';
+import { setDatasetCRS, getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
 import { getLayerBounds, layerHasGeometry } from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { importGeoJSON } from '../geojson/geojson-import';

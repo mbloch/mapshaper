@@ -1,6 +1,6 @@
 import { importGeoJSON } from '../geojson/geojson-import';
 import { projectDataset } from '../commands/mapshaper-proj';
-import { getDatasetCRS, getCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';

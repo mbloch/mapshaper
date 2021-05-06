@@ -1,5 +1,5 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
-import { getDatasetCRS } from '../geom/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { getFurnitureLayerData, layerHasFurniture, importFurniture } from '../furniture/mapshaper-furniture';
 import { findFrameLayerInDataset } from '../commands/mapshaper-frame';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';

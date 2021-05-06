@@ -3,7 +3,7 @@ import { groupPolygonRings } from '../polygons/mapshaper-ring-nesting';
 import { exportPathData } from '../paths/mapshaper-path-export';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { layerHasPoints, layerHasPaths } from '../dataset/mapshaper-layer-utils';
-import { isLatLngCRS, getDatasetCRS } from '../geom/mapshaper-projections';
+import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { getFormattedStringify, stringifyAsNDJSON } from '../geojson/mapshaper-stringify';
 import { mergeLayerNames } from '../commands/mapshaper-merge-layers';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';

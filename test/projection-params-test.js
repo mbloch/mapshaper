@@ -1,4 +1,4 @@
-import { getConicParams, getCenterParams, expandProjDefn } from '../src/geom/mapshaper-projection-params'
+import { getConicParams, getCenterParams, expandProjDefn } from '../src/crs/mapshaper-projection-params'
 import assert from 'assert';
 
 describe('mapshaper-projection-params.js', function () {
