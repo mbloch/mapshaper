@@ -1,3 +1,6 @@
+v0.5.49
+* Split polylines and lines that cross the rotated antimeridan when applying a world projection with a non-zero central meridian.
+
 v0.5.48
 * Update to Cupola projection.
 

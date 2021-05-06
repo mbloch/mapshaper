@@ -39,7 +39,7 @@ cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
 
 // @clipSrc: layer in @dataset or filename
 // @type: 'clip' or 'erase'
-function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, layerHasPaths);
   var mergedDataset, clipLyr, nodes;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions

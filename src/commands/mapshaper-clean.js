@@ -8,7 +8,9 @@ import { buildTopology } from '../topology/mapshaper-topology';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 
-cmd.cleanLayers = function(layers, dataset, optsArg) {
+cmd.cleanLayers = cleanLayers;
+
+export function cleanLayers(layers, dataset, optsArg) {
   var opts = optsArg || {};
   var deepClean = !opts.only_arcs;
   var pathClean = utils.some(layers, layerHasPaths);
@@ -43,7 +45,7 @@ cmd.cleanLayers = function(layers, dataset, optsArg) {
     // remove leftover endpoints within contiguous lines
     dissolveArcs(dataset);
   }
-};
+}
 
 function cleanPolygonLayerGeometry(lyr, dataset, opts) {
   var groups = lyr.shapes.map(function(shp, i) {

@@ -18,3 +18,9 @@ export function clampToWorldBounds(b) {
   return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
       Math.min(bbox[2], 180), Math.min(bbox[3], 90));
 }
+
+export function getAntimeridian(lon0) {
+  var anti = lon0 - 180;
+  while (anti <= -180) anti += 360;
+  return anti;
+}

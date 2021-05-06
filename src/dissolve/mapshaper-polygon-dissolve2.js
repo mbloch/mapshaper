@@ -90,7 +90,7 @@ export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
   // Simple Features compliance
   dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
   var gapMessage = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
-  if (gapMessage) message(gapMessage);
+  if (gapMessage && !opts.quiet) message(gapMessage);
   return dissolvedShapes;
 }
 

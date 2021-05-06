@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.5.48",
+	"version": "0.5.49",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -28,7 +28,7 @@
 		"postpublish": "./release",
 		"browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r d3-scale-chromatic -r d3-color -r d3-interpolate -o www/modules.js",
 		"watch": "rollup --config --watch",
-    "dev": "rollup --config --watch"
+		"dev": "rollup --config --watch"
 	},
 	"main": "./mapshaper.js",
 	"files": [
