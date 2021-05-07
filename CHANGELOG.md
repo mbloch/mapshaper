@@ -1,3 +1,6 @@
+v0.5.50
+* Bug fix for an argument parsing error.
+
 v0.5.49
 * Split polylines and lines that cross the rotated antimeridan when applying a world projection with a non-zero central meridian.
 * Fixed error when sending output to /dev/stdout.

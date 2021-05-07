@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.5.49",
+	"version": "0.5.50",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -57,7 +57,7 @@
 		"mocha": "^8.3.0",
 		"rollup": "^2.28.2",
 		"shell-quote": "^1.6.1",
-		"underscore": "^1.9.0"
+		"underscore": "^1.13.1"
 	},
 	"bin": {
 		"mapshaper": "./bin/mapshaper",
