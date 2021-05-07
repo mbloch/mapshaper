@@ -3837,7 +3837,8 @@
     if (len >= 2) {
       first = raw.charAt(0);
       last = raw.charAt(len-1);
-      if (first == '"' && last == '"' || first == "'" && last == "'") {
+      if (first == '"' && last == '"' && !raw.includes('","') ||
+          first == "'" && last == "'" && !raw.includes("','")) {
         return raw.substr(1, len-2);
       }
     }

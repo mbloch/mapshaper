@@ -1044,7 +1044,8 @@
     if (len >= 2) {
       first = raw.charAt(0);
       last = raw.charAt(len-1);
-      if (first == '"' && last == '"' || first == "'" && last == "'") {
+      if (first == '"' && last == '"' && !raw.includes('","') ||
+          first == "'" && last == "'" && !raw.includes("','")) {
         return raw.substr(1, len-2);
       }
     }
@@ -14271,6 +14272,8 @@ ${svg}
     }
   }
 
+  var assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i; // exclude ==
+
   function splitShellTokens(str) {
     var BAREWORD = '([^\'"\\s])+';
     var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
@@ -14283,7 +14286,6 @@ ${svg}
     }).map(utils.trimQuotes);
     return chunks;
   }
-
 
   // Split comma-delimited list, trim quotes from entire list and
   // individual members
@@ -14347,19 +14349,31 @@ ${svg}
     return val;
   }
 
+  function isAssignment(token) {
+    return assignmentRxp.test(token);
+  }
+
+  function splitAssignment(token) {
+    var match = assignmentRxp.exec(token),
+        name = match[1],
+        val = utils.trimQuotes(match[2]);
+    return [name, val];
+  }
+
   var OptionParsingUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     splitShellTokens: splitShellTokens,
     parseStringList: parseStringList,
     parseColorList: parseColorList,
     cleanArgv: cleanArgv,
-    formatOptionValue: formatOptionValue
+    formatOptionValue: formatOptionValue,
+    isAssignment: isAssignment,
+    splitAssignment: splitAssignment
   });
 
   function CommandParser() {
     var commandRxp = /^--?([a-z][\w-]*)$/i,
         invalidCommandRxp = /^--?[a-z][\w-]*[=]/i, // e.g. -target=A // could be more general
-        assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
         _usage = "",
         _examples = [],
         _commands = [],
@@ -14467,7 +14481,7 @@ ${svg}
         var token = argv.shift(),
             optName, optDef, parts;
 
-        if (assignmentRxp.test(token)) {
+        if (isAssignment(token)) {
           // token looks like name=value style option
           parts = splitAssignment(token);
           optDef = findOptionDefn(parts[0], cmdDef);
@@ -14508,13 +14522,6 @@ ${svg}
         } else {
           cmd.options[optName] = readOptionValue(argv, optDef);
         }
-      }
-
-      function splitAssignment(token) {
-        var match = assignmentRxp.exec(token),
-            name = match[1],
-            val = utils.trimQuotes(match[2]);
-        return [name, val];
       }
 
       // Read an option value for @optDef from @argv
@@ -28070,6 +28077,8 @@ ${svg}
   }
 
   function insertPreProjectionCuts(dataset, src, dest) {
+    // currently only supports adding a single vertical cut to (most) world map projections
+    // centered on a non-zero longitude.
     if (isLatLngCRS(src) && isRotatedWorldProjection(dest)) {
       insertVerticalCut(dataset, getAntimeridian(dest.lam0 * 180 / Math.PI));
       return true;
@@ -28446,7 +28455,8 @@ ${svg}
       return createMeridian(x, ymin, ymax, precision);
     }).filter(o => !!o);
     if (isRotated) {
-      // this kludge adds
+      // add meridian lines that will appear on the left and right sides of the
+      // projected graticule
       meridians.push(createMeridian(antimeridian - e, -90, 90, precision));
       meridians.push(createMeridian(antimeridian + e, -90, 90, precision));
     }
