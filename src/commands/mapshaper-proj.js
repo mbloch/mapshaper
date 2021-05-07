@@ -129,27 +129,32 @@ export function getCrsInfo(name, catalog) {
 
 export function projectDataset(dataset, src, dest, opts) {
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
-  var errors, cuts;
+  var badArcs = 0;
+  var badPoints = 0;
+  var cuts;
   dataset.layers.forEach(function(lyr) {
     if (layerHasPoints(lyr)) {
-      projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
+      badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
     }
   });
   if (dataset.arcs) {
     cuts = insertPreProjectionCuts(dataset, src, dest);
 
     if (opts.densify) {
-      errors = projectAndDensifyArcs(dataset.arcs, proj);
+      badArcs = projectAndDensifyArcs(dataset.arcs, proj);
     } else {
-      errors = projectArcs2(dataset.arcs, proj);
-    }
-    if (errors > 0) {
-      message(`Removed ${errors} ${errors == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
+      badArcs = projectArcs2(dataset.arcs, proj);
     }
 
     if (cuts) {
       cleanProjectedLayers(dataset);
     }
+  }
+  if (badArcs > 0) {
+    message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
+  }
+  if (badPoints > 0) {
+    message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
 }
 
@@ -167,9 +172,13 @@ function cleanProjectedLayers(dataset) {
 // proj: function to project [x, y] point; should return null if projection fails
 // TODO: fatal error if no points project?
 function projectPointLayer(lyr, proj) {
+  var errors = 0;
   editShapes(lyr.shapes, function(p) {
-    return proj(p[0], p[1]); // removes points that fail to project
+    var p2 = proj(p[0], p[1]);
+    if (!p2) errors++;
+    return p2; // removes points that fail to project
   });
+  return errors;
 }
 
 function projectArcs(arcs, proj) {
