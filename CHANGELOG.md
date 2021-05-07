@@ -1,3 +1,8 @@
+v0.5.51
+* Apply antimeridian cutting to more projections.
+* Assign categorical colors automatically using -classify categories=\*.
+* Add several 20-color categorical color schemes.
+
 v0.5.50
 * Bug fix for an argument parsing error.
 

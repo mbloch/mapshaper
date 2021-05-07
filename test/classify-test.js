@@ -13,7 +13,19 @@ describe('mapshaper-classify.js', function () {
         done();
       });
     })
+
+    it('assign a color to each value when categories=* is used', function(done) {
+      var data = 'name\ncar\ntruck\ntrain\nbike';
+      var cmd = '-i data.csv -classify name categories=* colors=Tableau20 -o';
+      api.applyCommands(cmd, {'data.csv': data}, function(err, out) {
+        var target = 'name,fill\ncar,#4c78a8\ntruck,#9ecae9\ntrain,#f58518\nbike,#ffbf79';
+        assert.equal(out['data.csv'], target);
+        done();
+      });
+    })
+
   })
+
   it('error on unknown color scheme', function(done) {
     var data='value\n1\n2\n3\n4';
     api.applyCommands('-i data.csv -classify value colors=blues -o', {'data.csv': data}, function(err, out) {

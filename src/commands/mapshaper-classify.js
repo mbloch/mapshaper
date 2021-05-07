@@ -18,6 +18,7 @@ import {
   interpolateValuesToClasses
 } from '../classification/mapshaper-interpolation';
 import cmd from '../mapshaper-cmd';
+import { getUniqFieldValues } from '../datatable/mapshaper-data-utils';
 
 cmd.classify = function(lyr, optsArg) {
   var opts = optsArg || {};
@@ -37,6 +38,7 @@ cmd.classify = function(lyr, optsArg) {
     numBuckets = opts.classes;
   }
 
+
   // TODO: better validation of breaks values
   if (opts.breaks) {
     numBuckets = opts.breaks.length + 1;
@@ -51,6 +53,11 @@ cmd.classify = function(lyr, optsArg) {
 
   } else {
     stop('Missing a data field to classify');
+  }
+
+  // expand categories if value is '*'
+  if (dataField && opts.categories && opts.categories.includes('*')) {
+    opts.categories = getUniqFieldValues(records, dataField);
   }
 
   requireDataField(lyr.data, dataField);
@@ -76,7 +83,6 @@ cmd.classify = function(lyr, optsArg) {
 
     if (opts.categories) {
       classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
-      message('Colors:', formatValuesForLogging(classValues));
       numBuckets = numValues = classValues.length;
     } else {
       if (!numBuckets) {
