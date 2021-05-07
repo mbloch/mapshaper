@@ -1,5 +1,6 @@
 import { message } from '../utils/mapshaper-logging';
 
+// Returns number of arcs that were removed
 export function editArcs(arcs, onPoint) {
   var nn2 = [],
       xx2 = [],

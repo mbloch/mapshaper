@@ -1,21 +1,21 @@
 import geom from '../geom/mapshaper-geom';
 import { editArcs } from '../paths/mapshaper-arc-editor';
 import { getAvgSegment2 } from '../paths/mapshaper-path-utils';
+import { stop } from '../utils/mapshaper-logging';
 
 export function projectAndDensifyArcs(arcs, proj) {
   var interval = getDefaultDensifyInterval(arcs, proj);
-  var p = [0, 0];
+  var p;
   return editArcs(arcs, onPoint);
 
   function onPoint(append, lng, lat, prevLng, prevLat, i) {
-    var prevX = p[0],
-        prevY = p[1];
+    var pp = p;
     p = proj(lng, lat);
     if (!p) return false; // signal that current arc contains an error
 
     // Don't try to densify shorter segments (optimization)
-    if (i > 0 && geom.distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
-      densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
+    if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > interval * interval * 25) {
+      densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
         .forEach(append);
     }
     append(p);
@@ -28,14 +28,18 @@ function getDefaultDensifyInterval(arcs, proj) {
       a = proj(bb.centerX(), bb.centerY()),
       b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
       c = proj(bb.centerX(), bb.ymin), // right center
-      d = proj(bb.xmax, bb.centerY()), // bottom center
-      // interval A: based on average segment length
-      intervalA = geom.distance2D(a[0], a[1], b[0], b[1]),
-      // interval B: a fraction of avg bbox side length
-      // (added this for bbox densification)
-      intervalB = (geom.distance2D(a[0], a[1], c[0], c[1]) +
-        geom.distance2D(a[0], a[1], d[0], d[1])) / 5000;
-  return Math.min(intervalA, intervalB);
+      d = proj(bb.xmax, bb.centerY()); // bottom center
+  // interval A: based on average segment length
+  var intervalA = a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
+  // interval B: a fraction of avg bbox side length
+  // (added this for bbox densification)
+  var intervalB = c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
+        geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
+  var interval = Math.min(intervalA, intervalB);
+  if (interval == Infinity) {
+    stop('Projection failure');
+  }
+  return interval;
 }
 
 // Interpolate points into a projected line segment if needed to prevent large

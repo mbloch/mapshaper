@@ -144,8 +144,7 @@ export function projectDataset(dataset, src, dest, opts) {
       errors = projectArcs2(dataset.arcs, proj);
     }
     if (errors > 0) {
-      // TODO: implement this (null arcs have zero length)
-      // internal.removeShapesWithNullArcs(dataset);
+      message(`Removed ${errors} ${errors == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
     }
 
     if (cuts) {
