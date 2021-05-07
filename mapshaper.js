@@ -23242,19 +23242,57 @@ ${svg}
     return output;
   }
 
-  var categorical = 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10'.split(',');
-  var sequential = 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd'.split(',');
-  var rainbow = 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma'.split(',');
-  var diverging = 'BrBG,PRGn,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral'.split(',');
+  var index = {
+    categorical: [],
+    sequential: [],
+    rainbow: [],
+    diverging: []
+  };
+  var ramps;
+
+  function initSchemes() {
+    if (ramps) return;
+    ramps = {};
+    addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
+    addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
+    addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
+    addSchemesFromD3('diverging', 'BrBG,PRGn,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral');
+    testLib(); // make sure these schemes are all available
+    addCategoricalScheme('Category20',
+      '1f77b4aec7e8ff7f0effbb782ca02c98df8ad62728ff98969467bdc5b0d58c564bc49c94e377c2f7b6d27f7f7fc7c7c7bcbd22dbdb8d17becf9edae5');
+    addCategoricalScheme('Category20b',
+      '393b795254a36b6ecf9c9ede6379398ca252b5cf6bcedb9c8c6d31bd9e39e7ba52e7cb94843c39ad494ad6616be7969c7b4173a55194ce6dbdde9ed6');
+    addCategoricalScheme('Category20c',
+      '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
+    addCategoricalScheme('Tableau20',
+      '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
+  }
+
+  function addSchemesFromD3(type, names) {
+    index[type] = index[type].concat(names.split(','));
+  }
+
+  function addCategoricalScheme(name, str) {
+    index.categorical.push(name);
+    ramps[name] = unpackRamp(str);
+  }
+
+  function unpackRamp(str) {
+    var colors = [];
+    for (var i=0, n=str.length; i<n; i+=6) {
+      colors.push('#' + str.substr(i, 6));
+    }
+    return colors;
+  }
 
   function testLib() {
     var lib = require('d3-scale-chromatic');
-    schemes(categorical);
-    schemes(sequential);
-    schemes(diverging);
-    interpolators(sequential);
-    interpolators(rainbow);
-    interpolators(diverging);
+    schemes(index.categorical);
+    schemes(index.sequential);
+    schemes(index.diverging);
+    interpolators(index.sequential);
+    interpolators(index.rainbow);
+    interpolators(index.diverging);
 
     function schemes(arr) {
       arr.forEach(function(name) {
@@ -23274,19 +23312,20 @@ ${svg}
   }
 
   function printColorSchemeNames() {
-    testLib();
+    initSchemes();
     print('Built-in color schemes (from d3):');
-    print ('Categorical\n' + formatStringsAsGrid(categorical));
-    print ('\nSequential\n' + formatStringsAsGrid(sequential));
-    print ('\nDiverging\n' + formatStringsAsGrid(diverging));
-    print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(rainbow));
+    print ('Categorical\n' + formatStringsAsGrid(index.categorical));
+    print ('\nSequential\n' + formatStringsAsGrid(index.sequential));
+    print ('\nDiverging\n' + formatStringsAsGrid(index.diverging));
+    print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
   }
 
   function getCategoricalColorScheme(name, n) {
-    if (categorical.includes(name) === false) {
+    initSchemes();
+    if (index.categorical.includes(name) === false) {
       stop(name, 'is not a categorical color scheme');
     }
-    var colors = require('d3-scale-chromatic')['scheme' + name];
+    var colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
     if (n > colors.length) {
       stop(name, 'does not contain', n, 'colors');
     }
@@ -23294,10 +23333,13 @@ ${svg}
   }
 
   function isColorSchemeName(name) {
-    return categorical.concat(sequential).concat(rainbow).concat(diverging).includes(name);
+    initSchemes();
+    return index.categorical.includes(name) || index.sequential.includes(name) ||
+      index.diverging.includes(name) || index.rainbow.includes(name);
   }
 
   function getColorRamp(name, n, stops) {
+    initSchemes();
     var lib = require('d3-scale-chromatic');
     var ramps = lib['scheme' + name];
     var interpolate = lib['interpolate' + name];
@@ -23305,7 +23347,7 @@ ${svg}
     if (!ramps && !interpolate) {
       stop('Unknown color scheme name:', name);
     }
-    if (categorical.includes(name)) {
+    if (index.categorical.includes(name)) {
       stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
     }
     if (ramps && ramps[n]) {
@@ -24113,6 +24155,7 @@ ${svg}
       numBuckets = opts.classes;
     }
 
+
     // TODO: better validation of breaks values
     if (opts.breaks) {
       numBuckets = opts.breaks.length + 1;
@@ -24127,6 +24170,11 @@ ${svg}
 
     } else {
       stop('Missing a data field to classify');
+    }
+
+    // expand categories if value is '*'
+    if (dataField && opts.categories && opts.categories.includes('*')) {
+      opts.categories = getUniqFieldValues(records, dataField);
     }
 
     requireDataField(lyr.data, dataField);
@@ -24152,7 +24200,6 @@ ${svg}
 
       if (opts.categories) {
         classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
-        message('Colors:', formatValuesForLogging(classValues));
         numBuckets = numValues = classValues.length;
       } else {
         if (!numBuckets) {
@@ -27984,6 +28031,7 @@ ${svg}
     return maxValue;
   }
 
+  // Returns number of arcs that were removed
   function editArcs(arcs, onPoint) {
     var nn2 = [],
         xx2 = [],
@@ -28048,42 +28096,53 @@ ${svg}
     return P.params.proj.param; // kludge
   }
 
-  function isWorldProjection(P) {
-    return getWorldProjections().includes(getCrsSlug(P));
+  // 'normal' = the projection is aligned to the Earth's axis
+  // (i.e. it has a normal aspect)
+  function isRotatedNormalProjection(P) {
+    return isAxisAligned(P) && P.lam0 !== 0;
   }
 
-  function isRotatedWorldProjection(P) {
-    return isWorldProjection(P) && P.lam0 !== 0;
+  function isAxisAligned(P) {
+    return !isNonNormal(P);
   }
 
-  // TODO: rename this function
-  // These are projections that cover the entire world and can be rotated horizontally
-  //
-  // not included
-  // bertin1953 (doesn't rotate)
-  // euler (world? seems to need more params)
-  // murd1,murd2,murd3 (missing param)
-  //
-  // not implemented
-  // bonne,cc,collg,comill,fahey,igh,larr,lask
-  //
-  function getWorldProjections() {
-    return 'robin,cupola,wintri,aitoff,apian,august,bacon,boggs,cea,crast,' +
-    'denoy,eck1,eck2,eck3,eck4,eck5,eck6,eqc,eqearth,fouc,gall,gilbert,gins8,goode,' +
-    'hammer,hatano,igh,kav5,kav7,loxim,mbt_fpp,mbt_fpq,mbt_fps,mbt_s,mbtfps,mill,' +
-    'moll,natearth,natearth2,nell,nell_h,ortel,patterson,putp1,putp2,putp3,putp3p,' +
-    'putp4p,putp5,putp5p,putp6,putp6p,qua_aut,times,vandg,vandg2,vandg3,vandg4,' +
-    'wag1,wag2,wag3,wag4,wag5,wag6,wag7,weren,wink1,wink2'.split();
+  function isNonNormal(P) {
+    var others = 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
+      'ob_tran,ocea,omerc,tmerc,etmerc';
+    return isAzimuthal(P) || inList(P, others);
+  }
+
+  function isAzimuthal(P) {
+    return inList(P,
+      'aeqd,gnom,laea,mil_os,lee_os,gs48,alsk,gs50,nsper,tpers,ortho,qsc,stere,ups,sterea');
+  }
+
+  function inList(P, str) {
+    return str.split(',').includes(getCrsSlug(P));
   }
 
   function insertPreProjectionCuts(dataset, src, dest) {
-    // currently only supports adding a single vertical cut to (most) world map projections
-    // centered on a non-zero longitude.
-    if (isLatLngCRS(src) && isRotatedWorldProjection(dest)) {
-      insertVerticalCut(dataset, getAntimeridian(dest.lam0 * 180 / Math.PI));
+    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
+    // currently only supports adding a single vertical cut to earth axis-aligned
+    // map projections centered on a non-zero longitude.
+    // TODO: need a more sophisticated kind of cutting to handle other cases
+    if (isLatLngCRS(src) &&
+        isRotatedNormalProjection(dest) &&
+        datasetCrossesLon(dataset, antimeridian)) {
+      insertVerticalCut(dataset, antimeridian);
       return true;
     }
     return false;
+  }
+
+  function datasetCrossesLon(dataset, lon) {
+    var crosses = 0;
+    dataset.arcs.forEachSegment(function(i, j, xx, yy) {
+      var ax = xx[i],
+          bx = xx[j];
+      if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
+    });
+    return crosses > 0;
   }
 
   function insertVerticalCut(dataset, lon) {
@@ -28110,18 +28169,17 @@ ${svg}
 
   function projectAndDensifyArcs(arcs, proj) {
     var interval = getDefaultDensifyInterval(arcs, proj);
-    var p = [0, 0];
+    var p;
     return editArcs(arcs, onPoint);
 
     function onPoint(append, lng, lat, prevLng, prevLat, i) {
-      var prevX = p[0],
-          prevY = p[1];
+      var pp = p;
       p = proj(lng, lat);
       if (!p) return false; // signal that current arc contains an error
 
       // Don't try to densify shorter segments (optimization)
-      if (i > 0 && geom.distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
-        densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
+      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > interval * interval * 25) {
+        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
           .forEach(append);
       }
       append(p);
@@ -28134,14 +28192,18 @@ ${svg}
         a = proj(bb.centerX(), bb.centerY()),
         b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
         c = proj(bb.centerX(), bb.ymin), // right center
-        d = proj(bb.xmax, bb.centerY()), // bottom center
-        // interval A: based on average segment length
-        intervalA = geom.distance2D(a[0], a[1], b[0], b[1]),
-        // interval B: a fraction of avg bbox side length
-        // (added this for bbox densification)
-        intervalB = (geom.distance2D(a[0], a[1], c[0], c[1]) +
-          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000;
-    return Math.min(intervalA, intervalB);
+        d = proj(bb.xmax, bb.centerY()); // bottom center
+    // interval A: based on average segment length
+    var intervalA = a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
+    // interval B: a fraction of avg bbox side length
+    // (added this for bbox densification)
+    var intervalB = c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
+          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
+    var interval = Math.min(intervalA, intervalB);
+    if (interval == Infinity) {
+      stop('Projection failure');
+    }
+    return interval;
   }
 
   // Interpolate points into a projected line segment if needed to prevent large
@@ -28324,28 +28386,32 @@ ${svg}
 
   function projectDataset(dataset, src, dest, opts) {
     var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
-    var errors, cuts;
+    var badArcs = 0;
+    var badPoints = 0;
+    var cuts;
     dataset.layers.forEach(function(lyr) {
       if (layerHasPoints(lyr)) {
-        projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
+        badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
       }
     });
     if (dataset.arcs) {
       cuts = insertPreProjectionCuts(dataset, src, dest);
 
       if (opts.densify) {
-        errors = projectAndDensifyArcs(dataset.arcs, proj);
+        badArcs = projectAndDensifyArcs(dataset.arcs, proj);
       } else {
-        errors = projectArcs2(dataset.arcs, proj);
-      }
-      if (errors > 0) {
-        // TODO: implement this (null arcs have zero length)
-        // internal.removeShapesWithNullArcs(dataset);
+        badArcs = projectArcs2(dataset.arcs, proj);
       }
 
       if (cuts) {
         cleanProjectedLayers(dataset);
       }
+    }
+    if (badArcs > 0) {
+      message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
+    }
+    if (badPoints > 0) {
+      message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
     }
   }
 
@@ -28363,9 +28429,13 @@ ${svg}
   // proj: function to project [x, y] point; should return null if projection fails
   // TODO: fatal error if no points project?
   function projectPointLayer(lyr, proj) {
+    var errors = 0;
     editShapes(lyr.shapes, function(p) {
-      return proj(p[0], p[1]); // removes points that fail to project
+      var p2 = proj(p[0], p[1]);
+      if (!p2) errors++;
+      return p2; // removes points that fail to project
     });
+    return errors;
   }
 
   function projectArcs(arcs, proj) {
@@ -28422,7 +28492,7 @@ ${svg}
   function createGraticuleForProjection(P, opts) {
     var lon0 = 0;
     // see mapshaper-spherical-cutting.js
-    if (isRotatedWorldProjection(P)) {
+    if (isRotatedNormalProjection(P)) {
       lon0 = P.lam0 * 180 / Math.PI;
     }
     return createGraticule(lon0, opts);
@@ -28436,32 +28506,28 @@ ${svg}
     var xstepMajor = 90;
     var antimeridian = getAntimeridian(lon0);
     var isRotated = lon0 != 0;
-    var e = 2e-8;
     var xn = Math.round(360 / xstep) + (isRotated ? 0 : 1);
     var yn = Math.round(180 / ystep) + 1;
     var xx = utils.range(xn, -180, xstep);
     var yy = utils.range(yn, -90, ystep);
-    var meridians = xx.map(function(x) {
-      var ymin = -90,
-          ymax = 90;
+    var meridians = [];
+    var parallels = [];
+    xx.forEach(function(x) {
       if (isRotated && Math.abs(x - antimeridian) < xstep / 5) {
         // skip meridians that are close to the enclosure of a rotated graticule
         return null;
       }
-      if (x % xstepMajor !== 0) {
-        ymin += ystep;
-        ymax -= ystep;
-      }
-      return createMeridian(x, ymin, ymax, precision);
-    }).filter(o => !!o);
+      createMeridian(x, x % xstepMajor === 0);
+    });
     if (isRotated) {
       // add meridian lines that will appear on the left and right sides of the
       // projected graticule
-      meridians.push(createMeridian(antimeridian - e, -90, 90, precision));
-      meridians.push(createMeridian(antimeridian + e, -90, 90, precision));
+      // offset the lines by a larger amount than the width of any cuts
+      createMeridian(antimeridian - 2e-8, true);
+      createMeridian(antimeridian + 2e-8, true);
     }
-    var parallels = yy.map(function(y) {
-      return createParallel(y, -180, 180, precision);
+    yy.forEach(function(y) {
+      createParallel(y);
     });
     var geojson = {
       type: 'FeatureCollection',
@@ -28470,6 +28536,36 @@ ${svg}
     var graticule = importGeoJSON(geojson, {});
     graticule.layers[0].name = 'graticule';
     return graticule;
+
+    function createMeridian(x, extended) {
+      createMeridianPart(x, -80, 80);
+      if (extended) {
+        // adding extensions as separate parts, so if the polar coordinates
+        // fail to project, at least the rest of the meridian line will remain
+        createMeridianPart(x, -90, -80);
+        createMeridianPart(x, 80, 90);
+      }
+    }
+
+    function createMeridianPart(x, ymin, ymax) {
+      var coords = [];
+      for (var y = ymin; y < ymax; y += precision) {
+        coords.push([x, y]);
+      }
+      coords.push([x, ymax]);
+      meridians.push(graticuleFeature(coords, {type: 'meridian', value: x}));
+    }
+
+    function createParallel(y) {
+      var coords = [];
+      var xmin = -180;
+      var xmax = 180;
+      for (var x = xmin; x < xmax; x += precision) {
+        coords.push([x, y]);
+      }
+      coords.push([xmax, y]);
+      parallels.push(graticuleFeature(coords, {type: 'parallel', value: y}));
+    }
   }
 
   function graticuleFeature(coords, o) {
@@ -28481,24 +28577,6 @@ ${svg}
         coordinates: coords
       }
     };
-  }
-
-  function createMeridian(x, ymin, ymax, precision) {
-    var coords = [];
-    for (var y = ymin; y < ymax; y += precision) {
-      coords.push([x, y]);
-    }
-    coords.push([x, ymax]);
-    return graticuleFeature(coords, {type: 'meridian', value: x});
-  }
-
-  function createParallel(y, xmin, xmax, precision) {
-    var coords = [];
-    for (var x = xmin; x < xmax; x += precision) {
-      coords.push([x, y]);
-    }
-    coords.push([xmax, y]);
-    return graticuleFeature(coords, {type: 'parallel', value: y});
   }
 
   cmd.include = function(opts) {
