@@ -1,4 +1,11 @@
-import { parseStringList, parseColorList, cleanArgv } from '../cli/mapshaper-option-parsing-utils';
+import {
+  parseStringList,
+  parseColorList,
+  cleanArgv,
+  trimQuotes,
+  isAssignment,
+  splitAssignment
+} from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop, print, error } from '../utils/mapshaper-logging';
 import { runningInBrowser } from '../mapshaper-state';
@@ -6,7 +13,6 @@ import { runningInBrowser } from '../mapshaper-state';
 export function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
       invalidCommandRxp = /^--?[a-z][\w-]*[=]/i, // e.g. -target=A // could be more general
-      assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
       _usage = "",
       _examples = [],
       _commands = [],
@@ -114,7 +120,7 @@ export function CommandParser() {
       var token = argv.shift(),
           optName, optDef, parts;
 
-      if (assignmentRxp.test(token)) {
+      if (isAssignment(token)) {
         // token looks like name=value style option
         parts = splitAssignment(token);
         optDef = findOptionDefn(parts[0], cmdDef);
@@ -155,13 +161,6 @@ export function CommandParser() {
       } else {
         cmd.options[optName] = readOptionValue(argv, optDef);
       }
-    }
-
-    function splitAssignment(token) {
-      var match = assignmentRxp.exec(token),
-          name = match[1],
-          val = utils.trimQuotes(match[2]);
-      return [name, val];
     }
 
     // Read an option value for @optDef from @argv

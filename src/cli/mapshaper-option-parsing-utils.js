@@ -1,4 +1,5 @@
 import utils from '../utils/mapshaper-utils';
+var assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i; // exclude ==
 
 export function splitShellTokens(str) {
   var BAREWORD = '([^\'"\\s])+';
@@ -12,7 +13,6 @@ export function splitShellTokens(str) {
   }).map(utils.trimQuotes);
   return chunks;
 }
-
 
 // Split comma-delimited list, trim quotes from entire list and
 // individual members
@@ -74,4 +74,15 @@ export function formatOptionValue(val) {
     val = JSON.stringify(val); // quote ids with spaces
   }
   return val;
+}
+
+export function isAssignment(token) {
+  return assignmentRxp.test(token);
+}
+
+export function splitAssignment(token) {
+  var match = assignmentRxp.exec(token),
+      name = match[1],
+      val = utils.trimQuotes(match[2]);
+  return [name, val];
 }

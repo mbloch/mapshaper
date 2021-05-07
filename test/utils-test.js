@@ -4,6 +4,13 @@ var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-utils.js', function () {
+  describe('trimQuotes()', function () {
+    it('lists of quoted strings', function () {
+      assert.equal(utils.trimQuotes("'blue','red'"), "'blue','red'");
+      assert.equal(utils.trimQuotes("'reddish blue','bluish red'"), "'reddish blue','bluish red'");
+    })
+  })
+
   describe('formatDateISO()', function () {
     it('rounds to minutes', function () {
       assert.equal(utils.formatDateISO(new Date('2020-10-01T02:59:00.000Z')), '2020-10-01T02:59Z')

@@ -6,6 +6,8 @@ import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 
 export function insertPreProjectionCuts(dataset, src, dest) {
+  // currently only supports adding a single vertical cut to (most) world map projections
+  // centered on a non-zero longitude.
   if (isLatLngCRS(src) && isRotatedWorldProjection(dest)) {
     insertVerticalCut(dataset, getAntimeridian(dest.lam0 * 180 / Math.PI));
     return true;
