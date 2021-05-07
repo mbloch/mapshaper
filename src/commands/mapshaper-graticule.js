@@ -1,11 +1,12 @@
 import { importGeoJSON } from '../geojson/geojson-import';
 import { projectDataset } from '../commands/mapshaper-proj';
 import { getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
-import { isRotatedWorldProjection } from '../crs/mapshaper-proj-info';
+import { isRotatedNormalProjection } from '../crs/mapshaper-proj-info';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
+
 
 cmd.graticule = function(dataset, opts) {
   var graticule, dest, src;
@@ -25,7 +26,7 @@ cmd.graticule = function(dataset, opts) {
 function createGraticuleForProjection(P, opts) {
   var lon0 = 0;
   // see mapshaper-spherical-cutting.js
-  if (isRotatedWorldProjection(P)) {
+  if (isRotatedNormalProjection(P)) {
     lon0 = P.lam0 * 180 / Math.PI;
   }
   return createGraticule(lon0, opts);
@@ -39,32 +40,28 @@ function createGraticule(lon0, opts) {
   var xstepMajor = 90;
   var antimeridian = getAntimeridian(lon0);
   var isRotated = lon0 != 0;
-  var e = 2e-8;
   var xn = Math.round(360 / xstep) + (isRotated ? 0 : 1);
   var yn = Math.round(180 / ystep) + 1;
   var xx = utils.range(xn, -180, xstep);
   var yy = utils.range(yn, -90, ystep);
-  var meridians = xx.map(function(x) {
-    var ymin = -90,
-        ymax = 90;
+  var meridians = [];
+  var parallels = [];
+  xx.forEach(function(x) {
     if (isRotated && Math.abs(x - antimeridian) < xstep / 5) {
       // skip meridians that are close to the enclosure of a rotated graticule
       return null;
     }
-    if (x % xstepMajor !== 0) {
-      ymin += ystep;
-      ymax -= ystep;
-    }
-    return createMeridian(x, ymin, ymax, precision);
-  }).filter(o => !!o);
+    createMeridian(x, x % xstepMajor === 0);
+  });
   if (isRotated) {
     // add meridian lines that will appear on the left and right sides of the
     // projected graticule
-    meridians.push(createMeridian(antimeridian - e, -90, 90, precision));
-    meridians.push(createMeridian(antimeridian + e, -90, 90, precision));
+    // offset the lines by a larger amount than the width of any cuts
+    createMeridian(antimeridian - 2e-8, true);
+    createMeridian(antimeridian + 2e-8, true);
   }
-  var parallels = yy.map(function(y) {
-    return createParallel(y, -180, 180, precision);
+  yy.forEach(function(y) {
+    createParallel(y);
   });
   var geojson = {
     type: 'FeatureCollection',
@@ -73,6 +70,36 @@ function createGraticule(lon0, opts) {
   var graticule = importGeoJSON(geojson, {});
   graticule.layers[0].name = 'graticule';
   return graticule;
+
+  function createMeridian(x, extended) {
+    createMeridianPart(x, -80, 80);
+    if (extended) {
+      // adding extensions as separate parts, so if the polar coordinates
+      // fail to project, at least the rest of the meridian line will remain
+      createMeridianPart(x, -90, -80);
+      createMeridianPart(x, 80, 90);
+    }
+  }
+
+  function createMeridianPart(x, ymin, ymax) {
+    var coords = [];
+    for (var y = ymin; y < ymax; y += precision) {
+      coords.push([x, y]);
+    }
+    coords.push([x, ymax]);
+    meridians.push(graticuleFeature(coords, {type: 'meridian', value: x}));
+  }
+
+  function createParallel(y) {
+    var coords = [];
+    var xmin = -180;
+    var xmax = 180;
+    for (var x = xmin; x < xmax; x += precision) {
+      coords.push([x, y]);
+    }
+    coords.push([xmax, y]);
+    parallels.push(graticuleFeature(coords, {type: 'parallel', value: y}));
+  }
 }
 
 function graticuleFeature(coords, o) {
@@ -84,22 +111,4 @@ function graticuleFeature(coords, o) {
       coordinates: coords
     }
   };
-}
-
-function createMeridian(x, ymin, ymax, precision) {
-  var coords = [];
-  for (var y = ymin; y < ymax; y += precision) {
-    coords.push([x, y]);
-  }
-  coords.push([x, ymax]);
-  return graticuleFeature(coords, {type: 'meridian', value: x});
-}
-
-function createParallel(y, xmin, xmax, precision) {
-  var coords = [];
-  for (var x = xmin; x < xmax; x += precision) {
-    coords.push([x, y]);
-  }
-  coords.push([xmax, y]);
-  return graticuleFeature(coords, {type: 'parallel', value: y});
 }

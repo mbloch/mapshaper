@@ -1,18 +1,32 @@
 import { isLatLngCRS } from '../crs/mapshaper-projections';
-import { isRotatedWorldProjection } from '../crs/mapshaper-proj-info';
+import { isRotatedNormalProjection } from '../crs/mapshaper-proj-info';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { clipLayers } from '../commands/mapshaper-clip-erase';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 
 export function insertPreProjectionCuts(dataset, src, dest) {
-  // currently only supports adding a single vertical cut to (most) world map projections
-  // centered on a non-zero longitude.
-  if (isLatLngCRS(src) && isRotatedWorldProjection(dest)) {
-    insertVerticalCut(dataset, getAntimeridian(dest.lam0 * 180 / Math.PI));
+  var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
+  // currently only supports adding a single vertical cut to earth axis-aligned
+  // map projections centered on a non-zero longitude.
+  // TODO: need a more sophisticated kind of cutting to handle other cases
+  if (isLatLngCRS(src) &&
+      isRotatedNormalProjection(dest) &&
+      datasetCrossesLon(dataset, antimeridian)) {
+    insertVerticalCut(dataset, antimeridian);
     return true;
   }
   return false;
+}
+
+function datasetCrossesLon(dataset, lon) {
+  var crosses = 0;
+  dataset.arcs.forEachSegment(function(i, j, xx, yy) {
+    var ax = xx[i],
+        bx = xx[j];
+    if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
+  });
+  return crosses > 0;
 }
 
 function insertVerticalCut(dataset, lon) {

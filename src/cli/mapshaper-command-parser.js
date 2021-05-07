@@ -2,7 +2,6 @@ import {
   parseStringList,
   parseColorList,
   cleanArgv,
-  trimQuotes,
   isAssignment,
   splitAssignment
 } from '../cli/mapshaper-option-parsing-utils';
