@@ -2,8 +2,7 @@ import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { error } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 
-function getGeodesic(dataset) {
-  var P = getDatasetCRS(dataset);
+function getGeodesic(P) {
   if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
   var f = P.es / (1 + Math.sqrt(P.one_es));
   var GeographicLib = require('mproj').internal.GeographicLib;
@@ -33,17 +32,11 @@ function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
   return [lng2, lat2];
 }
 
-export function getGeodeticSegmentFunction(dataset, highPrecision) {
-  var P = getDatasetCRS(dataset);
+export function getPreciseGeodeticSegmentFunction(P) {
   if (!isLatLngCRS(P)) {
     return getPlanarSegmentEndpoint;
   }
-  if (!highPrecision) {
-    // CAREFUL: this function has higher error at very large distances and at the poles
-    // also, it wouldn't work for other planets than Earth
-    return fastGeodeticSegmentFunction;
-  }
-  var g = getGeodesic(dataset);
+  var g = getGeodesic(P);
   return function(lng, lat, bearing, meterDist) {
     var o = g.Direct(lat, lng, bearing, meterDist);
     var p = [o.lon2, o.lat2];
@@ -51,11 +44,10 @@ export function getGeodeticSegmentFunction(dataset, highPrecision) {
   };
 }
 
-function getGeodeticDistanceFunction(dataset, highPrecision) {
-  var P = getDatasetCRS(dataset);
-  if (!isLatLngCRS(P)) {
-    return getPlanarSegmentEndpoint;
-  }
+export function getFastGeodeticSegmentFunction(P) {
+  // CAREFUL: this function has higher error at very large distances and at the poles
+  // also, it wouldn't work for other planets than Earth
+  return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
 }
 
 // Useful for determining if a segment that intersects another segment is

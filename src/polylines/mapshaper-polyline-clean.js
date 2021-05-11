@@ -83,7 +83,7 @@ function divideShapeAtNodes(shp, nodes) {
 }
 
 function combineContiguousParts(parts, nodes, endpointIndex) {
-  if (parts.length < 2) return parts;
+  if (!parts || parts.length < 2) return parts;
 
   // Index the terminal arcs of this group of polyline parts
   parts.forEach(function(ids, i) {

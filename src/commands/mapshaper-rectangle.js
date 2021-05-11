@@ -126,7 +126,7 @@ function applyBoundsOffset(offsetOpt, bounds, crs) {
   return bounds;
 }
 
-function convertBboxToGeoJSON(bbox, opts) {
+export function convertBboxToGeoJSON(bbox, opts) {
   var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
       [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
   return {

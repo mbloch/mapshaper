@@ -9,6 +9,7 @@ import {
   setDatasetCRS
 } from '../crs/mapshaper-projections';
 import { insertPreProjectionCuts } from '../crs/mapshaper-spherical-cutting';
+import { preProjectionClip } from '../crs/mapshaper-spherical-clipping';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
@@ -18,6 +19,7 @@ import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { runningInBrowser } from '../mapshaper-state';
 import { stop, message } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
+import { buildTopology } from '../topology/mapshaper-topology';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
@@ -132,6 +134,8 @@ export function projectDataset(dataset, src, dest, opts) {
   var badArcs = 0;
   var badPoints = 0;
   var cuts;
+  var clipped = preProjectionClip(dataset, src, dest, opts);
+
   dataset.layers.forEach(function(lyr) {
     if (layerHasPoints(lyr)) {
       badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
@@ -145,11 +149,14 @@ export function projectDataset(dataset, src, dest, opts) {
     } else {
       badArcs = projectArcs2(dataset.arcs, proj);
     }
-
-    if (cuts) {
-      cleanProjectedLayers(dataset);
-    }
   }
+
+  if (cuts || clipped) {
+    // TODO: could more selective in cleaning clipped layers
+    // (probably only needed when clipped area crosses the antimeridian or includes a pole)
+    cleanProjectedLayers(dataset);
+  }
+
   if (badArcs > 0) {
     message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
   }
@@ -158,11 +165,18 @@ export function projectDataset(dataset, src, dest, opts) {
   }
 }
 
+// * Heals cuts in previously split-apart polygons
+// * Removes line intersections
+// * TODO: what if a layer contains polygons with desired overlaps? should
+//   we ignore overlaps between different features?
 function cleanProjectedLayers(dataset) {
-  // heal cuts in previously split-apart polygons
   // TODO: only clean affected polygons (cleaning all polygons can be slow)
   var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
-  cleanLayers(polygonLayers, dataset, {no_arc_dissolve: true, verbose: false});
+  // clean options: force a topology update (by default, this only happens when
+  // vertices change during cleaning, but reprojection can require a topology update
+  // even if clean does not change vertices)
+  var cleanOpts = {rebuild_topology: true, no_arc_dissolve: true, verbose: false};
+  cleanLayers(polygonLayers, dataset, cleanOpts);
   // remove unused arcs from polygon and polyline layers
   // TODO: fix bug that leaves uncut arcs in the arc table
   //   (e.g. when projecting a graticule)

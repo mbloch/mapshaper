@@ -45,7 +45,11 @@ export function addIntersectionCuts(dataset, _opts) {
   // used to reset simplification)
   arcs.flatten();
 
-  snapAndCut(dataset, snapDist);
+  var changed = snapAndCut(dataset, snapDist);
+  // Detect topology again if coordinates have changed
+  if (changed || opts.rebuild_topology) {
+    buildTopology(dataset);
+  }
 
   // Clean shapes by removing collapsed arc references, etc.
   // TODO: consider alternative -- avoid creating degenerate arcs
@@ -58,7 +62,6 @@ export function addIntersectionCuts(dataset, _opts) {
 
   // Further clean-up -- remove duplicate and missing arcs
   nodes = cleanArcReferences(dataset);
-
   return nodes;
 }
 
@@ -94,10 +97,7 @@ function snapAndCut(dataset, snapDist) {
       debug('Second-pass vertices added:', cutCount, 'consider third pass?');
     }
   }
-  // Detect topology again if coordinates have changed
-  if (coordsHaveChanged) {
-    buildTopology(dataset);
-  }
+  return coordsHaveChanged;
 }
 
 

@@ -858,7 +858,11 @@ export function getOptionParser() {
     .option('target', targetOpt);
 
   parser.command('graticule')
-    .describe('create a graticule layer');
+    .describe('create a graticule layer')
+    .option('interval', {
+      describe: 'size of grid cells in degrees (options: 5 10 15 30 45, default is 10)',
+      type: 'number'
+    });
 
   parser.command('grid')
     .describe('create a grid of square or hexagonal polygons')
@@ -1124,6 +1128,14 @@ export function getOptionParser() {
     .option('densify', {
       type: 'flag',
       describe: 'add points along straight segments to approximate curves'
+    })
+    .option('clip-angle', {
+      describe: 'use a custom clipping radius (for azimuthal projections)',
+      type: 'number'
+    })
+    .option('clip-bbox', {
+      describe: 'clip to a lat-long bounding box before projecting',
+      type: 'bbox'
     })
     .option('target', targetOpt)
     .validate(V.validateProjOpts);
@@ -1627,6 +1639,21 @@ export function getOptionParser() {
     .option('closed', {
       describe: 'close an open path to create a polygon',
       type: 'flag'
+    })
+    .option('type', {
+      // describe: 'circle or ???'
+      DEFAULT: true,
+    })
+    .option('center', {
+      //describe: 'center of the circle (default is 0,0)',
+      type: 'numbers'
+    })
+    .option('radius', {
+      //describe: 'radius of the circle in meters',
+      type: 'number'
+    })
+    .option('geometry', {
+      //describe: 'polygon or polyline'
     })
     .option('name', nameOpt);
 

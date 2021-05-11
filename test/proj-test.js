@@ -4,6 +4,22 @@ var api = require("..");
 var helpers = require('./helpers');
 
 describe('mapshaper-proj.js', function() {
+
+  describe('antimeridian issues', function () {
+    it('issue: split-apart island does not dissolve', function (done) {
+      var file = 'test/data/issues/proj_issues/split_island_geo.json';
+      var proj = '-proj +proj=laea clip-angle=160 +lon_0=170 +lat_0=20';
+      var cmd = `-i ${file} -dissolve ${proj} -o out.json`;
+      api.applyCommands(cmd, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        // one polygon is created
+        assert.equal(json.geometries.length, 1);
+        assert.equal(json.geometries[0].type, 'Polygon');
+        done();
+      })
+    })
+  })
+
   describe('dynamic projection definition using -calc', function () {
     it('set tmerc origin', function (done) {
       var csv = 'id,x,y\na,1,2\nb,3,4';
@@ -43,8 +59,6 @@ describe('mapshaper-proj.js', function() {
     })
 
   })
-
-
 
   describe('-proj <alias>', function() {
     it('webmercator alias', function(done) {

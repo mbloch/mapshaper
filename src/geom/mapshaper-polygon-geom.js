@@ -158,8 +158,12 @@ export function getPathArea(ids, arcs) {
 }
 
 export function getSphericalPathArea(ids, arcs) {
-  var iter = arcs.getShapeIter(ids),
-      sum = 0,
+  var iter = arcs.getShapeIter(ids);
+  return getSphericalPathArea2(iter);
+}
+
+export function getSphericalPathArea2(iter) {
+  var sum = 0,
       started = false,
       deg2rad = Math.PI / 180,
       x, y, xp, yp;

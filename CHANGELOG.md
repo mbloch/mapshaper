@@ -1,3 +1,11 @@
+v0.5.53
+* Automatically clip content to an appropriate circle when applying most of the azimuthal projections (including stere,ortho,gnom,laea,nsper).
+* Added the -proj clip-angle= option to override the default clipping circle.
+* Automatically clip away the poles when projecting to Mercator.
+* Added the -proj clip-bbox= to clip content to a lat-long bounding box before projecting.
+* Added the -graticule interval= option, for customizing the spacing of graticule lines.
+* Added a circular outline to the graticule when creating a graticule for an azimuthal projection.
+
 v0.5.51
 * Apply antimeridian cutting to more projections.
 * Assign categorical colors automatically using -classify categories=\*.

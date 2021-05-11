@@ -334,7 +334,7 @@ export function runCommand(command, catalog, cb) {
       cmd.scalebar(catalog, opts);
 
     } else if (name == 'shape') {
-      catalog.addDataset(cmd.shape(opts));
+      catalog.addDataset(cmd.shape(targetDataset, opts));
 
     } else if (name == 'simplify') {
       if (opts.variable) {

@@ -1,12 +1,12 @@
 import { importGeoJSON } from '../geojson/geojson-import';
 import { projectDataset } from '../commands/mapshaper-proj';
 import { getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
-import { isRotatedNormalProjection } from '../crs/mapshaper-proj-info';
+import { isRotatedNormalProjection, isAzimuthal } from '../crs/mapshaper-proj-info';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
+import { getProjectionOutline } from '../crs/mapshaper-spherical-clipping';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
-
 
 cmd.graticule = function(dataset, opts) {
   var graticule, dest, src;
@@ -15,30 +15,43 @@ cmd.graticule = function(dataset, opts) {
     dest = getDatasetCRS(dataset);
     src = getCRS('wgs84');
     if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
-    graticule = createGraticuleForProjection(dest, opts);
-    projectDataset(graticule, src, dest, {}); // TODO: densify?
+    graticule = importGeoJSON(createGraticuleForProjection(src, dest, opts));
+    projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
   } else {
-    graticule = createGraticule(0, opts);
+    graticule = importGeoJSON(createGraticule(getCRS('wgs84'), opts));
   }
+  graticule.layers[0].name = 'graticule';
   return graticule;
 };
 
-function createGraticuleForProjection(P, opts) {
-  var lon0 = 0;
-  // see mapshaper-spherical-cutting.js
-  if (isRotatedNormalProjection(P)) {
-    lon0 = P.lam0 * 180 / Math.PI;
+function createGraticuleForProjection(src, dest, opts) {
+  var geojson = createGraticule(dest, opts);
+  // inset the outline by 1 meter, so it doesn't get clipped
+  var outline = getProjectionOutline(src, dest, {inset: 1, geometry_type: 'polyline'});
+  if (outline) {
+    geojson.features.push({
+      type: 'Feature',
+      geometry: outline,
+      properties: {
+        type: 'outline',
+        value: null
+      }
+    });
   }
-  return createGraticule(lon0, opts);
+  return geojson;
 }
 
 // create graticule as a dataset
-function createGraticule(lon0, opts) {
+function createGraticule(P, opts) {
+  var interval = opts.interval || 10;
+  if (![5,10,15,30,45].includes(interval)) stop('Invalid interval:', interval);
+  var lon0 = P.lam0 * 180 / Math.PI;
   var precision = 1; // degrees between each vertex
-  var xstep = 10;
-  var ystep = 10;
+  var xstep = interval;
+  var ystep = interval;
   var xstepMajor = 90;
   var antimeridian = getAntimeridian(lon0);
+  var boundedByAntimeridian = !isAzimuthal(P); // TODO: improve
   var isRotated = lon0 != 0;
   var xn = Math.round(360 / xstep) + (isRotated ? 0 : 1);
   var yn = Math.round(180 / ystep) + 1;
@@ -46,14 +59,15 @@ function createGraticule(lon0, opts) {
   var yy = utils.range(yn, -90, ystep);
   var meridians = [];
   var parallels = [];
+
   xx.forEach(function(x) {
-    if (isRotated && Math.abs(x - antimeridian) < xstep / 5) {
+    if (boundedByAntimeridian && isRotated && Math.abs(x - antimeridian) < xstep / 5) {
       // skip meridians that are close to the enclosure of a rotated graticule
       return null;
     }
     createMeridian(x, x % xstepMajor === 0);
   });
-  if (isRotated) {
+  if (isRotated && boundedByAntimeridian) {
     // add meridian lines that will appear on the left and right sides of the
     // projected graticule
     // offset the lines by a larger amount than the width of any cuts
@@ -67,17 +81,16 @@ function createGraticule(lon0, opts) {
     type: 'FeatureCollection',
     features: meridians.concat(parallels)
   };
-  var graticule = importGeoJSON(geojson, {});
-  graticule.layers[0].name = 'graticule';
-  return graticule;
+  return geojson;
 
   function createMeridian(x, extended) {
-    createMeridianPart(x, -80, 80);
-    if (extended) {
+    var y0 = ystep <= 15 ? ystep : 0;
+    createMeridianPart(x, -90 + y0, 90 - y0);
+    if (extended && y0 > 0) {
       // adding extensions as separate parts, so if the polar coordinates
       // fail to project, at least the rest of the meridian line will remain
-      createMeridianPart(x, -90, -80);
-      createMeridianPart(x, 80, 90);
+      createMeridianPart(x, -90, -90 + y0);
+      createMeridianPart(x, 90 - y0, 90);
     }
   }
 
