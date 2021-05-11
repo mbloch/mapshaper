@@ -47,7 +47,7 @@ function projCmd(dataset, destInfo, opts) {
   // are preserved if an error occurs
   var modifyCopy = runningInBrowser(),
       originals = [],
-      target = {},
+      target = {info: dataset.info || {}},
       src, dest;
 
   dest = destInfo.crs;
@@ -94,7 +94,6 @@ function projCmd(dataset, destInfo, opts) {
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
 
-  dataset.info.crs = dest;
   dataset.info.prj = destInfo.prj; // may be undefined
   dataset.arcs = target.arcs;
   originals.forEach(function(lyr, i) {
@@ -163,6 +162,7 @@ export function projectDataset(dataset, src, dest, opts) {
   if (badPoints > 0) {
     message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
+  dataset.info.crs = dest;
 }
 
 // * Heals cuts in previously split-apart polygons
