@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.49";
+  var VERSION = "0.5.51";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -2365,8 +2365,12 @@
   }
 
   function getSphericalPathArea(ids, arcs) {
-    var iter = arcs.getShapeIter(ids),
-        sum = 0,
+    var iter = arcs.getShapeIter(ids);
+    return getSphericalPathArea2(iter);
+  }
+
+  function getSphericalPathArea2(iter) {
+    var sum = 0,
         started = false,
         deg2rad = Math.PI / 180,
         x, y, xp, yp;
@@ -2470,6 +2474,7 @@
     getRayIntersection: getRayIntersection,
     getPathArea: getPathArea,
     getSphericalPathArea: getSphericalPathArea,
+    getSphericalPathArea2: getSphericalPathArea2,
     getPlanarPathArea2: getPlanarPathArea2,
     getPlanarPathArea: getPlanarPathArea,
     getPathPerimeter: getPathPerimeter,
@@ -15651,7 +15656,11 @@ ${svg}
       .option('target', targetOpt);
 
     parser.command('graticule')
-      .describe('create a graticule layer');
+      .describe('create a graticule layer')
+      .option('interval', {
+        describe: 'size of grid cells in degrees (options: 5 10 15 30 45, default is 10)',
+        type: 'number'
+      });
 
     parser.command('grid')
       .describe('create a grid of square or hexagonal polygons')
@@ -15917,6 +15926,14 @@ ${svg}
       .option('densify', {
         type: 'flag',
         describe: 'add points along straight segments to approximate curves'
+      })
+      .option('clip-angle', {
+        describe: 'use a custom clipping radius (for azimuthal projections)',
+        type: 'number'
+      })
+      .option('clip-bbox', {
+        describe: 'clip to a lat-long bounding box before projecting',
+        type: 'bbox'
       })
       .option('target', targetOpt)
       .validate(validateProjOpts);
@@ -16420,6 +16437,21 @@ ${svg}
       .option('closed', {
         describe: 'close an open path to create a polygon',
         type: 'flag'
+      })
+      .option('type', {
+        // describe: 'circle or ???'
+        DEFAULT: true,
+      })
+      .option('center', {
+        //describe: 'center of the circle (default is 0,0)',
+        type: 'numbers'
+      })
+      .option('radius', {
+        //describe: 'radius of the circle in meters',
+        type: 'number'
+      })
+      .option('geometry', {
+        //describe: 'polygon or polyline'
       })
       .option('name', nameOpt);
 
@@ -21367,7 +21399,11 @@ ${svg}
     // used to reset simplification)
     arcs.flatten();
 
-    snapAndCut(dataset, snapDist);
+    var changed = snapAndCut(dataset, snapDist);
+    // Detect topology again if coordinates have changed
+    if (changed || opts.rebuild_topology) {
+      buildTopology(dataset);
+    }
 
     // Clean shapes by removing collapsed arc references, etc.
     // TODO: consider alternative -- avoid creating degenerate arcs
@@ -21380,7 +21416,6 @@ ${svg}
 
     // Further clean-up -- remove duplicate and missing arcs
     nodes = cleanArcReferences(dataset);
-
     return nodes;
   }
 
@@ -21416,10 +21451,7 @@ ${svg}
         debug('Second-pass vertices added:', cutCount, 'consider third pass?');
       }
     }
-    // Detect topology again if coordinates have changed
-    if (coordsHaveChanged) {
-      buildTopology(dataset);
-    }
+    return coordsHaveChanged;
   }
 
 
@@ -22674,8 +22706,7 @@ ${svg}
       geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymin, bb.xmin, bb.ymin));
   }
 
-  function getGeodesic(dataset) {
-    var P = getDatasetCRS(dataset);
+  function getGeodesic(P) {
     if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
     var f = P.es / (1 + Math.sqrt(P.one_es));
     var GeographicLib = require('mproj').internal.GeographicLib;
@@ -22705,17 +22736,11 @@ ${svg}
     return [lng2, lat2];
   }
 
-  function getGeodeticSegmentFunction(dataset, highPrecision) {
-    var P = getDatasetCRS(dataset);
+  function getPreciseGeodeticSegmentFunction(P) {
     if (!isLatLngCRS(P)) {
       return getPlanarSegmentEndpoint;
     }
-    if (!highPrecision) {
-      // CAREFUL: this function has higher error at very large distances and at the poles
-      // also, it wouldn't work for other planets than Earth
-      return fastGeodeticSegmentFunction;
-    }
-    var g = getGeodesic(dataset);
+    var g = getGeodesic(P);
     return function(lng, lat, bearing, meterDist) {
       var o = g.Direct(lat, lng, bearing, meterDist);
       var p = [o.lon2, o.lat2];
@@ -22723,11 +22748,10 @@ ${svg}
     };
   }
 
-  function getGeodeticDistanceFunction(dataset, highPrecision) {
-    var P = getDatasetCRS(dataset);
-    if (!isLatLngCRS(P)) {
-      return getPlanarSegmentEndpoint;
-    }
+  function getFastGeodeticSegmentFunction(P) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
   }
 
   // Useful for determining if a segment that intersects another segment is
@@ -22766,7 +22790,8 @@ ${svg}
 
   var Geodesic = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
+    getPreciseGeodeticSegmentFunction: getPreciseGeodeticSegmentFunction,
+    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
     segmentTurn: segmentTurn,
     getBearingFunction: getBearingFunction
   });
@@ -23074,7 +23099,7 @@ ${svg}
   function makeShapeBufferGeoJSON(lyr, dataset, opts) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
     var toleranceFn = getBufferToleranceFunction(dataset, opts);
-    var geod = getGeodeticSegmentFunction(dataset, false);
+    var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
     var getBearing = getBearingFunction(dataset);
     var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
     var factory = opts.v2 ? getPolylineBufferMaker2 : getPolylineBufferMaker;
@@ -23099,19 +23124,184 @@ ${svg}
     return dataset2;
   }
 
+  // Removes one or two antimeridian crossings from a circular ring
+  // TODO: handle more complicated rings, with any number of crosses.
+  // TODO: handle edge case: segment is collinear with antimeridian
+  // TODO: handle edge case: a single vertex touches the antimeridian without crossing
+  // TODO: handle edge case: path coordinates exceed the standard lat-long range
+  //
+  // ring: a closed path of [x,y] points. Assumes a space-enclosing ring with CW winding.
+  // type: 'polygon' or 'polyline'
+  // Returns MultiPolygon or MultiLineString coordinates array
+  function removeAntimeridianCrosses(ring, type) {
+    var part = [];
+    var parts = [part];
+    var p, pp;
+
+    for (var i=0, n=ring.length; i<n; i++) {
+      p = ring[i];
+      if (i>0 && Math.abs(pp[0] - p[0]) > 180) {
+        parts.push(part = []);
+      }
+      part.push(p);
+      pp = p;
+    }
+    if (type == 'polyline') {
+      return dividePolylines(parts);
+    }
+    if (parts.length == 1) {
+      // TODO: this test should not be needed when processing small circles
+      // (could affect performance when buffering many points)
+      if (ringArea(ring) < 0) {
+        // negative area: CCW ring, indicating a circle of >180 degrees
+        //   that fully encloses both poles and the antimeridian.
+        // need to add an enclosure around the entire sphere
+        parts = [[[180, 90], [180, -90], [-180, -90], [-180, 90], [180, 90]], parts[0]];
+      }
+      return [parts];
+    }
+    if (parts.length == 2) {
+      return removeOneCross(parts);
+    }
+    if (parts.length == 3) {
+      return removeTwoCrosses(parts, ringArea(ring));
+    }
+    stop('Unexpected geometry of an antimeridan-crossing polygon ring.');
+  }
+
+  function ringArea(ring) {
+    var iter = new PointIter(ring);
+    return getSphericalPathArea2(iter);
+  }
+
+  function dividePolylines(parts) {
+    var a, b, x1, x2, y;
+    for (var i=1; i<parts.length; i++) {
+      a = lastEl(parts[i-1]);
+      b = firstEl(parts[i]);
+      y = planarIntercept(a, b);
+      x1 = a[0] < 0 ? -180 : 180;
+      x2 = x1 < 0 ? 180 : -180;
+      parts[i-1].push([x1, y]);
+      parts[i].unshift([x2, y]);
+    }
+    if (parts.length > 1) {
+      parts[0] = parts.pop().concat(parts[0]);
+    }
+    return parts;
+  }
+
+  // Ring crosses twice...
+  // Returns one ring containing both poles or two rings split across
+  //   the antimeridian and including neither pole.
+  function removeTwoCrosses(parts, ringArea) {
+    var a = lastEl(parts[0]),
+        b = firstEl(parts[1]),
+        c = lastEl(parts[1]),
+        d = firstEl(parts[2]),
+        y1 = planarIntercept(a, b),
+        y2 = planarIntercept(c, d),
+        x1 = a[0] < 0 ? -180 : 180,
+        x2 = x1 < 0 ? 180 : -180,
+        ring1, ring2, pole1, pole2;
+    if (ringArea < 1) {
+      ring1 = parts[0].concat([[x1, y1], [x1, y2]], parts[2]);
+      ring2 = parts[1].concat([[x2, y2], [x2, y1], b]);
+      return [[dedup(ring1)], [dedup(ring2)]];
+    }
+    if (y1 > y2) {
+      pole1 = 90;
+      pole2 = -90;
+    } else {
+      pole1 = -90;
+      pole2 = 90;
+    }
+    ring1 = parts[0].concat(
+      [[x1, y1], [x1, pole1], [x2, pole1], [x2, y1]],
+      parts[1],
+      [[x2, y2], [x2, pole2], [x1, pole2], [x1, y2]],
+      parts[2]);
+    return [[dedup(ring1)]];
+  }
+
+  // duplicate points occur if a vertex is on the antimeridan
+  function dedup(ring) {
+    return ring.reduce(function(memo, p, i) {
+      var pp = memo.length > 0 ? memo[memo.length-1] : null;
+      if (!pp || pp[0] != p[0] || pp[1] != p[1]) memo.push(p);
+      return memo;
+    }, []);
+  }
+
+  // Ring contains a pole.
+  // Returns one ring including n or s pole line.
+  function removeOneCross(parts) {
+    var p1 = lastEl(parts[0]);
+    var p2 = firstEl(parts[1]);
+    var dx = p2[0] - p1[0]; // pos: crosses antimeridian w->e, neg: e->w
+    var y = planarIntercept(p1, p2);
+    // if ring crosses w->e, go through n pole
+    // (this assumes that ring has CW winding / is not a hole)
+    var ypole = dx > 0 ? 90 : -90;
+    var coords = dx > 0 ?
+      [[-180, y], [-180, ypole], [180, ypole], [180, y]] :
+      [[180, y], [180, ypole], [-180, ypole], [-180, y]];
+    var ring = parts[0].concat(coords, parts[1]);
+    return [[dedup(ring)]]; // multipolygon format
+  }
+
+  function lastEl(arr) {
+    return arr[arr.length - 1];
+  }
+
+  function firstEl(arr) {
+    return arr[0];
+  }
+
+  // p1, p2: two vertices on different sides of the antimeridian
+  // Returns y-intercept of the segment connecting p1, p2
+  // TODO: consider using the great-circle intersection, instead of
+  // the planar intersection.
+  // (Planar should be fine if p1 and p2 are close to lon. 180)
+  function planarIntercept(p1, p2) {
+    var dx = p2[0] - p1[0]; // pos: crosses antimeridian w->e, neg: e->w
+    var dx1, dx2;
+    if (dx > 0) {
+      dx1 = p1[0] + 180;
+      dx2 = 180 - p2[0];
+    } else {
+      dx1 = 180 - p1[0];
+      dx2 = p2[0] + 180;
+    }
+    return (dx2 * p1[1] + dx1 * p2[1]) / (dx1 + dx2);
+  }
+
   function makePointBuffer(lyr, dataset, opts) {
     var geojson = makePointBufferGeoJSON(lyr, dataset, opts);
     return importGeoJSON(geojson, {});
   }
 
+  // Make a single geodetic circle
+  function getCircleGeoJSON(center, radius, vertices, opts) {
+    var n = vertices || 360;
+    var geod = getPreciseGeodeticSegmentFunction(getCRS('wgs84')); // ?
+    if (opts.inset) {
+      radius -= opts.inset;
+    }
+    return opts.geometry_type == 'polyline' ?
+      getPointBufferLineString([center], radius, n, geod) :
+      getPointBufferPolygon([center], radius, n, geod);
+  }
+
+  // Convert a point layer to circles
   function makePointBufferGeoJSON(lyr, dataset, opts) {
     var vertices = opts.vertices || 72;
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    var geod = getGeodeticSegmentFunction(dataset);
+    var geod = getPreciseGeodeticSegmentFunction(getDatasetCRS(dataset));
     var geometries = lyr.shapes.map(function(shape, i) {
       var dist = distanceFn(i);
       if (!dist || !shape) return null;
-      return getPointBufferGeometry(shape, dist, vertices, geod);
+      return getPointBufferPolygon(shape, dist, vertices, geod);
     });
     // TODO: make sure that importer supports null geometries (nonstandard GeoJSON);
     return {
@@ -23120,29 +23310,49 @@ ${svg}
     };
   }
 
-  function getPointBufferGeometry(points, distance, vertices, geod) {
-    var coordinates = [];
+  function getPointBufferPolygon(points, distance, vertices, geod) {
+    var rings = [], coords;
     if (!points || !points.length) return null;
     for (var i=0; i<points.length; i++) {
-      coordinates.push(getPointBufferPolygonCoordinates(points[i], distance, vertices, geod));
+      coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
+      coords = removeAntimeridianCrosses(coords, 'polygon');
+      while (coords.length > 0) rings.push(coords.pop());
     }
-    return coordinates.length == 1 ? {
+    return rings.length == 1 ? {
       type: 'Polygon',
-      coordinates: coordinates[0]
+      coordinates: rings[0]
     } : {
       type: 'MultiPolygon',
-      coordinates: coordinates
+      coordinates: rings
     };
   }
 
-  function getPointBufferPolygonCoordinates(p, meterDist, vertices, geod) {
+  function getPointBufferLineString(points, distance, vertices, geod) {
+    var rings = [], coords;
+    if (!points || !points.length) return null;
+    for (var i=0; i<points.length; i++) {
+      coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
+      coords = removeAntimeridianCrosses(coords, 'polyline');
+      while (coords.length > 0) rings.push(coords.pop());
+    }
+    return rings.length == 1 ? {
+      type: 'LineString',
+      coordinates: rings[0]
+    } : {
+      type: 'MultiLineString',
+      coordinates: rings
+    };
+  }
+
+  // Returns GeoJSON MultiPolygon coordinates
+  function getPointBufferCoordinates(center, meterDist, vertices, geod) {
     var coords = [],
         angle = 360 / vertices;
     for (var i=0; i<vertices; i++) {
-      coords.push(geod(p[0], p[1], i * angle, meterDist));
+      coords.push(geod(center[0], center[1], i * angle, meterDist));
     }
     coords.push(coords[0].concat());
-    return [coords]; // return vertices as the first (space-enclosing) ring of a Polygon geometry
+    return coords;
   }
 
   // returns a dataset
@@ -24390,7 +24600,7 @@ ${svg}
   }
 
   function combineContiguousParts(parts, nodes, endpointIndex) {
-    if (parts.length < 2) return parts;
+    if (!parts || parts.length < 2) return parts;
 
     // Index the terminal arcs of this group of polyline parts
     parts.forEach(function(ids, i) {
@@ -28092,6 +28302,10 @@ ${svg}
     }
   }
 
+  function getSemiMinorAxis(P) {
+    return P.a * Math.sqrt(1 - (P.es || 0));
+  }
+
   function getCrsSlug(P) {
     return P.params.proj.param; // kludge
   }
@@ -28104,6 +28318,49 @@ ${svg}
 
   function isAxisAligned(P) {
     return !isNonNormal(P);
+  }
+
+  function isClippedCylindricalProjection(P) {
+    // TODO: add tmerc, etmerc, ...
+    return inList(P, 'merc');
+  }
+
+  function getDefaultClipBBox(P) {
+    return {
+      merc: [-180, -87, 180, 87]
+    }[getCrsSlug(P)] || null;
+  }
+
+  // TODO: add nsper, tpers
+  function isClippedAzimuthalProjection(P) {
+    return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
+  }
+
+  function getPerspectiveClipAngle(P) {
+    var h = parseFloat(P.params.h.param);
+    if (!h || h < P.a) {
+
+      return 0;
+    }
+    var theta = Math.acos(P.a / h) * 180 / Math.PI;
+    return theta;
+  }
+
+  function getDefaultClipAngle(P) {
+    var slug = getCrsSlug(P);
+    if (slug == 'nsper') return getPerspectiveClipAngle(P);
+    if (slug == 'tpers') {
+      message('Automatic clipping is not supported for the Tilted Perspective projection');
+      return 0;
+    }
+    return {
+      gnom: 60,
+      laea: 179,
+      ortho: 90,
+      stere: 142,
+      stereea: 142,
+      ups: 10.5 // TODO: should be 6.5 deg at north pole
+    }[slug] || 0;
   }
 
   function isNonNormal(P) {
@@ -28119,6 +28376,23 @@ ${svg}
 
   function inList(P, str) {
     return str.split(',').includes(getCrsSlug(P));
+  }
+
+  // type: 'clip' or 'erase'
+  function clipLayersByGeoJSON(layers, dataset, geojson, typeArg) {
+    var clipDataset = importGeoJSON(geojson, {});
+    var type = typeArg || 'clip';
+    var clip = {
+      layer: clipDataset.layers[0],
+      dataset: clipDataset
+    };
+    var outputLayers = clipLayers(layers, clip, dataset, type, {});
+    layers.forEach(function(lyr, i) {
+      var lyr2 = outputLayers[i];
+      lyr.shapes = lyr2.shapes;
+      lyr.data = lyr2.data;
+    });
+
   }
 
   function insertPreProjectionCuts(dataset, src, dest) {
@@ -28154,17 +28428,201 @@ ${svg}
       type: 'Polygon',
       coordinates: [coords]
     };
-    var clipDataset = importGeoJSON(geojson, {});
-    var clip = {
-      layer: clipDataset.layers[0],
-      dataset: clipDataset
-    };
-    var outputLayers = clipLayers(pathLayers, clip, dataset, 'erase', {});
-    pathLayers.forEach(function(lyr, i) {
-      var lyr2 = outputLayers[i];
-      lyr.shapes = lyr2.shapes;
-      lyr.data = lyr2.data;
+    clipLayersByGeoJSON(pathLayers, dataset, geojson, 'erase');
+  }
+
+  // Create rectangles around each feature in a layer
+  cmd.rectangles = function(targetLyr, targetDataset, opts) {
+    if (!layerHasGeometry(targetLyr)) {
+      stop("Layer is missing geometric shapes");
+    }
+    var crs = getDatasetCRS(targetDataset);
+    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+    var geometries = targetLyr.shapes.map(function(shp) {
+      var bounds = targetLyr.geometry_type == 'point' ?
+        getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
+      bounds = applyRectangleOptions(bounds, crs, opts);
+      if (!bounds) return null;
+      return convertBboxToGeoJSON(bounds.toArray(), opts);
     });
+    var geojson = {
+      type: 'FeatureCollection',
+      features: geometries.map(function(geom, i) {
+        var rec = records && records[i] || null;
+        if (rec && opts.no_replace) {
+          rec = utils.extend({}, rec); // make a copy
+        }
+        return {
+          type: 'Feature',
+          properties: rec,
+          geometry: geom
+        };
+      })
+    };
+    var dataset = importGeoJSON(geojson, {});
+    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
+    if (!opts.no_replace) {
+      outputLayers[0].name = targetLyr.name || outputLayers[0].name;
+    }
+    return outputLayers;
+  };
+
+  // Create rectangles around one or more target layers
+  //
+  cmd.rectangle2 = function(target, opts) {
+    var datasets = target.layers.map(function(lyr) {
+      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
+      if (!opts.no_replace) {
+        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
+      }
+      return dataset;
+    });
+    return mergeDatasetsIntoDataset(target.dataset, datasets);
+  };
+
+  cmd.rectangle = function(source, opts) {
+    var offsets, bounds, crs, coords, sourceInfo;
+    if (source) {
+      bounds = getLayerBounds(source.layer, source.dataset.arcs);
+      sourceInfo = source.dataset.info;
+      crs = getDatasetCRS(source.dataset);
+    } else if (opts.bbox) {
+      bounds = new Bounds(opts.bbox);
+      crs = getCRS('wgs84');
+    }
+    bounds = bounds && applyRectangleOptions(bounds, crs, opts);
+    if (!bounds || !bounds.hasBounds()) {
+      stop('Missing rectangle extent');
+    }
+    var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
+    var dataset = importGeoJSON(geojson, {});
+    dataset.layers[0].name = opts.name || 'rectangle';
+    if (sourceInfo) {
+      setDatasetCRS(dataset, sourceInfo);
+    }
+    return dataset;
+  };
+
+  function applyRectangleOptions(bounds, crs, opts) {
+    var isGeoBox = probablyDecimalDegreeBounds(bounds);
+    if (opts.offset) {
+      bounds = applyBoundsOffset(opts.offset, bounds, crs);
+    }
+    if (bounds.area() > 0 === false) return null;
+    if (opts.aspect_ratio) {
+      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
+    }
+    if (isGeoBox) {
+      bounds = clampToWorldBounds(bounds);
+    }
+    return bounds;
+  }
+
+  // opt: aspect ratio as a single number or a range (e.g. "1,2");
+  function applyAspectRatio(opt, bounds) {
+    var range = String(opt).split(',').map(parseFloat),
+      aspectRatio = bounds.width() / bounds.height(),
+      min, max; // min is height limit, max is width limit
+    if (range.length == 1) {
+      range.push(range[0]);
+    } else if (range[0] > range[1]) {
+      range.reverse();
+    }
+    min = range[0];
+    max = range[1];
+    if (!min && !max) return bounds;
+    if (!min) min = -Infinity;
+    if (!max) max = Infinity;
+    if (aspectRatio < min) {
+      bounds.fillOut(min);
+    } else if (aspectRatio > max) {
+      bounds.fillOut(max);
+    }
+    return bounds;
+  }
+
+  function applyBoundsOffset(offsetOpt, bounds, crs) {
+    var offsets = convertFourSides(offsetOpt, crs, bounds);
+    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+    return bounds;
+  }
+
+  function convertBboxToGeoJSON(bbox, opts) {
+    var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+        [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+    return {
+      type: 'Polygon',
+      coordinates: [coords]
+    };
+  }
+
+  var Rectangle = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    applyAspectRatio: applyAspectRatio,
+    convertBboxToGeoJSON: convertBboxToGeoJSON
+  });
+
+  function preProjectionClip(dataset, src, dest, opts) {
+    var clipped = false;
+    if (!isLatLngCRS(src) || opts.no_clip) return false;
+    if (isClippedAzimuthalProjection(dest) || opts.clip_angle) {
+      clipped = clipToCircle(dataset, src, dest, opts);
+    }
+    if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
+      clipToRectangle(dataset, dest, opts);
+      clipped = true;
+    }
+    if (clipped) {
+      // remove arcs outside the clip area, so they don't get projected
+      dissolveArcs(dataset);
+    }
+    return clipped;
+  }
+
+  function getProjectionOutline(src, dest, opts) {
+    if (!isClippedAzimuthalProjection(dest)) return null;
+    return getClipShapeGeoJSON(src, dest, opts);
+  }
+
+  function getClipShapeGeoJSON(src, dest, opts) {
+    var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
+    if (!angle) return null;
+    var dist = getClippingRadius(src, angle);
+    var cp = getProjCenter(dest);
+    // kludge: attach the clipping angle to the CRS, so subsequent commands
+    // (e.g. -graticule) can create an outline
+    dest.clip_angle = angle;
+    return getCircleGeoJSON(cp, dist, null, opts);
+  }
+
+  function clipToRectangle(dataset, dest, opts) {
+    var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
+    if (!bbox) error('Missing expected clip bbox.');
+    // TODO: don't clip if dataset fits within the bbox
+    var geojson = convertBboxToGeoJSON(bbox);
+    clipLayersByGeoJSON(dataset.layers, dataset, geojson, 'clip');
+    return true;
+  }
+
+  function clipToCircle(dataset, src, dest, opts) {
+    var geojson = getClipShapeGeoJSON(src, dest, opts);
+    if (!geojson) return false;
+    clipLayersByGeoJSON(dataset.layers, dataset, geojson, 'clip');
+    return true;
+  }
+
+  function getProjCenter(P) {
+    var rtod = 180 / Math.PI;
+    return [P.lam0 * rtod, P.phi0 * rtod];
+  }
+
+  // Convert a clip angle to a distance in meters
+  function getClippingRadius(P, angle) {
+    // Using semi-minor axis radius, to prevent overflowing projection bounds
+    // when clipping up to the edge of the projectable area
+    // TODO: improve (this just gives a safe minimum distance, not the best distance)
+    // TODO: modify point buffer function to use angle + ellipsoidal geometry
+    return angle * Math.PI / 180 * getSemiMinorAxis(P);
   }
 
   function projectAndDensifyArcs(arcs, proj) {
@@ -28389,6 +28847,8 @@ ${svg}
     var badArcs = 0;
     var badPoints = 0;
     var cuts;
+    var clipped = preProjectionClip(dataset, src, dest, opts);
+
     dataset.layers.forEach(function(lyr) {
       if (layerHasPoints(lyr)) {
         badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
@@ -28402,11 +28862,14 @@ ${svg}
       } else {
         badArcs = projectArcs2(dataset.arcs, proj);
       }
-
-      if (cuts) {
-        cleanProjectedLayers(dataset);
-      }
     }
+
+    if (cuts || clipped) {
+      // TODO: could more selective in cleaning clipped layers
+      // (probably only needed when clipped area crosses the antimeridian or includes a pole)
+      cleanProjectedLayers(dataset);
+    }
+
     if (badArcs > 0) {
       message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
     }
@@ -28415,11 +28878,18 @@ ${svg}
     }
   }
 
+  // * Heals cuts in previously split-apart polygons
+  // * Removes line intersections
+  // * TODO: what if a layer contains polygons with desired overlaps? should
+  //   we ignore overlaps between different features?
   function cleanProjectedLayers(dataset) {
-    // heal cuts in previously split-apart polygons
     // TODO: only clean affected polygons (cleaning all polygons can be slow)
     var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
-    cleanLayers(polygonLayers, dataset, {no_arc_dissolve: true, verbose: false});
+    // clean options: force a topology update (by default, this only happens when
+    // vertices change during cleaning, but reprojection can require a topology update
+    // even if clean does not change vertices)
+    var cleanOpts = {rebuild_topology: true, no_arc_dissolve: true, verbose: false};
+    cleanLayers(polygonLayers, dataset, cleanOpts);
     // remove unused arcs from polygon and polyline layers
     // TODO: fix bug that leaves uncut arcs in the arc table
     //   (e.g. when projecting a graticule)
@@ -28481,30 +28951,43 @@ ${svg}
       dest = getDatasetCRS(dataset);
       src = getCRS('wgs84');
       if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
-      graticule = createGraticuleForProjection(dest, opts);
-      projectDataset(graticule, src, dest, {}); // TODO: densify?
+      graticule = importGeoJSON(createGraticuleForProjection(src, dest, opts));
+      projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
     } else {
-      graticule = createGraticule(0, opts);
+      graticule = importGeoJSON(createGraticule(getCRS('wgs84'), opts));
     }
+    graticule.layers[0].name = 'graticule';
     return graticule;
   };
 
-  function createGraticuleForProjection(P, opts) {
-    var lon0 = 0;
-    // see mapshaper-spherical-cutting.js
-    if (isRotatedNormalProjection(P)) {
-      lon0 = P.lam0 * 180 / Math.PI;
+  function createGraticuleForProjection(src, dest, opts) {
+    var geojson = createGraticule(dest, opts);
+    // inset the outline by 1 meter, so it doesn't get clipped
+    var outline = getProjectionOutline(src, dest, {inset: 1, geometry_type: 'polyline'});
+    if (outline) {
+      geojson.features.push({
+        type: 'Feature',
+        geometry: outline,
+        properties: {
+          type: 'outline',
+          value: null
+        }
+      });
     }
-    return createGraticule(lon0, opts);
+    return geojson;
   }
 
   // create graticule as a dataset
-  function createGraticule(lon0, opts) {
+  function createGraticule(P, opts) {
+    var interval = opts.interval || 10;
+    if (![5,10,15,30,45].includes(interval)) stop('Invalid interval:', interval);
+    var lon0 = P.lam0 * 180 / Math.PI;
     var precision = 1; // degrees between each vertex
-    var xstep = 10;
-    var ystep = 10;
+    var xstep = interval;
+    var ystep = interval;
     var xstepMajor = 90;
     var antimeridian = getAntimeridian(lon0);
+    var boundedByAntimeridian = !isAzimuthal(P); // TODO: improve
     var isRotated = lon0 != 0;
     var xn = Math.round(360 / xstep) + (isRotated ? 0 : 1);
     var yn = Math.round(180 / ystep) + 1;
@@ -28512,14 +28995,15 @@ ${svg}
     var yy = utils.range(yn, -90, ystep);
     var meridians = [];
     var parallels = [];
+
     xx.forEach(function(x) {
-      if (isRotated && Math.abs(x - antimeridian) < xstep / 5) {
+      if (boundedByAntimeridian && isRotated && Math.abs(x - antimeridian) < xstep / 5) {
         // skip meridians that are close to the enclosure of a rotated graticule
         return null;
       }
       createMeridian(x, x % xstepMajor === 0);
     });
-    if (isRotated) {
+    if (isRotated && boundedByAntimeridian) {
       // add meridian lines that will appear on the left and right sides of the
       // projected graticule
       // offset the lines by a larger amount than the width of any cuts
@@ -28533,17 +29017,16 @@ ${svg}
       type: 'FeatureCollection',
       features: meridians.concat(parallels)
     };
-    var graticule = importGeoJSON(geojson, {});
-    graticule.layers[0].name = 'graticule';
-    return graticule;
+    return geojson;
 
     function createMeridian(x, extended) {
-      createMeridianPart(x, -80, 80);
-      if (extended) {
+      var y0 = ystep <= 15 ? ystep : 0;
+      createMeridianPart(x, -90 + y0, 90 - y0);
+      if (extended && y0 > 0) {
         // adding extensions as separate parts, so if the polar coordinates
         // fail to project, at least the rest of the meridian line will remain
-        createMeridianPart(x, -90, -80);
-        createMeridianPart(x, 80, 90);
+        createMeridianPart(x, -90, -90 + y0);
+        createMeridianPart(x, 90 - y0, 90);
       }
     }
 
@@ -30384,136 +30867,6 @@ ${svg}
     };
   }
 
-  // Create rectangles around each feature in a layer
-  cmd.rectangles = function(targetLyr, targetDataset, opts) {
-    if (!layerHasGeometry(targetLyr)) {
-      stop("Layer is missing geometric shapes");
-    }
-    var crs = getDatasetCRS(targetDataset);
-    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
-    var geometries = targetLyr.shapes.map(function(shp) {
-      var bounds = targetLyr.geometry_type == 'point' ?
-        getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-      bounds = applyRectangleOptions(bounds, crs, opts);
-      if (!bounds) return null;
-      return convertBboxToGeoJSON(bounds.toArray(), opts);
-    });
-    var geojson = {
-      type: 'FeatureCollection',
-      features: geometries.map(function(geom, i) {
-        var rec = records && records[i] || null;
-        if (rec && opts.no_replace) {
-          rec = utils.extend({}, rec); // make a copy
-        }
-        return {
-          type: 'Feature',
-          properties: rec,
-          geometry: geom
-        };
-      })
-    };
-    var dataset = importGeoJSON(geojson, {});
-    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
-    if (!opts.no_replace) {
-      outputLayers[0].name = targetLyr.name || outputLayers[0].name;
-    }
-    return outputLayers;
-  };
-
-  // Create rectangles around one or more target layers
-  //
-  cmd.rectangle2 = function(target, opts) {
-    var datasets = target.layers.map(function(lyr) {
-      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
-      if (!opts.no_replace) {
-        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
-      }
-      return dataset;
-    });
-    return mergeDatasetsIntoDataset(target.dataset, datasets);
-  };
-
-  cmd.rectangle = function(source, opts) {
-    var offsets, bounds, crs, coords, sourceInfo;
-    if (source) {
-      bounds = getLayerBounds(source.layer, source.dataset.arcs);
-      sourceInfo = source.dataset.info;
-      crs = getDatasetCRS(source.dataset);
-    } else if (opts.bbox) {
-      bounds = new Bounds(opts.bbox);
-      crs = getCRS('wgs84');
-    }
-    bounds = bounds && applyRectangleOptions(bounds, crs, opts);
-    if (!bounds || !bounds.hasBounds()) {
-      stop('Missing rectangle extent');
-    }
-    var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
-    var dataset = importGeoJSON(geojson, {});
-    dataset.layers[0].name = opts.name || 'rectangle';
-    if (sourceInfo) {
-      setDatasetCRS(dataset, sourceInfo);
-    }
-    return dataset;
-  };
-
-  function applyRectangleOptions(bounds, crs, opts) {
-    var isGeoBox = probablyDecimalDegreeBounds(bounds);
-    if (opts.offset) {
-      bounds = applyBoundsOffset(opts.offset, bounds, crs);
-    }
-    if (bounds.area() > 0 === false) return null;
-    if (opts.aspect_ratio) {
-      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
-    }
-    if (isGeoBox) {
-      bounds = clampToWorldBounds(bounds);
-    }
-    return bounds;
-  }
-
-  // opt: aspect ratio as a single number or a range (e.g. "1,2");
-  function applyAspectRatio(opt, bounds) {
-    var range = String(opt).split(',').map(parseFloat),
-      aspectRatio = bounds.width() / bounds.height(),
-      min, max; // min is height limit, max is width limit
-    if (range.length == 1) {
-      range.push(range[0]);
-    } else if (range[0] > range[1]) {
-      range.reverse();
-    }
-    min = range[0];
-    max = range[1];
-    if (!min && !max) return bounds;
-    if (!min) min = -Infinity;
-    if (!max) max = Infinity;
-    if (aspectRatio < min) {
-      bounds.fillOut(min);
-    } else if (aspectRatio > max) {
-      bounds.fillOut(max);
-    }
-    return bounds;
-  }
-
-  function applyBoundsOffset(offsetOpt, bounds, crs) {
-    var offsets = convertFourSides(offsetOpt, crs, bounds);
-    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-    return bounds;
-  }
-
-  function convertBboxToGeoJSON(bbox, opts) {
-    var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-        [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
-    return {
-      type: 'Polygon',
-      coordinates: [coords]
-    };
-  }
-
-  var Rectangle = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    applyAspectRatio: applyAspectRatio
-  });
-
   cmd.renameLayers = function(layers, names, catalog) {
     if (names && names.join('').indexOf('=') > -1) {
       renameByAssignment(names, catalog);
@@ -32245,14 +32598,36 @@ ${svg}
     }
   };
 
-  cmd.shape = function(opts) {
-    var coords = opts.coordinates;
-    var offsets = opts.offsets || [];
-    var coordinates = [];
-    var geojson, dataset, type, i, x, y;
+  cmd.shape = function(targetDataset, opts) {
+    var geojson, dataset;
+    if (opts.coordinates) {
+      geojson = makeShapeFromCoords(opts);
+    } else if (opts.type == 'circle') {
+      geojson = makeCircle$1(opts);
+    } else {
+      stop('Missing coordinates parameter');
+    }
+    // TODO: project shape if targetDataset is projected
+    dataset = importGeoJSON(geojson, {});
+    dataset.layers[0].name = opts.name || 'shape';
+    return dataset;
+  };
 
-    if (!coords || coords.length >= 2 === false) {
-      stop('Missing list of coordinates');
+  function makeCircle$1(opts) {
+    if (opts.radius > 0 === false) {
+      stop('Missing required radius parameter.');
+    }
+    var cp = opts.center || [0, 0];
+    return getCircleGeoJSON(cp, opts.radius, null, {geometry_type : opts.geometry || 'polygon'});
+  }
+
+  function makeShapeFromCoords(opts) {
+    var coordinates = [];
+    var offsets = opts.offsets || [];
+    var coords = opts.coordinates;
+    var type, i, x, y;
+    if (coords.length >= 2 === false) {
+      stop('Invalid coordinates parameter.');
     }
     for (i=0; i<coords.length; i+= 2) {
       x = coords[i];
@@ -32272,14 +32647,12 @@ ${svg}
     } else {
       type = 'LineString';
     }
-    geojson = {
+    return {
       type: type,
       coordinates: type == 'Polygon' ? [coordinates] : coordinates
     };
-    dataset = importGeoJSON(geojson, {});
-    dataset.layers[0].name = opts.name || 'shape';
-    return dataset;
-  };
+
+  }
 
   cmd.variableSimplify = function(layers, dataset, opts) {
     var lyr = layers[0];
@@ -32795,7 +33168,7 @@ ${svg}
         cmd.scalebar(catalog, opts);
 
       } else if (name == 'shape') {
-        catalog.addDataset(cmd.shape(opts));
+        catalog.addDataset(cmd.shape(targetDataset, opts));
 
       } else if (name == 'simplify') {
         if (opts.variable) {
