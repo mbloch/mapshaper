@@ -1,4 +1,4 @@
-v0.5.53
+v0.5.52
 * Automatically clip content to an appropriate circle when applying most of the azimuthal projections (including stere,ortho,gnom,laea,nsper).
 * Added the -proj clip-angle= option to override the default clipping circle.
 * Automatically clip away the poles when projecting to Mercator.
