@@ -9,7 +9,7 @@ import { convertSourceName, findCommandSource } from '../dataset/mapshaper-sourc
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
 import { mergeCommandTargets } from '../dataset/mapshaper-merging';
 import { T } from '../utils/mapshaper-timing';
-import { stop, error, UserError } from '../utils/mapshaper-logging';
+import { stop, error, UserError, verbose } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 
@@ -448,7 +448,7 @@ export function runCommand(command, catalog, cb) {
   done(null);
 
   function done(err) {
-    T.stop('-');
+    verbose('-', T.stop());
     cb(err, err ? null : catalog);
   }
 }

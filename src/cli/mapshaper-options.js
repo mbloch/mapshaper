@@ -537,9 +537,6 @@ export function getOptionParser() {
       describe: 'delete unused arcs but don\'t remove gaps and overlaps',
       type: 'flag'
     })
-    .option('debug', {
-      type: 'flag'
-    })
     .option('no-arc-dissolve', {
       type: 'flag' // no description
     })
@@ -704,7 +701,6 @@ export function getOptionParser() {
       describe: 'combine groups of same-color dots into multi-part features',
       type: 'flag'
     })
-    .option('debug', {type: 'flag'})
     .option('target', targetOpt)
     .option('name', nameOpt)
     .option('no-replace', noReplaceOpt);
@@ -883,9 +879,6 @@ export function getOptionParser() {
     //   type: 'bbox',
     //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
     // })
-    .option('debug', {
-      type: 'flag'
-    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
@@ -1011,7 +1004,6 @@ export function getOptionParser() {
   parser.command('mosaic')
     .describe('convert a polygon layer with overlaps into a flat mosaic')
     .option('calc', calcOpt)
-    .option('debug', {type: 'flag'})
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

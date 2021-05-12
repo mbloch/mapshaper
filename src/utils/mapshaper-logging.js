@@ -58,13 +58,14 @@ export function print() {
 }
 
 export function verbose() {
-  if (getStateVar('VERBOSE')) {
+  // verbose can be set globally with the -verbose command or separately for each command
+  if (getStateVar('VERBOSE') || getStateVar('verbose')) {
     message.apply(null, arguments);
   }
 }
 
 export function debug() {
-  if (getStateVar('DEBUG')) {
+  if (getStateVar('DEBUG') || getStateVar('debug')) {
     logArgs(arguments);
   }
 }

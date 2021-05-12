@@ -13,7 +13,7 @@ import { getPreciseGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { clipLayersByGeoJSON } from '../clipping/mapshaper-clip-utils';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
-import { error } from '../utils/mapshaper-logging';
+import { error, verbose } from '../utils/mapshaper-logging';
 
 export function preProjectionClip(dataset, src, dest, opts) {
   var clipped = false;
@@ -40,6 +40,7 @@ export function getProjectionOutline(src, dest, opts) {
 function getClipShapeGeoJSON(src, dest, opts) {
   var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
   if (!angle) return null;
+  verbose('Using clip angle of', angle, 'degrees');
   var dist = getClippingRadius(src, angle);
   var cp = getProjCenter(dest);
   // kludge: attach the clipping angle to the CRS, so subsequent commands

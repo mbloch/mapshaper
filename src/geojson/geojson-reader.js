@@ -1,5 +1,5 @@
 import { bufferToString } from '../text/mapshaper-encodings';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, debug } from '../utils/mapshaper-logging';
 import { parseObjects } from '../geojson/json-parser';
 import { T } from '../utils/mapshaper-timing';
 
@@ -21,7 +21,7 @@ export function GeoJSONReader(reader) {
     T.start();
     parseObjects(reader, offset, onObject);
     // parseObjects_native(reader, offset, onObject);
-    T.stop('Parse GeoJSON');
+    debug('Parse GeoJSON', T.stop());
   };
 }
 

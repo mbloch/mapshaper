@@ -77,7 +77,7 @@ export function buildPolygonMosaic(nodes) {
 
   // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
   var mosaic = data.cw.map(function(ring) {return [ring];});
-  T.stop('Find mosaic rings');
+  debug('Find mosaic rings', T.stop());
   T.start();
 
   // Process CCW rings: these are either holes or enclosure
@@ -95,7 +95,7 @@ export function buildPolygonMosaic(nodes) {
       enclosures.push([ring]);
     }
   });
-  T.stop(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length));
+  debug(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length), T.stop());
 
   return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
 }

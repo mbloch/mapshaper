@@ -228,6 +228,8 @@ export function runParsedCommands(commands, catalog, cb) {
 
   function nextCommand(catalog, cmd, next) {
     setStateVar('current_command', cmd.name); // for log msgs
+    setStateVar('verbose', !!cmd.options.verbose);
+    setStateVar('debug', !!cmd.options.debug);
     runCommand(cmd, catalog, next);
   }
 
@@ -235,6 +237,8 @@ export function runParsedCommands(commands, catalog, cb) {
     if (err) printError(err);
     cb(err, catalog);
     setStateVar('current_command', null);
+    setStateVar('verbose', false);
+    setStateVar('debug', false);
   }
 }
 

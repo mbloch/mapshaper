@@ -42,6 +42,9 @@ export function CommandParser() {
 
   this.command = function(name) {
     var opts = new CommandOptions(name);
+    // support 'verbose' and 'debug' flags for each command, without help entries
+    opts.option('verbose', {type: 'flag'});
+    opts.option('debug', {type: 'flag'});
     _commands.push(opts);
     return opts;
   };
