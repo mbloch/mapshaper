@@ -11,9 +11,11 @@ import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { getCircleGeoJSON } from '../buffer/mapshaper-point-buffer';
 import { getPreciseGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { clipLayersByGeoJSON } from '../clipping/mapshaper-clip-utils';
+import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
 import { error, verbose } from '../utils/mapshaper-logging';
+import { Bounds } from '../geom/mapshaper-bounds';
 
 export function preProjectionClip(dataset, src, dest, opts) {
   var clipped = false;
@@ -22,8 +24,7 @@ export function preProjectionClip(dataset, src, dest, opts) {
     clipped = clipToCircle(dataset, src, dest, opts);
   }
   if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
-    clipToRectangle(dataset, dest, opts);
-    clipped = true;
+    clipped = clipped || clipToRectangle(dataset, dest, opts);
   }
   if (clipped) {
     // remove arcs outside the clip area, so they don't get projected
@@ -40,7 +41,7 @@ export function getProjectionOutline(src, dest, opts) {
 function getClipShapeGeoJSON(src, dest, opts) {
   var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
   if (!angle) return null;
-  verbose('Using clip angle of', angle, 'degrees');
+  verbose(`Using clip angle of ${ +angle.toFixed(2) } degrees`);
   var dist = getClippingRadius(src, angle);
   var cp = getProjCenter(dest);
   // kludge: attach the clipping angle to the CRS, so subsequent commands
@@ -52,7 +53,8 @@ function getClipShapeGeoJSON(src, dest, opts) {
 function clipToRectangle(dataset, dest, opts) {
   var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
   if (!bbox) error('Missing expected clip bbox.');
-  // TODO: don't clip if dataset fits within the bbox
+  // don't clip if dataset fits within the bbox
+  if (Bounds.from(bbox).contains(getDatasetBounds(dataset))) return false;
   var geojson = convertBboxToGeoJSON(bbox);
   clipLayersByGeoJSON(dataset.layers, dataset, geojson, 'clip');
   return true;

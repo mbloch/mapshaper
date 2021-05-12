@@ -8,6 +8,11 @@ export function Bounds() {
   }
 }
 
+Bounds.from = function() {
+  var b = new Bounds();
+  return b.setBounds.apply(b, arguments);
+};
+
 Bounds.prototype.toString = function() {
   return JSON.stringify({
     xmin: this.xmin,
