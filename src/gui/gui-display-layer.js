@@ -1,7 +1,7 @@
 import { MultiScaleArcCollection } from './gui-shapes';
 import { getDisplayLayerForTable } from './gui-table';
 import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisplay } from './gui-dynamic-crs';
-import { filterLayerByIds } from './gui-map-utils';
+import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
 
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)

@@ -3,7 +3,8 @@ import { CoordinatesDisplay } from './gui-coordinates-display';
 import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control2';
-import { updateLayerStackOrder } from './gui-layer-utils';
+import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
+import { mapNeedsReset } from './gui-map-utils';
 import { SymbolDragging2 } from './gui-symbol-dragging2';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
@@ -11,7 +12,6 @@ import { LayerStack } from './gui-layer-stack';
 import { BoxTool } from './gui-box-tool';
 import { projectMapExtent } from './gui-dynamic-crs';
 import { getDisplayLayer, projectDisplayLayer } from './gui-display-layer';
-import { filterLayerByIds } from './gui-map-utils';
 import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { ElementPosition } from './gui-element-position';
@@ -177,7 +177,7 @@ export function MshpMap(gui) {
     if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
       needReset = true;
     } else {
-      needReset = GUI.mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds());
+      needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
     }
 
     if (isFrameView()) {
@@ -459,32 +459,3 @@ function getDisplayLayerOverlay(obj, e) {
     style: style
   }, obj);
 }
-
-// Test if map should be re-framed to show updated layer
-GUI.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var viewportPct = GUI.getIntersectionPct(newBounds, mapBounds);
-  var contentPct = GUI.getIntersectionPct(mapBounds, newBounds);
-  var boundsChanged = !prevBounds.equals(newBounds);
-  var inView = newBounds.intersects(mapBounds);
-  var areaChg = newBounds.area() / prevBounds.area();
-  if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
-  if (!inView) return true; // reset if layer is out-of-view
-  if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
-  if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
-  return false;
-};
-
-// TODO: move to utilities file
-GUI.getBoundsIntersection = function(a, b) {
-  var c = new Bounds();
-  if (a.intersects(b)) {
-    c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
-    Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
-  }
-  return c;
-};
-
-// Returns proportion of bb2 occupied by bb1
-GUI.getIntersectionPct = function(bb1, bb2) {
-  return GUI.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
-};

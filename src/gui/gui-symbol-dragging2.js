@@ -1,9 +1,28 @@
 import { getSvgSymbolTransform } from './gui-svg-symbols';
 import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTextAnchor, applyDelta } from './gui-svg-labels';
 import { error, internal } from './gui-core';
-import { translateDeltaDisplayCoords, getPointCoordsById, getDisplayCoordsById } from './gui-map-utils';
 import { EventDispatcher } from './gui-events';
 import { findNearestVertex, findVertexIds, getVertexCoords, setVertexCoords, vertexIsArcStart, vertexIsArcEnd } from '../paths/mapshaper-vertex-utils';
+
+function getDisplayCoordsById(id, layer, ext) {
+  var coords = getPointCoordsById(id, layer);
+  return ext.translateCoords(coords[0], coords[1]);
+}
+
+function getPointCoordsById(id, layer) {
+  var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
+  if (!coords || coords.length != 1) {
+    return null;
+  }
+  return coords[0];
+}
+
+function translateDeltaDisplayCoords(dx, dy, ext) {
+  var a = ext.translatePixelCoords(0, 0);
+  var b = ext.translatePixelCoords(dx, dy);
+  return [b[0] - a[0], b[1] - a[1]];
+}
+
 
 export function SymbolDragging2(gui, ext, hit) {
   // var targetTextNode; // text node currently being dragged

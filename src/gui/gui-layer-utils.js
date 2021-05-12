@@ -1,4 +1,15 @@
+import { utils } from './gui-core';
 
+export function filterLayerByIds(lyr, ids) {
+  var shapes;
+  if (lyr.shapes) {
+    shapes = ids.map(function(id) {
+      return lyr.shapes[id];
+    });
+    return utils.defaults({shapes: shapes, data: null}, lyr);
+  }
+  return lyr;
+}
 
 export function formatLayerNameForDisplay(name) {
   return name || '[unnamed]';
