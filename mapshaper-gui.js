@@ -2856,6 +2856,17 @@
 
   utils.inherit(RepairControl, EventDispatcher);
 
+  function filterLayerByIds(lyr, ids) {
+    var shapes;
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils.defaults({shapes: shapes, data: null}, lyr);
+    }
+    return lyr;
+  }
+
   function formatLayerNameForDisplay(name) {
     return name || '[unnamed]';
   }
@@ -3948,13 +3959,14 @@
   }
 
   function verbose() {
-    if (getStateVar('VERBOSE')) {
+    // verbose can be set globally with the -verbose command or separately for each command
+    if (getStateVar('VERBOSE') || getStateVar('verbose')) {
       message$1.apply(null, arguments);
     }
   }
 
   function debug() {
-    if (getStateVar('DEBUG')) {
+    if (getStateVar('DEBUG') || getStateVar('debug')) {
       logArgs(arguments);
     }
   }
@@ -6852,6 +6864,39 @@
     return _self;
   }
 
+  // Test if map should be re-framed to show updated layer
+  function mapNeedsReset(newBounds, prevBounds, viewportBounds, flags) {
+    var viewportPct = getIntersectionPct(newBounds, viewportBounds);
+    var contentPct = getIntersectionPct(viewportBounds, newBounds);
+    var boundsChanged = !prevBounds.equals(newBounds);
+    var inView = newBounds.intersects(viewportBounds);
+    var areaChg = newBounds.area() / prevBounds.area();
+    var chgThreshold = flags.proj ? 1e3 : 1e8;
+    // don't reset if layer extent hasn't changed
+    if (!boundsChanged) return false;
+    // reset if layer is out-of-view
+    if (!inView) return true;
+    // reset if content is mostly offscreen
+    if (viewportPct < 0.3 && contentPct < 0.9) return true;
+    // reset if content bounds have changed a lot (e.g. after projection)
+    if (areaChg > chgThreshold || areaChg < 1/chgThreshold) return true;
+    return false;
+  }
+
+  // Returns proportion of bb2 occupied by bb1
+  function getIntersectionPct(bb1, bb2) {
+    return getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+  }
+
+  function getBoundsIntersection(a, b) {
+    var c = new Bounds();
+    if (a.intersects(b)) {
+      c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
+      Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
+    }
+    return c;
+  }
+
   function isMultilineLabel(textNode) {
     return textNode.childNodes.length > 1;
   }
@@ -6925,36 +6970,6 @@
     var isString = utils.isString(currVal);
     var newVal = (+currVal + delta) || 0;
     rec[key] = isString ? String(newVal) : newVal;
-  }
-
-  function filterLayerByIds(lyr, ids) {
-    var shapes;
-    if (lyr.shapes) {
-      shapes = ids.map(function(id) {
-        return lyr.shapes[id];
-      });
-      return utils.defaults({shapes: shapes, data: null}, lyr);
-    }
-    return lyr;
-  }
-
-  function getDisplayCoordsById(id, layer, ext) {
-    var coords = getPointCoordsById(id, layer);
-    return ext.translateCoords(coords[0], coords[1]);
-  }
-
-  function getPointCoordsById(id, layer) {
-    var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
-    if (!coords || coords.length != 1) {
-      return null;
-    }
-    return coords[0];
-  }
-
-  function translateDeltaDisplayCoords(dx, dy, ext) {
-    var a = ext.translatePixelCoords(0, 0);
-    var b = ext.translatePixelCoords(dx, dy);
-    return [b[0] - a[0], b[1] - a[1]];
   }
 
   // TODO: remove this constant, use actual data from dataset CRS
@@ -7370,6 +7385,11 @@
       this.setBounds.apply(this, arguments);
     }
   }
+
+  Bounds$1.from = function() {
+    var b = new Bounds$1();
+    return b.setBounds.apply(b, arguments);
+  };
 
   Bounds$1.prototype.toString = function() {
     return JSON.stringify({
@@ -8843,6 +8863,26 @@
     }
     return minLen < Infinity ? {x: minX, y: minY} : null;
   }
+
+  function getDisplayCoordsById(id, layer, ext) {
+    var coords = getPointCoordsById(id, layer);
+    return ext.translateCoords(coords[0], coords[1]);
+  }
+
+  function getPointCoordsById(id, layer) {
+    var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
+    if (!coords || coords.length != 1) {
+      return null;
+    }
+    return coords[0];
+  }
+
+  function translateDeltaDisplayCoords(dx, dy, ext) {
+    var a = ext.translatePixelCoords(0, 0);
+    var b = ext.translatePixelCoords(dx, dy);
+    return [b[0] - a[0], b[1] - a[1]];
+  }
+
 
   function SymbolDragging2(gui, ext, hit) {
     // var targetTextNode; // text node currently being dragged
@@ -10977,7 +11017,7 @@
       if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
         needReset = true;
       } else {
-        needReset = GUI.mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds());
+        needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
       }
 
       if (isFrameView()) {
@@ -11259,35 +11299,6 @@
       style: style
     }, obj);
   }
-
-  // Test if map should be re-framed to show updated layer
-  GUI.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-    var viewportPct = GUI.getIntersectionPct(newBounds, mapBounds);
-    var contentPct = GUI.getIntersectionPct(mapBounds, newBounds);
-    var boundsChanged = !prevBounds.equals(newBounds);
-    var inView = newBounds.intersects(mapBounds);
-    var areaChg = newBounds.area() / prevBounds.area();
-    if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
-    if (!inView) return true; // reset if layer is out-of-view
-    if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
-    if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
-    return false;
-  };
-
-  // TODO: move to utilities file
-  GUI.getBoundsIntersection = function(a, b) {
-    var c = new Bounds();
-    if (a.intersects(b)) {
-      c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
-      Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
-    }
-    return c;
-  };
-
-  // Returns proportion of bb2 occupied by bb1
-  GUI.getIntersectionPct = function(bb1, bb2) {
-    return GUI.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
-  };
 
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();

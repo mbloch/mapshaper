@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.51";
+  var VERSION = "0.5.52";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1164,13 +1164,14 @@
   }
 
   function verbose() {
-    if (getStateVar('VERBOSE')) {
+    // verbose can be set globally with the -verbose command or separately for each command
+    if (getStateVar('VERBOSE') || getStateVar('verbose')) {
       message.apply(null, arguments);
     }
   }
 
   function debug() {
-    if (getStateVar('DEBUG')) {
+    if (getStateVar('DEBUG') || getStateVar('debug')) {
       logArgs(arguments);
     }
   }
@@ -1311,6 +1312,11 @@
       this.setBounds.apply(this, arguments);
     }
   }
+
+  Bounds.from = function() {
+    var b = new Bounds();
+    return b.setBounds.apply(b, arguments);
+  };
 
   Bounds.prototype.toString = function() {
     return JSON.stringify({
@@ -14409,6 +14415,9 @@ ${svg}
 
     this.command = function(name) {
       var opts = new CommandOptions(name);
+      // support 'verbose' and 'debug' flags for each command, without help entries
+      opts.option('verbose', {type: 'flag'});
+      opts.option('debug', {type: 'flag'});
       _commands.push(opts);
       return opts;
     };
@@ -15335,9 +15344,6 @@ ${svg}
         describe: 'delete unused arcs but don\'t remove gaps and overlaps',
         type: 'flag'
       })
-      .option('debug', {
-        type: 'flag'
-      })
       .option('no-arc-dissolve', {
         type: 'flag' // no description
       })
@@ -15502,7 +15508,6 @@ ${svg}
         describe: 'combine groups of same-color dots into multi-part features',
         type: 'flag'
       })
-      .option('debug', {type: 'flag'})
       .option('target', targetOpt)
       .option('name', nameOpt)
       .option('no-replace', noReplaceOpt);
@@ -15681,9 +15686,6 @@ ${svg}
       //   type: 'bbox',
       //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
       // })
-      .option('debug', {
-        type: 'flag'
-      })
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
@@ -15809,7 +15811,6 @@ ${svg}
     parser.command('mosaic')
       .describe('convert a polygon layer with overlaps into a flat mosaic')
       .option('calc', calcOpt)
-      .option('debug', {type: 'flag'})
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
@@ -18860,20 +18861,14 @@ ${svg}
     }
   }
 
-  // Support for timing using T.start() and T.stop("message")
+  // Support for timing using T.start() and T.stop()
   var T = {
     stack: [],
     start: function() {
       T.stack.push(+new Date());
     },
-    stop: function(note) {
-      var elapsed = (+new Date() - T.stack.pop());
-      var msg = elapsed + 'ms';
-      if (note) {
-        msg = note + " " + msg;
-      }
-      verbose(msg);
-      return elapsed;
+    stop: function() {
+      return (+new Date() - T.stack.pop()) + 'ms';
     }
   };
 
@@ -18895,7 +18890,7 @@ ${svg}
       T.start();
       parseObjects(reader, offset, onObject);
       // parseObjects_native(reader, offset, onObject);
-      T.stop('Parse GeoJSON');
+      debug('Parse GeoJSON', T.stop());
     };
   }
 
@@ -21803,7 +21798,7 @@ ${svg}
 
     // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
     var mosaic = data.cw.map(function(ring) {return [ring];});
-    T.stop('Find mosaic rings');
+    debug('Find mosaic rings', T.stop());
     T.start();
 
     // Process CCW rings: these are either holes or enclosure
@@ -21821,7 +21816,7 @@ ${svg}
         enclosures.push([ring]);
       }
     });
-    T.stop(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length));
+    debug(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length), T.stop());
 
     return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
   }
@@ -28331,18 +28326,17 @@ ${svg}
     }[getCrsSlug(P)] || null;
   }
 
-  // TODO: add nsper, tpers
   function isClippedAzimuthalProjection(P) {
     return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
   }
 
   function getPerspectiveClipAngle(P) {
     var h = parseFloat(P.params.h.param);
-    if (!h || h < P.a) {
-
+    if (!h || h < 0) {
       return 0;
     }
-    var theta = Math.acos(P.a / h) * 180 / Math.PI;
+    var theta = Math.acos(P.a / (P.a + h)) * 180 / Math.PI;
+    theta *= 0.995; // reducing a bit to avoid out-of-range errors
     return theta;
   }
 
@@ -28358,7 +28352,7 @@ ${svg}
       laea: 179,
       ortho: 90,
       stere: 142,
-      stereea: 142,
+      sterea: 142,
       ups: 10.5 // TODO: should be 6.5 deg at north pole
     }[slug] || 0;
   }
@@ -28569,8 +28563,7 @@ ${svg}
       clipped = clipToCircle(dataset, src, dest, opts);
     }
     if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
-      clipToRectangle(dataset, dest, opts);
-      clipped = true;
+      clipped = clipped || clipToRectangle(dataset, dest, opts);
     }
     if (clipped) {
       // remove arcs outside the clip area, so they don't get projected
@@ -28587,6 +28580,7 @@ ${svg}
   function getClipShapeGeoJSON(src, dest, opts) {
     var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
     if (!angle) return null;
+    verbose(`Using clip angle of ${ +angle.toFixed(2) } degrees`);
     var dist = getClippingRadius(src, angle);
     var cp = getProjCenter(dest);
     // kludge: attach the clipping angle to the CRS, so subsequent commands
@@ -28598,7 +28592,8 @@ ${svg}
   function clipToRectangle(dataset, dest, opts) {
     var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
     if (!bbox) error('Missing expected clip bbox.');
-    // TODO: don't clip if dataset fits within the bbox
+    // don't clip if dataset fits within the bbox
+    if (Bounds.from(bbox).contains(getDatasetBounds(dataset))) return false;
     var geojson = convertBboxToGeoJSON(bbox);
     clipLayersByGeoJSON(dataset.layers, dataset, geojson, 'clip');
     return true;
@@ -28760,7 +28755,7 @@ ${svg}
     // are preserved if an error occurs
     var modifyCopy = runningInBrowser(),
         originals = [],
-        target = {},
+        target = {info: dataset.info || {}},
         src, dest;
 
     dest = destInfo.crs;
@@ -28807,7 +28802,6 @@ ${svg}
         e.point ? ' at ' + e.point.join(' ') : '', e.message));
     }
 
-    dataset.info.crs = dest;
     dataset.info.prj = destInfo.prj; // may be undefined
     dataset.arcs = target.arcs;
     originals.forEach(function(lyr, i) {
@@ -28876,6 +28870,7 @@ ${svg}
     if (badPoints > 0) {
       message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
     }
+    dataset.info.crs = dest;
   }
 
   // * Heals cuts in previously split-apart polygons
@@ -28982,7 +28977,7 @@ ${svg}
     var interval = opts.interval || 10;
     if (![5,10,15,30,45].includes(interval)) stop('Invalid interval:', interval);
     var lon0 = P.lam0 * 180 / Math.PI;
-    var precision = 1; // degrees between each vertex
+    var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
     var xstep = interval;
     var ystep = interval;
     var xstepMajor = 90;
@@ -33282,7 +33277,7 @@ ${svg}
     done(null);
 
     function done(err) {
-      T.stop('-');
+      verbose('-', T.stop());
       cb(err, err ? null : catalog);
     }
   }
@@ -33524,6 +33519,8 @@ ${svg}
 
     function nextCommand(catalog, cmd, next) {
       setStateVar('current_command', cmd.name); // for log msgs
+      setStateVar('verbose', !!cmd.options.verbose);
+      setStateVar('debug', !!cmd.options.debug);
       runCommand(cmd, catalog, next);
     }
 
@@ -33531,6 +33528,8 @@ ${svg}
       if (err) printError(err);
       cb(err, catalog);
       setStateVar('current_command', null);
+      setStateVar('verbose', false);
+      setStateVar('debug', false);
     }
   }
 

@@ -15651,7 +15651,7 @@ function pj_bertin1953(P) {
       xy.x *= 1 + d;
     }
     if (xy.y > 0) {
-      xy.x *= 1 + d / 1.5 * xy.x * xy.x;
+      xy.y *= 1 + d / 1.5 * xy.x * xy.x;
     }
 
     return xy;
