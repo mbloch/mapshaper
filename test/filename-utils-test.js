@@ -60,11 +60,20 @@ describe('mapshaper-filename-utils.js', function () {
       })
     })
 
-    it("handle wildcard", function () {
+    it("handle wildcard + extension", function () {
       assert.deepEqual(api.internal.parseLocalPath("shapefiles/*.shp"), {
         extension: "shp",
         basename: "*",
         filename: "*.shp",
+        directory: "shapefiles"
+      })
+    })
+
+    it("handle wildcard w/o extension", function () {
+      assert.deepEqual(api.internal.parseLocalPath("shapefiles/*"), {
+        extension: "",
+        basename: "*",
+        filename: "*",
         directory: "shapefiles"
       })
     })
