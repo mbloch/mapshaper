@@ -87,7 +87,7 @@ export function getSortedIntersections(parts) {
   var values = parts.map(function(p) {
     return p[0][1];
   });
-  return genericSort(values, true);
+  return utils.genericSort(values, true);
 }
 
 function samePoint(a, b) {
