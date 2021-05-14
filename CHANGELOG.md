@@ -1,3 +1,6 @@
+v0.5.54
+* Fix for issue #485 (error when using * wildcard to match all files in a directory)
+
 v0.5.53
 * Fixed clipping area of nsper (Near Side Perspective).
 
