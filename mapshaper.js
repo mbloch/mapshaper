@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.52";
+  var VERSION = "0.5.53";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -6160,12 +6160,13 @@
         parts = path.split(sep),
         lastPart = parts.pop(),
         // try to match typical extensions but reject directory names with dots
-        extRxp = /\.([a-z][a-z0-9]*)$/i;
+        extRxp = /\.([a-z][a-z0-9]*)$/i,
+        extMatch = extRxp.test(lastPart) ? extRxp.exec(lastPart)[0] : '';
 
-    if (extRxp.test(lastPart)) {
+    if (extMatch || lastPart.includes('*')) {
       obj.filename = lastPart;
-      obj.extension = extRxp.exec(lastPart)[1];
-      obj.basename = lastPart.slice(0, lastPart.length - obj.extension.length - 1);
+      obj.extension = extMatch ? extMatch.slice(1) : '';
+      obj.basename = lastPart.slice(0, lastPart.length - extMatch.length);
       obj.directory = parts.join(sep);
     } else if (!lastPart) { // path ends with separator
       obj.directory = parts.join(sep);
