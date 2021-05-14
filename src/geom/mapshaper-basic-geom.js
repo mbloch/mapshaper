@@ -2,6 +2,7 @@
 //       also consider using ellipsoidal formulas when appropriate
 export var R = 6378137;
 export var D2R = Math.PI / 180;
+export var R2D = 180 / Math.PI;
 
 // Equirectangular projection
 export function degreesToMeters(deg) {

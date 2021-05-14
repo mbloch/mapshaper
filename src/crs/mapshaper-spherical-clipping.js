@@ -1,11 +1,11 @@
 import {
-  isClippedAzimuthalProjection,
+  isCircleClippedProjection,
   getDefaultClipAngle,
   isClippedCylindricalProjection,
   getDefaultClipBBox,
 } from '../crs/mapshaper-proj-info';
 import {
-  getSemiMinorAxis
+  getSemiMinorAxis, getCircleRadiusFromAngle
 } from '../crs/mapshaper-proj-utils';
 import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { getCircleGeoJSON } from '../buffer/mapshaper-point-buffer';
@@ -20,7 +20,7 @@ import { Bounds } from '../geom/mapshaper-bounds';
 export function preProjectionClip(dataset, src, dest, opts) {
   var clipped = false;
   if (!isLatLngCRS(src) || opts.no_clip) return false;
-  if (isClippedAzimuthalProjection(dest) || opts.clip_angle) {
+  if (isCircleClippedProjection(dest) || opts.clip_angle) {
     clipped = clipToCircle(dataset, src, dest, opts);
   }
   if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
@@ -34,7 +34,7 @@ export function preProjectionClip(dataset, src, dest, opts) {
 }
 
 export function getProjectionOutline(src, dest, opts) {
-  if (!isClippedAzimuthalProjection(dest)) return null;
+  if (!isCircleClippedProjection(dest)) return null;
   return getClipShapeGeoJSON(src, dest, opts);
 }
 
@@ -74,9 +74,5 @@ function getProjCenter(P) {
 
 // Convert a clip angle to a distance in meters
 function getClippingRadius(P, angle) {
-  // Using semi-minor axis radius, to prevent overflowing projection bounds
-  // when clipping up to the edge of the projectable area
-  // TODO: improve (this just gives a safe minimum distance, not the best distance)
-  // TODO: modify point buffer function to use angle + ellipsoidal geometry
-  return angle * Math.PI / 180 * getSemiMinorAxis(P);
+  return getCircleRadiusFromAngle(P, angle);
 }

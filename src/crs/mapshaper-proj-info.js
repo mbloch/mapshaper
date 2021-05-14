@@ -26,7 +26,7 @@ export function getDefaultClipBBox(P) {
   }[getCrsSlug(P)] || null;
 }
 
-export function isClippedAzimuthalProjection(P) {
+export function isCircleClippedProjection(P) {
   return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
 }
 

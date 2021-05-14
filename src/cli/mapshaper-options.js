@@ -1644,8 +1644,20 @@ export function getOptionParser() {
       //describe: 'radius of the circle in meters',
       type: 'number'
     })
+    .option('radius-angle', {
+      //describe: 'radius of the circle in degrees',
+      type: 'number'
+    })
+    .option('bbox', {
+      // describe: 'rectangle bounding box',
+      type: 'numbers'
+    })
     .option('geometry', {
       //describe: 'polygon or polyline'
+    })
+    .option('rotation', {
+      // describe: 'two or three angles of rotation',
+      type: 'numbers'
     })
     .option('name', nameOpt);
 
