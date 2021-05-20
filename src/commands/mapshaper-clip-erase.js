@@ -37,6 +37,15 @@ cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
   return cmd.sliceLayers([targetLyr], src, dataset, opts);
 };
 
+export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
+  var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
+  layers.forEach(function(lyr, i) {
+    var lyr2 = outputLayers[i];
+    lyr.shapes = lyr2.shapes;
+    lyr.data = lyr2.data;
+  });
+}
+
 // @clipSrc: layer in @dataset or filename
 // @type: 'clip' or 'erase'
 export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {

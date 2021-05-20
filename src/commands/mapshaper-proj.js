@@ -175,9 +175,13 @@ function cleanProjectedLayers(dataset) {
   // clean options: force a topology update (by default, this only happens when
   // vertices change during cleaning, but reprojection can require a topology update
   // even if clean does not change vertices)
-  var cleanOpts = {rebuild_topology: true, no_arc_dissolve: true, verbose: false};
+  var cleanOpts = {
+    rebuild_topology: true,
+    no_arc_dissolve: true,
+    quiet: true,
+    verbose: false};
   cleanLayers(polygonLayers, dataset, cleanOpts);
-  // remove unused arcs from polygon and polyline layers
+ // remove unused arcs from polygon and polyline layers
   // TODO: fix bug that leaves uncut arcs in the arc table
   //   (e.g. when projecting a graticule)
   dissolveArcs(dataset);
@@ -185,7 +189,7 @@ function cleanProjectedLayers(dataset) {
 
 // proj: function to project [x, y] point; should return null if projection fails
 // TODO: fatal error if no points project?
-function projectPointLayer(lyr, proj) {
+export function projectPointLayer(lyr, proj) {
   var errors = 0;
   editShapes(lyr.shapes, function(p) {
     var p2 = proj(p[0], p[1]);
@@ -195,7 +199,7 @@ function projectPointLayer(lyr, proj) {
   return errors;
 }
 
-function projectArcs(arcs, proj) {
+export function projectArcs(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
@@ -212,7 +216,7 @@ function projectArcs(arcs, proj) {
   arcs.updateVertexData(data.nn, xx, yy, zz);
 }
 
-function projectArcs2(arcs, proj) {
+export function projectArcs2(arcs, proj) {
   return editArcs(arcs, onPoint);
   function onPoint(append, x, y, prevX, prevY, i) {
     var p = proj(x, y);

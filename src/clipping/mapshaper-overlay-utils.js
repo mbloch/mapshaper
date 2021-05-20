@@ -21,11 +21,14 @@ export function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts
   if (bbox) {
     clipDataset = convertClipBounds(bbox);
     clipLyr = clipDataset.layers[0];
-  } else if (clipSrc) {
+  } else if (!clipSrc) {
+    stop("Command requires a source file, layer id or bbox");
+  } else if (clipSrc.layer && clipSrc.dataset) {
     clipLyr = clipSrc.layer;
     clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
-  } else {
-    stop("Command requires a source file, layer id or bbox");
+  } else if (clipSrc.layers && clipSrc.layers.length == 1) {
+    clipLyr = clipSrc.layers[0];
+    clipDataset = clipSrc;
   }
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs

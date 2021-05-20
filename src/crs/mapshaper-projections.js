@@ -217,6 +217,10 @@ export function isLatLngCRS(P) {
   return P && P.is_latlong || false;
 }
 
+export function isLatLngDataset(dataset) {
+  return isLatLngCRS(getDatasetCRS(dataset));
+}
+
 export function printProjections() {
   var index = require('mproj').internal.pj_list;
   var msg = 'Proj4 projections\n';
