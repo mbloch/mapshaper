@@ -4,7 +4,7 @@ import { PointIter } from '../paths/mapshaper-shape-iter';
 import utils from '../utils/mapshaper-utils';
 import { getStateVar } from '../mapshaper-state';
 
-// Removes one or two antimeridian crossings from a circular ring
+// Removes antimeridian crossings from polygon and polyline paths
 // TODO: handle edge case: segment is collinear with antimeridian
 // TODO: handle edge case: path coordinates exceed the standard lat-long range
 //
