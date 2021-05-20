@@ -6976,6 +6976,7 @@
   //       also consider using ellipsoidal formulas when appropriate
   var R = 6378137;
   var D2R = Math.PI / 180;
+  var R2D = 180 / Math.PI;
 
   // Equirectangular projection
   function degreesToMeters(deg) {
@@ -7320,6 +7321,7 @@
     __proto__: null,
     R: R,
     D2R: D2R,
+    R2D: R2D,
     degreesToMeters: degreesToMeters,
     distance3D: distance3D,
     distanceSq: distanceSq,
