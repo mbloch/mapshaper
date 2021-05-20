@@ -1,3 +1,7 @@
+v0.5.55
+* Improved support for projected graticules.
+* Fixed shape clipping for the bertin1953 projection.
+
 v0.5.54
 * Fix for issue #485 (error when using * wildcard to match all files in a directory)
 
