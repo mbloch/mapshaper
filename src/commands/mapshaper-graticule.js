@@ -51,10 +51,11 @@ function createProjectedGraticule(dest, opts) {
 
 function addOutlineToGraticule(graticule, outline) {
   var merged = mergeDatasets([graticule, outline]);
-  var lyr = merged.layers[0];
-  var records = lyr.data.getRecords();
-  merged.layers[1].shapes.forEach(function(shp) {
-    lyr.shapes.push(shp);
+  var src = merged.layers.pop();
+  var dest = merged.layers[0];
+  var records = dest.data.getRecords();
+  src.shapes.forEach(function(shp) {
+    dest.shapes.push(shp);
     records.push({type: 'outline', value: null});
   });
   return merged;
