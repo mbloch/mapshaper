@@ -1596,6 +1596,17 @@ export function getOptionParser() {
       describe: 'JS expression to run after the module loads'
     });
 
+  parser.command('rotate')
+    // .describe('apply d3-style 3-axis rotation to a lat-long dataset')
+    .option('rotation', {
+      // describe: 'two or three angles of rotation',
+      DEFAULT: true,
+      type: 'numbers'
+    })
+    .option('invert', {
+      type: 'flag'
+    });
+
   parser.command('run')
     .describe('create commands on-the-fly and run them')
     .option('include', {

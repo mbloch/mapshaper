@@ -2,7 +2,8 @@ import { isLatLngCRS } from '../crs/mapshaper-projections';
 import { isRotatedNormalProjection } from '../crs/mapshaper-proj-info';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
-import { clipLayersByGeoJSON } from '../clipping/mapshaper-clip-utils';
+import { clipLayersInPlace } from '../commands/mapshaper-clip-erase';
+import { importGeoJSON } from '../geojson/geojson-import';
 
 export function insertPreProjectionCuts(dataset, src, dest) {
   var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
@@ -31,13 +32,11 @@ function datasetCrossesLon(dataset, lon) {
 function insertVerticalCut(dataset, lon) {
   var pathLayers = dataset.layers.filter(layerHasPaths);
   if (pathLayers.length === 0) return;
-  var e =1e-8;
+  var e = 1e-8;
   var coords = [[lon+e, 90], [lon+e, -90], [lon-e, -90], [lon-e, 90], [lon+e, 90]];
-  var geojson = {
+  var clip = importGeoJSON({
     type: 'Polygon',
     coordinates: [coords]
-  };
-  clipLayersByGeoJSON(pathLayers, dataset, geojson, 'erase');
+  });
+  clipLayersInPlace(pathLayers, clip, dataset, 'erase');
 }
-
-

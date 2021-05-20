@@ -55,6 +55,7 @@ describe('mapshaper-antimeridian.js', function () {
       assert.deepEqual(splitPathAtAntimeridian(input), expect);
     })
 
+    // TODO
     it ('ring contains a segment that parallels the antimeridian', function() {
       // var input = [[180, 1],
     })

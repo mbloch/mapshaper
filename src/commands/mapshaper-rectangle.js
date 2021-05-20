@@ -9,6 +9,7 @@ import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds, clampToWorldBounds } from '../geom/mapshaper-latlon';
 import { Bounds } from '../geom/mapshaper-bounds';
+import { densifyPathByInterval } from '../crs/mapshaper-densify';
 
 // Create rectangles around each feature in a layer
 cmd.rectangles = function(targetLyr, targetDataset, opts) {
@@ -126,10 +127,17 @@ function applyBoundsOffset(offsetOpt, bounds, crs) {
   return bounds;
 }
 
-export function convertBboxToGeoJSON(bbox, opts) {
+export function convertBboxToGeoJSON(bbox, optsArg) {
+  var opts = optsArg || {};
   var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
       [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
-  return {
+  if (opts.interval > 0) {
+    coords = densifyPathByInterval(coords, opts.interval);
+  }
+  return opts.geometry_type == 'polyline' ? {
+    type: 'LineString',
+    coordinates: coords
+  } : {
     type: 'Polygon',
     coordinates: [coords]
   };

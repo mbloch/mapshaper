@@ -175,9 +175,13 @@ function cleanProjectedLayers(dataset) {
   // clean options: force a topology update (by default, this only happens when
   // vertices change during cleaning, but reprojection can require a topology update
   // even if clean does not change vertices)
-  var cleanOpts = {rebuild_topology: true, no_arc_dissolve: true, verbose: false};
+  var cleanOpts = {
+    rebuild_topology: true,
+    no_arc_dissolve: true,
+    quiet: true,
+    verbose: false};
   cleanLayers(polygonLayers, dataset, cleanOpts);
-  // remove unused arcs from polygon and polyline layers
+ // remove unused arcs from polygon and polyline layers
   // TODO: fix bug that leaves uncut arcs in the arc table
   //   (e.g. when projecting a graticule)
   dissolveArcs(dataset);

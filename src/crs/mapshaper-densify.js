@@ -1,7 +1,64 @@
 import geom from '../geom/mapshaper-geom';
 import { editArcs } from '../paths/mapshaper-arc-editor';
 import { getAvgSegment2 } from '../paths/mapshaper-path-utils';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, error } from '../utils/mapshaper-logging';
+import { DatasetEditor } from '../dataset/mapshaper-dataset-editor';
+
+export function densifyDataset(dataset, opts) {
+  var interval = opts.interval;
+  if (interval > 0 === false) {
+    error('Expected a valid interval parameter');
+  }
+  var editor = new DatasetEditor(dataset);
+  dataset.layers.forEach(function(lyr) {
+    var type = lyr.geometry_type;
+    editor.editLayer(lyr, function(coords, i, shape) {
+      if (type == 'point') return coords;
+      return [densifyPathByInterval(coords, interval)];
+    });
+  });
+  editor.done();
+}
+
+
+// Planar densification by an interval
+export function densifyPathByInterval(coords, interval) {
+  if (findMaxPathInterval(coords) < interval) return coords;
+  var coords2 = [coords[0]], a, b, dist;
+  for (var i=1, n=coords.length; i<n; i++) {
+    a = coords[i-1];
+    b = coords[i];
+    dist = geom.distance2D(a[0], a[1], b[0], b[1]);
+    if (dist > interval) {
+      pushInterpolatedPoints(coords2, a, b, Math.round(dist / interval) - 1);
+    }
+    coords2.push(b);
+  }
+  return coords2;
+}
+
+function pushInterpolatedPoints(coords2, a, b, n) {
+  var dx = (b[0] - a[0]) / (n + 1),
+      dy = (b[1] - a[1]) / (n + 1);
+  for (var i=1; i<=n; i++) {
+    coords2.push([a[0] + dx * i, a[1] + dy * i]);
+  }
+}
+
+function findMaxPathInterval(coords) {
+  var maxSq = 0, intSq, a, b;
+  for (var i=1, n=coords.length; i<n; i++) {
+    a = coords[i-1];
+    b = coords[i];
+    intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
+    if (intSq > maxSq) maxSq = intSq;
+  }
+  return Math.sqrt(maxSq);
+}
+
+export function densifyUnprojectedPathByDistance(coords, meters) {
+  // stub
+}
 
 export function projectAndDensifyArcs(arcs, proj) {
   var interval = getDefaultDensifyInterval(arcs, proj);

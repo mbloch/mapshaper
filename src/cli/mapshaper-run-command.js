@@ -56,6 +56,7 @@ import '../commands/mapshaper-proj';
 import '../commands/mapshaper-rectangle';
 import '../commands/mapshaper-rename-layers';
 import '../commands/mapshaper-require';
+import '../commands/mapshaper-rotate';
 import '../commands/mapshaper-run';
 import '../commands/mapshaper-scalebar';
 import '../commands/mapshaper-simplify';
@@ -104,7 +105,7 @@ export function runCommand(command, catalog, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
+    } else if (name == 'rotate' || name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
       // these commands accept multiple target datasets
       targets = catalog.findCommandTargets(opts.target);
 
@@ -325,6 +326,11 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'require') {
       cmd.require(targets, opts);
+
+    } else if (name == 'rotate') {
+      targets.forEach(function(targ) {
+        cmd.rotate(targ.dataset, opts);
+      });
 
     } else if (name == 'run') {
       cmd.run(targets, catalog, opts, done);

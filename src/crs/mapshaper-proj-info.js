@@ -1,4 +1,5 @@
 import { getSemiMinorAxis } from '../crs/mapshaper-proj-utils';
+import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { message } from '../utils/mapshaper-logging';
 
 export function getCrsSlug(P) {
@@ -11,56 +12,49 @@ export function isRotatedNormalProjection(P) {
   return isAxisAligned(P) && P.lam0 !== 0;
 }
 
+// Projection is vertically aligned to earth's axis
 export function isAxisAligned(P) {
-  return !isNonNormal(P);
-}
-
-export function isClippedCylindricalProjection(P) {
-  // TODO: add tmerc, etmerc, ...
-  return inList(P, 'merc');
-}
-
-export function getDefaultClipBBox(P) {
-  return {
-    merc: [-180, -87, 180, 87]
-  }[getCrsSlug(P)] || null;
-}
-
-export function isCircleClippedProjection(P) {
-  return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
-}
-
-function getPerspectiveClipAngle(P) {
-  var h = parseFloat(P.params.h.param);
-  if (!h || h < 0) {
-    return 0;
+  // TODO: consider projections that may or may not be aligned,
+  // depending on parameters
+  if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
+    'ocea,omerc,tmerc,etmerc')) {
+    return false;
   }
-  var theta = Math.acos(P.a / (P.a + h)) * 180 / Math.PI;
-  theta *= 0.995; // reducing a bit to avoid out-of-range errors
-  return theta;
-}
-
-export function getDefaultClipAngle(P) {
-  var slug = getCrsSlug(P);
-  if (slug == 'nsper') return getPerspectiveClipAngle(P);
-  if (slug == 'tpers') {
-    message('Automatic clipping is not supported for the Tilted Perspective projection');
-    return 0;
+  if (isAzimuthal(P)) {
+    return false;
   }
-  return {
-    gnom: 60,
-    laea: 179,
-    ortho: 90,
-    stere: 142,
-    sterea: 142,
-    ups: 10.5 // TODO: should be 6.5 deg at north pole
-  }[slug] || 0;
+  return true;
 }
 
-function isNonNormal(P) {
-  var others = 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
-    'ob_tran,ocea,omerc,tmerc,etmerc';
-  return isAzimuthal(P) || inList(P, others);
+export function getBoundingMeridian(P) {
+  if (P.lam0 === 0) return 180;
+  return getAntimeridian(P.lam0 * 180 / Math.PI);
+}
+
+// Are the projection's bounds meridians?
+export function isMeridianBounded(P) {
+  // TODO: add azimuthal projection with lat0 == 0
+  // if (inList(P, 'ortho') && P.lam0 === 0) return true;
+  return isAxisAligned(P); // TODO: look for exceptions to this
+}
+
+// Is the projection bounded by parallels or polar lines?
+export function isParallelBounded(P) {
+  // TODO: add polar azimuthal projections
+  // TODO: reject world projections that do not have polar lines
+  return isAxisAligned(P);
+}
+
+export function getBoundingMeridians(P) {
+
+}
+
+export function getBoundingParallels(P) {
+
+}
+
+export function isConic(P) {
+  return inList(P, 'aea,bonne,eqdc,lcc,poly,euler,murd1,murd2,murd3,pconic,tissot,vitk1');
 }
 
 export function isAzimuthal(P) {
@@ -68,6 +62,6 @@ export function isAzimuthal(P) {
     'aeqd,gnom,laea,mil_os,lee_os,gs48,alsk,gs50,nsper,tpers,ortho,qsc,stere,ups,sterea');
 }
 
-function inList(P, str) {
+export function inList(P, str) {
   return str.split(',').includes(getCrsSlug(P));
 }
