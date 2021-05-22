@@ -13,7 +13,6 @@ export function LayerControl(gui) {
   var model = gui.model;
   var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
   var btn = gui.container.findChild('.layer-control-btn');
-  var buttonLabel = btn.findChild('.layer-name');
   var isOpen = false;
   var cache = new DomCache();
   var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
@@ -115,7 +114,7 @@ export function LayerControl(gui) {
 
   function updateMenuBtn() {
     var name = model.getActiveLayer().layer.name || "[unnamed layer]";
-    buttonLabel.html(name + " &nbsp;&#9660;");
+    btn.classed('active', 'true').findChild('.layer-name').html(name + " &nbsp;&#9660;");
   }
 
   function render() {

@@ -113,12 +113,16 @@ div.tip {
 
 /* -------- BUTTONS ---------- */
 
-.header-btn {
+.btn.header-btn {
 	color: #fff;
 	border: none;
-	padding: 3px 7px 4px 7px;
-	border-radius: 3px;
-	margin-top: 5px;
+	margin-top: 0px;
+	height: 33px;
+	box-sizing: border-box;
+	border-radius: 1px;
+	font-size: 14px;
+	font-weight: 700;
+	padding: 9px 8px 0px 8px;
 }
 
 .page-header .header-btn.disabled,
@@ -126,7 +130,7 @@ div.tip {
 	background-color: transparent;
 }
 
-.page-header .header-btn.active {
+.page-header .btn.header-btn.active {
 	background-color: black;
 }
 

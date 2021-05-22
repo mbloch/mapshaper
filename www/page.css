@@ -44,7 +44,7 @@ html, body {
 body {
 	overflow: hidden;
 	background-color: #fff;
-	font: 15px/1.4 'Source Sans Pro', Helvetica, sans-serif;
+	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
 	color: #444;
 	user-select: none;
 	-webkit-user-select: none;
@@ -64,15 +64,21 @@ body {
 
 .page-header,
 .dialog-btn {
-	background-color: #1385b7;
+	background-color: #1385B7;
 }
 
-.colored-text {
-	color: #0774a5;
+.colored-text,
+.nav-menu-item {
+	color: #10699b;
+}
+
+.dot-underline,
+.zoom-box.zooming {
+	border-color: #10699b;
 }
 
 .dot-underline {
-	border-bottom: 1px dotted #0774a5;
+	border-bottom: 1px dotted;
 }
 
 .dot-underline-black {
@@ -80,14 +86,14 @@ body {
 }
 
 .nav-btn * {
-	fill: #1385b7;
+	fill: #1385B7;
 }
 
 .dialog-btn:hover,
-.header-btn:hover,
+.btn.header-btn:hover,
 .dialog-btn.default-btn,
 .dialog-btn.selected-btn {
-	background-color: #0F5A84;
+	background-color: #1A6A96;
 }
 
 .colored-text::selection {
@@ -167,7 +173,7 @@ body {
 	left: 0;
 	z-index: 40;
 	width: 100%;
-	height: 34px;
+	height: 33px;
 }
 
 .coordinate-info {
@@ -182,8 +188,8 @@ body {
 
 .mapshaper-logo {
 	font-weight: bold;
-	font-size: 18px;
-	margin: 3px 0 0 12px;
+	font-size: 17px;
+	margin: 4px 0 0 11px;
 }
 
 .mapshaper-logo .logo-highlight {
@@ -207,6 +213,7 @@ body {
 	border-left: 1px solid white;
 	height: 10px;
 	margin: 0 2px 0 2px;
+	display: none;
 }
 
 /* --- Selection tool dialog --------- */
@@ -266,7 +273,7 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 34px 0 0 0;
+	margin: 33px 0 0 0;
 }
 
 
@@ -524,6 +531,8 @@ body.dragover #import-options-drop-area .drop-area {
 }
 
 .option-menu input {
+	position: relative;
+	top: 2px;
 	width: 12px;
 	height: 12px;
 }
@@ -676,6 +685,21 @@ body.console-open .map-area {
 	text-align: center;
 	z-index: 10;
 	width: 100%;
+	display: none;
+}
+
+.layer-control-btn.active {
+	display: block;
+}
+
+.layer-control-btn > .btn.header-btn {
+	background-color: #1A6A96;
+	padding-left: 12px;
+	padding-right: 12px;
+}
+
+.layer-control-btn > .btn.header-btn:hover {
+	background-color: #094B70;
 }
 
 body.simplify .layer-control-btn {
@@ -1082,7 +1106,6 @@ img.close-btn:hover,
 
 .nav-menu-item {
 	background-color: #fff;
-	color: #0774a5; /* .colored-text color */
 	float: right;
 	clear: right;
 	white-space: nowrap;
@@ -1139,24 +1162,21 @@ img.close-btn:hover,
 	pointer-events: none;
 }
 
-.zoom-box.zooming {
-	border-color: #0774a5;
-}
 
 
 /* Simplification control ------------ */
 
 @media (max-width: 765px) {
 	body.simplify  .simplify-control-wrapper {
-		top: 22px;
+		top: 26px;
 	}
 
 	body.simplify .page-header {
-		height: 52px;
+		height: 57px;
 	}
 
 	body.simplify .main-area {
-		margin-top: 52px;
+		margin-top: 57px;
 	}
 }
 
