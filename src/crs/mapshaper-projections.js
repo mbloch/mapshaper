@@ -124,10 +124,15 @@ export function crsAreEqual(a, b) {
 export function getProjDefn(str) {
   var mproj = require('mproj');
   var defn;
+  // prepend '+proj=' to bare proj names
+  str = str.replace(/(^| )([\w]+)($| )/, function(a, b, c, d) {
+    if (c in mproj.internal.pj_list) {
+      return b + '+proj=' + c + d;
+    }
+    return a;
+  });
   if (looksLikeProj4String(str)) {
     defn = str;
-  } else if (str in mproj.internal.pj_list) {
-    defn = '+proj=' + str;
   } else if (str in projectionAliases) {
     defn = projectionAliases[str];  // defn is a function
   } else if (looksLikeInitString(str)) {

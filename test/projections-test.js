@@ -33,6 +33,19 @@ describe('mapshaper-projections.js', function() {
     invalid('-proj merc +ellps=sphere');
   })
 
+  describe('getProjDefn()', function () {
+    test('merc', '+proj=merc');
+    test('merc +lon_0=60', '+proj=merc +lon_0=60');
+    test('wgs84', '+proj=longlat +datum=WGS84');
+
+    function test(src, target) {
+      var getProjDefn = api.internal.getProjDefn;
+      it(src + ' -> ' + target, function() {
+        assert.equal(getProjDefn(src), target);
+      })
+    }
+  })
+
 
   describe('findProjLibs()', function() {
     it('tests', function() {
