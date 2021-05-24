@@ -173,7 +173,7 @@ body {
 	left: 0;
 	z-index: 40;
 	width: 100%;
-	height: 33px;
+	height: 31px;
 }
 
 .coordinate-info {
@@ -189,7 +189,7 @@ body {
 .mapshaper-logo {
 	font-weight: bold;
 	font-size: 17px;
-	margin: 4px 0 0 11px;
+	margin: 3px 0 0 11px;
 }
 
 .mapshaper-logo .logo-highlight {
@@ -206,7 +206,7 @@ body {
 	top: 0px;
 	right: 0px;
 	display: none;
-	margin: 0 8px 3px 0;	
+	margin: 0 6px 3px 0;	
 }
 
 .separator {
@@ -273,7 +273,7 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 33px 0 0 0;
+	margin: 31px 0 0 0;
 }
 
 
@@ -681,11 +681,12 @@ body.console-open .map-area {
 
 .layer-control-btn {
 	top: 0;
+	width: 100%;
 	position: absolute;
 	text-align: center;
-	z-index: 10;
-	width: 100%;
+	z-index: 30;
 	display: none;
+	pointer-events: none;
 }
 
 .layer-control-btn.active {
@@ -693,9 +694,13 @@ body.console-open .map-area {
 }
 
 .layer-control-btn > .btn.header-btn {
+	white-space: nowrap;
+	position: relative;
 	background-color: #1A6A96;
 	padding-left: 12px;
 	padding-right: 12px;
+	pointer-events: auto;
+	margin-right: 40px;
 }
 
 .layer-control-btn > .btn.header-btn:hover {
@@ -804,7 +809,7 @@ img.close-btn:hover,
 }
 
 .layer-item .row {
-	line-height: 18px;
+	line-height: 17px;
 	margin-bottom: 1px;
 	white-space: nowrap;
 }
@@ -1062,8 +1067,8 @@ img.close-btn:hover,
 .nav-buttons {
 	z-index: 20;
 	position: absolute;
-	top: 6px;
-	right: 9px;
+	top: 7px;
+	right: 7px;
 	padding: 2px;
 	background-color: rgba(255, 255, 255, 0.85);
 }
@@ -1111,7 +1116,7 @@ img.close-btn:hover,
 	white-space: nowrap;
 	display: inline-block;
 	padding: 2px 7px 4px 7px;
-	line-height: 13px;
+	line-height: 11px;
 	cursor: pointer;
 }
 
@@ -1133,20 +1138,25 @@ img.close-btn:hover,
 .nav-btn {
 	position: relative;
 	cursor:pointer;
-	padding: 3px;
-	margin-bottom: 1px;
+	padding: 3px 3px 5px 3px;
 	line-height: 1;
+}
+
+.nav-btn.menu-btn {
+	padding: 2px 3px;
 }
 
 .nav-btn.selected {
 	background-color: black;
-	border-radius: 4px;
-}
-.nav-btn.hover:not(.disabled) svg * {
-	fill: black;
+	border-radius: 3px;
 }
 
-.nav-btn.selected:not(.disabled) svg * {
+.nav-btn:hover:not(.disabled) svg *,
+.nav-btn.hover.menu-btn:not(.disabled) svg * {
+	fill: #1A6A96;
+}
+
+.nav-btn.menu-btn.selected:not(.disabled) svg * {
 	fill: white;
 }
 
