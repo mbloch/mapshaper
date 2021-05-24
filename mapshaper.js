@@ -5997,10 +5997,15 @@
   function getProjDefn(str) {
     var mproj = require('mproj');
     var defn;
+    // prepend '+proj=' to bare proj names
+    str = str.replace(/(^| )([\w]+)($| )/, function(a, b, c, d) {
+      if (c in mproj.internal.pj_list) {
+        return b + '+proj=' + c + d;
+      }
+      return a;
+    });
     if (looksLikeProj4String(str)) {
       defn = str;
-    } else if (str in mproj.internal.pj_list) {
-      defn = '+proj=' + str;
     } else if (str in projectionAliases) {
       defn = projectionAliases[str];  // defn is a function
     } else if (looksLikeInitString(str)) {
@@ -15673,6 +15678,10 @@ ${svg}
       .option('interval', {
         describe: 'size of grid cells in degrees (options: 5 10 15 30 45, default is 10)',
         type: 'number'
+      })
+      .option('polygon', {
+        describe: 'create a polygon to match the outline of the graticule',
+        type: 'flag'
       });
 
     parser.command('grid')
@@ -20021,7 +20030,7 @@ ${svg}
     if (strength >= 0 === false) {
       strength = 1; // default is 1 (full-strength)
     }
-    if (strength > 1 || threshold > 0 === false) {
+    if (strength > 1 || threshold >= 0 === false) {
       error('Invalid parameter');
     }
     var calcEffectiveArea = getSliverAreaFunction(arcs, strength);
@@ -20060,7 +20069,7 @@ ${svg}
       ringCount++;
       forEachSegmentInPath(path, arcs, onSeg);
     });
-    var segPerRing = segCount / ringCount;
+    var segPerRing = segCount / ringCount || 0;
     var complexityFactor = Math.pow(segPerRing, 0.75); // use seg/ring as a proxy for complexity
     var threshold = avgSegLen * avgSegLen / 50 * complexityFactor;
     threshold = roundToSignificantDigits(threshold, 2); // round for display
@@ -23150,42 +23159,114 @@ ${svg}
     return dataset2;
   }
 
-  // Removes one or two antimeridian crossings from a circular ring
+  // Utility functions for GeoJSON-style lat-long [x,y] coordinates and arrays of coords
+
+  var e = 1e-10;
+  var T$1 = 90 - e;
+  var L = -180 + e;
+  var B = -90 + e;
+  var R$1 = 180 - e;
+
+  function lastEl(arr) {
+    return arr[arr.length - 1];
+  }
+
+  function samePoint(a, b) {
+    return a[0] === b[0] && a[1] === b[1];
+  }
+
+  function isClosedPath(arr) {
+    return samePoint(arr[0], lastEl(arr));
+  }
+
+  // duplicate points occur if a vertex is on the antimeridan
+  function dedup(ring) {
+    return ring.reduce(function(memo, p, i) {
+      var pp = memo.length > 0 ? memo[memo.length-1] : null;
+      if (!pp || pp[0] != p[0] || pp[1] != p[1]) memo.push(p);
+      return memo;
+    }, []);
+  }
+
+
+  // remove likely rounding errors
+  function snapToEdge(p) {
+    if (p[0] <= L) p[0] = -180;
+    if (p[0] >= R$1) p[0] = 180;
+    if (p[1] <= B) p[1] = -90;
+    if (p[1] >= T$1) p[1] = 90;
+  }
+
+
+  function onPole(p) {
+    return p[1] >= T$1 || p[1] <= B;
+  }
+
+  function isWholeWorld(coords) {
+    // TODO: check that l,r,t,b are all reached
+    for (var i=0, n=coords.length; i<n; i++) {
+      if (!isEdgePoint(coords[i])) return false;
+    }
+    return true;
+  }
+
+  function touchesEdge(coords) {
+    for (var i=0, n=coords.length; i<n; i++) {
+      if (isEdgePoint(coords[i])) return true;
+    }
+    return false;
+  }
+
+  function isEdgeSegment(a, b) {
+    // TODO: handle segments between pole and non-edge point
+    // (these shoudn't exist in a properly clipped path)
+    return (onPole(a) || onPole(b)) ||
+      a[0] <= L && b[0] <= L || a[0] >= R$1 && b[0] >= R$1;
+  }
+
+  function isEdgePoint(p) {
+    return p[1] <= B || p[1] >= T$1 || p[0] <= L || p[0] >= R$1;
+  }
+
+  function removePolylineCrosses(path) {
+    return splitPathAtAntimeridian(path);
+  }
+
+  function isAntimeridianPoint(p) {
+    // return p[0] <= L || p[0] >= R;
+    return p[0] == -180 || p[0] == 180;
+  }
+
+  // Removes antimeridian crossings from an array of polygon rings
   // TODO: handle edge case: segment is collinear with antimeridian
   // TODO: handle edge case: path coordinates exceed the standard lat-long range
   //
-  // path: a path of [x,y] points.
-  // type: 'polygon' or 'polyline'
-  // 'polygon' Assumes a closed ring with CCW winding for holes
-  // Returns MultiPolygon or MultiLineString coordinates array
-  function removeAntimeridianCrosses(path, type, isHole) {
-    var parts = splitPathAtAntimeridian(path);
-
-    if (type == 'polyline') {
-      return parts; // MultiLineString coords
-    }
-
-    // case: polygon does not intersect the antimeridian
-    if (parts.length == 1 && !isAntimeridanPoint(parts[0][0])) {
-      // TODO: the area test should not be needed when processing small circles
-      // (could affect performance when buffering many points)
-      if (ringArea(path) < 0 && !isHole) {
-        // negative area: CCW ring, indicating a circle of >180 degrees
-        //   that fully encloses both poles and the antimeridian.
-        // need to add an enclosure around the entire sphere
-        parts = [[[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]], parts[0]];
+  // rings: array of rings of [x,y] points.
+  // Returns array of split-apart rings
+  function removePolygonCrosses(rings, isHole) {
+    var rings2 = [];
+    var splitRings = [];
+    var ring;
+    for (var i=0; i<rings.length; i++) {
+      ring = rings[i];
+      if (!isClosedPath(ring)) {
+        error('Received an open path');
       }
-      return [parts];
+      if (countCrosses(ring) === 0) {
+        rings2.push(ring);
+      } else {
+        splitRings = splitRings.concat(splitPathAtAntimeridian(ring));
+      }
     }
-
-    // Now we can assume that the first and last point of the split-apart path is 180 or -180
-    return reconnectSplitParts(parts);
+    if (splitRings.length > 0) {
+      rings2 = rings2.concat(reconnectSplitParts(splitRings));
+    }
+    return rings2;
   }
 
-  function addSubPath(paths, path) {
-    if (path.length > 1) paths.push(path);
-  }
-
+  // Stitch an array of split-apart paths into coordinate rings
+  // Assumes that the first and last point of each split-apart path is 180 or -180
+  // parts: array of paths that have been split at the antimeridian
   function reconnectSplitParts(parts) {
     var yy = getSortedIntersections(parts);
     var rings = [];
@@ -23193,9 +23274,15 @@ ${svg}
     var errors = 0;
     parts.forEach(function(part, i) {
       if (usedParts[i]) return;
+      if (!isValidSplitPart(part)) {
+        error('Geometry error');
+      }
       var ring = addPartToRing(part, []);
       if (ring) {
-        rings.push([ring]); // multipolygon coords
+        if (!isClosedPath(ring)) {
+          error('Generated an open ring');
+        }
+        rings.push(ring);
       } else {
         errors++;
       }
@@ -23237,6 +23324,16 @@ ${svg}
     }
   }
 
+  function addSubPath(paths, path) {
+    if (path.length > 1) paths.push(path);
+  }
+
+  function isValidSplitPart(part) {
+    var lastX = lastEl(part)[0];
+    var firstX = part[0][0];
+    return (lastX == 180 || lastX == -180) && (firstX == 180 || firstX == -180);
+  }
+
   // p: last point of previous part
   function findNextPoint(parts, p, yy) {
     var x = p[0];
@@ -23274,6 +23371,18 @@ ${svg}
     return null;
   }
 
+  function countCrosses(path) {
+    var c = 0, pp, p;
+    for (var i=0, n=path.length; i<n; i++) {
+      p = path[i];
+      if (i>0 && Math.abs(pp[0] - p[0]) > 180) {
+        c++;
+      }
+      pp = p;
+    }
+    return c;
+  }
+
   function splitPathAtAntimeridian(path) {
     var parts = [];
     var part = [];
@@ -23297,7 +23406,7 @@ ${svg}
 
     // join first and last parts of a split-apart ring, so that the first part
     // originates at the antimeridian
-    if (closed && parts.length > 1 && !isAntimeridanPoint(firstPoint)) {
+    if (closed && parts.length > 1 && !isAntimeridianPoint(firstPoint)) {
       part = parts.pop();
       part.pop(); // remove duplicate point
       parts[0] = part.concat(parts[0]);
@@ -23312,38 +23421,15 @@ ${svg}
     return utils.genericSort(values, true);
   }
 
-  function samePoint(a, b) {
-    return a[0] === b[0] && a[1] === b[1];
-  }
 
-  function isAntimeridanPoint(p) {
-    return p[0] == 180 || p[0] == -180;
-  }
 
   function addIntersectionPoint(part, p, yint) {
     var xint = p[0] < 0 ? -180 : 180;
-    if (!isAntimeridanPoint(p)) { // don't a point if p is already on the antimeridian
+    if (!isAntimeridianPoint(p)) { // don't a point if p is already on the antimeridian
       part.push([xint, yint]);
     }
   }
 
-  function ringArea(ring) {
-    var iter = new PointIter(ring);
-    return getSphericalPathArea2(iter);
-  }
-
-  // duplicate points occur if a vertex is on the antimeridan
-  function dedup(ring) {
-    return ring.reduce(function(memo, p, i) {
-      var pp = memo.length > 0 ? memo[memo.length-1] : null;
-      if (!pp || pp[0] != p[0] || pp[1] != p[1]) memo.push(p);
-      return memo;
-    }, []);
-  }
-
-  function lastEl(arr) {
-    return arr[arr.length - 1];
-  }
 
   // p1, p2: two vertices on different sides of the antimeridian
   // Returns y-intercept of the segment connecting p1, p2
@@ -23360,7 +23446,15 @@ ${svg}
       dx1 = 180 - p1[0];
       dx2 = p2[0] + 180;
     }
+    // avoid fp rounding error if a point is on antimeridian
+    if (dx1 === 0) return p1[1];
+    if (dx2 === 0) return p2[1];
     return (dx2 * p1[1] + dx1 * p2[1]) / (dx1 + dx2);
+  }
+
+  function ringArea(ring) {
+    var iter = new PointIter(ring);
+    return getSphericalPathArea2(iter);
   }
 
   function makePointBuffer(lyr, dataset, opts) {
@@ -23398,17 +23492,27 @@ ${svg}
   }
 
   function getPointBufferPolygon(points, distance, vertices, geod) {
-    var rings = [], coords;
+    var rings = [], coords, coords2;
     if (!points || !points.length) return null;
     for (var i=0; i<points.length; i++) {
       coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-      coords = removeAntimeridianCrosses(coords, 'polygon');
-      while (coords.length > 0) rings.push(coords.pop());
+      if (countCrosses(coords) > 0) {
+        coords2 = removePolygonCrosses([coords]);
+        while (coords2.length > 0) rings.push([coords2.pop()]); // geojson polygon coords, no hole
+      } else if (ringArea(coords) < 0) {
+        // negative spherical area: CCW ring, indicating a circle of >180 degrees
+        // that fully encloses both poles and the antimeridian.
+        // need to add an enclosure around the entire sphere
+        // TODO: compare to distance param as a sanity check
+        rings.push([
+          [[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]],
+          coords
+          ]);
+      } else {
+        rings.push([coords]);
+      }
     }
-    return rings.length == 1 ? {
-      type: 'Polygon',
-      coordinates: rings[0]
-    } : {
+    return {
       type: 'MultiPolygon',
       coordinates: rings
     };
@@ -23419,7 +23523,7 @@ ${svg}
     if (!points || !points.length) return null;
     for (var i=0; i<points.length; i++) {
       coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-      coords = removeAntimeridianCrosses(coords, 'polyline');
+      coords = removePolylineCrosses(coords);
       while (coords.length > 0) rings.push(coords.pop());
     }
     return rings.length == 1 ? {
@@ -25487,11 +25591,13 @@ ${svg}
 
   function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
     var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
+    // remove arcs from the clipping dataset, if they are not used by any layer
     layers.forEach(function(lyr, i) {
       var lyr2 = outputLayers[i];
       lyr.shapes = lyr2.shapes;
       lyr.data = lyr2.data;
     });
+    dissolveArcs(dataset);
   }
 
   // @clipSrc: layer in @dataset or filename
@@ -28478,42 +28584,6 @@ ${svg}
     return str.split(',').includes(getCrsSlug(P));
   }
 
-  function insertPreProjectionCuts(dataset, src, dest) {
-    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
-    // currently only supports adding a single vertical cut to earth axis-aligned
-    // map projections centered on a non-zero longitude.
-    // TODO: need a more sophisticated kind of cutting to handle other cases
-    if (isLatLngCRS(src) &&
-        isRotatedNormalProjection(dest) &&
-        datasetCrossesLon(dataset, antimeridian)) {
-      insertVerticalCut(dataset, antimeridian);
-      return true;
-    }
-    return false;
-  }
-
-  function datasetCrossesLon(dataset, lon) {
-    var crosses = 0;
-    dataset.arcs.forEachSegment(function(i, j, xx, yy) {
-      var ax = xx[i],
-          bx = xx[j];
-      if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
-    });
-    return crosses > 0;
-  }
-
-  function insertVerticalCut(dataset, lon) {
-    var pathLayers = dataset.layers.filter(layerHasPaths);
-    if (pathLayers.length === 0) return;
-    var e = 1e-8;
-    var coords = [[lon+e, 90], [lon+e, -90], [lon-e, -90], [lon-e, 90], [lon+e, 90]];
-    var clip = importGeoJSON({
-      type: 'Polygon',
-      coordinates: [coords]
-    });
-    clipLayersInPlace(pathLayers, clip, dataset, 'erase');
-  }
-
   function DatasetEditor(dataset) {
     var layers = [];
     var arcs = [];
@@ -28539,10 +28609,7 @@ ${svg}
         var shape2 = [], retn, input;
         for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
           input = type == 'point' ? shape[i] : idsToCoords(shape[i]);
-          //console.log("input:", input)
           retn = cb(input, i, shape);
-          //console.log("output:", retn)
-
           if (!Array.isArray(retn)) continue;
           if (type == 'point') {
             shape2.push(retn);
@@ -28590,14 +28657,14 @@ ${svg}
 
 
   // Planar densification by an interval
-  function densifyPathByInterval(coords, interval) {
+  function densifyPathByInterval(coords, interval, filter) {
     if (findMaxPathInterval(coords) < interval) return coords;
     var coords2 = [coords[0]], a, b, dist;
     for (var i=1, n=coords.length; i<n; i++) {
       a = coords[i-1];
       b = coords[i];
       dist = geom.distance2D(a[0], a[1], b[0], b[1]);
-      if (dist > interval) {
+      if (dist > interval && (!filter || filter(a, b))) {
         pushInterpolatedPoints(coords2, a, b, Math.round(dist / interval) - 1);
       }
       coords2.push(b);
@@ -28831,6 +28898,42 @@ ${svg}
     convertBboxToGeoJSON: convertBboxToGeoJSON
   });
 
+  function insertPreProjectionCuts(dataset, src, dest) {
+    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
+    // currently only supports adding a single vertical cut to earth axis-aligned
+    // map projections centered on a non-zero longitude.
+    // TODO: need a more sophisticated kind of cutting to handle other cases
+    if (isLatLngCRS(src) &&
+        isRotatedNormalProjection(dest) &&
+        datasetCrossesLon(dataset, antimeridian)) {
+      insertVerticalCut(dataset, antimeridian);
+      dissolveArcs(dataset);
+      return true;
+    }
+    return false;
+  }
+
+  function datasetCrossesLon(dataset, lon) {
+    var crosses = 0;
+    dataset.arcs.forEachSegment(function(i, j, xx, yy) {
+      var ax = xx[i],
+          bx = xx[j];
+      if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
+    });
+    return crosses > 0;
+  }
+
+  function insertVerticalCut(dataset, lon) {
+    var pathLayers = dataset.layers.filter(layerHasPaths);
+    if (pathLayers.length === 0) return;
+    var e = 1e-8;
+    var bbox = [lon-e, -91, lon+e, 91];
+    // densify (so cut line can curve, e.g. Cupola projection)
+    var geojson = convertBboxToGeoJSON(bbox, {interval: 0.5});
+    var clip = importGeoJSON(geojson);
+    clipLayersInPlace(pathLayers, clip, dataset, 'erase');
+  }
+
   // based on d3 implementation of Euler-angle rotation
   // https://github.com/d3/d3-geo/blob/master/src/rotation.js
   // license: https://github.com/d3/d3-geo/blob/master/LICENSE
@@ -28918,41 +29021,383 @@ ${svg}
       stop('Command requires a lat-long dataset.');
     }
     if (!Array.isArray(opts.rotation) || !opts.rotation.length) {
-      stop('Invalid rotation parameter.');
+      stop('Invalid rotation parameter');
     }
     var rotatePoint = getRotationFunction2(opts.rotation, opts.invert);
     var editor = new DatasetEditor(dataset);
-    var originalArcs;
     if (dataset.arcs) {
       dataset.arcs.flatten();
-      // make a copy so we can calculate original path winding after rotation
-      originalArcs = dataset.arcs.getCopy();
     }
 
     dataset.layers.forEach(function(lyr) {
       var type = lyr.geometry_type;
-      editor.editLayer(lyr, function(coords, i, shape) {
-        if (type == 'point') {
-          coords.forEach(rotatePoint);
-          return coords;
-        }
-        coords = densifyPathByInterval(coords, 0.5);
-        coords.forEach(rotatePoint);
-        if (type == 'polyline') {
-          return removeAntimeridianCrosses(coords, type);
-        }
-        var isHole = type == 'polygon' && getPlanarPathArea(shape[i], originalArcs) < 0;
-        var coords2 = removeAntimeridianCrosses(coords, type, isHole);
-        return coords2.reduce(function(memo, polygonCoords) {
-          return memo.concat(polygonCoords);
-        }, []);
-      });
+      editor.editLayer(lyr, getGeometryRotator(type, rotatePoint));
     });
     editor.done();
+    buildTopology(dataset);
+    cleanProjectedLayers(dataset);
   }
 
+  function getGeometryRotator(layerType, rotatePoint) {
+    var rings;
+    if (layerType == 'point') {
+      return function(coords) {
+        coords.forEach(rotatePoint);
+        return coords;
+      };
+    }
+    if (layerType == 'polyline') {
+      return function(coords) {
+        coords = densifyPathByInterval(coords, 0.5);
+        coords.forEach(rotatePoint);
+        return removePolylineCrosses(coords);
+      };
+    }
+    if (layerType == 'polygon') {
+      return function(coords, i, shape) {
+        if (isWholeWorld(coords)) {
+          coords = densifyPathByInterval(coords, 0.5);
+        } else {
+          coords.forEach(snapToEdge);
+          coords = densifyPathByInterval(coords, 0.5, densifySegment$1);
+          coords = removeCutSegments(coords);
+          coords.forEach(rotatePoint);
+          coords.forEach(snapToEdge);
+        }
+        if (i === 0) { // first part
+          rings = [];
+        }
+        if (coords.length < 4) {
+          debug('Short ring', coords);
+          return;
+        }
+        if (!samePoint(coords[0], lastEl(coords))) {
+          error('Open polygon ring');
+        }
+        rings.push(coords); // accumulate rings
+        if (i == shape.length - 1) { // last part
+          return removePolygonCrosses(rings);
+        }
+      };
+    }
+    return null; // assume layer has no geometry -- callback should not be called
+  }
+
+  function densifySegment$1(a, b) {
+    return !isEdgeSegment(a, b);
+  }
+
+  // Remove segments that belong solely to cut points
+  // TODO: verify that antimeridian crosses have matching y coords
+  // TODO: stitch together split-apart polygons
+  //
+  function removeCutSegments(coords) {
+    if (!touchesEdge(coords)) return coords;
+    var coords2 = [];
+    var a, b, c, x, y;
+    var skipped = false;
+    coords.pop(); // remove duplicate point
+    a = coords[coords.length-1];
+    b = coords[0];
+    for (var ci=1, n=coords.length; ci <= n; ci++) {
+      c = ci == n ? coords2[0] : coords[ci];
+      if (isEdgePoint(a) && isEdgeSegment(b, c)) {
+        // skip b
+        // debug('<edge', b)
+        skipped = true;
+      } else {
+        if (skipped === true) {
+          // console.log("skipped from:", coords2[coords2.length-1], 'to:', b)
+          // console.log('ci:', ci, 'coords.length:', n)
+          skipped = false;
+        }
+        coords2.push(b);
+        a = b;
+      }
+      b = c;
+    }
+    coords2.push(coords2[0].concat()); // close the path
+    // TODO: handle runs that are split at the array boundary
+    return coords2;
+  }
+
+  cmd.lines = function(lyr, dataset, opts) {
+    opts = opts || {};
+    if (opts.callouts) {
+      requirePointLayer(lyr);
+      return pointsToCallouts(lyr, dataset, opts);
+    } else if (lyr.geometry_type == 'point') {
+      return pointsToLines(lyr, dataset, opts);
+    } else if (opts.segments) {
+      return [convertShapesToSegments(lyr, dataset)];
+    } else if (opts.arcs) {
+      return [convertShapesToArcs(lyr, dataset)];
+    } else if (lyr.geometry_type == 'polygon') {
+      return polygonsToLines(lyr, dataset.arcs, opts);
+    } else {
+      requirePolygonLayer(lyr, "Command requires a polygon or point layer");
+    }
+  };
+
+  function convertShapesToArcs(lyr, dataset) {
+    var arcs = dataset.arcs;
+    var test = getArcPresenceTest(lyr.shapes, arcs);
+    var records = [];
+    var shapes = [];
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      if (!test(i)) continue;
+      records.push({arcid: i});
+      shapes.push([[i]]);
+    }
+    return {
+      geometry_type: 'polyline',
+      data: new DataTable(records),
+      shapes: shapes
+    };
+  }
+
+  function convertShapesToSegments(lyr, dataset) {
+    var arcs = dataset.arcs;
+    var features = [];
+    var geojson = {type: 'FeatureCollection', features: []};
+    var test = getArcPresenceTest(lyr.shapes, arcs);
+    var arcId;
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      arcId = i;
+      if (!test(arcId)) continue;
+      arcs.forEachArcSegment(arcId, onSeg);
+    }
+    function onSeg(i1, i2, xx, yy) {
+      var a = xx[i1],
+          b = yy[i1],
+          c = xx[i2],
+          d = yy[i2];
+      geojson.features.push({
+        type: 'Feature',
+        properties: {arc: arcId, i1: i1, i2: i2, x1: a, y1: b, x2: c, y2: d},
+        geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
+      });
+    }
+    var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
+    dataset.arcs = merged.arcs;
+    // buildTopology(dataset);
+    return merged.layers.pop();
+  }
+
+  function pointsToLines(lyr, dataset, opts) {
+    var geojson = opts.groupby ?
+      groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
+      pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
+    var dataset2 = importGeoJSON(geojson);
+    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+    if (!opts.no_replace) {
+      outputLayers[0].name = lyr.name || outputLayers[0].name;
+    }
+    return outputLayers;
+  }
+
+  function pointsToCallouts(lyr, dataset, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var calloutLen = getLayerBounds(lyr).width() / 50;
+    var pointToSegment = function(p) {
+      return [p, [p[0] + calloutLen, p[1]]];
+    };
+    var geojson = {
+      type: 'FeatureCollection',
+      features: lyr.shapes.map(function(shp, i) {
+        return {
+          type: 'Feature',
+          properties: records ? records[i] : null,
+          geometry: {
+            type: 'MultiLineString',
+            coordinates: shp.map(pointToSegment)
+          }
+        };
+      })
+    };
+    var dataset2 = importGeoJSON(geojson);
+    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+    if (!opts.no_replace) {
+      outputLayers[0].name = lyr.name || outputLayers[0].name;
+    }
+    return outputLayers;
+  }
+
+  function groupedPointsToLineGeoJSON(lyr, field, opts) {
+    var groups = [];
+    var getGroupId = getCategoryClassifier([field], lyr.data);
+    var dataOpts = utils.defaults({fields: [field]}, opts);
+    var records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
+    var features;
+    lyr.shapes.forEach(function(shape, i) {
+      var groupId = getGroupId(i);
+      if (groupId in groups === false) {
+        groups[groupId] = [];
+      }
+      groups[groupId].push(shape);
+    });
+    features = groups.map(function(shapes, i) {
+      return {
+        type: 'Feature',
+        properties: records[i],
+        geometry: shapes.length > 1 ? pointShapesToLineGeometry(shapes) : null
+      };
+    });
+    return {
+      type: 'FeatureCollection',
+      features: features
+    };
+  }
+
+  // TOOD: automatically convert rings into separate shape parts
+  function pointShapesToLineGeometry(shapes) {
+    var coords = [];
+    forEachPoint(shapes, function(p) {
+      coords.push(p.concat());
+    });
+    return {type: 'LineString', coordinates: coords};
+  }
+
+  function polygonsToLines(lyr, arcs, opts) {
+    opts = opts || {};
+    var filter = opts.where ? compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
+        decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
+        classifier = getArcClassifier(lyr.shapes, arcs, {filter: filter}),
+        fields = utils.isArray(opts.fields) ? opts.fields : [],
+        rankId = 0,
+        shapes = [],
+        records = [],
+        outputLyr;
+
+    if (fields.length > 0 && !lyr.data) {
+      stop("Missing a data table");
+    }
+
+    addLines(extractOuterLines(lyr.shapes, classifier), 'outer');
+
+    fields.forEach(function(field) {
+      var data = lyr.data.getRecords();
+      var key = function(a, b) {
+        var arec = data[a];
+        var brec = data[b];
+        var aval, bval;
+        if (!arec || !brec || arec[field] === brec[field]) {
+          return null;
+        }
+        return a + '-' + b;
+      };
+      requireDataField(lyr, field);
+      addLines(extractLines(lyr.shapes, classifier(key)), field);
+    });
+
+    addLines(extractInnerLines(lyr.shapes, classifier), 'inner');
+    outputLyr = createLineLayer(shapes, records);
+    outputLyr.name = opts.no_replace ? null : lyr.name;
+    return outputLyr;
+
+    function addLines(lines, typeName) {
+      var attr = lines.map(function(shp, i) {
+        var rec = {RANK: rankId, TYPE: typeName};
+        if (decorateRecord) decorateRecord(rec, shp);
+        return rec;
+      });
+      shapes = utils.merge(lines, shapes);
+      records = utils.merge(attr, records);
+      rankId++;
+    }
+  }
+
+
+  // kludgy way to implement each= option of -lines command
+  function getLineRecordDecorator(exp, lyr, arcs) {
+    // repurpose arc classifier function to convert arc ids to shape ids of original polygons
+    var procArcId = getArcClassifier(lyr.shapes, arcs)(procShapeIds);
+    var compiled = compileFeaturePairExpression(exp, lyr, arcs);
+    var tmp;
+
+    function procShapeIds(shpA, shpB) {
+      compiled(shpA, shpB, tmp);
+    }
+
+    return function(rec, shp) {
+      tmp = rec;
+      procArcId(shp[0][0]);
+      return rec;
+    };
+  }
+
+
+  function createLineLayer(lines, records) {
+    return {
+      geometry_type: 'polyline',
+      shapes: lines,
+      data: records ? new DataTable(records) : null
+    };
+  }
+
+  function extractOuterLines(shapes, classifier) {
+    var key = function(a, b) {return b == -1 ? String(a) : null;};
+    return extractLines(shapes, classifier(key));
+  }
+
+  function extractInnerLines(shapes, classifier) {
+    var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
+    return extractLines(shapes, classifier(key));
+  }
+
+  function extractLines(shapes, classify) {
+    var lines = [],
+        index = {},
+        prev = null,
+        prevKey = null,
+        part;
+
+    traversePaths(shapes, onArc, onPart);
+
+    function onArc(o) {
+      var arcId = o.arcId,
+          key = classify(arcId),
+          isContinuation, line;
+      if (!!key) {
+        line = key in index ? index[key] : null;
+        isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
+        if (!line) {
+          line = [[arcId]]; // new shape
+          index[key] = line;
+          lines.push(line);
+        } else if (isContinuation) {
+          line[line.length-1].push(arcId); // extending prev part
+        } else {
+          line.push([arcId]); // new part
+        }
+
+        // if extracted line is split across endpoint of original polygon ring, then merge
+        if (o.i == part.arcs.length - 1 &&  // this is last arc in ring
+            line.length > 1 &&              // extracted line has more than one part
+            line[0][0] == part.arcs[0]) {   // first arc of first extracted part is first arc in ring
+          line[0] = line.pop().concat(line[0]);
+        }
+      }
+      prev = o;
+      prevKey = key;
+    }
+
+    function onPart(o) {
+      part = o;
+    }
+
+    return lines;
+  }
+
+  var Lines = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    polygonsToLines: polygonsToLines,
+    createLineLayer: createLineLayer,
+    extractInnerLines: extractInnerLines
+  });
+
   function getClippingDataset(src, dest, opts) {
-    var dataset, bbox;
+    var dataset;
     if (isCircleClippedProjection(dest) || opts.clip_angle) {
       dataset = getClipCircle(src, dest, opts);
     } else if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
@@ -28961,10 +29406,27 @@ ${svg}
     return dataset || null;
   }
 
-  function getOutlineDataset(src, dest, opts) {
-    opts = Object.assign({geometry_type: 'polyline'}, opts);
+  // Return projected polygon extent of both clipped and unclipped projections
+  function getPolygonDataset(src, dest, opts) {
+    // use clipping area if projection is clipped
     var dataset = getClippingDataset(src, dest, opts);
+    if (!dataset) {
+      // use entire world if projection is not clipped
+      dataset = getClipRectangle(dest, {clip_bbox: [-180,-90,180,90]});
+    }
+    projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
     return dataset;
+  }
+
+  // Return projected outline of clipped projections
+  function getOutlineDataset(src, dest, opts) {
+    var dataset = getClippingDataset(src, dest, opts);
+    if (dataset) {
+      // project, with cutting & cleanup
+      projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+      dataset.layers[0].geometry_type = 'polyline';
+    }
+    return dataset || null;
   }
 
   function getClipRectangle(dest, opts) {
@@ -29001,6 +29463,7 @@ ${svg}
   function getDefaultClipBBox(P) {
     var e = 1e-3;
     var bbox = {
+      // longlat: [-180, -90, 180, 90],
       merc: [-180, -87, 180, 87],
       bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
     }[getCrsSlug(P)];
@@ -29064,7 +29527,7 @@ ${svg}
       // the clipping shape. But how to tell?
       clipLayersInPlace(dataset.layers, clipData, dataset, 'clip');
        // remove arcs outside the clip area, so they don't get projected
-      dissolveArcs(dataset);
+      //dissolveArcs(dataset);
     }
     return !!clipData;
   }
@@ -29248,10 +29711,10 @@ ${svg}
       cleanProjectedLayers(dataset);
     }
 
-    if (badArcs > 0) {
+    if (badArcs > 0 && !opts.quiet) {
       message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
     }
-    if (badPoints > 0) {
+    if (badPoints > 0 && !opts.quiet) {
       message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
     }
     dataset.info.crs = dest;
@@ -29325,24 +29788,40 @@ ${svg}
     __proto__: null,
     getCrsInfo: getCrsInfo,
     projectDataset: projectDataset,
+    cleanProjectedLayers: cleanProjectedLayers,
     projectPointLayer: projectPointLayer,
     projectArcs: projectArcs,
     projectArcs2: projectArcs2
   });
 
   cmd.graticule = function(dataset, opts) {
+    var name = opts.polygon ? 'polygon' : 'graticule';
     var graticule, dest;
     if (dataset && !isLatLngDataset(dataset)) {
       // project graticule to match dataset
       dest = getDatasetCRS(dataset);
       if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
-      graticule = createProjectedGraticule(dest, opts);
+      graticule = opts.polygon ?
+        createProjectedPolygon(dest, opts) :
+        createProjectedGraticule(dest, opts);
     } else {
-      graticule = createUnprojectedGraticule(opts);
+      graticule = opts.polygon ?
+        createUnprojectedPolygon(opts) :
+        createUnprojectedGraticule(opts);
     }
-    graticule.layers[0].name = 'graticule';
+    graticule.layers[0].name = name;
     return graticule;
   };
+
+  function createUnprojectedPolygon(opts) {
+    var crs = getCRS('wgs84');
+    return getPolygonDataset(crs, crs, opts);
+  }
+
+  function createProjectedPolygon(dest, opts) {
+    var src = getCRS('wgs84');
+    return getPolygonDataset(src, dest, opts);
+  }
 
   function createUnprojectedGraticule(opts) {
     var src = getCRS('wgs84');
@@ -29352,11 +29831,11 @@ ${svg}
 
   function createProjectedGraticule(dest, opts) {
     var src = getCRS('wgs84');
-    var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
+    // var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
+    var outline = getOutlineDataset(src, dest, {});
     var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
     projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
     if (outline) {
-      projectDataset(outline, src, dest, {no_clip: true});
       graticule = addOutlineToGraticule(graticule, outline);
     }
     buildTopology(graticule); // needed for cleaning to work
@@ -29733,281 +30212,6 @@ ${svg}
     targetDataset.arcs = mergedDataset.arcs;
     return outputLayers;
   };
-
-  cmd.lines = function(lyr, dataset, opts) {
-    opts = opts || {};
-    if (opts.callouts) {
-      requirePointLayer(lyr);
-      return pointsToCallouts(lyr, dataset, opts);
-    } else if (lyr.geometry_type == 'point') {
-      return pointsToLines(lyr, dataset, opts);
-    } else if (opts.segments) {
-      return [convertShapesToSegments(lyr, dataset)];
-    } else if (opts.arcs) {
-      return [convertShapesToArcs(lyr, dataset)];
-    } else if (lyr.geometry_type == 'polygon') {
-      return polygonsToLines(lyr, dataset.arcs, opts);
-    } else {
-      requirePolygonLayer(lyr, "Command requires a polygon or point layer");
-    }
-  };
-
-  function convertShapesToArcs(lyr, dataset) {
-    var arcs = dataset.arcs;
-    var test = getArcPresenceTest(lyr.shapes, arcs);
-    var records = [];
-    var shapes = [];
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      if (!test(i)) continue;
-      records.push({arcid: i});
-      shapes.push([[i]]);
-    }
-    return {
-      geometry_type: 'polyline',
-      data: new DataTable(records),
-      shapes: shapes
-    };
-  }
-
-  function convertShapesToSegments(lyr, dataset) {
-    var arcs = dataset.arcs;
-    var features = [];
-    var geojson = {type: 'FeatureCollection', features: []};
-    var test = getArcPresenceTest(lyr.shapes, arcs);
-    var arcId;
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      arcId = i;
-      if (!test(arcId)) continue;
-      arcs.forEachArcSegment(arcId, onSeg);
-    }
-    function onSeg(i1, i2, xx, yy) {
-      var a = xx[i1],
-          b = yy[i1],
-          c = xx[i2],
-          d = yy[i2];
-      geojson.features.push({
-        type: 'Feature',
-        properties: {arc: arcId, i1: i1, i2: i2, x1: a, y1: b, x2: c, y2: d},
-        geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
-      });
-    }
-    var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
-    dataset.arcs = merged.arcs;
-    // buildTopology(dataset);
-    return merged.layers.pop();
-  }
-
-  function pointsToLines(lyr, dataset, opts) {
-    var geojson = opts.groupby ?
-      groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
-      pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
-    var dataset2 = importGeoJSON(geojson);
-    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-    if (!opts.no_replace) {
-      outputLayers[0].name = lyr.name || outputLayers[0].name;
-    }
-    return outputLayers;
-  }
-
-  function pointsToCallouts(lyr, dataset, opts) {
-    var records = lyr.data ? lyr.data.getRecords() : null;
-    var calloutLen = getLayerBounds(lyr).width() / 50;
-    var pointToSegment = function(p) {
-      return [p, [p[0] + calloutLen, p[1]]];
-    };
-    var geojson = {
-      type: 'FeatureCollection',
-      features: lyr.shapes.map(function(shp, i) {
-        return {
-          type: 'Feature',
-          properties: records ? records[i] : null,
-          geometry: {
-            type: 'MultiLineString',
-            coordinates: shp.map(pointToSegment)
-          }
-        };
-      })
-    };
-    var dataset2 = importGeoJSON(geojson);
-    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-    if (!opts.no_replace) {
-      outputLayers[0].name = lyr.name || outputLayers[0].name;
-    }
-    return outputLayers;
-  }
-
-  function groupedPointsToLineGeoJSON(lyr, field, opts) {
-    var groups = [];
-    var getGroupId = getCategoryClassifier([field], lyr.data);
-    var dataOpts = utils.defaults({fields: [field]}, opts);
-    var records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
-    var features;
-    lyr.shapes.forEach(function(shape, i) {
-      var groupId = getGroupId(i);
-      if (groupId in groups === false) {
-        groups[groupId] = [];
-      }
-      groups[groupId].push(shape);
-    });
-    features = groups.map(function(shapes, i) {
-      return {
-        type: 'Feature',
-        properties: records[i],
-        geometry: shapes.length > 1 ? pointShapesToLineGeometry(shapes) : null
-      };
-    });
-    return {
-      type: 'FeatureCollection',
-      features: features
-    };
-  }
-
-  // TOOD: automatically convert rings into separate shape parts
-  function pointShapesToLineGeometry(shapes) {
-    var coords = [];
-    forEachPoint(shapes, function(p) {
-      coords.push(p.concat());
-    });
-    return {type: 'LineString', coordinates: coords};
-  }
-
-  function polygonsToLines(lyr, arcs, opts) {
-    opts = opts || {};
-    var filter = opts.where ? compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
-        decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
-        classifier = getArcClassifier(lyr.shapes, arcs, {filter: filter}),
-        fields = utils.isArray(opts.fields) ? opts.fields : [],
-        rankId = 0,
-        shapes = [],
-        records = [],
-        outputLyr;
-
-    if (fields.length > 0 && !lyr.data) {
-      stop("Missing a data table");
-    }
-
-    addLines(extractOuterLines(lyr.shapes, classifier), 'outer');
-
-    fields.forEach(function(field) {
-      var data = lyr.data.getRecords();
-      var key = function(a, b) {
-        var arec = data[a];
-        var brec = data[b];
-        var aval, bval;
-        if (!arec || !brec || arec[field] === brec[field]) {
-          return null;
-        }
-        return a + '-' + b;
-      };
-      requireDataField(lyr, field);
-      addLines(extractLines(lyr.shapes, classifier(key)), field);
-    });
-
-    addLines(extractInnerLines(lyr.shapes, classifier), 'inner');
-    outputLyr = createLineLayer(shapes, records);
-    outputLyr.name = opts.no_replace ? null : lyr.name;
-    return outputLyr;
-
-    function addLines(lines, typeName) {
-      var attr = lines.map(function(shp, i) {
-        var rec = {RANK: rankId, TYPE: typeName};
-        if (decorateRecord) decorateRecord(rec, shp);
-        return rec;
-      });
-      shapes = utils.merge(lines, shapes);
-      records = utils.merge(attr, records);
-      rankId++;
-    }
-  }
-
-
-  // kludgy way to implement each= option of -lines command
-  function getLineRecordDecorator(exp, lyr, arcs) {
-    // repurpose arc classifier function to convert arc ids to shape ids of original polygons
-    var procArcId = getArcClassifier(lyr.shapes, arcs)(procShapeIds);
-    var compiled = compileFeaturePairExpression(exp, lyr, arcs);
-    var tmp;
-
-    function procShapeIds(shpA, shpB) {
-      compiled(shpA, shpB, tmp);
-    }
-
-    return function(rec, shp) {
-      tmp = rec;
-      procArcId(shp[0][0]);
-      return rec;
-    };
-  }
-
-
-  function createLineLayer(lines, records) {
-    return {
-      geometry_type: 'polyline',
-      shapes: lines,
-      data: records ? new DataTable(records) : null
-    };
-  }
-
-  function extractOuterLines(shapes, classifier) {
-    var key = function(a, b) {return b == -1 ? String(a) : null;};
-    return extractLines(shapes, classifier(key));
-  }
-
-  function extractInnerLines(shapes, classifier) {
-    var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
-    return extractLines(shapes, classifier(key));
-  }
-
-  function extractLines(shapes, classify) {
-    var lines = [],
-        index = {},
-        prev = null,
-        prevKey = null,
-        part;
-
-    traversePaths(shapes, onArc, onPart);
-
-    function onArc(o) {
-      var arcId = o.arcId,
-          key = classify(arcId),
-          isContinuation, line;
-      if (!!key) {
-        line = key in index ? index[key] : null;
-        isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
-        if (!line) {
-          line = [[arcId]]; // new shape
-          index[key] = line;
-          lines.push(line);
-        } else if (isContinuation) {
-          line[line.length-1].push(arcId); // extending prev part
-        } else {
-          line.push([arcId]); // new part
-        }
-
-        // if extracted line is split across endpoint of original polygon ring, then merge
-        if (o.i == part.arcs.length - 1 &&  // this is last arc in ring
-            line.length > 1 &&              // extracted line has more than one part
-            line[0][0] == part.arcs[0]) {   // first arc of first extracted part is first arc in ring
-          line[0] = line.pop().concat(line[0]);
-        }
-      }
-      prev = o;
-      prevKey = key;
-    }
-
-    function onPart(o) {
-      part = o;
-    }
-
-    return lines;
-  }
-
-  var Lines = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    polygonsToLines: polygonsToLines,
-    createLineLayer: createLineLayer,
-    extractInnerLines: extractInnerLines
-  });
 
   cmd.innerlines = function(lyr, arcs, opts) {
     opts = opts || {};
