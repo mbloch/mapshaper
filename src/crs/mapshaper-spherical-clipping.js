@@ -11,7 +11,7 @@ export function preProjectionClip(dataset, src, dest, opts) {
     // the clipping shape. But how to tell?
     clipLayersInPlace(dataset.layers, clipData, dataset, 'clip');
      // remove arcs outside the clip area, so they don't get projected
-    dissolveArcs(dataset);
+    //dissolveArcs(dataset);
   }
   return !!clipData;
 }

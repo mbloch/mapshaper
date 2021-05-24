@@ -27,10 +27,7 @@ export function DatasetEditor(dataset) {
       var shape2 = [], retn, input;
       for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
         input = type == 'point' ? shape[i] : idsToCoords(shape[i]);
-        //console.log("input:", input)
         retn = cb(input, i, shape);
-        //console.log("output:", retn)
-
         if (!Array.isArray(retn)) continue;
         if (type == 'point') {
           shape2.push(retn);

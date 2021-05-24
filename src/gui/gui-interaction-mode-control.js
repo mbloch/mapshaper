@@ -37,7 +37,7 @@ export function InteractionMode(gui) {
 
   // Only render edit mode button/menu if this option is present
   if (gui.options.inspectorControl) {
-    btn = gui.buttons.addButton('#pointer-icon');
+    btn = gui.buttons.addButton('#pointer-icon').addClass('menu-btn');
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
     btn.on('mouseleave', function() {

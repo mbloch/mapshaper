@@ -156,10 +156,10 @@ export function projectDataset(dataset, src, dest, opts) {
     cleanProjectedLayers(dataset);
   }
 
-  if (badArcs > 0) {
+  if (badArcs > 0 && !opts.quiet) {
     message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
   }
-  if (badPoints > 0) {
+  if (badPoints > 0 && !opts.quiet) {
     message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
   dataset.info.crs = dest;
@@ -169,7 +169,7 @@ export function projectDataset(dataset, src, dest, opts) {
 // * Removes line intersections
 // * TODO: what if a layer contains polygons with desired overlaps? should
 //   we ignore overlaps between different features?
-function cleanProjectedLayers(dataset) {
+export function cleanProjectedLayers(dataset) {
   // TODO: only clean affected polygons (cleaning all polygons can be slow)
   var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
   // clean options: force a topology update (by default, this only happens when

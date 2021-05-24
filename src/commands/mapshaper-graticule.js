@@ -3,7 +3,7 @@ import { projectDataset } from '../commands/mapshaper-proj';
 import { getDatasetCRS, getCRS, isLatLngDataset } from '../crs/mapshaper-projections';
 import { isMeridianBounded, getBoundingMeridian } from '../crs/mapshaper-proj-info';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
-import { getOutlineDataset } from '../crs/mapshaper-proj-extents';
+import { getOutlineDataset, getPolygonDataset } from '../crs/mapshaper-proj-extents';
 import { densifyPathByInterval } from '../crs/mapshaper-densify';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
@@ -16,18 +16,33 @@ import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 cmd.graticule = function(dataset, opts) {
+  var name = opts.polygon ? 'polygon' : 'graticule';
   var graticule, dest;
   if (dataset && !isLatLngDataset(dataset)) {
     // project graticule to match dataset
     dest = getDatasetCRS(dataset);
     if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
-    graticule = createProjectedGraticule(dest, opts);
+    graticule = opts.polygon ?
+      createProjectedPolygon(dest, opts) :
+      createProjectedGraticule(dest, opts);
   } else {
-    graticule = createUnprojectedGraticule(opts);
+    graticule = opts.polygon ?
+      createUnprojectedPolygon(opts) :
+      createUnprojectedGraticule(opts);
   }
-  graticule.layers[0].name = 'graticule';
+  graticule.layers[0].name = name;
   return graticule;
 };
+
+function createUnprojectedPolygon(opts) {
+  var crs = getCRS('wgs84');
+  return getPolygonDataset(crs, crs, opts);
+}
+
+function createProjectedPolygon(dest, opts) {
+  var src = getCRS('wgs84');
+  return getPolygonDataset(src, dest, opts);
+}
 
 function createUnprojectedGraticule(opts) {
   var src = getCRS('wgs84');
@@ -37,11 +52,11 @@ function createUnprojectedGraticule(opts) {
 
 function createProjectedGraticule(dest, opts) {
   var src = getCRS('wgs84');
-  var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
+  // var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
+  var outline = getOutlineDataset(src, dest, {});
   var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
   projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
   if (outline) {
-    projectDataset(outline, src, dest, {no_clip: true});
     graticule = addOutlineToGraticule(graticule, outline);
   }
   buildTopology(graticule); // needed for cleaning to work

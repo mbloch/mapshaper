@@ -858,6 +858,10 @@ export function getOptionParser() {
     .option('interval', {
       describe: 'size of grid cells in degrees (options: 5 10 15 30 45, default is 10)',
       type: 'number'
+    })
+    .option('polygon', {
+      describe: 'create a polygon to match the outline of the graticule',
+      type: 'flag'
     });
 
   parser.command('grid')

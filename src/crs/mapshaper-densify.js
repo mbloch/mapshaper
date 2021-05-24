@@ -22,14 +22,14 @@ export function densifyDataset(dataset, opts) {
 
 
 // Planar densification by an interval
-export function densifyPathByInterval(coords, interval) {
+export function densifyPathByInterval(coords, interval, filter) {
   if (findMaxPathInterval(coords) < interval) return coords;
   var coords2 = [coords[0]], a, b, dist;
   for (var i=1, n=coords.length; i<n; i++) {
     a = coords[i-1];
     b = coords[i];
     dist = geom.distance2D(a[0], a[1], b[0], b[1]);
-    if (dist > interval) {
+    if (dist > interval && (!filter || filter(a, b))) {
       pushInterpolatedPoints(coords2, a, b, Math.round(dist / interval) - 1);
     }
     coords2.push(b);

@@ -1,45 +1,51 @@
-import { stop, debug } from '../utils/mapshaper-logging';
-import { getSphericalPathArea2 } from '../geom/mapshaper-polygon-geom';
-import { PointIter } from '../paths/mapshaper-shape-iter';
+import { stop, debug, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { getStateVar } from '../mapshaper-state';
+import {
+  samePoint,
+  lastEl,
+  isClosedPath
+} from '../paths/mapshaper-coordinate-utils';
 
-// Removes antimeridian crossings from polygon and polyline paths
+export function removePolylineCrosses(path) {
+  return splitPathAtAntimeridian(path);
+}
+
+function isAntimeridianPoint(p) {
+  // return p[0] <= L || p[0] >= R;
+  return p[0] == -180 || p[0] == 180;
+}
+
+// Removes antimeridian crossings from an array of polygon rings
 // TODO: handle edge case: segment is collinear with antimeridian
 // TODO: handle edge case: path coordinates exceed the standard lat-long range
 //
-// path: a path of [x,y] points.
-// type: 'polygon' or 'polyline'
-// 'polygon' Assumes a closed ring with CCW winding for holes
-// Returns MultiPolygon or MultiLineString coordinates array
-export function removeAntimeridianCrosses(path, type, isHole) {
-  var parts = splitPathAtAntimeridian(path);
-
-  if (type == 'polyline') {
-    return parts; // MultiLineString coords
-  }
-
-  // case: polygon does not intersect the antimeridian
-  if (parts.length == 1 && !isAntimeridanPoint(parts[0][0])) {
-    // TODO: the area test should not be needed when processing small circles
-    // (could affect performance when buffering many points)
-    if (ringArea(path) < 0 && !isHole) {
-      // negative area: CCW ring, indicating a circle of >180 degrees
-      //   that fully encloses both poles and the antimeridian.
-      // need to add an enclosure around the entire sphere
-      parts = [[[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]], parts[0]];
+// rings: array of rings of [x,y] points.
+// Returns array of split-apart rings
+export function removePolygonCrosses(rings, isHole) {
+  var rings2 = [];
+  var splitRings = [];
+  var ring;
+  for (var i=0; i<rings.length; i++) {
+    ring = rings[i];
+    if (!isClosedPath(ring)) {
+      error('Received an open path');
     }
-    return [parts];
+    if (countCrosses(ring) === 0) {
+      rings2.push(ring);
+    } else {
+      splitRings = splitRings.concat(splitPathAtAntimeridian(ring));
+    }
   }
-
-  // Now we can assume that the first and last point of the split-apart path is 180 or -180
-  return reconnectSplitParts(parts);
+  if (splitRings.length > 0) {
+    rings2 = rings2.concat(reconnectSplitParts(splitRings));
+  }
+  return rings2;
 }
 
-function addSubPath(paths, path) {
-  if (path.length > 1) paths.push(path);
-}
-
+// Stitch an array of split-apart paths into coordinate rings
+// Assumes that the first and last point of each split-apart path is 180 or -180
+// parts: array of paths that have been split at the antimeridian
 export function reconnectSplitParts(parts) {
   var yy = getSortedIntersections(parts);
   var rings = [];
@@ -47,9 +53,15 @@ export function reconnectSplitParts(parts) {
   var errors = 0;
   parts.forEach(function(part, i) {
     if (usedParts[i]) return;
+    if (!isValidSplitPart(part)) {
+      error('Geometry error');
+    }
     var ring = addPartToRing(part, []);
     if (ring) {
-      rings.push([ring]); // multipolygon coords
+      if (!isClosedPath(ring)) {
+        error('Generated an open ring');
+      }
+      rings.push(ring);
     } else {
       errors++;
     }
@@ -91,6 +103,16 @@ export function reconnectSplitParts(parts) {
   }
 }
 
+function addSubPath(paths, path) {
+  if (path.length > 1) paths.push(path);
+}
+
+function isValidSplitPart(part) {
+  var lastX = lastEl(part)[0];
+  var firstX = part[0][0];
+  return (lastX == 180 || lastX == -180) && (firstX == 180 || firstX == -180);
+}
+
 // p: last point of previous part
 function findNextPoint(parts, p, yy) {
   var x = p[0];
@@ -128,6 +150,18 @@ function findPartStartingAt(parts, firstPoint) {
   return null;
 }
 
+export function countCrosses(path) {
+  var c = 0, pp, p;
+  for (var i=0, n=path.length; i<n; i++) {
+    p = path[i];
+    if (i>0 && Math.abs(pp[0] - p[0]) > 180) {
+      c++;
+    }
+    pp = p;
+  }
+  return c;
+}
+
 export function splitPathAtAntimeridian(path) {
   var parts = [];
   var part = [];
@@ -151,7 +185,7 @@ export function splitPathAtAntimeridian(path) {
 
   // join first and last parts of a split-apart ring, so that the first part
   // originates at the antimeridian
-  if (closed && parts.length > 1 && !isAntimeridanPoint(firstPoint)) {
+  if (closed && parts.length > 1 && !isAntimeridianPoint(firstPoint)) {
     part = parts.pop();
     part.pop(); // remove duplicate point
     parts[0] = part.concat(parts[0]);
@@ -166,38 +200,15 @@ export function getSortedIntersections(parts) {
   return utils.genericSort(values, true);
 }
 
-function samePoint(a, b) {
-  return a[0] === b[0] && a[1] === b[1];
-}
 
-function isAntimeridanPoint(p) {
-  return p[0] == 180 || p[0] == -180;
-}
 
 function addIntersectionPoint(part, p, yint) {
   var xint = p[0] < 0 ? -180 : 180;
-  if (!isAntimeridanPoint(p)) { // don't a point if p is already on the antimeridian
+  if (!isAntimeridianPoint(p)) { // don't a point if p is already on the antimeridian
     part.push([xint, yint]);
   }
 }
 
-function ringArea(ring) {
-  var iter = new PointIter(ring);
-  return getSphericalPathArea2(iter);
-}
-
-// duplicate points occur if a vertex is on the antimeridan
-function dedup(ring) {
-  return ring.reduce(function(memo, p, i) {
-    var pp = memo.length > 0 ? memo[memo.length-1] : null;
-    if (!pp || pp[0] != p[0] || pp[1] != p[1]) memo.push(p);
-    return memo;
-  }, []);
-}
-
-function lastEl(arr) {
-  return arr[arr.length - 1];
-}
 
 // p1, p2: two vertices on different sides of the antimeridian
 // Returns y-intercept of the segment connecting p1, p2
@@ -214,5 +225,8 @@ function planarIntercept(p1, p2) {
     dx1 = 180 - p1[0];
     dx2 = p2[0] + 180;
   }
+  // avoid fp rounding error if a point is on antimeridian
+  if (dx1 === 0) return p1[1];
+  if (dx2 === 0) return p2[1];
   return (dx2 * p1[1] + dx1 * p2[1]) / (dx1 + dx2);
 }

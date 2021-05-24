@@ -4,6 +4,8 @@ import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { clipLayersInPlace } from '../commands/mapshaper-clip-erase';
 import { importGeoJSON } from '../geojson/geojson-import';
+import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 export function insertPreProjectionCuts(dataset, src, dest) {
   var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
@@ -14,6 +16,7 @@ export function insertPreProjectionCuts(dataset, src, dest) {
       isRotatedNormalProjection(dest) &&
       datasetCrossesLon(dataset, antimeridian)) {
     insertVerticalCut(dataset, antimeridian);
+    dissolveArcs(dataset);
     return true;
   }
   return false;
@@ -33,10 +36,9 @@ function insertVerticalCut(dataset, lon) {
   var pathLayers = dataset.layers.filter(layerHasPaths);
   if (pathLayers.length === 0) return;
   var e = 1e-8;
-  var coords = [[lon+e, 90], [lon+e, -90], [lon-e, -90], [lon-e, 90], [lon+e, 90]];
-  var clip = importGeoJSON({
-    type: 'Polygon',
-    coordinates: [coords]
-  });
+  var bbox = [lon-e, -91, lon+e, 91];
+  // densify (so cut line can curve, e.g. Cupola projection)
+  var geojson = convertBboxToGeoJSON(bbox, {interval: 0.5});
+  var clip = importGeoJSON(geojson);
   clipLayersInPlace(pathLayers, clip, dataset, 'erase');
 }

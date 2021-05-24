@@ -10,10 +10,12 @@ import { importGeoJSON } from '../geojson/geojson-import';
 import { verbose, error, message } from '../utils/mapshaper-logging';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { rotateDataset } from '../commands/mapshaper-rotate';
-
+import { projectDataset } from '../commands/mapshaper-proj';
+import { polygonsToLines } from '../commands/mapshaper-lines';
+import { insertPreProjectionCuts } from '../crs/mapshaper-spherical-cutting';
 
 export function getClippingDataset(src, dest, opts) {
-  var dataset, bbox;
+  var dataset;
   if (isCircleClippedProjection(dest) || opts.clip_angle) {
     dataset = getClipCircle(src, dest, opts);
   } else if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
@@ -22,10 +24,27 @@ export function getClippingDataset(src, dest, opts) {
   return dataset || null;
 }
 
-export function getOutlineDataset(src, dest, opts) {
-  opts = Object.assign({geometry_type: 'polyline'}, opts);
+// Return projected polygon extent of both clipped and unclipped projections
+export function getPolygonDataset(src, dest, opts) {
+  // use clipping area if projection is clipped
   var dataset = getClippingDataset(src, dest, opts);
+  if (!dataset) {
+    // use entire world if projection is not clipped
+    dataset = getClipRectangle(dest, {clip_bbox: [-180,-90,180,90]});
+  }
+  projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
   return dataset;
+}
+
+// Return projected outline of clipped projections
+export function getOutlineDataset(src, dest, opts) {
+  var dataset = getClippingDataset(src, dest, opts);
+  if (dataset) {
+    // project, with cutting & cleanup
+    projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+    dataset.layers[0].geometry_type = 'polyline';
+  }
+  return dataset || null;
 }
 
 function getClipRectangle(dest, opts) {
@@ -62,6 +81,7 @@ export function isClippedCylindricalProjection(P) {
 export function getDefaultClipBBox(P) {
   var e = 1e-3;
   var bbox = {
+    // longlat: [-180, -90, 180, 90],
     merc: [-180, -87, 180, 87],
     bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
   }[getCrsSlug(P)];

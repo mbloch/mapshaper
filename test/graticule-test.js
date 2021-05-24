@@ -7,6 +7,11 @@ function hasOutline(json) {
   });
 }
 
+function hasOnePolygon(json) {
+  return json.geometries && json.geometries.length == 1 &&
+    json.geometries[0] && json.geometries[0].type == 'Polygon';
+}
+
 function hasMeridians(arr) {
   return function(json) {
     arr.every(lon => {
@@ -15,6 +20,18 @@ function hasMeridians(arr) {
       });
     });
   }
+}
+
+function polygonTest(str) {
+  var path = 'test/data/world_land.json';
+  it(str, function(done) {
+    var cmd = `-i ${path} -proj ${str} densify -graticule polygon -o graticule.json`;
+    api.applyCommands(cmd, {}, function(err, out) {
+      var json = JSON.parse(out['graticule.json']);
+      assert(hasOnePolygon(json));
+      done();
+    });
+  });
 }
 
 function projTest(str, test) {
@@ -42,6 +59,11 @@ describe('mapshaper-graticule.js', function () {
     projTest('+proj=ortho', hasOutline);
     projTest('+proj=ortho +lat_0=60 +lon_0=-120', hasOutline);
     projTest('+proj=nsper +lat_0=30 +lon_0=80 +h=1e8', hasOutline);
+  });
+
+  describe('-graticule polygon tests', function() {
+
+
   })
 
   it('create latlong graticule if no data has been loaded', function(done) {

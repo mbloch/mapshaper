@@ -12,6 +12,7 @@ import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { NodeCollection } from '../topology/mapshaper-nodes';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
   return clipLayers(target, src, dataset, "clip", opts);
@@ -39,11 +40,13 @@ cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
 
 export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
   var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
+  // remove arcs from the clipping dataset, if they are not used by any layer
   layers.forEach(function(lyr, i) {
     var lyr2 = outputLayers[i];
     lyr.shapes = lyr2.shapes;
     lyr.data = lyr2.data;
   });
+  dissolveArcs(dataset);
 }
 
 // @clipSrc: layer in @dataset or filename

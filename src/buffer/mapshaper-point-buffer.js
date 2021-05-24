@@ -2,8 +2,16 @@ import { getPreciseGeodeticSegmentFunction, getFastGeodeticSegmentFunction } fro
 import { getBufferDistanceFunction } from '../buffer/mapshaper-buffer-common';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
-import { removeAntimeridianCrosses } from '../geom/mapshaper-antimeridian';
+import { removePolylineCrosses, removePolygonCrosses, countCrosses }
+  from '../geom/mapshaper-antimeridian';
 import { getCRS } from '../crs/mapshaper-projections';
+import { getSphericalPathArea2 } from '../geom/mapshaper-polygon-geom';
+import { PointIter } from '../paths/mapshaper-shape-iter';
+
+function ringArea(ring) {
+  var iter = new PointIter(ring);
+  return getSphericalPathArea2(iter);
+}
 
 export function makePointBuffer(lyr, dataset, opts) {
   var geojson = makePointBufferGeoJSON(lyr, dataset, opts);
@@ -40,17 +48,27 @@ function makePointBufferGeoJSON(lyr, dataset, opts) {
 }
 
 export function getPointBufferPolygon(points, distance, vertices, geod) {
-  var rings = [], coords;
+  var rings = [], coords, coords2;
   if (!points || !points.length) return null;
   for (var i=0; i<points.length; i++) {
     coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-    coords = removeAntimeridianCrosses(coords, 'polygon');
-    while (coords.length > 0) rings.push(coords.pop());
+    if (countCrosses(coords) > 0) {
+      coords2 = removePolygonCrosses([coords]);
+      while (coords2.length > 0) rings.push([coords2.pop()]); // geojson polygon coords, no hole
+    } else if (ringArea(coords) < 0) {
+      // negative spherical area: CCW ring, indicating a circle of >180 degrees
+      // that fully encloses both poles and the antimeridian.
+      // need to add an enclosure around the entire sphere
+      // TODO: compare to distance param as a sanity check
+      rings.push([
+        [[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]],
+        coords
+        ]);
+    } else {
+      rings.push([coords]);
+    }
   }
-  return rings.length == 1 ? {
-    type: 'Polygon',
-    coordinates: rings[0]
-  } : {
+  return {
     type: 'MultiPolygon',
     coordinates: rings
   };
@@ -61,7 +79,7 @@ export function getPointBufferLineString(points, distance, vertices, geod) {
   if (!points || !points.length) return null;
   for (var i=0; i<points.length; i++) {
     coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-    coords = removeAntimeridianCrosses(coords, 'polyline');
+    coords = removePolylineCrosses(coords);
     while (coords.length > 0) rings.push(coords.pop());
   }
   return rings.length == 1 ? {
