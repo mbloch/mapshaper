@@ -1,3 +1,8 @@
+v0.5.56
+* Added "-graticule polygon" option, which creates a polygon matching the outline of the projected graticule.
+* Allow bare PROJ projection names in CRS definitions (e.g. "robin +lon_0=120").
+* Web UI style updates.
+
 v0.5.55
 * Improved support for projected graticules.
 * Fixed shape clipping for the bertin1953 projection.
