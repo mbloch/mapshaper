@@ -1,3 +1,8 @@
+v0.5.57
+* Added "allow-overlaps" option to -dissolve2 and -clean, which allows polygon features to overlap.
+* Added "Hill Eucyclic" projection (+proj=hill).
+* Fixed bug that removed overlapping polygons when projecting polygon layers.
+
 v0.5.56
 * Added "-graticule polygon" option, which creates a polygon matching the outline of the projected graticule.
 * Allow bare PROJ projection names in CRS definitions (e.g. "robin +lon_0=120").
