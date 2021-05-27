@@ -28,7 +28,6 @@ export function dedup(ring) {
   }, []);
 }
 
-
 // remove likely rounding errors
 export function snapToEdge(p) {
   if (p[0] <= L) p[0] = -180;
@@ -36,7 +35,6 @@ export function snapToEdge(p) {
   if (p[1] <= B) p[1] = -90;
   if (p[1] >= T) p[1] = 90;
 }
-
 
 export function onPole(p) {
   return p[1] >= T || p[1] <= B;

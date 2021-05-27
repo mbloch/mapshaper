@@ -62,6 +62,7 @@ export function densifyUnprojectedPathByDistance(coords, meters) {
 
 export function projectAndDensifyArcs(arcs, proj) {
   var interval = getDefaultDensifyInterval(arcs, proj);
+  var minIntervalSq = interval * interval * 25;
   var p;
   return editArcs(arcs, onPoint);
 
@@ -71,7 +72,7 @@ export function projectAndDensifyArcs(arcs, proj) {
     if (!p) return false; // signal that current arc contains an error
 
     // Don't try to densify shorter segments (optimization)
-    if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > interval * interval * 25) {
+    if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
       densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
         .forEach(append);
     }

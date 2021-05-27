@@ -8,7 +8,6 @@ import {
   getDatasetCRS,
   setDatasetCRS
 } from '../crs/mapshaper-projections';
-import { insertPreProjectionCuts } from '../crs/mapshaper-spherical-cutting';
 import { preProjectionClip } from '../crs/mapshaper-spherical-clipping';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
@@ -77,7 +76,6 @@ function projCmd(dataset, destInfo, opts) {
     target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
 
-  // target.layers = dataset.layers.filter(layerHasPoints).map(function(lyr) {
   target.layers = dataset.layers.map(function(lyr) {
     if (modifyCopy) {
       originals.push(lyr);
@@ -86,13 +84,7 @@ function projCmd(dataset, destInfo, opts) {
     return lyr;
   });
 
-  try {
-    projectDataset(target, src, dest, opts || {});
-  } catch(e) {
-    console.error(e);
-    stop(utils.format("Projection failure%s (%s)",
-      e.point ? ' at ' + e.point.join(' ') : '', e.message));
-  }
+  projectDataset(target, src, dest, opts || {});
 
   dataset.info.prj = destInfo.prj; // may be undefined
   dataset.arcs = target.arcs;
@@ -129,10 +121,19 @@ export function getCrsInfo(name, catalog) {
 }
 
 export function projectDataset(dataset, src, dest, opts) {
+  try {
+    _projectDataset(dataset, src, dest, opts);
+  } catch(e) {
+    // console.error(e);
+    stop(utils.format("Projection failure%s (%s)",
+      e.point ? ' at ' + e.point.join(' ') : '', e.message));
+  }
+}
+
+function _projectDataset(dataset, src, dest, opts) {
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
   var badArcs = 0;
   var badPoints = 0;
-  var cuts;
   var clipped = preProjectionClip(dataset, src, dest, opts);
 
   dataset.layers.forEach(function(lyr) {
@@ -141,8 +142,6 @@ export function projectDataset(dataset, src, dest, opts) {
     }
   });
   if (dataset.arcs) {
-    cuts = insertPreProjectionCuts(dataset, src, dest);
-
     if (opts.densify) {
       badArcs = projectAndDensifyArcs(dataset.arcs, proj);
     } else {
@@ -150,7 +149,7 @@ export function projectDataset(dataset, src, dest, opts) {
     }
   }
 
-  if (cuts || clipped) {
+  if (clipped) {
     // TODO: could more selective in cleaning clipped layers
     // (probably only needed when clipped area crosses the antimeridian or includes a pole)
     cleanProjectedLayers(dataset);
@@ -176,6 +175,7 @@ export function cleanProjectedLayers(dataset) {
   // vertices change during cleaning, but reprojection can require a topology update
   // even if clean does not change vertices)
   var cleanOpts = {
+    allow_overlaps: true,
     rebuild_topology: true,
     no_arc_dissolve: true,
     quiet: true,

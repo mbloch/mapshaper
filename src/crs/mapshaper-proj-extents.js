@@ -12,25 +12,40 @@ import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { rotateDataset } from '../commands/mapshaper-rotate';
 import { projectDataset } from '../commands/mapshaper-proj';
 import { polygonsToLines } from '../commands/mapshaper-lines';
-import { insertPreProjectionCuts } from '../crs/mapshaper-spherical-cutting';
 
 export function getClippingDataset(src, dest, opts) {
+  return getUnprojectedBoundingPolygon(src, dest, opts);
+}
+
+export function getUnprojectedBoundingPolygon(src, dest, opts) {
   var dataset;
-  if (isCircleClippedProjection(dest) || opts.clip_angle) {
-    dataset = getClipCircle(src, dest, opts);
-  } else if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
-    dataset = getClipRectangle(dest, opts);
+  if (isCircleClippedProjection(dest) || opts.clip_angle || dest.clip_angle) {
+    dataset = getBoundingCircle(src, dest, opts);
+  } else if (isRectangleClippedProjection(dest) || opts.clip_bbox) {
+    dataset = getBoundingRectangle(dest, opts);
   }
   return dataset || null;
 }
 
+// If possible, return a lat-long bbox that can be used to
+// test whether data exceeds the projection bounds ands needs to be clipped
+// export function getInnerBoundingBBox(P, opts) {
+//   var bbox = null;
+//   if (opts.clip_bbox) {
+//     bbox = opts.clip_bbox;
+//   } else if (isRectangleClippedProjection(dest)) {
+//     bbox
+//   }
+//   return bbox;
+// }
+
 // Return projected polygon extent of both clipped and unclipped projections
 export function getPolygonDataset(src, dest, opts) {
   // use clipping area if projection is clipped
-  var dataset = getClippingDataset(src, dest, opts);
+  var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
   if (!dataset) {
     // use entire world if projection is not clipped
-    dataset = getClipRectangle(dest, {clip_bbox: [-180,-90,180,90]});
+    dataset = getBoundingRectangle(dest, {clip_bbox: [-180,-90,180,90]});
   }
   projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
   return dataset;
@@ -38,7 +53,7 @@ export function getPolygonDataset(src, dest, opts) {
 
 // Return projected outline of clipped projections
 export function getOutlineDataset(src, dest, opts) {
-  var dataset = getClippingDataset(src, dest, opts);
+  var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
   if (dataset) {
     // project, with cutting & cleanup
     projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
@@ -47,7 +62,7 @@ export function getOutlineDataset(src, dest, opts) {
   return dataset || null;
 }
 
-function getClipRectangle(dest, opts) {
+function getBoundingRectangle(dest, opts) {
   var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
   var rotation = getRotationParams(dest);
   if (!bbox) error('Missing expected clip bbox.');
@@ -60,7 +75,7 @@ function getClipRectangle(dest, opts) {
   return dataset;
 }
 
-function getClipCircle(src, dest, opts) {
+function getBoundingCircle(src, dest, opts) {
   var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
   if (!angle) return null;
   verbose(`Using clip angle of ${ +angle.toFixed(2) } degrees`);
@@ -73,7 +88,7 @@ function getClipCircle(src, dest, opts) {
   return importGeoJSON(geojson);
 }
 
-export function isClippedCylindricalProjection(P) {
+export function isRectangleClippedProjection(P) {
   // TODO: add tmerc, etmerc, ...
   return inList(P, 'merc,bertin1953');
 }
@@ -82,11 +97,21 @@ export function getDefaultClipBBox(P) {
   var e = 1e-3;
   var bbox = {
     // longlat: [-180, -90, 180, 90],
-    merc: [-180, -87, 180, 87],
+    merc: [-180, -89.5, 180, 89.5],
     bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
   }[getCrsSlug(P)];
   return bbox;
 }
+
+export function getClampBBox(P) {
+  var bbox;
+  if (inList(P, 'merc')) {
+    bbox = getDefaultClipBBox(P);
+  }
+  return bbox;
+}
+
+
 
 export function isCircleClippedProjection(P) {
   return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
