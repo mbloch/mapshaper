@@ -167,10 +167,10 @@ export function getPathFinder(nodes, useRoute, routeIsUsable) {
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-export function getRingIntersector(nodes, flags) {
+export function getRingIntersector(nodes, flagsArr) {
   var arcs = nodes.arcs;
   var findPath = getPathFinder(nodes, useRoute, routeIsActive);
-  flags = flags || new Uint8Array(arcs.size());
+  flagsArr = flagsArr || new Uint8Array(arcs.size());
 
   // types: "dissolve" "flatten"
   return function(rings, type) {
@@ -181,7 +181,7 @@ export function getRingIntersector(nodes, flags) {
     // even single rings get transformed (e.g. to remove spikes)
     if (rings.length > 0) {
       output = [];
-      openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+      openArcRoutes(rings, arcs, flagsArr, openFwd, openRev, dissolve);
       forEachShapePart(rings, function(ids) {
         var path;
         for (var i=0, n=ids.length; i<n; i++) {
@@ -191,7 +191,7 @@ export function getRingIntersector(nodes, flags) {
           }
         }
       });
-      closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+      closeArcRoutes(rings, arcs, flagsArr, openFwd, openRev, true);
     } else {
       output = rings;
     }
@@ -199,16 +199,16 @@ export function getRingIntersector(nodes, flags) {
   };
 
   function routeIsActive(arcId) {
-    var bits = getRouteBits(arcId, flags);
+    var bits = getRouteBits(arcId, flagsArr);
     return (bits & 1) == 1;
   }
 
   function useRoute(arcId) {
-    var route = getRouteBits(arcId, flags),
+    var route = getRouteBits(arcId, flagsArr),
         isOpen = false;
     if (route == 3) {
       isOpen = true;
-      setRouteBits(1, arcId, flags); // close the path, leave visible
+      setRouteBits(1, arcId, flagsArr); // close the path, leave visible
     }
     return isOpen;
   }

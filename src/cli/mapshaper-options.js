@@ -511,11 +511,14 @@ export function getOptionParser() {
 
   parser.command('clean')
     .describe('fixes geometry issues, such as polygon overlaps and gaps')
-
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
     .option('snap-interval', snapIntervalOpt)
     .option('no-snap', noSnapOpt)
+    .option('allow-overlaps', {
+      describe: 'allow polygons to overlap (disables gap fill)',
+      type: 'flag'
+    })
     .option('allow-empty', {
       describe: 'keep null geometries (removed by default)',
       type: 'flag'
@@ -645,6 +648,10 @@ export function getOptionParser() {
     .option('copy-fields', copyFieldsOpt)
     .option('gap-fill-area', minGapAreaOpt)
     .option('sliver-control', sliverControlOpt)
+    .option('allow-overlaps', {
+      describe: 'allow dissolved polygons to overlap (disables gap fill)',
+      type: 'flag'
+    })
     .option('name', nameOpt)
     .option('no-snap', noSnapOpt)
     .option('target', targetOpt)

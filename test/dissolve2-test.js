@@ -10,6 +10,20 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
 
+  describe('allow-overlaps tests', function() {
+    it('test 1', function(done) {
+      var cmd = '-i test/data/features/dissolve2/ex3_two_polygons.json -dissolve2 field=name allow-overlaps -o out.json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        var json = JSON.parse(out['out.json']);
+        assert.deepEqual(json.features[0].geometry.coordinates,
+          [[[0,1],[1,0],[1.5,0.5],[2,1],[1.5,1.5],[1,2],[0,1]]])
+        assert.deepEqual(json.features[1].geometry.coordinates,
+          [[[1.5,0.5],[2,0],[3,1],[2,2],[1.5,1.5],[1,1],[1.5,0.5]]])
+        done();
+      });
+    })
+  })
+
   describe('gap-fill-area= option tests', function () {
 
     function test(input, args, expect, done) {
