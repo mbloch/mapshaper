@@ -20,10 +20,15 @@ export function parseCommands(tokens) {
 
 export function standardizeConsoleCommands(raw) {
   var str = raw.replace(/^mapshaper\b/, '').trim();
-  if (/^[a-z]/.test(str)) {
-    // add hyphen prefix to bare command
-    str = '-' + str;
-  }
+  var parser = getOptionParser();
+  // support multiline string of commands pasted into console
+  str = str.split(/\n+/g).map(function(str) {
+    var match = /^[a-z][\w-]*/.exec(str = str.trim());
+    if (match && parser.isCommandName(match[0])) {
+      str = '-' + str; // add hyphen prefix to bare command
+    }
+    return str;
+  }).join(' ');
   return str;
 }
 

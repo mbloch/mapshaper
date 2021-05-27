@@ -345,7 +345,8 @@ export function Console(gui) {
   function submit(str) {
     // remove newlines
     // TODO: remove other whitespace at beginning + end of lines
-    var cmd = str.replace(/\\?\n/g, '').trim();
+    // var cmd = str.replace(/\\?\n/g, ' ').trim();
+    var cmd = str.trim();
     toLog(CURSOR + str);
     toCommandLine('');
     if (cmd) {

@@ -53,6 +53,8 @@ export function CommandParser() {
     return this.command("").title(name);
   };
 
+  this.isCommandName = tokenIsCommandName;
+
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
         commands = [], cmd,
