@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.53";
+  var VERSION = "0.5.56";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -14439,6 +14439,8 @@ ${svg}
       return this.command("").title(name);
     };
 
+    this.isCommandName = tokenIsCommandName;
+
     this.parseArgv = function(raw) {
       var commandDefs = getCommands(),
           commands = [], cmd,
@@ -15331,11 +15333,14 @@ ${svg}
 
     parser.command('clean')
       .describe('fixes geometry issues, such as polygon overlaps and gaps')
-
       .option('gap-fill-area', minGapAreaOpt)
       .option('sliver-control', sliverControlOpt)
       .option('snap-interval', snapIntervalOpt)
       .option('no-snap', noSnapOpt)
+      .option('allow-overlaps', {
+        describe: 'allow polygons to overlap (disables gap fill)',
+        type: 'flag'
+      })
       .option('allow-empty', {
         describe: 'keep null geometries (removed by default)',
         type: 'flag'
@@ -15465,6 +15470,10 @@ ${svg}
       .option('copy-fields', copyFieldsOpt)
       .option('gap-fill-area', minGapAreaOpt)
       .option('sliver-control', sliverControlOpt)
+      .option('allow-overlaps', {
+        describe: 'allow dissolved polygons to overlap (disables gap fill)',
+        type: 'flag'
+      })
       .option('name', nameOpt)
       .option('no-snap', noSnapOpt)
       .option('target', targetOpt)
@@ -19907,10 +19916,10 @@ ${svg}
   // Returns a function for flattening or dissolving a collection of rings
   // Assumes rings are oriented in CW direction
   //
-  function getRingIntersector(nodes, flags) {
+  function getRingIntersector(nodes, flagsArr) {
     var arcs = nodes.arcs;
     var findPath = getPathFinder(nodes, useRoute, routeIsActive);
-    flags = flags || new Uint8Array(arcs.size());
+    flagsArr = flagsArr || new Uint8Array(arcs.size());
 
     // types: "dissolve" "flatten"
     return function(rings, type) {
@@ -19921,7 +19930,7 @@ ${svg}
       // even single rings get transformed (e.g. to remove spikes)
       if (rings.length > 0) {
         output = [];
-        openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+        openArcRoutes(rings, arcs, flagsArr, openFwd, openRev, dissolve);
         forEachShapePart(rings, function(ids) {
           var path;
           for (var i=0, n=ids.length; i<n; i++) {
@@ -19931,7 +19940,7 @@ ${svg}
             }
           }
         });
-        closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+        closeArcRoutes(rings, arcs, flagsArr, openFwd, openRev, true);
       } else {
         output = rings;
       }
@@ -19939,16 +19948,16 @@ ${svg}
     };
 
     function routeIsActive(arcId) {
-      var bits = getRouteBits(arcId, flags);
+      var bits = getRouteBits(arcId, flagsArr);
       return (bits & 1) == 1;
     }
 
     function useRoute(arcId) {
-      var route = getRouteBits(arcId, flags),
+      var route = getRouteBits(arcId, flagsArr),
           isOpen = false;
       if (route == 3) {
         isOpen = true;
-        setRouteBits(1, arcId, flags); // close the path, leave visible
+        setRouteBits(1, arcId, flagsArr); // close the path, leave visible
       }
       return isOpen;
     }
@@ -22295,13 +22304,17 @@ ${svg}
     var arcFilter = getArcPresenceTest(lyr.shapes, dataset.arcs);
     var nodes = new NodeCollection(dataset.arcs, arcFilter);
     var mosaicOpts = {
-      flat: true,
+      flat: !opts.allow_overlaps,
       simple: groups.length == 1
     };
     var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
-    var sliverOpts = utils.extend({sliver_control: 1}, opts);
-    var filterData = getSliverFilter(lyr, dataset, sliverOpts);
-    var cleanupData = mosaicIndex.removeGaps(filterData.filter);
+    var fillGaps = !opts.allow_overlaps; // gap fill doesn't work yet with overlapping shapes
+    var cleanupData, filterData;
+    if (fillGaps) {
+      var sliverOpts = utils.extend({sliver_control: 1}, opts);
+      filterData = getSliverFilter(lyr, dataset, sliverOpts);
+      cleanupData = mosaicIndex.removeGaps(filterData.filter);
+    }
     var pathfind = getRingIntersector(mosaicIndex.nodes);
     var dissolvedShapes = groups.map(function(shapeIds) {
       var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
@@ -22315,8 +22328,9 @@ ${svg}
     // convert self-intersecting rings to outer/inner rings, for OGC
     // Simple Features compliance
     dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
-    var gapMessage = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
-    if (gapMessage && !opts.quiet) message(gapMessage);
+    if (fillGaps && !opts.quiet) {
+      message(getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label));
+    }
     return dissolvedShapes;
   }
 
@@ -23188,7 +23202,6 @@ ${svg}
     }, []);
   }
 
-
   // remove likely rounding errors
   function snapToEdge(p) {
     if (p[0] <= L) p[0] = -180;
@@ -23196,7 +23209,6 @@ ${svg}
     if (p[1] <= B) p[1] = -90;
     if (p[1] >= T$1) p[1] = 90;
   }
-
 
   function onPole(p) {
     return p[1] >= T$1 || p[1] <= B;
@@ -24925,6 +24937,7 @@ ${svg}
   }
 
   function cleanPolygonLayerGeometry(lyr, dataset, opts) {
+    // clean polygons by apply the 'dissolve2' function to each feature
     var groups = lyr.shapes.map(function(shp, i) {
       return [i];
     });
@@ -28508,82 +28521,6 @@ ${svg}
     }
   }
 
-  function getSemiMinorAxis(P) {
-    return P.a * Math.sqrt(1 - (P.es || 0));
-  }
-
-  function getCircleRadiusFromAngle(P, angle) {
-    // Using semi-minor axis radius, to prevent overflowing projection bounds
-    // when clipping up to the edge of the projectable area
-    // TODO: improve (this just gives a safe minimum distance, not the best distance)
-    // TODO: modify point buffer function to use angle + ellipsoidal geometry
-    return angle * Math.PI / 180 * getSemiMinorAxis(P);
-  }
-
-  function getCrsSlug(P) {
-    return P.params.proj.param; // kludge
-  }
-
-  // 'normal' = the projection is aligned to the Earth's axis
-  // (i.e. it has a normal aspect)
-  function isRotatedNormalProjection(P) {
-    return isAxisAligned(P) && P.lam0 !== 0;
-  }
-
-  // Projection is vertically aligned to earth's axis
-  function isAxisAligned(P) {
-    // TODO: consider projections that may or may not be aligned,
-    // depending on parameters
-    if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
-      'ocea,omerc,tmerc,etmerc')) {
-      return false;
-    }
-    if (isAzimuthal(P)) {
-      return false;
-    }
-    return true;
-  }
-
-  function getBoundingMeridian(P) {
-    if (P.lam0 === 0) return 180;
-    return getAntimeridian(P.lam0 * 180 / Math.PI);
-  }
-
-  // Are the projection's bounds meridians?
-  function isMeridianBounded(P) {
-    // TODO: add azimuthal projection with lat0 == 0
-    // if (inList(P, 'ortho') && P.lam0 === 0) return true;
-    return isAxisAligned(P); // TODO: look for exceptions to this
-  }
-
-  // Is the projection bounded by parallels or polar lines?
-  function isParallelBounded(P) {
-    // TODO: add polar azimuthal projections
-    // TODO: reject world projections that do not have polar lines
-    return isAxisAligned(P);
-  }
-
-  function getBoundingMeridians(P) {
-
-  }
-
-  function getBoundingParallels(P) {
-
-  }
-
-  function isConic(P) {
-    return inList(P, 'aea,bonne,eqdc,lcc,poly,euler,murd1,murd2,murd3,pconic,tissot,vitk1');
-  }
-
-  function isAzimuthal(P) {
-    return inList(P,
-      'aeqd,gnom,laea,mil_os,lee_os,gs48,alsk,gs50,nsper,tpers,ortho,qsc,stere,ups,sterea');
-  }
-
-  function inList(P, str) {
-    return str.split(',').includes(getCrsSlug(P));
-  }
-
   function DatasetEditor(dataset) {
     var layers = [];
     var arcs = [];
@@ -28697,6 +28634,7 @@ ${svg}
 
   function projectAndDensifyArcs(arcs, proj) {
     var interval = getDefaultDensifyInterval(arcs, proj);
+    var minIntervalSq = interval * interval * 25;
     var p;
     return editArcs(arcs, onPoint);
 
@@ -28706,7 +28644,7 @@ ${svg}
       if (!p) return false; // signal that current arc contains an error
 
       // Don't try to densify shorter segments (optimization)
-      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > interval * interval * 25) {
+      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
         densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
           .forEach(append);
       }
@@ -28898,40 +28836,80 @@ ${svg}
     convertBboxToGeoJSON: convertBboxToGeoJSON
   });
 
-  function insertPreProjectionCuts(dataset, src, dest) {
-    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
-    // currently only supports adding a single vertical cut to earth axis-aligned
-    // map projections centered on a non-zero longitude.
-    // TODO: need a more sophisticated kind of cutting to handle other cases
-    if (isLatLngCRS(src) &&
-        isRotatedNormalProjection(dest) &&
-        datasetCrossesLon(dataset, antimeridian)) {
-      insertVerticalCut(dataset, antimeridian);
-      dissolveArcs(dataset);
-      return true;
+  function getSemiMinorAxis(P) {
+    return P.a * Math.sqrt(1 - (P.es || 0));
+  }
+
+  function getCircleRadiusFromAngle(P, angle) {
+    // Using semi-minor axis radius, to prevent overflowing projection bounds
+    // when clipping up to the edge of the projectable area
+    // TODO: improve (this just gives a safe minimum distance, not the best distance)
+    // TODO: modify point buffer function to use angle + ellipsoidal geometry
+    return angle * Math.PI / 180 * getSemiMinorAxis(P);
+  }
+
+  function getCrsSlug(P) {
+    return P.params.proj.param; // kludge
+  }
+
+  // 'normal' = the projection is aligned to the Earth's axis
+  // (i.e. it has a normal aspect)
+  function isRotatedNormalProjection(P) {
+    return isAxisAligned(P) && P.lam0 !== 0;
+  }
+
+  // Projection is vertically aligned to earth's axis
+  function isAxisAligned(P) {
+    // TODO: consider projections that may or may not be aligned,
+    // depending on parameters
+    if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
+      'ocea,omerc,tmerc,etmerc')) {
+      return false;
     }
-    return false;
+    if (isAzimuthal(P)) {
+      return false;
+    }
+    return true;
   }
 
-  function datasetCrossesLon(dataset, lon) {
-    var crosses = 0;
-    dataset.arcs.forEachSegment(function(i, j, xx, yy) {
-      var ax = xx[i],
-          bx = xx[j];
-      if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
-    });
-    return crosses > 0;
+  function getBoundingMeridian(P) {
+    if (P.lam0 === 0) return 180;
+    return getAntimeridian(P.lam0 * 180 / Math.PI);
   }
 
-  function insertVerticalCut(dataset, lon) {
-    var pathLayers = dataset.layers.filter(layerHasPaths);
-    if (pathLayers.length === 0) return;
-    var e = 1e-8;
-    var bbox = [lon-e, -91, lon+e, 91];
-    // densify (so cut line can curve, e.g. Cupola projection)
-    var geojson = convertBboxToGeoJSON(bbox, {interval: 0.5});
-    var clip = importGeoJSON(geojson);
-    clipLayersInPlace(pathLayers, clip, dataset, 'erase');
+  // Are the projection's bounds meridians?
+  function isMeridianBounded(P) {
+    // TODO: add azimuthal projection with lat0 == 0
+    // if (inList(P, 'ortho') && P.lam0 === 0) return true;
+    return isAxisAligned(P); // TODO: look for exceptions to this
+  }
+
+  // Is the projection bounded by parallels or polar lines?
+  function isParallelBounded(P) {
+    // TODO: add polar azimuthal projections
+    // TODO: reject world projections that do not have polar lines
+    return isAxisAligned(P);
+  }
+
+  function getBoundingMeridians(P) {
+
+  }
+
+  function getBoundingParallels(P) {
+
+  }
+
+  function isConic(P) {
+    return inList(P, 'aea,bonne,eqdc,lcc,poly,euler,murd1,murd2,murd3,pconic,tissot,vitk1');
+  }
+
+  function isAzimuthal(P) {
+    return inList(P,
+      'aeqd,gnom,laea,mil_os,lee_os,gs48,alsk,gs50,nsper,tpers,ortho,qsc,stere,ups,sterea');
+  }
+
+  function inList(P, str) {
+    return str.split(',').includes(getCrsSlug(P));
   }
 
   // based on d3 implementation of Euler-angle rotation
@@ -29397,22 +29375,38 @@ ${svg}
   });
 
   function getClippingDataset(src, dest, opts) {
+    return getUnprojectedBoundingPolygon(src, dest, opts);
+  }
+
+  function getUnprojectedBoundingPolygon(src, dest, opts) {
     var dataset;
-    if (isCircleClippedProjection(dest) || opts.clip_angle) {
-      dataset = getClipCircle(src, dest, opts);
-    } else if (isClippedCylindricalProjection(dest) || opts.clip_bbox) {
-      dataset = getClipRectangle(dest, opts);
+    if (isCircleClippedProjection(dest) || opts.clip_angle || dest.clip_angle) {
+      dataset = getBoundingCircle(src, dest, opts);
+    } else if (isRectangleClippedProjection(dest) || opts.clip_bbox) {
+      dataset = getBoundingRectangle(dest, opts);
     }
     return dataset || null;
   }
 
+  // If possible, return a lat-long bbox that can be used to
+  // test whether data exceeds the projection bounds ands needs to be clipped
+  // export function getInnerBoundingBBox(P, opts) {
+  //   var bbox = null;
+  //   if (opts.clip_bbox) {
+  //     bbox = opts.clip_bbox;
+  //   } else if (isRectangleClippedProjection(dest)) {
+  //     bbox
+  //   }
+  //   return bbox;
+  // }
+
   // Return projected polygon extent of both clipped and unclipped projections
   function getPolygonDataset(src, dest, opts) {
     // use clipping area if projection is clipped
-    var dataset = getClippingDataset(src, dest, opts);
+    var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
     if (!dataset) {
       // use entire world if projection is not clipped
-      dataset = getClipRectangle(dest, {clip_bbox: [-180,-90,180,90]});
+      dataset = getBoundingRectangle(dest, {clip_bbox: [-180,-90,180,90]});
     }
     projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
     return dataset;
@@ -29420,7 +29414,7 @@ ${svg}
 
   // Return projected outline of clipped projections
   function getOutlineDataset(src, dest, opts) {
-    var dataset = getClippingDataset(src, dest, opts);
+    var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
     if (dataset) {
       // project, with cutting & cleanup
       projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
@@ -29429,7 +29423,7 @@ ${svg}
     return dataset || null;
   }
 
-  function getClipRectangle(dest, opts) {
+  function getBoundingRectangle(dest, opts) {
     var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
     var rotation = getRotationParams(dest);
     if (!bbox) error('Missing expected clip bbox.');
@@ -29442,7 +29436,7 @@ ${svg}
     return dataset;
   }
 
-  function getClipCircle(src, dest, opts) {
+  function getBoundingCircle(src, dest, opts) {
     var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
     if (!angle) return null;
     verbose(`Using clip angle of ${ +angle.toFixed(2) } degrees`);
@@ -29455,7 +29449,7 @@ ${svg}
     return importGeoJSON(geojson);
   }
 
-  function isClippedCylindricalProjection(P) {
+  function isRectangleClippedProjection(P) {
     // TODO: add tmerc, etmerc, ...
     return inList(P, 'merc,bertin1953');
   }
@@ -29464,11 +29458,21 @@ ${svg}
     var e = 1e-3;
     var bbox = {
       // longlat: [-180, -90, 180, 90],
-      merc: [-180, -87, 180, 87],
+      merc: [-180, -89.5, 180, 89.5],
       bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
     }[getCrsSlug(P)];
     return bbox;
   }
+
+  function getClampBBox(P) {
+    var bbox;
+    if (inList(P, 'merc')) {
+      bbox = getDefaultClipBBox(P);
+    }
+    return bbox;
+  }
+
+
 
   function isCircleClippedProjection(P) {
     return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
@@ -29521,15 +29525,68 @@ ${svg}
 
   function preProjectionClip(dataset, src, dest, opts) {
     if (!isLatLngCRS(src) || opts.no_clip) return false;
-    var clipData = getClippingDataset(src, dest, opts);
+    // rotated normal-aspect projections can generally have a thin slice removed
+    // from the rotated antimeridian, instead of clipping them
+    var cut = insertPreProjectionCuts(dataset, src, dest);
+    var clipped = false;
+    var clipData;
+    // experimental -- we can probably get away with just clamping some CRSs that
+    // have a slightly restricted coord range (e.g. Mercator), instead of doing
+    // a clip (more expensive)
+    var clampBox = getClampBBox(dest);
+    if (clampBox) {
+      clampDataset(dataset, clampBox);
+    } else {
+      clipData = getClippingDataset(src, dest, opts);
+    }
     if (clipData) {
       // TODO: don't bother to clip content that is fully within
       // the clipping shape. But how to tell?
       clipLayersInPlace(dataset.layers, clipData, dataset, 'clip');
-       // remove arcs outside the clip area, so they don't get projected
-      //dissolveArcs(dataset);
+      clipped = true;
     }
-    return !!clipData;
+    return cut || clipped;
+  }
+
+
+  function insertPreProjectionCuts(dataset, src, dest) {
+    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
+    // currently only supports adding a single vertical cut to earth axis-aligned
+    // map projections centered on a non-zero longitude.
+    // TODO: need a more sophisticated kind of cutting to handle other cases
+    if (dataset.arcs && isRotatedNormalProjection(dest) && datasetCrossesLon(dataset, antimeridian)) {
+      insertVerticalCut(dataset, antimeridian);
+      dissolveArcs(dataset);
+      return true;
+    }
+    return false;
+  }
+
+  function clampDataset(dataset, bbox) {
+    transformPoints(dataset, function(x, y) {
+      return [utils.clamp(x, bbox[0], bbox[2]), utils.clamp(y, bbox[1], bbox[3])];
+    });
+  }
+
+  function datasetCrossesLon(dataset, lon) {
+    var crosses = 0;
+    dataset.arcs.forEachSegment(function(i, j, xx, yy) {
+      var ax = xx[i],
+          bx = xx[j];
+      if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
+    });
+    return crosses > 0;
+  }
+
+  function insertVerticalCut(dataset, lon) {
+    var pathLayers = dataset.layers.filter(layerHasPaths);
+    if (pathLayers.length === 0) return;
+    var e = 1e-8;
+    var bbox = [lon-e, -91, lon+e, 91];
+    // densify (so cut line can curve, e.g. Cupola projection)
+    var geojson = convertBboxToGeoJSON(bbox, {interval: 0.5});
+    var clip = importGeoJSON(geojson);
+    clipLayersInPlace(pathLayers, clip, dataset, 'erase');
   }
 
   // Converts a Proj.4 projection name (e.g. lcc, tmerc) to a Proj.4 string
@@ -29632,7 +29689,6 @@ ${svg}
       target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
     }
 
-    // target.layers = dataset.layers.filter(layerHasPoints).map(function(lyr) {
     target.layers = dataset.layers.map(function(lyr) {
       if (modifyCopy) {
         originals.push(lyr);
@@ -29641,13 +29697,7 @@ ${svg}
       return lyr;
     });
 
-    try {
-      projectDataset(target, src, dest, opts || {});
-    } catch(e) {
-      console.error(e);
-      stop(utils.format("Projection failure%s (%s)",
-        e.point ? ' at ' + e.point.join(' ') : '', e.message));
-    }
+    projectDataset(target, src, dest, opts || {});
 
     dataset.info.prj = destInfo.prj; // may be undefined
     dataset.arcs = target.arcs;
@@ -29684,10 +29734,19 @@ ${svg}
   }
 
   function projectDataset(dataset, src, dest, opts) {
+    try {
+      _projectDataset(dataset, src, dest, opts);
+    } catch(e) {
+      // console.error(e);
+      stop(utils.format("Projection failure%s (%s)",
+        e.point ? ' at ' + e.point.join(' ') : '', e.message));
+    }
+  }
+
+  function _projectDataset(dataset, src, dest, opts) {
     var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
     var badArcs = 0;
     var badPoints = 0;
-    var cuts;
     var clipped = preProjectionClip(dataset, src, dest, opts);
 
     dataset.layers.forEach(function(lyr) {
@@ -29696,8 +29755,6 @@ ${svg}
       }
     });
     if (dataset.arcs) {
-      cuts = insertPreProjectionCuts(dataset, src, dest);
-
       if (opts.densify) {
         badArcs = projectAndDensifyArcs(dataset.arcs, proj);
       } else {
@@ -29705,7 +29762,7 @@ ${svg}
       }
     }
 
-    if (cuts || clipped) {
+    if (clipped) {
       // TODO: could more selective in cleaning clipped layers
       // (probably only needed when clipped area crosses the antimeridian or includes a pole)
       cleanProjectedLayers(dataset);
@@ -29731,6 +29788,7 @@ ${svg}
     // vertices change during cleaning, but reprojection can require a topology update
     // even if clean does not change vertices)
     var cleanOpts = {
+      allow_overlaps: true,
       rebuild_topology: true,
       no_arc_dissolve: true,
       quiet: true,
@@ -31536,10 +31594,15 @@ ${svg}
 
   function standardizeConsoleCommands(raw) {
     var str = raw.replace(/^mapshaper\b/, '').trim();
-    if (/^[a-z]/.test(str)) {
-      // add hyphen prefix to bare command
-      str = '-' + str;
-    }
+    var parser = getOptionParser();
+    // support multiline string of commands pasted into console
+    str = str.split(/\n+/g).map(function(str) {
+      var match = /^[a-z][\w-]*/.exec(str = str.trim());
+      if (match && parser.isCommandName(match[0])) {
+        str = '-' + str; // add hyphen prefix to bare command
+      }
+      return str;
+    }).join(' ');
     return str;
   }
 
