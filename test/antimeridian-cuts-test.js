@@ -1,8 +1,37 @@
 
-import { splitPathAtAntimeridian } from '../src/geom/mapshaper-antimeridian';
+import {
+  splitPathAtAntimeridian,
+  removeCutSegments } from '../src/geom/mapshaper-antimeridian-cuts';
 var assert = require('assert');
 
-describe('mapshaper-antimeridian.js', function () {
+describe('mapshaper-antimeridian-cuts.js', function () {
+
+  describe('removeCutSegments()', function() {
+
+    it('remove polar line', function() {
+      var coords = [[-180,80], [-180,90], [0,90], [180,90], [180, 80], [-180, 80]];
+      var output = removeCutSegments(coords);
+      var target = [[-180, 80], [180, 80], [-180, 80]];
+      assert.deepEqual(output, target);
+    });
+
+    it('remove vertices along edge', function() {
+      var coords = [[-180,80], [-180,70], [-180,60], [180,60], [180, 70],
+        [180,80], [-180,80]];
+        var output = removeCutSegments(coords);
+        var target = [[-180,80], [-180,60], [180,60], [180,80], [-180,80]];
+        assert.deepEqual(output, target);
+    })
+
+    // it('remove vertices across array boundary', function() {
+    //   var coords = [[0,90], [90, 90], [180,90], [180, 80], [-180, 80],[-180,90], [-90, 90], [0,90]];
+    //   var output = removeCutSegments(coords);
+    //   var target = [[-180, 80], [180, 80], [-180, 80]];
+    //   assert.deepEqual(output, target);
+    // })
+
+
+  })
 
   describe('splitPathAtAntimeridian()', function () {
 

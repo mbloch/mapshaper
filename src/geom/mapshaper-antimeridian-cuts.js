@@ -1,11 +1,51 @@
 import { stop, debug, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { getStateVar } from '../mapshaper-state';
+import { R2D, D2R } from '../geom/mapshaper-basic-geom';
 import {
   samePoint,
   lastEl,
-  isClosedPath
+  isClosedPath,
+  isEdgePoint,
+  isEdgeSegment,
+  touchesEdge
 } from '../paths/mapshaper-coordinate-utils';
+
+// Remove segments that belong solely to cut points
+// TODO: verify that antimeridian crosses have matching y coords
+// TODO: stitch together split-apart polygons ?
+//
+export function removeCutSegments(coords) {
+  if (!touchesEdge(coords)) return coords;
+  var coords2 = [];
+  var a, b, c, x, y;
+  var skipped = false;
+  coords.pop(); // remove duplicate point
+  a = coords[coords.length-1];
+  b = coords[0];
+  for (var ci=1, n=coords.length; ci <= n; ci++) {
+    c = ci == n ? coords2[0] : coords[ci];
+    if (!c) continue; // undefined c could occur in a defective path
+    if ((skipped || isEdgeSegment(a, b)) && isEdgeSegment(b, c)) {
+      // skip b
+      // console.log("skipping b:", ci, a, b, c)
+      skipped = true;
+    } else {
+      if (skipped === true) {
+        skipped = false;
+      }
+      coords2.push(b);
+      a = b;
+    }
+    b = c;
+  }
+  if (coords2.length > 0) {
+    coords2.push(coords2[0].concat()); // close the path
+  }
+  // TODO: handle runs that are split at the array boundary
+  return coords2;
+}
+
 
 export function removePolylineCrosses(path) {
   return splitPathAtAntimeridian(path);
@@ -168,15 +208,17 @@ export function splitPathAtAntimeridian(path) {
   var firstPoint = path[0];
   var lastPoint = lastEl(path);
   var closed = samePoint(firstPoint, lastPoint);
-  var p, pp, y;
+  var p, pp, y, y2;
   for (var i=0, n=path.length; i<n; i++) {
     p = path[i];
-    if (i>0 && Math.abs(pp[0] - p[0]) > 180) {
+    if (i>0 && segmentCrossesAntimeridian(pp, p)) {
+      // y = sphericalIntercept(pp, p);
       y = planarIntercept(pp, p);
       addIntersectionPoint(part, pp, y);
       addSubPath(parts, part);
       part = [];
       addIntersectionPoint(part, p, y);
+      // console.log(y, y2)
     }
     part.push(p);
     pp = p;
@@ -193,13 +235,16 @@ export function splitPathAtAntimeridian(path) {
   return parts;
 }
 
+export function segmentCrossesAntimeridian(a, b) {
+  return Math.abs(a[0] - b[0]) > 180;
+}
+
 export function getSortedIntersections(parts) {
   var values = parts.map(function(p) {
     return p[0][1];
   });
   return utils.genericSort(values, true);
 }
-
 
 
 function addIntersectionPoint(part, p, yint) {
@@ -229,4 +274,23 @@ function planarIntercept(p1, p2) {
   if (dx1 === 0) return p1[1];
   if (dx2 === 0) return p2[1];
   return (dx2 * p1[1] + dx1 * p2[1]) / (dx1 + dx2);
+}
+
+// From: https://github.com/d3/d3-geo/blob/master/src/clip/antimeridian.js
+function sphericalIntercept(p1, p2) {
+  var lam1 = p1[0] * D2R,
+      phi1 = p1[1] * D2R,
+      lam2 = p2[0] * D2R,
+      phi2 = p2[1] * D2R,
+      sinLam1Lam2 = Math.sin(lam1 - lam2),
+      cosPhi2 = Math.cos(phi2),
+      cosPhi1 = Math.cos(phi1),
+      phi;
+  if (Math.abs(sinLam1Lam2) > 1e-6) {
+    phi = Math.atan((Math.sin(phi1) * cosPhi2 * Math.sin(lam2) -
+      Math.sin(phi2) * cosPhi1) * Math.sin(lam1)) / (cosPhi1 * cosPhi2 * sinLam1Lam2);
+  } else {
+    phi = (phi1 + phi2) / 2;
+  }
+  return phi * R2D;
 }

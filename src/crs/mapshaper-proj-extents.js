@@ -90,28 +90,33 @@ function getBoundingCircle(src, dest, opts) {
 
 export function isRectangleClippedProjection(P) {
   // TODO: add tmerc, etmerc, ...
+  // return inList(P, 'tmerc,utm,etmerc,merc,bertin1953');
   return inList(P, 'merc,bertin1953');
 }
 
 export function getDefaultClipBBox(P) {
   var e = 1e-3;
+  var slug = getCrsSlug(P);
+  var tmerc = [-179,-90,179,90];
   var bbox = {
     // longlat: [-180, -90, 180, 90],
-    merc: [-180, -89.5, 180, 89.5],
+    tmerc: tmerc,
+    utm: tmerc,
+    etmerc: tmerc,
+    merc: [-180, -89, 180, 89],
+    lcc: [-180, -89, 180, 89],
     bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
-  }[getCrsSlug(P)];
+  }[slug];
   return bbox;
 }
 
 export function getClampBBox(P) {
   var bbox;
-  if (inList(P, 'merc')) {
+  if (inList(P, 'merc,lcc')) {
     bbox = getDefaultClipBBox(P);
   }
   return bbox;
 }
-
-
 
 export function isCircleClippedProjection(P) {
   return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
@@ -147,9 +152,11 @@ export function getDefaultClipAngle(P) {
 export function getRotationParams(P) {
   var slug = getCrsSlug(P);
   if (slug == 'bertin1953') return [-16.5,-42];
+  if (slug == 'tmerc' || slug == 'utm' || slug == 'etmerc') {
+    if (P.lam0 !== 0) return [P.lam0 * 180 / Math.PI];
+  }
   return null;
 }
-
 
 
 function getProjCenter(P) {

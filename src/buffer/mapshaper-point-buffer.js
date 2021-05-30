@@ -3,7 +3,7 @@ import { getBufferDistanceFunction } from '../buffer/mapshaper-buffer-common';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { removePolylineCrosses, removePolygonCrosses, countCrosses }
-  from '../geom/mapshaper-antimeridian';
+  from '../geom/mapshaper-antimeridian-cuts';
 import { getCRS } from '../crs/mapshaper-projections';
 import { getSphericalPathArea2 } from '../geom/mapshaper-polygon-geom';
 import { PointIter } from '../paths/mapshaper-shape-iter';

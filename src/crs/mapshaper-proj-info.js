@@ -45,13 +45,6 @@ export function isParallelBounded(P) {
   return isAxisAligned(P);
 }
 
-export function getBoundingMeridians(P) {
-
-}
-
-export function getBoundingParallels(P) {
-
-}
 
 export function isConic(P) {
   return inList(P, 'aea,bonne,eqdc,lcc,poly,euler,murd1,murd2,murd3,pconic,tissot,vitk1');

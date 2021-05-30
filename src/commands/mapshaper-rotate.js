@@ -1,11 +1,19 @@
 
 import cmd from '../mapshaper-cmd';
 import { rotateDatasetCoords, getRotationFunction2 } from '../crs/mapshaper-spherical-rotation';
-import { removePolygonCrosses, removePolylineCrosses } from '../geom/mapshaper-antimeridian';
+import {
+  removePolygonCrosses,
+  removePolylineCrosses,
+  segmentCrossesAntimeridian,
+  removeCutSegments } from '../geom/mapshaper-antimeridian-cuts';
 import { DatasetEditor } from '../dataset/mapshaper-dataset-editor';
 import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { getPlanarPathArea, getSphericalPathArea } from '../geom/mapshaper-polygon-geom';
-import { densifyDataset, densifyPathByInterval } from '../crs/mapshaper-densify';
+import {
+  densifyDataset,
+  densifyPathByInterval,
+  densifyAntimeridianSegment,
+  getIntervalInterpolator } from '../crs/mapshaper-densify';
 import { cleanProjectedLayers } from '../commands/mapshaper-proj';
 import { stop, error, debug } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
@@ -13,9 +21,7 @@ import {
   samePoint,
   snapToEdge,
   isEdgeSegment,
-  isEdgePoint,
   isWholeWorld,
-  touchesEdge,
   onPole,
   isClosedPath,
   lastEl
@@ -38,14 +44,16 @@ export function rotateDataset(dataset, opts) {
 
   dataset.layers.forEach(function(lyr) {
     var type = lyr.geometry_type;
-    editor.editLayer(lyr, getGeometryRotator(type, rotatePoint));
+    editor.editLayer(lyr, getGeometryRotator(type, rotatePoint, opts));
   });
   editor.done();
-  buildTopology(dataset);
-  cleanProjectedLayers(dataset);
+  if (!opts.debug) {
+    buildTopology(dataset);
+    cleanProjectedLayers(dataset);
+  }
 }
 
-function getGeometryRotator(layerType, rotatePoint) {
+function getGeometryRotator(layerType, rotatePoint, opts) {
   var rings;
   if (layerType == 'point') {
     return function(coords) {
@@ -66,10 +74,10 @@ function getGeometryRotator(layerType, rotatePoint) {
         coords = densifyPathByInterval(coords, 0.5);
       } else {
         coords.forEach(snapToEdge);
-        coords = densifyPathByInterval(coords, 0.5, densifySegment);
         coords = removeCutSegments(coords);
+        coords = densifyPathByInterval(coords, 0.5, getInterpolator(0.5));
         coords.forEach(rotatePoint);
-        coords.forEach(snapToEdge);
+        // coords.forEach(snapToEdge);
       }
       if (i === 0) { // first part
         rings = [];
@@ -83,47 +91,27 @@ function getGeometryRotator(layerType, rotatePoint) {
       }
       rings.push(coords); // accumulate rings
       if (i == shape.length - 1) { // last part
-        return removePolygonCrosses(rings);
+        return opts.debug ? rings : removePolygonCrosses(rings);
       }
     };
   }
   return null; // assume layer has no geometry -- callback should not be called
 }
 
-function densifySegment(a, b) {
-  return !isEdgeSegment(a, b);
-}
-
-// Remove segments that belong solely to cut points
-// TODO: verify that antimeridian crosses have matching y coords
-// TODO: stitch together split-apart polygons
-//
-function removeCutSegments(coords) {
-  if (!touchesEdge(coords)) return coords;
-  var coords2 = [];
-  var a, b, c, x, y;
-  var skipped = false;
-  coords.pop(); // remove duplicate point
-  a = coords[coords.length-1];
-  b = coords[0];
-  for (var ci=1, n=coords.length; ci <= n; ci++) {
-    c = ci == n ? coords2[0] : coords[ci];
-    if (isEdgePoint(a) && isEdgeSegment(b, c)) {
-      // skip b
-      // debug('<edge', b)
-      skipped = true;
+function getInterpolator(interval) {
+  var interpolate = getIntervalInterpolator(interval);
+  return function(a, b) {
+    var points;
+    if (onPole(a) || onPole(b)) {
+      points = [];
+    } else if (isEdgeSegment(a, b)) {
+      points = densifyAntimeridianSegment(a, b, interval);
+    } else if (segmentCrossesAntimeridian(a, b)) {
+      // TODO: interpolate up to antimeridian?
+      points = [];
     } else {
-      if (skipped === true) {
-        // console.log("skipped from:", coords2[coords2.length-1], 'to:', b)
-        // console.log('ci:', ci, 'coords.length:', n)
-        skipped = false;
-      }
-      coords2.push(b);
-      a = b;
+      points = interpolate(a, b);
     }
-    b = c;
-  }
-  coords2.push(coords2[0].concat()); // close the path
-  // TODO: handle runs that are split at the array boundary
-  return coords2;
+    return points;
+  };
 }

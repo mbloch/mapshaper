@@ -1,7 +1,7 @@
 import geom from '../geom/mapshaper-geom';
 import { editArcs } from '../paths/mapshaper-arc-editor';
 import { getAvgSegment2 } from '../paths/mapshaper-path-utils';
-import { stop, error } from '../utils/mapshaper-logging';
+import { error } from '../utils/mapshaper-logging';
 import { DatasetEditor } from '../dataset/mapshaper-dataset-editor';
 
 export function densifyDataset(dataset, opts) {
@@ -22,27 +22,65 @@ export function densifyDataset(dataset, opts) {
 
 
 // Planar densification by an interval
-export function densifyPathByInterval(coords, interval, filter) {
+export function densifyPathByInterval(coords, interval, interpolate) {
   if (findMaxPathInterval(coords) < interval) return coords;
-  var coords2 = [coords[0]], a, b, dist;
+  if (!interpolate) {
+    interpolate = getIntervalInterpolator(interval);
+  }
+  var coords2 = [coords[0]], a, b;
   for (var i=1, n=coords.length; i<n; i++) {
     a = coords[i-1];
     b = coords[i];
-    dist = geom.distance2D(a[0], a[1], b[0], b[1]);
-    if (dist > interval && (!filter || filter(a, b))) {
-      pushInterpolatedPoints(coords2, a, b, Math.round(dist / interval) - 1);
+    if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
+      appendArr(coords2, interpolate(a, b));
     }
     coords2.push(b);
   }
   return coords2;
 }
 
-function pushInterpolatedPoints(coords2, a, b, n) {
-  var dx = (b[0] - a[0]) / (n + 1),
-      dy = (b[1] - a[1]) / (n + 1);
-  for (var i=1; i<=n; i++) {
-    coords2.push([a[0] + dx * i, a[1] + dy * i]);
+export function getIntervalInterpolator(interval) {
+  return function(a, b) {
+    var points = [];
+    // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
+    var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
+    var n = Math.round(dist / interval) - 1;
+    var dx = (b[0] - a[0]) / (n + 1),
+        dy = (b[1] - a[1]) / (n + 1);
+    for (var i=1; i<=n; i++) {
+      points.push([a[0] + dx * i, a[1] + dy * i]);
+    }
+    return points;
+  };
+}
+
+
+// Interpolate the same points regardless of segment direction
+export function densifyAntimeridianSegment(a, b, interval) {
+  var y1, y2;
+  var coords = [];
+  var ascending = a[1] < b[1];
+  if (a[0] != b[0]) error('Expected an edge segment');
+  if (interval > 0 === false) error('Expected a positive interval');
+  if (ascending) {
+    y1 = a[1];
+    y2 = b[1];
+  } else {
+    y1 = b[1];
+    y2 = a[1];
   }
+  var y = Math.floor(y1 / interval) * interval + interval;
+  while (y < y2) {
+    coords.push([a[0], y]);
+    y += interval;
+  }
+  if (!ascending) coords.reverse();
+  return coords;
+}
+
+
+function appendArr(dest, src) {
+  for (var i=0; i<src.length; i++) dest.push(src[i]);
 }
 
 function findMaxPathInterval(coords) {
@@ -95,7 +133,7 @@ function getDefaultDensifyInterval(arcs, proj) {
         geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
   var interval = Math.min(intervalA, intervalB);
   if (interval == Infinity) {
-    stop('Projection failure');
+    error('Densification error');
   }
   return interval;
 }

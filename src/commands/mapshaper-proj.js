@@ -16,7 +16,7 @@ import { expandProjDefn } from '../crs/mapshaper-projection-params';
 import { layerHasPoints, copyLayerShapes } from '../dataset/mapshaper-layer-utils';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { runningInBrowser } from '../mapshaper-state';
-import { stop, message } from '../utils/mapshaper-logging';
+import { stop, message, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
 import { buildTopology } from '../topology/mapshaper-topology';
 import cmd from '../mapshaper-cmd';
@@ -121,16 +121,6 @@ export function getCrsInfo(name, catalog) {
 }
 
 export function projectDataset(dataset, src, dest, opts) {
-  try {
-    _projectDataset(dataset, src, dest, opts);
-  } catch(e) {
-    // console.error(e);
-    stop(utils.format("Projection failure%s (%s)",
-      e.point ? ' at ' + e.point.join(' ') : '', e.message));
-  }
-}
-
-function _projectDataset(dataset, src, dest, opts) {
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
   var badArcs = 0;
   var badPoints = 0;
