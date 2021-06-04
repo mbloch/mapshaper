@@ -14,6 +14,7 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 
 import '../commands/mapshaper-affine';
+import '../commands/mapshaper-alpha-shapes';
 import '../commands/mapshaper-buffer';
 import '../commands/mapshaper-calc';
 import '../commands/mapshaper-classify';
@@ -148,6 +149,10 @@ export function runCommand(command, catalog, cb) {
 
     if (name == 'affine') {
       cmd.affine(targetLayers, targetDataset, opts);
+
+    } else if (name == 'alpha-shapes') {
+      outputLayers = applyCommandToEachLayer(cmd.alphaShapes, targetLayers, targetDataset, opts);
+      // outputLayers = null;
 
     } else if (name == 'buffer') {
       // applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);

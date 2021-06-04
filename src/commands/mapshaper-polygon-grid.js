@@ -10,22 +10,9 @@ import { buildTopology } from '../topology/mapshaper-topology';
 cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   requireProjectedDataset(targetDataset);
   var params = getGridParams(targetLayers, targetDataset, opts);
-  var geojson;
-  if (params.type == 'square') {
-    geojson = getSquareGridGeoJSON(getSquareGridCoordinates(params));
-  } else if (params.type == 'hex') {
-    geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
-  } else if (params.type == 'hex2') {
-    // use rotated grid
-    geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
-    swapPolygonCoords(geojson);
-  } else {
-    stop('Unsupported grid type');
-  }
-  alignGridToBounds(geojson, params.bbox);
-  var gridDataset = importGeoJSON(geojson, {});
+  var gridDataset = makeGridDataset(params, opts);
+
   gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
-  buildTopology(gridDataset);
   gridDataset.layers[0].name = opts.name || 'grid';
   if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;
@@ -47,6 +34,25 @@ cmd.pointGrid2 = function(targetLayers, targetDataset, opts) {
   if (opts.name) gridDataset.layers[0].name = opts.name;
   return gridDataset.layers[0];
 };
+
+function makeGridDataset(params, opts) {
+  var geojson, dataset;
+  if (params.type == 'square') {
+    geojson = getSquareGridGeoJSON(getSquareGridCoordinates(params));
+  } else if (params.type == 'hex') {
+    geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
+  } else if (params.type == 'hex2') {
+    // use rotated grid
+    geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
+    swapPolygonCoords(geojson);
+  } else {
+    stop('Unsupported grid type');
+  }
+  alignGridToBounds(geojson, params.bbox);
+  dataset = importGeoJSON(geojson, {});
+  buildTopology(dataset);
+  return dataset;
+}
 
 function swapGridParams(params) {
   var bbox = params.bbox;

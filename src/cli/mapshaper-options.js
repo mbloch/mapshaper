@@ -364,6 +364,13 @@ export function getOptionParser() {
     .option('where', whereOpt)
     .option('target', targetOpt);
 
+  parser.command('alpha-shapes')
+    .option('interval', {
+      type: 'number'
+    })
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
   parser.command('buffer')
     // .describe('')
     .option('radius', {
@@ -412,7 +419,7 @@ export function getOptionParser() {
     })
     .option('colors', {
       describe: 'list of CSS colors or color scheme name (see -colors)',
-      type: 'strings'
+      type: 'colors'
     })
     .option('values', {
       describe: 'values to assign to classes (alternative to colors=)',
@@ -1018,6 +1025,17 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
+
+  // parser.command('point-to-grid')
+  //   .option('interval', {
+  //     type: 'number'
+  //   })
+  //   .option('radius', {
+  //     // describe: 'radius of '
+  //     type: 'number'
+  //   })
+  //   .option('target', targetOpt)
+  //   .option('no-replace', noReplaceOpt);
 
   parser.command('point-grid')
     .describe('create a rectangular grid of points')
