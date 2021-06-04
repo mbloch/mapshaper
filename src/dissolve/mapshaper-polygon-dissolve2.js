@@ -94,7 +94,8 @@ export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
   // Simple Features compliance
   dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
   if (fillGaps && !opts.quiet) {
-    message(getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label));
+    var msg = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
+    if (msg) message(msg);
   }
   return dissolvedShapes;
 }

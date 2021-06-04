@@ -1,10 +1,9 @@
 import { getPreciseGeodeticSegmentFunction, getFastGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { getBufferDistanceFunction } from '../buffer/mapshaper-buffer-common';
 import { importGeoJSON } from '../geojson/geojson-import';
-import { getDatasetCRS } from '../crs/mapshaper-projections';
+import { getDatasetCRS, getCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { removePolylineCrosses, removePolygonCrosses, countCrosses }
   from '../geom/mapshaper-antimeridian-cuts';
-import { getCRS } from '../crs/mapshaper-projections';
 import { getSphericalPathArea2 } from '../geom/mapshaper-polygon-geom';
 import { PointIter } from '../paths/mapshaper-shape-iter';
 
@@ -27,18 +26,20 @@ export function getCircleGeoJSON(center, radius, vertices, opts) {
   }
   return opts.geometry_type == 'polyline' ?
     getPointBufferLineString([center], radius, n, geod) :
-    getPointBufferPolygon([center], radius, n, geod);
+    getPointBufferPolygon([center], radius, n, geod, true);
 }
 
 // Convert a point layer to circles
 function makePointBufferGeoJSON(lyr, dataset, opts) {
   var vertices = opts.vertices || 72;
   var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-  var geod = getPreciseGeodeticSegmentFunction(getDatasetCRS(dataset));
+  var crs = getDatasetCRS(dataset);
+  var spherical = isLatLngCRS(crs);
+  var geod = getPreciseGeodeticSegmentFunction(crs);
   var geometries = lyr.shapes.map(function(shape, i) {
     var dist = distanceFn(i);
     if (!dist || !shape) return null;
-    return getPointBufferPolygon(shape, dist, vertices, geod);
+    return getPointBufferPolygon(shape, dist, vertices, geod, spherical);
   });
   // TODO: make sure that importer supports null geometries (nonstandard GeoJSON);
   return {
@@ -47,12 +48,14 @@ function makePointBufferGeoJSON(lyr, dataset, opts) {
   };
 }
 
-export function getPointBufferPolygon(points, distance, vertices, geod) {
+export function getPointBufferPolygon(points, distance, vertices, geod, spherical) {
   var rings = [], coords, coords2;
   if (!points || !points.length) return null;
   for (var i=0; i<points.length; i++) {
     coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-    if (countCrosses(coords) > 0) {
+    if (!spherical) {
+      rings.push([coords]);
+    } else if (countCrosses(coords) > 0) {
       coords2 = removePolygonCrosses([coords]);
       while (coords2.length > 0) rings.push([coords2.pop()]); // geojson polygon coords, no hole
     } else if (ringArea(coords) < 0) {

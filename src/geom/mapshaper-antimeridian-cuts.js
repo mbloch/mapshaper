@@ -62,7 +62,7 @@ function isAntimeridianPoint(p) {
 //
 // rings: array of rings of [x,y] points.
 // Returns array of split-apart rings
-export function removePolygonCrosses(rings, isHole) {
+export function removePolygonCrosses(rings) {
   var rings2 = [];
   var splitRings = [];
   var ring;
