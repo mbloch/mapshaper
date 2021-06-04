@@ -28,7 +28,8 @@ export function parseStringList(token) {
 // Accept spaces and/or commas as delimiters
 export function parseColorList(token) {
   var delim = ', ';
-  var token2 = token.replace(/, *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
+  // accept rgb(0 0 0) rgb(0,0,0) rgb(0, 0, 0)
+  var token2 = token.replace(/[ ,] *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
   var list = splitOptionList(token2, delim);
   if (list.length == 1) {
     list = splitOptionList(list[0], delim);
