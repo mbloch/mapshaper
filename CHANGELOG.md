@@ -1,3 +1,6 @@
+v0.5.58
+* Bug fixes
+
 v0.5.57
 * Added "allow-overlaps" option to -dissolve2 and -clean, which allows polygon features to overlap.
 * Added "Hill Eucyclic" projection (+proj=hill).
