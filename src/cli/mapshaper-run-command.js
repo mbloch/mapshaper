@@ -52,6 +52,7 @@ import '../commands/mapshaper-mosaic';
 import '../commands/mapshaper-points';
 import '../commands/mapshaper-polygon-grid';
 import '../commands/mapshaper-point-grid';
+import '../commands/mapshaper-point-to-grid';
 import '../commands/mapshaper-polygons';
 import '../commands/mapshaper-proj';
 import '../commands/mapshaper-rectangle';
@@ -155,8 +156,8 @@ export function runCommand(command, catalog, cb) {
       // outputLayers = null;
 
     } else if (name == 'buffer') {
-      // applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
-      outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
+       outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
+      // outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
 
     } else if (name == 'data-fill') {
       applyCommandToEachLayer(cmd.dataFill, targetLayers, arcs, opts);
@@ -270,7 +271,8 @@ export function runCommand(command, catalog, cb) {
     } else if (name == 'merge-layers') {
       // returned layers are modified input layers
       // (assumes that targetLayers are replaced by outputLayers below)
-      outputLayers = cmd.mergeLayers(targetLayers, opts);
+      outputLayers = cmd.mergeAndFlattenLayers(targetLayers, targetDataset, opts);
+      // outputLayers = cmd.mergeLayers(targetLayers, opts);
 
     } else if (name == 'mosaic') {
       // opts.no_replace = true; // add mosaic as a new layer
@@ -289,6 +291,9 @@ export function runCommand(command, catalog, cb) {
       if (!targetDataset) {
         catalog.addDataset({layers: outputLayers});
       }
+
+    } else if (name == 'point-to-grid') {
+      outputLayers = cmd.pointToGrid(targetLayers, targetDataset, opts);
 
     } else if (name == 'grid') {
       outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);

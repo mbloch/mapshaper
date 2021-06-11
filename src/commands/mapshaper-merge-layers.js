@@ -1,10 +1,28 @@
 import { getColumnType } from '../datatable/mapshaper-data-utils';
 import { fixInconsistentFields } from '../datatable/mapshaper-data-utils';
-import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { getFeatureCount, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
 import { message, stop, error } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { cleanLayers } from '../commands/mapshaper-clean';
+import { replaceLayers } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
+
+
+// Support the opts.flatten option (for removing polygon overlaps)
+cmd.mergeAndFlattenLayers = function(layers, dataset, opts) {
+  if (!opts.flatten) return cmd.mergeLayers(layers, opts);
+  layers.forEach(function(lyr) {
+    requirePolygonLayer(lyr, 'the flatten option requires polygon layers');
+  });
+  var output = cmd.mergeLayers(layers, opts);
+  replaceLayers(dataset, layers, output);
+  cleanLayers(output, dataset, {
+    overlap_rule: 'max-id' // later shapes get inlaid in earlier shapes
+  });
+  replaceLayers(dataset, output, layers);
+  return output;
+};
 
 // Merge layers, checking for incompatible geometries and data fields.
 // Assumes that input layers are members of the same dataset (and therefore

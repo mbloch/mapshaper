@@ -1,5 +1,6 @@
 
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { getDatasetCRS, requireProjectedDataset } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
@@ -13,7 +14,7 @@ cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   var gridDataset = makeGridDataset(params, opts);
 
   gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
-  gridDataset.layers[0].name = opts.name || 'grid';
+  setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
   if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;
 };

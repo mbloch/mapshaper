@@ -70,7 +70,8 @@ export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
   var mosaicOpts = {
     flat: !opts.allow_overlaps,
-    simple: groups.length == 1
+    simple: groups.length == 1,
+    overlap_rule: opts.overlap_rule
   };
   var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
   var fillGaps = !opts.allow_overlaps; // gap fill doesn't work yet with overlapping shapes

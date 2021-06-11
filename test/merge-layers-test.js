@@ -5,6 +5,45 @@ var assert = require('assert'),
 describe('mapshaper-merge-layers.js', function () {
 
   describe('-merge-layers command', function() {
+    describe('flatten option', function(done) {
+      var a = {
+        type: 'Feature',
+        properties: {id: "a"},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0,0], [0,1], [2, 1], [2,0], [0,0]]]
+        }
+      }
+      var b = {
+        type: 'Feature',
+        properties: {id: 'b'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[1,0], [1,1], [2,1], [2,0], [1,0]]]
+        }
+      };
+      it('test 1', function(done) {
+        var cmd = '-i a.json b.json combine-files -merge-layers flatten name=merged -o';
+        api.applyCommands(cmd, {'a.json': a, 'b.json': b}, function(err, out) {
+          var json = JSON.parse(out['merged.json']);
+          assert.deepEqual(json.features[0].properties, {id: 'a'})
+          assert.deepEqual(json.features[1].properties, {id: 'b'})
+          done();
+        });
+      });
+
+      it('test 2', function(done) {
+        // a causes b to be removed
+        var cmd = '-i b.json a.json combine-files -merge-layers flatten name=merged -o';
+        api.applyCommands(cmd, {'a.json': a, 'b.json': b}, function(err, out) {
+          var json = JSON.parse(out['merged.json']);
+          assert.equal(json.features.length, 1);
+          assert.deepEqual(json.features[0].properties, {id: 'a'})
+          done();
+        });
+      });
+
+    });
 
     it('handles combination of shape + non-shape layers', function(done) {
       // a has a shape and no properties, b has properties and no shape

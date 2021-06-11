@@ -2,8 +2,6 @@ var assert = require('assert'),
     api = require("../"),
     internal = api.internal;
 
-
-
 describe('mapshaper-option-parsing-utils.js', function () {
 
   describe('parseStringList()', function () {

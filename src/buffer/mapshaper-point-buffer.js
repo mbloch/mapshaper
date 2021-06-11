@@ -94,12 +94,16 @@ export function getPointBufferLineString(points, distance, vertices, geod) {
   };
 }
 
-// Returns GeoJSON MultiPolygon coordinates
-function getPointBufferCoordinates(center, meterDist, vertices, geod) {
+// Returns array of [x, y] coordinates in a closed ring
+export function getPointBufferCoordinates(center, meterDist, vertices, geod) {
   var coords = [],
-      angle = 360 / vertices;
+      angle = 360 / vertices,
+      theta;
   for (var i=0; i<vertices; i++) {
-    coords.push(geod(center[0], center[1], i * angle, meterDist));
+    // offsetting by half a step so 4 sides are flat, not pointy
+    // (looks better on low-vertex circles)
+    theta = (i + 0.5) * angle % 360;
+    coords.push(geod(center[0], center[1], theta, meterDist));
   }
   coords.push(coords[0].concat());
   return coords;

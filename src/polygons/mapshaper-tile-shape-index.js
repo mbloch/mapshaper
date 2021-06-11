@@ -40,7 +40,6 @@ export function TileShapeIndex(mosaic, opts) {
   };
 
   this.indexTileIdsByShapeId = function(shapeId, tileIds, weightFunction) {
-    // shapeIndex[shapeId] = tileIds;
     shapeIndex[shapeId] = [];
     for (var i=0; i<tileIds.length; i++) {
       indexShapeIdByTileId(shapeId, tileIds[i], weightFunction);

@@ -2,7 +2,7 @@ import { importGeoJSON } from '../geojson/geojson-import';
 import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { isLatLngDataset } from '../crs/mapshaper-projections';
-import { requirePointLayer } from '../dataset/mapshaper-layer-utils';
+import { requirePointLayer, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import Delaunator from 'delaunator';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
@@ -18,8 +18,10 @@ cmd.alphaShapes = function(pointLyr, targetDataset, opts) {
   var filter = isLatLngDataset(targetDataset) ? getSphericalFilter(opts.interval) : getPlanarFilter(opts.interval);
   var dataset = getPolygonDataset(pointLyr, filter, opts);
   var merged = mergeDatasets([targetDataset, dataset]);
+  var lyr = merged.layers.pop();
   targetDataset.arcs = merged.arcs;
-  return merged.layers.pop();
+  setOutputLayerName(lyr, pointLyr, null, opts);
+  return lyr;
 };
 
 function getPlanarFilter(interval) {

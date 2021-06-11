@@ -5,7 +5,7 @@ import { buildPolygonMosaic } from '../polygons/mapshaper-polygon-mosaic';
 import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
 import { IdLookupIndex } from '../indexing/mapshaper-id-lookup-index';
 import { PolygonTiler } from '../polygons/mapshaper-polygon-tiler';
-import { error } from '../utils/mapshaper-logging';
+import { error, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import { T } from '../utils/mapshaper-timing';
 
@@ -28,7 +28,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
     // using -dissolve2. In this situation, we don't need a weight function.
     // Otherwise, if polygons are being dissolved into multiple groups,
     // we use a function to assign tiles in overlapping areas to a single shape.
-    weightFunction = getAreaWeightFunction(lyr.shapes, nodes.arcs);
+    weightFunction = getOverlapPriorityFunction(lyr.shapes, nodes.arcs, opts.overlap_rule);
   }
   this.mosaic = mosaic;
   this.nodes = nodes; // kludge
@@ -72,14 +72,33 @@ export function MosaicIndex(lyr, nodes, optsArg) {
     return getTileIdsByShapeIds(shapeIds).map(tileIdToTile);
   };
 
-  function getAreaWeightFunction(shapes, arcs) {
+  function getOverlapPriorityFunction(shapes, arcs, rule) {
+    var f;
+    if (!rule || rule == 'max-area') {
+      f = getAreaWeightFunction(shapes, arcs, false);
+    } else if (rule == 'min-area') {
+      f = getAreaWeightFunction(shapes, arcs, true);
+    } else if (rule == 'max-id') {
+      f = function(shapeId) {
+        return shapeId; };
+    } else if (rule == 'min-id') {
+      f = function(shapeId) { return -shapeId; };
+    } else {
+      stop('Unknown overlap rule:', rule);
+    }
+    return f;
+  }
+
+  function getAreaWeightFunction(shapes, arcs, invert) {
     var index = [];
+    var sign = invert ? -1 : 1;
     return function(shpId) {
       var weight;
       if (shpId in index) {
         weight = index[shpId];
       } else {
-        weight = index[shpId] = Math.abs(geom.getShapeArea(shapes[shpId], arcs));
+        weight = sign * Math.abs(geom.getShapeArea(shapes[shpId], arcs));
+        index[shpId] = weight;
       }
       return weight;
     };

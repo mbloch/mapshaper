@@ -2,13 +2,16 @@ import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { makePolygonBuffer } from '../buffer/mapshaper-polygon-buffer';
 import { makePolylineBuffer } from '../buffer/mapshaper-polyline-buffer';
 import { makePointBuffer } from '../buffer/mapshaper-point-buffer';
+import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 
-// returns a dataset
-cmd.buffer = function(layers, dataset, opts) {
-  return makeBufferLayer(layers[0], dataset, opts);
-};
+// TODO: consider if layers should be buffered together
+// cmd.buffer = function(layers, dataset, opts) {
+//   return makeBufferLayer(layers[0], dataset, opts);
+// };
+
+cmd.buffer = makeBufferLayer;
 
 function makeBufferLayer(lyr, dataset, opts) {
   var dataset2, lyr2;
@@ -23,7 +26,7 @@ function makeBufferLayer(lyr, dataset, opts) {
   }
   var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
   lyr2 = outputLayers[0];
-  lyr2.name = lyr.name;
+  setOutputLayerName(lyr2, lyr, null, opts);
   if (lyr.data && !lyr2.data) {
     lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
   }

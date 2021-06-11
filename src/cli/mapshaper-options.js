@@ -364,13 +364,6 @@ export function getOptionParser() {
     .option('where', whereOpt)
     .option('target', targetOpt);
 
-  parser.command('alpha-shapes')
-    .option('interval', {
-      type: 'number'
-    })
-    .option('target', targetOpt)
-    .option('no-replace', noReplaceOpt);
-
   parser.command('buffer')
     // .describe('')
     .option('radius', {
@@ -379,6 +372,10 @@ export function getOptionParser() {
     })
     .option('tolerance', {
       // describe: 'acceptable deviation for approximating curves'
+    })
+    .option('vertices', {
+      // describe: 'number of vertices to use when buffering points',
+      type: 'integer'
     })
     .option('backtrack', {
       type: 'integer'
@@ -525,6 +522,9 @@ export function getOptionParser() {
     .option('allow-overlaps', {
       describe: 'allow polygons to overlap (disables gap fill)',
       type: 'flag'
+    })
+    .option('overlap-rule', {
+      describe: 'how to resolve overlaps: min-id|max-id|min-area|[max-area]'
     })
     .option('allow-empty', {
       describe: 'keep null geometries (removed by default)',
@@ -1016,6 +1016,10 @@ export function getOptionParser() {
       type: 'flag',
       describe: 'merge layers with inconsistent data fields'
     })
+    .option('flatten', {
+      describe: 'remove polygon overlaps; higher-id polygons take priority',
+      type: 'flag'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt);
 
@@ -1025,17 +1029,6 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
-
-  // parser.command('point-to-grid')
-  //   .option('interval', {
-  //     type: 'number'
-  //   })
-  //   .option('radius', {
-  //     // describe: 'radius of '
-  //     type: 'number'
-  //   })
-  //   .option('target', targetOpt)
-  //   .option('no-replace', noReplaceOpt);
 
   parser.command('point-grid')
     .describe('create a rectangular grid of points')
@@ -1058,7 +1051,9 @@ export function getOptionParser() {
       type: 'bbox',
       describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
     })
-    .option('name', nameOpt);
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('points')
     .describe('create a point layer from a different layer type')
@@ -1505,9 +1500,18 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
-
   // Experimental commands
   parser.section('Experimental commands (may give unexpected results)');
+
+  parser.command('alpha-shapes')
+    // .describe('convert points to alpha shapes (aka concave hulls)')
+    .option('interval', {
+      describe: 'alpha parameter',
+      type: 'number'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('cluster')
     .describe('group polygons into compact clusters')
@@ -1611,6 +1615,27 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('target', targetOpt);
+
+  parser.command('point-to-grid')
+    .option('interval', {
+      // describe: size of grid in projected units
+      type: 'number'
+    })
+    .option('radius', {
+      // describe: radius to assign each point
+      type: 'number'
+    })
+    .option('circles', {
+      // describe: create a grid of circles instead of squares
+      type: 'flag'
+    })
+    .option('cell-margin', {
+      // describe: (0-1) inset grid shapes by a percentage
+      type: 'number'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('require')
     .describe('require a Node module for use in -each expressions')
