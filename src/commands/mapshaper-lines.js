@@ -1,6 +1,6 @@
 import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
 import { compileFeaturePairExpression, compileFeaturePairFilterExpression } from '../expressions/mapshaper-expressions';
-import { requireDataField, requirePolygonLayer, requirePointLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { requireDataField, requirePolygonLayer, requirePointLayer, getLayerBounds, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { aggregateDataRecords, getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
@@ -81,9 +81,10 @@ function pointsToLines(lyr, dataset, opts) {
     pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
   var dataset2 = importGeoJSON(geojson);
   var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-  if (!opts.no_replace) {
-    outputLayers[0].name = lyr.name || outputLayers[0].name;
-  }
+  // if (!opts.no_replace) {
+  //   outputLayers[0].name = lyr.name || outputLayers[0].name;
+  // }
+  setOutputLayerName(outputLayers[0], lyr, null, opts);
   return outputLayers;
 }
 
@@ -108,9 +109,7 @@ function pointsToCallouts(lyr, dataset, opts) {
   };
   var dataset2 = importGeoJSON(geojson);
   var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-  if (!opts.no_replace) {
-    outputLayers[0].name = lyr.name || outputLayers[0].name;
-  }
+  setOutputLayerName(outputLayers[0], lyr.name, null, opts);
   return outputLayers;
 }
 
@@ -183,7 +182,7 @@ export function polygonsToLines(lyr, arcs, opts) {
 
   addLines(extractInnerLines(lyr.shapes, classifier), 'inner');
   outputLyr = createLineLayer(shapes, records);
-  outputLyr.name = opts.no_replace ? null : lyr.name;
+  setOutputLayerName(outputLyr, lyr, null, opts);
   return outputLyr;
 
   function addLines(lines, typeName) {

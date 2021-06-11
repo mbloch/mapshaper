@@ -1,6 +1,6 @@
 
 import { requireDataField } from '../dataset/mapshaper-layer-utils';
-import { requirePolygonLayer, layerHasNonNullData } from '../dataset/mapshaper-layer-utils';
+import { requirePolygonLayer, layerHasNonNullData, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { parseColor } from '../color/color-utils';
 import cmd from '../mapshaper-cmd';
 import geom from '../geom/mapshaper-geom';
@@ -44,11 +44,11 @@ cmd.dots = function(lyr, arcs, opts) {
   });
 
   var lyr2 = {
-    name: opts.no_replace ? null : lyr.name,
     geometry_type: 'point',
     shapes: shapes2,
     data: new DataTable(records2)
   };
+  setOutputLayerName(lyr2, lyr, null, opts);
   return [lyr2];
 };
 

@@ -64,6 +64,7 @@ describe('mapshaper-point-grid.js', function () {
     };
     var lyr = api.pointGrid(null, opts);
     assert.deepEqual(lyr, {
+      name: 'grid',
       geometry_type: 'point',
       shapes: [[[1, 1]], [[1, 3]]]
     });
@@ -76,6 +77,7 @@ describe('mapshaper-point-grid.js', function () {
     };
     var lyr = api.pointGrid(null, opts);
     assert.deepEqual(lyr, {
+      name: 'grid',
       geometry_type: 'point',
       shapes: [[[1, 1]], [[1, 3]]]
     });
@@ -84,6 +86,7 @@ describe('mapshaper-point-grid.js', function () {
   it('uses bbox of dataset, if no bbox option present', function() {
     var dataset = {
       layers: [{
+        name: 'grid',
         geometry_type: 'point',
         shapes: [[[0, 4], [2, 0]]]
       }]
@@ -93,6 +96,7 @@ describe('mapshaper-point-grid.js', function () {
     };
     var lyr = api.pointGrid(dataset, opts);
     assert.deepEqual(lyr, {
+      name: 'grid',
       geometry_type: 'point',
       shapes: [[[1, 1]], [[1, 3]]]
     });
@@ -104,6 +108,7 @@ describe('mapshaper-point-grid.js', function () {
     };
     var lyr = api.pointGrid(null, opts);
     assert.deepEqual(lyr, {
+      name: 'grid',
       geometry_type: 'point',
       shapes: [[[-90, 0]], [[90, 0]]]
     });

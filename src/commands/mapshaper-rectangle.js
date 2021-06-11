@@ -1,7 +1,7 @@
 import cmd from '../mapshaper-cmd';
 import { convertFourSides } from '../geom/mapshaper-units';
 import { setDatasetCRS, getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
-import { getLayerBounds, layerHasGeometry } from '../dataset/mapshaper-layer-utils';
+import { getLayerBounds, layerHasGeometry, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getPointFeatureBounds } from '../points/mapshaper-point-utils';
@@ -41,9 +41,7 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
   };
   var dataset = importGeoJSON(geojson, {});
   var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
-  if (!opts.no_replace) {
-    outputLayers[0].name = targetLyr.name || outputLayers[0].name;
-  }
+  setOutputLayerName(outputLayers[0], targetLyr, null, opts);
   return outputLayers;
 };
 
@@ -52,6 +50,7 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
 cmd.rectangle2 = function(target, opts) {
   var datasets = target.layers.map(function(lyr) {
     var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
+    setOutputLayerName(dataset.layers[0], lyr, null, opts);
     if (!opts.no_replace) {
       dataset.layers[0].name = lyr.name || dataset.layers[0].name;
     }
