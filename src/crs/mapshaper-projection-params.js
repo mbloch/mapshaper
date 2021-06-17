@@ -36,11 +36,13 @@ function getBBox(dataset) {
   return getDatasetBounds(dataset).toArray();
 }
 
+// See: Savric & Jenny, "Automating the selection of standard parallels for conic map projections"
+// Using one-sixth rule, not the more complicated formula proposed by the authors
 export function getConicParams(bbox, decimals) {
   var cx = (bbox[0] + bbox[2]) / 2;
   var h = bbox[3] - bbox[1];
-  var sp1 = bbox[1] + 0.25 * h;
-  var sp2 = bbox[1] + 0.75 * h;
+  var sp1 = bbox[1] + 1/6 * h;
+  var sp2 = bbox[1] + 5/6 * h;
   return `+lon_0=${ cx.toFixed(decimals) } +lat_1=${ sp1.toFixed(decimals) } +lat_2=${ sp2.toFixed(decimals) }`;
 }
 

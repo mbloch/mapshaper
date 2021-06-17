@@ -20,9 +20,9 @@ describe('mapshaper-projection-params.js', function () {
   })
 
   it('getConicParams()', function() {
-    var bbox=[0, 10, 30, 50];
+    var bbox=[0, 10, 30, 70];
     var str = getConicParams(bbox, 2);
-    assert.equal(str, '+lon_0=15.00 +lat_1=20.00 +lat_2=40.00');
+    assert.equal(str, '+lon_0=15.00 +lat_1=20.00 +lat_2=60.00');
   })
 
   it('getCenterParams()', function() {
