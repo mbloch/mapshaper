@@ -2,6 +2,9 @@ import { internal, utils, Bounds } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 
+var MIN_ARC_LEN = 0.1;
+var MIN_PATH_LEN = 0.1;
+
 // TODO: consider moving this upstream
 function getArcsForRendering(obj, ext) {
   var dataset = obj.source.dataset;
@@ -61,7 +64,7 @@ export function drawStyledLayerToCanvas(obj, canv, ext) {
 
 // Return a function for testing if an arc should be drawn in the current view
 function getArcFilter(arcs, ext, usedFlag, arcCounts) {
-  var minPathLen = 0.5 * ext.getPixelSize(),
+  var minPathLen = ext.getPixelSize() * MIN_PATH_LEN, // * 0.5
       geoBounds = ext.getBounds(),
       geoBBox = geoBounds.toArray(),
       allIn = geoBounds.contains(arcs.getBounds()),
@@ -307,7 +310,7 @@ export function DisplayCanvas() {
         startPath(ctx, style);
       }
       iter = protectIterForDrawing(arcs.getArcIter(i), _ext);
-      drawPath(iter, t, ctx, 0.6);
+      drawPath(iter, t, ctx, MIN_ARC_LEN);
     }
     endPath(ctx, style);
   };
