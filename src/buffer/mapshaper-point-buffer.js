@@ -1,4 +1,4 @@
-import { getPreciseGeodeticSegmentFunction, getFastGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
+import { getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { getBufferDistanceFunction } from '../buffer/mapshaper-buffer-common';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getDatasetCRS, getCRS, isLatLngCRS } from '../crs/mapshaper-projections';
@@ -20,7 +20,7 @@ export function makePointBuffer(lyr, dataset, opts) {
 // Make a single geodetic circle
 export function getCircleGeoJSON(center, radius, vertices, opts) {
   var n = vertices || 360;
-  var geod = getPreciseGeodeticSegmentFunction(getCRS('wgs84')); // ?
+  var geod = getGeodeticSegmentFunction(getCRS('wgs84')); // ?
   if (opts.inset) {
     radius -= opts.inset;
   }
@@ -35,7 +35,7 @@ function makePointBufferGeoJSON(lyr, dataset, opts) {
   var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
   var crs = getDatasetCRS(dataset);
   var spherical = isLatLngCRS(crs);
-  var geod = getPreciseGeodeticSegmentFunction(crs);
+  var geod = getGeodeticSegmentFunction(crs);
   var geometries = lyr.shapes.map(function(shape, i) {
     var dist = distanceFn(i);
     if (!dist || !shape) return null;

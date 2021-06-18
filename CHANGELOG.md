@@ -1,3 +1,8 @@
+v0.5.59
+* Added -merge-layers flatten option, for removing overlaps in polygon layers.
+* Added -clean overlap-rule=[min-id|max-id|min-area|max-area]
+* Added undocumented -filter-points command
+
 v0.5.58
 * Bug fixes
 

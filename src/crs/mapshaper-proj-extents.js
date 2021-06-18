@@ -1,5 +1,5 @@
 import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
-import { getPreciseGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
+import { getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { inList, getCrsSlug, isAxisAligned, isMeridianBounded } from '../crs/mapshaper-proj-info';
 import {
   getSemiMinorAxis, getCircleRadiusFromAngle

@@ -32,7 +32,7 @@ function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
   return [lng2, lat2];
 }
 
-export function getPreciseGeodeticSegmentFunction(P) {
+export function getGeodeticSegmentFunction(P) {
   if (!isLatLngCRS(P)) {
     return getPlanarSegmentEndpoint;
   }

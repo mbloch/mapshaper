@@ -6,13 +6,14 @@ import {
   requirePointLayer, getLayerBounds, countMultiPartFeatures, setOutputLayerName
 } from '../dataset/mapshaper-layer-utils';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { forEachPoint } from '../points/mapshaper-point-utils';
+import { forEachPoint, getPointsInLayer } from '../points/mapshaper-point-utils';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
 import { getPointBufferCoordinates } from '../buffer/mapshaper-point-buffer';
+import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
 
 cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
   targetLayers.forEach(requirePointLayer);
@@ -49,19 +50,17 @@ cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
 
 function getPolygonDataset(pointLyr, gridBBox, opts) {
   var interval = opts.interval;
-  var points = getPointArr(pointLyr);
-  var lookup = getPointIndex(points, opts.radius);
+  var points = getPointsInLayer(pointLyr);
   var grid = getGridData(gridBBox, interval);
-  var size = grid.size();
-  var n = size[0] * size[1];
+  var lookup = getPointIndex(points, grid, opts.radius);
+  var n = grid.cells();
   var geojson = {
     type: 'FeatureCollection',
     features: []
   };
-  var cands, bbox, center, weight;
+  var cands, center, weight;
   for (var i=0; i<n; i++) {
-    bbox = grid.idxToBBox(i);
-    cands = lookup(bbox);
+    cands = lookup(i);
     if (!cands.length) continue;
     center = grid.idxToPoint(i);
     weight = calcCellWeight(center, cands, points, opts);
@@ -130,37 +129,46 @@ function makeCircleCoords(center, opts) {
   return getPointBufferCoordinates(center, radius, 20, getPlanarSegmentEndpoint);
 }
 
-function getPointIndex(points, radius) {
+function getPointIndex(points, grid, radius) {
   var Flatbush = require('flatbush');
-  var index = new Flatbush(points.length);
+  var gridIndex = new IdTestIndex(grid.cells());
+  var bboxIndex = new Flatbush(points.length);
+  var empty = [];
   points.forEach(function(p) {
-    index.add.apply(index, getPointBounds(p, radius));
+    addPointToGridIndex(p, gridIndex, grid);
+    bboxIndex.add.apply(bboxIndex, getPointBounds(p, radius));
   });
-  index.finish();
-  return function(bbox) {
-    return index.search.apply(index, bbox);
+  bboxIndex.finish();
+  return function(i) {
+    if (!gridIndex.hasId(i)) return empty;
+    var bbox = grid.idxToBBox(i);
+    return bboxIndex.search.apply(bboxIndex, bbox);
   };
+}
+
+function addPointToGridIndex(p, index, grid) {
+  var i = grid.pointToIdx(p);
+  var c = grid.idxToCol(i);
+  var r = grid.idxToRow(i);
+  addCellToGridIndex(c+1, r+1, grid, index);
+  addCellToGridIndex(c+1, r, grid, index);
+  addCellToGridIndex(c+1, r-1, grid, index);
+  addCellToGridIndex(c, r+1, grid, index);
+  addCellToGridIndex(c, r, grid, index);
+  addCellToGridIndex(c, r-1, grid, index);
+  addCellToGridIndex(c-1, r+1, grid, index);
+  addCellToGridIndex(c-1, r, grid, index);
+  addCellToGridIndex(c-1, r-1, grid, index);
+}
+
+function addCellToGridIndex(c, r, grid, index) {
+  var i = grid.colRowToIdx(c, r);
+  if (i > -1) index.setId(i);
 }
 
 // TODO: support spherical coords
 function getPointBounds(p, radius) {
   return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
-}
-
-// TODO: remove duplication with alpha-shapes.js
-function getPointArr(lyr) {
-  var coords = [];
-  forEachPoint(lyr.shapes, function(p) {
-    coords.push(p);
-  });
-  return coords;
-}
-
-function interpolateToGrid(pointLyr, bbox, opts) {
-  var records = pointLyr.data ? pointLyr.data.getRecords() : [];
-  forEachPoint(pointLyr.shapes, function(p, id) {
-
-  });
 }
 
 function getGridInterpolator(bbox, interval) {
@@ -182,6 +190,9 @@ function getGridData(bbox, interval) {
   var rows = Math.ceil(h / interval);
   function size() {
     return [cols, rows];
+  }
+  function cells() {
+    return cols * rows;
   }
   function pointToCol(xy) {
     var dx = xy[0] - xmin;
@@ -220,7 +231,7 @@ function getGridData(bbox, interval) {
     ];
   }
   return {
-    size, pointToCol, pointToRow, colRowToIdx, pointToIdx,
+    size, cells, pointToCol, pointToRow, colRowToIdx, pointToIdx,
     idxToCol, idxToRow, idxToBBox, idxToPoint
   };
 }

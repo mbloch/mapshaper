@@ -1,7 +1,6 @@
 import { joinTables } from '../join/mapshaper-join-tables';
 import { stop } from '../utils/mapshaper-logging';
 import { PathIndex } from '../paths/mapshaper-path-index';
-import { PointIndex } from '../points/mapshaper-point-index';
 import { DataTable } from '../datatable/mapshaper-data-table';
 
 export function joinPointsToPolygons(targetLyr, arcs, pointLyr, opts) {
@@ -17,11 +16,6 @@ export function joinPolygonsToPoints(targetLyr, polygonLyr, arcs, opts) {
   return joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 }
 
-export function joinPointsToPoints(targetLyr, srcLyr, opts) {
-  var joinFunction = getPointToPointFunction(targetLyr, srcLyr, opts);
-  prepJoinLayers(targetLyr, srcLyr);
-  return joinTables(targetLyr.data, srcLyr.data, joinFunction, opts);
-}
 
 export function prepJoinLayers(targetLyr, srcLyr) {
   if (!targetLyr.data) {
@@ -31,16 +25,6 @@ export function prepJoinLayers(targetLyr, srcLyr) {
   if (!srcLyr.data) {
     stop("Can't join a layer that is missing attribute data");
   }
-}
-
-function getPointToPointFunction(targetLyr, srcLyr, opts) {
-  var shapes = targetLyr.shapes;
-  var index = new PointIndex(srcLyr.shapes, {});
-  return function(targId) {
-    var srcId = index.findNearestPointFeature(shapes[targId]);
-    // TODO: accept multiple hits
-    return srcId > -1 ? [srcId] : null;
-  };
 }
 
 export function getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, opts) {

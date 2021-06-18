@@ -38,6 +38,7 @@ import '../commands/mapshaper-filter-geom';
 import '../commands/mapshaper-filter-islands';
 import '../commands/mapshaper-filter-islands2';
 import '../commands/mapshaper-filter-rename-fields';
+import '../commands/mapshaper-filter-points';
 import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
@@ -222,6 +223,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'filter-islands2') {
       applyCommandToEachLayer(cmd.filterIslands2, targetLayers, targetDataset, opts);
+
+    } else if (name == 'filter-points') {
+      applyCommandToEachLayer(cmd.filterPoints, targetLayers, targetDataset, opts);
 
     } else if (name == 'filter-slivers') {
       applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);

@@ -5,7 +5,8 @@ import { message, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { joinTables, validateFieldNames } from '../join/mapshaper-join-tables';
-import { joinPointsToPolygons, joinPolygonsToPoints, joinPointsToPoints } from '../join/mapshaper-point-polygon-join';
+import { joinPointsToPolygons, joinPolygonsToPoints } from '../join/mapshaper-point-polygon-join';
+import { joinPointsToPoints } from '../join/mapshaper-point-point-join';
 
 cmd.join = function(targetLyr, dataset, src, opts) {
   var srcType, targetType, retn;

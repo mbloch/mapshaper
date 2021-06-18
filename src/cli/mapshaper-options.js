@@ -1509,6 +1509,10 @@ export function getOptionParser() {
       describe: 'alpha parameter',
       type: 'number'
     })
+    .option('keep-points', {
+      // describe: 'replace single points with tiny triangles',
+      type: 'flag'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
@@ -1561,6 +1565,17 @@ export function getOptionParser() {
     .option('module', {
       DEFAULT: true,
       describe: 'name of Node module containing the command'
+    });
+
+  parser.command('filter-points')
+    // .describe('remove points that are not part of a group')
+    // .option('min-group-size', {
+    //   // describe: 'drop points with fewer points in the vicinity',
+    //   type: 'number'
+    // })
+    .option('group-interval', {
+      // describe: max interval separating a point from other points
+      type: 'number'
     });
 
   parser.command('frame')

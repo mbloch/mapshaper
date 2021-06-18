@@ -1,5 +1,6 @@
 import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
+import { stop } from '../utils/mapshaper-logging';
 
 export function countPointsInLayer(lyr) {
   var count = 0;
@@ -26,6 +27,15 @@ export function getPointFeatureBounds(shape, bounds) {
     bounds.mergePoint(p[0], p[1]);
   }
   return bounds;
+}
+
+// NOTE: layers can have multipoint features and null features
+export function getPointsInLayer(lyr) {
+  var coords = [];
+  forEachPoint(lyr.shapes, function(p) {
+    coords.push(p);
+  });
+  return coords;
 }
 
 // Iterate over each [x,y] point in a layer

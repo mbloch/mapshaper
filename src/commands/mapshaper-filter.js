@@ -58,6 +58,27 @@ cmd.filterFeatures = function(lyr, arcs, opts) {
   return filteredLyr;
 };
 
+// TODO: update filter command to use this function
+export function filterLayerInPlace(lyr, filter, invert) {
+  var records = lyr.data ? lyr.data.getRecords() : null,
+      shapes = lyr.shapes || null,
+      n = getFeatureCount(lyr),
+      filteredShapes = shapes ? [] : null,
+      filteredRecords = records ? [] : null;
+  utils.repeat(n, function(shapeId) {
+    var result = filter(shapeId);
+    if (invert) result = !result;
+    if (result === true) {
+      if (shapes) filteredShapes.push(shapes[shapeId] || null);
+      if (records) filteredRecords.push(records[shapeId] || null);
+    } else if (result !== false) {
+      stop("Expression must return true or false");
+    }
+  });
+  lyr.shapes = filteredShapes;
+  lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+}
+
 function getNullGeometryFilter(lyr, arcs) {
   var shapes = lyr.shapes;
   if (lyr.geometry_type == 'polygon') {

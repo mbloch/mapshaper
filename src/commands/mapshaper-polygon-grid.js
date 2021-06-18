@@ -1,4 +1,3 @@
-
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { convertIntervalParam } from '../geom/mapshaper-units';
