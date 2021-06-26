@@ -28,6 +28,7 @@
     get reduceAsync () { return reduceAsync; },
     get merge () { return merge; },
     get difference () { return difference; },
+    get intersection () { return intersection; },
     get indexOf () { return indexOf; },
     get contains () { return contains; },
     get some () { return some; },
@@ -3125,6 +3126,13 @@
     });
   }
 
+  // Return the intersection of two arrays
+  function intersection(a, b) {
+    return a.filter(function(el) {
+      return b.includes(el);
+    });
+  }
+
   function indexOf(arr, item) {
     var nan = item !== item;
     for (var i = 0, len = arr.length || 0; i < len; i++) {
@@ -5362,7 +5370,7 @@
         }
       });
       // console.log(hitThreshold, bullseye);
-      return hits;
+      return utils.uniq(hits); // multipoint features can register multiple hits
     }
 
     function getRadiusFunction(style) {
@@ -9717,6 +9725,9 @@
 
   utils.inherit(MapExtent, EventDispatcher);
 
+  var MIN_ARC_LEN = 0.1;
+  var MIN_PATH_LEN = 0.1;
+
   // TODO: consider moving this upstream
   function getArcsForRendering(obj, ext) {
     var dataset = obj.source.dataset;
@@ -9776,7 +9787,7 @@
 
   // Return a function for testing if an arc should be drawn in the current view
   function getArcFilter(arcs, ext, usedFlag, arcCounts) {
-    var minPathLen = 0.5 * ext.getPixelSize(),
+    var minPathLen = ext.getPixelSize() * MIN_PATH_LEN, // * 0.5
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
         allIn = geoBounds.contains(arcs.getBounds()),
@@ -10022,7 +10033,7 @@
           startPath(ctx, style);
         }
         iter = protectIterForDrawing(arcs.getArcIter(i), _ext);
-        drawPath(iter, t, ctx, 0.6);
+        drawPath(iter, t, ctx, MIN_ARC_LEN);
       }
       endPath(ctx, style);
     };
