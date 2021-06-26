@@ -105,7 +105,7 @@ export function getShapeHitTest(displayLayer, ext) {
       }
     });
     // console.log(hitThreshold, bullseye);
-    return hits;
+    return utils.uniq(hits); // multipoint features can register multiple hits
   }
 
   function getRadiusFunction(style) {
