@@ -201,6 +201,18 @@ export function getDatasetCRS(dataset) {
   return P;
 }
 
+export function requireDatasetsHaveCompatibleCRS(arr) {
+  arr.reduce(function(memo, dataset) {
+    var P = getDatasetCRS(dataset);
+    if (memo && P) {
+      if (isLatLngCRS(memo) != isLatLngCRS(P)) {
+        stop("Unable to combine projected and unprojected datasets");
+      }
+    }
+    return P || memo;
+  }, null);
+}
+
 // Assumes conformal projections; consider returning average of vertical and
 // horizontal scale factors.
 // x, y: a point location in projected coordinates

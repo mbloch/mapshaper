@@ -1,4 +1,4 @@
-import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
+import { requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
 import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { copyLayerShapes } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
@@ -95,18 +95,6 @@ export function mergeDatasets(arr) {
     arcs: mergedArcs,
     layers: mergedLayers
   };
-}
-
-function requireDatasetsHaveCompatibleCRS(arr) {
-  arr.reduce(function(memo, dataset) {
-    var P = getDatasetCRS(dataset);
-    if (memo && P) {
-      if (isLatLngCRS(memo) != isLatLngCRS(P)) {
-        stop("Unable to combine projected and unprojected datasets");
-      }
-    }
-    return P || memo;
-  }, null);
 }
 
 function mergeDatasetInfo(merged, dataset) {

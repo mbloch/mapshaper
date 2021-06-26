@@ -10,9 +10,9 @@ describe('Polygons to polygons spatial joins', function () {
       var json = JSON.parse(output['out.json']);
       var rec = json.features[0].properties;
       assert.deepEqual(rec, {
-        name: 'A', // first joined value gets assigned
+        // name: 'A', // first joined value gets assigned
         names: ['A', 'B'], // collected names
-        group: 'foo',
+        // group: 'foo',
         groups: ['foo', 'foo'], // collected groups
         n: 2
       });

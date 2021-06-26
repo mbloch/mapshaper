@@ -399,14 +399,12 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(fields, ['st', 'co']);
     })
 
-    // Changed in v0.74.
-    // it('Do not join all fields by default if calc= option is present', function () {
-    //   var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {calc: 'n=count()'})
-    //   assert.deepEqual(fields, []);
-    // })
-    it('Join all fields by default even if calc= option is present', function () {
+    // Original behavior: copy all fields even if calc= is present (for consistency)
+    // v0.5.59: don't copy fields by default when calc= is present
+    //
+    it('Do not copy all fields by default if calc= option is present', function () {
       var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {calc: 'n=count()'})
-      assert.deepEqual(fields, ['st', 'co']);
+      assert.deepEqual(fields, []);
     })
 
     it('Error if type hints are present', function() {

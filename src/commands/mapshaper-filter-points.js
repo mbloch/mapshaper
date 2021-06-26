@@ -1,7 +1,7 @@
 import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
-import { requirePointLayer, countMultiPartFeatures } from '../dataset/mapshaper-layer-utils';
+import { requireSinglePointLayer } from '../dataset/mapshaper-layer-utils';
 import { isLatLngDataset, getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { stop } from '../utils/mapshaper-logging';
 import { filterLayerInPlace } from '../commands/mapshaper-filter';
@@ -10,10 +10,7 @@ import { getAlphaDistanceFilter } from '../commands/mapshaper-alpha-shapes';
 import Delaunator from 'delaunator';
 
 cmd.filterPoints = function(lyr, dataset, opts) {
-  requirePointLayer(lyr);
-  if (countMultiPartFeatures(lyr) > 0) {
-    stop('This command requires single points');
-  }
+  requireSinglePointLayer(lyr);
   if (opts.group_interval > 0 === false) {
     stop('Expected a positive group_interval parameter');
   }

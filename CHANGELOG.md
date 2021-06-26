@@ -1,7 +1,10 @@
 v0.5.59
-* Added -merge-layers flatten option, for removing overlaps in polygon layers.
-* Added -clean overlap-rule=[min-id|max-id|min-area|max-area]
-* Added undocumented -filter-points command
+* Added -merge-layers flatten option, for removing overlaps when merging multiple polygon layers.
+* Added -clean overlap-rule=[min-id|max-id|min-area|max-area] option.
+* Added -join max-distance= option for point-to-point spatial joins.
+* Added support for many-to-one point-to-point spatial joins.
+* Added -join largest-overlap option for polygon-to-polygon spatial joins, to select a single polygon to join when multiple source polygons overlap a target polygon, based on area of overlap.
+* Added undocumented -filter-points command.
 
 v0.5.58
 * Bug fixes

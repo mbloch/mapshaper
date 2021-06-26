@@ -7,8 +7,9 @@ import cmd from '../mapshaper-cmd';
 import { joinTables, validateFieldNames } from '../join/mapshaper-join-tables';
 import { joinPointsToPolygons, joinPolygonsToPoints } from '../join/mapshaper-point-polygon-join';
 import { joinPointsToPoints } from '../join/mapshaper-point-point-join';
+import { requireDatasetsHaveCompatibleCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 
-cmd.join = function(targetLyr, dataset, src, opts) {
+cmd.join = function(targetLyr, targetDataset, src, opts) {
   var srcType, targetType, retn;
   if (!src || !src.layer.data || !src.dataset) {
     stop("Missing a joinable data source");
@@ -21,16 +22,17 @@ cmd.join = function(targetLyr, dataset, src, opts) {
     retn = joinAttributesToFeatures(targetLyr, src.layer.data, opts);
   } else {
     // spatial join
+    requireDatasetsHaveCompatibleCRS([targetDataset, src.dataset]);
     srcType = src.layer.geometry_type;
     targetType = targetLyr.geometry_type;
     if (srcType == 'point' && targetType == 'polygon') {
-      retn = joinPointsToPolygons(targetLyr, dataset.arcs, src.layer, opts);
+      retn = joinPointsToPolygons(targetLyr, targetDataset.arcs, src.layer, opts);
     } else if (srcType == 'polygon' && targetType == 'point') {
       retn = joinPolygonsToPoints(targetLyr, src.layer, src.dataset.arcs, opts);
     } else if (srcType == 'point' && targetType == 'point') {
-      retn = joinPointsToPoints(targetLyr, src.layer, opts);
+      retn = joinPointsToPoints(targetLyr, src.layer, getDatasetCRS(targetDataset), opts);
     } else if (srcType == 'polygon' && targetType == 'polygon') {
-      retn = joinPolygonsToPolygons(targetLyr, dataset, src, opts);
+      retn = joinPolygonsToPolygons(targetLyr, targetDataset, src, opts);
     } else {
       stop(utils.format("Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
@@ -38,10 +40,10 @@ cmd.join = function(targetLyr, dataset, src, opts) {
   }
 
   if (retn.unmatched) {
-    dataset.layers.push(retn.unmatched);
+    targetDataset.layers.push(retn.unmatched);
   }
   if (retn.unjoined) {
-    dataset.layers.push(retn.unjoined);
+    targetDataset.layers.push(retn.unjoined);
   }
 };
 

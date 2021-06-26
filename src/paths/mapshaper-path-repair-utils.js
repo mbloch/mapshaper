@@ -75,14 +75,14 @@ export function removeSpikesInPath(ids) {
 // split into two rings that touch each other where the original ring crossed itself.
 //
 export function getSelfIntersectionSplitter(nodes) {
-  var pathIndex = new IdTestIndex(nodes.arcs.size());
+  var pathIndex = new IdTestIndex(nodes.arcs.size(), true);
   var filter = function(arcId) {
     return pathIndex.hasId(~arcId);
   };
   return function(path) {
     pathIndex.setIds(path);
     var paths = dividePath(path);
-    pathIndex.clearIds(path);
+    pathIndex.clear();
     return paths;
   };
 

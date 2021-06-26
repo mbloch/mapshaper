@@ -17,7 +17,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
   // keep track of which tiles have been assigned to shapes
-  var fetchedTileIndex = new IdTestIndex(mosaic.length);
+  var fetchedTileIndex = new IdTestIndex(mosaic.length, true);
   // bidirection index of tile ids <=> shape ids
   var tileShapeIndex = new TileShapeIndex(mosaic, opts);
   // assign tiles to shapes
@@ -145,7 +145,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
     }
     // clearing this index allows duplicate tile ids between calls to this function
     // (should not happen in a typical dissolve)
-    fetchedTileIndex.clearIds(uniqIds);
+    fetchedTileIndex.clear();
     return uniqIds;
   }
 }

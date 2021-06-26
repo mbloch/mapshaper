@@ -199,6 +199,10 @@ export function getFieldsToJoin(destFields, srcFields, opts) {
       joinFields = opts.fields;
       validateFieldNames(joinFields);
     }
+  } else if (opts.calc) {
+    // presence of calc= option suggests a many-to-one or many-to-many join;
+    // it usually doesn't make sense to join all fields by default
+    joinFields = [];
   } else {
     // If a list of fields to join is not given, try to join all of the
     // source fields

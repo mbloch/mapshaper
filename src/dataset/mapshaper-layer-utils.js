@@ -127,6 +127,13 @@ export function requirePointLayer(lyr, msg) {
     stop(layerTypeMessage(lyr, "Expected a point layer", msg));
 }
 
+export function requireSinglePointLayer(lyr, msg) {
+  requirePointLayer(lyr);
+  if (countMultiPartFeatures(lyr) > 0) {
+    stop(msg || 'This command requires single points');
+  }
+}
+
 export function requirePolylineLayer(lyr, msg) {
   if (!lyr || lyr.geometry_type !== 'polyline')
     stop(layerTypeMessage(lyr, "Expected a polyline layer", msg));

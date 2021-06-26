@@ -108,7 +108,12 @@ describe('Points to polygons and polygons to points spatial join', function () {
       };
       var opts = {calc: "joins = _.count(), total=sum(count)"};
       api.internal.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
-      assert.deepEqual(target.layers[0].data.getRecords(), [{total: 4, joins: 2, foo: 'a', count: 1}] )
+      assert.deepEqual(target.layers[0].data.getRecords(), [{
+        total: 4,
+        joins: 2,
+        // foo: 'a',
+        // count: 1
+      }] )
     })
 
     it('simple polygon to point join', function () {

@@ -8,15 +8,15 @@ import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
 //
 export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   var arcs = nodes.arcs;
-  var visitedTileIndex = new IdTestIndex(mosaic.length);
+  var visitedTileIndex = new IdTestIndex(mosaic.length, true);
   var divide = getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
   var currShapeId;
   var currRingBbox;
   var tilesInShape; // accumulator for tile ids of tiles in current shape
-  var ringIndex = new IdTestIndex(arcs.size());
-  var holeIndex = new IdTestIndex(arcs.size());
+  var ringIndex = new IdTestIndex(arcs.size(), true);
+  var holeIndex = new IdTestIndex(arcs.size(), true);
 
   // return ids of tiles in shape
   this.getTilesInShape = function(shp, shapeId) {
@@ -40,7 +40,7 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     retn = tilesInShape;
     // reset tmp vars, etc
     tilesInShape = null;
-    holeIndex.clearIds(currHoles);
+    holeIndex.clear();
     currHoles = null;
     return retn;
   };
@@ -53,9 +53,9 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     currRingBbox = arcs.getSimpleShapeBounds2(path);
     ringIndex.setIds(path);
     procArcIds(path);
-    ringIndex.clearIds(path);
+    ringIndex.clear();
     // allow overlapping rings to visit the same tiles
-    visitedTileIndex.clearIds(tilesInShape);
+    visitedTileIndex.clear();
   }
 
   // optimized version: traversal without recursion (to avoid call stack oflo, excessive gc, etc)

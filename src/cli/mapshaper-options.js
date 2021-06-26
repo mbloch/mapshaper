@@ -956,6 +956,18 @@ export function getOptionParser() {
       describe: '(polygon-polygon join) join polygons via inner points',
       type: 'flag'
     })
+    .option('largest-overlap', {
+      describe: '(polygon-polygon join) use max overlap to join one polygon',
+      type: 'flag'
+    })
+    // .option('nearest-point', {
+    //   describe: '(point-point join)',
+    //   type: 'flag'
+    // })
+    .option('max-distance', {
+      describe: '(point-point join)',
+      type: 'distance'
+    })
     .option('planar', {
       // describe: 'use planar geometry when interpolating by area' // useful for testing
       type: 'flag'

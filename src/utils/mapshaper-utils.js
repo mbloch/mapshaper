@@ -231,6 +231,13 @@ export function difference(arr, other) {
   });
 }
 
+// Return the intersection of two arrays
+export function intersection(a, b) {
+  return a.filter(function(el) {
+    return b.includes(el);
+  });
+}
+
 export function indexOf(arr, item) {
   var nan = item !== item;
   for (var i = 0, len = arr.length || 0; i < len; i++) {
