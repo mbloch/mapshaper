@@ -142,8 +142,10 @@ function shuffle(arr) {
 // opts: dots command options
 export function getDataRecord(i, d, opts) {
   var o = {};
-  if (opts.colors) {
-    o.fill = opts.colors[i];
+  var key = opts.save_as || 'fill';
+  var values = opts.colors || opts.values;
+  if (values) {
+    o[key] = values[i];
     o.r = opts.r || 1.3;
   } else if (opts.r) {
     o.r = opts.r;

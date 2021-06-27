@@ -17,6 +17,17 @@ describe('mapshaper-dots.js', function () {
       assert.deepEqual(out, {fill: 'green', r: 1.3})
     })
 
+    it('values option', function () {
+      var out = getDataRecord(1, null, {values: ['a', 'b']});
+      assert.deepEqual(out, {fill: 'b', r: 1.3})
+    })
+
+    it('save-as option', function () {
+      var out = getDataRecord(0, null, {values: ['a', 'b'], save_as: 'name'});
+      assert.deepEqual(out, {name: 'a', r: 1.3})
+    })
+
+
   })
 
 })

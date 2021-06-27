@@ -695,6 +695,13 @@ export function getOptionParser() {
       describe: 'one or more colors',
       type: 'strings'
     })
+    .option('values', {
+      describe: 'values to assign to dot classes (alternative to colors=)',
+      type: 'strings'
+    })
+    .option('save-as', {
+      describe: 'name of output field (default is fill)'
+    })
     .option('r', {
       describe: 'radius of each dot in pixels',
       type: 'number'
@@ -965,7 +972,7 @@ export function getOptionParser() {
     //   type: 'flag'
     // })
     .option('max-distance', {
-      describe: '(point-point join)',
+      describe: '(point-point join) join source points within this radius',
       type: 'distance'
     })
     .option('planar', {
