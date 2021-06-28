@@ -18853,6 +18853,13 @@ ${svg}
         describe: 'one or more colors',
         type: 'strings'
       })
+      .option('values', {
+        describe: 'values to assign to dot classes (alternative to colors=)',
+        type: 'strings'
+      })
+      .option('save-as', {
+        describe: 'name of color/value output field (default is fill)'
+      })
       .option('r', {
         describe: 'radius of each dot in pixels',
         type: 'number'
@@ -19123,7 +19130,7 @@ ${svg}
       //   type: 'flag'
       // })
       .option('max-distance', {
-        describe: '(point-point join)',
+        describe: '(point-point join) join source points within this radius',
         type: 'distance'
       })
       .option('planar', {
@@ -30722,8 +30729,10 @@ ${svg}
   // opts: dots command options
   function getDataRecord(i, d, opts) {
     var o = {};
-    if (opts.colors) {
-      o.fill = opts.colors[i];
+    var key = opts.save_as || 'fill';
+    var values = opts.colors || opts.values;
+    if (values) {
+      o[key] = values[i];
       o.r = opts.r || 1.3;
     } else if (opts.r) {
       o.r = opts.r;
