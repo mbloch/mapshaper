@@ -1,3 +1,6 @@
+v0.5.60
+* Added save-as= and values= options to -dots command (like -classify).
+
 v0.5.59
 * Added -merge-layers flatten option, for removing overlaps when merging multiple polygon layers.
 * Added -clean overlap-rule=[min-id|max-id|min-area|max-area] option.

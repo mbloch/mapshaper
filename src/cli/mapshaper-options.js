@@ -700,7 +700,7 @@ export function getOptionParser() {
       type: 'strings'
     })
     .option('save-as', {
-      describe: 'name of output field (default is fill)'
+      describe: 'name of color/value output field (default is fill)'
     })
     .option('r', {
       describe: 'radius of each dot in pixels',
