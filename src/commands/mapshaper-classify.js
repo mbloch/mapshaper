@@ -46,7 +46,13 @@ cmd.classify = function(lyr, optsArg) {
 
   if (opts.index_field) {
     dataField = opts.index_field;
-    numBuckets = validateClassIndexField(records, opts.index_field);
+    if (numBuckets > 0 === false) {
+      stop('The index-field= option requires the classes= option to be set');
+    }
+    // You can't infer the number of classes by looking at index values;
+    // this can cause unwanted interpolation if one or more values are
+    // not present in the index field
+    // numBuckets = validateClassIndexField(records, opts.index_field);
 
   } else if (opts.field) {
     dataField = opts.field;

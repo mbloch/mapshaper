@@ -3,19 +3,25 @@ import { stop } from '../utils/mapshaper-logging';
 import { parseColor } from '../color/color-utils';
 import { formatColor } from '../color/color-utils';
 
-export function blend() {
-  var args = Array.from(arguments);
-  var colors = [],
-      weights = [],
-      col, weight, i;
-  for (i=0; i<args.length; i+= 2) {
-    colors.push(parseColor(args[i]));
-    weights.push(+args[i + 1] || 0);
+export function blend(a, b) {
+  var colors, weights, args;
+  if (Array.isArray(a)) {
+    colors = a;
+    weights = b;
+  } else {
+    colors = [];
+    weights = [];
+    args = Array.from(arguments);
+    for (var i=0; i<args.length; i+= 2) {
+      colors.push(args[i]);
+      weights.push(args[i + 1]);
+    }
   }
   weights = normalizeWeights(weights);
   if (!weights) return '#eee';
-  var blended = colors.reduce(function(memo, rgb, i) {
-    var w = weights[i];
+  var blended = colors.reduce(function(memo, col, i) {
+    var rgb = parseColor(col);
+    var w = +weights[i] || 0;
     memo.r += rgb.r * w;
     memo.g += rgb.g * w;
     memo.b += rgb.b * w;
@@ -23,6 +29,7 @@ export function blend() {
   }, {r: 0, g: 0, b: 0});
   return formatColor(blended);
 }
+
 
 function normalizeWeights(weights) {
   var sum = utils.sum(weights);

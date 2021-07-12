@@ -80,13 +80,15 @@ function getPolygonDataset(pointLyr, gridBBox, opts) {
 
 function calcCellWeight(center, ids, points, opts) {
   // radius of circle with same area as the cell
-  var radius = opts.interval * Math.sqrt(1 / Math.PI);
+  var interval = opts.interval;
+  var radius = interval * Math.sqrt(1 / Math.PI);
   var circleArea = Math.PI * opts.radius * opts.radius;
+  var cellArea = interval * interval;
   var totArea = 0;
   for (var i=0; i<ids.length; i++) {
     totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
   }
-  return totArea / circleArea;
+  return totArea / cellArea;
 }
 
 // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6

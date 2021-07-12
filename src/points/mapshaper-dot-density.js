@@ -7,12 +7,11 @@ import utils from '../utils/mapshaper-utils';
 // import { PathIndex } from '../paths/mapshaper-path-index';
 
 export function placeDotsInPolygon(shp, arcs, n, opts) {
-  var evenness = opts.evenness >= 0 ? Math.min(opts.evenness, 1) : 1;
   // TODO: skip tiny sliver polygons?
   if (n === 0) return [];
-  if (evenness === 0) return placeDotsRandomly(shp, arcs, n);
+  if (opts.evenness === 0) return placeDotsRandomly(shp, arcs, n);
   // TODO: if n == 1, consider using the 'inner' point of a polygon
-  return placeDotsEvenly(shp, arcs, n, evenness);
+  return placeDotsEvenly(shp, arcs, n, opts);
 }
 
 function placeDotsRandomly(shp, arcs, n) {
@@ -38,11 +37,16 @@ function placeRandomDot(shp, arcs, bounds) {
   return null;
 }
 
-function placeDotsEvenly(shp, arcs, n, evenness) {
+function placeDotsEvenly(shp, arcs, n, opts) {
+  var evenness = opts.evenness >= 0 ? Math.min(opts.evenness, 1) : 1;
   var shpArea = geom.getPlanarShapeArea(shp, arcs);
   if (shpArea > 0 === false) return [];
   var bounds = arcs.getMultiShapeBounds(shp);
   var approxQueries = Math.round(n * bounds.area() / shpArea);
+  if (opts.progressive) {
+    // TODO: implement this properly
+    approxQueries = Math.ceil(approxQueries / 6);
+  }
   var grid = new DotGrid(bounds, approxQueries, evenness);
   var coords = [];
   for (var i=0; i<n; i++) {
@@ -89,6 +93,7 @@ function DotGrid(bounds, approxQueries, evenness) {
   var cells = cols * rows;
   var cellSize = gridWidth / cols;
   var cellId = -1;
+  var shuffledIds;
   var grid = initGrid(cells);
   // data used by optimal method
   var bestPoints;
@@ -143,8 +148,12 @@ function DotGrid(bounds, approxQueries, evenness) {
   // (to create an initial sparse structure that gets filled in later)
   function getFirstFillPoint() {
     var p;
+    if (!shuffledIds) {
+      shuffledIds = utils.range(cells);
+      utils.shuffle(shuffledIds);
+    }
     while (++cellId < cells) {
-      p = getRandomPointInCell(cellId);
+      p = getRandomPointInCell(shuffledIds[cellId]);
       if (pointIsUsable(p)) {
         return p;
       }

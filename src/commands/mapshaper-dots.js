@@ -71,10 +71,10 @@ function makeDotsForShape(shp, arcs, rec, opts) {
   // randomize dot sequence so dots of the same color do not always overlap dots of
   // other colors in dense areas.
   // TODO: instead of random shuffling, interleave dot classes more regularly?
-  shuffle(indexes);
+  utils.shuffle(indexes);
   var idx, prevIdx = -1;
   var multipart = !!opts.multipart;
-  var coords, p;
+  var coords, p, d;
   for (var i=0; i<dots.length; i++) {
     p = dots[i];
     if (!p) continue;
@@ -85,7 +85,8 @@ function makeDotsForShape(shp, arcs, rec, opts) {
     if (!multipart || idx != prevIdx) {
       prevIdx = idx;
       retn.shapes.push(coords = []);
-      retn.attributes.push(getDataRecord(idx, rec, opts));
+      d = getDataRecord(idx, rec, opts);
+      retn.attributes.push(d);
     }
     coords.push(p);
   }
@@ -125,16 +126,6 @@ function expandCounts(counts) {
     while (n-- > 0) arr.push(i);
   });
   return arr;
-}
-
-function shuffle(arr) {
-  var tmp, i, j;
-  for (i = arr.length - 1; i > 0; i--) {
-    j = Math.floor(Math.random() * (i + 1));
-    tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
 }
 
 // i: dot class index

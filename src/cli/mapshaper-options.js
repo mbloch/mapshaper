@@ -702,6 +702,10 @@ export function getOptionParser() {
     .option('save-as', {
       describe: 'name of color/value output field (default is fill)'
     })
+    .option('progressive', {
+      // describe: 'fill in points progressively',
+      type: 'flag'
+    })
     .option('r', {
       describe: 'radius of each dot in pixels',
       type: 'number'

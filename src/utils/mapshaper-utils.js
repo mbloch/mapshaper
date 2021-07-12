@@ -492,6 +492,15 @@ export function formatNumber(num, decimals, nullStr, showPos) {
   return fmt;
 }
 
+export function shuffle(arr) {
+  var tmp, i, j;
+  for (i = arr.length - 1; i > 0; i--) {
+    j = Math.floor(Math.random() * (i + 1));
+    tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+}
 
 // Sort an array of objects based on one or more properties.
 // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
