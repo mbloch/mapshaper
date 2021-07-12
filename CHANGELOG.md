@@ -1,3 +1,6 @@
+v0.5.61
+* Bug fixes
+
 v0.5.60
 * Added save-as= and values= options to -dots command (like -classify).
 
