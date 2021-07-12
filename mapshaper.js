@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.58";
+  var VERSION = "0.5.60";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -62,6 +62,7 @@
     get addThousandsSep () { return addThousandsSep; },
     get numToStr () { return numToStr; },
     get formatNumber () { return formatNumber; },
+    get shuffle () { return shuffle; },
     get sortOn () { return sortOn; },
     get genericSort () { return genericSort; },
     get getSortedIds () { return getSortedIds; },
@@ -582,6 +583,15 @@
     return fmt;
   }
 
+  function shuffle(arr) {
+    var tmp, i, j;
+    for (i = arr.length - 1; i > 0; i--) {
+      j = Math.floor(Math.random() * (i + 1));
+      tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
 
   // Sort an array of objects based on one or more properties.
   // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
@@ -8220,19 +8230,25 @@
     };
   }
 
-  function blend() {
-    var args = Array.from(arguments);
-    var colors = [],
-        weights = [],
-        col, weight, i;
-    for (i=0; i<args.length; i+= 2) {
-      colors.push(parseColor(args[i]));
-      weights.push(+args[i + 1] || 0);
+  function blend(a, b) {
+    var colors, weights, args;
+    if (Array.isArray(a)) {
+      colors = a;
+      weights = b;
+    } else {
+      colors = [];
+      weights = [];
+      args = Array.from(arguments);
+      for (var i=0; i<args.length; i+= 2) {
+        colors.push(args[i]);
+        weights.push(args[i + 1]);
+      }
     }
     weights = normalizeWeights(weights);
     if (!weights) return '#eee';
-    var blended = colors.reduce(function(memo, rgb, i) {
-      var w = weights[i];
+    var blended = colors.reduce(function(memo, col, i) {
+      var rgb = parseColor(col);
+      var w = +weights[i] || 0;
       memo.r += rgb.r * w;
       memo.g += rgb.g * w;
       memo.b += rgb.b * w;
@@ -8240,6 +8256,7 @@
     }, {r: 0, g: 0, b: 0});
     return formatColor(blended);
   }
+
 
   function normalizeWeights(weights) {
     var sum = utils.sum(weights);
@@ -18860,6 +18877,10 @@ ${svg}
       .option('save-as', {
         describe: 'name of color/value output field (default is fill)'
       })
+      .option('progressive', {
+        // describe: 'fill in points progressively',
+        type: 'flag'
+      })
       .option('r', {
         describe: 'radius of each dot in pixels',
         type: 'number'
@@ -27948,7 +27969,13 @@ ${svg}
 
     if (opts.index_field) {
       dataField = opts.index_field;
-      numBuckets = validateClassIndexField(records, opts.index_field);
+      if (numBuckets > 0 === false) {
+        stop('The index-field= option requires the classes= option to be set');
+      }
+      // You can't infer the number of classes by looking at index values;
+      // this can cause unwanted interpolation if one or more values are
+      // not present in the index field
+      // numBuckets = validateClassIndexField(records, opts.index_field);
 
     } else if (opts.field) {
       dataField = opts.field;
@@ -30155,12 +30182,11 @@ ${svg}
   // import { PathIndex } from '../paths/mapshaper-path-index';
 
   function placeDotsInPolygon(shp, arcs, n, opts) {
-    var evenness = opts.evenness >= 0 ? Math.min(opts.evenness, 1) : 1;
     // TODO: skip tiny sliver polygons?
     if (n === 0) return [];
-    if (evenness === 0) return placeDotsRandomly(shp, arcs, n);
+    if (opts.evenness === 0) return placeDotsRandomly(shp, arcs, n);
     // TODO: if n == 1, consider using the 'inner' point of a polygon
-    return placeDotsEvenly(shp, arcs, n, evenness);
+    return placeDotsEvenly(shp, arcs, n, opts);
   }
 
   function placeDotsRandomly(shp, arcs, n) {
@@ -30186,11 +30212,16 @@ ${svg}
     return null;
   }
 
-  function placeDotsEvenly(shp, arcs, n, evenness) {
+  function placeDotsEvenly(shp, arcs, n, opts) {
+    var evenness = opts.evenness >= 0 ? Math.min(opts.evenness, 1) : 1;
     var shpArea = geom.getPlanarShapeArea(shp, arcs);
     if (shpArea > 0 === false) return [];
     var bounds = arcs.getMultiShapeBounds(shp);
     var approxQueries = Math.round(n * bounds.area() / shpArea);
+    if (opts.progressive) {
+      // TODO: implement this properly
+      approxQueries = Math.ceil(approxQueries / 6);
+    }
     var grid = new DotGrid(bounds, approxQueries, evenness);
     var coords = [];
     for (var i=0; i<n; i++) {
@@ -30237,6 +30268,7 @@ ${svg}
     var cells = cols * rows;
     var cellSize = gridWidth / cols;
     var cellId = -1;
+    var shuffledIds;
     var grid = initGrid(cells);
     // data used by optimal method
     var bestPoints;
@@ -30291,8 +30323,12 @@ ${svg}
     // (to create an initial sparse structure that gets filled in later)
     function getFirstFillPoint() {
       var p;
+      if (!shuffledIds) {
+        shuffledIds = utils.range(cells);
+        utils.shuffle(shuffledIds);
+      }
       while (++cellId < cells) {
-        p = getRandomPointInCell(cellId);
+        p = getRandomPointInCell(shuffledIds[cellId]);
         if (pointIsUsable(p)) {
           return p;
         }
@@ -30658,10 +30694,10 @@ ${svg}
     // randomize dot sequence so dots of the same color do not always overlap dots of
     // other colors in dense areas.
     // TODO: instead of random shuffling, interleave dot classes more regularly?
-    shuffle(indexes);
+    utils.shuffle(indexes);
     var idx, prevIdx = -1;
     var multipart = !!opts.multipart;
-    var coords, p;
+    var coords, p, d;
     for (var i=0; i<dots.length; i++) {
       p = dots[i];
       if (!p) continue;
@@ -30672,7 +30708,8 @@ ${svg}
       if (!multipart || idx != prevIdx) {
         prevIdx = idx;
         retn.shapes.push(coords = []);
-        retn.attributes.push(getDataRecord(idx, rec, opts));
+        d = getDataRecord(idx, rec, opts);
+        retn.attributes.push(d);
       }
       coords.push(p);
     }
@@ -30712,16 +30749,6 @@ ${svg}
       while (n-- > 0) arr.push(i);
     });
     return arr;
-  }
-
-  function shuffle(arr) {
-    var tmp, i, j;
-    for (i = arr.length - 1; i > 0; i--) {
-      j = Math.floor(Math.random() * (i + 1));
-      tmp = arr[i];
-      arr[i] = arr[j];
-      arr[j] = tmp;
-    }
   }
 
   // i: dot class index
@@ -34977,13 +35004,15 @@ ${svg}
 
   function calcCellWeight(center, ids, points, opts) {
     // radius of circle with same area as the cell
-    var radius = opts.interval * Math.sqrt(1 / Math.PI);
+    var interval = opts.interval;
+    var radius = interval * Math.sqrt(1 / Math.PI);
     var circleArea = Math.PI * opts.radius * opts.radius;
+    var cellArea = interval * interval;
     var totArea = 0;
     for (var i=0; i<ids.length; i++) {
       totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
     }
-    return totArea / circleArea;
+    return totArea / cellArea;
   }
 
   // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
