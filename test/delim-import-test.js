@@ -383,9 +383,36 @@ LOS ANGELES,,`;
     it('rejects dates', function() {
       assert.strictEqual(utils.parseNumber('2013-12-03'), null);
     })
-
-    // TODO: European decimals?
   })
+
+  describe('parseIntlNumber()', function() {
+    it('csv-decimal-comma option', function(done) {
+      var csv = 'num\n"20,1"\n"-5,0"';
+      var cmd = '-i data.csv decimal-comma -o format=json';
+      api.applyCommands(cmd, {'data.csv': csv}, function(err, out) {
+        assert.deepEqual(JSON.parse(out['data.json']), [{num: 20.1}, {num: -5}]);
+        done();
+      });
+    })
+
+
+    it('comma decimal', function() {
+      assert.equal(utils.parseIntlNumber('123,10'), 123.10);
+    })
+
+    it('point separator', function() {
+      assert.equal(utils.parseIntlNumber('1.000.000'), 1e6);
+    })
+
+    it('point and comma', function() {
+      assert.equal(utils.parseIntlNumber('1.000.000,5'), 1000000.5);
+    })
+
+    it('space and comma', function() {
+      assert.equal(utils.parseIntlNumber('1 000 000,5'), 1000000.5);
+    })
+  })
+
 
   describe('guessDelimiter()', function () {
     it('guesses CSV', function () {

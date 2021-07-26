@@ -178,6 +178,10 @@ export function getOptionParser() {
       type: 'strings',
       describe: '[CSV] comma-sep. list of fields to import'
     })
+    .option('decimal-comma', {
+      type: 'flag',
+      describe: '[CSV] import numbers formatted like 1.000,01 or 1 000,01'
+    })
     .option('json-path', {
       old_alias: 'json-subtree',
       describe: '[JSON] path to JSON input data; separator is /'
@@ -1671,6 +1675,7 @@ export function getOptionParser() {
       // describe: (0-1) inset grid shapes by a percentage
       type: 'number'
     })
+    .option('calc', calcOpt)
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);

@@ -945,11 +945,6 @@ export function uniqifyNames(names, formatter) {
   return names2;
 }
 
-// Remove comma separators from strings
-// TODO: accept European-style numbers?
-export function cleanNumericString(str) {
-  return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
-}
 
 // Assume: @raw is string, undefined or null
 export function parseString(raw) {
@@ -961,9 +956,27 @@ export function parseString(raw) {
 // (in part because if NaN is used, empty strings get converted to "NaN"
 // when re-exported).
 export function parseNumber(raw) {
+  return parseToNum(raw, cleanNumericString);
+}
+
+export function parseIntlNumber(raw) {
+  return parseToNum(raw, convertIntlNumString);
+}
+
+function parseToNum(raw, clean) {
   var str = String(raw).trim();
-  var parsed = str ? Number(cleanNumericString(str)) : NaN;
+  var parsed = str ? Number(clean(str)) : NaN;
   return isNaN(parsed) ? null : parsed;
+}
+
+// Remove comma separators from strings
+export function cleanNumericString(str) {
+  return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
+}
+
+function convertIntlNumString(str) {
+  str = str.replace(/[ .]([0-9]{3})/g, '$1');
+  return str.replace(',', '.');
 }
 
 export function trimQuotes(raw) {

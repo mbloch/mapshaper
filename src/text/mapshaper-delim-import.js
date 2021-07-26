@@ -15,7 +15,6 @@ export function importDelim(str, opts) {
 
 // Convert a string, buffer or file containing delimited text into a dataset obj.
 export function importDelim2(data, opts) {
-
   // TODO: remove duplication with importJSON()
   var readFromFile = !data.content && data.content !== '',
       content = data.content,
@@ -127,24 +126,26 @@ export function getFieldTypeHints(opts) {
 // Detect and convert data types of data from csv files.
 // TODO: decide how to handle records with inconstent properties. Mapshaper
 //    currently assumes tabular data
-export function adjustRecordTypes(records, opts) {
-  var typeIndex = getFieldTypeHints(opts),
+export function adjustRecordTypes(records, optsArg) {
+  var opts = optsArg || {},
+      typeIndex = getFieldTypeHints(opts),
       singleType = typeIndex['*'], // support for setting all fields to a single type
       fields = Object.keys(records[0] || []),
       detectedNumFields = [],
+      parseNumber = opts.decimal_comma ? utils.parseIntlNumber : utils.parseNumber,
       replacements = {};
   fields.forEach(function(key) {
     var typeHint = typeIndex[key];
     var values = null;
     if (typeHint == 'number' || singleType == 'number') {
-      values = convertDataField(key, records, utils.parseNumber);
+      values = convertDataField(key, records, parseNumber);
     } else if (typeHint == 'string' || singleType == 'string') {
       // We should be able to assume that imported CSV fields are strings,
       //   so parsing + replacement is not required
       // values = internal.convertDataField(key, records, utils.parseString);
       values = null;
     } else {
-      values = tryNumericField(key, records);
+      values = tryNumericField(key, records, parseNumber);
       if (values) detectedNumFields.push(key);
     }
     if (values) replacements[key] = values;
@@ -172,13 +173,13 @@ function updateFieldsInRecords(fields, records, replacements) {
   });
 }
 
-function tryNumericField(key, records) {
+function tryNumericField(key, records, parseNumber) {
   var arr = [],
       count = 0,
       raw, str, num;
   for (var i=0, n=records.length; i<n; i++) {
     raw = records[i][key];
-    num = utils.parseNumber(raw);
+    num = parseNumber(raw);
     if (num === null) {
       str = raw ? raw.trim() : '';
       if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
