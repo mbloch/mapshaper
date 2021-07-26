@@ -89,9 +89,10 @@
     get parsePercent () { return parsePercent; },
     get formatVersionedName () { return formatVersionedName; },
     get uniqifyNames () { return uniqifyNames; },
-    get cleanNumericString () { return cleanNumericString; },
     get parseString () { return parseString; },
     get parseNumber () { return parseNumber; },
+    get parseIntlNumber () { return parseIntlNumber; },
+    get cleanNumericString () { return cleanNumericString; },
     get trimQuotes () { return trimQuotes; }
   });
 
@@ -1036,11 +1037,6 @@
     return names2;
   }
 
-  // Remove comma separators from strings
-  // TODO: accept European-style numbers?
-  function cleanNumericString(str) {
-    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
-  }
 
   // Assume: @raw is string, undefined or null
   function parseString(raw) {
@@ -1052,9 +1048,27 @@
   // (in part because if NaN is used, empty strings get converted to "NaN"
   // when re-exported).
   function parseNumber(raw) {
+    return parseToNum(raw, cleanNumericString);
+  }
+
+  function parseIntlNumber(raw) {
+    return parseToNum(raw, convertIntlNumString);
+  }
+
+  function parseToNum(raw, clean) {
     var str = String(raw).trim();
-    var parsed = str ? Number(cleanNumericString(str)) : NaN;
+    var parsed = str ? Number(clean(str)) : NaN;
     return isNaN(parsed) ? null : parsed;
+  }
+
+  // Remove comma separators from strings
+  function cleanNumericString(str) {
+    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
+  }
+
+  function convertIntlNumString(str) {
+    str = str.replace(/[ .]([0-9]{3})/g, '$1');
+    return str.replace(',', '.');
   }
 
   function trimQuotes(raw) {
@@ -17273,7 +17287,6 @@ ${svg}
 
   // Convert a string, buffer or file containing delimited text into a dataset obj.
   function importDelim2(data, opts) {
-
     // TODO: remove duplication with importJSON()
     var readFromFile = !data.content && data.content !== '',
         content = data.content,
@@ -17385,24 +17398,26 @@ ${svg}
   // Detect and convert data types of data from csv files.
   // TODO: decide how to handle records with inconstent properties. Mapshaper
   //    currently assumes tabular data
-  function adjustRecordTypes(records, opts) {
-    var typeIndex = getFieldTypeHints(opts),
+  function adjustRecordTypes(records, optsArg) {
+    var opts = optsArg || {},
+        typeIndex = getFieldTypeHints(opts),
         singleType = typeIndex['*'], // support for setting all fields to a single type
         fields = Object.keys(records[0] || []),
         detectedNumFields = [],
+        parseNumber = opts.decimal_comma ? utils.parseIntlNumber : utils.parseNumber,
         replacements = {};
     fields.forEach(function(key) {
       var typeHint = typeIndex[key];
       var values = null;
       if (typeHint == 'number' || singleType == 'number') {
-        values = convertDataField(key, records, utils.parseNumber);
+        values = convertDataField(key, records, parseNumber);
       } else if (typeHint == 'string' || singleType == 'string') {
         // We should be able to assume that imported CSV fields are strings,
         //   so parsing + replacement is not required
         // values = internal.convertDataField(key, records, utils.parseString);
         values = null;
       } else {
-        values = tryNumericField(key, records);
+        values = tryNumericField(key, records, parseNumber);
         if (values) detectedNumFields.push(key);
       }
       if (values) replacements[key] = values;
@@ -17430,13 +17445,13 @@ ${svg}
     });
   }
 
-  function tryNumericField(key, records) {
+  function tryNumericField(key, records, parseNumber) {
     var arr = [],
         count = 0,
         raw, str, num;
     for (var i=0, n=records.length; i<n; i++) {
       raw = records[i][key];
-      num = utils.parseNumber(raw);
+      num = parseNumber(raw);
       if (num === null) {
         str = raw ? raw.trim() : '';
         if (str.length > 0 && str != 'NA' && str != 'NaN') { // ignore NA values ("NA" seen in R output)
@@ -18352,6 +18367,10 @@ ${svg}
       .option('csv-fields', {
         type: 'strings',
         describe: '[CSV] comma-sep. list of fields to import'
+      })
+      .option('decimal-comma', {
+        type: 'flag',
+        describe: '[CSV] import numbers formatted like 1.000,01 or 1 000,01'
       })
       .option('json-path', {
         old_alias: 'json-subtree',
@@ -19846,6 +19865,7 @@ ${svg}
         // describe: (0-1) inset grid shapes by a percentage
         type: 'number'
       })
+      .option('calc', calcOpt)
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
