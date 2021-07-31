@@ -411,7 +411,6 @@ export function Console(gui) {
         prevTable = active.layer.data,
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0;
-
     internal.runParsedCommands(commands, model, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),

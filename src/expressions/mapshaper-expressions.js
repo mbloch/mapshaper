@@ -5,6 +5,7 @@ import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, stop } from '../utils/mapshaper-logging';
+import { getStateVar } from '../mapshaper-state';
 
 // Compiled expression returns a value
 export function compileValueExpression(exp, lyr, arcs, opts) {
@@ -203,24 +204,25 @@ function getExpressionContext(lyr, mixins, opts) {
   opts = opts || {};
   addUtils(env); // mix in round(), sprintf(), etc.
   if (lyr.data) {
-    // default to null values when a data field is missing
+    // default to null values, so assignments to missing data properties
+    // are applied to the data record, not the global object
     nullifyUnsetProperties(fields, env);
   }
-  if (mixins) {
-    Object.keys(mixins).forEach(function(key) {
-      // Catch name collisions between data fields and user-defined functions
-      var d = Object.getOwnPropertyDescriptor(mixins, key);
-      if (key in env) {
-      }
-      if (d.get) {
-        // copy accessor function from mixins to context
-        Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
-      } else {
-        // copy regular property from mixins to context, but make it non-writable
-        Object.defineProperty(ctx, key, {value: mixins[key]});
-      }
-    });
-  }
+  // Add global 'defs' to the expression context
+  mixins = utils.defaults(mixins || {}, getStateVar('defs'));
+  Object.keys(mixins).forEach(function(key) {
+    // Catch name collisions between data fields and user-defined functions
+    var d = Object.getOwnPropertyDescriptor(mixins, key);
+    if (key in env) {
+    }
+    if (d.get) {
+      // copy accessor function from mixins to context
+      Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
+    } else {
+      // copy regular property from mixins to context, but make it non-writable
+      Object.defineProperty(ctx, key, {value: mixins[key]});
+    }
+  });
   // make context properties non-writable, so they can't be replaced by an expression
   return Object.keys(env).reduce(function(memo, key) {
     if (key in memo) {

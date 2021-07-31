@@ -15,7 +15,9 @@ cmd.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   if (opts && opts.where) {
     filter = compileValueExpression(opts.where, lyr, arcs);
   }
-  compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
+  // 'defs' are now added to the context of all expressions
+  // compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
+  compiled = compileFeatureExpression(exp, lyr, arcs);
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {
     if (!filter || filter(i)) {

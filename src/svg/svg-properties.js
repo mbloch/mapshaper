@@ -131,7 +131,8 @@ export function getSymbolPropertyAccessor(strVal, svgName, lyr) {
 function parseStyleExpression(strVal, lyr) {
   var func;
   try {
-    func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), no_warn: true});
+    // func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), no_warn: true});
+    func = compileValueExpression(strVal, lyr, null, {no_warn: true});
     func(0); // check for runtime errors (e.g. undefined variables)
   } catch(e) {
     func = null;
