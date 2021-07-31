@@ -14,6 +14,7 @@ import { cleanLayers } from '../commands/mapshaper-clean';
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
 import { getPointBufferCoordinates } from '../buffer/mapshaper-point-buffer';
 import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
+import { getJoinCalc } from '../join/mapshaper-join-calc';
 
 cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
   targetLayers.forEach(requirePointLayer);
@@ -58,19 +59,23 @@ function getPolygonDataset(pointLyr, gridBBox, opts) {
     type: 'FeatureCollection',
     features: []
   };
-  var cands, center, weight;
+  var calc = null;
+  var cands, center, weight, d;
+  if (opts.calc) {
+    calc = getJoinCalc(pointLyr.data, opts.calc);
+  }
+
   for (var i=0; i<n; i++) {
     cands = lookup(i);
     if (!cands.length) continue;
     center = grid.idxToPoint(i);
-    weight = calcCellWeight(center, cands, points, opts);
-    if (weight > 0.05 === false) continue;
+    d = calcCellProperties(center, cands, points, calc, opts);
+    // weight = calcCellWeight(center, cands, points, opts);
+    if (d.weight > 0.05 === false) continue;
+    d.id = i;
     geojson.features.push({
       type: 'Feature',
-      properties: {
-        id: i,
-        weight: weight
-      },
+      properties: d,
       geometry: makeCellPolygon(i, grid, opts)
     });
   }
@@ -78,18 +83,40 @@ function getPolygonDataset(pointLyr, gridBBox, opts) {
   return dataset;
 }
 
-function calcCellWeight(center, ids, points, opts) {
+function calcCellProperties(center, cands, points, calc, opts) {
   // radius of circle with same area as the cell
   var interval = opts.interval;
   var radius = interval * Math.sqrt(1 / Math.PI);
   var circleArea = Math.PI * opts.radius * opts.radius;
   var cellArea = interval * interval;
+  var ids = [];
   var totArea = 0;
-  for (var i=0; i<ids.length; i++) {
-    totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
+  var intersection;
+  for (var i=0; i<cands.length; i++) {
+    intersection = twoCircleIntersection(center, radius, points[cands[i]], opts.radius);
+    if (intersection > 0 === false) continue;
+    totArea += intersection;
+    ids.push(cands[i]);
   }
-  return totArea / cellArea;
+  var d = {weight: totArea / cellArea};
+  if (calc) {
+    calc(ids, d);
+  }
+  return d;
 }
+
+// function calcCellWeight(center, ids, points, opts) {
+//   // radius of circle with same area as the cell
+//   var interval = opts.interval;
+//   var radius = interval * Math.sqrt(1 / Math.PI);
+//   var circleArea = Math.PI * opts.radius * opts.radius;
+//   var cellArea = interval * interval;
+//   var totArea = 0;
+//   for (var i=0; i<ids.length; i++) {
+//     totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
+//   }
+//   return totArea / cellArea;
+// }
 
 // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
 export function twoCircleIntersection(c1, r1, c2, r2) {
