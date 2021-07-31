@@ -227,44 +227,44 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('encoding', {
-      describe: '(Shapefile/CSV) text encoding (default is utf8)'
+      describe: '[Shapefile/CSV] text encoding (default is utf8)'
     })
     .option('field-order', {
-      describe: '(Shapefile/CSV) field-order=ascending sorts columns A-Z'
+      describe: '[Shapefile/CSV] field-order=ascending sorts columns A-Z'
     })
     .option('id-field', {
-      describe: '(Topo/GeoJSON/SVG) field to use for id property',
+      describe: '[Topo/GeoJSON/SVG] field to use for id property',
       type: 'strings'
     })
     .option('bbox', {
       type: 'flag',
-      describe: '(Topo/GeoJSON) add bbox property'
+      describe: '[Topo/GeoJSON] add bbox property'
     })
     .option('extension', {
-      describe: '(Topo/GeoJSON) set file extension (default is ".json")'
+      describe: '[Topo/GeoJSON] set file extension (default is ".json")'
     })
     .option('prettify', {
       type: 'flag',
-      describe: '(Topo/GeoJSON/JSON) format output for readability'
+      describe: '[Topo/GeoJSON/JSON] format output for readability'
     })
     .option('singles', {
-      describe: '(TopoJSON) save each target layer as a separate file',
+      describe: '[TopoJSON] save each target layer as a separate file',
       type: 'flag'
     })
     .option('quantization', {
-      describe: '(TopoJSON) specify quantization (auto-set by default)',
+      describe: '[TopoJSON] specify quantization (auto-set by default)',
       type: 'integer'
     })
     .option('no-quantization', {
-      describe: '(TopoJSON) export coordinates without quantization',
+      describe: '[TopoJSON] export coordinates without quantization',
       type: 'flag'
     })
     .option('no-point-quantization', {
-      // describe: '(TopoJSON) export point coordinates without quantization',
+      // describe: '[TopoJSON] export point coordinates without quantization',
       type: 'flag'
     })
     .option('presimplify', {
-      describe: '(TopoJSON) add per-vertex data for dynamic simplification',
+      describe: '[TopoJSON] add per-vertex data for dynamic simplification',
       type: 'flag'
     })
     .option('topojson-precision', {
@@ -275,72 +275,76 @@ export function getOptionParser() {
       // obsolete -- rfc 7946 compatible outptu is now the default.
       // This option also rounds coordinates to 7 decimals. I'm retaining the
       // option for backwards compatibility.
-      // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
+      // describe: '[GeoJSON] follow RFC 7946 (CCW outer ring order, etc.)',
       type: 'flag'
     })
     // .option('winding', {
-    //   describe: '(GeoJSON) set polygon winding order (use CW with d3-geo)'
+    //   describe: '[GeoJSON] set polygon winding order (use CW with d3-geo)'
     // })
     .option('gj2008', {
-      describe: '(GeoJSON) use original GeoJSON spec (not RFC 7946)',
+      describe: '[GeoJSON] use original GeoJSON spec (not RFC 7946)',
       type: 'flag'
     })
     .option('combine-layers', {
-      describe: '(GeoJSON) output layers as a single file',
+      describe: '[GeoJSON] output layers as a single file',
       type: 'flag'
     })
     .option('geojson-type', {
-      describe: '(GeoJSON) FeatureCollection, GeometryCollection or Feature'
+      describe: '[GeoJSON] FeatureCollection, GeometryCollection or Feature'
     })
     .option('ndjson', {
-      describe: '(GeoJSON/JSON) output newline-delimited features or records',
+      describe: '[GeoJSON/JSON] output newline-delimited features or records',
       type: 'flag'
     })
     .option('width', {
-      describe: '(SVG/TopoJSON) pixel width of output (SVG default is 800)',
+      describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
       type: 'number'
     })
     .option('height', {
-      describe: '(SVG/TopoJSON) pixel height of output (optional)',
+      describe: '[SVG/TopoJSON] pixel height of output (optional)',
       type: 'number'
     })
     .option('max-height', {
-      describe: '(SVG/TopoJSON) max pixel height of output (optional)',
+      describe: '[SVG/TopoJSON] max pixel height of output (optional)',
       type: 'number'
     })
     .option('margin', {
-      describe: '(SVG/TopoJSON) space betw. data and viewport (default is 1)'
+      describe: '[SVG/TopoJSON] space betw. data and viewport (default is 1)'
     })
     .option('pixels', {
-      describe: '(SVG/TopoJSON) output area in pix. (alternative to width=)',
+      describe: '[SVG/TopoJSON] output area in pix. (alternative to width=)',
       type: 'number'
     })
     .option('fit-bbox', {
       type: 'bbox',
-      describe: '(TopoJSON) scale and shift coordinates to fit a bbox'
+      describe: '[TopoJSON] scale and shift coordinates to fit a bbox'
     })
     .option('svg-scale', {
-      describe: '(SVG) source units per pixel (alternative to width= option)',
+      describe: '[SVG] source units per pixel (alternative to width= option)',
       type: 'number'
     })
     .option('point-symbol', {
-      describe: '(SVG) circle or square (default is circle)'
+      describe: '[SVG] circle or square (default is circle)'
     })
     .option('svg-data', {
       type: 'strings',
-      describe: '(SVG) fields to export as data-* attributes'
+      describe: '[SVG] fields to export as data-* attributes'
     })
     .option('id-prefix', {
-      describe: '(SVG) prefix for namespacing layer and feature ids'
+      describe: '[SVG] prefix for namespacing layer and feature ids'
     })
     .option('delimiter', {
-      describe: '(CSV) field delimiter'
+      describe: '[CSV] field delimiter'
+    })
+    .option('decimal-comma', {
+      type: 'flag',
+      describe: '[CSV] export numbers with decimal commas not points'
     })
     .option('final', {
       type: 'flag' // for testing
     })
     .option('metadata', {
-      // describe: '(TopoJSON) add a metadata object',
+      // describe: '[TopoJSON] add a metadata object',
       type: 'flag'
     });
 

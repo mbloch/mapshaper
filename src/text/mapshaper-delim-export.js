@@ -25,26 +25,25 @@ export function exportLayerAsDSV(lyr, delim, optsArg) {
   var encoding = opts.encoding || 'utf8';
   var records = lyr.data.getRecords();
   var fields = findFieldNames(records, opts.field_order);
+  var formatRow = getDelimRowFormatter(fields, delim, opts);
   // exporting utf8 and ascii text as string by default (for now)
   var exportAsString = encodingIsUtf8(encoding) && !opts.to_buffer &&
       (records.length < 10000 || opts.to_string);
   if (exportAsString) {
-    return exportRecordsAsString(fields, records, delim);
+    return exportRecordsAsString(fields, records, formatRow);
   } else {
-    return exportRecordsAsBuffer(fields, records, delim, encoding);
+    return exportRecordsAsBuffer(fields, records, formatRow, encoding);
   }
 }
 
-function exportRecordsAsString(fields, records, delim) {
-  var formatRow = getDelimRowFormatter(fields, delim);
-  var header = formatDelimHeader(fields, delim);
+function exportRecordsAsString(fields, records, formatRow) {
+  var header = formatHeader(fields, formatRow);
   if (!records.length) return header;
   return header + '\n' + records.map(formatRow).join('\n');
 }
 
-function exportRecordsAsBuffer(fields, records, delim, encoding) {
-  var formatRow = getDelimRowFormatter(fields, delim);
-  var str = formatDelimHeader(fields, delim);
+function exportRecordsAsBuffer(fields, records, formatRow, encoding) {
+  var str = formatHeader(fields, formatRow);
   var buffers = [encodeString(str, encoding)];
   var tmp = [];
   var n = records.length;
@@ -61,13 +60,21 @@ function exportRecordsAsBuffer(fields, records, delim, encoding) {
   return Buffer.concat(buffers);
 }
 
+function formatHeader(fields, formatRow) {
+  var rec = fields.reduce(function(memo, f) {
+    memo[f] = f;
+    return memo;
+  }, {});
+  return formatRow(rec);
+}
+
 function formatDelimHeader(fields, delim) {
   var formatValue = getDelimValueFormatter(delim);
   return fields.map(formatValue).join(delim);
 }
 
-function getDelimRowFormatter(fields, delim) {
-  var formatValue = getDelimValueFormatter(delim);
+function getDelimRowFormatter(fields, delim, opts) {
+  var formatValue = getDelimValueFormatter(delim, opts);
   return function(rec) {
     return fields.map(function(f) {
       return formatValue(rec[f]);
@@ -75,8 +82,18 @@ function getDelimRowFormatter(fields, delim) {
   };
 }
 
-export function getDelimValueFormatter(delim) {
-  var dquoteRxp =  new RegExp('["\n\r' + delim + ']');
+export function formatNumber(val) {
+  return val + '';
+}
+
+export function formatIntlNumber(val) {
+  var str = formatNumber(val);
+  return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
+}
+
+export function getDelimValueFormatter(delim, opts) {
+  var dquoteRxp = new RegExp('["\n\r' + delim + ']');
+  var decimalComma = opts && opts.decimal_comma || false;
   function formatString(s) {
     if (dquoteRxp.test(s)) {
       s = '"' + s.replace(/"/g, '""') + '"';
@@ -90,7 +107,7 @@ export function getDelimValueFormatter(delim) {
     } else if (utils.isString(val)) {
       s = formatString(val);
     } else if (utils.isNumber(val)) {
-      s = val + '';
+      s = decimalComma ? formatIntlNumber(val) : formatNumber(val);
     } else if (utils.isObject(val)) {
       s = formatString(JSON.stringify(val));
     } else {

@@ -24,6 +24,12 @@ describe('mapshaper-delim-export.js', function() {
       assert.equal(csv(-45), '-45');
       assert.equal(csv(5.6), '5.6');
     })
+    it('Decimal comma', function() {
+      var csv = api.internal.getDelimValueFormatter(',', {decimal_comma: true});
+      assert.equal(csv(0), '"0"');
+      assert.equal(csv(5.6), '"5,6"');
+      assert.equal(csv(-0.66), '"-0,66"');
+    })
 
   })
 
