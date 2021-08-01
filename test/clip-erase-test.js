@@ -671,8 +671,8 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(lyr1, lyr2, dataset);
-      var target = [[[0], [~2, ~3]]];
-      //var target = [[[0], [~3, ~2]]];
+      //var target = [[[0], [~2, ~3]]];
+      var target = [[[0], [~3, ~2]]];
       assert.deepEqual(erasedLyr.shapes, target);
     })
   })

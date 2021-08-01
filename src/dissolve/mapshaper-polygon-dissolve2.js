@@ -94,6 +94,7 @@ export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
   // convert self-intersecting rings to outer/inner rings, for OGC
   // Simple Features compliance
   dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
+
   if (fillGaps && !opts.quiet) {
     var msg = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
     if (msg) message(msg);

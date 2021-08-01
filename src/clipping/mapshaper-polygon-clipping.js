@@ -30,12 +30,10 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
     targetShapes = targetShapes.map(dissolvePolygon);
   }
 
-  // NOTE: commenting-out dissolve of clipping shapes, because the dissolve function
-  //   does not tolerate overlapping shapes and some other topology errors.
-  //   Dissolving was an optimization intended to improve performance when using a
-  //   mosaic (e.g. counties, states) to clip or erase another layer. The user
-  //   can optimize this case by dissolving as a separate step.
-  // // merge rings of clip/erase polygons and dissolve them all
+  // Originally, clip shapes were dissolved here as an optimization, using
+  // an unreliable dissolve function.
+  // Now, clip shapes are dissolved using a more reliable (but slower)
+  // function in mapshaper-clip-erase.js
   // clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
 
   // Open pathways in the clip/erase layer

@@ -1,5 +1,9 @@
+v0.5.63
+* Added -o decimal-comma function, for exporting CSV numbers with decimal commas.
+* Fix for issue #497 (error erasing with overlapping polygons).
+
 v0.5.62
-* Add -i decimal-comma option, for importing numbers from CSV files with numbers formatted like 1.000,23 or 1 000,23
+* Added -i decimal-comma option, for importing numbers from CSV files with numbers formatted like 1.000,23 or 1 000,23
 
 v0.5.61
 * Bug fixes

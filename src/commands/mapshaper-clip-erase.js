@@ -13,6 +13,7 @@ import utils from '../utils/mapshaper-utils';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
   return clipLayers(target, src, dataset, "clip", opts);
@@ -59,15 +60,20 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     return clipLayersByBBox(targetLayers, targetDataset, opts);
   }
   mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
+  clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
   if (usingPathClip) {
     // add vertices at all line intersections
     // (generally slower than actual clipping)
     nodes = addIntersectionCuts(mergedDataset, opts);
     targetDataset.arcs = mergedDataset.arcs;
+    // dissolve clip layer shapes (to remove overlaps and other topological issues
+    // that might confuse the clipping function)
+    clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
-  clipLyr = mergedDataset.layers.pop();
+  // clipLyr = mergedDataset.layers.pop();
   return clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
 }
 
