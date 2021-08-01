@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.60";
+  var VERSION = "0.5.62";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9092,24 +9092,25 @@
     opts = opts || {};
     addUtils(env); // mix in round(), sprintf(), etc.
     if (lyr.data) {
-      // default to null values when a data field is missing
+      // default to null values, so assignments to missing data properties
+      // are applied to the data record, not the global object
       nullifyUnsetProperties(fields, env);
     }
-    if (mixins) {
-      Object.keys(mixins).forEach(function(key) {
-        // Catch name collisions between data fields and user-defined functions
-        var d = Object.getOwnPropertyDescriptor(mixins, key);
-        if (key in env) {
-        }
-        if (d.get) {
-          // copy accessor function from mixins to context
-          Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
-        } else {
-          // copy regular property from mixins to context, but make it non-writable
-          Object.defineProperty(ctx, key, {value: mixins[key]});
-        }
-      });
-    }
+    // Add global 'defs' to the expression context
+    mixins = utils.defaults(mixins || {}, getStateVar('defs'));
+    Object.keys(mixins).forEach(function(key) {
+      // Catch name collisions between data fields and user-defined functions
+      var d = Object.getOwnPropertyDescriptor(mixins, key);
+      if (key in env) {
+      }
+      if (d.get) {
+        // copy accessor function from mixins to context
+        Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
+      } else {
+        // copy regular property from mixins to context, but make it non-writable
+        Object.defineProperty(ctx, key, {value: mixins[key]});
+      }
+    });
     // make context properties non-writable, so they can't be replaced by an expression
     return Object.keys(env).reduce(function(memo, key) {
       if (key in memo) {
@@ -12025,6 +12026,7 @@
     // convert self-intersecting rings to outer/inner rings, for OGC
     // Simple Features compliance
     dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
+
     if (fillGaps && !opts.quiet) {
       var msg = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
       if (msg) message(msg);
@@ -13623,7 +13625,8 @@
   function parseStyleExpression(strVal, lyr) {
     var func;
     try {
-      func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), no_warn: true});
+      // func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), no_warn: true});
+      func = compileValueExpression(strVal, lyr, null, {no_warn: true});
       func(0); // check for runtime errors (e.g. undefined variables)
     } catch(e) {
       func = null;
@@ -15447,26 +15450,25 @@ ${svg}
     var encoding = opts.encoding || 'utf8';
     var records = lyr.data.getRecords();
     var fields = findFieldNames(records, opts.field_order);
+    var formatRow = getDelimRowFormatter(fields, delim, opts);
     // exporting utf8 and ascii text as string by default (for now)
     var exportAsString = encodingIsUtf8(encoding) && !opts.to_buffer &&
         (records.length < 10000 || opts.to_string);
     if (exportAsString) {
-      return exportRecordsAsString(fields, records, delim);
+      return exportRecordsAsString(fields, records, formatRow);
     } else {
-      return exportRecordsAsBuffer(fields, records, delim, encoding);
+      return exportRecordsAsBuffer(fields, records, formatRow, encoding);
     }
   }
 
-  function exportRecordsAsString(fields, records, delim) {
-    var formatRow = getDelimRowFormatter(fields, delim);
-    var header = formatDelimHeader(fields, delim);
+  function exportRecordsAsString(fields, records, formatRow) {
+    var header = formatHeader(fields, formatRow);
     if (!records.length) return header;
     return header + '\n' + records.map(formatRow).join('\n');
   }
 
-  function exportRecordsAsBuffer(fields, records, delim, encoding) {
-    var formatRow = getDelimRowFormatter(fields, delim);
-    var str = formatDelimHeader(fields, delim);
+  function exportRecordsAsBuffer(fields, records, formatRow, encoding) {
+    var str = formatHeader(fields, formatRow);
     var buffers = [encodeString(str, encoding)];
     var tmp = [];
     var n = records.length;
@@ -15483,13 +15485,21 @@ ${svg}
     return Buffer.concat(buffers);
   }
 
+  function formatHeader(fields, formatRow) {
+    var rec = fields.reduce(function(memo, f) {
+      memo[f] = f;
+      return memo;
+    }, {});
+    return formatRow(rec);
+  }
+
   function formatDelimHeader(fields, delim) {
     var formatValue = getDelimValueFormatter(delim);
     return fields.map(formatValue).join(delim);
   }
 
-  function getDelimRowFormatter(fields, delim) {
-    var formatValue = getDelimValueFormatter(delim);
+  function getDelimRowFormatter(fields, delim, opts) {
+    var formatValue = getDelimValueFormatter(delim, opts);
     return function(rec) {
       return fields.map(function(f) {
         return formatValue(rec[f]);
@@ -15497,8 +15507,18 @@ ${svg}
     };
   }
 
-  function getDelimValueFormatter(delim) {
-    var dquoteRxp =  new RegExp('["\n\r' + delim + ']');
+  function formatNumber$1(val) {
+    return val + '';
+  }
+
+  function formatIntlNumber(val) {
+    var str = formatNumber$1(val);
+    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
+  }
+
+  function getDelimValueFormatter(delim, opts) {
+    var dquoteRxp = new RegExp('["\n\r' + delim + ']');
+    var decimalComma = opts && opts.decimal_comma || false;
     function formatString(s) {
       if (dquoteRxp.test(s)) {
         s = '"' + s.replace(/"/g, '""') + '"';
@@ -15512,7 +15532,7 @@ ${svg}
       } else if (utils.isString(val)) {
         s = formatString(val);
       } else if (utils.isNumber(val)) {
-        s = val + '';
+        s = decimalComma ? formatIntlNumber(val) : formatNumber$1(val);
       } else if (utils.isObject(val)) {
         s = formatString(JSON.stringify(val));
       } else {
@@ -15555,6 +15575,8 @@ ${svg}
     __proto__: null,
     exportDelim: exportDelim,
     exportLayerAsDSV: exportLayerAsDSV,
+    formatNumber: formatNumber$1,
+    formatIntlNumber: formatIntlNumber,
     getDelimValueFormatter: getDelimValueFormatter
   });
 
@@ -18417,44 +18439,44 @@ ${svg}
         type: 'flag'
       })
       .option('encoding', {
-        describe: '(Shapefile/CSV) text encoding (default is utf8)'
+        describe: '[Shapefile/CSV] text encoding (default is utf8)'
       })
       .option('field-order', {
-        describe: '(Shapefile/CSV) field-order=ascending sorts columns A-Z'
+        describe: '[Shapefile/CSV] field-order=ascending sorts columns A-Z'
       })
       .option('id-field', {
-        describe: '(Topo/GeoJSON/SVG) field to use for id property',
+        describe: '[Topo/GeoJSON/SVG] field to use for id property',
         type: 'strings'
       })
       .option('bbox', {
         type: 'flag',
-        describe: '(Topo/GeoJSON) add bbox property'
+        describe: '[Topo/GeoJSON] add bbox property'
       })
       .option('extension', {
-        describe: '(Topo/GeoJSON) set file extension (default is ".json")'
+        describe: '[Topo/GeoJSON] set file extension (default is ".json")'
       })
       .option('prettify', {
         type: 'flag',
-        describe: '(Topo/GeoJSON/JSON) format output for readability'
+        describe: '[Topo/GeoJSON/JSON] format output for readability'
       })
       .option('singles', {
-        describe: '(TopoJSON) save each target layer as a separate file',
+        describe: '[TopoJSON] save each target layer as a separate file',
         type: 'flag'
       })
       .option('quantization', {
-        describe: '(TopoJSON) specify quantization (auto-set by default)',
+        describe: '[TopoJSON] specify quantization (auto-set by default)',
         type: 'integer'
       })
       .option('no-quantization', {
-        describe: '(TopoJSON) export coordinates without quantization',
+        describe: '[TopoJSON] export coordinates without quantization',
         type: 'flag'
       })
       .option('no-point-quantization', {
-        // describe: '(TopoJSON) export point coordinates without quantization',
+        // describe: '[TopoJSON] export point coordinates without quantization',
         type: 'flag'
       })
       .option('presimplify', {
-        describe: '(TopoJSON) add per-vertex data for dynamic simplification',
+        describe: '[TopoJSON] add per-vertex data for dynamic simplification',
         type: 'flag'
       })
       .option('topojson-precision', {
@@ -18465,72 +18487,76 @@ ${svg}
         // obsolete -- rfc 7946 compatible outptu is now the default.
         // This option also rounds coordinates to 7 decimals. I'm retaining the
         // option for backwards compatibility.
-        // describe: '(GeoJSON) follow RFC 7946 (CCW outer ring order, etc.)',
+        // describe: '[GeoJSON] follow RFC 7946 (CCW outer ring order, etc.)',
         type: 'flag'
       })
       // .option('winding', {
-      //   describe: '(GeoJSON) set polygon winding order (use CW with d3-geo)'
+      //   describe: '[GeoJSON] set polygon winding order (use CW with d3-geo)'
       // })
       .option('gj2008', {
-        describe: '(GeoJSON) use original GeoJSON spec (not RFC 7946)',
+        describe: '[GeoJSON] use original GeoJSON spec (not RFC 7946)',
         type: 'flag'
       })
       .option('combine-layers', {
-        describe: '(GeoJSON) output layers as a single file',
+        describe: '[GeoJSON] output layers as a single file',
         type: 'flag'
       })
       .option('geojson-type', {
-        describe: '(GeoJSON) FeatureCollection, GeometryCollection or Feature'
+        describe: '[GeoJSON] FeatureCollection, GeometryCollection or Feature'
       })
       .option('ndjson', {
-        describe: '(GeoJSON/JSON) output newline-delimited features or records',
+        describe: '[GeoJSON/JSON] output newline-delimited features or records',
         type: 'flag'
       })
       .option('width', {
-        describe: '(SVG/TopoJSON) pixel width of output (SVG default is 800)',
+        describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
         type: 'number'
       })
       .option('height', {
-        describe: '(SVG/TopoJSON) pixel height of output (optional)',
+        describe: '[SVG/TopoJSON] pixel height of output (optional)',
         type: 'number'
       })
       .option('max-height', {
-        describe: '(SVG/TopoJSON) max pixel height of output (optional)',
+        describe: '[SVG/TopoJSON] max pixel height of output (optional)',
         type: 'number'
       })
       .option('margin', {
-        describe: '(SVG/TopoJSON) space betw. data and viewport (default is 1)'
+        describe: '[SVG/TopoJSON] space betw. data and viewport (default is 1)'
       })
       .option('pixels', {
-        describe: '(SVG/TopoJSON) output area in pix. (alternative to width=)',
+        describe: '[SVG/TopoJSON] output area in pix. (alternative to width=)',
         type: 'number'
       })
       .option('fit-bbox', {
         type: 'bbox',
-        describe: '(TopoJSON) scale and shift coordinates to fit a bbox'
+        describe: '[TopoJSON] scale and shift coordinates to fit a bbox'
       })
       .option('svg-scale', {
-        describe: '(SVG) source units per pixel (alternative to width= option)',
+        describe: '[SVG] source units per pixel (alternative to width= option)',
         type: 'number'
       })
       .option('point-symbol', {
-        describe: '(SVG) circle or square (default is circle)'
+        describe: '[SVG] circle or square (default is circle)'
       })
       .option('svg-data', {
         type: 'strings',
-        describe: '(SVG) fields to export as data-* attributes'
+        describe: '[SVG] fields to export as data-* attributes'
       })
       .option('id-prefix', {
-        describe: '(SVG) prefix for namespacing layer and feature ids'
+        describe: '[SVG] prefix for namespacing layer and feature ids'
       })
       .option('delimiter', {
-        describe: '(CSV) field delimiter'
+        describe: '[CSV] field delimiter'
+      })
+      .option('decimal-comma', {
+        type: 'flag',
+        describe: '[CSV] export numbers with decimal commas not points'
       })
       .option('final', {
         type: 'flag' // for testing
       })
       .option('metadata', {
-        // describe: '(TopoJSON) add a metadata object',
+        // describe: '[TopoJSON] add a metadata object',
         type: 'flag'
       });
 
@@ -28319,12 +28345,10 @@ ${svg}
       targetShapes = targetShapes.map(dissolvePolygon);
     }
 
-    // NOTE: commenting-out dissolve of clipping shapes, because the dissolve function
-    //   does not tolerate overlapping shapes and some other topology errors.
-    //   Dissolving was an optimization intended to improve performance when using a
-    //   mosaic (e.g. counties, states) to clip or erase another layer. The user
-    //   can optimize this case by dissolving as a separate step.
-    // // merge rings of clip/erase polygons and dissolve them all
+    // Originally, clip shapes were dissolved here as an optimization, using
+    // an unreliable dissolve function.
+    // Now, clip shapes are dissolved using a more reliable (but slower)
+    // function in mapshaper-clip-erase.js
     // clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
 
     // Open pathways in the clip/erase layer
@@ -28794,15 +28818,20 @@ ${svg}
       return clipLayersByBBox(targetLayers, targetDataset, opts);
     }
     mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
+    clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
     if (usingPathClip) {
       // add vertices at all line intersections
       // (generally slower than actual clipping)
       nodes = addIntersectionCuts(mergedDataset, opts);
       targetDataset.arcs = mergedDataset.arcs;
+      // dissolve clip layer shapes (to remove overlaps and other topological issues
+      // that might confuse the clipping function)
+      clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+
     } else {
       nodes = new NodeCollection(mergedDataset.arcs);
     }
-    clipLyr = mergedDataset.layers.pop();
+    // clipLyr = mergedDataset.layers.pop();
     return clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
   }
 
@@ -30838,7 +30867,9 @@ ${svg}
     if (opts && opts.where) {
       filter = compileValueExpression(opts.where, lyr, arcs);
     }
-    compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
+    // 'defs' are now added to the context of all expressions
+    // compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
+    compiled = compileFeatureExpression(exp, lyr, arcs);
     // call compiled expression with id of each record
     for (var i=0; i<n; i++) {
       if (!filter || filter(i)) {
@@ -33382,7 +33413,7 @@ ${svg}
 
 
 
-  function formatNumber$1(val) {
+  function formatNumber$2(val) {
     return val + '';
   }
 
@@ -33409,14 +33440,14 @@ ${svg}
   }
 
   function countIntegralChars(val) {
-    return utils.isNumber(val) ? (formatNumber$1(val) + '.').indexOf('.') : 0;
+    return utils.isNumber(val) ? (formatNumber$2(val) + '.').indexOf('.') : 0;
   }
 
   function formatTableValue(val, integralChars) {
     var str;
     if (utils.isNumber(val)) {
       str = utils.lpad("", integralChars - countIntegralChars(val), ' ') +
-        formatNumber$1(val);
+        formatNumber$2(val);
     } else if (utils.isString(val)) {
       str = formatString(val);
     } else if (utils.isDate(val)) {
@@ -35002,19 +35033,23 @@ ${svg}
       type: 'FeatureCollection',
       features: []
     };
-    var cands, center, weight;
+    var calc = null;
+    var cands, center, weight, d;
+    if (opts.calc) {
+      calc = getJoinCalc(pointLyr.data, opts.calc);
+    }
+
     for (var i=0; i<n; i++) {
       cands = lookup(i);
       if (!cands.length) continue;
       center = grid.idxToPoint(i);
-      weight = calcCellWeight(center, cands, points, opts);
-      if (weight > 0.05 === false) continue;
+      d = calcCellProperties(center, cands, points, calc, opts);
+      // weight = calcCellWeight(center, cands, points, opts);
+      if (d.weight > 0.05 === false) continue;
+      d.id = i;
       geojson.features.push({
         type: 'Feature',
-        properties: {
-          id: i,
-          weight: weight
-        },
+        properties: d,
         geometry: makeCellPolygon(i, grid, opts)
       });
     }
@@ -35022,18 +35057,40 @@ ${svg}
     return dataset;
   }
 
-  function calcCellWeight(center, ids, points, opts) {
+  function calcCellProperties(center, cands, points, calc, opts) {
     // radius of circle with same area as the cell
     var interval = opts.interval;
     var radius = interval * Math.sqrt(1 / Math.PI);
     var circleArea = Math.PI * opts.radius * opts.radius;
     var cellArea = interval * interval;
+    var ids = [];
     var totArea = 0;
-    for (var i=0; i<ids.length; i++) {
-      totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
+    var intersection;
+    for (var i=0; i<cands.length; i++) {
+      intersection = twoCircleIntersection(center, radius, points[cands[i]], opts.radius);
+      if (intersection > 0 === false) continue;
+      totArea += intersection;
+      ids.push(cands[i]);
     }
-    return totArea / cellArea;
+    var d = {weight: totArea / cellArea};
+    if (calc) {
+      calc(ids, d);
+    }
+    return d;
   }
+
+  // function calcCellWeight(center, ids, points, opts) {
+  //   // radius of circle with same area as the cell
+  //   var interval = opts.interval;
+  //   var radius = interval * Math.sqrt(1 / Math.PI);
+  //   var circleArea = Math.PI * opts.radius * opts.radius;
+  //   var cellArea = interval * interval;
+  //   var totArea = 0;
+  //   for (var i=0; i<ids.length; i++) {
+  //     totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
+  //   }
+  //   return totArea / cellArea;
+  // }
 
   // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
   function twoCircleIntersection(c1, r1, c2, r2) {

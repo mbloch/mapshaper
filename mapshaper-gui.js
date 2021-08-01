@@ -2634,7 +2634,6 @@
           prevTable = active.layer.data,
           prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0;
-
       internal.runParsedCommands(commands, model, function(err) {
         var flags = getCommandFlags(commands),
             active2 = model.getActiveLayer(),
@@ -6606,20 +6605,20 @@
     });
 
     new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-      var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), true) + '"';
+      var cmd = '-filter "this.id in $$selection === false"';
       runCommand(cmd);
       hit.clearSelection();
     });
 
     new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-      var cmd = '-filter "' + getFilterExp(hit.getSelectionIds(), false) + '"';
+
+      var cmd = '-filter "$$selection[this.id] === true"';
       runCommand(cmd);
       hit.clearSelection();
     });
 
     new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-      var cmd = '-each "split_id = ' + getFilterExp(hit.getSelectionIds(), false) +
-        ' ? \'1\' : \'2\'" -split split_id';
+      var cmd = '-each "split_id = $$selection[this.id] ? \'1\' : \'2\'" -split split_id';
       runCommand(cmd);
       hit.clearSelection();
     });
@@ -6628,12 +6627,12 @@
       hit.clearSelection();
     });
 
-    function getFilterExp(ids, invert) {
-      return JSON.stringify(ids) + '.indexOf(this.id) ' + (invert ? '== -1' : '> -1');
-    }
-
     function runCommand(cmd) {
-      if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {});
+      var defs = internal.getStateVar('defs');
+      defs.$$selection = utils.arrayToIndex(hit.getSelectionIds());
+      if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
+        delete defs.$$selection;
+      });
       reset();
     }
   }
