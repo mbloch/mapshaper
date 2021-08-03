@@ -430,15 +430,29 @@
     };
   }
 
+  // export function uniq(src) {
+  //   var index = {};
+  //   return src.reduce(function(memo, el) {
+  //     if (el in index === false) {
+  //       index[el] = true;
+  //       memo.push(el);
+  //     }
+  //     return memo;
+  //   }, []);
+  // }
+
   function uniq(src) {
-    var index = {};
-    return src.reduce(function(memo, el) {
-      if (el in index === false) {
-        index[el] = true;
-        memo.push(el);
+    var index = new Set();
+    var arr = [];
+    var item;
+    for (var i=0, n=src.length; i<n; i++) {
+      item = src[i];
+      if (!index.has(item)) {
+        arr.push(item);
+        index.add(item);
       }
-      return memo;
-    }, []);
+    }
+    return arr;
   }
 
   function pluck(arr, key) {

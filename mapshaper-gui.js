@@ -3234,15 +3234,29 @@
     };
   }
 
+  // export function uniq(src) {
+  //   var index = {};
+  //   return src.reduce(function(memo, el) {
+  //     if (el in index === false) {
+  //       index[el] = true;
+  //       memo.push(el);
+  //     }
+  //     return memo;
+  //   }, []);
+  // }
+
   function uniq(src) {
-    var index = {};
-    return src.reduce(function(memo, el) {
-      if (el in index === false) {
-        index[el] = true;
-        memo.push(el);
+    var index = new Set();
+    var arr = [];
+    var item;
+    for (var i=0, n=src.length; i<n; i++) {
+      item = src[i];
+      if (!index.has(item)) {
+        arr.push(item);
+        index.add(item);
       }
-      return memo;
-    }, []);
+    }
+    return arr;
   }
 
   function pluck(arr, key) {
@@ -6559,13 +6573,16 @@
     gui.on('box_drag_end', function(e) {
       if (!_on) return;
       box.hide();
-      var bboxPixels = e.map_bbox;
+      updateSelection(e.map_bbox);
+    });
+
+    function updateSelection(bboxPixels) {
       var bbox = bboxToCoords(bboxPixels);
       var active = gui.model.getActiveLayer();
       var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
       if (!ids.length) return;
       hit.addSelectionIds(ids);
-    });
+    }
 
     function turnOn() {
       _on = true;
@@ -9901,6 +9918,11 @@
         shp = shapes[i];
         if (!shp || filter && !filter(shp)) continue;
         if (styler) styler(style, i);
+        if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1) {
+          // don't batch shapes with opacity, in case they overlap
+          drawPaths([shp], startPath, draw, style);
+          continue;
+        }
         key = getStyleKey(style);
         if (key in styleIndex === false) {
           styleIndex[key] = {
@@ -9910,9 +9932,7 @@
         }
         item = styleIndex[key];
         item.shapes.push(shp);
-        // overlays should not be batched, so transparency of overlapping shapes
-        // is drawn correctly
-        if (item.shapes.length >= batchSize || style.overlay) {
+        if (item.shapes.length >= batchSize) {
           drawPaths(item.shapes, startPath, draw, item.style);
           item.shapes = [];
         }
@@ -9955,7 +9975,10 @@
         if (styler !== null) { // e.g. selected points
           styler(style, i);
           size = style.dotSize * scaleRatio;
-          _ctx.fillStyle = style.dotColor;
+          if (style.dotColor != color) {
+            color = style.dotColor;
+            _ctx.fillStyle = color;
+          }
         }
         shp = shapes[i];
         for (j=0, m=shp ? shp.length : 0; j<m; j++) {
@@ -10063,12 +10086,13 @@
 
     function getStyleKey(style) {
       return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-        '~' + (style.lineDash ? style.lineDash + '~' : '') +
-        (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
+        '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
         (style.fillColor || '') +
-        (style.fillOpacity ? '~' + style.fillOpacity : '') +
-        (style.fillPattern ? '~' + style.fillPattern : '') +
-        (style.opacity < 1 ? '~' + style.opacity : '');
+        // styles with <1 opacity are no longer batch-rendered
+        // (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
+        // (style.fillOpacity ? '~' + style.fillOpacity : '') +
+        // (style.opacity < 1 ? '~' + style.opacity : '') +
+        (style.fillPattern ? '~' + style.fillPattern : '');
     }
 
     return _self;
