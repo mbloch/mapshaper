@@ -26,13 +26,16 @@ export function SelectionTool(gui, ext, hit) {
   gui.on('box_drag_end', function(e) {
     if (!_on) return;
     box.hide();
-    var bboxPixels = e.map_bbox;
+    updateSelection(e.map_bbox);
+  });
+
+  function updateSelection(bboxPixels) {
     var bbox = bboxToCoords(bboxPixels);
     var active = gui.model.getActiveLayer();
     var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
     if (!ids.length) return;
     hit.addSelectionIds(ids);
-  });
+  }
 
   function turnOn() {
     _on = true;

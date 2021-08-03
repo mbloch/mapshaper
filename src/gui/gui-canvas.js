@@ -155,6 +155,11 @@ export function DisplayCanvas() {
       shp = shapes[i];
       if (!shp || filter && !filter(shp)) continue;
       if (styler) styler(style, i);
+      if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1) {
+        // don't batch shapes with opacity, in case they overlap
+        drawPaths([shp], startPath, draw, style);
+        continue;
+      }
       key = getStyleKey(style);
       if (key in styleIndex === false) {
         styleIndex[key] = {
@@ -164,9 +169,7 @@ export function DisplayCanvas() {
       }
       item = styleIndex[key];
       item.shapes.push(shp);
-      // overlays should not be batched, so transparency of overlapping shapes
-      // is drawn correctly
-      if (item.shapes.length >= batchSize || style.overlay) {
+      if (item.shapes.length >= batchSize) {
         drawPaths(item.shapes, startPath, draw, item.style);
         item.shapes = [];
       }
@@ -209,7 +212,10 @@ export function DisplayCanvas() {
       if (styler !== null) { // e.g. selected points
         styler(style, i);
         size = style.dotSize * scaleRatio;
-        _ctx.fillStyle = style.dotColor;
+        if (style.dotColor != color) {
+          color = style.dotColor;
+          _ctx.fillStyle = color;
+        }
       }
       shp = shapes[i];
       for (j=0, m=shp ? shp.length : 0; j<m; j++) {
@@ -317,12 +323,13 @@ export function DisplayCanvas() {
 
   function getStyleKey(style) {
     return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
-      '~' + (style.lineDash ? style.lineDash + '~' : '') +
-      (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
+      '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
       (style.fillColor || '') +
-      (style.fillOpacity ? '~' + style.fillOpacity : '') +
-      (style.fillPattern ? '~' + style.fillPattern : '') +
-      (style.opacity < 1 ? '~' + style.opacity : '');
+      // styles with <1 opacity are no longer batch-rendered
+      // (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
+      // (style.fillOpacity ? '~' + style.fillOpacity : '') +
+      // (style.opacity < 1 ? '~' + style.opacity : '') +
+      (style.fillPattern ? '~' + style.fillPattern : '');
   }
 
   return _self;

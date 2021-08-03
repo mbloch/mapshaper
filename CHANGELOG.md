@@ -1,3 +1,6 @@
+v0.5.64
+* Bug fixes
+
 v0.5.63
 * Added -o decimal-comma function, for exporting CSV numbers with decimal commas.
 * Fix for issue #497 (error erasing with overlapping polygons).
