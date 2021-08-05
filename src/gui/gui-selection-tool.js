@@ -2,6 +2,7 @@ import { HighlightBox } from './gui-highlight-box';
 import { internal, utils } from './gui-core';
 import { SimpleButton } from './gui-elements';
 
+
 export function SelectionTool(gui, ext, hit) {
   var popup = gui.container.findChild('.selection-tool-options');
   var box = new HighlightBox('body');

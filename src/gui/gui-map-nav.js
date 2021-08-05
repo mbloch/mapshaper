@@ -1,12 +1,12 @@
 import { MouseWheel } from './gui-mouse';
 import { Tween } from './gui-tween';
-import { Bounds, internal } from './gui-core';
+import { Bounds, internal, utils } from './gui-core';
+import { initVariableClick } from './gui-mouse-utils';
 
 export function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomTween = new Tween(Tween.sineInOut),
       boxDrag = false,
-      zoomScale = 1.5,
       zoomScaleMultiplier = 1,
       inBtn, outBtn,
       dragStartEvt,
@@ -26,8 +26,10 @@ export function MapNav(gui, ext, mouse) {
   }
 
   if (gui.options.zoomControl) {
-    inBtn = gui.buttons.addButton("#zoom-in-icon").on('click', zoomIn);
-    outBtn = gui.buttons.addButton("#zoom-out-icon").on('click', zoomOut);
+    inBtn = gui.buttons.addButton("#zoom-in-icon");
+    outBtn = gui.buttons.addButton("#zoom-out-icon");
+    initVariableClick(inBtn.node(), zoomIn);
+    initVariableClick(outBtn.node(), zoomOut);
     ext.on('change', function() {
       inBtn.classed('disabled', ext.scale() >= ext.maxScale());
     });
@@ -43,7 +45,7 @@ export function MapNav(gui, ext, mouse) {
 
   mouse.on('dblclick', function(e) {
     if (disabled()) return;
-    zoomByPct(1 + zoomScale * zoomScaleMultiplier, e.x / ext.width(), e.y / ext.height());
+    zoomByPct(getZoomInPct(), e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
@@ -111,14 +113,25 @@ export function MapNav(gui, ext, mouse) {
     return !!gui.options.disableNavigation;
   }
 
-  function zoomIn() {
+  function zoomIn(e) {
     if (disabled()) return;
-    zoomByPct(1 + zoomScale * zoomScaleMultiplier, 0.5, 0.5);
+    zoomByPct(getZoomInPct(e.time), 0.5, 0.5);
   }
 
-  function zoomOut() {
+  function zoomOut(e) {
     if (disabled()) return;
-    zoomByPct(1/(1 + zoomScale * zoomScaleMultiplier), 0.5, 0.5);
+    zoomByPct(1/getZoomInPct(e.time), 0.5, 0.5);
+  }
+
+  function getZoomInPct(clickTime) {
+    var minScale = 0.2,
+        maxScale = 4,
+        minTime = 100,
+        maxTime = 800,
+        time = utils.clamp(clickTime || 200, minTime, maxTime),
+        k = (time - minTime) / (maxTime - minTime),
+        scale = minScale + k * (maxScale - minScale);
+    return 1 + scale * zoomScaleMultiplier;
   }
 
   // @box Bounds with pixels from t,l corner of map area.
