@@ -1,14 +1,15 @@
 import ShpType from '../shapefile/shp-type';
 import { error } from '../utils/mapshaper-logging';
 
-var NullRecord = function() {
+function getNullRecord(id) {
   return {
+    id: id,
     isNull: true,
     pointCount: 0,
     partCount: 0,
     byteLength: 12
   };
-};
+}
 
 // Returns a constructor function for a shape record class with
 //   properties and methods for reading coordinate data.
@@ -30,19 +31,15 @@ export default function ShpRecordClass(type) {
       hasM = ShpType.isMType(type),
       singlePoint = !hasBounds,
       mzRangeBytes = singlePoint ? 0 : 16,
-      constructor;
-
-  if (type === 0) {
-    return NullRecord;
-  }
+      constructor, proto;
 
   // @bin is a BinArray set to the first data byte of a shape record
   constructor = function ShapeRecord(bin, bytes) {
     var pos = bin.position();
     this.id = bin.bigEndian().readUint32();
     this.type = bin.littleEndian().skipBytes(4).readUint32();
-    if (this.type === 0) {
-      return new NullRecord();
+    if (this.type === 0 || type === 0) {
+      return getNullRecord(this.id);
     }
     if (bytes > 0 !== true || (this.type != type && this.type !== 0)) {
       error("Unable to read a shape -- .shp file may be corrupted");
@@ -63,7 +60,7 @@ export default function ShpRecordClass(type) {
 
   // base prototype has methods shared by all Shapefile types except NULL type
   // (Type-specific methods are mixed in below)
-  var proto = {
+  var baseProto = {
     // return offset of [x, y] point data in the record
     _xypos: function() {
       var offs = 12; // skip header & record type
@@ -241,10 +238,12 @@ export default function ShpRecordClass(type) {
     }
   };
 
-  if (singlePoint) {
-    Object.assign(proto, singlePointProto);
+  if (type === 0) {
+    proto = {};
+  } else if (singlePoint) {
+    proto = Object.assign(baseProto, singlePointProto);
   } else {
-    Object.assign(proto, multiCoordProto);
+    proto = Object.assign(baseProto, multiCoordProto);
   }
   if (hasZ) Object.assign(proto, zProto);
   if (hasM) Object.assign(proto, mProto);
