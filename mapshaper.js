@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.62";
+  var VERSION = "0.5.64";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9029,7 +9029,7 @@
   // Return array of variables on the left side of assignment operations
   // @hasDot (bool) Return property assignments via dot notation
   function getAssignedVars(exp, hasDot) {
-    var rxp = /[a-z_][.a-z0-9_]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
+    var rxp = /[a-z_$][.a-z0-9_$]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
     var matches = exp.match(rxp) || [];
     var f = function(s) {
       var i = s.indexOf('.');
@@ -18843,6 +18843,13 @@ ${svg}
           '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
           '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
+    parser.command('define')
+      // .describe('define expression variables')
+      .option('expression', {
+        DEFAULT: true,
+        describe: 'one or more assignment expressions (comma-sep.)'
+      });
+
     parser.command('dissolve')
       .describe('merge features within a layer')
       .example('Dissolve all polygons in a feature layer into a single polygon\n' +
@@ -20582,14 +20589,15 @@ ${svg}
     isSupportedShapefileType: isSupportedShapefileType
   });
 
-  var NullRecord = function() {
+  function getNullRecord(id) {
     return {
+      id: id,
       isNull: true,
       pointCount: 0,
       partCount: 0,
       byteLength: 12
     };
-  };
+  }
 
   // Returns a constructor function for a shape record class with
   //   properties and methods for reading coordinate data.
@@ -20611,19 +20619,15 @@ ${svg}
         hasM = ShpType.isMType(type),
         singlePoint = !hasBounds,
         mzRangeBytes = singlePoint ? 0 : 16,
-        constructor;
-
-    if (type === 0) {
-      return NullRecord;
-    }
+        constructor, proto;
 
     // @bin is a BinArray set to the first data byte of a shape record
     constructor = function ShapeRecord(bin, bytes) {
       var pos = bin.position();
       this.id = bin.bigEndian().readUint32();
       this.type = bin.littleEndian().skipBytes(4).readUint32();
-      if (this.type === 0) {
-        return new NullRecord();
+      if (this.type === 0 || type === 0) {
+        return getNullRecord(this.id);
       }
       if (bytes > 0 !== true || (this.type != type && this.type !== 0)) {
         error("Unable to read a shape -- .shp file may be corrupted");
@@ -20644,7 +20648,7 @@ ${svg}
 
     // base prototype has methods shared by all Shapefile types except NULL type
     // (Type-specific methods are mixed in below)
-    var proto = {
+    var baseProto = {
       // return offset of [x, y] point data in the record
       _xypos: function() {
         var offs = 12; // skip header & record type
@@ -20822,10 +20826,12 @@ ${svg}
       }
     };
 
-    if (singlePoint) {
-      Object.assign(proto, singlePointProto);
+    if (type === 0) {
+      proto = {};
+    } else if (singlePoint) {
+      proto = Object.assign(baseProto, singlePointProto);
     } else {
-      Object.assign(proto, multiCoordProto);
+      proto = Object.assign(baseProto, multiCoordProto);
     }
     if (hasZ) Object.assign(proto, zProto);
     if (hasM) Object.assign(proto, mProto);
@@ -29650,6 +29656,15 @@ ${svg}
     };
   }
 
+  cmd.define = function(opts) {
+    if (!opts.expression) {
+      stop('Missing an assignment expression');
+    }
+    var defs = getStateVar('defs');
+    var compiled = compileFeatureExpression(opts.expression, {}, null, {});
+    var result = compiled(null, defs);
+  };
+
   // Removes small gaps and all overlaps
   cmd.dissolve2 = function(layers, dataset, opts) {
     layers.forEach(requirePolygonLayer);
@@ -34603,6 +34618,12 @@ ${svg}
   // Return a function for translating a target id to an array of source ids based on values
   // of two key fields.
   function getJoinByKey(dest, destKey, src, srcKey) {
+    if (!dest) {
+      stop('Target layer is missing an attribute table');
+    }
+    if (!src) {
+      stop('Source layer is missing an attribute table');
+    }
     var destRecords = dest.getRecords();
     var srcRecords = src.getRecords();
     var index = createTableIndex(srcRecords, srcKey);
@@ -37593,6 +37614,9 @@ ${svg}
 
       } else if (name == 'colorizer') {
         outputLayers = cmd.colorizer(opts);
+
+      } else if (name == 'define') {
+        cmd.define(opts);
 
       } else if (name == 'dissolve') {
         outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);
