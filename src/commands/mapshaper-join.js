@@ -60,6 +60,12 @@ export function joinAttributesToFeatures(lyr, srcTable, opts) {
 // Return a function for translating a target id to an array of source ids based on values
 // of two key fields.
 function getJoinByKey(dest, destKey, src, srcKey) {
+  if (!dest) {
+    stop('Target layer is missing an attribute table');
+  }
+  if (!src) {
+    stop('Source layer is missing an attribute table');
+  }
   var destRecords = dest.getRecords();
   var srcRecords = src.getRecords();
   var index = createTableIndex(srcRecords, srcKey);

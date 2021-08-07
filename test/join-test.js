@@ -14,6 +14,21 @@ describe('mapshaper-join.js', function () {
 
   describe('-join command', function () {
 
+    it('add error msg when joining to a layer without attributes', function(done) {
+      var targ = {
+        type: 'Point',
+        coordinates: [0, 0]
+      };
+      var data = [{id: 'foo'}];
+      var cmd = '-i point.json -join data.json keys=id,id -o';
+      api.applyCommands(cmd, {'point.json': targ, 'data.json': data}, function(err, out) {
+        assert.equal(err.name, 'UserError');
+        assert(err.message.includes('missing an attribute table'));
+        done();
+      })
+
+    });
+
     it('includes source key with fields=* option', function(done) {
       var a = 'id,name\n1,foo';
       var b = 'key,score\n1,100';
