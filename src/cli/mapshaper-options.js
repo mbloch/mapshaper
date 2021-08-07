@@ -617,6 +617,13 @@ export function getOptionParser() {
         '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
         '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
+  parser.command('define')
+    // .describe('define expression variables')
+    .option('expression', {
+      DEFAULT: true,
+      describe: 'one or more assignment expressions (comma-sep.)'
+    });
+
   parser.command('dissolve')
     .describe('merge features within a layer')
     .example('Dissolve all polygons in a feature layer into a single polygon\n' +

@@ -23,6 +23,7 @@ import '../commands/mapshaper-clip-erase';
 import '../commands/mapshaper-cluster';
 import '../commands/mapshaper-colorizer';
 import '../commands/mapshaper-data-fill';
+import '../commands/mapshaper-define';
 import '../commands/mapshaper-dissolve';
 import '../commands/mapshaper-dissolve2';
 import '../commands/mapshaper-divide';
@@ -180,6 +181,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'colorizer') {
       outputLayers = cmd.colorizer(opts);
+
+    } else if (name == 'define') {
+      cmd.define(opts);
 
     } else if (name == 'dissolve') {
       outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);

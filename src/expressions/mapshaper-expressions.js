@@ -127,7 +127,7 @@ export function compileFeatureExpression(rawExp, lyr, arcs, opts_) {
 // Return array of variables on the left side of assignment operations
 // @hasDot (bool) Return property assignments via dot notation
 export function getAssignedVars(exp, hasDot) {
-  var rxp = /[a-z_][.a-z0-9_]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
+  var rxp = /[a-z_$][.a-z0-9_$]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
   var matches = exp.match(rxp) || [];
   var f = function(s) {
     var i = s.indexOf('.');

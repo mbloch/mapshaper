@@ -142,6 +142,16 @@ describe('mapshaper-each.js', function () {
       assert.deepEqual(records, [{bar: 'mice'}, {bar: 'beans'}]);
     })
 
+    it('create a variable containing "$"', function () {
+      var records = [{foo:'mice'}, {foo:'beans'}];
+      var lyr = {
+        shapes: [],
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "$$foo = foo + foo");
+      assert.deepEqual(records, [{foo: 'mice', '$$foo': 'micemice'}, {foo: 'beans', '$$foo': 'beansbeans'}]);
+    })
+
     it('data record is available as $.properties', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
