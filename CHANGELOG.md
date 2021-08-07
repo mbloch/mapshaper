@@ -1,3 +1,7 @@
+v0.5.65
+* Web UI zoom buttons respond to variable-length clicks.
+* Bug fixes
+
 v0.5.64
 * Bug fixes
 
