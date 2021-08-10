@@ -230,16 +230,24 @@ export function MshpMap(gui) {
       drawLayers('nav');
     });
 
-    _hit.on('change', function(e) {
-      // draw highlight effect for hover and select
-      _overlayLyr = getDisplayLayerOverlay(_activeLyr, e);
-      drawLayers('hover');
-      // _stack.drawOverlayLayer(_overlayLyr);
-    });
+    _hit.on('change', updateOverlayLayer);
 
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
     });
+  }
+
+  function updateOverlayLayer(e) {
+    var style = MapStyle.getOverlayStyle(_activeLyr.layer, e);
+    if (style) {
+      _overlayLyr = utils.defaults({
+        layer: filterLayerByIds(_activeLyr.layer, style.ids),
+        style: style
+      }, _activeLyr);
+    } else {
+      _overlayLyr = null;
+    }
+    drawLayers('hover');
   }
 
   function getDisplayOptions() {
@@ -451,11 +459,3 @@ export function MshpMap(gui) {
   }
 }
 
-function getDisplayLayerOverlay(obj, e) {
-  var style = MapStyle.getOverlayStyle(obj.layer, e);
-  if (!style) return null;
-  return utils.defaults({
-    layer: filterLayerByIds(obj.layer, style.ids),
-    style: style
-  }, obj);
-}

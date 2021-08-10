@@ -1,7 +1,7 @@
 import { El } from './gui-el';
 
-export function HighlightBox(el) {
-  var box = El('div').addClass('zoom-box').appendTo(el),
+export function HighlightBox() {
+  var box = El('div').addClass('zoom-box').appendTo('body'),
       show = box.show.bind(box), // original show() function
       stroke = 2;
   box.hide();

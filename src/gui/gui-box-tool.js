@@ -9,7 +9,7 @@ import { GUI } from './gui-lib';
 
 export function BoxTool(gui, ext, mouse, nav) {
   var self = new EventDispatcher();
-  var box = new HighlightBox('body');
+  var box = new HighlightBox();
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
   var _on = false;

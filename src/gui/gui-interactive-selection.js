@@ -8,6 +8,7 @@ export function InteractiveSelection(gui, ext, mouse) {
   var self = new EventDispatcher();
   var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var selectionIds = [];
+  var transientIds = []; // e.g. hit ids while dragging a box
   var active = false;
   var interactionMode;
   var targetLayer;
@@ -100,6 +101,14 @@ export function InteractiveSelection(gui, ext, mouse) {
     selectionIds = utils.uniq(selectionIds.concat(ids));
     ids = utils.uniq(storedData.ids.concat(ids));
     updateSelectionState({ids: ids});
+  };
+
+  self.setTransientIds = function(ids) {
+    // turnOn('selection');
+    transientIds = ids || [];
+    if (active) {
+      triggerHitEvent('change');
+    }
   };
 
   self.clearSelection = function() {
@@ -257,6 +266,7 @@ export function InteractiveSelection(gui, ext, mouse) {
   // evt: (optional) mouse event
   function updateSelectionState(newData) {
     var nonEmpty = newData && (newData.ids.length || newData.id > -1);
+    transientIds = [];
     if (!newData) {
       newData = noHitData();
       selectionIds = [];
@@ -300,6 +310,9 @@ export function InteractiveSelection(gui, ext, mouse) {
   function triggerHitEvent(type, d) {
     // Merge stored hit data into the event data
     var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+    if (transientIds.length) {
+      eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+    }
     self.dispatchEvent(type, eventData);
   }
 

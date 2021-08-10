@@ -60,8 +60,7 @@ body {
 	color: #10699b;
 }
 
-.dot-underline,
-.zoom-box.zooming {
+.dot-underline {
 	border-color: #10699b;
 }
 
@@ -1120,12 +1119,14 @@ img.close-btn:hover,
 
 .zoom-box {
 	position: absolute;
-	border: 1px solid #f74b80;
+	border: 1px solid #cc6acc;
 	z-index: 15;
 	pointer-events: none;
 }
 
-
+.zoom-box.zooming {
+	border-color: #1385B7;
+}
 
 /* Simplification control ------------ */
 

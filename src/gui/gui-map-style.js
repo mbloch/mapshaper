@@ -37,39 +37,40 @@ var darkStroke = "#334",
         strokeColor: black,
         strokeWidth: 1.2
       }, point:  {
-        dotColor: black,
-        dotSize: 8
-      }, polyline:  {
+        dotColor: violet, // black,
+        dotSize: 10
+      }, polyline: {
         strokeColor: black,
         strokeWidth: 2.5
       }
     },
-    unfilledHoverStyles = {
+    unselectedHoverStyles = {
       polygon: {
         fillColor: 'rgba(0,0,0,0)',
         strokeColor: black,
         strokeWidth: 1.2
       }, point:  {
-        dotColor: grey,
+        dotColor: black, // grey,
         dotSize: 8
       }, polyline:  {
-        strokeColor: grey,
+        strokeColor: black, // grey,
         strokeWidth: 2.5
       }
     },
     selectionStyles = {
       polygon: {
-        fillColor: selectionFill,
-        strokeColor: gold,
-        strokeWidth: 1
+        fillColor: hoverFill,
+        strokeColor: black,
+        strokeWidth: 1.2
       }, point:  {
-        dotColor: gold,
+        dotColor: violet, // black,
         dotSize: 6
       }, polyline:  {
-        strokeColor: gold,
-        strokeWidth: 1.5
+        strokeColor: violet, //  black,
+        strokeWidth: 2.5
       }
     },
+    // not used
     selectionHoverStyles = {
       polygon: {
         fillColor: selectionFill,
@@ -89,10 +90,10 @@ var darkStroke = "#334",
         strokeColor: violet,
         strokeWidth: 1.8
       }, point:  {
-        dotColor: 'violet',
-        dotSize: 8
+        dotColor: violet,
+        dotSize: 12
       }, polyline:  {
-        strokeColor: violet,
+        strokeColor: black, // violet,
         strokeWidth: 3
       }
     };
@@ -101,6 +102,35 @@ export function getIntersectionStyle(lyr) {
   return utils.extend({}, intersectionStyle);
 }
 
+function getDefaultStyle(lyr, baseStyle) {
+  var style = utils.extend({}, baseStyle);
+  // reduce the dot size of large point layers
+  if (lyr.geometry_type == 'point' && style.dotSize > 0) {
+    style.dotSize *= getDotScale(lyr);
+  }
+  return style;
+}
+
+function getDotScale(lyr) {
+  var topTier = 50000;
+  var n = countPoints(lyr.shapes, topTier + 2); // short-circuit point counting above top threshold
+  var k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+  return k;
+}
+
+function countPoints(shapes, max) {
+  var count = 0;
+  var i, n, shp;
+  max = max || Infinity;
+  for (i=0, n=shapes.length; i<n && count<=max; i++) {
+    shp = shapes[i];
+    count += shp ? shp.length : 0;
+  }
+  return count;
+}
+
+// Style for unselected layers with visibility turned on
+// (styled layers have)
 export function getReferenceStyle(lyr) {
   var style;
   if (layerHasCanvasDisplayStyle(lyr)) {
@@ -108,7 +138,7 @@ export function getReferenceStyle(lyr) {
   } else if (internal.layerHasLabels(lyr)) {
     style = {dotSize: 0}; // no reference dots if labels are visible
   } else {
-    style = utils.extend({}, referenceStyle);
+    style = getDefaultStyle(lyr, referenceStyle);
   }
   return style;
 }
@@ -118,72 +148,80 @@ export function getActiveStyle(lyr) {
   if (layerHasCanvasDisplayStyle(lyr)) {
     style = getCanvasDisplayStyle(lyr);
   } else if (internal.layerHasLabels(lyr)) {
-    style = utils.extend({}, activeStyleForLabels);
+    style = getDefaultStyle(lyr, activeStyleForLabels);
   } else {
-    style = utils.extend({}, activeStyle);
+    style = getDefaultStyle(lyr, activeStyle);
   }
   return style;
 }
 
 
-// Returns a display style for the overlay layer. This style displays any
-// hover or selection affects for the active data layer.
+// Returns a display style for the overlay layer.
+// The overlay layer renders several kinds of feature, each of which is displayed
+// with a different style.
+//
+// * hover shapes
+// * selected shapes
+// * pinned shapes
+//
 export function getOverlayStyle(lyr, o) {
-  var type = lyr.geometry_type;
-  var topId = o.id;
-  var ids = [];
-  var styles = [];
+  var geomType = lyr.geometry_type;
+  var topId = o.id; // pinned id (if pinned) or hover id
+  var topIdx = -1;
   var styler = function(o, i) {
-    utils.extend(o, styles[i]);
+    utils.extend(o, i === topIdx ? topStyle: baseStyle);
   };
-  var overlayStyle = {
-    styler: styler
-  };
-
-  o.ids.forEach(function(i) {
-    var style;
-    if (i == topId) return;
-    style = hoverStyles[type];
-    // style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
-    ids.push(i);
-    styles.push(style);
+  var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
+  var topStyle;
+  var ids = o.ids.filter(function(i) {
+    return i != o.id; // move selected id to the end
   });
-  // top layer: feature that was selected by clicking in inspection mode ([i])
-  if (topId > -1) {
-    var isPinned = o.pinned;
-    var inSelection = o.ids.indexOf(topId) > -1;
-    var style;
-    if (isPinned) {
-      style = pinnedStyles[type];
-    } else if (inSelection) {
-      style = hoverStyles[type];
-    } else {
-      style = unfilledHoverStyles[type];
-    }
-    ids.push(topId);
-    styles.push(style);
+  if (o.id > -1) {
+    topStyle = getSelectedFeatureStyle(lyr, o);
+    topIdx = ids.length;
+    ids.push(o.id); // put the pinned/hover feature last in the render order
   }
-
+  var overlayStyle = {
+    styler: styler,
+    ids: ids,
+    overlay: true
+  };
   if (layerHasCanvasDisplayStyle(lyr)) {
-    if (type == 'point') {
-      overlayStyle = wrapOverlayStyle(getCanvasDisplayStyle(lyr), overlayStyle);
+    if (geomType == 'point') {
+      overlayStyle.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
     }
     overlayStyle.type = 'styled';
   }
-  overlayStyle.ids = ids;
-  overlayStyle.overlay = true;
   return ids.length > 0 ? overlayStyle : null;
 }
 
+function getSelectedFeatureStyle(lyr, o) {
+  var isPinned = o.pinned;
+  var inSelection = o.ids.indexOf(o.id) > -1;
+  var geomType = lyr.geometry_type;
+  var style;
+  if (isPinned) {
+    // a feature is pinned
+    style = pinnedStyles[geomType];
+  } else if (inSelection) {
+    // normal hover, or hover id is in the selection set
+    style = hoverStyles[geomType];
+  } else {
+    // features are selected, but hover id is not in the selection set
+    style = unselectedHoverStyles[geomType];
+  }
+  return getDefaultStyle(lyr, style);
+}
+
 // Modify style to use scaled circle instead of dot symbol
-function wrapOverlayStyle(style, hoverStyle) {
-  var styler = function(obj, i) {
+function getOverlayPointStyler(baseStyler, overlayStyler) {
+  return function(obj, i) {
     var dotColor;
     var id = obj.ids ? obj.ids[i] : -1;
     obj.strokeWidth = 0; // kludge to support setting minimum stroke width
-    style.styler(obj, id);
-    if (hoverStyle.styler) {
-      hoverStyle.styler(obj, i);
+    baseStyler(obj, id);
+    if (overlayStyler) {
+      overlayStyler(obj, i);
     }
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
@@ -195,7 +233,6 @@ function wrapOverlayStyle(style, hoverStyle) {
       obj.opacity = 1;
     }
   };
-  return {styler: styler};
 }
 
 function getCanvasDisplayStyle(lyr) {
