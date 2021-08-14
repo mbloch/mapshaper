@@ -1,3 +1,7 @@
+v0.5.66
+* Improve interactive selection.
+* Added undocumented -define command.
+
 v0.5.65
 * Web UI zoom buttons respond to variable-length clicks.
 * Bug fixes
