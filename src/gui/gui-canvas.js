@@ -191,7 +191,7 @@ export function DisplayCanvas() {
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
         scaleRatio = getDotScale(_ext),
-        size = Math.ceil((style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio),
+        size = Math.round((style.dotSize || 1) * scaleRatio),
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
@@ -355,10 +355,22 @@ function getLineScale(ext) {
 
 
 function getDotScale(ext) {
-  var pixRatio = GUI.getPixelRatio();
-  var side = Math.min(ext.width(), ext.height());
-  var j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
-  return Math.pow(getLineScale(ext), 0.7) * j * pixRatio;
+  var smallSide = Math.min(ext.width(), ext.height());
+  // reduce size on smaller screens
+  var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
+  var k = 1;
+  var mapScale = ext.scale();
+  if (mapScale < 0.5) {
+    k = Math.pow(mapScale + 0.5, 0.35);
+  }
+  if (mapScale > 1) {
+    // scale faster at first, so small dots in large datasets
+    // become easily visible and clickable after zooming in a bit
+    k *= Math.pow(Math.min(mapScale, 10), 0.3);
+    k *= Math.pow(mapScale, 0.1);
+  }
+
+  return k * j * GUI.getPixelRatio();
 }
 
 function getScaledTransform(ext) {

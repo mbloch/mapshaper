@@ -14,22 +14,22 @@ var darkStroke = "#334",
       strokeColors: [lightStroke, darkStroke],
       strokeWidth: 0.7,
       dotColor: "#223",
-      dotSize: 4
+      dotSize: 1
     },
     activeStyleForLabels = {
       dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
-      dotSize: 4
+      dotSize: 1
     },
     referenceStyle = { // outline style for reference layers
       type: 'outline',
       strokeColors: [null, '#86c927'],
       strokeWidth: 0.85,
       dotColor: "#73ba20",
-      dotSize: 4
+      dotSize: 1
     },
     intersectionStyle = {
       dotColor: "#F24400",
-      dotSize: 4
+      dotSize: 1
     },
     hoverStyles = {
       polygon: {
@@ -38,7 +38,7 @@ var darkStroke = "#334",
         strokeWidth: 1.2
       }, point:  {
         dotColor: violet, // black,
-        dotSize: 10
+        dotSize: 2.5
       }, polyline: {
         strokeColor: black,
         strokeWidth: 2.5
@@ -51,7 +51,7 @@ var darkStroke = "#334",
         strokeWidth: 1.2
       }, point:  {
         dotColor: black, // grey,
-        dotSize: 8
+        dotSize: 2
       }, polyline:  {
         strokeColor: black, // grey,
         strokeWidth: 2.5
@@ -64,7 +64,7 @@ var darkStroke = "#334",
         strokeWidth: 1.2
       }, point:  {
         dotColor: violet, // black,
-        dotSize: 6
+        dotSize: 1.5
       }, polyline:  {
         strokeColor: violet, //  black,
         strokeWidth: 2.5
@@ -78,7 +78,7 @@ var darkStroke = "#334",
         strokeWidth: 1.2
       }, point:  {
         dotColor: black,
-        dotSize: 6
+        dotSize: 1.5
       }, polyline:  {
         strokeColor: black,
         strokeWidth: 2
@@ -91,7 +91,7 @@ var darkStroke = "#334",
         strokeWidth: 1.8
       }, point:  {
         dotColor: violet,
-        dotSize: 12
+        dotSize: 3
       }, polyline:  {
         strokeColor: black, // violet,
         strokeWidth: 3
@@ -99,7 +99,7 @@ var darkStroke = "#334",
     };
 
 export function getIntersectionStyle(lyr) {
-  return utils.extend({}, intersectionStyle);
+  return getDefaultStyle(lyr, intersectionStyle);
 }
 
 function getDefaultStyle(lyr, baseStyle) {
@@ -114,7 +114,8 @@ function getDefaultStyle(lyr, baseStyle) {
 function getDotScale(lyr) {
   var topTier = 50000;
   var n = countPoints(lyr.shapes, topTier + 2); // short-circuit point counting above top threshold
-  var k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+  var k = n < 200 && 4 || n < 2500 && 3 || n < 10000 && 2 || 1;
+  // var k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
   return k;
 }
 
