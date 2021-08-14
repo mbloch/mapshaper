@@ -349,7 +349,7 @@ export default function DbfReader(src, encodingArg) {
   function findStringEncoding() {
     var ldid = header.ldid,
         codepage = lookupCodePage(ldid),
-        samples = getNonAsciiSamples(50),
+        samples = getNonAsciiSamples(),
         only7bit = samples.length === 0,
         encoding, msg;
 
@@ -394,21 +394,25 @@ export default function DbfReader(src, encodingArg) {
     return arr;
   }
 
-  // Return up to @size buffers containing text samples
+  // Return an array of buffers containing text samples
   // with at least one byte outside the 7-bit ascii range.
-  function getNonAsciiSamples(size) {
+  function getNonAsciiSamples() {
     var samples = [];
     var stringFields = header.fields.filter(function(f) {
       return f.type == 'C';
     });
+    var cols = stringFields.length;
+    // don't scan all the rows in large files (slow)
+    var rows = Math.min(header.recordCount, 10000);
+    var maxSamples = 50;
     var buf = utils.createBuffer(256);
     var index = {};
     var f, chars, sample, hash;
     // include non-ascii field names, if any
     samples = getNonAsciiHeaders();
-    for (var r=0, rows=header.recordCount; r<rows; r++) {
-      for (var c=0, cols=stringFields.length; c<cols; c++) {
-        if (samples.length >= size) break;
+    for (var r=0; r<rows; r++) {
+      for (var c=0; c<cols; c++) {
+        if (samples.length >= maxSamples) break;
         f = stringFields[c];
         bin.position(getRowOffset(r) + f.columnOffset);
         chars = readStringBytes(bin, f.size, buf);
