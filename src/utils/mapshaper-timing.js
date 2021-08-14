@@ -2,9 +2,18 @@
 export var T = {
   stack: [],
   start: function() {
-    T.stack.push(+new Date());
+    T.stack.push(Date.now());
   },
   stop: function() {
-    return (+new Date() - T.stack.pop()) + 'ms';
+    return (Date.now() - T.stack.pop()) + 'ms';
   }
 };
+
+export function tick(msg) {
+  var now = Date.now();
+  var elapsed = tickTime ? ' - ' + (now - tickTime) + 'ms' : '';
+  tickTime = now;
+  console.log((msg || '') + elapsed);
+}
+
+var tickTime = 0;

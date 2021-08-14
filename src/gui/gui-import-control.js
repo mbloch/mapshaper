@@ -464,6 +464,19 @@ export function ImportControl(gui, opts) {
   }
 
   function downloadNextFile(memo, item, next) {
+    var blob, err;
+    fetch(item.url).then(resp => resp.blob()).then(b => {
+      blob = b;
+      blob.name = item.basename;
+      memo.push(blob);
+    }).catch(e => {
+      err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
+    }).finally(() => {
+      next(err, memo);
+    });
+  }
+
+  function downloadNextFile_v1(memo, item, next) {
     var req = new XMLHttpRequest();
     var blob;
     req.responseType = 'blob';
@@ -473,6 +486,7 @@ export function ImportControl(gui, opts) {
       }
     });
     req.addEventListener('progress', function(e) {
+      if (!e.lengthComputable) return;
       var pct = e.loaded / e.total;
       if (catalog) catalog.progress(pct);
     });
