@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.64";
+  var VERSION = "0.5.65";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9035,7 +9035,8 @@
       var i = s.indexOf('.');
       return hasDot ? i > -1 : i == -1;
     };
-    return utils.uniq(matches.filter(f));
+    var vars = utils.uniq(matches.filter(f));
+    return vars;
   }
 
   // Return array of objects with properties assigned via dot notation
@@ -9100,23 +9101,24 @@
   }
 
   function getExpressionContext(lyr, mixins, opts) {
+    var defs = getStateVar('defs');
     var env = getBaseContext();
     var ctx = {};
     var fields = lyr.data ? lyr.data.getFields() : [];
     opts = opts || {};
     addUtils(env); // mix in round(), sprintf(), etc.
-    if (lyr.data) {
+    if (fields.length > 0) {
       // default to null values, so assignments to missing data properties
       // are applied to the data record, not the global object
       nullifyUnsetProperties(fields, env);
     }
     // Add global 'defs' to the expression context
-    mixins = utils.defaults(mixins || {}, getStateVar('defs'));
+    mixins = utils.defaults(mixins || {}, defs);
+    // also add defs as 'global' object
+    env.global = defs;
     Object.keys(mixins).forEach(function(key) {
       // Catch name collisions between data fields and user-defined functions
       var d = Object.getOwnPropertyDescriptor(mixins, key);
-      if (key in env) {
-      }
       if (d.get) {
         // copy accessor function from mixins to context
         Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
@@ -11465,12 +11467,21 @@
   var T = {
     stack: [],
     start: function() {
-      T.stack.push(+new Date());
+      T.stack.push(Date.now());
     },
     stop: function() {
-      return (+new Date() - T.stack.pop()) + 'ms';
+      return (Date.now() - T.stack.pop()) + 'ms';
     }
   };
+
+  function tick(msg) {
+    var now = Date.now();
+    var elapsed = tickTime ? ' - ' + (now - tickTime) + 'ms' : '';
+    tickTime = now;
+    console.log((msg || '') + elapsed);
+  }
+
+  var tickTime = 0;
 
   // Create a mosaic layer from a dataset (useful for debugging commands like -clean
   //    that create a mosaic as an intermediate data structure)
@@ -20419,7 +20430,7 @@ ${svg}
     function findStringEncoding() {
       var ldid = header.ldid,
           codepage = lookupCodePage(ldid),
-          samples = getNonAsciiSamples(50),
+          samples = getNonAsciiSamples(),
           only7bit = samples.length === 0,
           encoding, msg;
 
@@ -20464,21 +20475,25 @@ ${svg}
       return arr;
     }
 
-    // Return up to @size buffers containing text samples
+    // Return an array of buffers containing text samples
     // with at least one byte outside the 7-bit ascii range.
-    function getNonAsciiSamples(size) {
+    function getNonAsciiSamples() {
       var samples = [];
       var stringFields = header.fields.filter(function(f) {
         return f.type == 'C';
       });
+      var cols = stringFields.length;
+      // don't scan all the rows in large files (slow)
+      var rows = Math.min(header.recordCount, 10000);
+      var maxSamples = 50;
       var buf = utils.createBuffer(256);
       var index = {};
       var f, chars, sample, hash;
       // include non-ascii field names, if any
       samples = getNonAsciiHeaders();
-      for (var r=0, rows=header.recordCount; r<rows; r++) {
-        for (var c=0, cols=stringFields.length; c<cols; c++) {
-          if (samples.length >= size) break;
+      for (var r=0; r<rows; r++) {
+        for (var c=0; c<cols; c++) {
+          if (samples.length >= maxSamples) break;
           f = stringFields[c];
           bin.position(getRowOffset(r) + f.columnOffset);
           chars = readStringBytes(bin, f.size, buf);
@@ -29661,7 +29676,7 @@ ${svg}
       stop('Missing an assignment expression');
     }
     var defs = getStateVar('defs');
-    var compiled = compileFeatureExpression(opts.expression, {}, null, {});
+    var compiled = compileFeatureExpression(opts.expression, {}, null, {no_warn: true});
     var result = compiled(null, defs);
   };
 

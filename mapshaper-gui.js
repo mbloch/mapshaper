@@ -1561,6 +1561,19 @@
     }
 
     function downloadNextFile(memo, item, next) {
+      var blob, err;
+      fetch(item.url).then(resp => resp.blob()).then(b => {
+        blob = b;
+        blob.name = item.basename;
+        memo.push(blob);
+      }).catch(e => {
+        err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
+      }).finally(() => {
+        next(err, memo);
+      });
+    }
+
+    function downloadNextFile_v1(memo, item, next) {
       var req = new XMLHttpRequest();
       var blob;
       req.responseType = 'blob';
@@ -1570,6 +1583,7 @@
         }
       });
       req.addEventListener('progress', function(e) {
+        if (!e.lengthComputable) return;
         var pct = e.loaded / e.total;
         if (catalog) catalog.progress(pct);
       });
@@ -5627,6 +5641,7 @@
     var self = new EventDispatcher();
     var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
     var selectionIds = [];
+    var transientIds = []; // e.g. hit ids while dragging a box
     var active = false;
     var interactionMode;
     var targetLayer;
@@ -5719,6 +5734,14 @@
       selectionIds = utils.uniq(selectionIds.concat(ids));
       ids = utils.uniq(storedData.ids.concat(ids));
       updateSelectionState({ids: ids});
+    };
+
+    self.setTransientIds = function(ids) {
+      // turnOn('selection');
+      transientIds = ids || [];
+      if (active) {
+        triggerHitEvent('change');
+      }
     };
 
     self.clearSelection = function() {
@@ -5876,6 +5899,7 @@
     // evt: (optional) mouse event
     function updateSelectionState(newData) {
       var nonEmpty = newData && (newData.ids.length || newData.id > -1);
+      transientIds = [];
       if (!newData) {
         newData = noHitData();
         selectionIds = [];
@@ -5919,6 +5943,9 @@
     function triggerHitEvent(type, d) {
       // Merge stored hit data into the event data
       var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+      if (transientIds.length) {
+        eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+      }
       self.dispatchEvent(type, eventData);
     }
 
@@ -6562,8 +6589,8 @@
     }
   }
 
-  function HighlightBox(el) {
-    var box = El('div').addClass('zoom-box').appendTo(el),
+  function HighlightBox() {
+    var box = El('div').addClass('zoom-box').appendTo('body'),
         show = box.show.bind(box), // original show() function
         stroke = 2;
     box.hide();
@@ -6583,7 +6610,7 @@
 
   function SelectionTool(gui, ext, hit) {
     var popup = gui.container.findChild('.selection-tool-options');
-    var box = new HighlightBox('body');
+    var box = new HighlightBox();
     var _on = false;
 
     gui.addMode('selection_tool', turnOn, turnOff);
@@ -6600,6 +6627,7 @@
       if (!_on) return;
       var b = e.page_bbox;
       box.show(b[0], b[1], b[2], b[3]);
+      updateSelection(e.map_bbox, true);
     });
 
     gui.on('box_drag_end', function(e) {
@@ -6608,12 +6636,15 @@
       updateSelection(e.map_bbox);
     });
 
-    function updateSelection(bboxPixels) {
+    function updateSelection(bboxPixels, transient) {
       var bbox = bboxToCoords(bboxPixels);
       var active = gui.model.getActiveLayer();
       var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
-      if (!ids.length) return;
-      hit.addSelectionIds(ids);
+      if (transient) {
+        hit.setTransientIds(ids);
+      } else if (ids.length) {
+        hit.addSelectionIds(ids);
+      }
     }
 
     function turnOn() {
@@ -6656,20 +6687,17 @@
     new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
       var cmd = '-filter "$$set.has(this.id) === false"';
       runCommand(cmd);
-      hit.clearSelection();
     });
 
     new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
 
       var cmd = '-filter "$$set.has(this.id)"';
       runCommand(cmd);
-      hit.clearSelection();
     });
 
     new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
       var cmd = '-each "split_id = $$set.has(this.id) ? \'1\' : \'2\'" -split split_id';
       runCommand(cmd);
-      hit.clearSelection();
     });
 
     new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
@@ -6681,10 +6709,10 @@
       // defs.$$selection = utils.arrayToIndex(hit.getSelectionIds());
       var ids = JSON.stringify(hit.getSelectionIds());
       cmd = `-define "$$set = new Set(${ids})" ${cmd} -define "delete $$set"`;
+      popup.hide();
       if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
-        // delete defs.$$selection;
+        reset();
       });
-      reset();
     }
   }
 
@@ -9356,22 +9384,22 @@
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223",
-        dotSize: 4
+        dotSize: 1
       },
       activeStyleForLabels = {
         dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
-        dotSize: 4
+        dotSize: 1
       },
       referenceStyle = { // outline style for reference layers
         type: 'outline',
         strokeColors: [null, '#86c927'],
         strokeWidth: 0.85,
         dotColor: "#73ba20",
-        dotSize: 4
+        dotSize: 1
       },
       intersectionStyle = {
         dotColor: "#F24400",
-        dotSize: 4
+        dotSize: 1
       },
       hoverStyles = {
         polygon: {
@@ -9379,39 +9407,40 @@
           strokeColor: black,
           strokeWidth: 1.2
         }, point:  {
-          dotColor: black,
-          dotSize: 8
-        }, polyline:  {
+          dotColor: violet, // black,
+          dotSize: 2.5
+        }, polyline: {
           strokeColor: black,
           strokeWidth: 2.5
         }
       },
-      unfilledHoverStyles = {
+      unselectedHoverStyles = {
         polygon: {
           fillColor: 'rgba(0,0,0,0)',
           strokeColor: black,
           strokeWidth: 1.2
         }, point:  {
-          dotColor: grey,
-          dotSize: 8
+          dotColor: black, // grey,
+          dotSize: 2
         }, polyline:  {
-          strokeColor: grey,
+          strokeColor: black, // grey,
           strokeWidth: 2.5
         }
       },
       selectionStyles = {
         polygon: {
-          fillColor: selectionFill,
-          strokeColor: gold,
-          strokeWidth: 1
+          fillColor: hoverFill,
+          strokeColor: black,
+          strokeWidth: 1.2
         }, point:  {
-          dotColor: gold,
-          dotSize: 6
+          dotColor: violet, // black,
+          dotSize: 1.5
         }, polyline:  {
-          strokeColor: gold,
-          strokeWidth: 1.5
+          strokeColor: violet, //  black,
+          strokeWidth: 2.5
         }
       },
+      // not used
       selectionHoverStyles = {
         polygon: {
           fillColor: selectionFill,
@@ -9419,7 +9448,7 @@
           strokeWidth: 1.2
         }, point:  {
           dotColor: black,
-          dotSize: 6
+          dotSize: 1.5
         }, polyline:  {
           strokeColor: black,
           strokeWidth: 2
@@ -9431,18 +9460,48 @@
           strokeColor: violet,
           strokeWidth: 1.8
         }, point:  {
-          dotColor: 'violet',
-          dotSize: 8
+          dotColor: violet,
+          dotSize: 3
         }, polyline:  {
-          strokeColor: violet,
+          strokeColor: black, // violet,
           strokeWidth: 3
         }
       };
 
   function getIntersectionStyle(lyr) {
-    return utils.extend({}, intersectionStyle);
+    return getDefaultStyle(lyr, intersectionStyle);
   }
 
+  function getDefaultStyle(lyr, baseStyle) {
+    var style = utils.extend({}, baseStyle);
+    // reduce the dot size of large point layers
+    if (lyr.geometry_type == 'point' && style.dotSize > 0) {
+      style.dotSize *= getDotScale(lyr);
+    }
+    return style;
+  }
+
+  function getDotScale(lyr) {
+    var topTier = 50000;
+    var n = countPoints(lyr.shapes, topTier + 2); // short-circuit point counting above top threshold
+    var k = n < 200 && 4 || n < 2500 && 3 || n < 10000 && 2 || 1;
+    // var k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+    return k;
+  }
+
+  function countPoints(shapes, max) {
+    var count = 0;
+    var i, n, shp;
+    max = max || Infinity;
+    for (i=0, n=shapes.length; i<n && count<=max; i++) {
+      shp = shapes[i];
+      count += shp ? shp.length : 0;
+    }
+    return count;
+  }
+
+  // Style for unselected layers with visibility turned on
+  // (styled layers have)
   function getReferenceStyle(lyr) {
     var style;
     if (layerHasCanvasDisplayStyle(lyr)) {
@@ -9450,7 +9509,7 @@
     } else if (internal.layerHasLabels(lyr)) {
       style = {dotSize: 0}; // no reference dots if labels are visible
     } else {
-      style = utils.extend({}, referenceStyle);
+      style = getDefaultStyle(lyr, referenceStyle);
     }
     return style;
   }
@@ -9460,72 +9519,80 @@
     if (layerHasCanvasDisplayStyle(lyr)) {
       style = getCanvasDisplayStyle(lyr);
     } else if (internal.layerHasLabels(lyr)) {
-      style = utils.extend({}, activeStyleForLabels);
+      style = getDefaultStyle(lyr, activeStyleForLabels);
     } else {
-      style = utils.extend({}, activeStyle);
+      style = getDefaultStyle(lyr, activeStyle);
     }
     return style;
   }
 
 
-  // Returns a display style for the overlay layer. This style displays any
-  // hover or selection affects for the active data layer.
+  // Returns a display style for the overlay layer.
+  // The overlay layer renders several kinds of feature, each of which is displayed
+  // with a different style.
+  //
+  // * hover shapes
+  // * selected shapes
+  // * pinned shapes
+  //
   function getOverlayStyle(lyr, o) {
-    var type = lyr.geometry_type;
-    var topId = o.id;
-    var ids = [];
-    var styles = [];
+    var geomType = lyr.geometry_type;
+    var topId = o.id; // pinned id (if pinned) or hover id
+    var topIdx = -1;
     var styler = function(o, i) {
-      utils.extend(o, styles[i]);
+      utils.extend(o, i === topIdx ? topStyle: baseStyle);
     };
-    var overlayStyle = {
-      styler: styler
-    };
-
-    o.ids.forEach(function(i) {
-      var style;
-      if (i == topId) return;
-      style = hoverStyles[type];
-      // style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
-      ids.push(i);
-      styles.push(style);
+    var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
+    var topStyle;
+    var ids = o.ids.filter(function(i) {
+      return i != o.id; // move selected id to the end
     });
-    // top layer: feature that was selected by clicking in inspection mode ([i])
-    if (topId > -1) {
-      var isPinned = o.pinned;
-      var inSelection = o.ids.indexOf(topId) > -1;
-      var style;
-      if (isPinned) {
-        style = pinnedStyles[type];
-      } else if (inSelection) {
-        style = hoverStyles[type];
-      } else {
-        style = unfilledHoverStyles[type];
-      }
-      ids.push(topId);
-      styles.push(style);
+    if (o.id > -1) {
+      topStyle = getSelectedFeatureStyle(lyr, o);
+      topIdx = ids.length;
+      ids.push(o.id); // put the pinned/hover feature last in the render order
     }
-
+    var overlayStyle = {
+      styler: styler,
+      ids: ids,
+      overlay: true
+    };
     if (layerHasCanvasDisplayStyle(lyr)) {
-      if (type == 'point') {
-        overlayStyle = wrapOverlayStyle(getCanvasDisplayStyle(lyr), overlayStyle);
+      if (geomType == 'point') {
+        overlayStyle.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
       }
       overlayStyle.type = 'styled';
     }
-    overlayStyle.ids = ids;
-    overlayStyle.overlay = true;
     return ids.length > 0 ? overlayStyle : null;
   }
 
+  function getSelectedFeatureStyle(lyr, o) {
+    var isPinned = o.pinned;
+    var inSelection = o.ids.indexOf(o.id) > -1;
+    var geomType = lyr.geometry_type;
+    var style;
+    if (isPinned) {
+      // a feature is pinned
+      style = pinnedStyles[geomType];
+    } else if (inSelection) {
+      // normal hover, or hover id is in the selection set
+      style = hoverStyles[geomType];
+    } else {
+      // features are selected, but hover id is not in the selection set
+      style = unselectedHoverStyles[geomType];
+    }
+    return getDefaultStyle(lyr, style);
+  }
+
   // Modify style to use scaled circle instead of dot symbol
-  function wrapOverlayStyle(style, hoverStyle) {
-    var styler = function(obj, i) {
+  function getOverlayPointStyler(baseStyler, overlayStyler) {
+    return function(obj, i) {
       var dotColor;
       var id = obj.ids ? obj.ids[i] : -1;
       obj.strokeWidth = 0; // kludge to support setting minimum stroke width
-      style.styler(obj, id);
-      if (hoverStyle.styler) {
-        hoverStyle.styler(obj, i);
+      baseStyler(obj, id);
+      if (overlayStyler) {
+        overlayStyler(obj, i);
       }
       dotColor = obj.dotColor;
       if (obj.radius && dotColor) {
@@ -9537,7 +9604,6 @@
         obj.opacity = 1;
       }
     };
-    return {styler: styler};
   }
 
   function getCanvasDisplayStyle(lyr) {
@@ -9987,8 +10053,8 @@
 
     _self.drawSquareDots = function(shapes, style) {
       var t = getScaledTransform(_ext),
-          scaleRatio = getDotScale2(shapes, _ext),
-          size = Math.ceil((style.dotSize >= 0 ? style.dotSize : 3) * scaleRatio),
+          scaleRatio = getDotScale$1(_ext),
+          size = Math.round((style.dotSize || 1) * scaleRatio),
           styler = style.styler || null,
           xmax = _canvas.width + size,
           ymax = _canvas.height + size,
@@ -10150,42 +10216,24 @@
     return s;
   }
 
-  function getDotScale(ext) {
-    return Math.pow(getLineScale(ext), 0.7);
-  }
 
-  function countPoints(shapes, test, max) {
-    var count = 0;
-    var i, n, j, m, shp;
-    max = max || Infinity;
-    for (i=0, n=shapes.length; i<n && count<=max; i++) {
-      shp = shapes[i];
-      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        if (!test || test(shp[j])) {
-          count++;
-        }
-      }
+  function getDotScale$1(ext) {
+    var smallSide = Math.min(ext.width(), ext.height());
+    // reduce size on smaller screens
+    var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
+    var k = 1;
+    var mapScale = ext.scale();
+    if (mapScale < 0.5) {
+      k = Math.pow(mapScale + 0.5, 0.35);
     }
-    return count;
-  }
-
-
-  function getDotScale2(shapes, ext) {
-    var pixRatio = GUI.getPixelRatio();
-    var scale = ext.scale();
-    var side = Math.min(ext.width(), ext.height());
-    var bounds = ext.getBounds();
-    var topTier = 50000;
-    var test, n, k, j;
-    if (scale >= 2) {
-      test = function(p) {
-        return bounds.containsPoint(p[0], p[1]);
-      };
+    if (mapScale > 1) {
+      // scale faster at first, so small dots in large datasets
+      // become easily visible and clickable after zooming in a bit
+      k *= Math.pow(Math.min(mapScale, 10), 0.3);
+      k *= Math.pow(mapScale, 0.1);
     }
-    n = countPoints(shapes, test, topTier + 2); // short-circuit point counting above top threshold
-    k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
-    j = side < 200 && 0.5 || side < 400 && 0.75 || 1;
-    return getDotScale(ext) * k * j * pixRatio;
+
+    return k * j * GUI.getPixelRatio();
   }
 
   function getScaledTransform(ext) {
@@ -10572,7 +10620,7 @@
 
   function BoxTool(gui, ext, mouse, nav) {
     var self = new EventDispatcher();
-    var box = new HighlightBox('body');
+    var box = new HighlightBox();
     var popup = gui.container.findChild('.box-tool-options');
     var coords = popup.findChild('.box-coords');
     var _on = false;
@@ -11164,16 +11212,24 @@
         drawLayers('nav');
       });
 
-      _hit.on('change', function(e) {
-        // draw highlight effect for hover and select
-        _overlayLyr = getDisplayLayerOverlay(_activeLyr, e);
-        drawLayers('hover');
-        // _stack.drawOverlayLayer(_overlayLyr);
-      });
+      _hit.on('change', updateOverlayLayer);
 
       gui.on('resize', function() {
         position.update(); // kludge to detect new map size after console toggle
       });
+    }
+
+    function updateOverlayLayer(e) {
+      var style = getOverlayStyle(_activeLyr.layer, e);
+      if (style) {
+        _overlayLyr = utils.defaults({
+          layer: filterLayerByIds(_activeLyr.layer, style.ids),
+          style: style
+        }, _activeLyr);
+      } else {
+        _overlayLyr = null;
+      }
+      drawLayers('hover');
     }
 
     function getDisplayOptions() {
@@ -11383,15 +11439,6 @@
       // draw furniture
       _stack.drawFurnitureLayers(furnitureLayers, action);
     }
-  }
-
-  function getDisplayLayerOverlay(obj, e) {
-    var style = getOverlayStyle(obj.layer, e);
-    if (!style) return null;
-    return utils.defaults({
-      layer: filterLayerByIds(obj.layer, style.ids),
-      style: style
-    }, obj);
   }
 
   function GuiInstance(container, opts) {
