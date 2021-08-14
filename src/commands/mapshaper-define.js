@@ -8,6 +8,6 @@ cmd.define = function(opts) {
     stop('Missing an assignment expression');
   }
   var defs = getStateVar('defs');
-  var compiled = compileFeatureExpression(opts.expression, {}, null, {});
+  var compiled = compileFeatureExpression(opts.expression, {}, null, {no_warn: true});
   var result = compiled(null, defs);
 };

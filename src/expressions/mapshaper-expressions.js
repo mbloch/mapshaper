@@ -133,7 +133,8 @@ export function getAssignedVars(exp, hasDot) {
     var i = s.indexOf('.');
     return hasDot ? i > -1 : i == -1;
   };
-  return utils.uniq(matches.filter(f));
+  var vars = utils.uniq(matches.filter(f));
+  return vars;
 }
 
 // Return array of objects with properties assigned via dot notation
@@ -198,23 +199,24 @@ function nullifyUnsetProperties(vars, obj) {
 }
 
 function getExpressionContext(lyr, mixins, opts) {
+  var defs = getStateVar('defs');
   var env = getBaseContext();
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];
   opts = opts || {};
   addUtils(env); // mix in round(), sprintf(), etc.
-  if (lyr.data) {
+  if (fields.length > 0) {
     // default to null values, so assignments to missing data properties
     // are applied to the data record, not the global object
     nullifyUnsetProperties(fields, env);
   }
   // Add global 'defs' to the expression context
-  mixins = utils.defaults(mixins || {}, getStateVar('defs'));
+  mixins = utils.defaults(mixins || {}, defs);
+  // also add defs as 'global' object
+  env.global = defs;
   Object.keys(mixins).forEach(function(key) {
     // Catch name collisions between data fields and user-defined functions
     var d = Object.getOwnPropertyDescriptor(mixins, key);
-    if (key in env) {
-    }
     if (d.get) {
       // copy accessor function from mixins to context
       Object.defineProperty(ctx, key, {get: d.get}); // copy getter function to context
