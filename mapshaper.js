@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.65";
+  var VERSION = "0.5.66";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -17140,7 +17140,7 @@ ${svg}
       c = buf[i];
       if (c == DQUOTE) {
         inQuotedText = !inQuotedText;
-      } else if (c == CR || c == LF) {
+      } else if ((c == CR || c == LF) && !inQuotedText) {
         if (c == CR && i + 1 < bufLen && buf[i + 1] == LF) {
           // first half of CRLF pair: advance one byte
           i++;
@@ -17234,6 +17234,7 @@ ${svg}
     getRowConverter: getRowConverter,
     parseDelimHeaderSection: parseDelimHeaderSection,
     getDelimFieldFilter: getDelimFieldFilter,
+    readLinesAsString: readLinesAsString,
     parseDelimText: parseDelimText
   });
 

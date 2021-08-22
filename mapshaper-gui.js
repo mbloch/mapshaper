@@ -9526,7 +9526,6 @@
     return style;
   }
 
-
   // Returns a display style for the overlay layer.
   // The overlay layer renders several kinds of feature, each of which is displayed
   // with a different style.
