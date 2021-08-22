@@ -155,7 +155,7 @@ function skipDelimLines(reader, lines) {
   reader.advance(retn.bytesRead);
 }
 
-function readLinesAsString(reader, lines, encoding) {
+export function readLinesAsString(reader, lines, encoding) {
   var buf = reader.readSync();
   var retn = readLinesFromBuffer(buf, lines);
   var str;
@@ -185,7 +185,7 @@ function readLinesFromBuffer(buf, linesToRead) {
     c = buf[i];
     if (c == DQUOTE) {
       inQuotedText = !inQuotedText;
-    } else if (c == CR || c == LF) {
+    } else if ((c == CR || c == LF) && !inQuotedText) {
       if (c == CR && i + 1 < bufLen && buf[i + 1] == LF) {
         // first half of CRLF pair: advance one byte
         i++;

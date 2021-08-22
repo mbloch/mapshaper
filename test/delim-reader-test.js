@@ -2,9 +2,26 @@ var assert = require('assert'),
     api = require('..'),
     internal = api.internal,
     csv_spectrum = require('csv-spectrum'),
-    StringReader = require('./helpers.js').Reader;
+    StringReader = require('./helpers.js').Reader,
+    Reader2 = api.internal.Reader2;
 
 describe('mapshaper-delim-reader.js', function () {
+
+  describe('readLinesAsString()', function () {
+    it('handles newlines in quoted string', function () {
+      var str = `"1942 Grand River Avenue
+
+http://parksandrecdiner.com/
+
+",_hours_in_detroit_273384,42.3346355,-82.98547730000001
+foo
+`;
+      var reader = new Reader2(new StringReader(str));
+      var line = api.internal.readLinesAsString(reader, 1);
+      assert(/0001$/.test(line.trim()));
+    })
+  })
+
 
   describe('readDelimRecordsFromString()', function () {
     var read = api.internal.readDelimRecordsFromString;
