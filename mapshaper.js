@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.66";
+  var VERSION = "0.5.68";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -18416,6 +18416,9 @@ ${svg}
         type: 'strings',
         describe: '[CSV] comma-sep. list of fields to import'
       })
+      // .option('csv-comment', {
+      //   describe: '[CSV] comment line character(s)'
+      // })
       .option('decimal-comma', {
         type: 'flag',
         describe: '[CSV] import numbers formatted like 1.000,01 or 1 000,01'
