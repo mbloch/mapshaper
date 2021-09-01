@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.5.67",
+	"version": "0.5.68",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -42,7 +42,8 @@
 	"dependencies": {
 		"commander": "^5.1.0",
 		"cookies": "^0.8.0",
-		"d3-scale-chromatic": "^2.0.0",
+		"d3-color": "2.0.0",
+		"d3-scale-chromatic": "2.0.0",
 		"delaunator": "^5.0.0",
 		"flatbush": "^3.2.1",
 		"geokdbush": "^1.1.0",

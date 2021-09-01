@@ -63,6 +63,13 @@ foo
       assert.deepEqual(retn, {headers: ['a', 'b', 'c'], import_fields: ['a', 'b', 'c'], remainder: '1,2,3'})
     })
 
+    // TODO: fix
+    if (false) it('skip over line with quoted newline', function() {
+      var str = '"comment\none","comment\ntwo"\na,b\n1,2';
+      var retn = parse(str, ',', {csv_skip_lines: 1});
+      assert.deepEqual(retn, {headers:['a', 'b'], import_fields: ['a', 'b', 'c'], remainder: '1,2'})
+    });
+
     it('csv_field_names', function () {
       var str = 'a,b,c\n1,2,3';
       var retn = parse(str, ',', {csv_field_names: ['d', 'e', 'f']});

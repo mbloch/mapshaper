@@ -178,6 +178,9 @@ export function getOptionParser() {
       type: 'strings',
       describe: '[CSV] comma-sep. list of fields to import'
     })
+    // .option('csv-comment', {
+    //   describe: '[CSV] comment line character(s)'
+    // })
     .option('decimal-comma', {
       type: 'flag',
       describe: '[CSV] import numbers formatted like 1.000,01 or 1 000,01'
