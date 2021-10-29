@@ -930,6 +930,14 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('ignore')
+    // .describe('stop processing if a condition is met')
+    .option('empty', {
+      describe: 'ignore empty files',
+      type: 'flag'
+    })
+    .option('target', targetOpt);
+
   parser.command('inlay')
     .describe('inscribe a polygon layer inside another polygon layer')
     .option('source', {

@@ -43,6 +43,7 @@ import '../commands/mapshaper-filter-points';
 import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
+import '../commands/mapshaper-ignore';
 import '../commands/mapshaper-include';
 import '../commands/mapshaper-info';
 import '../commands/mapshaper-inlay';
@@ -254,6 +255,9 @@ export function runCommand(command, catalog, cb) {
         catalog.addDataset(targetDataset);
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
+
+    } else if (name == 'ignore') {
+      applyCommandToEachLayer(cmd.ignore, targetLayers, targetDataset, opts);
 
     } else if (name == 'include') {
       cmd.include(opts);

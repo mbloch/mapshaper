@@ -29,6 +29,19 @@ function runCmd(cmd, input, done) {
 
 describe('mapshaper-run-commands.js', function () {
 
+
+  it('when two files are processed in sequence and second file triggers error, no output is generated', function(done) {
+      var input = {
+        'data.csv': 'id\n0\n1',
+        'data2.json': '{'
+      };
+      api.applyCommands('-i data.csv data2.json -o', input, function(err, output) {
+        assert.equal(err.name, 'UserError');
+        assert.equal(output, null);
+        done();
+      })
+    });
+
   describe('Issue #264 applyCommands()', function() {
     it ('should throw error if input is a file path, not file content', function(done) {
       mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/data/two_states.shp'}, function(
