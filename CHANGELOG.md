@@ -1,3 +1,7 @@
+v0.5.69
+* Added undocumented -ignore command.
+* Bug fix
+
 v0.5.68
 * Bug fix
 
