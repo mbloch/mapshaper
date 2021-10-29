@@ -13,7 +13,7 @@ export function stringify(obj) {
     joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
     svg += '>' + joinStr;
     if (obj.value) {
-      svg += obj.value;
+      svg += stringEscape(obj.value);
     }
     if (obj.children) {
       svg += obj.children.map(stringify).join(joinStr);
@@ -36,8 +36,13 @@ var rxp = /[&<>"']/g,
       "'": '&apos;'
     };
 export function stringEscape(s) {
-  return String(s).replace(rxp, function(s) {
-    return map[s];
+  return String(s).replace(rxp, function(match, i) {
+    var entity = map[match];
+    // don't replace &amp; with &amp;amp;
+    if (match == '&' && s.substr(i, entity.length) == entity) {
+      return '&';
+    }
+    return entity;
   });
 }
 

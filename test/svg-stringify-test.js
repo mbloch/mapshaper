@@ -11,6 +11,24 @@ describe('svg-stringfy.js', function () {
       assert.equal(SVG.stringify(obj), '<g/>');
     })
 
+    it('text element', function() {
+      var obj = {tag: 'text', value: 'TEXAS'};
+      var expect = '<text>TEXAS</text>';
+      assert.equal(SVG.stringify(obj), expect);
+    })
+
+    it('text element with ampersand', function() {
+      var obj = {tag: 'text', value: 'WEST BANK & GAZA'};
+      var expect = '<text>WEST BANK &amp; GAZA</text>';
+      assert.equal(SVG.stringify(obj), expect);
+    })
+
+    it('text element with entities', function() {
+      var obj = {tag: 'text', value: 'WEST BANK &amp; GAZA'};
+      var expect = '<text>WEST BANK &amp; GAZA</text>';
+      assert.equal(SVG.stringify(obj), expect);
+    })
+
     it('path element', function() {
       var obj = {tag: 'path', properties: {d: 'M 0 0 1 1'}};
       assert.equal(SVG.stringify(obj), '<path d="M 0 0 1 1"/>')
