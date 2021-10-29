@@ -1167,6 +1167,10 @@
     throw new UserError(formatLogArgs(arguments));
   };
 
+  var _interrupt = function() {
+    throw new NonFatalError(formatLogArgs(arguments));
+  };
+
   var _message = function() {
     logArgs(arguments);
   };
@@ -1185,8 +1189,12 @@
   }
 
   // Handle an error caused by invalid input or misuse of API
-  function stop () {
+  function stop() {
     _stop.apply(null, utils.toArray(arguments));
+  }
+
+  function interrupt() {
+    _interrupt.apply(null, utils.toArray(arguments));
   }
 
   // Print a status message
@@ -1228,7 +1236,9 @@
     if (utils.isString(err)) {
       err = new UserError(err);
     }
-    if (err.name == 'UserError') {
+    if (err.name == 'NonFatalError') {
+      console.error(messageArgs([err.message]).join(' '));
+    } else if (err.name == 'UserError') {
       msg = err.message;
       if (!/Error/.test(msg)) {
         msg = "Error: " + msg;
@@ -1245,6 +1255,12 @@
   function UserError(msg) {
     var err = new Error(msg);
     err.name = 'UserError';
+    return err;
+  }
+
+  function NonFatalError(msg) {
+    var err = new Error(msg);
+    err.name = 'NonFatalError';
     return err;
   }
 
@@ -1308,6 +1324,7 @@
     loggingEnabled: loggingEnabled,
     error: error,
     stop: stop,
+    interrupt: interrupt,
     message: message,
     setLoggingFunctions: setLoggingFunctions,
     print: print,
@@ -1315,6 +1332,7 @@
     debug: debug,
     printError: printError,
     UserError: UserError,
+    NonFatalError: NonFatalError,
     formatColumns: formatColumns,
     formatStringsAsGrid: formatStringsAsGrid,
     formatLogArgs: formatLogArgs,
@@ -14306,7 +14324,7 @@
       joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
       svg += '>' + joinStr;
       if (obj.value) {
-        svg += obj.value;
+        svg += stringEscape(obj.value);
       }
       if (obj.children) {
         svg += obj.children.map(stringify).join(joinStr);
@@ -14329,8 +14347,13 @@
         "'": '&apos;'
       };
   function stringEscape(s) {
-    return String(s).replace(rxp, function(s) {
-      return map[s];
+    return String(s).replace(rxp, function(match, i) {
+      var entity = map[match];
+      // don't replace &amp; with &amp;amp;
+      if (match == '&' && s.substr(i, entity.length) == entity) {
+        return '&';
+      }
+      return entity;
     });
   }
 
@@ -19167,6 +19190,14 @@ ${svg}
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
+
+    parser.command('ignore')
+      // .describe('stop processing if a condition is met')
+      .option('empty', {
+        describe: 'ignore empty files',
+        type: 'flag'
+      })
+      .option('target', targetOpt);
 
     parser.command('inlay')
       .describe('inscribe a polygon layer inside another polygon layer')
@@ -33282,6 +33313,12 @@ ${svg}
     };
   }
 
+  cmd.ignore = function(targetLayer, dataset, opts) {
+    if (opts.empty && layerIsEmpty(targetLayer)) {
+      interrupt('Layer is empty, stopping processing');
+    }
+  };
+
   cmd.include = function(opts) {
     var content, obj, context;
     // TODO: handle web context
@@ -37707,6 +37744,9 @@ ${svg}
           outputLayers = targetDataset.layers; // kludge to allow layer naming below
         }
 
+      } else if (name == 'ignore') {
+        applyCommandToEachLayer(cmd.ignore, targetLayers, targetDataset, opts);
+
       } else if (name == 'include') {
         cmd.include(opts);
 
@@ -38077,6 +38117,7 @@ ${svg}
         cmd.options.output = outputArr;
       }
     });
+
     runParsedCommands(commands, null, callback);
   }
 
@@ -38137,10 +38178,6 @@ ${svg}
       error("Changed in v0.4: runParsedCommands() takes a Catalog object");
     }
 
-    if (!utils.isFunction(done)) {
-      error("Missing a callback function");
-    }
-
     if (!utils.isArray(commands)) {
       error("Expected an array of parsed commands");
     }
@@ -38161,18 +38198,25 @@ ${svg}
       // that it can modify the output dataset in-place instead of making a copy.
       commands[commands.length-1].options.final = true;
     }
-    commands = divideImportCommand(commands);
-    utils.reduceAsync(commands, catalog, nextCommand, done);
 
-    function nextCommand(catalog, cmd, next) {
-      setStateVar('current_command', cmd.name); // for log msgs
-      setStateVar('verbose', !!cmd.options.verbose);
-      setStateVar('debug', !!cmd.options.debug);
-      runCommand(cmd, catalog, next);
+    var groups = divideImportCommand(commands);
+    if (groups.length == 1) {
+      // run a simple sequence of commands (input files are not batched)
+      return runParsedCommands2(commands, catalog, done);
+    }
+
+    // run duplicated commands (i.e. batch mode)
+    utils.reduceAsync(groups, catalog, nextGroup, done);
+
+    function nextGroup(catalog, commands, next) {
+      runParsedCommands2(commands, catalog, function(err, catalog) {
+        err = filterError(err);
+        next(err, catalog);
+      });
     }
 
     function done(err, catalog) {
-      if (err) printError(err);
+      err = filterError(err);
       cb(err, catalog);
       setStateVar('current_command', null);
       setStateVar('verbose', false);
@@ -38180,11 +38224,31 @@ ${svg}
     }
   }
 
+  function filterError(err) {
+    if (err) printError(err);
+    if (err && err.name == 'NonFatalError') {
+      return null;
+    }
+    return err;
+  }
+
+  function runParsedCommands2(commands, catalog, cb) {
+    utils.reduceAsync(commands, catalog, nextCommand, cb);
+
+    function nextCommand(catalog, cmd, next) {
+      setStateVar('current_command', cmd.name); // for log msgs
+      setStateVar('verbose', !!cmd.options.verbose);
+      setStateVar('debug', !!cmd.options.debug);
+      runCommand(cmd, catalog, next);
+    }
+  }
+
+
   // If an initial import command indicates that several input files should be
   //   processed separately, then duplicate the sequence of commands to run
   //   once for each input file
   // @commands Array of parsed commands
-  // Returns: either original command array or array of duplicated commands.
+  // Returns: Array of one or more sequences of parsed commands
   //
   function divideImportCommand(commands) {
     var firstCmd = commands[0],
@@ -38192,22 +38256,22 @@ ${svg}
 
     if (firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
       opts.combine_files || !opts.files || opts.files.length < 2) {
-      return commands;
+      return [commands];
     }
 
-    return (opts.files).reduce(function(memo, file) {
-      var importCmd = {
+    return opts.files.map(function(file) {
+      var group = [{
         name: 'i',
         options: utils.defaults({
           files:[file],
           replace: true  // kludge to replace data catalog
         }, opts)
-      };
-      memo.push(importCmd);
-      memo.push.apply(memo, commands.slice(1));
-      return memo;
-    }, []);
+      }];
+      group.push.apply(group, commands.slice(1));
+      return group;
+    });
   }
+
 
   function printStartupMessages() {
     // print heap memory message if running with a custom amount

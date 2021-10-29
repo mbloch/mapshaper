@@ -3976,6 +3976,10 @@
     throw new UserError$1(formatLogArgs(arguments));
   };
 
+  var _interrupt = function() {
+    throw new NonFatalError(formatLogArgs(arguments));
+  };
+
   var _message = function() {
     logArgs(arguments);
   };
@@ -3994,8 +3998,12 @@
   }
 
   // Handle an error caused by invalid input or misuse of API
-  function stop$1 () {
+  function stop$1() {
     _stop.apply(null, utils$1.toArray(arguments));
+  }
+
+  function interrupt() {
+    _interrupt.apply(null, utils$1.toArray(arguments));
   }
 
   // Print a status message
@@ -4037,7 +4045,9 @@
     if (utils$1.isString(err)) {
       err = new UserError$1(err);
     }
-    if (err.name == 'UserError') {
+    if (err.name == 'NonFatalError') {
+      console.error(messageArgs([err.message]).join(' '));
+    } else if (err.name == 'UserError') {
       msg = err.message;
       if (!/Error/.test(msg)) {
         msg = "Error: " + msg;
@@ -4054,6 +4064,12 @@
   function UserError$1(msg) {
     var err = new Error(msg);
     err.name = 'UserError';
+    return err;
+  }
+
+  function NonFatalError(msg) {
+    var err = new Error(msg);
+    err.name = 'NonFatalError';
     return err;
   }
 
