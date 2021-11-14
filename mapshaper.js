@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.68";
+  var VERSION = "0.5.69";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -19270,6 +19270,10 @@ ${svg}
         // describe: 'use planar geometry when interpolating by area' // useful for testing
         type: 'flag'
       })
+      .option('duplication', {
+        describe: 'duplicate target features on many-to-one joins',
+        type: 'flag'
+      })
       .option('string-fields', stringFieldsOpt)
       .option('field-types', fieldTypesOpt)
       .option('sum-fields', {
@@ -29836,13 +29840,19 @@ ${svg}
     getJoinFilter: getJoinFilter
   });
 
+  function joinTables(dest, src, join, opts) {
+    return joinTableToLayer({data: dest}, src, join, opts);
+  }
+
   // Join data from @src table to records in @dest table
   // @join function
   //    Receives index of record in the dest table
   //    Returns array of matching records in src table, or null if no matches
   //
-  function joinTables(dest, src, join, opts) {
-    var srcRecords = src.getRecords(),
+  function joinTableToLayer(destLyr, src, join, opts) {
+    var dest = destLyr.data,
+        useDuplication = !!opts.duplication,
+        srcRecords = src.getRecords(),
         destRecords = dest.getRecords(),
         prefix = opts.prefix || '',
         unmatchedRecords = [],
@@ -29857,6 +29867,14 @@ ${svg}
         retn = {},
         srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
+    // support for duplication
+    var duplicateRecords, destShapes;
+    if (useDuplication) {
+      if (opts.calc) stop('duplication and calc options cannot be used together');
+      duplicateRecords = dest.clone().getRecords();
+      destShapes = destLyr.shapes || [];
+    }
+
     if (opts.where) {
       filter = getJoinFilter(src, opts.where);
     }
@@ -29866,7 +29884,8 @@ ${svg}
     }
 
     // join source records to target records
-    for (i=0, n=destRecords.length; i<n; i++) {
+    n = destRecords.length;
+    for (i=0; i<n; i++) {
       destRec = destRecords[i];
       joins = join(i);
       if (joins && filter) {
@@ -29877,7 +29896,12 @@ ${svg}
       for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
         srcId = joins[j];
         srcRec = srcRecords[srcId];
-        if (count === 0) {
+        if (count > 0 && useDuplication) {
+          destRec = copyRecord(duplicateRecords[i]);
+          destRecords.push(destRec);
+          destShapes.push(cloneShape(destShapes[i]));
+        }
+        if (count === 0 || useDuplication) {
           if (copyFields.length > 0) {
             // only copying the first match
             joinByCopy(destRec, srcRec, copyFields, prefix);
@@ -29909,7 +29933,7 @@ ${svg}
       }
     }
 
-    printJoinMessage(matchCount, destRecords.length,
+    printJoinMessage(matchCount, n,
         countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
 
     if (opts.unjoined) {
@@ -29936,6 +29960,7 @@ ${svg}
       }
     });
   }
+
 
   function countJoins(counts) {
     var joinCount = 0;
@@ -29999,14 +30024,16 @@ ${svg}
 
   function printJoinMessage(matches, n, joins, m, skipped, collisions, collisionFields) {
     // TODO: add tip for troubleshooting join problems, if join is less than perfect.
+    var unmatched = n - matches;
     if (matches > 0 === false) {
       message("No records could be joined");
       return;
     }
     message(utils.format("Joined data from %'d source record%s to %'d target record%s",
         joins, utils.pluralSuffix(joins), matches, utils.pluralSuffix(matches)));
-    if (matches < n) {
-      message(utils.format('%d/%d target records received no data', n-matches, n));
+    if (unmatched > 0) {
+      message(utils.format('%d target record%s received no data', unmatched, utils.pluralSuffix(unmatched)));
+      // message(utils.format('%d target records received no data', n-matches));
     }
     if (joins < m) {
       message(utils.format("%d/%d source records could not be joined", m-joins, m));
@@ -30055,6 +30082,7 @@ ${svg}
   var JoinTables = /*#__PURE__*/Object.freeze({
     __proto__: null,
     joinTables: joinTables,
+    joinTableToLayer: joinTableToLayer,
     validateFieldNames: validateFieldNames,
     updateUnmatchedRecord: updateUnmatchedRecord,
     findCollisionFields: findCollisionFields,
@@ -31521,13 +31549,13 @@ ${svg}
     // TODO: option to copy points that can't be joined to a new layer
     var joinFunction = getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
     prepJoinLayers(targetLyr, pointLyr);
-    return joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
+    return joinTableToLayer(targetLyr, pointLyr.data, joinFunction, opts);
   }
 
   function joinPolygonsToPoints(targetLyr, polygonLyr, arcs, opts) {
     var joinFunction = getPointToPolygonsFunction(targetLyr, polygonLyr, arcs, opts);
     prepJoinLayers(targetLyr, polygonLyr);
-    return joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
+    return joinTableToLayer(targetLyr, polygonLyr.data, joinFunction, opts);
   }
 
 
@@ -33694,9 +33722,10 @@ ${svg}
 
     var joinOpts = utils.extend({}, opts);
     var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, opts);
-    var retn = joinTables(targetLyr.data, sourceLyr.data, joinFunction, joinOpts);
+    var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
 
     if (opts.interpolate) {
+      if (opts.duplication) stop('duplication and interpolate options cannot be used together');
       interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
     }
     return retn;
@@ -34611,7 +34640,7 @@ ${svg}
   function joinPointsToPoints(targetLyr, srcLyr, crs, opts) {
     var joinFunction = getPointToPointFunction(targetLyr, srcLyr, crs, opts);
     prepJoinLayers(targetLyr, srcLyr);
-    return joinTables(targetLyr.data, srcLyr.data, joinFunction, opts);
+    return joinTableToLayer(targetLyr, srcLyr.data, joinFunction, opts);
   }
 
   function getPointToPointFunction(targetLyr, srcLyr, crs, opts) {
@@ -34661,14 +34690,14 @@ ${svg}
     }
   };
 
-  function joinAttributesToFeatures(lyr, srcTable, opts) {
+  function joinAttributesToFeatures(destLyr, srcTable, opts) {
     var keys = opts.keys,
         destKey = keys[0],
         srcKey = keys[1],
-        destTable = lyr.data,
+        destTable = destLyr.data,
         joinFunction = getJoinByKey(destTable, destKey, srcTable, srcKey);
     validateFieldNames(keys);
-    return joinTables(destTable, srcTable, joinFunction, opts);
+    return joinTableToLayer(destLyr, srcTable, joinFunction, opts);
   }
 
   // Return a function for translating a target id to an array of source ids based on values
