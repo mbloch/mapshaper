@@ -1,4 +1,4 @@
-import { joinTables } from '../join/mapshaper-join-tables';
+import { joinTables, joinTableToLayer } from '../join/mapshaper-join-tables';
 import { stop } from '../utils/mapshaper-logging';
 import { PathIndex } from '../paths/mapshaper-path-index';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -7,13 +7,13 @@ export function joinPointsToPolygons(targetLyr, arcs, pointLyr, opts) {
   // TODO: option to copy points that can't be joined to a new layer
   var joinFunction = getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
   prepJoinLayers(targetLyr, pointLyr);
-  return joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
+  return joinTableToLayer(targetLyr, pointLyr.data, joinFunction, opts);
 }
 
 export function joinPolygonsToPoints(targetLyr, polygonLyr, arcs, opts) {
   var joinFunction = getPointToPolygonsFunction(targetLyr, polygonLyr, arcs, opts);
   prepJoinLayers(targetLyr, polygonLyr);
-  return joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
+  return joinTableToLayer(targetLyr, polygonLyr.data, joinFunction, opts);
 }
 
 

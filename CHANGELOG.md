@@ -1,3 +1,6 @@
+v0.5.70
+* Added -join duplication option, which duplicates features in the target layer when many-to-one joins occur.
+
 v0.5.69
 * Added undocumented -ignore command.
 * Bug fix

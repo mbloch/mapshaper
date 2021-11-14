@@ -1009,6 +1009,10 @@ export function getOptionParser() {
       // describe: 'use planar geometry when interpolating by area' // useful for testing
       type: 'flag'
     })
+    .option('duplication', {
+      describe: 'duplicate target features on many-to-one joins',
+      type: 'flag'
+    })
     .option('string-fields', stringFieldsOpt)
     .option('field-types', fieldTypesOpt)
     .option('sum-fields', {

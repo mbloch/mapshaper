@@ -4,7 +4,7 @@ import { joinPolygonsToPolygons } from '../join/mapshaper-polygon-polygon-join';
 import { message, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
-import { joinTables, validateFieldNames } from '../join/mapshaper-join-tables';
+import { joinTableToLayer, validateFieldNames } from '../join/mapshaper-join-tables';
 import { joinPointsToPolygons, joinPolygonsToPoints } from '../join/mapshaper-point-polygon-join';
 import { joinPointsToPoints } from '../join/mapshaper-point-point-join';
 import { requireDatasetsHaveCompatibleCRS, getDatasetCRS } from '../crs/mapshaper-projections';
@@ -47,14 +47,14 @@ cmd.join = function(targetLyr, targetDataset, src, opts) {
   }
 };
 
-export function joinAttributesToFeatures(lyr, srcTable, opts) {
+export function joinAttributesToFeatures(destLyr, srcTable, opts) {
   var keys = opts.keys,
       destKey = keys[0],
       srcKey = keys[1],
-      destTable = lyr.data,
+      destTable = destLyr.data,
       joinFunction = getJoinByKey(destTable, destKey, srcTable, srcKey);
   validateFieldNames(keys);
-  return joinTables(destTable, srcTable, joinFunction, opts);
+  return joinTableToLayer(destLyr, srcTable, joinFunction, opts);
 }
 
 // Return a function for translating a target id to an array of source ids based on values

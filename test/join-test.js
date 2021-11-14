@@ -14,6 +14,49 @@ describe('mapshaper-join.js', function () {
 
   describe('-join command', function () {
 
+    it('join two tables with duplication flag', function(done) {
+      var a = 'id,name\n1,foo';
+      var b = 'key,score\n1,100\n1,200\n1,300';
+      api.applyCommands('a.csv -join b.csv duplication keys=id,key fields=score -o', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        assert.deepEqual(out['a.csv'], 'id,name,score\n1,foo,100\n1,foo,200\n1,foo,300');
+        done();
+      });
+    })
+
+    it('join data to points layer with duplication flag', function(done) {
+      var a = 'id,name,lng,lat\n1,foo,10,10';
+      var b = 'key,score\n1,100\n1,200\n1,300';
+      api.applyCommands('a.csv -points -join b.csv duplication keys=id,key fields=score -o format=geojson', {'a.csv': a, 'b.csv': b}, function(err, out) {
+        const target = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {id: 1, name: 'foo', lng: 10, lat: 10, score: 100},
+            geometry: {
+              type: 'Point',
+              coordinates: [10, 10]
+            }
+          }, {
+           type: 'Feature',
+            properties: {id: 1, name: 'foo', lng: 10, lat: 10, score: 200},
+            geometry: {
+              type: 'Point',
+              coordinates: [10, 10]
+            }
+          }, {
+           type: 'Feature',
+            properties: {id: 1, name: 'foo', lng: 10, lat: 10, score: 300},
+            geometry: {
+              type: 'Point',
+              coordinates: [10, 10]
+            }
+          }]
+        }
+        assert.deepEqual(JSON.parse(out['a.json']), target);
+        done();
+      });
+    })
+
     it('add error msg when joining to a layer without attributes', function(done) {
       var targ = {
         type: 'Point',

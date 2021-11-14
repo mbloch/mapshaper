@@ -1,9 +1,9 @@
-import { joinTables } from '../join/mapshaper-join-tables';
+import { joinTables, joinTableToLayer } from '../join/mapshaper-join-tables';
 import { prepJoinLayers } from '../join/mapshaper-point-polygon-join';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { mergeLayersForOverlay } from '../clipping/mapshaper-overlay-utils';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
-import { error } from '../utils/mapshaper-logging';
+import { error, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 
@@ -21,9 +21,10 @@ export function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
 
   var joinOpts = utils.extend({}, opts);
   var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, opts);
-  var retn = joinTables(targetLyr.data, sourceLyr.data, joinFunction, joinOpts);
+  var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
 
   if (opts.interpolate) {
+    if (opts.duplication) stop('duplication and interpolate options cannot be used together');
     interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
   }
   return retn;

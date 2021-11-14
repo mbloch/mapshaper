@@ -3,14 +3,22 @@ import { getJoinFilter } from '../join/mapshaper-join-filter';
 import { message, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { cloneShape } from '../paths/mapshaper-shape-utils';
+import { copyRecord } from '../datatable/mapshaper-data-utils';
+
+export function joinTables(dest, src, join, opts) {
+  return joinTableToLayer({data: dest}, src, join, opts);
+}
 
 // Join data from @src table to records in @dest table
 // @join function
 //    Receives index of record in the dest table
 //    Returns array of matching records in src table, or null if no matches
 //
-export function joinTables(dest, src, join, opts) {
-  var srcRecords = src.getRecords(),
+export function joinTableToLayer(destLyr, src, join, opts) {
+  var dest = destLyr.data,
+      useDuplication = !!opts.duplication,
+      srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
       prefix = opts.prefix || '',
       unmatchedRecords = [],
@@ -25,6 +33,14 @@ export function joinTables(dest, src, join, opts) {
       retn = {},
       srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
+  // support for duplication
+  var duplicateRecords, destShapes;
+  if (useDuplication) {
+    if (opts.calc) stop('duplication and calc options cannot be used together');
+    duplicateRecords = dest.clone().getRecords();
+    destShapes = destLyr.shapes || [];
+  }
+
   if (opts.where) {
     filter = getJoinFilter(src, opts.where);
   }
@@ -34,7 +50,8 @@ export function joinTables(dest, src, join, opts) {
   }
 
   // join source records to target records
-  for (i=0, n=destRecords.length; i<n; i++) {
+  n = destRecords.length;
+  for (i=0; i<n; i++) {
     destRec = destRecords[i];
     joins = join(i);
     if (joins && filter) {
@@ -45,7 +62,12 @@ export function joinTables(dest, src, join, opts) {
     for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
       srcId = joins[j];
       srcRec = srcRecords[srcId];
-      if (count === 0) {
+      if (count > 0 && useDuplication) {
+        destRec = copyRecord(duplicateRecords[i]);
+        destRecords.push(destRec);
+        destShapes.push(cloneShape(destShapes[i]));
+      }
+      if (count === 0 || useDuplication) {
         if (copyFields.length > 0) {
           // only copying the first match
           joinByCopy(destRec, srcRec, copyFields, prefix);
@@ -77,7 +99,7 @@ export function joinTables(dest, src, join, opts) {
     }
   }
 
-  printJoinMessage(matchCount, destRecords.length,
+  printJoinMessage(matchCount, n,
       countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
 
   if (opts.unjoined) {
@@ -104,6 +126,7 @@ export function validateFieldNames(arr) {
     }
   });
 }
+
 
 function countJoins(counts) {
   var joinCount = 0;
@@ -167,14 +190,16 @@ export function findCollisionFields(dest, src, fields, collisionFields) {
 
 function printJoinMessage(matches, n, joins, m, skipped, collisions, collisionFields) {
   // TODO: add tip for troubleshooting join problems, if join is less than perfect.
+  var unmatched = n - matches;
   if (matches > 0 === false) {
     message("No records could be joined");
     return;
   }
   message(utils.format("Joined data from %'d source record%s to %'d target record%s",
       joins, utils.pluralSuffix(joins), matches, utils.pluralSuffix(matches)));
-  if (matches < n) {
-    message(utils.format('%d/%d target records received no data', n-matches, n));
+  if (unmatched > 0) {
+    message(utils.format('%d target record%s received no data', unmatched, utils.pluralSuffix(unmatched)));
+    // message(utils.format('%d target records received no data', n-matches));
   }
   if (joins < m) {
     message(utils.format("%d/%d source records could not be joined", m-joins, m));

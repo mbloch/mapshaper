@@ -1,13 +1,13 @@
 import { PointIndex } from '../points/mapshaper-point-index';
 import { stop } from '../utils/mapshaper-logging';
 import { prepJoinLayers } from './mapshaper-point-polygon-join';
-import { joinTables } from '../join/mapshaper-join-tables';
+import { joinTables, joinTableToLayer } from '../join/mapshaper-join-tables';
 import { isLatLngCRS } from '../crs/mapshaper-projections';
 
 export function joinPointsToPoints(targetLyr, srcLyr, crs, opts) {
   var joinFunction = getPointToPointFunction(targetLyr, srcLyr, crs, opts);
   prepJoinLayers(targetLyr, srcLyr);
-  return joinTables(targetLyr.data, srcLyr.data, joinFunction, opts);
+  return joinTableToLayer(targetLyr, srcLyr.data, joinFunction, opts);
 }
 
 function getPointToPointFunction(targetLyr, srcLyr, crs, opts) {
