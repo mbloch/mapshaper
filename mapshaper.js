@@ -18678,7 +18678,8 @@ ${svg}
       .option('no-replace', noReplaceOpt);
 
     parser.command('classify')
-      .describe('apply sequential or categorical classification')
+      // .describe('apply sequential or categorical classification')
+      .describe('assign colors or values using one of several methods')
       .option('field', {
         describe: 'name of field to classify',
         DEFAULT: true
@@ -18697,6 +18698,10 @@ ${svg}
       .option('color-scheme', {
         // deprecated in favor of colors=
         // describe: 'name of a predefined color scheme (see -colors command)'
+      })
+      .option('non-adjacent', {
+        describe: 'assign non-adjacent colors to a polygon layer',
+        assign_to: 'method'
       })
       .option('stops', {
         describe: 'a pair of values (0-100) for limiting a color ramp',
@@ -18782,7 +18787,6 @@ ${svg}
       .option('key-last-suffix', {
         describe: 'string to append to last label'
       })
-
       .option('target', targetOpt);
 
     parser.command('clean')
@@ -28063,24 +28067,240 @@ ${svg}
     return maxId + 1;
   }
 
-  cmd.classify = function(lyr, optsArg) {
+  // Returns a function for constructing a query function that accepts an arc id and
+  // returns information about the polygon or polygons that use the given arc.
+  // TODO: explain this better.
+  //
+  // options:
+  //   filter: optional filter function; signature: function(idA, idB or -1) : boolean
+  //   reusable: flag that lets an arc be queried multiple times.
+  function getArcClassifier(shapes, arcs) {
+    var opts = arguments[2] || {},
+        useOnce = !opts.reusable,
+        n = arcs.size(),
+        a = new Int32Array(n),
+        b = new Int32Array(n);
+
+    utils.initializeArray(a, -1);
+    utils.initializeArray(b, -1);
+
+    traversePaths(shapes, function(o) {
+      var i = absArcId(o.arcId);
+      var shpId = o.shapeId;
+      var aval = a[i];
+      if (aval == -1) {
+        a[i] = shpId;
+      } else if (shpId < aval) {
+        b[i] = aval;
+        a[i] = shpId;
+      } else {
+        b[i] = shpId;
+      }
+    });
+
+    function classify(arcId, getKey) {
+      var i = absArcId(arcId);
+      var shpA = a[i];
+      var shpB = b[i];
+      var key;
+      if (shpA == -1) return null;
+      key = getKey(shpA, shpB);
+      if (key === null || key === false) return null;
+      if (useOnce) {
+        // arc can only be queried once
+        a[i] = -1;
+        b[i] = -1;
+      }
+      // use optional filter to exclude some arcs
+      if (opts.filter && !opts.filter(shpA, shpB)) return null;
+      return key;
+    }
+
+    return function(getKey) {
+      return function(arcId) {
+        return classify(arcId, getKey);
+      };
+    };
+  }
+
+  var ArcClassifier = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getArcClassifier: getArcClassifier
+  });
+
+  // Returns a function for querying the neighbors of a given shape. The function
+  // can be called in either of two ways:
+  //
+  // 1. function(shapeId, callback)
+  //    Callback signature: function(adjacentShapeId, arcId)
+  //    The callback function is called once for each arc that the given feature
+  //    shares with another feature.
+  //
+  // 2. function(shapeId)
+  //    The function returns an array of unique ids of neighboring shapes, or
+  //    an empty array if a shape has no neighbors.
+  //
+  function getNeighborLookupFunction(lyr, arcs) {
+    var classifier = getArcClassifier(lyr.shapes, arcs, {reusable: true});
+    var classify = classifier(onShapes);
+    var currShapeId;
+    var neighbors;
+    var callback;
+
+    function onShapes(a, b) {
+      if (b == -1) return -1; // outer edges are b == -1
+      return a == currShapeId ? b : a;
+    }
+
+    function onArc(arcId) {
+      var nabeId = classify(arcId);
+      if (nabeId == -1) return;
+      if (callback) {
+        callback(nabeId, arcId);
+      } else if (neighbors.indexOf(nabeId) == -1) {
+        neighbors.push(nabeId);
+      }
+    }
+
+    return function(shpId, cb) {
+      currShapeId = shpId;
+      if (cb) {
+        callback = cb;
+        forEachArcId(lyr.shapes[shpId], onArc);
+        callback = null;
+      } else {
+        neighbors = [];
+        forEachArcId(lyr.shapes[shpId], onArc);
+        return neighbors;
+      }
+    };
+  }
+
+
+  // Returns an array containing all pairs of adjacent shapes
+  // in a collection of polygon shapes. A pair of shapes is represented as
+  // an array of two shape indexes [a, b].
+  function findPairsOfNeighbors(shapes, arcs) {
+    var getKey = function(a, b) {
+      return b > -1 && a > -1 ? [a, b] : null;
+    };
+    var classify = getArcClassifier(shapes, arcs)(getKey);
+    var arr = [];
+    var index = {};
+    var onArc = function(arcId) {
+      var obj = classify(arcId);
+      var key;
+      if (obj) {
+        key = obj.join('~');
+        if (key in index === false) {
+          arr.push(obj);
+          index[key] = true;
+        }
+      }
+    };
+    forEachArcId(shapes, onArc);
+    return arr;
+  }
+
+  var PolygonNeighbors = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getNeighborLookupFunction: getNeighborLookupFunction,
+    findPairsOfNeighbors: findPairsOfNeighbors
+  });
+
+  function getNonAdjacentClassifier(lyr, dataset, colors) {
+    requirePolygonLayer(lyr);
+    var getNeighbors = getNeighborLookupFunction(lyr, dataset.arcs);
+    var errorCount = 0;
+    var data = utils.range(getFeatureCount(lyr)).map(function(shpId) {
+      var nabes = getNeighbors(shpId) || [];
+      return {
+        nabes: nabes,
+        n: nabes.length,
+        colorId: -1
+      };
+    });
+    var getSortedColorIds = getUpdateFunction(colors.length);
+    var colorIds = getSortedColorIds();
+    // Sort adjacency data by number of neighbors in descending order
+    var sorted = data.concat();
+    utils.sortOn(sorted, 'n', false);
+    // Assign colors, starting with polygons with the largest number of neighbors
+    sorted.forEach(function(d) {
+      var colorId = pickColor(d, data, colorIds);
+      if (colorId == -1) {
+        errorCount++;
+        colorId = colorIds[0];
+      }
+      d.colorId = colorId;
+      colorIds = getSortedColorIds(colorId);
+    });
+
+    if (errorCount > 0) {
+      message(`Unable to find non-adjacent colors for ${errorCount} ${errorCount == 1 ? 'polygon' : 'polygons'}`);
+    }
+    return function(shpId) {
+      return colors[data[shpId].colorId];
+    };
+  }
+
+  // Pick the id of a color that is not shared with a neighboring polygon
+  function pickColor(d, data, colorIds) {
+    var candidateId;
+    for (var i=0; i<colorIds.length; i++) {
+      candidateId = colorIds[i];
+      if (isAvailableColor(d, data, candidateId)) {
+        return candidateId;
+      }
+    }
+    return -1; // no colors are available
+  }
+
+  function isAvailableColor(d, data, colorId) {
+    var nabes = d.nabes;
+    for (var i=0; i<nabes.length; i++) {
+      if (data[nabes[i]].colorId === colorId) return false;
+    }
+    return true;
+  }
+
+  // Update function returns an array of ids, sorted in descending order of preference
+  // (less-used ids are preferred).
+  // Function recieves an (optional) id that was just used.
+  function getUpdateFunction(n) {
+    var ids = utils.range(n);
+    var counts = new Uint32Array(n);
+    return function(i) {
+      if (i >= 0 && i < n) {
+        counts[i]++;
+        utils.sortArrayIndex(ids, counts, true);
+      } else if (i !== undefined) {
+        error('Unexpected color index:', i);
+      }
+      return ids;
+    };
+  }
+
+  cmd.classify = function(lyr, dataset, optsArg) {
+    if (!lyr.data) {
+      initDataTable(lyr);
+    }
     var opts = optsArg || {};
     var records = lyr.data && lyr.data.getRecords();
     var nullValue = opts.null_value || null;
     var looksLikeColors = !!opts.colors || !!opts.color_scheme;
     var colorScheme;
-    var classValues, classify;
+    var classValues, classifyByValue, classifyById;
     var numBuckets, numValues;
     var dataField, outputField;
 
     // validate explicitly set classes
     if (opts.classes) {
       if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
-        stop('Invalid classes= value:', opts.classes);
+        stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
       }
       numBuckets = opts.classes;
     }
-
 
     // TODO: better validation of breaks values
     if (opts.breaks) {
@@ -28099,9 +28319,6 @@ ${svg}
 
     } else if (opts.field) {
       dataField = opts.field;
-
-    } else {
-      stop('Missing a data field to classify');
     }
 
     // expand categories if value is '*'
@@ -28109,7 +28326,18 @@ ${svg}
       opts.categories = getUniqFieldValues(records, dataField);
     }
 
-    requireDataField(lyr.data, dataField);
+    if (opts.method == 'non-adjacent') {
+      if (lyr.geometry_type != 'polygon') {
+        stop('The non-adjacent option requires a polygon layer');
+      }
+      if (dataField) {
+        stop('The non-adjacent option does not accept a data field argument');
+      }
+    } else if (!dataField) {
+      stop('Missing a data field to classify');
+    } else {
+      requireDataField(lyr.data, dataField);
+    }
 
     if (numBuckets) {
       numValues = opts.continuous ? numBuckets + 1 : numBuckets;
@@ -28177,14 +28405,24 @@ ${svg}
 
     // get a function to convert input data to class indexes
     //
-    if (opts.index_field) {
+    if (opts.method == 'non-adjacent') {
+      classifyById = getNonAdjacentClassifier(lyr, dataset, classValues);
+    } else if (opts.index_field) {
       // data is pre-classified... just read the index from a field
-      classify = getIndexedClassifier(classValues, nullValue, opts);
+      classifyByValue = getIndexedClassifier(classValues, nullValue, opts);
     } else if (opts.categories) {
-      classify = getCategoricalClassifier(classValues, nullValue, opts);
+      classifyByValue = getCategoricalClassifier(classValues, nullValue, opts);
     } else {
-      classify = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
+      classifyByValue = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
     }
+
+    if (classifyByValue) {
+      classifyById = function(id) {
+        var d = records[id] || {};
+        return classifyByValue(d[dataField]);
+      };
+    }
+
 
     // get the name of the output field
     //
@@ -28201,8 +28439,7 @@ ${svg}
     }
 
     records.forEach(function(d, i) {
-      d = d || {};
-      d[outputField] = classify(d[dataField]);
+      d[outputField] = classifyById(i);
     });
   };
 
@@ -29014,147 +29251,6 @@ ${svg}
     getClipMessage: getClipMessage
   });
 
-  // Returns a function for constructing a query function that accepts an arc id and
-  // returns information about the polygon or polygons that use the given arc.
-  // TODO: explain this better.
-  //
-  // options:
-  //   filter: optional filter function; signature: function(idA, idB or -1) : boolean
-  //   reusable: flag that lets an arc be queried multiple times.
-  function getArcClassifier(shapes, arcs) {
-    var opts = arguments[2] || {},
-        useOnce = !opts.reusable,
-        n = arcs.size(),
-        a = new Int32Array(n),
-        b = new Int32Array(n);
-
-    utils.initializeArray(a, -1);
-    utils.initializeArray(b, -1);
-
-    traversePaths(shapes, function(o) {
-      var i = absArcId(o.arcId);
-      var shpId = o.shapeId;
-      var aval = a[i];
-      if (aval == -1) {
-        a[i] = shpId;
-      } else if (shpId < aval) {
-        b[i] = aval;
-        a[i] = shpId;
-      } else {
-        b[i] = shpId;
-      }
-    });
-
-    function classify(arcId, getKey) {
-      var i = absArcId(arcId);
-      var shpA = a[i];
-      var shpB = b[i];
-      var key;
-      if (shpA == -1) return null;
-      key = getKey(shpA, shpB);
-      if (key === null || key === false) return null;
-      if (useOnce) {
-        // arc can only be queried once
-        a[i] = -1;
-        b[i] = -1;
-      }
-      // use optional filter to exclude some arcs
-      if (opts.filter && !opts.filter(shpA, shpB)) return null;
-      return key;
-    }
-
-    return function(getKey) {
-      return function(arcId) {
-        return classify(arcId, getKey);
-      };
-    };
-  }
-
-  var ArcClassifier = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getArcClassifier: getArcClassifier
-  });
-
-  // Returns a function for querying the neighbors of a given shape. The function
-  // can be called in either of two ways:
-  //
-  // 1. function(shapeId, callback)
-  //    Callback signature: function(adjacentShapeId, arcId)
-  //    The callback function is called once for each arc that the given feature
-  //    shares with another feature.
-  //
-  // 2. function(shapeId)
-  //    The function returns an array of unique ids of neighboring shapes, or
-  //    an empty array if a shape has no neighbors.
-  //
-  function getNeighborLookupFunction(lyr, arcs) {
-    var classifier = getArcClassifier(lyr.shapes, arcs, {reusable: true});
-    var classify = classifier(onShapes);
-    var currShapeId;
-    var neighbors;
-    var callback;
-
-    function onShapes(a, b) {
-      if (b == -1) return -1; // outer edges are b == -1
-      return a == currShapeId ? b : a;
-    }
-
-    function onArc(arcId) {
-      var nabeId = classify(arcId);
-      if (nabeId == -1) return;
-      if (callback) {
-        callback(nabeId, arcId);
-      } else if (neighbors.indexOf(nabeId) == -1) {
-        neighbors.push(nabeId);
-      }
-    }
-
-    return function(shpId, cb) {
-      currShapeId = shpId;
-      if (cb) {
-        callback = cb;
-        forEachArcId(lyr.shapes[shpId], onArc);
-        callback = null;
-      } else {
-        neighbors = [];
-        forEachArcId(lyr.shapes[shpId], onArc);
-        return neighbors;
-      }
-    };
-  }
-
-
-  // Returns an array containing all pairs of adjacent shapes
-  // in a collection of polygon shapes. A pair of shapes is represented as
-  // an array of two shape indexes [a, b].
-  function findPairsOfNeighbors(shapes, arcs) {
-    var getKey = function(a, b) {
-      return b > -1 && a > -1 ? [a, b] : null;
-    };
-    var classify = getArcClassifier(shapes, arcs)(getKey);
-    var arr = [];
-    var index = {};
-    var onArc = function(arcId) {
-      var obj = classify(arcId);
-      var key;
-      if (obj) {
-        key = obj.join('~');
-        if (key in index === false) {
-          arr.push(obj);
-          index[key] = true;
-        }
-      }
-    };
-    forEachArcId(shapes, onArc);
-    return arr;
-  }
-
-  var PolygonNeighbors = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getNeighborLookupFunction: getNeighborLookupFunction,
-    findPairsOfNeighbors: findPairsOfNeighbors
-  });
-
   // Assign a cluster id to each polygon in a dataset, which can be used with
   //   one of the dissolve commands to dissolve the clusters
   // Works by iteratively grouping pairs of polygons with the smallest distance
@@ -29840,11 +29936,12 @@ ${svg}
     getJoinFilter: getJoinFilter
   });
 
+  // Join data from @src table to records in @dest table
   function joinTables(dest, src, join, opts) {
     return joinTableToLayer({data: dest}, src, join, opts);
   }
 
-  // Join data from @src table to records in @dest table
+  // Join data from @src table to records in @destLyr layer.
   // @join function
   //    Receives index of record in the dest table
   //    Returns array of matching records in src table, or null if no matches
@@ -29867,7 +29964,7 @@ ${svg}
         retn = {},
         srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
-    // support for duplication
+    // support for duplication of destination records
     var duplicateRecords, destShapes;
     if (useDuplication) {
       if (opts.calc) stop('duplication and calc options cannot be used together');
@@ -29896,6 +29993,7 @@ ${svg}
       for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
         srcId = joins[j];
         srcRec = srcRecords[srcId];
+        // duplication mode: many-to-one joins add new features to the target layer.
         if (count > 0 && useDuplication) {
           destRec = copyRecord(duplicateRecords[i]);
           destRecords.push(destRec);
@@ -37689,7 +37787,7 @@ ${svg}
         applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
 
       } else if (name == 'classify') {
-        applyCommandToEachLayer(cmd.classify, targetLayers, opts);
+        applyCommandToEachLayer(cmd.classify, targetLayers, targetDataset, opts);
 
       } else if (name == 'clean') {
         cmd.cleanLayers(targetLayers, targetDataset, opts);
