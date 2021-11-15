@@ -1,3 +1,6 @@
+v0.5.71
+* Added -classify non-adjacent option, for assigning non-adjacent colors to a polygon layer in a randomish pattern.
+
 v0.5.70
 * Added -join duplication option, which duplicates features in the target layer when many-to-one joins occur.
 
