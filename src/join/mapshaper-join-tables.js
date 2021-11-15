@@ -6,11 +6,12 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { cloneShape } from '../paths/mapshaper-shape-utils';
 import { copyRecord } from '../datatable/mapshaper-data-utils';
 
+// Join data from @src table to records in @dest table
 export function joinTables(dest, src, join, opts) {
   return joinTableToLayer({data: dest}, src, join, opts);
 }
 
-// Join data from @src table to records in @dest table
+// Join data from @src table to records in @destLyr layer.
 // @join function
 //    Receives index of record in the dest table
 //    Returns array of matching records in src table, or null if no matches
@@ -33,7 +34,7 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       retn = {},
       srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
-  // support for duplication
+  // support for duplication of destination records
   var duplicateRecords, destShapes;
   if (useDuplication) {
     if (opts.calc) stop('duplication and calc options cannot be used together');
@@ -62,6 +63,7 @@ export function joinTableToLayer(destLyr, src, join, opts) {
     for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
       srcId = joins[j];
       srcRec = srcRecords[srcId];
+      // duplication mode: many-to-one joins add new features to the target layer.
       if (count > 0 && useDuplication) {
         destRec = copyRecord(duplicateRecords[i]);
         destRecords.push(destRec);

@@ -1,6 +1,6 @@
 import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { requireDataField } from '../dataset/mapshaper-layer-utils';
+import { requireDataField, initDataTable } from '../dataset/mapshaper-layer-utils';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
 import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
 import { parseColor } from '../color/color-utils';
@@ -19,25 +19,28 @@ import {
 } from '../classification/mapshaper-interpolation';
 import cmd from '../mapshaper-cmd';
 import { getUniqFieldValues } from '../datatable/mapshaper-data-utils';
+import { getNonAdjacentClassifier } from '../color/graph-color';
 
-cmd.classify = function(lyr, optsArg) {
+cmd.classify = function(lyr, dataset, optsArg) {
+  if (!lyr.data) {
+    initDataTable(lyr);
+  }
   var opts = optsArg || {};
   var records = lyr.data && lyr.data.getRecords();
   var nullValue = opts.null_value || null;
   var looksLikeColors = !!opts.colors || !!opts.color_scheme;
   var colorScheme;
-  var classValues, classify;
+  var classValues, classifyByValue, classifyById;
   var numBuckets, numValues;
   var dataField, outputField;
 
   // validate explicitly set classes
   if (opts.classes) {
     if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
-      stop('Invalid classes= value:', opts.classes);
+      stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
     }
     numBuckets = opts.classes;
   }
-
 
   // TODO: better validation of breaks values
   if (opts.breaks) {
@@ -56,9 +59,6 @@ cmd.classify = function(lyr, optsArg) {
 
   } else if (opts.field) {
     dataField = opts.field;
-
-  } else {
-    stop('Missing a data field to classify');
   }
 
   // expand categories if value is '*'
@@ -66,7 +66,18 @@ cmd.classify = function(lyr, optsArg) {
     opts.categories = getUniqFieldValues(records, dataField);
   }
 
-  requireDataField(lyr.data, dataField);
+  if (opts.method == 'non-adjacent') {
+    if (lyr.geometry_type != 'polygon') {
+      stop('The non-adjacent option requires a polygon layer');
+    }
+    if (dataField) {
+      stop('The non-adjacent option does not accept a data field argument');
+    }
+  } else if (!dataField) {
+    stop('Missing a data field to classify');
+  } else {
+    requireDataField(lyr.data, dataField);
+  }
 
   if (numBuckets) {
     numValues = opts.continuous ? numBuckets + 1 : numBuckets;
@@ -134,14 +145,24 @@ cmd.classify = function(lyr, optsArg) {
 
   // get a function to convert input data to class indexes
   //
-  if (opts.index_field) {
+  if (opts.method == 'non-adjacent') {
+    classifyById = getNonAdjacentClassifier(lyr, dataset, classValues);
+  } else if (opts.index_field) {
     // data is pre-classified... just read the index from a field
-    classify = getIndexedClassifier(classValues, nullValue, opts);
+    classifyByValue = getIndexedClassifier(classValues, nullValue, opts);
   } else if (opts.categories) {
-    classify = getCategoricalClassifier(classValues, nullValue, opts);
+    classifyByValue = getCategoricalClassifier(classValues, nullValue, opts);
   } else {
-    classify = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
+    classifyByValue = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
   }
+
+  if (classifyByValue) {
+    classifyById = function(id) {
+      var d = records[id] || {};
+      return classifyByValue(d[dataField]);
+    };
+  }
+
 
   // get the name of the output field
   //
@@ -158,8 +179,7 @@ cmd.classify = function(lyr, optsArg) {
   }
 
   records.forEach(function(d, i) {
-    d = d || {};
-    d[outputField] = classify(d[dataField]);
+    d[outputField] = classifyById(i);
   });
 };
 

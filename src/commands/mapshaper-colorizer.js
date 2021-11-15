@@ -6,6 +6,7 @@ import { getCategoricalClassifier } from '../classification/mapshaper-categorica
 import { getDiscreteValueGetter } from '../classification/mapshaper-classification';
 import { getDiscreteClassifier } from '../classification/mapshaper-sequential-classifier';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
+import { getNonAdjacentClassifier } from '../color/graph-color';
 
 cmd.colorizer = function(opts) {
   if (!opts.name) {

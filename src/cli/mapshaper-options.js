@@ -417,7 +417,8 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('classify')
-    .describe('apply sequential or categorical classification')
+    // .describe('apply sequential or categorical classification')
+    .describe('assign colors or values using one of several methods')
     .option('field', {
       describe: 'name of field to classify',
       DEFAULT: true
@@ -436,6 +437,10 @@ export function getOptionParser() {
     .option('color-scheme', {
       // deprecated in favor of colors=
       // describe: 'name of a predefined color scheme (see -colors command)'
+    })
+    .option('non-adjacent', {
+      describe: 'assign non-adjacent colors to a polygon layer',
+      assign_to: 'method'
     })
     .option('stops', {
       describe: 'a pair of values (0-100) for limiting a color ramp',
@@ -521,7 +526,6 @@ export function getOptionParser() {
     .option('key-last-suffix', {
       describe: 'string to append to last label'
     })
-
     .option('target', targetOpt);
 
   parser.command('clean')

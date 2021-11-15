@@ -172,7 +172,7 @@ export function runCommand(command, catalog, cb) {
       applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
 
     } else if (name == 'classify') {
-      applyCommandToEachLayer(cmd.classify, targetLayers, opts);
+      applyCommandToEachLayer(cmd.classify, targetLayers, targetDataset, opts);
 
     } else if (name == 'clean') {
       cmd.cleanLayers(targetLayers, targetDataset, opts);
