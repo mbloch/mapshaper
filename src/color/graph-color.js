@@ -11,15 +11,15 @@ export function getNonAdjacentClassifier(lyr, dataset, colors) {
   var errorCount = 0;
   var data = utils.range(getFeatureCount(lyr)).map(function(shpId) {
     var nabes = getNeighbors(shpId) || [];
-    return {
-      // id: shpId,
+    var d = {
       nabes: nabes,
       colorId: -1,
       nabeColors: [],
-      uncolored: nabes.length,
-      saturation: 0,
-      saturation2: 0
+      uncolored: nabes.length, // number of uncolored neighbors
+      saturation: 0, // number of unique colors of neighbors
+      common: 0 // number of repeated colors in neighbors
     };
+    return d;
   });
   var getSortedColorIds = getUpdateFunction(colors.length);
   var colorIds = getSortedColorIds();
@@ -74,30 +74,52 @@ function updateNeighbors(item, sorted, data) {
 }
 
 function updateNeighbor(a, colorId, sorted) {
-  var i = sorted.indexOf(a); // could optimize with a binary search
+  var i = findItem(a, sorted);
   var n = sorted.length;
   var b;
   if (i == -1) {
     error('Indexing error');
   }
   a.uncolored--;
-  a.saturation2++;
   if (!a.nabeColors.includes(colorId)) {
     a.saturation++;
     a.nabeColors.push(colorId);
+  } else {
+    a.common++;
   }
-  // insertion sort with a stopping condition
+
   while (++i < n) {
     b = sorted[i];
-    // standard dsatur
-    if (a.saturation < b.saturation || a.saturation == b.saturation && a.uncolored > b.uncolored) break;
-    // based on 4-color tests with counties and zipcodes, this condition adds a bit of strength
-    if (a.saturation == b.saturation && a.uncolored == b.uncolored && a.saturation2 < b.saturation2) break; // 332
+    if (!betterThan(a, b)) break;
     sorted[i-1] = b;
     sorted[i] = a;
   }
 }
 
+function findItem(a, sorted) {
+  // return sorted.indexOf(a); // bottleneck
+  // binary search in sorted array
+  var start = 0, end = sorted.length, i;
+  while (end - start > 50) {
+    i = Math.floor((start + end) / 2);
+    if (sorted[i].saturation >= a.saturation) {
+      end = i;
+    } else {
+      start = i;
+    }
+  }
+  return sorted.indexOf(a, start);
+}
+
+function betterThan(a, b) {
+  if (a.saturation > b.saturation) return true;
+  if (a.saturation < b.saturation) return false;
+  if (a.common > b.common) return true;
+  if (a.common < b.common) return false;
+  // based on 4-color tests with counties and zipcodes, this condition adds a bit of strength
+  if (a.uncolored < b.uncolored) return true;
+  return false;
+}
 
 // Pick the id of a color that is not shared with a neighboring polygon
 export function pickColor(d, data, colorIds) {
