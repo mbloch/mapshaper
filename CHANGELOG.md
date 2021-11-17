@@ -1,3 +1,6 @@
+v0.5.72
+* Improved performance of non-adjacent polygon coloring using DSATUR algorithm.
+
 v0.5.71
 * Added -classify non-adjacent option, for assigning non-adjacent colors to a polygon layer in a randomish pattern.
 
@@ -26,7 +29,7 @@ v0.5.64
 * Bug fixes
 
 v0.5.63
-* Added -o decimal-comma function, for exporting CSV numbers with decimal commas.
+* Added -o decimal-comma option, for exporting CSV numbers with decimal commas.
 * Fix for issue #497 (error erasing with overlapping polygons).
 
 v0.5.62

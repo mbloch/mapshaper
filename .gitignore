@@ -8,6 +8,7 @@ npm-debug.log
 /www/mapshaper-gui.js
 /www/mapshaper.js
 /www/node_modules.js
-/build/*.js
+pre-publish
+pre-release.js
 release*
 nacis
