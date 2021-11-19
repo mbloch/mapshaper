@@ -87,7 +87,7 @@ function updateNeighbor(a, colorId, sorted) {
   } else {
     a.common++;
   }
-
+  // bubble sort!!!
   while (++i < n) {
     b = sorted[i];
     if (!betterThan(a, b)) break;
