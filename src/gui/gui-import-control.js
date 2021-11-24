@@ -10,7 +10,8 @@ function DropControl(el, cb) {
   var area = El(el);
   area.on('dragleave', ondragleave)
       .on('dragover', ondragover)
-      .on('drop', ondrop);
+      .on('drop', ondrop)
+      .on('paste', onpaste);
   function ondragleave(e) {
     block(e);
     out();
@@ -31,10 +32,37 @@ function DropControl(el, cb) {
   function out() {
     area.removeClass('dragover');
   }
+  function onpaste(e) {
+    var text, file;
+    block(e);
+    try {
+      text = e.clipboardData.getData('text/plain').trim();
+      file = text ? pastedTextToFile(text) : null;
+      if (file) {
+        cb([file]);
+      }
+    } catch(err) {
+      console.error(err);
+    }
+  }
   function block(e) {
     e.preventDefault();
     e.stopPropagation();
   }
+}
+
+function pastedTextToFile(str) {
+  var type = internal.guessInputContentType(str);
+  var name;
+  if (type == 'text') {
+    name = 'pasted.txt';
+  } else if (type == 'json') {
+    name = 'pasted.json';
+  } else {
+    return null;
+  }
+  var blob = new Blob([str]);
+  return new File([blob], name);
 }
 
 // @el DOM element for select button
