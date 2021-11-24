@@ -1,3 +1,6 @@
+v0.5.73
+* Added this.geojson getter/setter to -each expressions. This can be used in combination with -require to transform the geometry of individual features using an external script.
+
 v0.5.72
 * Improved performance of non-adjacent polygon coloring using DSATUR algorithm.
 
