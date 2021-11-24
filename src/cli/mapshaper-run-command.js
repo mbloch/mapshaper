@@ -203,7 +203,7 @@ export function runCommand(command, catalog, cb) {
       // cmd.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
-      applyCommandToEachLayer(cmd.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
+      applyCommandToEachLayer(cmd.evaluateEachFeature, targetLayers, targetDataset, opts.expression, opts);
 
     } else if (name == 'erase') {
       outputLayers = cmd.eraseLayers(targetLayers, source, targetDataset, opts);
@@ -461,8 +461,6 @@ export function runCommand(command, catalog, cb) {
       }
 
     }
-
-
 
     // delete arcs if no longer needed (e.g. after -points command)
     // (after output layers have been integrated)

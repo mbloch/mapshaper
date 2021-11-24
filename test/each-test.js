@@ -2,9 +2,102 @@ var assert = require('assert'),
     api = require("../"),
     ArcCollection = api.internal.ArcCollection;
 
+
+// Adapter for older version of the function used by some tests
+function evaluateEachFeature(lyr, arcs, expr, opts) {
+  var dataset = {
+    layers: [lyr],
+    arcs: arcs
+  };
+  return api.evaluateEachFeature(lyr, dataset, expr, opts);
+}
+
 describe('mapshaper-each.js', function () {
 
   describe('-each command', function () {
+
+    it('this.geojson getter', function(done) {
+      var data = {
+        type: 'Feature',
+        properties: {name: 'Fred'},
+        geometry: {
+          type: 'Point',
+          coordinates: [2, 3]
+        }
+      };
+      var cmd = '-i data.json -each "geojson = this.geojson" -o';
+      api.applyCommands(cmd, {'data.json': JSON.stringify(data)}, function(err, out) {
+        var output = JSON.parse(out['data.json'])
+        var geojson = output.features[0].properties.geojson;
+        assert.deepEqual(geojson, data);
+        done();
+      });
+    })
+
+    it('this.geojson setter', function(done) {
+      var data = {
+        type: 'Feature',
+        properties: {geostr: `{
+          "type": "LineString",
+          "coordinates": [[0,0], [1,1]]
+        }`},
+        geometry: {
+          type: 'Point',
+          coordinates: [2, 3]
+        }
+      };
+      var cmd = '-i data.json -each "this.geojson = geostr" -o';
+      api.applyCommands(cmd, {'data.json': JSON.stringify(data)}, function(err, out) {
+        var output = JSON.parse(out['data.json'])
+        var expect = JSON.parse(data.properties.geostr);
+        assert.deepEqual(output.geometries[0], expect);
+        done();
+      });
+    })
+
+
+    it('this.geojson setter replacing lines with lines', function(done) {
+      var data = {
+        type: 'Feature',
+        properties: {geostr: `{
+          "type": "LineString",
+          "coordinates": [[0,0], [1,1]]
+        }`},
+        geometry: {
+          type: 'LineString',
+          coordinates: [[1,1], [0,0]]
+        }
+      };
+      var cmd = '-i data.json -each "this.geojson = geostr" -o';
+      api.applyCommands(cmd, {'data.json': JSON.stringify(data)}, function(err, out) {
+        var output = JSON.parse(out['data.json'])
+        var expect = JSON.parse(data.properties.geostr);
+        assert.deepEqual(output.geometries[0], expect);
+        done();
+      });
+    })
+
+    it('this.geojson getter + setter', function(done) {
+      var data = {
+        type: 'Feature',
+        properties: {name: 'Fred'},
+        geometry: {
+          type: 'Point',
+          coordinates: [2, 3]
+        }
+      };
+      var cmd = '-i data.json -each "tmp = this.geojson, tmp.geometry.coordinates[0] = 4, this.geojson = tmp" -o';
+      api.applyCommands(cmd, {'data.json': JSON.stringify(data)}, function(err, out) {
+        var output = JSON.parse(out['data.json'])
+        var geom = output.features[0].geometry;
+        var expect = {
+          type: 'Point',
+          coordinates: [4, 3]
+        };
+        assert.deepEqual(geom, expect);
+        done();
+      });
+    })
 
     it('layer.name works', function (done) {
       var csv = 'id\na\nb';
@@ -38,6 +131,7 @@ describe('mapshaper-each.js', function () {
 
   })
 
+
   describe('evaluateEachFeature()', function () {
     var nullArcs = new api.internal.ArcCollection([]);
     it('create new numeric field', function () {
@@ -45,7 +139,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, null, "FOO=0");
+      evaluateEachFeature(lyr, null, "FOO=0");
       assert.deepEqual(records, [{FOO:0}, {FOO:0}]);
     })
 
@@ -54,7 +148,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, null, "FOO=''");
+      evaluateEachFeature(lyr, null, "FOO=''");
       assert.deepEqual(records, [{FOO:''}, {FOO:''}]);
     })
 
@@ -63,7 +157,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "delete foo");
+      evaluateEachFeature(lyr, nullArcs, "delete foo");
       assert.deepEqual(records, [{}, {}]);
     })
 
@@ -72,7 +166,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "foo = foo.map(n => n+1).join('')");
+      evaluateEachFeature(lyr, nullArcs, "foo = foo.map(n => n+1).join('')");
       assert.deepEqual(records, [{foo: '234'}]);
     })
 
@@ -81,7 +175,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "foo=foo.substr(0, 2)");
+      evaluateEachFeature(lyr, nullArcs, "foo=foo.substr(0, 2)");
       assert.deepEqual(records, [{foo:'mi'}, {foo:'be'}]);
     })
 
@@ -90,7 +184,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "this.properties['label-text'] = this.properties['label-text'].toUpperCase()");
+      evaluateEachFeature(lyr, nullArcs, "this.properties['label-text'] = this.properties['label-text'].toUpperCase()");
       assert.deepEqual(records, [{'label-text':'FINLAND'}, {'label-text':'SWEDEN'}]);
     })
 
@@ -99,7 +193,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "d['label-text'] = d['label-text'].toUpperCase()");
+      evaluateEachFeature(lyr, nullArcs, "d['label-text'] = d['label-text'].toUpperCase()");
       assert.deepEqual(records, [{'label-text':'FINLAND'}, {'label-text':'SWEDEN'}]);
     })
 
@@ -110,7 +204,7 @@ describe('mapshaper-each.js', function () {
         shapes: [[[0, 2], [-2]], null],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "parts=$.partCount");
+      evaluateEachFeature(lyr, nullArcs, "parts=$.partCount");
       assert.deepEqual(records, [{parts: 2}, {parts: 0}]);
     })
 
@@ -119,7 +213,7 @@ describe('mapshaper-each.js', function () {
         geometry_type: 'polygon',
         shapes: [[[0, 2], [-2]], null]
       };
-      api.evaluateEachFeature(lyr, nullArcs, "parts=$.partCount");
+      evaluateEachFeature(lyr, nullArcs, "parts=$.partCount");
       assert.deepEqual(lyr.data.getRecords(), [{parts: 2}, {parts: 0}]);
     })
 
@@ -128,7 +222,7 @@ describe('mapshaper-each.js', function () {
         shapes: [null, null],
         data: new api.internal.DataTable([null, {'a': 13}])
       };
-      api.evaluateEachFeature(lyr, nullArcs, "FID=$.id");
+      evaluateEachFeature(lyr, nullArcs, "FID=$.id");
       assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {a: 13, FID: 1}]);
     })
 
@@ -138,7 +232,7 @@ describe('mapshaper-each.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "bar = foo, delete foo");
+      evaluateEachFeature(lyr, nullArcs, "bar = foo, delete foo");
       assert.deepEqual(records, [{bar: 'mice'}, {bar: 'beans'}]);
     })
 
@@ -148,7 +242,7 @@ describe('mapshaper-each.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "$$foo = foo + foo");
+      evaluateEachFeature(lyr, nullArcs, "$$foo = foo + foo");
       assert.deepEqual(records, [{foo: 'mice', '$$foo': 'micemice'}, {foo: 'beans', '$$foo': 'beansbeans'}]);
     })
 
@@ -158,7 +252,7 @@ describe('mapshaper-each.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "valid = $.properties.foo === foo");
+      evaluateEachFeature(lyr, nullArcs, "valid = $.properties.foo === foo");
       assert.deepEqual(records, [{foo: 'mice', valid: true}, {foo: 'beans', valid: true}]);
     })
 
@@ -167,7 +261,7 @@ describe('mapshaper-each.js', function () {
         shapes: [null, null],
         data: null
       };
-      api.evaluateEachFeature(lyr, nullArcs, "$.properties = {FID: $.id}");
+      evaluateEachFeature(lyr, nullArcs, "$.properties = {FID: $.id}");
       assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {FID: 1}]);
     })
 
@@ -178,7 +272,7 @@ describe('mapshaper-each.js', function () {
         shapes: [null, null],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "$.properties = {menu: foo}");
+      evaluateEachFeature(lyr, nullArcs, "$.properties = {menu: foo}");
       assert.deepEqual(lyr.data.getRecords(), [{menu: 'mice'}, {menu: 'beans'}]);
     })
 
@@ -187,7 +281,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "bar = foo");
+      evaluateEachFeature(lyr, nullArcs, "bar = foo");
       assert.deepEqual(lyr.data.getRecords(), [{foo:'mice', bar: 'mice'}, {
         bar: null
       }]);
@@ -199,7 +293,7 @@ describe('mapshaper-each.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "bar=Math.sqrt(foo); delete foo");
+      evaluateEachFeature(lyr, nullArcs, "bar=Math.sqrt(foo); delete foo");
       assert.deepEqual(records, [{bar: 2}, {bar: 0}]);
     })
 
@@ -209,7 +303,7 @@ describe('mapshaper-each.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "foo = 22", {"where": "bar == 'b'"});
+      evaluateEachFeature(lyr, nullArcs, "foo = 22", {"where": "bar == 'b'"});
       assert.deepEqual(records, [{foo: 4, bar: 'a'}, {foo: 22, bar: 'b'}]);
     })
 
@@ -218,7 +312,7 @@ describe('mapshaper-each.js', function () {
       var lyr = {
         data: new api.internal.DataTable(records)
       };
-      api.evaluateEachFeature(lyr, nullArcs, "foo = 'A&raquo;s'; bar=''", {"where": "!/;/.test(foo)"});
+      evaluateEachFeature(lyr, nullArcs, "foo = 'A&raquo;s'; bar=''", {"where": "!/;/.test(foo)"});
       assert.deepEqual(records, [{foo: 'A&raquo;s', bar: ''}]);
     })
 
@@ -228,7 +322,7 @@ describe('mapshaper-each.js', function () {
           geometry_type: 'point',
           shapes: [[[0, 1]], [[2, 3], [3, 4]], null]
         };
-        api.evaluateEachFeature(lyr, null, "x=$.x, y=$.y");
+        evaluateEachFeature(lyr, null, "x=$.x, y=$.y");
         assert.deepEqual(lyr.data.getRecords(), [{x: 0, y: 1}, {x: 2, y: 3}, {x: null, y: null}]);
       })
 
@@ -238,7 +332,7 @@ describe('mapshaper-each.js', function () {
           shapes: [[[0, 1]], [[2, 3], [3, 4]], null]
         };
         // first point of multipoint is set; null shapes are ignored (for now)
-        api.evaluateEachFeature(lyr, null, "$.x = 0, $.y = 0");
+        evaluateEachFeature(lyr, null, "$.x = 0, $.y = 0");
         assert.deepEqual(lyr.shapes, [[[0, 0]], [[0, 0], [3, 4]], null]);
       })
 
@@ -247,7 +341,7 @@ describe('mapshaper-each.js', function () {
           geometry_type: 'point',
           shapes: [[[0, 1]], [[2, 3], [3, 4]]]
         };
-        api.evaluateEachFeature(lyr, null, "x=$.coordinates[0][0], y=$.coordinates[0][1]");
+        evaluateEachFeature(lyr, null, "x=$.coordinates[0][0], y=$.coordinates[0][1]");
         assert.deepEqual(lyr.data.getRecords(), [{x: 0, y: 1}, {x: 2, y: 3}]);
       })
     });
@@ -336,28 +430,28 @@ describe('mapshaper-each.js', function () {
       })
 
       it ("$.centroidX and $.centroidY", function() {
-        api.evaluateEachFeature(lyr, arcs, "x=$.centroidX, y=$.centroidY");
+        evaluateEachFeature(lyr, arcs, "x=$.centroidX, y=$.centroidY");
         assert.deepEqual(lyr.data.getRecords(), [{x: 1.5, y: 2.5}, {x: 2, y: 1.5}, {x: null, y: null}])
       })
 
       it ("$.partCount and $.isNull", function() {
-        api.evaluateEachFeature(lyr, arcs, "parts=$.partCount, isNull=$.isNull");
+        evaluateEachFeature(lyr, arcs, "parts=$.partCount, isNull=$.isNull");
         assert.deepEqual(lyr.data.getRecords(), [{parts: 1, isNull: false}, {parts: 2, isNull: false}, {parts: 0, isNull: true}])
       })
       /*
       it ("$.area and $.originalArea", function() {
-        api.evaluateEachFeature(lyr, arcs, "area=$.area, area2=$.originalArea");
+        evaluateEachFeature(lyr, arcs, "area=$.area, area2=$.originalArea");
         assert.deepEqual(lyr.data.getRecords(), [{area: 1, area2: 1}, {area: 3, area2: 3}, {area: 0, area2: 0}])
       })
       */
 
       it ("$.height and $.width", function() {
-        api.evaluateEachFeature(lyr, arcs, "h=$.height, w=$.width");
+        evaluateEachFeature(lyr, arcs, "h=$.height, w=$.width");
         assert.deepEqual(lyr.data.getRecords(), [{w: 1, h: 1}, {w: 2, h: 2}, {w: 0, h: 0}])
       })
 
       it ("$.bounds", function() {
-        api.evaluateEachFeature(lyr, arcs, "bb=$.bounds");
+        evaluateEachFeature(lyr, arcs, "bb=$.bounds");
         assert.deepEqual(lyr.data.getRecords(), [{bb: [1, 2, 2, 3]}, {bb: [1, 1, 3, 3]}, {bb: []}])
       })
 

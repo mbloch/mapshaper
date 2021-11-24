@@ -167,7 +167,7 @@ export function compileExpressionToFunction(exp, opts) {
 }
 
 function getExpressionFunction(exp, lyr, arcs, opts) {
-  var getFeatureById = initFeatureProxy(lyr, arcs);
+  var getFeatureById = initFeatureProxy(lyr, arcs, opts);
   var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
   var ctx = getExpressionContext(lyr, opts.context, opts);
   var func = compileExpressionToFunction(exp, opts);

@@ -11,8 +11,9 @@ import utils from '../utils/mapshaper-utils';
 
 // Returns a function to return a feature proxy by id
 // (the proxy appears as "this" or "$" in a feature expression)
-export function initFeatureProxy(lyr, arcs) {
-  var hasPoints = layerHasPoints(lyr),
+export function initFeatureProxy(lyr, arcs, optsArg) {
+  var opts = optsArg || {},
+      hasPoints = layerHasPoints(lyr),
       hasPaths = arcs && layerHasPaths(lyr),
       _records = lyr.data ? lyr.data.getRecords() : null,
       _isPlanar = hasPaths && arcs.isPlanar(),
@@ -25,6 +26,17 @@ export function initFeatureProxy(lyr, arcs) {
     id: function() { return _id; }
   });
   addLayerGetters(ctx, lyr, arcs);
+
+  if (opts.geojson_editor) {
+    Object.defineProperty(ctx, 'geojson', {
+      set: function(o) {
+        opts.geojson_editor.set(o, _id);
+      },
+      get: function() {
+        return opts.geojson_editor.get(_id);
+      }
+    });
+  }
 
   if (_records) {
     // add r/w member "properties"

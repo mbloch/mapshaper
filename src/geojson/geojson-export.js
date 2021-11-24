@@ -90,18 +90,17 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
   return (shapes || properties || []).reduce(function(memo, o, i) {
     var shape = shapes ? shapes[i] : null,
         exporter = GeoJSON.exporters[lyr.geometry_type],
-        obj = shape ? exporter(shape, dataset.arcs, opts) : null;
+        geom = shape ? exporter(shape, dataset.arcs, opts) : null,
+        obj = null;
     if (asFeatures) {
-      obj = {
-        type: 'Feature',
-        geometry: obj,
-        properties: properties ? properties[i] : null
-      };
+      obj = GeoJSON.toFeature(geom, properties ? properties[i] : null);
       if (ids) {
         obj.id = ids[i];
       }
-    } else if (!obj) {
+    } else if (!geom) {
       return memo; // don't add null objects to GeometryCollection
+    } else {
+      obj = geom;
     }
     if (ofmt) {
       // stringify features as soon as they are generated, to reduce the

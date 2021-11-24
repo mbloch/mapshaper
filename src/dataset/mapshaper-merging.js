@@ -6,6 +6,8 @@ import { verbose, stop, error } from '../utils/mapshaper-logging';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { buildTopology } from '../topology/mapshaper-topology';
 
+// Merge arcs from one or more source datasets into target dataset
+// return array of layers from the source dataset (instead of adding them to the target dataset)
 export function mergeDatasetsIntoDataset(dataset, datasets) {
   var merged = mergeDatasets([dataset].concat(datasets));
   var mergedLayers = datasets.reduce(function(memo, dataset) {

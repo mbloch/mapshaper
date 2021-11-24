@@ -3,7 +3,10 @@ import utils from '../utils/mapshaper-utils';
 import { getLayerBounds, layerHasGeometry, layerHasPaths, transformPointsInLayer,
   copyLayerShapes, copyLayer, layerHasPoints } from '../dataset/mapshaper-layer-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
+import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
+import { buildTopology } from '../topology/mapshaper-topology';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { error } from '../utils/mapshaper-logging';
 
 // utility functions for datasets
 
@@ -127,6 +130,33 @@ export function replaceLayers(dataset, cutLayers, newLayers) {
     }
   });
   dataset.layers = currLayers;
+}
+
+// Replace a layer in-place with a layer from a second dataset
+// (Typically, the second dataset is imported from dynamically generated GeoJSON and contains one layer)
+export function replaceLayerContents(lyr, dataset, dataset2) {
+  if (!dataset2 || dataset2.layers.length != 1) {
+    error('Invalid replacement layer');
+  }
+  if (dataset.layers.includes(lyr) === false) {
+    error('Invalid target layer');
+  }
+  var lyr2 = dataset2.layers[0];
+  if (dataset2.arcs) {
+    // this command returns merged layers instead of adding them to target dataset
+    mergeDatasetsIntoDataset(dataset, [dataset2]);
+  }
+
+  Object.assign(lyr, {data: null, shapes: null}, lyr2);
+
+  if (layerHasPaths(lyr2)) {
+    buildTopology(dataset);
+  }
+  if (layerHasPaths(lyr)) {
+    // Remove unused arcs from replaced layer
+    // TODO: consider using clean insead of this
+    dissolveArcs(dataset);
+  }
 }
 
 // Transform the points in a dataset in-place; don't clean up corrupted shapes
