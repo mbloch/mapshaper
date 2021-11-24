@@ -39,7 +39,7 @@
     get find () { return find; },
     get range () { return range; },
     get repeat () { return repeat; },
-    get sum () { return sum; },
+    get sum () { return sum$1; },
     get getArrayBounds () { return getArrayBounds; },
     get uniq () { return uniq; },
     get pluck () { return pluck; },
@@ -61,7 +61,7 @@
     get rtrim () { return rtrim; },
     get addThousandsSep () { return addThousandsSep; },
     get numToStr () { return numToStr; },
-    get formatNumber () { return formatNumber; },
+    get formatNumber () { return formatNumber$2; },
     get shuffle () { return shuffle; },
     get sortOn () { return sortOn; },
     get genericSort () { return genericSort; },
@@ -70,7 +70,7 @@
     get reorderArray () { return reorderArray; },
     get getKeyComparator () { return getKeyComparator; },
     get getGenericComparator () { return getGenericComparator; },
-    get quicksort () { return quicksort; },
+    get quicksort () { return quicksort$1; },
     get quicksortPartition () { return quicksortPartition; },
     get findRankByValue () { return findRankByValue; },
     get findValueByPct () { return findValueByPct; },
@@ -393,7 +393,7 @@
   // Calc sum, skip falsy and NaN values
   // Assumes: no other non-numeric objects in array
   //
-  function sum(arr, info) {
+  function sum$1(arr, info) {
     if (!isArrayLike(arr)) error ("sum() expects an array, received:", arr);
     var tot = 0,
         nan = 0,
@@ -584,7 +584,7 @@
     return decimals >= 0 ? num.toFixed(decimals) : String(num);
   }
 
-  function formatNumber(num, decimals, nullStr, showPos) {
+  function formatNumber$2(num, decimals, nullStr, showPos) {
     var fmt;
     if (isNaN(num)) {
       fmt = nullStr || '-';
@@ -695,7 +695,7 @@
 
 
   // Generic in-place sort (null, NaN, undefined not handled)
-  function quicksort(arr, asc) {
+  function quicksort$1(arr, asc) {
     quicksortPartition(arr, 0, arr.length-1);
     if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
     return arr;
@@ -1655,7 +1655,7 @@
     return count;
   }
 
-  function getPointBounds(shapes) {
+  function getPointBounds$1(shapes) {
     var bounds = new Bounds();
     forEachPoint(shapes, function(p) {
       bounds.mergePoint(p[0], p[1]);
@@ -1698,7 +1698,7 @@
   var PointUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     countPointsInLayer: countPointsInLayer,
-    getPointBounds: getPointBounds,
+    getPointBounds: getPointBounds$1,
     getPointFeatureBounds: getPointFeatureBounds,
     getPointsInLayer: getPointsInLayer,
     forEachPoint: forEachPoint
@@ -1729,13 +1729,13 @@
 
   // TODO: remove this constant, use actual data from dataset CRS
   //       also consider using ellipsoidal formulas when appropriate
-  var R = 6378137;
+  var R$1 = 6378137;
   var D2R = Math.PI / 180;
   var R2D = 180 / Math.PI;
 
   // Equirectangular projection
   function degreesToMeters(deg) {
-    return deg * D2R * R;
+    return deg * D2R * R$1;
   }
 
   function distance3D(ax, ay, az, bx, by, bz) {
@@ -1892,9 +1892,9 @@
     lng *= D2R;
     lat *= D2R;
     cosLat = Math.cos(lat);
-    p[0] = Math.cos(lng) * cosLat * R;
-    p[1] = Math.sin(lng) * cosLat * R;
-    p[2] = Math.sin(lat) * R;
+    p[0] = Math.cos(lng) * cosLat * R$1;
+    p[1] = Math.sin(lng) * cosLat * R$1;
+    p[2] = Math.sin(lat) * R$1;
   }
 
   // Haversine formula (well conditioned at small distances)
@@ -1913,7 +1913,7 @@
   function greatCircleDistance(lng1, lat1, lng2, lat2) {
     var D2R = Math.PI / 180,
         dist = sphericalDistance(lng1 * D2R, lat1 * D2R, lng2 * D2R, lat2 * D2R);
-    return dist * R;
+    return dist * R$1;
   }
 
   // TODO: make this safe for small angles
@@ -2074,7 +2074,7 @@
 
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    R: R,
+    R: R$1,
     D2R: D2R,
     R2D: R2D,
     degreesToMeters: degreesToMeters,
@@ -2206,7 +2206,7 @@
     return count;
   }
 
-  function getPathBounds(points) {
+  function getPathBounds$1(points) {
     var bounds = new Bounds();
     for (var i=0, n=points.length; i<n; i++) {
       bounds.mergePoint(points[i][0], points[i][1]);
@@ -2243,7 +2243,7 @@
     getAvgPathXY: getAvgPathXY,
     getMaxPath: getMaxPath,
     countVerticesInPath: countVerticesInPath,
-    getPathBounds: getPathBounds,
+    getPathBounds: getPathBounds$1,
     get calcPathLen () { return calcPathLen; }
   });
 
@@ -3050,7 +3050,7 @@
     });
   }
 
-  function getPathBounds$1(shapes, arcs) {
+  function getPathBounds(shapes, arcs) {
     var bounds = new Bounds();
     forEachArcId(shapes, function(id) {
       arcs.mergeArcBounds(id, bounds);
@@ -3243,7 +3243,7 @@
     getDirectedArcPresenceTest: getDirectedArcPresenceTest,
     getArcPresenceTest: getArcPresenceTest,
     countArcsInShapes: countArcsInShapes,
-    getPathBounds: getPathBounds$1,
+    getPathBounds: getPathBounds,
     findShapesByArcId: findShapesByArcId,
     reversePath: reversePath,
     clampIntervalByPct: clampIntervalByPct,
@@ -4044,9 +4044,9 @@
   function getLayerBounds(lyr, arcs) {
     var bounds = null;
     if (lyr.geometry_type == 'point') {
-      bounds = getPointBounds(lyr.shapes);
+      bounds = getPointBounds$1(lyr.shapes);
     } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-      bounds = getPathBounds$1(lyr.shapes, arcs);
+      bounds = getPathBounds(lyr.shapes, arcs);
     } else {
       // just return null if layer has no bounds
       // error("Layer is missing a valid geometry type");
@@ -4100,137 +4100,624 @@
     initDataTable: initDataTable
   });
 
-  // Test if the second endpoint of an arc is the endpoint of any path in any layer
-  function getPathEndpointTest(layers, arcs) {
-    var index = new Uint8Array(arcs.size());
-    layers.forEach(function(lyr) {
-      if (layerHasPaths(lyr)) {
-        lyr.shapes.forEach(addShape);
+  // A matrix class that supports affine transformations (scaling, translation, rotation).
+  // Elements:
+  //   a  c  tx
+  //   b  d  ty
+  //   0  0  1  (u v w are not used)
+  //
+  function Matrix2D() {
+    this.a = 1;
+    this.c = 0;
+    this.tx = 0;
+    this.b = 0;
+    this.d = 1;
+    this.ty = 0;
+  }
+
+  Matrix2D.prototype.transformXY = function(x, y, p) {
+    p = p || {};
+    p.x = x * this.a + y * this.c + this.tx;
+    p.y = x * this.b + y * this.d + this.ty;
+    return p;
+  };
+
+  Matrix2D.prototype.translate = function(dx, dy) {
+    this.tx += dx;
+    this.ty += dy;
+  };
+
+  // x, y: optional origin
+  Matrix2D.prototype.rotate = function(q, x, y) {
+    var cos = Math.cos(q);
+    var sin = Math.sin(q);
+    x = x || 0;
+    y = y || 0;
+    this.a = cos;
+    this.c = -sin;
+    this.b = sin;
+    this.d = cos;
+    this.tx += x - x * cos + y * sin;
+    this.ty += y - x * sin - y * cos;
+  };
+
+  // cx, cy: optional origin
+  Matrix2D.prototype.scale = function(sx, sy, cx, cy) {
+    cx = cx || 0;
+    cy = cy || 0;
+    this.a *= sx;
+    this.c *= sx;
+    this.b *= sy;
+    this.d *= sy;
+    this.tx -= cx * (sx - 1);
+    this.ty -= cy * (sy - 1);
+  };
+
+  // A compound projection, consisting of a default projection and one or more rectangular frames
+  // that are projected separately and affine transformed.
+  // @mainParams: parameters for main projection, including:
+  //    proj: Proj string
+  //    bbox: lat-lon bounding box
+  function MixedProjection(mainParams, options) {
+    var mproj = require('mproj');
+    var mainFrame = initFrame(mainParams);
+    var mainP = mainFrame.crs;
+    var frames = [mainFrame];
+    var mixedP = initMixedProjection(mproj);
+
+    // This CRS masquerades as the main projection... the version with
+    // custom insets is exposed to savvy users
+    mainP.__mixed_crs = mixedP;
+
+    // required opts:
+    //    origin: [lng, lat] origin of frame (unprojected)
+    //    placement: [x, y] location (in projected coordinates) to shift the origin
+    //    proj: Proj.4 string for projecting data within the frame
+    //    bbox: Lat-long bounding box of frame area
+    //
+    // optional:
+    //    dx: x shift (meters)
+    //    dy: y shift (meters)
+    //    scale: scale factor (1 = no scaling)
+    //    rotation: rotation in degrees (0 = no rotation)
+    //
+    mainP.addFrame = function(paramsArg) {
+      var params = getFrameParams(paramsArg, options); // apply defaults and overrides
+      var frame = initFrame(params);
+      var m = new Matrix2D();
+      //  originXY: the projected coordinates of the frame origin
+      var originXY = params.origin ? projectFrameOrigin(params.origin, frame.crs) : [0, 0];
+      var placementXY = params.placement || [0, 0];
+      var dx = placementXY[0] - originXY[0] + (+params.dx || 0);
+      var dy = placementXY[1] - originXY[1] + (+params.dy || 0);
+
+      if (params.rotation) {
+        m.rotate(params.rotation * Math.PI / 180.0, originXY[0], originXY[1]);
+      }
+      if (params.scale) {
+        m.scale(params.scale, params.scale, originXY[0], originXY[1]);
+      }
+      m.translate(dx, dy);
+
+      frame.matrix = m;
+      frames.push(frame);
+      return this;
+    };
+
+    function initFrame(params) {
+      return {
+        bounds: new Bounds(bboxToRadians(params.bbox)),
+        crs:  mproj.pj_init(params.proj)
+      };
+    }
+
+    function bboxToRadians(bbox) {
+      var D2R = Math.PI / 180;
+      return bbox.map(function(deg) {
+        return deg * D2R;
+      });
+    }
+
+    function projectFrameOrigin(origin, P) {
+      var xy = mproj.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
+      return [xy.x, xy.y];
+    }
+
+    mixedP.fwd = function(lp, xy) {
+      var frame, xy2;
+      for (var i=0, n=frames.length; i<n; i++) {
+        frame = frames[i];
+        if (frame.bounds.containsPoint(lp.lam, lp.phi)) {
+          xy2 = mproj.pj_fwd(lp, frame.crs);
+          if (frame.matrix) {
+            frame.matrix.transformXY(xy2.x, xy2.y, xy2);
+          }
+          break;
+        }
+      }
+      xy.x = xy2 ? xy2.x : Infinity;
+      xy.y = xy2 ? xy2.y : Infinity;
+    };
+
+    return mainP;
+  }
+
+  function initMixedProjection(mproj) {
+    if (!mproj.internal.pj_list.mixed) {
+      mproj.pj_add(function(P) {
+        P.a = 1;
+      }, 'mixed', 'Mapshaper Mixed Projection');
+    }
+    return mproj.pj_init('+proj=mixed');
+  }
+
+  function getFrameParams (params, options) {
+    var opts = options[params.name];
+    utils.defaults(params, {scale: 1, dx: 0, dy: 0, rotation: 0}); // add defaults
+    if (!opts) return params;
+    Object.keys(opts).forEach(function(key) {
+      var val = opts[key];
+      if (key in params) {
+        params[key] = opts[key];
+      } else {
+        params.proj = replaceProjParam(params.proj, key, val);
       }
     });
-
-    function addShape(shape) {
-      forEachShapePart(shape, addPath);
-    }
-
-    function addPath(path) {
-      addEndpoint(~path[0]);
-      addEndpoint(path[path.length - 1]);
-    }
-
-    function addEndpoint(arcId) {
-      var absId = absArcId(arcId);
-      var fwd = absId == arcId;
-      index[absId] |= fwd ? 1 : 2;
-    }
-
-    return function(arcId) {
-      var absId = absArcId(arcId);
-      var fwd = absId == arcId;
-      var code = index[absId];
-      return fwd ? (code & 1) == 1 : (code & 2) == 2;
-    };
+    return params;
   }
 
-  var PathEndpoints = /*#__PURE__*/Object.freeze({
+  function replaceProjParam(proj, key, val) {
+    var param = '+' + key + '=';
+    return proj.split(' ').map(function(str) {
+      if (str.indexOf(param) === 0) {
+        str = str.substr(0, param.length) + val;
+      }
+      return str;
+    }).join(' ');
+  }
+
+  // str: a custom projection string, e.g.: "albersusa +PR"
+  function parseCustomProjection(str) {
+    var parts = str.trim().split(/ +/);
+    var params = [];
+    var names = parts.filter(function(part) {
+      if (/^\+/.test(part)) {
+        params.push(part.substr(1)); // strip '+'
+        return false;
+      }
+      return true;
+    });
+    var name = names[0];
+    var opts = parseCustomParams(params);
+    if (names.length != 1) return null; // parse error if other than one name found
+    return getCustomProjection(name, opts);
+  }
+
+  // returns a custom projection object
+  function getCustomProjection(name, opts) {
+    if (name == 'albersusa') {
+      return new AlbersUSA(opts);
+    }
+    return null;
+  }
+
+  function AlbersUSA(optsArg) {
+    var opts = optsArg || {};
+    var main = {
+      proj: '+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5',
+      bbox: [-129,23,-62,52]
+    };
+    var AK = {
+      name: 'AK',
+      proj: '+proj=aea +lat_1=55 +lat_2=70 +lat_0=65 +lon_0=-148 +x_0=0 +y_0=0',
+      bbox: [-172.26,50.89,-127.00,73.21],
+      origin: [-152, 63],
+      placement: [-1882782,-969242],
+      scale: 0.37
+    };
+    var HI = {
+      name: 'HI',
+      proj: '+proj=aea +lat_1=19 +lat_2=24 +lat_0=20.9 +lon_0=-156.5 +x_0=0 +y_0=0',
+      bbox: [-160.50,18.72,-154.57,22.58],
+      origin: [-157, 21],
+      placement: [-1050326,-1055362]
+    };
+    var PR = {
+      name: 'PR',
+      proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
+      bbox: [-68.092,17.824,-65.151,18.787],
+      origin: [-66.431, 18.228],
+      placement: [1993101,-1254517]
+    };
+    var VI = {
+      name: 'VI',
+      // same projection and origin as PR, so they maintain their true geographical relationship
+      proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
+      bbox: [-65.104,17.665,-64.454,18.505],
+      origin: [-66.431, 18.228],
+      placement: [1993101,-1254517]
+    };
+    var mixed = new MixedProjection(main, opts)
+      .addFrame(AK)
+      .addFrame(HI);
+    if (opts.PR) {
+      mixed.addFrame(PR);
+    }
+    if (opts.VI) {
+      mixed.addFrame(VI);
+    }
+    return mixed;
+  }
+
+
+  function parseCustomParams(arr) {
+    var opts = {};
+    arr.forEach(function(str) {
+      parseCustomParam(str, opts);
+    });
+    return opts;
+  }
+
+  function parseCustomParam(str, opts) {
+    var parts = str.split('=');
+    var path = parts[0].split('.');
+    var key = path.pop();
+    var obj = path.reduce(function(memo, name) {
+      if (name in memo === false) {
+        memo[name] = {};
+      } else if (!utils.isObject(memo[name])) {
+        return {};// error condition, could display a warning
+      }
+      return memo[name];
+    }, opts);
+    if (parts.length > 1) {
+      obj[key] = parseCustomParamValue(parts[1]);
+    } else if (key in obj === false && !path.length) {
+      // e.g. convert string 'PR' into {PR: {}} (empty object),
+      // to show PR with default properties
+      obj[key] = {};
+    }
+  }
+
+  function parseCustomParamValue(str) {
+    var val;
+    if (str.indexOf(',') > 0) {
+      val = str.split(',').map(parseFloat);
+      // TODO: validate
+      return val;
+    }
+    val = utils.parseNumber(str);
+    if (val === null) {
+      val = str;
+    }
+    return val;
+  }
+
+  var CustomProjections = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getPathEndpointTest: getPathEndpointTest
+    parseCustomProjection: parseCustomProjection,
+    AlbersUSA: AlbersUSA,
+    parseCustomParams: parseCustomParams
   });
 
-  // Get function to Hash an x, y point to a non-negative integer
-  function getXYHash(size) {
-    var buf = new ArrayBuffer(16),
-        floats = new Float64Array(buf),
-        uints = new Uint32Array(buf),
-        lim = size | 0;
-    if (lim > 0 === false) {
-      throw new Error("Invalid size param: " + size);
-    }
+  function getWorldBounds(e) {
+    e = utils.isFiniteNumber(e) ? e : 1e-10;
+    return [-180 + e, -90 + e, 180 - e, 90 - e];
+  }
+
+  function probablyDecimalDegreeBounds(b) {
+    var world = getWorldBounds(-1), // add a bit of excess
+        bbox = (b instanceof Bounds) ? b.toArray() : b;
+    return geom.containsBounds(world, bbox);
+  }
+
+  function clampToWorldBounds(b) {
+    var bbox = (b instanceof Bounds) ? b.toArray() : b;
+    return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
+        Math.min(bbox[2], 180), Math.min(bbox[3], 90));
+  }
+
+  function getAntimeridian(lon0) {
+    var anti = lon0 - 180;
+    while (anti <= -180) anti += 360;
+    return anti;
+  }
+
+  var LatLon = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getWorldBounds: getWorldBounds,
+    probablyDecimalDegreeBounds: probablyDecimalDegreeBounds,
+    clampToWorldBounds: clampToWorldBounds,
+    getAntimeridian: getAntimeridian
+  });
+
+  var asyncLoader = null;
+
+  var projectionAliases = {
+    robinson: '+proj=robin +datum=WGS84',
+    webmercator: '+proj=merc +a=6378137 +b=6378137',
+    wgs84: '+proj=longlat +datum=WGS84',
+    albersusa: new AlbersUSA() // with default parameters
+  };
+
+  // This stub is replaced when loaded in GUI, which may need to load some files
+  function initProjLibrary(opts, done) {
+    if (!asyncLoader) return done();
+    asyncLoader(opts, done);
+  }
+
+  function setProjectionLoader(loader) {
+    asyncLoader = loader;
+  }
+
+  // Find Proj.4 definition file names in strings like "+init=epsg:3000"
+  // (Used by GUI, defined here for testing)
+  function findProjLibs(str) {
+    var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
+    return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
+  }
+
+  // Returns a function for reprojecting [x, y] points; function throws an error
+  // if the transformation fails
+  // src, dest: proj4 objects
+  function getProjTransform(src, dest) {
+    var mproj = require('mproj');
+    var clampSrc = isLatLngCRS(src);
+    dest = dest.__mixed_crs || dest;
+    return function(x, y) {
+      var xy;
+      if (clampSrc) {
+        // snap lng to bounds
+        if (x < -180) x = -180;
+        else if (x > 180) x = 180;
+      }
+      xy = [x, y];
+      mproj.pj_transform_point(src, dest, xy);
+      return xy;
+    };
+  }
+
+  // Same as getProjTransform(), but return null if projection fails
+  // (also faster)
+  function getProjTransform2(src, dest) {
+    var mproj = require('mproj'),
+        xx = [0],
+        yy = [0],
+        preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
+        postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
+        clampSrc = isLatLngCRS(src);
 
     return function(x, y) {
-      var u = uints, h;
-      floats[0] = x;
-      floats[1] = y;
-      h = u[0] ^ u[1];
-      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-      return (h & 0x7fffffff) % lim;
+      var fail;
+      if (clampSrc) {
+        // snap lng to bounds
+        if (x < -180) x = -180;
+        else if (x > 180) x = 180;
+      }
+      xx[0] = x * preK;
+      yy[0] = y * preK;
+      try {
+        dest = dest.__mixed_crs || dest;
+        mproj.pj_transform(src, dest, xx, yy);
+        fail = xx[0] == Infinity; // mproj invalid coord value
+      } catch(e) {
+        fail = true;
+      }
+      return fail ? null : [xx[0] * postK, yy[0] * postK];
     };
   }
 
-  // Get function to Hash a single coordinate to a non-negative integer
-  function getXHash(size) {
-    var buf = new ArrayBuffer(8),
-        floats = new Float64Array(buf),
-        uints = new Uint32Array(buf),
-        lim = size | 0;
-    if (lim > 0 === false) {
-      throw new Error("Invalid size param: " + size);
+  function toLngLat(xy, P) {
+    var proj;
+    if (isLatLngCRS(P)) {
+      return xy.concat();
     }
-
-    return function(x) {
-      var h;
-      floats[0] = x;
-      h = uints[0] ^ uints[1];
-      h = h << 5 ^ h >> 7;
-      return (h & 0x7fffffff) % lim;
-    };
+    proj = getProjInfo(P, getCRS('wgs84'));
+    return proj(xy);
   }
 
-  function initPointChains(xx, yy) {
-    var chainIds = initHashChains(xx, yy),
-        j, next, prevMatchId, prevUnmatchId;
+  function getProjInfo(dataset) {
+    var P, info;
+    try {
+      P = getDatasetCRS(dataset);
+      if (P) {
+        info = crsToProj4(P);
+      }
+    } catch(e) {}
+    return info || "[unknown]";
+  }
 
-    // disentangle, reverse and close the chains created by initHashChains()
-    for (var i = xx.length-1; i>=0; i--) {
-      next = chainIds[i];
-      if (next >= i) continue;
-      prevMatchId = i;
-      prevUnmatchId = -1;
-      do {
-        j = next;
-        next = chainIds[j];
-        if (yy[j] == yy[i] && xx[j] == xx[i]) {
-          chainIds[j] = prevMatchId;
-          prevMatchId = j;
-        } else {
-          if (prevUnmatchId > -1) {
-            chainIds[prevUnmatchId] = j;
-          }
-          prevUnmatchId = j;
+  function crsToProj4(P) {
+    return require('mproj').internal.get_proj_defn(P);
+  }
+
+  function crsToPrj(P) {
+    var wkt;
+    try {
+      wkt = require('mproj').internal.wkt_from_proj4(P);
+    } catch(e) {
+      // console.log(e)
+    }
+    return wkt;
+  }
+
+  function crsAreEqual(a, b) {
+    var str = crsToProj4(a);
+    return !!str && str == crsToProj4(b);
+  }
+
+  function getProjDefn(str) {
+    var mproj = require('mproj');
+    var defn;
+    // prepend '+proj=' to bare proj names
+    str = str.replace(/(^| )([\w]+)($| )/, function(a, b, c, d) {
+      if (c in mproj.internal.pj_list) {
+        return b + '+proj=' + c + d;
+      }
+      return a;
+    });
+    if (looksLikeProj4String(str)) {
+      defn = str;
+    } else if (str in projectionAliases) {
+      defn = projectionAliases[str];  // defn is a function
+    } else if (looksLikeInitString(str)) {
+      defn = '+init=' + str.toLowerCase();
+    } else if (str in getStateVar('defs')) {
+      // a proj4 alias could be dynamically created in a -calc expression
+      defn = getStateVar('defs')[str];
+    } else {
+      defn = parseCustomProjection(str);
+    }
+    if (!defn) {
+      stop("Unknown projection definition:", str);
+    }
+    return defn;
+  }
+
+  function looksLikeInitString(str) {
+    return /^(esri|epsg|nad83|nad27):[0-9]+$/i.test(String(str));
+  }
+
+  function looksLikeProj4String(str) {
+    return /^(\+[^ ]+ *)+$/.test(str);
+  }
+
+  function getCRS(str) {
+    var defn = getProjDefn(str);  // defn is a string or a Proj object
+    var P;
+    if (!utils.isString(defn)) {
+      P = defn;
+    } else {
+      try {
+        P = require('mproj').pj_init(defn);
+      } catch(e) {
+        stop('Unable to use projection', defn, '(' + e.message + ')');
+      }
+    }
+    return P || null;
+  }
+
+  function requireProjectedDataset(dataset) {
+    if (isLatLngCRS(getDatasetCRS(dataset))) {
+      stop("Command requires a target with projected coordinates (not lat-long)");
+    }
+  }
+
+  // @info: info property of source dataset (instead of crs object, so wkt string
+  //        can be preserved if present)
+  function setDatasetCRS(dataset, info) {
+    dataset.info = dataset.info || {};
+    // Assumes that proj4 object is never mutated.
+    // TODO: assign a copy of crs (if present)
+    dataset.info.crs = info.crs;
+    dataset.info.prj = info.prj;
+  }
+
+  function getDatasetCRS(dataset) {
+    var info = dataset.info || {},
+        P = info.crs;
+    if (!P && info.prj) {
+      P = parsePrj(info.prj);
+    }
+    if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
+      // use wgs84 for probable latlong datasets with unknown datums
+      P = getCRS('wgs84');
+    }
+    return P;
+  }
+
+  function requireDatasetsHaveCompatibleCRS(arr) {
+    arr.reduce(function(memo, dataset) {
+      var P = getDatasetCRS(dataset);
+      if (memo && P) {
+        if (isLatLngCRS(memo) != isLatLngCRS(P)) {
+          stop("Unable to combine projected and unprojected datasets");
         }
-      } while (next < j);
-      if (prevUnmatchId > -1) {
-        // Make sure last unmatched entry is terminated
-        chainIds[prevUnmatchId] = prevUnmatchId;
       }
-      chainIds[i] = prevMatchId; // close the chain
-    }
-    return chainIds;
+      return P || memo;
+    }, null);
   }
 
-  function initHashChains(xx, yy) {
-    // Performance doesn't improve much above ~1.3 * point count
-    var n = xx.length,
-        m = Math.floor(n * 1.3) || 1,
-        hash = getXYHash(m),
-        hashTable = new Int32Array(m),
-        chainIds = new Int32Array(n), // Array to be filled with chain data
-        key, j, i, x, y;
-
-    for (i=0; i<n; i++) {
-      x = xx[i];
-      y = yy[i];
-      if (x != x || y != y) {
-        j = -1; // NaN coord: no hash entry, one-link chain
-      } else {
-        key = hash(x, y);
-        j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
-        hashTable[key] = i + 1;
-      }
-      chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
-    }
-    return chainIds;
+  // Assumes conformal projections; consider returning average of vertical and
+  // horizontal scale factors.
+  // x, y: a point location in projected coordinates
+  // Returns k, the ratio of coordinate distance to distance on the ground
+  function getScaleFactorAtXY(x, y, crs) {
+    var proj = require('mproj');
+    var dist = 1;
+    var lp = proj.pj_inv_deg({x: x, y: y}, crs);
+    var lp2 = proj.pj_inv_deg({x: x + dist, y: y}, crs);
+    var k = dist / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+    return k;
   }
+
+  function isProjectedCRS(P) {
+    return !isLatLngCRS(P);
+  }
+
+  function isLatLngCRS(P) {
+    return P && P.is_latlong || false;
+  }
+
+  function isLatLngDataset(dataset) {
+    return isLatLngCRS(getDatasetCRS(dataset));
+  }
+
+  function printProjections() {
+    var index = require('mproj').internal.pj_list;
+    var msg = 'Proj4 projections\n';
+    Object.keys(index).sort().forEach(function(id) {
+      msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
+    });
+    msg += '\nAliases';
+    Object.keys(projectionAliases).sort().forEach(function(n) {
+      msg += '\n  ' + n;
+    });
+    print(msg);
+  }
+
+  function translatePrj(str) {
+    var proj4;
+    try {
+      proj4 = require('mproj').internal.wkt_to_proj4(str);
+    } catch(e) {
+      stop('Unusable .prj file (' + e.message + ')');
+    }
+    return proj4;
+  }
+
+  // Convert contents of a .prj file to a projection object
+  function parsePrj(str) {
+    return getCRS(translatePrj(str));
+  }
+
+  var Projections = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    initProjLibrary: initProjLibrary,
+    setProjectionLoader: setProjectionLoader,
+    findProjLibs: findProjLibs,
+    getProjTransform: getProjTransform,
+    getProjTransform2: getProjTransform2,
+    toLngLat: toLngLat,
+    getProjInfo: getProjInfo,
+    crsToProj4: crsToProj4,
+    crsToPrj: crsToPrj,
+    crsAreEqual: crsAreEqual,
+    getProjDefn: getProjDefn,
+    looksLikeProj4String: looksLikeProj4String,
+    getCRS: getCRS,
+    requireProjectedDataset: requireProjectedDataset,
+    setDatasetCRS: setDatasetCRS,
+    getDatasetCRS: getDatasetCRS,
+    requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
+    getScaleFactorAtXY: getScaleFactorAtXY,
+    isProjectedCRS: isProjectedCRS,
+    isLatLngCRS: isLatLngCRS,
+    isLatLngDataset: isLatLngDataset,
+    printProjections: printProjections,
+    translatePrj: translatePrj,
+    parsePrj: parsePrj
+  });
 
   // Coordinate iterators
   //
@@ -4442,37 +4929,6 @@
     __proto__: null,
     getThresholdFunction: getThresholdFunction,
     getThresholdByPct: getThresholdByPct
-  });
-
-  function getWorldBounds(e) {
-    e = utils.isFiniteNumber(e) ? e : 1e-10;
-    return [-180 + e, -90 + e, 180 - e, 90 - e];
-  }
-
-  function probablyDecimalDegreeBounds(b) {
-    var world = getWorldBounds(-1), // add a bit of excess
-        bbox = (b instanceof Bounds) ? b.toArray() : b;
-    return geom.containsBounds(world, bbox);
-  }
-
-  function clampToWorldBounds(b) {
-    var bbox = (b instanceof Bounds) ? b.toArray() : b;
-    return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
-        Math.min(bbox[2], 180), Math.min(bbox[3], 90));
-  }
-
-  function getAntimeridian(lon0) {
-    var anti = lon0 - 180;
-    while (anti <= -180) anti += 360;
-    return anti;
-  }
-
-  var LatLon = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getWorldBounds: getWorldBounds,
-    probablyDecimalDegreeBounds: probablyDecimalDegreeBounds,
-    clampToWorldBounds: clampToWorldBounds,
-    getAntimeridian: getAntimeridian
   });
 
   // An interface for managing a collection of paths.
@@ -5122,6 +5578,642 @@
     return n2 > 1 ? n2 : 0;
   }
 
+  // Get function to Hash an x, y point to a non-negative integer
+  function getXYHash(size) {
+    var buf = new ArrayBuffer(16),
+        floats = new Float64Array(buf),
+        uints = new Uint32Array(buf),
+        lim = size | 0;
+    if (lim > 0 === false) {
+      throw new Error("Invalid size param: " + size);
+    }
+
+    return function(x, y) {
+      var u = uints, h;
+      floats[0] = x;
+      floats[1] = y;
+      h = u[0] ^ u[1];
+      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+      return (h & 0x7fffffff) % lim;
+    };
+  }
+
+  // Get function to Hash a single coordinate to a non-negative integer
+  function getXHash(size) {
+    var buf = new ArrayBuffer(8),
+        floats = new Float64Array(buf),
+        uints = new Uint32Array(buf),
+        lim = size | 0;
+    if (lim > 0 === false) {
+      throw new Error("Invalid size param: " + size);
+    }
+
+    return function(x) {
+      var h;
+      floats[0] = x;
+      h = uints[0] ^ uints[1];
+      h = h << 5 ^ h >> 7;
+      return (h & 0x7fffffff) % lim;
+    };
+  }
+
+  // Used for building topology
+  //
+  function ArcIndex(pointCount) {
+    var hashTableSize = Math.floor(pointCount * 0.25 + 1),
+        hash = getXYHash(hashTableSize),
+        hashTable = new Int32Array(hashTableSize),
+        chainIds = [],
+        arcs = [],
+        arcPoints = 0;
+
+    utils.initializeArray(hashTable, -1);
+
+    this.addArc = function(xx, yy) {
+      var end = xx.length - 1,
+          key = hash(xx[end], yy[end]),
+          chainId = hashTable[key],
+          arcId = arcs.length;
+      hashTable[key] = arcId;
+      arcs.push([xx, yy]);
+      arcPoints += xx.length;
+      chainIds.push(chainId);
+      return arcId;
+    };
+
+    // Look for a previously generated arc with the same sequence of coords, but in the
+    // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
+    // so coincident boundaries should contain the same points in reverse sequence).
+    //
+    this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
+      // First, look for a reverse match
+      var arcId = findArcNeighbor(xx, yy, start, end, getNext);
+      if (arcId === null) {
+        // Look for forward match
+        // (Abnormal topology, but we're accepting it because in-the-wild
+        // Shapefiles sometimes have duplicate paths)
+        arcId = findArcNeighbor(xx, yy, end, start, getPrev);
+      } else {
+        arcId = ~arcId;
+      }
+      return arcId;
+    };
+
+    function findArcNeighbor(xx, yy, start, end, getNext) {
+      var next = getNext(start),
+          key = hash(xx[start], yy[start]),
+          arcId = hashTable[key],
+          arcX, arcY, len;
+
+      while (arcId != -1) {
+        // check endpoints and one segment...
+        // it would be more rigorous but slower to identify a match
+        // by comparing all segments in the coordinate sequence
+        arcX = arcs[arcId][0];
+        arcY = arcs[arcId][1];
+        len = arcX.length;
+        if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
+            arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+          return arcId;
+        }
+        arcId = chainIds[arcId];
+      }
+      return null;
+    }
+
+    this.getVertexData = function() {
+      var xx = new Float64Array(arcPoints),
+          yy = new Float64Array(arcPoints),
+          nn = new Uint32Array(arcs.length),
+          copied = 0,
+          arc, len;
+      for (var i=0, n=arcs.length; i<n; i++) {
+        arc = arcs[i];
+        len = arc[0].length;
+        utils.copyElements(arc[0], 0, xx, copied, len);
+        utils.copyElements(arc[1], 0, yy, copied, len);
+        nn[i] = len;
+        copied += len;
+      }
+      return {
+        xx: xx,
+        yy: yy,
+        nn: nn
+      };
+    };
+  }
+
+  function initPointChains(xx, yy) {
+    var chainIds = initHashChains(xx, yy),
+        j, next, prevMatchId, prevUnmatchId;
+
+    // disentangle, reverse and close the chains created by initHashChains()
+    for (var i = xx.length-1; i>=0; i--) {
+      next = chainIds[i];
+      if (next >= i) continue;
+      prevMatchId = i;
+      prevUnmatchId = -1;
+      do {
+        j = next;
+        next = chainIds[j];
+        if (yy[j] == yy[i] && xx[j] == xx[i]) {
+          chainIds[j] = prevMatchId;
+          prevMatchId = j;
+        } else {
+          if (prevUnmatchId > -1) {
+            chainIds[prevUnmatchId] = j;
+          }
+          prevUnmatchId = j;
+        }
+      } while (next < j);
+      if (prevUnmatchId > -1) {
+        // Make sure last unmatched entry is terminated
+        chainIds[prevUnmatchId] = prevUnmatchId;
+      }
+      chainIds[i] = prevMatchId; // close the chain
+    }
+    return chainIds;
+  }
+
+  function initHashChains(xx, yy) {
+    // Performance doesn't improve much above ~1.3 * point count
+    var n = xx.length,
+        m = Math.floor(n * 1.3) || 1,
+        hash = getXYHash(m),
+        hashTable = new Int32Array(m),
+        chainIds = new Int32Array(n), // Array to be filled with chain data
+        key, j, i, x, y;
+
+    for (i=0; i<n; i++) {
+      x = xx[i];
+      y = yy[i];
+      if (x != x || y != y) {
+        j = -1; // NaN coord: no hash entry, one-link chain
+      } else {
+        key = hash(x, y);
+        j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
+        hashTable[key] = i + 1;
+      }
+      chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
+    }
+    return chainIds;
+  }
+
+  // Converts all polygon and polyline paths in a dataset to a topological format
+  // (in-place)
+  function buildTopology(dataset) {
+    if (!dataset.arcs) return;
+    var raw = dataset.arcs.getVertexData(),
+        cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
+    dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
+    dataset.layers.forEach(function(lyr) {
+      if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+        lyr.shapes = replaceArcIds(lyr.shapes, cooked.paths);
+      }
+    });
+  }
+
+  // buildPathTopology() converts non-topological paths into
+  // a topological format
+  //
+  // Arguments:
+  //    xx: [Array|Float64Array],   // x coords of each point in the dataset
+  //    yy: [Array|Float64Array],   // y coords ...
+  //    nn: [Array]  // length of each path
+  //
+  // (x- and y-coords of all paths are concatenated into two arrays)
+  //
+  // Returns:
+  // {
+  //    xx, yy (array)   // coordinate data
+  //    nn: (array)      // points in each arc
+  //    paths: (array)   // Paths are arrays of one or more arc id.
+  // }
+  //
+  // Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
+  //
+  function buildPathTopology(nn, xx, yy) {
+    var pointCount = xx.length,
+        chainIds = initPointChains(xx, yy),
+        pathIds = initPathIds(pointCount, nn),
+        index = new ArcIndex(pointCount),
+        slice = usingTypedArrays() ? xx.subarray : Array.prototype.slice,
+        paths, retn;
+    paths = convertPaths(nn);
+    retn = index.getVertexData();
+    retn.paths = paths;
+    return retn;
+
+    function usingTypedArrays() {
+      return !!(xx.subarray && yy.subarray);
+    }
+
+    function convertPaths(nn) {
+      var paths = [],
+          pointId = 0,
+          pathLen;
+      for (var i=0, len=nn.length; i<len; i++) {
+        pathLen = nn[i];
+        paths.push(pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1));
+        pointId += pathLen;
+      }
+      return paths;
+    }
+
+    function nextPoint(id) {
+      var partId = pathIds[id],
+          nextId = id + 1;
+      if (nextId < pointCount && pathIds[nextId] === partId) {
+        return id + 1;
+      }
+      var len = nn[partId];
+      return sameXY(id, id - len + 1) ? id - len + 2 : -1;
+    }
+
+    function prevPoint(id) {
+      var partId = pathIds[id],
+          prevId = id - 1;
+      if (prevId >= 0 && pathIds[prevId] === partId) {
+        return id - 1;
+      }
+      var len = nn[partId];
+      return sameXY(id, id + len - 1) ? id + len - 2 : -1;
+    }
+
+    function sameXY(a, b) {
+      return xx[a] == xx[b] && yy[a] == yy[b];
+    }
+
+    // Convert a non-topological path to one or more topological arcs
+    // @start, @end are ids of first and last points in the path
+    // TODO: don't allow id ~id pairs
+    //
+    function convertPath(start, end) {
+      var arcIds = [],
+          firstNodeId = -1,
+          arcStartId;
+
+      // Visit each point in the path, up to but not including the last point
+      for (var i = start; i < end; i++) {
+        if (pointIsArcEndpoint(i)) {
+          if (firstNodeId > -1) {
+            arcIds.push(addEdge(arcStartId, i));
+          } else {
+            firstNodeId = i;
+          }
+          arcStartId = i;
+        }
+      }
+
+      // Identify the final arc in the path
+      if (firstNodeId == -1) {
+        // Not in an arc, i.e. no nodes have been found...
+        // Assuming that path is either an island or is congruent with one or more rings
+        arcIds.push(addRing(start, end));
+      }
+      else if (firstNodeId == start) {
+        // path endpoint is a node;
+        if (!pointIsArcEndpoint(end)) {
+          error("Topology error"); // TODO: better error handling
+        }
+        arcIds.push(addEdge(arcStartId, i));
+      } else {
+        // final arc wraps around
+        arcIds.push(addSplitEdge(arcStartId, end, start + 1, firstNodeId));
+      }
+      return arcIds;
+    }
+
+    // Test if a point @id is an endpoint of a topological path
+    function pointIsArcEndpoint(id) {
+      var id2 = chainIds[id],
+          prev = prevPoint(id),
+          next = nextPoint(id),
+          prev2, next2;
+      if (prev == -1 || next == -1) {
+        // @id is an endpoint if it is the start or end of an open path
+        return true;
+      }
+      while (id != id2) {
+        prev2 = prevPoint(id2);
+        next2 = nextPoint(id2);
+        if (prev2 == -1 || next2 == -1 || brokenEdge(prev, next, prev2, next2)) {
+          // there is a discontinuity at @id -- point is arc endpoint
+          return true;
+        }
+        id2 = chainIds[id2];
+      }
+      return false;
+    }
+
+    // a and b are two vertices with the same x, y coordinates
+    // test if the segments on either side of them are also identical
+    function brokenEdge(aprev, anext, bprev, bnext) {
+      var apx = xx[aprev],
+          anx = xx[anext],
+          bpx = xx[bprev],
+          bnx = xx[bnext],
+          apy = yy[aprev],
+          any = yy[anext],
+          bpy = yy[bprev],
+          bny = yy[bnext];
+      if (apx == bnx && anx == bpx && apy == bny && any == bpy ||
+          apx == bpx && anx == bnx && apy == bpy && any == bny) {
+        return false;
+      }
+      return true;
+    }
+
+    function mergeArcParts(src, startId, endId, startId2, endId2) {
+      var len = endId - startId + endId2 - startId2 + 2,
+          ArrayClass = usingTypedArrays() ? Float64Array : Array,
+          dest = new ArrayClass(len),
+          j = 0, i;
+      for (i=startId; i <= endId; i++) {
+        dest[j++] = src[i];
+      }
+      for (i=startId2; i <= endId2; i++) {
+        dest[j++] = src[i];
+      }
+      return dest;
+    }
+
+    function addSplitEdge(start1, end1, start2, end2) {
+      var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
+      if (arcId === null) {
+        arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
+            mergeArcParts(yy, start1, end1, start2, end2));
+      }
+      return arcId;
+    }
+
+    function addEdge(start, end) {
+      // search for a matching edge that has already been generated
+      var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
+      if (arcId === null) {
+        arcId = index.addArc(slice.call(xx, start, end + 1),
+            slice.call(yy, start, end + 1));
+      }
+      return arcId;
+    }
+
+    function addRing(startId, endId) {
+      var chainId = chainIds[startId],
+          pathId = pathIds[startId],
+          arcId;
+
+      while (chainId != startId) {
+        if (pathIds[chainId] < pathId) {
+          break;
+        }
+        chainId = chainIds[chainId];
+      }
+
+      if (chainId == startId) {
+        return addEdge(startId, endId);
+      }
+
+      for (var i=startId; i<endId; i++) {
+        arcId = index.findDuplicateArc(xx, yy, i, i, nextPoint, prevPoint);
+        if (arcId !== null) return arcId;
+      }
+      error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
+    }
+  }
+
+
+  // Create a lookup table for path ids; path ids are indexed by point id
+  //
+  function initPathIds(size, pathSizes) {
+    var pathIds = new Int32Array(size),
+        j = 0;
+    for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
+      for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
+        pathIds[j] = pathId;
+      }
+    }
+    return pathIds;
+  }
+
+  function replaceArcIds(src, replacements) {
+    return src.map(function(shape) {
+      return replaceArcsInShape(shape, replacements);
+    });
+
+    function replaceArcsInShape(shape, replacements) {
+      if (!shape) return null;
+      return shape.map(function(path) {
+        return replaceArcsInPath(path, replacements);
+      });
+    }
+
+    function replaceArcsInPath(path, replacements) {
+      return path.reduce(function(memo, id) {
+        var abs = absArcId(id);
+        var topoPath = replacements[abs];
+        if (topoPath) {
+          if (id < 0) {
+            topoPath = topoPath.concat(); // TODO: need to copy?
+            reversePath(topoPath);
+          }
+          for (var i=0, n=topoPath.length; i<n; i++) {
+            memo.push(topoPath[i]);
+          }
+        }
+        return memo;
+      }, []);
+    }
+  }
+
+  var Topology = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    buildTopology: buildTopology,
+    buildPathTopology: buildPathTopology
+  });
+
+  // Merge arcs from one or more source datasets into target dataset
+  // return array of layers from the source dataset (instead of adding them to the target dataset)
+  function mergeDatasetsIntoDataset(dataset, datasets) {
+    var merged = mergeDatasets([dataset].concat(datasets));
+    var mergedLayers = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers);
+    }, []);
+    dataset.arcs = merged.arcs;
+    return mergedLayers;
+  }
+
+  // Don't modify input layers (mergeDatasets() updates arc ids in-place)
+  function mergeDatasetsForExport(arr) {
+    // copy layers but not arcs, which get copied in mergeDatasets()
+    var copy = arr.map(function(dataset) {
+      return utils.defaults({
+        layers: dataset.layers.map(copyLayerShapes)
+      }, dataset);
+    });
+    return mergeDatasets(copy);
+  }
+
+  function mergeCommandTargets(targets, catalog) {
+    var targetLayers = [];
+    var targetDatasets = [];
+    var datasetsWithArcs = 0;
+    var merged;
+
+    targets.forEach(function(target) {
+      targetLayers = targetLayers.concat(target.layers);
+      targetDatasets = targetDatasets.concat(target.dataset);
+      if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
+    });
+
+    merged = mergeDatasets(targetDatasets);
+
+    // Rebuild topology, if multiple datasets contain arcs
+    if (datasetsWithArcs > 1) {
+      buildTopology(merged);
+    }
+
+    // remove old datasets after merging, so catalog is not affected if merge throws an error
+    targetDatasets.forEach(catalog.removeDataset);
+    catalog.addDataset(merged); // sets default target to all layers in merged dataset
+    catalog.setDefaultTarget(targetLayers, merged); // reset default target
+    return [{
+      layers: targetLayers,
+      dataset: merged
+    }];
+  }
+
+  // Combine multiple datasets into one using concatenation
+  // (any shared topology is ignored)
+  function mergeDatasets(arr) {
+    var arcSources = [],
+        arcCount = 0,
+        mergedLayers = [],
+        mergedInfo = {},
+        mergedArcs;
+
+    // Error if incompatible CRS
+    requireDatasetsHaveCompatibleCRS(arr);
+
+    arr.forEach(function(dataset) {
+      var n = dataset.arcs ? dataset.arcs.size() : 0;
+      if (n > 0) {
+        arcSources.push(dataset.arcs);
+      }
+
+      mergeDatasetInfo(mergedInfo, dataset);
+      dataset.layers.forEach(function(lyr) {
+        if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
+          forEachArcId(lyr.shapes, function(id) {
+            return id < 0 ? id - arcCount : id + arcCount;
+          });
+        }
+        mergedLayers.push(lyr);
+      });
+      arcCount += n;
+    });
+
+    mergedArcs = mergeArcs(arcSources);
+    if (mergedArcs.size() != arcCount) {
+      error("[mergeDatasets()] Arc indexing error");
+    }
+
+    return {
+      info: mergedInfo,
+      arcs: mergedArcs,
+      layers: mergedLayers
+    };
+  }
+
+  function mergeDatasetInfo(merged, dataset) {
+    var info = dataset.info || {};
+    merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
+    merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
+    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
+    utils.defaults(merged, info);
+  }
+
+  function mergeArcs(arr) {
+    var dataArr = arr.map(function(arcs) {
+      if (arcs.getRetainedInterval() > 0) {
+        verbose("Baking-in simplification setting.");
+        arcs.flatten();
+      }
+      return arcs.getVertexData();
+    });
+    var xx = mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+        yy = mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
+        nn = mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
+
+    return new ArcCollection(nn, xx, yy);
+  }
+
+  function countElements(arrays) {
+    return arrays.reduce(function(memo, arr) {
+      return memo + (arr.length || 0);
+    }, 0);
+  }
+
+  function mergeArrays(arrays, TypedArr) {
+    var size = countElements(arrays),
+        Arr = TypedArr || Array,
+        merged = new Arr(size),
+        offs = 0;
+    arrays.forEach(function(src) {
+      var n = src.length;
+      for (var i = 0; i<n; i++) {
+        merged[i + offs] = src[i];
+      }
+      offs += n;
+    });
+    return merged;
+  }
+
+  var Merging = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    mergeDatasetsIntoDataset: mergeDatasetsIntoDataset,
+    mergeDatasetsForExport: mergeDatasetsForExport,
+    mergeCommandTargets: mergeCommandTargets,
+    mergeDatasets: mergeDatasets,
+    mergeArcs: mergeArcs
+  });
+
+  // Test if the second endpoint of an arc is the endpoint of any path in any layer
+  function getPathEndpointTest(layers, arcs) {
+    var index = new Uint8Array(arcs.size());
+    layers.forEach(function(lyr) {
+      if (layerHasPaths(lyr)) {
+        lyr.shapes.forEach(addShape);
+      }
+    });
+
+    function addShape(shape) {
+      forEachShapePart(shape, addPath);
+    }
+
+    function addPath(path) {
+      addEndpoint(~path[0]);
+      addEndpoint(path[path.length - 1]);
+    }
+
+    function addEndpoint(arcId) {
+      var absId = absArcId(arcId);
+      var fwd = absId == arcId;
+      index[absId] |= fwd ? 1 : 2;
+    }
+
+    return function(arcId) {
+      var absId = absArcId(arcId);
+      var fwd = absId == arcId;
+      var code = index[absId];
+      return fwd ? (code & 1) == 1 : (code & 2) == 2;
+    };
+  }
+
+  var PathEndpoints = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getPathEndpointTest: getPathEndpointTest
+  });
+
   // @arcs ArcCollection
   // @filter Optional filter function, arcIds that return false are excluded
   //
@@ -5645,6 +6737,33 @@
     dataset.layers = currLayers;
   }
 
+  // Replace a layer in-place with a layer from a second dataset
+  // (Typically, the second dataset is imported from dynamically generated GeoJSON and contains one layer)
+  function replaceLayerContents(lyr, dataset, dataset2) {
+    if (!dataset2 || dataset2.layers.length != 1) {
+      error('Invalid replacement layer');
+    }
+    if (dataset.layers.includes(lyr) === false) {
+      error('Invalid target layer');
+    }
+    var lyr2 = dataset2.layers[0];
+    if (dataset2.arcs) {
+      // this command returns merged layers instead of adding them to target dataset
+      mergeDatasetsIntoDataset(dataset, [dataset2]);
+    }
+
+    Object.assign(lyr, {data: null, shapes: null}, lyr2);
+
+    if (layerHasPaths(lyr2)) {
+      buildTopology(dataset);
+    }
+    if (layerHasPaths(lyr)) {
+      // Remove unused arcs from replaced layer
+      // TODO: consider using clean insead of this
+      dissolveArcs(dataset);
+    }
+  }
+
   // Transform the points in a dataset in-place; don't clean up corrupted shapes
   function transformPoints(dataset, f) {
     if (dataset.arcs) {
@@ -5670,595 +6789,8 @@
     cleanupArcs: cleanupArcs,
     pruneArcs: pruneArcs,
     replaceLayers: replaceLayers,
+    replaceLayerContents: replaceLayerContents,
     transformPoints: transformPoints
-  });
-
-  // A matrix class that supports affine transformations (scaling, translation, rotation).
-  // Elements:
-  //   a  c  tx
-  //   b  d  ty
-  //   0  0  1  (u v w are not used)
-  //
-  function Matrix2D() {
-    this.a = 1;
-    this.c = 0;
-    this.tx = 0;
-    this.b = 0;
-    this.d = 1;
-    this.ty = 0;
-  }
-
-  Matrix2D.prototype.transformXY = function(x, y, p) {
-    p = p || {};
-    p.x = x * this.a + y * this.c + this.tx;
-    p.y = x * this.b + y * this.d + this.ty;
-    return p;
-  };
-
-  Matrix2D.prototype.translate = function(dx, dy) {
-    this.tx += dx;
-    this.ty += dy;
-  };
-
-  // x, y: optional origin
-  Matrix2D.prototype.rotate = function(q, x, y) {
-    var cos = Math.cos(q);
-    var sin = Math.sin(q);
-    x = x || 0;
-    y = y || 0;
-    this.a = cos;
-    this.c = -sin;
-    this.b = sin;
-    this.d = cos;
-    this.tx += x - x * cos + y * sin;
-    this.ty += y - x * sin - y * cos;
-  };
-
-  // cx, cy: optional origin
-  Matrix2D.prototype.scale = function(sx, sy, cx, cy) {
-    cx = cx || 0;
-    cy = cy || 0;
-    this.a *= sx;
-    this.c *= sx;
-    this.b *= sy;
-    this.d *= sy;
-    this.tx -= cx * (sx - 1);
-    this.ty -= cy * (sy - 1);
-  };
-
-  // A compound projection, consisting of a default projection and one or more rectangular frames
-  // that are projected separately and affine transformed.
-  // @mainParams: parameters for main projection, including:
-  //    proj: Proj string
-  //    bbox: lat-lon bounding box
-  function MixedProjection(mainParams, options) {
-    var mproj = require('mproj');
-    var mainFrame = initFrame(mainParams);
-    var mainP = mainFrame.crs;
-    var frames = [mainFrame];
-    var mixedP = initMixedProjection(mproj);
-
-    // This CRS masquerades as the main projection... the version with
-    // custom insets is exposed to savvy users
-    mainP.__mixed_crs = mixedP;
-
-    // required opts:
-    //    origin: [lng, lat] origin of frame (unprojected)
-    //    placement: [x, y] location (in projected coordinates) to shift the origin
-    //    proj: Proj.4 string for projecting data within the frame
-    //    bbox: Lat-long bounding box of frame area
-    //
-    // optional:
-    //    dx: x shift (meters)
-    //    dy: y shift (meters)
-    //    scale: scale factor (1 = no scaling)
-    //    rotation: rotation in degrees (0 = no rotation)
-    //
-    mainP.addFrame = function(paramsArg) {
-      var params = getFrameParams(paramsArg, options); // apply defaults and overrides
-      var frame = initFrame(params);
-      var m = new Matrix2D();
-      //  originXY: the projected coordinates of the frame origin
-      var originXY = params.origin ? projectFrameOrigin(params.origin, frame.crs) : [0, 0];
-      var placementXY = params.placement || [0, 0];
-      var dx = placementXY[0] - originXY[0] + (+params.dx || 0);
-      var dy = placementXY[1] - originXY[1] + (+params.dy || 0);
-
-      if (params.rotation) {
-        m.rotate(params.rotation * Math.PI / 180.0, originXY[0], originXY[1]);
-      }
-      if (params.scale) {
-        m.scale(params.scale, params.scale, originXY[0], originXY[1]);
-      }
-      m.translate(dx, dy);
-
-      frame.matrix = m;
-      frames.push(frame);
-      return this;
-    };
-
-    function initFrame(params) {
-      return {
-        bounds: new Bounds(bboxToRadians(params.bbox)),
-        crs:  mproj.pj_init(params.proj)
-      };
-    }
-
-    function bboxToRadians(bbox) {
-      var D2R = Math.PI / 180;
-      return bbox.map(function(deg) {
-        return deg * D2R;
-      });
-    }
-
-    function projectFrameOrigin(origin, P) {
-      var xy = mproj.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
-      return [xy.x, xy.y];
-    }
-
-    mixedP.fwd = function(lp, xy) {
-      var frame, xy2;
-      for (var i=0, n=frames.length; i<n; i++) {
-        frame = frames[i];
-        if (frame.bounds.containsPoint(lp.lam, lp.phi)) {
-          xy2 = mproj.pj_fwd(lp, frame.crs);
-          if (frame.matrix) {
-            frame.matrix.transformXY(xy2.x, xy2.y, xy2);
-          }
-          break;
-        }
-      }
-      xy.x = xy2 ? xy2.x : Infinity;
-      xy.y = xy2 ? xy2.y : Infinity;
-    };
-
-    return mainP;
-  }
-
-  function initMixedProjection(mproj) {
-    if (!mproj.internal.pj_list.mixed) {
-      mproj.pj_add(function(P) {
-        P.a = 1;
-      }, 'mixed', 'Mapshaper Mixed Projection');
-    }
-    return mproj.pj_init('+proj=mixed');
-  }
-
-  function getFrameParams (params, options) {
-    var opts = options[params.name];
-    utils.defaults(params, {scale: 1, dx: 0, dy: 0, rotation: 0}); // add defaults
-    if (!opts) return params;
-    Object.keys(opts).forEach(function(key) {
-      var val = opts[key];
-      if (key in params) {
-        params[key] = opts[key];
-      } else {
-        params.proj = replaceProjParam(params.proj, key, val);
-      }
-    });
-    return params;
-  }
-
-  function replaceProjParam(proj, key, val) {
-    var param = '+' + key + '=';
-    return proj.split(' ').map(function(str) {
-      if (str.indexOf(param) === 0) {
-        str = str.substr(0, param.length) + val;
-      }
-      return str;
-    }).join(' ');
-  }
-
-  // str: a custom projection string, e.g.: "albersusa +PR"
-  function parseCustomProjection(str) {
-    var parts = str.trim().split(/ +/);
-    var params = [];
-    var names = parts.filter(function(part) {
-      if (/^\+/.test(part)) {
-        params.push(part.substr(1)); // strip '+'
-        return false;
-      }
-      return true;
-    });
-    var name = names[0];
-    var opts = parseCustomParams(params);
-    if (names.length != 1) return null; // parse error if other than one name found
-    return getCustomProjection(name, opts);
-  }
-
-  // returns a custom projection object
-  function getCustomProjection(name, opts) {
-    if (name == 'albersusa') {
-      return new AlbersUSA(opts);
-    }
-    return null;
-  }
-
-  function AlbersUSA(optsArg) {
-    var opts = optsArg || {};
-    var main = {
-      proj: '+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5',
-      bbox: [-129,23,-62,52]
-    };
-    var AK = {
-      name: 'AK',
-      proj: '+proj=aea +lat_1=55 +lat_2=70 +lat_0=65 +lon_0=-148 +x_0=0 +y_0=0',
-      bbox: [-172.26,50.89,-127.00,73.21],
-      origin: [-152, 63],
-      placement: [-1882782,-969242],
-      scale: 0.37
-    };
-    var HI = {
-      name: 'HI',
-      proj: '+proj=aea +lat_1=19 +lat_2=24 +lat_0=20.9 +lon_0=-156.5 +x_0=0 +y_0=0',
-      bbox: [-160.50,18.72,-154.57,22.58],
-      origin: [-157, 21],
-      placement: [-1050326,-1055362]
-    };
-    var PR = {
-      name: 'PR',
-      proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
-      bbox: [-68.092,17.824,-65.151,18.787],
-      origin: [-66.431, 18.228],
-      placement: [1993101,-1254517]
-    };
-    var VI = {
-      name: 'VI',
-      // same projection and origin as PR, so they maintain their true geographical relationship
-      proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
-      bbox: [-65.104,17.665,-64.454,18.505],
-      origin: [-66.431, 18.228],
-      placement: [1993101,-1254517]
-    };
-    var mixed = new MixedProjection(main, opts)
-      .addFrame(AK)
-      .addFrame(HI);
-    if (opts.PR) {
-      mixed.addFrame(PR);
-    }
-    if (opts.VI) {
-      mixed.addFrame(VI);
-    }
-    return mixed;
-  }
-
-
-  function parseCustomParams(arr) {
-    var opts = {};
-    arr.forEach(function(str) {
-      parseCustomParam(str, opts);
-    });
-    return opts;
-  }
-
-  function parseCustomParam(str, opts) {
-    var parts = str.split('=');
-    var path = parts[0].split('.');
-    var key = path.pop();
-    var obj = path.reduce(function(memo, name) {
-      if (name in memo === false) {
-        memo[name] = {};
-      } else if (!utils.isObject(memo[name])) {
-        return {};// error condition, could display a warning
-      }
-      return memo[name];
-    }, opts);
-    if (parts.length > 1) {
-      obj[key] = parseCustomParamValue(parts[1]);
-    } else if (key in obj === false && !path.length) {
-      // e.g. convert string 'PR' into {PR: {}} (empty object),
-      // to show PR with default properties
-      obj[key] = {};
-    }
-  }
-
-  function parseCustomParamValue(str) {
-    var val;
-    if (str.indexOf(',') > 0) {
-      val = str.split(',').map(parseFloat);
-      // TODO: validate
-      return val;
-    }
-    val = utils.parseNumber(str);
-    if (val === null) {
-      val = str;
-    }
-    return val;
-  }
-
-  var CustomProjections = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    parseCustomProjection: parseCustomProjection,
-    AlbersUSA: AlbersUSA,
-    parseCustomParams: parseCustomParams
-  });
-
-  var asyncLoader = null;
-
-  var projectionAliases = {
-    robinson: '+proj=robin +datum=WGS84',
-    webmercator: '+proj=merc +a=6378137 +b=6378137',
-    wgs84: '+proj=longlat +datum=WGS84',
-    albersusa: new AlbersUSA() // with default parameters
-  };
-
-  // This stub is replaced when loaded in GUI, which may need to load some files
-  function initProjLibrary(opts, done) {
-    if (!asyncLoader) return done();
-    asyncLoader(opts, done);
-  }
-
-  function setProjectionLoader(loader) {
-    asyncLoader = loader;
-  }
-
-  // Find Proj.4 definition file names in strings like "+init=epsg:3000"
-  // (Used by GUI, defined here for testing)
-  function findProjLibs(str) {
-    var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
-    return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
-  }
-
-  // Returns a function for reprojecting [x, y] points; function throws an error
-  // if the transformation fails
-  // src, dest: proj4 objects
-  function getProjTransform(src, dest) {
-    var mproj = require('mproj');
-    var clampSrc = isLatLngCRS(src);
-    dest = dest.__mixed_crs || dest;
-    return function(x, y) {
-      var xy;
-      if (clampSrc) {
-        // snap lng to bounds
-        if (x < -180) x = -180;
-        else if (x > 180) x = 180;
-      }
-      xy = [x, y];
-      mproj.pj_transform_point(src, dest, xy);
-      return xy;
-    };
-  }
-
-  // Same as getProjTransform(), but return null if projection fails
-  // (also faster)
-  function getProjTransform2(src, dest) {
-    var mproj = require('mproj'),
-        xx = [0],
-        yy = [0],
-        preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
-        postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
-        clampSrc = isLatLngCRS(src);
-
-    return function(x, y) {
-      var fail;
-      if (clampSrc) {
-        // snap lng to bounds
-        if (x < -180) x = -180;
-        else if (x > 180) x = 180;
-      }
-      xx[0] = x * preK;
-      yy[0] = y * preK;
-      try {
-        dest = dest.__mixed_crs || dest;
-        mproj.pj_transform(src, dest, xx, yy);
-        fail = xx[0] == Infinity; // mproj invalid coord value
-      } catch(e) {
-        fail = true;
-      }
-      return fail ? null : [xx[0] * postK, yy[0] * postK];
-    };
-  }
-
-  function toLngLat(xy, P) {
-    var proj;
-    if (isLatLngCRS(P)) {
-      return xy.concat();
-    }
-    proj = getProjInfo(P, getCRS('wgs84'));
-    return proj(xy);
-  }
-
-  function getProjInfo(dataset) {
-    var P, info;
-    try {
-      P = getDatasetCRS(dataset);
-      if (P) {
-        info = crsToProj4(P);
-      }
-    } catch(e) {}
-    return info || "[unknown]";
-  }
-
-  function crsToProj4(P) {
-    return require('mproj').internal.get_proj_defn(P);
-  }
-
-  function crsToPrj(P) {
-    var wkt;
-    try {
-      wkt = require('mproj').internal.wkt_from_proj4(P);
-    } catch(e) {
-      // console.log(e)
-    }
-    return wkt;
-  }
-
-  function crsAreEqual(a, b) {
-    var str = crsToProj4(a);
-    return !!str && str == crsToProj4(b);
-  }
-
-  function getProjDefn(str) {
-    var mproj = require('mproj');
-    var defn;
-    // prepend '+proj=' to bare proj names
-    str = str.replace(/(^| )([\w]+)($| )/, function(a, b, c, d) {
-      if (c in mproj.internal.pj_list) {
-        return b + '+proj=' + c + d;
-      }
-      return a;
-    });
-    if (looksLikeProj4String(str)) {
-      defn = str;
-    } else if (str in projectionAliases) {
-      defn = projectionAliases[str];  // defn is a function
-    } else if (looksLikeInitString(str)) {
-      defn = '+init=' + str.toLowerCase();
-    } else if (str in getStateVar('defs')) {
-      // a proj4 alias could be dynamically created in a -calc expression
-      defn = getStateVar('defs')[str];
-    } else {
-      defn = parseCustomProjection(str);
-    }
-    if (!defn) {
-      stop("Unknown projection definition:", str);
-    }
-    return defn;
-  }
-
-  function looksLikeInitString(str) {
-    return /^(esri|epsg|nad83|nad27):[0-9]+$/i.test(String(str));
-  }
-
-  function looksLikeProj4String(str) {
-    return /^(\+[^ ]+ *)+$/.test(str);
-  }
-
-  function getCRS(str) {
-    var defn = getProjDefn(str);  // defn is a string or a Proj object
-    var P;
-    if (!utils.isString(defn)) {
-      P = defn;
-    } else {
-      try {
-        P = require('mproj').pj_init(defn);
-      } catch(e) {
-        stop('Unable to use projection', defn, '(' + e.message + ')');
-      }
-    }
-    return P || null;
-  }
-
-  function requireProjectedDataset(dataset) {
-    if (isLatLngCRS(getDatasetCRS(dataset))) {
-      stop("Command requires a target with projected coordinates (not lat-long)");
-    }
-  }
-
-  // @info: info property of source dataset (instead of crs object, so wkt string
-  //        can be preserved if present)
-  function setDatasetCRS(dataset, info) {
-    dataset.info = dataset.info || {};
-    // Assumes that proj4 object is never mutated.
-    // TODO: assign a copy of crs (if present)
-    dataset.info.crs = info.crs;
-    dataset.info.prj = info.prj;
-  }
-
-  function getDatasetCRS(dataset) {
-    var info = dataset.info || {},
-        P = info.crs;
-    if (!P && info.prj) {
-      P = parsePrj(info.prj);
-    }
-    if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
-      // use wgs84 for probable latlong datasets with unknown datums
-      P = getCRS('wgs84');
-    }
-    return P;
-  }
-
-  function requireDatasetsHaveCompatibleCRS(arr) {
-    arr.reduce(function(memo, dataset) {
-      var P = getDatasetCRS(dataset);
-      if (memo && P) {
-        if (isLatLngCRS(memo) != isLatLngCRS(P)) {
-          stop("Unable to combine projected and unprojected datasets");
-        }
-      }
-      return P || memo;
-    }, null);
-  }
-
-  // Assumes conformal projections; consider returning average of vertical and
-  // horizontal scale factors.
-  // x, y: a point location in projected coordinates
-  // Returns k, the ratio of coordinate distance to distance on the ground
-  function getScaleFactorAtXY(x, y, crs) {
-    var proj = require('mproj');
-    var dist = 1;
-    var lp = proj.pj_inv_deg({x: x, y: y}, crs);
-    var lp2 = proj.pj_inv_deg({x: x + dist, y: y}, crs);
-    var k = dist / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
-    return k;
-  }
-
-  function isProjectedCRS(P) {
-    return !isLatLngCRS(P);
-  }
-
-  function isLatLngCRS(P) {
-    return P && P.is_latlong || false;
-  }
-
-  function isLatLngDataset(dataset) {
-    return isLatLngCRS(getDatasetCRS(dataset));
-  }
-
-  function printProjections() {
-    var index = require('mproj').internal.pj_list;
-    var msg = 'Proj4 projections\n';
-    Object.keys(index).sort().forEach(function(id) {
-      msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
-    });
-    msg += '\nAliases';
-    Object.keys(projectionAliases).sort().forEach(function(n) {
-      msg += '\n  ' + n;
-    });
-    print(msg);
-  }
-
-  function translatePrj(str) {
-    var proj4;
-    try {
-      proj4 = require('mproj').internal.wkt_to_proj4(str);
-    } catch(e) {
-      stop('Unusable .prj file (' + e.message + ')');
-    }
-    return proj4;
-  }
-
-  // Convert contents of a .prj file to a projection object
-  function parsePrj(str) {
-    return getCRS(translatePrj(str));
-  }
-
-  var Projections = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    initProjLibrary: initProjLibrary,
-    setProjectionLoader: setProjectionLoader,
-    findProjLibs: findProjLibs,
-    getProjTransform: getProjTransform,
-    getProjTransform2: getProjTransform2,
-    toLngLat: toLngLat,
-    getProjInfo: getProjInfo,
-    crsToProj4: crsToProj4,
-    crsToPrj: crsToPrj,
-    crsAreEqual: crsAreEqual,
-    getProjDefn: getProjDefn,
-    looksLikeProj4String: looksLikeProj4String,
-    getCRS: getCRS,
-    requireProjectedDataset: requireProjectedDataset,
-    setDatasetCRS: setDatasetCRS,
-    getDatasetCRS: getDatasetCRS,
-    requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
-    getScaleFactorAtXY: getScaleFactorAtXY,
-    isProjectedCRS: isProjectedCRS,
-    isLatLngCRS: isLatLngCRS,
-    isLatLngDataset: isLatLngDataset,
-    printProjections: printProjections,
-    translatePrj: translatePrj,
-    parsePrj: parsePrj
   });
 
   function getPathSep(path) {
@@ -6753,7 +7285,7 @@
   // PathIndex supports several kinds of spatial query on a layer of polyline or polygon shapes
   function PathIndex(shapes, arcs) {
     var boundsQuery = getBoundsSearchFunction(getRingData(shapes, arcs));
-    var totalArea = getPathBounds$1(shapes, arcs).area();
+    var totalArea = getPathBounds(shapes, arcs).area();
 
     function getRingData(shapes, arcs) {
       var arr = [];
@@ -8706,14 +9238,14 @@
     addGetters(obj, {
       bbox: function() {
         if (!bbox) {
-          bbox = getBBox(lyr, arcs);
+          bbox = getBBox$1(lyr, arcs);
         }
         return bbox;
       }
     });
   }
 
-  function getBBox(lyr, arcs) {
+  function getBBox$1(lyr, arcs) {
     var bounds = getLayerBounds(lyr, arcs); // TODO: avoid this overhead if bounds is not used
     if (!bounds) return null;
     var bbox = bounds.toArray();
@@ -8758,8 +9290,9 @@
 
   // Returns a function to return a feature proxy by id
   // (the proxy appears as "this" or "$" in a feature expression)
-  function initFeatureProxy(lyr, arcs) {
-    var hasPoints = layerHasPoints(lyr),
+  function initFeatureProxy(lyr, arcs, optsArg) {
+    var opts = optsArg || {},
+        hasPoints = layerHasPoints(lyr),
         hasPaths = arcs && layerHasPaths(lyr),
         _records = lyr.data ? lyr.data.getRecords() : null,
         _isPlanar = hasPaths && arcs.isPlanar(),
@@ -8772,6 +9305,17 @@
       id: function() { return _id; }
     });
     addLayerGetters(ctx, lyr, arcs);
+
+    if (opts.geojson_editor) {
+      Object.defineProperty(ctx, 'geojson', {
+        set: function(o) {
+          opts.geojson_editor.set(o, _id);
+        },
+        get: function() {
+          return opts.geojson_editor.get(_id);
+        }
+      });
+    }
 
     if (_records) {
       // add r/w member "properties"
@@ -9087,7 +9631,7 @@
   }
 
   function getExpressionFunction(exp, lyr, arcs, opts) {
-    var getFeatureById = initFeatureProxy(lyr, arcs);
+    var getFeatureById = initFeatureProxy(lyr, arcs, opts);
     var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
     var ctx = getExpressionContext(lyr, opts.context, opts);
     var func = compileExpressionToFunction(exp, opts);
@@ -10462,364 +11006,6 @@
     getHoleDivider: getHoleDivider
   });
 
-  // Used for building topology
-  //
-  function ArcIndex(pointCount) {
-    var hashTableSize = Math.floor(pointCount * 0.25 + 1),
-        hash = getXYHash(hashTableSize),
-        hashTable = new Int32Array(hashTableSize),
-        chainIds = [],
-        arcs = [],
-        arcPoints = 0;
-
-    utils.initializeArray(hashTable, -1);
-
-    this.addArc = function(xx, yy) {
-      var end = xx.length - 1,
-          key = hash(xx[end], yy[end]),
-          chainId = hashTable[key],
-          arcId = arcs.length;
-      hashTable[key] = arcId;
-      arcs.push([xx, yy]);
-      arcPoints += xx.length;
-      chainIds.push(chainId);
-      return arcId;
-    };
-
-    // Look for a previously generated arc with the same sequence of coords, but in the
-    // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-    // so coincident boundaries should contain the same points in reverse sequence).
-    //
-    this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
-      // First, look for a reverse match
-      var arcId = findArcNeighbor(xx, yy, start, end, getNext);
-      if (arcId === null) {
-        // Look for forward match
-        // (Abnormal topology, but we're accepting it because in-the-wild
-        // Shapefiles sometimes have duplicate paths)
-        arcId = findArcNeighbor(xx, yy, end, start, getPrev);
-      } else {
-        arcId = ~arcId;
-      }
-      return arcId;
-    };
-
-    function findArcNeighbor(xx, yy, start, end, getNext) {
-      var next = getNext(start),
-          key = hash(xx[start], yy[start]),
-          arcId = hashTable[key],
-          arcX, arcY, len;
-
-      while (arcId != -1) {
-        // check endpoints and one segment...
-        // it would be more rigorous but slower to identify a match
-        // by comparing all segments in the coordinate sequence
-        arcX = arcs[arcId][0];
-        arcY = arcs[arcId][1];
-        len = arcX.length;
-        if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-            arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
-          return arcId;
-        }
-        arcId = chainIds[arcId];
-      }
-      return null;
-    }
-
-    this.getVertexData = function() {
-      var xx = new Float64Array(arcPoints),
-          yy = new Float64Array(arcPoints),
-          nn = new Uint32Array(arcs.length),
-          copied = 0,
-          arc, len;
-      for (var i=0, n=arcs.length; i<n; i++) {
-        arc = arcs[i];
-        len = arc[0].length;
-        utils.copyElements(arc[0], 0, xx, copied, len);
-        utils.copyElements(arc[1], 0, yy, copied, len);
-        nn[i] = len;
-        copied += len;
-      }
-      return {
-        xx: xx,
-        yy: yy,
-        nn: nn
-      };
-    };
-  }
-
-  // Converts all polygon and polyline paths in a dataset to a topological format
-  // (in-place)
-  function buildTopology(dataset) {
-    if (!dataset.arcs) return;
-    var raw = dataset.arcs.getVertexData(),
-        cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
-    dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
-    dataset.layers.forEach(function(lyr) {
-      if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-        lyr.shapes = replaceArcIds(lyr.shapes, cooked.paths);
-      }
-    });
-  }
-
-  // buildPathTopology() converts non-topological paths into
-  // a topological format
-  //
-  // Arguments:
-  //    xx: [Array|Float64Array],   // x coords of each point in the dataset
-  //    yy: [Array|Float64Array],   // y coords ...
-  //    nn: [Array]  // length of each path
-  //
-  // (x- and y-coords of all paths are concatenated into two arrays)
-  //
-  // Returns:
-  // {
-  //    xx, yy (array)   // coordinate data
-  //    nn: (array)      // points in each arc
-  //    paths: (array)   // Paths are arrays of one or more arc id.
-  // }
-  //
-  // Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
-  //
-  function buildPathTopology(nn, xx, yy) {
-    var pointCount = xx.length,
-        chainIds = initPointChains(xx, yy),
-        pathIds = initPathIds(pointCount, nn),
-        index = new ArcIndex(pointCount),
-        slice = usingTypedArrays() ? xx.subarray : Array.prototype.slice,
-        paths, retn;
-    paths = convertPaths(nn);
-    retn = index.getVertexData();
-    retn.paths = paths;
-    return retn;
-
-    function usingTypedArrays() {
-      return !!(xx.subarray && yy.subarray);
-    }
-
-    function convertPaths(nn) {
-      var paths = [],
-          pointId = 0,
-          pathLen;
-      for (var i=0, len=nn.length; i<len; i++) {
-        pathLen = nn[i];
-        paths.push(pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1));
-        pointId += pathLen;
-      }
-      return paths;
-    }
-
-    function nextPoint(id) {
-      var partId = pathIds[id],
-          nextId = id + 1;
-      if (nextId < pointCount && pathIds[nextId] === partId) {
-        return id + 1;
-      }
-      var len = nn[partId];
-      return sameXY(id, id - len + 1) ? id - len + 2 : -1;
-    }
-
-    function prevPoint(id) {
-      var partId = pathIds[id],
-          prevId = id - 1;
-      if (prevId >= 0 && pathIds[prevId] === partId) {
-        return id - 1;
-      }
-      var len = nn[partId];
-      return sameXY(id, id + len - 1) ? id + len - 2 : -1;
-    }
-
-    function sameXY(a, b) {
-      return xx[a] == xx[b] && yy[a] == yy[b];
-    }
-
-    // Convert a non-topological path to one or more topological arcs
-    // @start, @end are ids of first and last points in the path
-    // TODO: don't allow id ~id pairs
-    //
-    function convertPath(start, end) {
-      var arcIds = [],
-          firstNodeId = -1,
-          arcStartId;
-
-      // Visit each point in the path, up to but not including the last point
-      for (var i = start; i < end; i++) {
-        if (pointIsArcEndpoint(i)) {
-          if (firstNodeId > -1) {
-            arcIds.push(addEdge(arcStartId, i));
-          } else {
-            firstNodeId = i;
-          }
-          arcStartId = i;
-        }
-      }
-
-      // Identify the final arc in the path
-      if (firstNodeId == -1) {
-        // Not in an arc, i.e. no nodes have been found...
-        // Assuming that path is either an island or is congruent with one or more rings
-        arcIds.push(addRing(start, end));
-      }
-      else if (firstNodeId == start) {
-        // path endpoint is a node;
-        if (!pointIsArcEndpoint(end)) {
-          error("Topology error"); // TODO: better error handling
-        }
-        arcIds.push(addEdge(arcStartId, i));
-      } else {
-        // final arc wraps around
-        arcIds.push(addSplitEdge(arcStartId, end, start + 1, firstNodeId));
-      }
-      return arcIds;
-    }
-
-    // Test if a point @id is an endpoint of a topological path
-    function pointIsArcEndpoint(id) {
-      var id2 = chainIds[id],
-          prev = prevPoint(id),
-          next = nextPoint(id),
-          prev2, next2;
-      if (prev == -1 || next == -1) {
-        // @id is an endpoint if it is the start or end of an open path
-        return true;
-      }
-      while (id != id2) {
-        prev2 = prevPoint(id2);
-        next2 = nextPoint(id2);
-        if (prev2 == -1 || next2 == -1 || brokenEdge(prev, next, prev2, next2)) {
-          // there is a discontinuity at @id -- point is arc endpoint
-          return true;
-        }
-        id2 = chainIds[id2];
-      }
-      return false;
-    }
-
-    // a and b are two vertices with the same x, y coordinates
-    // test if the segments on either side of them are also identical
-    function brokenEdge(aprev, anext, bprev, bnext) {
-      var apx = xx[aprev],
-          anx = xx[anext],
-          bpx = xx[bprev],
-          bnx = xx[bnext],
-          apy = yy[aprev],
-          any = yy[anext],
-          bpy = yy[bprev],
-          bny = yy[bnext];
-      if (apx == bnx && anx == bpx && apy == bny && any == bpy ||
-          apx == bpx && anx == bnx && apy == bpy && any == bny) {
-        return false;
-      }
-      return true;
-    }
-
-    function mergeArcParts(src, startId, endId, startId2, endId2) {
-      var len = endId - startId + endId2 - startId2 + 2,
-          ArrayClass = usingTypedArrays() ? Float64Array : Array,
-          dest = new ArrayClass(len),
-          j = 0, i;
-      for (i=startId; i <= endId; i++) {
-        dest[j++] = src[i];
-      }
-      for (i=startId2; i <= endId2; i++) {
-        dest[j++] = src[i];
-      }
-      return dest;
-    }
-
-    function addSplitEdge(start1, end1, start2, end2) {
-      var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
-      if (arcId === null) {
-        arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
-            mergeArcParts(yy, start1, end1, start2, end2));
-      }
-      return arcId;
-    }
-
-    function addEdge(start, end) {
-      // search for a matching edge that has already been generated
-      var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
-      if (arcId === null) {
-        arcId = index.addArc(slice.call(xx, start, end + 1),
-            slice.call(yy, start, end + 1));
-      }
-      return arcId;
-    }
-
-    function addRing(startId, endId) {
-      var chainId = chainIds[startId],
-          pathId = pathIds[startId],
-          arcId;
-
-      while (chainId != startId) {
-        if (pathIds[chainId] < pathId) {
-          break;
-        }
-        chainId = chainIds[chainId];
-      }
-
-      if (chainId == startId) {
-        return addEdge(startId, endId);
-      }
-
-      for (var i=startId; i<endId; i++) {
-        arcId = index.findDuplicateArc(xx, yy, i, i, nextPoint, prevPoint);
-        if (arcId !== null) return arcId;
-      }
-      error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
-    }
-  }
-
-
-  // Create a lookup table for path ids; path ids are indexed by point id
-  //
-  function initPathIds(size, pathSizes) {
-    var pathIds = new Int32Array(size),
-        j = 0;
-    for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
-      for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
-        pathIds[j] = pathId;
-      }
-    }
-    return pathIds;
-  }
-
-  function replaceArcIds(src, replacements) {
-    return src.map(function(shape) {
-      return replaceArcsInShape(shape, replacements);
-    });
-
-    function replaceArcsInShape(shape, replacements) {
-      if (!shape) return null;
-      return shape.map(function(path) {
-        return replaceArcsInPath(path, replacements);
-      });
-    }
-
-    function replaceArcsInPath(path, replacements) {
-      return path.reduce(function(memo, id) {
-        var abs = absArcId(id);
-        var topoPath = replacements[abs];
-        if (topoPath) {
-          if (id < 0) {
-            topoPath = topoPath.concat(); // TODO: need to copy?
-            reversePath(topoPath);
-          }
-          for (var i=0, n=topoPath.length; i<n; i++) {
-            memo.push(topoPath[i]);
-          }
-        }
-        return memo;
-      }, []);
-    }
-  }
-
-  var Topology = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    buildTopology: buildTopology,
-    buildPathTopology: buildPathTopology
-  });
-
   // Convert an array of intersections into an ArcCollection (for display)
   //
 
@@ -11482,13 +11668,13 @@
   });
 
   // Support for timing using T.start() and T.stop()
-  var T = {
+  var T$1 = {
     stack: [],
     start: function() {
-      T.stack.push(Date.now());
+      T$1.stack.push(Date.now());
     },
     stop: function() {
-      return (Date.now() - T.stack.pop()) + 'ms';
+      return (Date.now() - T$1.stack.pop()) + 'ms';
     }
   };
 
@@ -11560,7 +11746,7 @@
   // TODO: a better job of handling FP errors
   //
   function buildPolygonMosaic(nodes) {
-    T.start();
+    T$1.start();
     // Detach any acyclic paths (spikes) from arc graph (these would interfere with
     //    the ring finding operation). This modifies @nodes -- a side effect.
     nodes.detachAcyclicArcs();
@@ -11568,8 +11754,8 @@
 
     // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
     var mosaic = data.cw.map(function(ring) {return [ring];});
-    debug('Find mosaic rings', T.stop());
-    T.start();
+    debug('Find mosaic rings', T$1.stop());
+    T$1.start();
 
     // Process CCW rings: these are either holes or enclosure
     // TODO: optimize -- testing CCW path of every island is costly
@@ -11586,7 +11772,7 @@
         enclosures.push([ring]);
       }
     });
-    debug(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length), T.stop());
+    debug(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length), T$1.stop());
 
     return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
   }
@@ -12523,6 +12709,27 @@
     return coords.length >= 4 && first[0] == last[0] && first[1] == last[1];
   };
 
+  GeoJSON.toFeature = function(obj, properties) {
+    var type = obj ? obj.type : null;
+    var feat;
+    if (type == 'Feature') {
+      feat = obj;
+    } else if (type in GeoJSON.typeLookup) {
+      feat = {
+        type: 'Feature',
+        geometry: obj,
+        properties: properties || null
+      };
+    } else {
+      feat = {
+        type: 'Feature',
+        geometry: null,
+        properties: properties || null
+      };
+    }
+    return feat;
+  };
+
   // switch to RFC 7946-compatible output (while retaining the original export function,
   // so numerous tests will continue to work)
   function exportGeoJSON2(dataset, opts) {
@@ -12596,18 +12803,17 @@
     return (shapes || properties || []).reduce(function(memo, o, i) {
       var shape = shapes ? shapes[i] : null,
           exporter = GeoJSON.exporters[lyr.geometry_type],
-          obj = shape ? exporter(shape, dataset.arcs, opts) : null;
+          geom = shape ? exporter(shape, dataset.arcs, opts) : null,
+          obj = null;
       if (asFeatures) {
-        obj = {
-          type: 'Feature',
-          geometry: obj,
-          properties: properties ? properties[i] : null
-        };
+        obj = GeoJSON.toFeature(geom, properties ? properties[i] : null);
         if (ids) {
           obj.id = ids[i];
         }
-      } else if (!obj) {
+      } else if (!geom) {
         return memo; // don't add null objects to GeometryCollection
+      } else {
+        obj = geom;
       }
       if (ofmt) {
         // stringify features as soon as they are generated, to reduce the
@@ -12954,150 +13160,6 @@
     importFurniture: importFurniture
   });
 
-  function mergeDatasetsIntoDataset(dataset, datasets) {
-    var merged = mergeDatasets([dataset].concat(datasets));
-    var mergedLayers = datasets.reduce(function(memo, dataset) {
-      return memo.concat(dataset.layers);
-    }, []);
-    dataset.arcs = merged.arcs;
-    return mergedLayers;
-  }
-
-  // Don't modify input layers (mergeDatasets() updates arc ids in-place)
-  function mergeDatasetsForExport(arr) {
-    // copy layers but not arcs, which get copied in mergeDatasets()
-    var copy = arr.map(function(dataset) {
-      return utils.defaults({
-        layers: dataset.layers.map(copyLayerShapes)
-      }, dataset);
-    });
-    return mergeDatasets(copy);
-  }
-
-  function mergeCommandTargets(targets, catalog) {
-    var targetLayers = [];
-    var targetDatasets = [];
-    var datasetsWithArcs = 0;
-    var merged;
-
-    targets.forEach(function(target) {
-      targetLayers = targetLayers.concat(target.layers);
-      targetDatasets = targetDatasets.concat(target.dataset);
-      if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
-    });
-
-    merged = mergeDatasets(targetDatasets);
-
-    // Rebuild topology, if multiple datasets contain arcs
-    if (datasetsWithArcs > 1) {
-      buildTopology(merged);
-    }
-
-    // remove old datasets after merging, so catalog is not affected if merge throws an error
-    targetDatasets.forEach(catalog.removeDataset);
-    catalog.addDataset(merged); // sets default target to all layers in merged dataset
-    catalog.setDefaultTarget(targetLayers, merged); // reset default target
-    return [{
-      layers: targetLayers,
-      dataset: merged
-    }];
-  }
-
-  // Combine multiple datasets into one using concatenation
-  // (any shared topology is ignored)
-  function mergeDatasets(arr) {
-    var arcSources = [],
-        arcCount = 0,
-        mergedLayers = [],
-        mergedInfo = {},
-        mergedArcs;
-
-    // Error if incompatible CRS
-    requireDatasetsHaveCompatibleCRS(arr);
-
-    arr.forEach(function(dataset) {
-      var n = dataset.arcs ? dataset.arcs.size() : 0;
-      if (n > 0) {
-        arcSources.push(dataset.arcs);
-      }
-
-      mergeDatasetInfo(mergedInfo, dataset);
-      dataset.layers.forEach(function(lyr) {
-        if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-          forEachArcId(lyr.shapes, function(id) {
-            return id < 0 ? id - arcCount : id + arcCount;
-          });
-        }
-        mergedLayers.push(lyr);
-      });
-      arcCount += n;
-    });
-
-    mergedArcs = mergeArcs(arcSources);
-    if (mergedArcs.size() != arcCount) {
-      error("[mergeDatasets()] Arc indexing error");
-    }
-
-    return {
-      info: mergedInfo,
-      arcs: mergedArcs,
-      layers: mergedLayers
-    };
-  }
-
-  function mergeDatasetInfo(merged, dataset) {
-    var info = dataset.info || {};
-    merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
-    merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
-    utils.defaults(merged, info);
-  }
-
-  function mergeArcs(arr) {
-    var dataArr = arr.map(function(arcs) {
-      if (arcs.getRetainedInterval() > 0) {
-        verbose("Baking-in simplification setting.");
-        arcs.flatten();
-      }
-      return arcs.getVertexData();
-    });
-    var xx = mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
-        yy = mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
-        nn = mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
-
-    return new ArcCollection(nn, xx, yy);
-  }
-
-  function countElements(arrays) {
-    return arrays.reduce(function(memo, arr) {
-      return memo + (arr.length || 0);
-    }, 0);
-  }
-
-  function mergeArrays(arrays, TypedArr) {
-    var size = countElements(arrays),
-        Arr = TypedArr || Array,
-        merged = new Arr(size),
-        offs = 0;
-    arrays.forEach(function(src) {
-      var n = src.length;
-      for (var i = 0; i<n; i++) {
-        merged[i + offs] = src[i];
-      }
-      offs += n;
-    });
-    return merged;
-  }
-
-  var Merging = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    mergeDatasetsIntoDataset: mergeDatasetsIntoDataset,
-    mergeDatasetsForExport: mergeDatasetsForExport,
-    mergeCommandTargets: mergeCommandTargets,
-    mergeDatasets: mergeDatasets,
-    mergeArcs: mergeArcs
-  });
-
   // Apply rotation, scale and/or shift to some or all of the features in a dataset
   //
   cmd.affine = function(targetLayers, dataset, opts) {
@@ -13221,14 +13283,14 @@
     return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
   }
 
-  var roundCoord = getRoundingFunction(0.01);
+  var roundCoord$1 = getRoundingFunction(0.01);
 
   function stringifyVertex(p) {
-    return ' ' + roundCoord(p[0]) + ' ' + roundCoord(p[1]);
+    return ' ' + roundCoord$1(p[0]) + ' ' + roundCoord$1(p[1]);
   }
 
   function stringifyCP(p) {
-    return ' ' + roundCoord(p[2]) + ' ' + roundCoord(p[3]);
+    return ' ' + roundCoord$1(p[2]) + ' ' + roundCoord$1(p[3]);
   }
 
   function isCubicCtrl(p) {
@@ -13513,7 +13575,7 @@
     var colorCount = o.colors.length;
     var dotDist = dotSize + o.spacing;
     var dotsPerTile = colorCount * colorCount;
-    var makeSymbol = o.type == 'squares' ? makeSquare : makeCircle;
+    var makeSymbol = o.type == 'squares' ? makeSquare : makeCircle$1;
     var svg = '';
     for (var i=0, x=0, y=0; i<dotsPerTile; i++) {
       svg += makeSymbol(x, y, dotSize, o.colors[(i + Math.floor(i / colorCount)) % colorCount]);
@@ -13523,7 +13585,7 @@
     return svg;
   }
 
-  function makeCircle(x, y, size, fill) {
+  function makeCircle$1(x, y, size, fill) {
     const r = size / 2;
     return `<circle cx="${x + r}" cy="${y + r}" r="${r}" fill="${ fill }"></circle>`;
   }
@@ -22267,10 +22329,10 @@ ${svg}
       // Assume single Feature or geometry if collection not found
       // (this works for ndjson files too)
       var offset = start ? start.offset : 0;
-      T.start();
+      T$1.start();
       parseObjects(reader, offset, onObject);
       // parseObjects_native(reader, offset, onObject);
-      debug('Parse GeoJSON', T.stop());
+      debug('Parse GeoJSON', T$1.stop());
     };
   }
 
@@ -22937,7 +22999,7 @@ ${svg}
   const resulterrbound = (3 + 8 * epsilon) * epsilon;
 
   // fast_expansion_sum_zeroelim routine from oritinal code
-  function sum$1(elen, e, flen, f, h) {
+  function sum(elen, e, flen, f, h) {
       let Q, Qnew, hh, bvirt;
       let enow = e[0];
       let fnow = f[0];
@@ -23010,7 +23072,7 @@ ${svg}
   }
 
   function sum_three(alen, a, blen, b, clen, c, tmp, out) {
-      return sum$1(sum$1(alen, a, blen, b, tmp), tmp, clen, c, out);
+      return sum(sum(alen, a, blen, b, tmp), tmp, clen, c, out);
   }
 
   // scale_expansion_zeroelim routine from oritinal code
@@ -23075,11 +23137,11 @@ ${svg}
   const ccwerrboundB = (2 + 12 * epsilon) * epsilon;
   const ccwerrboundC = (9 + 64 * epsilon) * epsilon * epsilon;
 
-  const B = vec(4);
+  const B$1 = vec(4);
   const C1 = vec(8);
   const C2 = vec(12);
   const D = vec(16);
-  const u = vec(4);
+  const u$2 = vec(4);
 
   function orient2dadapt(ax, ay, bx, by, cx, cy, detsum) {
       let acxtail, acytail, bcxtail, bcytail;
@@ -23108,19 +23170,19 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      B[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      B$1[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      B[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      B$1[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      B[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      B[3] = u3;
+      B$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      B$1[3] = u3;
 
-      let det = estimate(4, B);
+      let det = estimate(4, B$1);
       let errbound = ccwerrboundB * detsum;
       if (det >= errbound || -det >= errbound) {
           return det;
@@ -23161,18 +23223,18 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      u[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      u$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      u[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      u$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      u[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      u[3] = u3;
-      const C1len = sum$1(4, B, 4, u, C1);
+      u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      u$2[3] = u3;
+      const C1len = sum(4, B$1, 4, u$2, C1);
 
       s1 = acx * bcytail;
       c = splitter * acx;
@@ -23192,18 +23254,18 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      u[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      u$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      u[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      u$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      u[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      u[3] = u3;
-      const C2len = sum$1(C1len, C1, 4, u, C2);
+      u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      u$2[3] = u3;
+      const C2len = sum(C1len, C1, 4, u$2, C2);
 
       s1 = acxtail * bcytail;
       c = splitter * acxtail;
@@ -23223,18 +23285,18 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      u[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      u$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      u[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      u$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      u[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      u[3] = u3;
-      const Dlen = sum$1(C2len, C2, 4, u, D);
+      u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      u$2[3] = u3;
+      const Dlen = sum(C2len, C2, 4, u$2, D);
 
       return D[Dlen - 1];
   }
@@ -23260,31 +23322,31 @@ ${svg}
   const o3derrboundB = (3 + 28 * epsilon) * epsilon;
   const o3derrboundC = (26 + 288 * epsilon) * epsilon * epsilon;
 
-  const bc = vec(4);
-  const ca = vec(4);
-  const ab = vec(4);
+  const bc$2 = vec(4);
+  const ca$1 = vec(4);
+  const ab$2 = vec(4);
   const at_b = vec(4);
   const at_c = vec(4);
   const bt_c = vec(4);
   const bt_a = vec(4);
   const ct_a = vec(4);
   const ct_b = vec(4);
-  const bct = vec(8);
-  const cat = vec(8);
-  const abt = vec(8);
+  const bct$1 = vec(8);
+  const cat$1 = vec(8);
+  const abt$1 = vec(8);
   const u$1 = vec(4);
 
-  const _8 = vec(8);
-  const _8b = vec(8);
-  const _16 = vec(8);
+  const _8$2 = vec(8);
+  const _8b$1 = vec(8);
+  const _16$2 = vec(8);
   const _12 = vec(12);
 
-  let fin = vec(192);
-  let fin2 = vec(192);
+  let fin$2 = vec(192);
+  let fin2$1 = vec(192);
 
-  function finadd(finlen, alen, a) {
-      finlen = sum$1(finlen, fin, alen, a, fin2);
-      const tmp = fin; fin = fin2; fin2 = tmp;
+  function finadd$1(finlen, alen, a) {
+      finlen = sum(finlen, fin$2, alen, a, fin2$1);
+      const tmp = fin$2; fin$2 = fin2$1; fin2$1 = tmp;
       return finlen;
   }
 
@@ -23432,7 +23494,7 @@ ${svg}
       u3 = _j + _k;
       u$1[2] = _k - (u3 - _j);
       u$1[3] = u3;
-      finlen = finadd(finlen, 4, u$1);
+      finlen = finadd$1(finlen, 4, u$1);
       if (z !== 0) {
           c = splitter * z;
           bhi = c - (c - z);
@@ -23453,7 +23515,7 @@ ${svg}
           u3 = _j + _k;
           u$1[2] = _k - (u3 - _j);
           u$1[3] = u3;
-          finlen = finadd(finlen, 4, u$1);
+          finlen = finadd$1(finlen, 4, u$1);
       }
       return finlen;
   }
@@ -23493,17 +23555,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      bc[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      bc$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      bc[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      bc$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      bc[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      bc[3] = u3;
+      bc$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      bc$2[3] = u3;
       s1 = cdx * ady;
       c = splitter * cdx;
       ahi = c - (c - cdx);
@@ -23522,17 +23584,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      ca[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      ca$1[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      ca[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      ca$1[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      ca[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ca[3] = u3;
+      ca$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      ca$1[3] = u3;
       s1 = adx * bdy;
       c = splitter * adx;
       ahi = c - (c - adx);
@@ -23551,25 +23613,25 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      ab[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      ab$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      ab[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      ab$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      ab[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ab[3] = u3;
+      ab$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      ab$2[3] = u3;
 
-      finlen = sum$1(
-          sum$1(
-              scale(4, bc, adz, _8), _8,
-              scale(4, ca, bdz, _8b), _8b, _16), _16,
-          scale(4, ab, cdz, _8), _8, fin);
+      finlen = sum(
+          sum(
+              scale(4, bc$2, adz, _8$2), _8$2,
+              scale(4, ca$1, bdz, _8b$1), _8b$1, _16$2), _16$2,
+          scale(4, ab$2, cdz, _8$2), _8$2, fin$2);
 
-      let det = estimate(finlen, fin);
+      let det = estimate(finlen, fin$2);
       let errbound = o3derrboundB * permanent;
       if (det >= errbound || -det >= errbound) {
           return det;
@@ -23613,26 +23675,26 @@ ${svg}
       const bt_len = tailinit(bdxtail, bdytail, cdx, cdy, adx, ady, bt_c, bt_a);
       const ct_len = tailinit(cdxtail, cdytail, adx, ady, bdx, bdy, ct_a, ct_b);
 
-      const bctlen = sum$1(bt_len, bt_c, ct_len, ct_b, bct);
-      finlen = finadd(finlen, scale(bctlen, bct, adz, _16), _16);
+      const bctlen = sum(bt_len, bt_c, ct_len, ct_b, bct$1);
+      finlen = finadd$1(finlen, scale(bctlen, bct$1, adz, _16$2), _16$2);
 
-      const catlen = sum$1(ct_len, ct_a, at_len, at_c, cat);
-      finlen = finadd(finlen, scale(catlen, cat, bdz, _16), _16);
+      const catlen = sum(ct_len, ct_a, at_len, at_c, cat$1);
+      finlen = finadd$1(finlen, scale(catlen, cat$1, bdz, _16$2), _16$2);
 
-      const abtlen = sum$1(at_len, at_b, bt_len, bt_a, abt);
-      finlen = finadd(finlen, scale(abtlen, abt, cdz, _16), _16);
+      const abtlen = sum(at_len, at_b, bt_len, bt_a, abt$1);
+      finlen = finadd$1(finlen, scale(abtlen, abt$1, cdz, _16$2), _16$2);
 
       if (adztail !== 0) {
-          finlen = finadd(finlen, scale(4, bc, adztail, _12), _12);
-          finlen = finadd(finlen, scale(bctlen, bct, adztail, _16), _16);
+          finlen = finadd$1(finlen, scale(4, bc$2, adztail, _12), _12);
+          finlen = finadd$1(finlen, scale(bctlen, bct$1, adztail, _16$2), _16$2);
       }
       if (bdztail !== 0) {
-          finlen = finadd(finlen, scale(4, ca, bdztail, _12), _12);
-          finlen = finadd(finlen, scale(catlen, cat, bdztail, _16), _16);
+          finlen = finadd$1(finlen, scale(4, ca$1, bdztail, _12), _12);
+          finlen = finadd$1(finlen, scale(catlen, cat$1, bdztail, _16$2), _16$2);
       }
       if (cdztail !== 0) {
-          finlen = finadd(finlen, scale(4, ab, cdztail, _12), _12);
-          finlen = finadd(finlen, scale(abtlen, abt, cdztail, _16), _16);
+          finlen = finadd$1(finlen, scale(4, ab$2, cdztail, _12), _12);
+          finlen = finadd$1(finlen, scale(abtlen, abt$1, cdztail, _16$2), _16$2);
       }
 
       if (adxtail !== 0) {
@@ -23660,7 +23722,7 @@ ${svg}
           }
       }
 
-      return fin[finlen - 1];
+      return fin$2[finlen - 1];
   }
 
   function orient3d(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) {
@@ -23722,12 +23784,12 @@ ${svg}
   const iccerrboundC = (44 + 576 * epsilon) * epsilon * epsilon;
 
   const bc$1 = vec(4);
-  const ca$1 = vec(4);
+  const ca = vec(4);
   const ab$1 = vec(4);
   const aa = vec(4);
   const bb = vec(4);
   const cc = vec(4);
-  const u$2 = vec(4);
+  const u = vec(4);
   const v = vec(4);
   const axtbc = vec(8);
   const aytbc = vec(8);
@@ -23735,9 +23797,9 @@ ${svg}
   const bytca = vec(8);
   const cxtab = vec(8);
   const cytab = vec(8);
-  const abt$1 = vec(8);
-  const bct$1 = vec(8);
-  const cat$1 = vec(8);
+  const abt = vec(8);
+  const bct = vec(8);
+  const cat = vec(8);
   const abtt = vec(4);
   const bctt = vec(4);
   const catt = vec(4);
@@ -23748,15 +23810,15 @@ ${svg}
   const _16c = vec(16);
   const _32 = vec(32);
   const _32b = vec(32);
-  const _48 = vec(48);
+  const _48$1 = vec(48);
   const _64 = vec(64);
 
   let fin$1 = vec(1152);
-  let fin2$1 = vec(1152);
+  let fin2 = vec(1152);
 
-  function finadd$1(finlen, a, alen) {
-      finlen = sum$1(finlen, fin$1, a, alen, fin2$1);
-      const tmp = fin$1; fin$1 = fin2$1; fin2$1 = tmp;
+  function finadd(finlen, a, alen) {
+      finlen = sum(finlen, fin$1, a, alen, fin2);
+      const tmp = fin$1; fin$1 = fin2; fin2 = tmp;
       return finlen;
   }
 
@@ -23824,17 +23886,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      ca$1[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      ca[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      ca$1[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      ca[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      ca$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ca$1[3] = u3;
+      ca[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      ca[3] = u3;
       s1 = adx * bdy;
       c = splitter * adx;
       ahi = c - (c - adx);
@@ -23865,15 +23927,15 @@ ${svg}
       ab$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
       ab$1[3] = u3;
 
-      finlen = sum$1(
-          sum$1(
-              sum$1(
+      finlen = sum(
+          sum(
+              sum(
                   scale(scale(4, bc$1, adx, _8$1), _8$1, adx, _16$1), _16$1,
                   scale(scale(4, bc$1, ady, _8$1), _8$1, ady, _16b), _16b, _32), _32,
-              sum$1(
-                  scale(scale(4, ca$1, bdx, _8$1), _8$1, bdx, _16$1), _16$1,
-                  scale(scale(4, ca$1, bdy, _8$1), _8$1, bdy, _16b), _16b, _32b), _32b, _64), _64,
-          sum$1(
+              sum(
+                  scale(scale(4, ca, bdx, _8$1), _8$1, bdx, _16$1), _16$1,
+                  scale(scale(4, ca, bdy, _8$1), _8$1, bdy, _16b), _16b, _32b), _32b, _64), _64,
+          sum(
               scale(scale(4, ab$1, cdx, _8$1), _8$1, cdx, _16$1), _16$1,
               scale(scale(4, ab$1, cdy, _8$1), _8$1, cdy, _16b), _16b, _32), _32, fin$1);
 
@@ -23989,45 +24051,45 @@ ${svg}
 
       if (adxtail !== 0) {
           axtbclen = scale(4, bc$1, adxtail, axtbc);
-          finlen = finadd$1(finlen, sum_three(
+          finlen = finadd(finlen, sum_three(
               scale(axtbclen, axtbc, 2 * adx, _16$1), _16$1,
               scale(scale(4, cc, adxtail, _8$1), _8$1, bdy, _16b), _16b,
-              scale(scale(4, bb, adxtail, _8$1), _8$1, -cdy, _16c), _16c, _32, _48), _48);
+              scale(scale(4, bb, adxtail, _8$1), _8$1, -cdy, _16c), _16c, _32, _48$1), _48$1);
       }
       if (adytail !== 0) {
           aytbclen = scale(4, bc$1, adytail, aytbc);
-          finlen = finadd$1(finlen, sum_three(
+          finlen = finadd(finlen, sum_three(
               scale(aytbclen, aytbc, 2 * ady, _16$1), _16$1,
               scale(scale(4, bb, adytail, _8$1), _8$1, cdx, _16b), _16b,
-              scale(scale(4, cc, adytail, _8$1), _8$1, -bdx, _16c), _16c, _32, _48), _48);
+              scale(scale(4, cc, adytail, _8$1), _8$1, -bdx, _16c), _16c, _32, _48$1), _48$1);
       }
       if (bdxtail !== 0) {
-          bxtcalen = scale(4, ca$1, bdxtail, bxtca);
-          finlen = finadd$1(finlen, sum_three(
+          bxtcalen = scale(4, ca, bdxtail, bxtca);
+          finlen = finadd(finlen, sum_three(
               scale(bxtcalen, bxtca, 2 * bdx, _16$1), _16$1,
               scale(scale(4, aa, bdxtail, _8$1), _8$1, cdy, _16b), _16b,
-              scale(scale(4, cc, bdxtail, _8$1), _8$1, -ady, _16c), _16c, _32, _48), _48);
+              scale(scale(4, cc, bdxtail, _8$1), _8$1, -ady, _16c), _16c, _32, _48$1), _48$1);
       }
       if (bdytail !== 0) {
-          bytcalen = scale(4, ca$1, bdytail, bytca);
-          finlen = finadd$1(finlen, sum_three(
+          bytcalen = scale(4, ca, bdytail, bytca);
+          finlen = finadd(finlen, sum_three(
               scale(bytcalen, bytca, 2 * bdy, _16$1), _16$1,
               scale(scale(4, cc, bdytail, _8$1), _8$1, adx, _16b), _16b,
-              scale(scale(4, aa, bdytail, _8$1), _8$1, -cdx, _16c), _16c, _32, _48), _48);
+              scale(scale(4, aa, bdytail, _8$1), _8$1, -cdx, _16c), _16c, _32, _48$1), _48$1);
       }
       if (cdxtail !== 0) {
           cxtablen = scale(4, ab$1, cdxtail, cxtab);
-          finlen = finadd$1(finlen, sum_three(
+          finlen = finadd(finlen, sum_three(
               scale(cxtablen, cxtab, 2 * cdx, _16$1), _16$1,
               scale(scale(4, bb, cdxtail, _8$1), _8$1, ady, _16b), _16b,
-              scale(scale(4, aa, cdxtail, _8$1), _8$1, -bdy, _16c), _16c, _32, _48), _48);
+              scale(scale(4, aa, cdxtail, _8$1), _8$1, -bdy, _16c), _16c, _32, _48$1), _48$1);
       }
       if (cdytail !== 0) {
           cytablen = scale(4, ab$1, cdytail, cytab);
-          finlen = finadd$1(finlen, sum_three(
+          finlen = finadd(finlen, sum_three(
               scale(cytablen, cytab, 2 * cdy, _16$1), _16$1,
               scale(scale(4, aa, cdytail, _8$1), _8$1, bdx, _16b), _16b,
-              scale(scale(4, bb, cdytail, _8$1), _8$1, -adx, _16c), _16c, _32, _48), _48);
+              scale(scale(4, bb, cdytail, _8$1), _8$1, -adx, _16c), _16c, _32, _48$1), _48$1);
       }
 
       if (adxtail !== 0 || adytail !== 0) {
@@ -24050,17 +24112,17 @@ ${svg}
               t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
               _i = s0 + t0;
               bvirt = _i - s0;
-              u$2[0] = s0 - (_i - bvirt) + (t0 - bvirt);
+              u[0] = s0 - (_i - bvirt) + (t0 - bvirt);
               _j = s1 + _i;
               bvirt = _j - s1;
               _0 = s1 - (_j - bvirt) + (_i - bvirt);
               _i = _0 + t1;
               bvirt = _i - _0;
-              u$2[1] = _0 - (_i - bvirt) + (t1 - bvirt);
+              u[1] = _0 - (_i - bvirt) + (t1 - bvirt);
               u3 = _j + _i;
               bvirt = u3 - _j;
-              u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              u$2[3] = u3;
+              u[2] = _j - (u3 - bvirt) + (_i - bvirt);
+              u[3] = u3;
               s1 = cdxtail * -bdy;
               c = splitter * cdxtail;
               ahi = c - (c - cdxtail);
@@ -24090,7 +24152,7 @@ ${svg}
               bvirt = u3 - _j;
               v[2] = _j - (u3 - bvirt) + (_i - bvirt);
               v[3] = u3;
-              bctlen = sum$1(4, u$2, 4, v, bct$1);
+              bctlen = sum(4, u, 4, v, bct);
               s1 = bdxtail * cdytail;
               c = splitter * bdxtail;
               ahi = c - (c - bdxtail);
@@ -24122,38 +24184,38 @@ ${svg}
               bctt[3] = u3;
               bcttlen = 4;
           } else {
-              bct$1[0] = 0;
+              bct[0] = 0;
               bctlen = 1;
               bctt[0] = 0;
               bcttlen = 1;
           }
           if (adxtail !== 0) {
-              const len = scale(bctlen, bct$1, adxtail, _16c);
-              finlen = finadd$1(finlen, sum$1(
+              const len = scale(bctlen, bct, adxtail, _16c);
+              finlen = finadd(finlen, sum(
                   scale(axtbclen, axtbc, adxtail, _16$1), _16$1,
-                  scale(len, _16c, 2 * adx, _32), _32, _48), _48);
+                  scale(len, _16c, 2 * adx, _32), _32, _48$1), _48$1);
 
               const len2 = scale(bcttlen, bctt, adxtail, _8$1);
-              finlen = finadd$1(finlen, sum_three(
+              finlen = finadd(finlen, sum_three(
                   scale(len2, _8$1, 2 * adx, _16$1), _16$1,
                   scale(len2, _8$1, adxtail, _16b), _16b,
                   scale(len, _16c, adxtail, _32), _32, _32b, _64), _64);
 
               if (bdytail !== 0) {
-                  finlen = finadd$1(finlen, scale(scale(4, cc, adxtail, _8$1), _8$1, bdytail, _16$1), _16$1);
+                  finlen = finadd(finlen, scale(scale(4, cc, adxtail, _8$1), _8$1, bdytail, _16$1), _16$1);
               }
               if (cdytail !== 0) {
-                  finlen = finadd$1(finlen, scale(scale(4, bb, -adxtail, _8$1), _8$1, cdytail, _16$1), _16$1);
+                  finlen = finadd(finlen, scale(scale(4, bb, -adxtail, _8$1), _8$1, cdytail, _16$1), _16$1);
               }
           }
           if (adytail !== 0) {
-              const len = scale(bctlen, bct$1, adytail, _16c);
-              finlen = finadd$1(finlen, sum$1(
+              const len = scale(bctlen, bct, adytail, _16c);
+              finlen = finadd(finlen, sum(
                   scale(aytbclen, aytbc, adytail, _16$1), _16$1,
-                  scale(len, _16c, 2 * ady, _32), _32, _48), _48);
+                  scale(len, _16c, 2 * ady, _32), _32, _48$1), _48$1);
 
               const len2 = scale(bcttlen, bctt, adytail, _8$1);
-              finlen = finadd$1(finlen, sum_three(
+              finlen = finadd(finlen, sum_three(
                   scale(len2, _8$1, 2 * ady, _16$1), _16$1,
                   scale(len2, _8$1, adytail, _16b), _16b,
                   scale(len, _16c, adytail, _32), _32, _32b, _64), _64);
@@ -24179,17 +24241,17 @@ ${svg}
               t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
               _i = s0 + t0;
               bvirt = _i - s0;
-              u$2[0] = s0 - (_i - bvirt) + (t0 - bvirt);
+              u[0] = s0 - (_i - bvirt) + (t0 - bvirt);
               _j = s1 + _i;
               bvirt = _j - s1;
               _0 = s1 - (_j - bvirt) + (_i - bvirt);
               _i = _0 + t1;
               bvirt = _i - _0;
-              u$2[1] = _0 - (_i - bvirt) + (t1 - bvirt);
+              u[1] = _0 - (_i - bvirt) + (t1 - bvirt);
               u3 = _j + _i;
               bvirt = u3 - _j;
-              u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              u$2[3] = u3;
+              u[2] = _j - (u3 - bvirt) + (_i - bvirt);
+              u[3] = u3;
               n1 = -cdy;
               n0 = -cdytail;
               s1 = adxtail * n1;
@@ -24221,7 +24283,7 @@ ${svg}
               bvirt = u3 - _j;
               v[2] = _j - (u3 - bvirt) + (_i - bvirt);
               v[3] = u3;
-              catlen = sum$1(4, u$2, 4, v, cat$1);
+              catlen = sum(4, u, 4, v, cat);
               s1 = cdxtail * adytail;
               c = splitter * cdxtail;
               ahi = c - (c - cdxtail);
@@ -24253,38 +24315,38 @@ ${svg}
               catt[3] = u3;
               cattlen = 4;
           } else {
-              cat$1[0] = 0;
+              cat[0] = 0;
               catlen = 1;
               catt[0] = 0;
               cattlen = 1;
           }
           if (bdxtail !== 0) {
-              const len = scale(catlen, cat$1, bdxtail, _16c);
-              finlen = finadd$1(finlen, sum$1(
+              const len = scale(catlen, cat, bdxtail, _16c);
+              finlen = finadd(finlen, sum(
                   scale(bxtcalen, bxtca, bdxtail, _16$1), _16$1,
-                  scale(len, _16c, 2 * bdx, _32), _32, _48), _48);
+                  scale(len, _16c, 2 * bdx, _32), _32, _48$1), _48$1);
 
               const len2 = scale(cattlen, catt, bdxtail, _8$1);
-              finlen = finadd$1(finlen, sum_three(
+              finlen = finadd(finlen, sum_three(
                   scale(len2, _8$1, 2 * bdx, _16$1), _16$1,
                   scale(len2, _8$1, bdxtail, _16b), _16b,
                   scale(len, _16c, bdxtail, _32), _32, _32b, _64), _64);
 
               if (cdytail !== 0) {
-                  finlen = finadd$1(finlen, scale(scale(4, aa, bdxtail, _8$1), _8$1, cdytail, _16$1), _16$1);
+                  finlen = finadd(finlen, scale(scale(4, aa, bdxtail, _8$1), _8$1, cdytail, _16$1), _16$1);
               }
               if (adytail !== 0) {
-                  finlen = finadd$1(finlen, scale(scale(4, cc, -bdxtail, _8$1), _8$1, adytail, _16$1), _16$1);
+                  finlen = finadd(finlen, scale(scale(4, cc, -bdxtail, _8$1), _8$1, adytail, _16$1), _16$1);
               }
           }
           if (bdytail !== 0) {
-              const len = scale(catlen, cat$1, bdytail, _16c);
-              finlen = finadd$1(finlen, sum$1(
+              const len = scale(catlen, cat, bdytail, _16c);
+              finlen = finadd(finlen, sum(
                   scale(bytcalen, bytca, bdytail, _16$1), _16$1,
-                  scale(len, _16c, 2 * bdy, _32), _32, _48), _48);
+                  scale(len, _16c, 2 * bdy, _32), _32, _48$1), _48$1);
 
               const len2 = scale(cattlen, catt, bdytail, _8$1);
-              finlen = finadd$1(finlen, sum_three(
+              finlen = finadd(finlen, sum_three(
                   scale(len2, _8$1, 2 * bdy, _16$1), _16$1,
                   scale(len2, _8$1, bdytail, _16b), _16b,
                   scale(len, _16c, bdytail, _32), _32,  _32b, _64), _64);
@@ -24310,17 +24372,17 @@ ${svg}
               t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
               _i = s0 + t0;
               bvirt = _i - s0;
-              u$2[0] = s0 - (_i - bvirt) + (t0 - bvirt);
+              u[0] = s0 - (_i - bvirt) + (t0 - bvirt);
               _j = s1 + _i;
               bvirt = _j - s1;
               _0 = s1 - (_j - bvirt) + (_i - bvirt);
               _i = _0 + t1;
               bvirt = _i - _0;
-              u$2[1] = _0 - (_i - bvirt) + (t1 - bvirt);
+              u[1] = _0 - (_i - bvirt) + (t1 - bvirt);
               u3 = _j + _i;
               bvirt = u3 - _j;
-              u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              u$2[3] = u3;
+              u[2] = _j - (u3 - bvirt) + (_i - bvirt);
+              u[3] = u3;
               n1 = -ady;
               n0 = -adytail;
               s1 = bdxtail * n1;
@@ -24352,7 +24414,7 @@ ${svg}
               bvirt = u3 - _j;
               v[2] = _j - (u3 - bvirt) + (_i - bvirt);
               v[3] = u3;
-              abtlen = sum$1(4, u$2, 4, v, abt$1);
+              abtlen = sum(4, u, 4, v, abt);
               s1 = adxtail * bdytail;
               c = splitter * adxtail;
               ahi = c - (c - adxtail);
@@ -24384,38 +24446,38 @@ ${svg}
               abtt[3] = u3;
               abttlen = 4;
           } else {
-              abt$1[0] = 0;
+              abt[0] = 0;
               abtlen = 1;
               abtt[0] = 0;
               abttlen = 1;
           }
           if (cdxtail !== 0) {
-              const len = scale(abtlen, abt$1, cdxtail, _16c);
-              finlen = finadd$1(finlen, sum$1(
+              const len = scale(abtlen, abt, cdxtail, _16c);
+              finlen = finadd(finlen, sum(
                   scale(cxtablen, cxtab, cdxtail, _16$1), _16$1,
-                  scale(len, _16c, 2 * cdx, _32), _32, _48), _48);
+                  scale(len, _16c, 2 * cdx, _32), _32, _48$1), _48$1);
 
               const len2 = scale(abttlen, abtt, cdxtail, _8$1);
-              finlen = finadd$1(finlen, sum_three(
+              finlen = finadd(finlen, sum_three(
                   scale(len2, _8$1, 2 * cdx, _16$1), _16$1,
                   scale(len2, _8$1, cdxtail, _16b), _16b,
                   scale(len, _16c, cdxtail, _32), _32, _32b, _64), _64);
 
               if (adytail !== 0) {
-                  finlen = finadd$1(finlen, scale(scale(4, bb, cdxtail, _8$1), _8$1, adytail, _16$1), _16$1);
+                  finlen = finadd(finlen, scale(scale(4, bb, cdxtail, _8$1), _8$1, adytail, _16$1), _16$1);
               }
               if (bdytail !== 0) {
-                  finlen = finadd$1(finlen, scale(scale(4, aa, -cdxtail, _8$1), _8$1, bdytail, _16$1), _16$1);
+                  finlen = finadd(finlen, scale(scale(4, aa, -cdxtail, _8$1), _8$1, bdytail, _16$1), _16$1);
               }
           }
           if (cdytail !== 0) {
-              const len = scale(abtlen, abt$1, cdytail, _16c);
-              finlen = finadd$1(finlen, sum$1(
+              const len = scale(abtlen, abt, cdytail, _16c);
+              finlen = finadd(finlen, sum(
                   scale(cytablen, cytab, cdytail, _16$1), _16$1,
-                  scale(len, _16c, 2 * cdy, _32), _32, _48), _48);
+                  scale(len, _16c, 2 * cdy, _32), _32, _48$1), _48$1);
 
               const len2 = scale(abttlen, abtt, cdytail, _8$1);
-              finlen = finadd$1(finlen, sum_three(
+              finlen = finadd(finlen, sum_three(
                   scale(len2, _8$1, 2 * cdy, _16$1), _16$1,
                   scale(len2, _8$1, cdytail, _16b), _16b,
                   scale(len, _16c, cdytail, _32), _32, _32b, _64), _64);
@@ -24485,8 +24547,8 @@ ${svg}
   const isperrboundB = (5 + 72 * epsilon) * epsilon;
   const isperrboundC = (71 + 1408 * epsilon) * epsilon * epsilon;
 
-  const ab$2 = vec(4);
-  const bc$2 = vec(4);
+  const ab = vec(4);
+  const bc = vec(4);
   const cd = vec(4);
   const de = vec(4);
   const ea = vec(4);
@@ -24517,12 +24579,12 @@ ${svg}
   const cdedet = vec(3456);
   const deter = vec(5760);
 
-  const _8$2 = vec(8);
-  const _8b$1 = vec(8);
+  const _8 = vec(8);
+  const _8b = vec(8);
   const _8c = vec(8);
-  const _16$2 = vec(16);
+  const _16 = vec(16);
   const _24 = vec(24);
-  const _48$1 = vec(48);
+  const _48 = vec(48);
   const _48b = vec(48);
   const _96 = vec(96);
   const _192 = vec(192);
@@ -24533,15 +24595,15 @@ ${svg}
 
   function sum_three_scale(a, b, c, az, bz, cz, out) {
       return sum_three(
-          scale(4, a, az, _8$2), _8$2,
-          scale(4, b, bz, _8b$1), _8b$1,
-          scale(4, c, cz, _8c), _8c, _16$2, out);
+          scale(4, a, az, _8), _8,
+          scale(4, b, bz, _8b), _8b,
+          scale(4, c, cz, _8c), _8c, _16, out);
   }
 
   function liftexact(alen, a, blen, b, clen, c, dlen, d, x, y, z, out) {
-      const len = sum$1(
-          sum$1(alen, a, blen, b, _48$1), _48$1,
-          negate(sum$1(clen, c, dlen, d, _48b), _48b), _48b, _96);
+      const len = sum(
+          sum(alen, a, blen, b, _48), _48,
+          negate(sum(clen, c, dlen, d, _48b), _48b), _48b, _96);
 
       return sum_three(
           scale(scale(len, _96, x, _192), _192, x, _384x), _384x,
@@ -24570,17 +24632,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      ab$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      ab[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      ab$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      ab[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      ab$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ab$2[3] = u3;
+      ab[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      ab[3] = u3;
       s1 = bx * cy;
       c = splitter * bx;
       ahi = c - (c - bx);
@@ -24599,17 +24661,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      bc$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      bc[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      bc$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      bc[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      bc$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      bc$2[3] = u3;
+      bc[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      bc[3] = u3;
       s1 = cx * dy;
       c = splitter * cx;
       ahi = c - (c - cx);
@@ -24843,13 +24905,13 @@ ${svg}
       eb[2] = _j - (u3 - bvirt) + (_i - bvirt);
       eb[3] = u3;
 
-      const abclen = sum_three_scale(ab$2, bc$2, ac, cz, az, -bz, abc);
-      const bcdlen = sum_three_scale(bc$2, cd, bd, dz, bz, -cz, bcd);
+      const abclen = sum_three_scale(ab, bc, ac, cz, az, -bz, abc);
+      const bcdlen = sum_three_scale(bc, cd, bd, dz, bz, -cz, bcd);
       const cdelen = sum_three_scale(cd, de, ce, ez, cz, -dz, cde);
       const dealen = sum_three_scale(de, ea, da, az, dz, -ez, dea);
-      const eablen = sum_three_scale(ea, ab$2, eb, bz, ez, -az, eab);
-      const abdlen = sum_three_scale(ab$2, bd, da, dz, az, bz, abd);
-      const bcelen = sum_three_scale(bc$2, ce, eb, ez, bz, cz, bce);
+      const eablen = sum_three_scale(ea, ab, eb, bz, ez, -az, eab);
+      const abdlen = sum_three_scale(ab, bd, da, dz, az, bz, abd);
+      const bcelen = sum_three_scale(bc, ce, eb, ez, bz, cz, bce);
       const cdalen = sum_three_scale(cd, da, ac, az, cz, dz, cda);
       const deblen = sum_three_scale(de, eb, bd, bz, dz, ez, deb);
       const eaclen = sum_three_scale(ea, ac, ce, cz, ez, az, eac);
@@ -24868,14 +24930,14 @@ ${svg}
   const xdet = vec(96);
   const ydet = vec(96);
   const zdet = vec(96);
-  const fin$2 = vec(1152);
+  const fin = vec(1152);
 
   function liftadapt(a, b, c, az, bz, cz, x, y, z, out) {
       const len = sum_three_scale(a, b, c, az, bz, cz, _24);
       return sum_three(
-          scale(scale(len, _24, x, _48$1), _48$1, x, xdet), xdet,
-          scale(scale(len, _24, y, _48$1), _48$1, y, ydet), ydet,
-          scale(scale(len, _24, z, _48$1), _48$1, z, zdet), zdet, _192, out);
+          scale(scale(len, _24, x, _48), _48, x, xdet), xdet,
+          scale(scale(len, _24, y, _48), _48, y, ydet), ydet,
+          scale(scale(len, _24, z, _48), _48, z, zdet), zdet, _192, out);
   }
 
   function insphereadapt(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez, permanent) {
@@ -24918,17 +24980,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      ab$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      ab[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      ab$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      ab[1] = _0 - (_i + bvirt) + (bvirt - t1);
       ab3 = _j + _i;
       bvirt = ab3 - _j;
-      ab$2[2] = _j - (ab3 - bvirt) + (_i - bvirt);
-      ab$2[3] = ab3;
+      ab[2] = _j - (ab3 - bvirt) + (_i - bvirt);
+      ab[3] = ab3;
       s1 = bex * cey;
       c = splitter * bex;
       ahi = c - (c - bex);
@@ -24947,17 +25009,17 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      bc$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      bc[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      bc$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      bc[1] = _0 - (_i + bvirt) + (bvirt - t1);
       bc3 = _j + _i;
       bvirt = bc3 - _j;
-      bc$2[2] = _j - (bc3 - bvirt) + (_i - bvirt);
-      bc$2[3] = bc3;
+      bc[2] = _j - (bc3 - bvirt) + (_i - bvirt);
+      bc[3] = bc3;
       s1 = cex * dey;
       c = splitter * cex;
       ahi = c - (c - cex);
@@ -25075,15 +25137,15 @@ ${svg}
       bd[2] = _j - (bd3 - bvirt) + (_i - bvirt);
       bd[3] = bd3;
 
-      const finlen = sum$1(
-          sum$1(
-              negate(liftadapt(bc$2, cd, bd, dez, bez, -cez, aex, aey, aez, adet), adet), adet,
+      const finlen = sum(
+          sum(
+              negate(liftadapt(bc, cd, bd, dez, bez, -cez, aex, aey, aez, adet), adet), adet,
               liftadapt(cd, da, ac, aez, cez, dez, bex, bey, bez, bdet), bdet, abdet), abdet,
-          sum$1(
-              negate(liftadapt(da, ab$2, bd, bez, dez, aez, cex, cey, cez, cdet), cdet), cdet,
-              liftadapt(ab$2, bc$2, ac, cez, aez, -bez, dex, dey, dez, ddet), ddet, cddet), cddet, fin$2);
+          sum(
+              negate(liftadapt(da, ab, bd, bez, dez, aez, cex, cey, cez, cdet), cdet), cdet,
+              liftadapt(ab, bc, ac, cez, aez, -bez, dex, dey, dez, ddet), ddet, cddet), cddet, fin);
 
-      let det = estimate(finlen, fin$2);
+      let det = estimate(finlen, fin);
       let errbound = isperrboundB * permanent;
       if (det >= errbound || -det >= errbound) {
           return det;
@@ -25368,7 +25430,7 @@ ${svg}
               for (let i = 0; i < n; i++) {
                   this._dists[i] = (coords[2 * i] - coords[0]) || (coords[2 * i + 1] - coords[1]);
               }
-              quicksort$1(this._ids, this._dists, 0, n - 1);
+              quicksort(this._ids, this._dists, 0, n - 1);
               const hull = new Uint32Array(n);
               let j = 0;
               for (let i = 0, d0 = -Infinity; i < n; i++) {
@@ -25406,7 +25468,7 @@ ${svg}
           }
 
           // sort the points by distance from the seed triangle circumcenter
-          quicksort$1(this._ids, this._dists, 0, n - 1);
+          quicksort(this._ids, this._dists, 0, n - 1);
 
           // set up the seed triangle as the starting hull
           this._hullStart = i0;
@@ -25683,7 +25745,7 @@ ${svg}
       return {x, y};
   }
 
-  function quicksort$1(ids, dists, left, right) {
+  function quicksort(ids, dists, left, right) {
       if (right - left <= 20) {
           for (let i = left + 1; i <= right; i++) {
               const temp = ids[i];
@@ -25713,11 +25775,11 @@ ${svg}
           ids[j] = temp;
 
           if (right - i + 1 >= j - left) {
-              quicksort$1(ids, dists, i, right);
-              quicksort$1(ids, dists, left, j - 1);
+              quicksort(ids, dists, i, right);
+              quicksort(ids, dists, left, j - 1);
           } else {
-              quicksort$1(ids, dists, left, j - 1);
-              quicksort$1(ids, dists, i, right);
+              quicksort(ids, dists, left, j - 1);
+              quicksort(ids, dists, i, right);
           }
       }
   }
@@ -25741,7 +25803,7 @@ ${svg}
       stop('Expected a non-negative interval parameter');
     }
     var filter = getAlphaDistanceFilter(targetDataset, opts.interval);
-    var dataset = getPolygonDataset(pointLyr, filter, opts);
+    var dataset = getPolygonDataset$2(pointLyr, filter, opts);
     var merged = mergeDatasets([targetDataset, dataset]);
     var lyr = merged.layers.pop();
     targetDataset.arcs = merged.arcs;
@@ -25815,7 +25877,7 @@ ${svg}
     return [[[x, y], [x, y+d], [x+d, y+d], [x+d, y], [x, y]]];
   }
 
-  function getPolygonDataset(lyr, filter, opts) {
+  function getPolygonDataset$2(lyr, filter, opts) {
     var dataset = getTriangleDataset(lyr, filter, opts);
     buildTopology(dataset);
     if (!opts.debug) {
@@ -26623,10 +26685,10 @@ ${svg}
   // Utility functions for GeoJSON-style lat-long [x,y] coordinates and arrays of coords
 
   var e = 1e-10;
-  var T$1 = 90 - e;
+  var T = 90 - e;
   var L = -180 + e;
-  var B$1 = -90 + e;
-  var R$1 = 180 - e;
+  var B = -90 + e;
+  var R = 180 - e;
 
   function lastEl(arr) {
     return arr[arr.length - 1];
@@ -26652,13 +26714,13 @@ ${svg}
   // remove likely rounding errors
   function snapToEdge(p) {
     if (p[0] <= L) p[0] = -180;
-    if (p[0] >= R$1) p[0] = 180;
-    if (p[1] <= B$1) p[1] = -90;
-    if (p[1] >= T$1) p[1] = 90;
+    if (p[0] >= R) p[0] = 180;
+    if (p[1] <= B) p[1] = -90;
+    if (p[1] >= T) p[1] = 90;
   }
 
   function onPole(p) {
-    return p[1] >= T$1 || p[1] <= B$1;
+    return p[1] >= T || p[1] <= B;
   }
 
   function isWholeWorld(coords) {
@@ -26680,11 +26742,11 @@ ${svg}
     // TODO: handle segments between pole and non-edge point
     // (these shoudn't exist in a properly clipped path)
     return (onPole(a) || onPole(b)) ||
-      a[0] <= L && b[0] <= L || a[0] >= R$1 && b[0] >= R$1;
+      a[0] <= L && b[0] <= L || a[0] >= R && b[0] >= R;
   }
 
   function isEdgePoint(p) {
-    return p[1] <= B$1 || p[1] >= T$1 || p[0] <= L || p[0] >= R$1;
+    return p[1] <= B || p[1] >= T || p[0] <= L || p[0] >= R;
   }
 
   // Remove segments that belong solely to cut points
@@ -27757,7 +27819,7 @@ ${svg}
     };
   }
 
-  function getSequentialClassifier(classValues, nullValue, dataValues, opts) {
+  function getSequentialClassifier$1(classValues, nullValue, dataValues, opts) {
     var numValues = classValues.length;
     var numBuckets = opts.continuous ? numValues - 1 : numValues;
 
@@ -28216,15 +28278,15 @@ ${svg}
     var errorCount = 0;
     var data = utils.range(getFeatureCount(lyr)).map(function(shpId) {
       var nabes = getNeighbors(shpId) || [];
-      return {
-        // id: shpId,
+      var d = {
         nabes: nabes,
         colorId: -1,
         nabeColors: [],
-        uncolored: nabes.length,
-        saturation: 0,
-        saturation2: 0
+        uncolored: nabes.length, // number of uncolored neighbors
+        saturation: 0, // number of unique colors of neighbors
+        common: 0 // number of repeated colors in neighbors
       };
+      return d;
     });
     var getSortedColorIds = getUpdateFunction(colors.length);
     var colorIds = getSortedColorIds();
@@ -28279,30 +28341,52 @@ ${svg}
   }
 
   function updateNeighbor(a, colorId, sorted) {
-    var i = sorted.indexOf(a); // could optimize with a binary search
+    var i = findItem(a, sorted);
     var n = sorted.length;
     var b;
     if (i == -1) {
       error('Indexing error');
     }
     a.uncolored--;
-    a.saturation2++;
     if (!a.nabeColors.includes(colorId)) {
       a.saturation++;
       a.nabeColors.push(colorId);
+    } else {
+      a.common++;
     }
-    // insertion sort with a stopping condition
+    // bubble sort!!!
     while (++i < n) {
       b = sorted[i];
-      // standard dsatur
-      if (a.saturation < b.saturation || a.saturation == b.saturation && a.uncolored > b.uncolored) break;
-      // based on 4-color tests with counties and zipcodes, this condition adds a bit of strength
-      if (a.saturation == b.saturation && a.uncolored == b.uncolored && a.saturation2 < b.saturation2) break; // 332
+      if (!betterThan(a, b)) break;
       sorted[i-1] = b;
       sorted[i] = a;
     }
   }
 
+  function findItem(a, sorted) {
+    // return sorted.indexOf(a); // bottleneck
+    // binary search in sorted array
+    var start = 0, end = sorted.length, i;
+    while (end - start > 50) {
+      i = Math.floor((start + end) / 2);
+      if (sorted[i].saturation >= a.saturation) {
+        end = i;
+      } else {
+        start = i;
+      }
+    }
+    return sorted.indexOf(a, start);
+  }
+
+  function betterThan(a, b) {
+    if (a.saturation > b.saturation) return true;
+    if (a.saturation < b.saturation) return false;
+    if (a.common > b.common) return true;
+    if (a.common < b.common) return false;
+    // based on 4-color tests with counties and zipcodes, this condition adds a bit of strength
+    if (a.uncolored < b.uncolored) return true;
+    return false;
+  }
 
   // Pick the id of a color that is not shared with a neighboring polygon
   function pickColor(d, data, colorIds) {
@@ -28473,7 +28557,7 @@ ${svg}
     } else if (opts.categories) {
       classifyByValue = getCategoricalClassifier(classValues, nullValue, opts);
     } else {
-      classifyByValue = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
+      classifyByValue = getSequentialClassifier$1(classValues, nullValue, getFieldValues(records, dataField), opts);
     }
 
     if (classifyByValue) {
@@ -29541,7 +29625,7 @@ ${svg}
       if (opts.colors.length != opts.breaks.length + 1) {
         stop("Number of colors should be one more than number of class breaks");
       }
-      colorFunction = getSequentialClassifier$1(opts.breaks, opts.colors, nodataColor, round);
+      colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
     } else if (opts.categories) {
       if (opts.colors.length != opts.categories.length) {
         stop("Number of colors should be equal to the number of categories");
@@ -29554,7 +29638,7 @@ ${svg}
     return colorFunction;
   }
 
-  function getSequentialClassifier$1(breaks, colors, nullVal, round) {
+  function getSequentialClassifier(breaks, colors, nullVal, round) {
     var classify = getDiscreteClassifier(breaks, round);
     var toColor = getDiscreteValueGetter(colors, nullVal);
     return function(val) {
@@ -29880,6 +29964,7 @@ ${svg}
     layers.forEach(requirePolygonLayer);
     var nodes = addIntersectionCuts(dataset, opts);
     return layers.map(function(lyr) {
+      if (!layerHasPaths(lyr)) return lyr;
       return dissolvePolygonLayer2(lyr, dataset, opts);
     });
   };
@@ -31121,9 +31206,51 @@ ${svg}
     }
   };
 
-  cmd.evaluateEachFeature = function(lyr, arcs, exp, opts) {
+  function expressionUsesGeoJSON(exp) {
+    return exp.includes('this.geojson');
+  }
+
+  function getFeatureEditor(lyr, dataset) {
+    var changed = false;
+    var api = {};
+    // need to copy attribute to avoid circular references if geojson is assigned
+    // to a data property.
+    var copy = copyLayer(lyr);
+    var features = exportLayerAsGeoJSON(copy, dataset, {}, true);
+
+    api.get = function(i) {
+      return features[i];
+    };
+
+    api.set = function(feat, i) {
+      changed = true;
+      if (utils.isString(feat)) {
+        feat = JSON.parse(feat);
+      }
+      features[i] = GeoJSON.toFeature(feat); // TODO: validate
+    };
+
+    api.done = function() {
+      if (!changed) return; // read-only expression
+      // TODO: validate number of features, etc.
+      var geojson = {
+        type: 'FeatureCollection',
+        features: features
+      };
+      // console.log(JSON.stringify(geojson, null, 2))
+      return importGeoJSON(geojson);
+    };
+    return api;
+  }
+
+  cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
     var n = getFeatureCount(lyr),
+        arcs = dataset.arcs,
         compiled, filter;
+
+    var exprOpts = {
+      geojson_editor: expressionUsesGeoJSON(exp) ? getFeatureEditor(lyr, dataset) : null
+    };
 
     // TODO: consider not creating a data table -- not needed if expression only references geometry
     if (n > 0 && !lyr.data) {
@@ -31134,12 +31261,17 @@ ${svg}
     }
     // 'defs' are now added to the context of all expressions
     // compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
-    compiled = compileFeatureExpression(exp, lyr, arcs);
+    compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
     // call compiled expression with id of each record
     for (var i=0; i<n; i++) {
       if (!filter || filter(i)) {
         compiled(i);
       }
+    }
+
+    var replacement = exprOpts.geojson_editor ? exprOpts.geojson_editor.done() : null;
+    if (replacement) {
+      replaceLayerContents(lyr, dataset, replacement);
     }
   };
 
@@ -33110,7 +33242,7 @@ ${svg}
     isCentered = ['tmerc', 'etmerc'].includes(str);
     proj4 = '+proj=' + str;
     if (isConic2SP || isCentered) {
-      bbox = getBBox$1(dataset);
+      bbox = getBBox(dataset);
       decimals = getBoundsPrecisionForDisplay(bbox);
       params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
       proj4 += ' ' + params;
@@ -33119,7 +33251,7 @@ ${svg}
     return proj4;
   }
 
-  function getBBox$1(dataset) {
+  function getBBox(dataset) {
     if (!isLatLngCRS(getDatasetCRS(dataset))) {
       stop('Expected unprojected data');
     }
@@ -33467,7 +33599,7 @@ ${svg}
 
     function createMeridianPart(x, ymin, ymax) {
       var coords = densifyPathByInterval([[x, ymin], [x, ymax]], precision);
-      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord$1(x)}));
+      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord(x)}));
     }
 
     function createParallel(y) {
@@ -33477,7 +33609,7 @@ ${svg}
   }
 
   // remove tiny offsets
-  function roundCoord$1(x) {
+  function roundCoord(x) {
     return +x.toFixed(3) || 0;
   }
 
@@ -33684,7 +33816,7 @@ ${svg}
 
 
 
-  function formatNumber$2(val) {
+  function formatNumber(val) {
     return val + '';
   }
 
@@ -33711,14 +33843,14 @@ ${svg}
   }
 
   function countIntegralChars(val) {
-    return utils.isNumber(val) ? (formatNumber$2(val) + '.').indexOf('.') : 0;
+    return utils.isNumber(val) ? (formatNumber(val) + '.').indexOf('.') : 0;
   }
 
   function formatTableValue(val, integralChars) {
     var str;
     if (utils.isNumber(val)) {
       str = utils.lpad("", integralChars - countIntegralChars(val), ' ') +
-        formatNumber$2(val);
+        formatNumber(val);
     } else if (utils.isString(val)) {
       str = formatString(val);
     } else if (utils.isDate(val)) {
@@ -35286,7 +35418,7 @@ ${svg}
       if (countMultiPartFeatures(pointLyr) > 0) {
         stop('This command requires single points');
       }
-      var dataset = getPolygonDataset$2(pointLyr, bbox, opts);
+      var dataset = getPolygonDataset(pointLyr, bbox, opts);
       var gridLyr = dataset.layers[0];
       datasets.push(dataset);
       setOutputLayerName(gridLyr, pointLyr, 'grid', opts);
@@ -35301,7 +35433,7 @@ ${svg}
     return outputLayers;
   };
 
-  function getPolygonDataset$2(pointLyr, gridBBox, opts) {
+  function getPolygonDataset(pointLyr, gridBBox, opts) {
     var interval = opts.interval;
     var points = getPointsInLayer(pointLyr);
     var grid = getGridData(gridBBox, interval);
@@ -35417,7 +35549,7 @@ ${svg}
     var empty = [];
     points.forEach(function(p) {
       addPointToGridIndex(p, gridIndex, grid);
-      bboxIndex.add.apply(bboxIndex, getPointBounds$1(p, radius));
+      bboxIndex.add.apply(bboxIndex, getPointBounds(p, radius));
     });
     bboxIndex.finish();
     return function(i) {
@@ -35448,7 +35580,7 @@ ${svg}
   }
 
   // TODO: support spherical coords
-  function getPointBounds$1(p, radius) {
+  function getPointBounds(p, radius) {
     return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
   }
 
@@ -37413,7 +37545,7 @@ ${svg}
     if (opts.coordinates) {
       geojson = makeShapeFromCoords(opts);
     } else if (opts.type == 'circle') {
-      geojson = makeCircle$1(opts);
+      geojson = makeCircle(opts);
     } else if (opts.type == 'rectangle' && opts.bbox) {
       geojson = getRectangleGeoJSON(opts);
     } else {
@@ -37459,7 +37591,7 @@ ${svg}
     }
   }
 
-  function makeCircle$1(opts) {
+  function makeCircle(opts) {
     if (opts.radius > 0 === false && opts.radius_angle > 0 === false) {
       stop('Missing required radius parameter.');
     }
@@ -37629,7 +37761,7 @@ ${svg}
     properties = lyr.data.getRecords();
 
     lyr.shapes.forEach(function(shp, i) {
-      var bounds = type == 'point' ? getPointBounds([shp]) : arcs.getMultiShapeBounds(shp);
+      var bounds = type == 'point' ? getPointBounds$1([shp]) : arcs.getMultiShapeBounds(shp);
       var name = bounds.hasBounds() ? classify(bounds) : '';
       var rec = properties[i] = properties[i] || {};
       rec[fieldName] = name;
@@ -37770,7 +37902,7 @@ ${svg}
 
     try { // catch errors from synchronous functions
 
-      T.start();
+      T$1.start();
       if (!catalog) catalog = new Catalog();
 
       if (name == 'rename-layers') {
@@ -37878,7 +38010,7 @@ ${svg}
         // cmd.drop(catalog, targetLayers, targetDataset, opts);
 
       } else if (name == 'each') {
-        applyCommandToEachLayer(cmd.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
+        applyCommandToEachLayer(cmd.evaluateEachFeature, targetLayers, targetDataset, opts.expression, opts);
 
       } else if (name == 'erase') {
         outputLayers = cmd.eraseLayers(targetLayers, source, targetDataset, opts);
@@ -38137,8 +38269,6 @@ ${svg}
 
       }
 
-
-
       // delete arcs if no longer needed (e.g. after -points command)
       // (after output layers have been integrated)
       if (targetDataset) {
@@ -38151,7 +38281,7 @@ ${svg}
     done(null);
 
     function done(err) {
-      verbose('-', T.stop());
+      verbose('-', T$1.stop());
       cb(err, err ? null : catalog);
     }
   }
@@ -38982,4 +39112,4 @@ ${svg}
     window.mapshaper = moduleAPI;
   }
 
-}());
+})();

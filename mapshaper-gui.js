@@ -1,8 +1,8 @@
 (function () {
 
-  var utils$1 = /*#__PURE__*/Object.freeze({
+  var utils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    get default () { return utils$1; },
+    get default () { return utils; },
     get getUniqueName () { return getUniqueName; },
     get isFunction () { return isFunction; },
     get isObject () { return isObject; },
@@ -95,15 +95,15 @@
 
   var api = window.mapshaper; // assuming mapshaper is in global scope
   var mapshaper = api,
-    utils = api.utils,
+    utils$1 = api.utils,
     cli = api.cli,
-    geom = api.geom,
+    geom$1 = api.geom,
     internal = api.internal,
-    Bounds = internal.Bounds,
-    UserError = internal.UserError,
-    message = internal.message, // stop, error and message are overridden in gui-proxy.js
-    stop = internal.stop,
-    error = internal.error;
+    Bounds$1 = internal.Bounds,
+    UserError$1 = internal.UserError,
+    message$1 = internal.message, // stop, error and message are overridden in gui-proxy.js
+    stop$1 = internal.stop,
+    error$1 = internal.error;
 
   api.enableLogging();
 
@@ -139,7 +139,7 @@
 
     html = '<table>';
     if (catalog.title) {
-      html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
+      html += utils$1.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
     }
     while (row < rows) {
       html += renderRow(items.slice(row * cols, row * cols + cols));
@@ -204,7 +204,7 @@
 
     function renderCell(item, i) {
       var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
-      return utils.format(template, i, item.title, item.subtitle || '');
+      return utils$1.format(template, i, item.title, item.subtitle || '');
     }
 
   }
@@ -317,7 +317,7 @@
     }
     parsed =  internal.parseCommands(str);
     if (!parsed.length || parsed[0].name != cmd) {
-      stop("Unable to parse command line options");
+      stop$1("Unable to parse command line options");
     }
     return parsed[0].options;
   };
@@ -386,7 +386,7 @@
       evt = new EventData(this.type);
       evt.target = this.target;
     } else if (evt.target != this.target || evt.type != this.type) {
-      error("[Handler] event target/type have changed.");
+      error$1("[Handler] event target/type have changed.");
     }
     this.callback.call(this.listener, evt);
   };
@@ -395,7 +395,7 @@
     this.type = type;
     this.target = target;
     if (data) {
-      utils.defaults(this, data);
+      utils$1.defaults(this, data);
       this.data = data;
     }
   }
@@ -624,12 +624,12 @@
       try {
         els = root.querySelectorAll(selector);
       } catch (e) {
-        error("Invalid selector:", selector);
+        error$1("Invalid selector:", selector);
       }
     } else {
-      error("This browser doesn't support CSS query selectors");
+      error$1("This browser doesn't support CSS query selectors");
     }
-    return utils.toArray(els);
+    return utils$1.toArray(els);
   };
 
   // Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
@@ -666,7 +666,7 @@
   };
 
   function El(ref) {
-    if (!ref) error("Element() needs a reference");
+    if (!ref) error$1("Element() needs a reference");
     if (ref instanceof El) {
       return ref;
     }
@@ -675,7 +675,7 @@
     }
 
     var node;
-    if (utils.isString(ref)) {
+    if (utils$1.isString(ref)) {
       if (ref[0] == '<') {
         var parent = El('div').html(ref).node();
         node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
@@ -687,13 +687,13 @@
     } else if (ref.tagName) {
       node = ref;
     }
-    if (!node) error("Unmatched element selector:", ref);
+    if (!node) error$1("Unmatched element selector:", ref);
     this.el = node;
   }
 
-  utils.inherit(El, EventDispatcher);
+  utils$1.inherit(El, EventDispatcher);
 
-  utils.extend(El.prototype, {
+  utils$1.extend(El.prototype, {
 
     clone: function() {
       var el = this.el.cloneNode(true);
@@ -702,7 +702,7 @@
         //    can ...
         el = El('div').addClass(el.className).html(el.innerHTML).node();
       }
-      el.id = utils.getUniqueName();
+      el.id = utils$1.getUniqueName();
       this.el = el;
       return this;
     },
@@ -732,11 +732,11 @@
       if (val != null) {
         El.setStyle(this.el, css, val);
       }
-      else if (utils.isString(css)) {
+      else if (utils$1.isString(css)) {
         addCSS(this.el, css);
       }
-      else if (utils.isObject(css)) {
-        utils.forEachProperty(css, function(val, key) {
+      else if (utils$1.isObject(css)) {
+        utils$1.forEachProperty(css, function(val, key) {
           El.setStyle(this.el, key, val);
         }, this);
       }
@@ -744,7 +744,7 @@
     },
 
     attr: function(obj, value) {
-      if (utils.isString(obj)) {
+      if (utils$1.isString(obj)) {
         if (arguments.length == 1) {
           return this.el.getAttribute(obj);
         }
@@ -828,7 +828,7 @@
     },
 
     text: function(str) {
-      this.html(utils.htmlEscape(str));
+      this.html(utils$1.htmlEscape(str));
       return this;
     },
 
@@ -918,7 +918,7 @@
   El.prototype.__on = El.prototype.on;
   El.prototype.on = function(type, func, ctx) {
     if (ctx) {
-      error("[El#on()] Third argument no longer supported.");
+      error$1("[El#on()] Third argument no longer supported.");
     }
     if (this.constructor == El) {
       this.el.addEventListener(type, func);
@@ -974,7 +974,7 @@
     }
 
     this.value = function(str) {
-      if (utils.isString(str)) {
+      if (utils$1.isString(str)) {
         el.node().textContent = str;
       } else {
         return el.node().textContent;
@@ -982,7 +982,7 @@
     };
   }
 
-  utils.inherit(ClickText2, EventDispatcher);
+  utils$1.inherit(ClickText2, EventDispatcher);
 
   // @ref reference to a text input element
   function ClickText(ref) {
@@ -1053,9 +1053,9 @@
         // return _parser ? _parser(valStr) : parseFloat(valStr);
         return _value;
       }
-      var val = utils.clamp(arg, _min, _max);
+      var val = utils$1.clamp(arg, _min, _max);
       if (!_validator(val)) {
-        error("ClickText#value() invalid value:", arg);
+        error$1("ClickText#value() invalid value:", arg);
       } else {
         _value = val;
       }
@@ -1064,14 +1064,14 @@
     };
   }
 
-  utils.inherit(ClickText, EventDispatcher);
+  utils$1.inherit(ClickText, EventDispatcher);
 
 
   function Checkbox(ref) {
     var _el = El(ref);
   }
 
-  utils.inherit(Checkbox, EventDispatcher);
+  utils$1.inherit(Checkbox, EventDispatcher);
 
   function SimpleButton(ref) {
     var _el = El(ref),
@@ -1100,7 +1100,7 @@
     }
   }
 
-  utils.inherit(SimpleButton, EventDispatcher);
+  utils$1.inherit(SimpleButton, EventDispatcher);
 
   // @cb function(<FileList>)
   function DropControl(el, cb) {
@@ -1307,7 +1307,7 @@
 
     function receiveFiles(files) {
       var prevSize = queuedFiles.length;
-      files = handleZipFiles(utils.toArray(files));
+      files = handleZipFiles(utils$1.toArray(files));
       addFilesToQueue(files);
       if (queuedFiles.length === 0) return;
       gui.enterMode('import');
@@ -1322,7 +1322,7 @@
     }
 
     function filesMayContainPaths(files) {
-      return utils.some(files, function(f) {
+      return utils$1.some(files, function(f) {
           var type = internal.guessInputFileType(f.name);
           return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
       });
@@ -1426,7 +1426,7 @@
           lyr = dataset.layers[0];
           lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
           if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
-            stop("Different number of records in .shp and .dbf files");
+            stop$1("Different number of records in .shp and .dbf files");
           }
           if (!lyr.geometry_type) {
             // kludge: trigger display of table cells if .shp has null geometry
@@ -1491,7 +1491,7 @@
     }
 
     function handleImportError(e, fileName) {
-      var msg = utils.isString(e) ? e : e.message;
+      var msg = utils$1.isString(e) ? e : e.message;
       if (fileName) {
         msg = "Error importing <i>" + fileName + "</i><br>" + msg;
       }
@@ -1549,7 +1549,7 @@
 
     function downloadFiles(paths) {
       var items = prepFilesForDownload(paths);
-      utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
+      utils$1.reduceAsync(items, [], downloadNextFile, function(err, files) {
         if (err) {
           gui.alert(err);
         } else if (!files.length) {
@@ -1645,7 +1645,7 @@
     var defaults = {
       space: 7
     };
-    opts = utils.extend(defaults, opts);
+    opts = utils$1.extend(defaults, opts);
 
     var _pct = 0;
     var _track,
@@ -1698,7 +1698,7 @@
     };
 
     function setHandlePos(x, fire) {
-      x = utils.clamp(x, 0, size());
+      x = utils$1.clamp(x, 0, size());
       var pct = x / size();
       if (pct != _pct) {
         _pct = pct;
@@ -1713,7 +1713,7 @@
     }
   }
 
-  utils.inherit(Slider, EventDispatcher);
+  utils$1.inherit(Slider, EventDispatcher);
 
   /*
   How changes in the simplify control should affect other components
@@ -1781,7 +1781,7 @@
     slider.on('change', function(e) {
       var pct = fromSliderPct(e.pct);
       text.value(pct);
-      pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
+      pct = utils$1.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
       onChange(pct);
     });
     slider.on('start', function(e) {
@@ -1802,7 +1802,7 @@
       else if (pct < 0.01) decimals = 3;
       else if (pct < 1) decimals = 2;
       else if (pct < 100) decimals = 1;
-      return utils.formatNumber(pct, decimals) + "%";
+      return utils$1.formatNumber(pct, decimals) + "%";
     });
 
     text.parser(function(s) {
@@ -2054,7 +2054,7 @@
 
     // Replace error function in mapshaper lib
     var error = function() {
-      stop.apply(null, utils.toArray(arguments));
+      stop.apply(null, utils$1.toArray(arguments));
     };
 
     var message = function() {
@@ -2068,11 +2068,11 @@
     // replace CLI version of writeFiles()
     internal.replaceWriteFiles(function(files, opts, done) {
       var filename;
-      if (!utils.isArray(files) || files.length === 0) {
+      if (!utils$1.isArray(files) || files.length === 0) {
         done("Nothing to export");
       } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-        var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
-        var data = utils.pluck(files, 'content');
+        var paths = internal.getOutputPaths(utils$1.pluck(files, 'filename'), opts);
+        var data = utils$1.pluck(files, 'content');
         saveFilesToServer(paths, data, function(err) {
           var msg;
           if (err) {
@@ -2091,7 +2091,7 @@
       } else if (files.length == 1) {
         saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
       } else {
-        filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+        filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
         saveZipFile(filename + ".zip", files, done);
       }
     });
@@ -2113,10 +2113,10 @@
         // try to match import filename of this dataset
         if (d.info.input_files[0] == src) return d;
         // try to match name of a layer in this dataset
-        lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
+        lyr = utils$1.find(d.layers, function(lyr) {return lyr.name == src;});
         return lyr ? internal.isolateLayer(lyr, d) : null;
       }, null);
-      if (!retn) stop("Missing data layer [" + src + "]");
+      if (!retn) stop$1("Missing data layer [" + src + "]");
       return retn;
     }
 
@@ -2125,7 +2125,7 @@
       // Return a copy with layers duplicated, so changes won't affect original layers
       // This makes an (unsafe) assumption that the dataset arcs won't be changed...
       // need to rethink this.
-      return utils.defaults({
+      return utils$1.defaults({
         layers: dataset.layers.map(internal.copyLayer)
       }, dataset);
     });
@@ -2197,7 +2197,7 @@
   }
 
   function projectPointsForDisplay(lyr, src, dest) {
-    var copy = utils.extend({}, lyr);
+    var copy = utils$1.extend({}, lyr);
     var proj = internal.getProjTransform2(src, dest);
     copy.shapes = internal.cloneShapes(lyr.shapes);
     internal.projectPointLayer(copy, proj);
@@ -2594,7 +2594,7 @@
         } else if (cmd == 'history') {
           toLog(gui.session.toCommandLineString());
         } else if (cmd == 'layers') {
-          message("Available layers:",
+          message$1("Available layers:",
             internal.getFormattedLayerList(model));
         } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
           turnOff();
@@ -2683,7 +2683,7 @@
     }
 
     function onError(err) {
-      if (utils.isString(err)) {
+      if (utils$1.isString(err)) {
         consoleStop(err);
       } else if (err.name == 'UserError') {
         // stop() has already been called, don't need to log
@@ -2698,7 +2698,7 @@
     function consoleStop() {
       var msg = GUI.formatMessageArgs(arguments);
       consoleWarning(msg);
-      throw new UserError(msg);
+      throw new UserError$1(msg);
     }
 
     function consoleWarning() {
@@ -2862,7 +2862,7 @@
         // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
         pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
         map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-        readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
+        readout.html(utils$1.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils$1.pluralSuffix(n)));
         readout.findChild('.close-btn').on('click', dismiss);
       } else {
         map.setIntersectionLayer(null);
@@ -2871,7 +2871,7 @@
     }
   }
 
-  utils.inherit(RepairControl, EventDispatcher);
+  utils$1.inherit(RepairControl, EventDispatcher);
 
   function filterLayerByIds(lyr, ids) {
     var shapes;
@@ -2879,7 +2879,7 @@
       shapes = ids.map(function(id) {
         return lyr.shapes[id];
       });
-      return utils.defaults({shapes: shapes, data: null}, lyr);
+      return utils$1.defaults({shapes: shapes, data: null}, lyr);
     }
     return lyr;
   }
@@ -2985,7 +2985,7 @@
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
   function toArray(obj) {
     var arr;
-    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
+    if (!isArrayLike(obj)) error("toArray() requires an array-like object");
     try {
       arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
     } catch(e) {
@@ -3124,7 +3124,7 @@
   // Append elements of @src array to @dest array
   function merge(dest, src) {
     if (!isArray(dest) || !isArray(src)) {
-      error$1("Usage: merge(destArray, srcArray);");
+      error("Usage: merge(destArray, srcArray);");
     }
     for (var i=0, n=src.length; i<n; i++) {
       dest.push(src[i]);
@@ -3165,7 +3165,7 @@
     else if (isArrayLike(container)) {
       return indexOf(container, item) != -1;
     }
-    error$1("Expected Array or String argument");
+    error("Expected Array or String argument");
   }
 
   function some(arr, test) {
@@ -3212,7 +3212,7 @@
   // Assumes: no other non-numeric objects in array
   //
   function sum(arr, info) {
-    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
+    if (!isArrayLike(arr)) error ("sum() expects an array, received:", arr);
     var tot = 0,
         nan = 0,
         val;
@@ -3477,7 +3477,7 @@
     var arr2 = [];
     for (var i=0; i<len; i++) {
       var idx = idxs[i];
-      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
+      if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
       arr2[i] = arr[idx];
     }
     replaceArray(arr, arr2);
@@ -3562,7 +3562,7 @@
   // Elements of @arr are reordered
   //
   function findValueByRank(arr, rank) {
-    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
+    if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
 
     rank = clamp(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
@@ -3746,7 +3746,7 @@
       var str = literals[0],
           n = arguments.length;
       if (n != formatCodes.length) {
-        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
+        error("[format()] Data does not match format string; format:", fmt, "data:", arguments);
       }
       for (var i=0; i<n; i++) {
         str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
@@ -3785,7 +3785,7 @@
   }
 
   function copyElements(src, i, dest, j, n, rev) {
-    if (src === dest && j > i) error$1 ("copy error");
+    if (src === dest && j > i) error ("copy error");
     var inc = 1,
         offs = 0;
     if (rev) {
@@ -3831,7 +3831,7 @@
       pct = Number(str);
     }
     if (!(pct >= 0 && pct <= 1)) {
-      stop$1(format("Invalid percentage: %s", str));
+      stop(format("Invalid percentage: %s", str));
     }
     return pct;
   }
@@ -3946,7 +3946,7 @@
   function createAsyncContext(cb) {
     context = createContext();
     return function() {
-      cb.apply(null, utils$1.toArray(arguments));
+      cb.apply(null, utils.toArray(arguments));
       // clear context after cb(), so output/errors can be handled in current context
       context = createContext();
     };
@@ -3959,7 +3959,7 @@
     var ctx = context;
     return function() {
       context = ctx;
-      cb.apply(null, utils$1.toArray(arguments));
+      cb.apply(null, utils.toArray(arguments));
     };
   }
 
@@ -3968,12 +3968,12 @@
 
   // These three functions can be reset by GUI using setLoggingFunctions();
   var _error = function() {
-    var msg = utils$1.toArray(arguments).join(' ');
+    var msg = utils.toArray(arguments).join(' ');
     throw new Error(msg);
   };
 
   var _stop = function() {
-    throw new UserError$1(formatLogArgs(arguments));
+    throw new UserError(formatLogArgs(arguments));
   };
 
   var _interrupt = function() {
@@ -3993,21 +3993,21 @@
   }
 
   // Handle an unexpected condition (internal error)
-  function error$1() {
-    _error.apply(null, utils$1.toArray(arguments));
+  function error() {
+    _error.apply(null, utils.toArray(arguments));
   }
 
   // Handle an error caused by invalid input or misuse of API
-  function stop$1() {
-    _stop.apply(null, utils$1.toArray(arguments));
+  function stop() {
+    _stop.apply(null, utils.toArray(arguments));
   }
 
   function interrupt() {
-    _interrupt.apply(null, utils$1.toArray(arguments));
+    _interrupt.apply(null, utils.toArray(arguments));
   }
 
   // Print a status message
-  function message$1() {
+  function message() {
     _message.apply(null, messageArgs(arguments));
   }
 
@@ -4022,14 +4022,14 @@
   // print a message to stdout
   function print() {
     STDOUT = true; // tell logArgs() to print to stdout, not stderr
-    message$1.apply(null, arguments);
+    message.apply(null, arguments);
     STDOUT = false;
   }
 
   function verbose() {
     // verbose can be set globally with the -verbose command or separately for each command
     if (getStateVar('VERBOSE') || getStateVar('verbose')) {
-      message$1.apply(null, arguments);
+      message.apply(null, arguments);
     }
   }
 
@@ -4042,8 +4042,8 @@
   function printError(err) {
     var msg;
     if (!LOGGING) return;
-    if (utils$1.isString(err)) {
-      err = new UserError$1(err);
+    if (utils.isString(err)) {
+      err = new UserError(err);
     }
     if (err.name == 'NonFatalError') {
       console.error(messageArgs([err.message]).join(' '));
@@ -4061,7 +4061,7 @@
     }
   }
 
-  function UserError$1(msg) {
+  function UserError(msg) {
     var err = new Error(msg);
     err.name = 'UserError';
     return err;
@@ -4101,7 +4101,7 @@
       var col = i % perLine;
       if (i > 0 && col === 0) memo += '\n';
       if (col < perLine - 1) { // right-pad all but rightmost column
-        name = utils$1.rpad(name, colWidth - 2, ' ');
+        name = utils.rpad(name, colWidth - 2, ' ');
       }
       return memo +  '  ' + name;
     }, '');
@@ -4109,11 +4109,11 @@
 
   // expose so GUI can use it
   function formatLogArgs(args) {
-    return utils$1.toArray(args).join(' ');
+    return utils.toArray(args).join(' ');
   }
 
   function messageArgs(args) {
-    var arr = utils$1.toArray(args);
+    var arr = utils.toArray(args);
     var cmd = getStateVar('current_command');
     if (cmd && cmd != 'help') {
       arr.unshift('[' + cmd + ']');
@@ -4122,7 +4122,7 @@
   }
 
   function logArgs(args) {
-    if (LOGGING && !getStateVar('QUIET') && utils$1.isArrayLike(args)) {
+    if (LOGGING && !getStateVar('QUIET') && utils.isArrayLike(args)) {
       (!STDOUT && console.error || console.log).call(console, formatLogArgs(args));
     }
   }
@@ -4193,14 +4193,14 @@
       }
     });
     if (throws && unmatchedIds.length) {
-      stop$1(utils$1.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
+      stop(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
     }
     return matchedLayers;
   }
 
   function getLayerMatch(pattern) {
-    var isIndex = utils$1.isInteger(Number(pattern));
-    var nameRxp = isIndex ? null : utils$1.wildcardToRegExp(pattern);
+    var isIndex = utils.isInteger(Number(pattern));
+    var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
     return function(lyr, i) {
       return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
     };
@@ -4222,7 +4222,7 @@
       if (lyr.name && o.layer.name == lyr.name) nameCount++;
       if (lyr == o.layer) id = String(i + 1);
     });
-    if (!id) error$1('Layer not found');
+    if (!id) error('Layer not found');
     return nameCount == 1 ? lyr.name : id;
   }
 
@@ -4242,7 +4242,7 @@
       });
 
       internal.writeFiles = function() {
-        error(unsupportedMsg);
+        error$1(unsupportedMsg);
       };
     } else {
       new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
@@ -4278,7 +4278,7 @@
       setTimeout(function() {
         exportMenuSelection(layers, function(err) {
           if (err) {
-            if (utils.isString(err)) {
+            if (utils$1.isString(err)) {
               gui.alert(err);
             } else {
               // stack seems to change if Error is logged directly
@@ -4325,7 +4325,7 @@
         // without changing its name elsewhere
         layer: Object.assign({}, o.layer)
       };
-      var html = utils.format(template, i + 1, target.layer.name || '[unnamed layer]');
+      var html = utils$1.format(template, i + 1, target.layer.name || '[unnamed layer]');
       // return {layer: o.layer, html: html};
       var el = El('div').html(html).addClass('layer-item');
       var box = el.findChild('input').node();
@@ -4435,9 +4435,9 @@
 
     function initFormatMenu() {
       var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
-      var formats = utils.uniq(defaults.concat(getInputFormats()));
+      var formats = utils$1.uniq(defaults.concat(getInputFormats()));
       var items = formats.map(function(fmt) {
-        return utils.format('<div><label><input type="radio" name="format" value="%s"' +
+        return utils$1.format('<div><label><input type="radio" name="format" value="%s"' +
           ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
       });
       menu.findChild('.export-formats').html(items.join('\n'));
@@ -4600,7 +4600,7 @@
         // can be used as unique identifiers for caching rendered HTML, and as
         // an id for layer menu event handlers
         if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-          lyr.menu_id = utils.getUniqueName();
+          lyr.menu_id = utils$1.getUniqueName();
         }
         uniqIds[lyr.menu_id] = true;
         if (isPinnable(lyr)) pinnableCount++;
@@ -4773,7 +4773,7 @@
         type = lyr.geometry_type + ' feature';
       }
       if (type) {
-        str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
+        str = utils$1.format('%,d %s%s', n, type, utils$1.pluralSuffix(n));
       } else {
         str = "[empty]";
       }
@@ -4784,7 +4784,7 @@
       var file = internal.getLayerSourceFile(lyr, dataset);
       var missing = [];
       var msg;
-      if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
+      if (utils$1.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
         if (!lyr.data) {
           missing.push('.dbf');
         }
@@ -4810,7 +4810,7 @@
 
 
     function rowHTML(c1, c2, cname) {
-      return utils.format('<div class="row%s"><div class="col1">%s</div>' +
+      return utils$1.format('<div class="row%s"><div class="col1">%s</div>' +
         '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
     }
   }
@@ -5031,7 +5031,7 @@
     };
   }
 
-  utils.inherit(ModeSwitcher, EventDispatcher);
+  utils$1.inherit(ModeSwitcher, EventDispatcher);
 
   function KeyboardEvents(gui) {
     var self = this;
@@ -5059,7 +5059,7 @@
     };
   }
 
-  utils.inherit(KeyboardEvents, EventDispatcher);
+  utils$1.inherit(KeyboardEvents, EventDispatcher);
 
   function InteractionMode(gui) {
 
@@ -5275,7 +5275,7 @@
   function Model(gui) {
     var self = new internal.Catalog();
     var deleteLayer = self.deleteLayer;
-    utils.extend(self, EventDispatcher.prototype);
+    utils$1.extend(self, EventDispatcher.prototype);
 
     // override Catalog method (so -drop command will work in web console)
     self.deleteLayer = function(lyr, dataset) {
@@ -5309,7 +5309,7 @@
       if (flags.select) {
         self.dispatchEvent('select', active);
       }
-      self.dispatchEvent('update', utils.extend({flags: flags}, active));
+      self.dispatchEvent('update', utils$1.extend({flags: flags}, active));
     };
 
     self.selectLayer = function(lyr, dataset) {
@@ -5344,7 +5344,7 @@
     } else if (geoType == 'polygon') {
       test = polygonTest;
     } else {
-      error("Unexpected geometry type:", geoType);
+      error$1("Unexpected geometry type:", geoType);
     }
     return test;
 
@@ -5370,7 +5370,7 @@
           cand, hitId;
       for (var i=0; i<cands.length; i++) {
         cand = cands[i];
-        if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
+        if (geom$1.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
           hits.push(cand.id);
         }
       }
@@ -5409,9 +5409,9 @@
 
     function sortByDistance(x, y, cands, arcs) {
       for (var i=0; i<cands.length; i++) {
-        cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+        cands[i].dist = geom$1.getPointToShapeDistance(x, y, cands[i].shape, arcs);
       }
-      utils.sortOn(cands, 'dist');
+      utils$1.sortOn(cands, 'dist');
     }
 
     function pointTest(x, y) {
@@ -5423,7 +5423,7 @@
           newThreshold = Infinity;
 
       internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-        var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
+        var dist = geom$1.distance2D(x, y, p[0], p[1]) * toPx;
         if (dist > hitThreshold) return;
         // got a hit
         if (dist < newThreshold) {
@@ -5437,7 +5437,7 @@
         }
       });
       // console.log(hitThreshold, bullseye);
-      return utils.uniq(hits); // multipoint features can register multiple hits
+      return utils$1.uniq(hits); // multipoint features can register multiple hits
     }
 
     function getRadiusFunction(style) {
@@ -5460,7 +5460,7 @@
             hitRadius = 0,
             hitDist;
         internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
-          var distSq = geom.distanceSq(x, y, p[0], p[1]);
+          var distSq = geom$1.distanceSq(x, y, p[0], p[1]);
           var isHit = false;
           var isOver, isNear, r, d, rpix;
           if (distSq > limit * limit) return;
@@ -5644,9 +5644,9 @@
       };
       var svgData = svgTest(e); // null or a data object
       if (svgData) { // mouse is over an SVG symbol
-        utils.extend(data, svgData);
+        utils$1.extend(data, svgData);
         // placing symbol id in front of any other hits
-        data.ids = utils.uniq([svgData.targetId].concat(data.ids));
+        data.ids = utils$1.uniq([svgData.targetId].concat(data.ids));
       }
       data.id = data.ids.length > 0 ? data.ids[0] : -1;
       return data;
@@ -5747,8 +5747,8 @@
 
     self.addSelectionIds = function(ids) {
       turnOn('selection');
-      selectionIds = utils.uniq(selectionIds.concat(ids));
-      ids = utils.uniq(storedData.ids.concat(ids));
+      selectionIds = utils$1.uniq(selectionIds.concat(ids));
+      ids = utils$1.uniq(storedData.ids.concat(ids));
       updateSelectionState({ids: ids});
     };
 
@@ -5906,7 +5906,7 @@
 
     function toggleId(id, ids) {
       if (ids.indexOf(id) > -1) {
-        return utils.difference(ids, [id]);
+        return utils$1.difference(ids, [id]);
       }
       return [id].concat(ids);
     }
@@ -5958,9 +5958,9 @@
     // d: event data (may be a pointer event object, an ordinary object or null)
     function triggerHitEvent(type, d) {
       // Merge stored hit data into the event data
-      var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+      var eventData = utils$1.extend({mode: interactionMode}, d || {}, storedData);
       if (transientIds.length) {
-        eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+        eventData.ids = utils$1.uniq(transientIds.concat(eventData.ids || []));
       }
       self.dispatchEvent(type, eventData);
     }
@@ -6094,7 +6094,7 @@
     }
   }
 
-  utils.inherit(Timer, EventDispatcher);
+  utils$1.inherit(Timer, EventDispatcher);
 
   function Tween(ease) {
     var self = this,
@@ -6116,7 +6116,7 @@
     }
   }
 
-  utils.inherit(Tween, EventDispatcher);
+  utils$1.inherit(Tween, EventDispatcher);
 
   Tween.sineInOut = function(n) {
     return 0.5 - Math.cos(n * Math.PI) / 2;
@@ -6184,7 +6184,7 @@
     update();
   }
 
-  utils.inherit(ElementPosition, EventDispatcher);
+  utils$1.inherit(ElementPosition, EventDispatcher);
 
   function MouseWheelDirection() {
     var prevTime = 0;
@@ -6282,13 +6282,13 @@
           // Decelerate towards the end of the sustain interval (for smoother zooming)
           multiplier *= Tween.quadraticOut(1 - fadeFactor);
         }
-        obj = utils.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
+        obj = utils$1.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
         self.dispatchEvent('mousewheel', obj);
       }
     }
   }
 
-  utils.inherit(MouseWheel, EventDispatcher);
+  utils$1.inherit(MouseWheel, EventDispatcher);
 
 
   function MouseArea(element, pos) {
@@ -6342,7 +6342,7 @@
     };
 
     this.mouseData = function() {
-      return utils.extend({}, _prevEvt);
+      return utils$1.extend({}, _prevEvt);
     };
 
     function onAreaDown(e) {
@@ -6401,7 +6401,7 @@
           dragX: evt.pageX - _downEvt.pageX,
           dragY: evt.pageY - _downEvt.pageY
         };
-        _self.dispatchEvent('drag', utils.extend(obj, evt));
+        _self.dispatchEvent('drag', utils$1.extend(obj, evt));
       } else {
         _self.dispatchEvent('hover', evt);
       }
@@ -6433,7 +6433,7 @@
     }
   }
 
-  utils.inherit(MouseArea, EventDispatcher);
+  utils$1.inherit(MouseArea, EventDispatcher);
 
   function initVariableClick(node, cb) {
     var downEvent = null;
@@ -6580,7 +6580,7 @@
           maxScale = 4,
           minTime = 100,
           maxTime = 800,
-          time = utils.clamp(clickTime || 200, minTime, maxTime),
+          time = utils$1.clamp(clickTime || 200, minTime, maxTime),
           k = (time - minTime) / (maxTime - minTime),
           scale = minScale + k * (maxScale - minScale);
       return 1 + scale * zoomScaleMultiplier;
@@ -6588,7 +6588,7 @@
 
     // @box Bounds with pixels from t,l corner of map area.
     function zoomToBbox(bbox) {
-      var bounds = new Bounds(bbox),
+      var bounds = new Bounds$1(bbox),
           pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
           fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
           fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
@@ -6808,7 +6808,7 @@
           rows = 0;
       // self.hide(); // clean up if panel is already open
       el.empty(); // clean up if panel is already open
-      utils.forEachProperty(rec, function(v, k) {
+      utils$1.forEachProperty(rec, function(v, k) {
         var type;
         // missing GeoJSON fields are set to undefined on import; skip these
         if (v !== undefined) {
@@ -6836,7 +6836,7 @@
         // Some individual features can have undefined values for some or all of
         // their data properties (properties are set to undefined when an input JSON file
         // has inconsistent fields, or after force-merging layers with inconsistent fields).
-        el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
+        el.html(utils$1.format('<div class="note">This %s is missing attribute data.</div>',
             table && table.getFields().length > 0 ? 'feature': 'layer'));
       }
     }
@@ -6847,7 +6847,7 @@
       var str = formatInspectorValue(val, type);
       var cell = El('tr')
           .appendTo(table)
-          .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
+          .html(utils$1.format(rowHtml, key, utils$1.htmlEscape(str)))
           .findChild('.value');
       setFieldClass(cell, val, type);
       if (editable) {
@@ -6856,7 +6856,7 @@
     }
 
     function setFieldClass(el, val, type) {
-      var isNum = type ? type == 'number' : utils.isNumber(val);
+      var isNum = type ? type == 'number' : utils$1.isNumber(val);
       var isNully = val === undefined || val === null || val !== val;
       var isEmpty = val === '';
       el.classed('num-field', isNum);
@@ -6894,7 +6894,7 @@
   function formatInspectorValue(val, type) {
     var str;
     if (type == 'date') {
-      str = utils.formatDateISO(val);
+      str = utils$1.formatDateISO(val);
     } else if (type == 'object') {
       str = val ? JSON.stringify(val) : "";
     } else {
@@ -7015,7 +7015,7 @@
   }
 
   function getBoundsIntersection(a, b) {
-    var c = new Bounds();
+    var c = new Bounds$1();
     if (a.intersects(b)) {
       c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
       Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
@@ -7093,7 +7093,7 @@
   // handle either numeric strings or numbers in fields
   function applyDelta(rec, key, delta) {
     var currVal = rec[key];
-    var isString = utils.isString(currVal);
+    var isString = utils$1.isString(currVal);
     var newVal = (+currVal + delta) || 0;
     rec[key] = isString ? String(newVal) : newVal;
   }
@@ -7508,18 +7508,18 @@
     return JSON.stringify(Object.assign({}, this));
   };
 
-  function Bounds$1() {
+  function Bounds() {
     if (arguments.length > 0) {
       this.setBounds.apply(this, arguments);
     }
   }
 
-  Bounds$1.from = function() {
-    var b = new Bounds$1();
+  Bounds.from = function() {
+    var b = new Bounds();
     return b.setBounds.apply(b, arguments);
   };
 
-  Bounds$1.prototype.toString = function() {
+  Bounds.prototype.toString = function() {
     return JSON.stringify({
       xmin: this.xmin,
       xmax: this.xmax,
@@ -7528,41 +7528,41 @@
     });
   };
 
-  Bounds$1.prototype.toArray = function() {
+  Bounds.prototype.toArray = function() {
     return this.hasBounds() ? [this.xmin, this.ymin, this.xmax, this.ymax] : [];
   };
 
-  Bounds$1.prototype.hasBounds = function() {
+  Bounds.prototype.hasBounds = function() {
     return this.xmin <= this.xmax && this.ymin <= this.ymax;
   };
 
-  Bounds$1.prototype.sameBounds =
-  Bounds$1.prototype.equals = function(bb) {
+  Bounds.prototype.sameBounds =
+  Bounds.prototype.equals = function(bb) {
     return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
       this.ymin === bb.ymin && this.ymax === bb.ymax;
   };
 
-  Bounds$1.prototype.width = function() {
+  Bounds.prototype.width = function() {
     return (this.xmax - this.xmin) || 0;
   };
 
-  Bounds$1.prototype.height = function() {
+  Bounds.prototype.height = function() {
     return (this.ymax - this.ymin) || 0;
   };
 
-  Bounds$1.prototype.area = function() {
+  Bounds.prototype.area = function() {
     return this.width() * this.height() || 0;
   };
 
-  Bounds$1.prototype.empty = function() {
+  Bounds.prototype.empty = function() {
     this.xmin = this.ymin = this.xmax = this.ymax = void 0;
     return this;
   };
 
-  Bounds$1.prototype.setBounds = function(a, b, c, d) {
+  Bounds.prototype.setBounds = function(a, b, c, d) {
     if (arguments.length == 1) {
       // assume first arg is a Bounds or array
-      if (utils$1.isArrayLike(a)) {
+      if (utils.isArrayLike(a)) {
         b = a[1];
         c = a[2];
         d = a[3];
@@ -7585,17 +7585,17 @@
   };
 
 
-  Bounds$1.prototype.centerX = function() {
+  Bounds.prototype.centerX = function() {
     var x = (this.xmin + this.xmax) * 0.5;
     return x;
   };
 
-  Bounds$1.prototype.centerY = function() {
+  Bounds.prototype.centerY = function() {
     var y = (this.ymax + this.ymin) * 0.5;
     return y;
   };
 
-  Bounds$1.prototype.containsPoint = function(x, y) {
+  Bounds.prototype.containsPoint = function(x, y) {
     if (x >= this.xmin && x <= this.xmax &&
       y <= this.ymax && y >= this.ymin) {
       return true;
@@ -7605,8 +7605,8 @@
 
   // intended to speed up slightly bubble symbol detection; could use intersects() instead
   // TODO: fix false positive where circle is just outside a corner of the box
-  Bounds$1.prototype.containsBufferedPoint =
-  Bounds$1.prototype.containsCircle = function(x, y, buf) {
+  Bounds.prototype.containsBufferedPoint =
+  Bounds.prototype.containsCircle = function(x, y, buf) {
     if ( x + buf > this.xmin && x - buf < this.xmax ) {
       if ( y - buf < this.ymax && y + buf > this.ymin ) {
         return true;
@@ -7615,7 +7615,7 @@
     return false;
   };
 
-  Bounds$1.prototype.intersects = function(bb) {
+  Bounds.prototype.intersects = function(bb) {
     if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
       bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
       return true;
@@ -7623,7 +7623,7 @@
     return false;
   };
 
-  Bounds$1.prototype.contains = function(bb) {
+  Bounds.prototype.contains = function(bb) {
     if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
       bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
       return true;
@@ -7631,12 +7631,12 @@
     return false;
   };
 
-  Bounds$1.prototype.shift = function(x, y) {
+  Bounds.prototype.shift = function(x, y) {
     this.setBounds(this.xmin + x,
       this.ymin + y, this.xmax + x, this.ymax + y);
   };
 
-  Bounds$1.prototype.padBounds = function(a, b, c, d) {
+  Bounds.prototype.padBounds = function(a, b, c, d) {
     this.xmin -= a;
     this.ymin -= b;
     this.xmax += c;
@@ -7647,7 +7647,7 @@
   // @param {number} pct Fraction of original extents
   // @param {number} pctY Optional amount to scale Y
   //
-  Bounds$1.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
+  Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
     var halfWidth = (this.xmax - this.xmin) * 0.5;
     var halfHeight = (this.ymax - this.ymin) * 0.5;
     var kx = pct - 1;
@@ -7659,16 +7659,16 @@
   };
 
   // Return a bounding box with the same extent as this one.
-  Bounds$1.prototype.cloneBounds = // alias so child classes can override clone()
-  Bounds$1.prototype.clone = function() {
-    return new Bounds$1(this.xmin, this.ymin, this.xmax, this.ymax);
+  Bounds.prototype.cloneBounds = // alias so child classes can override clone()
+  Bounds.prototype.clone = function() {
+    return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
   };
 
-  Bounds$1.prototype.clearBounds = function() {
-    this.setBounds(new Bounds$1());
+  Bounds.prototype.clearBounds = function() {
+    this.setBounds(new Bounds());
   };
 
-  Bounds$1.prototype.mergePoint = function(x, y) {
+  Bounds.prototype.mergePoint = function(x, y) {
     if (this.xmin === void 0) {
       this.setBounds(x, y, x, y);
     } else {
@@ -7683,7 +7683,7 @@
 
   // expands either x or y dimension to match @aspect (width/height ratio)
   // @focusX, @focusY (optional): expansion focus, as a fraction of width and height
-  Bounds$1.prototype.fillOut = function(aspect, focusX, focusY) {
+  Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
     if (arguments.length < 3) {
       focusX = 0.5;
       focusY = 0.5;
@@ -7706,7 +7706,7 @@
     return this;
   };
 
-  Bounds$1.prototype.update = function() {
+  Bounds.prototype.update = function() {
     var tmp;
     if (this.xmin > this.xmax) {
       tmp = this.xmin;
@@ -7720,7 +7720,7 @@
     }
   };
 
-  Bounds$1.prototype.transform = function(t) {
+  Bounds.prototype.transform = function(t) {
     this.xmin = this.xmin * t.mx + t.bx;
     this.xmax = this.xmax * t.mx + t.bx;
     this.ymin = this.ymin * t.my + t.by;
@@ -7732,7 +7732,7 @@
   // Returns a Transform object for mapping this onto Bounds @b2
   // @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
   //
-  Bounds$1.prototype.getTransform = function(b2, flipY) {
+  Bounds.prototype.getTransform = function(b2, flipY) {
     var t = new Transform();
     t.mx = b2.width() / this.width() || 1; // TODO: better handling of 0 w,h
     t.bx = b2.xmin - t.mx * this.xmin;
@@ -7746,14 +7746,14 @@
     return t;
   };
 
-  Bounds$1.prototype.mergeCircle = function(x, y, r) {
+  Bounds.prototype.mergeCircle = function(x, y, r) {
     if (r < 0) r = -r;
     this.mergeBounds([x - r, y - r, x + r, y + r]);
   };
 
-  Bounds$1.prototype.mergeBounds = function(bb) {
+  Bounds.prototype.mergeBounds = function(bb) {
     var a, b, c, d;
-    if (bb instanceof Bounds$1) {
+    if (bb instanceof Bounds) {
       a = bb.xmin;
       b = bb.ymin;
       c = bb.xmax;
@@ -7770,7 +7770,7 @@
       c = bb[2];
       d = bb[3];
     } else {
-      error$1("Bounds#mergeBounds() invalid argument:", bb);
+      error("Bounds#mergeBounds() invalid argument:", bb);
     }
 
     if (this.xmin === void 0) {
@@ -7885,8 +7885,8 @@
     return count;
   }
 
-  function getPathBounds(points) {
-    var bounds = new Bounds$1();
+  function getPathBounds$1(points) {
+    var bounds = new Bounds();
     for (var i=0, n=points.length; i<n; i++) {
       bounds.mergePoint(points[i][0], points[i][1]);
     }
@@ -7902,7 +7902,7 @@
     // @spherical (optional bool) calculate great circle length in meters
     return function(path, arcs, spherical) {
       if (spherical && arcs.isPlanar()) {
-        error$1("Expected lat-long coordinates");
+        error("Expected lat-long coordinates");
       }
       calcLen = spherical ? greatCircleDistance : distance2D;
       len = 0;
@@ -7922,7 +7922,7 @@
     getAvgPathXY: getAvgPathXY,
     getMaxPath: getMaxPath,
     countVerticesInPath: countVerticesInPath,
-    getPathBounds: getPathBounds,
+    getPathBounds: getPathBounds$1,
     get calcPathLen () { return calcPathLen; }
   });
 
@@ -8035,7 +8035,7 @@
     var flags = new Uint8Array(n);
     forEachArcId(shapes, function(id) {
       var absId = absArcId(id);
-      if (absId < n === false) error$1('index error');
+      if (absId < n === false) error('index error');
       flags[absId] |= id < 0 ? 2 : 1;
     });
     return function(arcId) {
@@ -8067,8 +8067,8 @@
     });
   }
 
-  function getPathBounds$1(shapes, arcs) {
-    var bounds = new Bounds$1();
+  function getPathBounds(shapes, arcs) {
+    var bounds = new Bounds();
     forEachArcId(shapes, function(id) {
       arcs.mergeArcBounds(id, bounds);
     });
@@ -8136,13 +8136,13 @@
       item = arr[i];
       if (item instanceof Array) {
         forEachArcId(item, cb);
-      } else if (utils$1.isInteger(item)) {
+      } else if (utils.isInteger(item)) {
         var val = cb(item);
         if (val !== void 0) {
           arr[i] = val;
         }
       } else if (item) {
-        error$1("Non-integer arc id in:", arr);
+        error("Non-integer arc id in:", arr);
       }
     }
   }
@@ -8229,7 +8229,7 @@
       ids = shape[i];
       data.push({
         ids: ids,
-        area: type == 'polygon' ? geom$1.getPlanarPathArea(ids, arcs) : 0,
+        area: type == 'polygon' ? geom.getPlanarPathArea(ids, arcs) : 0,
         bounds: arcs.getSimpleShapeBounds(ids)
       });
     }
@@ -8243,7 +8243,7 @@
     //   removed on export.
     //
     var bb1 = arcs.getBounds(),
-        bb2 = new Bounds$1(0, 0, quanta-1, quanta-1),
+        bb2 = new Bounds(0, 0, quanta-1, quanta-1),
         fw = bb1.getTransform(bb2),
         inv = fw.invert();
 
@@ -8287,7 +8287,7 @@
 
   function getSphericalShapeArea(shp, arcs) {
     if (arcs.isPlanar()) {
-      error$1("[getSphericalShapeArea()] Function requires decimal degree coordinates");
+      error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
     }
     return (shp || []).reduce(function(area, ids) {
       return area + getSphericalPathArea(ids, arcs);
@@ -8488,7 +8488,7 @@
 
   function getSphericalShapePerimeter(shp, arcs) {
     if (arcs.isPlanar()) {
-      error$1("[getSphericalShapePerimeter()] Function requires decimal degree coordinates");
+      error("[getSphericalShapePerimeter()] Function requires decimal degree coordinates");
     }
     return (shp || []).reduce(function(len, ids) {
       return len + getSphericalPathPerimeter(ids, arcs);
@@ -8547,11 +8547,11 @@
 
     if (threshold > 0) {
       snapDist = threshold;
-      message$1(utils$1.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+      message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
     }
     var snapCount = snapCoordsByInterval(arcs, snapDist);
     if (snapCount > 0) arcs.dedupCoords();
-    message$1(utils$1.format("Snapped %s point%s", snapCount, utils$1.pluralSuffix(snapCount)));
+    message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
   }
 
   // Snap together points within a small threshold
@@ -8928,7 +8928,7 @@
     segmentHit: segmentHit
   });
 
-  var geom$1 = Object.assign({}, Geom, PolygonGeom, PathGeom, SegmentGeom, PolygonCentroid);
+  var geom = Object.assign({}, Geom, PolygonGeom, PathGeom, SegmentGeom, PolygonCentroid);
 
   // Find ids of vertices with identical coordinates to x,y in an ArcCollection
   // Caveat: does not exclude vertices that are not visible at the
@@ -8975,7 +8975,7 @@
   }
 
   function findNearestVertex(x, y, shp, arcs, spherical) {
-    var calcLen = spherical ? geom$1.greatCircleDistance : geom$1.distance2D,
+    var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
         minLen = Infinity,
         minX, minY, dist, iter;
     for (var i=0; i<shp.length; i++) {
@@ -9240,7 +9240,7 @@
         var textNode;
         if (!dragging) return;
         if (e.id != activeId) {
-          error("Mismatched hit ids:", e.id, activeId);
+          error$1("Mismatched hit ids:", e.id, activeId);
         }
         applyDelta(activeRecord, 'dx', e.dx / scale);
         applyDelta(activeRecord, 'dy', e.dy / scale);
@@ -9489,15 +9489,15 @@
   }
 
   function getDefaultStyle(lyr, baseStyle) {
-    var style = utils.extend({}, baseStyle);
+    var style = utils$1.extend({}, baseStyle);
     // reduce the dot size of large point layers
     if (lyr.geometry_type == 'point' && style.dotSize > 0) {
-      style.dotSize *= getDotScale(lyr);
+      style.dotSize *= getDotScale$1(lyr);
     }
     return style;
   }
 
-  function getDotScale(lyr) {
+  function getDotScale$1(lyr) {
     var topTier = 50000;
     var n = countPoints(lyr.shapes, topTier + 2); // short-circuit point counting above top threshold
     var k = n < 200 && 4 || n < 2500 && 3 || n < 10000 && 2 || 1;
@@ -9555,7 +9555,7 @@
     var topId = o.id; // pinned id (if pinned) or hover id
     var topIdx = -1;
     var styler = function(o, i) {
-      utils.extend(o, i === topIdx ? topStyle: baseStyle);
+      utils$1.extend(o, i === topIdx ? topStyle: baseStyle);
     };
     var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
     var topStyle;
@@ -9668,7 +9668,7 @@
     if (lyr.geometry_type == 'point') {
       return fields.indexOf('r') > -1; // require 'r' field for point symbols
     }
-    return utils.difference(fields, ['opacity', 'class']).length > 0;
+    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
   }
 
 
@@ -9748,7 +9748,7 @@
     // Get params for converting geographic coords to pixel coords
     this.getTransform = function(pixScale) {
       // get transform (y-flipped);
-      var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+      var viewBounds = new Bounds$1(0, 0, _position.width(), _position.height());
       if (pixScale) {
         viewBounds.xmax *= pixScale;
         viewBounds.ymax *= pixScale;
@@ -9758,7 +9758,7 @@
 
     // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
     this.getBounds = function(k) {
-      if (!_contentBounds) return new Bounds();
+      if (!_contentBounds) return new Bounds$1();
       return calcBounds(_cx, _cy, _scale / (k || 1));
     };
 
@@ -9789,7 +9789,7 @@
 
     this.getSymbolScale = function() {
       if (!_frame) return 0;
-      var bounds = new Bounds(_frame.bbox);
+      var bounds = new Bounds$1(_frame.bbox);
       var bounds2 = bounds.clone().transform(this.getTransform());
       return bounds2.width() / _frame.width;
     };
@@ -9824,7 +9824,7 @@
     }
 
     function maxAbs() {
-      return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
+      return Math.max.apply(null, utils$1.toArray(arguments).map(Math.abs));
     }
 
     function limitScale(scale) {
@@ -9840,12 +9840,12 @@
       }
       w = bounds.width() / scale;
       h = bounds.height() / scale;
-      return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+      return new Bounds$1(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
     }
 
     // Calculate viewport bounds from frame data
     function fillOutFrameBounds(frame) {
-      var bounds = new Bounds(frame.bbox);
+      var bounds = new Bounds$1(frame.bbox);
       var kx = _position.width() / frame.width;
       var ky = _position.height() / frame.height;
       bounds.scale(kx, ky);
@@ -9857,7 +9857,7 @@
           hpix = _position.height() - 2 * margin,
           xpad, ypad, b2;
       if (wpix <= 0 || hpix <= 0) {
-        return new Bounds(0, 0, 0, 0);
+        return new Bounds$1(0, 0, 0, 0);
       }
       b = b.clone();
       b2 = b.clone();
@@ -9878,7 +9878,7 @@
     }
   }
 
-  utils.inherit(MapExtent, EventDispatcher);
+  utils$1.inherit(MapExtent, EventDispatcher);
 
   var MIN_ARC_LEN = 0.1;
   var MIN_PATH_LEN = 0.1;
@@ -9965,7 +9965,7 @@
   // Return a function for testing if a shape should be drawn in the current view
   function getShapeFilter(arcs, ext) {
     var viewBounds = ext.getBounds();
-    var bounds = new Bounds();
+    var bounds = new Bounds$1();
     if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
     return function(shape) {
       bounds.empty();
@@ -10041,7 +10041,7 @@
         key = getStyleKey(style);
         if (key in styleIndex === false) {
           styleIndex[key] = {
-            style: utils.defaults({}, style),
+            style: utils$1.defaults({}, style),
             shapes: []
           };
         }
@@ -10068,7 +10068,7 @@
 
     _self.drawSquareDots = function(shapes, style) {
       var t = getScaledTransform(_ext),
-          scaleRatio = getDotScale$1(_ext),
+          scaleRatio = getDotScale(_ext),
           size = Math.round((style.dotSize || 1) * scaleRatio),
           styler = style.styler || null,
           xmax = _canvas.width + size,
@@ -10232,7 +10232,7 @@
   }
 
 
-  function getDotScale$1(ext) {
+  function getDotScale(ext) {
     var smallSide = Math.min(ext.width(), ext.height());
     // reduce size on smaller screens
     var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
@@ -10289,7 +10289,7 @@
         by = t.by;
     var x, y, xp, yp;
     if (!vec.hasNext()) return;
-    minLen = utils.isNonNegNumber(minLen) ? minLen : 0.4;
+    minLen = utils$1.isNonNegNumber(minLen) ? minLen : 0.4;
     x = xp = vec.x * mx + bx;
     y = yp = vec.y * my + by;
     ctx.moveTo(x, y);
@@ -10478,7 +10478,7 @@
     var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
     var obj = internal.getEmptyLayerForSVG(lyr, {});
     if (!frame) {
-      stop('Missing map frame data');
+      stop$1('Missing map frame data');
     }
     obj.properties.transform = getSvgFurnitureTransform(ext);
     obj.properties.class = 'mapshaper-svg-furniture';
@@ -10506,7 +10506,7 @@
       var html = '';
       // generate a unique id so layer can be identified when symbols are repositioned
       // use it as a class name to avoid id collisions
-      var id = utils.getUniqueName();
+      var id = utils$1.getUniqueName();
       var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
       g.setAttribute('class', classNames.join(' '));
       target.svg_id = id;
@@ -10957,7 +10957,7 @@
     }
 
     if (obj.tabular) {
-      utils.extend(obj, getDisplayLayerForTable(layer.data));
+      utils$1.extend(obj, getDisplayLayerForTable(layer.data));
     }
 
     // dynamic reprojection (arcs were already reprojected above)
@@ -10980,7 +10980,7 @@
 
 
   function getDisplayBounds(lyr, arcs) {
-    var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
+    var arcBounds = arcs ? arcs.getBounds() : new Bounds$1(),
         bounds = arcBounds, // default display extent: all arcs in the dataset
         lyrBounds;
 
@@ -10998,7 +10998,7 @@
     }
 
     if (!bounds || !bounds.hasBounds()) { // empty layer
-      bounds = new Bounds();
+      bounds = new Bounds$1();
     }
     return bounds;
   }
@@ -11015,7 +11015,7 @@
     return ids;
   }
 
-  utils.inherit(MshpMap, EventDispatcher);
+  utils$1.inherit(MshpMap, EventDispatcher);
 
   function MshpMap(gui) {
     var opts = gui.options,
@@ -11105,7 +11105,7 @@
     this.setDisplayCRS = function(crs) {
       // TODO: update bounds of frame layer, if there is a frame layer
       var oldCRS = this.getDisplayCRS();
-      var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+      var newCRS = utils$1.isString(crs) ? internal.getCRS(crs) : crs;
       // TODO: handle case that old and new CRS are the same
       _dynamicCRS = newCRS;
       if (!_activeLyr) return; // stop here if no layers have been selected
@@ -11237,7 +11237,7 @@
     function updateOverlayLayer(e) {
       var style = getOverlayStyle(_activeLyr.layer, e);
       if (style) {
-        _overlayLyr = utils.defaults({
+        _overlayLyr = utils$1.defaults({
           layer: filterLayerByIds(_activeLyr.layer, style.ids),
           style: style
         }, _activeLyr);
@@ -11273,12 +11273,12 @@
       var cy = viewBounds.centerY();
       rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
       _ext.setFrame(getFrameData());
-      _ext.setBounds(new Bounds(rec.bbox));
+      _ext.setBounds(new Bounds$1(rec.bbox));
       _ext.reset();
     }
 
     function getFullBounds() {
-      var b = new Bounds();
+      var b = new Bounds$1();
       var marginPct = 0.025;
       var pad = 1e-4;
       if (isPreviewView()) {
@@ -11402,7 +11402,7 @@
             // kludge to hide ghosted layers when reference layers are present
             // TODO: consider never showing ghosted layers (which appear after
             // commands like dissolve and filter).
-            mapLayer.style = utils.defaults({
+            mapLayer.style = utils$1.defaults({
               strokeColors: [null, mapLayer.style.strokeColors[1]]
             }, mapLayer.style);
           }
@@ -11458,7 +11458,7 @@
 
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();
-    opts = utils.extend({
+    opts = utils$1.extend({
       // defaults
       homeControl: true,
       zoomControl: true,
@@ -11606,4 +11606,4 @@
     });
   };
 
-}());
+})();
