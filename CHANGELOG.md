@@ -1,3 +1,7 @@
+v0.5.74
+* Added support for importing data in the GUI by pasting JSON and delimited text onto the browser window.
+* Sped up drawing shapes in the GUI.
+
 v0.5.73
 * Added this.geojson getter/setter to -each expressions. This can be used in combination with -require to transform the geometry of individual features using an external script.
 
