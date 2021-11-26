@@ -1107,7 +1107,8 @@
     var area = El(el);
     area.on('dragleave', ondragleave)
         .on('dragover', ondragover)
-        .on('drop', ondrop);
+        .on('drop', ondrop)
+        .on('paste', onpaste);
     function ondragleave(e) {
       block(e);
       out();
@@ -1128,10 +1129,37 @@
     function out() {
       area.removeClass('dragover');
     }
+    function onpaste(e) {
+      var text, file;
+      block(e);
+      try {
+        text = e.clipboardData.getData('text/plain').trim();
+        file = text ? pastedTextToFile(text) : null;
+        if (file) {
+          cb([file]);
+        }
+      } catch(err) {
+        console.error(err);
+      }
+    }
     function block(e) {
       e.preventDefault();
       e.stopPropagation();
     }
+  }
+
+  function pastedTextToFile(str) {
+    var type = internal.guessInputContentType(str);
+    var name;
+    if (type == 'text') {
+      name = 'pasted.txt';
+    } else if (type == 'json') {
+      name = 'pasted.json';
+    } else {
+      return null;
+    }
+    var blob = new Blob([str]);
+    return new File([blob], name);
   }
 
   // @el DOM element for select button
@@ -9880,9 +9908,6 @@
 
   utils$1.inherit(MapExtent, EventDispatcher);
 
-  var MIN_ARC_LEN = 0.1;
-  var MIN_PATH_LEN = 0.1;
-
   // TODO: consider moving this upstream
   function getArcsForRendering(obj, ext) {
     var dataset = obj.source.dataset;
@@ -9942,6 +9967,7 @@
 
   // Return a function for testing if an arc should be drawn in the current view
   function getArcFilter(arcs, ext, usedFlag, arcCounts) {
+    var MIN_PATH_LEN = 0.1;
     var minPathLen = ext.getPixelSize() * MIN_PATH_LEN, // * 0.5
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
@@ -10194,7 +10220,8 @@
           startPath(ctx, style);
         }
         iter = protectIterForDrawing(arcs.getArcIter(i), _ext);
-        drawPath(iter, t, ctx, MIN_ARC_LEN);
+        // drawPath(iter, t, ctx, 0.1);
+        drawPath2(iter, t, ctx, roundToHalfPix);
       }
       endPath(ctx, style);
     };
@@ -10281,6 +10308,9 @@
     }
   }
 
+  // Draw a path, but skip vertices within a given pixel threshold from the prev. vertex
+  // This optimization introduces visible gaps between filled polygons unless the
+  // threshold is much smaller than a pixel, so switching to drawPath2.
   function drawPath(vec, t, ctx, minLen) {
     // copy to local variables because of odd performance regression in Chrome 80
     var mx = t.mx,
@@ -10289,7 +10319,6 @@
         by = t.by;
     var x, y, xp, yp;
     if (!vec.hasNext()) return;
-    minLen = utils$1.isNonNegNumber(minLen) ? minLen : 0.4;
     x = xp = vec.x * mx + bx;
     y = yp = vec.y * my + by;
     ctx.moveTo(x, y);
@@ -10304,6 +10333,39 @@
     }
   }
 
+
+  // Draw a path, optimized by snapping pixel coordinates and skipping
+  // duplicate coords.
+  function drawPath2(vec, t, ctx, round) {
+    // copy to local variables because of odd performance regression in Chrome 80
+    var mx = t.mx,
+        my = t.my,
+        bx = t.bx,
+        by = t.by;
+    var x, y, xp, yp;
+    if (!vec.hasNext()) return;
+    x = xp = round(vec.x * mx + bx);
+    y = yp = round(vec.y * my + by);
+    ctx.moveTo(x, y);
+    while (vec.hasNext()) {
+      x = round(vec.x * mx + bx);
+      y = round(vec.y * my + by);
+      if (x != xp || y != yp) {
+        ctx.lineTo(x, y);
+        xp = x;
+        yp = y;
+      }
+    }
+  }
+
+  function roundToPix(x) {
+    return x + 0.5 | 0;
+  }
+
+  function roundToHalfPix(x) {
+    return (x * 2 | 0) / 2;
+  }
+
   function getShapePencil(arcs, ext) {
     var t = getScaledTransform(ext);
     var iter = new internal.ShapeIter(arcs);
@@ -10311,7 +10373,8 @@
       for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
         iter.init(shp[i]);
         // 0.2 trades visible seams for performance
-        drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
+        // drawPath(protectIterForDrawing(iter, ext), t, ctx, 0.2);
+        drawPath2(protectIterForDrawing(iter, ext), t, ctx, roundToPix);
       }
     };
   }
