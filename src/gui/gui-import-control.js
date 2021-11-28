@@ -6,43 +6,43 @@ import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
 
 // @cb function(<FileList>)
-function DropControl(el, cb) {
+function DropControl(gui, el, cb) {
   var area = El(el);
-  area.on('dragleave', ondragleave)
-      .on('dragover', ondragover)
+  // blocking drag events enables drop event
+  area.on('dragleave', block)
+      .on('dragover', block)
       .on('drop', ondrop)
       .on('paste', onpaste);
-  function ondragleave(e) {
-    block(e);
-    out();
-  }
-  function ondragover(e) {
-    // blocking drag events enables drop event
-    block(e);
-    over();
-  }
+  area.node().addEventListener('paste', onpaste);
   function ondrop(e) {
     block(e);
-    out();
     cb(e.dataTransfer.files);
   }
-  function over() {
-    area.addClass('dragover');
-  }
-  function out() {
-    area.removeClass('dragover');
-  }
   function onpaste(e) {
-    var text, file;
+    var types = Array.from(e.clipboardData.types || []).join(',');
+    var items = Array.from(e.clipboardData.items || []);
+    var files;
     block(e);
-    try {
-      text = e.clipboardData.getData('text/plain').trim();
-      file = text ? pastedTextToFile(text) : null;
-      if (file) {
-        cb([file]);
-      }
-    } catch(err) {
-      console.error(err);
+    // Browser compatibility (tested on MacOS only):
+    // Chrome and Safari: full support
+    // FF: supports pasting JSON and CSV from the clipboard but not files.
+    //     Single files of all types are pasted as a string and an image/png
+    //     Multiple files are pasted as a string containing a list of file names
+    if (types == 'text/plain') {
+      // text from clipboard (supported by Chrome, FF, Safari)
+      // TODO: handle FF case of string containing multiple file names.
+      files = [pastedTextToFile(e.clipboardData.getData('text/plain'))];
+    } else {
+      files = items.map(function(item) {
+        return item.kind == 'file' && !item.type.includes('image') ?
+          item.getAsFile() : null;
+      });
+    }
+    files = files.filter(Boolean);
+    if (files.length) {
+      cb(files);
+    } else {
+      gui.alert('Pasted content could not be imported.');
     }
   }
   function block(e) {
@@ -96,6 +96,7 @@ export function ImportControl(gui, opts) {
   var model = gui.model;
   var importCount = 0;
   var importTotal = 0;
+  var overQuickView = false;
   var useQuickView = opts.quick_view; // may be set by mapshaper-gui
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
@@ -108,13 +109,12 @@ export function ImportControl(gui, opts) {
 
   new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
   new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
-  new DropControl('body', receiveFiles); // default drop area is entire page
-  new DropControl('#import-drop', receiveFiles);
-  new DropControl('#import-quick-drop', receiveFilesQuickView);
+  new DropControl(gui, 'body', receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
-
+  initDropArea('#import-quick-drop', true);
+  initDropArea('#import-drop');
   gui.keyboard.onMenuSubmit(El('#import-options'), onSubmit);
 
   gui.addMode('import', turnOn, turnOff);
@@ -126,6 +126,23 @@ export function ImportControl(gui, opts) {
       gui.enterMode('import');
     }
   });
+
+  function initDropArea(el, isQuick) {
+    var area = El(el)
+      .on('dragleave', onout)
+      .on('dragover', onover)
+      .on('mouseover', onover)
+      .on('mouseout', onout);
+
+    function onover() {
+      overQuickView = !!isQuick;
+      area.addClass('dragover');
+    }
+    function onout() {
+      overQuickView = false;
+      area.removeClass('dragover');
+    }
+  }
 
   function findMatchingShp(filename) {
     // use case-insensitive matching
@@ -231,13 +248,9 @@ export function ImportControl(gui, opts) {
     });
   }
 
-  function receiveFilesQuickView(files) {
-    useQuickView = true;
-    receiveFiles(files);
-  }
-
   function receiveFiles(files) {
     var prevSize = queuedFiles.length;
+    useQuickView = overQuickView;
     files = handleZipFiles(utils.toArray(files));
     addFilesToQueue(files);
     if (queuedFiles.length === 0) return;
