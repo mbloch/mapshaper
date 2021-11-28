@@ -2,7 +2,6 @@ import { getSvgSymbolTransform } from './gui-svg-symbols';
 import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTextAnchor, applyDelta } from './gui-svg-labels';
 import { error, internal } from './gui-core';
 import { EventDispatcher } from './gui-events';
-import { findNearestVertex, findVertexIds, getVertexCoords, setVertexCoords, vertexIsArcStart, vertexIsArcEnd } from '../paths/mapshaper-vertex-utils';
 
 function getDisplayCoordsById(id, layer, ext) {
   var coords = getPointCoordsById(id, layer);
@@ -162,36 +161,16 @@ export function SymbolDragging2(gui, ext, hit) {
       var target = hit.getHitTarget();
       var p = ext.translatePixelCoords(e.x, e.y);
       if (!activeVertexIds) {
-        var p2 = findNearestVertex(p[0], p[1], target.layer.shapes[e.id], target.arcs);
-        activeVertexIds = findVertexIds(p2.x, p2.y, target.arcs);
+        activeVertexIds = internal.findNearestVertices(p, target.layer.shapes[e.id], target.arcs);
       }
       if (!activeVertexIds) return; // ignore error condition
       if (gui.keyboard.shiftIsPressed()) {
-        snapEndpointCoords(p, target.arcs);
+        internal.snapPointToArcEndpoint(p, activeVertexIds, target.arcs);
       }
       activeVertexIds.forEach(function(idx) {
-        setVertexCoords(p[0], p[1], idx, target.arcs);
+        internal.setVertexCoords(p[0], p[1], idx, target.arcs);
       });
       self.dispatchEvent('location_change'); // signal map to redraw
-    }
-
-    function snapEndpointCoords(p, arcs) {
-      var p2, p3, dx, dy;
-      activeVertexIds.forEach(function(idx) {
-        if (vertexIsArcStart(idx, arcs)) {
-          p2 = getVertexCoords(idx + 1, arcs);
-        } else if (vertexIsArcEnd(idx, arcs)) {
-          p2 = getVertexCoords(idx - 1, arcs);
-        }
-      });
-      if (!p2) return;
-      dx = p2[0] - p[0];
-      dy = p2[1] - p[1];
-      if (Math.abs(dx) > Math.abs(dy)) {
-        p[1] = p2[1]; // snap y coord
-      } else {
-        p[0] = p2[0];
-      }
     }
 
     function onLocationDragEnd(e) {

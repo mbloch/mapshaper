@@ -171,6 +171,7 @@ import * as TopojsonImport from './topojson/topojson-import';
 import * as Topology from './topology/mapshaper-topology';
 import * as Units from './geom/mapshaper-units';
 import * as SvgHatch from './svg/svg-hatch';
+import * as VertexUtils from './paths/mapshaper-vertex-utils';
 
 Object.assign(internal,
   AnchorPoints,
@@ -279,5 +280,6 @@ Object.assign(internal,
   TopojsonImport,
   Topology,
   Units,
-  SvgHatch
+  SvgHatch,
+  VertexUtils
 );

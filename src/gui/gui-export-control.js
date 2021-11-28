@@ -4,7 +4,7 @@ import { sortLayersForMenuDisplay, cleanLayerName, formatLayerNameForDisplay } f
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
-import { groupLayersByDataset } from '../dataset/mapshaper-target-utils';
+// import { groupLayersByDataset } from '../dataset/mapshaper-target-utils';
 
 // Export buttons and their behavior
 export var ExportControl = function(gui) {
@@ -45,7 +45,7 @@ export var ExportControl = function(gui) {
     var targets = layersArr.reduce(function(memo, o) {
       return o.checkbox.checked ? memo.concat(o.target) : memo;
     }, []);
-    return groupLayersByDataset(targets);
+    return internal.groupLayersByDataset(targets);
   }
 
   function onExportClick() {

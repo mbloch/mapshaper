@@ -1,5 +1,31 @@
 import geom from '../geom/mapshaper-geom';
 
+export function findNearestVertices(p, shp, arcs) {
+  var p2 = findNearestVertex(p[0], p[1], shp, arcs);
+  return findVertexIds(p2.x, p2.y, arcs);
+}
+
+// p: point to snap
+// ids: ids of nearby vertices, possibly including an arc endpoint
+export function snapPointToArcEndpoint(p, ids, arcs) {
+  var p2, p3, dx, dy;
+  ids.forEach(function(idx) {
+    if (vertexIsArcStart(idx, arcs)) {
+      p2 = getVertexCoords(idx + 1, arcs);
+    } else if (vertexIsArcEnd(idx, arcs)) {
+      p2 = getVertexCoords(idx - 1, arcs);
+    }
+  });
+  if (!p2) return;
+  dx = p2[0] - p[0];
+  dy = p2[1] - p[1];
+  if (Math.abs(dx) > Math.abs(dy)) {
+    p[1] = p2[1]; // snap y coord
+  } else {
+    p[0] = p2[0];
+  }
+}
+
 // Find ids of vertices with identical coordinates to x,y in an ArcCollection
 // Caveat: does not exclude vertices that are not visible at the
 //   current level of simplification.
