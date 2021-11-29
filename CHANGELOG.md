@@ -1,3 +1,6 @@
+v0.5.75
+* Added support for importing data by copy-pasting files onto the web UI (works in Chrome and Safari but not Firefox).
+
 v0.5.74
 * Added support for importing data in the GUI by pasting JSON and delimited text onto the browser window.
 * Sped up drawing shapes in the GUI.
