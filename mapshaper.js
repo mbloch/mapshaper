@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.72";
+  var VERSION = "0.5.74";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -34176,6 +34176,32 @@ ${svg}
     return d;
   }
 
+  function findNearestVertices(p, shp, arcs) {
+    var p2 = findNearestVertex(p[0], p[1], shp, arcs);
+    return findVertexIds(p2.x, p2.y, arcs);
+  }
+
+  // p: point to snap
+  // ids: ids of nearby vertices, possibly including an arc endpoint
+  function snapPointToArcEndpoint(p, ids, arcs) {
+    var p2, p3, dx, dy;
+    ids.forEach(function(idx) {
+      if (vertexIsArcStart(idx, arcs)) {
+        p2 = getVertexCoords(idx + 1, arcs);
+      } else if (vertexIsArcEnd(idx, arcs)) {
+        p2 = getVertexCoords(idx - 1, arcs);
+      }
+    });
+    if (!p2) return;
+    dx = p2[0] - p[0];
+    dy = p2[1] - p[1];
+    if (Math.abs(dx) > Math.abs(dy)) {
+      p[1] = p2[1]; // snap y coord
+    } else {
+      p[0] = p2[0];
+    }
+  }
+
   // Find ids of vertices with identical coordinates to x,y in an ArcCollection
   // Caveat: does not exclude vertices that are not visible at the
   //   current level of simplification.
@@ -34237,6 +34263,18 @@ ${svg}
     }
     return minLen < Infinity ? {x: minX, y: minY} : null;
   }
+
+  var VertexUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    findNearestVertices: findNearestVertices,
+    snapPointToArcEndpoint: snapPointToArcEndpoint,
+    findVertexIds: findVertexIds,
+    getVertexCoords: getVertexCoords,
+    vertexIsArcEnd: vertexIsArcEnd,
+    vertexIsArcStart: vertexIsArcStart,
+    setVertexCoords: setVertexCoords,
+    findNearestVertex: findNearestVertex
+  });
 
   // Returns x,y coordinates of the point that is at the midpoint of each polyline feature
   // Uses 2d cartesian geometry
@@ -39097,7 +39135,8 @@ ${svg}
     TopojsonImport,
     Topology,
     Units,
-    SvgHatch
+    SvgHatch,
+    VertexUtils
   );
 
   // The entry point for the core mapshaper module

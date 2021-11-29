@@ -32,7 +32,7 @@ html, body {
 body {
 	overflow: hidden;
 	background-color: #fff;
-	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
+	font: 14px/1.4 'Source Sans Pro', Arial, sans-serif;
 	color: #444;
 	user-select: none;
 	-webkit-user-select: none;
