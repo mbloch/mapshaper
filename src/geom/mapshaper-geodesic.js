@@ -2,11 +2,31 @@ import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { error } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 
+// GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
+//   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
+//   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
 function getGeodesic(P) {
   if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
   var f = P.es / (1 + Math.sqrt(P.one_es));
   var GeographicLib = require('mproj').internal.GeographicLib;
   return new GeographicLib.Geodesic.Geodesic(P.a, f);
+}
+
+export function interpolatePoint2D(ax, ay, bx, by, k) {
+  var j = 1 - k;
+  return [ax * j + bx * k, ay * j + by * k];
+}
+
+export function getInterpolationFunction(P) {
+  var spherical = P && isLatLngCRS(P);
+  if (!spherical) return interpolatePoint2D;
+  var geod = getGeodesic(P);
+  return function(lng, lat, lng2, lat2, k) {
+    var r = geod.Inverse(lat, lng, lat2, lng2);
+    var dist = r.s12 * k;
+    var r2 = geod.Direct(lat, lng, r.azi1, dist);
+    return [r2.lon2, r2.lat2];
+  };
 }
 
 export function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
@@ -50,31 +70,12 @@ export function getFastGeodeticSegmentFunction(P) {
   return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
 }
 
-// Useful for determining if a segment that intersects another segment is
-// entering or leaving an enclosed buffer area
-// returns -1 if angle of p1p2 -> p3p4 is counter-clockwise (left turn)
-// returns 1 if angle is clockwise
-// return 0 if segments are collinear
-export function segmentTurn(p1, p2, p3, p4) {
-  var ax = p1[0],
-      ay = p1[1],
-      bx = p2[0],
-      by = p2[1],
-      // shift p3p4 segment to start at p2
-      dx = bx - p3[0],
-      dy = by - p3[1],
-      cx = p4[0] + dx,
-      cy = p4[1] + dy,
-      orientation = geom.orient2D(ax, ay, bx, by, cx, cy);
-    if (!orientation) return 0;
-    return orientation < 0 ? 1 : -1;
-}
 
-function bearingDegrees(a, b, c, d) {
+export function bearingDegrees(a, b, c, d) {
   return geom.bearing(a, b, c, d) * 180 / Math.PI;
 }
 
-function bearingDegrees2D(a, b, c, d) {
+export function bearingDegrees2D(a, b, c, d) {
   return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
 }
 

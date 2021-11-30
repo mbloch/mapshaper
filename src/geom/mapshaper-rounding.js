@@ -8,10 +8,14 @@ export function roundToSignificantDigits(n, d) {
 }
 
 export function roundToDigits(n, d) {
-  return +n.toFixed(d);
+  return +n.toFixed(d); // string conversion makes this slow
 }
 
-// inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
+export function roundToTenths(n) {
+  return (Math.round(n * 10)) / 10;
+}
+
+// inc: Rounding increment (e.g. 0.001 rounds to thousandths)
 export function getRoundingFunction(inc) {
   if (!utils.isNumber(inc) || inc === 0) {
     error("Rounding increment must be a non-zero number.");

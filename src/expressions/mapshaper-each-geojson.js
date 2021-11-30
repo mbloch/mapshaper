@@ -36,6 +36,7 @@ export function getFeatureEditor(lyr, dataset) {
       type: 'FeatureCollection',
       features: features
     };
+
     // console.log(JSON.stringify(geojson, null, 2))
     return importGeoJSON(geojson);
   };

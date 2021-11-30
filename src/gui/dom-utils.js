@@ -92,6 +92,7 @@ export function mergeCSS(s1, s2) {
 }
 
 export function addCSS(el, css) {
+  // console.error(css);
   el.style.cssText = mergeCSS(el.style.cssText, css);
 }
 

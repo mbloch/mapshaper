@@ -227,3 +227,23 @@ export function segmentHit(ax, ay, bx, by, cx, cy, dx, dy) {
       orient2D(cx, cy, dx, dy, ax, ay) *
       orient2D(cx, cy, dx, dy, bx, by) <= 0;
 }
+
+// Useful for determining if a segment that intersects another segment is
+// entering or leaving an enclosed buffer area
+// returns -1 if angle of p1p2 -> p3p4 is counter-clockwise (left turn)
+// returns 1 if angle is clockwise
+// return 0 if segments are collinear
+export function segmentTurn(p1, p2, p3, p4) {
+  var ax = p1[0],
+      ay = p1[1],
+      bx = p2[0],
+      by = p2[1],
+      // shift p3p4 segment to start at p2
+      dx = bx - p3[0],
+      dy = by - p3[1],
+      cx = p4[0] + dx,
+      cy = p4[1] + dy,
+      orientation = orient2D(ax, ay, bx, by, cx, cy);
+    if (!orientation) return 0;
+    return orientation < 0 ? 1 : -1;
+}

@@ -1,5 +1,5 @@
 import { testSegmentBoundsIntersection } from '../geom/mapshaper-bounds-geom';
-import { segmentTurn } from '../geom/mapshaper-geodesic';
+import { segmentTurn } from '../geom/mapshaper-segment-geom';
 import { bufferIntersection } from '../buffer/mapshaper-path-buffer';
 import { reversePath } from '../paths/mapshaper-path-utils';
 import geom from '../geom/mapshaper-geom';

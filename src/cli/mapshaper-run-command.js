@@ -68,6 +68,7 @@ import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-sort';
 import '../commands/mapshaper-snap';
 import '../commands/mapshaper-split';
+import '../commands/mapshaper-split-lines';
 import '../commands/mapshaper-svg-style';
 import '../commands/mapshaper-symbols';
 import '../commands/mapshaper-target';
@@ -382,6 +383,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'split') {
       outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
+
+    } else if (name == 'split-lines') {
+      applyCommandToEachLayer(cmd.splitLines, targetLayers, targetDataset, opts);
 
     } else if (name == 'split-on-grid') {
       outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);

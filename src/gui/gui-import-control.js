@@ -250,7 +250,7 @@ export function ImportControl(gui, opts) {
 
   function receiveFiles(files) {
     var prevSize = queuedFiles.length;
-    useQuickView = overQuickView;
+    useQuickView = useQuickView || overQuickView;
     files = handleZipFiles(utils.toArray(files));
     addFilesToQueue(files);
     if (queuedFiles.length === 0) return;

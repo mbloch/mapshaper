@@ -1395,6 +1395,23 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('split-lines')
+    // .describe('divide lines into sections')
+    .option('dash-length', {
+      type: 'distance',
+      describe: 'length of split-apart lines'
+    })
+    .option('gap-length', {
+      type: 'distance',
+      describe: 'length of gap between segments'
+    })
+    .option('planar', {
+      type: 'flag',
+      describe: 'use planar geometry'
+    })
+    .option('where', whereOpt)
+    .option('target', targetOpt);
+
   parser.command('split-on-grid')
     .describe('split features into separate layers using a grid')
     .validate(V.validateGridOpts)

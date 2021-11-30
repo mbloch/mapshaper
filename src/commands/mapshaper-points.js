@@ -12,6 +12,7 @@ import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { stop, message } from '../utils/mapshaper-logging';
 import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
+import { interpolatePoint2D } from '../geom/mapshaper-geodesic';
 
 cmd.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = getOutputLayer(srcLyr, opts);
@@ -74,11 +75,6 @@ function testIntersections(arcs) {
     findSegmentIntersections(arcs, {stripes: n});
     console.timeEnd(n + ' stripes');
   });
-}
-
-function interpolatePoint2D(ax, ay, bx, by, k) {
-  var j = 1 - k;
-  return [ax * j + bx * k, ay * j + by * k];
 }
 
 function interpolatePointsAlongArc(ids, arcs, interval) {

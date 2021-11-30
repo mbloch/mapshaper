@@ -1,9 +1,31 @@
 var api = require('../'),
+    internal = api.internal,
     assert = require('assert'),
     geom = api.geom,
-    ArcCollection = api.internal.ArcCollection;
+    ArcCollection = internal.ArcCollection;
 
 describe('mapshaper-segment-geom.js', function () {
+
+  describe('segmentTurn()', function () {
+
+    it('left turn', function () {
+      var pp = [[0, 0], [0, 1], [2, 2], [1, 2]];
+      assert.equal(geom.segmentTurn.apply(null, pp), -1);
+    })
+    it('right turn', function () {
+      var pp = [[0, 0], [0, 1], [1, 2], [2, 2]];
+      assert.equal(geom.segmentTurn.apply(null, pp), 1);
+    })
+    it('collinear', function () {
+      var pp = [[0, 0], [0, 1], [2, 2], [2, 3]];
+      assert.equal(geom.segmentTurn.apply(null, pp), 0);
+    })
+    it('collinear 2', function () {
+      var pp = [[0, 0], [0, 1], [2, 2], [2, 1]];
+      assert.equal(geom.segmentTurn.apply(null, pp), 0);
+    })
+  })
+
 
   describe('Tests based on real data', function () {
     return;
