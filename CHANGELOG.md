@@ -1,3 +1,7 @@
+v0.5.76
+* Fixed bug in mapshaper-gui -q.
+* Added undocumented -split-lines command.
+
 v0.5.75
 * Added support for importing data by copy-pasting files onto the web UI (works in Chrome and Safari but not Firefox).
 
