@@ -485,6 +485,7 @@
   }
 
   function addCSS(el, css) {
+    // console.error(css);
     el.style.cssText = mergeCSS(el.style.cssText, css);
   }
 
@@ -1254,7 +1255,7 @@
 
     function receiveFiles(files) {
       var prevSize = queuedFiles.length;
-      useQuickView = overQuickView;
+      useQuickView = useQuickView || overQuickView;
       files = handleZipFiles(utils.toArray(files));
       addFilesToQueue(files);
       if (queuedFiles.length === 0) return;

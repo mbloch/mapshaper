@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.74";
+  var VERSION = "0.5.75";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -2967,12 +2967,33 @@
         orient2D(cx, cy, dx, dy, bx, by) <= 0;
   }
 
+  // Useful for determining if a segment that intersects another segment is
+  // entering or leaving an enclosed buffer area
+  // returns -1 if angle of p1p2 -> p3p4 is counter-clockwise (left turn)
+  // returns 1 if angle is clockwise
+  // return 0 if segments are collinear
+  function segmentTurn(p1, p2, p3, p4) {
+    var ax = p1[0],
+        ay = p1[1],
+        bx = p2[0],
+        by = p2[1],
+        // shift p3p4 segment to start at p2
+        dx = bx - p3[0],
+        dy = by - p3[1],
+        cx = p4[0] + dx,
+        cy = p4[1] + dy,
+        orientation = orient2D(ax, ay, bx, by, cx, cy);
+      if (!orientation) return 0;
+      return orientation < 0 ? 1 : -1;
+  }
+
   var SegmentGeom = /*#__PURE__*/Object.freeze({
     __proto__: null,
     segmentIntersection: segmentIntersection,
     findClosestPointOnSeg: findClosestPointOnSeg,
     orient2D: orient2D,
-    segmentHit: segmentHit
+    segmentHit: segmentHit,
+    segmentTurn: segmentTurn
   });
 
   var geom = Object.assign({}, Geom, PolygonGeom, PathGeom, SegmentGeom, PolygonCentroid);
@@ -8136,10 +8157,14 @@
   }
 
   function roundToDigits(n, d) {
-    return +n.toFixed(d);
+    return +n.toFixed(d); // string conversion makes this slow
   }
 
-  // inc: Rounding incrememnt (e.g. 0.001 rounds to thousandths)
+  function roundToTenths(n) {
+    return (Math.round(n * 10)) / 10;
+  }
+
+  // inc: Rounding increment (e.g. 0.001 rounds to thousandths)
   function getRoundingFunction(inc) {
     if (!utils.isNumber(inc) || inc === 0) {
       error("Rounding increment must be a non-zero number.");
@@ -8209,6 +8234,7 @@
     __proto__: null,
     roundToSignificantDigits: roundToSignificantDigits,
     roundToDigits: roundToDigits,
+    roundToTenths: roundToTenths,
     getRoundingFunction: getRoundingFunction,
     getBoundsPrecisionForDisplay: getBoundsPrecisionForDisplay,
     getRoundedCoordString: getRoundedCoordString,
@@ -13811,7 +13837,7 @@
   var symbolRenderers = {};
 
   function getTransform(xy, scale) {
-    var str = 'translate(' + xy[0] + ' ' + xy[1] + ')';
+    var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
     if (scale && scale != 1) {
       str += ' scale(' + scale + ')';
     }
@@ -19717,6 +19743,23 @@ ${svg}
       })
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
+
+    parser.command('split-lines')
+      // .describe('divide lines into sections')
+      .option('dash-length', {
+        type: 'distance',
+        describe: 'length of split-apart lines'
+      })
+      .option('gap-length', {
+        type: 'distance',
+        describe: 'length of gap between segments'
+      })
+      .option('planar', {
+        type: 'flag',
+        describe: 'use planar geometry'
+      })
+      .option('where', whereOpt)
+      .option('target', targetOpt);
 
     parser.command('split-on-grid')
       .describe('split features into separate layers using a grid')
@@ -26263,97 +26306,6 @@ ${svg}
       geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymin, bb.xmin, bb.ymin));
   }
 
-  function getGeodesic(P) {
-    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
-    var f = P.es / (1 + Math.sqrt(P.one_es));
-    var GeographicLib = require('mproj').internal.GeographicLib;
-    return new GeographicLib.Geodesic.Geodesic(P.a, f);
-  }
-
-  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
-    var rad = bearing / 180 * Math.PI;
-    var dx = Math.sin(rad) * meterDist;
-    var dy = Math.cos(rad) * meterDist;
-    return [x + dx, y + dy];
-  }
-
-  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
-  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
-    var D2R = Math.PI / 180;
-    var cos = Math.cos(lat * D2R);
-    var cos2 = 2 * cos * cos - 1;
-    var cos3 = 2 * cos * cos2 - cos;
-    var cos4 = 2 * cos * cos3 - cos2;
-    var cos5 = 2 * cos * cos4 - cos3;
-    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
-    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
-    var bearingRad = bearing * D2R;
-    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
-    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
-    return [lng2, lat2];
-  }
-
-  function getGeodeticSegmentFunction(P) {
-    if (!isLatLngCRS(P)) {
-      return getPlanarSegmentEndpoint;
-    }
-    var g = getGeodesic(P);
-    return function(lng, lat, bearing, meterDist) {
-      var o = g.Direct(lat, lng, bearing, meterDist);
-      var p = [o.lon2, o.lat2];
-      return p;
-    };
-  }
-
-  function getFastGeodeticSegmentFunction(P) {
-    // CAREFUL: this function has higher error at very large distances and at the poles
-    // also, it wouldn't work for other planets than Earth
-    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
-  }
-
-  // Useful for determining if a segment that intersects another segment is
-  // entering or leaving an enclosed buffer area
-  // returns -1 if angle of p1p2 -> p3p4 is counter-clockwise (left turn)
-  // returns 1 if angle is clockwise
-  // return 0 if segments are collinear
-  function segmentTurn(p1, p2, p3, p4) {
-    var ax = p1[0],
-        ay = p1[1],
-        bx = p2[0],
-        by = p2[1],
-        // shift p3p4 segment to start at p2
-        dx = bx - p3[0],
-        dy = by - p3[1],
-        cx = p4[0] + dx,
-        cy = p4[1] + dy,
-        orientation = geom.orient2D(ax, ay, bx, by, cx, cy);
-      if (!orientation) return 0;
-      return orientation < 0 ? 1 : -1;
-  }
-
-  function bearingDegrees(a, b, c, d) {
-    return geom.bearing(a, b, c, d) * 180 / Math.PI;
-  }
-
-  function bearingDegrees2D(a, b, c, d) {
-    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
-  }
-
-  // return function to calculate bearing of a segment in degrees
-  function getBearingFunction(dataset) {
-    var P = getDatasetCRS(dataset);
-    return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
-  }
-
-  var Geodesic = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
-    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
-    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
-    segmentTurn: segmentTurn,
-    getBearingFunction: getBearingFunction
-  });
-
   function getPolylineBufferMaker2(arcs, geod, getBearing, opts) {
     var makeLeftBuffer = getPathBufferMaker2(arcs, geod, getBearing, opts);
     var geomType = opts.geometry_type;
@@ -26646,6 +26598,101 @@ ${svg}
       return partials;
     };
   }
+
+  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
+  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
+  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
+  function getGeodesic(P) {
+    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
+    var f = P.es / (1 + Math.sqrt(P.one_es));
+    var GeographicLib = require('mproj').internal.GeographicLib;
+    return new GeographicLib.Geodesic.Geodesic(P.a, f);
+  }
+
+  function interpolatePoint2D(ax, ay, bx, by, k) {
+    var j = 1 - k;
+    return [ax * j + bx * k, ay * j + by * k];
+  }
+
+  function getInterpolationFunction(P) {
+    var spherical = P && isLatLngCRS(P);
+    if (!spherical) return interpolatePoint2D;
+    var geod = getGeodesic(P);
+    return function(lng, lat, lng2, lat2, k) {
+      var r = geod.Inverse(lat, lng, lat2, lng2);
+      var dist = r.s12 * k;
+      var r2 = geod.Direct(lat, lng, r.azi1, dist);
+      return [r2.lon2, r2.lat2];
+    };
+  }
+
+  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
+    var rad = bearing / 180 * Math.PI;
+    var dx = Math.sin(rad) * meterDist;
+    var dy = Math.cos(rad) * meterDist;
+    return [x + dx, y + dy];
+  }
+
+  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
+  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
+    var D2R = Math.PI / 180;
+    var cos = Math.cos(lat * D2R);
+    var cos2 = 2 * cos * cos - 1;
+    var cos3 = 2 * cos * cos2 - cos;
+    var cos4 = 2 * cos * cos3 - cos2;
+    var cos5 = 2 * cos * cos4 - cos3;
+    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
+    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
+    var bearingRad = bearing * D2R;
+    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
+    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
+    return [lng2, lat2];
+  }
+
+  function getGeodeticSegmentFunction(P) {
+    if (!isLatLngCRS(P)) {
+      return getPlanarSegmentEndpoint;
+    }
+    var g = getGeodesic(P);
+    return function(lng, lat, bearing, meterDist) {
+      var o = g.Direct(lat, lng, bearing, meterDist);
+      var p = [o.lon2, o.lat2];
+      return p;
+    };
+  }
+
+  function getFastGeodeticSegmentFunction(P) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
+  }
+
+
+  function bearingDegrees(a, b, c, d) {
+    return geom.bearing(a, b, c, d) * 180 / Math.PI;
+  }
+
+  function bearingDegrees2D(a, b, c, d) {
+    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
+  }
+
+  // return function to calculate bearing of a segment in degrees
+  function getBearingFunction(dataset) {
+    var P = getDatasetCRS(dataset);
+    return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
+  }
+
+  var Geodesic = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    interpolatePoint2D: interpolatePoint2D,
+    getInterpolationFunction: getInterpolationFunction,
+    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
+    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
+    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
+    bearingDegrees: bearingDegrees,
+    bearingDegrees2D: bearingDegrees2D,
+    getBearingFunction: getBearingFunction
+  });
 
   function makePolylineBuffer(lyr, dataset, opts) {
     var geojson = makeShapeBufferGeoJSON(lyr, dataset, opts);
@@ -31237,6 +31284,7 @@ ${svg}
         type: 'FeatureCollection',
         features: features
       };
+
       // console.log(JSON.stringify(geojson, null, 2))
       return importGeoJSON(geojson);
     };
@@ -34403,11 +34451,6 @@ ${svg}
     });
   }
 
-  function interpolatePoint2D(ax, ay, bx, by, k) {
-    var j = 1 - k;
-    return [ax * j + bx * k, ay * j + by * k];
-  }
-
   function interpolatePointsAlongArc(ids, arcs, interval) {
     var iter = arcs.getShapeIter(ids);
     var distance = arcs.isPlanar() ? geom.distance2D : geom.greatCircleDistance;
@@ -37267,6 +37310,111 @@ ${svg}
     getSplitNameFunction: getSplitNameFunction
   });
 
+  cmd.splitLines = function(lyr, dataset, opts) {
+    var crs = getDatasetCRS(dataset);
+    requirePolylineLayer(lyr);
+    var splitFeature = getSplitFeatureFunction(crs, opts);
+
+    // TODO: remove duplication with mapshaper-each.js
+    var editor = getFeatureEditor(lyr, dataset);
+    var exprOpts = {
+      geojson_editor: editor,
+      context: {splitFeature}
+    };
+    var exp = `this.geojson = splitFeature(this.geojson)`;
+
+    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, exprOpts);
+    var n = getFeatureCount(lyr);
+    var filter;
+    if (opts && opts.where) {
+      filter = compileValueExpression(opts.where, lyr, dataset.arcs);
+    }
+    for (var i=0; i<n; i++) {
+      if (!filter || filter(i)) {
+        compiled(i);
+      }
+    }
+    replaceLayerContents(lyr, dataset, editor.done());
+  };
+
+  function getSplitFeatureFunction(crs, opts) {
+    var dashLen = opts.dash_length ? convertDistanceParam(opts.dash_length, crs) : 0;
+    var gapLen = opts.gap_length ? convertDistanceParam(opts.gap_length, crs) : 0;
+    if (dashLen > 0 === false) {
+      stop('Missing required segment-length parameter');
+    }
+    if (gapLen >= 0 == false) {
+      stop('Invalid gap-length option');
+    }
+    var splitLine = getSplitLineFunction(crs, dashLen, gapLen, !!opts.planar);
+    return function(feat) {
+      var geom = feat.geometry;
+      if (!geom) return feat;
+      if (geom.type == 'LineString') {
+        geom.type = 'MultiLineString';
+        geom.coordinates = [geom.coordinates];
+      }
+      if (geom.type != 'MultiLineString') {
+        error('Unexpected geometry:', geom.type);
+      }
+      geom.coordinates = geom.coordinates.reduce(function(memo, coords) {
+        try {
+          var parts = splitLine(coords);
+          memo = memo.concat(parts);
+        } catch(e) {
+          console.error(e);
+          throw e;
+        }
+        return memo;
+      }, []);
+
+      return feat;
+    };
+  }
+
+  function getSplitLineFunction(crs, dashLen, gapLen, planar) {
+    var interpolate = getInterpolationFunction(planar ? null : crs);
+    var distance =  isLatLngCRS(crs) ? greatCircleDistance : distance2D;
+    var inDash, parts2, interval;
+    function addPart(coords) {
+      if (inDash) parts2.push(coords);
+      if (gapLen > 0) {
+        inDash = !inDash;
+        interval = inDash ? dashLen : gapLen;
+      }
+    }
+    return function splitLineString(coords) {
+      var elapsedDist = 0;
+      var p = coords[0];
+      var coords2 = [p];
+      var segLen, k, prev;
+      // init this LineString
+      inDash = true;
+      parts2 = [];
+      interval = gapLen;
+      for (var i=1, n=coords.length; i<n; i++) {
+        prev = p;
+        p = coords[i];
+        segLen = distance(prev[0], prev[1], p[0], p[1]);
+        while (elapsedDist + segLen >= interval) {
+          k = (interval - elapsedDist) / segLen;
+          prev = interpolate(prev[0], prev[1], p[0], p[1], k);
+          elapsedDist = 0;
+          coords2.push(prev);
+          addPart(coords2);
+          coords2 = [prev];
+          segLen = distance(prev[0], prev[1], p[0], p[1]);
+        }
+        coords2.push(p);
+        elapsedDist += segLen;
+      }
+      if (elapsedDist > 0 && coords2.length > 1) {
+        addPart(coords2);
+      }
+      return parts2;
+    };
+  }
+
   cmd.svgStyle = function(lyr, dataset, opts) {
     var filter;
     if (!lyr.data) {
@@ -38227,6 +38375,9 @@ ${svg}
 
       } else if (name == 'split') {
         outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
+
+      } else if (name == 'split-lines') {
+        applyCommandToEachLayer(cmd.splitLines, targetLayers, targetDataset, opts);
 
       } else if (name == 'split-on-grid') {
         outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);
