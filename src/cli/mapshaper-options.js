@@ -1399,11 +1399,11 @@ export function getOptionParser() {
     // .describe('divide lines into sections')
     .option('dash-length', {
       type: 'distance',
-      describe: 'length of split-apart lines'
+      describe: 'length of split-apart lines (e.g. 200km)'
     })
     .option('gap-length', {
       type: 'distance',
-      describe: 'length of gap between segments'
+      describe: 'length of gaps between dashes (default is 0)'
     })
     .option('planar', {
       type: 'flag',

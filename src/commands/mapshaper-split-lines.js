@@ -41,7 +41,7 @@ function getSplitFeatureFunction(crs, opts) {
   var dashLen = opts.dash_length ? convertDistanceParam(opts.dash_length, crs) : 0;
   var gapLen = opts.gap_length ? convertDistanceParam(opts.gap_length, crs) : 0;
   if (dashLen > 0 === false) {
-    stop('Missing required segment-length parameter');
+    stop('Missing required dash-length parameter');
   }
   if (gapLen >= 0 == false) {
     stop('Invalid gap-length option');
