@@ -106,6 +106,7 @@ export function Console(gui) {
   function onPaste(e) {
     // paste plain text (remove any copied HTML tags)
     e.preventDefault();
+    e.stopPropagation(); // don't try to import pasted text as data (see gui-import-control.js)
     var str = (e.originalEvent || e).clipboardData.getData('text/plain');
     document.execCommand("insertHTML", false, str);
   }

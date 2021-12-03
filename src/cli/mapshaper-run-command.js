@@ -22,6 +22,7 @@ import '../commands/mapshaper-clean';
 import '../commands/mapshaper-clip-erase';
 import '../commands/mapshaper-cluster';
 import '../commands/mapshaper-colorizer';
+import '../commands/mapshaper-dashlines';
 import '../commands/mapshaper-data-fill';
 import '../commands/mapshaper-define';
 import '../commands/mapshaper-dissolve';
@@ -68,7 +69,6 @@ import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-sort';
 import '../commands/mapshaper-snap';
 import '../commands/mapshaper-split';
-import '../commands/mapshaper-split-lines';
 import '../commands/mapshaper-svg-style';
 import '../commands/mapshaper-symbols';
 import '../commands/mapshaper-target';
@@ -183,6 +183,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'colorizer') {
       outputLayers = cmd.colorizer(opts);
+
+    } else if (name == 'dashlines') {
+      applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
 
     } else if (name == 'define') {
       cmd.define(opts);
@@ -383,9 +386,6 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'split') {
       outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
-
-    } else if (name == 'split-lines') {
-      applyCommandToEachLayer(cmd.splitLines, targetLayers, targetDataset, opts);
 
     } else if (name == 'split-on-grid') {
       outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);

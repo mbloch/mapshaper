@@ -624,6 +624,28 @@ export function getOptionParser() {
         '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
         '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
+  parser.command('dashlines')
+    .describe('split lines into sections, with or without a gap')
+    .oldAlias('split-lines')
+    .option('dash-length', {
+      type: 'distance',
+      describe: 'length of split-apart lines (e.g. 200km)'
+    })
+    .option('gap-length', {
+      type: 'distance',
+      describe: 'length of gaps between dashes (default is 0)'
+    })
+    .option('scaled', {
+      type: 'flag',
+      describe: 'scale dashes and gaps to prevent partial dashes'
+    })
+    .option('planar', {
+      type: 'flag',
+      describe: 'use planar geometry'
+    })
+    .option('where', whereOpt)
+    .option('target', targetOpt);
+
   parser.command('define')
     // .describe('define expression variables')
     .option('expression', {
@@ -1394,23 +1416,6 @@ export function getOptionParser() {
     })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
-
-  parser.command('split-lines')
-    // .describe('divide lines into sections')
-    .option('dash-length', {
-      type: 'distance',
-      describe: 'length of split-apart lines (e.g. 200km)'
-    })
-    .option('gap-length', {
-      type: 'distance',
-      describe: 'length of gaps between dashes (default is 0)'
-    })
-    .option('planar', {
-      type: 'flag',
-      describe: 'use planar geometry'
-    })
-    .option('where', whereOpt)
-    .option('target', targetOpt);
 
   parser.command('split-on-grid')
     .describe('split features into separate layers using a grid')
