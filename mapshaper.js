@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.75";
+  var VERSION = "0.5.76";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -18973,6 +18973,28 @@ ${svg}
           '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
           '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
 
+    parser.command('dashlines')
+      .describe('split lines into sections, with or without a gap')
+      .oldAlias('split-lines')
+      .option('dash-length', {
+        type: 'distance',
+        describe: 'length of split-apart lines (e.g. 200km)'
+      })
+      .option('gap-length', {
+        type: 'distance',
+        describe: 'length of gaps between dashes (default is 0)'
+      })
+      .option('scaled', {
+        type: 'flag',
+        describe: 'scale dashes and gaps to prevent partial dashes'
+      })
+      .option('planar', {
+        type: 'flag',
+        describe: 'use planar geometry'
+      })
+      .option('where', whereOpt)
+      .option('target', targetOpt);
+
     parser.command('define')
       // .describe('define expression variables')
       .option('expression', {
@@ -19743,23 +19765,6 @@ ${svg}
       })
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
-
-    parser.command('split-lines')
-      // .describe('divide lines into sections')
-      .option('dash-length', {
-        type: 'distance',
-        describe: 'length of split-apart lines'
-      })
-      .option('gap-length', {
-        type: 'distance',
-        describe: 'length of gap between segments'
-      })
-      .option('planar', {
-        type: 'flag',
-        describe: 'use planar geometry'
-      })
-      .option('where', whereOpt)
-      .option('target', targetOpt);
 
     parser.command('split-on-grid')
       .describe('split features into separate layers using a grid')
@@ -29729,6 +29734,178 @@ ${svg}
     getColorizerFunction: getColorizerFunction
   });
 
+  function expressionUsesGeoJSON(exp) {
+    return exp.includes('this.geojson');
+  }
+
+  function getFeatureEditor(lyr, dataset) {
+    var changed = false;
+    var api = {};
+    // need to copy attribute to avoid circular references if geojson is assigned
+    // to a data property.
+    var copy = copyLayer(lyr);
+    var features = exportLayerAsGeoJSON(copy, dataset, {}, true);
+
+    api.get = function(i) {
+      return features[i];
+    };
+
+    api.set = function(feat, i) {
+      changed = true;
+      if (utils.isString(feat)) {
+        feat = JSON.parse(feat);
+      }
+      features[i] = GeoJSON.toFeature(feat); // TODO: validate
+    };
+
+    api.done = function() {
+      if (!changed) return; // read-only expression
+      // TODO: validate number of features, etc.
+      var geojson = {
+        type: 'FeatureCollection',
+        features: features
+      };
+
+      // console.log(JSON.stringify(geojson, null, 2))
+      return importGeoJSON(geojson);
+    };
+    return api;
+  }
+
+  cmd.dashlines = function(lyr, dataset, opts) {
+    var crs = getDatasetCRS(dataset);
+    var defs = getStateVar('defs');
+    var exp = `this.geojson = splitFeature(this.geojson)`;
+    requirePolylineLayer(lyr);
+    defs.splitFeature = getSplitFeatureFunction(crs, opts);
+    cmd.evaluateEachFeature(lyr, dataset, exp, opts);
+    delete defs.splitFeature;
+  };
+
+  function getSplitFeatureFunction(crs, opts) {
+    var dashLen = opts.dash_length ? convertDistanceParam(opts.dash_length, crs) : 0;
+    var gapLen = opts.gap_length ? convertDistanceParam(opts.gap_length, crs) : 0;
+    if (dashLen > 0 === false) {
+      stop('Missing required dash-length parameter');
+    }
+    if (gapLen >= 0 == false) {
+      stop('Invalid gap-length option');
+    }
+    var splitLine = getSplitLineFunction(crs, dashLen, gapLen, opts);
+    return function(feat) {
+      var geom = feat.geometry;
+      if (!geom) return feat;
+      if (geom.type == 'LineString') {
+        geom.type = 'MultiLineString';
+        geom.coordinates = [geom.coordinates];
+      }
+      if (geom.type != 'MultiLineString') {
+        error('Unexpected geometry:', geom.type);
+      }
+      geom.coordinates = geom.coordinates.reduce(function(memo, coords) {
+        try {
+          var parts = splitLine(coords);
+          memo = memo.concat(parts);
+        } catch(e) {
+          console.error(e);
+          throw e;
+        }
+        return memo;
+      }, []);
+
+      return feat;
+    };
+  }
+
+  function getSplitLineFunction(crs, dashLen, gapLen, opts) {
+    var planar = !!opts.planar;
+    var interpolate = getInterpolationFunction(planar ? null : crs);
+    var distance =  isLatLngCRS(crs) ? greatCircleDistance : distance2D;
+    var inDash, parts2, interval, scale;
+    function addPart(coords) {
+      if (inDash) parts2.push(coords);
+      if (gapLen > 0) {
+        inDash = !inDash;
+        interval = scale * (inDash ? dashLen : gapLen);
+      }
+    }
+
+    return function splitLineString(coords) {
+      var elapsedDist = 0;
+      var p = coords[0];
+      var coords2 = [p];
+      var segLen, pct, prev;
+      if (opts.scaled) {
+        scale = scaleDashes(dashLen, gapLen, getLineLength(coords, distance));
+      } else {
+        scale = 1;
+      }
+      // init this LineString
+      inDash = gapLen > 0 ? false : true;
+      interval = scale * (inDash ? dashLen : gapLen);
+      if (!inDash) {
+        // start gapped lines with a half-gap
+        // (a half-gap or a half-dash is probably better for rings and intersecting lines)
+        interval *= 0.5;
+      }
+      parts2 = [];
+      for (var i=1, n=coords.length; i<n; i++) {
+        prev = p;
+        p = coords[i];
+        segLen = distance(prev[0], prev[1], p[0], p[1]);
+        if (segLen <= 0) continue;
+        while (elapsedDist + segLen >= interval) {
+          // this segment contains a break either within it or at the far endpoint
+          pct = (interval - elapsedDist) / segLen;
+          if (pct > 0.999 && i == n - 1) {
+            // snap to endpoint (so fp rounding errors don't result in a tiny
+            // last segment)
+            pct = 1;
+          }
+          if (pct < 1) {
+            prev = interpolate(prev[0], prev[1], p[0], p[1], pct);
+          } else {
+            prev = p;
+          }
+          coords2.push(prev);
+          addPart(coords2);
+          // start a new part
+          coords2 = pct < 1 ? [prev] : [];
+          elapsedDist = 0;
+          segLen = (1 - pct) * segLen;
+        }
+        coords2.push(p);
+        elapsedDist += segLen;
+      }
+      if (elapsedDist > 0 && coords2.length > 1) {
+        addPart(coords2);
+      }
+      return parts2;
+    };
+  }
+
+  function getLineLength(coords, distance) {
+    var len = 0;
+    for (var i=1, n=coords.length; i<n; i++) {
+      len += distance(coords[i-1][0], coords[i-1][1], coords[i][0], coords[i][1]);
+    }
+    return len;
+  }
+
+  function scaleDashes(dash, gap, len) {
+    var dash2, gap2;
+    var n = len / (dash + gap); // number of dashes
+    var n1 = Math.floor(n);
+    var n2 = Math.ceil(n);
+    var k1 = len / (n1 * (dash + gap)); // scaled-up dashes, >1
+    var k2 = len / (n2 * (dash + gap)); // scaled-down dashes <1
+    var k = k2;
+    if (k1 < 1/k2 && n1 > 0) {
+      k = k1; // pick the smaller of the two scales
+    }
+    return k;
+  }
+
   // This function creates a continuous mosaic of data values in a
   // given field by assigning data from adjacent polygon features to polygons
   // that contain null values.
@@ -31253,44 +31430,6 @@ ${svg}
     }
   };
 
-  function expressionUsesGeoJSON(exp) {
-    return exp.includes('this.geojson');
-  }
-
-  function getFeatureEditor(lyr, dataset) {
-    var changed = false;
-    var api = {};
-    // need to copy attribute to avoid circular references if geojson is assigned
-    // to a data property.
-    var copy = copyLayer(lyr);
-    var features = exportLayerAsGeoJSON(copy, dataset, {}, true);
-
-    api.get = function(i) {
-      return features[i];
-    };
-
-    api.set = function(feat, i) {
-      changed = true;
-      if (utils.isString(feat)) {
-        feat = JSON.parse(feat);
-      }
-      features[i] = GeoJSON.toFeature(feat); // TODO: validate
-    };
-
-    api.done = function() {
-      if (!changed) return; // read-only expression
-      // TODO: validate number of features, etc.
-      var geojson = {
-        type: 'FeatureCollection',
-        features: features
-      };
-
-      // console.log(JSON.stringify(geojson, null, 2))
-      return importGeoJSON(geojson);
-    };
-    return api;
-  }
-
   cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
     var n = getFeatureCount(lyr),
         arcs = dataset.arcs,
@@ -31895,7 +32034,6 @@ ${svg}
     prepJoinLayers(targetLyr, polygonLyr);
     return joinTableToLayer(targetLyr, polygonLyr.data, joinFunction, opts);
   }
-
 
   function prepJoinLayers(targetLyr, srcLyr) {
     if (!targetLyr.data) {
@@ -34702,6 +34840,38 @@ ${svg}
     }
   }
 
+  function pointsFromPolylinesForJoin(lyr, dataset) {
+    var shapes = lyr.shapes.map(function(shp) {
+      return polylineToMidpoints(shp, dataset.arcs);
+    });
+    return {
+      geometry_type: 'point',
+      shapes: shapes,
+      data: lyr.data // TODO copy if needed
+    };
+  }
+
+  function validateOpts(opts) {
+    if (!opts.point_method) {
+      stop('The "point-method" flag is required for polyline-polygon joins');
+    }
+  }
+
+  function joinPolylinesToPolygons(targetLyr, targetDataset, source, opts) {
+    validateOpts(opts);
+    var pointLyr = pointsFromPolylinesForJoin(source.layer, source.dataset);
+    var retn = joinPointsToPolygons(targetLyr, targetDataset.arcs, pointLyr, opts);
+    return retn;
+  }
+
+  function joinPolygonsToPolylines(targetLyr, targetDataset, source, opts) {
+    validateOpts(opts);
+    var pointLyr = pointsFromPolylinesForJoin(targetLyr, targetDataset);
+    var retn = joinPolygonsToPoints(pointLyr, source.layer, source.dataset.arcs, opts);
+    targetLyr.data = pointLyr.data;
+    return retn;
+  }
+
   class TinyQueue {
       constructor(data = [], compare = defaultCompare) {
           this.data = data;
@@ -35025,7 +35195,7 @@ ${svg}
 
   cmd.join = function(targetLyr, targetDataset, src, opts) {
     var srcType, targetType, retn;
-    if (!src || !src.layer.data || !src.dataset) {
+    if (!src || !src.dataset) {
       stop("Missing a joinable data source");
     }
     if (opts.keys) {
@@ -35033,9 +35203,18 @@ ${svg}
       if (opts.keys.length != 2) {
         stop("Expected two key fields: a target field and a source field");
       }
+      if (!src.layer.data) {
+        stop("Source layer is missing attribute data");
+      }
       retn = joinAttributesToFeatures(targetLyr, src.layer.data, opts);
     } else {
       // spatial join
+      if (!src.layer.data) {
+        // KLUDGE -- users might want to join a layer without attributes
+        // to test for intersection... the simplest way to support this is
+        // to add an empty data table to the source layer
+        initDataTable(src.layer);
+      }
       requireDatasetsHaveCompatibleCRS([targetDataset, src.dataset]);
       srcType = src.layer.geometry_type;
       targetType = targetLyr.geometry_type;
@@ -35047,6 +35226,10 @@ ${svg}
         retn = joinPointsToPoints(targetLyr, src.layer, getDatasetCRS(targetDataset), opts);
       } else if (srcType == 'polygon' && targetType == 'polygon') {
         retn = joinPolygonsToPolygons(targetLyr, targetDataset, src, opts);
+      } else if (srcType == 'polyline' && targetType == 'polygon') {
+        retn = joinPolylinesToPolygons(targetLyr, targetDataset, src, opts);
+      } else if (srcType == 'polygon' && targetType == 'polyline') {
+        retn = joinPolygonsToPolylines(targetLyr, targetDataset, src, opts);
       } else {
         stop(utils.format("Unable to join %s geometry to %s geometry",
             srcType || 'null', targetType || 'null'));
@@ -37310,111 +37493,6 @@ ${svg}
     getSplitNameFunction: getSplitNameFunction
   });
 
-  cmd.splitLines = function(lyr, dataset, opts) {
-    var crs = getDatasetCRS(dataset);
-    requirePolylineLayer(lyr);
-    var splitFeature = getSplitFeatureFunction(crs, opts);
-
-    // TODO: remove duplication with mapshaper-each.js
-    var editor = getFeatureEditor(lyr, dataset);
-    var exprOpts = {
-      geojson_editor: editor,
-      context: {splitFeature}
-    };
-    var exp = `this.geojson = splitFeature(this.geojson)`;
-
-    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, exprOpts);
-    var n = getFeatureCount(lyr);
-    var filter;
-    if (opts && opts.where) {
-      filter = compileValueExpression(opts.where, lyr, dataset.arcs);
-    }
-    for (var i=0; i<n; i++) {
-      if (!filter || filter(i)) {
-        compiled(i);
-      }
-    }
-    replaceLayerContents(lyr, dataset, editor.done());
-  };
-
-  function getSplitFeatureFunction(crs, opts) {
-    var dashLen = opts.dash_length ? convertDistanceParam(opts.dash_length, crs) : 0;
-    var gapLen = opts.gap_length ? convertDistanceParam(opts.gap_length, crs) : 0;
-    if (dashLen > 0 === false) {
-      stop('Missing required segment-length parameter');
-    }
-    if (gapLen >= 0 == false) {
-      stop('Invalid gap-length option');
-    }
-    var splitLine = getSplitLineFunction(crs, dashLen, gapLen, !!opts.planar);
-    return function(feat) {
-      var geom = feat.geometry;
-      if (!geom) return feat;
-      if (geom.type == 'LineString') {
-        geom.type = 'MultiLineString';
-        geom.coordinates = [geom.coordinates];
-      }
-      if (geom.type != 'MultiLineString') {
-        error('Unexpected geometry:', geom.type);
-      }
-      geom.coordinates = geom.coordinates.reduce(function(memo, coords) {
-        try {
-          var parts = splitLine(coords);
-          memo = memo.concat(parts);
-        } catch(e) {
-          console.error(e);
-          throw e;
-        }
-        return memo;
-      }, []);
-
-      return feat;
-    };
-  }
-
-  function getSplitLineFunction(crs, dashLen, gapLen, planar) {
-    var interpolate = getInterpolationFunction(planar ? null : crs);
-    var distance =  isLatLngCRS(crs) ? greatCircleDistance : distance2D;
-    var inDash, parts2, interval;
-    function addPart(coords) {
-      if (inDash) parts2.push(coords);
-      if (gapLen > 0) {
-        inDash = !inDash;
-        interval = inDash ? dashLen : gapLen;
-      }
-    }
-    return function splitLineString(coords) {
-      var elapsedDist = 0;
-      var p = coords[0];
-      var coords2 = [p];
-      var segLen, k, prev;
-      // init this LineString
-      inDash = true;
-      parts2 = [];
-      interval = gapLen;
-      for (var i=1, n=coords.length; i<n; i++) {
-        prev = p;
-        p = coords[i];
-        segLen = distance(prev[0], prev[1], p[0], p[1]);
-        while (elapsedDist + segLen >= interval) {
-          k = (interval - elapsedDist) / segLen;
-          prev = interpolate(prev[0], prev[1], p[0], p[1], k);
-          elapsedDist = 0;
-          coords2.push(prev);
-          addPart(coords2);
-          coords2 = [prev];
-          segLen = distance(prev[0], prev[1], p[0], p[1]);
-        }
-        coords2.push(p);
-        elapsedDist += segLen;
-      }
-      if (elapsedDist > 0 && coords2.length > 1) {
-        addPart(coords2);
-      }
-      return parts2;
-    };
-  }
-
   cmd.svgStyle = function(lyr, dataset, opts) {
     var filter;
     if (!lyr.data) {
@@ -38176,6 +38254,9 @@ ${svg}
       } else if (name == 'colorizer') {
         outputLayers = cmd.colorizer(opts);
 
+      } else if (name == 'dashlines') {
+        applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
+
       } else if (name == 'define') {
         cmd.define(opts);
 
@@ -38375,9 +38456,6 @@ ${svg}
 
       } else if (name == 'split') {
         outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
-
-      } else if (name == 'split-lines') {
-        applyCommandToEachLayer(cmd.splitLines, targetLayers, targetDataset, opts);
 
       } else if (name == 'split-on-grid') {
         outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);
