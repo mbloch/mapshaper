@@ -1,3 +1,7 @@
+v0.5.77
+* Added -dashlines command (formerly -split-lines).
+* Added support for joining polyline and polyline layers using point-method
+
 v0.5.76
 * Fixed bug in mapshaper-gui -q.
 * Added undocumented -split-lines command.
