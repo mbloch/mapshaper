@@ -1,6 +1,7 @@
 import { getColumnType } from '../datatable/mapshaper-data-utils';
 import { requireDataField } from '../dataset/mapshaper-layer-utils';
 import { joinPolygonsToPolygons } from '../join/mapshaper-polygon-polygon-join';
+import { joinPolylinesToPolygons, joinPolygonsToPolylines } from '../join/mapshaper-polyline-polygon-join';
 import { message, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
@@ -8,10 +9,11 @@ import { joinTableToLayer, validateFieldNames } from '../join/mapshaper-join-tab
 import { joinPointsToPolygons, joinPolygonsToPoints } from '../join/mapshaper-point-polygon-join';
 import { joinPointsToPoints } from '../join/mapshaper-point-point-join';
 import { requireDatasetsHaveCompatibleCRS, getDatasetCRS } from '../crs/mapshaper-projections';
+import { initDataTable } from '../dataset/mapshaper-layer-utils';
 
 cmd.join = function(targetLyr, targetDataset, src, opts) {
   var srcType, targetType, retn;
-  if (!src || !src.layer.data || !src.dataset) {
+  if (!src || !src.dataset) {
     stop("Missing a joinable data source");
   }
   if (opts.keys) {
@@ -19,9 +21,18 @@ cmd.join = function(targetLyr, targetDataset, src, opts) {
     if (opts.keys.length != 2) {
       stop("Expected two key fields: a target field and a source field");
     }
+    if (!src.layer.data) {
+      stop("Source layer is missing attribute data");
+    }
     retn = joinAttributesToFeatures(targetLyr, src.layer.data, opts);
   } else {
     // spatial join
+    if (!src.layer.data) {
+      // KLUDGE -- users might want to join a layer without attributes
+      // to test for intersection... the simplest way to support this is
+      // to add an empty data table to the source layer
+      initDataTable(src.layer);
+    }
     requireDatasetsHaveCompatibleCRS([targetDataset, src.dataset]);
     srcType = src.layer.geometry_type;
     targetType = targetLyr.geometry_type;
@@ -33,6 +44,10 @@ cmd.join = function(targetLyr, targetDataset, src, opts) {
       retn = joinPointsToPoints(targetLyr, src.layer, getDatasetCRS(targetDataset), opts);
     } else if (srcType == 'polygon' && targetType == 'polygon') {
       retn = joinPolygonsToPolygons(targetLyr, targetDataset, src, opts);
+    } else if (srcType == 'polyline' && targetType == 'polygon') {
+      retn = joinPolylinesToPolygons(targetLyr, targetDataset, src, opts);
+    } else if (srcType == 'polygon' && targetType == 'polyline') {
+      retn = joinPolygonsToPolylines(targetLyr, targetDataset, src, opts);
     } else {
       stop(utils.format("Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));

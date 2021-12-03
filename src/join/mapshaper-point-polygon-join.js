@@ -16,7 +16,6 @@ export function joinPolygonsToPoints(targetLyr, polygonLyr, arcs, opts) {
   return joinTableToLayer(targetLyr, polygonLyr.data, joinFunction, opts);
 }
 
-
 export function prepJoinLayers(targetLyr, srcLyr) {
   if (!targetLyr.data) {
     // create an empty data table if target layer is missing attributes
