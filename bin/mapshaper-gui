@@ -83,7 +83,7 @@ function startServer(port) {
       }
       serveFile(getAssetFilePath(uri), response);
     }
-  }).listen(port, function() {
+  }).listen(port, 'localhost', function() {
     opn("http://localhost:" + port);
   });
 }
