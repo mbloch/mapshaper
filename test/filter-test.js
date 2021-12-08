@@ -73,6 +73,17 @@ describe('mapshaper-filter.js', function () {
       });
     })
 
+    it('-filter ids=', function(done) {
+      var cmd = '-i data.csv -filter ids=3,5 -o';
+      var input = 'name\na\nb\nc\nd\ne\nf\ng\nh';
+      api.applyCommands(cmd, {'data.csv': input}, function(err, out) {
+        var output = out['data.csv'];
+        assert.equal(output, 'name\nd\nf');
+        done();
+      })
+
+    });
+
     it ('-filter (combined options)', function(done) {
       api.applyCommands('-filter remove-empty "name != \'a\'"', geojson, function(err, json) {
         var output = JSON.parse(json);

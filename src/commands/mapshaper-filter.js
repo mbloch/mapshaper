@@ -21,6 +21,10 @@ cmd.filterFeatures = function(lyr, arcs, opts) {
     filter = compileValueExpression(opts.expression, lyr, arcs);
   }
 
+  if (opts.ids) {
+    filter = combineFilters(filter, getIdFilter(opts.ids));
+  }
+
   if (opts.remove_empty) {
     filter = combineFilters(filter, getNullGeometryFilter(lyr, arcs));
   }
@@ -77,6 +81,13 @@ export function filterLayerInPlace(lyr, filter, invert) {
   });
   lyr.shapes = filteredShapes;
   lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+}
+
+function getIdFilter(ids) {
+  var set = new Set(ids);
+  return function(i) {
+    return set.has(i);
+  };
 }
 
 function getNullGeometryFilter(lyr, arcs) {

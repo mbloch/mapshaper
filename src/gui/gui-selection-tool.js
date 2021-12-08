@@ -66,6 +66,10 @@ export function SelectionTool(gui, ext, hit) {
     hit.clearSelection();
   }
 
+  function getIdsOpt() {
+    return hit.getSelectionIds().join(',');
+  }
+
   hit.on('change', function(e) {
     if (e.mode != 'selection') return;
     var ids = hit.getSelectionIds();
@@ -80,18 +84,17 @@ export function SelectionTool(gui, ext, hit) {
   });
 
   new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-    var cmd = '-filter "$$set.has(this.id) === false"';
+    var cmd = '-filter invert ids=' + getIdsOpt();
     runCommand(cmd);
   });
 
   new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-
-    var cmd = '-filter "$$set.has(this.id)"';
+    var cmd = '-filter ids=' + getIdsOpt();
     runCommand(cmd);
   });
 
   new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-    var cmd = '-each "split_id = $$set.has(this.id) ? \'1\' : \'2\'" -split split_id';
+    var cmd = '-split ids=' + getIdsOpt();
     runCommand(cmd);
   });
 
@@ -100,10 +103,6 @@ export function SelectionTool(gui, ext, hit) {
   });
 
   function runCommand(cmd) {
-    // var defs = internal.getStateVar('defs');
-    // defs.$$selection = utils.arrayToIndex(hit.getSelectionIds());
-    var ids = JSON.stringify(hit.getSelectionIds());
-    cmd = `-define "$$set = new Set(${ids})" ${cmd} -define "delete $$set"`;
     popup.hide();
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
       reset();

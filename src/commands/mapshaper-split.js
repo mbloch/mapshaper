@@ -6,13 +6,20 @@ import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 // @expression: optional field name or expression
 //
-cmd.splitLayer = function(src, expression, opts) {
-  var lyr0 = opts && opts.no_replace ? copyLayer(src) : src,
+cmd.splitLayer = function(src, expression, optsArg) {
+  var opts = optsArg || {},
+      lyr0 = opts.no_replace ? copyLayer(src) : src,
       properties = lyr0.data ? lyr0.data.getRecords() : null,
       shapes = lyr0.shapes,
       index = {},
       splitLayers = [],
-      namer = getSplitNameFunction(lyr0, expression);
+      namer;
+
+  if (opts.ids) {
+    namer = getIdSplitFunction(opts.ids);
+  } else {
+    namer = getSplitNameFunction(lyr0, expression);
+  }
 
   // if (splitField) {
   //   internal.requireDataField(lyr0, splitField);
@@ -44,15 +51,24 @@ cmd.splitLayer = function(src, expression, opts) {
   return splitLayers;
 };
 
+function getIdSplitFunction(ids) {
+  var set = new Set(ids);
+  return function(i) {
+    return set.has(i) ? '1' : '2';
+  };
+}
+
+function getDefaultSplitFunction(lyr) {
+  // if not splitting on an expression and layer is unnamed, name split-apart layers
+  // like: split-1, split-2, ...
+  return function(i) {
+    return (lyr && lyr.name || 'split') + '-' + (i + 1);
+  };
+}
+
 export function getSplitNameFunction(lyr, exp) {
   var compiled;
-  if (!exp) {
-    // if not splitting on an expression and layer is unnamed, name split-apart layers
-    // like: split-1, split-2, ...
-    return function(i) {
-      return (lyr && lyr.name || 'split') + '-' + (i + 1);
-    };
-  }
+  if (!exp) return getDefaultSplitFunction(lyr);
   lyr = {name: lyr.name, data: lyr.data}; // remove shape info
   compiled = compileValueExpression(exp, lyr, null);
   return function(i) {

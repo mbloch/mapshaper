@@ -842,6 +842,10 @@ export function getOptionParser() {
     .option('keep-shapes', {
       type: 'flag'
     })
+    .option('ids', {
+      // describe: 'filter on a list of feature ids',
+      type: 'numbers'
+    })
     .option('cleanup', {type: 'flag'}) // TODO: document
     .option('name', nameOpt)
     .option('target', targetOpt)
@@ -1409,6 +1413,11 @@ export function getOptionParser() {
     .option('expression', {
       DEFAULT: true,
       describe: 'expression or field for grouping features and naming split layers'
+    })
+    .option('ids', {
+      // used by gui history to split on selected features
+      // describe: 'split on a list of feature ids',
+      type: 'numbers'
     })
     .option('apart', {
       describe: 'save output layers to independent datasets',
