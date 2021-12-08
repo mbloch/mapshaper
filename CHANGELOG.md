@@ -1,6 +1,9 @@
+v0.5.78
+* Added support for reading and writing fixed-width text files.
+
 v0.5.77
 * Added -dashlines command (formerly -split-lines).
-* Added support for joining polyline and polyline layers using point-method
+* Added support for joining polyline and polygon layers using point-method
 
 v0.5.76
 * Fixed bug in mapshaper-gui -q.

@@ -3,6 +3,7 @@ import { getBaseContext, compileExpressionToFunction } from '../expressions/maps
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { Reader2 } from '../io/mapshaper-file-reader';
+import { readFixedWidthRecords, readFixedWidthRecordsFromString } from '../text/mapshaper-fixed-width';
 
 // Read and parse a DSV file
 // This version performs field filtering before fields are extracted (faster)
@@ -10,8 +11,9 @@ import { Reader2 } from '../io/mapshaper-file-reader';
 //
 // TODO: confirm compatibility with all supported encodings
 export function readDelimRecords(reader, delim, optsArg) {
+  var opts = optsArg || {};
+  if (delim == ' ') return readFixedWidthRecords(reader, opts);
   var reader2 = new Reader2(reader),
-      opts = optsArg || {},
       headerStr = readLinesAsString(reader2, getDelimHeaderLines(opts), opts.encoding),
       header = parseDelimHeaderSection(headerStr, delim, opts),
       convertRowArr = getRowConverter(header.import_fields),
@@ -34,6 +36,7 @@ export function readDelimRecords(reader, delim, optsArg) {
 // for delimiter characters and newlines. Input size is limited by the maximum
 // string size.
 export function readDelimRecordsFromString(str, delim, opts) {
+  if (delim == ' ') return readFixedWidthRecordsFromString(str, opts);
   var header = parseDelimHeaderSection(str, delim, opts);
   if (header.import_fields.length === 0 || !header.remainder) return [];
   var convert = getRowConverter(header.import_fields);

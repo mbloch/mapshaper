@@ -38,6 +38,12 @@ function getPolylineDissolver(arcs) {
   };
 }
 
+/*
+
+
+
+*/
+
 // TODO: use polygon pathfinder shared code
 function collectPolylineArcs(ids, nodes, testArc, useArc) {
   var parts = [];

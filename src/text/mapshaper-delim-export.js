@@ -3,6 +3,7 @@ import { findFieldNames } from '../datatable/mapshaper-data-utils';
 import utils from '../utils/mapshaper-utils';
 import { Buffer } from '../utils/mapshaper-node-buffer';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
+import { exportRecordsAsFixedWidthString } from './mapshaper-fixed-width';
 
 // Generate output content from a dataset object
 export function exportDelim(dataset, opts) {
@@ -25,6 +26,9 @@ export function exportLayerAsDSV(lyr, delim, optsArg) {
   var encoding = opts.encoding || 'utf8';
   var records = lyr.data.getRecords();
   var fields = findFieldNames(records, opts.field_order);
+  if (delim == ' ') {
+    return exportRecordsAsFixedWidthString(fields, records, opts);
+  }
   var formatRow = getDelimRowFormatter(fields, delim, opts);
   // exporting utf8 and ascii text as string by default (for now)
   var exportAsString = encodingIsUtf8(encoding) && !opts.to_buffer &&
@@ -82,15 +86,6 @@ function getDelimRowFormatter(fields, delim, opts) {
   };
 }
 
-export function formatNumber(val) {
-  return val + '';
-}
-
-export function formatIntlNumber(val) {
-  var str = formatNumber(val);
-  return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
-}
-
 export function getDelimValueFormatter(delim, opts) {
   var dquoteRxp = new RegExp('["\n\r' + delim + ']');
   var decimalComma = opts && opts.decimal_comma || false;
@@ -107,7 +102,7 @@ export function getDelimValueFormatter(delim, opts) {
     } else if (utils.isString(val)) {
       s = formatString(val);
     } else if (utils.isNumber(val)) {
-      s = decimalComma ? formatIntlNumber(val) : formatNumber(val);
+      s = decimalComma ? utils.formatIntlNumber(val) : utils.formatNumber(val);
     } else if (utils.isObject(val)) {
       s = formatString(JSON.stringify(val));
     } else {

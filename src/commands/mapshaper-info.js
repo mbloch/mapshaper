@@ -155,10 +155,6 @@ function formatAttributeTable(data, i) {
 
 
 
-function formatNumber(val) {
-  return val + '';
-}
-
 function maxChars(arr) {
   return arr.reduce(function(memo, str) {
     var w = stringDisplayWidth(str);
@@ -182,14 +178,14 @@ function formatString(str) {
 }
 
 function countIntegralChars(val) {
-  return utils.isNumber(val) ? (formatNumber(val) + '.').indexOf('.') : 0;
+  return utils.isNumber(val) ? (utils.formatNumber(val) + '.').indexOf('.') : 0;
 }
 
 export function formatTableValue(val, integralChars) {
   var str;
   if (utils.isNumber(val)) {
     str = utils.lpad("", integralChars - countIntegralChars(val), ' ') +
-      formatNumber(val);
+      utils.formatNumber(val);
   } else if (utils.isString(val)) {
     str = formatString(val);
   } else if (utils.isDate(val)) {

@@ -11,6 +11,12 @@ describe('mapshaper-utils.js', function () {
     })
   })
 
+  describe('splitLines()', function() {
+    it('test 1', function() {
+      assert.deepEqual(utils.splitLines('a\nb'), ['a', 'b']);
+    })
+  });
+
   describe('formatDateISO()', function () {
     it('rounds to minutes', function () {
       assert.equal(utils.formatDateISO(new Date('2020-10-01T02:59:00.000Z')), '2020-10-01T02:59Z')

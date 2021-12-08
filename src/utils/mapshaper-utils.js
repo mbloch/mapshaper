@@ -440,6 +440,10 @@ export function repeatString(src, n) {
   return str;
 }
 
+export function splitLines(str) {
+  return str.split(/\r?\n/);
+}
+
 export function pluralSuffix(count) {
   return count != 1 ? 's' : '';
 }
@@ -492,7 +496,16 @@ export function numToStr(num, decimals) {
   return decimals >= 0 ? num.toFixed(decimals) : String(num);
 }
 
-export function formatNumber(num, decimals, nullStr, showPos) {
+export function formatNumber(val) {
+  return val + '';
+}
+
+export function formatIntlNumber(val) {
+  var str = formatNumber(val);
+  return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
+}
+
+export function formatNumberForDisplay(num, decimals, nullStr, showPos) {
   var fmt;
   if (isNaN(num)) {
     fmt = nullStr || '-';
@@ -770,7 +783,8 @@ function formatValue(val, matches) {
       str = str.toUpperCase();
   }
   else if (isNumber) {
-    str = numToStr(val, isInt ? 0 : decimals);
+    // str = formatNumberForDisplay(val, isInt ? 0 : decimals);
+    str = numToStr(val, decimals);
     if (str[0] == '-') {
       isNeg = true;
       str = str.substr(1);

@@ -41,9 +41,21 @@ export function parseColorList(token) {
 }
 
 export function cleanArgv(argv) {
-  argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+  // Note: original trim caused some quoted spaces to be removed
+  // (e.g. bash shell seems to convert [delimiter=" "] to [delimiter= ],
+  //  which then got trimmed to [delimiter=] below)
+  //// argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+
+  // Updated: don't trim space from tokens like [delimeter= ]
+  argv = argv.map(function(s) {
+    if (!/= $/.test(s)) {
+      s = s.trimEnd();
+    }
+    s = s.trimStart();
+    return s;
+  });
   argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-  // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
+  // Note: removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
   // be parsed the same way as name=Meg and name="Meg"
   //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
   return argv;

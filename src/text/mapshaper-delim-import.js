@@ -72,7 +72,7 @@ export function importDelim2(data, opts) {
   };
 }
 
-var supportedDelimiters = ['|', '\t', ',', ';'];
+var supportedDelimiters = ['|', '\t', ',', ';', ' '];
 
 export function isSupportedDelimiter(d) {
   return utils.contains(supportedDelimiters, d);
