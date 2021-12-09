@@ -1751,7 +1751,7 @@
       else if (pct < 0.01) decimals = 3;
       else if (pct < 1) decimals = 2;
       else if (pct < 100) decimals = 1;
-      return utils.formatNumber(pct, decimals) + "%";
+      return utils.formatNumberForDisplay(pct, decimals) + "%";
     });
 
     text.parser(function(s) {
@@ -5327,6 +5327,10 @@
       hit.clearSelection();
     }
 
+    function getIdsOpt() {
+      return hit.getSelectionIds().join(',');
+    }
+
     hit.on('change', function(e) {
       if (e.mode != 'selection') return;
       var ids = hit.getSelectionIds();
@@ -5341,18 +5345,17 @@
     });
 
     new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
-      var cmd = '-filter "$$set.has(this.id) === false"';
+      var cmd = '-filter invert ids=' + getIdsOpt();
       runCommand(cmd);
     });
 
     new SimpleButton(popup.findChild('.filter-btn')).on('click', function() {
-
-      var cmd = '-filter "$$set.has(this.id)"';
+      var cmd = '-filter ids=' + getIdsOpt();
       runCommand(cmd);
     });
 
     new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
-      var cmd = '-each "split_id = $$set.has(this.id) ? \'1\' : \'2\'" -split split_id';
+      var cmd = '-split ids=' + getIdsOpt();
       runCommand(cmd);
     });
 
@@ -5361,10 +5364,6 @@
     });
 
     function runCommand(cmd) {
-      // var defs = internal.getStateVar('defs');
-      // defs.$$selection = utils.arrayToIndex(hit.getSelectionIds());
-      var ids = JSON.stringify(hit.getSelectionIds());
-      cmd = `-define "$$set = new Set(${ids})" ${cmd} -define "delete $$set"`;
       popup.hide();
       if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
         reset();

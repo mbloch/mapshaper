@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.76";
+  var VERSION = "0.5.78";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -52,6 +52,7 @@
     get initializeArray () { return initializeArray; },
     get replaceArray () { return replaceArray; },
     get repeatString () { return repeatString; },
+    get splitLines () { return splitLines; },
     get pluralSuffix () { return pluralSuffix; },
     get endsWith () { return endsWith; },
     get lpad () { return lpad; },
@@ -61,7 +62,9 @@
     get rtrim () { return rtrim; },
     get addThousandsSep () { return addThousandsSep; },
     get numToStr () { return numToStr; },
-    get formatNumber () { return formatNumber$2; },
+    get formatNumber () { return formatNumber; },
+    get formatIntlNumber () { return formatIntlNumber; },
+    get formatNumberForDisplay () { return formatNumberForDisplay; },
     get shuffle () { return shuffle; },
     get sortOn () { return sortOn; },
     get genericSort () { return genericSort; },
@@ -532,6 +535,10 @@
     return str;
   }
 
+  function splitLines(str) {
+    return str.split(/\r?\n/);
+  }
+
   function pluralSuffix(count) {
     return count != 1 ? 's' : '';
   }
@@ -584,7 +591,16 @@
     return decimals >= 0 ? num.toFixed(decimals) : String(num);
   }
 
-  function formatNumber$2(num, decimals, nullStr, showPos) {
+  function formatNumber(val) {
+    return val + '';
+  }
+
+  function formatIntlNumber(val) {
+    var str = formatNumber(val);
+    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
+  }
+
+  function formatNumberForDisplay(num, decimals, nullStr, showPos) {
     var fmt;
     if (isNaN(num)) {
       fmt = nullStr || '-';
@@ -862,7 +878,8 @@
         str = str.toUpperCase();
     }
     else if (isNumber) {
-      str = numToStr(val, isInt ? 0 : decimals);
+      // str = formatNumberForDisplay(val, isInt ? 0 : decimals);
+      str = numToStr(val, decimals);
       if (str[0] == '-') {
         isNeg = true;
         str = str.substr(1);
@@ -10296,6 +10313,12 @@
     };
   }
 
+  /*
+
+
+
+  */
+
   // TODO: use polygon pathfinder shared code
   function collectPolylineArcs(ids, nodes, testArc, useArc) {
     var parts = [];
@@ -11865,7 +11888,6 @@
   });
 
   // Map positive or negative integer ids to non-negative integer ids
-
   function IdLookupIndex(n, clearable) {
     var fwdIndex = new Int32Array(n);
     var revIndex = new Int32Array(n);
@@ -15565,6 +15587,139 @@ ${svg}
     }];
   }
 
+  function exportRecordsAsFixedWidthString(fields, records, opts) {
+    var rows = [], col;
+    for (var i=0; i<fields.length; i++) {
+      col = formatFixedWidthColumn(fields[i], records, opts);
+      if (i === 0) {
+        rows = col;
+      } else for (var j=0; j<rows.length; j++) {
+        rows[j] += ' ' + col[j];
+      }
+    }
+    return rows.join('\n');
+  }
+
+  function formatFixedWidthColumn(field, records, opts) {
+    var arr = [],
+        maxLen = field.length,
+        n = records.length,
+        i, val;
+    arr.push(field);
+    for (i=0; i<n; i++) {
+      val = formatFixedWidthValue(records[i][field], opts);
+      maxLen = Math.max(maxLen, val.length);
+      arr.push(val);
+    }
+    for (i=0; i<arr.length; i++) {
+      arr[i] = arr[i].padEnd(maxLen, ' ');
+    }
+    return arr;
+  }
+
+  function formatFixedWidthValue(val, opts) {
+    // TODO: remove duplication with mapshaper-delim-export.js
+    var s;
+    if (val == null) {
+      s = '';
+    } else if (utils.isString(val)) {
+      s = val; // TODO: handle wide characters, newlines etc.
+    } else if (utils.isNumber(val)) {
+      s = opts.decimal_comma ? utils.formatIntlNumber(val) : utils.formatNumber(val);
+    } else if (utils.isObject(val)) {
+      s = JSON.stringify(val);
+    } else {
+      s = val + '';
+    }
+    return s;
+  }
+
+
+  function readFixedWidthRecords(reader, opts) {
+    var str = reader.toString(opts.encoding || 'ascii');
+    return readFixedWidthRecordsFromString(str, opts);
+  }
+
+  function readFixedWidthRecordsFromString(str, ops) {
+    var fields = parseFixedWidthInfo(str.substring(0, 2000));
+    if (!fields) return [];
+    var lines = utils.splitLines(str);
+    if (lines[lines.length - 1] === '') lines.pop(); // handle newline at end of string
+    var records = [];
+    for (var i=1; i<lines.length; i++) {
+      records.push(parseFixedWidthLine(lines[i], fields));
+    }
+    return records;
+  }
+
+  function parseFixedWidthInfo(sample) {
+    var lines = utils.splitLines(sample);
+    if (lines.length > 2) lines.pop(); // remove possible partial line
+    var n = getMaxLineLength(lines);
+    var headerLine = lines[0];
+    var colInfo = [];
+    var colStart = 0;
+    var inContent = false;
+    var inHeader = false;
+    var isContentChar, isHeaderChar, isColStart, colEnd;
+    for (var i=0; i<=n; i++) {
+      isHeaderChar = testContentChar(headerLine, i);
+      isContentChar = !testEmptyCol(lines, i);
+      isColStart = isHeaderChar && !inHeader;
+      if (isColStart && inContent) {
+        // all lines should have a space char in the position right before a header starts
+        return null;
+      }
+      if (i == n || i > 0 && isColStart) {
+        colEnd = i == n ? undefined : i-1;
+        colInfo.push({
+          name: readValue$1(headerLine, colStart, colEnd),
+          end: colEnd,
+          start: colStart
+        });
+        colStart = i;
+      }
+      inContent = isContentChar;
+      inHeader = isHeaderChar;
+    }
+    return colInfo.length > 0 ? colInfo : null;
+  }
+
+  function getMaxLineLength(lines) {
+    var max = 0;
+    for (var i=0; i<lines.length; i++) {
+      max = Math.max(max, lines[i].length);
+    }
+    return max;
+  }
+
+  function readValue$1(line, start, end) {
+    return line.substring(start, end).trim();
+  }
+
+  function parseFixedWidthLine(str, fields) {
+    var obj = {}, field;
+    for (var i=0; i<fields.length; i++) {
+      field = fields[i];
+      obj[field.name] = readValue$1(str, field.start, field.end);
+    }
+    return obj;
+  }
+
+  function testContentChar(str, i) {
+    return i < str.length && str[i] !== ' ';
+  }
+
+  // return true iff all samples are blank at index i
+  function testEmptyCol(samples, i) {
+    var line;
+    for (var j=0; j<samples.length; j++) {
+      line = samples[j];
+      if (testContentChar(line, i)) return false;
+    }
+    return true;
+  }
+
   // Generate output content from a dataset object
   function exportDelim(dataset, opts) {
     var delim = getExportDelimiter(dataset.info, opts),
@@ -15586,6 +15741,9 @@ ${svg}
     var encoding = opts.encoding || 'utf8';
     var records = lyr.data.getRecords();
     var fields = findFieldNames(records, opts.field_order);
+    if (delim == ' ') {
+      return exportRecordsAsFixedWidthString(fields, records, opts);
+    }
     var formatRow = getDelimRowFormatter(fields, delim, opts);
     // exporting utf8 and ascii text as string by default (for now)
     var exportAsString = encodingIsUtf8(encoding) && !opts.to_buffer &&
@@ -15643,15 +15801,6 @@ ${svg}
     };
   }
 
-  function formatNumber$1(val) {
-    return val + '';
-  }
-
-  function formatIntlNumber(val) {
-    var str = formatNumber$1(val);
-    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
-  }
-
   function getDelimValueFormatter(delim, opts) {
     var dquoteRxp = new RegExp('["\n\r' + delim + ']');
     var decimalComma = opts && opts.decimal_comma || false;
@@ -15668,7 +15817,7 @@ ${svg}
       } else if (utils.isString(val)) {
         s = formatString(val);
       } else if (utils.isNumber(val)) {
-        s = decimalComma ? formatIntlNumber(val) : formatNumber$1(val);
+        s = decimalComma ? utils.formatIntlNumber(val) : utils.formatNumber(val);
       } else if (utils.isObject(val)) {
         s = formatString(JSON.stringify(val));
       } else {
@@ -15711,8 +15860,6 @@ ${svg}
     __proto__: null,
     exportDelim: exportDelim,
     exportLayerAsDSV: exportLayerAsDSV,
-    formatNumber: formatNumber$1,
-    formatIntlNumber: formatIntlNumber,
     getDelimValueFormatter: getDelimValueFormatter
   });
 
@@ -17076,8 +17223,9 @@ ${svg}
   //
   // TODO: confirm compatibility with all supported encodings
   function readDelimRecords(reader, delim, optsArg) {
+    var opts = optsArg || {};
+    if (delim == ' ') return readFixedWidthRecords(reader, opts);
     var reader2 = new Reader2(reader),
-        opts = optsArg || {},
         headerStr = readLinesAsString(reader2, getDelimHeaderLines(opts), opts.encoding),
         header = parseDelimHeaderSection(headerStr, delim, opts),
         convertRowArr = getRowConverter(header.import_fields),
@@ -17100,6 +17248,7 @@ ${svg}
   // for delimiter characters and newlines. Input size is limited by the maximum
   // string size.
   function readDelimRecordsFromString(str, delim, opts) {
+    if (delim == ' ') return readFixedWidthRecordsFromString(str, opts);
     var header = parseDelimHeaderSection(str, delim, opts);
     if (header.import_fields.length === 0 || !header.remainder) return [];
     var convert = getRowConverter(header.import_fields);
@@ -17503,7 +17652,7 @@ ${svg}
     };
   }
 
-  var supportedDelimiters = ['|', '\t', ',', ';'];
+  var supportedDelimiters = ['|', '\t', ',', ';', ' '];
 
   function isSupportedDelimiter(d) {
     return utils.contains(supportedDelimiters, d);
@@ -17864,9 +18013,21 @@ ${svg}
   }
 
   function cleanArgv(argv) {
-    argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+    // Note: original trim caused some quoted spaces to be removed
+    // (e.g. bash shell seems to convert [delimiter=" "] to [delimiter= ],
+    //  which then got trimmed to [delimiter=] below)
+    //// argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+
+    // Updated: don't trim space from tokens like [delimeter= ]
+    argv = argv.map(function(s) {
+      if (!/= $/.test(s)) {
+        s = s.trimEnd();
+      }
+      s = s.trimStart();
+      return s;
+    });
     argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-    // removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
+    // Note: removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
     // be parsed the same way as name=Meg and name="Meg"
     //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
     return argv;
@@ -19191,6 +19352,10 @@ ${svg}
       .option('keep-shapes', {
         type: 'flag'
       })
+      .option('ids', {
+        // describe: 'filter on a list of feature ids',
+        type: 'numbers'
+      })
       .option('cleanup', {type: 'flag'}) // TODO: document
       .option('name', nameOpt)
       .option('target', targetOpt)
@@ -19758,6 +19923,11 @@ ${svg}
       .option('expression', {
         DEFAULT: true,
         describe: 'expression or field for grouping features and naming split layers'
+      })
+      .option('ids', {
+        // used by gui history to split on selected features
+        // describe: 'split on a list of feature ids',
+        type: 'numbers'
       })
       .option('apart', {
         describe: 'save output layers to independent datasets',
@@ -31672,6 +31842,10 @@ ${svg}
       filter = compileValueExpression(opts.expression, lyr, arcs);
     }
 
+    if (opts.ids) {
+      filter = combineFilters(filter, getIdFilter(opts.ids));
+    }
+
     if (opts.remove_empty) {
       filter = combineFilters(filter, getNullGeometryFilter(lyr, arcs));
     }
@@ -31728,6 +31902,13 @@ ${svg}
     });
     lyr.shapes = filteredShapes;
     lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+  }
+
+  function getIdFilter(ids) {
+    var set = new Set(ids);
+    return function(i) {
+      return set.has(i);
+    };
   }
 
   function getNullGeometryFilter(lyr, arcs) {
@@ -34002,10 +34183,6 @@ ${svg}
 
 
 
-  function formatNumber(val) {
-    return val + '';
-  }
-
   function maxChars(arr) {
     return arr.reduce(function(memo, str) {
       var w = stringDisplayWidth(str);
@@ -34029,14 +34206,14 @@ ${svg}
   }
 
   function countIntegralChars(val) {
-    return utils.isNumber(val) ? (formatNumber(val) + '.').indexOf('.') : 0;
+    return utils.isNumber(val) ? (utils.formatNumber(val) + '.').indexOf('.') : 0;
   }
 
   function formatTableValue(val, integralChars) {
     var str;
     if (utils.isNumber(val)) {
       str = utils.lpad("", integralChars - countIntegralChars(val), ' ') +
-        formatNumber(val);
+        utils.formatNumber(val);
     } else if (utils.isString(val)) {
       str = formatString(val);
     } else if (utils.isDate(val)) {
@@ -37408,13 +37585,20 @@ ${svg}
 
   // @expression: optional field name or expression
   //
-  cmd.splitLayer = function(src, expression, opts) {
-    var lyr0 = opts && opts.no_replace ? copyLayer(src) : src,
+  cmd.splitLayer = function(src, expression, optsArg) {
+    var opts = optsArg || {},
+        lyr0 = opts.no_replace ? copyLayer(src) : src,
         properties = lyr0.data ? lyr0.data.getRecords() : null,
         shapes = lyr0.shapes,
         index = {},
         splitLayers = [],
-        namer = getSplitNameFunction(lyr0, expression);
+        namer;
+
+    if (opts.ids) {
+      namer = getIdSplitFunction(opts.ids);
+    } else {
+      namer = getSplitNameFunction(lyr0, expression);
+    }
 
     // if (splitField) {
     //   internal.requireDataField(lyr0, splitField);
@@ -37446,15 +37630,24 @@ ${svg}
     return splitLayers;
   };
 
+  function getIdSplitFunction(ids) {
+    var set = new Set(ids);
+    return function(i) {
+      return set.has(i) ? '1' : '2';
+    };
+  }
+
+  function getDefaultSplitFunction(lyr) {
+    // if not splitting on an expression and layer is unnamed, name split-apart layers
+    // like: split-1, split-2, ...
+    return function(i) {
+      return (lyr && lyr.name || 'split') + '-' + (i + 1);
+    };
+  }
+
   function getSplitNameFunction(lyr, exp) {
     var compiled;
-    if (!exp) {
-      // if not splitting on an expression and layer is unnamed, name split-apart layers
-      // like: split-1, split-2, ...
-      return function(i) {
-        return (lyr && lyr.name || 'split') + '-' + (i + 1);
-      };
-    }
+    if (!exp) return getDefaultSplitFunction(lyr);
     lyr = {name: lyr.name, data: lyr.data}; // remove shape info
     compiled = compileValueExpression(exp, lyr, null);
     return function(i) {
