@@ -161,7 +161,8 @@ function messageArgs(args) {
 }
 
 export function logArgs(args) {
-  if (LOGGING && !getStateVar('QUIET') && utils.isArrayLike(args)) {
-    (!STDOUT && console.error || console.log).call(console, formatLogArgs(args));
-  }
+  if (!LOGGING || getStateVar('QUIET') || !utils.isArrayLike(args)) return;
+  var msg = formatLogArgs(args);
+  if (STDOUT) console.log(msg);
+  else console.error(msg);
 }

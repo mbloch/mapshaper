@@ -1830,6 +1830,16 @@ export function getOptionParser() {
     })
     .option('name', nameOpt);
 
+  // parser.command('shapes')
+  //   .describe('convert points to shapes')
+  //   .option('type', {
+  //   })
+  //   .option('size', {
+  //   })
+  //   .option('rotation', {
+  //   })
+
+
   parser.command('subdivide')
     .describe('recursively split a layer using a JS expression')
     .validate(V.validateExpressionOpt)

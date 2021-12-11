@@ -1,5 +1,9 @@
+v0.5.79
+* More permissive importing of some non-standard Shapefiles.
+
 v0.5.78
 * Added support for reading and writing fixed-width text files.
+* Bug fixes.
 
 v0.5.77
 * Added -dashlines command (formerly -split-lines).

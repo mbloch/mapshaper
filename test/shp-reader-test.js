@@ -99,7 +99,8 @@ function testCounts(file) {
    });
 
     if (counts.shapeCount != shapes)
-      assert.ok(false, "Shape counts don't match");
+      // assert.ok(false, "Shape counts don't match");
+      assert.equal(counts.shapeCount, shapes);
 
     if (parts != counts.partCount)
       assert.ok(false, "Part counts don't match");
