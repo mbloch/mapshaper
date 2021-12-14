@@ -87,9 +87,11 @@ export function mergeDatasets(arr) {
     arcCount += n;
   });
 
-  mergedArcs = mergeArcs(arcSources);
-  if (mergedArcs.size() != arcCount) {
-    error("[mergeDatasets()] Arc indexing error");
+  if (arcSources.length > 0) {
+    mergedArcs = mergeArcs(arcSources);
+    if (mergedArcs.size() != arcCount) {
+      error("[mergeDatasets()] Arc indexing error");
+    }
   }
 
   return {
@@ -108,6 +110,8 @@ function mergeDatasetInfo(merged, dataset) {
 }
 
 export function mergeArcs(arr) {
+  // Returning the original causes a test to fail
+  // if (arr.length < 2) return arr[0];
   var dataArr = arr.map(function(arcs) {
     if (arcs.getRetainedInterval() > 0) {
       verbose("Baking-in simplification setting.");

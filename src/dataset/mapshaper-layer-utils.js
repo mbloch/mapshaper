@@ -185,6 +185,7 @@ export function getOutputLayer(src, opts) {
   return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
 }
 
+//
 export function setOutputLayerName(dest, src, defName, opts) {
   opts = opts || {};
   if (opts.name) {

@@ -1,7 +1,8 @@
 
 import utils from '../utils/mapshaper-utils';
-import { getLayerBounds, layerHasGeometry, layerHasPaths, transformPointsInLayer,
-  copyLayerShapes, copyLayer, layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { getLayerBounds, layerHasGeometry, layerHasPaths,
+  transformPointsInLayer, copyLayerShapes, copyLayer, layerHasPoints,
+  setOutputLayerName, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { buildTopology } from '../topology/mapshaper-topology';
@@ -132,31 +133,47 @@ export function replaceLayers(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 }
 
-// Replace a layer in-place with a layer from a second dataset
+// Replace a layer with a layer from a second dataset
+// (in-place)
 // (Typically, the second dataset is imported from dynamically generated GeoJSON and contains one layer)
 export function replaceLayerContents(lyr, dataset, dataset2) {
+  var lyr2 = mergeOutputLayerIntoDataset(lyr, dataset, dataset2, {});
+  if (layerHasPaths(lyr2)) {
+    buildTopology(dataset);
+  }
+}
+
+export function mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts) {
   if (!dataset2 || dataset2.layers.length != 1) {
-    error('Invalid replacement layer');
+    error('Invalid source dataset');
   }
   if (dataset.layers.includes(lyr) === false) {
     error('Invalid target layer');
   }
-  var lyr2 = dataset2.layers[0];
-  if (dataset2.arcs) {
-    // this command returns merged layers instead of adding them to target dataset
-    mergeDatasetsIntoDataset(dataset, [dataset2]);
+  // this command returns merged layers instead of adding them to target dataset
+  var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+  var lyr2 = outputLayers[0];
+
+  // TODO: find a more reliable way of knowing when to copy data
+  var copyData = !lyr2.data && lyr.data && getFeatureCount(lyr2) == lyr.data.size();
+
+  if (copyData) {
+    lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
+  }
+  if (opts.no_replace) {
+    // dataset.layers.push(lyr2);
+
+  } else {
+    lyr2 = Object.assign(lyr, {data: null, shapes: null}, lyr2);
+    if (layerHasPaths(lyr)) {
+      // Remove unused arcs from replaced layer
+      // TODO: consider using clean insead of this
+      dissolveArcs(dataset);
+    }
   }
 
-  Object.assign(lyr, {data: null, shapes: null}, lyr2);
-
-  if (layerHasPaths(lyr2)) {
-    buildTopology(dataset);
-  }
-  if (layerHasPaths(lyr)) {
-    // Remove unused arcs from replaced layer
-    // TODO: consider using clean insead of this
-    dissolveArcs(dataset);
-  }
+  lyr2.name = opts.name || lyr2.name;
+  return lyr2;
 }
 
 // Transform the points in a dataset in-place; don't clean up corrupted shapes

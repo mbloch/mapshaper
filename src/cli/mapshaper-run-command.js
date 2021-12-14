@@ -65,6 +65,8 @@ import '../commands/mapshaper-require';
 import '../commands/mapshaper-rotate';
 import '../commands/mapshaper-run';
 import '../commands/mapshaper-scalebar';
+import '../commands/mapshaper-shape';
+import '../commands/mapshaper-shapes';
 import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-sort';
 import '../commands/mapshaper-snap';
@@ -76,7 +78,6 @@ import '../commands/mapshaper-union';
 import '../commands/mapshaper-uniq';
 import '../io/mapshaper-file-import';
 import '../commands/mapshaper-merge-layers';
-import '../commands/mapshaper-shape';
 import '../simplify/mapshaper-variable-simplify';
 import '../commands/mapshaper-split-on-grid';
 import '../commands/mapshaper-subdivide';
@@ -367,6 +368,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'shape') {
       catalog.addDataset(cmd.shape(targetDataset, opts));
+
+    } else if (name == 'shapes') {
+      outputLayers = applyCommandToEachLayer(cmd.shapes, targetLayers, targetDataset, opts);
 
     } else if (name == 'simplify') {
       if (opts.variable) {

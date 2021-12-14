@@ -100,7 +100,6 @@ export function getBufferToleranceFunction(dataset, opts) {
     if (constTol) return constTol;
     return constTol ? constTol : meterDist * pctOfRadius;
   };
-
 }
 
 export function getBufferDistanceFunction(lyr, dataset, opts) {

@@ -968,6 +968,13 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
+  parser.command('include')
+    .describe('import JS data and functions for use in JS expressions')
+    .option('file', {
+      DEFAULT: true,
+      describe: 'file containing a JS object with key:value pairs to import'
+    });
+
   parser.command('inlay')
     .describe('inscribe a polygon layer inside another polygon layer')
     .option('source', {
@@ -1279,6 +1286,37 @@ export function getOptionParser() {
       describe: 'list of replacements (comma-sep.)'
     })
     .option('target', targetOpt);
+
+  parser.command('shapes')
+    .describe('convert points to polygons, circles or stars')
+    .option('type', {
+      describe: 'type of shape (e.g. star, polygon, circle)'
+    })
+    .option('radius', {
+      describe: 'distance from center to farthest point on the shape',
+      type: 'distance'
+    })
+    .option('units', {
+      describe: 'geographical units of radius parameter (e.g. km)'
+    })
+    .option('sides', {
+      describe: 'number of sides; five-pointed stars have 10 sides',
+      type: 'number'
+    })
+    .option('rotation', {
+      describe: 'rotation of the shape in degrees',
+      type: 'number'
+    })
+    .option('orientation', {
+      describe: 'use orientation=b for a rotated orientation'
+    })
+    .option('star-ratio', {
+      describe: 'ratio of major to minor radius of stars',
+      type: 'number'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
 
   parser.command('simplify')
     .validate(V.validateSimplifyOpts)
@@ -1688,13 +1726,6 @@ export function getOptionParser() {
     })
     .option('name', nameOpt);
 
-  parser.command('include')
-    .describe('import JS data and functions for use in JS expressions')
-    .option('file', {
-      DEFAULT: true,
-      describe: 'file containing a JS object with key:value pairs to import'
-    });
-
   parser.command('fuzzy-join')
     .describe('join points to polygons, with data fill and fuzzy match')
     .option('source', {
@@ -1829,16 +1860,6 @@ export function getOptionParser() {
       type: 'numbers'
     })
     .option('name', nameOpt);
-
-  // parser.command('shapes')
-  //   .describe('convert points to shapes')
-  //   .option('type', {
-  //   })
-  //   .option('size', {
-  //   })
-  //   .option('rotation', {
-  //   })
-
 
   parser.command('subdivide')
     .describe('recursively split a layer using a JS expression')
