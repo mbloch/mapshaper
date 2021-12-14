@@ -50,6 +50,22 @@ function testBounds(file) {
   })
 }
 
+function getCounts(file) {
+  var reader = new ShpReader(filePath(file));
+  var counts = {
+    nullCount: 0,
+    partCount: 0,
+    shapeCount: 0,
+    pointCount: 0
+  };
+  reader.forEachShape(function(shp) {
+    if (shp.isNull) counts.nullCount++;
+    counts.pointCount += shp.pointCount;
+    counts.partCount += shp.partCount;
+    counts.shapeCount++;
+  });
+  return counts;
+}
 
 // get counts of shapes, parts, points and nulls using the ShpReader#getCounts() method
 // compare to counts of objects returned by ShapeRecord#read()
@@ -58,7 +74,7 @@ function testCounts(file) {
   var reader = new ShpReader(filePath(file));
   it(file + " (type " + reader.type()+ ")", function() {
     var shpType = reader.type();
-    var counts = reader.getCounts();
+    var counts = getCounts(file);
     var parts = 0,
         points = 0,
         nulls = 0,

@@ -29,20 +29,19 @@ export function ShpReader(shpSrc, shxSrc) {
   if (this instanceof ShpReader === false) {
     return new ShpReader(shpSrc, shxSrc);
   }
-
   var shpFile = utils.isString(shpSrc) ? new FileReader(shpSrc) : new BufferReader(shpSrc);
   var header = parseHeader(shpFile.readToBinArray(0, 100));
-  var shpSize = shpFile.size();
-  var RecordClass = new ShpRecordClass(header.type);
-  var shpOffset, recordCount;
+  var shpType = header.type;
+  var shpOffset = 100; // used when reading .shp without .shx
+  var recordCount = 0;
+  var badRecordNumberCount = 0;
+  var RecordClass = new ShpRecordClass(shpType);
   var shxBin, shxFile;
 
   if (shxSrc) {
     shxFile = utils.isString(shxSrc) ? new FileReader(shxSrc) : new BufferReader(shxSrc);
     shxBin = shxFile.readToBinArray(0, shxFile.size()).bigEndian();
   }
-
-  reset();
 
   this.header = function() {
     return header;
@@ -61,37 +60,35 @@ export function ShpReader(shpSrc, shxSrc) {
 
   // Iterator interface for reading shape records
   this.nextShape = function() {
-    var shape = readNextShape(recordCount);
-    if (shape) {
-      recordCount++;
-    } else {
-      shpFile.close();
-      reset();
+    var shape;
+    if (!shpFile) {
+      error('Tried to read from a used ShpReader');
+      // return null; // this reader was already used
     }
+    shape = readNextShape(recordCount);
+    if (!shape) {
+      done();
+      return null;
+    }
+    recordCount++;
     return shape;
   };
 
   // Returns a shape record or null if no more shapes can be read
+  // i: Expected 0-based index of the next record
   //
   function readNextShape(i) {
-    var expectedId = i + 1; // Shapefile ids are 1-based
-    var shape, offset;
-    if (shxBin) {
-      if (shxFile.size() <= 100 + i * 8) return null; // done
-      shxBin.position(100 + i * 8);
-      offset = shxBin.readUint32() * 2;
-      shape = readIndexedShape(shpFile, offset, expectedId);
-    } else {
-      // Reading without a .shx file (returns null at end-of-file)
-      offset = shpOffset;
-      shape = readNonIndexedShape(shpFile, offset, expectedId);
-    }
-    return shape || null;
+    return shxBin ?
+      readIndexedShape(shpFile, shxBin, i) :
+      readNonIndexedShape(shpFile, shpOffset, i);
   }
 
-  function reset() {
-    shpOffset = 100;
-    recordCount = 0;
+  function done() {
+    shpFile.close();
+    shpFile = shxFile = shxBin = null;
+    if (badRecordNumberCount > 0) {
+      message(`Warning: ${badRecordNumberCount}/${recordCount} features have non-standard record numbers in the .shp file.`);
+    }
   }
 
   function parseHeader(bin) {
@@ -122,33 +119,35 @@ export function ShpReader(shpSrc, shxSrc) {
 
 
   function readShapeAtOffset(shpFile, offset) {
-    var shape = null,
-        recordSize, recordType, recordId, goodSize, goodType, bin;
-
-    if (offset + 12 <= shpSize) {
-      bin = shpFile.readToBinArray(offset, 12);
-      recordId = bin.bigEndian().readUint32();
-      // record size is bytes in content section + 8 header bytes
-      recordSize = bin.readUint32() * 2 + 8;
-      recordType = bin.littleEndian().readUint32();
-      goodSize = offset + recordSize <= shpSize && recordSize >= 12;
-      goodType = recordType === 0 || recordType == header.type;
-      if (goodSize && goodType) {
-        bin = shpFile.readToBinArray(offset, recordSize);
-        shape = new RecordClass(bin, recordSize);
-      }
+    var fileSize = shpFile.size();
+    if (offset + 12 > fileSize) return null; // reached end-of-file
+    var bin = shpFile.readToBinArray(offset, 12);
+    var recordId = bin.bigEndian().readUint32();
+    // record size is bytes in content section + 8 header bytes
+    var recordSize = bin.readUint32() * 2 + 8;
+    var recordType = bin.littleEndian().readUint32();
+    var goodSize = offset + recordSize <= fileSize && recordSize >= 12;
+    var goodType = recordType === 0 || recordType == shpType;
+    if (!goodSize || !goodType) {
+      return null;
     }
-    return shape;
+    bin = shpFile.readToBinArray(offset, recordSize);
+    return new RecordClass(bin, recordSize);
   }
 
-  function readIndexedShape(shpFile, offset, expectedId) {
+  function readIndexedShape(shpFile, shxBin, i) {
+    if (shxBin.size() <= 100 + i * 8) return null; // done
+    shxBin.position(100 + i * 8);
+    var expectedId = i + 1;
+    var offset = shxBin.readUint32() * 2;
+    var recLen = shxBin.readUint32() * 2; // TODO: match this to recLen in .shp
     var shape = readShapeAtOffset(shpFile, offset);
     if (!shape) {
       stop('Index of Shapefile record', expectedId, 'in the .shx file is invalid.');
     }
     if (shape.id != expectedId) {
-      // stop("Found a Shapefile record with an out-of-sequence id (" + shape.id + ") -- bailing.");
-      message(`Warning: A feature has a different record number in .shx (${expectedId}) and .shp (${shape.id}).`);
+      badRecordNumberCount++;
+      verbose(`Warning: A feature has a different record number in .shx (${expectedId}) and .shp (${shape.id}).`);
     }
     // TODO: consider printing verbose message if a .shp file contains garbage bytes
     // example files:
@@ -161,11 +160,12 @@ export function ShpReader(shpSrc, shxSrc) {
   // in consecutive sequence in the .shp file. This is a problem when the .shx
   // index file is not present.
   //
-  // Here, we try to scan past invalid content to find the next record.
+  // Here, we try to scan past any invalid content to find the next record.
   // Records are required to be in sequential order.
   //
-  function readNonIndexedShape(shpFile, start, expectedId) {
-    var offset = start,
+  function readNonIndexedShape(shpFile, start, i) {
+    var expectedId = i + 1, // Shapefile ids are 1-based
+        offset = start,
         fileSize = shpFile.size(),
         shape = null,
         bin, recordId, recordType, isValidType;
@@ -173,7 +173,7 @@ export function ShpReader(shpSrc, shxSrc) {
       bin = shpFile.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       recordType = bin.littleEndian().skipBytes(4).readUint32();
-      isValidType = recordType == header.type || recordType === 0;
+      isValidType = recordType == shpType || recordType === 0;
       if (!isValidType || recordId != expectedId && recordType === 0) {
         offset += 4; // keep scanning -- try next integer position
         continue;
@@ -200,18 +200,3 @@ ShpReader.prototype.type = function() {
   return this.header().type;
 };
 
-ShpReader.prototype.getCounts = function() {
-  var counts = {
-    nullCount: 0,
-    partCount: 0,
-    shapeCount: 0,
-    pointCount: 0
-  };
-  this.forEachShape(function(shp) {
-    if (shp.isNull) counts.nullCount++;
-    counts.pointCount += shp.pointCount;
-    counts.partCount += shp.partCount;
-    counts.shapeCount++;
-  });
-  return counts;
-};

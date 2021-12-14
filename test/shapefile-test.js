@@ -7,6 +7,29 @@ function fixPath(p) {
 
 describe('mapshaper-shapefile.js', function () {
 
+  it('Fix: reading .shp with invalid record numbers', function(done) {
+    var file = 'test/data/issues/518_519_shp_reading/max_callstack_error.shp';
+    var cmd = `-i ${file} -o out.json`;
+    api.applyCommands(cmd, {}, function(err, out) {
+      var json = JSON.parse(out['out.json']);
+      assert.equal(json.features.length, 138);
+      assert.deepEqual(json.features[0].properties.Length, 8057.3);
+      done();
+    });
+  })
+
+  it('Fix: reading .shp with invalid record numbers 2', function(done) {
+    var file = 'test/data/issues/518_519_shp_reading/data_corruption_error.shp';
+    var cmd = `-i ${file} -o out.json`;
+    api.applyCommands(cmd, {}, function(err, out) {
+      var json = JSON.parse(out['out.json']);
+      assert.equal(json.features.length, 8);
+      assert.deepEqual(json.features[0].properties.dp_oid, 3978824);
+      done();
+    });
+  })
+
+
   it('Fix: point shapefile importing', function (done) {
 
     api.internal.testCommands('-i test/data/issues/point_shapefile_import_error/points.shp', function(err, dataset) {
