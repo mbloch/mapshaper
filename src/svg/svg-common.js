@@ -1,5 +1,4 @@
 import { roundToTenths } from '../geom/mapshaper-rounding';
-export var symbolBuilders = {};
 export var symbolRenderers = {};
 
 export function getTransform(xy, scale) {

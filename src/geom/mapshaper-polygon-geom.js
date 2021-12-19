@@ -2,6 +2,7 @@
 import { error } from '../utils/mapshaper-logging';
 import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
 import { calcPathLen } from '../geom/mapshaper-path-geom';
+import { WGS84 } from '../geom/mapshaper-geom-constants';
 
 // A compactness measure designed for testing electoral districts for gerrymandering.
 // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
@@ -35,12 +36,12 @@ export function getPlanarShapeArea(shp, arcs) {
   }, 0);
 }
 
-export function getSphericalShapeArea(shp, arcs) {
+export function getSphericalShapeArea(shp, arcs, R) {
   if (arcs.isPlanar()) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
   return (shp || []).reduce(function(area, ids) {
-    return area + getSphericalPathArea(ids, arcs);
+    return area + getSphericalPathArea(ids, arcs, R);
   }, 0);
 }
 
@@ -157,16 +158,17 @@ export function getPathArea(ids, arcs) {
   return (arcs.isPlanar() ? getPlanarPathArea : getSphericalPathArea)(ids, arcs);
 }
 
-export function getSphericalPathArea(ids, arcs) {
+export function getSphericalPathArea(ids, arcs, R) {
   var iter = arcs.getShapeIter(ids);
-  return getSphericalPathArea2(iter);
+  return getSphericalPathArea2(iter, R);
 }
 
-export function getSphericalPathArea2(iter) {
+export function getSphericalPathArea2(iter, R) {
   var sum = 0,
       started = false,
       deg2rad = Math.PI / 180,
       x, y, xp, yp;
+  R = R || WGS84.SEMIMAJOR_AXIS;
   while (iter.hasNext()) {
     x = iter.x * deg2rad;
     y = Math.sin(iter.y * deg2rad);
@@ -178,7 +180,7 @@ export function getSphericalPathArea2(iter) {
     xp = x;
     yp = y;
   }
-  return sum / 2 * 6378137 * 6378137;
+  return sum / 2 * R * R;
 }
 
 // Get path area from an array of [x, y] points

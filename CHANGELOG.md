@@ -1,3 +1,6 @@
+v0.5.80
+* Added arrows, stars and polygons to undocumented -symbols command.
+
 v0.5.79
 * More permissive importing of some non-standard Shapefiles.
 

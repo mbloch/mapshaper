@@ -66,7 +66,6 @@ import '../commands/mapshaper-rotate';
 import '../commands/mapshaper-run';
 import '../commands/mapshaper-scalebar';
 import '../commands/mapshaper-shape';
-import '../commands/mapshaper-shapes';
 import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-sort';
 import '../commands/mapshaper-snap';
@@ -401,7 +400,7 @@ export function runCommand(command, catalog, cb) {
       applyCommandToEachLayer(cmd.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'symbols') {
-      applyCommandToEachLayer(cmd.symbols, targetLayers, opts);
+      outputLayers = applyCommandToEachLayer(cmd.symbols, targetLayers, targetDataset, opts);
 
     } else if (name == 'subdivide') {
       outputLayers = applyCommandToEachLayer(cmd.subdivideLayer, targetLayers, arcs, opts.expression);

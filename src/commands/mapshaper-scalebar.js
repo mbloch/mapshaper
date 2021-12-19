@@ -5,7 +5,7 @@ import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { stop } from '../utils/mapshaper-logging';
 // import { symbolRenderers } from '../svg/svg-common';
-import { symbolRenderers } from '../svg/mapshaper-basic-symbols';
+import { symbolRenderers } from '../svg/mapshaper-svg-symbols';
 
 cmd.scalebar = function(catalog, opts) {
   var frame = findFrameDataset(catalog);

@@ -1287,36 +1287,6 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
-  parser.command('shapes')
-    .describe('convert points to polygons, circles or stars')
-    .option('type', {
-      describe: 'type of shape (e.g. star, polygon, circle)'
-    })
-    .option('radius', {
-      describe: 'distance from center to farthest point on the shape',
-      type: 'distance'
-    })
-    .option('units', {
-      describe: 'geographical units of radius parameter (e.g. km)'
-    })
-    .option('sides', {
-      describe: 'number of sides; five-pointed stars have 10 sides',
-      type: 'number'
-    })
-    .option('rotation', {
-      describe: 'rotation of the shape in degrees',
-      type: 'number'
-    })
-    .option('orientation', {
-      describe: 'use orientation=b for a rotated orientation'
-    })
-    .option('star-ratio', {
-      describe: 'ratio of major to minor radius of stars',
-      type: 'number'
-    })
-    .option('name', nameOpt)
-    .option('target', targetOpt)
-    .option('no-replace', noReplaceOpt);
 
   parser.command('simplify')
     .validate(V.validateSimplifyOpts)
@@ -1556,25 +1526,80 @@ export function getOptionParser() {
    .option('target', targetOpt);
 
   parser.command('symbols')
-    // .describe('generate a variety of SVG symbols')
+    // .describe('symbolize points as polygons, circles, stars or arrows')
     .option('type', {
-      describe: 'symbol type'
+      describe: 'symbol type (e.g. star, polygon, circle, arrow)'
+    })
+    .option('scale', {
+      describe: 'scale symbols by a factor',
+      type: 'number'
+    })
+    .option('pixel-scale', {
+      describe: 'symbol scale in meters-per-pixel (see polygons option)',
+      type: 'number',
+    })
+    .option('polygons', {
+      describe: 'generate symbols as polygons instead of SVG objects',
+      type: 'flag'
+    })
+    .option('radius', {
+      describe: 'distance from center to farthest point on the symbol',
+      type: 'distance'
+    })
+    .option('sides', {
+      describe: 'sides of a polygon or star symbol',
+      type: 'number'
+    })
+    .option('rotation', {
+      describe: 'rotation of symbol in degrees'
+    })
+    .option('orientation', {
+      describe: 'use orientation=b for a rotated or flipped orientation'
+    })
+    .option('length', {
+      // alias for arrow-length
+    })
+    .option('star-ratio', {
+      describe: 'ratio of major to minor radius of star',
+      type: 'number'
+    })
+    .option('arrow-length', {
+      describe: 'length of arrows in pixels (use with type=arrow)'
+    })
+    .option('arrow-direction', {
+      describe: 'angle off of vertical (-90 = left-pointing arrow)'
+    })
+    .option('arrow-head-angle', {
+      describe: 'angle of tip of arrow (default is 40 degrees)'
+    })
+    .option('arrow-head-width', {
+      describe: 'size of arrow head from side to side'
+    })
+    .option('arrow-stem-width', {
+      describe: 'width of stem at its widest point'
+    })
+    .option('arrow-stem-taper', {
+      describe: 'factor for tapering the width of the stem'
+    })
+    .option('arrow-stem-curve', {
+      describe: 'curvature in degrees (arrows are straight by default)'
+    })
+    .option('arrow-min-stem', {
+      describe: 'min ratio of stem to total length (for small arrows)',
+      type: 'number'
     })
     .option('stroke', {})
     .option('stroke-width', {})
-    .option('fill', {})
-    .option('length', {})
-    .option('rotation', {})
+    .option('fill', {
+      describe: 'symbol fill color'
+    })
     .option('effect', {})
-    .option('arrow-head-angle', {})
-    .option('arrow-stem-width', {})
-    .option('arrow-head-width', {})
-    .option('arrow-stem-curve', {})
-    .option('arrow-stem-taper', {})
-    .option('arrow-scaling', {})
-    .option('where', whereOpt)
-    .option('target', targetOpt);
+    // .option('where', whereOpt)
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
     // .option('name', nameOpt);
+
 
   parser.command('target')
     .describe('set active layer (or layers)')

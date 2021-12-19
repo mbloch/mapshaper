@@ -36,11 +36,15 @@ var symbolPropertyTypes = utils.extend({
   type: null,
   length: 'number', // e.g. arrow length
   rotation: 'number',
+  radius: 'number',
+  'arrow-length': 'number',
+  'arrow-direction': 'number',
   'arrow-head-angle': 'number',
   'arrow-head-width': 'number',
   'arrow-stem-width': 'number',
   'arrow-stem-curve': 'number', // degrees of arc
   'arrow-stem-taper': 'number',
+  'arrow-min-stem': 'number',
   'arrow-scaling': 'number',
   effect: null // e.g. "fade"
 }, stylePropertyTypes);
@@ -82,8 +86,8 @@ export function getSymbolDataAccessor(lyr, opts) {
     if (!isSupportedSvgSymbolProperty(svgName)) {
       return;
     }
-    var strVal = opts[optName].trim();
-    functions[svgName] = getSymbolPropertyAccessor(strVal, svgName, lyr);
+    var val = opts[optName];
+    functions[svgName] = getSymbolPropertyAccessor(val, svgName, lyr);
     properties.push(svgName);
   });
 
@@ -106,7 +110,8 @@ export function mightBeExpression(str, fields) {
   return /[(){}.+-/*?:&|=\[]/.test(str);
 }
 
-export function getSymbolPropertyAccessor(strVal, svgName, lyr) {
+export function getSymbolPropertyAccessor(val, svgName, lyr) {
+  var strVal = String(val).trim();
   var typeHint = symbolPropertyTypes[svgName];
   var fields = lyr.data ? lyr.data.getFields() : [];
   var literalVal = null;

@@ -5,6 +5,7 @@ import { layerHasPaths, layerHasPoints } from '../dataset/mapshaper-layer-utils'
 import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { addGetters } from '../expressions/mapshaper-expression-utils';
 import { stop } from '../utils/mapshaper-logging';
+import { WGS84 } from '../geom/mapshaper-geom-constants';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 
@@ -89,6 +90,12 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
         area: function() {
           return _isPlanar ? ctx.planarArea : geom.getSphericalShapeArea(_ids, arcs);
         },
+        // area2: function() {
+        //   return _isPlanar ? ctx.planarArea : geom.getSphericalShapeArea(_ids, arcs, WGS84.SEMIMINOR_RADIUS);
+        // },
+        // area3: function() {
+        //   return _isPlanar ? ctx.planarArea : geom.getSphericalShapeArea(_ids, arcs, WGS84.AUTHALIC_RADIUS);
+        // },
         perimeter: function() {
           return geom.getShapePerimeter(_ids, arcs);
         },

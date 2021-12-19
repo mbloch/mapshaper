@@ -130,7 +130,7 @@ export function requirePointLayer(lyr, msg) {
 export function requireSinglePointLayer(lyr, msg) {
   requirePointLayer(lyr);
   if (countMultiPartFeatures(lyr) > 0) {
-    stop(msg || 'This command requires single points');
+    stop(msg || 'This command requires single points; layer contains multi-point features.');
   }
 }
 
@@ -262,6 +262,7 @@ export function countArcsInLayers(layers, arcs) {
   return counts;
 }
 
+// Returns a Bounds object
 export function getLayerBounds(lyr, arcs) {
   var bounds = null;
   if (lyr.geometry_type == 'point') {

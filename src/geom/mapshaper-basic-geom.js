@@ -1,6 +1,8 @@
-// TODO: remove this constant, use actual data from dataset CRS
-//       also consider using ellipsoidal formulas when appropriate
-export var R = 6378137;
+import { WGS84 } from './mapshaper-geom-constants';
+
+// TODO: remove this constant, use actual data from dataset CRS,
+// also consider using ellipsoidal formulas where greater accuracy might be important.
+export var R = WGS84.SEMIMAJOR_AXIS;
 export var D2R = Math.PI / 180;
 export var R2D = 180 / Math.PI;
 
