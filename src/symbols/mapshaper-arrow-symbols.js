@@ -1,5 +1,6 @@
 
 import { addBezierArcControlPoints, rotateCoords } from './mapshaper-symbol-utils';
+import { stop } from '../utils/mapshaper-logging';
 
 export function getStickArrowCoords(d, totalLen) {
   var minStemRatio = getMinStemRatio(d);
@@ -40,13 +41,16 @@ export function getFilledArrowCoords(totalLen, d) {
       stemWidth = unscaledStemWidth * scale,
       stemTaper = d['arrow-stem-taper'] || 0,
       stemCurve = d['arrow-stem-curve'] || 0,
-      stemLen = totalLen - headLen;
+      stemLen = totalLen - headLen,
+      coords;
 
   var headDx = headWidth / 2,
       stemDx = stemWidth / 2,
       baseDx = stemDx * (1 - stemTaper);
 
-  var coords;
+  if (unscaledHeadWidth < unscaledStemWidth) {
+    stop('Arrow head must be at least as wide as the stem.');
+  }
 
   if (!stemCurve || Math.abs(stemCurve) > 90) {
     coords = [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
@@ -100,15 +104,18 @@ function getCurvedArrowCoords(stemLen, headLen, curvature, stemDx, headDx, baseD
   var ay = baseDx * Math.sin(theta) * -sign;
   var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
   var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
-  // if (stemTaper == 1) leftStem.pop();
   var stem = leftStem.concat(rightStem.reverse());
-  stem.pop();
+  // stem.pop();
   return stem.concat(head);
 }
 
 // ax, ay: point on the base
 // bx, by: point on the stem
 function getCurvedStemCoords(ax, ay, bx, by, theta0) {
+  // case: curved side intrudes into head (because stem is too short)
+  if (ay > by) {
+    return [[ax * by / ay, by]];
+  }
   var dx = bx - ax,
       dy = by - ay,
       dy1 = (dy * dy - dx * dx) / (2 * dy),
@@ -120,10 +127,9 @@ function getCurvedStemCoords(ax, ay, bx, by, theta0) {
       leftBend = bx > ax,
       sign = leftBend ? 1 : -1,
       points = Math.round(degrees / 5) + 2,
-      // points = theta > 2 && 7 || theta > 1 && 6 || 5,
-      increment = theta / (points + 1);
+      increment = theta / (points + 1),
+      coords = [[bx, by]];
 
-  var coords = [[bx, by]];
   for (var i=1; i<= points; i++) {
     var phi = i * increment / 2;
     var sinPhi = Math.sin(phi);
