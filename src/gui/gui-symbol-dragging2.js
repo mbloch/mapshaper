@@ -252,7 +252,6 @@ export function SymbolDragging2(gui, ext, hit) {
       return parent.querySelector(sel);
     }
 
-
     function getTextTarget3(e) {
       if (e.id > -1 === false || !e.container) return null;
       return getSymbolNodeById(e.id, e.container);

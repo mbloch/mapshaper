@@ -1,3 +1,6 @@
+v0.5.81
+* Bug fixes
+
 v0.5.80
 * Added arrows, stars and polygons to undocumented -symbols command.
 

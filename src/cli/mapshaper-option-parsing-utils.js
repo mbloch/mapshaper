@@ -49,9 +49,9 @@ export function cleanArgv(argv) {
   // Updated: don't trim space from tokens like [delimeter= ]
   argv = argv.map(function(s) {
     if (!/= $/.test(s)) {
-      s = s.trimEnd();
+      s = utils.rtrim(s);
     }
-    s = s.trimStart();
+    s = utils.ltrim(s);
     return s;
   });
   argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
