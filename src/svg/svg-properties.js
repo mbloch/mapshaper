@@ -44,6 +44,8 @@ var symbolPropertyTypes = utils.extend({
   'arrow-stem-width': 'number',
   'arrow-stem-curve': 'number', // degrees of arc
   'arrow-stem-taper': 'number',
+  'arrow-stem-length': 'number',
+  'arrow-head-length': 'number',
   'arrow-min-stem': 'number',
   'arrow-scaling': 'number',
   effect: null // e.g. "fade"

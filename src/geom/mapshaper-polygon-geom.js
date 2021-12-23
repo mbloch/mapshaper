@@ -45,6 +45,12 @@ export function getSphericalShapeArea(shp, arcs, R) {
   }, 0);
 }
 
+// export function getEllipsoidalShapeArea(shp, arcs, crs) {
+//   return (shp || []).reduce(function(area, ids) {
+//     return area + getEllipsoidalPathArea(ids, arcs, crs);
+//   }, 0);
+// }
+
 // Return true if point is inside or on boundary of a shape
 //
 export function testPointInPolygon(x, y, shp, arcs) {

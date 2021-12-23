@@ -31,16 +31,13 @@ cmd.symbols = function(inputLyr, dataset, opts) {
     if (!shp) return null;
     var d = getSymbolData(i);
     var rec = records[i] || {};
-    var coords, size, constructor;
+    var coords;
     if (d.type == 'arrow') {
-      size = d.radius || d.length || d['arrow-length'] || d.r;
-      constructor = getFilledArrowCoords;
+      coords = getFilledArrowCoords(d);
     } else {
-      size = d.radius || d.length || d.r;
-      constructor = getPolygonCoords;
+      coords = getPolygonCoords(d);
     }
-    if (size > 0 === false) return null;
-    coords = constructor(size, d, opts);
+    if (!coords) return null;
     rotateCoords(coords, +d.rotation || 0);
     if (!polygonMode) {
       flipY(coords);

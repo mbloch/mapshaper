@@ -2,47 +2,63 @@
 import { addBezierArcControlPoints, rotateCoords } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
-export function getStickArrowCoords(d, totalLen) {
-  var minStemRatio = getMinStemRatio(d);
-  var headAngle = d['arrow-head-angle'] || 90;
-  var curve = d['arrow-stem-curve'] || 0;
-  var unscaledHeadWidth = d['arrow-head-width'] || 9;
-  var unscaledHeadLen = getHeadLength(unscaledHeadWidth, headAngle);
-  var scale = getScale(totalLen, unscaledHeadLen, minStemRatio);
-  var headWidth = unscaledHeadWidth * scale;
-  var headLen = unscaledHeadLen * scale;
-  var tip = getStickArrowTip(totalLen, curve);
-  var stem = [[0, 0], tip.concat()];
-  if (curve) {
-    addBezierArcControlPoints(stem, curve);
-  }
-  if (!headLen) return [stem];
-  var head = [addPoints([-headWidth / 2, -headLen], tip), tip.concat(), addPoints([headWidth / 2, -headLen], tip)];
+// export function getStickArrowCoords(d, totalLen) {
+//   var minStemRatio = getMinStemRatio(d);
+//   var headAngle = d['arrow-head-angle'] || 90;
+//   var curve = d['arrow-stem-curve'] || 0;
+//   var unscaledHeadWidth = d['arrow-head-width'] || 9;
+//   var unscaledHeadLen = getHeadLength(unscaledHeadWidth, headAngle);
+//   var scale = getScale(totalLen, unscaledHeadLen, minStemRatio);
+//   var headWidth = unscaledHeadWidth * scale;
+//   var headLen = unscaledHeadLen * scale;
+//   var tip = getStickArrowTip(totalLen, curve);
+//   var stem = [[0, 0], tip.concat()];
+//   if (curve) {
+//     addBezierArcControlPoints(stem, curve);
+//   }
+//   if (!headLen) return [stem];
+//   var head = [addPoints([-headWidth / 2, -headLen], tip), tip.concat(), addPoints([headWidth / 2, -headLen], tip)];
 
-  rotateCoords(stem, d.rotation);
-  rotateCoords(head, d.rotation);
-  return [stem, head];
-}
+//   rotateCoords(stem, d.rotation);
+//   rotateCoords(head, d.rotation);
+//   return [stem, head];
+// }
 
 function getMinStemRatio(d) {
   return d['arrow-min-stem'] >= 0 ? d['arrow-min-stem'] : 0.4;
 }
 
-export function getFilledArrowCoords(totalLen, d) {
-  var minStemRatio = getMinStemRatio(d),
-      headAngle = d['arrow-head-angle'] || 40,
+export function getFilledArrowCoords(d) {
+  var totalLen = d['arrow-length'] || d.radius || d.length || d.r || 0,
       direction = d.rotation || d['arrow-direction'] || 0,
       unscaledStemWidth = d['arrow-stem-width'] || 2,
       unscaledHeadWidth = d['arrow-head-width'] || unscaledStemWidth * 3,
-      unscaledHeadLen = getHeadLength(unscaledHeadWidth, headAngle),
-      scale = getScale(totalLen, unscaledHeadLen, minStemRatio),
-      headWidth = unscaledHeadWidth * scale,
-      headLen = unscaledHeadLen * scale,
-      stemWidth = unscaledStemWidth * scale,
+      unscaledHeadLen = getHeadLength(unscaledHeadWidth, d),
       stemTaper = d['arrow-stem-taper'] || 0,
-      stemCurve = d['arrow-stem-curve'] || 0,
-      stemLen = totalLen - headLen,
-      coords;
+      stemCurve = d['arrow-stem-curve'] || 0;
+
+  var headLen, headWidth, stemLen, stemWidth;
+
+  var scale = 1;
+
+  if (totalLen > 0) {
+    scale = getScale(totalLen, unscaledHeadLen,  getMinStemRatio(d));
+    headWidth = unscaledHeadWidth * scale;
+    headLen = unscaledHeadLen * scale;
+    stemWidth = unscaledStemWidth * scale;
+    stemLen = totalLen - headLen;
+
+  } else {
+    headWidth = unscaledHeadWidth;
+    headLen = unscaledHeadLen;
+    stemWidth = unscaledStemWidth;
+    stemLen = d['arrow-stem-length'] || 0;
+    totalLen = headLen + stemLen;
+  }
+
+  if (totalLen > 0 === false) return null;
+
+  var coords;
 
   var headDx = headWidth / 2,
       stemDx = stemWidth / 2,
@@ -74,20 +90,23 @@ function getScale(totalLen, headLen, minStemRatio) {
   return 1;
 }
 
-function getStickArrowTip(totalLen, curve) {
-  // curve/2 intersects the arrowhead at 90deg (trigonometry)
-  var theta = Math.abs(curve/2) / 180 * Math.PI;
-  var dx = totalLen * Math.sin(theta) * (curve > 0 ? -1 : 1);
-  var dy = totalLen * Math.cos(theta);
-  return [dx, dy];
-}
+// function getStickArrowTip(totalLen, curve) {
+//   // curve/2 intersects the arrowhead at 90deg (trigonometry)
+//   var theta = Math.abs(curve/2) / 180 * Math.PI;
+//   var dx = totalLen * Math.sin(theta) * (curve > 0 ? -1 : 1);
+//   var dy = totalLen * Math.cos(theta);
+//   return [dx, dy];
+// }
 
 function addPoints(a, b) {
   return [a[0] + b[0], a[1] + b[1]];
 }
 
 
-function getHeadLength(headWidth, headAngle) {
+function getHeadLength(headWidth, d) {
+  var headLength = d['arrow-head-length'];
+  if (headLength > 0) return headLength;
+  var headAngle = d['arrow-head-angle'] || 40;
   var headRatio = 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2; // length-to-width head ratio
   return headWidth * headRatio;
 }

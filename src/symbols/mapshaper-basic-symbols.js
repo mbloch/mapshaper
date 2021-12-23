@@ -4,7 +4,9 @@ import { stop } from '../utils/mapshaper-logging';
 // sides: e.g. 5-pointed star has 10 sides
 // radius: distance from center to point
 //
-export function getPolygonCoords(radius, opts) {
+export function getPolygonCoords(opts) {
+  var radius = opts.radius || opts.length || opts.r;
+  if (radius > 0 === false) return null;
   var type = opts.type;
   var sides = +opts.sides || getDefaultSides(type);
   var isStar = type == 'star';

@@ -1,3 +1,6 @@
+v0.5.82
+* More options for arrow styling.
+
 v0.5.81
 * Bug fixes
 

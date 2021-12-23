@@ -1575,8 +1575,17 @@ export function getOptionParser() {
     .option('arrow-head-width', {
       describe: 'size of arrow head from side to side'
     })
+    .option('arrow-head-length', {
+      describe: 'length of arrow head (alternative to arrow-head-angle)'
+    })
+    .option('arrow-head-shape', {
+      // describe: 'options: a b c'
+    })
     .option('arrow-stem-width', {
       describe: 'width of stem at its widest point'
+    })
+    .option('arrow-stem-length', {
+      describe: 'alternative to arrow-length'
     })
     .option('arrow-stem-taper', {
       describe: 'factor for tapering the width of the stem'
