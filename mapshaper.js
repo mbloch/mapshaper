@@ -16,6 +16,8 @@
     get isFiniteNumber () { return isFiniteNumber; },
     get isNonNegNumber () { return isNonNegNumber; },
     get isInteger () { return isInteger; },
+    get isEven () { return isEven; },
+    get isOdd () { return isOdd; },
     get isString () { return isString; },
     get isDate () { return isDate; },
     get isBoolean () { return isBoolean; },
@@ -147,6 +149,14 @@
 
   function isInteger(obj) {
     return isNumber(obj) && ((obj | 0) === obj);
+  }
+
+  function isEven(obj) {
+    return (obj % 2) === 0;
+  }
+
+  function isOdd(obj) {
+    return (obj % 2) === 1;
   }
 
   function isString(obj) {
@@ -13698,16 +13708,18 @@
     length: 'number', // e.g. arrow length
     rotation: 'number',
     radius: 'number',
-    'arrow-length': 'number',
-    'arrow-direction': 'number',
-    'arrow-head-angle': 'number',
-    'arrow-head-width': 'number',
-    'arrow-stem-width': 'number',
-    'arrow-stem-curve': 'number', // degrees of arc
-    'arrow-stem-taper': 'number',
-    'arrow-stem-length': 'number',
-    'arrow-head-length': 'number',
-    'arrow-min-stem': 'number',
+    radii: null, // string, parsed by function
+    flipped: 'boolean',
+    rotated: 'boolean',
+    direction: 'number',
+    'head-angle': 'number',
+    'head-width': 'number',
+    'head-length': 'number',
+    'stem-width': 'number',
+    'stem-curve': 'number', // degrees of arc
+    'stem-taper': 'number',
+    'stem-length': 'number',
+    'min-stem': 'number',
     'arrow-scaling': 'number',
     effect: null // e.g. "fade"
   }, stylePropertyTypes);
@@ -13743,6 +13755,7 @@
   function getSymbolDataAccessor(lyr, opts) {
     var functions = {};
     var properties = [];
+    var fields = lyr.data ? lyr.data.getFields() : [];
 
     Object.keys(opts).forEach(function(optName) {
       var svgName = optName.replace(/_/g, '-');
@@ -13753,6 +13766,8 @@
       functions[svgName] = getSymbolPropertyAccessor(val, svgName, lyr);
       properties.push(svgName);
     });
+
+    // TODO: consider applying values of existing fields with names of symbol properties
 
     return function(id) {
       var d = {}, name;
@@ -13769,8 +13784,9 @@
   // * ???
   //
   function mightBeExpression(str, fields) {
+    fields = fields || [];
     if (fields.indexOf(str.trim()) > -1) return true;
-    return /[(){}.+-/*?:&|=\[]/.test(str);
+    return /[(){}./*?:&|=\[+-]/.test(str);
   }
 
   function getSymbolPropertyAccessor(val, svgName, lyr) {
@@ -13791,6 +13807,7 @@
       // treating the string as a literal value
       literalVal = strVal;
     }
+    // console.log("literalVal:", mightBeExpression(strVal, fields), strVal, fields)
     if (accessor) return accessor;
     if (literalVal !== null) return function(id) {return literalVal;};
     stop('Unexpected value for', svgName + ':', strVal);
@@ -13824,6 +13841,8 @@
       val = isDashArray(strVal) ? strVal : null;
     } else if (type == 'pattern') {
       val = isPattern(strVal) ? strVal : null;
+    } else if (type == 'boolean') {
+      val = parseBoolean(strVal);
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -13844,8 +13863,15 @@
     return /^( ?[_a-z][-_a-z0-9]*\b)+$/i.test(str);
   }
 
+
   function isSvgNumber(o) {
     return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+$/.test(o);
+  }
+
+  function parseBoolean(o) {
+    if (o === true || o === 'true') return true;
+    if (o === false || o === 'false') return false;
+    return null;
   }
 
   function isSvgMeasure(o) {
@@ -13871,6 +13897,7 @@
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
     isSvgClassName: isSvgClassName,
     isSvgNumber: isSvgNumber,
+    parseBoolean: parseBoolean,
     isSvgMeasure: isSvgMeasure,
     parseSvgMeasure: parseSvgMeasure,
     isSvgColor: isSvgColor
@@ -14088,6 +14115,9 @@
       d = o ? o.properties.d + ' ' : '';
       o = importLineString(coords[i]);
       o.properties.d = d + o.properties.d + ' Z';
+    }
+    if (coords.length > 1) {
+      o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
     }
     return o;
   }
@@ -18005,6 +18035,10 @@ ${svg}
     return chunks;
   }
 
+  function parseNumberList(token) {
+    return token.split(',').map(parseFloat);
+  }
+
   // Split comma-delimited list, trim quotes from entire list and
   // individual members
   function parseStringList(token) {
@@ -18094,6 +18128,7 @@ ${svg}
   var OptionParsingUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     splitShellTokens: splitShellTokens,
+    parseNumberList: parseNumberList,
     parseStringList: parseStringList,
     parseColorList: parseColorList,
     cleanArgv: cleanArgv,
@@ -18285,7 +18320,7 @@ ${svg}
         } else if (type == 'strings') {
           val = parseStringList(token);
         } else if (type == 'bbox' || type == 'numbers') {
-          val = token.split(',').map(parseFloat);
+          val = parseNumberList(token);
         } else if (type == 'percent') {
           // val = utils.parsePercent(token);
           val = token; // string value is parsed by command function
@@ -20079,51 +20114,73 @@ ${svg}
         describe: 'sides of a polygon or star symbol',
         type: 'number'
       })
+      .option('orientation', {
+        // describe: 'use orientation=b for a rotated or flipped orientation'
+      })
+      .option('flipped', {
+        type: 'flag',
+        describe: 'symbol is vertically flipped'
+      })
+      .option('rotated', {
+        type: 'flag',
+        describe: 'symbol is rotated to a different orientation'
+      })
       .option('rotation', {
         describe: 'rotation of symbol in degrees'
-      })
-      .option('orientation', {
-        describe: 'use orientation=b for a rotated or flipped orientation'
       })
       .option('length', {
         // alias for arrow-length
       })
-      .option('star-ratio', {
-        describe: 'ratio of major to minor radius of star',
+      .option('point-ratio', {
+        old_alias: 'star-ratio',
+        describe: '(star) ratio of minor to major radius of star',
         type: 'number'
       })
-      .option('arrow-length', {
-        describe: 'length of arrows in pixels (use with type=arrow)'
+      .option('radii', {
+        describe: '(ring) comma-sep. list of concentric radii, ascending order'
       })
-      .option('arrow-direction', {
-        describe: 'angle off of vertical (-90 = left-pointing arrow)'
+      .option('length', {
+        old_alias: 'arrow-length',
+        describe: '(arrow) length of arrow in pixels'
       })
-      .option('arrow-head-angle', {
-        describe: 'angle of tip of arrow (default is 40 degrees)'
+      .option('direction', {
+        old_alias: 'arrow-direction',
+        describe: '(arrow) angle off vertical (-90 = left-pointing)'
       })
-      .option('arrow-head-width', {
-        describe: 'size of arrow head from side to side'
+      .option('head-angle', {
+        old_alias: 'arrow-head-angle',
+        describe: '(arrow) angle of tip of arrow (default is 40 degrees)'
       })
-      .option('arrow-head-length', {
-        describe: 'length of arrow head (alternative to arrow-head-angle)'
+      .option('head-width', {
+        old_alias: 'arrow-head-width',
+        describe: '(arrow) width of arrow head from side to side'
       })
-      .option('arrow-head-shape', {
+      .option('head-length', {
+        old_alias: 'arrow-head-width',
+        describe: '(arrow) length of head (alternative to head-angle)'
+      })
+      .option('head-shape', {
         // describe: 'options: a b c'
       })
-      .option('arrow-stem-width', {
-        describe: 'width of stem at its widest point'
+      .option('stem-width', {
+        old_alias: 'arrow-stem-width',
+        describe: '(arrow) width of stem at its widest point'
       })
-      .option('arrow-stem-length', {
-        describe: 'alternative to arrow-length'
+      .option('stem-length', {
+        old_alias: 'arrow-stem-length',
+        describe: '(arrow) alternative to length'
       })
-      .option('arrow-stem-taper', {
-        describe: 'factor for tapering the width of the stem'
+      .option('stem-taper', {
+        old_alias: 'arrow-stem-taper',
+        describe: '(arrow) factor for tapering the width of the stem (0-1)'
       })
-      .option('arrow-stem-curve', {
-        describe: 'curvature in degrees (arrows are straight by default)'
+      .option('stem-curve', {
+        old_alias: 'arrow-stem-curve',
+        describe: '(arrow) curvature in degrees (default is 0)'
       })
-      .option('arrow-min-stem', {
-        describe: 'min ratio of stem to total length (for small arrows)',
+      .option('min-stem-ratio', {
+        old_alias: 'arrow-min-stem',
+        describe: '(arrow) min ratio of stem to total length',
         type: 'number'
       })
       .option('stroke', {})
@@ -21660,7 +21717,7 @@ ${svg}
           collectionType = 'mixed';
         }
       } else if (currType != t) {
-        stop("Unable to import mixed-geometry GeoJSON features");
+        stop("Unable to import mixed-geometry features");
       }
     }
 
@@ -21771,36 +21828,6 @@ ${svg}
     importShp: importShp
   });
 
-  function GeoJSONParser(opts) {
-    var idField = opts.id_field || GeoJSON.ID_FIELD,
-        importer = new PathImporter(opts),
-        dataset;
-
-    this.parseObject = function(o) {
-      var geom, rec;
-      if (!o || !o.type) {
-        // not standard GeoJSON -- importing as null record
-        // (useful when parsing GeoJSON generated internally)
-        geom = null;
-      } else if (o.type == 'Feature') {
-        geom = o.geometry;
-        rec = o.properties || {};
-        if ('id' in o) {
-          rec[idField] = o.id;
-        }
-      } else {
-        geom = o;
-      }
-      // TODO: improve so geometry_type option skips features instead of creating null geometries
-      importer.startShape(rec);
-      if (geom) GeoJSON.importGeometry(geom, importer, opts);
-    };
-
-    this.done = function() {
-      return importer.done();
-    };
-  }
-
   function importGeoJSON(src, optsArg) {
     var opts = optsArg || {};
     var supportedGeometries = Object.keys(GeoJSON.pathImporters),
@@ -21828,22 +21855,90 @@ ${svg}
     return dataset;
   }
 
-  GeoJSON.importGeometry = function(geom, importer, opts) {
-    var type = geom.type;
-    if (type in GeoJSON.pathImporters) {
+  function GeoJSONParser(opts) {
+    var idField = opts.id_field || GeoJSON.ID_FIELD,
+        importer = new PathImporter(opts),
+        dataset;
+
+    this.parseObject = function(o) {
+      var geom, rec;
+      if (!o || !o.type) {
+        // not standard GeoJSON -- importing as null record
+        // (useful when parsing GeoJSON generated internally)
+        geom = null;
+      } else if (o.type == 'Feature') {
+        geom = o.geometry;
+        rec = o.properties || {};
+        if ('id' in o) {
+          rec[idField] = o.id;
+        }
+      } else {
+        geom = o;
+      }
+      // TODO: improve so geometry_type option skips features instead of creating null geometries
+      if (geom && geom.type == 'GeometryCollection') {
+        GeoJSON.importComplexFeature(importer, geom, rec, opts);
+      } else {
+        GeoJSON.importSimpleFeature(importer, geom, rec, opts);
+      }
+    };
+
+    this.done = function() {
+      return importer.done();
+    };
+  }
+
+  GeoJSON.importComplexFeature = function(importer, geom, rec, opts) {
+    var types = divideGeometriesByType(geom.geometries || []);
+    if (types.length === 0) {
+      importer.startShape(rec); // import a feature with null geometry
+      return;
+    }
+    types.forEach(function(geometries, i) {
+      importer.startShape(copyRecord(rec));
+      geometries.forEach(function(geom) {
+        GeoJSON.importSimpleGeometry(importer, geom, opts);
+      });
+    });
+  };
+
+  function divideGeometriesByType(geometries, index) {
+    index = index || {};
+    geometries.forEach(function(geom) {
+      if (!geom) return;
+      var mtype = GeoJSON.translateGeoJSONType(geom.type);
+      if (mtype) {
+        if (mtype in index === false) {
+          index[mtype] = [];
+        }
+        index[mtype].push(geom);
+      } else if (geom.type == 'GeometryCollection') {
+        divideGeometriesByType(geom.geometries || [], index);
+      }
+    });
+    return Object.values(index);
+  }
+
+  GeoJSON.importSimpleFeature = function(importer, geom, rec, opts) {
+    importer.startShape(rec);
+    GeoJSON.importSimpleGeometry(importer, geom, opts);
+  };
+
+  GeoJSON.importSimpleGeometry = function(importer, geom, opts) {
+    var type = geom ? geom.type : null;
+    if (type === null) {
+      // no geometry to import
+    } else if (type in GeoJSON.pathImporters) {
       if (opts.geometry_type && opts.geometry_type != GeoJSON.translateGeoJSONType(type)) {
         // kludge to filter out all but one type of geometry
         return;
       }
       GeoJSON.pathImporters[type](geom.coordinates, importer);
-    } else if (type == 'GeometryCollection') {
-      geom.geometries.forEach(function(geom) {
-        GeoJSON.importGeometry(geom, importer, opts);
-      });
     } else {
-      verbose("GeoJSON.importGeometry() Unsupported geometry type:", geom.type);
+      verbose("Unsupported geometry type:", geom.type);
     }
   };
+
 
   // Functions for importing geometry coordinates using a PathImporter
   //
@@ -21883,8 +21978,8 @@ ${svg}
 
   var GeojsonImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    GeoJSONParser: GeoJSONParser,
     importGeoJSON: importGeoJSON,
+    GeoJSONParser: GeoJSONParser,
     importCRS: importCRS
   });
 
@@ -37968,70 +38063,80 @@ ${svg}
   //   return [stem, head];
   // }
 
-  function getMinStemRatio(d) {
-    return d['arrow-min-stem'] >= 0 ? d['arrow-min-stem'] : 0.4;
-  }
 
   function getFilledArrowCoords(d) {
-    var totalLen = d['arrow-length'] || d.radius || d.length || d.r || 0,
-        direction = d.rotation || d['arrow-direction'] || 0,
-        unscaledStemWidth = d['arrow-stem-width'] || 2,
-        unscaledHeadWidth = d['arrow-head-width'] || unscaledStemWidth * 3,
-        unscaledHeadLen = getHeadLength(unscaledHeadWidth, d),
-        stemTaper = d['arrow-stem-taper'] || 0,
-        stemCurve = d['arrow-stem-curve'] || 0;
+    var direction = d.rotation || d.direction || 0,
+        stemTaper = d['stem-taper'] || 0,
+        stemCurve = d['stem-curve'] || 0,
+        size = calcArrowSize(d);
 
-    var headLen, headWidth, stemLen, stemWidth;
+    if (!size) return null;
 
-    var scale = 1;
+    var headDx = size.headWidth / 2,
+        stemDx = size.stemWidth / 2,
+        baseDx = stemDx * (1 - stemTaper),
+        coords;
 
-    if (totalLen > 0) {
-      scale = getScale(totalLen, unscaledHeadLen,  getMinStemRatio(d));
-      headWidth = unscaledHeadWidth * scale;
-      headLen = unscaledHeadLen * scale;
-      stemWidth = unscaledStemWidth * scale;
-      stemLen = totalLen - headLen;
-
+    if (!stemCurve || Math.abs(stemCurve) > 90) {
+      coords = calcStraightArrowCoords(size.stemLen, size.headLen, stemDx, headDx, baseDx);
     } else {
-      headWidth = unscaledHeadWidth;
-      headLen = unscaledHeadLen;
-      stemWidth = unscaledStemWidth;
-      stemLen = d['arrow-stem-length'] || 0;
-      totalLen = headLen + stemLen;
+      if (direction > 0) stemCurve = -stemCurve;
+      coords = getCurvedArrowCoords(size.stemLen, size.headLen, size.stemCurve, stemDx, headDx, baseDx);
     }
 
-    if (totalLen > 0 === false) return null;
+    rotateCoords(coords, direction);
+    if (d.flipped) {
+      flipY(coords);
+    }
+    return [coords];
+  }
 
-    var coords;
+  function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
+    return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
+          [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
+  }
 
-    var headDx = headWidth / 2,
-        stemDx = stemWidth / 2,
-        baseDx = stemDx * (1 - stemTaper);
+  function calcArrowSize(d) {
+    var totalLen = d.radius || d.length || d.r || 0,
+        unscaledStemWidth = d['stem-width'] || 2,
+        unscaledHeadWidth = d['head-width'] || unscaledStemWidth * 3,
+        unscaledHeadLen = d['head-length'] || calcHeadLength(unscaledHeadWidth, d),
+        scale = 1,
+        o = {};
+
+    if (totalLen > 0) {
+      scale = calcScale(totalLen, unscaledHeadLen, d);
+      o.headWidth = unscaledHeadWidth * scale;
+      o.headLen = unscaledHeadLen * scale;
+      o.stemWidth = unscaledStemWidth * scale;
+      o.stemLen = totalLen - o.headLen;
+
+    } else {
+      o.headWidth = unscaledHeadWidth;
+      o.headLen = unscaledHeadLen;
+      o.stemWidth = unscaledStemWidth;
+      o.stemLen = d['stem-length'] || 0;
+    }
 
     if (unscaledHeadWidth < unscaledStemWidth) {
       stop('Arrow head must be at least as wide as the stem.');
     }
-
-    if (!stemCurve || Math.abs(stemCurve) > 90) {
-      coords = [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
-          [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
-    } else {
-      if (direction > 0) stemCurve = -stemCurve;
-      coords = getCurvedArrowCoords(stemLen, headLen, stemCurve, stemDx, headDx, baseDx);
-    }
-
-    rotateCoords(coords, direction);
-    return [coords];
+    return o;
   }
 
-
-  function getScale(totalLen, headLen, minStemRatio) {
+  function calcScale(totalLen, headLen, d) {
+    var minStemRatio = d['min-stem'] >= 0 ? d['min-stem'] : 0;
+    var stemLen = d['stem-length'] || 0;
     var maxHeadPct = 1 - minStemRatio;
     var headPct = headLen / totalLen;
+    var scale = 1;
+
     if (headPct > maxHeadPct) {
-      return maxHeadPct / headPct;
+      scale = maxHeadPct / headPct;
+    } else if (stemLen + headLen > totalLen) {
+      scale = totalLen / (stemLen + headLen);
     }
-    return 1;
+    return scale;
   }
 
   // function getStickArrowTip(totalLen, curve) {
@@ -38047,10 +38152,8 @@ ${svg}
   }
 
 
-  function getHeadLength(headWidth, d) {
-    var headLength = d['arrow-head-length'];
-    if (headLength > 0) return headLength;
-    var headAngle = d['arrow-head-angle'] || 40;
+  function calcHeadLength(headWidth, d) {
+    var headAngle = d['head-angle'] || 40;
     var headRatio = 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2; // length-to-width head ratio
     return headWidth * headRatio;
   }
@@ -38109,11 +38212,11 @@ ${svg}
   // sides: e.g. 5-pointed star has 10 sides
   // radius: distance from center to point
   //
-  function getPolygonCoords(opts) {
-    var radius = opts.radius || opts.length || opts.r;
+  function getPolygonCoords(d) {
+    var radius = d.radius || d.length || d.r;
     if (radius > 0 === false) return null;
-    var type = opts.type;
-    var sides = +opts.sides || getDefaultSides(type);
+    var type = d.type;
+    var sides = +d.sides || getDefaultSides(type);
     var isStar = type == 'star';
     if (isStar && (sides < 6 || sides % 2 !== 0)) {
       stop(`Invalid number of sides for a star (${sides})`);
@@ -38124,14 +38227,14 @@ ${svg}
         angle = 360 / sides,
         b = isStar ? 1 : 0.5,
         theta, even, len;
-    if (opts.orientation == 'b') {
+    if (d.orientation == 'b' || d.flipped || d.rotated) {
       b = 0;
     }
     for (var i=0; i<sides; i++) {
       even = i % 2 == 0;
       len = radius;
       if (isStar && even) {
-        len *= (opts.star_ratio || 0.5);
+        len *= (d.star_ratio || 0.5);
       }
       theta = (i + b) * angle % 360;
       coords.push(getPlanarSegmentEndpoint(0, 0, theta, len));
@@ -38155,6 +38258,37 @@ ${svg}
     }[type] || 4;
   }
 
+  // Returns GeoJSON MultiPolygon coords
+  function getRingCoords(d) {
+    var radii = parseRings(d.radii || '2');
+    var coords = [];
+    var solidCenter = utils.isOdd(radii.length);
+    var ring, hole;
+    for (var i=0; i<radii.length; i++) {
+      ring = getPolygonCoords({
+        type: 'circle',
+        radius: radii[i]
+      });
+      if (!solidCenter || i > 0) {
+        i++;
+        hole = ring;
+        ring = getPolygonCoords({
+          type: 'circle',
+          radius: radii[i]
+        });
+        ring.push(hole[0]);
+      }
+      coords.push(ring);
+    }
+    return coords;
+  }
+
+  function parseRings(arg) {
+    var arr = Array.isArray(arg) ? arg : parseNumberList(arg);
+    utils.genericSort(arr, true);
+    return utils.uniq(arr);
+  }
+
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
   cmd.symbols = function(inputLyr, dataset, opts) {
     requireSinglePointLayer(inputLyr);
@@ -38171,9 +38305,13 @@ ${svg}
       if (!shp) return null;
       var d = getSymbolData(i);
       var rec = records[i] || {};
+      var geojsonType = 'Polygon';
       var coords;
       if (d.type == 'arrow') {
         coords = getFilledArrowCoords(d);
+      } else if (d.type == 'ring') {
+        coords = getRingCoords(d);
+        geojsonType = 'MultiPolygon';
       } else {
         coords = getPolygonCoords(d);
       }
@@ -38188,9 +38326,9 @@ ${svg}
       if (polygonMode) {
         scaleAndShiftCoords(coords, metersPerPx, shp[0]);
         if (d.tfill) rec.fill = d.fill;
-        return createGeometry(coords);
+        return createGeometry(coords, geojsonType);
       } else {
-        rec['svg-symbol'] = makeSvgSymbol(coords, d);
+        rec['svg-symbol'] = makeSvgPolygonSymbol(coords, d, geojsonType);
       }
     });
 
@@ -38221,9 +38359,9 @@ ${svg}
     return importGeoJSON(geojson);
   }
 
-  function createGeometry(coords) {
+  function createGeometry(coords, type) {
     return {
-      type: 'Polygon',
+      type: type,
       coordinates: coords
     };
   }
@@ -38236,7 +38374,12 @@ ${svg}
   }
 
   // Returns an svg-symbol data object for one symbol
-  function makeSvgSymbol(coords, properties) {
+  function makeSvgPolygonSymbol(coords, properties, geojsonType) {
+    if (geojsonType == 'MultiPolygon') {
+      coords = convertMultiPolygonCoords(coords);
+    } else if (geojsonType != 'Polygon') {
+      error('Unsupported type:', geojsonType);
+    }
     roundCoordsForSVG(coords);
     return {
       type: 'polygon',
@@ -38245,9 +38388,14 @@ ${svg}
     };
   }
 
+  function convertMultiPolygonCoords(coords) {
+    return coords.reduce(function(memo, poly) {
+      return memo.concat(poly);
+    }, []);
+  }
+
   var Symbols = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    makeSvgSymbol: makeSvgSymbol
+    __proto__: null
   });
 
   cmd.target = function(catalog, opts) {
