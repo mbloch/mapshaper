@@ -37,16 +37,18 @@ var symbolPropertyTypes = utils.extend({
   length: 'number', // e.g. arrow length
   rotation: 'number',
   radius: 'number',
-  'arrow-length': 'number',
-  'arrow-direction': 'number',
-  'arrow-head-angle': 'number',
-  'arrow-head-width': 'number',
-  'arrow-stem-width': 'number',
-  'arrow-stem-curve': 'number', // degrees of arc
-  'arrow-stem-taper': 'number',
-  'arrow-stem-length': 'number',
-  'arrow-head-length': 'number',
-  'arrow-min-stem': 'number',
+  radii: null, // string, parsed by function
+  flipped: 'boolean',
+  rotated: 'boolean',
+  direction: 'number',
+  'head-angle': 'number',
+  'head-width': 'number',
+  'head-length': 'number',
+  'stem-width': 'number',
+  'stem-curve': 'number', // degrees of arc
+  'stem-taper': 'number',
+  'stem-length': 'number',
+  'min-stem': 'number',
   'arrow-scaling': 'number',
   effect: null // e.g. "fade"
 }, stylePropertyTypes);
@@ -82,6 +84,7 @@ export function findPropertiesBySymbolGeom(fields, type) {
 export function getSymbolDataAccessor(lyr, opts) {
   var functions = {};
   var properties = [];
+  var fields = lyr.data ? lyr.data.getFields() : [];
 
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace(/_/g, '-');
@@ -92,6 +95,8 @@ export function getSymbolDataAccessor(lyr, opts) {
     functions[svgName] = getSymbolPropertyAccessor(val, svgName, lyr);
     properties.push(svgName);
   });
+
+  // TODO: consider applying values of existing fields with names of symbol properties
 
   return function(id) {
     var d = {}, name;
@@ -108,8 +113,9 @@ export function getSymbolDataAccessor(lyr, opts) {
 // * ???
 //
 export function mightBeExpression(str, fields) {
+  fields = fields || [];
   if (fields.indexOf(str.trim()) > -1) return true;
-  return /[(){}.+-/*?:&|=\[]/.test(str);
+  return /[(){}./*?:&|=\[+-]/.test(str);
 }
 
 export function getSymbolPropertyAccessor(val, svgName, lyr) {
@@ -130,6 +136,7 @@ export function getSymbolPropertyAccessor(val, svgName, lyr) {
     // treating the string as a literal value
     literalVal = strVal;
   }
+  // console.log("literalVal:", mightBeExpression(strVal, fields), strVal, fields)
   if (accessor) return accessor;
   if (literalVal !== null) return function(id) {return literalVal;};
   stop('Unexpected value for', svgName + ':', strVal);
@@ -163,6 +170,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = isDashArray(strVal) ? strVal : null;
   } else if (type == 'pattern') {
     val = isPattern(strVal) ? strVal : null;
+  } else if (type == 'boolean') {
+    val = parseBoolean(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -183,8 +192,15 @@ export function isSvgClassName(str) {
   return /^( ?[_a-z][-_a-z0-9]*\b)+$/i.test(str);
 }
 
+
 export function isSvgNumber(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+$/.test(o);
+}
+
+export function parseBoolean(o) {
+  if (o === true || o === 'true') return true;
+  if (o === false || o === 'false') return false;
+  return null;
 }
 
 export function isSvgMeasure(o) {

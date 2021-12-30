@@ -1,5 +1,5 @@
 
-import { addBezierArcControlPoints, rotateCoords } from './mapshaper-symbol-utils';
+import { addBezierArcControlPoints, rotateCoords, flipY } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 // export function getStickArrowCoords(d, totalLen) {
@@ -24,70 +24,80 @@ import { stop } from '../utils/mapshaper-logging';
 //   return [stem, head];
 // }
 
-function getMinStemRatio(d) {
-  return d['arrow-min-stem'] >= 0 ? d['arrow-min-stem'] : 0.4;
-}
 
 export function getFilledArrowCoords(d) {
-  var totalLen = d['arrow-length'] || d.radius || d.length || d.r || 0,
-      direction = d.rotation || d['arrow-direction'] || 0,
-      unscaledStemWidth = d['arrow-stem-width'] || 2,
-      unscaledHeadWidth = d['arrow-head-width'] || unscaledStemWidth * 3,
-      unscaledHeadLen = getHeadLength(unscaledHeadWidth, d),
-      stemTaper = d['arrow-stem-taper'] || 0,
-      stemCurve = d['arrow-stem-curve'] || 0;
+  var direction = d.rotation || d.direction || 0,
+      stemTaper = d['stem-taper'] || 0,
+      stemCurve = d['stem-curve'] || 0,
+      size = calcArrowSize(d);
 
-  var headLen, headWidth, stemLen, stemWidth;
+  if (!size) return null;
 
-  var scale = 1;
+  var headDx = size.headWidth / 2,
+      stemDx = size.stemWidth / 2,
+      baseDx = stemDx * (1 - stemTaper),
+      coords;
 
-  if (totalLen > 0) {
-    scale = getScale(totalLen, unscaledHeadLen,  getMinStemRatio(d));
-    headWidth = unscaledHeadWidth * scale;
-    headLen = unscaledHeadLen * scale;
-    stemWidth = unscaledStemWidth * scale;
-    stemLen = totalLen - headLen;
-
+  if (!stemCurve || Math.abs(stemCurve) > 90) {
+    coords = calcStraightArrowCoords(size.stemLen, size.headLen, stemDx, headDx, baseDx);
   } else {
-    headWidth = unscaledHeadWidth;
-    headLen = unscaledHeadLen;
-    stemWidth = unscaledStemWidth;
-    stemLen = d['arrow-stem-length'] || 0;
-    totalLen = headLen + stemLen;
+    if (direction > 0) stemCurve = -stemCurve;
+    coords = getCurvedArrowCoords(size.stemLen, size.headLen, size.stemCurve, stemDx, headDx, baseDx);
   }
 
-  if (totalLen > 0 === false) return null;
+  rotateCoords(coords, direction);
+  if (d.flipped) {
+    flipY(coords);
+  }
+  return [coords];
+}
 
-  var coords;
+function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
+  return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
+        [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
+}
 
-  var headDx = headWidth / 2,
-      stemDx = stemWidth / 2,
-      baseDx = stemDx * (1 - stemTaper);
+function calcArrowSize(d) {
+  var totalLen = d.radius || d.length || d.r || 0,
+      unscaledStemWidth = d['stem-width'] || 2,
+      unscaledHeadWidth = d['head-width'] || unscaledStemWidth * 3,
+      unscaledHeadLen = d['head-length'] || calcHeadLength(unscaledHeadWidth, d),
+      scale = 1,
+      o = {};
+
+  if (totalLen > 0) {
+    scale = calcScale(totalLen, unscaledHeadLen, d);
+    o.headWidth = unscaledHeadWidth * scale;
+    o.headLen = unscaledHeadLen * scale;
+    o.stemWidth = unscaledStemWidth * scale;
+    o.stemLen = totalLen - o.headLen;
+
+  } else {
+    o.headWidth = unscaledHeadWidth;
+    o.headLen = unscaledHeadLen;
+    o.stemWidth = unscaledStemWidth;
+    o.stemLen = d['stem-length'] || 0;
+  }
 
   if (unscaledHeadWidth < unscaledStemWidth) {
     stop('Arrow head must be at least as wide as the stem.');
   }
-
-  if (!stemCurve || Math.abs(stemCurve) > 90) {
-    coords = [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
-        [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
-  } else {
-    if (direction > 0) stemCurve = -stemCurve;
-    coords = getCurvedArrowCoords(stemLen, headLen, stemCurve, stemDx, headDx, baseDx);
-  }
-
-  rotateCoords(coords, direction);
-  return [coords];
+  return o;
 }
 
-
-function getScale(totalLen, headLen, minStemRatio) {
+function calcScale(totalLen, headLen, d) {
+  var minStemRatio = d['min-stem'] >= 0 ? d['min-stem'] : 0;
+  var stemLen = d['stem-length'] || 0;
   var maxHeadPct = 1 - minStemRatio;
   var headPct = headLen / totalLen;
+  var scale = 1;
+
   if (headPct > maxHeadPct) {
-    return maxHeadPct / headPct;
+    scale = maxHeadPct / headPct;
+  } else if (stemLen + headLen > totalLen) {
+    scale = totalLen / (stemLen + headLen);
   }
-  return 1;
+  return scale;
 }
 
 // function getStickArrowTip(totalLen, curve) {
@@ -103,10 +113,8 @@ function addPoints(a, b) {
 }
 
 
-function getHeadLength(headWidth, d) {
-  var headLength = d['arrow-head-length'];
-  if (headLength > 0) return headLength;
-  var headAngle = d['arrow-head-angle'] || 40;
+function calcHeadLength(headWidth, d) {
+  var headAngle = d['head-angle'] || 40;
   var headRatio = 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2; // length-to-width head ratio
   return headWidth * headRatio;
 }

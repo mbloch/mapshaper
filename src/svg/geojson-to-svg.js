@@ -203,6 +203,9 @@ export function importPolygon(coords) {
     o = importLineString(coords[i]);
     o.properties.d = d + o.properties.d + ' Z';
   }
+  if (coords.length > 1) {
+    o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
+  }
   return o;
 }
 

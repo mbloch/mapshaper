@@ -14,6 +14,10 @@ export function splitShellTokens(str) {
   return chunks;
 }
 
+export function parseNumberList(token) {
+  return token.split(',').map(parseFloat);
+}
+
 // Split comma-delimited list, trim quotes from entire list and
 // individual members
 export function parseStringList(token) {

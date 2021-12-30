@@ -69,5 +69,3 @@ symbolRenderers.group = function(d, x, y) {
     return memo.concat(sym);
   }, []);
 };
-
-

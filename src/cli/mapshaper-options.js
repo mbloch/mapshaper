@@ -1554,47 +1554,69 @@ export function getOptionParser() {
       describe: 'rotation of symbol in degrees'
     })
     .option('orientation', {
-      describe: 'use orientation=b for a rotated or flipped orientation'
+      // describe: 'use orientation=b for a rotated or flipped orientation'
+    })
+    .option('flipped', {
+      type: 'flag',
+      describe: 'symbol is vertically flipped'
+    })
+    .option('rotated', {
+      type: 'flag',
+      describe: 'symbol is rotated to a different orientation'
     })
     .option('length', {
       // alias for arrow-length
     })
-    .option('star-ratio', {
-      describe: 'ratio of major to minor radius of star',
+    .option('point-ratio', {
+      old_alias: 'star-ratio',
+      describe: '(star) ratio of minor to major radius of star',
       type: 'number'
     })
-    .option('arrow-length', {
-      describe: 'length of arrows in pixels (use with type=arrow)'
+    .option('radii', {
+      describe: '(ring) comma-sep. list of concentric radii, ascending order'
     })
-    .option('arrow-direction', {
-      describe: 'angle off of vertical (-90 = left-pointing arrow)'
+    .option('length', {
+      old_alias: 'arrow-length',
+      describe: '(arrow) length of arrow in pixels'
     })
-    .option('arrow-head-angle', {
-      describe: 'angle of tip of arrow (default is 40 degrees)'
+    .option('direction', {
+      old_alias: 'arrow-direction',
+      describe: '(arrow) angle off vertical (-90 = left-pointing)'
     })
-    .option('arrow-head-width', {
-      describe: 'size of arrow head from side to side'
+    .option('head-angle', {
+      old_alias: 'arrow-head-angle',
+      describe: '(arrow) angle of tip of arrow (default is 40 degrees)'
     })
-    .option('arrow-head-length', {
-      describe: 'length of arrow head (alternative to arrow-head-angle)'
+    .option('head-width', {
+      old_alias: 'arrow-head-width',
+      describe: '(arrow) width of arrow head from side to side'
     })
-    .option('arrow-head-shape', {
+    .option('head-length', {
+      old_alias: 'arrow-head-width',
+      describe: '(arrow) length of head (alternative to head-angle)'
+    })
+    .option('head-shape', {
       // describe: 'options: a b c'
     })
-    .option('arrow-stem-width', {
-      describe: 'width of stem at its widest point'
+    .option('stem-width', {
+      old_alias: 'arrow-stem-width',
+      describe: '(arrow) width of stem at its widest point'
     })
-    .option('arrow-stem-length', {
-      describe: 'alternative to arrow-length'
+    .option('stem-length', {
+      old_alias: 'arrow-stem-length',
+      describe: '(arrow) alternative to length'
     })
-    .option('arrow-stem-taper', {
-      describe: 'factor for tapering the width of the stem'
+    .option('stem-taper', {
+      old_alias: 'arrow-stem-taper',
+      describe: '(arrow) factor for tapering the width of the stem (0-1)'
     })
-    .option('arrow-stem-curve', {
-      describe: 'curvature in degrees (arrows are straight by default)'
+    .option('stem-curve', {
+      old_alias: 'arrow-stem-curve',
+      describe: '(arrow) curvature in degrees (default is 0)'
     })
-    .option('arrow-min-stem', {
-      describe: 'min ratio of stem to total length (for small arrows)',
+    .option('min-stem-ratio', {
+      old_alias: 'arrow-min-stem',
+      describe: '(arrow) min ratio of stem to total length',
       type: 'number'
     })
     .option('stroke', {})

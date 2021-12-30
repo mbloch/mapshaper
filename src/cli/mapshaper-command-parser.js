@@ -1,6 +1,7 @@
 import {
   parseStringList,
   parseColorList,
+  parseNumberList,
   cleanArgv,
   isAssignment,
   splitAssignment
@@ -192,7 +193,7 @@ export function CommandParser() {
       } else if (type == 'strings') {
         val = parseStringList(token);
       } else if (type == 'bbox' || type == 'numbers') {
-        val = token.split(',').map(parseFloat);
+        val = parseNumberList(token);
       } else if (type == 'percent') {
         // val = utils.parsePercent(token);
         val = token; // string value is parsed by command function

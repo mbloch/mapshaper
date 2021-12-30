@@ -54,6 +54,14 @@ export function isInteger(obj) {
   return isNumber(obj) && ((obj | 0) === obj);
 }
 
+export function isEven(obj) {
+  return (obj % 2) === 0;
+}
+
+export function isOdd(obj) {
+  return (obj % 2) === 1;
+}
+
 export function isString(obj) {
   return obj != null && obj.toString === String.prototype.toString;
   // TODO: replace w/ something better.
