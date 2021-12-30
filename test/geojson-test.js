@@ -181,7 +181,9 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(dataset.layers[0].shapes, [[[0, 1], [2, 3], [4, 5]]])
     })
 
-    it('Unable to import Feature containing mixed geometry types', function() {
+
+
+    it('Features with GeometryCollection type geometries are supported', function() {
       var json = {
           "type": "Feature",
           "properties": {"name": "A"},
@@ -201,7 +203,42 @@ describe('mapshaper-geojson.js', function () {
           }
         };
 
-      assert.throws(function() {api.internal.importGeoJSON(json, {});}, /Unable to import mixed/);
+      var output = api.internal.importGeoJSON(json, {});
+      assert.equal(output.layers.length, 3);
+      assert.equal(output.layers[0].geometry_type, 'point')
+      assert.equal(output.layers[1].geometry_type, 'polyline')
+      assert.equal(output.layers[2].geometry_type, 'polygon')
+      assert.deepEqual(output.layers[2].data.getRecords(), [{name: 'A'}])
+    });
+
+
+   it('Features with nested GeometryCollection type geometries are supported', function() {
+      var json = {
+          "type": "Feature",
+          "properties": {"name": "A"},
+          "geometry": {
+            "type": "GeometryCollection",
+            "geometries": [{
+                "type": "MultiPoint",
+                "coordinates": [[0, 1], [2, 3]]
+              }, {
+              "type": "GeometryCollection",
+              "geometries": [{
+                "type": "Point",
+                    "coordinates": [0, 4]
+                  }, {
+                    "type": "LineString",
+                    "coordinates": [[0, 1], [2, 3], [4, 5]]
+                  }
+                ]
+              }
+            ]
+          }
+        };
+
+      var output = api.internal.importGeoJSON(json, {});
+      assert.equal(output.layers.length, 2);
+      assert.deepEqual(output.layers[0].shapes, [[[0, 1], [2, 3], [0, 4]]])
     });
 
     it('Import FeatureCollection with mixed geometry types', function() {

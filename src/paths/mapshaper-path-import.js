@@ -214,7 +214,7 @@ export function PathImporter(opts) {
         collectionType = 'mixed';
       }
     } else if (currType != t) {
-      stop("Unable to import mixed-geometry GeoJSON features");
+      stop("Unable to import mixed-geometry features");
     }
   }
 
