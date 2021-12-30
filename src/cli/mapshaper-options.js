@@ -1550,9 +1550,6 @@ export function getOptionParser() {
       describe: 'sides of a polygon or star symbol',
       type: 'number'
     })
-    .option('rotation', {
-      describe: 'rotation of symbol in degrees'
-    })
     .option('orientation', {
       // describe: 'use orientation=b for a rotated or flipped orientation'
     })
@@ -1563,6 +1560,9 @@ export function getOptionParser() {
     .option('rotated', {
       type: 'flag',
       describe: 'symbol is rotated to a different orientation'
+    })
+    .option('rotation', {
+      describe: 'rotation of symbol in degrees'
     })
     .option('length', {
       // alias for arrow-length

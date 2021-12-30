@@ -1,3 +1,7 @@
+v0.5.83
+* Added support for importing GeoJSON features with GeometryCollection type geometries.
+* Added "ring" symbol type.
+
 v0.5.82
 * More options for arrow styling.
 
