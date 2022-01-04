@@ -48,7 +48,7 @@ var symbolPropertyTypes = utils.extend({
   'stem-curve': 'number', // degrees of arc
   'stem-taper': 'number',
   'stem-length': 'number',
-  'min-stem': 'number',
+  'min-stem-ratio': 'number',
   'arrow-scaling': 'number',
   effect: null // e.g. "fade"
 }, stylePropertyTypes);

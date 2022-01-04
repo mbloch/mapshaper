@@ -1,3 +1,6 @@
+v0.5.84
+* Bug fixes
+
 v0.5.83
 * Added support for importing GeoJSON features with GeometryCollection type geometries.
 * Added "ring" symbol type.

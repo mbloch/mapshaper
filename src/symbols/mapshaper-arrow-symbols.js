@@ -24,6 +24,17 @@ import { stop } from '../utils/mapshaper-logging';
 //   return [stem, head];
 // }
 
+// function getStickArrowTip(totalLen, curve) {
+//   // curve/2 intersects the arrowhead at 90deg (trigonometry)
+//   var theta = Math.abs(curve/2) / 180 * Math.PI;
+//   var dx = totalLen * Math.sin(theta) * (curve > 0 ? -1 : 1);
+//   var dy = totalLen * Math.cos(theta);
+//   return [dx, dy];
+// }
+
+// function addPoints(a, b) {
+//   return [a[0] + b[0], a[1] + b[1]];
+// }
 
 export function getFilledArrowCoords(d) {
   var direction = d.rotation || d.direction || 0,
@@ -42,7 +53,7 @@ export function getFilledArrowCoords(d) {
     coords = calcStraightArrowCoords(size.stemLen, size.headLen, stemDx, headDx, baseDx);
   } else {
     if (direction > 0) stemCurve = -stemCurve;
-    coords = getCurvedArrowCoords(size.stemLen, size.headLen, size.stemCurve, stemDx, headDx, baseDx);
+    coords = getCurvedArrowCoords(size.stemLen, size.headLen, stemCurve, stemDx, headDx, baseDx);
   }
 
   rotateCoords(coords, direction);
@@ -59,34 +70,25 @@ function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
 
 function calcArrowSize(d) {
   var totalLen = d.radius || d.length || d.r || 0,
-      unscaledStemWidth = d['stem-width'] || 2,
-      unscaledHeadWidth = d['head-width'] || unscaledStemWidth * 3,
-      unscaledHeadLen = d['head-length'] || calcHeadLength(unscaledHeadWidth, d),
       scale = 1,
-      o = {};
+      o = initArrowSize(d); // calc several parameters
 
   if (totalLen > 0) {
-    scale = calcScale(totalLen, unscaledHeadLen, d);
-    o.headWidth = unscaledHeadWidth * scale;
-    o.headLen = unscaledHeadLen * scale;
-    o.stemWidth = unscaledStemWidth * scale;
+    scale = calcScale(totalLen, o.headLen, d);
+    o.stemWidth *= scale;
+    o.headWidth *= scale;
+    o.headLen *= scale;
     o.stemLen = totalLen - o.headLen;
-
-  } else {
-    o.headWidth = unscaledHeadWidth;
-    o.headLen = unscaledHeadLen;
-    o.stemWidth = unscaledStemWidth;
-    o.stemLen = d['stem-length'] || 0;
   }
 
-  if (unscaledHeadWidth < unscaledStemWidth) {
+  if (o.headWidth < o.stemWidth) {
     stop('Arrow head must be at least as wide as the stem.');
   }
   return o;
 }
 
 function calcScale(totalLen, headLen, d) {
-  var minStemRatio = d['min-stem'] >= 0 ? d['min-stem'] : 0;
+  var minStemRatio = d['min-stem-ratio'] >= 0 ? d['min-stem-ratio'] : 0;
   var stemLen = d['stem-length'] || 0;
   var maxHeadPct = 1 - minStemRatio;
   var headPct = headLen / totalLen;
@@ -100,23 +102,31 @@ function calcScale(totalLen, headLen, d) {
   return scale;
 }
 
-// function getStickArrowTip(totalLen, curve) {
-//   // curve/2 intersects the arrowhead at 90deg (trigonometry)
-//   var theta = Math.abs(curve/2) / 180 * Math.PI;
-//   var dx = totalLen * Math.sin(theta) * (curve > 0 ? -1 : 1);
-//   var dy = totalLen * Math.cos(theta);
-//   return [dx, dy];
-// }
-
-function addPoints(a, b) {
-  return [a[0] + b[0], a[1] + b[1]];
+export function initArrowSize(d) {
+  var sizeRatio = getHeadSizeRatio(d['head-angle'] || 40); // length to width
+  var o = {
+    stemWidth: d['stem-width'] || 2,
+    stemLen: d['stem-length'] || 0,
+    headWidth: d['head-width'],
+    headLen: d['head-length']
+  };
+  if (!o.headWidth) {
+    if (o.headLen) {
+      o.headWidth = o.headLen / sizeRatio;
+    } else {
+      o.headWidth = o.stemWidth * 3; // assumes stemWidth has been set
+    }
+  }
+  if (!o.headLen) {
+    o.headLen = o.headWidth * sizeRatio;
+  }
+  return o;
 }
 
 
-function calcHeadLength(headWidth, d) {
-  var headAngle = d['head-angle'] || 40;
-  var headRatio = 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2; // length-to-width head ratio
-  return headWidth * headRatio;
+// Returns ratio of head length to head width
+function getHeadSizeRatio(headAngle) {
+  return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
 }
 
 function getCurvedArrowCoords(stemLen, headLen, curvature, stemDx, headDx, baseDx) {
@@ -169,4 +179,3 @@ function getCurvedStemCoords(ax, ay, bx, by, theta0) {
   coords.push([ax, ay]);
   return coords;
 }
-
