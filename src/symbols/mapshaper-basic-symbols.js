@@ -1,5 +1,6 @@
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
 import { stop } from '../utils/mapshaper-logging';
+import { getMinorRadius } from '../symbols/mapshaper-star-symbols';
 
 // sides: e.g. 5-pointed star has 10 sides
 // radius: distance from center to point
@@ -10,8 +11,12 @@ export function getPolygonCoords(d) {
   var type = d.type;
   var sides = +d.sides || getDefaultSides(type);
   var isStar = type == 'star';
-  if (isStar && (sides < 6 || sides % 2 !== 0)) {
-    stop(`Invalid number of sides for a star (${sides})`);
+  if (isStar && d.points > 0) {
+    sides = d.points * 2;
+  }
+  var starRatio = isStar ? d.star_ratio || getMinorRadius(sides / 2) : 0;
+  if (isStar && (sides < 10 || sides % 2 !== 0)) {
+    stop(`Invalid number of points for a star (${sides / 2})`);
   } else if (sides >= 3 === false) {
     stop(`Invalid number of sides (${sides})`);
   }
@@ -26,7 +31,7 @@ export function getPolygonCoords(d) {
     even = i % 2 == 0;
     len = radius;
     if (isStar && even) {
-      len *= (d.star_ratio || 0.5);
+      len *= starRatio;
     }
     theta = (i + b) * angle % 360;
     coords.push(getPlanarSegmentEndpoint(0, 0, theta, len));

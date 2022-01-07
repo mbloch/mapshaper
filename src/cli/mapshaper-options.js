@@ -1547,10 +1547,11 @@ export function getOptionParser() {
       type: 'distance'
     })
     .option('sides', {
-      describe: 'sides of a polygon or star symbol',
+      describe: 'number of sides of a polygon symbol',
       type: 'number'
     })
     .option('orientation', {
+      // TODO: removed (replaced by flipped and rotated)
       // describe: 'use orientation=b for a rotated or flipped orientation'
     })
     .option('flipped', {
@@ -1564,8 +1565,8 @@ export function getOptionParser() {
     .option('rotation', {
       describe: 'rotation of symbol in degrees'
     })
-    .option('length', {
-      // alias for arrow-length
+    .option('points', {
+      describe: '(star) number of points'
     })
     .option('point-ratio', {
       old_alias: 'star-ratio',
@@ -1618,6 +1619,9 @@ export function getOptionParser() {
       old_alias: 'arrow-min-stem',
       describe: '(arrow) min ratio of stem to total length',
       type: 'number'
+    })
+    .option('anchor', {
+      describe: '(arrow) takes one of: start, middle, end (default is start)'
     })
     .option('stroke', {})
     .option('stroke-width', {})

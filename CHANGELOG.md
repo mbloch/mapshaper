@@ -1,3 +1,6 @@
+v0.5.85
+* Improved arrow and star symbols.
+
 v0.5.84
 * Bug fixes
 

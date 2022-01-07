@@ -1,5 +1,5 @@
 
-import { addBezierArcControlPoints, rotateCoords, flipY } from './mapshaper-symbol-utils';
+import { addBezierArcControlPoints, rotateCoords, flipY, scaleAndShiftCoords } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 // export function getStickArrowCoords(d, totalLen) {
@@ -35,33 +35,6 @@ import { stop } from '../utils/mapshaper-logging';
 // function addPoints(a, b) {
 //   return [a[0] + b[0], a[1] + b[1]];
 // }
-
-export function getFilledArrowCoords(d) {
-  var direction = d.rotation || d.direction || 0,
-      stemTaper = d['stem-taper'] || 0,
-      stemCurve = d['stem-curve'] || 0,
-      size = calcArrowSize(d);
-
-  if (!size) return null;
-
-  var headDx = size.headWidth / 2,
-      stemDx = size.stemWidth / 2,
-      baseDx = stemDx * (1 - stemTaper),
-      coords;
-
-  if (!stemCurve || Math.abs(stemCurve) > 90) {
-    coords = calcStraightArrowCoords(size.stemLen, size.headLen, stemDx, headDx, baseDx);
-  } else {
-    if (direction > 0) stemCurve = -stemCurve;
-    coords = getCurvedArrowCoords(size.stemLen, size.headLen, stemCurve, stemDx, headDx, baseDx);
-  }
-
-  rotateCoords(coords, direction);
-  if (d.flipped) {
-    flipY(coords);
-  }
-  return [coords];
-}
 
 function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
   return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
@@ -129,21 +102,53 @@ function getHeadSizeRatio(headAngle) {
   return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
 }
 
-function getCurvedArrowCoords(stemLen, headLen, curvature, stemDx, headDx, baseDx) {
+export function getFilledArrowCoords(d) {
+  var direction = d.rotation || d.direction || 0,
+      stemTaper = d['stem-taper'] || 0,
+      curvature = d['stem-curve'] || 0,
+      size = calcArrowSize(d);
+  if (!size) return null;
+  var stemLen = size.stemLen,
+      headLen = size.headLen,
+      headDx = size.headWidth / 2,
+      stemDx = size.stemWidth / 2,
+      baseDx = stemDx * (1 - stemTaper),
+      head, stem, coords, dx, dy;
+
+  if (curvature) {
+    if (direction > 0) curvature = -curvature;
+    var theta = Math.abs(curvature) / 180 * Math.PI;
+    var sign = curvature > 0 ? 1 : -1;
+    var ax = baseDx * Math.cos(theta); // rotate arrow base
+    var ay = baseDx * Math.sin(theta) * -sign;
+    dx = stemLen * Math.sin(theta / 2) * sign;
+    dy = stemLen * Math.cos(theta / 2);
+    var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
+    var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
+    stem = leftStem.concat(rightStem.reverse());
+
+  } else {
+    dx = 0;
+    dy = stemLen;
+    stem = [[-baseDx, 0], [baseDx, 0], [baseDx, 0]];
+  }
+
   // coordinates go counter clockwise, starting from the leftmost head coordinate
-  var theta = Math.abs(curvature) / 180 * Math.PI;
-  var sign = curvature > 0 ? 1 : -1;
-  var dx = stemLen * Math.sin(theta / 2) * sign;
-  var dy = stemLen * Math.cos(theta / 2);
-  var head = [[stemDx + dx, dy], [headDx + dx, dy],
-    [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
-  var ax = baseDx * Math.cos(theta); // rotate arrow base
-  var ay = baseDx * Math.sin(theta) * -sign;
-  var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
-  var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
-  var stem = leftStem.concat(rightStem.reverse());
-  // stem.pop();
-  return stem.concat(head);
+  head = [[stemDx + dx, dy], [headDx + dx, dy],
+      [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
+
+  coords = stem.concat(head);
+  if (d.anchor == 'end') {
+    scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
+  } else if (d.anchor == 'middle') {
+    scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+  }
+
+  rotateCoords(coords, direction);
+  if (d.flipped) {
+    flipY(coords);
+  }
+  return [coords];
 }
 
 // ax, ay: point on the base

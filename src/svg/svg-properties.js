@@ -41,6 +41,9 @@ var symbolPropertyTypes = utils.extend({
   flipped: 'boolean',
   rotated: 'boolean',
   direction: 'number',
+  sides: 'number', // polygons and stars
+  points: 'number', // polygons and stars
+  anchor: null, // arrows; takes start, middle, end
   'head-angle': 'number',
   'head-width': 'number',
   'head-length': 'number',
