@@ -1554,10 +1554,10 @@ export function getOptionParser() {
       // TODO: removed (replaced by flipped and rotated)
       // describe: 'use orientation=b for a rotated or flipped orientation'
     })
-    .option('flipped', {
-      type: 'flag',
-      describe: 'symbol is vertically flipped'
-    })
+    // .option('flipped', {
+    //   type: 'flag',
+    //   describe: 'symbol is vertically flipped'
+    // })
     .option('rotated', {
       type: 'flag',
       describe: 'symbol is rotated to a different orientation'
