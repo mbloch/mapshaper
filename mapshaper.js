@@ -13712,6 +13712,9 @@
     flipped: 'boolean',
     rotated: 'boolean',
     direction: 'number',
+    sides: 'number', // polygons and stars
+    points: 'number', // polygons and stars
+    anchor: null, // arrows; takes start, middle, end
     'head-angle': 'number',
     'head-width': 'number',
     'head-length': 'number',
@@ -20111,10 +20114,11 @@ ${svg}
         type: 'distance'
       })
       .option('sides', {
-        describe: 'sides of a polygon or star symbol',
+        describe: 'number of sides of a polygon symbol',
         type: 'number'
       })
       .option('orientation', {
+        // TODO: removed (replaced by flipped and rotated)
         // describe: 'use orientation=b for a rotated or flipped orientation'
       })
       .option('flipped', {
@@ -20128,8 +20132,8 @@ ${svg}
       .option('rotation', {
         describe: 'rotation of symbol in degrees'
       })
-      .option('length', {
-        // alias for arrow-length
+      .option('points', {
+        describe: '(star) number of points'
       })
       .option('point-ratio', {
         old_alias: 'star-ratio',
@@ -20182,6 +20186,9 @@ ${svg}
         old_alias: 'arrow-min-stem',
         describe: '(arrow) min ratio of stem to total length',
         type: 'number'
+      })
+      .option('anchor', {
+        describe: '(arrow) takes one of: start, middle, end (default is start)'
       })
       .option('stroke', {})
       .option('stroke-width', {})
@@ -38075,33 +38082,6 @@ ${svg}
   //   return [a[0] + b[0], a[1] + b[1]];
   // }
 
-  function getFilledArrowCoords(d) {
-    var direction = d.rotation || d.direction || 0,
-        stemTaper = d['stem-taper'] || 0,
-        stemCurve = d['stem-curve'] || 0,
-        size = calcArrowSize(d);
-
-    if (!size) return null;
-
-    var headDx = size.headWidth / 2,
-        stemDx = size.stemWidth / 2,
-        baseDx = stemDx * (1 - stemTaper),
-        coords;
-
-    if (!stemCurve || Math.abs(stemCurve) > 90) {
-      coords = calcStraightArrowCoords(size.stemLen, size.headLen, stemDx, headDx, baseDx);
-    } else {
-      if (direction > 0) stemCurve = -stemCurve;
-      coords = getCurvedArrowCoords(size.stemLen, size.headLen, stemCurve, stemDx, headDx, baseDx);
-    }
-
-    rotateCoords(coords, direction);
-    if (d.flipped) {
-      flipY(coords);
-    }
-    return [coords];
-  }
-
   function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
     return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
           [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
@@ -38168,21 +38148,53 @@ ${svg}
     return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
   }
 
-  function getCurvedArrowCoords(stemLen, headLen, curvature, stemDx, headDx, baseDx) {
+  function getFilledArrowCoords(d) {
+    var direction = d.rotation || d.direction || 0,
+        stemTaper = d['stem-taper'] || 0,
+        curvature = d['stem-curve'] || 0,
+        size = calcArrowSize(d);
+    if (!size) return null;
+    var stemLen = size.stemLen,
+        headLen = size.headLen,
+        headDx = size.headWidth / 2,
+        stemDx = size.stemWidth / 2,
+        baseDx = stemDx * (1 - stemTaper),
+        head, stem, coords, dx, dy;
+
+    if (curvature) {
+      if (direction > 0) curvature = -curvature;
+      var theta = Math.abs(curvature) / 180 * Math.PI;
+      var sign = curvature > 0 ? 1 : -1;
+      var ax = baseDx * Math.cos(theta); // rotate arrow base
+      var ay = baseDx * Math.sin(theta) * -sign;
+      dx = stemLen * Math.sin(theta / 2) * sign;
+      dy = stemLen * Math.cos(theta / 2);
+      var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
+      var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
+      stem = leftStem.concat(rightStem.reverse());
+
+    } else {
+      dx = 0;
+      dy = stemLen;
+      stem = [[-baseDx, 0], [baseDx, 0], [baseDx, 0]];
+    }
+
     // coordinates go counter clockwise, starting from the leftmost head coordinate
-    var theta = Math.abs(curvature) / 180 * Math.PI;
-    var sign = curvature > 0 ? 1 : -1;
-    var dx = stemLen * Math.sin(theta / 2) * sign;
-    var dy = stemLen * Math.cos(theta / 2);
-    var head = [[stemDx + dx, dy], [headDx + dx, dy],
-      [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
-    var ax = baseDx * Math.cos(theta); // rotate arrow base
-    var ay = baseDx * Math.sin(theta) * -sign;
-    var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
-    var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
-    var stem = leftStem.concat(rightStem.reverse());
-    // stem.pop();
-    return stem.concat(head);
+    head = [[stemDx + dx, dy], [headDx + dx, dy],
+        [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
+
+    coords = stem.concat(head);
+    if (d.anchor == 'end') {
+      scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
+    } else if (d.anchor == 'middle') {
+      scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+    }
+
+    rotateCoords(coords, direction);
+    if (d.flipped) {
+      flipY(coords);
+    }
+    return [coords];
   }
 
   // ax, ay: point on the base
@@ -38219,6 +38231,30 @@ ${svg}
     return coords;
   }
 
+  function getMinorRadius(points) {
+    var innerAngle = 360 / points;
+    var pointAngle = getDefaultPointAngle(points);
+    var thetaA = Math.PI / 180 * innerAngle / 2;
+    var thetaB = Math.PI / 180 * pointAngle / 2;
+    var a = Math.tan(thetaB) / (Math.tan(thetaB) + Math.tan(thetaA));
+    var c = a / Math.cos(thetaA);
+    return c;
+  }
+
+
+  function getPointAngle(points, skip) {
+    var unitAngle = 360 / points;
+    var centerAngle = unitAngle * (skip + 1);
+    return 180 - centerAngle;
+  }
+
+  function getDefaultPointAngle(points) {
+    var minSkip = 1;
+    var maxSkip = Math.ceil(points / 2) - 2;
+    var skip = Math.floor((maxSkip + minSkip) / 2);
+    return getPointAngle(points, skip);
+  }
+
   // sides: e.g. 5-pointed star has 10 sides
   // radius: distance from center to point
   //
@@ -38228,8 +38264,12 @@ ${svg}
     var type = d.type;
     var sides = +d.sides || getDefaultSides(type);
     var isStar = type == 'star';
-    if (isStar && (sides < 6 || sides % 2 !== 0)) {
-      stop(`Invalid number of sides for a star (${sides})`);
+    if (isStar && d.points > 0) {
+      sides = d.points * 2;
+    }
+    var starRatio = isStar ? d.star_ratio || getMinorRadius(sides / 2) : 0;
+    if (isStar && (sides < 10 || sides % 2 !== 0)) {
+      stop(`Invalid number of points for a star (${sides / 2})`);
     } else if (sides >= 3 === false) {
       stop(`Invalid number of sides (${sides})`);
     }
@@ -38244,7 +38284,7 @@ ${svg}
       even = i % 2 == 0;
       len = radius;
       if (isStar && even) {
-        len *= (d.star_ratio || 0.5);
+        len *= starRatio;
       }
       theta = (i + b) * angle % 360;
       coords.push(getPlanarSegmentEndpoint(0, 0, theta, len));
