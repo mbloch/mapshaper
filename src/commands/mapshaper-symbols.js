@@ -9,6 +9,7 @@ import { stop, error } from '../utils/mapshaper-logging';
 import { rotateCoords, scaleAndShiftCoords, flipY, roundCoordsForSVG } from '../symbols/mapshaper-symbol-utils';
 import { getFilledArrowCoords } from '../symbols/mapshaper-arrow-symbols';
 import { getPolygonCoords } from '../symbols/mapshaper-basic-symbols';
+import { getStarCoords } from '../symbols/mapshaper-star-symbols';
 import { getRingCoords } from '../symbols/mapshaper-ring-symbols';
 import { getAffineTransform } from '../commands/mapshaper-affine';
 import { mergeOutputLayerIntoDataset } from '../dataset/mapshaper-dataset-utils';
@@ -39,6 +40,8 @@ cmd.symbols = function(inputLyr, dataset, opts) {
     } else if (d.type == 'ring') {
       coords = getRingCoords(d);
       geojsonType = 'MultiPolygon';
+    } else if (d.type == 'star') {
+      coords = getStarCoords(d);
     } else {
       coords = getPolygonCoords(d);
     }
