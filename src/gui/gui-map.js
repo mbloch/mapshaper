@@ -56,6 +56,10 @@ export function MshpMap(gui) {
     _mouse.disable();
   });
 
+  gui.on('undo_redo', function() {
+    drawLayers();
+  });
+
   model.on('update', onUpdate);
 
   // Update display of segment intersections

@@ -1,5 +1,6 @@
 import { WriteFilesProxy, ImportFileProxy } from './gui-proxy';
 import { SessionHistory } from './gui-session-history';
+import { Undo } from './gui-undo';
 import { SidebarButtons } from './gui-sidebar-buttons';
 import { ModeSwitcher } from './gui-modes';
 import { KeyboardEvents } from './gui-keyboard';
@@ -31,6 +32,7 @@ export function GuiInstance(container, opts) {
   gui.map = new MshpMap(gui);
   gui.interaction = new InteractionMode(gui);
   gui.session = new SessionHistory(gui);
+  gui.undo = new Undo(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

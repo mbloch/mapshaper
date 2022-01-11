@@ -85,6 +85,7 @@ export function SymbolDragging2(gui, ext, hit) {
       if (e.mode != 'labels') {
         stopDragging();
       }
+      gui.undo.clear(); // TODO: put this elsewhere?
     });
 
     // down event on svg
@@ -96,12 +97,16 @@ export function SymbolDragging2(gui, ext, hit) {
     //    3: on other text -> stop dragging, select new text
 
     hit.on('dragstart', function(e) {
-      if (labelEditingEnabled()) {
-        onLabelDragStart(e);
+      if (e.id >= 0 === false) return;
+      if (labelEditingEnabled() && onLabelDragStart(e)) {
+        triggerGlobalEvent('label_dragstart', e);
+        startDragging();
       } else if (locationEditingEnabled()) {
-        onLocationDragStart(e);
+        triggerGlobalEvent('symbol_dragstart', e);
+        startDragging();
       } else if (vertexEditingEnabled()) {
-        onVertexDragStart(e);
+        triggerGlobalEvent('vertex_dragstart', e);
+        startDragging();
       }
     });
 
@@ -117,12 +122,14 @@ export function SymbolDragging2(gui, ext, hit) {
 
     hit.on('dragend', function(e) {
       if (locationEditingEnabled()) {
-        onLocationDragEnd(e);
+        triggerGlobalEvent('symbol_dragend', e);
         stopDragging();
       } else if (labelEditingEnabled()) {
+        triggerGlobalEvent('label_dragend', e);
         stopDragging();
       } else if (vertexEditingEnabled()) {
         onVertexDragEnd(e);
+        triggerGlobalEvent('vertex_dragend', e);
         stopDragging();
       }
     });
@@ -133,18 +140,6 @@ export function SymbolDragging2(gui, ext, hit) {
       }
     });
 
-    function onLocationDragStart(e) {
-      if (e.id >= 0) {
-        dragging = true;
-        triggerGlobalEvent('symbol_dragstart', e);
-      }
-    }
-
-    function onVertexDragStart(e) {
-      if (e.id >= 0) {
-        dragging = true;
-      }
-    }
 
     function onLocationDrag(e) {
       var lyr = hit.getHitTarget().layer;
@@ -171,10 +166,6 @@ export function SymbolDragging2(gui, ext, hit) {
         internal.setVertexCoords(p[0], p[1], idx, target.arcs);
       });
       self.dispatchEvent('location_change'); // signal map to redraw
-    }
-
-    function onLocationDragEnd(e) {
-      triggerGlobalEvent('symbol_dragend', e);
     }
 
     function onVertexDragEnd(e) {
@@ -219,11 +210,11 @@ export function SymbolDragging2(gui, ext, hit) {
     function onLabelDragStart(e) {
       var textNode = getTextTarget3(e);
       var table = hit.getTargetDataTable();
-      if (!textNode || !table) return;
+      if (!textNode || !table) return false;
       activeId = e.id;
       activeRecord = getLabelRecordById(activeId);
-      dragging = true;
       downEvt = e;
+      return true;
     }
 
     function onLabelDrag(e) {
@@ -348,6 +339,10 @@ export function SymbolDragging2(gui, ext, hit) {
     // }
   }
 
+  function startDragging() {
+    dragging = true;
+  }
+
   function stopDragging() {
     dragging = false;
     activeId = -1;
@@ -363,15 +358,5 @@ export function SymbolDragging2(gui, ext, hit) {
     var dist = Math.sqrt(dx * dx + dy * dy);
     return dist <= 4 && elapsed < 300;
   }
-
-
-  // function deselectText(el) {
-  //   el.removeAttribute('class');
-  // }
-
-  // function selectText(el) {
-  //   el.setAttribute('class', 'selected');
-  // }
-
 
 }
