@@ -62,6 +62,19 @@ export function Undo(gui) {
     this.addHistoryState(stashedUndo, redo);
   }, this);
 
+
+  // undo/redo data editing
+  // TODO: consider setting selected feature to the undo/redo target feature
+  //
+  gui.on('data_preupdate', function(e) {
+    stashedUndo = this.makeDataSetter(e.FID);
+  }, this);
+
+  gui.on('data_postupdate', function(e) {
+    var redo = this.makeDataSetter(e.FID);
+    this.addHistoryState(stashedUndo, redo);
+  }, this);
+
   this.clear = function() {
     reset();
   };
@@ -74,7 +87,6 @@ export function Undo(gui) {
     };
   };
 
-
   this.makeDataSetter = function(id) {
     var target = gui.model.getActiveLayer();
     var rec = copyRecord(target.layer.data.getRecordAt(id));
@@ -83,7 +95,6 @@ export function Undo(gui) {
       gui.dispatchEvent('popup-needs-refresh');
     };
   };
-
 
   this.addHistoryState = function(undo, redo) {
     if (offset > 0) {

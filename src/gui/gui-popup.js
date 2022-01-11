@@ -154,7 +154,9 @@ export function Popup(gui, toNext, toPrev) {
       } else {
         // field content has changed
         strval = strval2;
+        gui.dispatchEvent('data_preupdate', {FID: currId}); // for undo/redo
         rec[key] = val2;
+        gui.dispatchEvent('data_postupdate', {FID: currId});
         input.value(strval);
         setFieldClass(el, val2, type);
         self.dispatchEvent('update', {field: key, value: val2, id: currId});
