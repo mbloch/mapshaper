@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.83";
+  var VERSION = "0.5.85";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -20121,10 +20121,10 @@ ${svg}
         // TODO: removed (replaced by flipped and rotated)
         // describe: 'use orientation=b for a rotated or flipped orientation'
       })
-      .option('flipped', {
-        type: 'flag',
-        describe: 'symbol is vertically flipped'
-      })
+      // .option('flipped', {
+      //   type: 'flag',
+      //   describe: 'symbol is vertically flipped'
+      // })
       .option('rotated', {
         type: 'flag',
         describe: 'symbol is rotated to a different orientation'
@@ -38231,71 +38231,31 @@ ${svg}
     return coords;
   }
 
-  function getMinorRadius(points) {
-    var innerAngle = 360 / points;
-    var pointAngle = getDefaultPointAngle(points);
-    var thetaA = Math.PI / 180 * innerAngle / 2;
-    var thetaB = Math.PI / 180 * pointAngle / 2;
-    var a = Math.tan(thetaB) / (Math.tan(thetaB) + Math.tan(thetaA));
-    var c = a / Math.cos(thetaA);
-    return c;
-  }
-
-
-  function getPointAngle(points, skip) {
-    var unitAngle = 360 / points;
-    var centerAngle = unitAngle * (skip + 1);
-    return 180 - centerAngle;
-  }
-
-  function getDefaultPointAngle(points) {
-    var minSkip = 1;
-    var maxSkip = Math.ceil(points / 2) - 2;
-    var skip = Math.floor((maxSkip + minSkip) / 2);
-    return getPointAngle(points, skip);
-  }
-
-  // sides: e.g. 5-pointed star has 10 sides
-  // radius: distance from center to point
-  //
   function getPolygonCoords(d) {
-    var radius = d.radius || d.length || d.r;
+    var radius = d.radius || d.length || d.r,
+        sides = +d.sides || getSidesByType(d.type),
+        rotated = sides % 2 == 1,
+        coords = [],
+        angle, b;
+
     if (radius > 0 === false) return null;
-    var type = d.type;
-    var sides = +d.sides || getDefaultSides(type);
-    var isStar = type == 'star';
-    if (isStar && d.points > 0) {
-      sides = d.points * 2;
-    }
-    var starRatio = isStar ? d.star_ratio || getMinorRadius(sides / 2) : 0;
-    if (isStar && (sides < 10 || sides % 2 !== 0)) {
-      stop(`Invalid number of points for a star (${sides / 2})`);
-    } else if (sides >= 3 === false) {
+    if (sides >= 3 === false) {
       stop(`Invalid number of sides (${sides})`);
     }
-    var coords = [],
-        angle = 360 / sides,
-        b = isStar ? 1 : 0.5,
-        theta, even, len;
     if (d.orientation == 'b' || d.flipped || d.rotated) {
-      b = 0;
+      rotated = !rotated;
     }
+    b = rotated ? 0 : 0.5;
     for (var i=0; i<sides; i++) {
-      even = i % 2 == 0;
-      len = radius;
-      if (isStar && even) {
-        len *= starRatio;
-      }
-      theta = (i + b) * angle % 360;
-      coords.push(getPlanarSegmentEndpoint(0, 0, theta, len));
+      angle = (i + b) / sides * 360;
+      coords.push(getPlanarSegmentEndpoint(0, 0, angle, radius));
     }
     coords.push(coords[0].concat());
     return [coords];
   }
 
-  function getDefaultSides(type) {
+  function getSidesByType(type) {
     return {
-      star: 10,
       circle: 72,
       triangle: 3,
       square: 4,
@@ -38306,6 +38266,52 @@ ${svg}
       nonagon: 9,
       decagon: 10
     }[type] || 4;
+  }
+
+  function getStarCoords(d) {
+    var radius = d.radius || d.length || d.r,
+        points = d.points || d.sides && d.sides / 2 || 5,
+        sides = points * 2,
+        minorRadius = getMinorRadius(points) * radius,
+        b = d.orientation == 'b' || d.flipped || d.rotated ? 0 : 1,
+        coords = [],
+        angle, len;
+
+    if (radius > 0 === false) return null;
+    if (points < 5) {
+      stop(`Invalid number of points for a star (${points})`);
+    }
+    for (var i=0; i<sides; i++) {
+      len = i % 2 == 0 ? minorRadius : radius;
+      angle = (i + b) / sides * 360;
+      coords.push(getPlanarSegmentEndpoint(0, 0, angle, len));
+    }
+    coords.push(coords[0].concat());
+    return [coords];
+  }
+
+  function getMinorRadius(points) {
+    var innerAngle = 360 / points;
+    var pointAngle = getDefaultPointAngle(points);
+    var thetaA = Math.PI / 180 * innerAngle / 2;
+    var thetaB = Math.PI / 180 * pointAngle / 2;
+    var a = Math.tan(thetaB) / (Math.tan(thetaB) + Math.tan(thetaA));
+    var c = a / Math.cos(thetaA);
+    return c;
+  }
+
+  function getDefaultPointAngle(points) {
+    var minSkip = 1;
+    var maxSkip = Math.ceil(points / 2) - 2;
+    var skip = Math.floor((maxSkip + minSkip) / 2);
+    return getPointAngle(points, skip);
+  }
+
+  // skip: number of adjacent points to skip when drawing a segment
+  function getPointAngle(points, skip) {
+    var unitAngle = 360 / points;
+    var centerAngle = unitAngle * (skip + 1);
+    return 180 - centerAngle;
   }
 
   // Returns GeoJSON MultiPolygon coords
@@ -38362,6 +38368,8 @@ ${svg}
       } else if (d.type == 'ring') {
         coords = getRingCoords(d);
         geojsonType = 'MultiPolygon';
+      } else if (d.type == 'star') {
+        coords = getStarCoords(d);
       } else {
         coords = getPolygonCoords(d);
       }
