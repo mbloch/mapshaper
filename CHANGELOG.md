@@ -1,3 +1,6 @@
+v0.5.86
+* Added keyboard commands for undo/redo for interactive point and label positioning.
+
 v0.5.85
 * Improved arrow and star symbols.
 
