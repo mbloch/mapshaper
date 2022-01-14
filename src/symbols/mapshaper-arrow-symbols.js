@@ -42,7 +42,8 @@ function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
 }
 
 function calcArrowSize(d) {
-  var totalLen = d.radius || d.length || d.r || 0,
+  // don't display arrows with negative length
+  var totalLen = Math.max(d.radius || d.length || d.r || 0, 0),
       scale = 1,
       o = initArrowSize(d); // calc several parameters
 
