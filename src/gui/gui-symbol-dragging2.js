@@ -8,6 +8,16 @@ function getDisplayCoordsById(id, layer, ext) {
   return ext.translateCoords(coords[0], coords[1]);
 }
 
+export function snapVerticesToPoint(ids, p, arcs, final) {
+  ids.forEach(function(idx) {
+    internal.setVertexCoords(p[0], p[1], idx, arcs);
+  });
+  if (final) {
+    // kludge to get dataset to recalculate internal bounding boxes
+    arcs.transformPoints(function() {});
+  }
+}
+
 function getPointCoordsById(id, layer) {
   var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
   if (!coords || coords.length != 1) {
@@ -105,6 +115,7 @@ export function SymbolDragging2(gui, ext, hit) {
         triggerGlobalEvent('symbol_dragstart', e);
         startDragging();
       } else if (vertexEditingEnabled()) {
+        onVertexDragStart(e);
         triggerGlobalEvent('vertex_dragstart', e);
         startDragging();
       }
@@ -128,7 +139,8 @@ export function SymbolDragging2(gui, ext, hit) {
         triggerGlobalEvent('label_dragend', e);
         stopDragging();
       } else if (vertexEditingEnabled()) {
-        onVertexDragEnd(e);
+        // kludge to get dataset to recalculate internal bounding boxes
+        hit.getHitTarget().arcs.transformPoints(function() {});
         triggerGlobalEvent('vertex_dragend', e);
         stopDragging();
       }
@@ -140,10 +152,16 @@ export function SymbolDragging2(gui, ext, hit) {
       }
     });
 
+    function getVertexEventData(e) {
+      return {
+        FID: activeId,
+        vertexIds: activeVertexIds
+      };
+    }
 
     function onLocationDrag(e) {
       var lyr = hit.getHitTarget().layer;
-      var p = getPointCoordsById(e.id, hit.getHitTarget().layer);
+      var p = getPointCoordsById(e.id, lyr);
       if (!p) return;
       var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
       p[0] += diff[0];
@@ -152,26 +170,22 @@ export function SymbolDragging2(gui, ext, hit) {
       triggerGlobalEvent('symbol_drag', e);
     }
 
-    function onVertexDrag(e) {
+    function onVertexDragStart(e) {
       var target = hit.getHitTarget();
       var p = ext.translatePixelCoords(e.x, e.y);
-      if (!activeVertexIds) {
-        activeVertexIds = internal.findNearestVertices(p, target.layer.shapes[e.id], target.arcs);
-      }
+      activeVertexIds = internal.findNearestVertices(p, target.layer.shapes[e.id], target.arcs);
+      activeId = e.id;
+    }
+
+    function onVertexDrag(e) {
+      var target = hit.getHitTarget();
       if (!activeVertexIds) return; // ignore error condition
+      var p = ext.translatePixelCoords(e.x, e.y);
       if (gui.keyboard.shiftIsPressed()) {
         internal.snapPointToArcEndpoint(p, activeVertexIds, target.arcs);
       }
-      activeVertexIds.forEach(function(idx) {
-        internal.setVertexCoords(p[0], p[1], idx, target.arcs);
-      });
+      snapVerticesToPoint(activeVertexIds, p, target.arcs);
       self.dispatchEvent('location_change'); // signal map to redraw
-    }
-
-    function onVertexDragEnd(e) {
-      // kludge to get dataset to recalculate internal bounding boxes
-      hit.getHitTarget().arcs.transformPoints(function() {});
-      activeVertexIds = null;
     }
 
     function onLabelClick(e) {
@@ -185,10 +199,14 @@ export function SymbolDragging2(gui, ext, hit) {
     }
 
     function triggerGlobalEvent(type, e) {
-      if (e.id >= 0) {
-        // fire event to signal external editor that symbol coords have changed
-        gui.dispatchEvent(type, {FID: e.id, layer_name: hit.getHitTarget().layer.name});
-      }
+      if (e.id >= 0 === false) return;
+      var o = {
+        FID: e.id,
+        layer_name: hit.getHitTarget().layer.name,
+        vertex_ids: activeVertexIds
+      };
+      // fire event to signal external editor that symbol coords have changed
+      gui.dispatchEvent(type, o);
     }
 
     function getLabelRecordById(id) {
@@ -347,8 +365,7 @@ export function SymbolDragging2(gui, ext, hit) {
     dragging = false;
     activeId = -1;
     activeRecord = null;
-    // targetTextNode = null;
-    // svg.removeAttribute('class');
+    activeVertexIds = null;
   }
 
   function isClickEvent(up, down) {

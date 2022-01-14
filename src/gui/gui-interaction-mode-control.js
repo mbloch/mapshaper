@@ -188,7 +188,9 @@ export function InteractionMode(gui) {
   }
 
   function onModeChange() {
-    gui.dispatchEvent('interaction_mode_change', {mode: getInteractionMode()});
+    var mode = getInteractionMode();
+    gui.state.interaction_mode = mode;
+    gui.dispatchEvent('interaction_mode_change', {mode: mode});
   }
 
   // Update button highlight and selected menu item highlight (if any)

@@ -54,7 +54,10 @@ export function drawStyledLayerToCanvas(obj, canv, ext) {
   } else {
     arcs = getArcsForRendering(obj, ext);
     filter = getShapeFilter(arcs, ext);
-    canv.drawPathShapes(layer.shapes, arcs, style, filter);
+    canv.drawStyledPaths(layer.shapes, arcs, style, filter);
+    if (style.vertices) {
+      canv.drawVertices(layer.shapes, arcs, style, filter);
+    }
   }
 }
 
@@ -128,7 +131,7 @@ export function DisplayCanvas() {
 
   /*
   // Original function, not optimized
-  _self.drawPathShapes = function(shapes, arcs, style) {
+  _self.drawStyledPaths = function(shapes, arcs, style) {
     var startPath = getPathStart(_ext),
         drawPath = getShapePencil(arcs, _ext),
         styler = style.styler || null;
@@ -141,8 +144,28 @@ export function DisplayCanvas() {
   };
   */
 
+  _self.drawVertices = function(shapes, arcs, style, filter) {
+    var iter = new internal.ShapeIter(arcs);
+    var t = getScaledTransform(_ext);
+    var radius = (style.strokeWidth * 0.8 || 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
+    var color = style.strokeColor || 'black';
+    var shp;
+    _ctx.beginPath();
+    _ctx.fillStyle = color;
+    for (var i=0; i<shapes.length; i++) {
+      shp = shapes[i];
+      if (!shp || filter && !filter(shp)) continue;
+      iter.init(shp);
+      while (iter.hasNext()) {
+        drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
+      }
+    }
+    _ctx.fill();
+    _ctx.closePath();
+  };
+
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
-  _self.drawPathShapes = function(shapes, arcs, style, filter) {
+  _self.drawStyledPaths = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
     var startPath = getPathStart(_ext, getScaledLineScale(_ext));
@@ -270,7 +293,7 @@ export function DisplayCanvas() {
     }
   }
 
-  // TODO: consider using drawPathShapes(), which draws paths in batches
+  // TODO: consider using drawStyledPaths(), which draws paths in batches
   // for faster Canvas rendering. Downside: changes stacking order, which
   // is bad if circles are graduated.
   _self.drawPoints = function(shapes, style) {

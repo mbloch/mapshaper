@@ -1,3 +1,6 @@
+v0.5.87
+* Added undo/redo to the "drag vertices" interactive editing mode.
+
 v0.5.86
 * Added keyboard commands for undo/redo for interactive point and label positioning.
 

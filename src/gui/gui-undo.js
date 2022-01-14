@@ -1,6 +1,9 @@
-
-import { cloneShape } from '../paths/mapshaper-shape-utils';
-import { copyRecord } from '../datatable/mapshaper-data-utils';
+import { internal } from './gui-core';
+import { snapVerticesToPoint } from './gui-symbol-dragging2';
+// import { cloneShape } from '../paths/mapshaper-shape-utils';
+// import { copyRecord } from '../datatable/mapshaper-data-utils';
+var cloneShape = internal.cloneShape;
+var copyRecord = internal.copyRecord;
 
 export function Undo(gui) {
   var history, offset, stashedUndo;
@@ -62,7 +65,6 @@ export function Undo(gui) {
     this.addHistoryState(stashedUndo, redo);
   }, this);
 
-
   // undo/redo data editing
   // TODO: consider setting selected feature to the undo/redo target feature
   //
@@ -72,6 +74,16 @@ export function Undo(gui) {
 
   gui.on('data_postupdate', function(e) {
     var redo = this.makeDataSetter(e.FID);
+    this.addHistoryState(stashedUndo, redo);
+  }, this);
+
+  // undo/redo vertex dragging
+  gui.on('vertex_dragstart', function(e) {
+    stashedUndo = this.makeVertexSetter(e.FID, e.vertex_ids);
+  }, this);
+
+  gui.on('vertex_dragend', function(e) {
+    var redo = this.makeVertexSetter(e.FID, e.vertex_ids);
     this.addHistoryState(stashedUndo, redo);
   }, this);
 
@@ -93,6 +105,15 @@ export function Undo(gui) {
     return function() {
       target.layer.data.getRecords()[id] = rec;
       gui.dispatchEvent('popup-needs-refresh');
+    };
+  };
+
+  this.makeVertexSetter = function(fid, ids) {
+    var target = gui.model.getActiveLayer();
+    var arcs = target.dataset.arcs;
+    var p = arcs.getVertex2(ids[0]);
+    return function() {
+      snapVerticesToPoint(ids, p, arcs, true);
     };
   };
 
@@ -127,5 +148,3 @@ export function Undo(gui) {
   }
 
 }
-
-

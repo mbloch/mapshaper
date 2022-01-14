@@ -41,7 +41,7 @@ var darkStroke = "#334",
         dotSize: 2.5
       }, polyline: {
         strokeColor: black,
-        strokeWidth: 2.5
+        strokeWidth: 2.5,
       }
     },
     unselectedHoverStyles = {

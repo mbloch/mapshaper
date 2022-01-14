@@ -33,6 +33,7 @@ export function GuiInstance(container, opts) {
   gui.interaction = new InteractionMode(gui);
   gui.session = new SessionHistory(gui);
   gui.undo = new Undo(gui);
+  gui.state = {};
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {
