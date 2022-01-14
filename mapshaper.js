@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.85";
+  var VERSION = "0.5.86";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -5360,6 +5360,10 @@
         if (zz) initZData(zz.subarray(0, i2));
       }
       return i - i2;
+    };
+
+    this.getVertex2 = function(i) {
+      return [_xx[i], _yy[i]];
     };
 
     this.getVertex = function(arcId, nth) {
@@ -38088,7 +38092,8 @@ ${svg}
   }
 
   function calcArrowSize(d) {
-    var totalLen = d.radius || d.length || d.r || 0,
+    // don't display arrows with negative length
+    var totalLen = Math.max(d.radius || d.length || d.r || 0, 0),
         scale = 1,
         o = initArrowSize(d); // calc several parameters
 
