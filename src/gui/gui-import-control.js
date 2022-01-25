@@ -22,6 +22,10 @@ function DropControl(gui, el, cb) {
     var types = Array.from(e.clipboardData.types || []).join(',');
     var items = Array.from(e.clipboardData.items || []);
     var files;
+    if (GUI.textIsSelected()) {
+      // user is probably pasting text into an editable text field
+      return;
+    }
     block(e);
     // Browser compatibility (tested on MacOS only):
     // Chrome and Safari: full support

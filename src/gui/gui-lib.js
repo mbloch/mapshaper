@@ -66,6 +66,10 @@ GUI.getInputElement = function() {
   return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
 };
 
+GUI.textIsSelected = function() {
+  return !!GUI.getInputElement();
+};
+
 GUI.selectElement = function(el) {
   var range = document.createRange(),
       sel = window.getSelection();
