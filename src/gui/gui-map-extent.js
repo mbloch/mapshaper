@@ -65,6 +65,7 @@ export function MapExtent(_position) {
 
   this.maxScale = maxScale;
 
+  // Display scale, e.g. meters per pixel or degrees per pixel
   this.getPixelSize = function() {
     return 1 / this.getTransform().mx;
   };

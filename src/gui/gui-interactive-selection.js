@@ -30,7 +30,7 @@ export function InteractiveSelection(gui, ext, mouse) {
     }
 
     // ignore keypress if no feature is selected or user is editing text
-    if (pinnedId() == -1 || GUI.getInputElement()) return;
+    if (pinnedId() == -1 || GUI.textIsSelected()) return;
 
     if (e.keyCode == 37 || e.keyCode == 39) {
       // L/R arrow keys
@@ -188,6 +188,7 @@ export function InteractiveSelection(gui, ext, mouse) {
 
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
+    handlePointerEvent(e);
     if (storedData.pinned || !hitTest || !active) return;
     if (e.hover && isOverMap(e)) {
       // mouse is hovering directly over map area -- update hit detection

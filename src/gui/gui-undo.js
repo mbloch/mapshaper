@@ -1,7 +1,7 @@
 import { internal } from './gui-core';
-import { snapVerticesToPoint } from './gui-symbol-dragging2';
 // import { cloneShape } from '../paths/mapshaper-shape-utils';
 // import { copyRecord } from '../datatable/mapshaper-data-utils';
+var snapVerticesToPoint = internal.snapVerticesToPoint;
 var cloneShape = internal.cloneShape;
 var copyRecord = internal.copyRecord;
 
@@ -15,9 +15,6 @@ export function Undo(gui) {
     offset = 0;
   }
 
-  function refreshMap() {
-    gui.dispatchEvent('undo_redo');
-  }
 
   function isUndoEvt(e) {
     return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
@@ -111,7 +108,7 @@ export function Undo(gui) {
   this.makeVertexSetter = function(fid, ids) {
     var target = gui.model.getActiveLayer();
     var arcs = target.dataset.arcs;
-    var p = arcs.getVertex2(ids[0]);
+    var p = internal.getVertexCoords(ids[0], arcs);
     return function() {
       snapVerticesToPoint(ids, p, arcs, true);
     };
@@ -130,7 +127,7 @@ export function Undo(gui) {
     if (item) {
       offset++;
       item.undo();
-      refreshMap();
+      gui.dispatchEvent('map-needs-refresh');
     }
   };
 
@@ -139,7 +136,7 @@ export function Undo(gui) {
     offset--;
     var item = getHistoryItem();
     item.redo();
-    refreshMap();
+    gui.dispatchEvent('map-needs-refresh');
   };
 
   function getHistoryItem() {

@@ -283,7 +283,7 @@ export function LayerControl(gui) {
     GUI.onClick(entry, function() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
-      if (!GUI.getInputElement() && !dragging) {
+      if (!GUI.textIsSelected() && !dragging) {
         gui.clearMode();
         if (!map.isActiveLayer(target.layer)) {
           model.selectLayer(target.layer, target.dataset);

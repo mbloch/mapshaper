@@ -147,7 +147,7 @@ export function DisplayCanvas() {
   _self.drawVertices = function(shapes, arcs, style, filter) {
     var iter = new internal.ShapeIter(arcs);
     var t = getScaledTransform(_ext);
-    var radius = (style.strokeWidth * 0.8 || 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
+    var radius = (style.strokeWidth * 0.9 || 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
     var color = style.strokeColor || 'black';
     var shp;
     _ctx.beginPath();

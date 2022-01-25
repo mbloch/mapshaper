@@ -3,19 +3,11 @@ import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTex
 import { error, internal } from './gui-core';
 import { EventDispatcher } from './gui-events';
 
+var snapVerticesToPoint = internal.snapVerticesToPoint;
+
 function getDisplayCoordsById(id, layer, ext) {
   var coords = getPointCoordsById(id, layer);
   return ext.translateCoords(coords[0], coords[1]);
-}
-
-export function snapVerticesToPoint(ids, p, arcs, final) {
-  ids.forEach(function(idx) {
-    internal.setVertexCoords(p[0], p[1], idx, arcs);
-  });
-  if (final) {
-    // kludge to get dataset to recalculate internal bounding boxes
-    arcs.transformPoints(function() {});
-  }
 }
 
 function getPointCoordsById(id, layer) {
@@ -33,7 +25,7 @@ function translateDeltaDisplayCoords(dx, dy, ext) {
 }
 
 
-export function SymbolDragging2(gui, ext, hit) {
+export function InteractiveEditor(gui, ext, hit) {
   // var targetTextNode; // text node currently being dragged
   var dragging = false;
   var activeRecord;
@@ -148,9 +140,26 @@ export function SymbolDragging2(gui, ext, hit) {
 
     hit.on('click', function(e) {
       if (labelEditingEnabled()) {
+        var target = hit.getHitTarget();
         onLabelClick(e);
       }
     });
+
+    // TODO: highlight hit vertex in path edit mode
+    if (false) hit.on('hover', function(e) {
+      if (vertexEditingEnabled() && !dragging) {
+        onVertexHover(e);
+      }
+    }, null, 100);
+
+    function onVertexHover(e) {
+      // hovering in vertex edit mode: find vertex insertion point
+      var target = hit.getHitTarget();
+      var shp = target.layer.shapes[e.id];
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var o = internal.findInsertionPoint(p, shp, target.arcs, ext.getPixelSize());
+    }
+
 
     function getVertexEventData(e) {
       return {
@@ -166,14 +175,15 @@ export function SymbolDragging2(gui, ext, hit) {
       var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
       p[0] += diff[0];
       p[1] += diff[1];
-      self.dispatchEvent('location_change'); // signal map to redraw
+      triggerRedraw();
       triggerGlobalEvent('symbol_drag', e);
     }
 
     function onVertexDragStart(e) {
       var target = hit.getHitTarget();
+      var shp = target.layer.shapes[e.id];
       var p = ext.translatePixelCoords(e.x, e.y);
-      activeVertexIds = internal.findNearestVertices(p, target.layer.shapes[e.id], target.arcs);
+      activeVertexIds = internal.findNearestVertices(p, shp, target.arcs);
       activeId = e.id;
     }
 
@@ -185,7 +195,7 @@ export function SymbolDragging2(gui, ext, hit) {
         internal.snapPointToArcEndpoint(p, activeVertexIds, target.arcs);
       }
       snapVerticesToPoint(activeVertexIds, p, target.arcs);
-      self.dispatchEvent('location_change'); // signal map to redraw
+      triggerRedraw();
     }
 
     function onLabelClick(e) {
@@ -196,6 +206,10 @@ export function SymbolDragging2(gui, ext, hit) {
         updateSymbol2(textNode, rec, e.id);
         // e.stopPropagation(); // prevent pin/unpin on popup
       }
+    }
+
+    function triggerRedraw() {
+      gui.dispatchEvent('map-needs-refresh');
     }
 
     function triggerGlobalEvent(type, e) {
@@ -281,80 +295,6 @@ export function SymbolDragging2(gui, ext, hit) {
       }
       return el.tagName == 'text' ? el : null;
     }
-
-    // svg.addEventListener('mousedown', function(e) {
-    //   var textTarget = getTextTarget(e);
-    //   downEvt = e;
-    //   if (!textTarget) {
-    //     stopEditing();
-    //   } else if (!editing) {
-    //     // nop
-    //   } else if (textTarget == targetTextNode) {
-    //     startDragging();
-    //   } else {
-    //     startDragging();
-    //     editTextNode(textTarget);
-    //   }
-    // });
-
-    // up event on svg
-    // a: currently dragging text
-    //   -> stop dragging
-    // b: clicked on a text feature
-    //   -> start editing it
-
-
-    // svg.addEventListener('mouseup', function(e) {
-    //   var textTarget = getTextTarget(e);
-    //   var isClick = isClickEvent(e, downEvt);
-    //   if (isClick && textTarget && textTarget == targetTextNode &&
-    //       activeRecord && isMultilineLabel(targetTextNode)) {
-    //     toggleTextAlign(targetTextNode, activeRecord);
-    //     updateSymbol();
-    //   }
-    //   if (dragging) {
-    //     stopDragging();
-    //    } else if (isClick && textTarget) {
-    //     editTextNode(textTarget);
-    //   }
-    // });
-
-    // block dbl-click navigation when editing
-    // mouse.on('dblclick', function(e) {
-    //   if (editing) e.stopPropagation();
-    // }, null, eventPriority);
-
-    // mouse.on('dragstart', function(e) {
-    //   onLabelDrag(e);
-    // }, null, eventPriority);
-
-    // mouse.on('drag', function(e) {
-    //   var scale = ext.getSymbolScale() || 1;
-    //   onLabelDrag(e);
-    //   if (!dragging || !activeRecord) return;
-    //   applyDelta(activeRecord, 'dx', e.dx / scale);
-    //   applyDelta(activeRecord, 'dy', e.dy / scale);
-    //   if (!isMultilineLabel(targetTextNode)) {
-    //     // update anchor position of single-line labels based on label position
-    //     // relative to anchor point, for better placement when eventual display font is
-    //     // different from mapshaper's font.
-    //     updateTextAnchor(targetTextNode, activeRecord);
-    //   }
-    //   // updateSymbol(targetTextNode, activeRecord);
-    //   targetTextNode = updateSymbol2(targetTextNode, activeRecord, activeId);
-    // }, null, eventPriority);
-
-    // mouse.on('dragend', function(e) {
-    //   onLabelDrag(e);
-    //   stopDragging();
-    // }, null, eventPriority);
-
-
-    // function onLabelDrag(e) {
-    //   if (dragging) {
-    //     e.stopPropagation();
-    //   }
-    // }
   }
 
   function startDragging() {

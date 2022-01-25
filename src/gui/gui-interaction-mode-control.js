@@ -5,6 +5,7 @@ export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'selection', 'data', 'box'],
+    polygons: ['info', 'selection', 'data', 'box', 'vertices'],
     lines: ['info', 'selection', 'data', 'box', 'vertices'],
     table: ['info', 'selection', 'data'],
     labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
@@ -115,6 +116,9 @@ export function InteractionMode(gui) {
     }
     if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polyline') {
       return menus.lines;
+    }
+    if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polygon') {
+      return menus.polygons;
     }
     return menus.standard;
   }

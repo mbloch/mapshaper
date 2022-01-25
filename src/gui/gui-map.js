@@ -5,7 +5,7 @@ import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control2';
 import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
 import { mapNeedsReset } from './gui-map-utils';
-import { SymbolDragging2 } from './gui-symbol-dragging2';
+import { InteractiveEditor } from './gui-symbol-dragging2';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerStack } from './gui-layer-stack';
@@ -56,7 +56,7 @@ export function MshpMap(gui) {
     _mouse.disable();
   });
 
-  gui.on('undo_redo', function() {
+  gui.on('map-needs-refresh', function() {
     drawLayers();
   });
 
@@ -218,13 +218,7 @@ export function MshpMap(gui) {
       });
     }
 
-    if (true) { // TODO: add option to disable?
-      _editor = new SymbolDragging2(gui, _ext, _hit);
-      _editor.on('location_change', function(e) {
-        // TODO: look into optimizing, so only changed symbol is redrawn
-        drawLayers();
-      });
-    }
+    _editor = new InteractiveEditor(gui, _ext, _hit);
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
