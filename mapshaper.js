@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.86";
+  var VERSION = "0.5.87";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -4895,6 +4895,11 @@
     };
   }
 
+  function MultiShapeIter(arcs) {
+    var iter = new ShapeIter(arcs);
+
+  }
+
   // Iterate along a path made up of one or more arcs.
   //
   function ShapeIter(arcs) {
@@ -4945,6 +4950,7 @@
     PointIter: PointIter,
     ArcIter: ArcIter,
     FilteredArcIter: FilteredArcIter,
+    MultiShapeIter: MultiShapeIter,
     ShapeIter: ShapeIter
   });
 
@@ -5360,10 +5366,6 @@
         if (zz) initZData(zz.subarray(0, i2));
       }
       return i - i2;
-    };
-
-    this.getVertex2 = function(i) {
-      return [_xx[i], _yy[i]];
     };
 
     this.getVertex = function(arcId, nth) {
@@ -8226,8 +8228,19 @@
     return +n.toPrecision(d);
   }
 
+
   function roundToDigits(n, d) {
     return +n.toFixed(d); // string conversion makes this slow
+  }
+
+  // Used in mapshaper-expression-utils.js
+  // TODO: choose between this and the above function
+  function roundToDigits2(n, d) {
+    var k = 1;
+    if (!n && n !== 0) return n; // don't coerce null to 0
+    d = d | 0;
+    while (d-- > 0) k *= 10;
+    return Math.round(n * k) / k;
   }
 
   function roundToTenths(n) {
@@ -8304,6 +8317,7 @@
     __proto__: null,
     roundToSignificantDigits: roundToSignificantDigits,
     roundToDigits: roundToDigits,
+    roundToDigits2: roundToDigits2,
     roundToTenths: roundToTenths,
     getRoundingFunction: getRoundingFunction,
     getBoundsPrecisionForDisplay: getBoundsPrecisionForDisplay,
@@ -8942,15 +8956,15 @@
     });
   }
 
-  function addUtils(env) {
+  function cleanExpression(exp) {
+    // workaround for problem in GNU Make v4: end-of-line backslashes inside
+    // quoted strings are left in the string (other shell environments remove them)
+    return exp.replace(/\\\n/g, ' ');
+  }
+
+  function addFeatureExpressionUtils(env) {
     Object.assign(env, {
-      round: function(val, dig) {
-        var k = 1;
-        if (!val && val !== 0) return val; // don't coerce null to 0
-        dig = dig | 0;
-        while(dig-- > 0) k *= 10;
-        return Math.round(val * k) / k;
-      },
+      round: roundToDigits2,
       int_median: interpolated_median,
       sprintf: utils.format,
       blend: blend
@@ -9329,6 +9343,39 @@
     };
   }
 
+  // Returns an object representing a layer in a JS expression
+  function getLayerProxy(lyr, arcs) {
+    var obj = {};
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var getters = {
+      name: lyr.name,
+      data: records,
+      type: lyr.geometry_type
+    };
+    addGetters(obj, getters);
+    addBBoxGetter(obj, lyr, arcs);
+    obj.empty = function() {
+      return getFeatureCount(lyr) === 0;
+    };
+    obj.size = function() {
+      return getFeatureCount(lyr);
+    };
+    return obj;
+  }
+
+  function addLayerGetters(ctx, lyr, arcs) {
+    var layerProxy;
+    addGetters(ctx, {
+      layer_name: lyr.name || '', // consider removing this
+      layer: function() {
+        // init on first access (to avoid overhead if not used)
+        if (!layerProxy) layerProxy = getLayerProxy(lyr, arcs);
+        return layerProxy;
+      }
+    });
+    return ctx;
+  }
+
   function addBBoxGetter(obj, lyr, arcs) {
     var bbox;
     addGetters(obj, {
@@ -9356,32 +9403,6 @@
       right: bounds.xmax
     });
     return bbox;
-  }
-
-  // Returns an object representing a layer in a JS expression
-  function getLayerProxy(lyr, arcs) {
-    var obj = {};
-    var records = lyr.data ? lyr.data.getRecords() : null;
-    var getters = {
-      name: lyr.name,
-      data: records
-    };
-    addGetters(obj, getters);
-    addBBoxGetter(obj, lyr, arcs);
-    return obj;
-  }
-
-  function addLayerGetters(ctx, lyr, arcs) {
-    var layerProxy;
-    addGetters(ctx, {
-      layer_name: lyr.name || '', // consider removing this
-      layer: function() {
-        // init on first access (to avoid overhead if not used)
-        if (!layerProxy) layerProxy = getLayerProxy(lyr, arcs);
-        return layerProxy;
-      }
-    });
-    return ctx;
   }
 
   // Returns a function to return a feature proxy by id
@@ -9580,11 +9601,6 @@
     return compileFeatureExpression(exp, lyr, arcs, opts);
   }
 
-  function cleanExpression(exp) {
-    // workaround for problem in GNU Make v4: end-of-line backslashes inside
-    // quoted strings are left in the string (other shell environments remove them)
-    return exp.replace(/\\\n/g, ' ');
-  }
 
   function compileFeaturePairFilterExpression(exp, lyr, arcs) {
     var func = compileFeaturePairExpression(exp, lyr, arcs);
@@ -9720,14 +9736,19 @@
 
   function compileExpressionToFunction(exp, opts) {
     // $$ added to avoid duplication with data field variables (an error condition)
-    var functionBody = "with($$env){with($$record){ " + (opts.returns ? 'return ' : '') +
-          exp + "}}";
-    var func;
+    var functionBody, func;
+    if (opts.returns) {
+      // functionBody = 'return ' + functionBody;
+      functionBody = 'var $$retn = ' + exp + '; return $$retn;';
+    } else {
+      functionBody = exp;
+    }
+    functionBody = 'with($$env){with($$record){ ' + functionBody + '}}';
     try {
-      func = new Function("$$record,$$env",  functionBody);
+      func = new Function('$$record,$$env',  functionBody);
     } catch(e) {
       // if (opts.quiet) throw e;
-      stop(e.name, "in expression [" + exp + "]");
+      stop(e.name, 'in expression [' + exp + ']');
     }
     return func;
   }
@@ -9770,7 +9791,7 @@
     var ctx = {};
     var fields = lyr.data ? lyr.data.getFields() : [];
     opts = opts || {};
-    addUtils(env); // mix in round(), sprintf(), etc.
+    addFeatureExpressionUtils(env); // mix in round(), sprintf(), etc.
     if (fields.length > 0) {
       // default to null values, so assignments to missing data properties
       // are applied to the data record, not the global object
@@ -9825,7 +9846,6 @@
   var Expressions = /*#__PURE__*/Object.freeze({
     __proto__: null,
     compileValueExpression: compileValueExpression,
-    cleanExpression: cleanExpression,
     compileFeaturePairFilterExpression: compileFeaturePairFilterExpression,
     compileFeaturePairExpression: compileFeaturePairExpression,
     compileFeatureExpression: compileFeatureExpression,
@@ -18568,6 +18588,13 @@ ${svg}
       return this;
     };
 
+    this.options = function(o) {
+      Object.keys(o).forEach(function(key) {
+        this.option(key, o[key]);
+      }, this);
+      return this;
+    };
+
     this.done = function() {
       return _command;
     };
@@ -19531,14 +19558,6 @@ ${svg}
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
-    parser.command('ignore')
-      // .describe('stop processing if a condition is met')
-      .option('empty', {
-        describe: 'ignore empty files',
-        type: 'flag'
-      })
-      .option('target', targetOpt);
-
     parser.command('include')
       .describe('import JS data and functions for use in JS expressions')
       .option('file', {
@@ -20498,6 +20517,49 @@ ${svg}
       .option('expression', {
         DEFAULT: true,
         describe: 'boolean JS expression'
+      })
+      .option('target', targetOpt);
+
+    parser.section('Control flow commands');
+
+    var ifOpts = {
+      expression: {
+        DEFAULT: true,
+        describe: 'JS expression targeting a single layer'
+      },
+      empty: {
+        describe: 'run if layer is empty',
+        type: 'flag'
+      },
+      'not-empty': {
+        describe: 'run if layer is not empty',
+        type: 'flag'
+      },
+      layer: {
+        describe: 'name or id of layer to test (default is current target)'
+      },
+      target: targetOpt
+    };
+
+    parser.command('if')
+      .describe('run the following commands if a condition is met')
+      .options(ifOpts);
+
+    parser.command('elif')
+      .describe('test an alternate condition; used after -if')
+      .options(ifOpts);
+
+    parser.command('else')
+      .describe('run commands if all preceding -if/-elif conditions are false');
+
+    parser.command('endif')
+      .describe('mark the end of an -if sequence');
+
+    parser.command('ignore')
+      // .describe('stop processing if a condition is met')
+      .option('empty', {
+        describe: 'ignore empty files',
+        type: 'flag'
       })
       .option('target', targetOpt);
 
@@ -34173,6 +34235,141 @@ ${svg}
     };
   }
 
+  function resetControlFlow() {
+    setStateVar('control', null);
+  }
+
+  function inControlBlock() {
+    var state = getState();
+    return !!state.inControlBlock;
+  }
+
+  function enterActiveBranch() {
+    var state = getState();
+    state.inControlBlock = true;
+    state.active = true;
+    state.complete = true;
+  }
+
+  function enterInactiveBranch() {
+    var state = getState();
+    state.inControlBlock = true;
+    state.active = false;
+  }
+
+  function blockWasActive() {
+    return !!getState().complete;
+  }
+
+  function inActiveBranch() {
+    return !!getState().active;
+  }
+
+  function getState() {
+    var o = getStateVar('control') || setStateVar('control', {}) || getStateVar('control');
+    return o;
+  }
+
+  function compileLayerExpression(expr, lyr, dataset, opts) {
+    var proxy = getLayerProxy(lyr, dataset.arcs, opts);
+    var exprOpts = Object.assign({returns: true}, opts);
+    var func = compileExpressionToFunction(expr, exprOpts);
+    var ctx = proxy;
+    return function() {
+      try {
+        return func.call(proxy, {}, ctx);
+      } catch(e) {
+        // if (opts.quiet) throw e;
+        stop(e.name, "in expression [" + expr + "]:", e.message);
+      }
+    };
+  }
+
+  function skipCommand(cmdName) {
+    // allow all control commands to run
+    if (isControlFlowCommand(cmdName)) return false;
+    return inControlBlock() && !inActiveBranch();
+  }
+
+  cmd.if = function(catalog, opts) {
+    if (inControlBlock()) {
+      stop('Nested -if commands are not supported.');
+    }
+    evaluateIf(catalog, opts);
+  };
+
+  cmd.elif = function(catalog, opts) {
+    if (!inControlBlock()) {
+      stop('-elif command must be preceded by an -if command.');
+    }
+    evaluateIf(catalog, opts);
+  };
+
+  cmd.else = function() {
+    if (!inControlBlock()) {
+      stop('-else command must be preceded by an -if command.');
+    }
+    if (blockWasActive()) {
+      enterInactiveBranch();
+    } else {
+      enterActiveBranch();
+    }
+  };
+
+  cmd.endif = function() {
+    if (!inControlBlock()) {
+      stop('-endif command must be preceded by an -if command.');
+    }
+    resetControlFlow();
+  };
+
+  function isControlFlowCommand(cmd) {
+    return ['if','elif','else','endif'].includes(cmd);
+  }
+
+  function testLayer(catalog, opts) {
+    var targ = getTargetLayer(catalog, opts);
+    if (opts.expression) {
+      return compileLayerExpression(opts.expression, targ.layer, targ.dataset, opts)();
+    }
+    if (opts.empty) {
+      return layerIsEmpty(targ.layer);
+    }
+    if (opts.not_empty) {
+      return !layerIsEmpty(targ.layer);
+    }
+    return true;
+  }
+
+  function evaluateIf(catalog, opts) {
+    if (!blockWasActive() && testLayer(catalog, opts)) {
+      enterActiveBranch();
+    } else {
+      enterInactiveBranch();
+    }
+  }
+
+  // layerId: optional layer identifier
+  //
+  function getTargetLayer(catalog, opts) {
+    var layerId = opts.layer || opts.target;
+    var targets = catalog.findCommandTargets(layerId);
+    if (targets.length === 0) {
+      if (layerId) {
+        stop('Layer not found:', layerId);
+      } else {
+        stop('Missing a target layer.');
+      }
+    }
+    if (targets.length > 1 || targets[0].layers.length > 1) {
+      stop('Command requires a single target layer.');
+    }
+    return {
+      layer: targets[0].layers[0],
+      dataset: targets[0].dataset
+    };
+  }
+
   cmd.ignore = function(targetLayer, dataset, opts) {
     if (opts.empty && layerIsEmpty(targetLayer)) {
       interrupt('Layer is empty, stopping processing');
@@ -34719,6 +34916,28 @@ ${svg}
     return findVertexIds(p2.x, p2.y, arcs);
   }
 
+  // Given a location @p (e.g. corresponding to the mouse pointer location),
+  // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
+  // but only if:
+  //   1. point @p is closer to the midpoint than either adjacent vertex
+  //   2. the segment containing @p is longer than a minimum distance in pixels.
+  //
+  function findInsertionPoint(p, shp, arcs, pixelSize) {
+    var p2 = findNearestVertex(p[0], p[1], shp, arcs);
+
+  }
+
+  function snapVerticesToPoint(ids, p, arcs, final) {
+    ids.forEach(function(idx) {
+      setVertexCoords(p[0], p[1], idx, arcs);
+    });
+    if (final) {
+      // kludge to get dataset to recalculate internal bounding boxes
+      arcs.transformPoints(function() {});
+    }
+  }
+
+
   // p: point to snap
   // ids: ids of nearby vertices, possibly including an arc endpoint
   function snapPointToArcEndpoint(p, ids, arcs) {
@@ -34805,6 +35024,8 @@ ${svg}
   var VertexUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     findNearestVertices: findNearestVertices,
+    findInsertionPoint: findInsertionPoint,
+    snapVerticesToPoint: snapVerticesToPoint,
     snapPointToArcEndpoint: snapPointToArcEndpoint,
     findVertexIds: findVertexIds,
     getVertexCoords: getVertexCoords,
@@ -38192,7 +38413,9 @@ ${svg}
     if (d.anchor == 'end') {
       scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
     } else if (d.anchor == 'middle') {
-      scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+      // shift midpoint away from the head a bit for a more balanced placement
+      // scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - headLen * 0.25]);
     }
 
     rotateCoords(coords, direction);
@@ -38869,7 +39092,12 @@ ${svg}
         targets,
         targetDataset,
         targetLayers,
+        target,
         arcs;
+
+    if (skipCommand(name)) {
+      return done(null);
+    }
 
     try { // catch errors from synchronous functions
 
@@ -39036,6 +39264,14 @@ ${svg}
           catalog.addDataset(targetDataset);
           outputLayers = targetDataset.layers; // kludge to allow layer naming below
         }
+
+      } else if (name == 'if' || name == 'elif') {
+        // target = findSingleTargetLayer(opts.layer, targets[0], catalog);
+        // cmd[name](target.layer, target.dataset, opts);
+        cmd[name](catalog, opts);
+
+      } else if (name == 'else' || name == 'endif') {
+        cmd[name]();
 
       } else if (name == 'ignore') {
         applyCommandToEachLayer(cmd.ignore, targetLayers, targetDataset, opts);
@@ -39268,6 +39504,7 @@ ${svg}
       return output.indexOf(lyr) > -1;
     });
   }
+
 
   // Apply a command to an array of target layers
   function applyCommandToEachLayer(func, targetLayers) {
@@ -39527,6 +39764,8 @@ ${svg}
   }
 
   function runParsedCommands2(commands, catalog, cb) {
+    // resetting closes any unterminated -if blocks from a previous command sequence
+    resetControlFlow();
     utils.reduceAsync(commands, catalog, nextCommand, cb);
 
     function nextCommand(catalog, cmd, next) {
