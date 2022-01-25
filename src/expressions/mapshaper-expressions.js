@@ -1,5 +1,5 @@
 
-import { addUtils } from '../expressions/mapshaper-expression-utils';
+import { addFeatureExpressionUtils, cleanExpression } from '../expressions/mapshaper-expression-utils';
 import { initFeatureProxy } from '../expressions/mapshaper-feature-proxy';
 import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
@@ -14,11 +14,6 @@ export function compileValueExpression(exp, lyr, arcs, opts) {
   return compileFeatureExpression(exp, lyr, arcs, opts);
 }
 
-export function cleanExpression(exp) {
-  // workaround for problem in GNU Make v4: end-of-line backslashes inside
-  // quoted strings are left in the string (other shell environments remove them)
-  return exp.replace(/\\\n/g, ' ');
-}
 
 export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
   var func = compileFeaturePairExpression(exp, lyr, arcs);
@@ -154,14 +149,19 @@ export function getAssignmentObjects(exp) {
 
 export function compileExpressionToFunction(exp, opts) {
   // $$ added to avoid duplication with data field variables (an error condition)
-  var functionBody = "with($$env){with($$record){ " + (opts.returns ? 'return ' : '') +
-        exp + "}}";
-  var func;
+  var functionBody, func;
+  if (opts.returns) {
+    // functionBody = 'return ' + functionBody;
+    functionBody = 'var $$retn = ' + exp + '; return $$retn;';
+  } else {
+    functionBody = exp;
+  }
+  functionBody = 'with($$env){with($$record){ ' + functionBody + '}}';
   try {
-    func = new Function("$$record,$$env",  functionBody);
+    func = new Function('$$record,$$env',  functionBody);
   } catch(e) {
     // if (opts.quiet) throw e;
-    stop(e.name, "in expression [" + exp + "]");
+    stop(e.name, 'in expression [' + exp + ']');
   }
   return func;
 }
@@ -204,7 +204,7 @@ function getExpressionContext(lyr, mixins, opts) {
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];
   opts = opts || {};
-  addUtils(env); // mix in round(), sprintf(), etc.
+  addFeatureExpressionUtils(env); // mix in round(), sprintf(), etc.
   if (fields.length > 0) {
     // default to null values, so assignments to missing data properties
     // are applied to the data record, not the global object

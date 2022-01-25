@@ -373,10 +373,6 @@ export function ArcCollection() {
     return i - i2;
   };
 
-  this.getVertex2 = function(i) {
-    return [_xx[i], _yy[i]];
-  };
-
   this.getVertex = function(arcId, nth) {
     var i = this.indexOfVertex(arcId, nth);
     return {

@@ -142,7 +142,9 @@ export function getFilledArrowCoords(d) {
   if (d.anchor == 'end') {
     scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
   } else if (d.anchor == 'middle') {
-    scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+    // shift midpoint away from the head a bit for a more balanced placement
+    // scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+    scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - headLen * 0.25]);
   }
 
   rotateCoords(coords, direction);

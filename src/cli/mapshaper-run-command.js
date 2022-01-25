@@ -44,6 +44,7 @@ import '../commands/mapshaper-filter-points';
 import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
+import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
 import '../commands/mapshaper-include';
 import '../commands/mapshaper-info';
@@ -92,7 +93,12 @@ export function runCommand(command, catalog, cb) {
       targets,
       targetDataset,
       targetLayers,
+      target,
       arcs;
+
+  if (skipCommand(name)) {
+    return done(null);
+  }
 
   try { // catch errors from synchronous functions
 
@@ -259,6 +265,14 @@ export function runCommand(command, catalog, cb) {
         catalog.addDataset(targetDataset);
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
+
+    } else if (name == 'if' || name == 'elif') {
+      // target = findSingleTargetLayer(opts.layer, targets[0], catalog);
+      // cmd[name](target.layer, target.dataset, opts);
+      cmd[name](catalog, opts);
+
+    } else if (name == 'else' || name == 'endif') {
+      cmd[name]();
 
     } else if (name == 'ignore') {
       applyCommandToEachLayer(cmd.ignore, targetLayers, targetDataset, opts);
@@ -491,6 +505,7 @@ function outputLayersAreDifferent(output, input) {
     return output.indexOf(lyr) > -1;
   });
 }
+
 
 // Apply a command to an array of target layers
 function applyCommandToEachLayer(func, targetLayers) {

@@ -7,8 +7,19 @@ export function roundToSignificantDigits(n, d) {
   return +n.toPrecision(d);
 }
 
+
 export function roundToDigits(n, d) {
   return +n.toFixed(d); // string conversion makes this slow
+}
+
+// Used in mapshaper-expression-utils.js
+// TODO: choose between this and the above function
+export function roundToDigits2(n, d) {
+  var k = 1;
+  if (!n && n !== 0) return n; // don't coerce null to 0
+  d = d | 0;
+  while (d-- > 0) k *= 10;
+  return Math.round(n * k) / k;
 }
 
 export function roundToTenths(n) {

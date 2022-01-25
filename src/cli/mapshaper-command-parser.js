@@ -434,6 +434,13 @@ function CommandOptions(name) {
     return this;
   };
 
+  this.options = function(o) {
+    Object.keys(o).forEach(function(key) {
+      this.option(key, o[key]);
+    }, this);
+    return this;
+  };
+
   this.done = function() {
     return _command;
   };

@@ -9,6 +9,7 @@ import { createAsyncContext } from '../mapshaper-state';
 import { Catalog } from '../dataset/mapshaper-catalog';
 import { setStateVar, runningInBrowser } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
+import { resetControlFlow } from '../mapshaper-control-flow';
 
 
 // Parse command line args into commands and run them
@@ -255,6 +256,8 @@ function filterError(err) {
 }
 
 function runParsedCommands2(commands, catalog, cb) {
+  // resetting closes any unterminated -if blocks from a previous command sequence
+  resetControlFlow();
   utils.reduceAsync(commands, catalog, nextCommand, cb);
 
   function nextCommand(catalog, cmd, next) {

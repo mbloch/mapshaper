@@ -5,6 +5,28 @@ export function findNearestVertices(p, shp, arcs) {
   return findVertexIds(p2.x, p2.y, arcs);
 }
 
+// Given a location @p (e.g. corresponding to the mouse pointer location),
+// find the midpoint of two vertices on @shp suitable for inserting a new vertex,
+// but only if:
+//   1. point @p is closer to the midpoint than either adjacent vertex
+//   2. the segment containing @p is longer than a minimum distance in pixels.
+//
+export function findInsertionPoint(p, shp, arcs, pixelSize) {
+  var p2 = findNearestVertex(p[0], p[1], shp, arcs);
+
+}
+
+export function snapVerticesToPoint(ids, p, arcs, final) {
+  ids.forEach(function(idx) {
+    setVertexCoords(p[0], p[1], idx, arcs);
+  });
+  if (final) {
+    // kludge to get dataset to recalculate internal bounding boxes
+    arcs.transformPoints(function() {});
+  }
+}
+
+
 // p: point to snap
 // ids: ids of nearby vertices, possibly including an arc endpoint
 export function snapPointToArcEndpoint(p, ids, arcs) {

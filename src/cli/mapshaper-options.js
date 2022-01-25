@@ -960,14 +960,6 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
-  parser.command('ignore')
-    // .describe('stop processing if a condition is met')
-    .option('empty', {
-      describe: 'ignore empty files',
-      type: 'flag'
-    })
-    .option('target', targetOpt);
-
   parser.command('include')
     .describe('import JS data and functions for use in JS expressions')
     .option('file', {
@@ -1927,6 +1919,49 @@ export function getOptionParser() {
     .option('expression', {
       DEFAULT: true,
       describe: 'boolean JS expression'
+    })
+    .option('target', targetOpt);
+
+  parser.section('Control flow commands');
+
+  var ifOpts = {
+    expression: {
+      DEFAULT: true,
+      describe: 'JS expression targeting a single layer'
+    },
+    empty: {
+      describe: 'run if layer is empty',
+      type: 'flag'
+    },
+    'not-empty': {
+      describe: 'run if layer is not empty',
+      type: 'flag'
+    },
+    layer: {
+      describe: 'name or id of layer to test (default is current target)'
+    },
+    target: targetOpt
+  };
+
+  parser.command('if')
+    .describe('run the following commands if a condition is met')
+    .options(ifOpts);
+
+  parser.command('elif')
+    .describe('test an alternate condition; used after -if')
+    .options(ifOpts);
+
+  parser.command('else')
+    .describe('run commands if all preceding -if/-elif conditions are false');
+
+  parser.command('endif')
+    .describe('mark the end of an -if sequence');
+
+  parser.command('ignore')
+    // .describe('stop processing if a condition is met')
+    .option('empty', {
+      describe: 'ignore empty files',
+      type: 'flag'
     })
     .option('target', targetOpt);
 

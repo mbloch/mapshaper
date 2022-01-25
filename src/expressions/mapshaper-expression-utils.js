@@ -1,15 +1,17 @@
 import utils from '../utils/mapshaper-utils';
 import { blend } from '../color/blending';
+import { roundToDigits2 } from '../geom/mapshaper-rounding';
 
-export function addUtils(env) {
+
+export function cleanExpression(exp) {
+  // workaround for problem in GNU Make v4: end-of-line backslashes inside
+  // quoted strings are left in the string (other shell environments remove them)
+  return exp.replace(/\\\n/g, ' ');
+}
+
+export function addFeatureExpressionUtils(env) {
   Object.assign(env, {
-    round: function(val, dig) {
-      var k = 1;
-      if (!val && val !== 0) return val; // don't coerce null to 0
-      dig = dig | 0;
-      while(dig-- > 0) k *= 10;
-      return Math.round(val * k) / k;
-    },
+    round: roundToDigits2,
     int_median: interpolated_median,
     sprintf: utils.format,
     blend: blend
