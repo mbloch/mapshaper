@@ -1,3 +1,7 @@
+v0.5.88
+* Added -if/-elif/-else/-endif commands for running commands selectively.
+* Bug fixes
+
 v0.5.87
 * Added undo/redo to the "drag vertices" interactive editing mode.
 
