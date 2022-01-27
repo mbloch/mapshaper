@@ -9,16 +9,12 @@ export function getLayerProxy(lyr, arcs) {
   var getters = {
     name: lyr.name,
     data: records,
-    type: lyr.geometry_type
+    type: lyr.geometry_type,
+    size: getFeatureCount(lyr),
+    empty: getFeatureCount(lyr) === 0
   };
   addGetters(obj, getters);
   addBBoxGetter(obj, lyr, arcs);
-  obj.empty = function() {
-    return getFeatureCount(lyr) === 0;
-  };
-  obj.size = function() {
-    return getFeatureCount(lyr);
-  };
   return obj;
 }
 

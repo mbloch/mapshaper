@@ -35,6 +35,23 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+
+  it ('test this.size getter', function(done) {
+    var data = {
+      type: 'GeometryCollection',
+      geometries: [{type: 'Point', coordinates: [1,2]}, {type: 'Point', coordinates: [2, 1]}]
+    };
+    var cmd = `-i data.json -if 'this.size === 2' -dissolve -each 'foo = "bar"'  -o format=json`;
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{
+        foo: 'bar'
+      }]);
+      done();
+    });
+  });
+
+
   it ('test not-empty flag', function(done) {
     var data = [{name: 'a'}, {name: 'b'}];
     var cmd = `-i data.json -if not-empty -each 'id = this.id' -else -each 'fid = this.id' \
