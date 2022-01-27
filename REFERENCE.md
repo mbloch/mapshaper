@@ -1221,7 +1221,7 @@ mapshaper polygons.geojson \
 
 Symbolize points as polygons, circles, stars or arrows.
 
-`type=`            Symbol type (e.g. star, polygon, circle, arrow)
+`type=`            Basic types: star, polygon, circle, arrow, ring. Aliases: triangle, square, pentagon, etc.
 
 `fill=`            Symbol fill color
 
