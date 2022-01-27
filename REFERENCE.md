@@ -4,14 +4,16 @@ This documentation applies to version 0.5.88 of mapshaper's command line program
 
 ## Command line syntax
 
-Mapshaper takes a list of commands and runs them in sequence, from left to right. A command consists of the name of a command prefixed by a hyphen, followed by options for the command. The initial import command `-i` can be omitted. Example:
+Mapshaper takes a list of commands and runs them in sequence, from left to right. A command consists of the name of a command prefixed by a hyphen, followed by options for the command. The initial import command `-i` can be omitted.
+
+#### Example
 
 ```bash
 # Read a Shapefile, simplify using Douglas-Peucker, output as GeoJSON
 mapshaper provinces.shp -simplify dp 20% -o format=geojson out.json
 ```
 
-Command options can take three forms:
+#### Command options can take three forms:
 
   - Values, like `provinces.shp` and `20%` in the above example
 
@@ -19,9 +21,9 @@ Command options can take three forms:
 
   - Name/value pairs, like `format=geojson`
 
-#### Common options
+## Common options
 
-These options are used by multiple commands
+The following options are documented here, because they are used by many commands.
 
 `name=` Rename the layer (or layers) modified by a command.
 
@@ -29,6 +31,7 @@ These options are used by multiple commands
 
 `+` Use the output of a command to create a new layer or layers instead of replacing the target layer(s). Use together with the `name=` option to assign a name to the new layer(s).
 
+#### Example
 ```bash
 # Make a derived layer containing a subset of features while retaining the original layer
 mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
@@ -91,6 +94,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-uniq](#-uniq)
 
 **Control Flow**
+
 [-if](#-if)
 [-elif](#-elif)
 [-else](#-else)
@@ -1250,18 +1254,20 @@ mapshaper polygons.shp \
 ## Control Flow Commands
 
 ### -if
-### -elif
 
-The `if` command runs the following commands if a condition is met. One or more `-elif` (short for "else if") commands may be added to test for alternate conditions.
+The `if` command runs the following commands if a condition is met.
 
 `<expression>` or `expression=`  Use a JavaScript expression to test a condition.
 
-`empty`         Test if target layer is empty.
+`empty`         Test if layer is empty.
 
-`not-empty`     Test if target layer contains data.
+`not-empty`     Test if layer contains data.
 
 `layer=`        Name or id of layer to test (default is current target layer).
 
+### -elif
+
+One or more `-elif` (short for "else if") commands may be added to test for alternate conditions, following an `-if` statement. The `-elif` command accepts the same options as the `-if` command.
 
 ### -else
 
@@ -1273,7 +1279,7 @@ Mark the end of an -if/-elif/-else sequence.
 
 ### -target
 
-Set default target layer
+Set the target layer or layers for the following command.
 
 `<target>` or `target=`  Name or id of a layer (first layer is 1).
 
