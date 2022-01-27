@@ -1518,33 +1518,22 @@ export function getOptionParser() {
    .option('target', targetOpt);
 
   parser.command('symbols')
-    // .describe('symbolize points as polygons, circles, stars or arrows')
+    .describe('symbolize points as polygons, circles, stars or arrows')
     .option('type', {
       describe: 'symbol type (e.g. star, polygon, circle, arrow)'
     })
-    .option('scale', {
-      describe: 'scale symbols by a factor',
-      type: 'number'
-    })
-    .option('pixel-scale', {
-      describe: 'symbol scale in meters-per-pixel (see polygons option)',
-      type: 'number',
+    .option('stroke', {})
+    .option('stroke-width', {})
+    .option('fill', {
+      describe: 'symbol fill color'
     })
     .option('polygons', {
       describe: 'generate symbols as polygons instead of SVG objects',
       type: 'flag'
     })
-    .option('radius', {
-      describe: 'distance from center to farthest point on the symbol',
-      type: 'distance'
-    })
-    .option('sides', {
-      describe: 'number of sides of a polygon symbol',
-      type: 'number'
-    })
-    .option('orientation', {
-      // TODO: removed (replaced by flipped and rotated)
-      // describe: 'use orientation=b for a rotated or flipped orientation'
+    .option('pixel-scale', {
+      describe: 'set symbol scale in meters-per-pixel (for polygons option)',
+      type: 'number',
     })
     // .option('flipped', {
     //   type: 'flag',
@@ -1552,10 +1541,22 @@ export function getOptionParser() {
     // })
     .option('rotated', {
       type: 'flag',
-      describe: 'symbol is rotated to a different orientation'
+      describe: 'symbol is rotated to an alternate orientation'
     })
     .option('rotation', {
       describe: 'rotation of symbol in degrees'
+    })
+    .option('scale', {
+      describe: 'scale symbols by a multiplier',
+      type: 'number'
+    })
+    .option('radius', {
+      describe: 'distance from center to farthest point on the symbol',
+      type: 'distance'
+    })
+    .option('sides', {
+      describe: '(polygon) number of sides of a polygon symbol',
+      type: 'number'
     })
     .option('points', {
       describe: '(star) number of points'
@@ -1614,11 +1615,6 @@ export function getOptionParser() {
     })
     .option('anchor', {
       describe: '(arrow) takes one of: start, middle, end (default is start)'
-    })
-    .option('stroke', {})
-    .option('stroke-width', {})
-    .option('fill', {
-      describe: 'symbol fill color'
     })
     .option('effect', {})
     // .option('where', whereOpt)

@@ -90,6 +90,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-split-on-grid](#-split-on-grid)
 [-subdivide](#-subdivide)
 [-style](#-style)
+[-symbols](#-symbols)
 [-union](#-union)
 [-uniq](#-uniq)
 
@@ -1216,6 +1217,34 @@ mapshaper polygons.geojson \
 -o out.svg
 ```
 
+### -symbols
+
+Symbolize points as polygons, circles, stars or arrows.
+
+`type=`            Symbol type (e.g. star, polygon, circle, arrow)
+`fill=`            Symbol fill color
+`polygons`         Senerate symbols as polygons instead of SVG objects
+`pixel-scale=`     Set symbol scale in meters-per-pixel (for polygons option)
+`rotated`          Symbol is rotated to an alternate orientation
+`rotation=`        Rotation of symbol in degrees
+`scale=`           Scale symbols by a multiplier
+`radius=`          Distance from center to farthest point on the symbol
+`sides=`           (polygon) number of sides of a polygon symbol
+`points=`          (star) number of points
+`point-ratio=`     (star) ratio of minor to major radius of star
+`radii=`           (ring) comma-sep. list of concentric radii, ascending order
+`length=`          (arrow) length of arrow in pixels
+`direction=`       (arrow) angle off vertical (-90 = left-pointing)
+`head-angle=`      (arrow) angle of tip of arrow (default is 40 degrees)
+`head-width=`      (arrow) width of arrow head from side to side
+`head-length=`     (arrow) length of head (alternative to head-angle)
+`stem-width=`      (arrow) width of stem at its widest point
+`stem-length=`     (arrow) alternative to length
+`stem-taper=`      (arrow) factor for tapering the width of the stem (0-1)
+`stem-curve=`      (arrow) curvature in degrees (default is 0)
+`min-stem-ratio=`  (arrow) min ratio of stem to total length
+`anchor=`          (arrow) takes one of: start, middle, end (default is start)
+
 ### -union
 
 Create a composite layer (a polygon mosaic without overlaps) from two or more target polygon layers.
@@ -1264,6 +1293,21 @@ The `if` command runs the following commands if a condition is met.
 `not-empty`     Test if layer contains data.
 
 `layer=`        Name or id of layer to test (default is current target layer).
+
+**Properties of `this`**
+
+- `this.name`   Layer name, or <undefined> if layer is unnamed.
+- `this.size`   Number of features in the layer.
+- `this.empty`  True if layer contains 0 features.
+- `this.data`   Array of attribute data records, one object per feature.
+- `this.type`   Geometry type, one of: polygon, polyline, point, <undefined>.
+- `this.bbox`   An array [xmin, ymin, xmax, ymax] with additional properties: cx, cy, height, width, left, bottom, top, right.
+
+**Example**
+
+```bash
+mapshaper -i shapes.json -if '!this.empty' -dissolve -o out/dissolved.json
+```
 
 ### -elif
 
