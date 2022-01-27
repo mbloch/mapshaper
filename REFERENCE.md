@@ -1222,27 +1222,49 @@ mapshaper polygons.geojson \
 Symbolize points as polygons, circles, stars or arrows.
 
 `type=`            Symbol type (e.g. star, polygon, circle, arrow)
+
 `fill=`            Symbol fill color
+
 `polygons`         Senerate symbols as polygons instead of SVG objects
+
 `pixel-scale=`     Set symbol scale in meters-per-pixel (for polygons option)
+
 `rotated`          Symbol is rotated to an alternate orientation
+
 `rotation=`        Rotation of symbol in degrees
+
 `scale=`           Scale symbols by a multiplier
+
 `radius=`          Distance from center to farthest point on the symbol
+
 `sides=`           (polygon) number of sides of a polygon symbol
+
 `points=`          (star) number of points
+
 `point-ratio=`     (star) ratio of minor to major radius of star
+
 `radii=`           (ring) comma-sep. list of concentric radii, ascending order
+
 `length=`          (arrow) length of arrow in pixels
+
 `direction=`       (arrow) angle off vertical (-90 = left-pointing)
+
 `head-angle=`      (arrow) angle of tip of arrow (default is 40 degrees)
+
 `head-width=`      (arrow) width of arrow head from side to side
+
 `head-length=`     (arrow) length of head (alternative to head-angle)
+
 `stem-width=`      (arrow) width of stem at its widest point
+
 `stem-length=`     (arrow) alternative to length
+
 `stem-taper=`      (arrow) factor for tapering the width of the stem (0-1)
+
 `stem-curve=`      (arrow) curvature in degrees (default is 0)
+
 `min-stem-ratio=`  (arrow) min ratio of stem to total length
+
 `anchor=`          (arrow) takes one of: start, middle, end (default is start)
 
 ### -union
