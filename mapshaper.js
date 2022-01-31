@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.87";
+  var VERSION = "0.5.88";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9350,16 +9350,12 @@
     var getters = {
       name: lyr.name,
       data: records,
-      type: lyr.geometry_type
+      type: lyr.geometry_type,
+      size: getFeatureCount(lyr),
+      empty: getFeatureCount(lyr) === 0
     };
     addGetters(obj, getters);
     addBBoxGetter(obj, lyr, arcs);
-    obj.empty = function() {
-      return getFeatureCount(lyr) === 0;
-    };
-    obj.size = function() {
-      return getFeatureCount(lyr);
-    };
     return obj;
   }
 
@@ -20116,33 +20112,22 @@ ${svg}
      .option('target', targetOpt);
 
     parser.command('symbols')
-      // .describe('symbolize points as polygons, circles, stars or arrows')
+      .describe('symbolize points as arrows, circles, stars, polygons, etc.')
       .option('type', {
-        describe: 'symbol type (e.g. star, polygon, circle, arrow)'
+        describe: 'symbol type (e.g. arrow, circle, square, star, polygon, ring)'
       })
-      .option('scale', {
-        describe: 'scale symbols by a factor',
-        type: 'number'
-      })
-      .option('pixel-scale', {
-        describe: 'symbol scale in meters-per-pixel (see polygons option)',
-        type: 'number',
+      .option('stroke', {})
+      .option('stroke-width', {})
+      .option('fill', {
+        describe: 'symbol fill color'
       })
       .option('polygons', {
         describe: 'generate symbols as polygons instead of SVG objects',
         type: 'flag'
       })
-      .option('radius', {
-        describe: 'distance from center to farthest point on the symbol',
-        type: 'distance'
-      })
-      .option('sides', {
-        describe: 'number of sides of a polygon symbol',
-        type: 'number'
-      })
-      .option('orientation', {
-        // TODO: removed (replaced by flipped and rotated)
-        // describe: 'use orientation=b for a rotated or flipped orientation'
+      .option('pixel-scale', {
+        describe: 'set symbol scale in meters-per-pixel (for polygons option)',
+        type: 'number',
       })
       // .option('flipped', {
       //   type: 'flag',
@@ -20150,10 +20135,22 @@ ${svg}
       // })
       .option('rotated', {
         type: 'flag',
-        describe: 'symbol is rotated to a different orientation'
+        describe: 'symbol is rotated to an alternate orientation'
       })
       .option('rotation', {
         describe: 'rotation of symbol in degrees'
+      })
+      .option('scale', {
+        describe: 'scale symbols by a multiplier',
+        type: 'number'
+      })
+      .option('radius', {
+        describe: 'distance from center to farthest point on the symbol',
+        type: 'distance'
+      })
+      .option('sides', {
+        describe: '(polygon) number of sides of a (regular) polygon symbol',
+        type: 'number'
       })
       .option('points', {
         describe: '(star) number of points'
@@ -20172,7 +20169,7 @@ ${svg}
       })
       .option('direction', {
         old_alias: 'arrow-direction',
-        describe: '(arrow) angle off vertical (-90 = left-pointing)'
+        describe: '(arrow) angle off of vertical (-90 = left-pointing)'
       })
       .option('head-angle', {
         old_alias: 'arrow-head-angle',
@@ -20207,16 +20204,11 @@ ${svg}
       })
       .option('min-stem-ratio', {
         old_alias: 'arrow-min-stem',
-        describe: '(arrow) min ratio of stem to total length',
+        describe: '(arrow) minimum ratio of stem to total length',
         type: 'number'
       })
       .option('anchor', {
         describe: '(arrow) takes one of: start, middle, end (default is start)'
-      })
-      .option('stroke', {})
-      .option('stroke-width', {})
-      .option('fill', {
-        describe: 'symbol fill color'
       })
       .option('effect', {})
       // .option('where', whereOpt)

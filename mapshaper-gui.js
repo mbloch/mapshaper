@@ -233,6 +233,30 @@
     return parsed[0].options;
   };
 
+  // Convert an options object to a command line options string
+  // (used by gui-import-control.js)
+  // TODO: handle options with irregular string <-> object conversion
+  GUI.formatCommandOptions = function(o) {
+    var arr = [];
+    Object.keys(o).forEach(function(key) {
+      var name = key.replace(/_/g, '-');
+      var val = o[key];
+      var str;
+      // TODO: quote values that contain spaces
+      if (Array.isArray(val)) {
+        str = name + '=' + val.join(',');
+      } else if (val === true) {
+        str = name;
+      } else if (val === false) {
+        return;
+      } else {
+        str = name + '=' + val;
+      }
+      arr.push(str);
+    });
+    return arr.join(' ');
+  };
+
   // @file: Zip file
   // @cb: function(err, <files>)
   //
@@ -1107,20 +1131,19 @@
 
   function ImportControl(gui, opts) {
     var model = gui.model;
+    var initialImport = true;
     var importCount = 0;
     var importTotal = 0;
     var overQuickView = false;
-    var useQuickView = opts.quick_view; // may be set by mapshaper-gui
     var queuedFiles = [];
     var manifestFiles = opts.files || [];
-    var cachedFiles = {};
     var catalog;
 
     if (opts.catalog) {
       catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
     }
 
-    new SimpleButton('#import-buttons .submit-btn').on('click', onSubmit);
+    new SimpleButton('#import-buttons .submit-btn').on('click', importQueuedFiles);
     new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
     new DropControl(gui, 'body', receiveFiles);
     new FileChooser('#file-selection-btn', receiveFiles);
@@ -1128,7 +1151,7 @@
     new FileChooser('#add-file-btn', receiveFiles);
     initDropArea('#import-quick-drop', true);
     initDropArea('#import-drop');
-    gui.keyboard.onMenuSubmit(El('#import-options'), onSubmit);
+    gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);
 
     gui.addMode('import', turnOn, turnOff);
     gui.enterMode('import');
@@ -1139,6 +1162,10 @@
         gui.enterMode('import');
       }
     });
+
+    function useQuickView() {
+      return initialImport && (opts.quick_view || overQuickView);
+    }
 
     function initDropArea(el, isQuick) {
       var area = El(el)
@@ -1157,15 +1184,19 @@
       }
     }
 
-    function findMatchingShp(filename) {
-      // use case-insensitive matching
-      var base = internal.getPathBase(filename).toLowerCase();
-      return model.getDatasets().filter(function(d) {
-        var fname = d.info.input_files && d.info.input_files[0] || "";
-        var ext = internal.getFileExtension(fname).toLowerCase();
-        var base2 = internal.getPathBase(fname).toLowerCase();
-        return base == base2 && ext == 'shp';
-      });
+    async function importQueuedFiles() {
+      gui.container.removeClass('queued-files');
+      gui.container.removeClass('splash-screen');
+      var files = queuedFiles;
+      try {
+        if (files.length > 0) {
+          queuedFiles = [];
+          await importFiles(files);
+        }
+      } catch(e) {
+        console.error(e);
+      }
+      gui.clearMode();
     }
 
     function turnOn() {
@@ -1186,13 +1217,8 @@
         importCount = 0;
       }
       gui.clearProgressMessage();
-      useQuickView = false; // unset 'quick view' mode, if on
-      close();
-    }
-
-    function close() {
+      initialImport = false; // unset 'quick view' mode, if on
       clearQueuedFiles();
-      cachedFiles = {};
     }
 
     function onImportComplete() {
@@ -1226,34 +1252,6 @@
       }, []);
     }
 
-    // When a Shapefile component is at the head of the queue, move the entire
-    // Shapefile to the front of the queue, sorted in reverse alphabetical order,
-    // (a kludge), so .shp is read before .dbf and .prj
-    // (If a .dbf file is imported before a .shp, it becomes a separate dataset)
-    // TODO: import Shapefile parts without relying on this kludge
-    function sortQueue(queue) {
-      var nextFile = queue[0];
-      var basename, parts;
-      if (!isShapefilePart(nextFile.name)) {
-        return queue;
-      }
-      basename = internal.getFileBase(nextFile.name).toLowerCase();
-      parts = [];
-      queue = queue.filter(function(file) {
-        if (internal.getFileBase(file.name).toLowerCase() == basename) {
-          parts.push(file);
-          return false;
-        }
-        return true;
-      });
-      parts.sort(function(a, b) {
-        // Sorting on LC filename so Shapefiles with mixed-case
-        // extensions are sorted correctly
-        return a.name.toLowerCase() < b.name.toLowerCase() ? 1 : -1;
-      });
-      return parts.concat(queue);
-    }
-
     function showQueuedFiles() {
       var list = gui.container.findChild('.dropped-file-list').empty();
       queuedFiles.forEach(function(f) {
@@ -1261,21 +1259,59 @@
       });
     }
 
-    function receiveFiles(files) {
-      var prevSize = queuedFiles.length;
-      useQuickView = useQuickView || overQuickView;
-      files = handleZipFiles(utils.toArray(files));
-      addFilesToQueue(files);
+    async function receiveFiles(files) {
+      // TODO: show importing message here?
+      var expanded = await expandFiles(files);
+      addFilesToQueue(expanded);
       if (queuedFiles.length === 0) return;
       gui.enterMode('import');
-
-      if (useQuickView) {
-        onSubmit();
+      if (useQuickView()) {
+        importQueuedFiles();
       } else {
         gui.container.addClass('queued-files');
         El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
         showQueuedFiles();
       }
+    }
+
+    async function expandFiles(files) {
+      var files2 = [], expanded;
+      for (var f of files) {
+        if (internal.isZipFile(f.name)) {
+          expanded = await readZipFile(f);
+          files2 = files2.concat(expanded);
+        } else {
+          files2.push(f);
+        }
+      }
+      return files2;
+    }
+
+    async function importFiles(files) {
+      var fileData = await readFiles(files);
+      var importOpts = readImportOpts();
+      var groups = groupFilesForImport(fileData, importOpts);
+      for (var group of groups) {
+        if (group.size > 4e7) {
+          gui.showProgressMessage('Importing');
+          await wait(35);
+        }
+        importDataset(group, importOpts);
+      }
+    }
+
+    function importDataset(group, importOpts) {
+      var optStr = GUI.formatCommandOptions(importOpts);
+      var dataset = internal.importContent(group, importOpts);
+      if (datasetIsEmpty(dataset)) return;
+      if (group.layername) {
+        dataset.layers.forEach(lyr => lyr.name = group.layername);
+      }
+      // save import options for use by repair control, etc.
+      dataset.info.import_options = importOpts;
+      model.addDataset(dataset);
+      importCount++;
+      gui.session.fileImported(group.filename, optStr);
     }
 
     function filesMayContainPaths(files) {
@@ -1285,61 +1321,33 @@
       });
     }
 
-    function onSubmit() {
-      gui.container.removeClass('queued-files');
-      gui.container.removeClass('splash-screen');
-      procNextQueuedFile();
-    }
-
-    function addDataset(dataset) {
-      if (!datasetIsEmpty(dataset)) {
-        model.addDataset(dataset);
-        importCount++;
-      }
-      procNextQueuedFile();
-    }
-
     function datasetIsEmpty(dataset) {
       return dataset.layers.every(function(lyr) {
         return internal.getFeatureCount(lyr) === 0;
       });
     }
 
-    function procNextQueuedFile() {
-      if (queuedFiles.length === 0) {
-        gui.clearMode();
-      } else {
-        queuedFiles = sortQueue(queuedFiles);
-        readFile(queuedFiles.shift());
-      }
-    }
 
     // TODO: support .cpg
     function isShapefilePart(name) {
       return /\.(shp|shx|dbf|prj)$/i.test(name);
     }
 
-
     function readImportOpts() {
-      if (useQuickView) return {};
-      var freeform = El('#import-options .advanced-options').node().value,
-          opts = GUI.parseFreeformOptions(freeform, 'i');
-      opts.no_repair = !El("#repair-intersections-opt").node().checked;
-      opts.snap = !!El("#snap-points-opt").node().checked;
-      return opts;
-    }
-
-    // for CLI output
-    function readImportOptsAsString() {
-      if (useQuickView) return '';
-      var freeform = El('#import-options .advanced-options').node().value;
-      var opts = readImportOpts();
-      if (opts.snap) freeform = 'snap ' + freeform;
-      return freeform.trim();
+      var importOpts;
+      if (useQuickView()) {
+        importOpts = {}; // default opts using quickview
+      } else {
+        var freeform = El('#import-options .advanced-options').node().value;
+        importOpts = GUI.parseFreeformOptions(freeform, 'i');
+        importOpts.no_repair = !El("#repair-intersections-opt").node().checked;
+        importOpts.snap = !!El("#snap-points-opt").node().checked;
+      }
+      return importOpts;
     }
 
     // @file a File object
-    function readFile(file) {
+    async function readContentFileAsync(file, cb) {
       var name = file.name,
           reader = new FileReader(),
           useBinary = internal.isSupportedBinaryInputType(name) ||
@@ -1349,9 +1357,9 @@
 
       reader.addEventListener('loadend', function(e) {
         if (!reader.result) {
-          handleImportError("Web browser was unable to load the file.", name);
+          cb(new Error());
         } else {
-          importFileContent(name, reader.result);
+          cb(null, reader.result);
         }
       });
       if (useBinary) {
@@ -1362,91 +1370,6 @@
       }
     }
 
-    function importFileContent(fileName, content) {
-      var fileType = internal.guessInputType(fileName, content),
-          importOpts = readImportOpts(),
-          matches = findMatchingShp(fileName),
-          dataset, lyr;
-
-      // Add dbf data to a previously imported .shp file with a matching name
-      // (.shp should have been queued before .dbf)
-      if (fileType == 'dbf' && matches.length > 0) {
-        // find an imported .shp layer that is missing attribute data
-        // (if multiple matches, try to use the most recently imported one)
-        dataset = matches.reduce(function(memo, d) {
-          if (!d.layers[0].data) {
-            memo = d;
-          }
-          return memo;
-        }, null);
-        if (dataset) {
-          lyr = dataset.layers[0];
-          lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
-          if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
-            stop("Different number of records in .shp and .dbf files");
-          }
-          if (!lyr.geometry_type) {
-            // kludge: trigger display of table cells if .shp has null geometry
-            // TODO: test case if lyr is not the current active layer
-            model.updated({});
-          }
-          procNextQueuedFile();
-          return;
-        }
-      }
-
-      if (fileType == 'shx') {
-        // save .shx for use when importing .shp
-        // (queue should be sorted so that .shx is processed before .shp)
-        cachedFiles[fileName.toLowerCase()] = {filename: fileName, content: content};
-        procNextQueuedFile();
-        return;
-      }
-
-      // Add .prj file to previously imported .shp file
-      if (fileType == 'prj') {
-        matches.forEach(function(d) {
-          if (!d.info.prj) {
-            d.info.prj = content;
-          }
-        });
-        procNextQueuedFile();
-        return;
-      }
-
-      importNewDataset(fileType, fileName, content, importOpts);
-    }
-
-    function importNewDataset(fileType, fileName, content, importOpts) {
-      var size = content.byteLength || content.length, // ArrayBuffer or string
-          delay = 0;
-
-      // show importing message if file is large
-      if (size > 4e7) {
-        gui.showProgressMessage('Importing');
-        delay = 35;
-      }
-      setTimeout(function() {
-        var dataset;
-        var input = {};
-        try {
-          input[fileType] = {filename: fileName, content: content};
-          if (fileType == 'shp') {
-            // shx file should already be cached, if it was added together with the shp
-            input.shx = cachedFiles[fileName.replace(/shp$/i, 'shx').toLowerCase()] || null;
-          }
-          dataset = internal.importContent(input, importOpts);
-          // save import options for use by repair control, etc.
-          dataset.info.import_options = importOpts;
-          gui.session.fileImported(fileName, readImportOptsAsString());
-          addDataset(dataset);
-
-        } catch(e) {
-          handleImportError(e, fileName);
-        }
-      }, delay);
-    }
-
     function handleImportError(e, fileName) {
       var msg = utils.isString(e) ? e : e.message;
       if (fileName) {
@@ -1455,34 +1378,6 @@
       clearQueuedFiles();
       gui.alert(msg);
       console.error(e);
-    }
-
-    function handleZipFiles(files) {
-      return files.filter(function(file) {
-        var isZip = internal.isZipFile(file.name);
-        if (isZip) {
-          importZipFile(file);
-        }
-        return !isZip;
-      });
-    }
-
-    function importZipFile(file) {
-      // gui.showProgressMessage('Importing');
-      setTimeout(function() {
-        GUI.readZipFile(file, function(err, files) {
-          if (err) {
-            handleImportError(err, file.name);
-          } else {
-            // don't try to import .txt files from zip files
-            // (these would be parsed as dsv and throw errows)
-            files = files.filter(function(f) {
-              return !/\.txt$/i.test(f.name);
-            });
-            receiveFiles(files);
-          }
-        });
-      }, 35);
     }
 
     function prepFilesForDownload(names) {
@@ -1530,37 +1425,107 @@
       });
     }
 
-    function downloadNextFile_v1(memo, item, next) {
-      var req = new XMLHttpRequest();
-      var blob;
-      req.responseType = 'blob';
-      req.addEventListener('load', function(e) {
-        if (req.status == 200) {
-          blob = req.response;
-        }
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function runAsync(fn, arg) {
+      return new Promise((resolve, reject) => {
+        fn(arg, function(err, data) {
+          return err ? reject(err) : resolve(data);
+        });
       });
-      req.addEventListener('progress', function(e) {
-        if (!e.lengthComputable) return;
-        var pct = e.loaded / e.total;
-        if (catalog) catalog.progress(pct);
-      });
-      req.addEventListener('loadend', function() {
-        var err;
-        if (req.status == 404) {
-          err = "Not&nbsp;found:&nbsp;" + item.name;
-        } else if (!blob) {
-          // Errors like DNS lookup failure, no CORS headers, no network connection
-          // all are status 0 - it seems impossible to show a more specific message
-          // actual reason is displayed on the console
-          err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
+    }
+
+    async function readZipFile(file) {
+      var files;
+      await wait(35); // pause a beat so status message can display
+      try {
+        files = await runAsync(GUI.readZipFile, file);
+        // don't try to import .txt files from zip files
+        // (these would be parsed as dsv and throw errows)
+        files = files.filter(function(f) {
+          return !/\.txt$/i.test(f.name);
+        });
+      } catch(e) {
+        handleImportError(e, file.name);
+        files = [];
+      }
+      return files;
+    }
+
+    async function readFileData(file) {
+      try {
+        var content = await runAsync(readContentFileAsync, file);
+        return {
+          content: content,
+          size: content.byteLength || content.length, // ArrayBuffer or string
+          name: file.name,
+          basename: internal.getFileBase(file.name).toLowerCase(),
+          type: internal.guessInputType(file.name, content)
+        };
+      } catch (e) {
+        handleImportError("Web browser was unable to load the file.", file.name);
+      }
+      return null;
+    }
+
+    async function readFiles(files) {
+      var data = [], d;
+      for (var file of files) {
+        d = await readFileData(file);
+        if (d) data.push(d);
+      }
+      return data;
+    }
+
+    function groupFilesForImport(data, importOpts) {
+      var names = importOpts.name ? [importOpts.name] : null;
+      if (initialImport && opts.name) { // name from mapshaper-gui --name option
+        names = opts.name.split(',');
+      }
+
+      function key(basename, type) {
+        return basename + '.' + type;
+      }
+      function hasShp(basename) {
+        var shpKey = key(basename, 'shp');
+        return data.some(d => key(d.basename, d.type) == shpKey);
+      }
+      data.forEach(d => {
+        if (d.type == 'shp' || !isShapefilePart(d.name)) {
+          d.group = key(d.basename, d.type);
+          d.filename = d.name;
+        } else if (hasShp(d.basename)) {
+          d.group = key(d.basename, 'shp');
+        } else if (d.type == 'dbf') {
+          d.filename = d.name;
+          d.group = key(d.basename, 'dbf');
         } else {
-          blob.name = item.basename;
-          memo.push(blob);
+          // shapefile part without a .shp file
+          d.group = null;
         }
-        next(err, memo);
       });
-      req.open('GET', item.url);
-      req.send();
+      var index = {};
+      var groups = [];
+      data.forEach(d => {
+        if (!d.group) return;
+        var g = index[d.group];
+        if (!g) {
+          g = {};
+          g.layername = names ? names[groups.length] || names[names.length - 1] : null;
+          groups.push(g);
+          index[d.group] = g;
+        }
+        g.size = (g.size || 0) + d.size; // accumulate size
+        g[d.type] = {
+          filename: d.name,
+          content: d.content
+        };
+        // kludge: stash import name for session history
+        if (d.filename) g.filename = d.filename;
+      });
+      return groups;
     }
   }
 
@@ -8452,6 +8417,7 @@
     opts.display_all = vars['display-all'] || vars.a || !!manifest.display_all;
     opts.quick_view = vars['quick-view'] || vars.q || !!manifest.quick_view;
     opts.target = vars.target || manifest.target || null;
+    opts.name = vars.name || manifest.name || null;
     return opts;
   }
 
