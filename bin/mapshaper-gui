@@ -9,6 +9,7 @@ var defaultPort = 5555,
       .option('-s, --direct-save', 'save files outside the browser\'s download folder')
       .option('-f, --force-save', 'allow overwriting input files with output files')
       .option('-a, --display-all', 'turn on visibility of all layers')
+      .option('-n, --name <name(s)>', 'rename input layer or layers')
       .option('-t, --target <name>', 'name of layer to select initially')
       .helpOption('-h, --help', 'show this help message')
       .version(require('../package.json').version)
@@ -29,7 +30,8 @@ var defaultPort = 5555,
 validateFiles(dataFiles);
 
 process.on('uncaughtException', function(err) {
-  if (err.errno === 'EADDRINUSE') {
+  // added 'code' for Node.js v16
+  if (err.errno === 'EADDRINUSE' || err.code === 'EADDRINUSE') {
     // probe for an open port, unless user has specified a non-default port
     if (port == defaultPort && probeCount < 10) {
       probeCount++;
@@ -207,6 +209,7 @@ function getManifestJS(files, opts) {
   if (opts.directSave) o.allow_saving = true;
   if (opts.displayAll) o.display_all = true;
   if (opts.quickView) o.quick_view = true;
+  if (opts.name) o.name = opts.name;
   return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 

@@ -1518,9 +1518,9 @@ export function getOptionParser() {
    .option('target', targetOpt);
 
   parser.command('symbols')
-    .describe('symbolize points as polygons, circles, stars or arrows')
+    .describe('symbolize points as arrows, circles, stars, polygons, etc.')
     .option('type', {
-      describe: 'symbol type (e.g. star, polygon, circle, arrow)'
+      describe: 'symbol type (e.g. arrow, circle, square, star, polygon, ring)'
     })
     .option('stroke', {})
     .option('stroke-width', {})
@@ -1555,7 +1555,7 @@ export function getOptionParser() {
       type: 'distance'
     })
     .option('sides', {
-      describe: '(polygon) number of sides of a polygon symbol',
+      describe: '(polygon) number of sides of a (regular) polygon symbol',
       type: 'number'
     })
     .option('points', {
@@ -1575,7 +1575,7 @@ export function getOptionParser() {
     })
     .option('direction', {
       old_alias: 'arrow-direction',
-      describe: '(arrow) angle off vertical (-90 = left-pointing)'
+      describe: '(arrow) angle off of vertical (-90 = left-pointing)'
     })
     .option('head-angle', {
       old_alias: 'arrow-head-angle',
@@ -1610,7 +1610,7 @@ export function getOptionParser() {
     })
     .option('min-stem-ratio', {
       old_alias: 'arrow-min-stem',
-      describe: '(arrow) min ratio of stem to total length',
+      describe: '(arrow) minimum ratio of stem to total length',
       type: 'number'
     })
     .option('anchor', {

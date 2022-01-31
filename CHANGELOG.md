@@ -1,3 +1,7 @@
+v0.5.89
+* Added help documentation for -symbols command.
+* Added --name option to mapshaper-gui, for setting the layer names of imported files.
+
 v0.5.88
 * Added -if/-elif/-else/-endif commands for running commands selectively.
 * Bug fixes

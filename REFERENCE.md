@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.5.88 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.5.89 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1219,7 +1219,7 @@ mapshaper polygons.geojson \
 
 ### -symbols
 
-Symbolize points as polygons, circles, stars or arrows.
+Symbolize points as regular polygons, circles, stars, arrows and other shapes.
 
 `type=`            Basic types: star, polygon, circle, arrow, ring. Aliases: triangle, square, pentagon, etc.
 
@@ -1247,7 +1247,7 @@ Symbolize points as polygons, circles, stars or arrows.
 
 `length=`          (arrow) length of arrow in pixels
 
-`direction=`       (arrow) angle off vertical (-90 = left-pointing)
+`direction=`       (arrow) angle off of vertical (-90 = left-pointing)
 
 `head-angle=`      (arrow) angle of tip of arrow (default is 40 degrees)
 
@@ -1263,7 +1263,7 @@ Symbolize points as polygons, circles, stars or arrows.
 
 `stem-curve=`      (arrow) curvature in degrees (default is 0)
 
-`min-stem-ratio=`  (arrow) min ratio of stem to total length
+`min-stem-ratio=`  (arrow) minimum ratio of stem to total length. This option scales down the entire symbol instead of making the stem shorter than the given ratio.
 
 `anchor=`          (arrow) takes one of: start, middle, end (default is start)
 

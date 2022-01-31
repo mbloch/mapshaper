@@ -116,3 +116,27 @@ GUI.parseFreeformOptions = function(raw, cmd) {
   }
   return parsed[0].options;
 };
+
+// Convert an options object to a command line options string
+// (used by gui-import-control.js)
+// TODO: handle options with irregular string <-> object conversion
+GUI.formatCommandOptions = function(o) {
+  var arr = [];
+  Object.keys(o).forEach(function(key) {
+    var name = key.replace(/_/g, '-');
+    var val = o[key];
+    var str;
+    // TODO: quote values that contain spaces
+    if (Array.isArray(val)) {
+      str = name + '=' + val.join(',');
+    } else if (val === true) {
+      str = name;
+    } else if (val === false) {
+      return;
+    } else {
+      str = name + '=' + val;
+    }
+    arr.push(str);
+  });
+  return arr.join(' ');
+};
