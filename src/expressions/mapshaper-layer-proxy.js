@@ -1,6 +1,6 @@
-import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { getLayerBounds, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { addGetters } from '../expressions/mapshaper-expression-utils';
-import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import { getColumnType } from '../datatable/mapshaper-data-utils';
 
 // Returns an object representing a layer in a JS expression
 export function getLayerProxy(lyr, arcs) {
@@ -15,6 +15,18 @@ export function getLayerProxy(lyr, arcs) {
   };
   addGetters(obj, getters);
   addBBoxGetter(obj, lyr, arcs);
+  obj.field_exists = function(name) {
+    return lyr.data && lyr.data.fieldExists(name) ? true : false;
+  };
+  obj.field_type = function(name) {
+    return lyr.data && getColumnType(name, lyr.data.getRecords()) || null;
+  };
+  obj.field_includes = function(name, val) {
+    if (!lyr.data) return false;
+    return lyr.data.getRecords().some(function(rec) {
+      return rec && (rec[name] === val);
+    });
+  };
   return obj;
 }
 

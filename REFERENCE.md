@@ -110,6 +110,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-help](#-help)
 [-info](#-info)
 [-inspect](#-inspect)
+[-print](#-print)
 [-projections](#-projections)
 [-quiet](#-quiet)
 [-verbose](#-verbose)
@@ -1325,6 +1326,12 @@ The `if` command runs the following commands if a condition is met.
 - `this.type`   Geometry type, one of: polygon, polyline, point, <undefined>.
 - `this.bbox`   An array [xmin, ymin, xmax, ymax] with additional properties: cx, cy, height, width, left, bottom, top, right.
 
+**Functions of `this`**
+
+- `this.field_exists(<name>)`  Tests if a data field exists in the target layer.
+- `this.field_type(<name>)`    Returns the data type of a field, or `null` if a field is empty or missing. Types include: `"string" "number" "boolean" "date" "object"`. If a field includes multiple data types (which may occur in GeoJSON), the type of the first non-empty data value is returned.
+- `this.field_includes(<value>)`  Tests if a given value occurs at least once in a data field.
+
 **Example**
 
 ```bash
@@ -1426,6 +1433,17 @@ Common options: `target=`
 ```bash
 # Example: View attribute data for a state
 mapshaper states.geojson -inspect 'NAME == "Delaware"'
+```
+
+### -print
+
+Prints a message to the console or terminal (using stdout). This command is useful in combination with the `-if/-elif/-else` commands.
+
+```bash
+# Example
+mapshaper cities.json \
+-if 'this.empty' \
+-print FILE IS EMPTY
 ```
 
 ### -projections

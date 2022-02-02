@@ -68,4 +68,18 @@ describe('mapshaper-if-elif-else-endif.js', function () {
   });
 
 
+  it ('test field_type(), field_exists() and field_includes()', function(done) {
+    var data = [{name: 'a'}, {name: 'b'}];
+    var cmd = `-i data.json -if 'this.field_exists("name")' -each 'a = true' -endif -if 'this.field_type("name") == "string"' -each 'b = true' -endif -if 'this.field_includes("name", "b")' -each 'c = true' -endif -o`;
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{
+        name: 'a', a: true, b: true, c: true
+      }, {
+        name: 'b', a: true, b: true, c: true
+      }]);
+      done();
+    });
+  });
+
 })

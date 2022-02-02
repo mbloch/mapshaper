@@ -8,6 +8,40 @@ describe('mapshaper-data-utils.js', function () {
     it('Date objects are type "date"', function() {
       assert.equal(getValueType(new Date()), 'date');
     });
+
+    it('null is type null, not "object"', function() {
+      assert.strictEqual(getValueType(null), null)
+    })
+
+    it('undefined is type null', function() {
+      assert.strictEqual(getValueType(void 0), null)
+      assert.strictEqual(getValueType(undefined), null)
+    })
+
+    it('0 is type "number"', function() {
+      assert.strictEqual(getValueType(0), "number")
+    })
+  })
+
+  describe('getColumnType()', function() {
+    var getColumnType = api.internal.getColumnType;
+
+    it('missing field is type null', function() {
+      assert.strictEqual(getColumnType('foo', [{}]), null)
+      assert.strictEqual(getColumnType('foo', []), null)
+    })
+
+    // it('only NaN is type null', function() {
+    //   assert.strictEqual(getColumnType('foo', [{foo: NaN}]), null)
+    // })
+
+    it('string field is type "string"', function() {
+      assert.strictEqual(getColumnType('foo', [{}, {foo: ''}]), 'string')
+      assert.strictEqual(getColumnType('foo', [{foo: 'bar'}]), 'string')
+    })
+    it('mixed-type field: first non-empty type (TODO: rethink this)', function() {
+      assert.strictEqual(getColumnType('foo', [{foo: 0}, {foo: ''}]), 'number')
+    })
   })
 
   describe('fixInconsistentFields()', function () {
