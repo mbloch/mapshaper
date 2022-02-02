@@ -1240,7 +1240,8 @@
   // print a message to stdout
   function print() {
     STDOUT = true; // tell logArgs() to print to stdout, not stderr
-    message.apply(null, arguments);
+    // calling message() adds the "[command name]" prefix
+    _message(utils.toArray(arguments));
     STDOUT = false;
   }
 
@@ -9356,6 +9357,18 @@
     };
     addGetters(obj, getters);
     addBBoxGetter(obj, lyr, arcs);
+    obj.field_exists = function(name) {
+      return lyr.data && lyr.data.fieldExists(name) ? true : false;
+    };
+    obj.field_type = function(name) {
+      return lyr.data && getColumnType(name, lyr.data.getRecords()) || null;
+    };
+    obj.field_includes = function(name, val) {
+      if (!lyr.data) return false;
+      return lyr.data.getRecords().some(function(rec) {
+        return rec && (rec[name] === val);
+      });
+    };
     return obj;
   }
 
@@ -20597,6 +20610,10 @@ ${svg}
       })
       .option('target', targetOpt)
       .validate(validateExpressionOpt);
+
+    parser.command('print')
+      .describe('print a message to stdout')
+      .flag('multi_arg');
 
     parser.command('projections')
       .describe('print list of supported projections');
@@ -36633,6 +36650,10 @@ ${svg}
     };
   }
 
+  cmd.print = function(msgArg) {
+    print(msgArg || '');
+  };
+
   cmd.renameLayers = function(layers, names, catalog) {
     if (names && names.join('').indexOf('=') > -1) {
       renameByAssignment(names, catalog);
@@ -39140,7 +39161,7 @@ ${svg}
         }
         if (!(name == 'graticule' || name == 'i' || name == 'help' ||
             name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-            name == 'include')) {
+            name == 'include' || name == 'print')) {
           throw new UserError("No data is available");
         }
       }
@@ -39324,6 +39345,9 @@ ${svg}
 
       } else if (name == 'polygons') {
         outputLayers = cmd.polygons(targetLayers, targetDataset, opts);
+
+      } else if (name == 'print') {
+        cmd.print(command._.join(' '));
 
       } else if (name == 'proj') {
         initProjLibrary(opts, function() {
