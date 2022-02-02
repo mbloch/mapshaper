@@ -59,6 +59,7 @@ import '../commands/mapshaper-polygon-grid';
 import '../commands/mapshaper-point-grid';
 import '../commands/mapshaper-point-to-grid';
 import '../commands/mapshaper-polygons';
+import '../commands/mapshaper-print';
 import '../commands/mapshaper-proj';
 import '../commands/mapshaper-rectangle';
 import '../commands/mapshaper-rename-layers';
@@ -149,7 +150,7 @@ export function runCommand(command, catalog, cb) {
       }
       if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-          name == 'include')) {
+          name == 'include' || name == 'print')) {
         throw new UserError("No data is available");
       }
     }
@@ -333,6 +334,9 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'polygons') {
       outputLayers = cmd.polygons(targetLayers, targetDataset, opts);
+
+    } else if (name == 'print') {
+      cmd.print(command._.join(' '));
 
     } else if (name == 'proj') {
       initProjLibrary(opts, function() {

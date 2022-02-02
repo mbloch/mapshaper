@@ -2004,6 +2004,10 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .validate(V.validateExpressionOpt);
 
+  parser.command('print')
+    .describe('print a message to stdout')
+    .flag('multi_arg');
+
   parser.command('projections')
     .describe('print list of supported projections');
 

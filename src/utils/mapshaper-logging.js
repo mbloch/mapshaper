@@ -61,7 +61,8 @@ export function setLoggingFunctions(message, error, stop) {
 // print a message to stdout
 export function print() {
   STDOUT = true; // tell logArgs() to print to stdout, not stderr
-  message.apply(null, arguments);
+  // calling message() adds the "[command name]" prefix
+  _message(utils.toArray(arguments));
   STDOUT = false;
 }
 
