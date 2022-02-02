@@ -1,4 +1,4 @@
-v0.5.90
+v0.5.91
 * Added -print command, for printing messages to the console or terminal. Useful in conjunction with the -if/-elif/-else commands.
 * Added field_exists(), field_type() and field_includes() functions to -if expressions.
 
