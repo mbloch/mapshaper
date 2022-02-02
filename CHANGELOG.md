@@ -1,3 +1,7 @@
+v0.5.90
+* Added -print command, for printing messages to the console or terminal. Useful in conjunction with the -if/-elif/-else commands.
+* Added field_exists(), field_type() and field_includes() functions to -if expressions.
+
 v0.5.89
 * Added help documentation for -symbols command.
 * Added --name option to mapshaper-gui, for setting the layer names of imported files.
