@@ -5,7 +5,7 @@ import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control2';
 import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
 import { mapNeedsReset } from './gui-map-utils';
-import { InteractiveEditor } from './gui-symbol-dragging2';
+import { initInteractiveEditing } from './gui-edit-modes';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerStack } from './gui-layer-stack';
@@ -35,7 +35,7 @@ export function MshpMap(gui) {
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack, _editor,
+      _inspector, _stack,
       _dynamicCRS;
 
   if (gui.options.showMouseCoordinates) {
@@ -218,7 +218,9 @@ export function MshpMap(gui) {
       });
     }
 
-    _editor = new InteractiveEditor(gui, _ext, _hit);
+    if (gui.interaction) {
+      initInteractiveEditing(gui, _ext, _hit);
+    }
 
     _ext.on('change', function(e) {
       if (e.reset) return; // don't need to redraw map here if extent has been reset
