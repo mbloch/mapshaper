@@ -2,6 +2,7 @@ import { internal, utils, Bounds } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 
+
 // TODO: consider moving this upstream
 function getArcsForRendering(obj, ext) {
   var dataset = obj.source.dataset;
@@ -147,17 +148,18 @@ export function DisplayCanvas() {
   _self.drawVertices = function(shapes, arcs, style, filter) {
     var iter = new internal.ShapeIter(arcs);
     var t = getScaledTransform(_ext);
-    var radius = (style.strokeWidth * 0.9 || 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
+    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
     var color = style.strokeColor || 'black';
-    var shp;
     _ctx.beginPath();
     _ctx.fillStyle = color;
     for (var i=0; i<shapes.length; i++) {
-      shp = shapes[i];
+      var shp = shapes[i];
       if (!shp || filter && !filter(shp)) continue;
-      iter.init(shp);
-      while (iter.hasNext()) {
-        drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
+      for (var j=0; j<shp.length; j++) {
+        iter.init(shp[j]);
+        while (iter.hasNext()) {
+          drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
+        }
       }
     }
     _ctx.fill();
