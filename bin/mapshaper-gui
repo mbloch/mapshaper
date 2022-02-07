@@ -11,6 +11,7 @@ var defaultPort = 5555,
       .option('-a, --display-all', 'turn on visibility of all layers')
       .option('-n, --name <name(s)>', 'rename input layer or layers')
       .option('-t, --target <name>', 'name of layer to select initially')
+      .option('-m, --manifest <pathmanifest>', 'name of layer to select initially')
       .helpOption('-h, --help', 'show this help message')
       .version(require('../package.json').version)
       .parse(),
@@ -71,7 +72,12 @@ function startServer(port) {
         new Cookies(request, response).set('session_id', sessionId);
       }
       // serve JS file containing manifest of files for mapshaper to load
-      serveContent(getManifestJS(dataFiles, opts), response, getMimeType(uri));
+      if (opts.manifest) {
+        var contentManifest = fs.readFileSync(opts.manifest, 'utf-8');
+      } else {      
+        var contentManifest = getManifestJS(dataFiles, opts);
+      }
+      serveContent(contentManifest, response, getMimeType(uri));
     } else if (uri.indexOf('/data/') === 0) {
       // serve a file from a path relative to this script
       // assumed to be a data file from the cmd line (!)
