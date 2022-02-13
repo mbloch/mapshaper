@@ -381,6 +381,10 @@ export function ArcCollection() {
     };
   };
 
+  this.getVertex2 = function(i) {
+    return [_xx[i], _yy[i]];
+  };
+
   // @nth: index of vertex. ~(idx) starts from the opposite endpoint
   this.indexOfVertex = function(arcId, nth) {
     var absId = arcId < 0 ? ~arcId : arcId,
