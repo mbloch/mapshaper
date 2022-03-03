@@ -240,10 +240,6 @@ export function MshpMap(gui) {
   function updateOverlayLayer(e) {
     var style = MapStyle.getOverlayStyle(_activeLyr.layer, e);
     if (style) {
-      // kludge to show vertices when editing path shapes
-      if (gui.state.interaction_mode == 'vertices') {
-        style.vertices = true;
-      }
       _overlayLyr = utils.defaults({
         layer: filterLayerByIds(_activeLyr.layer, style.ids),
         style: style

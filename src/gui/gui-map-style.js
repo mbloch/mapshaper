@@ -168,8 +168,14 @@ export function getOverlayStyle(lyr, o) {
   var geomType = lyr.geometry_type;
   var topId = o.id; // pinned id (if pinned) or hover id
   var topIdx = -1;
-  var styler = function(o, i) {
-    utils.extend(o, i === topIdx ? topStyle: baseStyle);
+  var styler = function(style, i) {
+    utils.extend(style, i === topIdx ? topStyle: baseStyle);
+    // kludge to show vertices when editing path shapes
+    if (o.mode == 'vertices') {
+      style.vertices = true;
+      style.vertex_overlay = o.hit_coordinates || null;
+      style.fillColor = null;
+    }
   };
   var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
   var topStyle;

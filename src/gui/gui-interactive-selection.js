@@ -52,22 +52,25 @@ export function InteractiveSelection(gui, ext, mouse) {
   }, !!'capture'); // preempt the layer control's arrow key handler
 
   self.setLayer = function(mapLayer) {
-    hitTest = getPointerHitTest(mapLayer, ext);
-    if (!hitTest) {
-      hitTest = function() {return {ids: []};};
-    }
     targetLayer = mapLayer;
+    updateHitTest();
   };
+
+  function updateHitTest() {
+    hitTest = getPointerHitTest(targetLayer, ext, interactionMode);
+  }
 
   function turnOn(mode) {
     interactionMode = mode;
     active = true;
+    updateHitTest();
   }
 
   function turnOff() {
     if (active) {
       updateSelectionState(null); // no hit data, no event
       active = false;
+      hitTest = null;
     }
   }
 
@@ -109,6 +112,20 @@ export function InteractiveSelection(gui, ext, mouse) {
     if (active) {
       triggerHitEvent('change');
     }
+  };
+
+  self.setHoverVertex = function(p) {
+    var p2 = storedData.hit_coordinates;
+    if (!active || !p) return;
+    if (p2 && p2[0] == p[0] && p2[1] == p[1]) return;
+    storedData.hit_coordinates = p;
+    triggerHitEvent('change');
+  };
+
+  self.clearVertexOverlay = function() {
+    if (!storedData.hit_coordinates) return;
+    delete storedData.hit_coordinates;
+    triggerHitEvent('change');
   };
 
   self.clearSelection = function() {

@@ -150,6 +150,7 @@ export function DisplayCanvas() {
     var t = getScaledTransform(_ext);
     var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
     var color = style.strokeColor || 'black';
+    var radius2 = radius * 2;
     _ctx.beginPath();
     _ctx.fillStyle = color;
     for (var i=0; i<shapes.length; i++) {
@@ -161,6 +162,10 @@ export function DisplayCanvas() {
           drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
         }
       }
+    }
+    if (style.vertex_overlay) {
+      var p = style.vertex_overlay;
+      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
     }
     _ctx.fill();
     _ctx.closePath();

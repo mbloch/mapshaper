@@ -3,7 +3,7 @@ import { error, internal, geom  } from './gui-core';
 export function initVertexDragging(gui, ext, hit) {
   var activeShapeId = -1;
   var draggedVertexIds = null;
-  var selectedVertexId = -1;
+  var selectedVertexIds = null;
 
   function active(e) {
     return e.id > -1 && gui.interaction.getMode() == 'vertices';
@@ -16,8 +16,17 @@ export function initVertexDragging(gui, ext, hit) {
     });
   }
 
-  hit.on('dragstart', function(e) {
-    if (!active(e)) return;
+  function setHoverVertex(id) {
+    var target = hit.getHitTarget();
+    hit.setHoverVertex(target.arcs.getVertex2(id));
+  }
+
+  function clearHoverVertex() {
+    hit.clearVertexOverlay();
+    // gui.state.vertex_overlay = null;
+  }
+
+  function findDraggableVertices(e) {
     var target = hit.getHitTarget();
     var shp = target.layer.shapes[e.id];
     var p = ext.translatePixelCoords(e.x, e.y);
@@ -27,9 +36,16 @@ export function initVertexDragging(gui, ext, hit) {
     var pixelDist = dist / ext.getPixelSize();
     if (pixelDist > 5) {
       draggedVertexIds = null;
-      return;
+      return null;
     }
-    draggedVertexIds = nearestIds;
+    return nearestIds;
+  }
+
+  hit.on('dragstart', function(e) {
+    if (!active(e)) return;
+    draggedVertexIds = findDraggableVertices(e);
+    if (!draggedVertexIds) return;
+    setHoverVertex(draggedVertexIds[0]);
     activeShapeId = e.id;
     fire('vertex_dragstart');
   });
@@ -42,26 +58,44 @@ export function initVertexDragging(gui, ext, hit) {
       internal.snapPointToArcEndpoint(p, draggedVertexIds, target.arcs);
     }
     internal.snapVerticesToPoint(draggedVertexIds, p, target.arcs);
-    gui.dispatchEvent('map-needs-refresh');
+    setHoverVertex(draggedVertexIds[0]);
+    // redrawing the whole map updates the data layer as well as the overlay layer
+    // gui.dispatchEvent('map-needs-refresh');
   });
 
   hit.on('dragend', function(e) {
     if (!active(e) || !draggedVertexIds) return;
     // kludge to get dataset to recalculate internal bounding boxes
     hit.getHitTarget().arcs.transformPoints(function() {});
+    clearHoverVertex();
     fire('vertex_dragend');
     draggedVertexIds = null;
     activeShapeId = -1;
+    // redraw data layer
+    gui.dispatchEvent('map-needs-refresh');
+  });
+
+  // select clicked vertices
+  hit.on('click', function(e) {
+    if (!active(e)) return;
+    var vertices = findDraggableVertices(e); // same selection criteria as for dragging
+    // TODO
   });
 
   // highlight hit vertex in path edit mode
-  if (false) hit.on('hover', function(e) {
-    if (gui.interaction.getMode() != 'vertices' || activeShapeId >= 0) return;
-    // hovering in vertex edit mode: find vertex insertion point
+  hit.on('hover', function(e) {
+    if (!active(e) || draggedVertexIds) return; // no hover effect while dragging
+    var vertexIds = findDraggableVertices(e);
+    if (vertexIds) {
+      setHoverVertex(vertexIds[0]);
+      return;
+    }
     var target = hit.getHitTarget();
     var shp = target.layer.shapes[e.id];
     var p = ext.translatePixelCoords(e.x, e.y);
     var o = internal.findInsertionPoint(p, shp, target.arcs, ext.getPixelSize());
+    console.log('*', o, p);
+    clearHoverVertex();
   }, null, 100);
 
 }

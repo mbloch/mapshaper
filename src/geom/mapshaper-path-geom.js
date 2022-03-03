@@ -18,6 +18,7 @@ export function getPointToPathDistance(px, py, ids, arcs) {
 export function getPointToPathInfo(px, py, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   var pPathSq = Infinity;
+  var arcId;
   var ax, ay, bx, by, axmin, aymin, bxmin, bymin, pabSq;
   if (iter.hasNext()) {
     ax = axmin = bxmin = iter.x;
@@ -29,6 +30,7 @@ export function getPointToPathInfo(px, py, ids, arcs) {
     pabSq = pointSegDistSq2(px, py, ax, ay, bx, by);
     if (pabSq < pPathSq) {
       pPathSq = pabSq;
+      arcId = iter._ids[iter._i]; // kludge
       axmin = ax;
       aymin = ay;
       bxmin = bx;
@@ -40,7 +42,8 @@ export function getPointToPathInfo(px, py, ids, arcs) {
   if (pPathSq == Infinity) return {distance: Infinity};
   return {
     segment: [[axmin, aymin], [bxmin, bymin]],
-    distance: Math.sqrt(pPathSq)
+    distance: Math.sqrt(pPathSq),
+    arcId: arcId
   };
 }
 
@@ -48,11 +51,20 @@ export function getPointToPathInfo(px, py, ids, arcs) {
 // Return unsigned distance of a point to the nearest point on a polygon or polyline path
 //
 export function getPointToShapeDistance(x, y, shp, arcs) {
-  var minDist = (shp || []).reduce(function(minDist, ids) {
-    var pathDist = getPointToPathDistance(x, y, ids, arcs);
-    return Math.min(minDist, pathDist);
-  }, Infinity);
-  return minDist;
+  var info = getPointToShapeInfo(x, y, shp, arcs);
+  return info ? info.distance : Infinity;
+}
+
+export function getPointToShapeInfo(x, y, shp, arcs) {
+  return (shp || []).reduce(function(memo, ids) {
+    var pathInfo = getPointToPathInfo(x, y, ids, arcs);
+    if (!memo || pathInfo.distance < memo.distance) return pathInfo;
+    return memo;
+  }, null) || {
+    distance: Infinity,
+    arcId: -1,
+    segment: null
+  };
 }
 
 // @ids array of arc ids

@@ -1,12 +1,15 @@
 import { utils, geom, internal, error } from './gui-core';
+import { absArcId } from '../paths/mapshaper-arc-utils';
 
-export function getShapeHitTest(displayLayer, ext) {
+export function getShapeHitTest(displayLayer, ext, interactionMode) {
   var geoType = displayLayer.layer.geometry_type;
   var test;
   if (geoType == 'point' && displayLayer.style.type == 'styled') {
     test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
   } else if (geoType == 'point') {
     test = pointTest;
+  } else if (interactionMode == 'vertices') {
+    test = vertexTest;
   } else if (geoType == 'polyline') {
     test = polylineTest;
   } else if (geoType == 'polygon') {
@@ -32,14 +35,14 @@ export function getShapeHitTest(displayLayer, ext) {
   }
 
   function polygonTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(5, 1),
+    var maxDist = getZoomAdjustedHitBuffer(10, 1),
         cands = findHitCandidates(x, y, maxDist),
         hits = [],
         cand, hitId;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
-        hits.push(cand.id);
+        hits.push(cand);
       }
     }
     if (cands.length > 0 && hits.length === 0) {
@@ -47,7 +50,9 @@ export function getShapeHitTest(displayLayer, ext) {
       sortByDistance(x, y, cands, displayLayer.arcs);
       hits = pickNearestCandidates(cands, 0, maxDist);
     }
-    return hits;
+    return {
+      ids: utils.pluck(hits, 'id')
+    };
   }
 
   function pickNearestCandidates(sorted, bufDist, maxDist) {
@@ -62,9 +67,22 @@ export function getShapeHitTest(displayLayer, ext) {
       } else if (cand.dist - minDist > bufDist) {
         break;
       }
-      hits.push(cand.id);
+      hits.push(cand);
     }
     return hits;
+  }
+
+   function vertexTest(x, y) {
+    var maxDist = getZoomAdjustedHitBuffer(15, 2),
+        bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, displayLayer.arcs);
+    cands = pickNearestCandidates(cands, bufDist, maxDist);
+    var arcs = cands.map(function(cand) { return absArcId(cand.info.arcId); });
+    return {
+      arcs: utils.uniq(arcs),
+      ids: utils.pluck(cands, 'id')
+    };
   }
 
   function polylineTest(x, y) {
@@ -72,12 +90,18 @@ export function getShapeHitTest(displayLayer, ext) {
         bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, displayLayer.arcs);
-    return pickNearestCandidates(cands, bufDist, maxDist);
+    cands = pickNearestCandidates(cands, bufDist, maxDist);
+    return {
+      ids: utils.pluck(cands, 'id')
+    };
   }
 
   function sortByDistance(x, y, cands, arcs) {
+    var cand;
     for (var i=0; i<cands.length; i++) {
-      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+      cand = cands[i];
+      cand.info = geom.getPointToShapeInfo(x, y, cands[i].shape, arcs);
+      cand.dist = cand.info.distance;
     }
     utils.sortOn(cands, 'dist');
   }
@@ -105,7 +129,9 @@ export function getShapeHitTest(displayLayer, ext) {
       }
     });
     // console.log(hitThreshold, bullseye);
-    return utils.uniq(hits); // multipoint features can register multiple hits
+    return {
+      ids: utils.uniq(hits) // multipoint features can register multiple hits
+    };
   }
 
   function getRadiusFunction(style) {
@@ -159,7 +185,9 @@ export function getShapeHitTest(displayLayer, ext) {
           hits.push(id);
         }
       });
-      return hits;
+      return {
+        ids: hits
+      };
     };
   }
 

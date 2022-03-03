@@ -12,7 +12,7 @@ export function lastEl(arr) {
 }
 
 export function samePoint(a, b) {
-  return a[0] === b[0] && a[1] === b[1];
+  return a && b && a[0] === b[0] && a[1] === b[1];
 }
 
 export function isClosedPath(arr) {
