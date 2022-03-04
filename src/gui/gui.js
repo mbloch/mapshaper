@@ -20,14 +20,14 @@ onload(function() {
   startEditing();
 });
 
-function getImportOpts() {
+function getManifest() {
+  return window.mapshaper.manifest || {}; // kludge -- bin/mapshaper-gui sets this
+}
+
+function getImportOpts(manifest) {
   var vars = GUI.getUrlVars();
   var opts = {};
-  var manifest = window.mapshaper.manifest || {}; // kludge -- bin/mapshaper-gui sets this
-  if (Array.isArray(manifest)) {
-    // old-style manifest: an array of filenames
-    opts.files = manifest;
-  } else if (manifest.files) {
+  if (manifest.files) {
     opts.files = manifest.files.concat();
   } else {
     opts.files = [];
@@ -46,14 +46,18 @@ function getImportOpts() {
 }
 
 function getInitialConsoleCommands() {
-  var manifest = window.mapshaper.manifest || {};
-  return manifest.commands || '';
+  return getManifest().commands || '';
 }
 
 var startEditing = function() {
   var dataLoaded = false,
-      importOpts = getImportOpts(),
+      manifest = getManifest(),
+      importOpts = getImportOpts(manifest),
       gui = new GuiInstance('body');
+
+  if (manifest.blurb) {
+    El('#splash-screen-blurb').text(manifest.blurb);
+  }
 
   new AlertControl(gui);
   new RepairControl(gui);

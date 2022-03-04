@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 var defaultPort = 5555,
-    program = require('commander')
+    commander = require('commander'),
+    program = new commander.Command()
       .name('mapshaper-gui')
       .usage('[options] [file ...]')
       .option('-p, --port <port>', 'http port of server on localhost', defaultPort)
@@ -12,6 +13,8 @@ var defaultPort = 5555,
       .option('-n, --name <name(s)>', 'rename input layer or layers')
       .option('-c, --commands <string>', 'console commands to run initially')
       .option('-t, --target <name>', 'name of layer to select initially')
+      .addOption(new commander.Option('-b, --blurb <text>',
+        'replace the default blurb on the import screen').hideHelp())
       .helpOption('-h, --help', 'show this help message')
       .version(require('../package.json').version)
       .parse(process.argv),
@@ -204,13 +207,16 @@ function validateOutputFile(file) {
 }
 
 function getManifestJS(files, opts) {
-  var o = {files: files};
-  if (opts.target) o.target = opts.target;
-  if (opts.directSave) o.allow_saving = true;
-  if (opts.displayAll) o.display_all = true;
-  if (opts.quickView) o.quick_view = true;
-  if (opts.name) o.name = opts.name;
-  if (opts.commands) o.commands = opts.commands;
+  var o = {
+    files: files,
+    target: opts.target,
+    allow_saving: opts.directSave,
+    display_all: opts.displayAll,
+    quick_view: opts.quickView,
+    name: opts.name,
+    commands: opts.commands,
+    blurb: opts.blurb
+  };
   return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 

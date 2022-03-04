@@ -1,3 +1,7 @@
+v0.5.92
+* Show vertices in the "drag vertices" editing mode.
+* Added -c/--commands option to mapshaper-gui, for running console commands when data is first imported.
+
 v0.5.91
 * Added -print command, for printing messages to the console or terminal. Useful in conjunction with the -if/-elif/-else commands.
 * Added field_exists(), field_type() and field_includes() functions to -if expressions.
