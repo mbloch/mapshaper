@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.88";
+  var VERSION = "0.5.91";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -2158,6 +2158,7 @@
   function getPointToPathInfo(px, py, ids, arcs) {
     var iter = arcs.getShapeIter(ids);
     var pPathSq = Infinity;
+    var arcId;
     var ax, ay, bx, by, axmin, aymin, bxmin, bymin, pabSq;
     if (iter.hasNext()) {
       ax = axmin = bxmin = iter.x;
@@ -2169,6 +2170,7 @@
       pabSq = pointSegDistSq2(px, py, ax, ay, bx, by);
       if (pabSq < pPathSq) {
         pPathSq = pabSq;
+        arcId = iter._ids[iter._i]; // kludge
         axmin = ax;
         aymin = ay;
         bxmin = bx;
@@ -2180,7 +2182,8 @@
     if (pPathSq == Infinity) return {distance: Infinity};
     return {
       segment: [[axmin, aymin], [bxmin, bymin]],
-      distance: Math.sqrt(pPathSq)
+      distance: Math.sqrt(pPathSq),
+      arcId: arcId
     };
   }
 
@@ -2188,11 +2191,20 @@
   // Return unsigned distance of a point to the nearest point on a polygon or polyline path
   //
   function getPointToShapeDistance(x, y, shp, arcs) {
-    var minDist = (shp || []).reduce(function(minDist, ids) {
-      var pathDist = getPointToPathDistance(x, y, ids, arcs);
-      return Math.min(minDist, pathDist);
-    }, Infinity);
-    return minDist;
+    var info = getPointToShapeInfo(x, y, shp, arcs);
+    return info ? info.distance : Infinity;
+  }
+
+  function getPointToShapeInfo(x, y, shp, arcs) {
+    return (shp || []).reduce(function(memo, ids) {
+      var pathInfo = getPointToPathInfo(x, y, ids, arcs);
+      if (!memo || pathInfo.distance < memo.distance) return pathInfo;
+      return memo;
+    }, null) || {
+      distance: Infinity,
+      arcId: -1,
+      segment: null
+    };
   }
 
   // @ids array of arc ids
@@ -2277,6 +2289,7 @@
     getPointToPathDistance: getPointToPathDistance,
     getPointToPathInfo: getPointToPathInfo,
     getPointToShapeDistance: getPointToShapeDistance,
+    getPointToShapeInfo: getPointToShapeInfo,
     getAvgPathXY: getAvgPathXY,
     getMaxPath: getMaxPath,
     countVerticesInPath: countVerticesInPath,
@@ -5375,6 +5388,10 @@
         x: _xx[i],
         y: _yy[i]
       };
+    };
+
+    this.getVertex2 = function(i) {
+      return [_xx[i], _yy[i]];
     };
 
     // @nth: index of vertex. ~(idx) starts from the opposite endpoint
@@ -27167,7 +27184,7 @@ ${svg}
   }
 
   function samePoint(a, b) {
-    return a[0] === b[0] && a[1] === b[1];
+    return a && b && a[0] === b[0] && a[1] === b[1];
   }
 
   function isClosedPath(arr) {
@@ -27781,11 +27798,15 @@ ${svg}
   }
 
   function getCategoricalColorScheme(name, n) {
+    var colors;
     initSchemes();
-    if (index.categorical.includes(name) === false) {
-      stop(name, 'is not a categorical color scheme');
+    if (!isColorSchemeName(name)) {
+      stop('Unknown color scheme name:', name);
+    } else if (isCategoricalColorScheme(name)) {
+      colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
+    } else {
+      colors = getColorRamp(name, n);
     }
-    var colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
     if (n > colors.length) {
       stop(name, 'does not contain', n, 'colors');
     }
@@ -27796,6 +27817,11 @@ ${svg}
     initSchemes();
     return index.categorical.includes(name) || index.sequential.includes(name) ||
       index.diverging.includes(name) || index.rainbow.includes(name);
+  }
+
+  function isCategoricalColorScheme(name) {
+    initSchemes();
+    return index.categorical.includes(name);
   }
 
   function getColorRamp(name, n, stops) {
@@ -28287,7 +28313,7 @@ ${svg}
     };
   }
 
-  function getSequentialClassifier$1(classValues, nullValue, dataValues, opts) {
+  function getSequentialClassifier$1(classValues, nullValue, dataValues, method, opts) {
     var numValues = classValues.length;
     var numBuckets = opts.continuous ? numValues - 1 : numValues;
 
@@ -28295,7 +28321,6 @@ ${svg}
     // discreetly classed values
     var numBreaks = numBuckets - 1;
     var round = opts.precision ? getRoundingFunction(opts.precision) : null;
-    var method = opts.method || 'quantile';
     var breaks, classifier, dataToClass, classToValue;
 
     if (round) {
@@ -28900,34 +28925,35 @@ ${svg}
     var opts = optsArg || {};
     var records = lyr.data && lyr.data.getRecords();
     var nullValue = opts.null_value || null;
-    var looksLikeColors = !!opts.colors || !!opts.color_scheme;
+    var valuesAreColors = !!opts.colors || !!opts.color_scheme;
     var colorScheme;
-    var classValues, classifyByValue, classifyById;
-    var numBuckets, numValues;
+    var values, classifyByValue, classifyById;
+    var numClasses, numValues;
     var dataField, outputField;
+    var method;
 
     // validate explicitly set classes
     if (opts.classes) {
       if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
         stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
       }
-      numBuckets = opts.classes;
+      numClasses = opts.classes;
     }
 
     // TODO: better validation of breaks values
     if (opts.breaks) {
-      numBuckets = opts.breaks.length + 1;
+      numClasses = opts.breaks.length + 1;
     }
 
     if (opts.index_field) {
       dataField = opts.index_field;
-      if (numBuckets > 0 === false) {
+      if (numClasses > 0 === false) {
         stop('The index-field= option requires the classes= option to be set');
       }
       // You can't infer the number of classes by looking at index values;
       // this can cause unwanted interpolation if one or more values are
       // not present in the index field
-      // numBuckets = validateClassIndexField(records, opts.index_field);
+      // numClasses = validateClassIndexField(records, opts.index_field);
 
     } else if (opts.field) {
       dataField = opts.field;
@@ -28938,7 +28964,19 @@ ${svg}
       opts.categories = getUniqFieldValues(records, dataField);
     }
 
-    if (opts.method == 'non-adjacent') {
+    // get classification method
+    //
+    if (opts.method) {
+      method = opts.method;
+    } else if (opts.categories) {
+      method = 'categorical';
+    } else if (opts.index_field) {
+      method = 'indexed';
+    } else {
+      method = 'quantile'; // TODO: validate data field
+    }
+
+    if (method == 'non-adjacent') {
       if (lyr.geometry_type != 'polygon') {
         stop('The non-adjacent option requires a polygon layer');
       }
@@ -28951,8 +28989,8 @@ ${svg}
       requireDataField(lyr.data, dataField);
     }
 
-    if (numBuckets) {
-      numValues = opts.continuous ? numBuckets + 1 : numBuckets;
+    if (numClasses) {
+      numValues = opts.continuous ? numClasses + 1 : numClasses;
     }
 
     // support both deprecated color-scheme= option and colors=<color-scheme> syntax
@@ -28967,39 +29005,44 @@ ${svg}
       opts.colors.forEach(parseColor); // validate colors -- error if unparsable
     }
 
+    /// get values (usually colors)
+    ///
     if (colorScheme) {
-      // using a named color scheme: generate a ramp
+      if (method == 'non-adjacent') {
+        numClasses = numValues = numClasses || 5;
+        values = getCategoricalColorScheme(colorScheme, numValues);
 
-      if (opts.categories) {
-        classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
-        numBuckets = numValues = classValues.length;
+      } else if (method == 'categorical') {
+        values = getCategoricalColorScheme(colorScheme, opts.categories.length);
+        numClasses = numValues = values.length;
+
       } else {
-        if (!numBuckets) {
+        if (!numClasses) {
           // stop('color-scheme= option requires classes= or breaks=');
-          numBuckets = 4; // use a default number of classes
-          numValues = opts.continuous ? numBuckets + 1 : numBuckets;
+          numClasses = 4; // use a default number of classes
+          numValues = opts.continuous ? numClasses + 1 : numClasses;
         }
-        classValues = getColorRamp(colorScheme, numValues, opts.stops);
+        values = getColorRamp(colorScheme, numValues, opts.stops);
       }
 
     } else if (opts.colors || opts.values) {
-      classValues = opts.values ? parseValues(opts.values) : opts.colors;
+      values = opts.values ? parseValues(opts.values) : opts.colors;
       if (!numValues) {
-        numValues = classValues.length;
+        numValues = values.length;
       }
-      if ((classValues.length != numValues || opts.stops) && numValues > 1) {
+      if ((values.length != numValues || opts.stops) && numValues > 1) {
         // TODO: handle numValues == 1
         // TODO: check for non-interpolatable value types (e.g. boolean, text)
-        classValues = interpolateValuesToClasses(classValues, numValues, opts.stops);
+        values = interpolateValuesToClasses(values, numValues, opts.stops);
       }
 
     } else if (numValues > 1) {
       // no values were given: assign indexes for each class
-      classValues = getIndexValues(numValues);
+      values = getIndexValues(numValues);
       nullValue = -1;
     }
 
-    if (looksLikeColors) {
+    if (valuesAreColors) {
       nullValue = nullValue || '#eee';
     }
 
@@ -29008,24 +29051,24 @@ ${svg}
     }
 
     if (opts.invert) {
-      classValues = classValues.concat().reverse();
+      values = values.concat().reverse();
     }
 
-    if (looksLikeColors) {
-      message('Colors:', formatValuesForLogging(classValues));
+    if (valuesAreColors) {
+      message('Colors:', formatValuesForLogging(values));
     }
 
     // get a function to convert input data to class indexes
     //
-    if (opts.method == 'non-adjacent') {
-      classifyById = getNonAdjacentClassifier(lyr, dataset, classValues);
+    if (method == 'non-adjacent') {
+      classifyById = getNonAdjacentClassifier(lyr, dataset, values);
     } else if (opts.index_field) {
       // data is pre-classified... just read the index from a field
-      classifyByValue = getIndexedClassifier(classValues, nullValue, opts);
-    } else if (opts.categories) {
-      classifyByValue = getCategoricalClassifier(classValues, nullValue, opts);
+      classifyByValue = getIndexedClassifier(values, nullValue, opts);
+    } else if (method == 'categorical') {
+      classifyByValue = getCategoricalClassifier(values, nullValue, opts);
     } else {
-      classifyByValue = getSequentialClassifier$1(classValues, nullValue, getFieldValues(records, dataField), opts);
+      classifyByValue = getSequentialClassifier$1(values, nullValue, getFieldValues(records, dataField), method, opts);
     }
 
     if (classifyByValue) {
@@ -29038,7 +29081,7 @@ ${svg}
 
     // get the name of the output field
     //
-    if (looksLikeColors) {
+    if (valuesAreColors) {
       outputField = lyr.geometry_type == 'polyline' ? 'stroke' : 'fill';
     } else {
       outputField = 'class';

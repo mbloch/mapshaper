@@ -1232,6 +1232,7 @@
         }
       }
       model.updated({select: true});
+
     }
 
     function clearQueuedFiles() {
@@ -2186,6 +2187,13 @@
 
     // expose this function, so other components can run commands (e.g. box tool)
     this.runMapshaperCommands = runMapshaperCommands;
+
+    this.runInitialCommands = function(str) {
+      str = str.trim();
+      if (!str) return;
+      turnOn();
+      submit(str);
+    };
 
     consoleMessage(PROMPT);
     gui.keyboard.on('keydown', onKeyDown);
@@ -3549,7 +3557,7 @@
 
   // import { cloneShape } from '../paths/mapshaper-shape-utils';
   // import { copyRecord } from '../datatable/mapshaper-data-utils';
-  var snapVerticesToPoint$1 = internal.snapVerticesToPoint;
+  var snapVerticesToPoint = internal.snapVerticesToPoint;
   var cloneShape = internal.cloneShape;
   var copyRecord = internal.copyRecord;
 
@@ -3658,7 +3666,7 @@
       var arcs = target.dataset.arcs;
       var p = internal.getVertexCoords(ids[0], arcs);
       return function() {
-        snapVerticesToPoint$1(ids, p, arcs, true);
+        snapVerticesToPoint(ids, p, arcs, true);
       };
     };
 
@@ -4098,13 +4106,38 @@
     return self;
   }
 
-  function getShapeHitTest(displayLayer, ext) {
+  function absArcId(arcId) {
+    return arcId >= 0 ? arcId : ~arcId;
+  }
+
+  function calcArcBounds(xx, yy, start, len) {
+    var i = start | 0,
+        n = isNaN(len) ? xx.length - i : len + i,
+        x, y, xmin, ymin, xmax, ymax;
+    if (n > 0) {
+      xmin = xmax = xx[i];
+      ymin = ymax = yy[i];
+    }
+    for (i++; i<n; i++) {
+      x = xx[i];
+      y = yy[i];
+      if (x < xmin) xmin = x;
+      if (x > xmax) xmax = x;
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
+    }
+    return [xmin, ymin, xmax, ymax];
+  }
+
+  function getShapeHitTest(displayLayer, ext, interactionMode) {
     var geoType = displayLayer.layer.geometry_type;
     var test;
     if (geoType == 'point' && displayLayer.style.type == 'styled') {
       test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
     } else if (geoType == 'point') {
       test = pointTest;
+    } else if (interactionMode == 'vertices') {
+      test = vertexTest;
     } else if (geoType == 'polyline') {
       test = polylineTest;
     } else if (geoType == 'polygon') {
@@ -4130,14 +4163,14 @@
     }
 
     function polygonTest(x, y) {
-      var maxDist = getZoomAdjustedHitBuffer(5, 1),
+      var maxDist = getZoomAdjustedHitBuffer(10, 1),
           cands = findHitCandidates(x, y, maxDist),
           hits = [],
           cand, hitId;
       for (var i=0; i<cands.length; i++) {
         cand = cands[i];
         if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
-          hits.push(cand.id);
+          hits.push(cand);
         }
       }
       if (cands.length > 0 && hits.length === 0) {
@@ -4145,7 +4178,9 @@
         sortByDistance(x, y, cands, displayLayer.arcs);
         hits = pickNearestCandidates(cands, 0, maxDist);
       }
-      return hits;
+      return {
+        ids: utils.pluck(hits, 'id')
+      };
     }
 
     function pickNearestCandidates(sorted, bufDist, maxDist) {
@@ -4160,9 +4195,22 @@
         } else if (cand.dist - minDist > bufDist) {
           break;
         }
-        hits.push(cand.id);
+        hits.push(cand);
       }
       return hits;
+    }
+
+     function vertexTest(x, y) {
+      var maxDist = getZoomAdjustedHitBuffer(15, 2),
+          bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
+          cands = findHitCandidates(x, y, maxDist);
+      sortByDistance(x, y, cands, displayLayer.arcs);
+      cands = pickNearestCandidates(cands, bufDist, maxDist);
+      var arcs = cands.map(function(cand) { return absArcId(cand.info.arcId); });
+      return {
+        arcs: utils.uniq(arcs),
+        ids: utils.pluck(cands, 'id')
+      };
     }
 
     function polylineTest(x, y) {
@@ -4170,12 +4218,18 @@
           bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
           cands = findHitCandidates(x, y, maxDist);
       sortByDistance(x, y, cands, displayLayer.arcs);
-      return pickNearestCandidates(cands, bufDist, maxDist);
+      cands = pickNearestCandidates(cands, bufDist, maxDist);
+      return {
+        ids: utils.pluck(cands, 'id')
+      };
     }
 
     function sortByDistance(x, y, cands, arcs) {
+      var cand;
       for (var i=0; i<cands.length; i++) {
-        cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
+        cand = cands[i];
+        cand.info = geom.getPointToShapeInfo(x, y, cands[i].shape, arcs);
+        cand.dist = cand.info.distance;
       }
       utils.sortOn(cands, 'dist');
     }
@@ -4203,7 +4257,9 @@
         }
       });
       // console.log(hitThreshold, bullseye);
-      return utils.uniq(hits); // multipoint features can register multiple hits
+      return {
+        ids: utils.uniq(hits) // multipoint features can register multiple hits
+      };
     }
 
     function getRadiusFunction(style) {
@@ -4257,7 +4313,9 @@
             hits.push(id);
           }
         });
-        return hits;
+        return {
+          ids: hits
+        };
       };
     }
 
@@ -4394,20 +4452,18 @@
 
   }
 
-  function getPointerHitTest(mapLayer, ext) {
+  function getPointerHitTest(mapLayer, ext, interactionMode) {
     var shapeTest, svgTest, targetLayer;
     if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
-      return null;
+      return function() {return {ids: []};};
     }
-    shapeTest = getShapeHitTest(mapLayer, ext);
+    shapeTest = getShapeHitTest(mapLayer, ext, interactionMode);
     svgTest = getSvgHitTest(mapLayer);
 
     // e: pointer event
     return function(e) {
       var p = ext.translatePixelCoords(e.x, e.y);
-      var data = {
-        ids: shapeTest(p[0], p[1]) || []
-      };
+      var data = shapeTest(p[0], p[1]) || {ids:[]};
       var svgData = svgTest(e); // null or a data object
       if (svgData) { // mouse is over an SVG symbol
         utils.extend(data, svgData);
@@ -4467,22 +4523,25 @@
     }, !!'capture'); // preempt the layer control's arrow key handler
 
     self.setLayer = function(mapLayer) {
-      hitTest = getPointerHitTest(mapLayer, ext);
-      if (!hitTest) {
-        hitTest = function() {return {ids: []};};
-      }
       targetLayer = mapLayer;
+      updateHitTest();
     };
+
+    function updateHitTest() {
+      hitTest = getPointerHitTest(targetLayer, ext, interactionMode);
+    }
 
     function turnOn(mode) {
       interactionMode = mode;
       active = true;
+      updateHitTest();
     }
 
     function turnOff() {
       if (active) {
         updateSelectionState(null); // no hit data, no event
         active = false;
+        hitTest = null;
       }
     }
 
@@ -4524,6 +4583,20 @@
       if (active) {
         triggerHitEvent('change');
       }
+    };
+
+    self.setHoverVertex = function(p) {
+      var p2 = storedData.hit_coordinates;
+      if (!active || !p) return;
+      if (p2 && p2[0] == p[0] && p2[1] == p[1]) return;
+      storedData.hit_coordinates = p;
+      triggerHitEvent('change');
+    };
+
+    self.clearVertexOverlay = function() {
+      if (!storedData.hit_coordinates) return;
+      delete storedData.hit_coordinates;
+      triggerHitEvent('change');
     };
 
     self.clearSelection = function() {
@@ -5866,50 +5939,108 @@
     rec[key] = isString ? String(newVal) : newVal;
   }
 
-  var snapVerticesToPoint = internal.snapVerticesToPoint;
-
-  function getDisplayCoordsById(id, layer, ext) {
-    var coords = getPointCoordsById(id, layer);
-    return ext.translateCoords(coords[0], coords[1]);
-  }
-
-  function getPointCoordsById(id, layer) {
-    var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
-    if (!coords || coords.length != 1) {
-      return null;
-    }
-    return coords[0];
-  }
-
-  function translateDeltaDisplayCoords(dx, dy, ext) {
-    var a = ext.translatePixelCoords(0, 0);
-    var b = ext.translatePixelCoords(dx, dy);
-    return [b[0] - a[0], b[1] - a[1]];
-  }
-
-
-  function InteractiveEditor(gui, ext, hit) {
-    // var targetTextNode; // text node currently being dragged
-    var dragging = false;
+  function initLabelDragging(gui, ext, hit) {
+    var downEvt;
+    var activeId;
     var activeRecord;
-    var activeId = -1;
-    var self = new EventDispatcher();
-    var activeVertexIds = null; // for vertex dragging
 
-    initDragging();
-
-    return self;
-
-    function labelEditingEnabled() {
-      return gui.interaction && gui.interaction.getMode() == 'labels' ? true : false;
+    function active(e) {
+      return e.id > -1 && gui.interaction.getMode() == 'labels';
     }
 
-    function locationEditingEnabled() {
-      return gui.interaction && gui.interaction.getMode() == 'location' ? true : false;
+    hit.on('dragstart', function(e) {
+      if (!active(e)) return;
+      var textNode = getTextTarget3(e);
+      var table = hit.getTargetDataTable();
+      if (!textNode || !table) return false;
+      activeId = e.id;
+      activeRecord = getLabelRecordById(activeId);
+      downEvt = e;
+      gui.dispatchEvent('label_dragstart', {FID: activeId});
+    });
+
+    hit.on('drag', function(e) {
+      if (!active(e)) return;
+      if (e.id != activeId) {
+        error("Mismatched hit ids:", e.id, activeId);
+      }
+      var scale = ext.getSymbolScale() || 1;
+      var textNode;
+      applyDelta(activeRecord, 'dx', e.dx / scale);
+      applyDelta(activeRecord, 'dy', e.dy / scale);
+      textNode = getTextTarget3(e);
+      if (!isMultilineLabel(textNode)) {
+        // update anchor position of single-line labels based on label position
+        // relative to anchor point, for better placement when eventual display font is
+        // different from mapshaper's font.
+        autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
+      }
+      // updateSymbol(targetTextNode, activeRecord);
+      updateSymbol2(textNode, activeRecord, activeId);
+    });
+
+    hit.on('dragend', function(e) {
+      if (!active(e)) return;
+      gui.dispatchEvent('label_dragend', {FID: e.id});
+      activeId = -1;
+      activeRecord = null;
+      downEvt = null;
+    });
+
+    function getDisplayCoordsById(id, layer, ext) {
+      var coords = getPointCoordsById(id, layer);
+      return ext.translateCoords(coords[0], coords[1]);
     }
 
-    function vertexEditingEnabled() {
-      return gui.interaction && gui.interaction.getMode() == 'vertices' ? true : false;
+    function getPointCoordsById(id, layer) {
+      var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
+      if (!coords || coords.length != 1) {
+        return null;
+      }
+      return coords[0];
+    }
+
+    function getTextTarget3(e) {
+      if (e.id > -1 === false || !e.container) return null;
+      return getSymbolNodeById(e.id, e.container);
+    }
+
+    function getSymbolNodeById(id, parent) {
+      // TODO: optimize selector
+      var sel = '[data-id="' + id + '"]';
+      return parent.querySelector(sel);
+    }
+
+    function getTextTarget2(e) {
+      var el = e && e.targetSymbol || null;
+      if (el && el.tagName == 'tspan') {
+        el = el.parentNode;
+      }
+      return el && el.tagName == 'text' ? el : null;
+    }
+
+    function getTextTarget(e) {
+      var el = e.target;
+      if (el.tagName == 'tspan') {
+        el = el.parentNode;
+      }
+      return el.tagName == 'text' ? el : null;
+    }
+
+    function getLabelRecordById(id) {
+      var table = hit.getTargetDataTable();
+      if (id >= 0 === false || !table) return null;
+      // add dx and dy properties, if not available
+      if (!table.fieldExists('dx')) {
+        table.addField('dx', 0);
+      }
+      if (!table.fieldExists('dy')) {
+        table.addField('dy', 0);
+      }
+      if (!table.fieldExists('text-anchor')) {
+        table.addField('text-anchor', '');
+      }
+      return table.getRecordAt(id);
     }
 
     // update symbol by setting attributes
@@ -5936,249 +6067,167 @@
       gui.dispatchEvent('popup-needs-refresh');
       return node2;
     }
+  }
 
-    function initDragging() {
-      var downEvt;
-      var eventPriority = 1;
+  function initPointDragging(gui, ext, hit) {
 
-      // inspector and label editing aren't fully synced - stop editing if inspector opens
-      // gui.on('inspector_on', function() {
-      //   stopEditing();
-      // });
-
-      gui.on('interaction_mode_change', function(e) {
-        if (e.mode != 'labels') {
-          stopDragging();
-        }
-        gui.undo.clear(); // TODO: put this elsewhere?
-      });
-
-      // down event on svg
-      // a: off text
-      //    -> stop editing
-      // b: on text
-      //    1: not editing -> nop
-      //    2: on selected text -> start dragging
-      //    3: on other text -> stop dragging, select new text
-
-      hit.on('dragstart', function(e) {
-        if (e.id >= 0 === false) return;
-        if (labelEditingEnabled() && onLabelDragStart(e)) {
-          triggerGlobalEvent('label_dragstart', e);
-          startDragging();
-        } else if (locationEditingEnabled()) {
-          triggerGlobalEvent('symbol_dragstart', e);
-          startDragging();
-        } else if (vertexEditingEnabled()) {
-          onVertexDragStart(e);
-          triggerGlobalEvent('vertex_dragstart', e);
-          startDragging();
-        }
-      });
-
-      hit.on('drag', function(e) {
-        if (labelEditingEnabled()) {
-          onLabelDrag(e);
-        } else if (locationEditingEnabled()) {
-          onLocationDrag(e);
-        } else if (vertexEditingEnabled()) {
-          onVertexDrag(e);
-        }
-      });
-
-      hit.on('dragend', function(e) {
-        if (locationEditingEnabled()) {
-          triggerGlobalEvent('symbol_dragend', e);
-          stopDragging();
-        } else if (labelEditingEnabled()) {
-          triggerGlobalEvent('label_dragend', e);
-          stopDragging();
-        } else if (vertexEditingEnabled()) {
-          // kludge to get dataset to recalculate internal bounding boxes
-          hit.getHitTarget().arcs.transformPoints(function() {});
-          triggerGlobalEvent('vertex_dragend', e);
-          stopDragging();
-        }
-      });
-
-      hit.on('click', function(e) {
-        if (labelEditingEnabled()) {
-          var target = hit.getHitTarget();
-          onLabelClick(e);
-        }
-      });
-
-      // TODO: highlight hit vertex in path edit mode
-      if (false) hit.on('hover', function(e) {
-        if (vertexEditingEnabled() && !dragging) {
-          onVertexHover(e);
-        }
-      }, null, 100);
-
-      function onVertexHover(e) {
-        // hovering in vertex edit mode: find vertex insertion point
-        var target = hit.getHitTarget();
-        var shp = target.layer.shapes[e.id];
-        var p = ext.translatePixelCoords(e.x, e.y);
-        var o = internal.findInsertionPoint(p, shp, target.arcs, ext.getPixelSize());
-      }
-
-
-      function getVertexEventData(e) {
-        return {
-          FID: activeId,
-          vertexIds: activeVertexIds
-        };
-      }
-
-      function onLocationDrag(e) {
-        var lyr = hit.getHitTarget().layer;
-        var p = getPointCoordsById(e.id, lyr);
-        if (!p) return;
-        var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
-        p[0] += diff[0];
-        p[1] += diff[1];
-        triggerRedraw();
-        triggerGlobalEvent('symbol_drag', e);
-      }
-
-      function onVertexDragStart(e) {
-        var target = hit.getHitTarget();
-        var shp = target.layer.shapes[e.id];
-        var p = ext.translatePixelCoords(e.x, e.y);
-        activeVertexIds = internal.findNearestVertices(p, shp, target.arcs);
-        activeId = e.id;
-      }
-
-      function onVertexDrag(e) {
-        var target = hit.getHitTarget();
-        if (!activeVertexIds) return; // ignore error condition
-        var p = ext.translatePixelCoords(e.x, e.y);
-        if (gui.keyboard.shiftIsPressed()) {
-          internal.snapPointToArcEndpoint(p, activeVertexIds, target.arcs);
-        }
-        snapVerticesToPoint(activeVertexIds, p, target.arcs);
-        triggerRedraw();
-      }
-
-      function onLabelClick(e) {
-        var textNode = getTextTarget3(e);
-        var rec = getLabelRecordById(e.id);
-        if (textNode && rec && isMultilineLabel(textNode)) {
-          toggleTextAlign(textNode, rec);
-          updateSymbol2(textNode, rec, e.id);
-          // e.stopPropagation(); // prevent pin/unpin on popup
-        }
-      }
-
-      function triggerRedraw() {
-        gui.dispatchEvent('map-needs-refresh');
-      }
-
-      function triggerGlobalEvent(type, e) {
-        if (e.id >= 0 === false) return;
-        var o = {
-          FID: e.id,
-          layer_name: hit.getHitTarget().layer.name,
-          vertex_ids: activeVertexIds
-        };
-        // fire event to signal external editor that symbol coords have changed
-        gui.dispatchEvent(type, o);
-      }
-
-      function getLabelRecordById(id) {
-        var table = hit.getTargetDataTable();
-        if (id >= 0 === false || !table) return null;
-        // add dx and dy properties, if not available
-        if (!table.fieldExists('dx')) {
-          table.addField('dx', 0);
-        }
-        if (!table.fieldExists('dy')) {
-          table.addField('dy', 0);
-        }
-        if (!table.fieldExists('text-anchor')) {
-          table.addField('text-anchor', '');
-        }
-        return table.getRecordAt(id);
-      }
-
-      function onLabelDragStart(e) {
-        var textNode = getTextTarget3(e);
-        var table = hit.getTargetDataTable();
-        if (!textNode || !table) return false;
-        activeId = e.id;
-        activeRecord = getLabelRecordById(activeId);
-        downEvt = e;
-        return true;
-      }
-
-      function onLabelDrag(e) {
-        var scale = ext.getSymbolScale() || 1;
-        var textNode;
-        if (!dragging) return;
-        if (e.id != activeId) {
-          error("Mismatched hit ids:", e.id, activeId);
-        }
-        applyDelta(activeRecord, 'dx', e.dx / scale);
-        applyDelta(activeRecord, 'dy', e.dy / scale);
-        textNode = getTextTarget3(e);
-        if (!isMultilineLabel(textNode)) {
-          // update anchor position of single-line labels based on label position
-          // relative to anchor point, for better placement when eventual display font is
-          // different from mapshaper's font.
-          autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
-        }
-        // updateSymbol(targetTextNode, activeRecord);
-        updateSymbol2(textNode, activeRecord, activeId);
-      }
-
-      function getSymbolNodeById(id, parent) {
-        // TODO: optimize selector
-        var sel = '[data-id="' + id + '"]';
-        return parent.querySelector(sel);
-      }
-
-      function getTextTarget3(e) {
-        if (e.id > -1 === false || !e.container) return null;
-        return getSymbolNodeById(e.id, e.container);
-      }
-
-      function getTextTarget2(e) {
-        var el = e && e.targetSymbol || null;
-        if (el && el.tagName == 'tspan') {
-          el = el.parentNode;
-        }
-        return el && el.tagName == 'text' ? el : null;
-      }
-
-      function getTextTarget(e) {
-        var el = e.target;
-        if (el.tagName == 'tspan') {
-          el = el.parentNode;
-        }
-        return el.tagName == 'text' ? el : null;
-      }
+    function active(e) {
+      return e.id > -1 && gui.interaction.getMode() == 'location';
     }
 
-    function startDragging() {
-      dragging = true;
+    hit.on('dragstart', function(e) {
+      if (!active(e)) return;
+      gui.dispatchEvent('symbol_dragstart', {FID: e.id});
+    });
+
+    hit.on('drag', function(e) {
+      if (!active(e)) return;
+      var lyr = hit.getHitTarget().layer;
+      var p = getPointCoordsById(e.id, lyr);
+      if (!p) return;
+      var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
+      p[0] += diff[0];
+      p[1] += diff[1];
+      gui.dispatchEvent('map-needs-refresh');
+      gui.dispatchEvent('symbol_drag', {FID: e.id});
+    });
+
+    hit.on('dragend', function(e) {
+      if (!active(e)) return;
+      gui.dispatchEvent('symbol_dragend', {FID: e.id});
+    });
+
+    function translateDeltaDisplayCoords(dx, dy, ext) {
+      var a = ext.translatePixelCoords(0, 0);
+      var b = ext.translatePixelCoords(dx, dy);
+      return [b[0] - a[0], b[1] - a[1]];
     }
 
-    function stopDragging() {
-      dragging = false;
-      activeId = -1;
-      activeRecord = null;
-      activeVertexIds = null;
+    function getPointCoordsById(id, layer) {
+      var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
+      if (!coords || coords.length != 1) {
+        return null;
+      }
+      return coords[0];
+    }
+  }
+
+  function initVertexDragging(gui, ext, hit) {
+    var activeShapeId = -1;
+    var draggedVertexIds = null;
+    var selectedVertexIds = null;
+
+    function active(e) {
+      return e.id > -1 && gui.interaction.getMode() == 'vertices';
     }
 
-    function isClickEvent(up, down) {
-      var elapsed = Math.abs(down.timeStamp - up.timeStamp);
-      var dx = up.screenX - down.screenX;
-      var dy = up.screenY - down.screenY;
-      var dist = Math.sqrt(dx * dx + dy * dy);
-      return dist <= 4 && elapsed < 300;
+    function fire(type) {
+      gui.dispatchEvent(type, {
+        FID: activeShapeId,
+        vertex_ids: draggedVertexIds
+      });
     }
 
+    function setHoverVertex(id) {
+      var target = hit.getHitTarget();
+      hit.setHoverVertex(target.arcs.getVertex2(id));
+    }
+
+    function clearHoverVertex() {
+      hit.clearVertexOverlay();
+      // gui.state.vertex_overlay = null;
+    }
+
+    function findDraggableVertices(e) {
+      var target = hit.getHitTarget();
+      var shp = target.layer.shapes[e.id];
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var nearestIds = internal.findNearestVertices(p, shp, target.arcs);
+      var p2 = target.arcs.getVertex2(nearestIds[0]);
+      var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
+      var pixelDist = dist / ext.getPixelSize();
+      if (pixelDist > 5) {
+        draggedVertexIds = null;
+        return null;
+      }
+      return nearestIds;
+    }
+
+    hit.on('dragstart', function(e) {
+      if (!active(e)) return;
+      draggedVertexIds = findDraggableVertices(e);
+      if (!draggedVertexIds) return;
+      setHoverVertex(draggedVertexIds[0]);
+      activeShapeId = e.id;
+      fire('vertex_dragstart');
+    });
+
+    hit.on('drag', function(e) {
+      if (!active(e) || !draggedVertexIds) return;
+      var target = hit.getHitTarget();
+      var p = ext.translatePixelCoords(e.x, e.y);
+      if (gui.keyboard.shiftIsPressed()) {
+        internal.snapPointToArcEndpoint(p, draggedVertexIds, target.arcs);
+      }
+      internal.snapVerticesToPoint(draggedVertexIds, p, target.arcs);
+      setHoverVertex(draggedVertexIds[0]);
+      // redrawing the whole map updates the data layer as well as the overlay layer
+      // gui.dispatchEvent('map-needs-refresh');
+    });
+
+    hit.on('dragend', function(e) {
+      if (!active(e) || !draggedVertexIds) return;
+      // kludge to get dataset to recalculate internal bounding boxes
+      hit.getHitTarget().arcs.transformPoints(function() {});
+      clearHoverVertex();
+      fire('vertex_dragend');
+      draggedVertexIds = null;
+      activeShapeId = -1;
+      // redraw data layer
+      gui.dispatchEvent('map-needs-refresh');
+    });
+
+    // select clicked vertices
+    hit.on('click', function(e) {
+      if (!active(e)) return;
+      var vertices = findDraggableVertices(e); // same selection criteria as for dragging
+      // TODO
+    });
+
+    // highlight hit vertex in path edit mode
+    hit.on('hover', function(e) {
+      if (!active(e) || draggedVertexIds) return; // no hover effect while dragging
+      var vertexIds = findDraggableVertices(e);
+      if (vertexIds) {
+        setHoverVertex(vertexIds[0]);
+        return;
+      }
+      var target = hit.getHitTarget();
+      var shp = target.layer.shapes[e.id];
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var o = internal.findInsertionPoint(p, shp, target.arcs, ext.getPixelSize());
+      console.log('*', o, p);
+      clearHoverVertex();
+    }, null, 100);
+
+  }
+
+  function initInteractiveEditing(gui, ext, hit) {
+    initLabelDragging(gui, ext, hit);
+    initPointDragging(gui, ext, hit);
+    initVertexDragging(gui, ext, hit);
+
+    gui.on('interaction_mode_change', function(e) {
+      gui.undo.clear(); // TODO: put this elsewhere?
+    });
+
+    // function isClickEvent(up, down) {
+    //   var elapsed = Math.abs(down.timeStamp - up.timeStamp);
+    //   var dx = up.screenX - down.screenX;
+    //   var dy = up.screenY - down.screenY;
+    //   var dist = Math.sqrt(dx * dx + dy * dy);
+    //   return dist <= 4 && elapsed < 300;
+    // }
   }
 
   var darkStroke = "#334",
@@ -6349,8 +6398,14 @@
     var geomType = lyr.geometry_type;
     var topId = o.id; // pinned id (if pinned) or hover id
     var topIdx = -1;
-    var styler = function(o, i) {
-      utils.extend(o, i === topIdx ? topStyle: baseStyle);
+    var styler = function(style, i) {
+      utils.extend(style, i === topIdx ? topStyle: baseStyle);
+      // kludge to show vertices when editing path shapes
+      if (o.mode == 'vertices') {
+        style.vertices = true;
+        style.vertex_overlay = o.hit_coordinates || null;
+        style.fillColor = null;
+      }
     };
     var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
     var topStyle;
@@ -6821,18 +6876,24 @@
     _self.drawVertices = function(shapes, arcs, style, filter) {
       var iter = new internal.ShapeIter(arcs);
       var t = getScaledTransform(_ext);
-      var radius = (style.strokeWidth * 0.9 || 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
+      var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
       var color = style.strokeColor || 'black';
-      var shp;
+      var radius2 = radius * 2;
       _ctx.beginPath();
       _ctx.fillStyle = color;
       for (var i=0; i<shapes.length; i++) {
-        shp = shapes[i];
+        var shp = shapes[i];
         if (!shp || filter && !filter(shp)) continue;
-        iter.init(shp);
-        while (iter.hasNext()) {
-          drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
+        for (var j=0; j<shp.length; j++) {
+          iter.init(shp[j]);
+          while (iter.hasNext()) {
+            drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
+          }
         }
+      }
+      if (style.vertex_overlay) {
+        var p = style.vertex_overlay;
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
       }
       _ctx.fill();
       _ctx.closePath();
@@ -7886,7 +7947,7 @@
         _visibleLayers = [], // cached visible map layers
         _fullBounds = null,
         _intersectionLyr, _activeLyr, _overlayLyr,
-        _inspector, _stack, _editor,
+        _inspector, _stack,
         _dynamicCRS;
 
     if (gui.options.showMouseCoordinates) {
@@ -8069,7 +8130,9 @@
         });
       }
 
-      _editor = new InteractiveEditor(gui, _ext, _hit);
+      if (gui.interaction) {
+        initInteractiveEditing(gui, _ext, _hit);
+      }
 
       _ext.on('change', function(e) {
         if (e.reset) return; // don't need to redraw map here if extent has been reset
@@ -8089,10 +8152,6 @@
     function updateOverlayLayer(e) {
       var style = getOverlayStyle(_activeLyr.layer, e);
       if (style) {
-        // kludge to show vertices when editing path shapes
-        if (gui.state.interaction_mode == 'vertices') {
-          style.vertices = true;
-        }
         _overlayLyr = utils.defaults({
           layer: filterLayerByIds(_activeLyr.layer, style.ids),
           style: style
@@ -8396,14 +8455,14 @@
     startEditing();
   });
 
-  function getImportOpts() {
+  function getManifest() {
+    return window.mapshaper.manifest || {}; // kludge -- bin/mapshaper-gui sets this
+  }
+
+  function getImportOpts(manifest) {
     var vars = GUI.getUrlVars();
     var opts = {};
-    var manifest = window.mapshaper.manifest || {}; // kludge -- bin/mapshaper-gui sets this
-    if (Array.isArray(manifest)) {
-      // old-style manifest: an array of filenames
-      opts.files = manifest;
-    } else if (manifest.files) {
+    if (manifest.files) {
       opts.files = manifest.files.concat();
     } else {
       opts.files = [];
@@ -8421,10 +8480,19 @@
     return opts;
   }
 
+  function getInitialConsoleCommands() {
+    return getManifest().commands || '';
+  }
+
   var startEditing = function() {
     var dataLoaded = false,
-        importOpts = getImportOpts(),
+        manifest = getManifest(),
+        importOpts = getImportOpts(manifest),
         gui = new GuiInstance('body');
+
+    if (manifest.blurb) {
+      El('#splash-screen-blurb').text(manifest.blurb);
+    }
 
     new AlertControl(gui);
     new RepairControl(gui);
@@ -8462,6 +8530,8 @@
           gui.map.setLayerPinning(o, true);
         });
       }
+      gui.console.runInitialCommands(getInitialConsoleCommands());
+
     });
   };
 
