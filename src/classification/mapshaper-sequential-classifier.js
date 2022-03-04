@@ -4,7 +4,7 @@ import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
 import { getOutputFunction } from '../classification/mapshaper-classification';
 import { makeSimpleKey, makeDatavizKey, makeGradientKey } from '../furniture/mapshaper-key';
-export function getSequentialClassifier(classValues, nullValue, dataValues, opts) {
+export function getSequentialClassifier(classValues, nullValue, dataValues, method, opts) {
   var numValues = classValues.length;
   var numBuckets = opts.continuous ? numValues - 1 : numValues;
 
@@ -12,7 +12,6 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, opts
   // discreetly classed values
   var numBreaks = numBuckets - 1;
   var round = opts.precision ? getRoundingFunction(opts.precision) : null;
-  var method = opts.method || 'quantile';
   var breaks, classifier, dataToClass, classToValue;
 
   if (round) {

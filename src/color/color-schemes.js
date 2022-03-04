@@ -82,11 +82,15 @@ export function printColorSchemeNames() {
 }
 
 export function getCategoricalColorScheme(name, n) {
+  var colors;
   initSchemes();
-  if (index.categorical.includes(name) === false) {
-    stop(name, 'is not a categorical color scheme');
+  if (!isColorSchemeName(name)) {
+    stop('Unknown color scheme name:', name);
+  } else if (isCategoricalColorScheme(name)) {
+    colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
+  } else {
+    colors = getColorRamp(name, n);
   }
-  var colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
   if (n > colors.length) {
     stop(name, 'does not contain', n, 'colors');
   }
@@ -97,6 +101,11 @@ export function isColorSchemeName(name) {
   initSchemes();
   return index.categorical.includes(name) || index.sequential.includes(name) ||
     index.diverging.includes(name) || index.rainbow.includes(name);
+}
+
+export function isCategoricalColorScheme(name) {
+  initSchemes();
+  return index.categorical.includes(name);
 }
 
 export function getColorRamp(name, n, stops) {

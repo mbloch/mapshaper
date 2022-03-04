@@ -2,7 +2,7 @@ import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { requireDataField, initDataTable } from '../dataset/mapshaper-layer-utils';
 import { getFieldValues } from '../datatable/mapshaper-data-utils';
-import { isColorSchemeName, getColorRamp, getCategoricalColorScheme } from '../color/color-schemes';
+import { isColorSchemeName, getColorRamp, getCategoricalColorScheme, isCategoricalColorScheme } from '../color/color-schemes';
 import { parseColor } from '../color/color-utils';
 import {
   getSequentialClassifier,
@@ -28,34 +28,35 @@ cmd.classify = function(lyr, dataset, optsArg) {
   var opts = optsArg || {};
   var records = lyr.data && lyr.data.getRecords();
   var nullValue = opts.null_value || null;
-  var looksLikeColors = !!opts.colors || !!opts.color_scheme;
+  var valuesAreColors = !!opts.colors || !!opts.color_scheme;
   var colorScheme;
-  var classValues, classifyByValue, classifyById;
-  var numBuckets, numValues;
+  var values, classifyByValue, classifyById;
+  var numClasses, numValues;
   var dataField, outputField;
+  var method;
 
   // validate explicitly set classes
   if (opts.classes) {
     if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
       stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
     }
-    numBuckets = opts.classes;
+    numClasses = opts.classes;
   }
 
   // TODO: better validation of breaks values
   if (opts.breaks) {
-    numBuckets = opts.breaks.length + 1;
+    numClasses = opts.breaks.length + 1;
   }
 
   if (opts.index_field) {
     dataField = opts.index_field;
-    if (numBuckets > 0 === false) {
+    if (numClasses > 0 === false) {
       stop('The index-field= option requires the classes= option to be set');
     }
     // You can't infer the number of classes by looking at index values;
     // this can cause unwanted interpolation if one or more values are
     // not present in the index field
-    // numBuckets = validateClassIndexField(records, opts.index_field);
+    // numClasses = validateClassIndexField(records, opts.index_field);
 
   } else if (opts.field) {
     dataField = opts.field;
@@ -66,7 +67,19 @@ cmd.classify = function(lyr, dataset, optsArg) {
     opts.categories = getUniqFieldValues(records, dataField);
   }
 
-  if (opts.method == 'non-adjacent') {
+  // get classification method
+  //
+  if (opts.method) {
+    method = opts.method;
+  } else if (opts.categories) {
+    method = 'categorical';
+  } else if (opts.index_field) {
+    method = 'indexed';
+  } else {
+    method = 'quantile'; // TODO: validate data field
+  }
+
+  if (method == 'non-adjacent') {
     if (lyr.geometry_type != 'polygon') {
       stop('The non-adjacent option requires a polygon layer');
     }
@@ -79,8 +92,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
     requireDataField(lyr.data, dataField);
   }
 
-  if (numBuckets) {
-    numValues = opts.continuous ? numBuckets + 1 : numBuckets;
+  if (numClasses) {
+    numValues = opts.continuous ? numClasses + 1 : numClasses;
   }
 
   // support both deprecated color-scheme= option and colors=<color-scheme> syntax
@@ -95,39 +108,44 @@ cmd.classify = function(lyr, dataset, optsArg) {
     opts.colors.forEach(parseColor); // validate colors -- error if unparsable
   }
 
+  /// get values (usually colors)
+  ///
   if (colorScheme) {
-    // using a named color scheme: generate a ramp
+    if (method == 'non-adjacent') {
+      numClasses = numValues = numClasses || 5;
+      values = getCategoricalColorScheme(colorScheme, numValues);
 
-    if (opts.categories) {
-      classValues = getCategoricalColorScheme(colorScheme, opts.categories.length);
-      numBuckets = numValues = classValues.length;
+    } else if (method == 'categorical') {
+      values = getCategoricalColorScheme(colorScheme, opts.categories.length);
+      numClasses = numValues = values.length;
+
     } else {
-      if (!numBuckets) {
+      if (!numClasses) {
         // stop('color-scheme= option requires classes= or breaks=');
-        numBuckets = 4; // use a default number of classes
-        numValues = opts.continuous ? numBuckets + 1 : numBuckets;
+        numClasses = 4; // use a default number of classes
+        numValues = opts.continuous ? numClasses + 1 : numClasses;
       }
-      classValues = getColorRamp(colorScheme, numValues, opts.stops);
+      values = getColorRamp(colorScheme, numValues, opts.stops);
     }
 
   } else if (opts.colors || opts.values) {
-    classValues = opts.values ? parseValues(opts.values) : opts.colors;
+    values = opts.values ? parseValues(opts.values) : opts.colors;
     if (!numValues) {
-      numValues = classValues.length;
+      numValues = values.length;
     }
-    if ((classValues.length != numValues || opts.stops) && numValues > 1) {
+    if ((values.length != numValues || opts.stops) && numValues > 1) {
       // TODO: handle numValues == 1
       // TODO: check for non-interpolatable value types (e.g. boolean, text)
-      classValues = interpolateValuesToClasses(classValues, numValues, opts.stops);
+      values = interpolateValuesToClasses(values, numValues, opts.stops);
     }
 
   } else if (numValues > 1) {
     // no values were given: assign indexes for each class
-    classValues = getIndexValues(numValues);
+    values = getIndexValues(numValues);
     nullValue = -1;
   }
 
-  if (looksLikeColors) {
+  if (valuesAreColors) {
     nullValue = nullValue || '#eee';
   }
 
@@ -136,24 +154,24 @@ cmd.classify = function(lyr, dataset, optsArg) {
   }
 
   if (opts.invert) {
-    classValues = classValues.concat().reverse();
+    values = values.concat().reverse();
   }
 
-  if (looksLikeColors) {
-    message('Colors:', formatValuesForLogging(classValues));
+  if (valuesAreColors) {
+    message('Colors:', formatValuesForLogging(values));
   }
 
   // get a function to convert input data to class indexes
   //
-  if (opts.method == 'non-adjacent') {
-    classifyById = getNonAdjacentClassifier(lyr, dataset, classValues);
+  if (method == 'non-adjacent') {
+    classifyById = getNonAdjacentClassifier(lyr, dataset, values);
   } else if (opts.index_field) {
     // data is pre-classified... just read the index from a field
-    classifyByValue = getIndexedClassifier(classValues, nullValue, opts);
-  } else if (opts.categories) {
-    classifyByValue = getCategoricalClassifier(classValues, nullValue, opts);
+    classifyByValue = getIndexedClassifier(values, nullValue, opts);
+  } else if (method == 'categorical') {
+    classifyByValue = getCategoricalClassifier(values, nullValue, opts);
   } else {
-    classifyByValue = getSequentialClassifier(classValues, nullValue, getFieldValues(records, dataField), opts);
+    classifyByValue = getSequentialClassifier(values, nullValue, getFieldValues(records, dataField), method, opts);
   }
 
   if (classifyByValue) {
@@ -166,7 +184,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
 
   // get the name of the output field
   //
-  if (looksLikeColors) {
+  if (valuesAreColors) {
     outputField = lyr.geometry_type == 'polyline' ? 'stroke' : 'fill';
   } else {
     outputField = 'class';
