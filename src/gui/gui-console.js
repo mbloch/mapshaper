@@ -28,6 +28,13 @@ export function Console(gui) {
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
 
+  this.runInitialCommands = function(str) {
+    str = str.trim();
+    if (!str) return;
+    turnOn();
+    submit(str);
+  };
+
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
   window.addEventListener('beforeunload', saveHistory); // save history if console is open on refresh

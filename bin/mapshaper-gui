@@ -10,10 +10,11 @@ var defaultPort = 5555,
       .option('-f, --force-save', 'allow overwriting input files with output files')
       .option('-a, --display-all', 'turn on visibility of all layers')
       .option('-n, --name <name(s)>', 'rename input layer or layers')
+      .option('-c, --commands <string>', 'console commands to run initially')
       .option('-t, --target <name>', 'name of layer to select initially')
       .helpOption('-h, --help', 'show this help message')
       .version(require('../package.json').version)
-      .parse(),
+      .parse(process.argv),
     opts = program.opts(),
     http = require("http"),
     path = require("path"),
@@ -26,7 +27,6 @@ var defaultPort = 5555,
     dataFiles = expandShapefiles(program.args),
     probeCount = 0,
     sessionId = null;
-
 validateFiles(dataFiles);
 
 process.on('uncaughtException', function(err) {
@@ -210,6 +210,7 @@ function getManifestJS(files, opts) {
   if (opts.displayAll) o.display_all = true;
   if (opts.quickView) o.quick_view = true;
   if (opts.name) o.name = opts.name;
+  if (opts.commands) o.commands = opts.commands;
   return "mapshaper.manifest = " + JSON.stringify(o) + ";\n";
 }
 

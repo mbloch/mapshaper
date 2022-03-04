@@ -199,6 +199,7 @@ export function ImportControl(gui, opts) {
       }
     }
     model.updated({select: true});
+
   }
 
   function clearQueuedFiles() {

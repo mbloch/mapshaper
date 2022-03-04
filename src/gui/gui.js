@@ -45,6 +45,11 @@ function getImportOpts() {
   return opts;
 }
 
+function getInitialConsoleCommands() {
+  var manifest = window.mapshaper.manifest || {};
+  return manifest.commands || '';
+}
+
 var startEditing = function() {
   var dataLoaded = false,
       importOpts = getImportOpts(),
@@ -86,5 +91,7 @@ var startEditing = function() {
         gui.map.setLayerPinning(o, true);
       });
     }
+    gui.console.runInitialCommands(getInitialConsoleCommands());
+
   });
 };
