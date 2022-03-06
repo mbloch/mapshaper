@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.91";
+  var VERSION = "0.5.92";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -4922,6 +4922,7 @@
     this._n = 0;
     this.x = 0;
     this.y = 0;
+    this.i = -1;
   }
 
   ShapeIter.prototype.hasNext = function() {
@@ -4932,6 +4933,7 @@
     if (arc.hasNext()) {
       this.x = arc.x;
       this.y = arc.y;
+      this.i = arc.i;
       return true;
     }
     this.nextArc();
@@ -34968,16 +34970,7 @@ ${svg}
     return findVertexIds(p2.x, p2.y, arcs);
   }
 
-  // Given a location @p (e.g. corresponding to the mouse pointer location),
-  // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
-  // but only if:
-  //   1. point @p is closer to the midpoint than either adjacent vertex
-  //   2. the segment containing @p is longer than a minimum distance in pixels.
-  //
-  function findInsertionPoint(p, shp, arcs, pixelSize) {
-    var p2 = findNearestVertex(p[0], p[1], shp, arcs);
 
-  }
 
   function snapVerticesToPoint(ids, p, arcs, final) {
     ids.forEach(function(idx) {
@@ -35058,7 +35051,7 @@ ${svg}
   function findNearestVertex(x, y, shp, arcs, spherical) {
     var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
         minLen = Infinity,
-        minX, minY, dist, iter;
+        minX, minY, vId, dist, iter;
     for (var i=0; i<shp.length; i++) {
       iter = arcs.getShapeIter(shp[i]);
       while (iter.hasNext()) {
@@ -35067,16 +35060,31 @@ ${svg}
           minLen = dist;
           minX = iter.x;
           minY = iter.y;
+          vId = iter.i;
         }
       }
     }
-    return minLen < Infinity ? {x: minX, y: minY} : null;
+    return minLen < Infinity ? {x: minX, y: minY, i: vId} : null;
+  }
+
+  // v: vertex in {x, y, i} format
+  function findAdjacentVertex(v, shp, arcs, offs) {
+    var p, i;
+    var arcEnd = offs == 1 && vertexIsArcEnd(v.i, arcs);
+    var arcStart = offs == -1 && vertexIsArcStart(v.i, arcs);
+    if (arcEnd || arcStart) return null;
+    i = v.i + offs;
+    p = getVertexCoords(i, arcs);
+    return {
+      i: i,
+      x: p[0],
+      y: p[1]
+    };
   }
 
   var VertexUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     findNearestVertices: findNearestVertices,
-    findInsertionPoint: findInsertionPoint,
     snapVerticesToPoint: snapVerticesToPoint,
     snapPointToArcEndpoint: snapPointToArcEndpoint,
     findVertexIds: findVertexIds,
@@ -35084,7 +35092,8 @@ ${svg}
     vertexIsArcEnd: vertexIsArcEnd,
     vertexIsArcStart: vertexIsArcStart,
     setVertexCoords: setVertexCoords,
-    findNearestVertex: findNearestVertex
+    findNearestVertex: findNearestVertex,
+    findAdjacentVertex: findAdjacentVertex
   });
 
   // Returns x,y coordinates of the point that is at the midpoint of each polyline feature

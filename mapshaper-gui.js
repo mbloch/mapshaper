@@ -4201,7 +4201,7 @@
     }
 
      function vertexTest(x, y) {
-      var maxDist = getZoomAdjustedHitBuffer(15, 2),
+      var maxDist = getZoomAdjustedHitBuffer(20, 2),
           bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
           cands = findHitCandidates(x, y, maxDist);
       sortByDistance(x, y, cands, displayLayer.arcs);
@@ -6116,6 +6116,7 @@
     var activeShapeId = -1;
     var draggedVertexIds = null;
     var selectedVertexIds = null;
+    var activeMidpoint; // {point, segment}
 
     function active(e) {
       return e.id > -1 && gui.interaction.getMode() == 'vertices';
@@ -6205,10 +6206,22 @@
       var target = hit.getHitTarget();
       var shp = target.layer.shapes[e.id];
       var p = ext.translatePixelCoords(e.x, e.y);
-      var o = internal.findInsertionPoint(p, shp, target.arcs, ext.getPixelSize());
-      console.log('*', o, p);
+      console.log('*', p, p2);
       clearHoverVertex();
     }, null, 100);
+
+  }
+
+  // Given a location @p (e.g. corresponding to the mouse pointer location),
+  // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
+  // but only if:
+  //   1. point @p is closer to the midpoint than either adjacent vertex
+  //   2. the segment containing @p is longer than a minimum distance in pixels.
+  //
+  function findNearestMidpoint(p, shp, arcs) {
+    var v1 = internal.findNearestVertex(p[0], p[1], shp, arcs);
+    var v0 = internal.findAdjacentVertex(v1, shp, arcs, -1);
+    var v2 = internal.findAdjacentVertex(v1, shp, arcs, 1);
 
   }
 
@@ -6252,7 +6265,7 @@
       },
       referenceStyle = { // outline style for reference layers
         type: 'outline',
-        strokeColors: [null, '#86c927'],
+        strokeColors: [null, '#78c110'], // upped saturation from #86c927
         strokeWidth: 0.85,
         dotColor: "#73ba20",
         dotSize: 1
@@ -7259,7 +7272,8 @@
       if (style.strokeWidth > 0) {
         strokeWidth = style.strokeWidth;
         if (pixRatio > 1) {
-          // bump up thin lines on retina, but not to more than 1px (too slow)
+          // bump up thin lines on retina, but not to more than 1px
+          // (tests on Chrome showed much faster rendering of 1px lines)
           strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
         }
         ctx.lineCap = 'round';
