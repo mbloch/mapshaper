@@ -5,16 +5,7 @@ export function findNearestVertices(p, shp, arcs) {
   return findVertexIds(p2.x, p2.y, arcs);
 }
 
-// Given a location @p (e.g. corresponding to the mouse pointer location),
-// find the midpoint of two vertices on @shp suitable for inserting a new vertex,
-// but only if:
-//   1. point @p is closer to the midpoint than either adjacent vertex
-//   2. the segment containing @p is longer than a minimum distance in pixels.
-//
-export function findInsertionPoint(p, shp, arcs, pixelSize) {
-  var p2 = findNearestVertex(p[0], p[1], shp, arcs);
 
-}
 
 export function snapVerticesToPoint(ids, p, arcs, final) {
   ids.forEach(function(idx) {
@@ -95,7 +86,7 @@ export function setVertexCoords(x, y, i, arcs) {
 export function findNearestVertex(x, y, shp, arcs, spherical) {
   var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
       minLen = Infinity,
-      minX, minY, dist, iter;
+      minX, minY, vId, dist, iter;
   for (var i=0; i<shp.length; i++) {
     iter = arcs.getShapeIter(shp[i]);
     while (iter.hasNext()) {
@@ -104,8 +95,26 @@ export function findNearestVertex(x, y, shp, arcs, spherical) {
         minLen = dist;
         minX = iter.x;
         minY = iter.y;
+        vId = iter.i;
       }
     }
   }
-  return minLen < Infinity ? {x: minX, y: minY} : null;
+  return minLen < Infinity ? {x: minX, y: minY, i: vId} : null;
 }
+
+// v: vertex in {x, y, i} format
+export function findAdjacentVertex(v, shp, arcs, offs) {
+  var p, i;
+  var arcEnd = offs == 1 && vertexIsArcEnd(v.i, arcs);
+  var arcStart = offs == -1 && vertexIsArcStart(v.i, arcs);
+  if (arcEnd || arcStart) return null;
+  i = v.i + offs;
+  p = getVertexCoords(i, arcs);
+  return {
+    i: i,
+    x: p[0],
+    y: p[1]
+  };
+}
+
+

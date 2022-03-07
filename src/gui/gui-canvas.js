@@ -150,7 +150,7 @@ export function DisplayCanvas() {
     var t = getScaledTransform(_ext);
     var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
     var color = style.strokeColor || 'black';
-    var radius2 = radius * 2;
+    var radius2 = radius * 1.7;
     _ctx.beginPath();
     _ctx.fillStyle = color;
     for (var i=0; i<shapes.length; i++) {
@@ -531,7 +531,8 @@ function getPathStart(ext, lineScale) {
     if (style.strokeWidth > 0) {
       strokeWidth = style.strokeWidth;
       if (pixRatio > 1) {
-        // bump up thin lines on retina, but not to more than 1px (too slow)
+        // bump up thin lines on retina, but not to more than 1px
+        // (tests on Chrome showed much faster rendering of 1px lines)
         strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
       }
       ctx.lineCap = 'round';

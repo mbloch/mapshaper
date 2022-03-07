@@ -1,9 +1,14 @@
 import { error, internal, geom  } from './gui-core';
 
+var HOVER_THRESHOLD = 8;
+var MIDPOINT_THRESHOLD = 12;
+
+
 export function initVertexDragging(gui, ext, hit) {
   var activeShapeId = -1;
   var draggedVertexIds = null;
   var selectedVertexIds = null;
+  var activeMidpoint; // {point, segment}
 
   function active(e) {
     return e.id > -1 && gui.interaction.getMode() == 'vertices';
@@ -34,16 +39,34 @@ export function initVertexDragging(gui, ext, hit) {
     var p2 = target.arcs.getVertex2(nearestIds[0]);
     var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
     var pixelDist = dist / ext.getPixelSize();
-    if (pixelDist > 5) {
+    if (pixelDist > HOVER_THRESHOLD) {
       draggedVertexIds = null;
       return null;
     }
     return nearestIds;
   }
 
+  function insertMidpoint(v) {
+    var target = hit.getHitTarget();
+    internal.insertVertex(target.arcs, v.i, v.point);
+  }
+
   hit.on('dragstart', function(e) {
     if (!active(e)) return;
-    draggedVertexIds = findDraggableVertices(e);
+    if (activeMidpoint) {
+      insertMidpoint(activeMidpoint);
+      draggedVertexIds = [activeMidpoint.i];
+      // TODO: combine vertex insertion undo/redo actions with
+      // vertex_dragend undo/redo actions
+      gui.dispatchEvent('vertex_insert', {
+        FID: activeShapeId,
+        vertex_id: activeMidpoint.i,
+        coordinates: activeMidpoint.point
+      });
+      activeMidpoint = null;
+    } else {
+      draggedVertexIds = findDraggableVertices(e);
+    }
     if (!draggedVertexIds) return;
     setHoverVertex(draggedVertexIds[0]);
     activeShapeId = e.id;
@@ -84,6 +107,7 @@ export function initVertexDragging(gui, ext, hit) {
 
   // highlight hit vertex in path edit mode
   hit.on('hover', function(e) {
+    activeMidpoint = null;
     if (!active(e) || draggedVertexIds) return; // no hover effect while dragging
     var vertexIds = findDraggableVertices(e);
     if (vertexIds) {
@@ -91,12 +115,52 @@ export function initVertexDragging(gui, ext, hit) {
       return;
     }
     var target = hit.getHitTarget();
+    // vertex insertion doesn't work yet with simplification applied
+    if (!target.arcs.isFlat()) return;
     var shp = target.layer.shapes[e.id];
     var p = ext.translatePixelCoords(e.x, e.y);
-    var o = internal.findInsertionPoint(p, shp, target.arcs, ext.getPixelSize());
-    console.log('*', o, p);
-    clearHoverVertex();
+    var midpoint = findNearestMidpoint(p, shp, target.arcs);
+    if (midpoint && midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD) {
+      hit.setHoverVertex(midpoint.point);
+      activeMidpoint = midpoint;
+    } else {
+      clearHoverVertex();
+    }
   }, null, 100);
-
 }
+
+
+// Given a location @p (e.g. corresponding to the mouse pointer location),
+// find the midpoint of two vertices on @shp suitable for inserting a new vertex,
+// but only if:
+//   1. point @p is closer to the midpoint than either adjacent vertex
+//   2. the segment containing @p is longer than a minimum distance in pixels.
+//
+function findNearestMidpoint(p, shp, arcs) {
+  // var v1 = internal.findNearestVertex(p[0], p[1], shp, arcs);
+  // var v0 = internal.findAdjacentVertex(v1, shp, arcs, -1);
+  // var v2 = internal.findAdjacentVertex(v1, shp, arcs, 1);
+  var minDist = Infinity, v;
+  internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
+    var x1 = xx[i],
+        y1 = yy[i],
+        x2 = xx[j],
+        y2 = yy[j],
+        cx = (x1 + x2) / 2,
+        cy = (y1 + y2) / 2,
+        dist = geom.distance2D(cx, cy, p[0], p[1]);
+    if (dist < minDist) {
+      minDist = dist;
+      v = {
+        i: (i < j ? i : j) + 1, // insertion point
+        segment: [i, j],
+        point: [cx, cy],
+        distance: dist
+      };
+    }
+  });
+  return v || null;
+}
+
+
 

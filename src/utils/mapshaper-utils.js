@@ -897,15 +897,23 @@ export function expandoBuffer(constructor, rate) {
 }
 
 export function copyElements(src, i, dest, j, n, rev) {
-  if (src === dest && j > i) error ("copy error");
+  var same = src == dest || src.buffer && src.buffer == dest.buffer;
   var inc = 1,
-      offs = 0;
+      offs = 0,
+      k;
   if (rev) {
+    if (same) error('copy error');
     inc = -1;
     offs = n - 1;
   }
-  for (var k=0; k<n; k++, offs += inc) {
-    dest[k + j] = src[i + offs];
+  if (same && j > i) {
+    for (k=n-1; k>=0; k--) {
+      dest[j + k] = src[i + k];
+    }
+  } else {
+    for (k=0; k<n; k++, offs += inc) {
+      dest[k + j] = src[i + offs];
+    }
   }
 }
 

@@ -122,6 +122,7 @@ export function ShapeIter(arcs) {
   this._n = 0;
   this.x = 0;
   this.y = 0;
+  this.i = -1;
 }
 
 ShapeIter.prototype.hasNext = function() {
@@ -132,6 +133,7 @@ ShapeIter.prototype.hasNext = function() {
   if (arc.hasNext()) {
     this.x = arc.x;
     this.y = arc.y;
+    this.i = arc.i;
     return true;
   }
   this.nextArc();

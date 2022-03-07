@@ -489,6 +489,8 @@ export function ArcCollection() {
     }
   };
 
+  this.isFlat = function() { return !_zz; };
+
   this.getRetainedInterval = function() {
     return _zlimit;
   };

@@ -25,7 +25,7 @@ export function InteractionMode(gui) {
     data: 'edit attributes',
     labels: 'position labels',
     location: 'drag points',
-    vertices: 'drag vertices',
+    vertices: 'edit vertices',
     selection: 'select features',
     off: 'turn off'
   };

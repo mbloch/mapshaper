@@ -73,7 +73,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
   }
 
    function vertexTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(15, 2),
+    var maxDist = getZoomAdjustedHitBuffer(20, 2),
         bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, displayLayer.arcs);

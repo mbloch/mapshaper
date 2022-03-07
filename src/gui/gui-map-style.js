@@ -22,7 +22,7 @@ var darkStroke = "#334",
     },
     referenceStyle = { // outline style for reference layers
       type: 'outline',
-      strokeColors: [null, '#86c927'],
+      strokeColors: [null, '#78c110'], // upped saturation from #86c927
       strokeWidth: 0.85,
       dotColor: "#73ba20",
       dotSize: 1
