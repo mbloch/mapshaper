@@ -1,3 +1,6 @@
+v0.5.93
+* Add a vertex in "edit vertices" mode by dragging the midpoint of a segment.
+
 v0.5.92
 * Show vertices in the "drag vertices" editing mode.
 * Added -c/--commands option to mapshaper-gui, for running console commands when data is first imported.
