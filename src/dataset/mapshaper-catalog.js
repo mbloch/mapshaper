@@ -135,7 +135,16 @@ export function Catalog() {
   // should be in gui-model.js, moved here for testing
   this.getActiveLayer = function() {
     var targ = (this.getDefaultTargets() || [])[0];
-    return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
+    // var lyr = targ.layers[0];
+    // Reasons to select the last layer of a multi-layer target:
+    // * This layer was imported last
+    // * This layer is displayed on top of other layers
+    // * This layer is at the top of the layers list
+    // * In TopoJSON input, it makes sense to think of the last object/layer
+    //   as the topmost one -- it corresponds to the painter's algorithm and
+    //   the way that objects are ordered in SVG.
+    var lyr = targ.layers[targ.layers.length - 1];
+    return targ ? {layer: lyr, dataset: targ.dataset} : null;
   };
 
   function layerObject(lyr, dataset) {
