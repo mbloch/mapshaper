@@ -1,16 +1,114 @@
 (function () {
 
+  var utils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    get default () { return utils; },
+    get getUniqueName () { return getUniqueName; },
+    get isFunction () { return isFunction; },
+    get isObject () { return isObject; },
+    get clamp () { return clamp; },
+    get isArray () { return isArray; },
+    get isNumber () { return isNumber; },
+    get isValidNumber () { return isValidNumber; },
+    get isFiniteNumber () { return isFiniteNumber; },
+    get isNonNegNumber () { return isNonNegNumber; },
+    get isInteger () { return isInteger; },
+    get isEven () { return isEven; },
+    get isOdd () { return isOdd; },
+    get isString () { return isString; },
+    get isDate () { return isDate; },
+    get isBoolean () { return isBoolean; },
+    get formatDateISO () { return formatDateISO; },
+    get toArray () { return toArray; },
+    get isArrayLike () { return isArrayLike; },
+    get addslashes () { return addslashes; },
+    get regexEscape () { return regexEscape; },
+    get htmlEscape () { return htmlEscape; },
+    get defaults () { return defaults; },
+    get extend () { return extend; },
+    get inherit () { return inherit; },
+    get reduceAsync () { return reduceAsync; },
+    get merge () { return merge; },
+    get difference () { return difference; },
+    get intersection () { return intersection; },
+    get indexOf () { return indexOf; },
+    get contains () { return contains; },
+    get some () { return some; },
+    get every () { return every; },
+    get find () { return find; },
+    get range () { return range; },
+    get repeat () { return repeat; },
+    get sum () { return sum; },
+    get getArrayBounds () { return getArrayBounds; },
+    get uniq () { return uniq; },
+    get pluck () { return pluck; },
+    get countValues () { return countValues; },
+    get indexOn () { return indexOn; },
+    get groupBy () { return groupBy; },
+    get arrayToIndex () { return arrayToIndex; },
+    get forEach () { return forEach; },
+    get forEachProperty () { return forEachProperty; },
+    get initializeArray () { return initializeArray; },
+    get replaceArray () { return replaceArray; },
+    get repeatString () { return repeatString; },
+    get splitLines () { return splitLines; },
+    get pluralSuffix () { return pluralSuffix; },
+    get endsWith () { return endsWith; },
+    get lpad () { return lpad; },
+    get rpad () { return rpad; },
+    get trim () { return trim; },
+    get ltrim () { return ltrim; },
+    get rtrim () { return rtrim; },
+    get addThousandsSep () { return addThousandsSep; },
+    get numToStr () { return numToStr; },
+    get formatNumber () { return formatNumber; },
+    get formatIntlNumber () { return formatIntlNumber; },
+    get formatNumberForDisplay () { return formatNumberForDisplay; },
+    get shuffle () { return shuffle; },
+    get sortOn () { return sortOn; },
+    get genericSort () { return genericSort; },
+    get getSortedIds () { return getSortedIds; },
+    get sortArrayIndex () { return sortArrayIndex; },
+    get reorderArray () { return reorderArray; },
+    get getKeyComparator () { return getKeyComparator; },
+    get getGenericComparator () { return getGenericComparator; },
+    get quicksort () { return quicksort; },
+    get quicksortPartition () { return quicksortPartition; },
+    get findRankByValue () { return findRankByValue; },
+    get findValueByPct () { return findValueByPct; },
+    get findValueByRank () { return findValueByRank; },
+    get findMedian () { return findMedian; },
+    get mean () { return mean; },
+    get format () { return format; },
+    get formatter () { return formatter; },
+    get wildcardToRegExp () { return wildcardToRegExp; },
+    get createBuffer () { return createBuffer; },
+    get expandoBuffer () { return expandoBuffer; },
+    get copyElements () { return copyElements; },
+    get extendBuffer () { return extendBuffer; },
+    get mergeNames () { return mergeNames; },
+    get findStringPrefix () { return findStringPrefix; },
+    get parsePercent () { return parsePercent; },
+    get formatVersionedName () { return formatVersionedName; },
+    get uniqifyNames () { return uniqifyNames; },
+    get parseString () { return parseString; },
+    get parseNumber () { return parseNumber; },
+    get parseIntlNumber () { return parseIntlNumber; },
+    get cleanNumericString () { return cleanNumericString; },
+    get trimQuotes () { return trimQuotes; }
+  });
+
   var api = window.mapshaper; // assuming mapshaper is in global scope
   var mapshaper = api,
-    utils = api.utils,
+    utils$1 = api.utils,
     cli = api.cli,
     geom = api.geom,
     internal = api.internal,
     Bounds = internal.Bounds,
-    UserError = internal.UserError,
-    message = internal.message, // stop, error and message are overridden in gui-proxy.js
-    stop = internal.stop,
-    error = internal.error;
+    UserError$1 = internal.UserError,
+    message$1 = internal.message, // stop, error and message are overridden in gui-proxy.js
+    stop$1 = internal.stop,
+    error$1 = internal.error;
 
   api.enableLogging();
 
@@ -46,7 +144,7 @@
 
     html = '<table>';
     if (catalog.title) {
-      html += utils.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
+      html += utils$1.format('<tr><th colspan="%d"><h4>%s</h4></th></tr>', cols, catalog.title);
     }
     while (row < rows) {
       html += renderRow(items.slice(row * cols, row * cols + cols));
@@ -111,7 +209,7 @@
 
     function renderCell(item, i) {
       var template = '<td data-id="%d"><h4 class="title">%s</h4><div class="subtitle">%s</div></td>';
-      return utils.format(template, i, item.title, item.subtitle || '');
+      return utils$1.format(template, i, item.title, item.subtitle || '');
     }
 
   }
@@ -228,7 +326,7 @@
     }
     parsed =  internal.parseCommands(str);
     if (!parsed.length || parsed[0].name != cmd) {
-      stop("Unable to parse command line options");
+      stop$1("Unable to parse command line options");
     }
     return parsed[0].options;
   };
@@ -321,7 +419,7 @@
       evt = new EventData(this.type);
       evt.target = this.target;
     } else if (evt.target != this.target || evt.type != this.type) {
-      error("[Handler] event target/type have changed.");
+      error$1("[Handler] event target/type have changed.");
     }
     this.callback.call(this.listener, evt);
   };
@@ -330,7 +428,7 @@
     this.type = type;
     this.target = target;
     if (data) {
-      utils.defaults(this, data);
+      utils$1.defaults(this, data);
       this.data = data;
     }
   }
@@ -560,12 +658,12 @@
       try {
         els = root.querySelectorAll(selector);
       } catch (e) {
-        error("Invalid selector:", selector);
+        error$1("Invalid selector:", selector);
       }
     } else {
-      error("This browser doesn't support CSS query selectors");
+      error$1("This browser doesn't support CSS query selectors");
     }
-    return utils.toArray(els);
+    return utils$1.toArray(els);
   };
 
   // Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
@@ -602,7 +700,7 @@
   };
 
   function El(ref) {
-    if (!ref) error("Element() needs a reference");
+    if (!ref) error$1("Element() needs a reference");
     if (ref instanceof El) {
       return ref;
     }
@@ -611,7 +709,7 @@
     }
 
     var node;
-    if (utils.isString(ref)) {
+    if (utils$1.isString(ref)) {
       if (ref[0] == '<') {
         var parent = El('div').html(ref).node();
         node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
@@ -623,13 +721,13 @@
     } else if (ref.tagName) {
       node = ref;
     }
-    if (!node) error("Unmatched element selector:", ref);
+    if (!node) error$1("Unmatched element selector:", ref);
     this.el = node;
   }
 
-  utils.inherit(El, EventDispatcher);
+  utils$1.inherit(El, EventDispatcher);
 
-  utils.extend(El.prototype, {
+  utils$1.extend(El.prototype, {
 
     clone: function() {
       var el = this.el.cloneNode(true);
@@ -638,7 +736,7 @@
         //    can ...
         el = El('div').addClass(el.className).html(el.innerHTML).node();
       }
-      el.id = utils.getUniqueName();
+      el.id = utils$1.getUniqueName();
       this.el = el;
       return this;
     },
@@ -668,11 +766,11 @@
       if (val != null) {
         El.setStyle(this.el, css, val);
       }
-      else if (utils.isString(css)) {
+      else if (utils$1.isString(css)) {
         addCSS(this.el, css);
       }
-      else if (utils.isObject(css)) {
-        utils.forEachProperty(css, function(val, key) {
+      else if (utils$1.isObject(css)) {
+        utils$1.forEachProperty(css, function(val, key) {
           El.setStyle(this.el, key, val);
         }, this);
       }
@@ -680,7 +778,7 @@
     },
 
     attr: function(obj, value) {
-      if (utils.isString(obj)) {
+      if (utils$1.isString(obj)) {
         if (arguments.length == 1) {
           return this.el.getAttribute(obj);
         }
@@ -764,7 +862,7 @@
     },
 
     text: function(str) {
-      this.html(utils.htmlEscape(str));
+      this.html(utils$1.htmlEscape(str));
       return this;
     },
 
@@ -854,7 +952,7 @@
   El.prototype.__on = El.prototype.on;
   El.prototype.on = function(type, func, ctx) {
     if (ctx) {
-      error("[El#on()] Third argument no longer supported.");
+      error$1("[El#on()] Third argument no longer supported.");
     }
     if (this.constructor == El) {
       this.el.addEventListener(type, func);
@@ -910,7 +1008,7 @@
     }
 
     this.value = function(str) {
-      if (utils.isString(str)) {
+      if (utils$1.isString(str)) {
         el.node().textContent = str;
       } else {
         return el.node().textContent;
@@ -918,7 +1016,7 @@
     };
   }
 
-  utils.inherit(ClickText2, EventDispatcher);
+  utils$1.inherit(ClickText2, EventDispatcher);
 
   // @ref reference to a text input element
   function ClickText(ref) {
@@ -989,9 +1087,9 @@
         // return _parser ? _parser(valStr) : parseFloat(valStr);
         return _value;
       }
-      var val = utils.clamp(arg, _min, _max);
+      var val = utils$1.clamp(arg, _min, _max);
       if (!_validator(val)) {
-        error("ClickText#value() invalid value:", arg);
+        error$1("ClickText#value() invalid value:", arg);
       } else {
         _value = val;
       }
@@ -1000,14 +1098,14 @@
     };
   }
 
-  utils.inherit(ClickText, EventDispatcher);
+  utils$1.inherit(ClickText, EventDispatcher);
 
 
   function Checkbox(ref) {
     var _el = El(ref);
   }
 
-  utils.inherit(Checkbox, EventDispatcher);
+  utils$1.inherit(Checkbox, EventDispatcher);
 
   function SimpleButton(ref) {
     var _el = El(ref),
@@ -1036,7 +1134,7 @@
     }
   }
 
-  utils.inherit(SimpleButton, EventDispatcher);
+  utils$1.inherit(SimpleButton, EventDispatcher);
 
   // @cb function(<FileList>)
   function DropControl(gui, el, cb) {
@@ -1316,7 +1414,7 @@
     }
 
     function filesMayContainPaths(files) {
-      return utils.some(files, function(f) {
+      return utils$1.some(files, function(f) {
           var type = internal.guessInputFileType(f.name);
           return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
       });
@@ -1372,7 +1470,7 @@
     }
 
     function handleImportError(e, fileName) {
-      var msg = utils.isString(e) ? e : e.message;
+      var msg = utils$1.isString(e) ? e : e.message;
       if (fileName) {
         msg = "Error importing <i>" + fileName + "</i><br>" + msg;
       }
@@ -1402,7 +1500,7 @@
 
     function downloadFiles(paths) {
       var items = prepFilesForDownload(paths);
-      utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
+      utils$1.reduceAsync(items, [], downloadNextFile, function(err, files) {
         if (err) {
           gui.alert(err);
         } else if (!files.length) {
@@ -1568,7 +1666,7 @@
     var defaults = {
       space: 7
     };
-    opts = utils.extend(defaults, opts);
+    opts = utils$1.extend(defaults, opts);
 
     var _pct = 0;
     var _track,
@@ -1621,7 +1719,7 @@
     };
 
     function setHandlePos(x, fire) {
-      x = utils.clamp(x, 0, size());
+      x = utils$1.clamp(x, 0, size());
       var pct = x / size();
       if (pct != _pct) {
         _pct = pct;
@@ -1636,7 +1734,7 @@
     }
   }
 
-  utils.inherit(Slider, EventDispatcher);
+  utils$1.inherit(Slider, EventDispatcher);
 
   /*
   How changes in the simplify control should affect other components
@@ -1704,7 +1802,7 @@
     slider.on('change', function(e) {
       var pct = fromSliderPct(e.pct);
       text.value(pct);
-      pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
+      pct = utils$1.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
       onChange(pct);
     });
     slider.on('start', function(e) {
@@ -1725,7 +1823,7 @@
       else if (pct < 0.01) decimals = 3;
       else if (pct < 1) decimals = 2;
       else if (pct < 100) decimals = 1;
-      return utils.formatNumberForDisplay(pct, decimals) + "%";
+      return utils$1.formatNumberForDisplay(pct, decimals) + "%";
     });
 
     text.parser(function(s) {
@@ -1977,7 +2075,7 @@
 
     // Replace error function in mapshaper lib
     var error = function() {
-      stop.apply(null, utils.toArray(arguments));
+      stop.apply(null, utils$1.toArray(arguments));
     };
 
     var message = function() {
@@ -1991,11 +2089,11 @@
     // replace CLI version of writeFiles()
     internal.replaceWriteFiles(function(files, opts, done) {
       var filename;
-      if (!utils.isArray(files) || files.length === 0) {
+      if (!utils$1.isArray(files) || files.length === 0) {
         done("Nothing to export");
       } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-        var paths = internal.getOutputPaths(utils.pluck(files, 'filename'), opts);
-        var data = utils.pluck(files, 'content');
+        var paths = internal.getOutputPaths(utils$1.pluck(files, 'filename'), opts);
+        var data = utils$1.pluck(files, 'content');
         saveFilesToServer(paths, data, function(err) {
           var msg;
           if (err) {
@@ -2014,7 +2112,7 @@
       } else if (files.length == 1) {
         saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
       } else {
-        filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+        filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
         saveZipFile(filename + ".zip", files, done);
       }
     });
@@ -2036,10 +2134,10 @@
         // try to match import filename of this dataset
         if (d.info.input_files[0] == src) return d;
         // try to match name of a layer in this dataset
-        lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
+        lyr = utils$1.find(d.layers, function(lyr) {return lyr.name == src;});
         return lyr ? internal.isolateLayer(lyr, d) : null;
       }, null);
-      if (!retn) stop("Missing data layer [" + src + "]");
+      if (!retn) stop$1("Missing data layer [" + src + "]");
       return retn;
     }
 
@@ -2048,7 +2146,7 @@
       // Return a copy with layers duplicated, so changes won't affect original layers
       // This makes an (unsafe) assumption that the dataset arcs won't be changed...
       // need to rethink this.
-      return utils.defaults({
+      return utils$1.defaults({
         layers: dataset.layers.map(internal.copyLayer)
       }, dataset);
     });
@@ -2120,7 +2218,7 @@
   }
 
   function projectPointsForDisplay(lyr, src, dest) {
-    var copy = utils.extend({}, lyr);
+    var copy = utils$1.extend({}, lyr);
     var proj = internal.getProjTransform2(src, dest);
     copy.shapes = internal.cloneShapes(lyr.shapes);
     internal.projectPointLayer(copy, proj);
@@ -2525,7 +2623,7 @@
         } else if (cmd == 'history') {
           toLog(gui.session.toCommandLineString());
         } else if (cmd == 'layers') {
-          message("Available layers:",
+          message$1("Available layers:",
             internal.getFormattedLayerList(model));
         } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
           turnOff();
@@ -2614,7 +2712,7 @@
     }
 
     function onError(err) {
-      if (utils.isString(err)) {
+      if (utils$1.isString(err)) {
         consoleStop(err);
       } else if (err.name == 'UserError') {
         // stop() has already been called, don't need to log
@@ -2629,7 +2727,7 @@
     function consoleStop() {
       var msg = GUI.formatMessageArgs(arguments);
       consoleWarning(msg);
-      throw new UserError(msg);
+      throw new UserError$1(msg);
     }
 
     function consoleWarning() {
@@ -2793,7 +2891,7 @@
         // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
         pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
         map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-        readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
+        readout.html(utils$1.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils$1.pluralSuffix(n)));
         readout.findChild('.close-btn').on('click', dismiss);
       } else {
         map.setIntersectionLayer(null);
@@ -2802,7 +2900,7 @@
     }
   }
 
-  utils.inherit(RepairControl, EventDispatcher);
+  utils$1.inherit(RepairControl, EventDispatcher);
 
   function filterLayerByIds(lyr, ids) {
     var shapes;
@@ -2810,7 +2908,7 @@
       shapes = ids.map(function(id) {
         return lyr.shapes[id];
       });
-      return utils.defaults({shapes: shapes, data: null}, lyr);
+      return utils$1.defaults({shapes: shapes, data: null}, lyr);
     }
     return lyr;
   }
@@ -2863,7 +2961,7 @@
       });
 
       internal.writeFiles = function() {
-        error(unsupportedMsg);
+        error$1(unsupportedMsg);
       };
     } else {
       new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
@@ -2899,7 +2997,7 @@
       setTimeout(function() {
         exportMenuSelection(layers, function(err) {
           if (err) {
-            if (utils.isString(err)) {
+            if (utils$1.isString(err)) {
               gui.alert(err);
             } else {
               // stack seems to change if Error is logged directly
@@ -2946,7 +3044,7 @@
         // without changing its name elsewhere
         layer: Object.assign({}, o.layer)
       };
-      var html = utils.format(template, i + 1, target.layer.name || '[unnamed layer]');
+      var html = utils$1.format(template, i + 1, target.layer.name || '[unnamed layer]');
       // return {layer: o.layer, html: html};
       var el = El('div').html(html).addClass('layer-item');
       var box = el.findChild('input').node();
@@ -3056,9 +3154,9 @@
 
     function initFormatMenu() {
       var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
-      var formats = utils.uniq(defaults.concat(getInputFormats()));
+      var formats = utils$1.uniq(defaults.concat(getInputFormats()));
       var items = formats.map(function(fmt) {
-        return utils.format('<div><label><input type="radio" name="format" value="%s"' +
+        return utils$1.format('<div><label><input type="radio" name="format" value="%s"' +
           ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
       });
       menu.findChild('.export-formats').html(items.join('\n'));
@@ -3221,7 +3319,7 @@
         // can be used as unique identifiers for caching rendered HTML, and as
         // an id for layer menu event handlers
         if (!lyr.menu_id || uniqIds[lyr.menu_id]) {
-          lyr.menu_id = utils.getUniqueName();
+          lyr.menu_id = utils$1.getUniqueName();
         }
         uniqIds[lyr.menu_id] = true;
         if (isPinnable(lyr)) pinnableCount++;
@@ -3394,7 +3492,7 @@
         type = lyr.geometry_type + ' feature';
       }
       if (type) {
-        str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
+        str = utils$1.format('%,d %s%s', n, type, utils$1.pluralSuffix(n));
       } else {
         str = "[empty]";
       }
@@ -3405,7 +3503,7 @@
       var file = internal.getLayerSourceFile(lyr, dataset);
       var missing = [];
       var msg;
-      if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
+      if (utils$1.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
         if (!lyr.data) {
           missing.push('.dbf');
         }
@@ -3431,7 +3529,7 @@
 
 
     function rowHTML(c1, c2, cname) {
-      return utils.format('<div class="row%s"><div class="col1">%s</div>' +
+      return utils$1.format('<div class="row%s"><div class="col1">%s</div>' +
         '<div class="col2">%s</div></div>', cname ? ' ' + cname : '', c1, c2);
     }
   }
@@ -3640,6 +3738,18 @@
       this.addHistoryState(stashedUndo, redo);
     }, this);
 
+    gui.on('vertex_insert', function(e) {
+      var target = gui.model.getActiveLayer();
+      var arcs = target.dataset.arcs;
+      var undo = function() {
+        internal.deleteVertex(arcs, e.vertex_id);
+      };
+      var redo = function() {
+        internal.insertVertex(arcs, e.vertex_id, e.coordinates);
+      };
+      this.addHistoryState(undo, redo);
+    }, this);
+
     this.clear = function() {
       reset();
     };
@@ -3799,7 +3909,7 @@
     };
   }
 
-  utils.inherit(ModeSwitcher, EventDispatcher);
+  utils$1.inherit(ModeSwitcher, EventDispatcher);
 
   function KeyboardEvents(gui) {
     var self = this;
@@ -3827,7 +3937,7 @@
     };
   }
 
-  utils.inherit(KeyboardEvents, EventDispatcher);
+  utils$1.inherit(KeyboardEvents, EventDispatcher);
 
   function InteractionMode(gui) {
 
@@ -3853,7 +3963,7 @@
       data: 'edit attributes',
       labels: 'position labels',
       location: 'drag points',
-      vertices: 'drag vertices',
+      vertices: 'edit vertices',
       selection: 'select features',
       off: 'turn off'
     };
@@ -4049,7 +4159,7 @@
   function Model(gui) {
     var self = new internal.Catalog();
     var deleteLayer = self.deleteLayer;
-    utils.extend(self, EventDispatcher.prototype);
+    utils$1.extend(self, EventDispatcher.prototype);
 
     // override Catalog method (so -drop command will work in web console)
     self.deleteLayer = function(lyr, dataset) {
@@ -4083,7 +4193,7 @@
       if (flags.select) {
         self.dispatchEvent('select', active);
       }
-      self.dispatchEvent('update', utils.extend({flags: flags}, active));
+      self.dispatchEvent('update', utils$1.extend({flags: flags}, active));
     };
 
     self.selectLayer = function(lyr, dataset) {
@@ -4104,6 +4214,1251 @@
     };
 
     return self;
+  }
+
+  var Buffer = require('buffer').Buffer; // works with browserify
+
+  var context = createContext(); // command context (persist for the current command cycle)
+
+  function runningInBrowser() {
+    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  }
+
+  function getStateVar(key) {
+    return context[key];
+  }
+
+  function setStateVar(key, val) {
+    context[key] = val;
+  }
+
+  function createContext() {
+    return {
+      DEBUG: false,
+      QUIET: false,
+      VERBOSE: false,
+      defs: {},
+      input_files: []
+    };
+  }
+
+  // Install a new set of context variables, clear them when an async callback is called.
+  // @cb callback function to wrap
+  // returns wrapped callback function
+  function createAsyncContext(cb) {
+    context = createContext();
+    return function() {
+      cb.apply(null, utils.toArray(arguments));
+      // clear context after cb(), so output/errors can be handled in current context
+      context = createContext();
+    };
+  }
+
+  // Save the current context, restore it when an async callback is called
+  // @cb callback function to wrap
+  // returns wrapped callback function
+  function preserveContext(cb) {
+    var ctx = context;
+    return function() {
+      context = ctx;
+      cb.apply(null, utils.toArray(arguments));
+    };
+  }
+
+  var LOGGING = false;
+  var STDOUT = false; // use stdout for status messages
+
+  // These three functions can be reset by GUI using setLoggingFunctions();
+  var _error = function() {
+    var msg = utils.toArray(arguments).join(' ');
+    throw new Error(msg);
+  };
+
+  var _stop = function() {
+    throw new UserError(formatLogArgs(arguments));
+  };
+
+  var _interrupt = function() {
+    throw new NonFatalError(formatLogArgs(arguments));
+  };
+
+  var _message = function() {
+    logArgs(arguments);
+  };
+
+  function enableLogging() {
+    LOGGING = true;
+  }
+
+  function loggingEnabled() {
+    return !!LOGGING;
+  }
+
+  // Handle an unexpected condition (internal error)
+  function error() {
+    _error.apply(null, utils.toArray(arguments));
+  }
+
+  // Handle an error caused by invalid input or misuse of API
+  function stop() {
+    _stop.apply(null, utils.toArray(arguments));
+  }
+
+  function interrupt() {
+    _interrupt.apply(null, utils.toArray(arguments));
+  }
+
+  // Print a status message
+  function message() {
+    _message.apply(null, messageArgs(arguments));
+  }
+
+  // A way for the GUI to replace the CLI logging functions
+  function setLoggingFunctions(message, error, stop) {
+    _message = message;
+    _error = error;
+    _stop = stop;
+  }
+
+
+  // print a message to stdout
+  function print() {
+    STDOUT = true; // tell logArgs() to print to stdout, not stderr
+    // calling message() adds the "[command name]" prefix
+    _message(utils.toArray(arguments));
+    STDOUT = false;
+  }
+
+  function verbose() {
+    // verbose can be set globally with the -verbose command or separately for each command
+    if (getStateVar('VERBOSE') || getStateVar('verbose')) {
+      message.apply(null, arguments);
+    }
+  }
+
+  function debug() {
+    if (getStateVar('DEBUG') || getStateVar('debug')) {
+      logArgs(arguments);
+    }
+  }
+
+  function printError(err) {
+    var msg;
+    if (!LOGGING) return;
+    if (utils.isString(err)) {
+      err = new UserError(err);
+    }
+    if (err.name == 'NonFatalError') {
+      console.error(messageArgs([err.message]).join(' '));
+    } else if (err.name == 'UserError') {
+      msg = err.message;
+      if (!/Error/.test(msg)) {
+        msg = "Error: " + msg;
+      }
+      console.error(messageArgs([msg]).join(' '));
+      console.error("Run mapshaper -h to view help");
+    } else {
+      // not a user error (i.e. a bug in mapshaper)
+      console.error(err);
+      // throw err;
+    }
+  }
+
+  function UserError(msg) {
+    var err = new Error(msg);
+    err.name = 'UserError';
+    return err;
+  }
+
+  function NonFatalError(msg) {
+    var err = new Error(msg);
+    err.name = 'NonFatalError';
+    return err;
+  }
+
+  function formatColumns(arr, alignments) {
+    var widths = arr.reduce(function(memo, line) {
+      return line.map(function(str, i) {
+        return memo ? Math.max(memo[i], str.length) : str.length;
+      });
+    }, null);
+    return arr.map(function(line) {
+      line = line.map(function(str, i) {
+        var rt = alignments && alignments[i] == 'right';
+        var pad = (rt ? str.padStart : str.padEnd).bind(str);
+        return pad(widths[i], ' ');
+      });
+      return '  ' + line.join(' ');
+    }).join('\n');
+  }
+
+  // Format an array of (preferably short) strings in columns for console logging.
+  function formatStringsAsGrid(arr) {
+    // TODO: variable column width
+    var longest = arr.reduce(function(len, str) {
+          return Math.max(len, str.length);
+        }, 0),
+        colWidth = longest + 2,
+        perLine = Math.floor(80 / colWidth) || 1;
+    return arr.reduce(function(memo, name, i) {
+      var col = i % perLine;
+      if (i > 0 && col === 0) memo += '\n';
+      if (col < perLine - 1) { // right-pad all but rightmost column
+        name = utils.rpad(name, colWidth - 2, ' ');
+      }
+      return memo +  '  ' + name;
+    }, '');
+  }
+
+  // expose so GUI can use it
+  function formatLogArgs(args) {
+    return utils.toArray(args).join(' ');
+  }
+
+  function messageArgs(args) {
+    var arr = utils.toArray(args);
+    var cmd = getStateVar('current_command');
+    if (cmd && cmd != 'help') {
+      arr.unshift('[' + cmd + ']');
+    }
+    return arr;
+  }
+
+  function logArgs(args) {
+    if (!LOGGING || getStateVar('QUIET') || !utils.isArrayLike(args)) return;
+    var msg = formatLogArgs(args);
+    if (STDOUT) console.log(msg);
+    else console.error(msg);
+  }
+
+  var uniqCount = 0;
+  function getUniqueName(prefix) {
+    return (prefix || "__id_") + (++uniqCount);
+  }
+
+  function isFunction(obj) {
+    return typeof obj == 'function';
+  }
+
+  function isObject(obj) {
+    return obj === Object(obj); // via underscore
+  }
+
+  function clamp(val, min, max) {
+    return val < min ? min : (val > max ? max : val);
+  }
+
+  function isArray(obj) {
+    return Array.isArray(obj);
+  }
+
+  // Is obj a valid number or NaN? (test if obj is type number)
+  function isNumber(obj) {
+    return obj != null && obj.constructor == Number;
+  }
+
+  function isValidNumber(val) {
+    return isNumber(val) && !isNaN(val);
+  }
+
+  // Similar to isFinite() but does not coerce strings or other types
+  function isFiniteNumber(val) {
+    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
+  }
+
+  // This uses type conversion
+  // export function isFiniteNumber(val) {
+  //   return val > -Infinity && val < Infinity;
+  // }
+
+  function isNonNegNumber(val) {
+    return isNumber(val) && val >= 0;
+  }
+
+  function isInteger(obj) {
+    return isNumber(obj) && ((obj | 0) === obj);
+  }
+
+  function isEven(obj) {
+    return (obj % 2) === 0;
+  }
+
+  function isOdd(obj) {
+    return (obj % 2) === 1;
+  }
+
+  function isString(obj) {
+    return obj != null && obj.toString === String.prototype.toString;
+    // TODO: replace w/ something better.
+  }
+
+  function isDate(obj) {
+    return !!obj && obj.getTime === Date.prototype.getTime;
+  }
+
+  function isBoolean(obj) {
+    return obj === true || obj === false;
+  }
+
+  function formatDateISO(d) {
+    if (!isDate(d)) return '';
+    return d.toISOString().replace(':00.000Z', 'Z');
+  }
+
+  // Convert an array-like object to an Array, or make a copy if @obj is an Array
+  function toArray(obj) {
+    var arr;
+    if (!isArrayLike(obj)) error("toArray() requires an array-like object");
+    try {
+      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
+    } catch(e) {
+      // support ie8
+      arr = [];
+      for (var i=0, n=obj.length; i<n; i++) {
+        arr[i] = obj[i];
+      }
+    }
+    return arr;
+  }
+
+  // Array like: has length property, is numerically indexed and mutable.
+  // TODO: try to detect objects with length property but no indexed data elements
+  function isArrayLike(obj) {
+    if (!obj) return false;
+    if (isArray(obj)) return true;
+    if (isString(obj)) return false;
+    if (obj.length === 0) return true;
+    if (obj.length > 0) return true;
+    return false;
+  }
+
+  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
+  function addslashes(str) {
+    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
+  }
+
+  // Escape a literal string to use in a regexp.
+  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
+  function regexEscape(str) {
+    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  }
+
+
+  // See https://github.com/janl/mustache.js/blob/master/mustache.js
+  var entityMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '/': '&#x2F;'
+  };
+  function htmlEscape(s) {
+    return String(s).replace(/[&<>"'\/]/g, function(s) {
+      return entityMap[s];
+    });
+  }
+
+  function defaults(dest) {
+    for (var i=1, n=arguments.length; i<n; i++) {
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (key in dest === false && src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  }
+
+  function extend(o) {
+    var dest = o || {},
+        n = arguments.length,
+        key, i, src;
+    for (i=1; i<n; i++) {
+      src = arguments[i] || {};
+      for (key in src) {
+        if (src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  }
+
+  // Pseudoclassical inheritance
+  //
+  // Inherit from a Parent function:
+  //    inherit(Child, Parent);
+  // Call parent's constructor (inside child constructor):
+  //    this.__super__([args...]);
+  function inherit(targ, src) {
+    var f = function() {
+      if (this.__super__ == f) {
+        // add __super__ of parent to front of lookup chain
+        // so parent class constructor can call its parent using this.__super__
+        this.__super__ = src.prototype.__super__;
+        // call parent constructor function. this.__super__ now points to parent-of-parent
+        src.apply(this, arguments);
+        // remove temp __super__, expose targ.prototype.__super__ again
+        delete this.__super__;
+      }
+    };
+
+    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
+    // Extend targ prototype instead of wiping it out --
+    //   in case inherit() is called after targ.prototype = {stuff}; statement
+    targ.prototype = extend(new f(), targ.prototype); //
+    targ.prototype.constructor = targ;
+    targ.prototype.__super__ = f;
+  }
+
+
+  // Call @iter on each member of an array (similar to Array#reduce(iter))
+  //    iter: function(memo, item, callback)
+  // Call @done when all members have been processed or if an error occurs
+  //    done: function(err, memo)
+  // @memo: Initial value
+  //
+  function reduceAsync(arr, memo, iter, done) {
+    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
+    var i=0;
+    next(null, memo);
+
+    function next(err, memo) {
+      // Detach next operation from call stack to prevent overflow
+      // Don't use setTimeout(, 0) if setImmediate is available
+      // (setTimeout() can introduce a long delay if previous operation was slow,
+      //    as of Node 0.10.32 -- a bug?)
+      if (err) {
+        return done(err, null);
+      }
+      call(function() {
+        if (i < arr.length === false) {
+          done(null, memo);
+        } else {
+          iter(memo, arr[i++], next);
+        }
+      }, 0);
+    }
+  }
+
+
+  // Append elements of @src array to @dest array
+  function merge(dest, src) {
+    if (!isArray(dest) || !isArray(src)) {
+      error("Usage: merge(destArray, srcArray);");
+    }
+    for (var i=0, n=src.length; i<n; i++) {
+      dest.push(src[i]);
+    }
+    return dest;
+  }
+
+  // Returns elements in arr and not in other
+  // (similar to underscore diff)
+  function difference(arr, other) {
+    var index = arrayToIndex(other);
+    return arr.filter(function(el) {
+      return !Object.prototype.hasOwnProperty.call(index, el);
+    });
+  }
+
+  // Return the intersection of two arrays
+  function intersection(a, b) {
+    return a.filter(function(el) {
+      return b.includes(el);
+    });
+  }
+
+  function indexOf(arr, item) {
+    var nan = item !== item;
+    for (var i = 0, len = arr.length || 0; i < len; i++) {
+      if (arr[i] === item) return i;
+      if (nan && arr[i] !== arr[i]) return i;
+    }
+    return -1;
+  }
+
+  // Test a string or array-like object for existence of substring or element
+  function contains(container, item) {
+    if (isString(container)) {
+      return container.indexOf(item) != -1;
+    }
+    else if (isArrayLike(container)) {
+      return indexOf(container, item) != -1;
+    }
+    error("Expected Array or String argument");
+  }
+
+  function some(arr, test) {
+    return arr.reduce(function(val, item) {
+      return val || test(item); // TODO: short-circuit?
+    }, false);
+  }
+
+  function every(arr, test) {
+    return arr.reduce(function(val, item) {
+      return val && test(item);
+    }, true);
+  }
+
+  function find(arr, test, ctx) {
+    var matches = arr.filter(test, ctx);
+    return matches.length === 0 ? null : matches[0];
+  }
+
+  function range(len, start, inc) {
+    var arr = [],
+        v = start === void 0 ? 0 : start,
+        i = inc === void 0 ? 1 : inc;
+    while(len--) {
+      arr.push(v);
+      v += i;
+    }
+    return arr;
+  }
+
+  function repeat(times, func) {
+    var values = [],
+        val;
+    for (var i=0; i<times; i++) {
+      val = func(i);
+      if (val !== void 0) {
+        values[i] = val;
+      }
+    }
+    return values.length > 0 ? values : void 0;
+  }
+
+  // Calc sum, skip falsy and NaN values
+  // Assumes: no other non-numeric objects in array
+  //
+  function sum(arr, info) {
+    if (!isArrayLike(arr)) error ("sum() expects an array, received:", arr);
+    var tot = 0,
+        nan = 0,
+        val;
+    for (var i=0, n=arr.length; i<n; i++) {
+      val = arr[i];
+      if (val) {
+        tot += val;
+      } else if (isNaN(val)) {
+        nan++;
+      }
+    }
+    if (info) {
+      info.nan = nan;
+    }
+    return tot;
+  }
+
+  // Calculate min and max values of an array, ignoring NaN values
+  function getArrayBounds(arr) {
+    var min = Infinity,
+      max = -Infinity,
+      nan = 0, val;
+    for (var i=0, len=arr.length; i<len; i++) {
+      val = arr[i];
+      if (val !== val) nan++;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    return {
+      min: min,
+      max: max,
+      nan: nan
+    };
+  }
+
+  // export function uniq(src) {
+  //   var index = {};
+  //   return src.reduce(function(memo, el) {
+  //     if (el in index === false) {
+  //       index[el] = true;
+  //       memo.push(el);
+  //     }
+  //     return memo;
+  //   }, []);
+  // }
+
+  function uniq(src) {
+    var index = new Set();
+    var arr = [];
+    var item;
+    for (var i=0, n=src.length; i<n; i++) {
+      item = src[i];
+      if (!index.has(item)) {
+        arr.push(item);
+        index.add(item);
+      }
+    }
+    return arr;
+  }
+
+  function pluck(arr, key) {
+    return arr.map(function(obj) {
+      return obj[key];
+    });
+  }
+
+  function countValues(arr) {
+    return arr.reduce(function(memo, val) {
+      memo[val] = (val in memo) ? memo[val] + 1 : 1;
+      return memo;
+    }, {});
+  }
+
+  function indexOn(arr, k) {
+    return arr.reduce(function(index, o) {
+      index[o[k]] = o;
+      return index;
+    }, {});
+  }
+
+  function groupBy(arr, k) {
+    return arr.reduce(function(index, o) {
+      var keyval = o[k];
+      if (keyval in index) {
+        index[keyval].push(o);
+      } else {
+        index[keyval] = [o];
+      }
+      return index;
+    }, {});
+  }
+
+  function arrayToIndex(arr, val) {
+    var init = arguments.length > 1;
+    return arr.reduce(function(index, key) {
+      index[key] = init ? val : true;
+      return index;
+    }, {});
+  }
+
+  // Support for iterating over array-like objects, like typed arrays
+  function forEach(arr, func, ctx) {
+    if (!isArrayLike(arr)) {
+      throw new Error("#forEach() takes an array-like argument. " + arr);
+    }
+    for (var i=0, n=arr.length; i < n; i++) {
+      func.call(ctx, arr[i], i);
+    }
+  }
+
+  function forEachProperty(o, func, ctx) {
+    Object.keys(o).forEach(function(key) {
+      func.call(ctx, o[key], key);
+    });
+  }
+
+  function initializeArray(arr, init) {
+    for (var i=0, len=arr.length; i<len; i++) {
+      arr[i] = init;
+    }
+    return arr;
+  }
+
+  function replaceArray(arr, arr2) {
+    arr.splice(0, arr.length);
+    for (var i=0, n=arr2.length; i<n; i++) {
+      arr.push(arr2[i]);
+    }
+  }
+
+  function repeatString(src, n) {
+    var str = "";
+    for (var i=0; i<n; i++)
+      str += src;
+    return str;
+  }
+
+  function splitLines(str) {
+    return str.split(/\r?\n/);
+  }
+
+  function pluralSuffix(count) {
+    return count != 1 ? 's' : '';
+  }
+
+  function endsWith(str, ending) {
+      return str.indexOf(ending, str.length - ending.length) !== -1;
+  }
+
+  function lpad(str, size, pad) {
+    pad = pad || ' ';
+    str = String(str);
+    return repeatString(pad, size - str.length) + str;
+  }
+
+  function rpad(str, size, pad) {
+    pad = pad || ' ';
+    str = String(str);
+    return str + repeatString(pad, size - str.length);
+  }
+
+  function trim(str) {
+    return ltrim(rtrim(str));
+  }
+
+  var ltrimRxp = /^\s+/;
+  function ltrim(str) {
+    return str.replace(ltrimRxp, '');
+  }
+
+  var rtrimRxp = /\s+$/;
+  function rtrim(str) {
+    return str.replace(rtrimRxp, '');
+  }
+
+  function addThousandsSep(str) {
+    var fmt = '',
+        start = str[0] == '-' ? 1 : 0,
+        dec = str.indexOf('.'),
+        end = str.length,
+        ins = (dec == -1 ? end : dec) - 3;
+    while (ins > start) {
+      fmt = ',' + str.substring(ins, end) + fmt;
+      end = ins;
+      ins -= 3;
+    }
+    return str.substring(0, end) + fmt;
+  }
+
+  function numToStr(num, decimals) {
+    return decimals >= 0 ? num.toFixed(decimals) : String(num);
+  }
+
+  function formatNumber(val) {
+    return val + '';
+  }
+
+  function formatIntlNumber(val) {
+    var str = formatNumber(val);
+    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
+  }
+
+  function formatNumberForDisplay(num, decimals, nullStr, showPos) {
+    var fmt;
+    if (isNaN(num)) {
+      fmt = nullStr || '-';
+    } else {
+      fmt = numToStr(num, decimals);
+      fmt = addThousandsSep(fmt);
+      if (showPos && parseFloat(fmt) > 0) {
+        fmt = "+" + fmt;
+      }
+    }
+    return fmt;
+  }
+
+  function shuffle(arr) {
+    var tmp, i, j;
+    for (i = arr.length - 1; i > 0; i--) {
+      j = Math.floor(Math.random() * (i + 1));
+      tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
+
+  // Sort an array of objects based on one or more properties.
+  // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
+  //
+  function sortOn(arr) {
+    var comparators = [];
+    for (var i=1; i<arguments.length; i+=2) {
+      comparators.push(getKeyComparator(arguments[i], arguments[i+1]));
+    }
+    arr.sort(function(a, b) {
+      var cmp = 0,
+          i = 0,
+          n = comparators.length;
+      while (i < n && cmp === 0) {
+        cmp = comparators[i](a, b);
+        i++;
+      }
+      return cmp;
+    });
+    return arr;
+  }
+
+  // Sort array of values that can be compared with < > operators (strings, numbers)
+  // null, undefined and NaN are sorted to the end of the array
+  // default order is ascending
+  //
+  function genericSort(arr, ascending) {
+    var compare = getGenericComparator(ascending);
+    Array.prototype.sort.call(arr, compare);
+    return arr;
+  }
+
+  function getSortedIds(arr, asc) {
+    var ids = range(arr.length);
+    sortArrayIndex(ids, arr, asc);
+    return ids;
+  }
+
+  function sortArrayIndex(ids, arr, asc) {
+    var compare = getGenericComparator(asc);
+    ids.sort(function(i, j) {
+      // added i, j comparison to guarantee that sort is stable
+      var cmp = compare(arr[i], arr[j]);
+      return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
+    });
+  }
+
+  function reorderArray(arr, idxs) {
+    var len = idxs.length;
+    var arr2 = [];
+    for (var i=0; i<len; i++) {
+      var idx = idxs[i];
+      if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
+      arr2[i] = arr[idx];
+    }
+    replaceArray(arr, arr2);
+  }
+
+  function getKeyComparator(key, asc) {
+    var compare = getGenericComparator(asc);
+    return function(a, b) {
+      return compare(a[key], b[key]);
+    };
+  }
+
+  function getGenericComparator(asc) {
+    asc = asc !== false;
+    return function(a, b) {
+      var retn = 0;
+      if (b == null) {
+        retn = a == null ? 0 : -1;
+      } else if (a == null) {
+        retn = 1;
+      } else if (a < b) {
+        retn = asc ? -1 : 1;
+      } else if (a > b) {
+        retn = asc ? 1 : -1;
+      } else if (a !== a) {
+        retn = 1;
+      } else if (b !== b) {
+        retn = -1;
+      }
+      return retn;
+    };
+  }
+
+
+  // Generic in-place sort (null, NaN, undefined not handled)
+  function quicksort(arr, asc) {
+    quicksortPartition(arr, 0, arr.length-1);
+    if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
+    return arr;
+  }
+
+  // Moved out of quicksort() (saw >100% speedup in Chrome with deep recursion)
+  function quicksortPartition (a, lo, hi) {
+    var i = lo,
+        j = hi,
+        pivot, tmp;
+    while (i < hi) {
+      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) {
+          tmp = a[i];
+          a[i] = a[j];
+          a[j] = tmp;
+          i++;
+          j--;
+        }
+      }
+      if (lo < j) quicksortPartition(a, lo, j);
+      lo = i;
+      j = hi;
+    }
+  }
+
+
+  function findRankByValue(arr, value) {
+    if (isNaN(value)) return arr.length;
+    var rank = 1;
+    for (var i=0, n=arr.length; i<n; i++) {
+      if (value > arr[i]) rank++;
+    }
+    return rank;
+  }
+
+  function findValueByPct(arr, pct) {
+    var rank = Math.ceil((1-pct) * (arr.length));
+    return findValueByRank(arr, rank);
+  }
+
+  // See http://ndevilla.free.fr/median/median/src/wirth.c
+  // Elements of @arr are reordered
+  //
+  function findValueByRank(arr, rank) {
+    if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+
+    rank = clamp(rank | 0, 1, arr.length);
+    var k = rank - 1, // conv. rank to array index
+        n = arr.length,
+        l = 0,
+        m = n - 1,
+        i, j, val, tmp;
+
+    while (l < m) {
+      val = arr[k];
+      i = l;
+      j = m;
+      do {
+        while (arr[i] < val) {i++;}
+        while (val < arr[j]) {j--;}
+        if (i <= j) {
+          tmp = arr[i];
+          arr[i] = arr[j];
+          arr[j] = tmp;
+          i++;
+          j--;
+        }
+      } while (i <= j);
+      if (j < k) l = i;
+      if (k < i) m = j;
+    }
+    return arr[k];
+  }
+
+  //
+  //
+  function findMedian(arr) {
+    var n = arr.length,
+        rank = Math.floor(n / 2) + 1,
+        median = findValueByRank(arr, rank);
+    if ((n & 1) == 0) {
+      median = (median + findValueByRank(arr, rank - 1)) / 2;
+    }
+    return median;
+  }
+
+
+  function mean(arr) {
+    var count = 0,
+        avg = NaN,
+        val;
+    for (var i=0, n=arr.length; i<n; i++) {
+      val = arr[i];
+      if (isNaN(val)) continue;
+      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
+    }
+    return avg;
+  }
+
+
+  /*
+  A simplified version of printf formatting
+  Format codes: %[flags][width][.precision]type
+
+  supported flags:
+    +   add '+' before positive numbers
+    0   left-pad with '0'
+    '   Add thousands separator
+  width: 1 to many
+  precision: .(1 to many)
+  type:
+    s     string
+    di    integers
+    f     decimal numbers
+    xX    hexidecimal (unsigned)
+    %     literal '%'
+
+  Examples:
+    code    val    formatted
+    %+d     1      '+1'
+    %4i     32     '  32'
+    %04i    32     '0032'
+    %x      255    'ff'
+    %.2f    0.125  '0.13'
+    %'f     1000   '1,000'
+  */
+
+  // Usage: format(formatString, [values])
+  // Tip: When reusing the same format many times, use formatter() for 5x - 10x better performance
+  //
+  function format(fmt) {
+    var fn = formatter(fmt);
+    var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
+    return str;
+  }
+
+  function formatValue(val, matches) {
+    var flags = matches[1];
+    var padding = matches[2];
+    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+    var type = matches[4];
+    var isString = type == 's',
+        isHex = type == 'x' || type == 'X',
+        isInt = type == 'd' || type == 'i',
+        isFloat = type == 'f',
+        isNumber = !isString;
+
+    var sign = "",
+        padDigits = 0,
+        isZero = false,
+        isNeg = false;
+
+    var str, padChar, padStr;
+    if (isString) {
+      str = String(val);
+    }
+    else if (isHex) {
+      str = val.toString(16);
+      if (type == 'X')
+        str = str.toUpperCase();
+    }
+    else if (isNumber) {
+      // str = formatNumberForDisplay(val, isInt ? 0 : decimals);
+      str = numToStr(val, decimals);
+      if (str[0] == '-') {
+        isNeg = true;
+        str = str.substr(1);
+      }
+      isZero = parseFloat(str) == 0;
+      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
+        str = addThousandsSep(str);
+      }
+      if (!isZero) { // BUG: sign is added when num rounds to 0
+        if (isNeg) {
+          sign = "\u2212"; // U+2212
+        } else if (flags.indexOf('+') != -1) {
+          sign = '+';
+        }
+      }
+    }
+
+    if (padding) {
+      var strLen = str.length + sign.length;
+      var minWidth = parseInt(padding, 10);
+      if (strLen < minWidth) {
+        padDigits = minWidth - strLen;
+        padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+        padStr = repeatString(padChar, padDigits);
+      }
+    }
+
+    if (padDigits == 0) {
+      str = sign + str;
+    } else if (padChar == '0') {
+      str = sign + padStr + str;
+    } else {
+      str = padStr + sign + str;
+    }
+    return str;
+  }
+
+  // Get a function for interpolating formatted values into a string.
+  function formatter(fmt) {
+    var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+    var literals = [],
+        formatCodes = [],
+        startIdx = 0,
+        prefix = "",
+        matches = codeRxp.exec(fmt),
+        literal;
+
+    while (matches) {
+      literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+      if (matches[0] == '%%') {
+        prefix += literal + '%';
+      } else {
+        literals.push(prefix + literal);
+        prefix = '';
+        formatCodes.push(matches);
+      }
+      startIdx = codeRxp.lastIndex;
+      matches = codeRxp.exec(fmt);
+    }
+    literals.push(prefix + fmt.substr(startIdx));
+
+    return function() {
+      var str = literals[0],
+          n = arguments.length;
+      if (n != formatCodes.length) {
+        error("[format()] Data does not match format string; format:", fmt, "data:", arguments);
+      }
+      for (var i=0; i<n; i++) {
+        str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
+      }
+      return str;
+    };
+  }
+
+  function wildcardToRegExp(name) {
+    var rxp = name.split('*').map(function(str) {
+      return regexEscape(str);
+    }).join('.*');
+    return new RegExp('^' + rxp + '$');
+  }
+
+  function createBuffer(arg, arg2) {
+    if (isInteger(arg)) {
+      return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
+    } else {
+      // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
+      return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
+    }
+  }
+
+  function expandoBuffer(constructor, rate) {
+    var capacity = 0,
+        k = rate >= 1 ? rate : 1.2,
+        buf;
+    return function(size) {
+      if (size > capacity) {
+        capacity = Math.ceil(size * k);
+        buf = constructor ? new constructor(capacity) : createBuffer(capacity);
+      }
+      return buf;
+    };
+  }
+
+  function copyElements(src, i, dest, j, n, rev) {
+    var same = src == dest || src.buffer && src.buffer == dest.buffer;
+    var inc = 1,
+        offs = 0,
+        k;
+    if (rev) {
+      if (same) error('copy error');
+      inc = -1;
+      offs = n - 1;
+    }
+    if (same && j > i) {
+      for (k=n-1; k>=0; k--) {
+        dest[j + k] = src[i + k];
+      }
+    } else {
+      for (k=0; k<n; k++, offs += inc) {
+        dest[k + j] = src[i + offs];
+      }
+    }
+  }
+
+  function extendBuffer(src, newLen, copyLen) {
+    var len = Math.max(src.length, newLen);
+    var n = copyLen || src.length;
+    var dest = new src.constructor(len);
+    copyElements(src, 0, dest, 0, n);
+    return dest;
+  }
+
+  function mergeNames(name1, name2) {
+    var merged;
+    if (name1 && name2) {
+      merged = findStringPrefix(name1, name2).replace(/[-_]$/, '');
+    }
+    return merged || '';
+  }
+
+  function findStringPrefix(a, b) {
+    var i = 0;
+    for (var n=a.length; i<n; i++) {
+      if (a[i] !== b[i]) break;
+    }
+    return a.substr(0, i);
+  }
+
+  function parsePercent(o) {
+    var str = String(o);
+    var isPct = str.indexOf('%') > 0;
+    var pct;
+    if (isPct) {
+      pct = Number(str.replace('%', '')) / 100;
+    } else {
+      pct = Number(str);
+    }
+    if (!(pct >= 0 && pct <= 1)) {
+      stop(format("Invalid percentage: %s", str));
+    }
+    return pct;
+  }
+
+  function formatVersionedName(name, i) {
+    var suffix = String(i);
+    if (/[0-9]$/.test(name)) {
+      suffix = '-' + suffix;
+    }
+    return name + suffix;
+  }
+
+  function uniqifyNames(names, formatter) {
+    var counts = countValues(names),
+        format = formatter || formatVersionedName,
+        names2 = [];
+
+    names.forEach(function(name) {
+      var i = 0,
+          candidate = name,
+          versionedName;
+      while (
+          names2.indexOf(candidate) > -1 || // candidate name has already been used
+          candidate == name && counts[candidate] > 1 || // duplicate unversioned names
+          candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
+        i++;
+        versionedName = format(name, i);
+        if (!versionedName || versionedName == candidate) {
+          throw new Error("Naming error"); // catch buggy versioning function
+        }
+        candidate = versionedName;
+      }
+      names2.push(candidate);
+    });
+    return names2;
+  }
+
+
+  // Assume: @raw is string, undefined or null
+  function parseString(raw) {
+    return raw ? raw : "";
+  }
+
+  // Assume: @raw is string, undefined or null
+  // Use null instead of NaN for unparsable values
+  // (in part because if NaN is used, empty strings get converted to "NaN"
+  // when re-exported).
+  function parseNumber(raw) {
+    return parseToNum(raw, cleanNumericString);
+  }
+
+  function parseIntlNumber(raw) {
+    return parseToNum(raw, convertIntlNumString);
+  }
+
+  function parseToNum(raw, clean) {
+    var str = String(raw).trim();
+    var parsed = str ? Number(clean(str)) : NaN;
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  // Remove comma separators from strings
+  function cleanNumericString(str) {
+    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
+  }
+
+  function convertIntlNumString(str) {
+    str = str.replace(/[ .]([0-9]{3})/g, '$1');
+    return str.replace(',', '.');
+  }
+
+  function trimQuotes(raw) {
+    var len = raw.length, first, last;
+    if (len >= 2) {
+      first = raw.charAt(0);
+      last = raw.charAt(len-1);
+      if (first == '"' && last == '"' && !raw.includes('","') ||
+          first == "'" && last == "'" && !raw.includes("','")) {
+        return raw.substr(1, len-2);
+      }
+    }
+    return raw;
   }
 
   function absArcId(arcId) {
@@ -4129,6 +5484,61 @@
     return [xmin, ymin, xmax, ymax];
   }
 
+  function deleteVertex(arcs, i) {
+    var data = arcs.getVertexData();
+    var nn = data.nn;
+    var n = data.xx.length;
+    // avoid re-allocating memory
+    var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
+    var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
+    var count = 0;
+    var found = false;
+    for (var j=0; j<nn.length; j++) {
+      count += nn[j];
+      if (count >= i && !found) { // TODO: confirm this
+        nn[j] = nn[j] - 1;
+        found = true;
+      }
+    }
+    utils.copyElements(data.xx, 0, xx2, 0, i);
+    utils.copyElements(data.yy, 0, yy2, 0, i);
+    utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
+    utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
+    arcs.updateVertexData(nn, xx2, yy2, null);
+  }
+
+  function insertVertex(arcs, i, p) {
+    // TODO: add extra bytes to the buffers, to reduce new memory allocation
+    var data = arcs.getVertexData();
+    var nn = data.nn;
+    var n = data.xx.length;
+    var count = 0;
+    var found = false;
+    var xx2, yy2;
+    // avoid re-allocating memory on each insertion
+    if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
+      xx2 = new Float64Array(data.xx.buffer, 0, n+1);
+      yy2 = new Float64Array(data.yy.buffer, 0, n+1);
+    } else {
+      xx2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
+      yy2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
+    }
+    for (var j=0; j<nn.length; j++) {
+      count += nn[j];
+      if (count >= i && !found) { // TODO: confirm this
+        nn[j] = nn[j] + 1;
+        found = true;
+      }
+    }
+    utils.copyElements(data.xx, 0, xx2, 0, i);
+    utils.copyElements(data.yy, 0, yy2, 0, i);
+    utils.copyElements(data.xx, i, xx2, i+1, n-i);
+    utils.copyElements(data.yy, i, yy2, i+1, n-i);
+    xx2[i] = p[0];
+    yy2[i] = p[1];
+    arcs.updateVertexData(nn, xx2, yy2, null);
+  }
+
   function getShapeHitTest(displayLayer, ext, interactionMode) {
     var geoType = displayLayer.layer.geometry_type;
     var test;
@@ -4143,7 +5553,7 @@
     } else if (geoType == 'polygon') {
       test = polygonTest;
     } else {
-      error("Unexpected geometry type:", geoType);
+      error$1("Unexpected geometry type:", geoType);
     }
     return test;
 
@@ -4179,7 +5589,7 @@
         hits = pickNearestCandidates(cands, 0, maxDist);
       }
       return {
-        ids: utils.pluck(hits, 'id')
+        ids: utils$1.pluck(hits, 'id')
       };
     }
 
@@ -4208,8 +5618,8 @@
       cands = pickNearestCandidates(cands, bufDist, maxDist);
       var arcs = cands.map(function(cand) { return absArcId(cand.info.arcId); });
       return {
-        arcs: utils.uniq(arcs),
-        ids: utils.pluck(cands, 'id')
+        arcs: utils$1.uniq(arcs),
+        ids: utils$1.pluck(cands, 'id')
       };
     }
 
@@ -4220,7 +5630,7 @@
       sortByDistance(x, y, cands, displayLayer.arcs);
       cands = pickNearestCandidates(cands, bufDist, maxDist);
       return {
-        ids: utils.pluck(cands, 'id')
+        ids: utils$1.pluck(cands, 'id')
       };
     }
 
@@ -4231,7 +5641,7 @@
         cand.info = geom.getPointToShapeInfo(x, y, cands[i].shape, arcs);
         cand.dist = cand.info.distance;
       }
-      utils.sortOn(cands, 'dist');
+      utils$1.sortOn(cands, 'dist');
     }
 
     function pointTest(x, y) {
@@ -4258,7 +5668,7 @@
       });
       // console.log(hitThreshold, bullseye);
       return {
-        ids: utils.uniq(hits) // multipoint features can register multiple hits
+        ids: utils$1.uniq(hits) // multipoint features can register multiple hits
       };
     }
 
@@ -4466,9 +5876,9 @@
       var data = shapeTest(p[0], p[1]) || {ids:[]};
       var svgData = svgTest(e); // null or a data object
       if (svgData) { // mouse is over an SVG symbol
-        utils.extend(data, svgData);
+        utils$1.extend(data, svgData);
         // placing symbol id in front of any other hits
-        data.ids = utils.uniq([svgData.targetId].concat(data.ids));
+        data.ids = utils$1.uniq([svgData.targetId].concat(data.ids));
       }
       data.id = data.ids.length > 0 ? data.ids[0] : -1;
       return data;
@@ -4572,8 +5982,8 @@
 
     self.addSelectionIds = function(ids) {
       turnOn('selection');
-      selectionIds = utils.uniq(selectionIds.concat(ids));
-      ids = utils.uniq(storedData.ids.concat(ids));
+      selectionIds = utils$1.uniq(selectionIds.concat(ids));
+      ids = utils$1.uniq(storedData.ids.concat(ids));
       updateSelectionState({ids: ids});
     };
 
@@ -4746,7 +6156,7 @@
 
     function toggleId(id, ids) {
       if (ids.indexOf(id) > -1) {
-        return utils.difference(ids, [id]);
+        return utils$1.difference(ids, [id]);
       }
       return [id].concat(ids);
     }
@@ -4798,9 +6208,9 @@
     // d: event data (may be a pointer event object, an ordinary object or null)
     function triggerHitEvent(type, d) {
       // Merge stored hit data into the event data
-      var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+      var eventData = utils$1.extend({mode: interactionMode}, d || {}, storedData);
       if (transientIds.length) {
-        eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+        eventData.ids = utils$1.uniq(transientIds.concat(eventData.ids || []));
       }
       self.dispatchEvent(type, eventData);
     }
@@ -4934,7 +6344,7 @@
     }
   }
 
-  utils.inherit(Timer, EventDispatcher);
+  utils$1.inherit(Timer, EventDispatcher);
 
   function Tween(ease) {
     var self = this,
@@ -4956,7 +6366,7 @@
     }
   }
 
-  utils.inherit(Tween, EventDispatcher);
+  utils$1.inherit(Tween, EventDispatcher);
 
   Tween.sineInOut = function(n) {
     return 0.5 - Math.cos(n * Math.PI) / 2;
@@ -5024,7 +6434,7 @@
     update();
   }
 
-  utils.inherit(ElementPosition, EventDispatcher);
+  utils$1.inherit(ElementPosition, EventDispatcher);
 
   function MouseWheelDirection() {
     var prevTime = 0;
@@ -5122,13 +6532,13 @@
           // Decelerate towards the end of the sustain interval (for smoother zooming)
           multiplier *= Tween.quadraticOut(1 - fadeFactor);
         }
-        obj = utils.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
+        obj = utils$1.extend({direction: wheelDirection, multiplier: multiplier}, mouse.mouseData());
         self.dispatchEvent('mousewheel', obj);
       }
     }
   }
 
-  utils.inherit(MouseWheel, EventDispatcher);
+  utils$1.inherit(MouseWheel, EventDispatcher);
 
 
   function MouseArea(element, pos) {
@@ -5182,7 +6592,7 @@
     };
 
     this.mouseData = function() {
-      return utils.extend({}, _prevEvt);
+      return utils$1.extend({}, _prevEvt);
     };
 
     function onAreaDown(e) {
@@ -5241,7 +6651,7 @@
           dragX: evt.pageX - _downEvt.pageX,
           dragY: evt.pageY - _downEvt.pageY
         };
-        _self.dispatchEvent('drag', utils.extend(obj, evt));
+        _self.dispatchEvent('drag', utils$1.extend(obj, evt));
       } else {
         _self.dispatchEvent('hover', evt);
       }
@@ -5273,7 +6683,7 @@
     }
   }
 
-  utils.inherit(MouseArea, EventDispatcher);
+  utils$1.inherit(MouseArea, EventDispatcher);
 
   function initVariableClick(node, cb) {
     var downEvent = null;
@@ -5420,7 +6830,7 @@
           maxScale = 4,
           minTime = 100,
           maxTime = 800,
-          time = utils.clamp(clickTime || 200, minTime, maxTime),
+          time = utils$1.clamp(clickTime || 200, minTime, maxTime),
           k = (time - minTime) / (maxTime - minTime),
           scale = minScale + k * (maxScale - minScale);
       return 1 + scale * zoomScaleMultiplier;
@@ -5647,7 +7057,7 @@
           rows = 0;
       // self.hide(); // clean up if panel is already open
       el.empty(); // clean up if panel is already open
-      utils.forEachProperty(rec, function(v, k) {
+      utils$1.forEachProperty(rec, function(v, k) {
         var type;
         // missing GeoJSON fields are set to undefined on import; skip these
         if (v !== undefined) {
@@ -5675,7 +7085,7 @@
         // Some individual features can have undefined values for some or all of
         // their data properties (properties are set to undefined when an input JSON file
         // has inconsistent fields, or after force-merging layers with inconsistent fields).
-        el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
+        el.html(utils$1.format('<div class="note">This %s is missing attribute data.</div>',
             table && table.getFields().length > 0 ? 'feature': 'layer'));
       }
     }
@@ -5686,7 +7096,7 @@
       var str = formatInspectorValue(val, type);
       var cell = El('tr')
           .appendTo(table)
-          .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
+          .html(utils$1.format(rowHtml, key, utils$1.htmlEscape(str)))
           .findChild('.value');
       setFieldClass(cell, val, type);
       if (editable) {
@@ -5695,7 +7105,7 @@
     }
 
     function setFieldClass(el, val, type) {
-      var isNum = type ? type == 'number' : utils.isNumber(val);
+      var isNum = type ? type == 'number' : utils$1.isNumber(val);
       var isNully = val === undefined || val === null || val !== val;
       var isEmpty = val === '';
       el.classed('num-field', isNum);
@@ -5735,7 +7145,7 @@
   function formatInspectorValue(val, type) {
     var str;
     if (type == 'date') {
-      str = utils.formatDateISO(val);
+      str = utils$1.formatDateISO(val);
     } else if (type == 'object') {
       str = val ? JSON.stringify(val) : "";
     } else {
@@ -5934,7 +7344,7 @@
   // handle either numeric strings or numbers in fields
   function applyDelta(rec, key, delta) {
     var currVal = rec[key];
-    var isString = utils.isString(currVal);
+    var isString = utils$1.isString(currVal);
     var newVal = (+currVal + delta) || 0;
     rec[key] = isString ? String(newVal) : newVal;
   }
@@ -5962,7 +7372,7 @@
     hit.on('drag', function(e) {
       if (!active(e)) return;
       if (e.id != activeId) {
-        error("Mismatched hit ids:", e.id, activeId);
+        error$1("Mismatched hit ids:", e.id, activeId);
       }
       var scale = ext.getSymbolScale() || 1;
       var textNode;
@@ -6112,6 +7522,10 @@
     }
   }
 
+  var HOVER_THRESHOLD = 8;
+  var MIDPOINT_THRESHOLD = 12;
+
+
   function initVertexDragging(gui, ext, hit) {
     var activeShapeId = -1;
     var draggedVertexIds = null;
@@ -6147,16 +7561,34 @@
       var p2 = target.arcs.getVertex2(nearestIds[0]);
       var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
       var pixelDist = dist / ext.getPixelSize();
-      if (pixelDist > 5) {
+      if (pixelDist > HOVER_THRESHOLD) {
         draggedVertexIds = null;
         return null;
       }
       return nearestIds;
     }
 
+    function insertMidpoint(v) {
+      var target = hit.getHitTarget();
+      internal.insertVertex(target.arcs, v.i, v.point);
+    }
+
     hit.on('dragstart', function(e) {
       if (!active(e)) return;
-      draggedVertexIds = findDraggableVertices(e);
+      if (activeMidpoint) {
+        insertMidpoint(activeMidpoint);
+        draggedVertexIds = [activeMidpoint.i];
+        // TODO: combine vertex insertion undo/redo actions with
+        // vertex_dragend undo/redo actions
+        gui.dispatchEvent('vertex_insert', {
+          FID: activeShapeId,
+          vertex_id: activeMidpoint.i,
+          coordinates: activeMidpoint.point
+        });
+        activeMidpoint = null;
+      } else {
+        draggedVertexIds = findDraggableVertices(e);
+      }
       if (!draggedVertexIds) return;
       setHoverVertex(draggedVertexIds[0]);
       activeShapeId = e.id;
@@ -6197,6 +7629,7 @@
 
     // highlight hit vertex in path edit mode
     hit.on('hover', function(e) {
+      activeMidpoint = null;
       if (!active(e) || draggedVertexIds) return; // no hover effect while dragging
       var vertexIds = findDraggableVertices(e);
       if (vertexIds) {
@@ -6204,13 +7637,20 @@
         return;
       }
       var target = hit.getHitTarget();
+      // vertex insertion doesn't work yet with simplification applied
+      if (!target.arcs.isFlat()) return;
       var shp = target.layer.shapes[e.id];
       var p = ext.translatePixelCoords(e.x, e.y);
-      console.log('*', p, p2);
-      clearHoverVertex();
+      var midpoint = findNearestMidpoint(p, shp, target.arcs);
+      if (midpoint && midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD) {
+        hit.setHoverVertex(midpoint.point);
+        activeMidpoint = midpoint;
+      } else {
+        clearHoverVertex();
+      }
     }, null, 100);
-
   }
+
 
   // Given a location @p (e.g. corresponding to the mouse pointer location),
   // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
@@ -6219,10 +7659,29 @@
   //   2. the segment containing @p is longer than a minimum distance in pixels.
   //
   function findNearestMidpoint(p, shp, arcs) {
-    var v1 = internal.findNearestVertex(p[0], p[1], shp, arcs);
-    var v0 = internal.findAdjacentVertex(v1, shp, arcs, -1);
-    var v2 = internal.findAdjacentVertex(v1, shp, arcs, 1);
-
+    // var v1 = internal.findNearestVertex(p[0], p[1], shp, arcs);
+    // var v0 = internal.findAdjacentVertex(v1, shp, arcs, -1);
+    // var v2 = internal.findAdjacentVertex(v1, shp, arcs, 1);
+    var minDist = Infinity, v;
+    internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
+      var x1 = xx[i],
+          y1 = yy[i],
+          x2 = xx[j],
+          y2 = yy[j],
+          cx = (x1 + x2) / 2,
+          cy = (y1 + y2) / 2,
+          dist = geom.distance2D(cx, cy, p[0], p[1]);
+      if (dist < minDist) {
+        minDist = dist;
+        v = {
+          i: (i < j ? i : j) + 1, // insertion point
+          segment: [i, j],
+          point: [cx, cy],
+          distance: dist
+        };
+      }
+    });
+    return v || null;
   }
 
   function initInteractiveEditing(gui, ext, hit) {
@@ -6346,7 +7805,7 @@
   }
 
   function getDefaultStyle(lyr, baseStyle) {
-    var style = utils.extend({}, baseStyle);
+    var style = utils$1.extend({}, baseStyle);
     // reduce the dot size of large point layers
     if (lyr.geometry_type == 'point' && style.dotSize > 0) {
       style.dotSize *= getDotScale$1(lyr);
@@ -6412,7 +7871,7 @@
     var topId = o.id; // pinned id (if pinned) or hover id
     var topIdx = -1;
     var styler = function(style, i) {
-      utils.extend(style, i === topIdx ? topStyle: baseStyle);
+      utils$1.extend(style, i === topIdx ? topStyle: baseStyle);
       // kludge to show vertices when editing path shapes
       if (o.mode == 'vertices') {
         style.vertices = true;
@@ -6531,7 +7990,7 @@
     if (lyr.geometry_type == 'point') {
       return fields.indexOf('r') > -1; // require 'r' field for point symbols
     }
-    return utils.difference(fields, ['opacity', 'class']).length > 0;
+    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
   }
 
 
@@ -6688,7 +8147,7 @@
     }
 
     function maxAbs() {
-      return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
+      return Math.max.apply(null, utils$1.toArray(arguments).map(Math.abs));
     }
 
     function limitScale(scale) {
@@ -6742,7 +8201,7 @@
     }
   }
 
-  utils.inherit(MapExtent, EventDispatcher);
+  utils$1.inherit(MapExtent, EventDispatcher);
 
   // TODO: consider moving this upstream
   function getArcsForRendering(obj, ext) {
@@ -6891,7 +8350,7 @@
       var t = getScaledTransform(_ext);
       var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
       var color = style.strokeColor || 'black';
-      var radius2 = radius * 2;
+      var radius2 = radius * 1.7;
       _ctx.beginPath();
       _ctx.fillStyle = color;
       for (var i=0; i<shapes.length; i++) {
@@ -6932,7 +8391,7 @@
         key = getStyleKey(style);
         if (key in styleIndex === false) {
           styleIndex[key] = {
-            style: utils.defaults({}, style),
+            style: utils$1.defaults({}, style),
             shapes: []
           };
         }
@@ -7407,7 +8866,7 @@
     var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
     var obj = internal.getEmptyLayerForSVG(lyr, {});
     if (!frame) {
-      stop('Missing map frame data');
+      stop$1('Missing map frame data');
     }
     obj.properties.transform = getSvgFurnitureTransform(ext);
     obj.properties.class = 'mapshaper-svg-furniture';
@@ -7435,7 +8894,7 @@
       var html = '';
       // generate a unique id so layer can be identified when symbols are repositioned
       // use it as a class name to avoid id collisions
-      var id = utils.getUniqueName();
+      var id = utils$1.getUniqueName();
       var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
       g.setAttribute('class', classNames.join(' '));
       target.svg_id = id;
@@ -7886,7 +9345,7 @@
     }
 
     if (obj.tabular) {
-      utils.extend(obj, getDisplayLayerForTable(layer.data));
+      utils$1.extend(obj, getDisplayLayerForTable(layer.data));
     }
 
     // dynamic reprojection (arcs were already reprojected above)
@@ -7944,7 +9403,7 @@
     return ids;
   }
 
-  utils.inherit(MshpMap, EventDispatcher);
+  utils$1.inherit(MshpMap, EventDispatcher);
 
   function MshpMap(gui) {
     var opts = gui.options,
@@ -8038,7 +9497,7 @@
     this.setDisplayCRS = function(crs) {
       // TODO: update bounds of frame layer, if there is a frame layer
       var oldCRS = this.getDisplayCRS();
-      var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+      var newCRS = utils$1.isString(crs) ? internal.getCRS(crs) : crs;
       // TODO: handle case that old and new CRS are the same
       _dynamicCRS = newCRS;
       if (!_activeLyr) return; // stop here if no layers have been selected
@@ -8166,7 +9625,7 @@
     function updateOverlayLayer(e) {
       var style = getOverlayStyle(_activeLyr.layer, e);
       if (style) {
-        _overlayLyr = utils.defaults({
+        _overlayLyr = utils$1.defaults({
           layer: filterLayerByIds(_activeLyr.layer, style.ids),
           style: style
         }, _activeLyr);
@@ -8331,7 +9790,7 @@
             // kludge to hide ghosted layers when reference layers are present
             // TODO: consider never showing ghosted layers (which appear after
             // commands like dissolve and filter).
-            mapLayer.style = utils.defaults({
+            mapLayer.style = utils$1.defaults({
               strokeColors: [null, mapLayer.style.strokeColors[1]]
             }, mapLayer.style);
           }
@@ -8387,7 +9846,7 @@
 
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();
-    opts = utils.extend({
+    opts = utils$1.extend({
       // defaults
       homeControl: true,
       zoomControl: true,

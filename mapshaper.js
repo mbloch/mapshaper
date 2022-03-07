@@ -994,15 +994,23 @@
   }
 
   function copyElements(src, i, dest, j, n, rev) {
-    if (src === dest && j > i) error ("copy error");
+    var same = src == dest || src.buffer && src.buffer == dest.buffer;
     var inc = 1,
-        offs = 0;
+        offs = 0,
+        k;
     if (rev) {
+      if (same) error('copy error');
       inc = -1;
       offs = n - 1;
     }
-    for (var k=0; k<n; k++, offs += inc) {
-      dest[k + j] = src[i + offs];
+    if (same && j > i) {
+      for (k=n-1; k>=0; k--) {
+        dest[j + k] = src[i + k];
+      }
+    } else {
+      for (k=0; k<n; k++, offs += inc) {
+        dest[k + j] = src[i + offs];
+      }
     }
   }
 
@@ -1755,6 +1763,69 @@
     }
     return [xmin, ymin, xmax, ymax];
   }
+
+  function deleteVertex(arcs, i) {
+    var data = arcs.getVertexData();
+    var nn = data.nn;
+    var n = data.xx.length;
+    // avoid re-allocating memory
+    var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
+    var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
+    var count = 0;
+    var found = false;
+    for (var j=0; j<nn.length; j++) {
+      count += nn[j];
+      if (count >= i && !found) { // TODO: confirm this
+        nn[j] = nn[j] - 1;
+        found = true;
+      }
+    }
+    utils.copyElements(data.xx, 0, xx2, 0, i);
+    utils.copyElements(data.yy, 0, yy2, 0, i);
+    utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
+    utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
+    arcs.updateVertexData(nn, xx2, yy2, null);
+  }
+
+  function insertVertex(arcs, i, p) {
+    // TODO: add extra bytes to the buffers, to reduce new memory allocation
+    var data = arcs.getVertexData();
+    var nn = data.nn;
+    var n = data.xx.length;
+    var count = 0;
+    var found = false;
+    var xx2, yy2;
+    // avoid re-allocating memory on each insertion
+    if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
+      xx2 = new Float64Array(data.xx.buffer, 0, n+1);
+      yy2 = new Float64Array(data.yy.buffer, 0, n+1);
+    } else {
+      xx2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
+      yy2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
+    }
+    for (var j=0; j<nn.length; j++) {
+      count += nn[j];
+      if (count >= i && !found) { // TODO: confirm this
+        nn[j] = nn[j] + 1;
+        found = true;
+      }
+    }
+    utils.copyElements(data.xx, 0, xx2, 0, i);
+    utils.copyElements(data.yy, 0, yy2, 0, i);
+    utils.copyElements(data.xx, i, xx2, i+1, n-i);
+    utils.copyElements(data.yy, i, yy2, i+1, n-i);
+    xx2[i] = p[0];
+    yy2[i] = p[1];
+    arcs.updateVertexData(nn, xx2, yy2, null);
+  }
+
+  var ArcUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    absArcId: absArcId,
+    calcArcBounds: calcArcBounds,
+    deleteVertex: deleteVertex,
+    insertVertex: insertVertex
+  });
 
   var WGS84 = {
     // https://en.wikipedia.org/wiki/Earth_radius
@@ -5499,6 +5570,8 @@
         _zz = null;
       }
     };
+
+    this.isFlat = function() { return !_zz; };
 
     this.getRetainedInterval = function() {
       return _zlimit;
@@ -23449,7 +23522,16 @@ ${svg}
     // should be in gui-model.js, moved here for testing
     this.getActiveLayer = function() {
       var targ = (this.getDefaultTargets() || [])[0];
-      return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
+      // var lyr = targ.layers[0];
+      // Reasons to select the last layer of a multi-layer target:
+      // * This layer was imported last
+      // * This layer is displayed on top of other layers
+      // * This layer is at the top of the layers list
+      // * In TopoJSON input, it makes sense to think of the last object/layer
+      //   as the topmost one -- it corresponds to the painter's algorithm and
+      //   the way that objects are ordered in SVG.
+      var lyr = targ.layers[targ.layers.length - 1];
+      return targ ? {layer: lyr, dataset: targ.dataset} : null;
     };
 
     function layerObject(lyr, dataset) {
@@ -40278,6 +40360,7 @@ ${svg}
     AnchorPoints,
     ArcClassifier,
     ArcDissolve,
+    ArcUtils,
     Bbox2Clipping,
     BinArray$1,
     BufferCommon,
