@@ -1,3 +1,6 @@
+v0.5.94
+* Added file_exists() test to -if/-elif expression context.
+
 v0.5.93
 * Add a vertex in "edit vertices" mode by dragging the midpoint of a segment.
 
