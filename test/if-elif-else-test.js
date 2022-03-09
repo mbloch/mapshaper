@@ -82,4 +82,19 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+
+  it ('test file_exists() function', function(done) {
+    var data = [{name: 'a'}, {name: 'b'}];
+    var cmd = `-i data.json -if 'file_exists("package.json")' -each 'name = "c"' -endif -o`;
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{
+        name: 'c'
+      }, {
+        name: 'c'
+      }]);
+      done();
+    });
+  });
+
 })

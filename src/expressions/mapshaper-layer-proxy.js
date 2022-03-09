@@ -1,6 +1,7 @@
 import { getLayerBounds, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { addGetters } from '../expressions/mapshaper-expression-utils';
 import { getColumnType } from '../datatable/mapshaper-data-utils';
+import cli from '../cli/mapshaper-cli-utils';
 
 // Returns an object representing a layer in a JS expression
 export function getLayerProxy(lyr, arcs) {
@@ -26,6 +27,9 @@ export function getLayerProxy(lyr, arcs) {
     return lyr.data.getRecords().some(function(rec) {
       return rec && (rec[name] === val);
     });
+  };
+  obj.file_exists = function(name) {
+    return cli.isFile(name);
   };
   return obj;
 }
