@@ -9461,6 +9461,9 @@
         return rec && (rec[name] === val);
       });
     };
+    obj.file_exists = function(name) {
+      return cli.isFile(name);
+    };
     return obj;
   }
 

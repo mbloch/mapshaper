@@ -6003,6 +6003,18 @@
       triggerHitEvent('change');
     };
 
+    self.setSelectedVertices = function(points) {
+      if (!active) return;
+      storedData.selected_points = points;
+      triggerHitEvent('change');
+    };
+
+    self.clearSelectedVertices = function() {
+      if (!storedData.selected_points) return;
+      delete storedData.selected_points;
+      triggerHitEvent('change');
+    };
+
     self.clearVertexOverlay = function() {
       if (!storedData.hit_coordinates) return;
       delete storedData.hit_coordinates;
@@ -7573,6 +7585,21 @@
       internal.insertVertex(target.arcs, v.i, v.point);
     }
 
+    function toggleVertexSelection(ids) {
+      if (!ids || ids.length === 0) return;
+      if (!selectedVertexIds) {
+        selectedVertexIds = ids;
+      } else {
+        var intersection = utils$1.intersection(selectedVertexIds, ids);
+        var union = selectedVertexIds.concat(ids);
+        selectedVertexIds = utils$1.difference(union, intersection);
+      }
+      // get coordinates
+      var target = hit.getHitTarget();
+      var points = selectedVertexIds.map(function(id) { return target.arcs.getVertex2(id); });
+      hit.setSelectedVertices(points);
+    }
+
     hit.on('dragstart', function(e) {
       if (!active(e)) return;
       if (activeMidpoint) {
@@ -7613,6 +7640,9 @@
       // kludge to get dataset to recalculate internal bounding boxes
       hit.getHitTarget().arcs.transformPoints(function() {});
       clearHoverVertex();
+
+
+
       fire('vertex_dragend');
       draggedVertexIds = null;
       activeShapeId = -1;
@@ -7624,7 +7654,20 @@
     hit.on('click', function(e) {
       if (!active(e)) return;
       var vertices = findDraggableVertices(e); // same selection criteria as for dragging
-      // TODO
+
+      // CASE: no draggable vertices
+      //   if selected vertices, deselect, else no-op
+      // CASE: draggable vertices
+      //   if vertex is arc endpoint, ignore
+      //   if vertex is selected, deselect
+      //   if vertex is not selected, select
+
+      // if (vertices) {
+      //   toggleVertexSelection(vertices);
+      // } else if (selectedVertexIds) {
+      //   toggleVertexSelection(selectedVertexIds);
+      // }
+
     });
 
     // highlight hit vertex in path edit mode
@@ -7876,6 +7919,7 @@
       if (o.mode == 'vertices') {
         style.vertices = true;
         style.vertex_overlay = o.hit_coordinates || null;
+        style.selected_points = o.selected_points || null;
         style.fillColor = null;
       }
     };
@@ -8351,24 +8395,37 @@
       var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
       var color = style.strokeColor || 'black';
       var radius2 = radius * 1.7;
+      var i, j, p;
       _ctx.beginPath();
       _ctx.fillStyle = color;
-      for (var i=0; i<shapes.length; i++) {
+      for (i=0; i<shapes.length; i++) {
         var shp = shapes[i];
         if (!shp || filter && !filter(shp)) continue;
-        for (var j=0; j<shp.length; j++) {
+        for (j=0; j<shp.length; j++) {
           iter.init(shp[j]);
           while (iter.hasNext()) {
             drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
           }
         }
       }
+
       if (style.vertex_overlay) {
-        var p = style.vertex_overlay;
+        p = style.vertex_overlay;
         drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
       }
       _ctx.fill();
       _ctx.closePath();
+
+      if (style.selected_points) {
+        _ctx.beginPath();
+        _ctx.fillStyle = 'magenta';
+        for (i=0; i<style.selected_points.length; i++) {
+          p = style.selected_points[i];
+          drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
+        }
+        _ctx.fill();
+        _ctx.closePath();
+      }
     };
 
     // Optimized to draw paths in same-style batches (faster Canvas drawing)
