@@ -174,6 +174,7 @@ export function getOverlayStyle(lyr, o) {
     if (o.mode == 'vertices') {
       style.vertices = true;
       style.vertex_overlay = o.hit_coordinates || null;
+      style.selected_points = o.selected_points || null;
       style.fillColor = null;
     }
   };

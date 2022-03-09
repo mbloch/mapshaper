@@ -1,4 +1,4 @@
-import { error, internal, geom  } from './gui-core';
+import { error, internal, geom, utils } from './gui-core';
 
 var HOVER_THRESHOLD = 8;
 var MIDPOINT_THRESHOLD = 12;
@@ -51,6 +51,21 @@ export function initVertexDragging(gui, ext, hit) {
     internal.insertVertex(target.arcs, v.i, v.point);
   }
 
+  function toggleVertexSelection(ids) {
+    if (!ids || ids.length === 0) return;
+    if (!selectedVertexIds) {
+      selectedVertexIds = ids;
+    } else {
+      var intersection = utils.intersection(selectedVertexIds, ids);
+      var union = selectedVertexIds.concat(ids);
+      selectedVertexIds = utils.difference(union, intersection);
+    }
+    // get coordinates
+    var target = hit.getHitTarget();
+    var points = selectedVertexIds.map(function(id) { return target.arcs.getVertex2(id); });
+    hit.setSelectedVertices(points);
+  }
+
   hit.on('dragstart', function(e) {
     if (!active(e)) return;
     if (activeMidpoint) {
@@ -91,6 +106,9 @@ export function initVertexDragging(gui, ext, hit) {
     // kludge to get dataset to recalculate internal bounding boxes
     hit.getHitTarget().arcs.transformPoints(function() {});
     clearHoverVertex();
+
+
+
     fire('vertex_dragend');
     draggedVertexIds = null;
     activeShapeId = -1;
@@ -102,7 +120,20 @@ export function initVertexDragging(gui, ext, hit) {
   hit.on('click', function(e) {
     if (!active(e)) return;
     var vertices = findDraggableVertices(e); // same selection criteria as for dragging
-    // TODO
+
+    // CASE: no draggable vertices
+    //   if selected vertices, deselect, else no-op
+    // CASE: draggable vertices
+    //   if vertex is arc endpoint, ignore
+    //   if vertex is selected, deselect
+    //   if vertex is not selected, select
+
+    // if (vertices) {
+    //   toggleVertexSelection(vertices);
+    // } else if (selectedVertexIds) {
+    //   toggleVertexSelection(selectedVertexIds);
+    // }
+
   });
 
   // highlight hit vertex in path edit mode

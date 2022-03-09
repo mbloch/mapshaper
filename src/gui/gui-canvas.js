@@ -151,24 +151,37 @@ export function DisplayCanvas() {
     var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
     var color = style.strokeColor || 'black';
     var radius2 = radius * 1.7;
+    var i, j, p;
     _ctx.beginPath();
     _ctx.fillStyle = color;
-    for (var i=0; i<shapes.length; i++) {
+    for (i=0; i<shapes.length; i++) {
       var shp = shapes[i];
       if (!shp || filter && !filter(shp)) continue;
-      for (var j=0; j<shp.length; j++) {
+      for (j=0; j<shp.length; j++) {
         iter.init(shp[j]);
         while (iter.hasNext()) {
           drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
         }
       }
     }
+
     if (style.vertex_overlay) {
-      var p = style.vertex_overlay;
+      p = style.vertex_overlay;
       drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
     }
     _ctx.fill();
     _ctx.closePath();
+
+    if (style.selected_points) {
+      _ctx.beginPath();
+      _ctx.fillStyle = 'magenta';
+      for (i=0; i<style.selected_points.length; i++) {
+        p = style.selected_points[i];
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
+      }
+      _ctx.fill();
+      _ctx.closePath();
+    }
   };
 
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
