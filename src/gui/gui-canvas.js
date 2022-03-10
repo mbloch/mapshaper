@@ -171,17 +171,6 @@ export function DisplayCanvas() {
     }
     _ctx.fill();
     _ctx.closePath();
-
-    if (style.selected_points) {
-      _ctx.beginPath();
-      _ctx.fillStyle = 'magenta';
-      for (i=0; i<style.selected_points.length; i++) {
-        p = style.selected_points[i];
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
-      }
-      _ctx.fill();
-      _ctx.closePath();
-    }
   };
 
   // Optimized to draw paths in same-style batches (faster Canvas drawing)

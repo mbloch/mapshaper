@@ -122,18 +122,6 @@ export function InteractiveSelection(gui, ext, mouse) {
     triggerHitEvent('change');
   };
 
-  self.setSelectedVertices = function(points) {
-    if (!active) return;
-    storedData.selected_points = points;
-    triggerHitEvent('change');
-  };
-
-  self.clearSelectedVertices = function() {
-    if (!storedData.selected_points) return;
-    delete storedData.selected_points;
-    triggerHitEvent('change');
-  };
-
   self.clearVertexOverlay = function() {
     if (!storedData.hit_coordinates) return;
     delete storedData.hit_coordinates;
@@ -301,9 +289,11 @@ export function InteractiveSelection(gui, ext, mouse) {
       newData = noHitData();
       selectionIds = [];
     }
+
     if (!testHitChange(storedData, newData)) {
       return;
     }
+
     storedData = newData;
     gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
     if (active) {

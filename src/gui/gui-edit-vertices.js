@@ -7,7 +7,6 @@ var MIDPOINT_THRESHOLD = 12;
 export function initVertexDragging(gui, ext, hit) {
   var activeShapeId = -1;
   var draggedVertexIds = null;
-  var selectedVertexIds = null;
   var activeMidpoint; // {point, segment}
 
   function active(e) {
@@ -49,21 +48,6 @@ export function initVertexDragging(gui, ext, hit) {
   function insertMidpoint(v) {
     var target = hit.getHitTarget();
     internal.insertVertex(target.arcs, v.i, v.point);
-  }
-
-  function toggleVertexSelection(ids) {
-    if (!ids || ids.length === 0) return;
-    if (!selectedVertexIds) {
-      selectedVertexIds = ids;
-    } else {
-      var intersection = utils.intersection(selectedVertexIds, ids);
-      var union = selectedVertexIds.concat(ids);
-      selectedVertexIds = utils.difference(union, intersection);
-    }
-    // get coordinates
-    var target = hit.getHitTarget();
-    var points = selectedVertexIds.map(function(id) { return target.arcs.getVertex2(id); });
-    hit.setSelectedVertices(points);
   }
 
   hit.on('dragstart', function(e) {
@@ -116,23 +100,24 @@ export function initVertexDragging(gui, ext, hit) {
     gui.dispatchEvent('map-needs-refresh');
   });
 
-  // select clicked vertices
-  hit.on('click', function(e) {
+  hit.on('dblclick', function(e) {
     if (!active(e)) return;
     var vertices = findDraggableVertices(e); // same selection criteria as for dragging
-
-    // CASE: no draggable vertices
-    //   if selected vertices, deselect, else no-op
-    // CASE: draggable vertices
-    //   if vertex is arc endpoint, ignore
-    //   if vertex is selected, deselect
-    //   if vertex is not selected, select
-
-    // if (vertices) {
-    //   toggleVertexSelection(vertices);
-    // } else if (selectedVertexIds) {
-    //   toggleVertexSelection(selectedVertexIds);
-    // }
+    if (!vertices) return;
+    var target = hit.getHitTarget();
+    var vId = vertices[0];
+    if (internal.vertexIsArcStart(vId, target.arcs) ||
+        internal.vertexIsArcEnd(vId, target.arcs)) {
+      // TODO: support removing arc endpoints
+      return;
+    }
+    gui.dispatchEvent('vertex_delete', {
+      FID: activeShapeId,
+      vertex_id: vId
+    });
+    internal.deleteVertex(target.arcs, vId);
+    clearHoverVertex();
+    gui.dispatchEvent('map-needs-refresh');
 
   });
 

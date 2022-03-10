@@ -183,7 +183,7 @@ export function getOverlayStyle(lyr, o) {
   var ids = o.ids.filter(function(i) {
     return i != o.id; // move selected id to the end
   });
-  if (o.id > -1) {
+  if (o.id > -1) { // pinned or hover style
     topStyle = getSelectedFeatureStyle(lyr, o);
     topIdx = ids.length;
     ids.push(o.id); // put the pinned/hover feature last in the render order

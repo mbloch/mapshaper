@@ -84,6 +84,19 @@ export function Undo(gui) {
     this.addHistoryState(stashedUndo, redo);
   }, this);
 
+  gui.on('vertex_delete', function(e) {
+    var target = gui.model.getActiveLayer();
+    var arcs = target.dataset.arcs;
+    var p = arcs.getVertex2(e.vertex_id);
+    var redo = function() {
+      internal.deleteVertex(arcs, e.vertex_id);
+    };
+    var undo = function() {
+      internal.insertVertex(arcs, e.vertex_id, p);
+    };
+    this.addHistoryState(undo, redo);
+  }, this);
+
   gui.on('vertex_insert', function(e) {
     var target = gui.model.getActiveLayer();
     var arcs = target.dataset.arcs;
