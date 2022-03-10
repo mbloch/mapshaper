@@ -74,14 +74,25 @@ export function Undo(gui) {
     this.addHistoryState(stashedUndo, redo);
   }, this);
 
-  // undo/redo vertex dragging
-  gui.on('vertex_dragstart', function(e) {
-    stashedUndo = this.makeVertexSetter(e.FID, e.vertex_ids);
-  }, this);
-
   gui.on('vertex_dragend', function(e) {
-    var redo = this.makeVertexSetter(e.FID, e.vertex_ids);
-    this.addHistoryState(stashedUndo, redo);
+    var target = gui.model.getActiveLayer();
+    var arcs = target.dataset.arcs;
+    var startPoint = e.points[0];
+    var endPoint = internal.getVertexCoords(e.ids[0], arcs);
+    var undo = function() {
+      if (e.insertion) {
+        internal.deleteVertex(arcs, e.ids[0]);
+      } else {
+        snapVerticesToPoint(e.ids, startPoint, arcs, true);
+      }
+    };
+    var redo = function() {
+      if (e.insertion) {
+        internal.insertVertex(arcs, e.ids[0], e.points[0]);
+      }
+      snapVerticesToPoint(e.ids, endPoint, arcs, true);
+    };
+    this.addHistoryState(undo, redo);
   }, this);
 
   gui.on('vertex_delete', function(e) {
@@ -93,18 +104,6 @@ export function Undo(gui) {
     };
     var undo = function() {
       internal.insertVertex(arcs, e.vertex_id, p);
-    };
-    this.addHistoryState(undo, redo);
-  }, this);
-
-  gui.on('vertex_insert', function(e) {
-    var target = gui.model.getActiveLayer();
-    var arcs = target.dataset.arcs;
-    var undo = function() {
-      internal.deleteVertex(arcs, e.vertex_id);
-    };
-    var redo = function() {
-      internal.insertVertex(arcs, e.vertex_id, e.coordinates);
     };
     this.addHistoryState(undo, redo);
   }, this);
@@ -130,7 +129,7 @@ export function Undo(gui) {
     };
   };
 
-  this.makeVertexSetter = function(fid, ids) {
+  this.makeVertexSetter = function(ids) {
     var target = gui.model.getActiveLayer();
     var arcs = target.dataset.arcs;
     var p = internal.getVertexCoords(ids[0], arcs);

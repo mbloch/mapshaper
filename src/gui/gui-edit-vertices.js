@@ -1,23 +1,19 @@
 import { error, internal, geom, utils } from './gui-core';
 
+// pointer thresholds for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 8;
 var MIDPOINT_THRESHOLD = 12;
 
-
 export function initVertexDragging(gui, ext, hit) {
-  var activeShapeId = -1;
-  var draggedVertexIds = null;
-  var activeMidpoint; // {point, segment}
+  var activeMidpoint;
+  var dragInfo;
 
-  function active(e) {
-    return e.id > -1 && gui.interaction.getMode() == 'vertices';
+  function active() {
+    return gui.interaction.getMode() == 'vertices';
   }
 
-  function fire(type) {
-    gui.dispatchEvent(type, {
-      FID: activeShapeId,
-      vertex_ids: draggedVertexIds
-    });
+  function dragging() {
+    return active() && !!dragInfo;
   }
 
   function setHoverVertex(id) {
@@ -39,112 +35,102 @@ export function initVertexDragging(gui, ext, hit) {
     var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
     var pixelDist = dist / ext.getPixelSize();
     if (pixelDist > HOVER_THRESHOLD) {
-      draggedVertexIds = null;
       return null;
     }
-    return nearestIds;
-  }
-
-  function insertMidpoint(v) {
-    var target = hit.getHitTarget();
-    internal.insertVertex(target.arcs, v.i, v.point);
+    var points = nearestIds.map(function(i) {return target.arcs.getVertex2(i);});
+    return {
+      ids: nearestIds,
+      points: points
+    };
   }
 
   hit.on('dragstart', function(e) {
-    if (!active(e)) return;
+    if (!active()) return;
     if (activeMidpoint) {
-      insertMidpoint(activeMidpoint);
-      draggedVertexIds = [activeMidpoint.i];
-      // TODO: combine vertex insertion undo/redo actions with
-      // vertex_dragend undo/redo actions
-      gui.dispatchEvent('vertex_insert', {
-        FID: activeShapeId,
-        vertex_id: activeMidpoint.i,
-        coordinates: activeMidpoint.point
-      });
+      var target = hit.getHitTarget();
+      internal.insertVertex(target.arcs, activeMidpoint.i, activeMidpoint.point);
+      dragInfo = {
+        insertion: true,
+        ids: [activeMidpoint.i],
+        points: [activeMidpoint.point]
+      };
       activeMidpoint = null;
     } else {
-      draggedVertexIds = findDraggableVertices(e);
+      dragInfo = findDraggableVertices(e);
     }
-    if (!draggedVertexIds) return;
-    setHoverVertex(draggedVertexIds[0]);
-    activeShapeId = e.id;
-    fire('vertex_dragstart');
+    if (dragInfo) {
+      setHoverVertex(dragInfo.ids[0]);
+    }
   });
 
   hit.on('drag', function(e) {
-    if (!active(e) || !draggedVertexIds) return;
+    if (!dragging()) return;
     var target = hit.getHitTarget();
     var p = ext.translatePixelCoords(e.x, e.y);
     if (gui.keyboard.shiftIsPressed()) {
-      internal.snapPointToArcEndpoint(p, draggedVertexIds, target.arcs);
+      internal.snapPointToArcEndpoint(p, dragInfo.ids, target.arcs);
     }
-    internal.snapVerticesToPoint(draggedVertexIds, p, target.arcs);
-    setHoverVertex(draggedVertexIds[0]);
+    internal.snapVerticesToPoint(dragInfo.ids, p, target.arcs);
+    setHoverVertex(dragInfo.ids[0]);
     // redrawing the whole map updates the data layer as well as the overlay layer
     // gui.dispatchEvent('map-needs-refresh');
   });
 
   hit.on('dragend', function(e) {
-    if (!active(e) || !draggedVertexIds) return;
+    if (!dragging()) return;
     // kludge to get dataset to recalculate internal bounding boxes
     hit.getHitTarget().arcs.transformPoints(function() {});
     clearHoverVertex();
-
-
-
-    fire('vertex_dragend');
-    draggedVertexIds = null;
-    activeShapeId = -1;
-    // redraw data layer
+    gui.dispatchEvent('vertex_dragend', dragInfo);
     gui.dispatchEvent('map-needs-refresh');
+    dragInfo = null;
   });
 
   hit.on('dblclick', function(e) {
-    if (!active(e)) return;
-    var vertices = findDraggableVertices(e); // same selection criteria as for dragging
-    if (!vertices) return;
+    if (!active()) return;
+    var info = findDraggableVertices(e); // same selection criteria as for dragging
+    if (!info) return;
     var target = hit.getHitTarget();
-    var vId = vertices[0];
+    var vId = info.ids[0];
     if (internal.vertexIsArcStart(vId, target.arcs) ||
         internal.vertexIsArcEnd(vId, target.arcs)) {
       // TODO: support removing arc endpoints
       return;
     }
     gui.dispatchEvent('vertex_delete', {
-      FID: activeShapeId,
       vertex_id: vId
     });
     internal.deleteVertex(target.arcs, vId);
     clearHoverVertex();
     gui.dispatchEvent('map-needs-refresh');
-
   });
 
   // highlight hit vertex in path edit mode
   hit.on('hover', function(e) {
     activeMidpoint = null;
-    if (!active(e) || draggedVertexIds) return; // no hover effect while dragging
-    var vertexIds = findDraggableVertices(e);
-    if (vertexIds) {
-      setHoverVertex(vertexIds[0]);
+    if (!active() || dragging()) return; // no hover effect while dragging
+    var info = findDraggableVertices(e);
+    if (info) {
+      // hovering near a vertex: highlight the vertex
+      setHoverVertex(info.ids[0]);
       return;
     }
-    var target = hit.getHitTarget();
-    // vertex insertion doesn't work yet with simplification applied
-    if (!target.arcs.isFlat()) return;
-    var shp = target.layer.shapes[e.id];
+    // if hovering near a segment midpoint: show the midpoint and save midpoint info
     var p = ext.translatePixelCoords(e.x, e.y);
+    var target = hit.getHitTarget();
+    var shp = target.layer.shapes[e.id];
     var midpoint = findNearestMidpoint(p, shp, target.arcs);
-    if (midpoint && midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD) {
+    if (midpoint &&
+        midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD &&
+        target.arcs.isFlat()) { // vertex insertion not supported with simplification
       hit.setHoverVertex(midpoint.point);
       activeMidpoint = midpoint;
-    } else {
-      clearHoverVertex();
+      return;
     }
+    // pointer is not over a vertex or midpoint: clear hover effect
+    clearHoverVertex();
   }, null, 100);
 }
-
 
 // Given a location @p (e.g. corresponding to the mouse pointer location),
 // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
@@ -177,6 +163,3 @@ function findNearestMidpoint(p, shp, arcs) {
   });
   return v || null;
 }
-
-
-
