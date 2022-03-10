@@ -1,3 +1,6 @@
+v0.5.95
+* Added vertex deletion in "edit vertices" mode by double-clicking on non-endpoint vertices.
+
 v0.5.94
 * Added file_exists() test to -if/-elif expression context.
 
