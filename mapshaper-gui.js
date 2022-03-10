@@ -3728,24 +3728,36 @@
       this.addHistoryState(stashedUndo, redo);
     }, this);
 
-    // undo/redo vertex dragging
-    gui.on('vertex_dragstart', function(e) {
-      stashedUndo = this.makeVertexSetter(e.FID, e.vertex_ids);
-    }, this);
-
     gui.on('vertex_dragend', function(e) {
-      var redo = this.makeVertexSetter(e.FID, e.vertex_ids);
-      this.addHistoryState(stashedUndo, redo);
-    }, this);
-
-    gui.on('vertex_insert', function(e) {
       var target = gui.model.getActiveLayer();
       var arcs = target.dataset.arcs;
+      var startPoint = e.points[0];
+      var endPoint = internal.getVertexCoords(e.ids[0], arcs);
       var undo = function() {
-        internal.deleteVertex(arcs, e.vertex_id);
+        if (e.insertion) {
+          internal.deleteVertex(arcs, e.ids[0]);
+        } else {
+          snapVerticesToPoint(e.ids, startPoint, arcs, true);
+        }
       };
       var redo = function() {
-        internal.insertVertex(arcs, e.vertex_id, e.coordinates);
+        if (e.insertion) {
+          internal.insertVertex(arcs, e.ids[0], e.points[0]);
+        }
+        snapVerticesToPoint(e.ids, endPoint, arcs, true);
+      };
+      this.addHistoryState(undo, redo);
+    }, this);
+
+    gui.on('vertex_delete', function(e) {
+      var target = gui.model.getActiveLayer();
+      var arcs = target.dataset.arcs;
+      var p = arcs.getVertex2(e.vertex_id);
+      var redo = function() {
+        internal.deleteVertex(arcs, e.vertex_id);
+      };
+      var undo = function() {
+        internal.insertVertex(arcs, e.vertex_id, p);
       };
       this.addHistoryState(undo, redo);
     }, this);
@@ -3771,7 +3783,7 @@
       };
     };
 
-    this.makeVertexSetter = function(fid, ids) {
+    this.makeVertexSetter = function(ids) {
       var target = gui.model.getActiveLayer();
       var arcs = target.dataset.arcs;
       var p = internal.getVertexCoords(ids[0], arcs);
@@ -6003,18 +6015,6 @@
       triggerHitEvent('change');
     };
 
-    self.setSelectedVertices = function(points) {
-      if (!active) return;
-      storedData.selected_points = points;
-      triggerHitEvent('change');
-    };
-
-    self.clearSelectedVertices = function() {
-      if (!storedData.selected_points) return;
-      delete storedData.selected_points;
-      triggerHitEvent('change');
-    };
-
     self.clearVertexOverlay = function() {
       if (!storedData.hit_coordinates) return;
       delete storedData.hit_coordinates;
@@ -6182,9 +6182,11 @@
         newData = noHitData();
         selectionIds = [];
       }
+
       if (!testHitChange(storedData, newData)) {
         return;
       }
+
       storedData = newData;
       gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
       if (active) {
@@ -7534,25 +7536,20 @@
     }
   }
 
+  // pointer thresholds for hovering near a vertex or segment midpoint
   var HOVER_THRESHOLD = 8;
   var MIDPOINT_THRESHOLD = 12;
 
-
   function initVertexDragging(gui, ext, hit) {
-    var activeShapeId = -1;
-    var draggedVertexIds = null;
-    var selectedVertexIds = null;
-    var activeMidpoint; // {point, segment}
+    var activeMidpoint;
+    var dragInfo;
 
-    function active(e) {
-      return e.id > -1 && gui.interaction.getMode() == 'vertices';
+    function active() {
+      return gui.interaction.getMode() == 'vertices';
     }
 
-    function fire(type) {
-      gui.dispatchEvent(type, {
-        FID: activeShapeId,
-        vertex_ids: draggedVertexIds
-      });
+    function dragging() {
+      return active() && !!dragInfo;
     }
 
     function setHoverVertex(id) {
@@ -7574,126 +7571,102 @@
       var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
       var pixelDist = dist / ext.getPixelSize();
       if (pixelDist > HOVER_THRESHOLD) {
-        draggedVertexIds = null;
         return null;
       }
-      return nearestIds;
-    }
-
-    function insertMidpoint(v) {
-      var target = hit.getHitTarget();
-      internal.insertVertex(target.arcs, v.i, v.point);
-    }
-
-    function toggleVertexSelection(ids) {
-      if (!ids || ids.length === 0) return;
-      if (!selectedVertexIds) {
-        selectedVertexIds = ids;
-      } else {
-        var intersection = utils$1.intersection(selectedVertexIds, ids);
-        var union = selectedVertexIds.concat(ids);
-        selectedVertexIds = utils$1.difference(union, intersection);
-      }
-      // get coordinates
-      var target = hit.getHitTarget();
-      var points = selectedVertexIds.map(function(id) { return target.arcs.getVertex2(id); });
-      hit.setSelectedVertices(points);
+      var points = nearestIds.map(function(i) {return target.arcs.getVertex2(i);});
+      return {
+        ids: nearestIds,
+        points: points
+      };
     }
 
     hit.on('dragstart', function(e) {
-      if (!active(e)) return;
+      if (!active()) return;
       if (activeMidpoint) {
-        insertMidpoint(activeMidpoint);
-        draggedVertexIds = [activeMidpoint.i];
-        // TODO: combine vertex insertion undo/redo actions with
-        // vertex_dragend undo/redo actions
-        gui.dispatchEvent('vertex_insert', {
-          FID: activeShapeId,
-          vertex_id: activeMidpoint.i,
-          coordinates: activeMidpoint.point
-        });
+        var target = hit.getHitTarget();
+        internal.insertVertex(target.arcs, activeMidpoint.i, activeMidpoint.point);
+        dragInfo = {
+          insertion: true,
+          ids: [activeMidpoint.i],
+          points: [activeMidpoint.point]
+        };
         activeMidpoint = null;
       } else {
-        draggedVertexIds = findDraggableVertices(e);
+        dragInfo = findDraggableVertices(e);
       }
-      if (!draggedVertexIds) return;
-      setHoverVertex(draggedVertexIds[0]);
-      activeShapeId = e.id;
-      fire('vertex_dragstart');
+      if (dragInfo) {
+        setHoverVertex(dragInfo.ids[0]);
+      }
     });
 
     hit.on('drag', function(e) {
-      if (!active(e) || !draggedVertexIds) return;
+      if (!dragging()) return;
       var target = hit.getHitTarget();
       var p = ext.translatePixelCoords(e.x, e.y);
       if (gui.keyboard.shiftIsPressed()) {
-        internal.snapPointToArcEndpoint(p, draggedVertexIds, target.arcs);
+        internal.snapPointToArcEndpoint(p, dragInfo.ids, target.arcs);
       }
-      internal.snapVerticesToPoint(draggedVertexIds, p, target.arcs);
-      setHoverVertex(draggedVertexIds[0]);
+      internal.snapVerticesToPoint(dragInfo.ids, p, target.arcs);
+      setHoverVertex(dragInfo.ids[0]);
       // redrawing the whole map updates the data layer as well as the overlay layer
       // gui.dispatchEvent('map-needs-refresh');
     });
 
     hit.on('dragend', function(e) {
-      if (!active(e) || !draggedVertexIds) return;
+      if (!dragging()) return;
       // kludge to get dataset to recalculate internal bounding boxes
       hit.getHitTarget().arcs.transformPoints(function() {});
       clearHoverVertex();
-
-
-
-      fire('vertex_dragend');
-      draggedVertexIds = null;
-      activeShapeId = -1;
-      // redraw data layer
+      gui.dispatchEvent('vertex_dragend', dragInfo);
       gui.dispatchEvent('map-needs-refresh');
+      dragInfo = null;
     });
 
-    // select clicked vertices
-    hit.on('click', function(e) {
-      if (!active(e)) return;
-      var vertices = findDraggableVertices(e); // same selection criteria as for dragging
-
-      // CASE: no draggable vertices
-      //   if selected vertices, deselect, else no-op
-      // CASE: draggable vertices
-      //   if vertex is arc endpoint, ignore
-      //   if vertex is selected, deselect
-      //   if vertex is not selected, select
-
-      // if (vertices) {
-      //   toggleVertexSelection(vertices);
-      // } else if (selectedVertexIds) {
-      //   toggleVertexSelection(selectedVertexIds);
-      // }
-
+    hit.on('dblclick', function(e) {
+      if (!active()) return;
+      var info = findDraggableVertices(e); // same selection criteria as for dragging
+      if (!info) return;
+      var target = hit.getHitTarget();
+      var vId = info.ids[0];
+      if (internal.vertexIsArcStart(vId, target.arcs) ||
+          internal.vertexIsArcEnd(vId, target.arcs)) {
+        // TODO: support removing arc endpoints
+        return;
+      }
+      gui.dispatchEvent('vertex_delete', {
+        vertex_id: vId
+      });
+      internal.deleteVertex(target.arcs, vId);
+      clearHoverVertex();
+      gui.dispatchEvent('map-needs-refresh');
     });
 
     // highlight hit vertex in path edit mode
     hit.on('hover', function(e) {
       activeMidpoint = null;
-      if (!active(e) || draggedVertexIds) return; // no hover effect while dragging
-      var vertexIds = findDraggableVertices(e);
-      if (vertexIds) {
-        setHoverVertex(vertexIds[0]);
+      if (!active() || dragging()) return; // no hover effect while dragging
+      var info = findDraggableVertices(e);
+      if (info) {
+        // hovering near a vertex: highlight the vertex
+        setHoverVertex(info.ids[0]);
         return;
       }
-      var target = hit.getHitTarget();
-      // vertex insertion doesn't work yet with simplification applied
-      if (!target.arcs.isFlat()) return;
-      var shp = target.layer.shapes[e.id];
+      // if hovering near a segment midpoint: show the midpoint and save midpoint info
       var p = ext.translatePixelCoords(e.x, e.y);
+      var target = hit.getHitTarget();
+      var shp = target.layer.shapes[e.id];
       var midpoint = findNearestMidpoint(p, shp, target.arcs);
-      if (midpoint && midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD) {
+      if (midpoint &&
+          midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD &&
+          target.arcs.isFlat()) { // vertex insertion not supported with simplification
         hit.setHoverVertex(midpoint.point);
         activeMidpoint = midpoint;
-      } else {
-        clearHoverVertex();
+        return;
       }
+      // pointer is not over a vertex or midpoint: clear hover effect
+      clearHoverVertex();
     }, null, 100);
   }
-
 
   // Given a location @p (e.g. corresponding to the mouse pointer location),
   // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
@@ -7928,7 +7901,7 @@
     var ids = o.ids.filter(function(i) {
       return i != o.id; // move selected id to the end
     });
-    if (o.id > -1) {
+    if (o.id > -1) { // pinned or hover style
       topStyle = getSelectedFeatureStyle(lyr, o);
       topIdx = ids.length;
       ids.push(o.id); // put the pinned/hover feature last in the render order
@@ -8415,17 +8388,6 @@
       }
       _ctx.fill();
       _ctx.closePath();
-
-      if (style.selected_points) {
-        _ctx.beginPath();
-        _ctx.fillStyle = 'magenta';
-        for (i=0; i<style.selected_points.length; i++) {
-          p = style.selected_points[i];
-          drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
-        }
-        _ctx.fill();
-        _ctx.closePath();
-      }
     };
 
     // Optimized to draw paths in same-style batches (faster Canvas drawing)
