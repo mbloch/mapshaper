@@ -156,6 +156,20 @@ export function getActiveStyle(lyr) {
   return style;
 }
 
+// style for vertex edit mode
+function getVertexStyle(lyr, o) {
+  return {
+    ids: o.ids,
+    overlay: true,
+    strokeColor: black,
+    strokeWidth: 1.5,
+    vertices: true,
+    vertex_overlay: o.hit_coordinates || null,
+    selected_points: o.selected_points || null,
+    fillColor: null
+  };
+}
+
 // Returns a display style for the overlay layer.
 // The overlay layer renders several kinds of feature, each of which is displayed
 // with a different style.
@@ -165,18 +179,14 @@ export function getActiveStyle(lyr) {
 // * pinned shapes
 //
 export function getOverlayStyle(lyr, o) {
+  if (o.mode == 'vertices') {
+    return getVertexStyle(lyr, o);
+  }
   var geomType = lyr.geometry_type;
   var topId = o.id; // pinned id (if pinned) or hover id
   var topIdx = -1;
   var styler = function(style, i) {
     utils.extend(style, i === topIdx ? topStyle: baseStyle);
-    // kludge to show vertices when editing path shapes
-    if (o.mode == 'vertices') {
-      style.vertices = true;
-      style.vertex_overlay = o.hit_coordinates || null;
-      style.selected_points = o.selected_points || null;
-      style.fillColor = null;
-    }
   };
   var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
   var topStyle;
@@ -188,18 +198,26 @@ export function getOverlayStyle(lyr, o) {
     topIdx = ids.length;
     ids.push(o.id); // put the pinned/hover feature last in the render order
   }
-  var overlayStyle = {
+  var style = {
     styler: styler,
     ids: ids,
     overlay: true
   };
+  // kludge to show vertices when editing path shapes
+  if (o.mode == 'vertices') {
+    style.vertices = true;
+    style.vertex_overlay = o.hit_coordinates || null;
+    style.selected_points = o.selected_points || null;
+    style.fillColor = null;
+  }
+
   if (layerHasCanvasDisplayStyle(lyr)) {
     if (geomType == 'point') {
-      overlayStyle.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
+      style.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
     }
-    overlayStyle.type = 'styled';
+    style.type = 'styled';
   }
-  return ids.length > 0 ? overlayStyle : null;
+  return ids.length > 0 ? style : null;
 }
 
 function getSelectedFeatureStyle(lyr, o) {

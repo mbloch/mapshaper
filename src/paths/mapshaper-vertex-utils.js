@@ -6,7 +6,6 @@ export function findNearestVertices(p, shp, arcs) {
 }
 
 
-
 export function snapVerticesToPoint(ids, p, arcs, final) {
   ids.forEach(function(idx) {
     setVertexCoords(p[0], p[1], idx, arcs);
@@ -86,7 +85,7 @@ export function setVertexCoords(x, y, i, arcs) {
 export function findNearestVertex(x, y, shp, arcs, spherical) {
   var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
       minLen = Infinity,
-      minX, minY, vId, dist, iter;
+      minX, minY, dist, iter;
   for (var i=0; i<shp.length; i++) {
     iter = arcs.getShapeIter(shp[i]);
     while (iter.hasNext()) {
@@ -95,26 +94,8 @@ export function findNearestVertex(x, y, shp, arcs, spherical) {
         minLen = dist;
         minX = iter.x;
         minY = iter.y;
-        vId = iter.i;
       }
     }
   }
-  return minLen < Infinity ? {x: minX, y: minY, i: vId} : null;
+  return minLen < Infinity ? {x: minX, y: minY} : null;
 }
-
-// v: vertex in {x, y, i} format
-export function findAdjacentVertex(v, shp, arcs, offs) {
-  var p, i;
-  var arcEnd = offs == 1 && vertexIsArcEnd(v.i, arcs);
-  var arcStart = offs == -1 && vertexIsArcStart(v.i, arcs);
-  if (arcEnd || arcStart) return null;
-  i = v.i + offs;
-  p = getVertexCoords(i, arcs);
-  return {
-    i: i,
-    x: p[0],
-    y: p[1]
-  };
-}
-
-

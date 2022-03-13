@@ -2,10 +2,10 @@ import { error, internal, geom, utils } from './gui-core';
 
 // pointer thresholds for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 8;
-var MIDPOINT_THRESHOLD = 12;
+var MIDPOINT_THRESHOLD = 11;
 
 export function initVertexDragging(gui, ext, hit) {
-  var activeMidpoint;
+  var insertionPoint;
   var dragInfo;
 
   function active() {
@@ -23,7 +23,6 @@ export function initVertexDragging(gui, ext, hit) {
 
   function clearHoverVertex() {
     hit.clearVertexOverlay();
-    // gui.state.vertex_overlay = null;
   }
 
   function findDraggableVertices(e) {
@@ -44,17 +43,28 @@ export function initVertexDragging(gui, ext, hit) {
     };
   }
 
+  function findVertexInsertionPoint(e) {
+    var target = hit.getHitTarget();
+    if (!target.arcs.isFlat()) return null; // vertex insertion not supported with simplification
+    var p = ext.translatePixelCoords(e.x, e.y);
+    var shp = target.layer.shapes[e.id];
+    var midpoint = findNearestMidpoint(p, shp, target.arcs);
+    if (!midpoint ||
+        midpoint.distance / ext.getPixelSize() > MIDPOINT_THRESHOLD) return null;
+    return midpoint;
+  }
+
   hit.on('dragstart', function(e) {
     if (!active()) return;
-    if (activeMidpoint) {
+    if (insertionPoint) {
       var target = hit.getHitTarget();
-      internal.insertVertex(target.arcs, activeMidpoint.i, activeMidpoint.point);
+      internal.insertVertex(target.arcs, insertionPoint.i, insertionPoint.point);
       dragInfo = {
         insertion: true,
-        ids: [activeMidpoint.i],
-        points: [activeMidpoint.point]
+        ids: [insertionPoint.i],
+        points: [insertionPoint.point]
       };
-      activeMidpoint = null;
+      insertionPoint = null;
     } else {
       dragInfo = findDraggableVertices(e);
     }
@@ -107,7 +117,7 @@ export function initVertexDragging(gui, ext, hit) {
 
   // highlight hit vertex in path edit mode
   hit.on('hover', function(e) {
-    activeMidpoint = null;
+    insertionPoint = null;
     if (!active() || dragging()) return; // no hover effect while dragging
     var info = findDraggableVertices(e);
     if (info) {
@@ -116,32 +126,20 @@ export function initVertexDragging(gui, ext, hit) {
       return;
     }
     // if hovering near a segment midpoint: show the midpoint and save midpoint info
-    var p = ext.translatePixelCoords(e.x, e.y);
-    var target = hit.getHitTarget();
-    var shp = target.layer.shapes[e.id];
-    var midpoint = findNearestMidpoint(p, shp, target.arcs);
-    if (midpoint &&
-        midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD &&
-        target.arcs.isFlat()) { // vertex insertion not supported with simplification
-      hit.setHoverVertex(midpoint.point);
-      activeMidpoint = midpoint;
-      return;
+    insertionPoint = findVertexInsertionPoint(e);
+    if (insertionPoint) {
+      hit.setHoverVertex(insertionPoint.point);
+    } else {
+      // pointer is not over a vertex: clear any hover effect
+      clearHoverVertex();
     }
-    // pointer is not over a vertex or midpoint: clear hover effect
-    clearHoverVertex();
   }, null, 100);
 }
 
+
 // Given a location @p (e.g. corresponding to the mouse pointer location),
-// find the midpoint of two vertices on @shp suitable for inserting a new vertex,
-// but only if:
-//   1. point @p is closer to the midpoint than either adjacent vertex
-//   2. the segment containing @p is longer than a minimum distance in pixels.
-//
+// find the midpoint of two vertices on @shp suitable for inserting a new vertex
 function findNearestMidpoint(p, shp, arcs) {
-  // var v1 = internal.findNearestVertex(p[0], p[1], shp, arcs);
-  // var v0 = internal.findAdjacentVertex(v1, shp, arcs, -1);
-  // var v2 = internal.findAdjacentVertex(v1, shp, arcs, 1);
   var minDist = Infinity, v;
   internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
     var x1 = xx[i],
@@ -156,6 +154,7 @@ function findNearestMidpoint(p, shp, arcs) {
       v = {
         i: (i < j ? i : j) + 1, // insertion point
         segment: [i, j],
+        segmentLen: geom.distance2D(x1, y1, x2, y2),
         point: [cx, cy],
         distance: dist
       };

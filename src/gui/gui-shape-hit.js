@@ -73,14 +73,11 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
   }
 
    function vertexTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(20, 2),
-        bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
+    var maxDist = getZoomAdjustedHitBuffer(25, 2),
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, displayLayer.arcs);
-    cands = pickNearestCandidates(cands, bufDist, maxDist);
-    var arcs = cands.map(function(cand) { return absArcId(cand.info.arcId); });
+    cands = pickNearestCandidates(cands, 0, maxDist);
     return {
-      arcs: utils.uniq(arcs),
       ids: utils.pluck(cands, 'id')
     };
   }
