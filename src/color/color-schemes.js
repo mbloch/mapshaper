@@ -92,9 +92,20 @@ export function getCategoricalColorScheme(name, n) {
     colors = getColorRamp(name, n);
   }
   if (n > colors.length) {
-    stop(name, 'does not contain', n, 'colors');
+    // stop(name, 'does not contain', n, 'colors');
+    message('Color scheme has', colors.length, 'colors. Using duplication to match', n, 'categories.');
+    colors = wrapColors(colors, n);
+  } else {
+    colors = colors.slice(0, n);
   }
-  return colors.slice(0, n);
+  return colors;
+}
+
+export function wrapColors(colors, n) {
+  while (colors.length > 0 && colors.length < n) {
+    colors = colors.concat(colors.slice(0, n - colors.length));
+  }
+  return colors;
 }
 
 export function isColorSchemeName(name) {

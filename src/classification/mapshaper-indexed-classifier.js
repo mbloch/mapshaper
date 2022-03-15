@@ -14,7 +14,7 @@ export function getIndexedClassifier(values, nullVal, opts) {
 }
 
 // returns the number of classes, based on the largest class index found
-export function validateClassIndexField(records, name) {
+export function getIndexedClassCount(records, name) {
   var invalid = [];
   var maxId = -1;
   records.forEach(function(d) {

@@ -450,7 +450,7 @@ export function getOptionParser() {
       describe: 'value (or color) to use for invalid or missing data'
     })
     .option('method', {
-      describe: 'one of: quantile, nice, equal-interval, hybrid'
+      describe: 'quantile, nice, equal-interval, categorical, etc.'
     })
     .option('quantile', {
       //describe: 'shortcut for method=quantile (the default)',

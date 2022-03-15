@@ -1331,6 +1331,7 @@ The `if` command runs the following commands if a condition is met.
 - `this.field_exists(<name>)`  Tests if a data field exists in the target layer.
 - `this.field_type(<name>)`    Returns the data type of a field, or `null` if a field is empty or missing. Types include: `"string" "number" "boolean" "date" "object"`. If a field includes multiple data types (which may occur in GeoJSON), the type of the first non-empty data value is returned.
 - `this.field_includes(<value>)`  Tests if a given value occurs at least once in a data field.
+- `this.file_exists(<filename>)`  Tests if a file exists.
 
 **Example**
 

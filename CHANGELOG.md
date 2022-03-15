@@ -1,3 +1,7 @@
+v0.5.96
+* Added colors=random option to the -classify command.
+* Added more sensible default behavior to the -classify command.
+
 v0.5.95
 * Added vertex deletion in "edit vertices" mode by double-clicking on non-endpoint vertices.
 
