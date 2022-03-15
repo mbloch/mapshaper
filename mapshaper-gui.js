@@ -5623,14 +5623,11 @@
     }
 
      function vertexTest(x, y) {
-      var maxDist = getZoomAdjustedHitBuffer(20, 2),
-          bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
+      var maxDist = getZoomAdjustedHitBuffer(25, 2),
           cands = findHitCandidates(x, y, maxDist);
       sortByDistance(x, y, cands, displayLayer.arcs);
-      cands = pickNearestCandidates(cands, bufDist, maxDist);
-      var arcs = cands.map(function(cand) { return absArcId(cand.info.arcId); });
+      cands = pickNearestCandidates(cands, 0, maxDist);
       return {
-        arcs: utils$1.uniq(arcs),
         ids: utils$1.pluck(cands, 'id')
       };
     }
@@ -7538,10 +7535,10 @@
 
   // pointer thresholds for hovering near a vertex or segment midpoint
   var HOVER_THRESHOLD = 8;
-  var MIDPOINT_THRESHOLD = 12;
+  var MIDPOINT_THRESHOLD = 11;
 
   function initVertexDragging(gui, ext, hit) {
-    var activeMidpoint;
+    var insertionPoint;
     var dragInfo;
 
     function active() {
@@ -7559,7 +7556,6 @@
 
     function clearHoverVertex() {
       hit.clearVertexOverlay();
-      // gui.state.vertex_overlay = null;
     }
 
     function findDraggableVertices(e) {
@@ -7580,17 +7576,28 @@
       };
     }
 
+    function findVertexInsertionPoint(e) {
+      var target = hit.getHitTarget();
+      if (!target.arcs.isFlat()) return null; // vertex insertion not supported with simplification
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var shp = target.layer.shapes[e.id];
+      var midpoint = findNearestMidpoint(p, shp, target.arcs);
+      if (!midpoint ||
+          midpoint.distance / ext.getPixelSize() > MIDPOINT_THRESHOLD) return null;
+      return midpoint;
+    }
+
     hit.on('dragstart', function(e) {
       if (!active()) return;
-      if (activeMidpoint) {
+      if (insertionPoint) {
         var target = hit.getHitTarget();
-        internal.insertVertex(target.arcs, activeMidpoint.i, activeMidpoint.point);
+        internal.insertVertex(target.arcs, insertionPoint.i, insertionPoint.point);
         dragInfo = {
           insertion: true,
-          ids: [activeMidpoint.i],
-          points: [activeMidpoint.point]
+          ids: [insertionPoint.i],
+          points: [insertionPoint.point]
         };
-        activeMidpoint = null;
+        insertionPoint = null;
       } else {
         dragInfo = findDraggableVertices(e);
       }
@@ -7643,7 +7650,7 @@
 
     // highlight hit vertex in path edit mode
     hit.on('hover', function(e) {
-      activeMidpoint = null;
+      insertionPoint = null;
       if (!active() || dragging()) return; // no hover effect while dragging
       var info = findDraggableVertices(e);
       if (info) {
@@ -7652,32 +7659,20 @@
         return;
       }
       // if hovering near a segment midpoint: show the midpoint and save midpoint info
-      var p = ext.translatePixelCoords(e.x, e.y);
-      var target = hit.getHitTarget();
-      var shp = target.layer.shapes[e.id];
-      var midpoint = findNearestMidpoint(p, shp, target.arcs);
-      if (midpoint &&
-          midpoint.distance / ext.getPixelSize() < MIDPOINT_THRESHOLD &&
-          target.arcs.isFlat()) { // vertex insertion not supported with simplification
-        hit.setHoverVertex(midpoint.point);
-        activeMidpoint = midpoint;
-        return;
+      insertionPoint = findVertexInsertionPoint(e);
+      if (insertionPoint) {
+        hit.setHoverVertex(insertionPoint.point);
+      } else {
+        // pointer is not over a vertex: clear any hover effect
+        clearHoverVertex();
       }
-      // pointer is not over a vertex or midpoint: clear hover effect
-      clearHoverVertex();
     }, null, 100);
   }
 
+
   // Given a location @p (e.g. corresponding to the mouse pointer location),
-  // find the midpoint of two vertices on @shp suitable for inserting a new vertex,
-  // but only if:
-  //   1. point @p is closer to the midpoint than either adjacent vertex
-  //   2. the segment containing @p is longer than a minimum distance in pixels.
-  //
+  // find the midpoint of two vertices on @shp suitable for inserting a new vertex
   function findNearestMidpoint(p, shp, arcs) {
-    // var v1 = internal.findNearestVertex(p[0], p[1], shp, arcs);
-    // var v0 = internal.findAdjacentVertex(v1, shp, arcs, -1);
-    // var v2 = internal.findAdjacentVertex(v1, shp, arcs, 1);
     var minDist = Infinity, v;
     internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
       var x1 = xx[i],
@@ -7692,6 +7687,7 @@
         v = {
           i: (i < j ? i : j) + 1, // insertion point
           segment: [i, j],
+          segmentLen: geom.distance2D(x1, y1, x2, y2),
           point: [cx, cy],
           distance: dist
         };
@@ -7874,6 +7870,20 @@
     return style;
   }
 
+  // style for vertex edit mode
+  function getVertexStyle(lyr, o) {
+    return {
+      ids: o.ids,
+      overlay: true,
+      strokeColor: black,
+      strokeWidth: 1.5,
+      vertices: true,
+      vertex_overlay: o.hit_coordinates || null,
+      selected_points: o.selected_points || null,
+      fillColor: null
+    };
+  }
+
   // Returns a display style for the overlay layer.
   // The overlay layer renders several kinds of feature, each of which is displayed
   // with a different style.
@@ -7883,18 +7893,14 @@
   // * pinned shapes
   //
   function getOverlayStyle(lyr, o) {
+    if (o.mode == 'vertices') {
+      return getVertexStyle(lyr, o);
+    }
     var geomType = lyr.geometry_type;
     var topId = o.id; // pinned id (if pinned) or hover id
     var topIdx = -1;
     var styler = function(style, i) {
       utils$1.extend(style, i === topIdx ? topStyle: baseStyle);
-      // kludge to show vertices when editing path shapes
-      if (o.mode == 'vertices') {
-        style.vertices = true;
-        style.vertex_overlay = o.hit_coordinates || null;
-        style.selected_points = o.selected_points || null;
-        style.fillColor = null;
-      }
     };
     var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
     var topStyle;
@@ -7906,18 +7912,26 @@
       topIdx = ids.length;
       ids.push(o.id); // put the pinned/hover feature last in the render order
     }
-    var overlayStyle = {
+    var style = {
       styler: styler,
       ids: ids,
       overlay: true
     };
+    // kludge to show vertices when editing path shapes
+    if (o.mode == 'vertices') {
+      style.vertices = true;
+      style.vertex_overlay = o.hit_coordinates || null;
+      style.selected_points = o.selected_points || null;
+      style.fillColor = null;
+    }
+
     if (layerHasCanvasDisplayStyle(lyr)) {
       if (geomType == 'point') {
-        overlayStyle.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
+        style.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
       }
-      overlayStyle.type = 'styled';
+      style.type = 'styled';
     }
-    return ids.length > 0 ? overlayStyle : null;
+    return ids.length > 0 ? style : null;
   }
 
   function getSelectedFeatureStyle(lyr, o) {
@@ -8365,9 +8379,10 @@
     _self.drawVertices = function(shapes, arcs, style, filter) {
       var iter = new internal.ShapeIter(arcs);
       var t = getScaledTransform(_ext);
+      var bounds = _ext.getBounds();
       var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
       var color = style.strokeColor || 'black';
-      var radius2 = radius * 1.7;
+
       var i, j, p;
       _ctx.beginPath();
       _ctx.fillStyle = color;
@@ -8377,6 +8392,7 @@
         for (j=0; j<shp.length; j++) {
           iter.init(shp[j]);
           while (iter.hasNext()) {
+            if (!bounds.containsPoint(iter.x, iter.y)) continue;
             drawCircle(iter.x * t.mx + t.bx, iter.y * t.my + t.by, radius, _ctx);
           }
         }
@@ -8384,7 +8400,7 @@
 
       if (style.vertex_overlay) {
         p = style.vertex_overlay;
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius2, _ctx);
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.5, _ctx);
       }
       _ctx.fill();
       _ctx.closePath();

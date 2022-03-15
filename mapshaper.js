@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.94";
+  var VERSION = "0.5.95";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -4993,7 +4993,7 @@
     this._n = 0;
     this.x = 0;
     this.y = 0;
-    this.i = -1;
+    // this.i = -1;
   }
 
   ShapeIter.prototype.hasNext = function() {
@@ -5004,7 +5004,7 @@
     if (arc.hasNext()) {
       this.x = arc.x;
       this.y = arc.y;
-      this.i = arc.i;
+      // this.i = arc.i;
       return true;
     }
     this.nextArc();
@@ -19152,7 +19152,7 @@ ${svg}
         describe: 'value (or color) to use for invalid or missing data'
       })
       .option('method', {
-        describe: 'one of: quantile, nice, equal-interval, hybrid'
+        describe: 'quantile, nice, equal-interval, categorical, etc.'
       })
       .option('quantile', {
         //describe: 'shortcut for method=quantile (the default)',
@@ -27734,217 +27734,6 @@ ${svg}
     return [lyr2];
   }
 
-  // TODO: support three or more stops
-  function getGradientFunction(stops) {
-    var min = stops[0] / 100,
-        max = stops[1] / 100;
-    if (stops.length != 2) {
-      stop('Only two stops are currently supported');
-    }
-    if (!(min >= 0 && max <= 1 && min < max)) {
-      stop('Invalid gradient stops:', stops);
-    }
-    return function(t) {
-      return t * (max - min) + min;
-    };
-  }
-
-  function getStoppedValues(values, stops) {
-    var interpolate = getInterpolatedValueGetter(values, null);
-    var n = values.length;
-    var fstop = getGradientFunction(stops);
-    var values2 = [];
-    var t, val;
-    for (var i=0; i<n; i++) {
-      t = fstop(i / (n - 1));
-      val = interpolate(t * (n - 1));
-      values2.push(val);
-    }
-    return values2;
-  }
-
-  // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
-  function getInterpolatedValueGetter(values, nullValue) {
-    var d3 = require('d3-interpolate');
-    var interpolators = [];
-    var tmax = values.length - 1;
-    for (var i=1; i<values.length; i++) {
-      interpolators.push(d3.interpolate(values[i-1], values[i]));
-    }
-    return function(t) {
-      if (t == -1) return nullValue;
-      if ((t >= 0 && t <= tmax) === false) {
-        error('Range error');
-      }
-      var i = t == tmax ? tmax - 1 : Math.floor(t);
-      var j = t == tmax ? 1 : t % 1;
-      return interpolators[i](j);
-    };
-  }
-
-  // return an array of n values
-  // assumes that values can be interpolated by d3-interpolate
-  // (colors and numbers should work)
-  function interpolateValuesToClasses(values, n, stops) {
-    if (values.length == n && !stops) return values;
-    var d3 = require('d3-interpolate');
-    var numPairs = values.length - 1;
-    var output = [values[0]];
-    var k, j, t, intVal;
-    for (var i=1; i<n-1; i++) {
-      k = i / (n-1) * numPairs;
-      j = Math.floor(k);
-      t = k - j;
-      // if (convert) t = convert(t);
-      intVal = d3.interpolate(values[j], values[j+1])(t);
-      output.push(intVal);
-    }
-    output.push(values[values.length - 1]);
-    if (stops) {
-      output = getStoppedValues(output, stops);
-    }
-    return output;
-  }
-
-  var index = {
-    categorical: [],
-    sequential: [],
-    rainbow: [],
-    diverging: []
-  };
-  var ramps;
-
-  function initSchemes() {
-    if (ramps) return;
-    ramps = {};
-    addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
-    addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
-    addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
-    addSchemesFromD3('diverging', 'BrBG,PRGn,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral');
-    testLib(); // make sure these schemes are all available
-    addCategoricalScheme('Category20',
-      '1f77b4aec7e8ff7f0effbb782ca02c98df8ad62728ff98969467bdc5b0d58c564bc49c94e377c2f7b6d27f7f7fc7c7c7bcbd22dbdb8d17becf9edae5');
-    addCategoricalScheme('Category20b',
-      '393b795254a36b6ecf9c9ede6379398ca252b5cf6bcedb9c8c6d31bd9e39e7ba52e7cb94843c39ad494ad6616be7969c7b4173a55194ce6dbdde9ed6');
-    addCategoricalScheme('Category20c',
-      '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
-    addCategoricalScheme('Tableau20',
-      '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
-  }
-
-  function addSchemesFromD3(type, names) {
-    index[type] = index[type].concat(names.split(','));
-  }
-
-  function addCategoricalScheme(name, str) {
-    index.categorical.push(name);
-    ramps[name] = unpackRamp(str);
-  }
-
-  function unpackRamp(str) {
-    var colors = [];
-    for (var i=0, n=str.length; i<n; i+=6) {
-      colors.push('#' + str.substr(i, 6));
-    }
-    return colors;
-  }
-
-  function testLib() {
-    var lib = require('d3-scale-chromatic');
-    schemes(index.categorical);
-    schemes(index.sequential);
-    schemes(index.diverging);
-    interpolators(index.sequential);
-    interpolators(index.rainbow);
-    interpolators(index.diverging);
-
-    function schemes(arr) {
-      arr.forEach(function(name) {
-        if (!lib['scheme' + name]) {
-          message('Warning: missing data for', name);
-        }
-      });
-    }
-
-    function interpolators(arr) {
-      arr.forEach(function(name) {
-        if (!lib['interpolate' + name]) {
-          message('Missing interpolator for', name);
-        }
-      });
-    }
-  }
-
-  function printColorSchemeNames() {
-    initSchemes();
-    print('Built-in color schemes (from d3):');
-    print ('Categorical\n' + formatStringsAsGrid(index.categorical));
-    print ('\nSequential\n' + formatStringsAsGrid(index.sequential));
-    print ('\nDiverging\n' + formatStringsAsGrid(index.diverging));
-    print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
-  }
-
-  function getCategoricalColorScheme(name, n) {
-    var colors;
-    initSchemes();
-    if (!isColorSchemeName(name)) {
-      stop('Unknown color scheme name:', name);
-    } else if (isCategoricalColorScheme(name)) {
-      colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
-    } else {
-      colors = getColorRamp(name, n);
-    }
-    if (n > colors.length) {
-      stop(name, 'does not contain', n, 'colors');
-    }
-    return colors.slice(0, n);
-  }
-
-  function isColorSchemeName(name) {
-    initSchemes();
-    return index.categorical.includes(name) || index.sequential.includes(name) ||
-      index.diverging.includes(name) || index.rainbow.includes(name);
-  }
-
-  function isCategoricalColorScheme(name) {
-    initSchemes();
-    return index.categorical.includes(name);
-  }
-
-  function getColorRamp(name, n, stops) {
-    initSchemes();
-    var lib = require('d3-scale-chromatic');
-    var ramps = lib['scheme' + name];
-    var interpolate = lib['interpolate' + name];
-    var ramp;
-    if (!ramps && !interpolate) {
-      stop('Unknown color scheme name:', name);
-    }
-    if (index.categorical.includes(name)) {
-      stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
-    }
-    if (ramps && ramps[n]) {
-      ramp = ramps[n];
-    } else {
-      ramp = getInterpolatedRamp(interpolate, n);
-    }
-    if (stops) {
-      ramp = getStoppedValues(ramp, stops);
-    }
-    return ramp;
-  }
-
-  function getInterpolatedRamp(interpolate, n) {
-    if (n > 0 === false || !utils.isInteger(n)) {
-      error('Expected a positive integer');
-    }
-    var ramp = [];
-    for (var i=0; i<n; i++) {
-      ramp.push(interpolate(i / (n - 1)));
-    }
-    return ramp;
-  }
-
   var scaledIntervals =
     [10,12,15,18,20,22,25,30,35,40,45,50,60,70,80,90,100];
   var precisions =
@@ -28072,6 +27861,78 @@ ${svg}
       s *= 10;
     }
     return s;
+  }
+
+  // TODO: support three or more stops
+  function getGradientFunction(stops) {
+    var min = stops[0] / 100,
+        max = stops[1] / 100;
+    if (stops.length != 2) {
+      stop('Only two stops are currently supported');
+    }
+    if (!(min >= 0 && max <= 1 && min < max)) {
+      stop('Invalid gradient stops:', stops);
+    }
+    return function(t) {
+      return t * (max - min) + min;
+    };
+  }
+
+  function getStoppedValues(values, stops) {
+    var interpolate = getInterpolatedValueGetter(values, null);
+    var n = values.length;
+    var fstop = getGradientFunction(stops);
+    var values2 = [];
+    var t, val;
+    for (var i=0; i<n; i++) {
+      t = fstop(i / (n - 1));
+      val = interpolate(t * (n - 1));
+      values2.push(val);
+    }
+    return values2;
+  }
+
+  // convert a continuous index ([0, n-1], -1) to a corresponding interpolated value
+  function getInterpolatedValueGetter(values, nullValue) {
+    var d3 = require('d3-interpolate');
+    var interpolators = [];
+    var tmax = values.length - 1;
+    for (var i=1; i<values.length; i++) {
+      interpolators.push(d3.interpolate(values[i-1], values[i]));
+    }
+    return function(t) {
+      if (t == -1) return nullValue;
+      if ((t >= 0 && t <= tmax) === false) {
+        error('Range error');
+      }
+      var i = t == tmax ? tmax - 1 : Math.floor(t);
+      var j = t == tmax ? 1 : t % 1;
+      return interpolators[i](j);
+    };
+  }
+
+  // return an array of n values
+  // assumes that values can be interpolated by d3-interpolate
+  // (colors and numbers should work)
+  function interpolateValuesToClasses(values, n, stops) {
+    if (values.length == n && !stops) return values;
+    var d3 = require('d3-interpolate');
+    var numPairs = values.length - 1;
+    var output = [values[0]];
+    var k, j, t, intVal;
+    for (var i=1; i<n-1; i++) {
+      k = i / (n-1) * numPairs;
+      j = Math.floor(k);
+      t = k - j;
+      // if (convert) t = convert(t);
+      intVal = d3.interpolate(values[j], values[j+1])(t);
+      output.push(intVal);
+    }
+    output.push(values[values.length - 1]);
+    if (stops) {
+      output = getStoppedValues(output, stops);
+    }
+    return output;
   }
 
   // convert an index (0 ... n-1, -1, -2) to a corresponding discreet value
@@ -28680,35 +28541,6 @@ ${svg}
     };
   }
 
-  function getIndexedClassifier(values, nullVal, opts) {
-    // TODO: handle continuous classification
-    var numBuckets = values.length;
-    var classToValue = getOutputFunction(values, nullVal, opts);
-
-    return function(val) {
-      var idx = utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
-      return classToValue(idx);
-    };
-  }
-
-  // returns the number of classes, based on the largest class index found
-  function validateClassIndexField(records, name) {
-    var invalid = [];
-    var maxId = -1;
-    records.forEach(function(d) {
-      var val = (d || {})[name];
-      if (!utils.isInteger(val) || val < -2) {
-        invalid.push(val);
-      } else {
-        maxId = Math.max(maxId, val);
-      }
-    });
-    if (invalid.length > 0) {
-      stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
-    }
-    return maxId + 1;
-  }
-
   // Returns a function for constructing a query function that accepts an arc id and
   // returns information about the polygon or polygons that use the given arc.
   // TODO: explain this better.
@@ -29005,64 +28837,321 @@ ${svg}
     };
   }
 
+  function getIndexedClassifier(values, nullVal, opts) {
+    // TODO: handle continuous classification
+    var numBuckets = values.length;
+    var classToValue = getOutputFunction(values, nullVal, opts);
+
+    return function(val) {
+      var idx = utils.isInteger(val) && val >= 0 && val < numBuckets ? val : -1;
+      return classToValue(idx);
+    };
+  }
+
+  // returns the number of classes, based on the largest class index found
+  function getIndexedClassCount(records, name) {
+    var invalid = [];
+    var maxId = -1;
+    records.forEach(function(d) {
+      var val = (d || {})[name];
+      if (!utils.isInteger(val) || val < -2) {
+        invalid.push(val);
+      } else {
+        maxId = Math.max(maxId, val);
+      }
+    });
+    if (invalid.length > 0) {
+      stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
+    }
+    return maxId + 1;
+  }
+
+  var index = {
+    categorical: [],
+    sequential: [],
+    rainbow: [],
+    diverging: []
+  };
+  var ramps;
+
+  function initSchemes() {
+    if (ramps) return;
+    ramps = {};
+    addSchemesFromD3('categorical', 'Category10,Accent,Dark2,Paired,Pastel1,Pastel2,Set1,Set2,Set3,Tableau10');
+    addSchemesFromD3('sequential', 'Blues,Greens,Greys,Purples,Reds,Oranges,BuGn,BuPu,GnBu,OrRd,PuBuGn,PuBu,PuRd,RdPu,YlGnBu,YlGn,YlOrBr,YlOrRd');
+    addSchemesFromD3('rainbow', 'Cividis,CubehelixDefault,Rainbow,Warm,Cool,Sinebow,Turbo,Viridis,Magma,Inferno,Plasma');
+    addSchemesFromD3('diverging', 'BrBG,PRGn,PRGn,PiYG,PuOr,RdBu,RdGy,RdYlBu,RdYlGn,Spectral');
+    testLib(); // make sure these schemes are all available
+    addCategoricalScheme('Category20',
+      '1f77b4aec7e8ff7f0effbb782ca02c98df8ad62728ff98969467bdc5b0d58c564bc49c94e377c2f7b6d27f7f7fc7c7c7bcbd22dbdb8d17becf9edae5');
+    addCategoricalScheme('Category20b',
+      '393b795254a36b6ecf9c9ede6379398ca252b5cf6bcedb9c8c6d31bd9e39e7ba52e7cb94843c39ad494ad6616be7969c7b4173a55194ce6dbdde9ed6');
+    addCategoricalScheme('Category20c',
+      '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
+    addCategoricalScheme('Tableau20',
+      '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
+  }
+
+  function addSchemesFromD3(type, names) {
+    index[type] = index[type].concat(names.split(','));
+  }
+
+  function addCategoricalScheme(name, str) {
+    index.categorical.push(name);
+    ramps[name] = unpackRamp(str);
+  }
+
+  function unpackRamp(str) {
+    var colors = [];
+    for (var i=0, n=str.length; i<n; i+=6) {
+      colors.push('#' + str.substr(i, 6));
+    }
+    return colors;
+  }
+
+  function testLib() {
+    var lib = require('d3-scale-chromatic');
+    schemes(index.categorical);
+    schemes(index.sequential);
+    schemes(index.diverging);
+    interpolators(index.sequential);
+    interpolators(index.rainbow);
+    interpolators(index.diverging);
+
+    function schemes(arr) {
+      arr.forEach(function(name) {
+        if (!lib['scheme' + name]) {
+          message('Warning: missing data for', name);
+        }
+      });
+    }
+
+    function interpolators(arr) {
+      arr.forEach(function(name) {
+        if (!lib['interpolate' + name]) {
+          message('Missing interpolator for', name);
+        }
+      });
+    }
+  }
+
+  function printColorSchemeNames() {
+    initSchemes();
+    print('Built-in color schemes (from d3):');
+    print ('Categorical\n' + formatStringsAsGrid(index.categorical));
+    print ('\nSequential\n' + formatStringsAsGrid(index.sequential));
+    print ('\nDiverging\n' + formatStringsAsGrid(index.diverging));
+    print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
+  }
+
+  function getCategoricalColorScheme(name, n) {
+    var colors;
+    initSchemes();
+    if (!isColorSchemeName(name)) {
+      stop('Unknown color scheme name:', name);
+    } else if (isCategoricalColorScheme(name)) {
+      colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
+    } else {
+      colors = getColorRamp(name, n);
+    }
+    if (n > colors.length) {
+      // stop(name, 'does not contain', n, 'colors');
+      message('Color scheme has', colors.length, 'colors. Using duplication to match', n, 'categories.');
+      colors = wrapColors(colors, n);
+    } else {
+      colors = colors.slice(0, n);
+    }
+    return colors;
+  }
+
+  function wrapColors(colors, n) {
+    while (colors.length > 0 && colors.length < n) {
+      colors = colors.concat(colors.slice(0, n - colors.length));
+    }
+    return colors;
+  }
+
+  function isColorSchemeName(name) {
+    initSchemes();
+    return index.categorical.includes(name) || index.sequential.includes(name) ||
+      index.diverging.includes(name) || index.rainbow.includes(name);
+  }
+
+  function isCategoricalColorScheme(name) {
+    initSchemes();
+    return index.categorical.includes(name);
+  }
+
+  function getColorRamp(name, n, stops) {
+    initSchemes();
+    var lib = require('d3-scale-chromatic');
+    var ramps = lib['scheme' + name];
+    var interpolate = lib['interpolate' + name];
+    var ramp;
+    if (!ramps && !interpolate) {
+      stop('Unknown color scheme name:', name);
+    }
+    if (index.categorical.includes(name)) {
+      stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
+    }
+    if (ramps && ramps[n]) {
+      ramp = ramps[n];
+    } else {
+      ramp = getInterpolatedRamp(interpolate, n);
+    }
+    if (stops) {
+      ramp = getStoppedValues(ramp, stops);
+    }
+    return ramp;
+  }
+
+  function getInterpolatedRamp(interpolate, n) {
+    if (n > 0 === false || !utils.isInteger(n)) {
+      error('Expected a positive integer');
+    }
+    var ramp = [];
+    for (var i=0; i<n; i++) {
+      ramp.push(interpolate(i / (n - 1)));
+    }
+    return ramp;
+  }
+
+  function getClassValues(method, n, opts) {
+    var categorical = method == 'categorical' || method == 'non-adjacent';
+    var colorArg = opts.colors ? opts.colors[0] : null;
+    var colorScheme;
+
+    if (isColorSchemeName(colorArg)) {
+      colorScheme = colorArg;
+    } else if (colorArg == 'random') {
+      colorScheme = categorical ? 'Tableau20' : 'BuGn'; // TODO: randomize
+    } else if (opts.colors) {
+      // validate colors
+      opts.colors.forEach(parseColor);
+    }
+
+    if (categorical) {
+      if (colorScheme && isCategoricalColorScheme(colorScheme)) {
+        return getCategoricalColorScheme(colorScheme, n);
+      } else if (colorScheme) {
+        // assume we have a sequential ramp
+        return getColorRamp(colorScheme, n, opts.stops);
+      } else if (opts.colors || opts.values) {
+        return getCategoricalValues(opts.colors || opts.values, n);
+      } else {
+        // numerical indexes seem to make sense for non-adjacent and categorical colors
+        return getIndexes(n);
+      }
+    } else {
+      // sequential values
+      if (colorScheme) {
+        return getColorRamp(colorScheme, n, opts.stops);
+      } else if (opts.colors || opts.values) {
+        return getInterpolableValues(opts.colors || opts.values, n, opts);
+      } else {
+        // TODO: rethink this
+        // return getInterpolableValues([0, 1], n, opts);
+        return getIndexes(n);
+      }
+    }
+  }
+
+
+  function getCategoricalValues(values, n) {
+    if (n != values.length) {
+      stop('Mismatch in number of categories and number of values');
+    }
+    return values;
+  }
+
+  function getIndexes(n) {
+    var vals = [];
+    for (var i=0; i<n; i++) {
+      vals.push(i);
+    }
+    return vals;
+  }
+
+  // TODO: check for non-interpolatable value types (e.g. boolean, text)
+  function getInterpolableValues(arr, n, opts) {
+    var values = parseValues(arr);
+    if (n != values.length || opts.stops) {
+      return interpolateValuesToClasses(values, n, opts.stops);
+    }
+    return values;
+  }
+
+  // convert strings to numbers if they all parse as numbers
+  // arr: an array of strings
+  function parseValues(strings) {
+    var values = strings;
+    if (strings.every(utils.parseNumber)) {
+      values = strings.map(function(str) {
+        return +str;
+      });
+    }
+    return values;
+  }
+
+  var sequential = ['quantile', 'nice', 'equal-interval', 'hybrid'];
+  var all = ['non-adjacent', 'indexed', 'categorical'].concat(sequential);
+
+  function getClassifyMethod(opts, dataFieldType) {
+    var method;
+    if (opts.method) {
+      method = opts.method;
+    } else if (opts.index_field) {
+      method = 'indexed';
+    } else if (opts.categories || dataFieldType == 'string') {
+      method = 'categorical';
+    } else  if (dataFieldType == 'number') {
+      method = 'quantile'; // TODO: validate data field
+    } else {
+      stop('Unable to determine which classification method to use.');
+    }
+    if (!all.includes(method)) {
+      stop('Not a recognized classification method:', method);
+    }
+    if (sequential.includes(method) && dataFieldType != 'number') {
+      stop('The', method, 'method requires a numerical data field');
+    }
+    return method;
+  }
+
   cmd.classify = function(lyr, dataset, optsArg) {
     if (!lyr.data) {
       initDataTable(lyr);
     }
     var opts = optsArg || {};
     var records = lyr.data && lyr.data.getRecords();
-    var nullValue = opts.null_value || null;
-    var valuesAreColors = !!opts.colors || !!opts.color_scheme;
-    var colorScheme;
-    var values, classifyByValue, classifyById;
+    var valuesAreColors = !!opts.colors;
+    var dataField, dataFieldType, outputField;
+    var values, nullValue;
+    var classifyByValue, classifyByRecordId;
     var numClasses, numValues;
-    var dataField, outputField;
     var method;
 
-    // validate explicitly set classes
-    if (opts.classes) {
-      if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
-        stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
-      }
-      numClasses = opts.classes;
+    if (opts.color_scheme) {
+      stop('color-scheme is not a valid option, use colors instead');
     }
 
-    // TODO: better validation of breaks values
-    if (opts.breaks) {
-      numClasses = opts.breaks.length + 1;
-    }
-
+    // get data field to use for classification
+    //
     if (opts.index_field) {
       dataField = opts.index_field;
-      if (numClasses > 0 === false) {
-        stop('The index-field= option requires the classes= option to be set');
-      }
-      // You can't infer the number of classes by looking at index values;
-      // this can cause unwanted interpolation if one or more values are
-      // not present in the index field
-      // numClasses = validateClassIndexField(records, opts.index_field);
-
     } else if (opts.field) {
       dataField = opts.field;
+      dataFieldType = getColumnType(opts.field, records);
     }
-
-    // expand categories if value is '*'
-    if (dataField && opts.categories && opts.categories.includes('*')) {
-      opts.categories = getUniqFieldValues(records, dataField);
+    if (dataField) {
+      requireDataField(lyr.data, dataField);
     }
 
     // get classification method
     //
-    if (opts.method) {
-      method = opts.method;
-    } else if (opts.categories) {
-      method = 'categorical';
-    } else if (opts.index_field) {
-      method = 'indexed';
-    } else {
-      method = 'quantile'; // TODO: validate data field
-    }
+    method = getClassifyMethod(opts, dataFieldType);
 
+    // validate classification method
     if (method == 'non-adjacent') {
       if (lyr.geometry_type != 'polygon') {
         stop('The non-adjacent option requires a polygon layer');
@@ -29072,83 +29161,70 @@ ${svg}
       }
     } else if (!dataField) {
       stop('Missing a data field to classify');
+    }
+
+
+    // get the number of classes and the number of values
+    //
+    // expand categories if value is '*'
+    if (method == 'categorical') {
+      if ((!opts.categories || opts.categories.includes('*')) && dataField) {
+        opts.categories = getUniqFieldValues(records, dataField);
+      }
+    }
+
+    if (opts.classes) {
+      if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
+        stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
+      }
+      numClasses = opts.classes;
+    } else if (method == 'indexed' && dataField) {
+      numClasses = getIndexedClassCount(records, dataField);
+    } else if (opts.breaks) {
+      numClasses = opts.breaks.length + 1;
+    } else if (method == 'categorical' && opts.categories) {
+      numClasses = opts.categories.length;
+    } else if (opts.colors && opts.colors.length > 1) {
+      numClasses = opts.colors.length;
+    } else if (opts.values && opts.values.length > 1) {
+      numClasses = opts.values.length;
+    } else if (method == 'non-adjacent') {
+      numClasses = 5;
     } else {
-      requireDataField(lyr.data, dataField);
+      numClasses = 4;
     }
-
-    if (numClasses) {
-      numValues = opts.continuous ? numClasses + 1 : numClasses;
-    }
-
-    // support both deprecated color-scheme= option and colors=<color-scheme> syntax
-    if (opts.color_scheme) {
-      if (!isColorSchemeName(opts.color_scheme)) {
-        stop('Unknown color scheme:', opts.color_scheme);
-      }
-      colorScheme = opts.color_scheme;
-    } else if (opts.colors && isColorSchemeName(opts.colors[0])) {
-      colorScheme = opts.colors[0];
-    } else if (opts.colors) {
-      opts.colors.forEach(parseColor); // validate colors -- error if unparsable
-    }
-
-    /// get values (usually colors)
-    ///
-    if (colorScheme) {
-      if (method == 'non-adjacent') {
-        numClasses = numValues = numClasses || 5;
-        values = getCategoricalColorScheme(colorScheme, numValues);
-
-      } else if (method == 'categorical') {
-        values = getCategoricalColorScheme(colorScheme, opts.categories.length);
-        numClasses = numValues = values.length;
-
-      } else {
-        if (!numClasses) {
-          // stop('color-scheme= option requires classes= or breaks=');
-          numClasses = 4; // use a default number of classes
-          numValues = opts.continuous ? numClasses + 1 : numClasses;
-        }
-        values = getColorRamp(colorScheme, numValues, opts.stops);
-      }
-
-    } else if (opts.colors || opts.values) {
-      values = opts.values ? parseValues(opts.values) : opts.colors;
-      if (!numValues) {
-        numValues = values.length;
-      }
-      if ((values.length != numValues || opts.stops) && numValues > 1) {
-        // TODO: handle numValues == 1
-        // TODO: check for non-interpolatable value types (e.g. boolean, text)
-        values = interpolateValuesToClasses(values, numValues, opts.stops);
-      }
-
-    } else if (numValues > 1) {
-      // no values were given: assign indexes for each class
-      values = getIndexValues(numValues);
-      nullValue = -1;
-    }
-
-    if (valuesAreColors) {
-      nullValue = nullValue || '#eee';
-    }
-
+    numValues = opts.continuous ? numClasses + 1 : numClasses;
     if (numValues > 1 === false) {
-      stop('Missing a valid number of classes');
+      stop('Missing a valid number of values');
     }
 
+    // get colors or other values
+    //
+    values = getClassValues(method, numValues, opts);
     if (opts.invert) {
       values = values.concat().reverse();
     }
-
     if (valuesAreColors) {
       message('Colors:', formatValuesForLogging(values));
     }
 
+    // get null value
+    //
+    if ('null_value' in opts) {
+      nullValue = opts.null_value;
+    } else if (valuesAreColors) {
+      nullValue = '#eee';
+    } else if (opts.values) {
+      nullValue = null;
+    } else {
+      nullValue = -1; // kludge, to match behavior of getClassValues()
+    }
+
+
     // get a function to convert input data to class indexes
     //
     if (method == 'non-adjacent') {
-      classifyById = getNonAdjacentClassifier(lyr, dataset, values);
+      classifyByRecordId = getNonAdjacentClassifier(lyr, dataset, values);
     } else if (opts.index_field) {
       // data is pre-classified... just read the index from a field
       classifyByValue = getIndexedClassifier(values, nullValue, opts);
@@ -29159,12 +29235,11 @@ ${svg}
     }
 
     if (classifyByValue) {
-      classifyById = function(id) {
+      classifyByRecordId = function(id) {
         var d = records[id] || {};
         return classifyByValue(d[dataField]);
       };
     }
-
 
     // get the name of the output field
     //
@@ -29181,22 +29256,9 @@ ${svg}
     }
 
     records.forEach(function(d, i) {
-      d[outputField] = classifyById(i);
+      d[outputField] = classifyByRecordId(i);
     });
   };
-
-
-  // convert strings to numbers if they all parse as numbers
-  // arr: an array of strings
-  function parseValues(strings) {
-    var values = strings;
-    if (strings.every(utils.parseNumber)) {
-      values = strings.map(function(str) {
-        return +str;
-      });
-    }
-    return values;
-  }
 
   function formatValuesForLogging(arr) {
     if (arr.some(val => utils.isString(val) && val.indexOf('rgb(') === 0)) {
@@ -29212,15 +29274,6 @@ ${svg}
       if (!o) stop('Unable to parse color:', col);
       return o.formatHex();
     });
-  }
-
-
-  function getIndexValues(n) {
-    var vals = [];
-    for (var i=0; i<n; i++) {
-      vals.push(i);
-    }
-    return vals;
   }
 
   // Remove small-area polygon rings (very simple implementation of sliver removal)
@@ -35056,7 +35109,6 @@ ${svg}
   }
 
 
-
   function snapVerticesToPoint(ids, p, arcs, final) {
     ids.forEach(function(idx) {
       setVertexCoords(p[0], p[1], idx, arcs);
@@ -35136,7 +35188,7 @@ ${svg}
   function findNearestVertex(x, y, shp, arcs, spherical) {
     var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
         minLen = Infinity,
-        minX, minY, vId, dist, iter;
+        minX, minY, dist, iter;
     for (var i=0; i<shp.length; i++) {
       iter = arcs.getShapeIter(shp[i]);
       while (iter.hasNext()) {
@@ -35145,26 +35197,10 @@ ${svg}
           minLen = dist;
           minX = iter.x;
           minY = iter.y;
-          vId = iter.i;
         }
       }
     }
-    return minLen < Infinity ? {x: minX, y: minY, i: vId} : null;
-  }
-
-  // v: vertex in {x, y, i} format
-  function findAdjacentVertex(v, shp, arcs, offs) {
-    var p, i;
-    var arcEnd = offs == 1 && vertexIsArcEnd(v.i, arcs);
-    var arcStart = offs == -1 && vertexIsArcStart(v.i, arcs);
-    if (arcEnd || arcStart) return null;
-    i = v.i + offs;
-    p = getVertexCoords(i, arcs);
-    return {
-      i: i,
-      x: p[0],
-      y: p[1]
-    };
+    return minLen < Infinity ? {x: minX, y: minY} : null;
   }
 
   var VertexUtils = /*#__PURE__*/Object.freeze({
@@ -35177,8 +35213,7 @@ ${svg}
     vertexIsArcEnd: vertexIsArcEnd,
     vertexIsArcStart: vertexIsArcStart,
     setVertexCoords: setVertexCoords,
-    findNearestVertex: findNearestVertex,
-    findAdjacentVertex: findAdjacentVertex
+    findNearestVertex: findNearestVertex
   });
 
   // Returns x,y coordinates of the point that is at the midpoint of each polyline feature
