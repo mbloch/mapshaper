@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.5.91 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.5.97 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -284,7 +284,7 @@ Common options: `target=`
 
 ### -classify
 
-Apply quantile, equal-interval or categorical classification to a data field.
+Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include `quantile`, `equal-interval`, `hybrid` and `nice` or categorical classification to a data field.
 
 `<field>` or `field=` Name of the data field to classify.
 
@@ -292,9 +292,9 @@ Apply quantile, equal-interval or categorical classification to a data field.
 
 `values=`       List of values to assign to data classes. If the number of values differs from the number of classes given by the (optional) `classes` or `breaks` option, then interpolated values will be calculated. Mapshaper uses d3 for interpolation.
 
-`colors=` Takes a list of CSS colors or the name of a predefined color scheme (the [-colors](#-colors) command lists available color schemes). Similarly to the `values=` option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.
+`colors=` Takes a list of CSS colors, the name of a predefined color scheme, or `random`. Run the [-colors](#-colors) command to list all of the built-in color schemes. Similar to the `values=` option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.
 
-`non-adjacent`  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper's algorithm is not optimal. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.
+`non-adjacent`  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper's algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.
 
 `stops=` A pair of values (0-100) for limiting the range of a color ramp.
 
@@ -304,7 +304,7 @@ Apply quantile, equal-interval or categorical classification to a data field.
 
 `breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
 
-`method=`       Classification method. One of: `quantile`, `equal-interval`, `nice` or `hybrid`. 
+`method=`       Classification method. One of: `quantile`, `equal-interval`, `nice`, `hybrid` (sequential data), `categorical`, `non-adjacent` and `indexed`. This parameter is not required if the classification method can be inferred from other options. For example, the `index-field=` parameter implies indexed classification, the `categories=` parameter implies categorical classification.
 
 `quantile`      Use quantile classification. Shortcut for `method=quantile`.
 

@@ -1,3 +1,6 @@
+v0.5.97
+* Better warnings and error messages.
+
 v0.5.96
 * Added colors=random option to the -classify command.
 * Added more sensible default behavior to the -classify command.
