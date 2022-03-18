@@ -16,7 +16,7 @@ import {
 
 import cmd from '../mapshaper-cmd';
 import { getUniqFieldValues, getColumnType } from '../datatable/mapshaper-data-utils';
-import { getClassValues } from '../classification/mapshaper-classify-ramps';
+import { getClassValues, getNullValue } from '../classification/mapshaper-classify-ramps';
 import { getClassifyMethod } from '../classification/mapshaper-classify-methods';
 
 cmd.classify = function(lyr, dataset, optsArg) {
@@ -26,7 +26,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   var opts = optsArg || {};
   var records = lyr.data && lyr.data.getRecords();
   var valuesAreColors = !!opts.colors;
-  var dataField, dataFieldType, outputField;
+  var dataField, fieldType, outputField;
   var values, nullValue;
   var classifyByValue, classifyByRecordId;
   var numClasses, numValues;
@@ -40,9 +40,10 @@ cmd.classify = function(lyr, dataset, optsArg) {
   //
   if (opts.index_field) {
     dataField = opts.index_field;
-  } else if (opts.field) {
+    fieldType = getColumnType(opts.field, records);
+ } else if (opts.field) {
     dataField = opts.field;
-    dataFieldType = getColumnType(opts.field, records);
+    fieldType = getColumnType(opts.field, records);
   }
   if (dataField) {
     requireDataField(lyr.data, dataField);
@@ -50,7 +51,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
 
   // get classification method
   //
-  method = getClassifyMethod(opts, dataFieldType);
+  method = getClassifyMethod(opts, fieldType);
 
   // validate classification method
   if (method == 'non-adjacent') {
@@ -68,6 +69,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   // get the number of classes and the number of values
   //
   // expand categories if value is '*'
+  // use all unique values if categories option is missing
   if (method == 'categorical') {
     if ((!opts.categories || opts.categories.includes('*')) && dataField) {
       opts.categories = getUniqFieldValues(records, dataField);
@@ -109,24 +111,16 @@ cmd.classify = function(lyr, dataset, optsArg) {
     message('Colors:', formatValuesForLogging(values));
   }
 
-  // get null value
-  //
-  if ('null_value' in opts) {
-    nullValue = opts.null_value;
-  } else if (valuesAreColors) {
-    nullValue = '#eee';
-  } else if (opts.values) {
-    nullValue = null;
-  } else {
-    nullValue = -1; // kludge, to match behavior of getClassValues()
-  }
-
+  nullValue = getNullValue(opts);
 
   // get a function to convert input data to class indexes
   //
-  if (method == 'non-adjacent') {
+  if (fieldType === null) {
+    // no valid data -- always return null value
+    classifyByRecordId = function() {return nullValue;};
+  } else if (method == 'non-adjacent') {
     classifyByRecordId = getNonAdjacentClassifier(lyr, dataset, values);
-  } else if (opts.index_field) {
+  } else if (method == 'indexed') {
     // data is pre-classified... just read the index from a field
     classifyByValue = getIndexedClassifier(values, nullValue, opts);
   } else if (method == 'categorical') {

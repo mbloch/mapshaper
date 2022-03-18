@@ -1,10 +1,36 @@
 import { isColorSchemeName, getColorRamp, getCategoricalColorScheme, isCategoricalColorScheme, pickRandomColorScheme, getRandomColors } from '../color/color-schemes';
+import { getValueType } from '../datatable/mapshaper-data-utils';
 import { validateColor, parseColor } from '../color/color-utils';
 import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import {
   interpolateValuesToClasses
 } from '../classification/mapshaper-interpolation';
+
+export function getNullValue(opts) {
+  var nullValue;
+  if ('null_value' in opts) {
+    nullValue = parseNullValue(opts.null_value);
+  } else if (opts.colors) {
+    nullValue = '#eee';
+  } else if (opts.values) {
+    nullValue = null;
+  } else {
+    nullValue = -1; // kludge, to match behavior of getClassValues()
+  }
+  return nullValue;
+}
+
+// Parse command line string arguments to the correct data type
+function parseNullValue(val) {
+  if (utils.isString(val) && !isNaN(+val)) {
+    val = +val;
+  }
+  if (val === 'null') {
+    val = null;
+  }
+  return val;
+}
 
 export function getClassValues(method, n, opts) {
   var categorical = method == 'categorical' || method == 'non-adjacent';
