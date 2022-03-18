@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.95";
+  var VERSION = "0.5.96";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -8877,10 +8877,22 @@
     arg = arg ? String(arg) : '';
     var hexStr = hexRxp.test(arg) ? arg : lookupColorName(arg);
     var rgb = null;
-    if (hexStr) rgb = parseHexColor(hexStr);
-    else if (rgbaRxp.test(arg)) rgb = parseRGBA(arg);
-    if (!testRGB(rgb)) stop("Unsupported color:", arg);
+    if (hexStr) {
+      rgb = parseHexColor(hexStr);
+    } else if (rgbaRxp.test(arg)) {
+      rgb = parseRGBA(arg);
+    }
+    if (rgb && !testRGB(rgb)) {
+      rgb = null;
+    }
     return rgb;
+  }
+
+  function validateColor(arg) {
+    if (!parseColor(arg)) {
+      stop("Unsupported color:", arg);
+    }
+    return true;
   }
 
   function testRGB(o) {
@@ -9028,7 +9040,7 @@
     weights = normalizeWeights(weights);
     if (!weights) return '#eee';
     var blended = colors.reduce(function(memo, col, i) {
-      var rgb = parseColor(col);
+      var rgb = validateColor(col) && parseColor(col);
       var w = +weights[i] || 0;
       memo.r += rgb.r * w;
       memo.g += rgb.g * w;
@@ -28870,7 +28882,8 @@ ${svg}
     categorical: [],
     sequential: [],
     rainbow: [],
-    diverging: []
+    diverging: [],
+    all: []
   };
   var ramps;
 
@@ -28890,6 +28903,19 @@ ${svg}
       '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
     addCategoricalScheme('Tableau20',
       '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
+    index.all = [].concat(index.sequential, index.rainbow, index.diverging, index.categorical);
+
+  }
+
+  function standardName(name) {
+    if (!name) return null;
+    var lcname = name.toLowerCase();
+    for (var i=0; i<index.all.length; i++) {
+      if (index.all[i].toLowerCase() == lcname) {
+        return index.all[i];
+      }
+    }
+    return null;
   }
 
   function addSchemesFromD3(type, names) {
@@ -28944,9 +28970,26 @@ ${svg}
     print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
   }
 
+  function pickRandomColorScheme(type) {
+    initSchemes();
+    var names = index[type];
+    if (!names) error('Unknown color scheme type:', type);
+    var i = Math.floor(Math.random() * names.length);
+    return names[i];
+  }
+
+  function getRandomColors(n) {
+    initSchemes();
+    var colors = getCategoricalColorScheme('Tableau20', 20);
+    utils.shuffle(colors);
+    colors = wrapColors(colors, n);
+    return colors.slice(0, n);
+  }
+
   function getCategoricalColorScheme(name, n) {
     var colors;
     initSchemes();
+    name = standardName(name);
     if (!isColorSchemeName(name)) {
       stop('Unknown color scheme name:', name);
     } else if (isCategoricalColorScheme(name)) {
@@ -28973,17 +29016,17 @@ ${svg}
 
   function isColorSchemeName(name) {
     initSchemes();
-    return index.categorical.includes(name) || index.sequential.includes(name) ||
-      index.diverging.includes(name) || index.rainbow.includes(name);
+    return index.all.includes(standardName(name));
   }
 
   function isCategoricalColorScheme(name) {
     initSchemes();
-    return index.categorical.includes(name);
+    return index.categorical.includes(standardName(name));
   }
 
   function getColorRamp(name, n, stops) {
     initSchemes();
+    name = standardName(name);
     var lib = require('d3-scale-chromatic');
     var ramps = lib['scheme' + name];
     var interpolate = lib['interpolate' + name];
@@ -29018,44 +29061,40 @@ ${svg}
 
   function getClassValues(method, n, opts) {
     var categorical = method == 'categorical' || method == 'non-adjacent';
-    var colorArg = opts.colors ? opts.colors[0] : null;
+    var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
     var colorScheme;
 
-    if (isColorSchemeName(colorArg)) {
+    if (colorArg == 'random') {
+      if (categorical) {
+        return getRandomColors(n);
+      }
+      colorScheme = pickRandomColorScheme('sequential');
+      message('Randomly selected color ramp:', colorScheme);
+    } else if (isColorSchemeName(colorArg)) {
       colorScheme = colorArg;
-    } else if (colorArg == 'random') {
-      colorScheme = categorical ? 'Tableau20' : 'BuGn'; // TODO: randomize
+    } else if (colorArg && !parseColor(colorArg)) {
+      stop('Unrecognized color scheme name:', colorArg);
     } else if (opts.colors) {
-      // validate colors
-      opts.colors.forEach(parseColor);
+      opts.colors.forEach(validateColor);
     }
 
-    if (categorical) {
-      if (colorScheme && isCategoricalColorScheme(colorScheme)) {
+    if (colorScheme) {
+      if (categorical && isCategoricalColorScheme(colorScheme)) {
         return getCategoricalColorScheme(colorScheme, n);
-      } else if (colorScheme) {
-        // assume we have a sequential ramp
+      } else {
         return getColorRamp(colorScheme, n, opts.stops);
-      } else if (opts.colors || opts.values) {
+      }
+    } else if (opts.colors || opts.values) {
+      if (categorical) {
         return getCategoricalValues(opts.colors || opts.values, n);
       } else {
-        // numerical indexes seem to make sense for non-adjacent and categorical colors
-        return getIndexes(n);
+        return getInterpolableValues(opts.colors || opts.values, n, opts);
       }
     } else {
-      // sequential values
-      if (colorScheme) {
-        return getColorRamp(colorScheme, n, opts.stops);
-      } else if (opts.colors || opts.values) {
-        return getInterpolableValues(opts.colors || opts.values, n, opts);
-      } else {
-        // TODO: rethink this
-        // return getInterpolableValues([0, 1], n, opts);
-        return getIndexes(n);
-      }
+      // use numerical class indexes (0, 1, ...) if no values are given
+      return getIndexes(n);
     }
   }
-
 
   function getCategoricalValues(values, n) {
     if (n != values.length) {
@@ -29107,7 +29146,8 @@ ${svg}
     } else  if (dataFieldType == 'number') {
       method = 'quantile'; // TODO: validate data field
     } else {
-      stop('Unable to determine which classification method to use.');
+      // stop('Unable to determine which classification method to use.');
+      stop('Missing a data field and/or classification method');
     }
     if (!all.includes(method)) {
       stop('Not a recognized classification method:', method);
@@ -31140,7 +31180,11 @@ ${svg}
     if (!opts.force && !opts.prefix) {
       // overwrite existing fields if the "force" option is set.
       // prefix also overwrites... TODO: consider changing this
-      joinFields = utils.difference(joinFields, destFields);
+      var duplicateFields = utils.intersection(joinFields, destFields);
+      if (duplicateFields.length > 0) {
+        message('Same-named fields not joined without the "force" flag:', duplicateFields);
+        joinFields = utils.difference(joinFields, duplicateFields);
+      }
     }
     return joinFields;
   }
@@ -31872,7 +31916,7 @@ ${svg}
     //   stop("Missing required colors parameter");
     // }
     if (Array.isArray(opts.colors)) {
-      opts.colors.forEach(parseColor); // validate colors
+      opts.colors.forEach(validateColor);
     }
 
     var records = lyr.data ? lyr.data.getRecords() : [];
@@ -32111,7 +32155,7 @@ ${svg}
     var name = cmdOpts.name;
     var cmdDefn = externalCommands[name];
     if (!cmdDefn) {
-      stop('Unsupported command');
+      stop('Unsupported command:', name);
     }
     var targetType = cmdDefn.target;
     var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
@@ -36891,8 +36935,12 @@ ${svg}
     // support multiline string of commands pasted into console
     str = str.split(/\n+/g).map(function(str) {
       var match = /^[a-z][\w-]*/.exec(str = str.trim());
-      if (match && parser.isCommandName(match[0])) {
-        str = '-' + str; // add hyphen prefix to bare command
+      //if (match && parser.isCommandName(match[0])) {
+      if (match) {
+        // add hyphen prefix to bare command
+         // also add hyphen to non-command strings, for a better error message
+         // ("unsupported command" instead of "The -i command cannot be run in the browser")
+        str = '-' + str;
       }
       return str;
     }).join(' ');
