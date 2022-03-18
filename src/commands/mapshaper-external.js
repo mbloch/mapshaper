@@ -55,7 +55,7 @@ cmd.runExternalCommand = function(cmdOpts, catalog) {
   var name = cmdOpts.name;
   var cmdDefn = externalCommands[name];
   if (!cmdDefn) {
-    stop('Unsupported command');
+    stop('Unsupported command:', name);
   }
   var targetType = cmdDefn.target;
   var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);

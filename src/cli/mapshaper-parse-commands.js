@@ -24,8 +24,12 @@ export function standardizeConsoleCommands(raw) {
   // support multiline string of commands pasted into console
   str = str.split(/\n+/g).map(function(str) {
     var match = /^[a-z][\w-]*/.exec(str = str.trim());
-    if (match && parser.isCommandName(match[0])) {
-      str = '-' + str; // add hyphen prefix to bare command
+    //if (match && parser.isCommandName(match[0])) {
+    if (match) {
+      // add hyphen prefix to bare command
+       // also add hyphen to non-command strings, for a better error message
+       // ("unsupported command" instead of "The -i command cannot be run in the browser")
+      str = '-' + str;
     }
     return str;
   }).join(' ');
