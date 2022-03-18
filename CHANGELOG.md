@@ -1,3 +1,6 @@
+v0.5.98
+* Better handling of null data by the -classify command.
+
 v0.5.97
 * Better warnings and error messages.
 
