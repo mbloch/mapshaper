@@ -14,7 +14,8 @@ export function getClassifyMethod(opts, dataFieldType) {
   } else  if (dataFieldType == 'number') {
     method = 'quantile'; // TODO: validate data field
   } else {
-    stop('Unable to determine which classification method to use.');
+    // stop('Unable to determine which classification method to use.');
+    stop('Missing a data field and/or classification method');
   }
   if (!all.includes(method)) {
     stop('Not a recognized classification method:', method);

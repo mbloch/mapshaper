@@ -1,5 +1,5 @@
-import { isColorSchemeName, getColorRamp, getCategoricalColorScheme, isCategoricalColorScheme } from '../color/color-schemes';
-import { parseColor } from '../color/color-utils';
+import { isColorSchemeName, getColorRamp, getCategoricalColorScheme, isCategoricalColorScheme, pickRandomColorScheme, getRandomColors } from '../color/color-schemes';
+import { validateColor, parseColor } from '../color/color-utils';
 import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import {
@@ -8,44 +8,40 @@ import {
 
 export function getClassValues(method, n, opts) {
   var categorical = method == 'categorical' || method == 'non-adjacent';
-  var colorArg = opts.colors ? opts.colors[0] : null;
+  var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
   var colorScheme;
 
-  if (isColorSchemeName(colorArg)) {
+  if (colorArg == 'random') {
+    if (categorical) {
+      return getRandomColors(n);
+    }
+    colorScheme = pickRandomColorScheme('sequential');
+    message('Randomly selected color ramp:', colorScheme);
+  } else if (isColorSchemeName(colorArg)) {
     colorScheme = colorArg;
-  } else if (colorArg == 'random') {
-    colorScheme = categorical ? 'Tableau20' : 'BuGn'; // TODO: randomize
+  } else if (colorArg && !parseColor(colorArg)) {
+    stop('Unrecognized color scheme name:', colorArg);
   } else if (opts.colors) {
-    // validate colors
-    opts.colors.forEach(parseColor);
+    opts.colors.forEach(validateColor);
   }
 
-  if (categorical) {
-    if (colorScheme && isCategoricalColorScheme(colorScheme)) {
+  if (colorScheme) {
+    if (categorical && isCategoricalColorScheme(colorScheme)) {
       return getCategoricalColorScheme(colorScheme, n);
-    } else if (colorScheme) {
-      // assume we have a sequential ramp
+    } else {
       return getColorRamp(colorScheme, n, opts.stops);
-    } else if (opts.colors || opts.values) {
+    }
+  } else if (opts.colors || opts.values) {
+    if (categorical) {
       return getCategoricalValues(opts.colors || opts.values, n);
     } else {
-      // numerical indexes seem to make sense for non-adjacent and categorical colors
-      return getIndexes(n);
+      return getInterpolableValues(opts.colors || opts.values, n, opts);
     }
   } else {
-    // sequential values
-    if (colorScheme) {
-      return getColorRamp(colorScheme, n, opts.stops);
-    } else if (opts.colors || opts.values) {
-      return getInterpolableValues(opts.colors || opts.values, n, opts);
-    } else {
-      // TODO: rethink this
-      // return getInterpolableValues([0, 1], n, opts);
-      return getIndexes(n);
-    }
+    // use numerical class indexes (0, 1, ...) if no values are given
+    return getIndexes(n);
   }
 }
-
 
 function getCategoricalValues(values, n) {
   if (n != values.length) {

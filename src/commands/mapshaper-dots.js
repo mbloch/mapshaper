@@ -1,7 +1,7 @@
 
 import { requireDataField } from '../dataset/mapshaper-layer-utils';
 import { requirePolygonLayer, layerHasNonNullData, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { parseColor } from '../color/color-utils';
+import { validateColor } from '../color/color-utils';
 import cmd from '../mapshaper-cmd';
 import geom from '../geom/mapshaper-geom';
 import { stop } from '../utils/mapshaper-logging';
@@ -27,7 +27,7 @@ cmd.dots = function(lyr, arcs, opts) {
   //   stop("Missing required colors parameter");
   // }
   if (Array.isArray(opts.colors)) {
-    opts.colors.forEach(parseColor); // validate colors
+    opts.colors.forEach(validateColor);
   }
 
   var records = lyr.data ? lyr.data.getRecords() : [];

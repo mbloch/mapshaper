@@ -7,7 +7,8 @@ var index = {
   categorical: [],
   sequential: [],
   rainbow: [],
-  diverging: []
+  diverging: [],
+  all: []
 };
 var ramps;
 
@@ -27,6 +28,19 @@ function initSchemes() {
     '3182bd6baed69ecae1c6dbefe6550dfd8d3cfdae6bfdd0a231a35474c476a1d99bc7e9c0756bb19e9ac8bcbddcdadaeb636363969696bdbdbdd9d9d9');
   addCategoricalScheme('Tableau20',
     '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
+  index.all = [].concat(index.sequential, index.rainbow, index.diverging, index.categorical);
+
+}
+
+function standardName(name) {
+  if (!name) return null;
+  var lcname = name.toLowerCase();
+  for (var i=0; i<index.all.length; i++) {
+    if (index.all[i].toLowerCase() == lcname) {
+      return index.all[i];
+    }
+  }
+  return null;
 }
 
 function addSchemesFromD3(type, names) {
@@ -81,9 +95,26 @@ export function printColorSchemeNames() {
   print ('\nMulti-hue/rainbow\n' + formatStringsAsGrid(index.rainbow));
 }
 
+export function pickRandomColorScheme(type) {
+  initSchemes();
+  var names = index[type];
+  if (!names) error('Unknown color scheme type:', type);
+  var i = Math.floor(Math.random() * names.length);
+  return names[i];
+}
+
+export function getRandomColors(n) {
+  initSchemes();
+  var colors = getCategoricalColorScheme('Tableau20', 20);
+  utils.shuffle(colors);
+  colors = wrapColors(colors, n);
+  return colors.slice(0, n);
+}
+
 export function getCategoricalColorScheme(name, n) {
   var colors;
   initSchemes();
+  name = standardName(name);
   if (!isColorSchemeName(name)) {
     stop('Unknown color scheme name:', name);
   } else if (isCategoricalColorScheme(name)) {
@@ -110,17 +141,17 @@ export function wrapColors(colors, n) {
 
 export function isColorSchemeName(name) {
   initSchemes();
-  return index.categorical.includes(name) || index.sequential.includes(name) ||
-    index.diverging.includes(name) || index.rainbow.includes(name);
+  return index.all.includes(standardName(name));
 }
 
 export function isCategoricalColorScheme(name) {
   initSchemes();
-  return index.categorical.includes(name);
+  return index.categorical.includes(standardName(name));
 }
 
 export function getColorRamp(name, n, stops) {
   initSchemes();
+  name = standardName(name);
   var lib = require('d3-scale-chromatic');
   var ramps = lib['scheme' + name];
   var interpolate = lib['interpolate' + name];

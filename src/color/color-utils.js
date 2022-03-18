@@ -9,10 +9,22 @@ export function parseColor(arg) {
   arg = arg ? String(arg) : '';
   var hexStr = hexRxp.test(arg) ? arg : lookupColorName(arg);
   var rgb = null;
-  if (hexStr) rgb = parseHexColor(hexStr);
-  else if (rgbaRxp.test(arg)) rgb = parseRGBA(arg);
-  if (!testRGB(rgb)) stop("Unsupported color:", arg);
+  if (hexStr) {
+    rgb = parseHexColor(hexStr);
+  } else if (rgbaRxp.test(arg)) {
+    rgb = parseRGBA(arg);
+  }
+  if (rgb && !testRGB(rgb)) {
+    rgb = null;
+  }
   return rgb;
+}
+
+export function validateColor(arg) {
+  if (!parseColor(arg)) {
+    stop("Unsupported color:", arg);
+  }
+  return true;
 }
 
 function testRGB(o) {

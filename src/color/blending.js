@@ -1,6 +1,6 @@
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
-import { parseColor } from '../color/color-utils';
+import { parseColor, validateColor } from '../color/color-utils';
 import { formatColor } from '../color/color-utils';
 
 export function blend(a, b) {
@@ -20,7 +20,7 @@ export function blend(a, b) {
   weights = normalizeWeights(weights);
   if (!weights) return '#eee';
   var blended = colors.reduce(function(memo, col, i) {
-    var rgb = parseColor(col);
+    var rgb = validateColor(col) && parseColor(col);
     var w = +weights[i] || 0;
     memo.r += rgb.r * w;
     memo.g += rgb.g * w;
