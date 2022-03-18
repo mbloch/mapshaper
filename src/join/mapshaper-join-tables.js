@@ -242,7 +242,11 @@ export function getFieldsToJoin(destFields, srcFields, opts) {
   if (!opts.force && !opts.prefix) {
     // overwrite existing fields if the "force" option is set.
     // prefix also overwrites... TODO: consider changing this
-    joinFields = utils.difference(joinFields, destFields);
+    var duplicateFields = utils.intersection(joinFields, destFields);
+    if (duplicateFields.length > 0) {
+      message('Same-named fields not joined without the "force" flag:', duplicateFields);
+      joinFields = utils.difference(joinFields, duplicateFields);
+    }
   }
   return joinFields;
 }
