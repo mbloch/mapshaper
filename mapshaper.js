@@ -29059,6 +29059,31 @@ ${svg}
     return ramp;
   }
 
+  function getNullValue(opts) {
+    var nullValue;
+    if ('null_value' in opts) {
+      nullValue = parseNullValue(opts.null_value);
+    } else if (opts.colors) {
+      nullValue = '#eee';
+    } else if (opts.values) {
+      nullValue = null;
+    } else {
+      nullValue = -1; // kludge, to match behavior of getClassValues()
+    }
+    return nullValue;
+  }
+
+  // Parse command line string arguments to the correct data type
+  function parseNullValue(val) {
+    if (utils.isString(val) && !isNaN(+val)) {
+      val = +val;
+    }
+    if (val === 'null') {
+      val = null;
+    }
+    return val;
+  }
+
   function getClassValues(method, n, opts) {
     var categorical = method == 'categorical' || method == 'non-adjacent';
     var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
@@ -29132,27 +29157,33 @@ ${svg}
     return values;
   }
 
-  var sequential = ['quantile', 'nice', 'equal-interval', 'hybrid'];
+  var sequential = ['quantile', 'nice', 'equal-interval', 'hybrid', 'breaks'];
   var all = ['non-adjacent', 'indexed', 'categorical'].concat(sequential);
 
-  function getClassifyMethod(opts, dataFieldType) {
+  function getClassifyMethod(opts, dataType) {
     var method;
     if (opts.method) {
       method = opts.method;
+    } else if (opts.breaks) {
+      method = 'breaks';
     } else if (opts.index_field) {
       method = 'indexed';
-    } else if (opts.categories || dataFieldType == 'string') {
+    } else if (opts.categories || dataType == 'string') {
       method = 'categorical';
-    } else  if (dataFieldType == 'number') {
+    } else  if (dataType == 'number') {
       method = 'quantile'; // TODO: validate data field
+    } else if (dataType == 'date' || dataType == 'object') {
+      stop('Data type does not support classification:', dataType);
+    } else if (dataType === null) {
+      // data field is empty
+      return null; // kludge
     } else {
-      // stop('Unable to determine which classification method to use.');
-      stop('Missing a data field and/or classification method');
+      stop('Unable to determine which classification method to use.');
     }
     if (!all.includes(method)) {
       stop('Not a recognized classification method:', method);
     }
-    if (sequential.includes(method) && dataFieldType != 'number') {
+    if (sequential.includes(method) && dataType != 'number' && dataType !== null) {
       stop('The', method, 'method requires a numerical data field');
     }
     return method;
@@ -29165,7 +29196,7 @@ ${svg}
     var opts = optsArg || {};
     var records = lyr.data && lyr.data.getRecords();
     var valuesAreColors = !!opts.colors;
-    var dataField, dataFieldType, outputField;
+    var dataField, fieldType, outputField;
     var values, nullValue;
     var classifyByValue, classifyByRecordId;
     var numClasses, numValues;
@@ -29179,9 +29210,10 @@ ${svg}
     //
     if (opts.index_field) {
       dataField = opts.index_field;
-    } else if (opts.field) {
+      fieldType = getColumnType(opts.field, records);
+   } else if (opts.field) {
       dataField = opts.field;
-      dataFieldType = getColumnType(opts.field, records);
+      fieldType = getColumnType(opts.field, records);
     }
     if (dataField) {
       requireDataField(lyr.data, dataField);
@@ -29189,7 +29221,7 @@ ${svg}
 
     // get classification method
     //
-    method = getClassifyMethod(opts, dataFieldType);
+    method = getClassifyMethod(opts, fieldType);
 
     // validate classification method
     if (method == 'non-adjacent') {
@@ -29207,6 +29239,7 @@ ${svg}
     // get the number of classes and the number of values
     //
     // expand categories if value is '*'
+    // use all unique values if categories option is missing
     if (method == 'categorical') {
       if ((!opts.categories || opts.categories.includes('*')) && dataField) {
         opts.categories = getUniqFieldValues(records, dataField);
@@ -29248,24 +29281,16 @@ ${svg}
       message('Colors:', formatValuesForLogging(values));
     }
 
-    // get null value
-    //
-    if ('null_value' in opts) {
-      nullValue = opts.null_value;
-    } else if (valuesAreColors) {
-      nullValue = '#eee';
-    } else if (opts.values) {
-      nullValue = null;
-    } else {
-      nullValue = -1; // kludge, to match behavior of getClassValues()
-    }
-
+    nullValue = getNullValue(opts);
 
     // get a function to convert input data to class indexes
     //
-    if (method == 'non-adjacent') {
+    if (fieldType === null) {
+      // no valid data -- always return null value
+      classifyByRecordId = function() {return nullValue;};
+    } else if (method == 'non-adjacent') {
       classifyByRecordId = getNonAdjacentClassifier(lyr, dataset, values);
-    } else if (opts.index_field) {
+    } else if (method == 'indexed') {
       // data is pre-classified... just read the index from a field
       classifyByValue = getIndexedClassifier(values, nullValue, opts);
     } else if (method == 'categorical') {
