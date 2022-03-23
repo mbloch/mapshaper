@@ -111,6 +111,7 @@ export function MshpMap(gui) {
   this.getExtent = function() {return _ext;};
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
+  this.getActiveLayer = function() { return _activeLyr; };
 
   // called by layer menu after layer visibility is updated
   this.redraw = function() {
@@ -236,7 +237,7 @@ export function MshpMap(gui) {
     }
 
     _ext.on('change', function(e) {
-      _basemap.refresh(); // keep basemap synced up (if turned on)
+      if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
       if (e.reset) return; // don't need to redraw map here if extent has been reset
       if (isFrameView()) {
         updateFrameExtent();

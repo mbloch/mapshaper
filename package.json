@@ -35,6 +35,7 @@
 	"files": [
 		"/bin/**",
 		"/www/**",
+		"!/www/basemap.js",
 		"!/www/nacis/",
 		"/mapshaper.js",
 		"!.DS_Store"

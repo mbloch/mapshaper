@@ -22,6 +22,7 @@ export function Basemap(gui, ext) {
   var menu = gui.container.findChild('.basemap-options');
   var list = menu.findChild('.basemap-styles');
   var container = gui.container.findChild('.basemap-container');
+  var basemapBtn = gui.container.findChild('.basemap-btn');
   var mapEl = gui.container.findChild('.basemap');
   var extentNote = El('div').addClass('basemap-note').appendTo(container).hide();
   var params = window.mapboxParams;
@@ -29,25 +30,33 @@ export function Basemap(gui, ext) {
   var activeStyle;
   var loading = false;
 
-  gui.addMode('basemap', turnOn, turnOff, gui.container.findChild('.basemap-btn'));
-  // model.on('select', function() {
-    // TODO: hide basemap
-    // if (gui.getMode() == 'basemap') gui.clearMode();
-  // });
+  if (params) {
+    init();
+  } else {
+    basemapBtn.hide();
+  }
 
-  new SimpleButton(menu.findChild('.close-btn')).on('click', function() {
-    gui.clearMode();
-    turnOff();
-  });
+  function init() {
+    gui.addMode('basemap', turnOn, turnOff, basemapBtn);
+    // model.on('select', function() {
+      // TODO: hide basemap
+      // if (gui.getMode() == 'basemap') gui.clearMode();
+    // });
 
-  params.styles.forEach(function(style) {
-    var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
-    btn.findChild('.basemap-style-btn').on('click', function() {
-      updateStyle(style == activeStyle ? null : style);
-      updateButtons();
+    new SimpleButton(menu.findChild('.close-btn')).on('click', function() {
+      gui.clearMode();
+      turnOff();
     });
-    btn.appendTo(list);
-  });
+
+    params.styles.forEach(function(style) {
+      var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
+      btn.findChild('.basemap-style-btn').on('click', function() {
+        updateStyle(style == activeStyle ? null : style);
+        updateButtons();
+      });
+      btn.appendTo(list);
+    });
+  }
 
   function updateStyle(style) {
     activeStyle = style || null;
@@ -166,5 +175,3 @@ export function Basemap(gui, ext) {
 
   return {refresh: refresh}; // called by map when extent changes
 }
-
-
