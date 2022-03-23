@@ -70,7 +70,9 @@ var startEditing = function() {
   startEditing = function() {};
 
   window.addEventListener('beforeunload', function(e) {
-    if (gui.session.unsavedChanges()) {
+    // don't prompt if there are no datasets (this means the last layer was deleted,
+    // hitting the 'cancel' button would leave the interface in a bad state)
+    if (gui.session.unsavedChanges() && !gui.model.isEmpty()) {
       e.returnValue = 'There are unsaved changes.';
       e.preventDefault();
     }
