@@ -20,6 +20,9 @@ export function getClassifyMethod(opts, dataType) {
   } else if (dataType === null) {
     // data field is empty
     return null; // kludge
+  } else if (dataType === undefined) {
+    // no data field was given
+    stop('Expected a data field to classify or the non-adjacent option');
   } else {
     stop('Unable to determine which classification method to use.');
   }

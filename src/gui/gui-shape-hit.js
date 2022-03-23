@@ -125,7 +125,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
         hits.push(id);
       }
     });
-    // console.log(hitThreshold, bullseye);
+    // TODO: add info on what part of a shape gets hit
     return {
       ids: utils.uniq(hits) // multipoint features can register multiple hits
     };

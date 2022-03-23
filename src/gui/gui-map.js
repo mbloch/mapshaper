@@ -16,6 +16,7 @@ import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { ElementPosition } from './gui-element-position';
 import { MouseArea } from './gui-mouse';
+import { Basemap } from './gui-basemap-control';
 import { GUI } from './gui-lib';
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -37,6 +38,8 @@ export function MshpMap(gui) {
       _intersectionLyr, _activeLyr, _overlayLyr,
       _inspector, _stack,
       _dynamicCRS;
+
+  var _basemap = new Basemap(gui, _ext);
 
   if (gui.options.showMouseCoordinates) {
     new CoordinatesDisplay(gui, _ext, _mouse);
@@ -62,6 +65,8 @@ export function MshpMap(gui) {
 
   model.on('update', onUpdate);
 
+
+
   // Update display of segment intersections
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr == _intersectionLyr) return; // no change
@@ -77,6 +82,12 @@ export function MshpMap(gui) {
 
   this.setLayerPinning = function(target, pinned) {
     target.layer.pinned = !!pinned;
+  };
+
+  this.translatePixelCoords = function(x, y) {
+    var p = _ext.translatePixelCoords(x, y);
+    if (!_dynamicCRS) return p;
+    return internal.toLngLat(p, _dynamicCRS);
   };
 
   this.getCenterLngLat = function() {
@@ -131,6 +142,7 @@ export function MshpMap(gui) {
 
     // Update map extent (also triggers redraw)
     projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
+    _fullBounds = getFullBounds(); // update this so map extent doesn't get reset after next update
   };
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -184,6 +196,7 @@ export function MshpMap(gui) {
       needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
     }
 
+
     if (isFrameView()) {
       _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
       _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
@@ -223,6 +236,7 @@ export function MshpMap(gui) {
     }
 
     _ext.on('change', function(e) {
+      _basemap.refresh(); // keep basemap synced up (if turned on)
       if (e.reset) return; // don't need to redraw map here if extent has been reset
       if (isFrameView()) {
         updateFrameExtent();

@@ -88,8 +88,8 @@ export function Console(gui) {
       // when an instance loses focus.
       internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop);
       gui.container.addClass('console-open');
-      gui.dispatchEvent('resize');
       el.show();
+      gui.dispatchEvent('resize');
       input.node().focus();
       history = getHistory();
     }

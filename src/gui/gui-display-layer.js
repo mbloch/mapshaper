@@ -1,8 +1,85 @@
-import { MultiScaleArcCollection } from './gui-shapes';
+import { enhanceArcCollectionForDisplay } from './gui-shapes';
 import { getDisplayLayerForTable } from './gui-table';
 import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisplay } from './gui-dynamic-crs';
 import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
+
+export function insertVertex(lyr, id, dataPoint) {
+  internal.insertVertex(lyr.source.dataset.arcs, id, dataPoint);
+  if (isProjectedLayer(lyr)) {
+    internal.insertVertex(lyr.arcs, id, lyr.projectPoint(dataPoint[0], dataPoint[1]));
+  }
+}
+
+export function deleteVertex(lyr, id) {
+  internal.deleteVertex(lyr.arcs, id);
+  if (isProjectedLayer(lyr)) {
+    internal.deleteVertex(lyr.source.dataset.arcs, id);
+  }
+}
+
+export function translateDisplayPoint(lyr, p) {
+  return isProjectedLayer(lyr) ? lyr.invertPoint(p[0], p[1]) : p;
+}
+
+export function getVertexCoords(lyr, id) {
+  return lyr.source.dataset.arcs.getVertex2(id);
+}
+
+export function setVertexCoords(lyr, ids, dataPoint) {
+  internal.snapVerticesToPoint(ids, dataPoint, lyr.source.dataset.arcs, true);
+  if (isProjectedLayer(lyr)) {
+    var p = lyr.projectPoint(dataPoint[0], dataPoint[1]);
+    internal.snapVerticesToPoint(ids, p, lyr.arcs, true);
+  }
+}
+
+export function updateVertexCoords(lyr, ids) {
+  if (!isProjectedLayer(lyr)) return;
+  var p = lyr.arcs.getVertex2(ids[0]);
+  internal.snapVerticesToPoint(ids, lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
+}
+
+export function makePointSetter(lyr, fid) {
+  var dataShp = internal.cloneShape(lyr.source.layer.shapes[fid]);
+  var displayShp = isProjectedLayer(lyr) ? internal.cloneShape(lyr.layer.shapes[fid]) : null;
+
+  return function() {
+    lyr.source.layer.shapes[fid] = dataShp;
+    if (isProjectedLayer(lyr)) {
+      if (displayShp) {
+        // case: layer is projected and we have saved projected coordinates
+        //       (assumes projection has not changed)
+        lyr.layer.shapes[fid] = displayShp;
+      } else {
+        // case: layer was projected after this setter was created --
+        //       need to project the original data coords
+        lyr.layer.shapes[fid] = projectPointShape(dataShp, lyr.projectPoint);
+      }
+    }
+  };
+}
+
+function isProjectedLayer(lyr) {
+  // TODO: could do some validation on the layer's contents
+  return !!(lyr.source && lyr.invertPoint);
+}
+
+// Update data coordinates by projecting display coordinates
+export function updatePointCoords(lyr, fid) {
+  if (!isProjectedLayer(lyr)) return;
+  var displayShp = lyr.layer.shapes[fid];
+  lyr.source.layer.shapes[fid] = projectPointShape(displayShp, lyr.invertPoint);
+}
+
+function projectPointShape(src, proj) {
+  var dest = [], p;
+  for (var i=0; i<src.length; i++) {
+    p = proj(src[i][0], src[i][1]);
+    if (p) dest.push(p);
+  }
+  return dest.length ? dest : null;
+}
 
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)
 export function projectDisplayLayer(lyr, displayCRS) {
@@ -22,6 +99,8 @@ export function projectDisplayLayer(lyr, displayCRS) {
     // re-apply layer filter
     lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
   }
+  lyr.invertPoint = lyr2.invertPoint;
+  lyr.projectPoint = lyr2.projectPoint;
   lyr.bounds = lyr2.bounds;
   lyr.arcs = lyr2.arcs;
 }
@@ -34,6 +113,8 @@ export function getDisplayLayer(layer, dataset, opts) {
     arcs: null,
     // display_arcs: null,
     style: null,
+    invertPoint: null,
+    projectPoint: null,
     source: {
       layer: layer,
       dataset: dataset
@@ -43,21 +124,23 @@ export function getDisplayLayer(layer, dataset, opts) {
 
   var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
   var displayCRS = opts.crs || null;
-  var displayArcs = dataset.displayArcs;
+  // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
+  var displayArcs = dataset.displayArcs || null;
   var emptyArcs;
 
   // Assume that dataset.displayArcs is in the display CRS
-  // (it should have been deleted upstream if reprojection is needed)
+  // (it must be deleted upstream if reprojection is needed)
   if (dataset.arcs && !displayArcs) {
     // project arcs, if needed
     if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
       displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
     } else {
+      // Use original arcs for display if there is no dynamic reprojection
       displayArcs = dataset.arcs;
     }
 
-    // init filtered arcs
-    dataset.displayArcs = new MultiScaleArcCollection(displayArcs);
+    enhanceArcCollectionForDisplay(displayArcs);
+    dataset.displayArcs = displayArcs; // stash these in the dataset for other layers to use
   }
 
   if (internal.layerHasFurniture(layer)) {
@@ -84,6 +167,8 @@ export function getDisplayLayer(layer, dataset, opts) {
   // dynamic reprojection (arcs were already reprojected above)
   if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
     obj.dynamic_crs = displayCRS;
+    obj.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
+    obj.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
     if (internal.layerHasPoints(layer)) {
       obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
     } else if (internal.layerHasPaths(layer)) {

@@ -2,7 +2,7 @@ import { internal } from './gui-core';
 
 // Create low-detail versions of large arc collections for faster rendering
 // at zoomed-out scales.
-export function MultiScaleArcCollection(unfilteredArcs) {
+export function enhanceArcCollectionForDisplay(unfilteredArcs) {
   var size = unfilteredArcs.getPointCount(),
       filteredArcs, filteredSegLen;
 
@@ -39,6 +39,4 @@ export function MultiScaleArcCollection(unfilteredArcs) {
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
   };
-
-  return unfilteredArcs;
 }

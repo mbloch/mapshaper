@@ -87,8 +87,8 @@ export function toLngLat(xy, P) {
   if (isLatLngCRS(P)) {
     return xy.concat();
   }
-  proj = getProjInfo(P, getCRS('wgs84'));
-  return proj(xy);
+  proj = getProjTransform(P, getCRS('wgs84'));
+  return proj(xy[0], xy[1]);
 }
 
 export function getProjInfo(dataset) {
@@ -232,6 +232,17 @@ export function isProjectedCRS(P) {
 
 export function isLatLngCRS(P) {
   return P && P.is_latlong || false;
+}
+
+export function isWGS84(P) {
+  if (!isLatLngCRS(P)) return false;
+  var proj4 = crsToProj4(P);
+  return proj4.toLowerCase().includes('84');
+}
+
+export function isWebMercator(P) {
+  if (!P) return false;
+  return crsToProj4(P) == '+proj=merc +a=6378137 +b=6378137';
 }
 
 export function isLatLngDataset(dataset) {

@@ -43,8 +43,8 @@ export function getRoundingFunction(inc) {
 }
 
 export function getBoundsPrecisionForDisplay(bbox) {
-  var w = bbox[2] - bbox[0],
-      h = bbox[3] - bbox[1],
+  var w = Math.abs(bbox[2] - bbox[0]),
+      h = Math.abs(bbox[3] - bbox[1]),
       range = Math.min(w, h) + 1e-8,
       digits = 0;
   while (range < 2000) {

@@ -1,4 +1,6 @@
 import { internal } from './gui-core';
+import { makePointSetter, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-layer';
+
 // import { cloneShape } from '../paths/mapshaper-shape-utils';
 // import { copyRecord } from '../datatable/mapshaper-data-utils';
 var snapVerticesToPoint = internal.snapVerticesToPoint;
@@ -14,7 +16,6 @@ export function Undo(gui) {
     stashedUndo = null;
     offset = 0;
   }
-
 
   function isUndoEvt(e) {
     return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
@@ -37,17 +38,16 @@ export function Undo(gui) {
       e.stopPropagation();
       e.preventDefault();
     }
-
   }, this, 10);
 
   // undo/redo point/symbol dragging
   //
   gui.on('symbol_dragstart', function(e) {
-    stashedUndo = this.makePointSetter(e.FID);
+    stashedUndo = makePointSetter(e.data.target, e.FID);
   }, this);
 
   gui.on('symbol_dragend', function(e) {
-    var redo = this.makePointSetter(e.FID);
+    var redo = makePointSetter(e.data.target, e.FID);
     this.addHistoryState(stashedUndo, redo);
   }, this);
 
@@ -75,49 +75,39 @@ export function Undo(gui) {
   }, this);
 
   gui.on('vertex_dragend', function(e) {
-    var target = gui.model.getActiveLayer();
-    var arcs = target.dataset.arcs;
-    var startPoint = e.points[0];
-    var endPoint = internal.getVertexCoords(e.ids[0], arcs);
+    var target = e.data.target;
+    var startPoint = e.points[0]; // in data coords
+    var endPoint = getVertexCoords(target, e.ids[0]);
     var undo = function() {
       if (e.insertion) {
-        internal.deleteVertex(arcs, e.ids[0]);
+        deleteVertex(target, e.ids[0]);
       } else {
-        snapVerticesToPoint(e.ids, startPoint, arcs, true);
+        setVertexCoords(target, e.ids, startPoint);
       }
     };
     var redo = function() {
       if (e.insertion) {
-        internal.insertVertex(arcs, e.ids[0], e.points[0]);
+        insertVertex(target, e.ids[0], endPoint);
       }
-      snapVerticesToPoint(e.ids, endPoint, arcs, true);
+      setVertexCoords(target, e.ids, endPoint);
     };
     this.addHistoryState(undo, redo);
   }, this);
 
   gui.on('vertex_delete', function(e) {
-    var target = gui.model.getActiveLayer();
-    var arcs = target.dataset.arcs;
-    var p = arcs.getVertex2(e.vertex_id);
+    // get vertex coords in data coordinates (not display coordinates);
+    var p = getVertexCoords(e.data.target, e.vertex_id);
     var redo = function() {
-      internal.deleteVertex(arcs, e.vertex_id);
+      deleteVertex(e.data.target, e.vertex_id);
     };
     var undo = function() {
-      internal.insertVertex(arcs, e.vertex_id, p);
+      insertVertex(e.data.target, e.vertex_id, p);
     };
     this.addHistoryState(undo, redo);
   }, this);
 
   this.clear = function() {
     reset();
-  };
-
-  this.makePointSetter = function(i) {
-    var target = gui.model.getActiveLayer();
-    var shp = cloneShape(target.layer.shapes[i]);
-    return function() {
-      target.layer.shapes[i] = shp;
-    };
   };
 
   this.makeDataSetter = function(id) {

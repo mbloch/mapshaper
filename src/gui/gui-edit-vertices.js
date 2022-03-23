@@ -1,4 +1,5 @@
 import { error, internal, geom, utils } from './gui-core';
+import { updateVertexCoords, insertVertex, getVertexCoords, translateDisplayPoint, deleteVertex } from './gui-display-layer';
 
 // pointer thresholds for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 8;
@@ -36,8 +37,11 @@ export function initVertexDragging(gui, ext, hit) {
     if (pixelDist > HOVER_THRESHOLD) {
       return null;
     }
-    var points = nearestIds.map(function(i) {return target.arcs.getVertex2(i);});
+    var points = nearestIds.map(function(i) {
+      return getVertexCoords(target, i); // data coordinates
+    });
     return {
+      target: target,
       ids: nearestIds,
       points: points
     };
@@ -47,8 +51,7 @@ export function initVertexDragging(gui, ext, hit) {
     var target = hit.getHitTarget();
     if (!target.arcs.isFlat()) return null; // vertex insertion not supported with simplification
     var p = ext.translatePixelCoords(e.x, e.y);
-    var shp = target.layer.shapes[e.id];
-    var midpoint = findNearestMidpoint(p, shp, target.arcs);
+    var midpoint = findNearestMidpoint(p, e.id, target);
     if (!midpoint ||
         midpoint.distance / ext.getPixelSize() > MIDPOINT_THRESHOLD) return null;
     return midpoint;
@@ -58,8 +61,9 @@ export function initVertexDragging(gui, ext, hit) {
     if (!active()) return;
     if (insertionPoint) {
       var target = hit.getHitTarget();
-      internal.insertVertex(target.arcs, insertionPoint.i, insertionPoint.point);
+      insertVertex(target, insertionPoint.i, insertionPoint.point);
       dragInfo = {
+        target: target,
         insertion: true,
         ids: [insertionPoint.i],
         points: [insertionPoint.point]
@@ -91,6 +95,7 @@ export function initVertexDragging(gui, ext, hit) {
     // kludge to get dataset to recalculate internal bounding boxes
     hit.getHitTarget().arcs.transformPoints(function() {});
     clearHoverVertex();
+    updateVertexCoords(dragInfo.target, dragInfo.ids);
     gui.dispatchEvent('vertex_dragend', dragInfo);
     gui.dispatchEvent('map-needs-refresh');
     dragInfo = null;
@@ -108,9 +113,10 @@ export function initVertexDragging(gui, ext, hit) {
       return;
     }
     gui.dispatchEvent('vertex_delete', {
+      target: target,
       vertex_id: vId
     });
-    internal.deleteVertex(target.arcs, vId);
+    deleteVertex(target, vId);
     clearHoverVertex();
     gui.dispatchEvent('map-needs-refresh');
   });
@@ -128,7 +134,7 @@ export function initVertexDragging(gui, ext, hit) {
     // if hovering near a segment midpoint: show the midpoint and save midpoint info
     insertionPoint = findVertexInsertionPoint(e);
     if (insertionPoint) {
-      hit.setHoverVertex(insertionPoint.point);
+      hit.setHoverVertex(insertionPoint.displayPoint);
     } else {
       // pointer is not over a vertex: clear any hover effect
       clearHoverVertex();
@@ -139,7 +145,9 @@ export function initVertexDragging(gui, ext, hit) {
 
 // Given a location @p (e.g. corresponding to the mouse pointer location),
 // find the midpoint of two vertices on @shp suitable for inserting a new vertex
-function findNearestMidpoint(p, shp, arcs) {
+function findNearestMidpoint(p, fid, target) {
+  var arcs = target.arcs;
+  var shp = target.layer.shapes[fid];
   var minDist = Infinity, v;
   internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
     var x1 = xx[i],
@@ -148,6 +156,7 @@ function findNearestMidpoint(p, shp, arcs) {
         y2 = yy[j],
         cx = (x1 + x2) / 2,
         cy = (y1 + y2) / 2,
+        midpoint = [cx, cy],
         dist = geom.distance2D(cx, cy, p[0], p[1]);
     if (dist < minDist) {
       minDist = dist;
@@ -155,7 +164,8 @@ function findNearestMidpoint(p, shp, arcs) {
         i: (i < j ? i : j) + 1, // insertion point
         segment: [i, j],
         segmentLen: geom.distance2D(x1, y1, x2, y2),
-        point: [cx, cy],
+        displayPoint: midpoint,
+        point: translateDisplayPoint(target, midpoint),
         distance: dist
       };
     }
