@@ -4,6 +4,7 @@ import { SimpleButton } from './gui-elements';
 import { internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
+import { getBBoxCoords } from './gui-display-layer';
 
 // Controls both the shift-drag zoom-to-extent tool and the shift-drag editing tool
 
@@ -13,7 +14,7 @@ export function BoxTool(gui, ext, mouse, nav) {
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
   var _on = false;
-  var bboxCoords, bboxPixels;
+  var bboxDisplayCoords, bboxPixels, bboxDataCoords;
 
   var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
     if (coords.visible()) hideCoords(); else showCoords();
@@ -44,7 +45,7 @@ export function BoxTool(gui, ext, mouse, nav) {
   });
 
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-    runCommand('-clip bbox2=' + bboxCoords.join(','));
+    runCommand('-clip bbox2=' + bboxDataCoords.join(','));
   });
 
   gui.addMode('box_tool', turnOn, turnOff);
@@ -60,8 +61,8 @@ export function BoxTool(gui, ext, mouse, nav) {
   // Update the visible rectangle when the map view changes
   // (e.g. during zooming or panning)
   ext.on('change', function() {
-    if (!_on || !box.visible() || !bboxCoords) return;
-    var b = coordsToPix(bboxCoords);
+    if (!_on || !box.visible() || !bboxDisplayCoords) return;
+    var b = coordsToPix(bboxDisplayCoords);
     var pos = ext.position();
     var dx = pos.pageX,
         dy = pos.pageY;
@@ -76,7 +77,7 @@ export function BoxTool(gui, ext, mouse, nav) {
   gui.on('box_drag', function(e) {
     var b = e.page_bbox;
     bboxPixels = e.map_bbox;
-    bboxCoords = pixToCoords(bboxPixels);
+    bboxDisplayCoords = pixToCoords(bboxPixels);
     if (_on || inZoomMode()) {
       box.show(b[0], b[1], b[2], b[3]);
     }
@@ -84,7 +85,8 @@ export function BoxTool(gui, ext, mouse, nav) {
 
   gui.on('box_drag_end', function(e) {
     bboxPixels = e.map_bbox;
-    bboxCoords = pixToCoords(bboxPixels);
+    bboxDisplayCoords = pixToCoords(bboxPixels);
+    bboxDataCoords = getBBoxCoords(gui.map.getActiveLayer(), bboxDisplayCoords);
     if (inZoomMode()) {
       box.hide();
       nav.zoomToBbox(bboxPixels);
@@ -108,7 +110,7 @@ export function BoxTool(gui, ext, mouse, nav) {
 
   function showCoords() {
     El(infoBtn.node()).addClass('selected-btn');
-    coords.text(bboxCoords.join(','));
+    coords.text(bboxDataCoords.join(','));
     coords.show();
     GUI.selectElement(coords.node());
   }

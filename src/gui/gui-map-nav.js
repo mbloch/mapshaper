@@ -43,6 +43,10 @@ export function MapNav(gui, ext, mouse) {
     ext.zoomToExtent(e.value, _fx, _fy);
   });
 
+  mouse.on('click', function(e) {
+    gui.dispatchEvent('map_click', e);
+  });
+
   mouse.on('dblclick', function(e) {
     if (disabled()) return;
     zoomByPct(getZoomInPct(), e.x / ext.width(), e.y / ext.height());

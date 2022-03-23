@@ -48,6 +48,11 @@ export function Basemap(gui, ext) {
       turnOff();
     });
 
+    gui.on('map_click', function() {
+      // close menu if user click on the map
+      if (gui.getMode() == 'basemap') gui.clearMode();
+    });
+
     params.styles.forEach(function(style) {
       var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
       btn.findChild('.basemap-style-btn').on('click', function() {
