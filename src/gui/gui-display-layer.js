@@ -4,6 +4,20 @@ import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisp
 import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
 
+
+export function setZ(lyr, z) {
+  lyr.source.dataset.arcs.setRetainedInterval(z);
+  if (isProjectedLayer(lyr)) {
+    lyr.arcs.setRetainedInterval(z);
+  }
+}
+
+export function updateZ(lyr) {
+  if (isProjectedLayer(lyr) && !lyr.source.dataset.arcs.isFlat()) {
+    lyr.arcs.setThresholds(lyr.source.dataset.arcs.getVertexData().zz);
+  }
+}
+
 export function insertVertex(lyr, id, dataPoint) {
   internal.insertVertex(lyr.source.dataset.arcs, id, dataPoint);
   if (isProjectedLayer(lyr)) {
@@ -22,6 +36,10 @@ export function translateDisplayPoint(lyr, p) {
   return isProjectedLayer(lyr) ? lyr.invertPoint(p[0], p[1]) : p;
 }
 
+export function getPointCoords(lyr, fid) {
+  return internal.cloneShape(lyr.source.layer.shapes[fid]);
+}
+
 export function getVertexCoords(lyr, id) {
   return lyr.source.dataset.arcs.getVertex2(id);
 }
@@ -34,30 +52,17 @@ export function setVertexCoords(lyr, ids, dataPoint) {
   }
 }
 
+export function setPointCoords(lyr, fid, coords) {
+  lyr.source.layer.shapes[fid] = coords;
+  if (isProjectedLayer(lyr)) {
+    lyr.layer.shapes[fid] = projectPointCoords(coords, lyr.projectPoint);
+  }
+}
+
 export function updateVertexCoords(lyr, ids) {
   if (!isProjectedLayer(lyr)) return;
   var p = lyr.arcs.getVertex2(ids[0]);
   internal.snapVerticesToPoint(ids, lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
-}
-
-export function makePointSetter(lyr, fid) {
-  var dataShp = internal.cloneShape(lyr.source.layer.shapes[fid]);
-  var displayShp = isProjectedLayer(lyr) ? internal.cloneShape(lyr.layer.shapes[fid]) : null;
-
-  return function() {
-    lyr.source.layer.shapes[fid] = dataShp;
-    if (isProjectedLayer(lyr)) {
-      if (displayShp) {
-        // case: layer is projected and we have saved projected coordinates
-        //       (assumes projection has not changed)
-        lyr.layer.shapes[fid] = displayShp;
-      } else {
-        // case: layer was projected after this setter was created --
-        //       need to project the original data coords
-        lyr.layer.shapes[fid] = projectPointShape(dataShp, lyr.projectPoint);
-      }
-    }
-  };
 }
 
 function isProjectedLayer(lyr) {
@@ -69,10 +74,10 @@ function isProjectedLayer(lyr) {
 export function updatePointCoords(lyr, fid) {
   if (!isProjectedLayer(lyr)) return;
   var displayShp = lyr.layer.shapes[fid];
-  lyr.source.layer.shapes[fid] = projectPointShape(displayShp, lyr.invertPoint);
+  lyr.source.layer.shapes[fid] = projectPointCoords(displayShp, lyr.invertPoint);
 }
 
-function projectPointShape(src, proj) {
+function projectPointCoords(src, proj) {
   var dest = [], p;
   for (var i=0; i<src.length; i++) {
     p = proj(src[i][0], src[i][1]);

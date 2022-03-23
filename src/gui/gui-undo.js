@@ -1,5 +1,5 @@
 import { internal } from './gui-core';
-import { makePointSetter, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-layer';
+import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-layer';
 
 // import { cloneShape } from '../paths/mapshaper-shape-utils';
 // import { copyRecord } from '../datatable/mapshaper-data-utils';
@@ -40,15 +40,15 @@ export function Undo(gui) {
     }
   }, this, 10);
 
-  // undo/redo point/symbol dragging
-  //
-  gui.on('symbol_dragstart', function(e) {
-    stashedUndo = makePointSetter(e.data.target, e.FID);
-  }, this);
-
   gui.on('symbol_dragend', function(e) {
-    var redo = makePointSetter(e.data.target, e.FID);
-    this.addHistoryState(stashedUndo, redo);
+    var target = e.data.target;
+    var undo = function() {
+      setPointCoords(target, e.FID, e.startCoords);
+    };
+    var redo = function() {
+      setPointCoords(target, e.FID, e.endCoords);
+    };
+    this.addHistoryState(undo, redo);
   }, this);
 
   // undo/redo label dragging
@@ -116,15 +116,6 @@ export function Undo(gui) {
     return function() {
       target.layer.data.getRecords()[id] = rec;
       gui.dispatchEvent('popup-needs-refresh');
-    };
-  };
-
-  this.makeVertexSetter = function(ids) {
-    var target = gui.model.getActiveLayer();
-    var arcs = target.dataset.arcs;
-    var p = internal.getVertexCoords(ids[0], arcs);
-    return function() {
-      snapVerticesToPoint(ids, p, arcs, true);
     };
   };
 

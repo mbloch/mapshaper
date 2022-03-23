@@ -12,17 +12,17 @@ export function needReprojectionForDisplay(sourceCRS, displayCRS) {
   return true;
 }
 
-function projectArcsForDisplay_v1(arcs, src, dest) {
-  var copy = arcs.getCopy(); // need to flatten first?
-  var proj = internal.getProjTransform(src, dest);
-  internal.projectArcs(copy, proj); // need to densify arcs?
-  return copy;
-}
-
 export function projectArcsForDisplay(arcs, src, dest) {
   var copy = arcs.getCopy(); // need to flatten first?
   var proj = internal.getProjTransform2(src, dest);
-  internal.projectArcs2(copy, proj); // need to densify arcs?
+  // TODO: think about densification
+  try {
+    // fast and preserves Z values, but throws on first unprojectable point
+    internal.projectArcs(copy, proj);
+  } catch(e) {
+    console.error(e);
+    internal.projectArcs2(copy, proj);
+  }
   return copy;
 }
 

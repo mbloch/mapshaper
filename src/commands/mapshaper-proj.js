@@ -196,6 +196,7 @@ export function projectArcs(arcs, proj) {
       // old simplification data  will not be optimal after reprojection;
       // re-using for now to avoid error in web ui
       zz = data.zz,
+      z = arcs.getRetainedInterval(),
       p;
 
   for (var i=0, n=xx.length; i<n; i++) {
@@ -204,6 +205,7 @@ export function projectArcs(arcs, proj) {
     yy[i] = p[1];
   }
   arcs.updateVertexData(data.nn, xx, yy, zz);
+  arcs.setRetainedInterval(z);
 }
 
 export function projectArcs2(arcs, proj) {

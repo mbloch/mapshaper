@@ -2,6 +2,7 @@ import { Slider } from './gui-slider';
 import { utils, internal, mapshaper } from './gui-core';
 import { SimpleButton, ClickText } from './gui-elements';
 import { GUI } from './gui-lib';
+import { setZ, updateZ } from './gui-display-layer';
 
 /*
 How changes in the simplify control should affect other components
@@ -171,6 +172,7 @@ export var SimplifyControl = function(gui) {
       var opts = getSimplifyOptions();
       mapshaper.simplify(dataset, opts);
       gui.session.simplificationApplied(getSimplifyOptionsAsString());
+      updateZ(gui.map.getActiveLayer()); // question: does this update all display layers?
       model.updated({
         // trigger filtered arc rebuild without redraw if pct is 1
         simplify_method: opts.percentage == 1,
@@ -222,7 +224,8 @@ export var SimplifyControl = function(gui) {
   function onChange(pct) {
     if (_value != pct) {
       _value = pct;
-      model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      // model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
+      setZ(gui.map.getActiveLayer(), fromPct(pct));
       gui.session.updateSimplificationPct(pct);
       model.updated({'simplify_amount': true});
       updateSliderDisplay();
