@@ -107,14 +107,19 @@ body {
 	height: 29px;
 }
 
+.basemap-on .coordinate-info {
+	left: 100px;
+}
+
 .coordinate-info {
 	z-index: 1;
 	position: absolute;
-	bottom: 6px;
-	left: 6px;
+	bottom: 7px;
+	left: 7px;
 	padding: 2px 5px 2px 5px;
 	font-size: 11px;
 	pointer-events: none;
+	background: rgba(255,255,255,0.4);
 }
 
 .mapshaper-logo {
@@ -977,8 +982,88 @@ img.close-btn:hover,
 	height: 100%;
 }
 
+.basemap-options {
+	pointer-events: none;
+}
+
+.basemap-options .info-box {
+	width:  min-content;
+	pointer-events: initial;
+}
+
+.basemap-container {
+	z-index: -1;
+	position:  absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+}
+
+.basemap {
+	display: none;
+	position: relative;
+	height: 100%;
+}
+
+.info-box p {
+	line-height: 1.2;
+	font-size: 90%;
+}
+
+.basemap-styles {
+	white-space: nowrap;
+}
+
+.basemap-error {
+	color: #cc0000;
+}
+
+.basemap-note {
+	width: 100%;
+	text-align:  center;
+	z-index:  -2;
+	bottom: 8px;
+	font-size: 22px;
+	color: #aaa;
+	position: absolute;
+}
+
+.basemap-styles > div {
+	display: inline-block;
+	margin-bottom:  8px;
+}
+
+.basemap-styles > div:nth-child(even) {
+	position: relative;
+	left:  6px;
+	margin-left: 2px;
+}
+
+.basemap-style-btn img {
+	display: block;
+	left: -3px;
+	position:  relative;
+	border: 3px solid transparent;
+	width:  120px;
+	height:  90px;
+}
+
+div.basemap-style-btn.active img {
+	border: 3px solid #e8ba52;
+}
+
+.basemap-style-btn:hover img {
+	cursor: pointer;
+	border: 3px solid #ead683;
+}
+
+.mapbox-improve-map {
+	display: none;
+}
+
 .mshp-main-map {
-	background-color: #fff;
+	/* background-color: #fff; */
 }
 
 .map-layers.symbol-hit {
@@ -1067,7 +1152,7 @@ img.close-btn:hover,
 	clear: right;
 	white-space: nowrap;
 	display: inline-block;
-	padding: 2px 7px 4px 7px;
+	padding: 3px 7px 5px 7px;
 	line-height: 11px;
 	cursor: pointer;
 }

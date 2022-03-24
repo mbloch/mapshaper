@@ -1771,6 +1771,8 @@
     // avoid re-allocating memory
     var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
     var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
+    var zz2 = arcs.isFlat() ? null : new Float64Array(data.zz.buffer, 0, n-1);
+    var z = arcs.getRetainedInterval();
     var count = 0;
     var found = false;
     for (var j=0; j<nn.length; j++) {
@@ -1784,24 +1786,31 @@
     utils.copyElements(data.yy, 0, yy2, 0, i);
     utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
     utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
-    arcs.updateVertexData(nn, xx2, yy2, null);
+    if (zz2) {
+      utils.copyElements(data.zz, 0, zz2, 0, i);
+      utils.copyElements(data.zz, i+1, zz2, i, n-i-1);
+    }
+    arcs.updateVertexData(nn, xx2, yy2, zz2);
+    arcs.setRetainedInterval(z);
   }
 
   function insertVertex(arcs, i, p) {
-    // TODO: add extra bytes to the buffers, to reduce new memory allocation
     var data = arcs.getVertexData();
     var nn = data.nn;
     var n = data.xx.length;
     var count = 0;
     var found = false;
-    var xx2, yy2;
+    var xx2, yy2, zz2;
     // avoid re-allocating memory on each insertion
     if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
       xx2 = new Float64Array(data.xx.buffer, 0, n+1);
       yy2 = new Float64Array(data.yy.buffer, 0, n+1);
     } else {
-      xx2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
-      yy2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
+      xx2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
+      yy2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
+    }
+    if (!arcs.isFlat()) {
+      zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
     }
     for (var j=0; j<nn.length; j++) {
       count += nn[j];
@@ -1816,7 +1825,12 @@
     utils.copyElements(data.yy, i, yy2, i+1, n-i);
     xx2[i] = p[0];
     yy2[i] = p[1];
-    arcs.updateVertexData(nn, xx2, yy2, null);
+    if (zz2) {
+      zz2[i] = Infinity;
+      utils.copyElements(data.zz, 0, zz2, 0, i);
+      utils.copyElements(data.zz, i, zz2, i+1, n-i);
+    }
+    arcs.updateVertexData(nn, xx2, yy2, zz2);
   }
 
   var ArcUtils = /*#__PURE__*/Object.freeze({
@@ -4663,8 +4677,8 @@
     if (isLatLngCRS(P)) {
       return xy.concat();
     }
-    proj = getProjInfo(P, getCRS('wgs84'));
-    return proj(xy);
+    proj = getProjTransform(P, getCRS('wgs84'));
+    return proj(xy[0], xy[1]);
   }
 
   function getProjInfo(dataset) {
@@ -4810,6 +4824,21 @@
     return P && P.is_latlong || false;
   }
 
+  function isWGS84(P) {
+    if (!isLatLngCRS(P)) return false;
+    var proj4 = crsToProj4(P);
+    return proj4.toLowerCase().includes('84');
+  }
+
+  function isWebMercator(P) {
+    if (!P) return false;
+    var str = crsToProj4(P);
+    // e.g. +proj=merc +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +wktext +a=6378137 +b=6378137 +nadgrids=@null
+    // e.g. +proj=merc +a=6378137 +b=6378137
+    // TODO: support  https://proj.org/operations/projections/webmerc.html
+    return str.includes('+proj=merc') && str.includes('+a=6378137') && str.includes('+b=6378137');
+  }
+
   function isLatLngDataset(dataset) {
     return isLatLngCRS(getDatasetCRS(dataset));
   }
@@ -4864,6 +4893,8 @@
     getScaleFactorAtXY: getScaleFactorAtXY,
     isProjectedCRS: isProjectedCRS,
     isLatLngCRS: isLatLngCRS,
+    isWGS84: isWGS84,
+    isWebMercator: isWebMercator,
     isLatLngDataset: isLatLngDataset,
     printProjections: printProjections,
     translatePrj: translatePrj,
@@ -8357,8 +8388,8 @@
   }
 
   function getBoundsPrecisionForDisplay(bbox) {
-    var w = bbox[2] - bbox[0],
-        h = bbox[3] - bbox[1],
+    var w = Math.abs(bbox[2] - bbox[0]),
+        h = Math.abs(bbox[3] - bbox[1]),
         range = Math.min(w, h) + 1e-8,
         digits = 0;
     while (range < 2000) {
@@ -29177,6 +29208,9 @@ ${svg}
     } else if (dataType === null) {
       // data field is empty
       return null; // kludge
+    } else if (dataType === undefined) {
+      // no data field was given
+      stop('Expected a data field to classify or the non-adjacent option');
     } else {
       stop('Unable to determine which classification method to use.');
     }
@@ -34312,6 +34346,7 @@ ${svg}
         // old simplification data  will not be optimal after reprojection;
         // re-using for now to avoid error in web ui
         zz = data.zz,
+        z = arcs.getRetainedInterval(),
         p;
 
     for (var i=0, n=xx.length; i<n; i++) {
@@ -34320,6 +34355,7 @@ ${svg}
       yy[i] = p[1];
     }
     arcs.updateVertexData(data.nn, xx, yy, zz);
+    arcs.setRetainedInterval(z);
   }
 
   function projectArcs2(arcs, proj) {

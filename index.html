@@ -73,7 +73,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="console-btn header-btn btn">Console</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
+		<span class="basemap-btn header-btn btn">Basemap</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="console-btn header-btn btn">Console</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -145,6 +145,18 @@
 "precision=0.001"</div></div></div></div>
 		<div class="cancel-btn btn dialog-btn">Cancel</div>
 		<div class="save-btn btn dialog-btn">Export</div>
+	</div>
+</div>
+
+<div class="basemap-options main-area popup-dialog">
+	<div class="info-box">
+		<h3>Basemap options</h3>
+		<p>Basemaps are only displayed if the active layer has WGS84 or Web Mercator coordinates.</p>
+		<p class="basemap-error"></p>
+		<div class="basemap-styles"></div>
+		<div>
+			<div class="close-btn btn dialog-btn">Close</div>
+		</div>
 	</div>
 </div>
 
@@ -280,6 +292,7 @@ interface. Examples: "no-topology"
 			<div class="repair-btn text-btn colored-text">Repair</div>
 		</div>
 		<div class="map-layers"></div>
+		<div class="basemap-container"><div class="basemap"></div></div>
 	</div>
 </div>
 
@@ -287,6 +300,7 @@ interface. Examples: "no-topology"
 <div class="drop-area"></div>
 </div>
 
+<script src="basemap.js" type="text/javascript"></script>
 <script src="zip.js" type="text/javascript"></script>
 <script src="modules.js" type="text/javascript"></script>
 <script src="mapshaper.js" type="text/javascript"></script>
