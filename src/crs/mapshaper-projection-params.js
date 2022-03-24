@@ -20,7 +20,7 @@ export function expandProjDefn(str, dataset) {
   isCentered = ['tmerc', 'etmerc'].includes(str);
   proj4 = '+proj=' + str;
   if (isConic2SP || isCentered) {
-    bbox = getBBox(dataset);
+    bbox = getBBox(dataset); // TODO: support projected datasets
     decimals = getBoundsPrecisionForDisplay(bbox);
     params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
     proj4 += ' ' + params;

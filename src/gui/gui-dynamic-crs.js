@@ -14,16 +14,50 @@ export function needReprojectionForDisplay(sourceCRS, displayCRS) {
 
 export function projectArcsForDisplay(arcs, src, dest) {
   var copy = arcs.getCopy(); // need to flatten first?
-  var proj = internal.getProjTransform2(src, dest);
-  // TODO: think about densification
+  var destIsWebMerc = internal.isWebMercator(dest);
+  if (destIsWebMerc && internal.isWebMercator(src)) {
+    return copy;
+  }
+
+  var wgs84 = internal.getCRS('wgs84');
+  var toWGS84 = internal.getProjTransform2(src, wgs84);
+  var fromWGS84 = internal.getProjTransform2(wgs84, dest);
+
   try {
-    // fast and preserves Z values, but throws on first unprojectable point
-    internal.projectArcs(copy, proj);
+    // first try projectArcs() -- it's fast and preserves arc ids
+    // (so vertex editing doesn't break)
+    if (!internal.isWGS84(src)) {
+      // use wgs84 as a pivot CRS, so we can handle polar coordinates
+      // that can't be projected to Mercator
+      internal.projectArcs(copy, toWGS84);
+    }
+    if (destIsWebMerc) {
+      // handle polar points by clamping them to they will project
+      // (downside: may cause unexpected behavior when editing vertices interactively)
+      clampY(copy);
+    }
+    internal.projectArcs(copy, fromWGS84);
   } catch(e) {
     console.error(e);
-    internal.projectArcs2(copy, proj);
+    // use the more robust projectArcs2 if projectArcs throws an error
+    // downside: projectArcs2 discards Z values and changes arc indexing,
+    // which will break vertex editing.
+    var reproject = internal.getProjTransform2(src, dest);
+    copy = arcs.getCopy();
+    internal.projectArcs2(copy, reproject);
   }
   return copy;
+}
+
+function clampY(arcs) {
+  var max = 89.9,
+      min = -89.9,
+      bbox = arcs.getBounds().toArray();
+  if (bbox[1] >= min && bbox[3] <= max) return;
+  arcs.transformPoints(function(x, y) {
+    if (y > max) return [x, max];
+    if (y < min) return [x, min];
+  });
 }
 
 export function projectPointsForDisplay(lyr, src, dest) {
@@ -34,12 +68,43 @@ export function projectPointsForDisplay(lyr, src, dest) {
   return copy;
 }
 
+export function toWebMercator(lng, lat) {
+  var R = 6378137;
+  var D2R = Math.PI / 180;
+  var k = Math.cos(lat * D2R);
+  var x = R * lng * D2R;
+  var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
+  return [x, y];
+}
+
+export function fromWebMercator(x, y) {
+  var R = 6378137;
+  var R2D = 180 / Math.PI;
+  var lon = x / R * R2D;
+  var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
+  return [lon, lat];
+}
+
+function clampToMapboxBounds(bounds) {
+  var ymax = toWebMercator(0, 84)[1];
+  var ymin = toWebMercator(0, -84)[1];
+  var hmin = 1000;
+  bounds.ymin = Math.max(bounds.ymin, ymin);
+  bounds.ymax = Math.max(bounds.ymax, ymin + hmin);
+  bounds.ymin = Math.min(bounds.ymin, ymax - hmin);
+  bounds.ymax = Math.min(bounds.ymax, ymax);
+}
+
 
 // Update map extent and trigger redraw, after a new display CRS has been applied
 export function projectMapExtent(ext, src, dest, newBounds) {
   var oldBounds = ext.getBounds();
   var oldScale = ext.scale();
   var newCP, proj;
+
+  if (dest && internal.isWebMercator(dest)) {
+    clampToMapboxBounds(newBounds);
+  }
 
   // if source or destination CRS is unknown, show full extent
   // if map is at full extent, show full extent

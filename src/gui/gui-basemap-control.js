@@ -1,6 +1,7 @@
 import { internal, geom } from './gui-core';
 import { SimpleButton } from './gui-elements';
 import { El } from './gui-el';
+import { fromWebMercator } from './gui-dynamic-crs';
 
 function loadScript(url, cb) {
   var script = document.createElement('script');
@@ -23,9 +24,10 @@ export function Basemap(gui, ext) {
   var list = menu.findChild('.basemap-styles');
   var container = gui.container.findChild('.basemap-container');
   var basemapBtn = gui.container.findChild('.basemap-btn');
-  var basemapMsg = gui.container.findChild('.basemap-error');
+  var basemapNote = gui.container.findChild('.basemap-note');
+  var basemapWarning = gui.container.findChild('.basemap-warning');
   var mapEl = gui.container.findChild('.basemap');
-  var extentNote = El('div').addClass('basemap-note').appendTo(container).hide();
+  var extentNote = El('div').addClass('basemap-prompt').appendTo(container).hide();
   var params = window.mapboxParams;
   var map;
   var activeStyle;
@@ -84,15 +86,24 @@ export function Basemap(gui, ext) {
   }
 
   function turnOn() {
-    var crs = gui.map.getDisplayCRS();
-    if (!internal.isWebMercator(crs) && !internal.isWGS84(crs)) {
-      basemapMsg.html('The current projection is not compatible.');
+    var activeLyr = gui.model.getActiveLayer();
+    var dataCRS = internal.getDatasetCRS(activeLyr.dataset);
+    var displayCRS = gui.map.getDisplayCRS();
+    var warning;
+
+    if (!crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
+      warning = 'The current layer is not compatible with the basemaps.';
+      basemapWarning.html(warning).show();
+      basemapNote.hide();
+    } else {
+      basemapNote.show();
     }
     menu.show();
   }
 
   function turnOff() {
-    basemapMsg.html('');
+    basemapWarning.hide();
+    basemapNote.hide();
     menu.hide();
   }
 
@@ -110,20 +121,13 @@ export function Basemap(gui, ext) {
     mapEl.node().style.display = 'none';
   }
 
-  function getBounds() {
+  function getLonLatBounds() {
     var bbox = ext.getBounds().toArray();
-    var tr = getLonLat(bbox[2], bbox[3]);
-    var bl = getLonLat(bbox[0], bbox[1]);
+    var tr = fromWebMercator(bbox[2], bbox[3]);
+    var bl = fromWebMercator(bbox[0], bbox[1]);
     return bl.concat(tr);
   }
 
-  function getLonLat(x, y) {
-    var R = 6378137;
-    var R2D = 180 / Math.PI;
-    var lon = x / R * R2D;
-    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
-    return [lon, lat];
-  }
 
   function initMap() {
     if (!enabled() || map || loading) return;
@@ -135,7 +139,7 @@ export function Basemap(gui, ext) {
         logoPosition: 'bottom-left',
         container: mapEl.node(),
         style: activeStyle.url,
-        bounds: getBounds(),
+        bounds: getLonLatBounds(),
         doubleClickZoom: false,
         dragPan: false,
         dragRotate: false,
@@ -165,15 +169,22 @@ export function Basemap(gui, ext) {
     return false;
   }
 
+  function crsIsUsable(crs) {
+    if (!crs) return false;
+    return true;
+  }
+
   function refresh() {
     if (!enabled() || !map || loading || !activeStyle) return;
     var crs = gui.map.getDisplayCRS();
-    if (internal.isWGS84(crs)) {
-      gui.map.setDisplayCRS(internal.getCRS('webmercator'));
-    } else if (!internal.isWebMercator(crs)) {
+    if (!crsIsUsable(crs)) {
+      hide();
       return;
     }
-    var bbox = getBounds();
+    if (!internal.isWebMercator(crs)) {
+      gui.map.setDisplayCRS(internal.getCRS('webmercator'));
+    }
+    var bbox = getLonLatBounds();
     if (!checkBounds(bbox)) {
       // map does not display outside these bounds
       hide();
