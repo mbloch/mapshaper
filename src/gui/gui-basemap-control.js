@@ -23,6 +23,7 @@ export function Basemap(gui, ext) {
   var list = menu.findChild('.basemap-styles');
   var container = gui.container.findChild('.basemap-container');
   var basemapBtn = gui.container.findChild('.basemap-btn');
+  var basemapMsg = gui.container.findChild('.basemap-error');
   var mapEl = gui.container.findChild('.basemap');
   var extentNote = El('div').addClass('basemap-note').appendTo(container).hide();
   var params = window.mapboxParams;
@@ -83,10 +84,15 @@ export function Basemap(gui, ext) {
   }
 
   function turnOn() {
+    var crs = gui.map.getDisplayCRS();
+    if (!internal.isWebMercator(crs) && !internal.isWGS84(crs)) {
+      basemapMsg.html('The current projection is not compatible.');
+    }
     menu.show();
   }
 
   function turnOff() {
+    basemapMsg.html('');
     menu.hide();
   }
 

@@ -242,7 +242,11 @@ export function isWGS84(P) {
 
 export function isWebMercator(P) {
   if (!P) return false;
-  return crsToProj4(P) == '+proj=merc +a=6378137 +b=6378137';
+  var str = crsToProj4(P);
+  // e.g. +proj=merc +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +wktext +a=6378137 +b=6378137 +nadgrids=@null
+  // e.g. +proj=merc +a=6378137 +b=6378137
+  // TODO: support  https://proj.org/operations/projections/webmerc.html
+  return str.includes('+proj=merc') && str.includes('+a=6378137') && str.includes('+b=6378137');
 }
 
 export function isLatLngDataset(dataset) {

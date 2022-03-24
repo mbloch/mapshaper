@@ -30,6 +30,8 @@ export function deleteVertex(arcs, i) {
   // avoid re-allocating memory
   var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
   var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
+  var zz2 = arcs.isFlat() ? null : new Float64Array(data.zz.buffer, 0, n-1);
+  var z = arcs.getRetainedInterval();
   var count = 0;
   var found = false;
   for (var j=0; j<nn.length; j++) {
@@ -43,24 +45,31 @@ export function deleteVertex(arcs, i) {
   utils.copyElements(data.yy, 0, yy2, 0, i);
   utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
   utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
-  arcs.updateVertexData(nn, xx2, yy2, null);
+  if (zz2) {
+    utils.copyElements(data.zz, 0, zz2, 0, i);
+    utils.copyElements(data.zz, i+1, zz2, i, n-i-1);
+  }
+  arcs.updateVertexData(nn, xx2, yy2, zz2);
+  arcs.setRetainedInterval(z);
 }
 
 export function insertVertex(arcs, i, p) {
-  // TODO: add extra bytes to the buffers, to reduce new memory allocation
   var data = arcs.getVertexData();
   var nn = data.nn;
   var n = data.xx.length;
   var count = 0;
   var found = false;
-  var xx2, yy2;
+  var xx2, yy2, zz2;
   // avoid re-allocating memory on each insertion
   if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
     xx2 = new Float64Array(data.xx.buffer, 0, n+1);
     yy2 = new Float64Array(data.yy.buffer, 0, n+1);
   } else {
-    xx2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
-    yy2 = new Float64Array(new ArrayBuffer((n + 20) * 8), 0, n+1);
+    xx2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
+    yy2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
+  }
+  if (!arcs.isFlat()) {
+    zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
   }
   for (var j=0; j<nn.length; j++) {
     count += nn[j];
@@ -75,5 +84,10 @@ export function insertVertex(arcs, i, p) {
   utils.copyElements(data.yy, i, yy2, i+1, n-i);
   xx2[i] = p[0];
   yy2[i] = p[1];
-  arcs.updateVertexData(nn, xx2, yy2, null);
+  if (zz2) {
+    zz2[i] = Infinity;
+    utils.copyElements(data.zz, 0, zz2, 0, i);
+    utils.copyElements(data.zz, i, zz2, i+1, n-i);
+  }
+  arcs.updateVertexData(nn, xx2, yy2, zz2);
 }

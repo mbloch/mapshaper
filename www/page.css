@@ -1015,6 +1015,10 @@ img.close-btn:hover,
 	white-space: nowrap;
 }
 
+.basemap-error {
+	color: #cc0000;
+}
+
 .basemap-note {
 	width: 100%;
 	text-align:  center;
