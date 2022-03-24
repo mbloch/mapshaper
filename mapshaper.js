@@ -34351,6 +34351,7 @@ ${svg}
 
     for (var i=0, n=xx.length; i<n; i++) {
       p = proj(xx[i], yy[i]);
+      if (!p) error('Unprojectable point:', xx[i], yy[i]);
       xx[i] = p[0];
       yy[i] = p[1];
     }

@@ -1851,15 +1851,33 @@
   function projectArcsForDisplay(arcs, src, dest) {
     var copy = arcs.getCopy(); // need to flatten first?
     var proj = internal.getProjTransform2(src, dest);
+    if (internal.isWebMercator(dest)) {
+      // handle polar points by clamping them to they will project
+      // (downside: may cause unexpected behavior when editing vertices interactively)
+      clampY(copy);
+    }
     // TODO: think about densification
     try {
       // fast and preserves Z values, but throws on first unprojectable point
       internal.projectArcs(copy, proj);
     } catch(e) {
       console.error(e);
+      copy = arcs.getCopy();
+      // discards Z values, changes arc indexing (breaks vertex editing)
       internal.projectArcs2(copy, proj);
     }
     return copy;
+  }
+
+  function clampY(arcs) {
+    var max = 89.9,
+        min = -89.9,
+        bbox = arcs.getBounds().toArray();
+    if (bbox[1] >= min && bbox[3] <= max) return;
+    arcs.transformPoints(function(x, y) {
+      if (y > max) return [x, max];
+      if (y < min) return [x, min];
+    });
   }
 
   function projectPointsForDisplay(lyr, src, dest) {
