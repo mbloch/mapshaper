@@ -1,3 +1,6 @@
+v0.5.100
+* Added support for using the basemap feature with datasets in a wide variety of projections.
+
 v0.5.99
 * Added support for viewing data against a Mapbox basemap (enabled on the mapshaper.org site).
 

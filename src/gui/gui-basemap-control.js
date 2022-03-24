@@ -92,7 +92,7 @@ export function Basemap(gui, ext) {
     var warning;
 
     if (!crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
-      warning = 'The current layer is not compatible with the basemaps.';
+      warning = 'The current layer is not compatible with the projection used by the basemaps.';
       basemapWarning.html(warning).show();
       basemapNote.hide();
     } else {
@@ -171,6 +171,7 @@ export function Basemap(gui, ext) {
 
   function crsIsUsable(crs) {
     if (!crs) return false;
+    if (!internal.isInvertibleCRS(crs)) return false;
     return true;
   }
 

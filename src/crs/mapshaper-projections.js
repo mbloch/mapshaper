@@ -230,6 +230,11 @@ export function isProjectedCRS(P) {
   return !isLatLngCRS(P);
 }
 
+export function isInvertibleCRS(P) {
+  if (!P || !P.inv) return false;
+  return true;
+}
+
 export function isLatLngCRS(P) {
   return P && P.is_latlong || false;
 }
