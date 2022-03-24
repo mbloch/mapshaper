@@ -1,3 +1,6 @@
+v0.5.102
+* Fix for bug in -v/--version command.
+
 v0.5.101
 * Update dependency.
 
