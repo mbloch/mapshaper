@@ -1,3 +1,6 @@
+v0.5.101
+* Update dependency.
+
 v0.5.100
 * Added support for using the basemap feature with datasets in a wide variety of projections.
 
