@@ -1850,21 +1850,37 @@
 
   function projectArcsForDisplay(arcs, src, dest) {
     var copy = arcs.getCopy(); // need to flatten first?
-    var proj = internal.getProjTransform2(src, dest);
-    if (internal.isWebMercator(dest)) {
-      // handle polar points by clamping them to they will project
-      // (downside: may cause unexpected behavior when editing vertices interactively)
-      clampY(copy);
+    var destIsWebMerc = internal.isWebMercator(dest);
+    if (destIsWebMerc && internal.isWebMercator(src)) {
+      return copy;
     }
-    // TODO: think about densification
+
+    var wgs84 = internal.getCRS('wgs84');
+    var toWGS84 = internal.getProjTransform2(src, wgs84);
+    var fromWGS84 = internal.getProjTransform2(wgs84, dest);
+
     try {
-      // fast and preserves Z values, but throws on first unprojectable point
-      internal.projectArcs(copy, proj);
+      // first try projectArcs() -- it's fast and preserves arc ids
+      // (so vertex editing doesn't break)
+      if (!internal.isWGS84(src)) {
+        // use wgs84 as a pivot CRS, so we can handle polar coordinates
+        // that can't be projected to Mercator
+        internal.projectArcs(copy, toWGS84);
+      }
+      if (destIsWebMerc) {
+        // handle polar points by clamping them to they will project
+        // (downside: may cause unexpected behavior when editing vertices interactively)
+        clampY(copy);
+      }
+      internal.projectArcs(copy, fromWGS84);
     } catch(e) {
       console.error(e);
+      // use the more robust projectArcs2 if projectArcs throws an error
+      // downside: projectArcs2 discards Z values and changes arc indexing,
+      // which will break vertex editing.
+      var reproject = internal.getProjTransform2(src, dest);
       copy = arcs.getCopy();
-      // discards Z values, changes arc indexing (breaks vertex editing)
-      internal.projectArcs2(copy, proj);
+      internal.projectArcs2(copy, reproject);
     }
     return copy;
   }
@@ -1888,12 +1904,43 @@
     return copy;
   }
 
+  function toWebMercator(lng, lat) {
+    var R = 6378137;
+    var D2R = Math.PI / 180;
+    var k = Math.cos(lat * D2R);
+    var x = R * lng * D2R;
+    var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
+    return [x, y];
+  }
+
+  function fromWebMercator(x, y) {
+    var R = 6378137;
+    var R2D = 180 / Math.PI;
+    var lon = x / R * R2D;
+    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
+    return [lon, lat];
+  }
+
+  function clampToMapboxBounds(bounds) {
+    var ymax = toWebMercator(0, 84)[1];
+    var ymin = toWebMercator(0, -84)[1];
+    var hmin = 1000;
+    bounds.ymin = Math.max(bounds.ymin, ymin);
+    bounds.ymax = Math.max(bounds.ymax, ymin + hmin);
+    bounds.ymin = Math.min(bounds.ymin, ymax - hmin);
+    bounds.ymax = Math.min(bounds.ymax, ymax);
+  }
+
 
   // Update map extent and trigger redraw, after a new display CRS has been applied
   function projectMapExtent(ext, src, dest, newBounds) {
     var oldBounds = ext.getBounds();
     var oldScale = ext.scale();
     var newCP, proj;
+
+    if (dest && internal.isWebMercator(dest)) {
+      clampToMapboxBounds(newBounds);
+    }
 
     // if source or destination CRS is unknown, show full extent
     // if map is at full extent, show full extent
@@ -9595,9 +9642,10 @@
     var list = menu.findChild('.basemap-styles');
     var container = gui.container.findChild('.basemap-container');
     var basemapBtn = gui.container.findChild('.basemap-btn');
-    var basemapMsg = gui.container.findChild('.basemap-error');
+    var basemapNote = gui.container.findChild('.basemap-note');
+    var basemapWarning = gui.container.findChild('.basemap-warning');
     var mapEl = gui.container.findChild('.basemap');
-    var extentNote = El('div').addClass('basemap-note').appendTo(container).hide();
+    var extentNote = El('div').addClass('basemap-prompt').appendTo(container).hide();
     var params = window.mapboxParams;
     var map;
     var activeStyle;
@@ -9656,15 +9704,24 @@
     }
 
     function turnOn() {
-      var crs = gui.map.getDisplayCRS();
-      if (!internal.isWebMercator(crs) && !internal.isWGS84(crs)) {
-        basemapMsg.html('The current projection is not compatible.');
+      var activeLyr = gui.model.getActiveLayer();
+      var dataCRS = internal.getDatasetCRS(activeLyr.dataset);
+      var displayCRS = gui.map.getDisplayCRS();
+      var warning;
+
+      if (!crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
+        warning = 'The current layer is not compatible with the projection used by the basemaps.';
+        basemapWarning.html(warning).show();
+        basemapNote.hide();
+      } else {
+        basemapNote.show();
       }
       menu.show();
     }
 
     function turnOff() {
-      basemapMsg.html('');
+      basemapWarning.hide();
+      basemapNote.hide();
       menu.hide();
     }
 
@@ -9682,20 +9739,13 @@
       mapEl.node().style.display = 'none';
     }
 
-    function getBounds() {
+    function getLonLatBounds() {
       var bbox = ext.getBounds().toArray();
-      var tr = getLonLat(bbox[2], bbox[3]);
-      var bl = getLonLat(bbox[0], bbox[1]);
+      var tr = fromWebMercator(bbox[2], bbox[3]);
+      var bl = fromWebMercator(bbox[0], bbox[1]);
       return bl.concat(tr);
     }
 
-    function getLonLat(x, y) {
-      var R = 6378137;
-      var R2D = 180 / Math.PI;
-      var lon = x / R * R2D;
-      var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
-      return [lon, lat];
-    }
 
     function initMap() {
       if (!enabled() || map || loading) return;
@@ -9707,7 +9757,7 @@
           logoPosition: 'bottom-left',
           container: mapEl.node(),
           style: activeStyle.url,
-          bounds: getBounds(),
+          bounds: getLonLatBounds(),
           doubleClickZoom: false,
           dragPan: false,
           dragRotate: false,
@@ -9737,15 +9787,23 @@
       return false;
     }
 
+    function crsIsUsable(crs) {
+      if (!crs) return false;
+      if (!internal.isInvertibleCRS(crs)) return false;
+      return true;
+    }
+
     function refresh() {
       if (!enabled() || !map || loading || !activeStyle) return;
       var crs = gui.map.getDisplayCRS();
-      if (internal.isWGS84(crs)) {
-        gui.map.setDisplayCRS(internal.getCRS('webmercator'));
-      } else if (!internal.isWebMercator(crs)) {
+      if (!crsIsUsable(crs)) {
+        hide();
         return;
       }
-      var bbox = getBounds();
+      if (!internal.isWebMercator(crs)) {
+        gui.map.setDisplayCRS(internal.getCRS('webmercator'));
+      }
+      var bbox = getLonLatBounds();
       if (!checkBounds(bbox)) {
         // map does not display outside these bounds
         hide();

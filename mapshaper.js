@@ -4820,6 +4820,11 @@
     return !isLatLngCRS(P);
   }
 
+  function isInvertibleCRS(P) {
+    if (!P || !P.inv) return false;
+    return true;
+  }
+
   function isLatLngCRS(P) {
     return P && P.is_latlong || false;
   }
@@ -4892,6 +4897,7 @@
     requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
     getScaleFactorAtXY: getScaleFactorAtXY,
     isProjectedCRS: isProjectedCRS,
+    isInvertibleCRS: isInvertibleCRS,
     isLatLngCRS: isLatLngCRS,
     isWGS84: isWGS84,
     isWebMercator: isWebMercator,
@@ -34141,7 +34147,7 @@ ${svg}
     isCentered = ['tmerc', 'etmerc'].includes(str);
     proj4 = '+proj=' + str;
     if (isConic2SP || isCentered) {
-      bbox = getBBox(dataset);
+      bbox = getBBox(dataset); // TODO: support projected datasets
       decimals = getBoundsPrecisionForDisplay(bbox);
       params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
       proj4 += ' ' + params;
