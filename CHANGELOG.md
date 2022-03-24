@@ -1,3 +1,6 @@
+v0.5.99
+* Added support for viewing data against a Mapbox basemap (enabled on the mapshaper.org site).
+
 v0.5.98
 * Better handling of null data by the -classify command.
 
