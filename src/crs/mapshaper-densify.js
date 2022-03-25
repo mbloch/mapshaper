@@ -1,8 +1,9 @@
 import geom from '../geom/mapshaper-geom';
+import utils from '../utils/mapshaper-utils';
 import { editArcs } from '../paths/mapshaper-arc-editor';
 import { getAvgSegment2 } from '../paths/mapshaper-path-utils';
-import { error } from '../utils/mapshaper-logging';
 import { DatasetEditor } from '../dataset/mapshaper-dataset-editor';
+import { error } from '../utils/mapshaper-logging';
 
 export function densifyDataset(dataset, opts) {
   var interval = opts.interval;
@@ -78,7 +79,6 @@ export function densifyAntimeridianSegment(a, b, interval) {
   return coords;
 }
 
-
 function appendArr(dest, src) {
   for (var i=0; i<src.length; i++) dest.push(src[i]);
 }
@@ -118,20 +118,46 @@ export function projectAndDensifyArcs(arcs, proj) {
   }
 }
 
+// Use the median of intervals computed by projecting segments.
+// We're probing a number of points, because @proj might only be valid in
+// a sub-region of the dataset bbox (e.g. +proj=tpers)
+function findDensifyInterval(bounds, xy, proj) {
+  var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+  var points = [];
+  for (var i=0; i<steps.length; i++) {
+    for (var j=0; j<steps.length; j++) {
+      points.push([steps[i], steps[j]]);
+    }
+  }
+  var intervals = points.map(function(pos) {
+    var x = bounds.xmin + bounds.width() * pos[0];
+    var y = bounds.ymin + bounds.height() * pos[1];
+    var a = proj(x, y);
+    var b = proj(x + xy[0], y + xy[1]);
+    return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
+  }).filter(function(int) {return int < Infinity;});
+  return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
+}
+
+// Kludgy way to get a useful interval for densifying a bounding box.
+// Uses a fraction of average bbox side length)
+// TODO: improve
+function findDensifyInterval2(bb, proj) {
+  var a = proj(bb.centerX(), bb.centerY()),
+      c = proj(bb.centerX(), bb.ymin), // right center
+      d = proj(bb.xmax, bb.centerY()); // bottom center
+  var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
+        geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
+  return interval;
+}
+
+// Returns an interval in projected units
 function getDefaultDensifyInterval(arcs, proj) {
   var xy = getAvgSegment2(arcs),
       bb = arcs.getBounds(),
-      a = proj(bb.centerX(), bb.centerY()),
-      b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]),
-      c = proj(bb.centerX(), bb.ymin), // right center
-      d = proj(bb.xmax, bb.centerY()); // bottom center
-  // interval A: based on average segment length
-  var intervalA = a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
-  // interval B: a fraction of avg bbox side length
-  // (added this for bbox densification)
-  var intervalB = c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
-        geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
-  var interval = Math.min(intervalA, intervalB);
+      intervalA = findDensifyInterval(bb, xy, proj),
+      intervalB = findDensifyInterval2(bb, proj),
+      interval = Math.min(intervalA, intervalB);
   if (interval == Infinity) {
     error('Densification error');
   }
