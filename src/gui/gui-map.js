@@ -440,11 +440,16 @@ export function MshpMap(gui) {
     });
   }
 
+  function drawLayers(action) {
+    // This seems to smooth out navigation and keep overlay and basemap in sync.
+    requestAnimationFrame(function() {drawLayers2(action);});
+  }
+
   // action:
   //   'nav'      map was panned/zoomed -- only map extent has changed
   //   'hover'    highlight has changed -- only draw overlay
   //   (default)  anything could have changed
-  function drawLayers(action) {
+  function drawLayers2(action) {
     var layersMayHaveChanged = !action;
     var contentLayers = getDrawableContentLayers();
     var furnitureLayers = getDrawableFurnitureLayers();

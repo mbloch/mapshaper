@@ -1,8 +1,6 @@
 import { internal } from './gui-core';
 import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-layer';
 
-// import { cloneShape } from '../paths/mapshaper-shape-utils';
-// import { copyRecord } from '../datatable/mapshaper-data-utils';
 var snapVerticesToPoint = internal.snapVerticesToPoint;
 var cloneShape = internal.cloneShape;
 var copyRecord = internal.copyRecord;
