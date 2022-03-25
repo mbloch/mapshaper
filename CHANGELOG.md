@@ -1,3 +1,6 @@
+v0.5.103
+* Bug fixes
+
 v0.5.102
 * Fix for bug in -v/--version command.
 
