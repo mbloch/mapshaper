@@ -4053,8 +4053,6 @@
     }
   }
 
-  // import { cloneShape } from '../paths/mapshaper-shape-utils';
-  // import { copyRecord } from '../datatable/mapshaper-data-utils';
   var snapVerticesToPoint = internal.snapVerticesToPoint;
   var cloneShape = internal.cloneShape;
   var copyRecord = internal.copyRecord;
@@ -10238,11 +10236,16 @@
       });
     }
 
+    function drawLayers(action) {
+      // This seems to smooth out navigation and keep overlay and basemap in sync.
+      requestAnimationFrame(function() {drawLayers2(action);});
+    }
+
     // action:
     //   'nav'      map was panned/zoomed -- only map extent has changed
     //   'hover'    highlight has changed -- only draw overlay
     //   (default)  anything could have changed
-    function drawLayers(action) {
+    function drawLayers2(action) {
       var layersMayHaveChanged = !action;
       var contentLayers = getDrawableContentLayers();
       var furnitureLayers = getDrawableFurnitureLayers();
