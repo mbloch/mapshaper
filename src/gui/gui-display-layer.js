@@ -3,12 +3,16 @@ import { getDisplayLayerForTable } from './gui-table';
 import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisplay } from './gui-dynamic-crs';
 import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
+import { getDatasetCrsInfo } from './gui-display-utils';
 
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)
 export function projectDisplayLayer(lyr, displayCRS) {
-  var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
+  var crsInfo = getDatasetCrsInfo(lyr.source.dataset);
+  var sourceCRS = crsInfo.crs;
   var lyr2;
-  if (!lyr.geographic || !sourceCRS) {
+  //if (!lyr.geographic || !sourceCRS) {
+  // let getDisplayLayer() handle case of unprojectable source
+  if (!lyr.geographic) {
     return lyr;
   }
   if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
@@ -18,6 +22,7 @@ export function projectDisplayLayer(lyr, displayCRS) {
   // kludge: copy projection-related properties to original layer
   lyr.dynamic_crs = lyr2.dynamic_crs;
   lyr.layer = lyr2.layer;
+
   if (lyr.style && lyr.style.ids) {
     // re-apply layer filter
     lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
@@ -45,15 +50,26 @@ export function getDisplayLayer(layer, dataset, opts) {
     empty: internal.getFeatureCount(layer) === 0
   };
 
-  var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
   var displayCRS = opts.crs || null;
   // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
   var displayArcs = dataset.displayArcs || null;
+  var sourceCRS;
   var emptyArcs;
+
+  if (displayCRS && layer.geometry_type) {
+    var crsInfo = getDatasetCrsInfo(dataset);
+    if (crsInfo.error) {
+      // unprojectable dataset -- return empty layer
+      obj.empty = true;
+      obj.geographic = true;
+    } else {
+      sourceCRS = crsInfo.crs;
+    }
+  }
 
   // Assume that dataset.displayArcs is in the display CRS
   // (it must be deleted upstream if reprojection is needed)
-  if (dataset.arcs && !displayArcs) {
+  if (!obj.empty && dataset.arcs && !displayArcs) {
     // project arcs, if needed
     if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
       displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);

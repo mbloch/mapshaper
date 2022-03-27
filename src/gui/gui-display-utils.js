@@ -1,5 +1,22 @@
 import { internal, Bounds, utils } from './gui-core';
+import { setLoggingForGUI } from './gui-proxy';
 
+export function getDatasetCrsInfo(dataset) {
+  var revertLogging = internal.getLoggingSetter();
+  var crs, err;
+  // prevent GUI message popup on error
+  internal.setLoggingForCLI();
+  try {
+    crs = internal.getDatasetCRS(dataset);
+  } catch(e) {
+    err = e.message;
+  }
+  revertLogging();
+  return {
+    crs: crs,
+    error: err
+  };
+}
 
 export function flattenArcs(lyr) {
   lyr.source.dataset.arcs.flatten();

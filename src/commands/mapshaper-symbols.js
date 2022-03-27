@@ -14,7 +14,7 @@ import { getRingCoords } from '../symbols/mapshaper-ring-symbols';
 import { getAffineTransform } from '../commands/mapshaper-affine';
 import { mergeOutputLayerIntoDataset } from '../dataset/mapshaper-dataset-utils';
 import { importGeoJSON } from '../geojson/geojson-import';
-import { getDatasetCRS, getCRS, requireProjectedDataset } from '../crs/mapshaper-projections';
+import { requireProjectedDataset } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-state';
 
 // TODO: refactor to remove duplication in mapshaper-svg-style.js

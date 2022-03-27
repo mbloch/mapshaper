@@ -2,23 +2,22 @@ import { saveZipFile, saveFilesToServer, saveBlobToDownloadFolder } from './gui-
 import { internal, utils, cli, stop } from './gui-core';
 import { GUI } from './gui-lib';
 
-export function MessageProxy(gui) {
-  // replace stop function
-  var stop = function() {
+// replace default error, stop and message functions
+export function setLoggingForGUI(gui) {
+  function stop() {
     // Show a popup error message, then throw an error
     var msg = GUI.formatMessageArgs(arguments);
     gui.alert(msg);
     throw new Error(msg);
-  };
+  }
 
-  // Replace error function in mapshaper lib
-  var error = function() {
+  function error() {
     stop.apply(null, utils.toArray(arguments));
-  };
+  }
 
-  var message = function() {
-    internal.logArgs(arguments); // reset default
-  };
+  function message() {
+    internal.logArgs(arguments);
+  }
 
   internal.setLoggingFunctions(message, error, stop);
 }

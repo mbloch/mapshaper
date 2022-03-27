@@ -12,8 +12,15 @@ var darkStroke = "#334",
     activeStyle = { // outline style for the active layer
       type: 'outline',
       strokeColors: [lightStroke, darkStroke],
-      strokeWidth: 0.7,
+      strokeWidth: 0.8,
       dotColor: "#223",
+      dotSize: 1
+    },
+    activeStyleDarkMode = {
+      type: 'outline',
+      strokeColors: [lightStroke, 'white'],
+      strokeWidth: 0.9,
+      dotColor: 'white',
       dotSize: 1
     },
     activeStyleForLabels = {
@@ -144,12 +151,14 @@ export function getReferenceStyle(lyr) {
   return style;
 }
 
-export function getActiveStyle(lyr) {
+export function getActiveStyle(lyr, darkMode) {
   var style;
   if (layerHasCanvasDisplayStyle(lyr)) {
     style = getCanvasDisplayStyle(lyr);
   } else if (internal.layerHasLabels(lyr)) {
     style = getDefaultStyle(lyr, activeStyleForLabels);
+  } else if (darkMode) {
+    style = getDefaultStyle(lyr, activeStyleDarkMode);
   } else {
     style = getDefaultStyle(lyr, activeStyle);
   }

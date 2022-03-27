@@ -192,7 +192,7 @@ export function getDatasetCRS(dataset) {
   var info = dataset.info || {},
       P = info.crs;
   if (!P && info.prj) {
-    P = parsePrj(info.prj);
+    P = getCRS(translatePrj(info.prj));
   }
   if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
     // use wgs84 for probable latlong datasets with unknown datums

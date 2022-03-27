@@ -18,6 +18,7 @@ import { ElementPosition } from './gui-element-position';
 import { MouseArea } from './gui-mouse';
 import { Basemap } from './gui-basemap-control';
 import { GUI } from './gui-lib';
+import { getDatasetCrsInfo } from './gui-display-utils';
 
 utils.inherit(MshpMap, EventDispatcher);
 
@@ -101,11 +102,10 @@ export function MshpMap(gui) {
   };
 
   this.getDisplayCRS = function() {
-    var crs;
-    if (_activeLyr && _activeLyr.geographic) {
-      crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
-    }
-    return crs || null;
+    if (!_activeLyr || !_activeLyr.geographic) return null;
+    if (_activeLyr.dynamic_crs) return _activeLyr.dynamic_crs;
+    var info = getDatasetCrsInfo(_activeLyr.source.dataset);
+    return info.crs || null;
   };
 
   this.getExtent = function() {return _ext;};
@@ -178,7 +178,8 @@ export function MshpMap(gui) {
     }
 
     _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
-    _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer);
+    _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
+
     _activeLyr.active = true;
     // if (_inspector) _inspector.updateLayer(_activeLyr);
     _hit.setLayer(_activeLyr);

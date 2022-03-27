@@ -4,24 +4,37 @@ import utils from '../utils/mapshaper-utils';
 
 var LOGGING = false;
 var STDOUT = false; // use stdout for status messages
-
-// These three functions can be reset by GUI using setLoggingFunctions();
-var _error = function() {
-  var msg = utils.toArray(arguments).join(' ');
-  throw new Error(msg);
-};
-
-var _stop = function() {
-  throw new UserError(formatLogArgs(arguments));
-};
+var _error, _stop, _message;
 
 var _interrupt = function() {
   throw new NonFatalError(formatLogArgs(arguments));
 };
 
-var _message = function() {
-  logArgs(arguments);
-};
+setLoggingForCLI();
+
+export function getLoggingSetter() {
+  var e = _error, s = _stop, m = _message;
+  return function() {
+    setLoggingFunctions(m, e, s);
+  };
+}
+
+export function setLoggingForCLI() {
+  function stop() {
+    throw new UserError(formatLogArgs(arguments));
+  }
+
+  function error() {
+    var msg = utils.toArray(arguments).join(' ');
+    throw new Error(msg);
+  }
+
+  function message() {
+    logArgs(arguments);
+  }
+
+  setLoggingFunctions(message, error, stop);
+}
 
 export function enableLogging() {
   LOGGING = true;
@@ -167,3 +180,4 @@ export function logArgs(args) {
   if (STDOUT) console.log(msg);
   else console.error(msg);
 }
+

@@ -1,4 +1,4 @@
-import { MessageProxy } from './gui-proxy';
+import { setLoggingForGUI } from './gui-proxy';
 import { internal, utils, message, UserError } from './gui-core';
 import { El } from './gui-el';
 import { setDisplayProjection } from './gui-dynamic-crs';
@@ -100,7 +100,7 @@ export function Console(gui) {
       btn.removeClass('active');
       _isOpen = false;
       if (GUI.isActiveInstance(gui)) {
-        MessageProxy(gui); // reset stop, message and error functions
+        setLoggingForGUI(gui); // reset stop, message and error functions
       }
       el.hide();
       input.node().blur();

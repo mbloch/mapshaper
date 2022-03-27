@@ -1,7 +1,9 @@
-import { internal, geom } from './gui-core';
+import { internal, geom, error } from './gui-core';
 import { SimpleButton } from './gui-elements';
 import { El } from './gui-el';
 import { fromWebMercator, scaleToZoom } from './gui-dynamic-crs';
+import { setLoggingForGUI } from './gui-proxy';
+import { getDatasetCrsInfo } from './gui-display-utils';
 
 function loadScript(url, cb) {
   var script = document.createElement('script');
@@ -41,10 +43,6 @@ export function Basemap(gui, ext) {
 
   function init() {
     gui.addMode('basemap', turnOn, turnOff, basemapBtn);
-    // model.on('select', function() {
-      // TODO: hide basemap
-      // if (gui.getMode() == 'basemap') gui.clearMode();
-    // });
 
     new SimpleButton(menu.findChild('.close-btn')).on('click', function() {
       gui.clearMode();
@@ -68,6 +66,9 @@ export function Basemap(gui, ext) {
 
   function updateStyle(style) {
     activeStyle = style || null;
+    // TODO: consider enabling this
+    // Make sure that the selected layer style gets updated in gui-map.js
+    // gui.state.dark_basemap = style && style.dark || false;
     if (!style) {
       gui.map.setDisplayCRS(null);
       hide();
@@ -87,11 +88,12 @@ export function Basemap(gui, ext) {
 
   function turnOn() {
     var activeLyr = gui.model.getActiveLayer();
-    var dataCRS = internal.getDatasetCRS(activeLyr.dataset);
+    var info = getDatasetCrsInfo(activeLyr.dataset);
+    var dataCRS = info.crs || null;
     var displayCRS = gui.map.getDisplayCRS();
     var warning;
 
-    if (!crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
+    if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
       warning = 'The current layer is not compatible with the projection used by the basemaps.';
       basemapWarning.html(warning).show();
       basemapNote.hide();

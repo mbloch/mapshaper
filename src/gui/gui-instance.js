@@ -10,7 +10,7 @@ import { MshpMap } from './gui-map';
 import { utils } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
-import { MessageProxy } from './gui-proxy';
+import { setLoggingForGUI } from './gui-proxy';
 import { initModeRules } from './gui-mode-rules';
 
 export function GuiInstance(container, opts) {
@@ -62,7 +62,7 @@ export function GuiInstance(container, opts) {
       curr.blur();
     }
     GUI.__active = gui;
-    MessageProxy(gui);
+    setLoggingForGUI(gui);
     ImportFileProxy(gui);
     WriteFilesProxy(gui);
     gui.dispatchEvent('active');
