@@ -4,7 +4,7 @@ import { SimpleButton } from './gui-elements';
 import { internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
-import { getBBoxCoords } from './gui-display-layer';
+import { getBBoxCoords } from './gui-display-utils';
 
 // Controls both the shift-drag zoom-to-extent tool and the shift-drag editing tool
 

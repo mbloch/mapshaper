@@ -1,5 +1,5 @@
 import { error, internal, geom, utils } from './gui-core';
-import { updateVertexCoords, insertVertex, getVertexCoords, translateDisplayPoint, deleteVertex } from './gui-display-layer';
+import { updateVertexCoords, insertVertex, getVertexCoords, translateDisplayPoint, deleteVertex } from './gui-display-utils';
 
 // pointer thresholds for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 8;
@@ -49,7 +49,8 @@ export function initVertexDragging(gui, ext, hit) {
 
   function findVertexInsertionPoint(e) {
     var target = hit.getHitTarget();
-    if (!target.arcs.isFlat()) return null; // vertex insertion not supported with simplification
+    //// vertex insertion not supported with simplification
+    // if (!target.arcs.isFlat()) return null;
     var p = ext.translatePixelCoords(e.x, e.y);
     var midpoint = findNearestMidpoint(p, e.id, target);
     if (!midpoint ||

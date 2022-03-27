@@ -1,7 +1,7 @@
 import { internal, geom } from './gui-core';
 import { SimpleButton } from './gui-elements';
 import { El } from './gui-el';
-import { fromWebMercator } from './gui-dynamic-crs';
+import { fromWebMercator, scaleToZoom } from './gui-dynamic-crs';
 
 function loadScript(url, cb) {
   var script = document.createElement('script');
@@ -156,16 +156,25 @@ export function Basemap(gui, ext) {
     });
   }
 
+  // @bbox: latlon bounding box of current map extent
   function checkBounds(bbox) {
+    var mpp = ext.getBounds().width() / ext.width();
+    var z = scaleToZoom(mpp);
     var msg;
-    if (bbox[1] >= -85 && bbox[3] <= 85) {
+    if (bbox[1] >= -85 && bbox[3] <= 85 && z <= 20) {
       extentNote.hide();
       return true;
     }
-    if (bbox[1] > 0) msg = 'pan south to see the basemap';
-    else if (bbox[3] < 0) msg = 'pan north to see the basemap';
-    else msg = msg = 'zoom in to see the basemap';
-    extentNote.html(msg).show();
+    if (z > 20) {
+      msg = 'zoom out';
+    } else if (bbox[1] > 0) {
+      msg = 'pan south';
+    } else if (bbox[3] < 0) {
+      msg = 'pan north';
+    } else {
+      msg = msg = 'zoom in';
+    }
+    extentNote.html(msg + ' to see the basemap').show();
     return false;
   }
 

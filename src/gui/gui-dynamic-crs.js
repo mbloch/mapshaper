@@ -1,5 +1,9 @@
 import { internal, utils } from './gui-core';
 
+var R = 6378137;
+var D2R = Math.PI / 180;
+var R2D = 180 / Math.PI;
+
 // Assumes projections are available
 
 export function needReprojectionForDisplay(sourceCRS, displayCRS) {
@@ -68,9 +72,8 @@ export function projectPointsForDisplay(lyr, src, dest) {
   return copy;
 }
 
+
 export function toWebMercator(lng, lat) {
-  var R = 6378137;
-  var D2R = Math.PI / 180;
   var k = Math.cos(lat * D2R);
   var x = R * lng * D2R;
   var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
@@ -78,11 +81,13 @@ export function toWebMercator(lng, lat) {
 }
 
 export function fromWebMercator(x, y) {
-  var R = 6378137;
-  var R2D = 180 / Math.PI;
   var lon = x / R * R2D;
   var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
   return [lon, lat];
+}
+
+export function scaleToZoom(metersPerPix) {
+  return Math.log(40075017 / 512 / metersPerPix) / Math.log(2);
 }
 
 function clampToMapboxBounds(bounds) {

@@ -2,7 +2,7 @@ import { Slider } from './gui-slider';
 import { utils, internal, mapshaper } from './gui-core';
 import { SimpleButton, ClickText } from './gui-elements';
 import { GUI } from './gui-lib';
-import { setZ, updateZ } from './gui-display-layer';
+import { setZ, updateZ } from './gui-display-utils';
 
 /*
 How changes in the simplify control should affect other components

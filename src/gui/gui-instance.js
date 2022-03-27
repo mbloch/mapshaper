@@ -11,6 +11,7 @@ import { utils } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { MessageProxy } from './gui-proxy';
+import { initModeRules } from './gui-mode-rules';
 
 export function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
@@ -34,6 +35,8 @@ export function GuiInstance(container, opts) {
   gui.session = new SessionHistory(gui);
   gui.undo = new Undo(gui);
   gui.state = {};
+
+  initModeRules(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

@@ -1,5 +1,5 @@
 import { internal } from './gui-core';
-import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-layer';
+import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-utils';
 
 var snapVerticesToPoint = internal.snapVerticesToPoint;
 var cloneShape = internal.cloneShape;
