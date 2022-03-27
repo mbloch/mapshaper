@@ -164,6 +164,7 @@ function getVertexStyle(lyr, o) {
     strokeColor: black,
     strokeWidth: 1.5,
     vertices: true,
+    vertex_overlay_color: violet,
     vertex_overlay: o.hit_coordinates || null,
     selected_points: o.selected_points || null,
     fillColor: null
@@ -203,13 +204,6 @@ export function getOverlayStyle(lyr, o) {
     ids: ids,
     overlay: true
   };
-  // kludge to show vertices when editing path shapes
-  if (o.mode == 'vertices') {
-    style.vertices = true;
-    style.vertex_overlay = o.hit_coordinates || null;
-    style.selected_points = o.selected_points || null;
-    style.fillColor = null;
-  }
 
   if (layerHasCanvasDisplayStyle(lyr)) {
     if (geomType == 'point') {

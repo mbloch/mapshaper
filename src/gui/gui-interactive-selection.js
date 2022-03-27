@@ -114,7 +114,7 @@ export function InteractiveSelection(gui, ext, mouse) {
     }
   };
 
-  self.setHoverVertex = function(p) {
+  self.setHoverVertex = function(p, type) {
     var p2 = storedData.hit_coordinates;
     if (!active || !p) return;
     if (p2 && p2[0] == p[0] && p2[1] == p[1]) return;

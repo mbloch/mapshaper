@@ -166,13 +166,17 @@ export function DisplayCanvas() {
         }
       }
     }
-
-    if (style.vertex_overlay) {
-      p = style.vertex_overlay;
-      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.5, _ctx);
-    }
     _ctx.fill();
     _ctx.closePath();
+
+    if (style.vertex_overlay) {
+      _ctx.beginPath();
+      _ctx.fillStyle = style.vertex_overlay_color || 'black';
+      p = style.vertex_overlay;
+      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.6, _ctx);
+      _ctx.fill();
+      _ctx.closePath();
+    }
   };
 
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
