@@ -79,6 +79,10 @@ export function InteractionMode(gui) {
     setMode('off');
   };
 
+  this.modeUsesPopup = function(mode) {
+    return ['info', 'selection', 'data', 'box', 'labels', 'location'].includes(mode);
+  };
+
   this.getMode = getInteractionMode;
 
   this.setMode = function(mode) {

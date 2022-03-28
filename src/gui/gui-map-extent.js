@@ -5,6 +5,7 @@ export function MapExtent(_position) {
   var _scale = 1,
       _cx, _cy, // center in geographic units
       _contentBounds,
+      _strictBounds, // full extent must fit inside, if set
       _self = this,
       _frame;
 
@@ -88,15 +89,25 @@ export function MapExtent(_position) {
   };
 
   // Update the extent of 'full' zoom without navigating the current view
-  this.setBounds = function(b) {
+  //
+  this.setBounds = function(contentBounds, strictBounds) {
+    var b = contentBounds;
     var prev = _contentBounds;
     if (!b.hasBounds()) return; // kludge
+    if (strictBounds) {
+      _strictBounds = Array.isArray(strictBounds) ? new Bounds(strictBounds) : strictBounds;
+    } else {
+      _strictBounds = null;
+    }
     _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
+    if (_strictBounds) {
+      _contentBounds = fitIn(_contentBounds, _strictBounds);
+    }
     if (prev) {
       _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
     } else {
-      _cx = b.centerX();
-      _cy = b.centerY();
+      _cx = _contentBounds.centerX();
+      _cy = _contentBounds.centerY();
     }
   };
 
@@ -125,12 +136,25 @@ export function MapExtent(_position) {
 
   function recenter(cx, cy, scale, data) {
     scale = scale ? limitScale(scale) : _scale;
-    if (!(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx;
-      _cy = cy;
-      _scale = scale;
-      onChange(data);
+    if (cx == _cx && cy == _cy && scale == _scale) return;
+    if (_strictBounds) {
+      scale = Math.max(1, scale);
     }
+    _cx = cx;
+    _cy = cy;
+    _scale = scale;
+    limitExtent();
+    onChange(data);
+  }
+
+  function limitExtent() {
+    if (!_strictBounds) return;
+    if (_scale < 1) _scale = 1;
+    var dist = _strictBounds.height() / 2 / _scale;
+    var ymax = _strictBounds.ymax - dist;
+    var ymin = _strictBounds.ymin + dist;
+    if (_cy > ymax) _cy = ymax;
+    if (_cy < ymin) _cy = ymin;
   }
 
   function onChange(data) {
@@ -157,15 +181,19 @@ export function MapExtent(_position) {
   }
 
   function calcBounds(cx, cy, scale) {
-    var bounds, w, h;
+    var full, bounds, w, h;
     if (_frame) {
-      bounds = fillOutFrameBounds(_frame);
+      full = fillOutFrameBounds(_frame);
     } else {
-      bounds = fillOut(_contentBounds);
+      full = fillOut(_contentBounds);
     }
-    w = bounds.width() / scale;
-    h = bounds.height() / scale;
-    return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+    if (_strictBounds) {
+      full = fitIn(full, _strictBounds);
+    }
+    w = full.width() / scale;
+    h = full.height() / scale;
+    bounds = new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+    return bounds;
   }
 
   // Calculate viewport bounds from frame data
@@ -190,6 +218,22 @@ export function MapExtent(_position) {
     xpad = b2.width() / wpix * margin;
     ypad = b2.height() / hpix * margin;
     b.padBounds(xpad, ypad, xpad, ypad);
+    return b;
+  }
+
+  function fitIn(b, b2) {
+    // only fitting vertical extent
+    // (currently only used in basemap view to enforce Mapbox's vertical limits)
+
+    if (b.height() > b2.height()) {
+      b.scale(b2.height() / b.height());
+    }
+    if (b.ymin < b2.ymin) {
+      b.shift(0, b2.ymin - b.ymin);
+    }
+    if (b.ymax > b2.ymax) {
+      b.shift(0, b2.ymax - b.ymax);
+    }
     return b;
   }
 

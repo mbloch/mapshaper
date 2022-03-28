@@ -6,7 +6,7 @@ export function InspectionControl2(gui, hit) {
   var _self = new EventDispatcher();
 
   gui.on('interaction_mode_change', function(e) {
-    if (e.mode == 'off') {
+    if (!gui.interaction.modeUsesPopup(e.mode)) {
       inspect(-1); // clear the popup
     }
   });
@@ -34,7 +34,7 @@ export function InspectionControl2(gui, hit) {
 
   // does the attribute inspector appear on rollover
   function inspecting() {
-    return gui.interaction && gui.interaction.getMode() != 'off';
+    return gui.interaction && gui.interaction.modeUsesPopup(gui.interaction.getMode());
   }
 
   return _self;

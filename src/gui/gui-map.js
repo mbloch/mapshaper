@@ -10,7 +10,7 @@ import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerStack } from './gui-layer-stack';
 import { BoxTool } from './gui-box-tool';
-import { projectMapExtent } from './gui-dynamic-crs';
+import { projectMapExtent, getMapboxBounds } from './gui-dynamic-crs';
 import { getDisplayLayer, projectDisplayLayer } from './gui-display-layer';
 import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
@@ -198,7 +198,6 @@ export function MshpMap(gui) {
       needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
     }
 
-
     if (isFrameView()) {
       _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
       _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
@@ -206,7 +205,7 @@ export function MshpMap(gui) {
     } else {
       _nav.setZoomFactor(1);
     }
-    _ext.setBounds(fullBounds); // update 'home' button extent
+    _ext.setBounds(fullBounds, getStrictBounds()); // update 'home' button extent
     _fullBounds = fullBounds;
     if (needReset) {
       _ext.reset();
@@ -294,6 +293,13 @@ export function MshpMap(gui) {
     _ext.setFrame(getFrameData());
     _ext.setBounds(new Bounds(rec.bbox));
     _ext.reset();
+  }
+
+  function getStrictBounds() {
+    if (internal.isWebMercator(map.getDisplayCRS())) {
+      return getMapboxBounds();
+    }
+    return null;
   }
 
   function getFullBounds() {
@@ -462,7 +468,7 @@ export function MshpMap(gui) {
     if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
-      _ext.setBounds(getFullBounds());
+      _ext.setBounds(getFullBounds(), getStrictBounds());
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
     }

@@ -90,14 +90,10 @@ export function scaleToZoom(metersPerPix) {
   return Math.log(40075017 / 512 / metersPerPix) / Math.log(2);
 }
 
-function clampToMapboxBounds(bounds) {
+export function getMapboxBounds() {
   var ymax = toWebMercator(0, 84)[1];
   var ymin = toWebMercator(0, -84)[1];
-  var hmin = 1000;
-  bounds.ymin = Math.max(bounds.ymin, ymin);
-  bounds.ymax = Math.max(bounds.ymax, ymin + hmin);
-  bounds.ymin = Math.min(bounds.ymin, ymax - hmin);
-  bounds.ymax = Math.min(bounds.ymax, ymax);
+  return [-Infinity, ymin, Infinity, ymax];
 }
 
 
@@ -105,23 +101,24 @@ function clampToMapboxBounds(bounds) {
 export function projectMapExtent(ext, src, dest, newBounds) {
   var oldBounds = ext.getBounds();
   var oldScale = ext.scale();
-  var newCP, proj;
+  var newCP, proj, strictBounds;
 
   if (dest && internal.isWebMercator(dest)) {
-    clampToMapboxBounds(newBounds);
+    // clampToMapboxBounds(newBounds);
+    strictBounds = getMapboxBounds();
   }
 
   // if source or destination CRS is unknown, show full extent
   // if map is at full extent, show full extent
   // TODO: handle case that scale is 1 and map is panned away from center
   if (ext.scale() == 1 || !dest) {
-    ext.setBounds(newBounds);
+    ext.setBounds(newBounds, strictBounds);
     ext.home(); // sets full extent and triggers redraw
   } else {
     // if map is zoomed, stay centered on the same geographic location, at the same relative scale
     proj = internal.getProjTransform2(src, dest);
     newCP = proj(oldBounds.centerX(), oldBounds.centerY());
-    ext.setBounds(newBounds);
+    ext.setBounds(newBounds, strictBounds);
     if (!newCP) {
       // projection of center point failed; use center of bounds
       // (also consider just resetting the view using ext.home())
