@@ -1,3 +1,6 @@
+v0.5.105
+* More basemap improvements.
+
 v0.5.104
 * Improvements to the basemap feature.
 
