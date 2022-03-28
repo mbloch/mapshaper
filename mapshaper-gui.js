@@ -7007,7 +7007,8 @@
     function getBoxData(e) {
       var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
       var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
-      var tmp;
+      var displayBox = pixToCoords(mapBox);
+      var dataBox = getBBoxCoords(gui.map.getActiveLayer(), displayBox);
       if (pageBox[0] > pageBox[2]) {
         swapElements(pageBox, 0, 2);
         swapElements(mapBox, 0, 2);
@@ -7018,8 +7019,18 @@
       }
       return {
         map_bbox: mapBox,
-        page_bbox: pageBox
+        page_bbox: pageBox,
+        // round coords, for nicer 'info' display
+        // (rounded precision should be sub-pixel)
+        map_display_bbox: internal.getRoundedCoords(displayBox, internal.getBoundsPrecisionForDisplay(displayBox)),
+        map_data_bbox: internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox))
       };
+    }
+
+    function pixToCoords(bbox) {
+      var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+      var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+      return [a[0], b[1], b[0], a[1]];
     }
 
     function disabled() {
@@ -7104,17 +7115,16 @@
       if (!_on) return;
       var b = e.page_bbox;
       box.show(b[0], b[1], b[2], b[3]);
-      updateSelection(e.map_bbox, true);
+      updateSelection(e.map_data_bbox, true);
     });
 
     gui.on('box_drag_end', function(e) {
       if (!_on) return;
       box.hide();
-      updateSelection(e.map_bbox);
+      updateSelection(e.map_data_bbox);
     });
 
-    function updateSelection(bboxPixels, transient) {
-      var bbox = bboxToCoords(bboxPixels);
+    function updateSelection(bbox, transient) {
       var active = gui.model.getActiveLayer();
       var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
       if (transient) {
@@ -7126,12 +7136,6 @@
 
     function turnOn() {
       _on = true;
-    }
-
-    function bboxToCoords(bbox) {
-      var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-      var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-      return [a[0], b[1], b[0], a[1]];
     }
 
     function turnOff() {
@@ -9337,7 +9341,7 @@
     var popup = gui.container.findChild('.box-tool-options');
     var coords = popup.findChild('.box-coords');
     var _on = false;
-    var bboxDisplayCoords, bboxPixels, bboxDataCoords;
+    var bboxData;
 
     var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
       if (coords.visible()) hideCoords(); else showCoords();
@@ -9364,11 +9368,11 @@
       gui.enterMode('selection_tool');
       gui.interaction.setMode('selection');
       // kludge to pass bbox to the selection tool
-      gui.dispatchEvent('box_drag_end', {map_bbox: bboxPixels});
+      gui.dispatchEvent('box_drag_end', bboxData);
     });
 
     new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-      runCommand('-clip bbox2=' + bboxDataCoords.join(','));
+      runCommand('-clip bbox2=' + bboxData.map_data_bbox.join(','));
     });
 
     gui.addMode('box_tool', turnOn, turnOff);
@@ -9384,8 +9388,8 @@
     // Update the visible rectangle when the map view changes
     // (e.g. during zooming or panning)
     ext.on('change', function() {
-      if (!_on || !box.visible() || !bboxDisplayCoords) return;
-      var b = coordsToPix(bboxDisplayCoords);
+      if (!_on || !box.visible() || !bboxData) return;
+      var b = coordsToPix(bboxData.map_display_bbox);
       var pos = ext.position();
       var dx = pos.pageX,
           dy = pos.pageY;
@@ -9399,20 +9403,17 @@
 
     gui.on('box_drag', function(e) {
       var b = e.page_bbox;
-      bboxPixels = e.map_bbox;
-      bboxDisplayCoords = pixToCoords(bboxPixels);
+      bboxData = e.data;
       if (_on || inZoomMode()) {
         box.show(b[0], b[1], b[2], b[3]);
       }
     });
 
     gui.on('box_drag_end', function(e) {
-      bboxPixels = e.map_bbox;
-      bboxDisplayCoords = pixToCoords(bboxPixels);
-      bboxDataCoords = getBBoxCoords(gui.map.getActiveLayer(), bboxDisplayCoords);
+      bboxData = e.data;
       if (inZoomMode()) {
         box.hide();
-        nav.zoomToBbox(bboxPixels);
+        nav.zoomToBbox(e.map_bbox);
       } else if (_on) {
         popup.show();
       }
@@ -9433,7 +9434,7 @@
 
     function showCoords() {
       El(infoBtn.node()).addClass('selected-btn');
-      coords.text(bboxDataCoords.join(','));
+      coords.text(bboxData.map_data_bbox.join(','));
       coords.show();
       GUI.selectElement(coords.node());
     }
@@ -9460,15 +9461,6 @@
       box.hide();
       popup.hide();
       hideCoords();
-    }
-
-    function pixToCoords(bbox) {
-      var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-      var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-      var bbox2 = [a[0], b[1], b[0], a[1]];
-      // round coords, for nicer 'info' display
-      // (rounded precision should be sub-pixel)
-      return internal.getRoundedCoords(bbox2, internal.getBoundsPrecisionForDisplay(bbox2));
     }
 
     function coordsToPix(bbox) {
