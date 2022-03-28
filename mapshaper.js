@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.103";
+  var VERSION = "0.5.104";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1191,24 +1191,37 @@
 
   var LOGGING = false;
   var STDOUT = false; // use stdout for status messages
-
-  // These three functions can be reset by GUI using setLoggingFunctions();
-  var _error = function() {
-    var msg = utils.toArray(arguments).join(' ');
-    throw new Error(msg);
-  };
-
-  var _stop = function() {
-    throw new UserError(formatLogArgs(arguments));
-  };
+  var _error, _stop, _message;
 
   var _interrupt = function() {
     throw new NonFatalError(formatLogArgs(arguments));
   };
 
-  var _message = function() {
-    logArgs(arguments);
-  };
+  setLoggingForCLI();
+
+  function getLoggingSetter() {
+    var e = _error, s = _stop, m = _message;
+    return function() {
+      setLoggingFunctions(m, e, s);
+    };
+  }
+
+  function setLoggingForCLI() {
+    function stop() {
+      throw new UserError(formatLogArgs(arguments));
+    }
+
+    function error() {
+      var msg = utils.toArray(arguments).join(' ');
+      throw new Error(msg);
+    }
+
+    function message() {
+      logArgs(arguments);
+    }
+
+    setLoggingFunctions(message, error, stop);
+  }
 
   function enableLogging() {
     LOGGING = true;
@@ -1357,6 +1370,8 @@
 
   var Logging = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    getLoggingSetter: getLoggingSetter,
+    setLoggingForCLI: setLoggingForCLI,
     enableLogging: enableLogging,
     loggingEnabled: loggingEnabled,
     error: error,
@@ -4782,7 +4797,7 @@
     var info = dataset.info || {},
         P = info.crs;
     if (!P && info.prj) {
-      P = parsePrj(info.prj);
+      P = getCRS(translatePrj(info.prj));
     }
     if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
       // use wgs84 for probable latlong datasets with unknown datums
@@ -34882,8 +34897,6 @@ ${svg}
     return table + sepLine;
   }
 
-
-
   function maxChars(arr) {
     return arr.reduce(function(memo, str) {
       var w = stringDisplayWidth(str);
@@ -34924,6 +34937,12 @@ ${svg}
     } else {
       str = String(val);
     }
+
+    if (typeof str != 'string') {
+      // e.g. JSON.stringify converts functions to undefined
+      str = '[' + (typeof val) + ']';
+    }
+
     return str;
   }
 

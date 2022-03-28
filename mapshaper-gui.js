@@ -1736,281 +1736,249 @@
 
   utils$1.inherit(Slider, EventDispatcher);
 
-  // Create low-detail versions of large arc collections for faster rendering
-  // at zoomed-out scales.
-  function enhanceArcCollectionForDisplay(unfilteredArcs) {
-    var size = unfilteredArcs.getPointCount(),
-        filteredArcs, filteredSegLen;
-
-    // Only generate low-detail arcs for larger datasets
-    if (size > 5e5) {
-      if (!!unfilteredArcs.getVertexData().zz) {
-        // Use precalculated simplification data for vertex filtering, if available
-        filteredArcs = initFilteredArcs(unfilteredArcs);
-        filteredSegLen = internal.getAvgSegment(filteredArcs);
-      } else {
-        // Use fast simplification as a fallback
-        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
-        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
-      }
-    }
-
-    function initFilteredArcs(arcs) {
-      var filterPct = 0.08;
-      var nth = Math.ceil(arcs.getPointCount() / 5e5);
-      var currInterval = arcs.getRetainedInterval();
-      var filterZ = arcs.getThresholdByPct(filterPct, nth);
-      var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
-      arcs.setRetainedInterval(currInterval); // reset current simplification
-      return filteredArcs;
-    }
-
-    unfilteredArcs.getScaledArcs = function(ext) {
-      if (filteredArcs) {
-        // match simplification of unfiltered arcs
-        filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
-      }
-      // switch to filtered version of arcs at small scales
-      var unitsPerPixel = 1/ext.getTransform().mx,
-          useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
-      return useFiltering ? filteredArcs : unfilteredArcs;
-    };
-  }
-
-  function getDisplayLayerForTable(table) {
-    var n = table.size(),
-        cellWidth = 12,
-        cellHeight = 5,
-        gutter = 6,
-        arcs = [],
-        shapes = [],
-        aspectRatio = 1.1,
-        x, y, col, row, blockSize;
-
-    if (n > 10000) {
-      arcs = null;
-      gutter = 0;
-      cellWidth = 4;
-      cellHeight = 4;
-      aspectRatio = 1.45;
-    } else if (n > 5000) {
-      cellWidth = 5;
-      gutter = 3;
-      aspectRatio = 1.45;
-    } else if (n > 1000) {
-      gutter = 3;
-      cellWidth = 8;
-      aspectRatio = 1.3;
-    }
-
-    if (n < 25) {
-      blockSize = n;
-    } else {
-      blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
-    }
-
-    for (var i=0; i<n; i++) {
-      row = i % blockSize;
-      col = Math.floor(i / blockSize);
-      x = col * (cellWidth + gutter);
-      y = cellHeight * (blockSize - row);
-      if (arcs) {
-        arcs.push(getArc(x, y, cellWidth, cellHeight));
-        shapes.push([[i]]);
-      } else {
-        shapes.push([[x, y]]);
-      }
-    }
-
-    function getArc(x, y, w, h) {
-      return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
-    }
-
-    return {
-      layer: {
-        geometry_type: arcs ? 'polygon' : 'point',
-        shapes: shapes,
-        data: table
-      },
-      arcs: arcs ? new internal.ArcCollection(arcs) : null
-    };
-  }
-
-  // Assumes projections are available
-
-  function needReprojectionForDisplay(sourceCRS, displayCRS) {
-    if (!sourceCRS || !displayCRS) {
-      return false;
-    }
-    if (internal.crsAreEqual(sourceCRS, displayCRS)) {
-      return false;
-    }
-    return true;
-  }
-
-  function projectArcsForDisplay(arcs, src, dest) {
-    var copy = arcs.getCopy(); // need to flatten first?
-    var destIsWebMerc = internal.isWebMercator(dest);
-    if (destIsWebMerc && internal.isWebMercator(src)) {
-      return copy;
-    }
-
-    var wgs84 = internal.getCRS('wgs84');
-    var toWGS84 = internal.getProjTransform2(src, wgs84);
-    var fromWGS84 = internal.getProjTransform2(wgs84, dest);
-
+  function saveZipFile(zipfileName, files, done) {
+    var zip = window.zip; // assumes zip library is loaded globally
+    var toAdd = files;
+    var zipWriter;
     try {
-      // first try projectArcs() -- it's fast and preserves arc ids
-      // (so vertex editing doesn't break)
-      if (!internal.isWGS84(src)) {
-        // use wgs84 as a pivot CRS, so we can handle polar coordinates
-        // that can't be projected to Mercator
-        internal.projectArcs(copy, toWGS84);
-      }
-      if (destIsWebMerc) {
-        // handle polar points by clamping them to they will project
-        // (downside: may cause unexpected behavior when editing vertices interactively)
-        clampY(copy);
-      }
-      internal.projectArcs(copy, fromWGS84);
+      zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
+        zipWriter = writer;
+        nextFile();
+      }, zipError);
     } catch(e) {
-      console.error(e);
-      // use the more robust projectArcs2 if projectArcs throws an error
-      // downside: projectArcs2 discards Z values and changes arc indexing,
-      // which will break vertex editing.
-      var reproject = internal.getProjTransform2(src, dest);
-      copy = arcs.getCopy();
-      internal.projectArcs2(copy, reproject);
-    }
-    return copy;
-  }
-
-  function clampY(arcs) {
-    var max = 89.9,
-        min = -89.9,
-        bbox = arcs.getBounds().toArray();
-    if (bbox[1] >= min && bbox[3] <= max) return;
-    arcs.transformPoints(function(x, y) {
-      if (y > max) return [x, max];
-      if (y < min) return [x, min];
-    });
-  }
-
-  function projectPointsForDisplay(lyr, src, dest) {
-    var copy = utils$1.extend({}, lyr);
-    var proj = internal.getProjTransform2(src, dest);
-    copy.shapes = internal.cloneShapes(lyr.shapes);
-    internal.projectPointLayer(copy, proj);
-    return copy;
-  }
-
-  function toWebMercator(lng, lat) {
-    var R = 6378137;
-    var D2R = Math.PI / 180;
-    var k = Math.cos(lat * D2R);
-    var x = R * lng * D2R;
-    var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
-    return [x, y];
-  }
-
-  function fromWebMercator(x, y) {
-    var R = 6378137;
-    var R2D = 180 / Math.PI;
-    var lon = x / R * R2D;
-    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
-    return [lon, lat];
-  }
-
-  function clampToMapboxBounds(bounds) {
-    var ymax = toWebMercator(0, 84)[1];
-    var ymin = toWebMercator(0, -84)[1];
-    var hmin = 1000;
-    bounds.ymin = Math.max(bounds.ymin, ymin);
-    bounds.ymax = Math.max(bounds.ymax, ymin + hmin);
-    bounds.ymin = Math.min(bounds.ymin, ymax - hmin);
-    bounds.ymax = Math.min(bounds.ymax, ymax);
-  }
-
-
-  // Update map extent and trigger redraw, after a new display CRS has been applied
-  function projectMapExtent(ext, src, dest, newBounds) {
-    var oldBounds = ext.getBounds();
-    var oldScale = ext.scale();
-    var newCP, proj;
-
-    if (dest && internal.isWebMercator(dest)) {
-      clampToMapboxBounds(newBounds);
+      done("This browser doesn't support Zip file creation.");
     }
 
-    // if source or destination CRS is unknown, show full extent
-    // if map is at full extent, show full extent
-    // TODO: handle case that scale is 1 and map is panned away from center
-    if (ext.scale() == 1 || !dest) {
-      ext.setBounds(newBounds);
-      ext.home(); // sets full extent and triggers redraw
-    } else {
-      // if map is zoomed, stay centered on the same geographic location, at the same relative scale
-      proj = internal.getProjTransform2(src, dest);
-      newCP = proj(oldBounds.centerX(), oldBounds.centerY());
-      ext.setBounds(newBounds);
-      if (!newCP) {
-        // projection of center point failed; use center of bounds
-        // (also consider just resetting the view using ext.home())
-        newCP = [newBounds.centerX(), newBounds.centerY()];
+    function zipError(err) {
+      var str = "Error creating Zip file";
+      var msg = '';
+      // error events thrown by Zip library seem to be missing a message
+      if (err && err.message) {
+        msg = err.message;
       }
-      ext.recenter(newCP[0], newCP[1], oldScale);
+      if (msg) {
+        str += ": " + msg;
+      }
+      done(str);
+    }
+
+    function nextFile() {
+      if (toAdd.length === 0) {
+        zipWriter.close(function(blob) {
+          saveBlobToDownloadFolder(zipfileName, blob, done);
+        });
+      } else {
+        var obj = toAdd.pop(),
+            blob = new Blob([obj.content]);
+        zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
+      }
     }
   }
 
-  // Called from console; for testing dynamic crs
-  function setDisplayProjection(gui, cmd) {
-    var arg = cmd.replace(/^projd[ ]*/, '');
-    if (arg) {
-      gui.map.setDisplayCRS(internal.getCRS(arg));
-    } else {
-      gui.map.setDisplayCRS(null);
+  function saveFilesToServer(paths, data, done) {
+    var i = -1;
+    next();
+    function next(err) {
+      i++;
+      if (err) return done(err);
+      if (i >= data.length) return done();
+      saveBlobToServer(paths[i], new Blob([data[i]]), next);
     }
   }
 
-  function filterLayerByIds(lyr, ids) {
-    var shapes;
-    if (lyr.shapes) {
-      shapes = ids.map(function(id) {
-        return lyr.shapes[id];
+  function saveBlobToServer(path, blob, done) {
+    var q = '?file=' + encodeURIComponent(path);
+    var url = window.location.origin + '/save' + q;
+    window.fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: blob
+    }).then(function(resp) {
+      if (resp.status == 400) {
+        return resp.text();
+      }
+    }).then(function(err) {
+      done(err);
+    }).catch(function(resp) {
+      done('connection to server was lost');
+    });
+  }
+
+  function saveBlobToDownloadFolder(filename, blob, done) {
+    var anchor, blobUrl;
+    if (window.navigator.msSaveBlob) {
+      window.navigator.msSaveBlob(blob, filename);
+      return done();
+    }
+    try {
+      blobUrl = URL.createObjectURL(blob);
+    } catch(e) {
+      done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
+      return;
+    }
+    anchor = El('a').attr('href', '#').appendTo('body').node();
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
+        false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+    setTimeout(function() {
+      // Revoke blob url to release memory; timeout needed in firefox
+      URL.revokeObjectURL(blobUrl);
+      anchor.parentNode.removeChild(anchor);
+      done();
+    }, 400);
+  }
+
+  // replace default error, stop and message functions
+  function setLoggingForGUI(gui) {
+    function stop() {
+      // Show a popup error message, then throw an error
+      var msg = GUI.formatMessageArgs(arguments);
+      gui.alert(msg);
+      throw new Error(msg);
+    }
+
+    function error() {
+      stop.apply(null, utils$1.toArray(arguments));
+    }
+
+    function message() {
+      internal.logArgs(arguments);
+    }
+
+    internal.setLoggingFunctions(message, error, stop);
+  }
+
+  function WriteFilesProxy(gui) {
+    // replace CLI version of writeFiles()
+    internal.replaceWriteFiles(function(files, opts, done) {
+      var filename;
+      if (!utils$1.isArray(files) || files.length === 0) {
+        done("Nothing to export");
+      } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
+        var paths = internal.getOutputPaths(utils$1.pluck(files, 'filename'), opts);
+        var data = utils$1.pluck(files, 'content');
+        saveFilesToServer(paths, data, function(err) {
+          var msg;
+          if (err) {
+            msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
+            msg += "<br>Saving to download folder instead.";
+            gui.alert(msg);
+            // fall back to standard method if saving to server fails
+            internal.writeFiles(files, {save_to_download_folder: true}, done);
+          } else {
+            if (files.length >= 1) {
+              gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+            }
+            done();
+          }
+        });
+      } else if (files.length == 1) {
+        saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
+      } else {
+        filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
+        saveZipFile(filename + ".zip", files, done);
+      }
+    });
+  }
+
+  // Replaces functions for reading from files with functions that try to match
+  // already-loaded datasets.
+  //
+  function ImportFileProxy(gui) {
+    var model = gui.model;
+
+    // Try to match an imported dataset or layer.
+    // TODO: think about handling import options
+    function find(src) {
+      var datasets = model.getDatasets();
+      var retn = datasets.reduce(function(memo, d) {
+        var lyr;
+        if (memo) return memo; // already found a match
+        // try to match import filename of this dataset
+        if (d.info.input_files[0] == src) return d;
+        // try to match name of a layer in this dataset
+        lyr = utils$1.find(d.layers, function(lyr) {return lyr.name == src;});
+        return lyr ? internal.isolateLayer(lyr, d) : null;
+      }, null);
+      if (!retn) stop$1("Missing data layer [" + src + "]");
+      return retn;
+    }
+
+    internal.replaceImportFile(function(src, opts) {
+      var dataset = find(src);
+      // Return a copy with layers duplicated, so changes won't affect original layers
+      // This makes an (unsafe) assumption that the dataset arcs won't be changed...
+      // need to rethink this.
+      return utils$1.defaults({
+        layers: dataset.layers.map(internal.copyLayer)
+      }, dataset);
+    });
+  }
+
+  // load Proj.4 CRS definition files dynamically
+  //
+  internal.setProjectionLoader(function(opts, done) {
+    var mproj = require('mproj');
+    var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
+    // skip loaded libs
+    libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
+    loadProjLibs(libs, done);
+  });
+
+  function loadProjLibs(libs, done) {
+    var mproj = require('mproj');
+    var i = 0;
+    next();
+
+    function next() {
+      var libName = libs[i];
+      var content, req;
+      if (!libName) return done();
+      req = new XMLHttpRequest();
+      req.addEventListener('load', function(e) {
+        if (req.status == 200) {
+          content = req.response;
+        }
       });
-      return utils$1.defaults({shapes: shapes, data: null}, lyr);
+      req.addEventListener('loadend', function() {
+        if (content) {
+          mproj.internal.mproj_insert_libcache(libName, content);
+        }
+        // TODO: consider stopping with an error message if no content was loaded
+        // (currently, a less specific error will occur when mapshaper tries to use the library)
+        next();
+      });
+      req.open('GET', 'assets/' + libName);
+      req.send();
+      i++;
     }
-    return lyr;
   }
 
-  function formatLayerNameForDisplay(name) {
-    return name || '[unnamed]';
+  function getDatasetCrsInfo(dataset) {
+    var revertLogging = internal.getLoggingSetter();
+    var crs, err;
+    // prevent GUI message popup on error
+    internal.setLoggingForCLI();
+    try {
+      crs = internal.getDatasetCRS(dataset);
+    } catch(e) {
+      err = e.message;
+    }
+    revertLogging();
+    return {
+      crs: crs,
+      error: err
+    };
   }
 
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
-  }
-
-  function updateLayerStackOrder(layers) {
-    // 1. assign ascending ids to unassigned layers above the range of other layers
-    layers.forEach(function(o, i) {
-      if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
-    });
-    // 2. sort in ascending order
-    layers.sort(function(a, b) {
-      return a.layer.stack_id - b.layer.stack_id;
-    });
-    // 3. assign consecutve ids
-    layers.forEach(function(o, i) {
-      o.layer.stack_id = i + 1;
-    });
-    return layers;
-  }
-
-  function sortLayersForMenuDisplay(layers) {
-    layers = updateLayerStackOrder(layers);
-    return layers.reverse();
+  function flattenArcs(lyr) {
+    lyr.source.dataset.arcs.flatten();
+    if (isProjectedLayer(lyr)) {
+      lyr.arcs.flatten();
+    }
   }
 
   function setZ(lyr, z) {
@@ -2104,146 +2072,6 @@
       if (p) dest.push(p);
     }
     return dest.length ? dest : null;
-  }
-
-  // displayCRS: CRS to use for display, or null (which clears any current display CRS)
-  function projectDisplayLayer(lyr, displayCRS) {
-    var sourceCRS = internal.getDatasetCRS(lyr.source.dataset);
-    var lyr2;
-    if (!lyr.geographic || !sourceCRS) {
-      return lyr;
-    }
-    if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
-      return lyr;
-    }
-    lyr2 = getDisplayLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
-    // kludge: copy projection-related properties to original layer
-    lyr.dynamic_crs = lyr2.dynamic_crs;
-    lyr.layer = lyr2.layer;
-    if (lyr.style && lyr.style.ids) {
-      // re-apply layer filter
-      lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
-    }
-    lyr.invertPoint = lyr2.invertPoint;
-    lyr.projectPoint = lyr2.projectPoint;
-    lyr.bounds = lyr2.bounds;
-    lyr.arcs = lyr2.arcs;
-  }
-
-
-  // Wrap a layer in an object along with information needed for rendering
-  function getDisplayLayer(layer, dataset, opts) {
-    var obj = {
-      layer: null,
-      arcs: null,
-      // display_arcs: null,
-      style: null,
-      invertPoint: null,
-      projectPoint: null,
-      source: {
-        layer: layer,
-        dataset: dataset
-      },
-      empty: internal.getFeatureCount(layer) === 0
-    };
-
-    var sourceCRS = opts.crs && internal.getDatasetCRS(dataset); // get src iff display CRS is given
-    var displayCRS = opts.crs || null;
-    // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
-    var displayArcs = dataset.displayArcs || null;
-    var emptyArcs;
-
-    // Assume that dataset.displayArcs is in the display CRS
-    // (it must be deleted upstream if reprojection is needed)
-    if (dataset.arcs && !displayArcs) {
-      // project arcs, if needed
-      if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
-        displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
-      } else {
-        // Use original arcs for display if there is no dynamic reprojection
-        displayArcs = dataset.arcs;
-      }
-
-      enhanceArcCollectionForDisplay(displayArcs);
-      dataset.displayArcs = displayArcs; // stash these in the dataset for other layers to use
-    }
-
-    if (internal.layerHasFurniture(layer)) {
-      obj.furniture = true;
-      obj.furniture_type = internal.getFurnitureLayerType(layer);
-      obj.layer = layer;
-      // treating furniture layers (other than frame) as tabular for now,
-      // so there is something to show if they are selected
-      obj.tabular = obj.furniture_type != 'frame';
-    } else if (obj.empty) {
-      obj.layer = {shapes: []}; // ideally we should avoid empty layers
-    } else if (!layer.geometry_type) {
-      obj.tabular = true;
-    } else {
-      obj.geographic = true;
-      obj.layer = layer;
-      obj.arcs = displayArcs;
-    }
-
-    if (obj.tabular) {
-      utils$1.extend(obj, getDisplayLayerForTable(layer.data));
-    }
-
-    // dynamic reprojection (arcs were already reprojected above)
-    if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
-      obj.dynamic_crs = displayCRS;
-      obj.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
-      obj.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
-      if (internal.layerHasPoints(layer)) {
-        obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
-      } else if (internal.layerHasPaths(layer)) {
-        emptyArcs = findEmptyArcs(displayArcs);
-        if (emptyArcs.length > 0) {
-          // Don't try to draw paths containing coordinates that failed to project
-          obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
-        }
-      }
-    }
-
-    obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
-    return obj;
-  }
-
-
-  function getDisplayBounds(lyr, arcs) {
-    var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
-        bounds = arcBounds, // default display extent: all arcs in the dataset
-        lyrBounds;
-
-    if (lyr.geometry_type == 'point') {
-      lyrBounds = internal.getLayerBounds(lyr);
-      if (lyrBounds && lyrBounds.hasBounds()) {
-        if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
-          bounds = lyrBounds;
-        } else {
-          // if a point layer has no extent (e.g. contains only a single point),
-          // then merge with arc bounds, to place the point in context.
-          bounds = arcBounds.mergeBounds(lyrBounds);
-        }
-      }
-    }
-
-    if (!bounds || !bounds.hasBounds()) { // empty layer
-      bounds = new Bounds();
-    }
-    return bounds;
-  }
-
-  // Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
-  function findEmptyArcs(arcs) {
-    var nn = arcs.getVertexData().nn;
-    var ids = [];
-    for (var i=0, n=nn.length; i<n; i++) {
-      if (nn[i] === 0) {
-        ids.push(i);
-      }
-    }
-    return ids;
   }
 
   /*
@@ -2481,225 +2309,141 @@
     }
   };
 
-  function saveZipFile(zipfileName, files, done) {
-    var zip = window.zip; // assumes zip library is loaded globally
-    var toAdd = files;
-    var zipWriter;
+  var R = 6378137;
+  var D2R = Math.PI / 180;
+  var R2D = 180 / Math.PI;
+
+  // Assumes projections are available
+
+  function needReprojectionForDisplay(sourceCRS, displayCRS) {
+    if (!sourceCRS || !displayCRS) {
+      return false;
+    }
+    if (internal.crsAreEqual(sourceCRS, displayCRS)) {
+      return false;
+    }
+    return true;
+  }
+
+  function projectArcsForDisplay(arcs, src, dest) {
+    var copy = arcs.getCopy(); // need to flatten first?
+    var destIsWebMerc = internal.isWebMercator(dest);
+    if (destIsWebMerc && internal.isWebMercator(src)) {
+      return copy;
+    }
+
+    var wgs84 = internal.getCRS('wgs84');
+    var toWGS84 = internal.getProjTransform2(src, wgs84);
+    var fromWGS84 = internal.getProjTransform2(wgs84, dest);
+
     try {
-      zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
-        zipWriter = writer;
-        nextFile();
-      }, zipError);
+      // first try projectArcs() -- it's fast and preserves arc ids
+      // (so vertex editing doesn't break)
+      if (!internal.isWGS84(src)) {
+        // use wgs84 as a pivot CRS, so we can handle polar coordinates
+        // that can't be projected to Mercator
+        internal.projectArcs(copy, toWGS84);
+      }
+      if (destIsWebMerc) {
+        // handle polar points by clamping them to they will project
+        // (downside: may cause unexpected behavior when editing vertices interactively)
+        clampY(copy);
+      }
+      internal.projectArcs(copy, fromWGS84);
     } catch(e) {
-      done("This browser doesn't support Zip file creation.");
+      console.error(e);
+      // use the more robust projectArcs2 if projectArcs throws an error
+      // downside: projectArcs2 discards Z values and changes arc indexing,
+      // which will break vertex editing.
+      var reproject = internal.getProjTransform2(src, dest);
+      copy = arcs.getCopy();
+      internal.projectArcs2(copy, reproject);
     }
-
-    function zipError(err) {
-      var str = "Error creating Zip file";
-      var msg = '';
-      // error events thrown by Zip library seem to be missing a message
-      if (err && err.message) {
-        msg = err.message;
-      }
-      if (msg) {
-        str += ": " + msg;
-      }
-      done(str);
-    }
-
-    function nextFile() {
-      if (toAdd.length === 0) {
-        zipWriter.close(function(blob) {
-          saveBlobToDownloadFolder(zipfileName, blob, done);
-        });
-      } else {
-        var obj = toAdd.pop(),
-            blob = new Blob([obj.content]);
-        zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
-      }
-    }
+    return copy;
   }
 
-  function saveFilesToServer(paths, data, done) {
-    var i = -1;
-    next();
-    function next(err) {
-      i++;
-      if (err) return done(err);
-      if (i >= data.length) return done();
-      saveBlobToServer(paths[i], new Blob([data[i]]), next);
-    }
-  }
-
-  function saveBlobToServer(path, blob, done) {
-    var q = '?file=' + encodeURIComponent(path);
-    var url = window.location.origin + '/save' + q;
-    window.fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      body: blob
-    }).then(function(resp) {
-      if (resp.status == 400) {
-        return resp.text();
-      }
-    }).then(function(err) {
-      done(err);
-    }).catch(function(resp) {
-      done('connection to server was lost');
+  function clampY(arcs) {
+    var max = 89.9,
+        min = -89.9,
+        bbox = arcs.getBounds().toArray();
+    if (bbox[1] >= min && bbox[3] <= max) return;
+    arcs.transformPoints(function(x, y) {
+      if (y > max) return [x, max];
+      if (y < min) return [x, min];
     });
   }
 
-  function saveBlobToDownloadFolder(filename, blob, done) {
-    var anchor, blobUrl;
-    if (window.navigator.msSaveBlob) {
-      window.navigator.msSaveBlob(blob, filename);
-      return done();
-    }
-    try {
-      blobUrl = URL.createObjectURL(blob);
-    } catch(e) {
-      done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
-      return;
-    }
-    anchor = El('a').attr('href', '#').appendTo('body').node();
-    anchor.href = blobUrl;
-    anchor.download = filename;
-    var clickEvent = document.createEvent("MouseEvent");
-    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
-        false, false, false, 0, null);
-    anchor.dispatchEvent(clickEvent);
-    setTimeout(function() {
-      // Revoke blob url to release memory; timeout needed in firefox
-      URL.revokeObjectURL(blobUrl);
-      anchor.parentNode.removeChild(anchor);
-      done();
-    }, 400);
+  function projectPointsForDisplay(lyr, src, dest) {
+    var copy = utils$1.extend({}, lyr);
+    var proj = internal.getProjTransform2(src, dest);
+    copy.shapes = internal.cloneShapes(lyr.shapes);
+    internal.projectPointLayer(copy, proj);
+    return copy;
   }
 
-  function MessageProxy(gui) {
-    // replace stop function
-    var stop = function() {
-      // Show a popup error message, then throw an error
-      var msg = GUI.formatMessageArgs(arguments);
-      gui.alert(msg);
-      throw new Error(msg);
-    };
 
-    // Replace error function in mapshaper lib
-    var error = function() {
-      stop.apply(null, utils$1.toArray(arguments));
-    };
-
-    var message = function() {
-      internal.logArgs(arguments); // reset default
-    };
-
-    internal.setLoggingFunctions(message, error, stop);
+  function toWebMercator(lng, lat) {
+    var k = Math.cos(lat * D2R);
+    var x = R * lng * D2R;
+    var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
+    return [x, y];
   }
 
-  function WriteFilesProxy(gui) {
-    // replace CLI version of writeFiles()
-    internal.replaceWriteFiles(function(files, opts, done) {
-      var filename;
-      if (!utils$1.isArray(files) || files.length === 0) {
-        done("Nothing to export");
-      } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
-        var paths = internal.getOutputPaths(utils$1.pluck(files, 'filename'), opts);
-        var data = utils$1.pluck(files, 'content');
-        saveFilesToServer(paths, data, function(err) {
-          var msg;
-          if (err) {
-            msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
-            msg += "<br>Saving to download folder instead.";
-            gui.alert(msg);
-            // fall back to standard method if saving to server fails
-            internal.writeFiles(files, {save_to_download_folder: true}, done);
-          } else {
-            if (files.length >= 1) {
-              gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
-            }
-            done();
-          }
-        });
-      } else if (files.length == 1) {
-        saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
-      } else {
-        filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
-        saveZipFile(filename + ".zip", files, done);
+  function fromWebMercator(x, y) {
+    var lon = x / R * R2D;
+    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
+    return [lon, lat];
+  }
+
+  function scaleToZoom(metersPerPix) {
+    return Math.log(40075017 / 512 / metersPerPix) / Math.log(2);
+  }
+
+  function getMapboxBounds() {
+    var ymax = toWebMercator(0, 84)[1];
+    var ymin = toWebMercator(0, -84)[1];
+    return [-Infinity, ymin, Infinity, ymax];
+  }
+
+
+  // Update map extent and trigger redraw, after a new display CRS has been applied
+  function projectMapExtent(ext, src, dest, newBounds) {
+    var oldBounds = ext.getBounds();
+    var oldScale = ext.scale();
+    var newCP, proj, strictBounds;
+
+    if (dest && internal.isWebMercator(dest)) {
+      // clampToMapboxBounds(newBounds);
+      strictBounds = getMapboxBounds();
+    }
+
+    // if source or destination CRS is unknown, show full extent
+    // if map is at full extent, show full extent
+    // TODO: handle case that scale is 1 and map is panned away from center
+    if (ext.scale() == 1 || !dest) {
+      ext.setBounds(newBounds, strictBounds);
+      ext.home(); // sets full extent and triggers redraw
+    } else {
+      // if map is zoomed, stay centered on the same geographic location, at the same relative scale
+      proj = internal.getProjTransform2(src, dest);
+      newCP = proj(oldBounds.centerX(), oldBounds.centerY());
+      ext.setBounds(newBounds, strictBounds);
+      if (!newCP) {
+        // projection of center point failed; use center of bounds
+        // (also consider just resetting the view using ext.home())
+        newCP = [newBounds.centerX(), newBounds.centerY()];
       }
-    });
-  }
-
-  // Replaces functions for reading from files with functions that try to match
-  // already-loaded datasets.
-  //
-  function ImportFileProxy(gui) {
-    var model = gui.model;
-
-    // Try to match an imported dataset or layer.
-    // TODO: think about handling import options
-    function find(src) {
-      var datasets = model.getDatasets();
-      var retn = datasets.reduce(function(memo, d) {
-        var lyr;
-        if (memo) return memo; // already found a match
-        // try to match import filename of this dataset
-        if (d.info.input_files[0] == src) return d;
-        // try to match name of a layer in this dataset
-        lyr = utils$1.find(d.layers, function(lyr) {return lyr.name == src;});
-        return lyr ? internal.isolateLayer(lyr, d) : null;
-      }, null);
-      if (!retn) stop$1("Missing data layer [" + src + "]");
-      return retn;
+      ext.recenter(newCP[0], newCP[1], oldScale);
     }
-
-    internal.replaceImportFile(function(src, opts) {
-      var dataset = find(src);
-      // Return a copy with layers duplicated, so changes won't affect original layers
-      // This makes an (unsafe) assumption that the dataset arcs won't be changed...
-      // need to rethink this.
-      return utils$1.defaults({
-        layers: dataset.layers.map(internal.copyLayer)
-      }, dataset);
-    });
   }
 
-  // load Proj.4 CRS definition files dynamically
-  //
-  internal.setProjectionLoader(function(opts, done) {
-    var mproj = require('mproj');
-    var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
-    // skip loaded libs
-    libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
-    loadProjLibs(libs, done);
-  });
-
-  function loadProjLibs(libs, done) {
-    var mproj = require('mproj');
-    var i = 0;
-    next();
-
-    function next() {
-      var libName = libs[i];
-      var content, req;
-      if (!libName) return done();
-      req = new XMLHttpRequest();
-      req.addEventListener('load', function(e) {
-        if (req.status == 200) {
-          content = req.response;
-        }
-      });
-      req.addEventListener('loadend', function() {
-        if (content) {
-          mproj.internal.mproj_insert_libcache(libName, content);
-        }
-        // TODO: consider stopping with an error message if no content was loaded
-        // (currently, a less specific error will occur when mapshaper tries to use the library)
-        next();
-      });
-      req.open('GET', 'assets/' + libName);
-      req.send();
-      i++;
+  // Called from console; for testing dynamic crs
+  function setDisplayProjection(gui, cmd) {
+    var arg = cmd.replace(/^projd[ ]*/, '');
+    if (arg) {
+      gui.map.setDisplayCRS(internal.getCRS(arg));
+    } else {
+      gui.map.setDisplayCRS(null);
     }
   }
 
@@ -2799,7 +2543,7 @@
         btn.removeClass('active');
         _isOpen = false;
         if (GUI.isActiveInstance(gui)) {
-          MessageProxy(gui); // reset stop, message and error functions
+          setLoggingForGUI(gui); // reset stop, message and error functions
         }
         el.hide();
         input.node().blur();
@@ -3342,6 +3086,47 @@
   }
 
   utils$1.inherit(RepairControl, EventDispatcher);
+
+  function filterLayerByIds(lyr, ids) {
+    var shapes;
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils$1.defaults({shapes: shapes, data: null}, lyr);
+    }
+    return lyr;
+  }
+
+  function formatLayerNameForDisplay(name) {
+    return name || '[unnamed]';
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+  }
+
+  function updateLayerStackOrder(layers) {
+    // 1. assign ascending ids to unassigned layers above the range of other layers
+    layers.forEach(function(o, i) {
+      if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
+    });
+    // 2. sort in ascending order
+    layers.sort(function(a, b) {
+      return a.layer.stack_id - b.layer.stack_id;
+    });
+    // 3. assign consecutve ids
+    layers.forEach(function(o, i) {
+      o.layer.stack_id = i + 1;
+    });
+    return layers;
+  }
+
+  function sortLayersForMenuDisplay(layers) {
+    layers = updateLayerStackOrder(layers);
+    return layers.reverse();
+  }
 
   // import { groupLayersByDataset } from '../dataset/mapshaper-target-utils';
 
@@ -4406,6 +4191,10 @@
       setMode('off');
     };
 
+    this.modeUsesPopup = function(mode) {
+      return ['info', 'selection', 'data', 'box', 'labels', 'location'].includes(mode);
+    };
+
     this.getMode = getInteractionMode;
 
     this.setMode = function(mode) {
@@ -4656,24 +4445,37 @@
 
   var LOGGING = false;
   var STDOUT = false; // use stdout for status messages
-
-  // These three functions can be reset by GUI using setLoggingFunctions();
-  var _error = function() {
-    var msg = utils.toArray(arguments).join(' ');
-    throw new Error(msg);
-  };
-
-  var _stop = function() {
-    throw new UserError(formatLogArgs(arguments));
-  };
+  var _error, _stop, _message;
 
   var _interrupt = function() {
     throw new NonFatalError(formatLogArgs(arguments));
   };
 
-  var _message = function() {
-    logArgs(arguments);
-  };
+  setLoggingForCLI();
+
+  function getLoggingSetter() {
+    var e = _error, s = _stop, m = _message;
+    return function() {
+      setLoggingFunctions(m, e, s);
+    };
+  }
+
+  function setLoggingForCLI() {
+    function stop() {
+      throw new UserError(formatLogArgs(arguments));
+    }
+
+    function error() {
+      var msg = utils.toArray(arguments).join(' ');
+      throw new Error(msg);
+    }
+
+    function message() {
+      logArgs(arguments);
+    }
+
+    setLoggingFunctions(message, error, stop);
+  }
 
   function enableLogging() {
     LOGGING = true;
@@ -6395,7 +6197,7 @@
       }
     };
 
-    self.setHoverVertex = function(p) {
+    self.setHoverVertex = function(p, type) {
       var p2 = storedData.hit_coordinates;
       if (!active || !p) return;
       if (p2 && p2[0] == p[0] && p2[1] == p[1]) return;
@@ -7616,7 +7418,7 @@
     var _self = new EventDispatcher();
 
     gui.on('interaction_mode_change', function(e) {
-      if (e.mode == 'off') {
+      if (!gui.interaction.modeUsesPopup(e.mode)) {
         inspect(-1); // clear the popup
       }
     });
@@ -7644,7 +7446,7 @@
 
     // does the attribute inspector appear on rollover
     function inspecting() {
-      return gui.interaction && gui.interaction.getMode() != 'off';
+      return gui.interaction && gui.interaction.modeUsesPopup(gui.interaction.getMode());
     }
 
     return _self;
@@ -7986,7 +7788,8 @@
 
     function findVertexInsertionPoint(e) {
       var target = hit.getHitTarget();
-      if (!target.arcs.isFlat()) return null; // vertex insertion not supported with simplification
+      //// vertex insertion not supported with simplification
+      // if (!target.arcs.isFlat()) return null;
       var p = ext.translatePixelCoords(e.x, e.y);
       var midpoint = findNearestMidpoint(p, e.id, target);
       if (!midpoint ||
@@ -8140,8 +7943,15 @@
       activeStyle = { // outline style for the active layer
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
-        strokeWidth: 0.7,
+        strokeWidth: 0.8,
         dotColor: "#223",
+        dotSize: 1
+      },
+      activeStyleDarkMode = {
+        type: 'outline',
+        strokeColors: [lightStroke, 'white'],
+        strokeWidth: 0.9,
+        dotColor: 'white',
         dotSize: 1
       },
       activeStyleForLabels = {
@@ -8272,12 +8082,14 @@
     return style;
   }
 
-  function getActiveStyle(lyr) {
+  function getActiveStyle(lyr, darkMode) {
     var style;
     if (layerHasCanvasDisplayStyle(lyr)) {
       style = getCanvasDisplayStyle(lyr);
     } else if (internal.layerHasLabels(lyr)) {
       style = getDefaultStyle(lyr, activeStyleForLabels);
+    } else if (darkMode) {
+      style = getDefaultStyle(lyr, activeStyleDarkMode);
     } else {
       style = getDefaultStyle(lyr, activeStyle);
     }
@@ -8292,6 +8104,7 @@
       strokeColor: black,
       strokeWidth: 1.5,
       vertices: true,
+      vertex_overlay_color: violet,
       vertex_overlay: o.hit_coordinates || null,
       selected_points: o.selected_points || null,
       fillColor: null
@@ -8331,13 +8144,6 @@
       ids: ids,
       overlay: true
     };
-    // kludge to show vertices when editing path shapes
-    if (o.mode == 'vertices') {
-      style.vertices = true;
-      style.vertex_overlay = o.hit_coordinates || null;
-      style.selected_points = o.selected_points || null;
-      style.fillColor = null;
-    }
 
     if (layerHasCanvasDisplayStyle(lyr)) {
       if (geomType == 'point') {
@@ -8448,6 +8254,7 @@
     var _scale = 1,
         _cx, _cy, // center in geographic units
         _contentBounds,
+        _strictBounds, // full extent must fit inside, if set
         _self = this,
         _frame;
 
@@ -8531,15 +8338,25 @@
     };
 
     // Update the extent of 'full' zoom without navigating the current view
-    this.setBounds = function(b) {
+    //
+    this.setBounds = function(contentBounds, strictBounds) {
+      var b = contentBounds;
       var prev = _contentBounds;
       if (!b.hasBounds()) return; // kludge
+      if (strictBounds) {
+        _strictBounds = Array.isArray(strictBounds) ? new Bounds(strictBounds) : strictBounds;
+      } else {
+        _strictBounds = null;
+      }
       _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
+      if (_strictBounds) {
+        _contentBounds = fitIn(_contentBounds, _strictBounds);
+      }
       if (prev) {
         _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
       } else {
-        _cx = b.centerX();
-        _cy = b.centerY();
+        _cx = _contentBounds.centerX();
+        _cy = _contentBounds.centerY();
       }
     };
 
@@ -8568,12 +8385,25 @@
 
     function recenter(cx, cy, scale, data) {
       scale = scale ? limitScale(scale) : _scale;
-      if (!(cx == _cx && cy == _cy && scale == _scale)) {
-        _cx = cx;
-        _cy = cy;
-        _scale = scale;
-        onChange(data);
+      if (cx == _cx && cy == _cy && scale == _scale) return;
+      if (_strictBounds) {
+        scale = Math.max(1, scale);
       }
+      _cx = cx;
+      _cy = cy;
+      _scale = scale;
+      limitExtent();
+      onChange(data);
+    }
+
+    function limitExtent() {
+      if (!_strictBounds) return;
+      if (_scale < 1) _scale = 1;
+      var dist = _strictBounds.height() / 2 / _scale;
+      var ymax = _strictBounds.ymax - dist;
+      var ymin = _strictBounds.ymin + dist;
+      if (_cy > ymax) _cy = ymax;
+      if (_cy < ymin) _cy = ymin;
     }
 
     function onChange(data) {
@@ -8600,15 +8430,19 @@
     }
 
     function calcBounds(cx, cy, scale) {
-      var bounds, w, h;
+      var full, bounds, w, h;
       if (_frame) {
-        bounds = fillOutFrameBounds(_frame);
+        full = fillOutFrameBounds(_frame);
       } else {
-        bounds = fillOut(_contentBounds);
+        full = fillOut(_contentBounds);
       }
-      w = bounds.width() / scale;
-      h = bounds.height() / scale;
-      return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+      if (_strictBounds) {
+        full = fitIn(full, _strictBounds);
+      }
+      w = full.width() / scale;
+      h = full.height() / scale;
+      bounds = new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+      return bounds;
     }
 
     // Calculate viewport bounds from frame data
@@ -8633,6 +8467,22 @@
       xpad = b2.width() / wpix * margin;
       ypad = b2.height() / hpix * margin;
       b.padBounds(xpad, ypad, xpad, ypad);
+      return b;
+    }
+
+    function fitIn(b, b2) {
+      // only fitting vertical extent
+      // (currently only used in basemap view to enforce Mapbox's vertical limits)
+
+      if (b.height() > b2.height()) {
+        b.scale(b2.height() / b.height());
+      }
+      if (b.ymin < b2.ymin) {
+        b.shift(0, b2.ymin - b.ymin);
+      }
+      if (b.ymax > b2.ymax) {
+        b.shift(0, b2.ymax - b.ymax);
+      }
       return b;
     }
 
@@ -8811,13 +8661,17 @@
           }
         }
       }
-
-      if (style.vertex_overlay) {
-        p = style.vertex_overlay;
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.5, _ctx);
-      }
       _ctx.fill();
       _ctx.closePath();
+
+      if (style.vertex_overlay) {
+        _ctx.beginPath();
+        _ctx.fillStyle = style.vertex_overlay_color || 'black';
+        p = style.vertex_overlay;
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.6, _ctx);
+        _ctx.fill();
+        _ctx.closePath();
+      }
     };
 
     // Optimized to draw paths in same-style batches (faster Canvas drawing)
@@ -9619,6 +9473,261 @@
     return self;
   }
 
+  // Create low-detail versions of large arc collections for faster rendering
+  // at zoomed-out scales.
+  function enhanceArcCollectionForDisplay(unfilteredArcs) {
+    var size = unfilteredArcs.getPointCount(),
+        filteredArcs, filteredSegLen;
+
+    // Only generate low-detail arcs for larger datasets
+    if (size > 5e5) {
+      if (!!unfilteredArcs.getVertexData().zz) {
+        // Use precalculated simplification data for vertex filtering, if available
+        filteredArcs = initFilteredArcs(unfilteredArcs);
+        filteredSegLen = internal.getAvgSegment(filteredArcs);
+      } else {
+        // Use fast simplification as a fallback
+        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
+        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
+      }
+    }
+
+    function initFilteredArcs(arcs) {
+      var filterPct = 0.08;
+      var nth = Math.ceil(arcs.getPointCount() / 5e5);
+      var currInterval = arcs.getRetainedInterval();
+      var filterZ = arcs.getThresholdByPct(filterPct, nth);
+      var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
+      arcs.setRetainedInterval(currInterval); // reset current simplification
+      return filteredArcs;
+    }
+
+    unfilteredArcs.getScaledArcs = function(ext) {
+      if (filteredArcs) {
+        // match simplification of unfiltered arcs
+        filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
+      }
+      // switch to filtered version of arcs at small scales
+      var unitsPerPixel = 1/ext.getTransform().mx,
+          useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
+      return useFiltering ? filteredArcs : unfilteredArcs;
+    };
+  }
+
+  function getDisplayLayerForTable(table) {
+    var n = table.size(),
+        cellWidth = 12,
+        cellHeight = 5,
+        gutter = 6,
+        arcs = [],
+        shapes = [],
+        aspectRatio = 1.1,
+        x, y, col, row, blockSize;
+
+    if (n > 10000) {
+      arcs = null;
+      gutter = 0;
+      cellWidth = 4;
+      cellHeight = 4;
+      aspectRatio = 1.45;
+    } else if (n > 5000) {
+      cellWidth = 5;
+      gutter = 3;
+      aspectRatio = 1.45;
+    } else if (n > 1000) {
+      gutter = 3;
+      cellWidth = 8;
+      aspectRatio = 1.3;
+    }
+
+    if (n < 25) {
+      blockSize = n;
+    } else {
+      blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
+    }
+
+    for (var i=0; i<n; i++) {
+      row = i % blockSize;
+      col = Math.floor(i / blockSize);
+      x = col * (cellWidth + gutter);
+      y = cellHeight * (blockSize - row);
+      if (arcs) {
+        arcs.push(getArc(x, y, cellWidth, cellHeight));
+        shapes.push([[i]]);
+      } else {
+        shapes.push([[x, y]]);
+      }
+    }
+
+    function getArc(x, y, w, h) {
+      return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
+    }
+
+    return {
+      layer: {
+        geometry_type: arcs ? 'polygon' : 'point',
+        shapes: shapes,
+        data: table
+      },
+      arcs: arcs ? new internal.ArcCollection(arcs) : null
+    };
+  }
+
+  // displayCRS: CRS to use for display, or null (which clears any current display CRS)
+  function projectDisplayLayer(lyr, displayCRS) {
+    var crsInfo = getDatasetCrsInfo(lyr.source.dataset);
+    var sourceCRS = crsInfo.crs;
+    var lyr2;
+    //if (!lyr.geographic || !sourceCRS) {
+    // let getDisplayLayer() handle case of unprojectable source
+    if (!lyr.geographic) {
+      return lyr;
+    }
+    if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
+      return lyr;
+    }
+    lyr2 = getDisplayLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
+    // kludge: copy projection-related properties to original layer
+    lyr.dynamic_crs = lyr2.dynamic_crs;
+    lyr.layer = lyr2.layer;
+
+    if (lyr.style && lyr.style.ids) {
+      // re-apply layer filter
+      lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
+    }
+    lyr.invertPoint = lyr2.invertPoint;
+    lyr.projectPoint = lyr2.projectPoint;
+    lyr.bounds = lyr2.bounds;
+    lyr.arcs = lyr2.arcs;
+  }
+
+
+  // Wrap a layer in an object along with information needed for rendering
+  function getDisplayLayer(layer, dataset, opts) {
+    var obj = {
+      layer: null,
+      arcs: null,
+      // display_arcs: null,
+      style: null,
+      invertPoint: null,
+      projectPoint: null,
+      source: {
+        layer: layer,
+        dataset: dataset
+      },
+      empty: internal.getFeatureCount(layer) === 0
+    };
+
+    var displayCRS = opts.crs || null;
+    // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
+    var displayArcs = dataset.displayArcs || null;
+    var sourceCRS;
+    var emptyArcs;
+
+    if (displayCRS && layer.geometry_type) {
+      var crsInfo = getDatasetCrsInfo(dataset);
+      if (crsInfo.error) {
+        // unprojectable dataset -- return empty layer
+        obj.empty = true;
+        obj.geographic = true;
+      } else {
+        sourceCRS = crsInfo.crs;
+      }
+    }
+
+    // Assume that dataset.displayArcs is in the display CRS
+    // (it must be deleted upstream if reprojection is needed)
+    if (!obj.empty && dataset.arcs && !displayArcs) {
+      // project arcs, if needed
+      if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+        displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
+      } else {
+        // Use original arcs for display if there is no dynamic reprojection
+        displayArcs = dataset.arcs;
+      }
+
+      enhanceArcCollectionForDisplay(displayArcs);
+      dataset.displayArcs = displayArcs; // stash these in the dataset for other layers to use
+    }
+
+    if (internal.layerHasFurniture(layer)) {
+      obj.furniture = true;
+      obj.furniture_type = internal.getFurnitureLayerType(layer);
+      obj.layer = layer;
+      // treating furniture layers (other than frame) as tabular for now,
+      // so there is something to show if they are selected
+      obj.tabular = obj.furniture_type != 'frame';
+    } else if (obj.empty) {
+      obj.layer = {shapes: []}; // ideally we should avoid empty layers
+    } else if (!layer.geometry_type) {
+      obj.tabular = true;
+    } else {
+      obj.geographic = true;
+      obj.layer = layer;
+      obj.arcs = displayArcs;
+    }
+
+    if (obj.tabular) {
+      utils$1.extend(obj, getDisplayLayerForTable(layer.data));
+    }
+
+    // dynamic reprojection (arcs were already reprojected above)
+    if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
+      obj.dynamic_crs = displayCRS;
+      obj.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
+      obj.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
+      if (internal.layerHasPoints(layer)) {
+        obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+      } else if (internal.layerHasPaths(layer)) {
+        emptyArcs = findEmptyArcs(displayArcs);
+        if (emptyArcs.length > 0) {
+          // Don't try to draw paths containing coordinates that failed to project
+          obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
+        }
+      }
+    }
+
+    obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
+    return obj;
+  }
+
+
+  function getDisplayBounds(lyr, arcs) {
+    var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
+        bounds = arcBounds, // default display extent: all arcs in the dataset
+        lyrBounds;
+
+    if (lyr.geometry_type == 'point') {
+      lyrBounds = internal.getLayerBounds(lyr);
+      if (lyrBounds && lyrBounds.hasBounds()) {
+        if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
+          bounds = lyrBounds;
+        } else {
+          // if a point layer has no extent (e.g. contains only a single point),
+          // then merge with arc bounds, to place the point in context.
+          bounds = arcBounds.mergeBounds(lyrBounds);
+        }
+      }
+    }
+
+    if (!bounds || !bounds.hasBounds()) { // empty layer
+      bounds = new Bounds();
+    }
+    return bounds;
+  }
+
+  // Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
+  function findEmptyArcs(arcs) {
+    var nn = arcs.getVertexData().nn;
+    var ids = [];
+    for (var i=0, n=nn.length; i<n; i++) {
+      if (nn[i] === 0) {
+        ids.push(i);
+      }
+    }
+    return ids;
+  }
+
   function loadScript(url, cb) {
     var script = document.createElement('script');
     script.onload = cb;
@@ -9657,10 +9766,6 @@
 
     function init() {
       gui.addMode('basemap', turnOn, turnOff, basemapBtn);
-      // model.on('select', function() {
-        // TODO: hide basemap
-        // if (gui.getMode() == 'basemap') gui.clearMode();
-      // });
 
       new SimpleButton(menu.findChild('.close-btn')).on('click', function() {
         gui.clearMode();
@@ -9684,6 +9789,9 @@
 
     function updateStyle(style) {
       activeStyle = style || null;
+      // TODO: consider enabling this
+      // Make sure that the selected layer style gets updated in gui-map.js
+      // gui.state.dark_basemap = style && style.dark || false;
       if (!style) {
         gui.map.setDisplayCRS(null);
         hide();
@@ -9703,11 +9811,12 @@
 
     function turnOn() {
       var activeLyr = gui.model.getActiveLayer();
-      var dataCRS = internal.getDatasetCRS(activeLyr.dataset);
+      var info = getDatasetCrsInfo(activeLyr.dataset);
+      var dataCRS = info.crs || null;
       var displayCRS = gui.map.getDisplayCRS();
       var warning;
 
-      if (!crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
+      if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
         warning = 'The current layer is not compatible with the projection used by the basemaps.';
         basemapWarning.html(warning).show();
         basemapNote.hide();
@@ -9772,16 +9881,25 @@
       });
     }
 
+    // @bbox: latlon bounding box of current map extent
     function checkBounds(bbox) {
+      var mpp = ext.getBounds().width() / ext.width();
+      var z = scaleToZoom(mpp);
       var msg;
-      if (bbox[1] >= -85 && bbox[3] <= 85) {
+      if (bbox[1] >= -85 && bbox[3] <= 85 && z <= 20) {
         extentNote.hide();
         return true;
       }
-      if (bbox[1] > 0) msg = 'pan south to see the basemap';
-      else if (bbox[3] < 0) msg = 'pan north to see the basemap';
-      else msg = msg = 'zoom in to see the basemap';
-      extentNote.html(msg).show();
+      if (z > 20) {
+        msg = 'zoom out';
+      } else if (bbox[1] > 0) {
+        msg = 'pan south';
+      } else if (bbox[3] < 0) {
+        msg = 'pan north';
+      } else {
+        msg = msg = 'zoom in';
+      }
+      extentNote.html(msg + ' to see the basemap').show();
       return false;
     }
 
@@ -9897,11 +10015,10 @@
     };
 
     this.getDisplayCRS = function() {
-      var crs;
-      if (_activeLyr && _activeLyr.geographic) {
-        crs = _activeLyr.dynamic_crs || internal.getDatasetCRS(_activeLyr.source.dataset);
-      }
-      return crs || null;
+      if (!_activeLyr || !_activeLyr.geographic) return null;
+      if (_activeLyr.dynamic_crs) return _activeLyr.dynamic_crs;
+      var info = getDatasetCrsInfo(_activeLyr.source.dataset);
+      return info.crs || null;
     };
 
     this.getExtent = function() {return _ext;};
@@ -9974,7 +10091,8 @@
       }
 
       _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
-      _activeLyr.style = getActiveStyle(_activeLyr.layer);
+      _activeLyr.style = getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
+
       _activeLyr.active = true;
       // if (_inspector) _inspector.updateLayer(_activeLyr);
       _hit.setLayer(_activeLyr);
@@ -9993,7 +10111,6 @@
         needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
       }
 
-
       if (isFrameView()) {
         _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
         _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
@@ -10001,7 +10118,7 @@
       } else {
         _nav.setZoomFactor(1);
       }
-      _ext.setBounds(fullBounds); // update 'home' button extent
+      _ext.setBounds(fullBounds, getStrictBounds()); // update 'home' button extent
       _fullBounds = fullBounds;
       if (needReset) {
         _ext.reset();
@@ -10089,6 +10206,13 @@
       _ext.setFrame(getFrameData());
       _ext.setBounds(new Bounds(rec.bbox));
       _ext.reset();
+    }
+
+    function getStrictBounds() {
+      if (internal.isWebMercator(map.getDisplayCRS())) {
+        return getMapboxBounds();
+      }
+      return null;
     }
 
     function getFullBounds() {
@@ -10257,7 +10381,7 @@
       if (layersMayHaveChanged) {
         // kludge to handle layer visibility toggling
         _ext.setFrame(isPreviewView() ? getFrameData() : null);
-        _ext.setBounds(getFullBounds());
+        _ext.setBounds(getFullBounds(), getStrictBounds());
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
       }
@@ -10273,6 +10397,40 @@
       // draw furniture
       _stack.drawFurnitureLayers(furnitureLayers, action);
     }
+  }
+
+  // This is a new way to handle compatibility problems between
+  // interactive editing modes and other interface modes
+  // (by default, interactive modes stay on when, e.g., the user clicks
+  // "Export" or "Console").
+  //
+  function initModeRules(gui) {
+
+    gui.on('interaction_mode_change', function(e) {
+      var imode = e.mode;
+      var mode = gui.getMode();
+
+      // simplify and vertex editing are not compatible
+      if (imode == 'vertices') {
+        flattenArcs(gui.map.getActiveLayer());
+
+        if (mode == 'simplify') {
+          gui.clearMode(); // exit simplification
+        }
+
+      }
+
+    });
+
+    gui.on('mode', function(e) {
+      var mode = e.name;
+      var imode = gui.interaction.getMode();
+
+      // simplify and vertex editing are not compatible
+      if (mode == 'simplify' && imode == 'vertices') {
+        gui.interaction.turnOff();
+      }
+    });
   }
 
   function GuiInstance(container, opts) {
@@ -10298,6 +10456,8 @@
     gui.undo = new Undo(gui);
     gui.state = {};
 
+    initModeRules(gui);
+
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {
         gui.progressMessage = El('div').addClass('progress-message')
@@ -10322,7 +10482,7 @@
         curr.blur();
       }
       GUI.__active = gui;
-      MessageProxy(gui);
+      setLoggingForGUI(gui);
       ImportFileProxy(gui);
       WriteFilesProxy(gui);
       gui.dispatchEvent('active');

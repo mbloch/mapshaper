@@ -9,6 +9,7 @@ window.mapboxParams = {
   }, {
     name: 'Satellite',
     icon: 'images/thumb-satellite.jpg',
+    dark: true,
     url: 'mapbox://styles/grammata/cl0ymvkkl004115mlgf5o442n'
   }]
 };
