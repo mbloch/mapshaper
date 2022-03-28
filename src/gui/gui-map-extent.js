@@ -137,25 +137,32 @@ export function MapExtent(_position) {
   function recenter(cx, cy, scale, data) {
     scale = scale ? limitScale(scale) : _scale;
     if (cx == _cx && cy == _cy && scale == _scale) return;
+    navigate(cx, cy, scale);
+    onChange(data);
+  }
+
+  function navigate(cx, cy, scale) {
     if (_strictBounds) {
-      // no!
-      // scale = Math.max(1, scale);
+      var full = fillOut(_contentBounds);
+      var minScale = full.height() / _strictBounds.height();
+      if (scale < minScale) {
+        var dx = cx - _cx;
+        cx = _cx + dx * (minScale - _scale) / (scale - _scale);
+        scale = minScale;
+      }
+      var dist = full.height() / 2 / scale;
+      var ymax = _strictBounds.ymax - dist;
+      var ymin = _strictBounds.ymin + dist;
+      if (cy > ymax ) {
+        cy = ymax;
+      }
+      if (cy < ymin) {
+        cy = ymin;
+      }
     }
     _cx = cx;
     _cy = cy;
     _scale = scale;
-    limitExtent();
-    onChange(data);
-  }
-
-  function limitExtent() {
-    if (!_strictBounds) return;
-    // if (_scale < 1) _scale = 1;
-    var dist = _strictBounds.height() / 2 / _scale;
-    var ymax = _strictBounds.ymax - dist;
-    var ymin = _strictBounds.ymin + dist;
-    //if (_cy > ymax) _cy = ymax;
-    //if (_cy < ymin) _cy = ymin;
   }
 
   function onChange(data) {
@@ -225,7 +232,6 @@ export function MapExtent(_position) {
   function fitIn(b, b2) {
     // only fitting vertical extent
     // (currently only used in basemap view to enforce Mapbox's vertical limits)
-
     if (b.height() > b2.height()) {
       b.scale(b2.height() / b.height());
     }
