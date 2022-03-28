@@ -29,6 +29,20 @@ describe('mapshaper-info.js', function () {
       assert.equal(api.internal.formatTableValue(null, 0), target);
     });
 
+    it('undefined value', function() {
+      var target = 'undefined';
+      assert.equal(api.internal.formatTableValue(void 0, 0), target);
+    });
+
+    it('function', function() {
+      var target = '[function]';
+      assert.equal(api.internal.formatTableValue(function() {}, 0), target);
+    })
+
+    it('NaN', function() {
+      var target = 'NaN';
+      assert.equal(api.internal.formatTableValue(NaN, 0), target);
+    })
   })
 
 })

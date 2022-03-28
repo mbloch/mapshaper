@@ -153,8 +153,6 @@ function formatAttributeTable(data, i) {
   return table + sepLine;
 }
 
-
-
 function maxChars(arr) {
   return arr.reduce(function(memo, str) {
     var w = stringDisplayWidth(str);
@@ -195,6 +193,12 @@ export function formatTableValue(val, integralChars) {
   } else {
     str = String(val);
   }
+
+  if (typeof str != 'string') {
+    // e.g. JSON.stringify converts functions to undefined
+    str = '[' + (typeof val) + ']';
+  }
+
   return str;
 }
 
