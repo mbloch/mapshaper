@@ -22,17 +22,16 @@ export function SelectionTool(gui, ext, hit) {
     if (!_on) return;
     var b = e.page_bbox;
     box.show(b[0], b[1], b[2], b[3]);
-    updateSelection(e.map_bbox, true);
+    updateSelection(e.map_data_bbox, true);
   });
 
   gui.on('box_drag_end', function(e) {
     if (!_on) return;
     box.hide();
-    updateSelection(e.map_bbox);
+    updateSelection(e.map_data_bbox);
   });
 
-  function updateSelection(bboxPixels, transient) {
-    var bbox = bboxToCoords(bboxPixels);
+  function updateSelection(bbox, transient) {
     var active = gui.model.getActiveLayer();
     var ids = internal.findShapesIntersectingBBox(bbox, active.layer, active.dataset.arcs);
     if (transient) {
@@ -44,12 +43,6 @@ export function SelectionTool(gui, ext, hit) {
 
   function turnOn() {
     _on = true;
-  }
-
-  function bboxToCoords(bbox) {
-    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
   }
 
   function turnOff() {

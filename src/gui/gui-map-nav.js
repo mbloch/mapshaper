@@ -2,6 +2,7 @@ import { MouseWheel } from './gui-mouse';
 import { Tween } from './gui-tween';
 import { Bounds, internal, utils } from './gui-core';
 import { initVariableClick } from './gui-mouse-utils';
+import { getBBoxCoords } from './gui-display-utils';
 
 export function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
@@ -98,7 +99,8 @@ export function MapNav(gui, ext, mouse) {
   function getBoxData(e) {
     var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
     var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
-    var tmp;
+    var displayBox = pixToCoords(mapBox);
+    var dataBox = getBBoxCoords(gui.map.getActiveLayer(), displayBox);
     if (pageBox[0] > pageBox[2]) {
       swapElements(pageBox, 0, 2);
       swapElements(mapBox, 0, 2);
@@ -109,8 +111,18 @@ export function MapNav(gui, ext, mouse) {
     }
     return {
       map_bbox: mapBox,
-      page_bbox: pageBox
+      page_bbox: pageBox,
+      // round coords, for nicer 'info' display
+      // (rounded precision should be sub-pixel)
+      map_display_bbox: internal.getRoundedCoords(displayBox, internal.getBoundsPrecisionForDisplay(displayBox)),
+      map_data_bbox: internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox))
     };
+  }
+
+  function pixToCoords(bbox) {
+    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+    return [a[0], b[1], b[0], a[1]];
   }
 
   function disabled() {
