@@ -138,7 +138,8 @@ export function MapExtent(_position) {
     scale = scale ? limitScale(scale) : _scale;
     if (cx == _cx && cy == _cy && scale == _scale) return;
     if (_strictBounds) {
-      scale = Math.max(1, scale);
+      // no!
+      // scale = Math.max(1, scale);
     }
     _cx = cx;
     _cy = cy;
@@ -149,12 +150,12 @@ export function MapExtent(_position) {
 
   function limitExtent() {
     if (!_strictBounds) return;
-    if (_scale < 1) _scale = 1;
+    // if (_scale < 1) _scale = 1;
     var dist = _strictBounds.height() / 2 / _scale;
     var ymax = _strictBounds.ymax - dist;
     var ymin = _strictBounds.ymin + dist;
-    if (_cy > ymax) _cy = ymax;
-    if (_cy < ymin) _cy = ymin;
+    //if (_cy > ymax) _cy = ymax;
+    //if (_cy < ymin) _cy = ymin;
   }
 
   function onChange(data) {
