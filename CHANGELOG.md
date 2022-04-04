@@ -1,3 +1,7 @@
+v0.5.107
+* Bug fixes
+* Added file_exists() to -if/-elif expressions
+
 v0.5.106
 * More basemap fixes.
 
