@@ -1,4 +1,4 @@
-v0.5.107
+v0.5.108
 * Bug fixes
 * Added file_exists() to -if/-elif expressions
 
