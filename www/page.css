@@ -210,7 +210,7 @@ body {
 	max-height: 160px;
 	overflow: hidden;
 	overflow-y: auto;
-	margin-right: -13px;
+	margin-right: -3px;
 }
 
 .export-layer-list > div {
@@ -420,8 +420,8 @@ body.dragover #import-options-drop-area .drop-area {
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid #999;
 	padding: 0 3px;
-	height: 17px;
-	font-size: 12px;
+	height: 18px;
+	font-size: 13px;
 }
 
 #mshp-not-supported {
@@ -436,10 +436,10 @@ body.dragover #import-options-drop-area .drop-area {
 	overflow-y: auto;
 }
 
-.dropped-file-list p {
+#import-options .dropped-file-list p {
 	line-height: 1;
 	margin-bottom: 5px;
-	font-size: 15px;
+	font-size: 14px;
 	font-weight: bold;
 }
 
@@ -484,7 +484,7 @@ body.dragover #import-options-drop-area .drop-area {
 }
 
 .option-menu {
-	padding: 0 0 7px 0;
+	padding: 0 0 9px 0;
 }
 
 .option-menu input {

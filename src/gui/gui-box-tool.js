@@ -45,7 +45,7 @@ export function BoxTool(gui, ext, mouse, nav) {
   });
 
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-    runCommand('-clip bbox2=' + bboxData.map_data_bbox.join(','));
+    runCommand('-clip bbox=' + bboxData.map_data_bbox.join(','));
   });
 
   gui.addMode('box_tool', turnOn, turnOff);

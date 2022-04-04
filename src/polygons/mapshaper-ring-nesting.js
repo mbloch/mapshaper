@@ -83,8 +83,22 @@ function setRingWinding(data, cw) {
 // a, b: two ring data objects (from getPathMetadata);
 function testRingInRing(a, b, arcs) {
   if (b.bounds.contains(a.bounds) === false) return false;
-  var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
+  // Don't test with first point -- this may return false if a hole intersects
+  // the containing ring at the first vertex.
+  // Instead, use the midpoint of the first segment
+  var p = getFirstMidpoint(a.ids[0], arcs);
+  //// test with first point in the ring
+  // var p = arcs.getVertex(a.ids[0], 0);
   return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
+}
+
+function getFirstMidpoint(arcId, arcs) {
+  var p1 = arcs.getVertex(arcId, 0);
+  var p2 = arcs.getVertex(arcId, 1);
+  return {
+    x: (p1.x + p2.x) / 2,
+    y: (p1.y + p2.y) / 2
+  };
 }
 
 // Bundle holes with their containing rings for Topo/GeoJSON polygon export.

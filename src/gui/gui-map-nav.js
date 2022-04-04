@@ -90,6 +90,15 @@ export function MapNav(gui, ext, mouse) {
     ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
+  function fixBounds(bbox) {
+    if (bbox[0] > bbox[2]) {
+      swapElements(bbox, 0, 2);
+    }
+    if (bbox[1] > bbox[3]) {
+      swapElements(bbox, 1, 3);
+    }
+  }
+
   function swapElements(arr, i, j) {
     var tmp = arr[i];
     arr[i] = arr[j];
@@ -101,14 +110,10 @@ export function MapNav(gui, ext, mouse) {
     var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
     var displayBox = pixToCoords(mapBox);
     var dataBox = getBBoxCoords(gui.map.getActiveLayer(), displayBox);
-    if (pageBox[0] > pageBox[2]) {
-      swapElements(pageBox, 0, 2);
-      swapElements(mapBox, 0, 2);
-    }
-    if (pageBox[1] > pageBox[3]) {
-      swapElements(pageBox, 1, 3);
-      swapElements(mapBox, 1, 3);
-    }
+    fixBounds(pageBox);
+    fixBounds(mapBox);
+    fixBounds(displayBox);
+    fixBounds(dataBox);
     return {
       map_bbox: mapBox,
       page_bbox: pageBox,
