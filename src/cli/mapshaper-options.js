@@ -188,6 +188,10 @@ export function getOptionParser() {
     .option('json-path', {
       old_alias: 'json-subtree',
       describe: '[JSON] path to JSON input data; separator is /'
+    })
+    .option('single-part', {
+      type: 'flag',
+      // describe: '[GeoJSON] split multi-part features into single-part features'
     });
 
   parser.command('o')

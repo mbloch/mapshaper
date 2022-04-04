@@ -54,6 +54,8 @@ export function GeoJSONParser(opts) {
     // TODO: improve so geometry_type option skips features instead of creating null geometries
     if (geom && geom.type == 'GeometryCollection') {
       GeoJSON.importComplexFeature(importer, geom, rec, opts);
+    } else if (opts.single_part && isMultiPartGeometry(geom)) {
+      GeoJSON.importMultiAsSingles(importer, geom, rec, opts);
     } else {
       GeoJSON.importSimpleFeature(importer, geom, rec, opts);
     }
@@ -95,9 +97,25 @@ function divideGeometriesByType(geometries, index) {
   return Object.values(index);
 }
 
+function isMultiPartGeometry(geom) {
+  return geom && geom.type && geom.type.indexOf('Multi') === 0;
+}
+
 GeoJSON.importSimpleFeature = function(importer, geom, rec, opts) {
   importer.startShape(rec);
   GeoJSON.importSimpleGeometry(importer, geom, opts);
+};
+
+// Split a multi-part feature into several single features
+GeoJSON.importMultiAsSingles = function(importer, geom, rec, opts) {
+  geom.coordinates.forEach(function(coords, i) {
+    var geom2 = {
+      type: geom.type.substr(5),
+      coordinates: coords
+    };
+    var rec2 = i === 0 ? rec : copyRecord(rec);
+    GeoJSON.importSimpleFeature(importer, geom2, rec2, opts);
+  });
 };
 
 GeoJSON.importSimpleGeometry = function(importer, geom, opts) {
