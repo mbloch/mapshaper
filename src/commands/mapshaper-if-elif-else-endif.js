@@ -10,7 +10,7 @@ import {
   inActiveBranch,
   blockWasActive
 } from '../mapshaper-control-flow';
-import { compileLayerExpression } from '../expressions/mapshaper-layer-expressions';
+import { compileIfCommandExpression } from '../expressions/mapshaper-layer-expressions';
 
 export function skipCommand(cmdName) {
   // allow all control commands to run
@@ -57,7 +57,7 @@ function isControlFlowCommand(cmd) {
 function testLayer(catalog, opts) {
   var targ = getTargetLayer(catalog, opts);
   if (opts.expression) {
-    return compileLayerExpression(opts.expression, targ.layer, targ.dataset, opts)();
+    return compileIfCommandExpression(opts.expression, catalog, targ, opts)();
   }
   if (opts.empty) {
     return layerIsEmpty(targ.layer);
