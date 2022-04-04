@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.103";
+  var VERSION = "0.5.108";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1737,16 +1737,6 @@
 
   // Iterate over each [x,y] point in a layer
   // shapes: one layer's "shapes" array
-  function forEachPoint_(shapes, cb) {
-    var i, n, j, m, shp;
-    for (i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        cb(shp[j], i);
-      }
-    }
-  }
-
   function forEachPoint(shapes, cb) {
     var i, n, j, m, shp;
     for (i=0, n=shapes.length; i<n; i++) {
@@ -1763,7 +1753,6 @@
     getPointBounds: getPointBounds$1,
     getPointFeatureBounds: getPointFeatureBounds,
     getPointsInLayer: getPointsInLayer,
-    forEachPoint_: forEachPoint_,
     forEachPoint: forEachPoint
   });
 
@@ -9957,11 +9946,6 @@
       ctx.$ = i >= 0 ? getFeatureById(i) : layerOnlyProxy;
       ctx._ = ctx; // provide access to functions when masked by variable names
       ctx.d = rec || null; // expose data properties a la d3 (also exposed as this.properties)
-      if (opts.record_alias) {
-        // this is used to expose source table record as "source" in -join calc=
-        // expresions.
-        ctx[opts.record_alias] = ctx.d;
-      }
       try {
         val = func.call(ctx.$, rec, ctx);
       } catch(e) {
@@ -34663,24 +34647,19 @@ ${svg}
     return o;
   }
 
-  function compileIfCommandExpression(expr, catalog, target, opts) {
-    var ctx = {};
-
-    if (target && target.layer) {
-      ctx = getLayerProxy(target.layer, target.dataset.arcs, opts);
-    }
-
-    ctx.file_exists = function(name) {
-      return cli.isFile(name);
-    };
-
-    ctx.layer_exists = function(name) {
-      var lyr = catalog.findSingleLayer(name);
-      return !!lyr;
-    };
-
+  function compileIfCommandExpression(expr, catalog, targ, opts) {
+    var ctx = getLayerProxy(targ.layer, targ.dataset.arcs, opts);
     var exprOpts = Object.assign({returns: true}, opts);
     var func = compileExpressionToFunction(expr, exprOpts);
+
+    ctx.layer_exists = function(name) {
+      return !!catalog.findSingleLayer(name);
+    };
+
+    ctx.file_exists = function(file) {
+      return cli.isFile(file);
+    };
+
     return function() {
       try {
         return func.call(ctx, {}, ctx);
@@ -34689,7 +34668,6 @@ ${svg}
         stop(e.name, "in expression [" + expr + "]:", e.message);
       }
     };
-
   }
 
   function skipCommand(cmdName) {
