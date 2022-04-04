@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.106";
+  var VERSION = "0.5.103";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1737,6 +1737,16 @@
 
   // Iterate over each [x,y] point in a layer
   // shapes: one layer's "shapes" array
+  function forEachPoint_(shapes, cb) {
+    var i, n, j, m, shp;
+    for (i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+        cb(shp[j], i);
+      }
+    }
+  }
+
   function forEachPoint(shapes, cb) {
     var i, n, j, m, shp;
     for (i=0, n=shapes.length; i<n; i++) {
@@ -1753,6 +1763,7 @@
     getPointBounds: getPointBounds$1,
     getPointFeatureBounds: getPointFeatureBounds,
     getPointsInLayer: getPointsInLayer,
+    forEachPoint_: forEachPoint_,
     forEachPoint: forEachPoint
   });
 
@@ -7813,8 +7824,22 @@
   // a, b: two ring data objects (from getPathMetadata);
   function testRingInRing(a, b, arcs) {
     if (b.bounds.contains(a.bounds) === false) return false;
-    var p = arcs.getVertex(a.ids[0], 0); // test with first point in the ring
+    // Don't test with first point -- this may return false if a hole intersects
+    // the containing ring at the first vertex.
+    // Instead, use the midpoint of the first segment
+    var p = getFirstMidpoint(a.ids[0], arcs);
+    //// test with first point in the ring
+    // var p = arcs.getVertex(a.ids[0], 0);
     return geom.testPointInRing(p.x, p.y, b.ids, arcs) == 1;
+  }
+
+  function getFirstMidpoint(arcId, arcs) {
+    var p1 = arcs.getVertex(arcId, 0);
+    var p2 = arcs.getVertex(arcId, 1);
+    return {
+      x: (p1.x + p2.x) / 2,
+      y: (p1.y + p2.y) / 2
+    };
   }
 
   // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
@@ -9525,9 +9550,6 @@
         return rec && (rec[name] === val);
       });
     };
-    obj.file_exists = function(name) {
-      return cli.isFile(name);
-    };
     return obj;
   }
 
@@ -9935,6 +9957,11 @@
       ctx.$ = i >= 0 ? getFeatureById(i) : layerOnlyProxy;
       ctx._ = ctx; // provide access to functions when masked by variable names
       ctx.d = rec || null; // expose data properties a la d3 (also exposed as this.properties)
+      if (opts.record_alias) {
+        // this is used to expose source table record as "source" in -join calc=
+        // expresions.
+        ctx[opts.record_alias] = ctx.d;
+      }
       try {
         val = func.call(ctx.$, rec, ctx);
       } catch(e) {
@@ -18954,6 +18981,10 @@ ${svg}
       .option('json-path', {
         old_alias: 'json-subtree',
         describe: '[JSON] path to JSON input data; separator is /'
+      })
+      .option('single-part', {
+        type: 'flag',
+        // describe: '[GeoJSON] split multi-part features into single-part features'
       });
 
     parser.command('o')
@@ -22119,6 +22150,8 @@ ${svg}
       // TODO: improve so geometry_type option skips features instead of creating null geometries
       if (geom && geom.type == 'GeometryCollection') {
         GeoJSON.importComplexFeature(importer, geom, rec, opts);
+      } else if (opts.single_part && isMultiPartGeometry(geom)) {
+        GeoJSON.importMultiAsSingles(importer, geom, rec, opts);
       } else {
         GeoJSON.importSimpleFeature(importer, geom, rec, opts);
       }
@@ -22160,9 +22193,25 @@ ${svg}
     return Object.values(index);
   }
 
+  function isMultiPartGeometry(geom) {
+    return geom && geom.type && geom.type.indexOf('Multi') === 0;
+  }
+
   GeoJSON.importSimpleFeature = function(importer, geom, rec, opts) {
     importer.startShape(rec);
     GeoJSON.importSimpleGeometry(importer, geom, opts);
+  };
+
+  // Split a multi-part feature into several single features
+  GeoJSON.importMultiAsSingles = function(importer, geom, rec, opts) {
+    geom.coordinates.forEach(function(coords, i) {
+      var geom2 = {
+        type: geom.type.substr(5),
+        coordinates: coords
+      };
+      var rec2 = i === 0 ? rec : copyRecord(rec);
+      GeoJSON.importSimpleFeature(importer, geom2, rec2, opts);
+    });
   };
 
   GeoJSON.importSimpleGeometry = function(importer, geom, opts) {
@@ -34614,19 +34663,33 @@ ${svg}
     return o;
   }
 
-  function compileLayerExpression(expr, lyr, dataset, opts) {
-    var proxy = getLayerProxy(lyr, dataset.arcs, opts);
+  function compileIfCommandExpression(expr, catalog, target, opts) {
+    var ctx = {};
+
+    if (target && target.layer) {
+      ctx = getLayerProxy(target.layer, target.dataset.arcs, opts);
+    }
+
+    ctx.file_exists = function(name) {
+      return cli.isFile(name);
+    };
+
+    ctx.layer_exists = function(name) {
+      var lyr = catalog.findSingleLayer(name);
+      return !!lyr;
+    };
+
     var exprOpts = Object.assign({returns: true}, opts);
     var func = compileExpressionToFunction(expr, exprOpts);
-    var ctx = proxy;
     return function() {
       try {
-        return func.call(proxy, {}, ctx);
+        return func.call(ctx, {}, ctx);
       } catch(e) {
         // if (opts.quiet) throw e;
         stop(e.name, "in expression [" + expr + "]:", e.message);
       }
     };
+
   }
 
   function skipCommand(cmdName) {
@@ -34674,7 +34737,7 @@ ${svg}
   function testLayer(catalog, opts) {
     var targ = getTargetLayer(catalog, opts);
     if (opts.expression) {
-      return compileLayerExpression(opts.expression, targ.layer, targ.dataset, opts)();
+      return compileIfCommandExpression(opts.expression, catalog, targ, opts)();
     }
     if (opts.empty) {
       return layerIsEmpty(targ.layer);

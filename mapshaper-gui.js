@@ -6442,10 +6442,13 @@
 
   function CoordinatesDisplay(gui, ext, mouse) {
     var readout = gui.container.findChild('.coordinate-info').hide();
-    var enabled = false;
 
-    gui.model.on('select', function(e) {
-      enabled = !!e.layer.geometry_type; // no display on tabular layers
+    function enabled() {
+      var lyr = gui.map.getActiveLayer();
+      return !!(lyr && lyr.layer.geometry_type);
+    }
+
+    gui.model.on('update', function(e) {
       readout.hide();
     });
 
@@ -6466,7 +6469,7 @@
     mouse.on('leave', clearCoords);
 
     mouse.on('click', function(e) {
-      if (!enabled) return;
+      if (!enabled()) return;
       GUI.selectElement(readout.node());
     });
 
@@ -6474,7 +6477,7 @@
     mouse.on('drag', onMouseChange, null, 10); // high priority so editor doesn't block propagation
 
     function onMouseChange(e) {
-      if (!enabled) return;
+      if (!enabled()) return;
       if (isOverMap(e)) {
         displayCoords(gui.map.translatePixelCoords(e.x, e.y));
       } else {
@@ -6998,6 +7001,15 @@
       ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
     });
 
+    function fixBounds(bbox) {
+      if (bbox[0] > bbox[2]) {
+        swapElements(bbox, 0, 2);
+      }
+      if (bbox[1] > bbox[3]) {
+        swapElements(bbox, 1, 3);
+      }
+    }
+
     function swapElements(arr, i, j) {
       var tmp = arr[i];
       arr[i] = arr[j];
@@ -7009,14 +7021,10 @@
       var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
       var displayBox = pixToCoords(mapBox);
       var dataBox = getBBoxCoords(gui.map.getActiveLayer(), displayBox);
-      if (pageBox[0] > pageBox[2]) {
-        swapElements(pageBox, 0, 2);
-        swapElements(mapBox, 0, 2);
-      }
-      if (pageBox[1] > pageBox[3]) {
-        swapElements(pageBox, 1, 3);
-        swapElements(mapBox, 1, 3);
-      }
+      fixBounds(pageBox);
+      fixBounds(mapBox);
+      fixBounds(displayBox);
+      fixBounds(dataBox);
       return {
         map_bbox: mapBox,
         page_bbox: pageBox,
@@ -9372,7 +9380,7 @@
     });
 
     new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-      runCommand('-clip bbox2=' + bboxData.map_data_bbox.join(','));
+      runCommand('-clip bbox=' + bboxData.map_data_bbox.join(','));
     });
 
     gui.addMode('box_tool', turnOn, turnOff);
