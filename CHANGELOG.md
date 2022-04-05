@@ -1,3 +1,6 @@
+v0.5.109
+* Support setting linejoin and linecap for individual SVG features.
+
 v0.5.108
 * Bug fixes
 * Added file_exists() to -if/-elif expressions

@@ -60,7 +60,7 @@ var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,strok
 
 var propertiesBySymbolType = {
   polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
-  polyline: utils.arrayToIndex(commonProperties),
+  polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin')),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
     'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
