@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.108";
+  var VERSION = "0.5.109";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13934,7 +13934,7 @@
 
   var propertiesBySymbolType = {
     polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
-    polyline: utils.arrayToIndex(commonProperties),
+    polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin')),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
       'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
