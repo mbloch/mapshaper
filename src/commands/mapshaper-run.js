@@ -8,7 +8,7 @@ import utils from '../utils/mapshaper-utils';
 import { getStateVar } from '../mapshaper-state';
 import cmd from '../mapshaper-cmd';
 
-cmd.run = function(targets, catalog, opts, cb) {
+cmd.run = function(job, targets, opts, cb) {
   var commandStr, commands;
   if (opts.include) {
     cmd.include({file: opts.include});
@@ -19,7 +19,7 @@ cmd.run = function(targets, catalog, opts, cb) {
   commandStr = runGlobalExpression(opts.commands, targets);
   if (commandStr) {
     commands = parseCommands(commandStr);
-    runParsedCommands(commands, catalog, cb);
+    runParsedCommands(commands, job, cb);
   } else {
     cb(null);
   }

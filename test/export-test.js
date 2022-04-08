@@ -33,12 +33,14 @@ describe('mapshaper-export.js', function () {
         info: {},
         layers: [lyr1, lyr2]
       };
-      var catalog = new internal.Catalog().addDataset(dataset);
+      // var catalog = new internal.Catalog().addDataset(dataset);
+      var job = new internal.Job();
+      job.catalog.addDataset(dataset);
       var commands = [{name: 'o', options: {
         dry_run: true,
         format: 'dsv'
       }}];
-      internal.runParsedCommands(commands, catalog, function(err, output) {
+      internal.runParsedCommands(commands, job, function(err, output) {
         assert.equal(lyr1.name, undefined);
         assert.equal(lyr2.name, undefined);
         done();

@@ -7,6 +7,7 @@ import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSource } from '../dataset/mapshaper-source-utils';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
+import { Job } from '../mapshaper-job';
 import { mergeCommandTargets } from '../dataset/mapshaper-merging';
 import { T } from '../utils/mapshaper-timing';
 import { stop, error, UserError, verbose } from '../utils/mapshaper-logging';
@@ -84,7 +85,7 @@ import '../commands/mapshaper-split-on-grid';
 import '../commands/mapshaper-subdivide';
 
 
-export function runCommand(command, catalog, cb) {
+export function runCommand(command, job, cb) {
   var name = command.name,
       opts = command.options,
       source,
@@ -97,18 +98,18 @@ export function runCommand(command, catalog, cb) {
       target,
       arcs;
 
-  if (skipCommand(name)) {
+  if (skipCommand(name, job)) {
     return done(null);
   }
 
   try { // catch errors from synchronous functions
 
     T.start();
-    if (!catalog) catalog = new Catalog();
+    if (!job) job = new Job();
 
     if (name == 'rename-layers') {
       // default target is all layers
-      targets = catalog.findCommandTargets(opts.target || '*');
+      targets = job.catalog.findCommandTargets(opts.target || '*');
       targetLayers = targets.reduce(function(memo, obj) {
         return memo.concat(obj.layers);
       }, []);
@@ -116,19 +117,19 @@ export function runCommand(command, catalog, cb) {
     } else if (name == 'o') {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
-      targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+      targets = job.catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
     } else if (name == 'rotate' || name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
       // these commands accept multiple target datasets
-      targets = catalog.findCommandTargets(opts.target);
+      targets = job.catalog.findCommandTargets(opts.target);
 
     } else {
-      targets = catalog.findCommandTargets(opts.target);
+      targets = job.catalog.findCommandTargets(opts.target);
 
       // special case to allow -merge-layers and -union to combine layers from multiple datasets
       // TODO: support multi-dataset targets for other commands
       if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
-        targets = mergeCommandTargets(targets, catalog);
+        targets = mergeCommandTargets(targets, job.catalog);
       }
 
       if (targets.length == 1) {
@@ -136,7 +137,7 @@ export function runCommand(command, catalog, cb) {
         arcs = targetDataset.arcs;
         targetLayers = targets[0].layers;
         // target= option sets default target
-        catalog.setDefaultTarget(targetLayers, targetDataset);
+        job.catalog.setDefaultTarget(targetLayers, targetDataset);
 
       } else if (targets.length > 1) {
         stop("This command does not support targetting layers from different datasets");
@@ -146,7 +147,7 @@ export function runCommand(command, catalog, cb) {
     if (targets.length === 0) {
       if (opts.target) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
-            opts.target, getFormattedLayerList(catalog)));
+            opts.target, getFormattedLayerList(job.catalog)));
       }
       if (!(name == 'graticule' || name == 'i' || name == 'help' ||
           name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
@@ -156,7 +157,7 @@ export function runCommand(command, catalog, cb) {
     }
 
     if (opts.source) {
-      source = findCommandSource(convertSourceName(opts.source, targets), catalog, opts);
+      source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
     }
 
     if (name == 'affine') {
@@ -210,7 +211,7 @@ export function runCommand(command, catalog, cb) {
       outputLayers = applyCommandToEachLayer(cmd.dots, targetLayers, arcs, opts);
 
     } else if (name == 'drop') {
-      cmd.drop2(catalog, targets, opts);
+      cmd.drop2(job.catalog, targets, opts);
       // cmd.drop(catalog, targetLayers, targetDataset, opts);
 
     } else if (name == 'each') {
@@ -247,33 +248,33 @@ export function runCommand(command, catalog, cb) {
       applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
     } else if (name == 'frame') {
-      cmd.frame(catalog, source, opts);
+      cmd.frame(job.catalog, source, opts);
 
     } else if (name == 'fuzzy-join') {
       applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
 
     } else if (name == 'graticule') {
-      catalog.addDataset(cmd.graticule(targetDataset, opts));
+      job.catalog.addDataset(cmd.graticule(targetDataset, opts));
 
     } else if (name == 'help') {
       // placing this here to handle errors from invalid command names
       getOptionParser().printHelp(command.options.command);
 
     } else if (name == 'i') {
-      if (opts.replace) catalog = new Catalog();
+      if (opts.replace) job.catalog = new Catalog(); // is this what we want?
       targetDataset = cmd.importFiles(command.options);
       if (targetDataset) {
-        catalog.addDataset(targetDataset);
+        job.catalog.addDataset(targetDataset);
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
 
     } else if (name == 'if' || name == 'elif') {
       // target = findSingleTargetLayer(opts.layer, targets[0], catalog);
       // cmd[name](target.layer, target.dataset, opts);
-      cmd[name](catalog, opts);
+      cmd[name](job, opts);
 
     } else if (name == 'else' || name == 'endif') {
-      cmd[name]();
+      cmd[name](job);
 
     } else if (name == 'ignore') {
       applyCommandToEachLayer(cmd.ignore, targetLayers, targetDataset, opts);
@@ -313,14 +314,15 @@ export function runCommand(command, catalog, cb) {
       outputFiles = exportTargetLayers(targets, opts);
       if (opts.final) {
         // don't propagate data if output is final
-        catalog = null;
+        //// catalog = null;
+        job.catalog = new Catalog();
       }
       return writeFiles(outputFiles, opts, done);
 
     } else if (name == 'point-grid') {
       outputLayers = [cmd.pointGrid(targetDataset, opts)];
       if (!targetDataset) {
-        catalog.addDataset({layers: outputLayers});
+        job.catalog.addDataset({layers: outputLayers});
       }
 
     } else if (name == 'point-to-grid') {
@@ -343,7 +345,7 @@ export function runCommand(command, catalog, cb) {
         var err = null;
         try {
           targets.forEach(function(targ) {
-            cmd.proj(targ.dataset, catalog, opts);
+            cmd.proj(targ.dataset, job.catalog, opts);
           });
         } catch(e) {
           err = e;
@@ -354,7 +356,7 @@ export function runCommand(command, catalog, cb) {
 
     } else if (name == 'rectangle') {
       if (source || opts.bbox || targets.length === 0) {
-        catalog.addDataset(cmd.rectangle(source, opts));
+        job.catalog.addDataset(cmd.rectangle(source, opts));
       } else {
         outputLayers = cmd.rectangle2(targets[0], opts);
       }
@@ -366,7 +368,7 @@ export function runCommand(command, catalog, cb) {
       applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
-      cmd.renameLayers(targetLayers, opts.names, catalog);
+      cmd.renameLayers(targetLayers, opts.names, job.catalog);
 
     } else if (name == 'require') {
       cmd.require(targets, opts);
@@ -377,14 +379,14 @@ export function runCommand(command, catalog, cb) {
       });
 
     } else if (name == 'run') {
-      cmd.run(targets, catalog, opts, done);
+      cmd.run(job, targets, opts, done);
       return;
 
     } else if (name == 'scalebar') {
-      cmd.scalebar(catalog, opts);
+      cmd.scalebar(job.catalog, opts);
 
     } else if (name == 'shape') {
-      catalog.addDataset(cmd.shape(targetDataset, opts));
+      job.catalog.addDataset(cmd.shape(targetDataset, opts));
 
     } else if (name == 'shapes') {
       outputLayers = applyCommandToEachLayer(cmd.shapes, targetLayers, targetDataset, opts);
@@ -424,7 +426,7 @@ export function runCommand(command, catalog, cb) {
       outputLayers = applyCommandToEachLayer(cmd.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'target') {
-      cmd.target(catalog, opts);
+      cmd.target(job.catalog, opts);
 
     } else if (name == 'union') {
       outputLayers = cmd.union(targetLayers, targetDataset, opts);
@@ -434,7 +436,7 @@ export function runCommand(command, catalog, cb) {
 
     } else {
       // throws error if command is not registered
-      cmd.runExternalCommand(command, catalog);
+      cmd.runExternalCommand(command, job.catalog);
     }
 
     // apply name parameter
@@ -446,12 +448,12 @@ export function runCommand(command, catalog, cb) {
     }
 
     if (outputDataset) {
-      catalog.addDataset(outputDataset); // also sets default target
+      job.catalog.addDataset(outputDataset); // also sets default target
       outputLayers = outputDataset.layers;
       if (targetLayers && !opts.no_replace) {
         // remove target layers from target dataset
         targetLayers.forEach(function(lyr) {
-          catalog.deleteLayer(lyr, targetDataset);
+          job.catalog.deleteLayer(lyr, targetDataset);
         });
       }
     } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
@@ -474,7 +476,7 @@ export function runCommand(command, catalog, cb) {
       }
 
       if (opts.apart) {
-        catalog.setDefaultTargets(splitApartLayers( targetDataset, outputLayers).map(function(dataset) {
+        job.catalog.setDefaultTargets(splitApartLayers( targetDataset, outputLayers).map(function(dataset) {
           return {
             dataset: dataset,
             layers: dataset.layers.concat()
@@ -482,7 +484,7 @@ export function runCommand(command, catalog, cb) {
         }));
       } else {
         // use command output as new default target
-        catalog.setDefaultTarget(outputLayers, targetDataset);
+        job.catalog.setDefaultTarget(outputLayers, targetDataset);
       }
 
     }
@@ -500,7 +502,7 @@ export function runCommand(command, catalog, cb) {
 
   function done(err) {
     verbose('-', T.stop());
-    cb(err, err ? null : catalog);
+    cb(err, err ? null : job);
   }
 }
 
@@ -509,7 +511,6 @@ function outputLayersAreDifferent(output, input) {
     return output.indexOf(lyr) > -1;
   });
 }
-
 
 // Apply a command to an array of target layers
 function applyCommandToEachLayer(func, targetLayers) {

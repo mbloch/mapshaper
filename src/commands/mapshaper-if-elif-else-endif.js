@@ -12,42 +12,42 @@ import {
 } from '../mapshaper-control-flow';
 import { compileIfCommandExpression } from '../expressions/mapshaper-layer-expressions';
 
-export function skipCommand(cmdName) {
+export function skipCommand(cmdName, job) {
   // allow all control commands to run
   if (isControlFlowCommand(cmdName)) return false;
-  return inControlBlock() && !inActiveBranch();
+  return inControlBlock(job) && !inActiveBranch(job);
 }
 
-cmd.if = function(catalog, opts) {
-  if (inControlBlock()) {
+cmd.if = function(job, opts) {
+  if (inControlBlock(job)) {
     stop('Nested -if commands are not supported.');
   }
-  evaluateIf(catalog, opts);
+  evaluateIf(job, opts);
 };
 
-cmd.elif = function(catalog, opts) {
-  if (!inControlBlock()) {
+cmd.elif = function(job, opts) {
+  if (!inControlBlock(job)) {
     stop('-elif command must be preceded by an -if command.');
   }
-  evaluateIf(catalog, opts);
+  evaluateIf(job, opts);
 };
 
-cmd.else = function() {
-  if (!inControlBlock()) {
+cmd.else = function(job) {
+  if (!inControlBlock(job)) {
     stop('-else command must be preceded by an -if command.');
   }
-  if (blockWasActive()) {
-    enterInactiveBranch();
+  if (blockWasActive(job)) {
+    enterInactiveBranch(job);
   } else {
-    enterActiveBranch();
+    enterActiveBranch(job);
   }
 };
 
-cmd.endif = function() {
-  if (!inControlBlock()) {
+cmd.endif = function(job) {
+  if (!inControlBlock(job)) {
     stop('-endif command must be preceded by an -if command.');
   }
-  resetControlFlow();
+  resetControlFlow(job);
 };
 
 function isControlFlowCommand(cmd) {
@@ -68,11 +68,11 @@ function testLayer(catalog, opts) {
   return true;
 }
 
-function evaluateIf(catalog, opts) {
-  if (!blockWasActive() && testLayer(catalog, opts)) {
-    enterActiveBranch();
+function evaluateIf(job, opts) {
+  if (!blockWasActive(job) && testLayer(job.catalog, opts)) {
+    enterActiveBranch(job);
   } else {
-    enterInactiveBranch();
+    enterInactiveBranch(job);
   }
 }
 

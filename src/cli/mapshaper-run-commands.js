@@ -6,7 +6,8 @@ import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { guessInputContentType } from '../io/mapshaper-file-types';
 import { error, UserError, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
 import { createAsyncContext } from '../mapshaper-state';
-import { Catalog } from '../dataset/mapshaper-catalog';
+// import { Catalog } from '../dataset/mapshaper-catalog';
+import { Job } from '../mapshaper-job';
 import { setStateVar, runningInBrowser } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
 import { resetControlFlow } from '../mapshaper-control-flow';
@@ -177,8 +178,8 @@ function convertLegacyCommands(arr, inputObj) {
 
 // TODO: rewrite tests and remove this function
 export function testCommands(argv, done) {
-  _runCommands(argv, {}, function(err, catalog) {
-    var targets = catalog ? catalog.getDefaultTargets() : [];
+  _runCommands(argv, {}, function(err, job) {
+    var targets = job ? job.catalog.getDefaultTargets() : [];
     var output;
     if (!err && targets.length > 0) {
       // returns dataset for compatibility with some older tests
@@ -190,15 +191,14 @@ export function testCommands(argv, done) {
 
 // Execute a sequence of parsed commands
 // @commands Array of parsed commands
-// @catalog: Optional Catalog object containing previously imported data
+// @job: Optional Job object containing previously imported data
 // @cb: function(<error>, <catalog>)
 //
-export function runParsedCommands(commands, catalog, cb) {
-  if (!catalog) {
+export function runParsedCommands(commands, job, cb) {
+  if (!job) {
     cb = createAsyncContext(cb); // use new context when creating new catalog
-    catalog = new Catalog();
-  } else if (catalog instanceof Catalog === false) {
-    error("Changed in v0.4: runParsedCommands() takes a Catalog object");
+    // catalog = new Catalog();
+    job = new Job();
   }
 
   if (!utils.isArray(commands)) {
@@ -225,22 +225,22 @@ export function runParsedCommands(commands, catalog, cb) {
   var groups = divideImportCommand(commands);
   if (groups.length == 1) {
     // run a simple sequence of commands (input files are not batched)
-    return runParsedCommands2(commands, catalog, done);
+    return runParsedCommands2(commands, job, done);
   }
 
   // run duplicated commands (i.e. batch mode)
-  utils.reduceAsync(groups, catalog, nextGroup, done);
+  utils.reduceAsync(groups, job, nextGroup, done);
 
-  function nextGroup(catalog, commands, next) {
-    runParsedCommands2(commands, catalog, function(err, catalog) {
+  function nextGroup(job, commands, next) {
+    runParsedCommands2(commands, job, function(err, job) {
       err = filterError(err);
-      next(err, catalog);
+      next(err, job);
     });
   }
 
-  function done(err, catalog) {
+  function done(err, job) {
     err = filterError(err);
-    cb(err, catalog);
+    cb(err, job);
     setStateVar('current_command', null);
     setStateVar('verbose', false);
     setStateVar('debug', false);
@@ -255,16 +255,16 @@ function filterError(err) {
   return err;
 }
 
-function runParsedCommands2(commands, catalog, cb) {
+function runParsedCommands2(commands, job, cb) {
   // resetting closes any unterminated -if blocks from a previous command sequence
-  resetControlFlow();
-  utils.reduceAsync(commands, catalog, nextCommand, cb);
+  resetControlFlow(job);
+  utils.reduceAsync(commands, job, nextCommand, cb);
 
-  function nextCommand(catalog, cmd, next) {
+  function nextCommand(job, cmd, next) {
     setStateVar('current_command', cmd.name); // for log msgs
     setStateVar('verbose', !!cmd.options.verbose);
     setStateVar('debug', !!cmd.options.debug);
-    runCommand(cmd, catalog, next);
+    runCommand(cmd, job, next);
   }
 }
 

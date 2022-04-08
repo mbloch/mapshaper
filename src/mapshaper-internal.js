@@ -34,11 +34,13 @@ import { PolygonIndex } from './polygons/mapshaper-polygon-index';
 import { ShpReader } from './shapefile/shp-reader';
 import { Transform } from './geom/mapshaper-transform';
 import { parse } from './geojson/json-parser';
+import { Job } from './mapshaper-job';
 
 // Assign functions and objects exported from modules to the 'internal' namespace
 // to maintain compatibility with tests and to expose (some of) them to the GUI.
 
 Object.assign(internal, {
+  Job,
   Dbf,
   DbfReader,
   DouglasPeucker,

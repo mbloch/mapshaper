@@ -1,36 +1,34 @@
 import { getStateVar, setStateVar } from './mapshaper-state';
 
-export function resetControlFlow() {
-  setStateVar('control', null);
+export function resetControlFlow(job) {
+  job.control = null;
 }
 
-export function inControlBlock() {
-  var state = getState();
-  return !!state.inControlBlock;
+export function inControlBlock(job) {
+  return !!getState(job).inControlBlock;
 }
 
-export function enterActiveBranch() {
-  var state = getState();
+export function enterActiveBranch(job) {
+  var state = getState(job);
   state.inControlBlock = true;
   state.active = true;
   state.complete = true;
 }
 
-export function enterInactiveBranch() {
-  var state = getState();
+export function enterInactiveBranch(job) {
+  var state = getState(job);
   state.inControlBlock = true;
   state.active = false;
 }
 
-export function blockWasActive() {
-  return !!getState().complete;
+export function blockWasActive(job) {
+  return !!getState(job).complete;
 }
 
-export function inActiveBranch() {
-  return !!getState().active;
+export function inActiveBranch(job) {
+  return !!getState(job).active;
 }
 
-function getState() {
-  var o = getStateVar('control') || setStateVar('control', {}) || getStateVar('control');
-  return o;
+function getState(job) {
+  return job.control || (job.control = {});
 }

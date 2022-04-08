@@ -36,10 +36,11 @@ describe('mapshaper-filter.js', function () {
         shapes: [[[0,0]]]
       },
       catalog = new internal.Catalog().addDataset({layers: [lyr]}),
+      job = new internal.Job(catalog),
       parsed = internal.parseCommands('-filter "true"');
-      internal.runParsedCommands(parsed, catalog, function(err, catalog) {
+      internal.runParsedCommands(parsed, job, function(err, job) {
         if (err) throw err;
-        assert.equal(catalog.getActiveLayer().layer.name, 'foo');
+        assert.equal(job.catalog.getActiveLayer().layer.name, 'foo');
         done();
       });
     })
