@@ -28,6 +28,7 @@ describe('mapshaper-colorizer.js', function () {
     });
 
     it('svg style properties are reserved words', function() {
+      api.internal.stashVar('defs', {});
       assert.doesNotThrow(function() {
         api.colorizer({name: 'rgb', colors: ['black'], categories: ['foo']});
       });
@@ -46,7 +47,7 @@ describe('mapshaper-colorizer.js', function () {
       assert.throws(function() {
         api.colorizer({name: 'opacity', colors: ['black'], categories: ['foo']});
       });
-
+      api.internal.clearStash();
     });
   })
 

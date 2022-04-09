@@ -5,7 +5,7 @@ import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, stop } from '../utils/mapshaper-logging';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 
 // Compiled expression returns a value
 export function compileValueExpression(exp, lyr, arcs, opts) {
@@ -199,7 +199,7 @@ function nullifyUnsetProperties(vars, obj) {
 }
 
 function getExpressionContext(lyr, mixins, opts) {
-  var defs = getStateVar('defs');
+  var defs = getStashedVar('defs');
   var env = getBaseContext();
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];

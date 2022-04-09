@@ -9,11 +9,11 @@ import { compileFeatureExpression, compileValueExpression } from '../expressions
 import { replaceLayerContents } from '../dataset/mapshaper-dataset-utils';
 import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
 import { getInterpolationFunction } from '../geom/mapshaper-geodesic';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 
 cmd.dashlines = function(lyr, dataset, opts) {
   var crs = getDatasetCRS(dataset);
-  var defs = getStateVar('defs');
+  var defs = getStashedVar('defs');
   var exp = `this.geojson = splitFeature(this.geojson)`;
   requirePolylineLayer(lyr);
   defs.splitFeature = getSplitFeatureFunction(crs, opts);

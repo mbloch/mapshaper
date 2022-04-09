@@ -384,8 +384,7 @@ function getLineScale(ext) {
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.35);
   } else if (mapScale > 100) {
-    if (!internal.getStateVar('DEBUG')) // thin lines for debugging
-      s *= Math.pow(mapScale - 99, 0.10);
+    s *= Math.pow(mapScale - 99, 0.10);
   }
   return s;
 }

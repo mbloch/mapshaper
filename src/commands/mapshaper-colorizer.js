@@ -1,6 +1,6 @@
 import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import utils from '../utils/mapshaper-utils';
 import { getCategoricalClassifier } from '../classification/mapshaper-categorical-classifier';
 import { getDiscreteValueGetter } from '../classification/mapshaper-classification';
@@ -15,7 +15,7 @@ cmd.colorizer = function(opts) {
   if (isReservedName(opts.name)) {
     stop('"' + opts.name + '" is a reserved name');
   }
-  getStateVar('defs')[opts.name] = getColorizerFunction(opts);
+  getStashedVar('defs')[opts.name] = getColorizerFunction(opts);
 };
 
 function isReservedName(name) {

@@ -2,7 +2,7 @@ import { getBaseContext } from '../expressions/mapshaper-expressions';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import cli from '../cli/mapshaper-cli-utils';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import cmd from '../mapshaper-cmd';
 
 cmd.include = function(opts) {
@@ -34,5 +34,5 @@ cmd.include = function(opts) {
     obj = content;
   }
 
-  utils.extend(getStateVar('defs'), obj);
+  utils.extend(getStashedVar('defs'), obj);
 };

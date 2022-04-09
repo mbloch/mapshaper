@@ -1,11 +1,11 @@
 import { runGlobalExpression } from '../commands/mapshaper-run';
 import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import cli from '../cli/mapshaper-cli-utils';
 
 cmd.require = function(targets, opts) {
-  var defs = getStateVar('defs');
+  var defs = getStashedVar('defs');
   var moduleFile, moduleName, mod;
   if (!opts.module) {
     stop("Missing module name or path to module");

@@ -99,12 +99,12 @@ describe('mapshaper-run-commands.js', function () {
       var cmd = '-i test/data/three_points.geojson -verbose';
       api.runCommands(cmd, function(err) {
         setTimeout(function() {
-          assert.strictEqual(api.internal.getStateVar('VERBOSE'), false);
-          assert.deepEqual(api.internal.getStateVar('input_files'), []);
+          assert.strictEqual(api.internal.getStashedVar('VERBOSE'), undefined);
+          assert.deepEqual(api.internal.getStashedVar('input_files'), undefined);
           done();
         },1);
-        assert.strictEqual(api.internal.getStateVar('VERBOSE'), true);
-        assert.deepEqual(api.internal.getStateVar('input_files'), ['test/data/three_points.geojson']);
+        assert.strictEqual(api.internal.getStashedVar('VERBOSE'), undefined);
+        assert.deepEqual(api.internal.getStashedVar('input_files'), undefined);
       });
     })
   })

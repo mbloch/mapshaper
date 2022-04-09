@@ -4,7 +4,7 @@ import { getMode } from '../utils/mapshaper-calc-utils';
 import { getLayerSelection } from '../dataset/mapshaper-command-utils';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import { message, error, stop } from '../utils/mapshaper-logging';
 
 // Calculate an expression across a group of features, print and return the result
@@ -24,7 +24,7 @@ cmd.calc = function(lyr, arcs, opts) {
   }
   // Save any assigned variables to the defs object, so they will be available
   // for later -each expressions to use.
-  defs = getStateVar('defs');
+  defs = getStashedVar('defs');
   compiled = compileCalcExpression(lyr, arcs, opts.expression);
   result = compiled(null, defs);
   message(msg + ":  " + result);

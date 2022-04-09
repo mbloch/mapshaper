@@ -430,10 +430,6 @@ export function Console(gui) {
           sameTable = prevTable == postTable && prevTableSize == postTableSize,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
-      // restore default logging options, in case they were changed by the command
-      internal.setStateVar('QUIET', false);
-      internal.setStateVar('VERBOSE', false);
-
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
       if (!sameArcs) {
@@ -480,7 +476,7 @@ export function Console(gui) {
 
   function consoleMessage() {
     var msg = GUI.formatMessageArgs(arguments);
-    if (internal.loggingEnabled() && !internal.getStateVar('QUIET')) {
+    if (internal.loggingEnabled()) {
       toLog(msg, 'console-message');
     }
   }

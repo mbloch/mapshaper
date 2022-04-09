@@ -5,10 +5,8 @@ import { printColorSchemeNames } from '../color/color-schemes';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { guessInputContentType } from '../io/mapshaper-file-types';
 import { error, UserError, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
-import { createAsyncContext } from '../mapshaper-state';
-// import { Catalog } from '../dataset/mapshaper-catalog';
 import { Job } from '../mapshaper-job';
-import { setStateVar, runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-state';
 import utils from '../utils/mapshaper-utils';
 import { resetControlFlow } from '../mapshaper-control-flow';
 
@@ -132,7 +130,7 @@ function _runCommands(argv, opts, callback) {
   }
 
   // add options to -i -o -join -clip -erase commands to bypass file i/o
-  // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
+  // TODO: find a less kludgy solution
   commands.forEach(function(cmd) {
     if (commandTakesFileInput(cmd.name) && inputObj) {
       cmd.options.input = inputObj;
@@ -196,8 +194,6 @@ export function testCommands(argv, done) {
 //
 export function runParsedCommands(commands, job, cb) {
   if (!job) {
-    cb = createAsyncContext(cb); // use new context when creating new catalog
-    // catalog = new Catalog();
     job = new Job();
   }
 
@@ -208,7 +204,7 @@ export function runParsedCommands(commands, job, cb) {
   if (commands.length === 0) {
     return done(new UserError("No commands to run"));
   }
-  commands = readAndRemoveSettings(commands);
+  commands = readAndRemoveSettings(job, commands);
   if (!runningInBrowser()) {
     printStartupMessages();
   }
@@ -241,9 +237,6 @@ export function runParsedCommands(commands, job, cb) {
   function done(err, job) {
     err = filterError(err);
     cb(err, job);
-    setStateVar('current_command', null);
-    setStateVar('verbose', false);
-    setStateVar('debug', false);
   }
 }
 
@@ -261,9 +254,6 @@ function runParsedCommands2(commands, job, cb) {
   utils.reduceAsync(commands, job, nextCommand, cb);
 
   function nextCommand(job, cmd, next) {
-    setStateVar('current_command', cmd.name); // for log msgs
-    setStateVar('verbose', !!cmd.options.verbose);
-    setStateVar('debug', !!cmd.options.debug);
     runCommand(cmd, job, next);
   }
 }
@@ -310,19 +300,22 @@ function printStartupMessages() {
 }
 
 // Some settings use command syntax and are parsed as commands.
-function readAndRemoveSettings(commands) {
-  return commands.filter(function(cmd) {
+function readAndRemoveSettings(job, commands) {
+  var settings = {VERBOSE: false, QUIET: false, DEBUG: false};
+  var filtered = commands.filter(function(cmd) {
     if (cmd.name == 'verbose') {
-      setStateVar('VERBOSE', true);
+      settings.VERBOSE = true;
     } else if (cmd.name == 'quiet') {
-      setStateVar('QUIET', true);
+      settings.QUIET = true;
     } else if (cmd.name == 'debug') {
-      setStateVar('DEBUG', true);
+      settings.DEBUG = true;
     } else {
       return true;
     }
     return false;
   });
+  job.initSettings(settings);
+  return filtered;
 }
 
 // Run informational commands and remove them from the array of parsed commands

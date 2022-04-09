@@ -1,4 +1,3 @@
-import { getStateVar, setStateVar } from './mapshaper-state';
 
 export function resetControlFlow(job) {
   job.control = null;

@@ -15,7 +15,10 @@ export function initLabelDragging(gui, ext, hit) {
     if (!active(e)) return;
     var textNode = getTextTarget3(e);
     var table = hit.getTargetDataTable();
-    if (!textNode || !table) return false;
+    if (!textNode || !table) {
+      activeId = -1;
+      return false;
+    }
     activeId = e.id;
     activeRecord = getLabelRecordById(activeId);
     downEvt = e;
@@ -23,7 +26,7 @@ export function initLabelDragging(gui, ext, hit) {
   });
 
   hit.on('drag', function(e) {
-    if (!active(e)) return;
+    if (!active(e) || activeId == -1) return;
     if (e.id != activeId) {
       error("Mismatched hit ids:", e.id, activeId);
     }
@@ -43,7 +46,7 @@ export function initLabelDragging(gui, ext, hit) {
   });
 
   hit.on('dragend', function(e) {
-    if (!active(e)) return;
+    if (!active(e) || activeId == -1) return;
     gui.dispatchEvent('label_dragend', {FID: e.id});
     activeId = -1;
     activeRecord = null;

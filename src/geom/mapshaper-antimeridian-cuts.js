@@ -1,6 +1,5 @@
 import { stop, debug, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { getStateVar } from '../mapshaper-state';
 import { R2D, D2R } from '../geom/mapshaper-basic-geom';
 import {
   samePoint,

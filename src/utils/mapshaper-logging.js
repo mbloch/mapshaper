@@ -1,5 +1,5 @@
 
-import { getStateVar, setStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import utils from '../utils/mapshaper-utils';
 
 var LOGGING = false;
@@ -81,13 +81,13 @@ export function print() {
 
 export function verbose() {
   // verbose can be set globally with the -verbose command or separately for each command
-  if (getStateVar('VERBOSE') || getStateVar('verbose')) {
+  if (getStashedVar('VERBOSE')) {
     message.apply(null, arguments);
   }
 }
 
 export function debug() {
-  if (getStateVar('DEBUG') || getStateVar('debug')) {
+  if (getStashedVar('DEBUG')) {
     logArgs(arguments);
   }
 }
@@ -167,7 +167,7 @@ export function formatLogArgs(args) {
 
 function messageArgs(args) {
   var arr = utils.toArray(args);
-  var cmd = getStateVar('current_command');
+  var cmd = getStashedVar('current_command');
   if (cmd && cmd != 'help') {
     arr.unshift('[' + cmd + ']');
   }
@@ -175,7 +175,7 @@ function messageArgs(args) {
 }
 
 export function logArgs(args) {
-  if (!LOGGING || getStateVar('QUIET') || !utils.isArrayLike(args)) return;
+  if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
   var msg = formatLogArgs(args);
   if (STDOUT) console.log(msg);
   else console.error(msg);

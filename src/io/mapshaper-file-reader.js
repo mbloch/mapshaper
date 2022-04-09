@@ -1,6 +1,6 @@
 
 import { bufferToString } from '../text/mapshaper-encodings';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import { BinArray } from '../utils/mapshaper-binarray';
 import { error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
@@ -73,8 +73,8 @@ export function FileReader(path, opts) {
       DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x1000000, // 16MB
       DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x40000, // 256K
       fd, cacheOffs, cache, binArr;
-
-  getStateVar('input_files').push(path); // bit of a kludge
+  // kludge to let us check if input files are being overwritten
+  (getStashedVar('input_files') || []).push(path);
 
   // Double the default size of the Buffer returned by readSync()
   this.expandBuffer = function() {

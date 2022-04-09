@@ -1,6 +1,5 @@
 import { compileFeatureExpression, compileValueExpression } from '../expressions/mapshaper-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
-import { getStateVar } from '../mapshaper-state';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { expressionUsesGeoJSON, getFeatureEditor } from '../expressions/mapshaper-each-geojson';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
@@ -24,8 +23,6 @@ cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
   if (opts && opts.where) {
     filter = compileValueExpression(opts.where, lyr, arcs);
   }
-  // 'defs' are now added to the context of all expressions
-  // compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
   compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {

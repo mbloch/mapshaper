@@ -1,5 +1,5 @@
 import { stop, message } from '../utils/mapshaper-logging';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 
@@ -25,7 +25,7 @@ var _writeFiles = function(exports, opts, cb) {
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
     var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
-    var inputFiles = getStateVar('input_files');
+    var inputFiles = getStashedVar('input_files');
     exports.forEach(function(obj, i) {
       var path = paths[i];
       if (obj.content instanceof ArrayBuffer) {

@@ -164,6 +164,7 @@ import * as Snapping from './paths/mapshaper-snapping';
 import * as SourceUtils from './dataset/mapshaper-source-utils';
 import * as Split from './commands/mapshaper-split';
 import * as State from './mapshaper-state';
+import * as Stash from './mapshaper-stash';
 import * as Stringify from './geojson/mapshaper-stringify';
 import * as Svg from './svg/mapshaper-svg';
 import * as SvgProperties from './svg/svg-properties';
@@ -275,6 +276,7 @@ Object.assign(internal,
   SourceUtils,
   Split,
   State,
+  Stash,
   Stringify,
   Svg,
   SvgProperties,

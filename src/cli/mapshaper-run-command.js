@@ -13,6 +13,7 @@ import { T } from '../utils/mapshaper-timing';
 import { stop, error, UserError, verbose } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
+import { stashVar, clearStash } from '../mapshaper-stash';
 
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
@@ -102,10 +103,12 @@ export function runCommand(command, job, cb) {
     return done(null);
   }
 
+  if (!job) job = new Job();
+  job.startCommand(command);
+
   try { // catch errors from synchronous functions
 
     T.start();
-    if (!job) job = new Job();
 
     if (name == 'rename-layers') {
       // default target is all layers
@@ -317,7 +320,8 @@ export function runCommand(command, job, cb) {
         //// catalog = null;
         job.catalog = new Catalog();
       }
-      return writeFiles(outputFiles, opts, done);
+      writeFiles(outputFiles, opts, done);
+      return; // async command
 
     } else if (name == 'point-grid') {
       outputLayers = [cmd.pointGrid(targetDataset, opts)];
@@ -342,6 +346,7 @@ export function runCommand(command, job, cb) {
 
     } else if (name == 'proj') {
       initProjLibrary(opts, function() {
+        job.resumeCommand();
         var err = null;
         try {
           targets.forEach(function(targ) {
@@ -380,7 +385,7 @@ export function runCommand(command, job, cb) {
 
     } else if (name == 'run') {
       cmd.run(job, targets, opts, done);
-      return;
+      return; // async command
 
     } else if (name == 'scalebar') {
       cmd.scalebar(job.catalog, opts);
@@ -486,7 +491,6 @@ export function runCommand(command, job, cb) {
         // use command output as new default target
         job.catalog.setDefaultTarget(outputLayers, targetDataset);
       }
-
     }
 
     // delete arcs if no longer needed (e.g. after -points command)
@@ -498,9 +502,11 @@ export function runCommand(command, job, cb) {
     return done(e);
   }
 
+  // non-erroring synchronous commands are done
   done(null);
 
   function done(err) {
+    job.endCommand();
     verbose('-', T.stop());
     cb(err, err ? null : job);
   }

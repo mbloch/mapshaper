@@ -5,7 +5,7 @@ import { runParsedCommands } from '../cli/mapshaper-run-commands';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { getStateVar } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import cmd from '../mapshaper-cmd';
 
 cmd.run = function(job, targets, opts, cb) {
@@ -33,7 +33,7 @@ export function runGlobalExpression(expression, targets) {
     targetData = getRunCommandData(targets[0]);
     Object.defineProperty(ctx, 'target', {value: targetData});
   }
-  utils.extend(ctx, getStateVar('defs'));
+  utils.extend(ctx, getStashedVar('defs'));
   try {
     output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
   } catch(e) {

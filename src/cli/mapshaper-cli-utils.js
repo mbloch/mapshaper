@@ -1,10 +1,10 @@
 
-import { preserveContext } from '../mapshaper-state';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 import { stop, error, message } from '../utils/mapshaper-logging';
 import { Buffer } from '../utils/mapshaper-node-buffer';
 import utils from '../utils/mapshaper-utils';
-import { getStateVar, runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-state';
+import { getStashedVar } from '../mapshaper-stash';
 import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 
 var cli = {};
@@ -38,7 +38,8 @@ cli.readFile = function(fname, encoding, cache) {
   } else if (fname == '/dev/stdin') {
     content = require('rw').readFileSync(fname);
   } else {
-    getStateVar('input_files').push(fname);
+    // kludge to prevent overwriting of input files
+    (getStashedVar('input_files') || []).push(fname);
     content = require('fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
@@ -63,7 +64,7 @@ cli.writeFile = function(fname, content, cb) {
   var fs = require('rw');
   cli.createDirIfNeeded(fname);
   if (cb) {
-    fs.writeFile(fname, content, preserveContext(cb));
+    fs.writeFile(fname, content, cb);
   } else {
     fs.writeFileSync(fname, content);
   }
