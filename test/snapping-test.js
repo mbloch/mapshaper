@@ -69,17 +69,22 @@ describe('mapshaper-snapping.js', function () {
 
   })
 
+  describe('-snap endpoints', function() {
+    // TODO
+
+  });
+
   describe('sortCoordinateIds()', function () {
 
-    it('test 2', function () {
-      var arr = [];
-      api.utils.repeat(10000, function() {
-        arr.push(Math.random());
-      });
+    // it('test 2', function () {
+    //   var arr = [];
+    //   api.utils.repeat(10000, function() {
+    //     arr.push(Math.random());
+    //   });
 
-      var ids = api.internal.sortCoordinateIds(arr);
-      assert(testSortedIds(ids, arr));
-    })
+    //   var ids = api.internal.sortCoordinateIds(arr);
+    //   assert(testSortedIds(ids, arr));
+    // })
 
   })
 

@@ -1386,6 +1386,10 @@ export function getOptionParser() {
       DEFAULT: true,
       type: 'distance'
     })
+    .option('endpoints', {
+      describe: 'only snap together the endpoints of lines',
+      type: 'flag'
+    })
     .option('precision', {
       describe: 'round all coordinates to a given decimal precision (e.g. 0.000001)',
       type: 'number'

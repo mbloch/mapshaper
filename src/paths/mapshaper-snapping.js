@@ -29,21 +29,30 @@ export function snapCoords(arcs, threshold) {
   message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
 }
 
+export function snapCoordsByInterval(arcs, snapDist) {
+  if (snapDist > 0 === false) return 0;
+  var ids = getCoordinateIds(arcs);
+  return snapCoordsInternal(ids, arcs, snapDist);
+}
+
+export function snapEndpointsByInterval(arcs, snapDist) {
+  if (snapDist > 0 === false) return 0;
+  var ids = getEndpointIds(arcs);
+  return snapCoordsInternal(ids, arcs, snapDist);
+}
+
 // Snap together points within a small threshold
 //
-export function snapCoordsByInterval(arcs, snapDist) {
+function snapCoordsInternal(ids, arcs, snapDist) {
   var snapCount = 0,
-      data = arcs.getVertexData(),
-      ids;
+      n = ids.length,
+      data = arcs.getVertexData();
 
-  if (snapDist > 0) {
-    // Get sorted coordinate ids
-    // Consider: speed up sorting -- try bucket sort as first pass.
-    //
-    ids = sortCoordinateIds(data.xx);
-    for (var i=0, n=ids.length; i<n; i++) {
-      snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
-    }
+  quicksortIds(data.xx, ids, 0, n-1);
+
+  // Consider: speed up sorting -- try bucket sort as first pass.
+  for (var i=0; i<n; i++) {
+    snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
   }
   return snapCount;
 
@@ -69,13 +78,25 @@ export function snapCoordsByInterval(arcs, snapDist) {
   }
 }
 
-export function sortCoordinateIds(a) {
-  var n = a.length,
+export function getCoordinateIds(arcs) {
+  var data = arcs.getVertexData(),
+      n = data.xx.length,
       ids = new Uint32Array(n);
   for (var i=0; i<n; i++) {
     ids[i] = i;
   }
-  quicksortIds(a, ids, 0, ids.length-1);
+  return ids;
+}
+
+export function getEndpointIds(arcs) {
+  var i = 0;
+  var ids = [];
+  var data = arcs.getVertexData();
+  data.nn.forEach(function(n) {
+    if (n > 0 === false) return;
+    ids.push(i, i+n-1);
+    i += n;
+  });
   return ids;
 }
 
