@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.5.109",
+	"version": "0.5.110",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -27,7 +27,7 @@
 		"prepublishOnly": "npm test; ./pre-publish",
 		"postpublish": "./release_web_ui; ./release_github_version",
 		"browserify_old": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r d3-scale-chromatic -r d3-color -r d3-interpolate -o www/modules.js",
-		"browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r d3-scale-chromatic -r d3-color -r d3-interpolate -r kdbush -o www/modules.js",
+		"browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r d3-scale-chromatic -r d3-color -r d3-interpolate -r kdbush -r @tmcw/togeojson -o www/modules.js",
 		"watch": "rollup --config --watch",
 		"dev": "rollup --config --watch"
 	},
@@ -41,6 +41,8 @@
 		"!.DS_Store"
 	],
 	"dependencies": {
+		"@tmcw/togeojson": "^4.7.0",
+		"@xmldom/xmldom": "^0.8.2",
 		"commander": "7.0.0",
 		"cookies": "^0.8.0",
 		"d3-color": "2.0.0",

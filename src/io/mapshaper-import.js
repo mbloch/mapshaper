@@ -5,6 +5,7 @@ import { importDelim2 } from '../text/mapshaper-delim-import';
 import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import utils from '../utils/mapshaper-utils';
 import { importJSON } from '../io/mapshaper-json-import';
+import { importKML } from '../kml/kml-import';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { message, stop } from '../utils/mapshaper-logging';
 import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
@@ -45,6 +46,11 @@ export function importContent(obj, opts) {
     fileFmt = 'prj';
     data = obj.prj;
     dataset = {layers: [], info: {prj: data.content}};
+
+  } else if (obj.kml) {
+    fileFmt = 'kml';
+    data = obj.kml;
+    dataset = importKML(data.content, opts);
   }
 
   if (!dataset) {

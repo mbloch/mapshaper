@@ -164,6 +164,7 @@ export function divideFeaturesByType(shapes, properties, types) {
         s = [],
         dataNulls = 0,
         rec;
+
     for (var i=0, n=shapes.length; i<n; i++) {
       if (types[i] != geoType) continue;
       if (geoType) s.push(shapes[i]);
@@ -174,7 +175,7 @@ export function divideFeaturesByType(shapes, properties, types) {
     return {
       geometry_type: geoType,
       shapes: s,
-      data: dataNulls < s.length ? new DataTable(p) : null
+      data: dataNulls < p.length ? new DataTable(p) : null
     };
   });
   return layers;

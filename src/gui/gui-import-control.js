@@ -245,7 +245,7 @@ export function ImportControl(gui, opts) {
   async function expandFiles(files) {
     var files2 = [], expanded;
     for (var f of files) {
-      if (internal.isZipFile(f.name)) {
+      if (internal.isZipFile(f.name) || /\.kmz$/.test(f.name)) {
         expanded = await readZipFile(f);
         files2 = files2.concat(expanded);
       } else {

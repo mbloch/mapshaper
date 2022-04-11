@@ -72,7 +72,7 @@ var _importFile = function(path, opts) {
       stop('Expected binary content, received a string');
     }
 
-  } else if (fileType) { // string type
+  } else if (fileType) { // string type, e.g. kml, geojson
     content = cli.readFile(path, encoding || 'utf-8', cache);
 
   } else { // type can't be inferred from filename -- try reading as text

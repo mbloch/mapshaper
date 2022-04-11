@@ -1,3 +1,8 @@
+v0.5.110
+* Preliminary support for importing .kml files
+* Support for .kmz files in the browser UI
+* Bug fixes
+
 v0.5.109
 * Support setting linejoin and linecap for individual SVG features.
 

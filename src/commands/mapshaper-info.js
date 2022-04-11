@@ -64,7 +64,7 @@ export function getLayerData(lyr, dataset) {
     null_shape_count: 0,
     null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
   };
-  if (lyr.shapes) {
+  if (lyr.shapes && lyr.shapes.length > 0) {
     o.null_shape_count = countNullShapes(lyr.shapes);
     o.bbox =getLayerBounds(lyr, dataset.arcs).toArray();
     o.proj4 = getProjInfo(dataset);

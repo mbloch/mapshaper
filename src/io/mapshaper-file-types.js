@@ -6,7 +6,7 @@ import { getFileExtension } from '../utils/mapshaper-filename-utils';
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml') {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';
@@ -19,7 +19,8 @@ export function guessInputFileType(file) {
 export function guessInputContentType(content) {
   var type = null;
   if (utils.isString(content)) {
-    type = stringLooksLikeJSON(content) ? 'json' : 'text';
+    type = stringLooksLikeJSON(content) && 'json' ||
+      stringLooksLikeKML(content) && 'kml' || 'text';
   } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
     type = 'json';
   }
@@ -30,9 +31,13 @@ export function guessInputType(file, content) {
   return guessInputFileType(file) || guessInputContentType(content);
 }
 
-//
 export function stringLooksLikeJSON(str) {
   return /^\s*[{[]/.test(String(str));
+}
+
+export function stringLooksLikeKML(str) {
+  str = String(str);
+  return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
 }
 
 export function couldBeDsvFile(name) {
