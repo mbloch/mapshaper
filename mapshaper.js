@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.109";
+  var VERSION = "0.5.110";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -99,6 +99,37 @@
     get parseIntlNumber () { return parseIntlNumber; },
     get cleanNumericString () { return cleanNumericString; },
     get trimQuotes () { return trimQuotes; }
+  });
+
+  // This module provides a way for multiple jobs to run together asynchronously
+  // while keeping job-level context variables (like "defs") separate.
+
+  var stash = {};
+
+  function stashVar(key, val) {
+    if (key in stash) {
+      error('Tried to replace a stashed variable:', key);
+    }
+    stash[key] = val;
+  }
+
+  function getStashedVar(key) {
+    if (key in stash === false) {
+      return undefined; // to support running commands in tests
+      // error('Tried to read a nonexistent variable from the stash:', key);
+    }
+    return stash[key];
+  }
+
+  function clearStash() {
+    stash = {};
+  }
+
+  var Stash = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    stashVar: stashVar,
+    getStashedVar: getStashedVar,
+    clearStash: clearStash
   });
 
   var Buffer = require('buffer').Buffer; // works with browserify
@@ -1133,62 +1164,6 @@
     return raw;
   }
 
-  var context = createContext(); // command context (persist for the current command cycle)
-
-  function runningInBrowser() {
-    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
-  }
-
-  function getStateVar(key) {
-    return context[key];
-  }
-
-  function setStateVar(key, val) {
-    context[key] = val;
-  }
-
-  function createContext() {
-    return {
-      DEBUG: false,
-      QUIET: false,
-      VERBOSE: false,
-      defs: {},
-      input_files: []
-    };
-  }
-
-  // Install a new set of context variables, clear them when an async callback is called.
-  // @cb callback function to wrap
-  // returns wrapped callback function
-  function createAsyncContext(cb) {
-    context = createContext();
-    return function() {
-      cb.apply(null, utils.toArray(arguments));
-      // clear context after cb(), so output/errors can be handled in current context
-      context = createContext();
-    };
-  }
-
-  // Save the current context, restore it when an async callback is called
-  // @cb callback function to wrap
-  // returns wrapped callback function
-  function preserveContext(cb) {
-    var ctx = context;
-    return function() {
-      context = ctx;
-      cb.apply(null, utils.toArray(arguments));
-    };
-  }
-
-  var State = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    runningInBrowser: runningInBrowser,
-    getStateVar: getStateVar,
-    setStateVar: setStateVar,
-    createAsyncContext: createAsyncContext,
-    preserveContext: preserveContext
-  });
-
   var LOGGING = false;
   var STDOUT = false; // use stdout for status messages
   var _error, _stop, _message;
@@ -1268,13 +1243,13 @@
 
   function verbose() {
     // verbose can be set globally with the -verbose command or separately for each command
-    if (getStateVar('VERBOSE') || getStateVar('verbose')) {
+    if (getStashedVar('VERBOSE')) {
       message.apply(null, arguments);
     }
   }
 
   function debug() {
-    if (getStateVar('DEBUG') || getStateVar('debug')) {
+    if (getStashedVar('DEBUG')) {
       logArgs(arguments);
     }
   }
@@ -1354,7 +1329,7 @@
 
   function messageArgs(args) {
     var arr = utils.toArray(args);
-    var cmd = getStateVar('current_command');
+    var cmd = getStashedVar('current_command');
     if (cmd && cmd != 'help') {
       arr.unshift('[' + cmd + ']');
     }
@@ -1362,7 +1337,7 @@
   }
 
   function logArgs(args) {
-    if (!LOGGING || getStateVar('QUIET') || !utils.isArrayLike(args)) return;
+    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
     var msg = formatLogArgs(args);
     if (STDOUT) console.log(msg);
     else console.error(msg);
@@ -4122,6 +4097,7 @@
           s = [],
           dataNulls = 0,
           rec;
+
       for (var i=0, n=shapes.length; i<n; i++) {
         if (types[i] != geoType) continue;
         if (geoType) s.push(shapes[i]);
@@ -4132,7 +4108,7 @@
       return {
         geometry_type: geoType,
         shapes: s,
-        data: dataNulls < s.length ? new DataTable(p) : null
+        data: dataNulls < p.length ? new DataTable(p) : null
       };
     });
     return layers;
@@ -4742,9 +4718,9 @@
       defn = projectionAliases[str];  // defn is a function
     } else if (looksLikeInitString(str)) {
       defn = '+init=' + str.toLowerCase();
-    } else if (str in getStateVar('defs')) {
+    } else if (str in (getStashedVar('defs') || {})) {
       // a proj4 alias could be dynamically created in a -calc expression
-      defn = getStateVar('defs')[str];
+      defn = getStashedVar('defs')[str];
     } else {
       defn = parseCustomProjection(str);
     }
@@ -7031,6 +7007,15 @@
     transformPoints: transformPoints
   });
 
+  function runningInBrowser() {
+    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  }
+
+  var State = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    runningInBrowser: runningInBrowser
+  });
+
   function getPathSep(path) {
     // TODO: improve
     return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
@@ -7139,7 +7124,8 @@
     } else if (fname == '/dev/stdin') {
       content = require('rw').readFileSync(fname);
     } else {
-      getStateVar('input_files').push(fname);
+      // kludge to prevent overwriting of input files
+      (getStashedVar('input_files') || []).push(fname);
       content = require('fs').readFileSync(fname);
     }
     if (encoding && Buffer.isBuffer(content)) {
@@ -7164,7 +7150,7 @@
     var fs = require('rw');
     cli.createDirIfNeeded(fname);
     if (cb) {
-      fs.writeFile(fname, content, preserveContext(cb));
+      fs.writeFile(fname, content, cb);
     } else {
       fs.writeFileSync(fname, content);
     }
@@ -7259,7 +7245,7 @@
       return cli.writeFile('/dev/stdout', exports[0].content, cb);
     } else {
       var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
-      var inputFiles = getStateVar('input_files');
+      var inputFiles = getStashedVar('input_files');
       exports.forEach(function(obj, i) {
         var path = paths[i];
         if (obj.content instanceof ArrayBuffer) {
@@ -9965,7 +9951,7 @@
   }
 
   function getExpressionContext(lyr, mixins, opts) {
-    var defs = getStateVar('defs');
+    var defs = getStashedVar('defs');
     var env = getBaseContext();
     var ctx = {};
     var fields = lyr.data ? lyr.data.getFields() : [];
@@ -10154,7 +10140,7 @@
     }
     // Save any assigned variables to the defs object, so they will be available
     // for later -each expressions to use.
-    defs = getStateVar('defs');
+    defs = getStashedVar('defs');
     compiled = compileCalcExpression(lyr, arcs, opts.expression);
     result = compiled(null, defs);
     message(msg + ":  " + result);
@@ -14022,7 +14008,6 @@
   function parseStyleExpression(strVal, lyr) {
     var func;
     try {
-      // func = compileValueExpression(strVal, lyr, null, {context: getStateVar('defs'), no_warn: true});
       func = compileValueExpression(strVal, lyr, null, {no_warn: true});
       func(0); // check for runtime errors (e.g. undefined variables)
     } catch(e) {
@@ -16804,7 +16789,7 @@ ${svg}
   function guessInputFileType(file) {
     var ext = getFileExtension(file || '').toLowerCase(),
         type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx') {
+    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml') {
       type = ext;
     } else if (/json$/.test(ext)) {
       type = 'json';
@@ -16817,7 +16802,8 @@ ${svg}
   function guessInputContentType(content) {
     var type = null;
     if (utils.isString(content)) {
-      type = stringLooksLikeJSON(content) ? 'json' : 'text';
+      type = stringLooksLikeJSON(content) && 'json' ||
+        stringLooksLikeKML(content) && 'kml' || 'text';
     } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
       type = 'json';
     }
@@ -16828,9 +16814,13 @@ ${svg}
     return guessInputFileType(file) || guessInputContentType(content);
   }
 
-  //
   function stringLooksLikeJSON(str) {
     return /^\s*[{[]/.test(String(str));
+  }
+
+  function stringLooksLikeKML(str) {
+    str = String(str);
+    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
   }
 
   function couldBeDsvFile(name) {
@@ -16877,6 +16867,7 @@ ${svg}
     guessInputContentType: guessInputContentType,
     guessInputType: guessInputType,
     stringLooksLikeJSON: stringLooksLikeJSON,
+    stringLooksLikeKML: stringLooksLikeKML,
     couldBeDsvFile: couldBeDsvFile,
     isZipFile: isZipFile,
     isSupportedOutputFormat: isSupportedOutputFormat,
@@ -17355,8 +17346,8 @@ ${svg}
         DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x1000000, // 16MB
         DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x40000, // 256K
         fd, cacheOffs, cache, binArr;
-
-    getStateVar('input_files').push(path); // bit of a kludge
+    // kludge to let us check if input files are being overwritten
+    (getStashedVar('input_files') || []).push(path);
 
     // Double the default size of the Buffer returned by readSync()
     this.expandBuffer = function() {
@@ -23158,6 +23149,13 @@ ${svg}
     importJSON: importJSON
   });
 
+  function importKML(str, opts) {
+    var togeojson = require("@tmcw/togeojson");
+    var Parser = typeof DOMParser == 'undefined' ? require("@xmldom/xmldom").DOMParser : DOMParser;
+    var geojson = togeojson.kml(new Parser().parseFromString(str, "text/xml"));
+    return importGeoJSON(geojson, opts || {});
+  }
+
   // Parse content of one or more input files and return a dataset
   // @obj: file data, indexed by file type
   // File data objects have two properties:
@@ -23194,6 +23192,11 @@ ${svg}
       fileFmt = 'prj';
       data = obj.prj;
       dataset = {layers: [], info: {prj: data.content}};
+
+    } else if (obj.kml) {
+      fileFmt = 'kml';
+      data = obj.kml;
+      dataset = importKML(data.content, opts);
     }
 
     if (!dataset) {
@@ -23375,7 +23378,7 @@ ${svg}
         stop('Expected binary content, received a string');
       }
 
-    } else if (fileType) { // string type
+    } else if (fileType) { // string type, e.g. kml, geojson
       content = cli.readFile(path, encoding || 'utf-8', cache);
 
     } else { // type can't be inferred from filename -- try reading as text
@@ -23663,6 +23666,49 @@ ${svg}
     Catalog: Catalog,
     getFormattedLayerList: getFormattedLayerList
   });
+
+  function Job(catalog) {
+    var currentCmd;
+
+  	var job = {
+      catalog: catalog || new Catalog(),
+      defs: {},
+      settings: {},
+      input_files: []
+  	};
+
+    job.initSettings = function(o) {
+      job.settings = o;
+      stashVars(job, {});
+    };
+
+    job.startCommand = function(cmd) {
+      currentCmd = cmd;
+      stashVars(job, cmd);
+    };
+
+    // Rejected the idea of passing a command reference to compare with the initial command
+    // (for error checking) ... the "-run" command inserts other commands before this call
+    job.endCommand = function() {
+      currentCmd = null;
+      clearStash();
+    };
+
+    job.resumeCommand = function() {
+      stashVars(job, currentCmd);
+    };
+
+    return job;
+  }
+
+  function stashVars(job, cmd) {
+    clearStash();  // prevent errors from overwriting stash
+    stashVar('current_command', cmd.name);
+    stashVar('DEBUG', job.settings.DEBUG || cmd.debug);
+    stashVar('QUIET', job.settings.QUIET || cmd.quiet);
+    stashVar('defs', job.defs);
+    stashVar('input_files', job.input_files);
+  }
 
   const epsilon = 1.1102230246251565e-16;
   const splitter = 134217729;
@@ -30407,7 +30453,7 @@ ${svg}
     if (isReservedName(opts.name)) {
       stop('"' + opts.name + '" is a reserved name');
     }
-    getStateVar('defs')[opts.name] = getColorizerFunction(opts);
+    getStashedVar('defs')[opts.name] = getColorizerFunction(opts);
   };
 
   function isReservedName(name) {
@@ -30526,7 +30572,7 @@ ${svg}
 
   cmd.dashlines = function(lyr, dataset, opts) {
     var crs = getDatasetCRS(dataset);
-    var defs = getStateVar('defs');
+    var defs = getStashedVar('defs');
     var exp = `this.geojson = splitFeature(this.geojson)`;
     requirePolylineLayer(lyr);
     defs.splitFeature = getSplitFeatureFunction(crs, opts);
@@ -30930,7 +30976,7 @@ ${svg}
     if (!opts.expression) {
       stop('Missing an assignment expression');
     }
-    var defs = getStateVar('defs');
+    var defs = getStashedVar('defs');
     var compiled = compileFeatureExpression(opts.expression, {}, null, {no_warn: true});
     var result = compiled(null, defs);
   };
@@ -32202,8 +32248,6 @@ ${svg}
     if (opts && opts.where) {
       filter = compileValueExpression(opts.where, lyr, arcs);
     }
-    // 'defs' are now added to the context of all expressions
-    // compiled = compileFeatureExpression(exp, lyr, arcs, {context: getStateVar('defs')});
     compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
     // call compiled expression with id of each record
     for (var i=0; i<n; i++) {
@@ -34612,39 +34656,37 @@ ${svg}
     };
   }
 
-  function resetControlFlow() {
-    setStateVar('control', null);
+  function resetControlFlow(job) {
+    job.control = null;
   }
 
-  function inControlBlock() {
-    var state = getState();
-    return !!state.inControlBlock;
+  function inControlBlock(job) {
+    return !!getState(job).inControlBlock;
   }
 
-  function enterActiveBranch() {
-    var state = getState();
+  function enterActiveBranch(job) {
+    var state = getState(job);
     state.inControlBlock = true;
     state.active = true;
     state.complete = true;
   }
 
-  function enterInactiveBranch() {
-    var state = getState();
+  function enterInactiveBranch(job) {
+    var state = getState(job);
     state.inControlBlock = true;
     state.active = false;
   }
 
-  function blockWasActive() {
-    return !!getState().complete;
+  function blockWasActive(job) {
+    return !!getState(job).complete;
   }
 
-  function inActiveBranch() {
-    return !!getState().active;
+  function inActiveBranch(job) {
+    return !!getState(job).active;
   }
 
-  function getState() {
-    var o = getStateVar('control') || setStateVar('control', {}) || getStateVar('control');
-    return o;
+  function getState(job) {
+    return job.control || (job.control = {});
   }
 
   function compileIfCommandExpression(expr, catalog, targ, opts) {
@@ -34670,42 +34712,42 @@ ${svg}
     };
   }
 
-  function skipCommand(cmdName) {
+  function skipCommand(cmdName, job) {
     // allow all control commands to run
     if (isControlFlowCommand(cmdName)) return false;
-    return inControlBlock() && !inActiveBranch();
+    return inControlBlock(job) && !inActiveBranch(job);
   }
 
-  cmd.if = function(catalog, opts) {
-    if (inControlBlock()) {
+  cmd.if = function(job, opts) {
+    if (inControlBlock(job)) {
       stop('Nested -if commands are not supported.');
     }
-    evaluateIf(catalog, opts);
+    evaluateIf(job, opts);
   };
 
-  cmd.elif = function(catalog, opts) {
-    if (!inControlBlock()) {
+  cmd.elif = function(job, opts) {
+    if (!inControlBlock(job)) {
       stop('-elif command must be preceded by an -if command.');
     }
-    evaluateIf(catalog, opts);
+    evaluateIf(job, opts);
   };
 
-  cmd.else = function() {
-    if (!inControlBlock()) {
+  cmd.else = function(job) {
+    if (!inControlBlock(job)) {
       stop('-else command must be preceded by an -if command.');
     }
-    if (blockWasActive()) {
-      enterInactiveBranch();
+    if (blockWasActive(job)) {
+      enterInactiveBranch(job);
     } else {
-      enterActiveBranch();
+      enterActiveBranch(job);
     }
   };
 
-  cmd.endif = function() {
-    if (!inControlBlock()) {
+  cmd.endif = function(job) {
+    if (!inControlBlock(job)) {
       stop('-endif command must be preceded by an -if command.');
     }
-    resetControlFlow();
+    resetControlFlow(job);
   };
 
   function isControlFlowCommand(cmd) {
@@ -34726,11 +34768,11 @@ ${svg}
     return true;
   }
 
-  function evaluateIf(catalog, opts) {
-    if (!blockWasActive() && testLayer(catalog, opts)) {
-      enterActiveBranch();
+  function evaluateIf(job, opts) {
+    if (!blockWasActive(job) && testLayer(job.catalog, opts)) {
+      enterActiveBranch(job);
     } else {
-      enterInactiveBranch();
+      enterInactiveBranch(job);
     }
   }
 
@@ -34790,7 +34832,7 @@ ${svg}
       obj = content;
     }
 
-    utils.extend(getStateVar('defs'), obj);
+    utils.extend(getStashedVar('defs'), obj);
   };
 
   var MAX_RULE_LEN = 50;
@@ -34849,7 +34891,7 @@ ${svg}
       null_shape_count: 0,
       null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
     };
-    if (lyr.shapes) {
+    if (lyr.shapes && lyr.shapes.length > 0) {
       o.null_shape_count = countNullShapes(lyr.shapes);
       o.bbox =getLayerBounds(lyr, dataset.arcs).toArray();
       o.proj4 = getProjInfo(dataset);
@@ -37122,7 +37164,7 @@ ${svg}
     parseConsoleCommands: parseConsoleCommands
   });
 
-  cmd.run = function(targets, catalog, opts, cb) {
+  cmd.run = function(job, targets, opts, cb) {
     var commandStr, commands;
     if (opts.include) {
       cmd.include({file: opts.include});
@@ -37133,7 +37175,7 @@ ${svg}
     commandStr = runGlobalExpression(opts.commands, targets);
     if (commandStr) {
       commands = parseCommands(commandStr);
-      runParsedCommands(commands, catalog, cb);
+      runParsedCommands(commands, job, cb);
     } else {
       cb(null);
     }
@@ -37147,7 +37189,7 @@ ${svg}
       targetData = getRunCommandData(targets[0]);
       Object.defineProperty(ctx, 'target', {value: targetData});
     }
-    utils.extend(ctx, getStateVar('defs'));
+    utils.extend(ctx, getStashedVar('defs'));
     try {
       output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
     } catch(e) {
@@ -37166,7 +37208,7 @@ ${svg}
   }
 
   cmd.require = function(targets, opts) {
-    var defs = getStateVar('defs');
+    var defs = getStashedVar('defs');
     var moduleFile, moduleName, mod;
     if (!opts.module) {
       stop("Missing module name or path to module");
@@ -39468,7 +39510,7 @@ ${svg}
     return [lyr1, lyr2];
   }
 
-  function runCommand(command, catalog, cb) {
+  function runCommand(command, job, cb) {
     var name = command.name,
         opts = command.options,
         source,
@@ -39481,18 +39523,20 @@ ${svg}
         target,
         arcs;
 
-    if (skipCommand(name)) {
+    if (skipCommand(name, job)) {
       return done(null);
     }
+
+    if (!job) job = new Job();
+    job.startCommand(command);
 
     try { // catch errors from synchronous functions
 
       T$1.start();
-      if (!catalog) catalog = new Catalog();
 
       if (name == 'rename-layers') {
         // default target is all layers
-        targets = catalog.findCommandTargets(opts.target || '*');
+        targets = job.catalog.findCommandTargets(opts.target || '*');
         targetLayers = targets.reduce(function(memo, obj) {
           return memo.concat(obj.layers);
         }, []);
@@ -39500,19 +39544,19 @@ ${svg}
       } else if (name == 'o') {
         // when combining GeoJSON layers, default is all layers
         // TODO: check that combine_layers is only used w/ GeoJSON output
-        targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+        targets = job.catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
       } else if (name == 'rotate' || name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
         // these commands accept multiple target datasets
-        targets = catalog.findCommandTargets(opts.target);
+        targets = job.catalog.findCommandTargets(opts.target);
 
       } else {
-        targets = catalog.findCommandTargets(opts.target);
+        targets = job.catalog.findCommandTargets(opts.target);
 
         // special case to allow -merge-layers and -union to combine layers from multiple datasets
         // TODO: support multi-dataset targets for other commands
         if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
-          targets = mergeCommandTargets(targets, catalog);
+          targets = mergeCommandTargets(targets, job.catalog);
         }
 
         if (targets.length == 1) {
@@ -39520,7 +39564,7 @@ ${svg}
           arcs = targetDataset.arcs;
           targetLayers = targets[0].layers;
           // target= option sets default target
-          catalog.setDefaultTarget(targetLayers, targetDataset);
+          job.catalog.setDefaultTarget(targetLayers, targetDataset);
 
         } else if (targets.length > 1) {
           stop("This command does not support targetting layers from different datasets");
@@ -39530,7 +39574,7 @@ ${svg}
       if (targets.length === 0) {
         if (opts.target) {
           stop(utils.format('Missing target: %s\nAvailable layers: %s',
-              opts.target, getFormattedLayerList(catalog)));
+              opts.target, getFormattedLayerList(job.catalog)));
         }
         if (!(name == 'graticule' || name == 'i' || name == 'help' ||
             name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
@@ -39540,7 +39584,7 @@ ${svg}
       }
 
       if (opts.source) {
-        source = findCommandSource(convertSourceName(opts.source, targets), catalog, opts);
+        source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
       }
 
       if (name == 'affine') {
@@ -39594,7 +39638,7 @@ ${svg}
         outputLayers = applyCommandToEachLayer(cmd.dots, targetLayers, arcs, opts);
 
       } else if (name == 'drop') {
-        cmd.drop2(catalog, targets, opts);
+        cmd.drop2(job.catalog, targets, opts);
         // cmd.drop(catalog, targetLayers, targetDataset, opts);
 
       } else if (name == 'each') {
@@ -39631,33 +39675,33 @@ ${svg}
         applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
       } else if (name == 'frame') {
-        cmd.frame(catalog, source, opts);
+        cmd.frame(job.catalog, source, opts);
 
       } else if (name == 'fuzzy-join') {
         applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
 
       } else if (name == 'graticule') {
-        catalog.addDataset(cmd.graticule(targetDataset, opts));
+        job.catalog.addDataset(cmd.graticule(targetDataset, opts));
 
       } else if (name == 'help') {
         // placing this here to handle errors from invalid command names
         getOptionParser().printHelp(command.options.command);
 
       } else if (name == 'i') {
-        if (opts.replace) catalog = new Catalog();
+        if (opts.replace) job.catalog = new Catalog(); // is this what we want?
         targetDataset = cmd.importFiles(command.options);
         if (targetDataset) {
-          catalog.addDataset(targetDataset);
+          job.catalog.addDataset(targetDataset);
           outputLayers = targetDataset.layers; // kludge to allow layer naming below
         }
 
       } else if (name == 'if' || name == 'elif') {
         // target = findSingleTargetLayer(opts.layer, targets[0], catalog);
         // cmd[name](target.layer, target.dataset, opts);
-        cmd[name](catalog, opts);
+        cmd[name](job, opts);
 
       } else if (name == 'else' || name == 'endif') {
-        cmd[name]();
+        cmd[name](job);
 
       } else if (name == 'ignore') {
         applyCommandToEachLayer(cmd.ignore, targetLayers, targetDataset, opts);
@@ -39697,14 +39741,16 @@ ${svg}
         outputFiles = exportTargetLayers(targets, opts);
         if (opts.final) {
           // don't propagate data if output is final
-          catalog = null;
+          //// catalog = null;
+          job.catalog = new Catalog();
         }
-        return writeFiles(outputFiles, opts, done);
+        writeFiles(outputFiles, opts, done);
+        return; // async command
 
       } else if (name == 'point-grid') {
         outputLayers = [cmd.pointGrid(targetDataset, opts)];
         if (!targetDataset) {
-          catalog.addDataset({layers: outputLayers});
+          job.catalog.addDataset({layers: outputLayers});
         }
 
       } else if (name == 'point-to-grid') {
@@ -39724,10 +39770,11 @@ ${svg}
 
       } else if (name == 'proj') {
         initProjLibrary(opts, function() {
+          job.resumeCommand();
           var err = null;
           try {
             targets.forEach(function(targ) {
-              cmd.proj(targ.dataset, catalog, opts);
+              cmd.proj(targ.dataset, job.catalog, opts);
             });
           } catch(e) {
             err = e;
@@ -39738,7 +39785,7 @@ ${svg}
 
       } else if (name == 'rectangle') {
         if (source || opts.bbox || targets.length === 0) {
-          catalog.addDataset(cmd.rectangle(source, opts));
+          job.catalog.addDataset(cmd.rectangle(source, opts));
         } else {
           outputLayers = cmd.rectangle2(targets[0], opts);
         }
@@ -39750,7 +39797,7 @@ ${svg}
         applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
       } else if (name == 'rename-layers') {
-        cmd.renameLayers(targetLayers, opts.names, catalog);
+        cmd.renameLayers(targetLayers, opts.names, job.catalog);
 
       } else if (name == 'require') {
         cmd.require(targets, opts);
@@ -39761,14 +39808,14 @@ ${svg}
         });
 
       } else if (name == 'run') {
-        cmd.run(targets, catalog, opts, done);
-        return;
+        cmd.run(job, targets, opts, done);
+        return; // async command
 
       } else if (name == 'scalebar') {
-        cmd.scalebar(catalog, opts);
+        cmd.scalebar(job.catalog, opts);
 
       } else if (name == 'shape') {
-        catalog.addDataset(cmd.shape(targetDataset, opts));
+        job.catalog.addDataset(cmd.shape(targetDataset, opts));
 
       } else if (name == 'shapes') {
         outputLayers = applyCommandToEachLayer(cmd.shapes, targetLayers, targetDataset, opts);
@@ -39808,7 +39855,7 @@ ${svg}
         outputLayers = applyCommandToEachLayer(cmd.subdivideLayer, targetLayers, arcs, opts.expression);
 
       } else if (name == 'target') {
-        cmd.target(catalog, opts);
+        cmd.target(job.catalog, opts);
 
       } else if (name == 'union') {
         outputLayers = cmd.union(targetLayers, targetDataset, opts);
@@ -39818,7 +39865,7 @@ ${svg}
 
       } else {
         // throws error if command is not registered
-        cmd.runExternalCommand(command, catalog);
+        cmd.runExternalCommand(command, job.catalog);
       }
 
       // apply name parameter
@@ -39830,12 +39877,12 @@ ${svg}
       }
 
       if (outputDataset) {
-        catalog.addDataset(outputDataset); // also sets default target
+        job.catalog.addDataset(outputDataset); // also sets default target
         outputLayers = outputDataset.layers;
         if (targetLayers && !opts.no_replace) {
           // remove target layers from target dataset
           targetLayers.forEach(function(lyr) {
-            catalog.deleteLayer(lyr, targetDataset);
+            job.catalog.deleteLayer(lyr, targetDataset);
           });
         }
       } else if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
@@ -39858,7 +39905,7 @@ ${svg}
         }
 
         if (opts.apart) {
-          catalog.setDefaultTargets(splitApartLayers( targetDataset, outputLayers).map(function(dataset) {
+          job.catalog.setDefaultTargets(splitApartLayers( targetDataset, outputLayers).map(function(dataset) {
             return {
               dataset: dataset,
               layers: dataset.layers.concat()
@@ -39866,9 +39913,8 @@ ${svg}
           }));
         } else {
           // use command output as new default target
-          catalog.setDefaultTarget(outputLayers, targetDataset);
+          job.catalog.setDefaultTarget(outputLayers, targetDataset);
         }
-
       }
 
       // delete arcs if no longer needed (e.g. after -points command)
@@ -39880,11 +39926,13 @@ ${svg}
       return done(e);
     }
 
+    // non-erroring synchronous commands are done
     done(null);
 
     function done(err) {
+      job.endCommand();
       verbose('-', T$1.stop());
-      cb(err, err ? null : catalog);
+      cb(err, err ? null : job);
     }
   }
 
@@ -39893,7 +39941,6 @@ ${svg}
       return output.indexOf(lyr) > -1;
     });
   }
-
 
   // Apply a command to an array of target layers
   function applyCommandToEachLayer(func, targetLayers) {
@@ -40028,7 +40075,7 @@ ${svg}
     }
 
     // add options to -i -o -join -clip -erase commands to bypass file i/o
-    // TODO: find a less kludgy solution, e.g. storing input data using setStateVar()
+    // TODO: find a less kludgy solution
     commands.forEach(function(cmd) {
       if (commandTakesFileInput(cmd.name) && inputObj) {
         cmd.options.input = inputObj;
@@ -40074,8 +40121,8 @@ ${svg}
 
   // TODO: rewrite tests and remove this function
   function testCommands(argv, done) {
-    _runCommands(argv, {}, function(err, catalog) {
-      var targets = catalog ? catalog.getDefaultTargets() : [];
+    _runCommands(argv, {}, function(err, job) {
+      var targets = job ? job.catalog.getDefaultTargets() : [];
       var output;
       if (!err && targets.length > 0) {
         // returns dataset for compatibility with some older tests
@@ -40087,15 +40134,12 @@ ${svg}
 
   // Execute a sequence of parsed commands
   // @commands Array of parsed commands
-  // @catalog: Optional Catalog object containing previously imported data
+  // @job: Optional Job object containing previously imported data
   // @cb: function(<error>, <catalog>)
   //
-  function runParsedCommands(commands, catalog, cb) {
-    if (!catalog) {
-      cb = createAsyncContext(cb); // use new context when creating new catalog
-      catalog = new Catalog();
-    } else if (catalog instanceof Catalog === false) {
-      error("Changed in v0.4: runParsedCommands() takes a Catalog object");
+  function runParsedCommands(commands, job, cb) {
+    if (!job) {
+      job = new Job();
     }
 
     if (!utils.isArray(commands)) {
@@ -40105,7 +40149,7 @@ ${svg}
     if (commands.length === 0) {
       return done(new UserError("No commands to run"));
     }
-    commands = readAndRemoveSettings(commands);
+    commands = readAndRemoveSettings(job, commands);
     if (!runningInBrowser()) {
       printStartupMessages();
     }
@@ -40122,25 +40166,22 @@ ${svg}
     var groups = divideImportCommand(commands);
     if (groups.length == 1) {
       // run a simple sequence of commands (input files are not batched)
-      return runParsedCommands2(commands, catalog, done);
+      return runParsedCommands2(commands, job, done);
     }
 
     // run duplicated commands (i.e. batch mode)
-    utils.reduceAsync(groups, catalog, nextGroup, done);
+    utils.reduceAsync(groups, job, nextGroup, done);
 
-    function nextGroup(catalog, commands, next) {
-      runParsedCommands2(commands, catalog, function(err, catalog) {
+    function nextGroup(job, commands, next) {
+      runParsedCommands2(commands, job, function(err, job) {
         err = filterError(err);
-        next(err, catalog);
+        next(err, job);
       });
     }
 
-    function done(err, catalog) {
+    function done(err, job) {
       err = filterError(err);
-      cb(err, catalog);
-      setStateVar('current_command', null);
-      setStateVar('verbose', false);
-      setStateVar('debug', false);
+      cb(err, job);
     }
   }
 
@@ -40152,16 +40193,13 @@ ${svg}
     return err;
   }
 
-  function runParsedCommands2(commands, catalog, cb) {
+  function runParsedCommands2(commands, job, cb) {
     // resetting closes any unterminated -if blocks from a previous command sequence
-    resetControlFlow();
-    utils.reduceAsync(commands, catalog, nextCommand, cb);
+    resetControlFlow(job);
+    utils.reduceAsync(commands, job, nextCommand, cb);
 
-    function nextCommand(catalog, cmd, next) {
-      setStateVar('current_command', cmd.name); // for log msgs
-      setStateVar('verbose', !!cmd.options.verbose);
-      setStateVar('debug', !!cmd.options.debug);
-      runCommand(cmd, catalog, next);
+    function nextCommand(job, cmd, next) {
+      runCommand(cmd, job, next);
     }
   }
 
@@ -40207,19 +40245,22 @@ ${svg}
   }
 
   // Some settings use command syntax and are parsed as commands.
-  function readAndRemoveSettings(commands) {
-    return commands.filter(function(cmd) {
+  function readAndRemoveSettings(job, commands) {
+    var settings = {VERBOSE: false, QUIET: false, DEBUG: false};
+    var filtered = commands.filter(function(cmd) {
       if (cmd.name == 'verbose') {
-        setStateVar('VERBOSE', true);
+        settings.VERBOSE = true;
       } else if (cmd.name == 'quiet') {
-        setStateVar('QUIET', true);
+        settings.QUIET = true;
       } else if (cmd.name == 'debug') {
-        setStateVar('DEBUG', true);
+        settings.DEBUG = true;
       } else {
         return true;
       }
       return false;
     });
+    job.initSettings(settings);
+    return filtered;
   }
 
   // Run informational commands and remove them from the array of parsed commands
@@ -40571,6 +40612,7 @@ ${svg}
   // to maintain compatibility with tests and to expose (some of) them to the GUI.
 
   Object.assign(internal, {
+    Job,
     Dbf,
     DbfReader,
     DouglasPeucker,
@@ -40694,6 +40736,7 @@ ${svg}
     SourceUtils,
     Split,
     State,
+    Stash,
     Stringify,
     Svg,
     SvgProperties,

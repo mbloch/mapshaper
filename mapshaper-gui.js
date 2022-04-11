@@ -1376,7 +1376,7 @@
     async function expandFiles(files) {
       var files2 = [], expanded;
       for (var f of files) {
-        if (internal.isZipFile(f.name)) {
+        if (internal.isZipFile(f.name) || /\.kmz$/.test(f.name)) {
           expanded = await readZipFile(f);
           files2 = files2.concat(expanded);
         } else {
@@ -2861,8 +2861,9 @@
           prevArcs = active.dataset.arcs,
           prevTable = active.layer.data,
           prevTableSize = prevTable ? prevTable.size() : 0,
-          prevArcCount = prevArcs ? prevArcs.size() : 0;
-      internal.runParsedCommands(commands, model, function(err) {
+          prevArcCount = prevArcs ? prevArcs.size() : 0,
+          job = new internal.Job(model);
+      internal.runParsedCommands(commands, job, function(err) {
         var flags = getCommandFlags(commands),
             active2 = model.getActiveLayer(),
             postArcs = active2.dataset.arcs,
@@ -2871,10 +2872,6 @@
             postTableSize = postTable ? postTable.size() : 0,
             sameTable = prevTable == postTable && prevTableSize == postTableSize,
             sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
-
-        // restore default logging options, in case they were changed by the command
-        internal.setStateVar('QUIET', false);
-        internal.setStateVar('VERBOSE', false);
 
         // kludge to signal map that filtered arcs need refreshing
         // TODO: find a better solution, outside the console
@@ -2922,7 +2919,7 @@
 
     function consoleMessage() {
       var msg = GUI.formatMessageArgs(arguments);
-      if (internal.loggingEnabled() && !internal.getStateVar('QUIET')) {
+      if (internal.loggingEnabled()) {
         toLog(msg, 'console-message');
       }
     }
@@ -4396,51 +4393,28 @@
 
   var Buffer = require('buffer').Buffer; // works with browserify
 
-  var context = createContext(); // command context (persist for the current command cycle)
+  // This module provides a way for multiple jobs to run together asynchronously
+  // while keeping job-level context variables (like "defs") separate.
 
-  function runningInBrowser() {
-    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  var stash = {};
+
+  function stashVar(key, val) {
+    if (key in stash) {
+      error('Tried to replace a stashed variable:', key);
+    }
+    stash[key] = val;
   }
 
-  function getStateVar(key) {
-    return context[key];
+  function getStashedVar(key) {
+    if (key in stash === false) {
+      return undefined; // to support running commands in tests
+      // error('Tried to read a nonexistent variable from the stash:', key);
+    }
+    return stash[key];
   }
 
-  function setStateVar(key, val) {
-    context[key] = val;
-  }
-
-  function createContext() {
-    return {
-      DEBUG: false,
-      QUIET: false,
-      VERBOSE: false,
-      defs: {},
-      input_files: []
-    };
-  }
-
-  // Install a new set of context variables, clear them when an async callback is called.
-  // @cb callback function to wrap
-  // returns wrapped callback function
-  function createAsyncContext(cb) {
-    context = createContext();
-    return function() {
-      cb.apply(null, utils.toArray(arguments));
-      // clear context after cb(), so output/errors can be handled in current context
-      context = createContext();
-    };
-  }
-
-  // Save the current context, restore it when an async callback is called
-  // @cb callback function to wrap
-  // returns wrapped callback function
-  function preserveContext(cb) {
-    var ctx = context;
-    return function() {
-      context = ctx;
-      cb.apply(null, utils.toArray(arguments));
-    };
+  function clearStash() {
+    stash = {};
   }
 
   var LOGGING = false;
@@ -4522,13 +4496,13 @@
 
   function verbose() {
     // verbose can be set globally with the -verbose command or separately for each command
-    if (getStateVar('VERBOSE') || getStateVar('verbose')) {
+    if (getStashedVar('VERBOSE')) {
       message.apply(null, arguments);
     }
   }
 
   function debug() {
-    if (getStateVar('DEBUG') || getStateVar('debug')) {
+    if (getStashedVar('DEBUG')) {
       logArgs(arguments);
     }
   }
@@ -4608,7 +4582,7 @@
 
   function messageArgs(args) {
     var arr = utils.toArray(args);
-    var cmd = getStateVar('current_command');
+    var cmd = getStashedVar('current_command');
     if (cmd && cmd != 'help') {
       arr.unshift('[' + cmd + ']');
     }
@@ -4616,7 +4590,7 @@
   }
 
   function logArgs(args) {
-    if (!LOGGING || getStateVar('QUIET') || !utils.isArrayLike(args)) return;
+    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
     var msg = formatLogArgs(args);
     if (STDOUT) console.log(msg);
     else console.error(msg);
@@ -7585,7 +7559,10 @@
       if (!active(e)) return;
       var textNode = getTextTarget3(e);
       var table = hit.getTargetDataTable();
-      if (!textNode || !table) return false;
+      if (!textNode || !table) {
+        activeId = -1;
+        return false;
+      }
       activeId = e.id;
       activeRecord = getLabelRecordById(activeId);
       downEvt = e;
@@ -7593,7 +7570,7 @@
     });
 
     hit.on('drag', function(e) {
-      if (!active(e)) return;
+      if (!active(e) || activeId == -1) return;
       if (e.id != activeId) {
         error$1("Mismatched hit ids:", e.id, activeId);
       }
@@ -7613,7 +7590,7 @@
     });
 
     hit.on('dragend', function(e) {
-      if (!active(e)) return;
+      if (!active(e) || activeId == -1) return;
       gui.dispatchEvent('label_dragend', {FID: e.id});
       activeId = -1;
       activeRecord = null;
@@ -8898,8 +8875,7 @@
     if (mapScale < 0.5) {
       s *= Math.pow(mapScale + 0.5, 0.35);
     } else if (mapScale > 100) {
-      if (!internal.getStateVar('DEBUG')) // thin lines for debugging
-        s *= Math.pow(mapScale - 99, 0.10);
+      s *= Math.pow(mapScale - 99, 0.10);
     }
     return s;
   }
