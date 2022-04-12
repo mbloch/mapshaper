@@ -76,11 +76,15 @@ body {
 	fill: #1385B7;
 }
 
-.dialog-btn:hover,
+.dialog-btn:hover:not(.disabled),
 .btn.header-btn:hover,
 .dialog-btn.default-btn,
 .dialog-btn.selected-btn {
 	background-color: #1A6A96;
+}
+
+.dialog-btn.disabled {
+	opacity:  0.5;
 }
 
 .colored-text::selection {

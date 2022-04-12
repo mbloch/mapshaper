@@ -23,6 +23,10 @@ function loadStylesheet(url) {
 
 export function Basemap(gui, ext) {
   var menu = gui.container.findChild('.basemap-options');
+  // var hideBtn = new SimpleButton(menu.findChild('.hide-btn'));
+  var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
+  var closeBtn = new SimpleButton(menu.findChild('.close-btn'));
+  var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
   var list = menu.findChild('.basemap-styles');
   var container = gui.container.findChild('.basemap-container');
   var basemapBtn = gui.container.findChild('.basemap-btn');
@@ -34,6 +38,7 @@ export function Basemap(gui, ext) {
   var map;
   var activeStyle;
   var loading = false;
+  var faded = false;
 
   if (params) {
     init();
@@ -44,9 +49,33 @@ export function Basemap(gui, ext) {
   function init() {
     gui.addMode('basemap', turnOn, turnOff, basemapBtn);
 
-    new SimpleButton(menu.findChild('.close-btn')).on('click', function() {
+    closeBtn.on('click', function() {
       gui.clearMode();
       turnOff();
+    });
+
+    // hideBtn.on('mousedown', function() {
+    //   if (activeStyle) {
+    //     mapEl.css('visibility', 'hidden');
+    //     hidden = true;
+    //   }
+    // })
+    clearBtn.on('click', function() {
+      if (activeStyle) {
+        updateStyle(null);
+        updateButtons();
+      }
+    });
+    fadeBtn.on('click', function() {
+      if (faded) {
+        mapEl.css('opacity', 1);
+        faded = false;
+        fadeBtn.text('Fade');
+      } else if (activeStyle) {
+        mapEl.css('opacity', 0.35);
+        faded = true;
+        fadeBtn.text('Unfade');
+      }
     });
 
     gui.on('map_click', function() {
@@ -71,13 +100,14 @@ export function Basemap(gui, ext) {
     // gui.state.dark_basemap = style && style.dark || false;
     if (!style) {
       gui.map.setDisplayCRS(null);
-      hide();
+      refresh();
     } else if (map) {
       map.setStyle(style.url);
       refresh();
     } else {
       initMap();
     }
+
   }
 
   function updateButtons() {
@@ -187,12 +217,15 @@ export function Basemap(gui, ext) {
   }
 
   function refresh() {
-    if (!enabled() || !map || loading || !activeStyle) return;
     var crs = gui.map.getDisplayCRS();
-    if (!crsIsUsable(crs)) {
+    var off = !crs || !enabled() || !map || loading || !activeStyle;
+    fadeBtn.active(!off);
+    clearBtn.active(!off);
+    if (off) {
       hide();
       return;
     }
+
     if (!internal.isWebMercator(crs)) {
       gui.map.setDisplayCRS(internal.getCRS('webmercator'));
     }

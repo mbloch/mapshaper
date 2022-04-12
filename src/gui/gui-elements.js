@@ -138,7 +138,7 @@ export function Checkbox(ref) {
 
 utils.inherit(Checkbox, EventDispatcher);
 
-export function SimpleButton(ref) {
+export function xSimpleButton(ref) {
   var _el = El(ref),
       _self = this,
       _active = !_el.hasClass('disabled');
@@ -165,4 +165,28 @@ export function SimpleButton(ref) {
   }
 }
 
-utils.inherit(SimpleButton, EventDispatcher);
+//utils.inherit(SimpleButton, EventDispatcher);
+
+export function SimpleButton(ref) {
+  var _el = El(ref),
+      _active = !_el.hasClass('disabled');
+
+  _el.active = function(a) {
+    if (a === void 0) return _active;
+    if (a !== _active) {
+      _active = a;
+      _el.toggleClass('disabled');
+    }
+    return _el;
+  };
+
+  // this.node = function() {return _el.node();};
+
+  function isVisible() {
+    var el = _el.node();
+    return el.offsetParent !== null;
+  }
+  return _el;
+}
+
+// utils.inherit(SimpleButton, EventDispatcher);

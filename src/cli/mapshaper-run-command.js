@@ -85,6 +85,18 @@ import '../simplify/mapshaper-variable-simplify';
 import '../commands/mapshaper-split-on-grid';
 import '../commands/mapshaper-subdivide';
 
+function commandAcceptsMultipleTargetDatasets(name) {
+  return name == 'rotate' || name == 'info' || name == 'proj' ||
+    name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
+    name == 'else' || name == 'endif';
+}
+
+function commandAcceptsEmptyTarget(name) {
+  return name == 'graticule' || name == 'i' || name == 'help' ||
+    name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+    name == 'include' || name == 'print' || name == 'if' || name == 'elif' ||
+    name == 'else' || name == 'endif';
+}
 
 export function runCommand(command, job, cb) {
   var name = command.name,
@@ -107,7 +119,6 @@ export function runCommand(command, job, cb) {
   job.startCommand(command);
 
   try { // catch errors from synchronous functions
-
     T.start();
 
     if (name == 'rename-layers') {
@@ -122,13 +133,11 @@ export function runCommand(command, job, cb) {
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = job.catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-    } else if (name == 'rotate' || name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
-      // these commands accept multiple target datasets
+    } else if (commandAcceptsMultipleTargetDatasets(name)) {
       targets = job.catalog.findCommandTargets(opts.target);
 
     } else {
       targets = job.catalog.findCommandTargets(opts.target);
-
       // special case to allow -merge-layers and -union to combine layers from multiple datasets
       // TODO: support multi-dataset targets for other commands
       if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
@@ -152,9 +161,7 @@ export function runCommand(command, job, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, getFormattedLayerList(job.catalog)));
       }
-      if (!(name == 'graticule' || name == 'i' || name == 'help' ||
-          name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-          name == 'include' || name == 'print')) {
+      if (!commandAcceptsEmptyTarget(name)) {
         throw new UserError("No data is available");
       }
     }
