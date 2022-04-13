@@ -12,6 +12,7 @@ export function expandCommandTargets(targets) {
   }, []);
 }
 
+
 export function findCommandTargets(layers, pattern, type) {
   var targets = [];
   var matches = findMatchingLayers(layers, pattern, true);

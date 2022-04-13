@@ -1931,16 +1931,16 @@ export function getOptionParser() {
   var ifOpts = {
     expression: {
       DEFAULT: true,
-      describe: 'JS expression targeting a single layer'
+      describe: 'JS expression'
     },
-    empty: {
-      describe: 'run if layer is empty',
-      type: 'flag'
-    },
-    'not-empty': {
-      describe: 'run if layer is not empty',
-      type: 'flag'
-    },
+    // empty: {
+    //   describe: 'run if layer is empty',
+    //   type: 'flag'
+    // },
+    // 'not-empty': {
+    //   describe: 'run if layer is not empty',
+    //   type: 'flag'
+    // },
     layer: {
       describe: 'name or id of layer to test (default is current target)'
     },

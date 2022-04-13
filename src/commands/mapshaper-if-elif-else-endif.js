@@ -54,45 +54,25 @@ function isControlFlowCommand(cmd) {
   return ['if','elif','else','endif'].includes(cmd);
 }
 
-function testLayer(catalog, opts) {
-  var targ = getTargetLayer(catalog, opts);
+function test(catalog, opts) {
+  // var targ = getTargetLayer(catalog, opts);
   if (opts.expression) {
-    return compileIfCommandExpression(opts.expression, catalog, targ, opts)();
+    return compileIfCommandExpression(opts.expression, catalog, opts)();
   }
-  if (opts.empty) {
-    return layerIsEmpty(targ.layer);
-  }
-  if (opts.not_empty) {
-    return !layerIsEmpty(targ.layer);
-  }
+  // if (opts.empty) {
+  //   return layerIsEmpty(targ.layer);
+  // }
+  // if (opts.not_empty) {
+  //   return !layerIsEmpty(targ.layer);
+  // }
   return true;
 }
 
 function evaluateIf(job, opts) {
-  if (!blockWasActive(job) && testLayer(job.catalog, opts)) {
+  if (!blockWasActive(job) && test(job.catalog, opts)) {
     enterActiveBranch(job);
   } else {
     enterInactiveBranch(job);
   }
 }
 
-// layerId: optional layer identifier
-//
-function getTargetLayer(catalog, opts) {
-  var layerId = opts.layer || opts.target;
-  var targets = catalog.findCommandTargets(layerId);
-  if (targets.length === 0) {
-    if (layerId) {
-      stop('Layer not found:', layerId);
-    } else {
-      stop('Missing a target layer.');
-    }
-  }
-  if (targets.length > 1 || targets[0].layers.length > 1) {
-    stop('Command requires a single target layer.');
-  }
-  return {
-    layer: targets[0].layers[0],
-    dataset: targets[0].dataset
-  };
-}

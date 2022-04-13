@@ -1,6 +1,31 @@
 import { getLayerBounds, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { addGetters } from '../expressions/mapshaper-expression-utils';
 import { getColumnType } from '../datatable/mapshaper-data-utils';
+import { stop, error } from '../utils/mapshaper-logging';
+import { countTargetLayers } from '../dataset/mapshaper-target-utils';
+
+export function getNullLayerProxy(targets) {
+  var obj = {};
+  var n = countTargetLayers(targets);
+  var getters = {
+    name: error,
+    data: error,
+    type: error,
+    size: error,
+    empty: error,
+    bbox: error
+  };
+  addGetters(obj, getters);
+  obj.field_exists = error;
+  obj.field_type = error;
+  obj.field_includes = error;
+  return obj;
+  function error() {
+    throw Error(`This expression requires a single target layer; Received ${n} layers.`);
+  }
+}
+
+
 
 // Returns an object representing a layer in a JS expression
 export function getLayerProxy(lyr, arcs) {
@@ -11,10 +36,10 @@ export function getLayerProxy(lyr, arcs) {
     data: records,
     type: lyr.geometry_type,
     size: getFeatureCount(lyr),
-    empty: getFeatureCount(lyr) === 0
+    empty: getFeatureCount(lyr) === 0,
+    bbox: getBBoxGetter(obj, lyr, arcs)
   };
   addGetters(obj, getters);
-  addBBoxGetter(obj, lyr, arcs);
   obj.field_exists = function(name) {
     return lyr.data && lyr.data.fieldExists(name) ? true : false;
   };
@@ -43,16 +68,14 @@ export function addLayerGetters(ctx, lyr, arcs) {
   return ctx;
 }
 
-export function addBBoxGetter(obj, lyr, arcs) {
+export function getBBoxGetter(obj, lyr, arcs) {
   var bbox;
-  addGetters(obj, {
-    bbox: function() {
-      if (!bbox) {
-        bbox = getBBox(lyr, arcs);
-      }
-      return bbox;
+  return function() {
+    if (!bbox) {
+      bbox = getBBox(lyr, arcs);
     }
-  });
+    return bbox;
+  };
 }
 
 function getBBox(lyr, arcs) {

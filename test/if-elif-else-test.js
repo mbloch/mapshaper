@@ -51,21 +51,21 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
-
-  it ('test not-empty flag', function(done) {
-    var data = [{name: 'a'}, {name: 'b'}];
-    var cmd = `-i data.json -if not-empty -each 'id = this.id' -else -each 'fid = this.id' \
-      -endif -each 'name = name + name' -o`;
-    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
-      var data = JSON.parse(out['data.json']);
-      assert.deepEqual(data, [{
-        name: 'aa', id: 0
-      }, {
-        name: 'bb', id: 1
-      }]);
-      done();
-    });
-  });
+  // not-empty was removed
+  // it ('test not-empty flag', function(done) {
+  //   var data = [{name: 'a'}, {name: 'b'}];
+  //   var cmd = `-i data.json -if not-empty -each 'id = this.id' -else -each 'fid = this.id' \
+  //     -endif -each 'name = name + name' -o`;
+  //   api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+  //     var data = JSON.parse(out['data.json']);
+  //     assert.deepEqual(data, [{
+  //       name: 'aa', id: 0
+  //     }, {
+  //       name: 'bb', id: 1
+  //     }]);
+  //     done();
+  //   });
+  // });
 
 
   it ('test field_type(), field_exists() and field_includes()', function(done) {
@@ -111,4 +111,43 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+  it ('test layer_exists(name, geotype)', function(done) {
+    var data = [{name: 'a'}, {name: 'b'}];
+    var cmd = `-i data.json -if 'layer_exists("data", "polygon")' -each 'name = "c"' -endif -o`;
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{
+        name: 'a'
+      }, {
+        name: 'b'
+      }]);
+      done();
+    });
+  });
+
+  it ('test layer_exists(name, geotype) test2', function(done) {
+    var table = [{name: 'a'}, {name: 'b'}];
+    var point = {
+      type: 'Feature',
+      properties: {name: 'c'},
+      geometry: {type: 'Point', coordinates: [3, 4]}
+    };
+    var cmd = `-i table.json point.json combine-files -target 1 name=data \
+      -target 2 name=data -if 'layer_exists("data", "point")' -target data type=point -o`;
+    api.applyCommands(cmd, {'table.json': table, 'point.json': point}, function(err, out) {
+      var data = JSON.parse(out['data.json']);
+      assert.equal(data.type, 'FeatureCollection');
+      done();
+    });
+  });
+
+  it ('multiple target error', function(done) {
+    var data1 = [{name: 'a'}, {name: 'b'}];
+    var data2 = [{name: 'c'}, {name: 'd'}];
+    var cmd = `-i a.json b.json combine-files -if '!empty' -each 'name = "c"' -endif -o`;
+    api.applyCommands(cmd, {'a.json': data1, 'b.json': data2}, function(err, out) {
+      assert(err && err.message.includes('This expression requires a single target'));
+      done();
+    });
+  });
 })
