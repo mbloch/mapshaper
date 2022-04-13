@@ -1,3 +1,8 @@
+v0.5.111
+* Added -snap endpoints option, for snapping together line endpoints that don't quite meet.
+* Added buttons to the basemaps menu.
+* -if/-elif commands work (with limited functionality) with zero or multiple target layers.
+
 v0.5.110
 * Preliminary support for importing .kml files
 * Support for .kmz files in the browser UI
