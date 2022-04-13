@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.110";
+  var VERSION = "0.5.111";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -2725,21 +2725,30 @@
     message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
   }
 
+  function snapCoordsByInterval(arcs, snapDist) {
+    if (snapDist > 0 === false) return 0;
+    var ids = getCoordinateIds(arcs);
+    return snapCoordsInternal(ids, arcs, snapDist);
+  }
+
+  function snapEndpointsByInterval(arcs, snapDist) {
+    if (snapDist > 0 === false) return 0;
+    var ids = getEndpointIds(arcs);
+    return snapCoordsInternal(ids, arcs, snapDist);
+  }
+
   // Snap together points within a small threshold
   //
-  function snapCoordsByInterval(arcs, snapDist) {
+  function snapCoordsInternal(ids, arcs, snapDist) {
     var snapCount = 0,
-        data = arcs.getVertexData(),
-        ids;
+        n = ids.length,
+        data = arcs.getVertexData();
 
-    if (snapDist > 0) {
-      // Get sorted coordinate ids
-      // Consider: speed up sorting -- try bucket sort as first pass.
-      //
-      ids = sortCoordinateIds(data.xx);
-      for (var i=0, n=ids.length; i<n; i++) {
-        snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
-      }
+    quicksortIds(data.xx, ids, 0, n-1);
+
+    // Consider: speed up sorting -- try bucket sort as first pass.
+    for (var i=0; i<n; i++) {
+      snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
     }
     return snapCount;
 
@@ -2765,13 +2774,25 @@
     }
   }
 
-  function sortCoordinateIds(a) {
-    var n = a.length,
+  function getCoordinateIds(arcs) {
+    var data = arcs.getVertexData(),
+        n = data.xx.length,
         ids = new Uint32Array(n);
     for (var i=0; i<n; i++) {
       ids[i] = i;
     }
-    quicksortIds(a, ids, 0, ids.length-1);
+    return ids;
+  }
+
+  function getEndpointIds(arcs) {
+    var i = 0;
+    var ids = [];
+    var data = arcs.getVertexData();
+    data.nn.forEach(function(n) {
+      if (n > 0 === false) return;
+      ids.push(i, i+n-1);
+      i += n;
+    });
     return ids;
   }
 
@@ -2871,7 +2892,9 @@
     getHighPrecisionSnapInterval: getHighPrecisionSnapInterval,
     snapCoords: snapCoords,
     snapCoordsByInterval: snapCoordsByInterval,
-    sortCoordinateIds: sortCoordinateIds
+    snapEndpointsByInterval: snapEndpointsByInterval,
+    getCoordinateIds: getCoordinateIds,
+    getEndpointIds: getEndpointIds
   });
 
   // Find the intersection between two 2D segments
@@ -9500,6 +9523,140 @@
     };
   }
 
+  // convert targets from [{layers: [...], dataset: <>}, ...] format to
+  // [{layer: <>, dataset: <>}, ...] format
+  function expandCommandTargets(targets) {
+    return targets.reduce(function(memo, target) {
+      target.layers.forEach(function(lyr) {
+        memo.push({layer: lyr, dataset: target.dataset});
+      });
+      return memo;
+    }, []);
+  }
+
+
+  function findCommandTargets(layers, pattern, type) {
+    var targets = [];
+    var matches = findMatchingLayers(layers, pattern, true);
+    if (type) {
+      matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
+    }
+    // assign target_id to matched layers
+    // (kludge so layers can be sorted in the order that they match; used by -o command)
+    layers.forEach(function(o) {o.layer.target_id = -1;});
+    matches.forEach(function(o, i) {o.layer.target_id = i;});
+    return groupLayersByDataset(matches);
+  }
+
+  // arr: array of {layer: <>, dataset: <>} objects
+  function groupLayersByDataset(arr) {
+    var datasets = [];
+    var targets = [];
+    arr.forEach(function(o) {
+      var i = datasets.indexOf(o.dataset);
+      if (i == -1) {
+        datasets.push(o.dataset);
+        targets.push({layers: [o.layer], dataset: o.dataset});
+      } else {
+        targets[i].layers.push(o.layer);
+      }
+    });
+    return targets;
+  }
+
+  // layers: array of {layer: <>, dataset: <>} objects
+  // pattern: is a layer identifier or a comma-sep. list of identifiers.
+  // An identifier is a literal name, a pattern containing "*" wildcard or
+  // a 1-based index (1..n)
+  function findMatchingLayers(layers, pattern, throws) {
+    var matchedLayers = [];
+    var unmatchedIds = [];
+    var index = {};
+    pattern.split(',').forEach(function(subpattern, i) {
+      var test = getLayerMatch(subpattern);
+      var matched = false;
+      layers.forEach(function(o, layerId) {
+        // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
+        if (layerId in index) {
+          matched = true;
+        } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
+          matchedLayers.push(o);
+          index[layerId] = true;
+          matched = true;
+        }
+      });
+      if (matched == false) {
+        unmatchedIds.push(subpattern);
+      }
+    });
+    if (throws && unmatchedIds.length) {
+      stop(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
+    }
+    return matchedLayers;
+  }
+
+  function getLayerMatch(pattern) {
+    var isIndex = utils.isInteger(Number(pattern));
+    var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
+    return function(lyr, i) {
+      return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
+    };
+  }
+
+  function countTargetLayers(targets) {
+    return targets.reduce(function(memo, target) {
+      return memo + target.layers.length;
+    }, 0);
+  }
+
+  // get an identifier for a layer that can be used in a target= option
+  // (returns name if layer has a unique name, or a numerical id)
+  function getLayerTargetId(catalog, lyr) {
+    var nameCount = 0,
+        name = lyr.name,
+        id;
+    catalog.getLayers().forEach(function(o, i) {
+      if (lyr.name && o.layer.name == lyr.name) nameCount++;
+      if (lyr == o.layer) id = String(i + 1);
+    });
+    if (!id) error('Layer not found');
+    return nameCount == 1 ? lyr.name : id;
+  }
+
+  var TargetUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    expandCommandTargets: expandCommandTargets,
+    findCommandTargets: findCommandTargets,
+    groupLayersByDataset: groupLayersByDataset,
+    findMatchingLayers: findMatchingLayers,
+    getLayerMatch: getLayerMatch,
+    countTargetLayers: countTargetLayers,
+    getLayerTargetId: getLayerTargetId
+  });
+
+  function getNullLayerProxy(targets) {
+    var obj = {};
+    var n = countTargetLayers(targets);
+    var getters = {
+      name: error,
+      data: error,
+      type: error,
+      size: error,
+      empty: error,
+      bbox: error
+    };
+    addGetters(obj, getters);
+    obj.field_exists = error;
+    obj.field_type = error;
+    obj.field_includes = error;
+    return obj;
+    function error() {
+      throw Error(`This expression requires a single target layer; Received ${n} layers.`);
+    }
+  }
+
+
+
   // Returns an object representing a layer in a JS expression
   function getLayerProxy(lyr, arcs) {
     var obj = {};
@@ -9509,10 +9666,10 @@
       data: records,
       type: lyr.geometry_type,
       size: getFeatureCount(lyr),
-      empty: getFeatureCount(lyr) === 0
+      empty: getFeatureCount(lyr) === 0,
+      bbox: getBBoxGetter(obj, lyr, arcs)
     };
     addGetters(obj, getters);
-    addBBoxGetter(obj, lyr, arcs);
     obj.field_exists = function(name) {
       return lyr.data && lyr.data.fieldExists(name) ? true : false;
     };
@@ -9541,16 +9698,14 @@
     return ctx;
   }
 
-  function addBBoxGetter(obj, lyr, arcs) {
+  function getBBoxGetter(obj, lyr, arcs) {
     var bbox;
-    addGetters(obj, {
-      bbox: function() {
-        if (!bbox) {
-          bbox = getBBox$1(lyr, arcs);
-        }
-        return bbox;
+    return function() {
+      if (!bbox) {
+        bbox = getBBox$1(lyr, arcs);
       }
-    });
+      return bbox;
+    };
   }
 
   function getBBox$1(lyr, arcs) {
@@ -17169,116 +17324,6 @@ ${svg}
     formatVersionedFileName: formatVersionedFileName
   });
 
-  // convert targets from [{layers: [...], dataset: <>}, ...] format to
-  // [{layer: <>, dataset: <>}, ...] format
-  function expandCommandTargets(targets) {
-    return targets.reduce(function(memo, target) {
-      target.layers.forEach(function(lyr) {
-        memo.push({layer: lyr, dataset: target.dataset});
-      });
-      return memo;
-    }, []);
-  }
-
-  function findCommandTargets(layers, pattern, type) {
-    var targets = [];
-    var matches = findMatchingLayers(layers, pattern, true);
-    if (type) {
-      matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
-    }
-    // assign target_id to matched layers
-    // (kludge so layers can be sorted in the order that they match; used by -o command)
-    layers.forEach(function(o) {o.layer.target_id = -1;});
-    matches.forEach(function(o, i) {o.layer.target_id = i;});
-    return groupLayersByDataset(matches);
-  }
-
-  // arr: array of {layer: <>, dataset: <>} objects
-  function groupLayersByDataset(arr) {
-    var datasets = [];
-    var targets = [];
-    arr.forEach(function(o) {
-      var i = datasets.indexOf(o.dataset);
-      if (i == -1) {
-        datasets.push(o.dataset);
-        targets.push({layers: [o.layer], dataset: o.dataset});
-      } else {
-        targets[i].layers.push(o.layer);
-      }
-    });
-    return targets;
-  }
-
-  // layers: array of {layer: <>, dataset: <>} objects
-  // pattern: is a layer identifier or a comma-sep. list of identifiers.
-  // An identifier is a literal name, a pattern containing "*" wildcard or
-  // a 1-based index (1..n)
-  function findMatchingLayers(layers, pattern, throws) {
-    var matchedLayers = [];
-    var unmatchedIds = [];
-    var index = {};
-    pattern.split(',').forEach(function(subpattern, i) {
-      var test = getLayerMatch(subpattern);
-      var matched = false;
-      layers.forEach(function(o, layerId) {
-        // if (matchedLayers.indexOf(lyr) > -1) return; // performance bottleneck with 1000s of layers
-        if (layerId in index) {
-          matched = true;
-        } else if (test(o.layer, layerId + 1)) {  // layers are 1-indexed
-          matchedLayers.push(o);
-          index[layerId] = true;
-          matched = true;
-        }
-      });
-      if (matched == false) {
-        unmatchedIds.push(subpattern);
-      }
-    });
-    if (throws && unmatchedIds.length) {
-      stop(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
-    }
-    return matchedLayers;
-  }
-
-  function getLayerMatch(pattern) {
-    var isIndex = utils.isInteger(Number(pattern));
-    var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
-    return function(lyr, i) {
-      return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
-    };
-  }
-
-  function countTargetLayers(targets) {
-    return targets.reduce(function(memo, target) {
-      return memo + target.layers.length;
-    }, 0);
-  }
-
-  // get an identifier for a layer that can be used in a target= option
-  // (returns name if layer has a unique name, or a numerical id)
-  function getLayerTargetId(catalog, lyr) {
-    var nameCount = 0,
-        name = lyr.name,
-        id;
-    catalog.getLayers().forEach(function(o, i) {
-      if (lyr.name && o.layer.name == lyr.name) nameCount++;
-      if (lyr == o.layer) id = String(i + 1);
-    });
-    if (!id) error('Layer not found');
-    return nameCount == 1 ? lyr.name : id;
-  }
-
-  var TargetUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    expandCommandTargets: expandCommandTargets,
-    findCommandTargets: findCommandTargets,
-    groupLayersByDataset: groupLayersByDataset,
-    findMatchingLayers: findMatchingLayers,
-    getLayerMatch: getLayerMatch,
-    countTargetLayers: countTargetLayers,
-    getLayerTargetId: getLayerTargetId
-  });
-
   function readFirstChars(reader, n) {
     return bufferToString(reader.readSync(0, Math.min(n || 1000, reader.size())));
   }
@@ -20154,6 +20199,10 @@ ${svg}
         DEFAULT: true,
         type: 'distance'
       })
+      .option('endpoints', {
+        describe: 'only snap together the endpoints of lines',
+        type: 'flag'
+      })
       .option('precision', {
         describe: 'round all coordinates to a given decimal precision (e.g. 0.000001)',
         type: 'number'
@@ -20695,16 +20744,16 @@ ${svg}
     var ifOpts = {
       expression: {
         DEFAULT: true,
-        describe: 'JS expression targeting a single layer'
+        describe: 'JS expression'
       },
-      empty: {
-        describe: 'run if layer is empty',
-        type: 'flag'
-      },
-      'not-empty': {
-        describe: 'run if layer is not empty',
-        type: 'flag'
-      },
+      // empty: {
+      //   describe: 'run if layer is empty',
+      //   type: 'flag'
+      // },
+      // 'not-empty': {
+      //   describe: 'run if layer is not empty',
+      //   type: 'flag'
+      // },
       layer: {
         describe: 'name or id of layer to test (default is current target)'
       },
@@ -34689,13 +34738,27 @@ ${svg}
     return job.control || (job.control = {});
   }
 
-  function compileIfCommandExpression(expr, catalog, targ, opts) {
-    var ctx = getLayerProxy(targ.layer, targ.dataset.arcs, opts);
+  function compileIfCommandExpression(expr, catalog, opts) {
+    var targetId = opts.layer || opts.target || null;
+    var targets = catalog.findCommandTargets(targetId);
+    var isSingle = targets.length == 1 && targets[0].layers.length == 1;
+    if (targets.length === 0 && targetId) {
+      stop('Layer not found:', targetId);
+    }
+    var ctx;
+    if (isSingle) {
+      ctx = getLayerProxy(targets[0].layers[0], targets[0].dataset.arcs, opts);
+    } else {
+      ctx = getNullLayerProxy(targets);
+    }
     var exprOpts = Object.assign({returns: true}, opts);
     var func = compileExpressionToFunction(expr, exprOpts);
 
-    ctx.layer_exists = function(name) {
-      return !!catalog.findSingleLayer(name);
+    // @geoType: optional geometry type (polygon, polyline, point, null);
+    ctx.layer_exists = function(name, geoType) {
+      var targets = catalog.findCommandTargets(name, geoType);
+      if (targets.length === 0) return false;
+      return true;
     };
 
     ctx.file_exists = function(file) {
@@ -34754,47 +34817,26 @@ ${svg}
     return ['if','elif','else','endif'].includes(cmd);
   }
 
-  function testLayer(catalog, opts) {
-    var targ = getTargetLayer(catalog, opts);
+  function test(catalog, opts) {
+    // var targ = getTargetLayer(catalog, opts);
     if (opts.expression) {
-      return compileIfCommandExpression(opts.expression, catalog, targ, opts)();
+      return compileIfCommandExpression(opts.expression, catalog, opts)();
     }
-    if (opts.empty) {
-      return layerIsEmpty(targ.layer);
-    }
-    if (opts.not_empty) {
-      return !layerIsEmpty(targ.layer);
-    }
+    // if (opts.empty) {
+    //   return layerIsEmpty(targ.layer);
+    // }
+    // if (opts.not_empty) {
+    //   return !layerIsEmpty(targ.layer);
+    // }
     return true;
   }
 
   function evaluateIf(job, opts) {
-    if (!blockWasActive(job) && testLayer(job.catalog, opts)) {
+    if (!blockWasActive(job) && test(job.catalog, opts)) {
       enterActiveBranch(job);
     } else {
       enterInactiveBranch(job);
     }
-  }
-
-  // layerId: optional layer identifier
-  //
-  function getTargetLayer(catalog, opts) {
-    var layerId = opts.layer || opts.target;
-    var targets = catalog.findCommandTargets(layerId);
-    if (targets.length === 0) {
-      if (layerId) {
-        stop('Layer not found:', layerId);
-      } else {
-        stop('Missing a target layer.');
-      }
-    }
-    if (targets.length > 1 || targets[0].layers.length > 1) {
-      stop('Command requires a single target layer.');
-    }
-    return {
-      layer: targets[0].layers[0],
-      dataset: targets[0].dataset
-    };
   }
 
   cmd.ignore = function(targetLayer, dataset, opts) {
@@ -38490,7 +38532,12 @@ ${svg}
       interval = getHighPrecisionSnapInterval(arcBounds.toArray());
     }
     arcs.flatten(); // bake in any simplification
-    if (interval > 0) {
+    if (interval > 0 && opts.endpoints) {
+      // snaps line endpoints together
+      // TODO: also snap endpoints to line segments to remove undershoots and overshoots
+      snapCount = snapEndpointsByInterval(arcs, interval);
+      message(utils.format("Snapped %s endpoint%s", snapCount, utils.pluralSuffix(snapCount)));
+    } else if (interval > 0) {
       snapCount = snapCoordsByInterval(arcs, interval);
       message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
     }
@@ -39510,6 +39557,19 @@ ${svg}
     return [lyr1, lyr2];
   }
 
+  function commandAcceptsMultipleTargetDatasets(name) {
+    return name == 'rotate' || name == 'info' || name == 'proj' ||
+      name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
+      name == 'else' || name == 'endif';
+  }
+
+  function commandAcceptsEmptyTarget(name) {
+    return name == 'graticule' || name == 'i' || name == 'help' ||
+      name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+      name == 'include' || name == 'print' || name == 'if' || name == 'elif' ||
+      name == 'else' || name == 'endif';
+  }
+
   function runCommand(command, job, cb) {
     var name = command.name,
         opts = command.options,
@@ -39531,7 +39591,6 @@ ${svg}
     job.startCommand(command);
 
     try { // catch errors from synchronous functions
-
       T$1.start();
 
       if (name == 'rename-layers') {
@@ -39546,13 +39605,11 @@ ${svg}
         // TODO: check that combine_layers is only used w/ GeoJSON output
         targets = job.catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
 
-      } else if (name == 'rotate' || name == 'info' || name == 'proj' || name == 'drop' || name == 'target') {
-        // these commands accept multiple target datasets
+      } else if (commandAcceptsMultipleTargetDatasets(name)) {
         targets = job.catalog.findCommandTargets(opts.target);
 
       } else {
         targets = job.catalog.findCommandTargets(opts.target);
-
         // special case to allow -merge-layers and -union to combine layers from multiple datasets
         // TODO: support multi-dataset targets for other commands
         if (targets.length > 1 && (name == 'merge-layers' || name == 'union')) {
@@ -39576,9 +39633,7 @@ ${svg}
           stop(utils.format('Missing target: %s\nAvailable layers: %s',
               opts.target, getFormattedLayerList(job.catalog)));
         }
-        if (!(name == 'graticule' || name == 'i' || name == 'help' ||
-            name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-            name == 'include' || name == 'print')) {
+        if (!commandAcceptsEmptyTarget(name)) {
           throw new UserError("No data is available");
         }
       }

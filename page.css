@@ -76,11 +76,15 @@ body {
 	fill: #1385B7;
 }
 
-.dialog-btn:hover,
+.dialog-btn:hover:not(.disabled),
 .btn.header-btn:hover,
 .dialog-btn.default-btn,
 .dialog-btn.selected-btn {
 	background-color: #1A6A96;
+}
+
+.dialog-btn.disabled {
+	opacity:  0.5;
 }
 
 .colored-text::selection {
@@ -451,7 +455,7 @@ body.dragover #import-options-drop-area .drop-area {
 
 .info-box,.popup {
 	border-radius: 9px;
-	border: 1px solid #ddd;
+	/* border: 1px solid #ddd; */
 	box-shadow: 0 4px 6px rgba(0,0,0,0.35);
 	background-color: #fff;
 }
@@ -1042,20 +1046,22 @@ img.close-btn:hover,
 
 .basemap-style-btn img {
 	display: block;
-	left: -3px;
+	left: -2px;
 	position:  relative;
-	border: 3px solid transparent;
-	width:  120px;
-	height:  90px;
+	border: 2px solid transparent;
+	/*width:  120px;
+	height:  90px;*/
+	width:  96px;
+	height:  72px;
 }
 
 div.basemap-style-btn.active img {
-	border: 3px solid #e8ba52;
+	border: 2px solid #e8ba52;
 }
 
 .basemap-style-btn:hover img {
 	cursor: pointer;
-	border: 3px solid #ead683;
+	border: 2px solid #ead683;
 }
 
 .mapbox-improve-map {
@@ -1104,10 +1110,11 @@ div.basemap-style-btn.active img {
 .nav-buttons {
 	z-index: 20;
 	position: absolute;
-	top: 7px;
-	right: 7px;
-	padding: 2px;
-	background-color: rgba(255, 255, 255, 0.85);
+	text-align: center;
+	top: 12px;
+	right: 0;
+	padding: 3px; 
+	background-color: rgba(255, 255, 255, 1);
 }
 
 .nav-btn-wrapper {
@@ -1136,8 +1143,8 @@ div.basemap-style-btn.active img {
 	display: none;
 	pointer-events: none;
 	padding-top: 4px;
-	top: 24px;
-	right: -6px;
+	top: 26px;
+	right: -3px;
 }
 
 .nav-btn.open .nav-sub-menu {
@@ -1152,7 +1159,7 @@ div.basemap-style-btn.active img {
 	clear: right;
 	white-space: nowrap;
 	display: inline-block;
-	padding: 3px 7px 5px 7px;
+	padding: 4px 7px 5px 7px;
 	line-height: 11px;
 	cursor: pointer;
 }
@@ -1175,17 +1182,18 @@ div.basemap-style-btn.active img {
 .nav-btn {
 	position: relative;
 	cursor:pointer;
-	padding: 3px 3px 5px 3px;
+	/* padding: 3px 3px 5px 3px; */
+	padding: 4px;
 	line-height: 1;
 }
 
 .nav-btn.menu-btn {
-	padding: 2px 3px;
+	padding-top:  3px;
 }
 
 .nav-btn.selected {
 	background-color: black;
-	border-radius: 3px;
+	/* border-radius: 3px; */
 }
 
 .nav-btn:hover:not(.disabled) svg *,

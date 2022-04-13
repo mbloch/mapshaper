@@ -1107,7 +1107,7 @@
 
   utils$1.inherit(Checkbox, EventDispatcher);
 
-  function SimpleButton(ref) {
+  function xSimpleButton(ref) {
     var _el = El(ref),
         _self = this,
         _active = !_el.hasClass('disabled');
@@ -1134,7 +1134,31 @@
     }
   }
 
-  utils$1.inherit(SimpleButton, EventDispatcher);
+  //utils.inherit(SimpleButton, EventDispatcher);
+
+  function SimpleButton(ref) {
+    var _el = El(ref),
+        _active = !_el.hasClass('disabled');
+
+    _el.active = function(a) {
+      if (a === void 0) return _active;
+      if (a !== _active) {
+        _active = a;
+        _el.toggleClass('disabled');
+      }
+      return _el;
+    };
+
+    // this.node = function() {return _el.node();};
+
+    function isVisible() {
+      var el = _el.node();
+      return el.offsetParent !== null;
+    }
+    return _el;
+  }
+
+  // utils.inherit(SimpleButton, EventDispatcher);
 
   // @cb function(<FileList>)
   function DropControl(gui, el, cb) {
@@ -9729,6 +9753,10 @@
 
   function Basemap(gui, ext) {
     var menu = gui.container.findChild('.basemap-options');
+    // var hideBtn = new SimpleButton(menu.findChild('.hide-btn'));
+    var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
+    var closeBtn = new SimpleButton(menu.findChild('.close-btn'));
+    var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
     var list = menu.findChild('.basemap-styles');
     var container = gui.container.findChild('.basemap-container');
     var basemapBtn = gui.container.findChild('.basemap-btn');
@@ -9740,6 +9768,7 @@
     var map;
     var activeStyle;
     var loading = false;
+    var faded = false;
 
     if (params) {
       init();
@@ -9750,9 +9779,33 @@
     function init() {
       gui.addMode('basemap', turnOn, turnOff, basemapBtn);
 
-      new SimpleButton(menu.findChild('.close-btn')).on('click', function() {
+      closeBtn.on('click', function() {
         gui.clearMode();
         turnOff();
+      });
+
+      // hideBtn.on('mousedown', function() {
+      //   if (activeStyle) {
+      //     mapEl.css('visibility', 'hidden');
+      //     hidden = true;
+      //   }
+      // })
+      clearBtn.on('click', function() {
+        if (activeStyle) {
+          updateStyle(null);
+          updateButtons();
+        }
+      });
+      fadeBtn.on('click', function() {
+        if (faded) {
+          mapEl.css('opacity', 1);
+          faded = false;
+          fadeBtn.text('Fade');
+        } else if (activeStyle) {
+          mapEl.css('opacity', 0.35);
+          faded = true;
+          fadeBtn.text('Unfade');
+        }
       });
 
       gui.on('map_click', function() {
@@ -9777,13 +9830,14 @@
       // gui.state.dark_basemap = style && style.dark || false;
       if (!style) {
         gui.map.setDisplayCRS(null);
-        hide();
+        refresh();
       } else if (map) {
         map.setStyle(style.url);
         refresh();
       } else {
         initMap();
       }
+
     }
 
     function updateButtons() {
@@ -9893,12 +9947,15 @@
     }
 
     function refresh() {
-      if (!enabled() || !map || loading || !activeStyle) return;
       var crs = gui.map.getDisplayCRS();
-      if (!crsIsUsable(crs)) {
+      var off = !crs || !enabled() || !map || loading || !activeStyle;
+      fadeBtn.active(!off);
+      clearBtn.active(!off);
+      if (off) {
         hide();
         return;
       }
+
       if (!internal.isWebMercator(crs)) {
         gui.map.setDisplayCRS(internal.getCRS('webmercator'));
       }
