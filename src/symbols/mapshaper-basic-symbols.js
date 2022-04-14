@@ -1,8 +1,9 @@
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
+import { getSymbolRadius } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 export function getPolygonCoords(d) {
-  var radius = d.radius || d.length || d.r,
+  var radius = getSymbolRadius(d),
       sides = +d.sides || getSidesByType(d.type),
       rotated = sides % 2 == 1,
       coords = [],

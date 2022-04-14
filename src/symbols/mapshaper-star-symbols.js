@@ -1,8 +1,9 @@
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
+import { getSymbolRadius } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 export function getStarCoords(d) {
-  var radius = d.radius || d.length || d.r,
+  var radius = getSymbolRadius(d),
       points = d.points || d.sides && d.sides / 2 || 5,
       sides = points * 2,
       minorRadius = getMinorRadius(points) * radius,

@@ -4,6 +4,11 @@ import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
 var roundCoord = getRoundingFunction(0.01);
 
+export function getSymbolRadius(d) {
+  if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
+  return d.radius || d.length || d.r || 5; // use a default value
+}
+
 export function forEachSymbolCoord(coords, cb) {
   var isPoint = coords && utils.isNumber(coords[0]);
   var isNested = !isPoint && coords && Array.isArray(coords[0]);

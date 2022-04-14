@@ -23,6 +23,9 @@ export function LayerStack(gui, container, ext, mouse) {
     layers.forEach(function(lyr) {
       var svgType = getSvgLayerType(lyr.layer);
       if (!svgType || svgType == 'label') { // svg labels may have canvas dots
+        if (!lyr.style) {
+          console.error('Layer is missing a style:', lyr);
+        }
         drawCanvasLayer(lyr, _mainCanv);
       }
       if (svgType && action == 'nav') {
