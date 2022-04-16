@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.111";
+  var VERSION = "0.5.112";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -14078,8 +14078,26 @@
     polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin')),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
-      'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
+      'fill,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
   };
+
+  // symType: point, polygon, polyline, label
+  function applyStyleAttributes(svgObj, symType, rec, filter) {
+    var fields = findPropertiesBySymbolGeom(Object.keys(rec || {}), symType);
+    for (var i=0, n=fields.length; i<n; i++) {
+      if (filter && !filter(fields[i])) continue;
+      setAttribute(svgObj, fields[i], rec[fields[i]]);
+    }
+  }
+
+  function setAttribute(obj, k, v) {
+    if (!obj.properties) obj.properties = {};
+    obj.properties[k] = v;
+    if (k == 'stroke-dasharray' && v) {
+      // kludge for cleaner dashes... make butt the default?
+      obj.properties['stroke-linecap'] = 'butt';
+    }
+  }
 
   function isSupportedSvgStyleProperty(name) {
     return name in stylePropertyTypes;
@@ -14236,6 +14254,7 @@
 
   var SvgProperties = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    applyStyleAttributes: applyStyleAttributes,
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
     findPropertiesBySymbolGeom: findPropertiesBySymbolGeom,
     getSymbolDataAccessor: getSymbolDataAccessor,
@@ -14249,7 +14268,69 @@
     isSvgColor: isSvgColor
   });
 
-  var symbolRenderers = {};
+  function toLabelString(val) {
+    if (val || val === 0 || val === false) return String(val);
+    return '';
+  }
+
+  // Kludge for applying fill and other styles to a <text> element
+  // (for rendering labels in the GUI with the dot in Canvas, not SVG)
+  function renderStyledLabel(rec) {
+    var o = renderLabel(rec);
+    applyStyleAttributes(o, 'label', rec);
+    return o;
+  }
+
+  function renderLabel(rec) {
+    var line = toLabelString(rec['label-text']);
+    var morelines, obj;
+    // Accepting \n (two chars) as an alternative to the newline character
+    // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
+    // Also accepting <br>
+    var newline = /\n|\\n|<br>/i;
+    var dx = rec.dx || 0;
+    var dy = rec.dy || 0;
+    var properties = {
+      // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
+      // dx value when importing text with text-anchor=end
+      y: dy,
+      x: dx
+    };
+    if (newline.test(line)) {
+      morelines = line.split(newline);
+      line = morelines.shift();
+    }
+    obj = {
+      tag: 'text',
+      value: line,
+      properties: properties
+    };
+    if (morelines) {
+      // multiline label
+      obj.children = [];
+      morelines.forEach(function(line) {
+        var tspan = {
+          tag: 'tspan',
+          value: line,
+          properties: {
+            x: dx,
+            dy: rec['line-height'] || '1.1em'
+          }
+        };
+        obj.children.push(tspan);
+      });
+    }
+    return obj;
+  }
+
+  var SvgLabels = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    renderStyledLabel: renderStyledLabel,
+    renderLabel: renderLabel
+  });
+
+  // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
+
 
   function getTransform(xy, scale) {
     var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
@@ -14259,10 +14340,149 @@
     return str;
   }
 
-  var SvgCommon = /*#__PURE__*/Object.freeze({
+  var symbolRenderers = {
+    line: line,
+    polygon: polygon,
+    polyline: polyline,
+    circle: circle,
+    square: square,
+    image: image,
+    group: group,
+    label: label
+  };
+
+  // render label and/or point symbol
+  function renderPoint(rec) {
+    var children = [];
+    // var halfSize = rec.r || 0; // radius or half of symbol size
+    if (featureHasSvgSymbol(rec)) {
+      children.push(renderSymbol(rec));
+    }
+    if (featureHasLabel(rec)) {
+      children.push(renderStyledLabel(rec));
+    }
+    var o = children.length > 1 ? {tag: 'g', children: children} : children[0];
+    if (!o) return null;
+    o.properties = o.properties || {};
+    return o;
+  }
+
+  function renderSymbol(d) {
+    if (d['svg-symbol']) {
+      return renderComplexSymbol(d['svg-symbol']);
+    }
+    if (d.r > 0) {
+      return circle(d);
+    }
+    return empty();
+  }
+
+  function renderComplexSymbol(sym) {
+    if (utils.isString(sym)) {
+      sym = JSON.parse(sym);
+    }
+    var renderer = symbolRenderers[sym.type];
+    if (!renderer) {
+      message(sym.type ? 'Unknown symbol type: ' + sym.type : 'Symbol is missing a type property');
+      return empty();
+    }
+    return renderer(sym, 0, 0);
+  }
+
+  function empty() {
+    return {tag: 'g', properties: {}, children: []};
+  }
+
+  function circle(d, x, y) {
+    var o = {
+      tag: 'circle',
+      properties: {
+        cx: x || 0,
+        cy: y || 0
+      }
+    };
+    applyStyleAttributes(o, 'point', d);
+    return o;
+  }
+
+  function label(d, x, y) {
+    return renderStyledLabel(d);
+  }
+
+  function image(d, x, y) {
+    var w = d.width || 20,
+        h = d.height || 20;
+    var o = {
+      tag: 'image',
+      properties: {
+        width: w,
+        height: h,
+        x: x - w / 2,
+        y: y - h / 2,
+        href: d.href || ''
+      }
+    };
+    return o;
+  }
+
+  function square(d, x, y) {
+    var r = d.r || 0;
+    var o = {
+      tag: 'rect',
+      properties: {
+        x: x - r,
+        y: y - r,
+        width: r * 2,
+        height: r * 2
+      }
+    };
+    applyStyleAttributes(o, 'point', d);
+    return o;
+  }
+
+  function line(d, x, y) {
+    var coords, o;
+    coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
+    o = importLineString(coords);
+    applyStyleAttributes(o, 'polyline', d);
+    return o;
+  }
+
+  function polyline(d, x, y) {
+    var coords = d.coordinates || [];
+    var o = importMultiLineString(coords);
+    applyStyleAttributes(o, 'polyline', d);
+    return o;
+  }
+
+  function polygon(d, x, y) {
+    var coords = d.coordinates || [];
+    var o = importPolygon(coords);
+    applyStyleAttributes(o, 'polygon', d);
+    return o;
+  }
+
+  function group(d, x, y) {
+    var parts = (d.parts || []).reduce(function(memo, o) {
+      var sym = renderSymbol(o, x, y);
+      if (d.chained) {
+        x += (o.dx || 0);
+        y += (o.dy || 0);
+      }
+      return memo.concat(sym);
+    }, []);
+    if (parts.length == 1) return parts[0];
+    return {
+      tag: 'g',
+      children: parts
+    };
+  }
+
+  var SvgSymbols = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    getTransform: getTransform,
     symbolRenderers: symbolRenderers,
-    getTransform: getTransform
+    renderPoint: renderPoint
   });
 
   function importGeoJSONFeatures(features, opts) {
@@ -14270,16 +14490,22 @@
     return features.map(function(obj, i) {
       var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
       var geomType = geom && geom.type;
+      var msType = GeoJSON.translateGeoJSONType(geomType);
+      var d = obj.properties || {};
       var svgObj = null;
       if (geomType && geom.coordinates) {
-        svgObj = geojsonImporters[geomType](geom.coordinates, obj.properties, opts);
+        svgObj = geojsonImporters[geomType](geom.coordinates, d);
       }
       if (!svgObj) {
         return {tag: 'g'}; // empty element
-      }
-      // TODO: fix error caused by null svgObj (caused by e.g. MultiPolygon with [] coordinates)
-      if (obj.properties) {
-        applyStyleAttributes(svgObj, geomType, obj.properties);
+      } else if (msType == 'polyline' || msType == 'polygon') {
+        applyStyleAttributes(svgObj, msType, d);
+      } else if (msType == 'point' && isSimpleCircle(d)) {
+        // kludge -- maintains bw compatibility/passes tests -- style attributes
+        // are applied to the <g> container, 'r' property is applied to circle
+        applyStyleAttributes(svgObj, msType, d, simpleCircleFilter);
+      } else {
+        // other point symbols: attributes are complicated, added downstream
       }
       if ('id' in obj) {
         if (!svgObj.properties) {
@@ -14291,34 +14517,37 @@
     });
   }
 
-  function applyStyleAttributes(svgObj, geomType, rec) {
-    var symbolType = GeoJSON.translateGeoJSONType(geomType);
-    if (symbolType == 'point' && ('label-text' in rec)) {
-      symbolType = 'label';
+  function importPoint(coords, rec) {
+    rec = rec || {};
+    if (isSimpleCircle(rec)) {
+      return {
+        tag: 'circle',
+        properties: {
+          cx: coords[0],
+          cy: coords[1],
+          r: rec.r
+        }
+      };
     }
-    var fields = findPropertiesBySymbolGeom(Object.keys(rec), symbolType);
-    for (var i=0, n=fields.length; i<n; i++) {
-      setAttribute(svgObj, fields[i], rec[fields[i]]);
-    }
+    var o = renderPoint(rec, coords);
+    if (o) o.properties.transform = getTransform(coords);
+    return o;
   }
 
-  function setAttribute(obj, k, v) {
-    if (k == 'r') {
-      // assigned by importPoint()
-    } else {
-      if (!obj.properties) obj.properties = {};
-      obj.properties[k] = v;
-      if (k == 'stroke-dasharray' && v) {
-        // kludge for cleaner dashes... make butt the default?
-        obj.properties['stroke-linecap'] = 'butt';
-      }
-    }
+  function simpleCircleFilter(k) {
+    return k != 'r';
   }
 
-  function importMultiPoint(coords, rec, layerOpts) {
+  // just a dot, no label or icon
+  function isSimpleCircle(rec) {
+    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text']);
+  }
+
+  function importMultiPoint(coords, rec) {
     var children = [], p;
     for (var i=0; i<coords.length; i++) {
-      p = importPoint(coords[i], rec, layerOpts);
+      p = importPoint(coords[i], rec);
+      if (!p) continue;
       if (p.tag == 'g' && p.children) {
         children = children.concat(p.children);
       } else {
@@ -14348,111 +14577,12 @@
     };
   }
 
-
   function importMultiLineString(coords) {
     var d = coords.map(stringifyLineStringCoords).join(' ');
     return {
       tag: 'path',
       properties: {d: d}
     };
-  }
-
-  // Kludge for applying fill and other styles to a <text> element
-  // (for rendering labels in the GUI with the dot in Canvas, not SVG)
-  function importStyledLabel(rec, p) {
-    var o = importLabel(rec, p);
-    applyStyleAttributes(o, 'Point', rec);
-    return o;
-  }
-
-  function toLabelString(val) {
-    if (val || val === 0 || val === false) return String(val);
-    return '';
-  }
-
-  function importLabel(rec, p) {
-    var line = toLabelString(rec['label-text']);
-    var morelines, obj;
-    // Accepting \n (two chars) as an alternative to the newline character
-    // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
-    // Also accepting <br>
-    var newline = /\n|\\n|<br>/i;
-    var dx = rec.dx || 0;
-    var dy = rec.dy || 0;
-    var properties = {
-      // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
-      // dx value when importing text with text-anchor=end
-      y: dy,
-      x: dx
-    };
-    if (p) {
-      properties.transform = getTransform(p);
-    }
-    if (newline.test(line)) {
-      morelines = line.split(newline);
-      line = morelines.shift();
-    }
-    obj = {
-      tag: 'text',
-      value: line,
-      properties: properties
-    };
-    if (morelines) {
-      // multiline label
-      obj.children = [];
-      morelines.forEach(function(line) {
-        var tspan = {
-          tag: 'tspan',
-          value: line,
-          properties: {
-            x: dx,
-            dy: rec['line-height'] || '1.1em'
-          }
-        };
-        obj.children.push(tspan);
-      });
-    }
-    return obj;
-  }
-
-  function getEmptySymbol() {
-    return {tag: 'g', properties: {}, children: []};
-  }
-
-
-  function renderSymbol(d, x, y) {
-    var renderer = symbolRenderers[d.type];
-     if (!renderer) {
-      stop(d.type ? 'Unknown symbol type: ' + d.type : 'Symbol is missing a type property');
-    }
-    return renderer(d, x || 0, y || 0);
-  }
-
-  // d: svg-symbol object from feature data object
-  function importSymbol(d, xy) {
-    var renderer;
-    if (!d) {
-      return getEmptySymbol();
-    }
-    if (utils.isString(d)) {
-      d = JSON.parse(d);
-    }
-    return {
-      tag: 'g',
-      properties: {
-        'class': 'mapshaper-svg-symbol',
-        transform: xy ? getTransform(xy) : null
-      },
-      children: renderSymbol(d)
-    };
-  }
-
-  function importPoint(coords, rec, layerOpts) {
-    rec = rec || {};
-    if ('svg-symbol' in rec) {
-      return importSymbol(rec['svg-symbol'], coords);
-    }
-    return importStandardPoint(coords, rec, layerOpts || {});
   }
 
   function importPolygon(coords) {
@@ -14468,49 +14598,12 @@
     return o;
   }
 
-  function importStandardPoint(coords, rec, layerOpts) {
-    var isLabel = 'label-text' in rec;
-    var symbolType = layerOpts.point_symbol || '';
-    var children = [];
-    var halfSize = rec.r || 0; // radius or half of symbol size
-    var p;
-    // if not a label, create a symbol even without a size
-    // (circle radius can be set via CSS)
-    if (halfSize > 0 || !isLabel) {
-      if (symbolType == 'square') {
-        p = {
-          tag: 'rect',
-          properties: {
-            x: coords[0] - halfSize,
-            y: coords[1] - halfSize,
-            width: halfSize * 2,
-            height: halfSize * 2
-          }};
-      } else { // default is circle
-        p = {
-          tag: 'circle',
-          properties: {
-            cx: coords[0],
-            cy: coords[1]
-          }};
-        if (halfSize > 0) {
-          p.properties.r = halfSize;
-        }
-      }
-      children.push(p);
-    }
-    if (isLabel) {
-      children.push(importLabel(rec, coords));
-    }
-    return children.length > 1 ? {tag: 'g', children: children} : children[0];
-  }
-
   var geojsonImporters = {
     Point: importPoint,
     Polygon: importPolygon,
     LineString: importLineString,
-    MultiPoint: function(coords, rec, opts) {
-      return importMultiPoint(coords, rec, opts);
+    MultiPoint: function(coords, rec) {
+      return importMultiPoint(coords, rec);
     },
     MultiLineString: function(coords) {
       return importMultiPath(coords, importLineString);
@@ -14523,14 +14616,9 @@
   var GeojsonToSvg = /*#__PURE__*/Object.freeze({
     __proto__: null,
     importGeoJSONFeatures: importGeoJSONFeatures,
-    applyStyleAttributes: applyStyleAttributes,
+    importPoint: importPoint,
     importLineString: importLineString,
     importMultiLineString: importMultiLineString,
-    importStyledLabel: importStyledLabel,
-    importLabel: importLabel,
-    renderSymbol: renderSymbol,
-    importSymbol: importSymbol,
-    importPoint: importPoint,
     importPolygon: importPolygon
   });
 
@@ -15245,6 +15333,15 @@ ${svg}
     return layerObj;
   }
 
+  function featureHasSvgSymbol(d) {
+    return !!(d && (d['svg-symbol'] || d.r));
+  }
+
+  function featureHasLabel(d) {
+    var text = d && d['label-text'];
+    return text || text === 0; // accept numerical 0 as label text
+  }
+
   function layerHasSvgSymbols(lyr) {
     return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
   }
@@ -15264,6 +15361,8 @@ ${svg}
     validateSvgDataFields: validateSvgDataFields,
     exportDataAttributesForSVG: exportDataAttributesForSVG,
     getEmptyLayerForSVG: getEmptyLayerForSVG,
+    featureHasSvgSymbol: featureHasSvgSymbol,
+    featureHasLabel: featureHasLabel,
     layerHasSvgSymbols: layerHasSvgSymbols,
     layerHasLabels: layerHasLabels
   });
@@ -37280,72 +37379,6 @@ ${svg}
     }
   };
 
-  symbolRenderers.circle = function(d, x, y) {
-    var o = importPoint([x, y], d, {});
-    applyStyleAttributes(o, 'Point', d);
-    return [o];
-  };
-
-  symbolRenderers.label = function(d, x, y) {
-    var o = importStyledLabel(d, [x, y]);
-    return [o];
-  };
-
-  symbolRenderers.image = function(d, x, y) {
-    var w = d.width || 20,
-        h = d.height || 20;
-    var o = {
-      tag: 'image',
-      properties: {
-        width: w,
-        height: h,
-        x: x - w / 2,
-        y: y - h / 2,
-        href: d.href || ''
-      }
-    };
-    return [o];
-  };
-
-  symbolRenderers.square = function(d, x, y) {
-    var o = importPoint([x, y], d, {point_symbol: 'square'});
-    applyStyleAttributes(o, 'Point', d);
-    return [o];
-  };
-
-  symbolRenderers.line = function(d, x, y) {
-    var coords, o;
-    coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
-    o = importLineString(coords);
-    applyStyleAttributes(o, 'LineString', d);
-    return [o];
-  };
-
-  symbolRenderers.polyline = function(d, x, y) {
-    var coords = d.coordinates || [];
-    var o = importMultiLineString(coords);
-    applyStyleAttributes(o, 'LineString', d);
-    return [o];
-  };
-
-  symbolRenderers.polygon = function(d, x, y) {
-    var coords = d.coordinates || [];
-    var o = importPolygon(coords);
-    applyStyleAttributes(o, 'Polygon', d);
-    return [o];
-  };
-
-  symbolRenderers.group = function(d, x, y) {
-    return (d.parts || []).reduce(function(memo, o) {
-      var sym = renderSymbol(o, x, y);
-      if (d.chained) {
-        x += (o.dx || 0);
-        y += (o.dy || 0);
-      }
-      return memo.concat(sym);
-    }, []);
-  };
-
   cmd.scalebar = function(catalog, opts) {
     var frame = findFrameDataset(catalog);
     var obj, lyr;
@@ -37429,7 +37462,7 @@ ${svg}
         // so I'm using 'hanging' and 'auto', which seem to be well supported.
         // downside: requires a kludgy multiplier to calculate scalebar height (see above)
       };
-    var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY)[0];
+    var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY);
     var g = {
       tag: 'g',
       children: [barObj, labelObj],
@@ -38680,6 +38713,15 @@ ${svg}
 
   var roundCoord = getRoundingFunction(0.01);
 
+  function getSymbolColor(d) {
+    return d.fill || 'magenta';
+  }
+
+  function getSymbolRadius(d) {
+    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
+    return d.radius || d.length || d.r || 5; // use a default value
+  }
+
   function forEachSymbolCoord(coords, cb) {
     var isPoint = coords && utils.isNumber(coords[0]);
     var isNested = !isPoint && coords && Array.isArray(coords[0]);
@@ -38934,8 +38976,19 @@ ${svg}
     return coords;
   }
 
+  function makeCircleSymbol(d, opts) {
+    var radius = getSymbolRadius(d);
+    // TODO: remove duplicatoin with svg-symbols.js
+    if (+opts.scale) radius *= +opts.scale;
+    return {
+      type: 'circle',
+      fill: getSymbolColor(d),
+      r: radius
+    };
+  }
+
   function getPolygonCoords(d) {
-    var radius = d.radius || d.length || d.r,
+    var radius = getSymbolRadius(d),
         sides = +d.sides || getSidesByType(d.type),
         rotated = sides % 2 == 1,
         coords = [],
@@ -38972,7 +39025,7 @@ ${svg}
   }
 
   function getStarCoords(d) {
-    var radius = d.radius || d.length || d.r,
+    var radius = getSymbolRadius(d),
         points = d.points || d.sides && d.sides / 2 || 5,
         sides = points * 2,
         minorRadius = getMinorRadius(points) * radius,
@@ -39017,6 +39070,34 @@ ${svg}
     return 180 - centerAngle;
   }
 
+  function makeRingSymbol(d, opts) {
+    var scale = +opts.scale || 1;
+    var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
+    var solidCenter = utils.isOdd(radii.length);
+    var color = getSymbolColor(d);
+    var parts = [];
+    if (solidCenter) {
+      parts.push({
+        type: 'circle',
+        fill: color,
+        r: radii.shift()
+      });
+    }
+    for (var i=0; i<radii.length; i+= 2) {
+      parts.push({
+        type: 'circle',
+        fill: 'none', // TODO remove default black fill so this is not needed
+        stroke: color,
+        'stroke-width':  roundToTenths(radii[i+1] - radii[i]),
+        r: roundToTenths(radii[i+1] * 0.5 + radii[i] * 0.5)
+      });
+    }
+    return {
+      type: 'group',
+      parts: parts
+    };
+  }
+
   // Returns GeoJSON MultiPolygon coords
   function getRingCoords(d) {
     var radii = parseRings(d.radii || '2');
@@ -39048,6 +39129,27 @@ ${svg}
     return utils.uniq(arr);
   }
 
+  // Returns an svg-symbol data object for one symbol
+  function makePolygonSymbol(coords, properties, geojsonType) {
+    if (geojsonType == 'MultiPolygon') {
+      coords = convertMultiPolygonCoords(coords);
+    } else if (geojsonType != 'Polygon') {
+      error('Unsupported type:', geojsonType);
+    }
+    roundCoordsForSVG(coords);
+    return {
+      type: 'polygon',
+      coordinates: coords,
+      fill: getSymbolColor(properties)
+    };
+  }
+
+  function convertMultiPolygonCoords(coords) {
+    return coords.reduce(function(memo, poly) {
+      return memo.concat(poly);
+    }, []);
+  }
+
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
   cmd.symbols = function(inputLyr, dataset, opts) {
     requireSinglePointLayer(inputLyr);
@@ -39064,8 +39166,20 @@ ${svg}
       if (!shp) return null;
       var d = getSymbolData(i);
       var rec = records[i] || {};
+
+      // non-polygon symbols
+      if (!polygonMode && d.type == 'circle') {
+        rec['svg-symbol'] = makeCircleSymbol(d, opts);
+        return;
+      }
+      if (!polygonMode && d.type == 'ring') {
+        rec['svg-symbol'] = makeRingSymbol(d, opts);
+        return;
+      }
+
       var geojsonType = 'Polygon';
       var coords;
+      // these symbols get converted to polygon shapes
       if (d.type == 'arrow') {
         coords = getFilledArrowCoords(d);
       } else if (d.type == 'ring') {
@@ -39089,7 +39203,7 @@ ${svg}
         if (d.tfill) rec.fill = d.fill;
         return createGeometry(coords, geojsonType);
       } else {
-        rec['svg-symbol'] = makeSvgPolygonSymbol(coords, d, geojsonType);
+        rec['svg-symbol'] = makePolygonSymbol(coords, d, geojsonType);
       }
     });
 
@@ -39128,31 +39242,9 @@ ${svg}
   }
 
   function getMetersPerPixel(lyr, dataset) {
-
     // TODO: handle single point, no extent
     var bounds = getLayerBounds(lyr);
     return bounds.width() / 800;
-  }
-
-  // Returns an svg-symbol data object for one symbol
-  function makeSvgPolygonSymbol(coords, properties, geojsonType) {
-    if (geojsonType == 'MultiPolygon') {
-      coords = convertMultiPolygonCoords(coords);
-    } else if (geojsonType != 'Polygon') {
-      error('Unsupported type:', geojsonType);
-    }
-    roundCoordsForSVG(coords);
-    return {
-      type: 'polygon',
-      coordinates: coords,
-      fill: properties.fill || 'magenta'
-    };
-  }
-
-  function convertMultiPolygonCoords(coords) {
-    return coords.reduce(function(memo, poly) {
-      return memo.concat(poly);
-    }, []);
   }
 
   var Symbols = /*#__PURE__*/Object.freeze({
@@ -40661,7 +40753,8 @@ ${svg}
   //       export only functions called by the GUI.
 
   var internal = {};
-  internal.svg = Object.assign({}, SvgCommon, SvgStringify, SvgPathUtils, GeojsonToSvg);
+
+  internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg, SvgLabels, SvgSymbols);
 
   // Assign functions and objects exported from modules to the 'internal' namespace
   // to maintain compatibility with tests and to expose (some of) them to the GUI.

@@ -5992,13 +5992,13 @@
     var records = lyr.data.getRecords();
     var symbols = lyr.shapes.map(function(shp, i) {
       var d = records[i];
-      var obj = type == 'label' ? internal.svg.importStyledLabel(d) :
-          internal.svg.importSymbol(d['svg-symbol']);
+      var obj = internal.svg.renderPoint(d);
       if (!obj || !shp) return null;
+      obj.properties.class = 'mapshaper-svg-symbol';
       obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
       obj.properties['data-id'] = i;
       return obj;
-    });
+    }).filter(Boolean);
     var obj = internal.getEmptyLayerForSVG(lyr, {});
     obj.children = symbols;
     return internal.svg.stringify(obj);
@@ -7687,7 +7687,7 @@
 
     // update symbol by re-rendering it
     function updateSymbol2(node, d, id) {
-      var o = internal.svg.importStyledLabel(d); // TODO: symbol support
+      var o = internal.svg.renderStyledLabel(d); // TODO: symbol support
       var activeLayer = hit.getHitTarget().layer;
       var xy = activeLayer.shapes[id][0];
       var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -9238,12 +9238,14 @@
     function reposition(target, type, ext) {
       var container = el.findChild('.' + target.svg_id).node();
       var elements;
-      if (type == 'label' || type == 'symbol') {
-        elements = type == 'label' ? container.getElementsByTagName('text') :
-            El.findAll('.mapshaper-svg-symbol', container);
+      if (type == 'symbol') {
+        elements = El.findAll('.mapshaper-svg-symbol', container);
         repositionSymbols(elements, target.layer, ext);
       } else if (type == 'furniture') {
         repositionFurniture(container, target.layer, ext);
+      } else {
+        // container.getElementsByTagName('text')
+        error('Unsupported symbol type:', type);
       }
     }
 
@@ -9273,14 +9275,15 @@
         _svg.clear();
       }
       layers.forEach(function(lyr) {
-        var svgType = getSvgLayerType(lyr.layer);
-        if (!svgType || svgType == 'label') { // svg labels may have canvas dots
+        var isSvgLayer = internal.layerHasSvgSymbols(lyr.layer) || internal.layerHasLabels(lyr.layer);
+        //if (!svgType || svgType == 'label') { // svg labels may have canvas dots
+        if (!isSvgLayer) { // svg labels may have canvas dots
           drawCanvasLayer(lyr, _mainCanv);
         }
-        if (svgType && action == 'nav') {
-          _svg.reposition(lyr, svgType);
-        } else if (svgType) {
-          _svg.drawLayer(lyr, svgType);
+        if (isSvgLayer && action == 'nav') {
+          _svg.reposition(lyr, 'symbol');
+        } else if (isSvgLayer) {
+          _svg.drawLayer(lyr, 'symbol');
         }
       });
     };
@@ -9332,9 +9335,9 @@
 
     function getSvgLayerType(layer) {
       var type = null;
-      if (internal.layerHasLabels(layer)) {
-        type = 'label';
-      } else if (internal.layerHasSvgSymbols(layer)) {
+      if (internal.layerHasSvgSymbols(layer)) {
+        type = 'symbol'; // also label + symbol
+      } else if (internal.layerHasLabels(layer)) {
         type = 'symbol';
       }
       return type;
