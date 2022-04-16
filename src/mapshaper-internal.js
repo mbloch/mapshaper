@@ -7,10 +7,12 @@ var internal = {};
 export default internal;
 
 import * as GeojsonToSvg from './svg/geojson-to-svg';
-import * as SvgCommon from './svg/svg-common';
 import * as SvgPathUtils from './svg/svg-path-utils';
 import * as SvgStringify from './svg/svg-stringify';
-internal.svg = Object.assign({}, SvgCommon, SvgStringify, SvgPathUtils, GeojsonToSvg);
+import * as SvgLabels from './svg/svg-labels';
+import * as SvgSymbols from './svg/svg-symbols';
+
+internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg, SvgLabels, SvgSymbols);
 
 import Dbf from './shapefile/dbf-writer';
 import DbfReader from './shapefile/dbf-reader';

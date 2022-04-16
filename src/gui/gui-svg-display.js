@@ -2,6 +2,7 @@ import { repositionSymbols, renderSymbols } from './gui-svg-symbols';
 import { renderFurniture, repositionFurniture } from './gui-svg-furniture';
 import { El } from './gui-el';
 import { utils } from './gui-core';
+import { error } from '../utils/mapshaper-logging';
 
 export function SvgDisplayLayer(gui, ext, mouse) {
   var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -45,12 +46,14 @@ export function SvgDisplayLayer(gui, ext, mouse) {
   function reposition(target, type, ext) {
     var container = el.findChild('.' + target.svg_id).node();
     var elements;
-    if (type == 'label' || type == 'symbol') {
-      elements = type == 'label' ? container.getElementsByTagName('text') :
-          El.findAll('.mapshaper-svg-symbol', container);
+    if (type == 'symbol') {
+      elements = El.findAll('.mapshaper-svg-symbol', container);
       repositionSymbols(elements, target.layer, ext);
     } else if (type == 'furniture') {
       repositionFurniture(container, target.layer, ext);
+    } else {
+      // container.getElementsByTagName('text')
+      error('Unsupported symbol type:', type);
     }
   }
 

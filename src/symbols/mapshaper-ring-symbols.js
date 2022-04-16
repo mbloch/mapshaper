@@ -2,6 +2,37 @@ import { getPolygonCoords } from './mapshaper-basic-symbols';
 import { parseNumberList } from '../cli/mapshaper-option-parsing-utils';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import { getSymbolRadius, getSymbolColor } from './mapshaper-symbol-utils';
+import { makeCircleSymbol } from './mapshaper-basic-symbols';
+import { roundToTenths } from '../geom/mapshaper-rounding';
+
+export function makeRingSymbol(d, opts) {
+  var scale = +opts.scale || 1;
+  var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
+  var solidCenter = utils.isOdd(radii.length);
+  var color = getSymbolColor(d);
+  var parts = [];
+  if (solidCenter) {
+    parts.push({
+      type: 'circle',
+      fill: color,
+      r: radii.shift()
+    });
+  }
+  for (var i=0; i<radii.length; i+= 2) {
+    parts.push({
+      type: 'circle',
+      fill: 'none', // TODO remove default black fill so this is not needed
+      stroke: color,
+      'stroke-width':  roundToTenths(radii[i+1] - radii[i]),
+      r: roundToTenths(radii[i+1] * 0.5 + radii[i] * 0.5)
+    });
+  }
+  return {
+    type: 'group',
+    parts: parts
+  };
+}
 
 // Returns GeoJSON MultiPolygon coords
 export function getRingCoords(d) {

@@ -119,7 +119,7 @@ export function initLabelDragging(gui, ext, hit) {
 
   // update symbol by re-rendering it
   function updateSymbol2(node, d, id) {
-    var o = internal.svg.importStyledLabel(d); // TODO: symbol support
+    var o = internal.svg.renderStyledLabel(d); // TODO: symbol support
     var activeLayer = hit.getHitTarget().layer;
     var xy = activeLayer.shapes[id][0];
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');

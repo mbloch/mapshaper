@@ -21,17 +21,15 @@ export function LayerStack(gui, container, ext, mouse) {
       _svg.clear();
     }
     layers.forEach(function(lyr) {
-      var svgType = getSvgLayerType(lyr.layer);
-      if (!svgType || svgType == 'label') { // svg labels may have canvas dots
-        if (!lyr.style) {
-          console.error('Layer is missing a style:', lyr);
-        }
+      var isSvgLayer = internal.layerHasSvgSymbols(lyr.layer) || internal.layerHasLabels(lyr.layer);
+      //if (!svgType || svgType == 'label') { // svg labels may have canvas dots
+      if (!isSvgLayer) { // svg labels may have canvas dots
         drawCanvasLayer(lyr, _mainCanv);
       }
-      if (svgType && action == 'nav') {
-        _svg.reposition(lyr, svgType);
-      } else if (svgType) {
-        _svg.drawLayer(lyr, svgType);
+      if (isSvgLayer && action == 'nav') {
+        _svg.reposition(lyr, 'symbol');
+      } else if (isSvgLayer) {
+        _svg.drawLayer(lyr, 'symbol');
       }
     });
   };
@@ -83,9 +81,9 @@ export function LayerStack(gui, container, ext, mouse) {
 
   function getSvgLayerType(layer) {
     var type = null;
-    if (internal.layerHasLabels(layer)) {
-      type = 'label';
-    } else if (internal.layerHasSvgSymbols(layer)) {
+    if (internal.layerHasSvgSymbols(layer)) {
+      type = 'symbol'; // also label + symbol
+    } else if (internal.layerHasLabels(layer)) {
       type = 'symbol';
     }
     return type;

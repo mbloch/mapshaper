@@ -1,6 +1,17 @@
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
-import { getSymbolRadius } from './mapshaper-symbol-utils';
+import { getSymbolRadius, getSymbolColor } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
+
+export function makeCircleSymbol(d, opts) {
+  var radius = getSymbolRadius(d);
+  // TODO: remove duplicatoin with svg-symbols.js
+  if (+opts.scale) radius *= +opts.scale;
+  return {
+    type: 'circle',
+    fill: getSymbolColor(d),
+    r: radius
+  };
+}
 
 export function getPolygonCoords(d) {
   var radius = getSymbolRadius(d),

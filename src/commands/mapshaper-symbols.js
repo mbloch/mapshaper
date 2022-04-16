@@ -4,18 +4,18 @@ import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import { getSymbolDataAccessor } from '../svg/svg-properties';
 import { requirePointLayer, requireSinglePointLayer, getLayerBounds, copyLayer } from '../dataset/mapshaper-layer-utils';
 import { stop, error } from '../utils/mapshaper-logging';
-// import { symbolBuilders } from '../svg/svg-common';
 // import '../svg/mapshaper-svg-arrows';
-import { rotateCoords, scaleAndShiftCoords, flipY, roundCoordsForSVG } from '../symbols/mapshaper-symbol-utils';
+import { rotateCoords, scaleAndShiftCoords, flipY, roundCoordsForSVG, getSymbolColor } from '../symbols/mapshaper-symbol-utils';
 import { getFilledArrowCoords } from '../symbols/mapshaper-arrow-symbols';
-import { getPolygonCoords } from '../symbols/mapshaper-basic-symbols';
+import { getPolygonCoords, makeCircleSymbol } from '../symbols/mapshaper-basic-symbols';
 import { getStarCoords } from '../symbols/mapshaper-star-symbols';
-import { getRingCoords } from '../symbols/mapshaper-ring-symbols';
+import { getRingCoords, makeRingSymbol } from '../symbols/mapshaper-ring-symbols';
 import { getAffineTransform } from '../commands/mapshaper-affine';
 import { mergeOutputLayerIntoDataset } from '../dataset/mapshaper-dataset-utils';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { requireProjectedDataset } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-state';
+import { makePolygonSymbol } from '../symbols/mapshaper-polygon-symbols';
 
 // TODO: refactor to remove duplication in mapshaper-svg-style.js
 cmd.symbols = function(inputLyr, dataset, opts) {
@@ -33,8 +33,20 @@ cmd.symbols = function(inputLyr, dataset, opts) {
     if (!shp) return null;
     var d = getSymbolData(i);
     var rec = records[i] || {};
+
+    // non-polygon symbols
+    if (!polygonMode && d.type == 'circle') {
+      rec['svg-symbol'] = makeCircleSymbol(d, opts);
+      return;
+    }
+    if (!polygonMode && d.type == 'ring') {
+      rec['svg-symbol'] = makeRingSymbol(d, opts);
+      return;
+    }
+
     var geojsonType = 'Polygon';
     var coords;
+    // these symbols get converted to polygon shapes
     if (d.type == 'arrow') {
       coords = getFilledArrowCoords(d);
     } else if (d.type == 'ring') {
@@ -58,7 +70,7 @@ cmd.symbols = function(inputLyr, dataset, opts) {
       if (d.tfill) rec.fill = d.fill;
       return createGeometry(coords, geojsonType);
     } else {
-      rec['svg-symbol'] = makeSvgPolygonSymbol(coords, d, geojsonType);
+      rec['svg-symbol'] = makePolygonSymbol(coords, d, geojsonType);
     }
   });
 
@@ -97,29 +109,7 @@ function createGeometry(coords, type) {
 }
 
 function getMetersPerPixel(lyr, dataset) {
-
   // TODO: handle single point, no extent
   var bounds = getLayerBounds(lyr);
   return bounds.width() / 800;
-}
-
-// Returns an svg-symbol data object for one symbol
-function makeSvgPolygonSymbol(coords, properties, geojsonType) {
-  if (geojsonType == 'MultiPolygon') {
-    coords = convertMultiPolygonCoords(coords);
-  } else if (geojsonType != 'Polygon') {
-    error('Unsupported type:', geojsonType);
-  }
-  roundCoordsForSVG(coords);
-  return {
-    type: 'polygon',
-    coordinates: coords,
-    fill: properties.fill || 'magenta'
-  };
-}
-
-function convertMultiPolygonCoords(coords) {
-  return coords.reduce(function(memo, poly) {
-    return memo.concat(poly);
-  }, []);
 }

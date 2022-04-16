@@ -77,7 +77,8 @@ describe('mapshaper-svg.js', function () {
     var geo = {
       type: 'Feature',
       properties: {
-        stroke: 'purple'
+        stroke: 'purple',
+        r: '10'
       },
       geometry: {
         type: 'Point',
@@ -88,7 +89,7 @@ describe('mapshaper-svg.js', function () {
 
     api.applyCommands(cmd, geo, function(err, data) {
       var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="800" height="800" viewBox="0 0 800 800" stroke-linecap="round" stroke-linejoin="round">\n' +
-      '<g id="dot">\n<circle cx="400" cy="400" stroke="purple"/>\n</g>\n</svg>'
+      '<g id="dot">\n<circle cx="400" cy="400" r="10" stroke="purple"/>\n</g>\n</svg>'
       assert.equal(data, svg)
       done();
     });
@@ -145,13 +146,13 @@ describe('mapshaper-svg.js', function () {
         type: 'MultiPoint',
         coordinates: [[0, 2], [2, 0]]
       },
-      properties: {name: 'dots'}
+      properties: {name: 'dots', r: 1}
     };
     var cmd = '-o id-field=name format=svg';
 
     api.applyCommands(cmd, geo, function(err, data) {
       var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="800" height="800" viewBox="0 0 800 800" stroke-linecap="round" stroke-linejoin="round">\n' +
-      '<g id="layer1">\n<g id="dots">\n<circle cx="1" cy="1"/>\n<circle cx="799" cy="799"/>\n</g>\n</g>\n</svg>';
+      '<g id="layer1">\n<g id="dots">\n<circle cx="1" cy="1" r="1"/>\n<circle cx="799" cy="799" r="1"/>\n</g>\n</g>\n</svg>';
 
       assert.equal(data, svg)
       done();
@@ -165,14 +166,13 @@ describe('mapshaper-svg.js', function () {
         type: 'MultiPoint',
         coordinates: [[0, 2], [2, 0]]
       },
-      properties: {name: '"1980\'s" & <now>'}
+      properties: {name: '"1980\'s" & <now>', r: 5}
     };
     var cmd = '-o id-field=name format=svg';
 
     api.applyCommands(cmd, geo, function(err, data) {
       var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="800" height="800" viewBox="0 0 800 800" stroke-linecap="round" stroke-linejoin="round">\n' +
-      '<g id="layer1">\n<g id="&quot;1980&apos;s&quot; &amp; &lt;now&gt;">\n<circle cx="1" cy="1"/>\n<circle cx="799" cy="799"/>\n</g>\n</g>\n</svg>';
-
+      '<g id="layer1">\n<g id="&quot;1980&apos;s&quot; &amp; &lt;now&gt;">\n<circle cx="1" cy="1" r="5"/>\n<circle cx="799" cy="799" r="5"/>\n</g>\n</g>\n</svg>';
       assert.equal(data, svg)
       done();
     });
@@ -180,20 +180,26 @@ describe('mapshaper-svg.js', function () {
 
   it ('width= and margin= options work', function(done) {
     var geo = {
-      type: 'GeometryCollection',
-      geometries: [{
-        type: 'Point',
-        coordinates: [0, -10]
-      }, {
-        type: 'Point',
-        coordinates: [-10, 10]
-      }]
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {r: 2},
+        geometry: {
+          type: 'Point',
+          coordinates: [0, -10]
+        }}, {
+        type: 'Feature',
+        properties: {r: 2},
+        geometry: {
+          type: 'Point',
+          coordinates: [-10, 10]
+        }}]
     };
     var cmd = '-o width=10 margin=0 format=svg';
 
     api.applyCommands(cmd, geo, function(err, data) {
       var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="10" height="20" viewBox="0 0 10 20" stroke-linecap="round" stroke-linejoin="round">\n' +
-      '<g id="layer1">\n<circle cx="10" cy="20"/>\n<circle cx="0" cy="0"/>\n</g>\n</svg>';
+      '<g id="layer1">\n<circle cx="10" cy="20" r="2"/>\n<circle cx="0" cy="0" r="2"/>\n</g>\n</svg>';
 
       assert.equal(data, svg)
       done();

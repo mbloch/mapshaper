@@ -15,6 +15,7 @@ describe('svg-data (mapshaper-svg.js)', function () {
           coordinates: [1, 1]
         },
         properties: {
+          r: 5,
           id: 'r5w',
           value: 32,
           name: 'Sullivan',

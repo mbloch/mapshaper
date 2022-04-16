@@ -17,26 +17,54 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(SVG.importGeoJSONFeatures(input), output);
     })
 
-    it('single point geometry', function() {
+   it('multipoint with no size -> empty', function() {
       var geo = {
         type: "MultiPoint",
         coordinates: [[0, 1], [1, 2]]
       };
-      var target = [{
-        tag: 'g',
-        children: [{
-          tag: 'circle',
-          properties: {cx: 0, cy: 1}
-        }, {
-          tag: 'circle',
-          properties: {cx: 1, cy: 2}
-        }]
-      }];
+      var target = [{tag: 'g'}]; // empty element (missing r property)
       var output = SVG.importGeoJSONFeatures([geo]);
       assert.deepEqual(output, target);
     })
 
-    it('single point feature', function() {
+
+   it('multipoint with size -> circles', function() {
+      var feat = {
+        type: 'Feature',
+        properties: {
+          fill: 'magenta',
+          r: 3
+        },
+        geometry: {
+          type: "MultiPoint",
+          coordinates: [[0, 1], [1, 2]],
+        }
+      };
+      var target = [{tag: 'g',
+        properties: {
+          fill: 'magenta'
+        },
+        children: [{
+          tag: 'circle',
+          properties: {
+            cx: 0,
+            cy: 1,
+            r: 3
+          }
+        }, {
+          tag: 'circle',
+          properties: {
+            cx: 1,
+            cy: 2,
+            r: 3
+          }
+        }]
+      }]; // empty element (missing r property)
+      var output = SVG.importGeoJSONFeatures([feat]);
+      assert.deepEqual(output, target);
+    })
+
+    it('single point feature with circle', function() {
       var geo = {
         type: "Feature",
         properties: {r: 2, opacity: 0.5, 'class': "dot pinkdot"},
@@ -56,7 +84,8 @@ describe('geojson-to-svg.js', function () {
           properties: {cx: 1, cy: 2, r: 2}
         }]
       }];
-      assert.deepEqual(SVG.importGeoJSONFeatures([geo]), target);
+      var output = SVG.importGeoJSONFeatures([geo]);
+      assert.deepEqual(output, target);
     })
 
     it('feature with null geometry', function() {
@@ -71,7 +100,8 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
     })
 
-    it('point feature with square symbol', function() {
+    // square symbols no longer supported
+    false && it('point feature with square symbol', function() {
       var geo = {
         type: 'Feature',
         properties: {r: 2},
@@ -82,10 +112,9 @@ describe('geojson-to-svg.js', function () {
         properties: {x: 3, y: 3, width: 4, height: 4}
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
-
     });
 
-    it('point feature with square symbol and label', function() {
+    it('point feature with circle and label', function() {
       var geo = {
         type: 'Feature',
         properties: {r: 2, 'label-text': 'foo'},
@@ -94,17 +123,18 @@ describe('geojson-to-svg.js', function () {
       var expected = [{
         tag: 'g',
         children: [{
-          tag: 'rect',
-          properties: {x: 3, y: 3, width: 4, height: 4}
+          tag: 'circle',
+          properties: {cx: 0, cy: 0, r: 2}
         }, {
           tag: 'text',
           value: 'foo',
           // properties: {x: 5, y: 5}
-          properties: {transform: 'translate(5 5)', x: 0, y: 0}
-        }]
+          properties: {x: 0, y: 0}
+        }],
+        properties: {transform: 'translate(5 5)'}
       }];
+      // square symbol no longer supported
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {point_symbol: 'square'}), expected)
-
     });
 
 
@@ -191,9 +221,11 @@ describe('geojson-to-svg.js', function () {
           tag: 'text',
           value: 'TBD',
           // properties: {x: 0, y: 1, dx: '10px', dy: '-1em'}
-          properties: {transform: 'translate(0 1)', x: '10px', y: '-1em'}
-        }],
-        properties: {'font-family': 'Gill Sans, sans-serif', 'font-style': 'italic', 'font-weight': 'bold'}
+          properties: {
+            transform: 'translate(0 1)', x: '10px', y: '-1em',
+            'font-family': 'Gill Sans, sans-serif', 'font-style': 'italic', 'font-weight': 'bold'
+          }
+        }]
       }];
       var output = SVG.importGeoJSONFeatures([geo]);
       assert.deepEqual(output, target);
@@ -218,14 +250,14 @@ describe('geojson-to-svg.js', function () {
         tag: 'g',
         children: [{
           tag: 'circle',
-          properties: {cx: 0, cy: 1, r: 2}
+          properties: {cx: 0, cy: 0, r: 2}
         },{
           tag: 'text',
           value: 'Milwaukee',
           // properties: {x: 0, y: 1, dx: 5}
-          properties: {transform: 'translate(0 1)', x: 5, y: 0}
+          properties: {'text-anchor': 'start', x: 5, y: 0}
         }],
-        properties: {'text-anchor': 'start'}
+        properties: {transform: 'translate(0 1)'}
       }];
       var output = SVG.importGeoJSONFeatures([geo]);
       assert.deepEqual(output, target);
@@ -311,10 +343,69 @@ describe('geojson-to-svg.js', function () {
 
   })
 
-  describe('SVG.importLabel()', function () {
+  describe('SVG.importPoint()', function () {
+
+    it('svg-symbol with circle', function() {
+      var d = {
+        'svg-symbol': {
+          type: 'circle',
+          r: 5,
+          fill: 'magenta'
+        }
+      };
+      var obj = SVG.importPoint([1, 2], d)
+      var target = {
+        tag: 'circle',
+        properties: {
+          r: 5,
+          fill: 'magenta',
+          cx: 0,
+          cy: 0,
+          transform: "translate(1 2)"
+        }
+      };
+      assert.deepEqual(obj, target);
+    })
+
+    it('svg-symbol with circle and label', function() {
+      var d = {
+        'label-text': 'TBD',
+        fill: 'purple',
+        'svg-symbol': {
+          type: 'circle',
+          r: 5,
+          fill: 'magenta'
+        }
+      };
+      var obj = SVG.importPoint([1, 2], d)
+      var target = {
+        tag: 'g',
+        properties: {transform: "translate(1 2)"},
+        children: [
+          {
+            tag: 'circle',
+            properties: {
+              r: 5,
+              fill: 'magenta',
+              cx: 0,
+              cy: 0,
+            }
+          }, {
+            tag: 'text',
+            value: 'TBD',
+            properties: {
+              fill: 'purple',
+              x: 0,
+              y: 0
+            }
+          }
+        ]};
+      assert.deepEqual(obj, target);
+    })
+
     it('recognizes several newline markers', function () {
       var str = 'line one\nline two\\nline three<br>line four';
-      var obj = SVG.importLabel({'label-text': str}, [1, 2])
+      var obj = SVG.importPoint([1, 2], {'label-text': str})
       var target = {
         tag: 'text',
         value: 'line one',
@@ -339,7 +430,7 @@ describe('geojson-to-svg.js', function () {
 
     it('(bugfix) converts numeric 0 to string', function () {
       var str = 'line one\nline two\\nline three<br>line four';
-      var obj = SVG.importLabel({'label-text': 0}, [1, 2])
+      var obj = SVG.importPoint([1, 2], {'label-text': 0})
       var target = {
         tag: 'text',
         value: '0',

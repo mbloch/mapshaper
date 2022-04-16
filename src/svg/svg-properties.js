@@ -62,8 +62,26 @@ var propertiesBySymbolType = {
   polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin')),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
-    'fill,r,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
+    'fill,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
 };
+
+// symType: point, polygon, polyline, label
+export function applyStyleAttributes(svgObj, symType, rec, filter) {
+  var fields = findPropertiesBySymbolGeom(Object.keys(rec || {}), symType);
+  for (var i=0, n=fields.length; i<n; i++) {
+    if (filter && !filter(fields[i])) continue;
+    setAttribute(svgObj, fields[i], rec[fields[i]]);
+  }
+}
+
+function setAttribute(obj, k, v) {
+  if (!obj.properties) obj.properties = {};
+  obj.properties[k] = v;
+  if (k == 'stroke-dasharray' && v) {
+    // kludge for cleaner dashes... make butt the default?
+    obj.properties['stroke-linecap'] = 'butt';
+  }
+}
 
 export function isSupportedSvgStyleProperty(name) {
   return name in stylePropertyTypes;

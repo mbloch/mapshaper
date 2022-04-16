@@ -38,13 +38,13 @@ export function renderSymbols(lyr, ext, type) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];
-    var obj = type == 'label' ? internal.svg.importStyledLabel(d) :
-        internal.svg.importSymbol(d['svg-symbol']);
+    var obj = internal.svg.renderPoint(d);
     if (!obj || !shp) return null;
+    obj.properties.class = 'mapshaper-svg-symbol';
     obj.properties.transform = getSvgSymbolTransform(shp[0], ext);
     obj.properties['data-id'] = i;
     return obj;
-  });
+  }).filter(Boolean);
   var obj = internal.getEmptyLayerForSVG(lyr, {});
   obj.children = symbols;
   return internal.svg.stringify(obj);

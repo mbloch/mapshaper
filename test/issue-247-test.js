@@ -23,7 +23,7 @@ describe('Issue #247 (Better SVG layer and feature ids)', function () {
             name: 'dataset',
             geometry_type: 'point',
             shapes: [[[0,0], [1,1]]],
-            data: new api.internal.DataTable([{FID: 'A'}])
+            data: new api.internal.DataTable([{FID: 'A', r: 3}])
         }]
     };
     var out = api.internal.exportLayerForSVG(dataset.layers[0], dataset, {id_prefix: 'points-'});
@@ -37,13 +37,15 @@ describe('Issue #247 (Better SVG layer and feature ids)', function () {
               "tag": "circle",
               "properties": {
                 "cx": 0,
-                "cy": 0
+                "cy": 0,
+                "r": 3
               }
             }, {
               "tag": "circle",
               "properties": {
                 "cx": 1,
-                "cy": 1
+                "cy": 1,
+                "r": 3
               }
             }]
         }]

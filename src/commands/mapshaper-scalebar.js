@@ -4,8 +4,7 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { stop } from '../utils/mapshaper-logging';
-// import { symbolRenderers } from '../svg/svg-common';
-import { symbolRenderers } from '../svg/mapshaper-svg-symbols';
+import { symbolRenderers } from '../svg/svg-symbols';
 
 cmd.scalebar = function(catalog, opts) {
   var frame = findFrameDataset(catalog);
@@ -90,7 +89,7 @@ furnitureRenderers.scalebar = function(d, frame) {
       // so I'm using 'hanging' and 'auto', which seem to be well supported.
       // downside: requires a kludgy multiplier to calculate scalebar height (see above)
     };
-  var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY)[0];
+  var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY);
   var g = {
     tag: 'g',
     children: [barObj, labelObj],
