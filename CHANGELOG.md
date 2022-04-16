@@ -1,3 +1,8 @@
+v0.5.112
+* Added support for labels with symbols.
+* Symbols created with the -symbols command have a default size (e.g. `-symbols type=star` creates star symbols with a default size).
+* Mapshaper no longer outputs SVG circles with radius 0.
+
 v0.5.111
 * Added -snap endpoints option, for snapping together line endpoints that don't quite meet.
 * Added buttons to the basemaps menu.
