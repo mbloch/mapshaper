@@ -46,15 +46,25 @@ export function exportSVG(dataset, opts) {
     convertPropertiesToDefinitions(obj, defs);
     return stringify(obj);
   }).join('\n');
+
   if (defs.length > 0) {
     svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
   }
+
   if (svg.includes('xlink:')) {
     namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
   }
+
+  // default line style properties
   var capStyle = opts.default_linecap || 'round';
+  var lineProps = `stroke-linecap="${capStyle}" stroke-linejoin="round"`;
+  if (svg.includes('stroke-linejoin="miter"')) {
+    // the default limit in Illustrator seems to be 10 -- too large for mapping
+    // (Mapbox uses 2 as the default in their styles)
+    lineProps += ' stroke-miterlimit="2"';
+  }
   var template = `<?xml version="1.0"?>
-<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="${capStyle}" stroke-linejoin="round">${style}
+<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}
 </svg>`;
   svg = utils.format(template,size[0], size[1], 0, 0, size[0], size[1]);
