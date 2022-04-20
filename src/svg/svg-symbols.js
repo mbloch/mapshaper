@@ -58,12 +58,20 @@ function renderComplexSymbol(sym) {
   if (utils.isString(sym)) {
     sym = JSON.parse(sym);
   }
+  if (sym.tag) {
+    // symbol appears to already use mapshaper's svg notation... pass through
+    return sym;
+  }
   var renderer = symbolRenderers[sym.type];
   if (!renderer) {
     message(sym.type ? 'Unknown symbol type: ' + sym.type : 'Symbol is missing a type property');
     return empty();
   }
-  return renderer(sym, 0, 0);
+  var o = renderer(sym, 0, 0);
+  if (sym.opacity) {
+    o.properties.opacity = sym.opacity;
+  }
+  return o;
 }
 
 function empty() {
@@ -83,7 +91,12 @@ function circle(d, x, y) {
 }
 
 function label(d, x, y) {
-  return renderStyledLabel(d);
+  var o = renderStyledLabel(d);
+  if (x || y) {
+    o.properties.x = x || 0;
+    o.properties.y = y || 0;
+  }
+  return o;
 }
 
 function image(d, x, y) {
@@ -94,8 +107,8 @@ function image(d, x, y) {
     properties: {
       width: w,
       height: h,
-      x: x - w / 2,
-      y: y - h / 2,
+      x: (x || 0) - w / 2,
+      y: (y || 0) - h / 2,
       href: d.href || ''
     }
   };
@@ -140,14 +153,14 @@ function polygon(d, x, y) {
 }
 
 function group(d, x, y) {
-  var parts = (d.parts || []).reduce(function(memo, o) {
-    var sym = renderSymbol(o, x, y);
+  var parts = (d.parts || []).map(function(o) {
+    var sym = renderComplexSymbol(o, x, y);
     if (d.chained) {
       x += (o.dx || 0);
       y += (o.dy || 0);
     }
-    return memo.concat(sym);
-  }, []);
+    return sym;
+  });
   if (parts.length == 1) return parts[0];
   return {
     tag: 'g',
