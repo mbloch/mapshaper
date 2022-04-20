@@ -267,13 +267,16 @@ function getCanvasDisplayStyle(lyr) {
   var styleIndex = {
         opacity: 'opacity',
         r: 'radius',
-        fill: 'fillColor',
-        stroke: 'strokeColor',
+        'fill': 'fillColor',
         'fill-pattern': 'fillPattern',
+        'fill-opacity': 'fillOpacity',
+        'stroke': 'strokeColor',
         'stroke-width': 'strokeWidth',
         'stroke-dasharray': 'lineDash',
         'stroke-opacity': 'strokeOpacity',
-        'fill-opacity': 'fillOpacity'
+        'stroke-linecap': 'lineCap',
+        'stroke-linejoin': 'lineJoin',
+        'stroke-miterlimit': 'miterLimit'
       },
       // array of field names of relevant svg display properties
       fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),

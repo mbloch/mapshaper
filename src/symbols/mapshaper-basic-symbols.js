@@ -4,7 +4,7 @@ import { stop } from '../utils/mapshaper-logging';
 
 export function makeCircleSymbol(d, opts) {
   var radius = getSymbolRadius(d);
-  // TODO: remove duplicatoin with svg-symbols.js
+  // TODO: remove duplication with svg-symbols.js
   if (+opts.scale) radius *= +opts.scale;
   return {
     type: 'circle',

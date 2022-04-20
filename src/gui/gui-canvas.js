@@ -542,13 +542,16 @@ function getPathStart(ext, lineScale) {
         // (tests on Chrome showed much faster rendering of 1px lines)
         strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
       }
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      ctx.lineCap = style.lineCap || 'round';
+      ctx.lineJoin = style.lineJoin || 'round';
       ctx.lineWidth = strokeWidth * lineScale;
       ctx.strokeStyle = style.strokeColor;
       if (style.lineDash){
         ctx.lineCap = 'butt';
         ctx.setLineDash(style.lineDash.split(' '));
+      }
+      if (style.miterLimit) {
+        ctx.miterLimit = style.miterLimit;
       }
     }
 

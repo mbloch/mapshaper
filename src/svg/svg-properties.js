@@ -25,6 +25,7 @@ var stylePropertyTypes = {
   'stroke-dasharray': 'dasharray',
   'stroke-width': 'number',
   'stroke-opacity': 'number',
+  'stroke-miterlimit': 'number',
   'fill-opacity': 'number',
   'text-anchor': null
 };
@@ -59,7 +60,7 @@ var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,strok
 
 var propertiesBySymbolType = {
   polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
-  polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin')),
+  polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit')),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
     'fill,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))

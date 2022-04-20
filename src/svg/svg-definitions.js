@@ -62,6 +62,7 @@ function serializeSvgImage(href, id) {
   return svg;
 }
 
+// href: A URL or a local path
 // TODO: download SVG files asynchronously
 // (currently, files are downloaded synchronously, which is obviously undesirable)
 //
@@ -69,7 +70,7 @@ function getSvgContent(href) {
   var content;
   if (href.indexOf('http') === 0) {
     content = fetchFileSync(href);
-  } else if (require('fs').existsSync(href)) { // assume href is a relative path
+  } else if (require('fs').existsSync(href)) {
     content = require('fs').readFileSync(href, 'utf8');
   } else {
     stop("Invalid SVG location:", href);
