@@ -223,6 +223,7 @@ export function Basemap(gui, ext) {
     clearBtn.active(!off);
     if (off) {
       hide();
+      extentNote.hide();
       return;
     }
 
