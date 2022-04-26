@@ -1,3 +1,7 @@
+v0.5.113
+* Added -symbols arrow-style=stick option, for making stick arrows
+* Added -symbols stroke= and -symbols stroke-width= options for styling stick arrows
+
 v0.5.112
 * Added support for labels with symbols.
 * Symbols created with the -symbols command have a default size (e.g. `-symbols type=star` creates star symbols with a default size).
