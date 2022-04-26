@@ -8211,13 +8211,16 @@
     var styleIndex = {
           opacity: 'opacity',
           r: 'radius',
-          fill: 'fillColor',
-          stroke: 'strokeColor',
+          'fill': 'fillColor',
           'fill-pattern': 'fillPattern',
+          'fill-opacity': 'fillOpacity',
+          'stroke': 'strokeColor',
           'stroke-width': 'strokeWidth',
           'stroke-dasharray': 'lineDash',
           'stroke-opacity': 'strokeOpacity',
-          'fill-opacity': 'fillOpacity'
+          'stroke-linecap': 'lineCap',
+          'stroke-linejoin': 'lineJoin',
+          'stroke-miterlimit': 'miterLimit'
         },
         // array of field names of relevant svg display properties
         fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
@@ -9057,13 +9060,16 @@
           // (tests on Chrome showed much faster rendering of 1px lines)
           strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
         }
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        ctx.lineCap = style.lineCap || 'round';
+        ctx.lineJoin = style.lineJoin || 'round';
         ctx.lineWidth = strokeWidth * lineScale;
         ctx.strokeStyle = style.strokeColor;
         if (style.lineDash){
           ctx.lineCap = 'butt';
           ctx.setLineDash(style.lineDash.split(' '));
+        }
+        if (style.miterLimit) {
+          ctx.miterLimit = style.miterLimit;
         }
       }
 
@@ -9956,6 +9962,7 @@
       clearBtn.active(!off);
       if (off) {
         hide();
+        extentNote.hide();
         return;
       }
 

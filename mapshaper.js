@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.112";
+  var VERSION = "0.5.113";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13744,6 +13744,14 @@
     return p.length > 2 && p[2] == 'C';
   }
 
+  function stringifyPolygonCoords(coords) {
+    var parts = [];
+    for (var i=0; i<coords.length; i++) {
+      parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
+    }
+    return parts.length > 0 ? parts.join(' ') : '';
+  }
+
   function stringifyLineStringCoords(coords) {
     if (coords.length === 0) return '';
     var d = 'M';
@@ -13774,6 +13782,7 @@
 
   var SvgPathUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    stringifyPolygonCoords: stringifyPolygonCoords,
     stringifyLineStringCoords: stringifyLineStringCoords
   });
 
@@ -14041,6 +14050,7 @@
     'stroke-dasharray': 'dasharray',
     'stroke-width': 'number',
     'stroke-opacity': 'number',
+    'stroke-miterlimit': 'number',
     'fill-opacity': 'number',
     'text-anchor': null
   };
@@ -14075,7 +14085,7 @@
 
   var propertiesBySymbolType = {
     polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
-    polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin')),
+    polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit')),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
       'fill,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
@@ -14377,16 +14387,24 @@
     return empty();
   }
 
-  function renderComplexSymbol(sym) {
+  function renderComplexSymbol(sym, x, y) {
     if (utils.isString(sym)) {
       sym = JSON.parse(sym);
+    }
+    if (sym.tag) {
+      // symbol appears to already use mapshaper's svg notation... pass through
+      return sym;
     }
     var renderer = symbolRenderers[sym.type];
     if (!renderer) {
       message(sym.type ? 'Unknown symbol type: ' + sym.type : 'Symbol is missing a type property');
       return empty();
     }
-    return renderer(sym, 0, 0);
+    var o = renderer(sym, x || 0, y || 0);
+    if (sym.opacity) {
+      o.properties.opacity = sym.opacity;
+    }
+    return o;
   }
 
   function empty() {
@@ -14406,7 +14424,12 @@
   }
 
   function label(d, x, y) {
-    return renderStyledLabel(d);
+    var o = renderStyledLabel(d);
+    if (x || y) {
+      o.properties.x = x || 0;
+      o.properties.y = y || 0;
+    }
+    return o;
   }
 
   function image(d, x, y) {
@@ -14417,8 +14440,8 @@
       properties: {
         width: w,
         height: h,
-        x: x - w / 2,
-        y: y - h / 2,
+        x: (x || 0) - w / 2,
+        y: (y || 0) - h / 2,
         href: d.href || ''
       }
     };
@@ -14448,6 +14471,7 @@
     return o;
   }
 
+  // polyline coords are like GeoJSON MultiLineString coords: an array of 0 or more paths
   function polyline(d, x, y) {
     var coords = d.coordinates || [];
     var o = importMultiLineString(coords);
@@ -14455,6 +14479,7 @@
     return o;
   }
 
+  // polygon coords are an array of rings (and holes), like flattened MultiPolygon coords
   function polygon(d, x, y) {
     var coords = d.coordinates || [];
     var o = importPolygon(coords);
@@ -14463,14 +14488,15 @@
   }
 
   function group(d, x, y) {
-    var parts = (d.parts || []).reduce(function(memo, o) {
-      var sym = renderSymbol(o, x, y);
+    var parts = (d.parts || []).map(function(o) {
+      var sym = renderComplexSymbol(o, x, y);
       if (d.chained) {
+      //if (o.chained) {
         x += (o.dx || 0);
         y += (o.dy || 0);
       }
-      return memo.concat(sym);
-    }, []);
+      return sym;
+    });
     if (parts.length == 1) return parts[0];
     return {
       tag: 'g',
@@ -14484,6 +14510,15 @@
     symbolRenderers: symbolRenderers,
     renderPoint: renderPoint
   });
+
+  var geojsonImporters = {
+    Point: importPoint,
+    Polygon: importPolygon,
+    LineString: importLineString,
+    MultiPoint: importMultiPoint,
+    MultiLineString: importMultiLineString,
+    MultiPolygon: importMultiPolygon
+  };
 
   function importGeoJSONFeatures(features, opts) {
     opts = opts || {};
@@ -14557,18 +14592,6 @@
     return children.length > 0 ? {tag: 'g', children: children} : null;
   }
 
-  function importMultiPath(coords, importer) {
-    var o;
-    for (var i=0; i<coords.length; i++) {
-      if (i === 0) {
-        o = importer(coords[i]);
-      } else {
-        o.properties.d += ' ' + importer(coords[i]).properties.d;
-      }
-    }
-    return o;
-  }
-
   function importLineString(coords) {
     var d = stringifyLineStringCoords(coords);
     return {
@@ -14585,33 +14608,29 @@
     };
   }
 
+  function importMultiPolygon(coords) {
+   return importPolygon(flattenMultiPolygonCoords(coords));
+  }
+
+  function flattenMultiPolygonCoords(coords) {
+    return coords.reduce(function(memo, poly) {
+      return memo.concat(poly);
+    }, []);
+  }
+
   function importPolygon(coords) {
-    var d, o;
-    for (var i=0; i<coords.length; i++) {
-      d = o ? o.properties.d + ' ' : '';
-      o = importLineString(coords[i]);
-      o.properties.d = d + o.properties.d + ' Z';
-    }
+    if (coords.length === 0) return null;
+    var o = {
+      tag: 'path',
+      properties: {
+        d: stringifyPolygonCoords(coords)
+      }
+    };
     if (coords.length > 1) {
       o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
     }
     return o;
   }
-
-  var geojsonImporters = {
-    Point: importPoint,
-    Polygon: importPolygon,
-    LineString: importLineString,
-    MultiPoint: function(coords, rec) {
-      return importMultiPoint(coords, rec);
-    },
-    MultiLineString: function(coords) {
-      return importMultiPath(coords, importLineString);
-    },
-    MultiPolygon: function(coords) {
-      return importMultiPath(coords, importPolygon);
-    }
-  };
 
   var GeojsonToSvg = /*#__PURE__*/Object.freeze({
     __proto__: null,
@@ -14619,6 +14638,8 @@
     importPoint: importPoint,
     importLineString: importLineString,
     importMultiLineString: importMultiLineString,
+    importMultiPolygon: importMultiPolygon,
+    flattenMultiPolygonCoords: flattenMultiPolygonCoords,
     importPolygon: importPolygon
   });
 
@@ -15077,6 +15098,7 @@
     return svg;
   }
 
+  // href: A URL or a local path
   // TODO: download SVG files asynchronously
   // (currently, files are downloaded synchronously, which is obviously undesirable)
   //
@@ -15084,7 +15106,7 @@
     var content;
     if (href.indexOf('http') === 0) {
       content = fetchFileSync(href);
-    } else if (require('fs').existsSync(href)) { // assume href is a relative path
+    } else if (require('fs').existsSync(href)) {
       content = require('fs').readFileSync(href, 'utf8');
     } else {
       stop("Invalid SVG location:", href);
@@ -15159,15 +15181,25 @@
       convertPropertiesToDefinitions(obj, defs);
       return stringify(obj);
     }).join('\n');
+
     if (defs.length > 0) {
       svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
     }
+
     if (svg.includes('xlink:')) {
       namespace += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
     }
+
+    // default line style properties
     var capStyle = opts.default_linecap || 'round';
+    var lineProps = `stroke-linecap="${capStyle}" stroke-linejoin="round"`;
+    if (svg.includes('stroke-linejoin="miter"')) {
+      // the default limit in Illustrator seems to be 10 -- too large for mapping
+      // (Mapbox uses 2 as the default in their styles)
+      lineProps += ' stroke-miterlimit="2"';
+    }
     var template = `<?xml version="1.0"?>
-<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="${capStyle}" stroke-linejoin="round">${style}
+<svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}
 </svg>`;
     svg = utils.format(template,size[0], size[1], 0, 0, size[0], size[1]);
@@ -20445,14 +20477,21 @@ ${svg}
       .option('stroke', {})
       .option('stroke-width', {})
       .option('fill', {
-        describe: 'symbol fill color'
+        describe: 'symbol fill color (filled symbols only)'
       })
-      .option('polygons', {
-        describe: 'generate symbols as polygons instead of SVG objects',
+      .option('stroke', {
+        describe: 'symbol line color (linear symbols only)'
+      })
+      .option('stroke-width', {
+        describe: 'symbol line width (linear symbols only)'
+      })
+      .option('geographic', {
+        old_alias: 'polygons',
+         describe: 'make geographic shapes instead of SVG objects',
         type: 'flag'
       })
       .option('pixel-scale', {
-        describe: 'set symbol scale in meters-per-pixel (for polygons option)',
+        describe: 'set symbol scale in meters per pixel (geographic option)',
         type: 'number',
       })
       // .option('flipped', {
@@ -20488,6 +20527,9 @@ ${svg}
       })
       .option('radii', {
         describe: '(ring) comma-sep. list of concentric radii, ascending order'
+      })
+      .option('arrow-style', {
+        describe: '(arrow) options: stick, standard (default is standard)'
       })
       .option('length', {
         old_alias: 'arrow-length',
@@ -38713,8 +38755,12 @@ ${svg}
 
   var roundCoord = getRoundingFunction(0.01);
 
-  function getSymbolColor(d) {
+  function getSymbolFillColor(d) {
     return d.fill || 'magenta';
+  }
+
+  function getSymbolStrokeColor(d) {
+    return d.stroke || d.fill || 'magenta';
   }
 
   function getSymbolRadius(d) {
@@ -38790,57 +38836,104 @@ ${svg}
     points.push(p2);
   }
 
-  // export function getStickArrowCoords(d, totalLen) {
-  //   var minStemRatio = getMinStemRatio(d);
-  //   var headAngle = d['arrow-head-angle'] || 90;
-  //   var curve = d['arrow-stem-curve'] || 0;
-  //   var unscaledHeadWidth = d['arrow-head-width'] || 9;
-  //   var unscaledHeadLen = getHeadLength(unscaledHeadWidth, headAngle);
-  //   var scale = getScale(totalLen, unscaledHeadLen, minStemRatio);
-  //   var headWidth = unscaledHeadWidth * scale;
-  //   var headLen = unscaledHeadLen * scale;
-  //   var tip = getStickArrowTip(totalLen, curve);
-  //   var stem = [[0, 0], tip.concat()];
-  //   if (curve) {
-  //     addBezierArcControlPoints(stem, curve);
-  //   }
-  //   if (!headLen) return [stem];
-  //   var head = [addPoints([-headWidth / 2, -headLen], tip), tip.concat(), addPoints([headWidth / 2, -headLen], tip)];
+  function getStickArrowCoords(d) {
+    return getArrowCoords(d, 'stick');
+  }
 
-  //   rotateCoords(stem, d.rotation);
-  //   rotateCoords(head, d.rotation);
-  //   return [stem, head];
-  // }
+  function getFilledArrowCoords(d) {
+    return getArrowCoords(d, 'standard');
+  }
 
-  // function getStickArrowTip(totalLen, curve) {
-  //   // curve/2 intersects the arrowhead at 90deg (trigonometry)
-  //   var theta = Math.abs(curve/2) / 180 * Math.PI;
-  //   var dx = totalLen * Math.sin(theta) * (curve > 0 ? -1 : 1);
-  //   var dy = totalLen * Math.cos(theta);
-  //   return [dx, dy];
-  // }
+  function getArrowCoords(d, style) {
+    var stickArrow = style == 'stick',
+        // direction = d.rotation || d.direction || 0,
+        direction = d.direction || 0, // rotation is an independent parameter
+        stemTaper = d['stem-taper'] || 0,
+        curvature = d['stem-curve'] || 0,
+        size = calcArrowSize(d, stickArrow);
+    if (!size) return null;
+    var stemLen = size.stemLen,
+        headLen = size.headLen,
+        headDx = size.headWidth / 2,
+        stemDx = size.stemWidth / 2,
+        baseDx = stemDx * (1 - stemTaper),
+        head, stem, coords, dx, dy;
 
-  // function addPoints(a, b) {
-  //   return [a[0] + b[0], a[1] + b[1]];
-  // }
+    if (curvature) {
+      // make curved stem
+      if (direction > 0) curvature = -curvature;
+      var theta = Math.abs(curvature) / 180 * Math.PI;
+      var sign = curvature > 0 ? 1 : -1;
+      var ax = baseDx * Math.cos(theta); // rotate arrow base
+      var ay = baseDx * Math.sin(theta) * -sign;
+      dx = stemLen * Math.sin(theta / 2) * sign;
+      dy = stemLen * Math.cos(theta / 2);
+
+      if (stickArrow) {
+        stem = getCurvedStemCoords(-ax, -ay, dx, dy, theta);
+      } else {
+        var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
+        var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
+        stem = leftStem.concat(rightStem.reverse());
+      }
+
+    } else {
+      // make straight stem
+      dx = 0;
+      dy = stemLen;
+      if (stickArrow) {
+        stem = [[0, 0], [0, stemLen]];
+      } else {
+        stem = [[-baseDx, 0], [baseDx, 0]];
+      }
+    }
+
+    if (stickArrow) {
+      // make stick arrow
+      head = [[-headDx + dx, stemLen - headLen], [dx, stemLen], [headDx + dx, stemLen - headLen]];
+      coords = [stem, head]; // MultiLineString coords
+    } else {
+      // make filled arrow
+      // coordinates go counter clockwise, starting from the leftmost head coordinate
+      head = [[stemDx + dx, dy], [headDx + dx, dy],
+          [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
+      coords = stem.concat(head);
+      coords.push(stem[0].concat()); // closed path
+      coords = [coords]; // Polygon coords
+    }
+
+    if (d.anchor == 'end') {
+      scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
+    } else if (d.anchor == 'middle') {
+      // shift midpoint away from the head a bit for a more balanced placement
+      // scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
+      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - headLen * 0.25]);
+    }
+
+    rotateCoords(coords, direction);
+    if (d.flipped) {
+      flipY(coords);
+    }
+    return coords;
+  }
 
   function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
     return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
           [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
   }
 
-  function calcArrowSize(d) {
+  function calcArrowSize(d, stickArrow) {
     // don't display arrows with negative length
     var totalLen = Math.max(d.radius || d.length || d.r || 0, 0),
         scale = 1,
         o = initArrowSize(d); // calc several parameters
 
-    if (totalLen > 0) {
+    if (totalLen >= 0) {
       scale = calcScale(totalLen, o.headLen, d);
       o.stemWidth *= scale;
       o.headWidth *= scale;
       o.headLen *= scale;
-      o.stemLen = totalLen - o.headLen;
+      o.stemLen = stickArrow ? totalLen : totalLen - o.headLen;
     }
 
     if (o.headWidth < o.stemWidth) {
@@ -38861,7 +38954,7 @@ ${svg}
     } else if (stemLen + headLen > totalLen) {
       scale = totalLen / (stemLen + headLen);
     }
-    return scale;
+    return scale || 0;
   }
 
   function initArrowSize(d) {
@@ -38891,56 +38984,6 @@ ${svg}
     return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
   }
 
-  function getFilledArrowCoords(d) {
-    var direction = d.rotation || d.direction || 0,
-        stemTaper = d['stem-taper'] || 0,
-        curvature = d['stem-curve'] || 0,
-        size = calcArrowSize(d);
-    if (!size) return null;
-    var stemLen = size.stemLen,
-        headLen = size.headLen,
-        headDx = size.headWidth / 2,
-        stemDx = size.stemWidth / 2,
-        baseDx = stemDx * (1 - stemTaper),
-        head, stem, coords, dx, dy;
-
-    if (curvature) {
-      if (direction > 0) curvature = -curvature;
-      var theta = Math.abs(curvature) / 180 * Math.PI;
-      var sign = curvature > 0 ? 1 : -1;
-      var ax = baseDx * Math.cos(theta); // rotate arrow base
-      var ay = baseDx * Math.sin(theta) * -sign;
-      dx = stemLen * Math.sin(theta / 2) * sign;
-      dy = stemLen * Math.cos(theta / 2);
-      var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
-      var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
-      stem = leftStem.concat(rightStem.reverse());
-
-    } else {
-      dx = 0;
-      dy = stemLen;
-      stem = [[-baseDx, 0], [baseDx, 0], [baseDx, 0]];
-    }
-
-    // coordinates go counter clockwise, starting from the leftmost head coordinate
-    head = [[stemDx + dx, dy], [headDx + dx, dy],
-        [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
-
-    coords = stem.concat(head);
-    if (d.anchor == 'end') {
-      scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
-    } else if (d.anchor == 'middle') {
-      // shift midpoint away from the head a bit for a more balanced placement
-      // scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
-      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - headLen * 0.25]);
-    }
-
-    rotateCoords(coords, direction);
-    if (d.flipped) {
-      flipY(coords);
-    }
-    return [coords];
-  }
 
   // ax, ay: point on the base
   // bx, by: point on the stem
@@ -38978,11 +39021,11 @@ ${svg}
 
   function makeCircleSymbol(d, opts) {
     var radius = getSymbolRadius(d);
-    // TODO: remove duplicatoin with svg-symbols.js
+    // TODO: remove duplication with svg-symbols.js
     if (+opts.scale) radius *= +opts.scale;
     return {
       type: 'circle',
-      fill: getSymbolColor(d),
+      fill: getSymbolFillColor(d),
       r: radius
     };
   }
@@ -39070,11 +39113,12 @@ ${svg}
     return 180 - centerAngle;
   }
 
+  // Returns a svg-symbol object
   function makeRingSymbol(d, opts) {
     var scale = +opts.scale || 1;
     var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
     var solidCenter = utils.isOdd(radii.length);
-    var color = getSymbolColor(d);
+    var color = getSymbolFillColor(d);
     var parts = [];
     if (solidCenter) {
       parts.push({
@@ -39130,33 +39174,35 @@ ${svg}
   }
 
   // Returns an svg-symbol data object for one symbol
-  function makePolygonSymbol(coords, properties, geojsonType) {
-    if (geojsonType == 'MultiPolygon') {
-      coords = convertMultiPolygonCoords(coords);
-    } else if (geojsonType != 'Polygon') {
+  function makePathSymbol(coords, properties, geojsonType) {
+    var sym;
+    if (geojsonType == 'MultiPolygon' || geojsonType == 'Polygon') {
+      sym = {
+        type: 'polygon',
+        fill: getSymbolFillColor(properties),
+        coordinates: geojsonType == 'Polygon' ? coords : flattenMultiPolygonCoords(coords)
+      };
+    } else if (geojsonType == 'LineString' || geojsonType == 'MultiLineString') {
+      sym = {
+        type: 'polyline',
+        stroke: getSymbolStrokeColor(properties),
+        'stroke-width': properties['stroke-width'] || 2,
+        coordinates: geojsonType == 'LineString' ? [coords] : coords
+      };
+    } else {
       error('Unsupported type:', geojsonType);
     }
-    roundCoordsForSVG(coords);
-    return {
-      type: 'polygon',
-      coordinates: coords,
-      fill: getSymbolColor(properties)
-    };
-  }
-
-  function convertMultiPolygonCoords(coords) {
-    return coords.reduce(function(memo, poly) {
-      return memo.concat(poly);
-    }, []);
+    roundCoordsForSVG(sym.coordinates);
+    return sym;
   }
 
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
   cmd.symbols = function(inputLyr, dataset, opts) {
     requireSinglePointLayer(inputLyr);
     var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
-    var polygonMode = !!opts.polygons;
+    var shapeMode = !!opts.geographic;
     var metersPerPx;
-    if (polygonMode) {
+    if (shapeMode) {
       requireProjectedDataset(dataset);
       metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr, dataset);
     }
@@ -39168,11 +39214,11 @@ ${svg}
       var rec = records[i] || {};
 
       // non-polygon symbols
-      if (!polygonMode && d.type == 'circle') {
+      if (!shapeMode && d.type == 'circle') {
         rec['svg-symbol'] = makeCircleSymbol(d, opts);
         return;
       }
-      if (!polygonMode && d.type == 'ring') {
+      if (!shapeMode && d.type == 'ring') {
         rec['svg-symbol'] = makeRingSymbol(d, opts);
         return;
       }
@@ -39180,7 +39226,10 @@ ${svg}
       var geojsonType = 'Polygon';
       var coords;
       // these symbols get converted to polygon shapes
-      if (d.type == 'arrow') {
+      if (d.type == 'arrow' && opts.arrow_style == 'stick') {
+        coords = getStickArrowCoords(d);
+        geojsonType = 'MultiLineString';
+      } else if (d.type == 'arrow') {
         coords = getFilledArrowCoords(d);
       } else if (d.type == 'ring') {
         coords = getRingCoords(d);
@@ -39192,23 +39241,24 @@ ${svg}
       }
       if (!coords) return null;
       rotateCoords(coords, +d.rotation || 0);
-      if (!polygonMode) {
+      if (!shapeMode) {
         flipY(coords);
       }
       if (+opts.scale) {
         scaleAndShiftCoords(coords, +opts.scale, [0, 0]);
       }
-      if (polygonMode) {
+      if (shapeMode) {
         scaleAndShiftCoords(coords, metersPerPx, shp[0]);
-        if (d.tfill) rec.fill = d.fill;
+        if (d.fill) rec.fill = d.fill;
+        if (d.stroke) rec.stroke = d.stroke;
         return createGeometry(coords, geojsonType);
       } else {
-        rec['svg-symbol'] = makePolygonSymbol(coords, d, geojsonType);
+        rec['svg-symbol'] = makePathSymbol(coords, d, geojsonType);
       }
     });
 
     var outputLyr, dataset2;
-    if (polygonMode) {
+    if (shapeMode) {
       dataset2 = importGeometries(geometries, records);
       outputLyr = mergeOutputLayerIntoDataset(inputLyr, dataset, dataset2, opts);
       outputLyr.data = lyr.data;
@@ -39242,9 +39292,10 @@ ${svg}
   }
 
   function getMetersPerPixel(lyr, dataset) {
-    // TODO: handle single point, no extent
     var bounds = getLayerBounds(lyr);
-    return bounds.width() / 800;
+    // TODO: need a better way to handle a single point with no extent
+    var extent = bounds.width() || bounds.height() || 1000;
+    return extent / 800;
   }
 
   var Symbols = /*#__PURE__*/Object.freeze({
