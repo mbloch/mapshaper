@@ -1,5 +1,5 @@
 import { getPlanarSegmentEndpoint } from '../geom/mapshaper-geodesic';
-import { getSymbolRadius, getSymbolColor } from './mapshaper-symbol-utils';
+import { getSymbolRadius, getSymbolFillColor } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 export function makeCircleSymbol(d, opts) {
@@ -8,7 +8,7 @@ export function makeCircleSymbol(d, opts) {
   if (+opts.scale) radius *= +opts.scale;
   return {
     type: 'circle',
-    fill: getSymbolColor(d),
+    fill: getSymbolFillColor(d),
     r: radius
   };
 }

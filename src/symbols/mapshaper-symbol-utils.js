@@ -4,8 +4,12 @@ import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
 var roundCoord = getRoundingFunction(0.01);
 
-export function getSymbolColor(d) {
+export function getSymbolFillColor(d) {
   return d.fill || 'magenta';
+}
+
+export function getSymbolStrokeColor(d) {
+  return d.stroke || d.fill || 'magenta';
 }
 
 export function getSymbolRadius(d) {

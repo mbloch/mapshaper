@@ -1533,14 +1533,21 @@ export function getOptionParser() {
     .option('stroke', {})
     .option('stroke-width', {})
     .option('fill', {
-      describe: 'symbol fill color'
+      describe: 'symbol fill color (filled symbols only)'
     })
-    .option('polygons', {
-      describe: 'generate symbols as polygons instead of SVG objects',
+    .option('stroke', {
+      describe: 'symbol line color (linear symbols only)'
+    })
+    .option('stroke-width', {
+      describe: 'symbol line width (linear symbols only)'
+    })
+    .option('geographic', {
+      old_alias: 'polygons',
+       describe: 'make geographic shapes instead of SVG objects',
       type: 'flag'
     })
     .option('pixel-scale', {
-      describe: 'set symbol scale in meters-per-pixel (for polygons option)',
+      describe: 'set symbol scale in meters per pixel (geographic option)',
       type: 'number',
     })
     // .option('flipped', {
@@ -1576,6 +1583,9 @@ export function getOptionParser() {
     })
     .option('radii', {
       describe: '(ring) comma-sep. list of concentric radii, ascending order'
+    })
+    .option('arrow-style', {
+      describe: '(arrow) options: stick, standard (default is standard)'
     })
     .option('length', {
       old_alias: 'arrow-length',

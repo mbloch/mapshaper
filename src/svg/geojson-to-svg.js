@@ -1,10 +1,19 @@
 
-import { stringifyLineStringCoords } from '../svg/svg-path-utils';
+import { stringifyLineStringCoords, stringifyPolygonCoords } from '../svg/svg-path-utils';
 import GeoJSON from '../geojson/geojson-common';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes } from '../svg/svg-properties';
+
+var geojsonImporters = {
+  Point: importPoint,
+  Polygon: importPolygon,
+  LineString: importLineString,
+  MultiPoint: importMultiPoint,
+  MultiLineString: importMultiLineString,
+  MultiPolygon: importMultiPolygon
+};
 
 export function importGeoJSONFeatures(features, opts) {
   opts = opts || {};
@@ -78,18 +87,6 @@ function importMultiPoint(coords, rec) {
   return children.length > 0 ? {tag: 'g', children: children} : null;
 }
 
-function importMultiPath(coords, importer) {
-  var o;
-  for (var i=0; i<coords.length; i++) {
-    if (i === 0) {
-      o = importer(coords[i]);
-    } else {
-      o.properties.d += ' ' + importer(coords[i]).properties.d;
-    }
-  }
-  return o;
-}
-
 export function importLineString(coords) {
   var d = stringifyLineStringCoords(coords);
   return {
@@ -106,30 +103,27 @@ export function importMultiLineString(coords) {
   };
 }
 
+export function importMultiPolygon(coords) {
+ return importPolygon(flattenMultiPolygonCoords(coords));
+}
+
+export function flattenMultiPolygonCoords(coords) {
+  return coords.reduce(function(memo, poly) {
+    return memo.concat(poly);
+  }, []);
+}
+
 export function importPolygon(coords) {
-  var d, o;
-  for (var i=0; i<coords.length; i++) {
-    d = o ? o.properties.d + ' ' : '';
-    o = importLineString(coords[i]);
-    o.properties.d = d + o.properties.d + ' Z';
-  }
+  if (coords.length === 0) return null;
+  var o = {
+    tag: 'path',
+    properties: {
+      d: stringifyPolygonCoords(coords)
+    }
+  };
   if (coords.length > 1) {
     o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
   }
   return o;
 }
 
-var geojsonImporters = {
-  Point: importPoint,
-  Polygon: importPolygon,
-  LineString: importLineString,
-  MultiPoint: function(coords, rec) {
-    return importMultiPoint(coords, rec);
-  },
-  MultiLineString: function(coords) {
-    return importMultiPath(coords, importLineString);
-  },
-  MultiPolygon: function(coords) {
-    return importMultiPath(coords, importPolygon);
-  }
-};

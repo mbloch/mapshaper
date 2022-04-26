@@ -2,15 +2,16 @@ import { getPolygonCoords } from './mapshaper-basic-symbols';
 import { parseNumberList } from '../cli/mapshaper-option-parsing-utils';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { getSymbolRadius, getSymbolColor } from './mapshaper-symbol-utils';
+import { getSymbolRadius, getSymbolFillColor } from './mapshaper-symbol-utils';
 import { makeCircleSymbol } from './mapshaper-basic-symbols';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 
+// Returns a svg-symbol object
 export function makeRingSymbol(d, opts) {
   var scale = +opts.scale || 1;
   var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
   var solidCenter = utils.isOdd(radii.length);
-  var color = getSymbolColor(d);
+  var color = getSymbolFillColor(d);
   var parts = [];
   if (solidCenter) {
     parts.push({

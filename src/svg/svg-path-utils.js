@@ -16,6 +16,14 @@ function isCubicCtrl(p) {
   return p.length > 2 && p[2] == 'C';
 }
 
+export function stringifyPolygonCoords(coords) {
+  var parts = [];
+  for (var i=0; i<coords.length; i++) {
+    parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
+  }
+  return parts.length > 0 ? parts.join(' ') : '';
+}
+
 export function stringifyLineStringCoords(coords) {
   if (coords.length === 0) return '';
   var d = 'M';

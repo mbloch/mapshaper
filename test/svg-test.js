@@ -112,7 +112,7 @@ describe('mapshaper-svg.js', function () {
           [[[3, 2], [4, 2], [4, 1], [3, 1], [3, 2]]]]
       }
     };
-    var target = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="900" height="300" viewBox="0 0 900 300" stroke-linecap="round" stroke-linejoin="round">\n<g id="path">\n<path d="M 0 300 0 0 300 0 300 300 0 300 Z M 600 0 900 0 900 300 600 300 600 0 Z"/>\n</g>\n</svg>';
+    var target = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="900" height="300" viewBox="0 0 900 300" stroke-linecap="round" stroke-linejoin="round">\n<g id="path">\n<path d="M 0 300 0 0 300 0 300 300 0 300 Z M 600 0 900 0 900 300 600 300 600 0 Z" fill-rule="evenodd"/>\n</g>\n</svg>';
     api.applyCommands('-i path.json -o path.svg margin=0 width=900', {'path.json': geo}, function(err, output) {
       assert.equal(output['path.svg'], target);
       done();

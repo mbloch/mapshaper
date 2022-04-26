@@ -54,7 +54,7 @@ function renderSymbol(d) {
   return empty();
 }
 
-function renderComplexSymbol(sym) {
+function renderComplexSymbol(sym, x, y) {
   if (utils.isString(sym)) {
     sym = JSON.parse(sym);
   }
@@ -67,7 +67,7 @@ function renderComplexSymbol(sym) {
     message(sym.type ? 'Unknown symbol type: ' + sym.type : 'Symbol is missing a type property');
     return empty();
   }
-  var o = renderer(sym, 0, 0);
+  var o = renderer(sym, x || 0, y || 0);
   if (sym.opacity) {
     o.properties.opacity = sym.opacity;
   }
@@ -138,6 +138,7 @@ function line(d, x, y) {
   return o;
 }
 
+// polyline coords are like GeoJSON MultiLineString coords: an array of 0 or more paths
 function polyline(d, x, y) {
   var coords = d.coordinates || [];
   var o = importMultiLineString(coords);
@@ -145,6 +146,7 @@ function polyline(d, x, y) {
   return o;
 }
 
+// polygon coords are an array of rings (and holes), like flattened MultiPolygon coords
 function polygon(d, x, y) {
   var coords = d.coordinates || [];
   var o = importPolygon(coords);
@@ -156,6 +158,7 @@ function group(d, x, y) {
   var parts = (d.parts || []).map(function(o) {
     var sym = renderComplexSymbol(o, x, y);
     if (d.chained) {
+    //if (o.chained) {
       x += (o.dx || 0);
       y += (o.dy || 0);
     }
