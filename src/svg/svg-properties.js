@@ -7,6 +7,7 @@ import { parsePattern } from '../svg/svg-hatch';
 // null values indicate the lack of a function for parsing/identifying this property
 // (in which case a heuristic is used for distinguishing a string literal from an expression)
 var stylePropertyTypes = {
+  css: null,
   class: 'classname',
   dx: 'measure',
   dy: 'measure',
@@ -56,7 +57,7 @@ var symbolPropertyTypes = utils.extend({
   effect: null // e.g. "fade"
 }, stylePropertyTypes);
 
-var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
+var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
 var propertiesBySymbolType = {
   polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
@@ -157,7 +158,6 @@ export function getSymbolPropertyAccessor(val, svgName, lyr) {
     // treating the string as a literal value
     literalVal = strVal;
   }
-  // console.log("literalVal:", mightBeExpression(strVal, fields), strVal, fields)
   if (accessor) return accessor;
   if (literalVal !== null) return function(id) {return literalVal;};
   stop('Unexpected value for', svgName + ':', strVal);

@@ -55,6 +55,9 @@ export function stringifyProperties(o) {
     if (key == 'href') {
       key = 'xlink:href';
     }
+    if (key == 'css') {
+      key = 'style'; // inline style
+    }
     return memo + ' ' + key + '="' + stringEscape(strval) + '"';
   }, '');
 }

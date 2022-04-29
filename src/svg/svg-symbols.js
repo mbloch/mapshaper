@@ -8,7 +8,6 @@ import { applyStyleAttributes } from '../svg/svg-properties';
 import { message } from '../utils/mapshaper-logging';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 
-
 export function getTransform(xy, scale) {
   var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
   if (scale && scale != 1) {
@@ -25,7 +24,8 @@ export var symbolRenderers = {
   square: square,
   image: image,
   group: group,
-  label: label
+  label: label,
+  offset: offset
 };
 
 // render label and/or point symbol
@@ -93,8 +93,9 @@ function circle(d, x, y) {
 function label(d, x, y) {
   var o = renderStyledLabel(d);
   if (x || y) {
-    o.properties.x = x || 0;
-    o.properties.y = y || 0;
+    // set x, y here, rather than adding to dx, dy -- so dy, dy can
+    // have CSS units (like ems)
+    o.properties.transform = getTransform([x, y]);
   }
   return o;
 }
@@ -154,19 +155,38 @@ function polygon(d, x, y) {
   return o;
 }
 
+function offset(d, x, y) {
+  var dx = (x || 0) + (d.dx || 0);
+  var dy = (y || 0) + (d.dy || 0);
+  return {
+    tag: 'g',
+    properties: {
+      transform: getTransform([dx, dy])
+    },
+    children: []
+  };
+}
+
 function group(d, x, y) {
-  var parts = (d.parts || []).map(function(o) {
+  var o = {
+    tag: 'g',
+    children: []
+  };
+  var children = o.children;
+  (d.parts || []).forEach(function(o) {
     var sym = renderComplexSymbol(o, x, y);
-    if (d.chained) {
+    children.push(sym);
+    //if (d.chained) {
     //if (o.chained) {
+    if (o.type == 'line') {
       x += (o.dx || 0);
       y += (o.dy || 0);
     }
-    return sym;
+    if (o.type == 'offset') {
+      children = sym.children;
+      x = y = 0;
+    }
   });
-  if (parts.length == 1) return parts[0];
-  return {
-    tag: 'g',
-    children: parts
-  };
+  if (o.children.length == 1 && !o.properties) return o.children[0];
+  return o;
 }
