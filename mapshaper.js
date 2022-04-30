@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.113";
+  var VERSION = "0.5.114";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13607,6 +13607,224 @@
     importFurniture: importFurniture
   });
 
+  /*
+  {
+    width: size[0],
+    height: size[1],
+    bbox: bounds.toArray(),
+    type: 'frame'
+  }
+  */
+  function getFrameData(dataset, exportOpts) {
+    var frameLyr = findFrameLayerInDataset(dataset);
+    var frameData;
+    if (frameLyr) {
+      frameData = Object.assign({}, getFrameLayerData(frameLyr));
+    } else {
+      frameData = calcFrameData(dataset, exportOpts);
+    }
+    frameData.crs = getDatasetCRS(dataset);
+    return frameData;
+  }
+
+  function calcFrameData(dataset, opts) {
+    var bounds = getDatasetBounds(dataset);
+    var bounds2 = calcOutputSizeInPixels(bounds, opts);
+    return {
+      bbox: bounds.toArray(),
+      width: Math.round(bounds2.width()),
+      height: Math.round(bounds2.height()) || 1,
+      type: 'frame'
+    };
+  }
+
+  function getFrameLayerData(lyr) {
+    return lyr.data && lyr.data.getReadOnlyRecordAt(0);
+  }
+
+  // Used by mapshaper-frame and mapshaper-pixel-transform. TODO: refactor
+  function getFrameSize(bounds, opts) {
+    var aspectRatio = bounds.width() / bounds.height();
+    var height, width;
+    if (opts.pixels) {
+      width = Math.sqrt(+opts.pixels * aspectRatio);
+    } else {
+      width = +opts.width;
+    }
+    height = width / aspectRatio;
+    return [Math.round(width), Math.round(height)];
+  }
+
+
+  // @lyr dataset layer
+  function isFrameLayer(lyr) {
+    return getFurnitureLayerType(lyr) == 'frame';
+  }
+
+  function findFrameLayerInDataset(dataset) {
+    return utils.find(dataset.layers, function(lyr) {
+      return isFrameLayer(lyr);
+    });
+  }
+
+  function findFrameDataset(catalog) {
+    var target = utils.find(catalog.getLayers(), function(o) {
+      return isFrameLayer(o.layer);
+    });
+    return target ? target.dataset : null;
+  }
+
+  function findFrameLayer(catalog) {
+    var target = utils.find(catalog.getLayers(), function(o) {
+      return isFrameLayer(o.layer);
+    });
+    return target && target.layer || null;
+  }
+
+  function getFrameLayerBounds(lyr) {
+    return new Bounds(getFrameLayerData(lyr).bbox);
+  }
+
+  // @data frame data, including crs property if available
+  // Returns a single value: the ratio or
+  function getMapFrameMetersPerPixel(data) {
+    var bounds = new Bounds(data.bbox);
+    var k, toMeters, metersPerPixel;
+    if (data.crs) {
+      // TODO: handle CRS without inverse projections
+      // scale factor is the ratio of coordinate distance to true distance at a point
+      k = getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
+      toMeters = data.crs.to_meter;
+    } else {
+      // Assuming coordinates are meters and k is 1 (not safe)
+      // A warning should be displayed when relevant furniture element is created
+      k = 1;
+      toMeters = 1;
+    }
+    metersPerPixel = bounds.width() / k * toMeters / data.width;
+    return metersPerPixel;
+  }
+
+
+  // bounds: Bounds object containing bounds of content in geographic coordinates
+  // returns Bounds object containing bounds of pixel output
+  // side effect: bounds param is modified to match the output frame
+  function calcOutputSizeInPixels(bounds, opts) {
+    var padX = 0,
+        padY = 0,
+        offX = 0,
+        offY = 0,
+        width = bounds.width(),
+        height = bounds.height(),
+        margins = parseMarginOption(opts.margin),
+        marginX = margins[0] + margins[2],
+        marginY = margins[1] + margins[3],
+        // TODO: add option to tweak alignment of content when both width and height are given
+        wx = 0.5, // how padding is distributed horizontally (0: left aligned, 0.5: centered, 1: right aligned)
+        wy = 0.5, // vertical padding distribution
+        widthPx, heightPx, size, kx, ky;
+
+    if (opts.fit_bbox) {
+      // scale + shift content to fit within a bbox
+      offX = opts.fit_bbox[0];
+      offY = opts.fit_bbox[1];
+      widthPx = opts.fit_bbox[2] - offX;
+      heightPx = opts.fit_bbox[3] - offY;
+      if (width / height > widthPx / heightPx) {
+        // data is wider than fit box...
+        // scale the data to fit widthwise
+        heightPx = 0;
+      } else {
+        widthPx = 0; // fit the data to the height
+      }
+      marginX = marginY = 0; // TODO: support margins
+
+    } else if (opts.svg_scale > 0) {
+      // alternative to using a fixed width (e.g. when generating multiple files
+      // at a consistent geographic scale)
+      widthPx = width / opts.svg_scale + marginX;
+      heightPx = 0;
+    } else if (+opts.pixels) {
+      size = getFrameSize(bounds, opts);
+      widthPx = size[0];
+      heightPx = size[1];
+    } else {
+      heightPx = opts.height || 0;
+      widthPx = opts.width || (heightPx > 0 ? 0 : 800); // 800 is default width
+    }
+
+    if (heightPx > 0) {
+      // vertical meters per pixel to fit height param
+      ky = (height || width || 1) / (heightPx - marginY);
+    }
+    if (widthPx > 0) {
+      // horizontal meters per pixel to fit width param
+      kx = (width || height || 1) / (widthPx - marginX);
+    }
+
+    if (!widthPx) { // heightPx and ky are defined, set width to match
+      kx = ky;
+      widthPx = width > 0 ? marginX + width / kx : heightPx; // export square graphic if content has 0 width (reconsider this?)
+    } else if (!heightPx) { // widthPx and kx are set, set height to match
+      ky = kx;
+      heightPx = height > 0 ? marginY + height / ky : widthPx;
+      // limit height if max_height is defined
+      if (opts.max_height > 0 && heightPx > opts.max_height) {
+        ky = kx * heightPx / opts.max_height;
+        heightPx = opts.max_height;
+      }
+    }
+
+    if (kx > ky) { // content is wide -- need to pad vertically
+      ky = kx;
+      padY = ky * (heightPx - marginY) - height;
+    } else if (ky > kx) { // content is tall -- need to pad horizontally
+      kx = ky;
+      padX = kx * (widthPx - marginX) - width;
+    }
+
+    bounds.padBounds(
+      margins[0] * kx + padX * wx,
+      margins[1] * ky + padY * wy,
+      margins[2] * kx + padX * (1 - wx),
+      margins[3] * ky + padY * (1 - wy));
+
+    if (!(widthPx > 0 && heightPx > 0)) {
+      error("Missing valid height and width parameters");
+    }
+    if (!(kx === ky && kx > 0)) {
+      error("Missing valid margin parameters");
+    }
+
+    return new Bounds(offX, offY, widthPx + offX, heightPx + offY);
+  }
+
+  function parseMarginOption(opt) {
+    var str = utils.isNumber(opt) ? String(opt) : opt || '';
+    var margins = str.trim().split(/[, ] */);
+    if (margins.length == 1) margins.push(margins[0]);
+    if (margins.length == 2) margins.push(margins[0], margins[1]);
+    if (margins.length == 3) margins.push(margins[2]);
+    return margins.map(function(str) {
+      var px = parseFloat(str);
+      return isNaN(px) ? 1 : px; // 1 is default
+    });
+  }
+
+  var FrameData = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getFrameData: getFrameData,
+    getFrameLayerData: getFrameLayerData,
+    getFrameSize: getFrameSize,
+    findFrameLayerInDataset: findFrameLayerInDataset,
+    findFrameDataset: findFrameDataset,
+    findFrameLayer: findFrameLayer,
+    getFrameLayerBounds: getFrameLayerBounds,
+    getMapFrameMetersPerPixel: getMapFrameMetersPerPixel,
+    calcOutputSizeInPixels: calcOutputSizeInPixels,
+    parseMarginOption: parseMarginOption
+  });
+
   // Apply rotation, scale and/or shift to some or all of the features in a dataset
   //
   cmd.affine = function(targetLayers, dataset, opts) {
@@ -14032,6 +14250,7 @@
   // null values indicate the lack of a function for parsing/identifying this property
   // (in which case a heuristic is used for distinguishing a string literal from an expression)
   var stylePropertyTypes = {
+    css: null,
     class: 'classname',
     dx: 'measure',
     dy: 'measure',
@@ -14081,7 +14300,7 @@
     effect: null // e.g. "fade"
   }, stylePropertyTypes);
 
-  var commonProperties = 'class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
+  var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
 
   var propertiesBySymbolType = {
     polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
@@ -14182,7 +14401,6 @@
       // treating the string as a literal value
       literalVal = strVal;
     }
-    // console.log("literalVal:", mightBeExpression(strVal, fields), strVal, fields)
     if (accessor) return accessor;
     if (literalVal !== null) return function(id) {return literalVal;};
     stop('Unexpected value for', svgName + ':', strVal);
@@ -14276,239 +14494,6 @@
     isSvgMeasure: isSvgMeasure,
     parseSvgMeasure: parseSvgMeasure,
     isSvgColor: isSvgColor
-  });
-
-  function toLabelString(val) {
-    if (val || val === 0 || val === false) return String(val);
-    return '';
-  }
-
-  // Kludge for applying fill and other styles to a <text> element
-  // (for rendering labels in the GUI with the dot in Canvas, not SVG)
-  function renderStyledLabel(rec) {
-    var o = renderLabel(rec);
-    applyStyleAttributes(o, 'label', rec);
-    return o;
-  }
-
-  function renderLabel(rec) {
-    var line = toLabelString(rec['label-text']);
-    var morelines, obj;
-    // Accepting \n (two chars) as an alternative to the newline character
-    // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
-    // Also accepting <br>
-    var newline = /\n|\\n|<br>/i;
-    var dx = rec.dx || 0;
-    var dy = rec.dy || 0;
-    var properties = {
-      // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
-      // dx value when importing text with text-anchor=end
-      y: dy,
-      x: dx
-    };
-    if (newline.test(line)) {
-      morelines = line.split(newline);
-      line = morelines.shift();
-    }
-    obj = {
-      tag: 'text',
-      value: line,
-      properties: properties
-    };
-    if (morelines) {
-      // multiline label
-      obj.children = [];
-      morelines.forEach(function(line) {
-        var tspan = {
-          tag: 'tspan',
-          value: line,
-          properties: {
-            x: dx,
-            dy: rec['line-height'] || '1.1em'
-          }
-        };
-        obj.children.push(tspan);
-      });
-    }
-    return obj;
-  }
-
-  var SvgLabels = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    renderStyledLabel: renderStyledLabel,
-    renderLabel: renderLabel
-  });
-
-  // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
-
-
-  function getTransform(xy, scale) {
-    var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
-    if (scale && scale != 1) {
-      str += ' scale(' + scale + ')';
-    }
-    return str;
-  }
-
-  var symbolRenderers = {
-    line: line,
-    polygon: polygon,
-    polyline: polyline,
-    circle: circle,
-    square: square,
-    image: image,
-    group: group,
-    label: label
-  };
-
-  // render label and/or point symbol
-  function renderPoint(rec) {
-    var children = [];
-    // var halfSize = rec.r || 0; // radius or half of symbol size
-    if (featureHasSvgSymbol(rec)) {
-      children.push(renderSymbol(rec));
-    }
-    if (featureHasLabel(rec)) {
-      children.push(renderStyledLabel(rec));
-    }
-    var o = children.length > 1 ? {tag: 'g', children: children} : children[0];
-    if (!o) return null;
-    o.properties = o.properties || {};
-    return o;
-  }
-
-  function renderSymbol(d) {
-    if (d['svg-symbol']) {
-      return renderComplexSymbol(d['svg-symbol']);
-    }
-    if (d.r > 0) {
-      return circle(d);
-    }
-    return empty();
-  }
-
-  function renderComplexSymbol(sym, x, y) {
-    if (utils.isString(sym)) {
-      sym = JSON.parse(sym);
-    }
-    if (sym.tag) {
-      // symbol appears to already use mapshaper's svg notation... pass through
-      return sym;
-    }
-    var renderer = symbolRenderers[sym.type];
-    if (!renderer) {
-      message(sym.type ? 'Unknown symbol type: ' + sym.type : 'Symbol is missing a type property');
-      return empty();
-    }
-    var o = renderer(sym, x || 0, y || 0);
-    if (sym.opacity) {
-      o.properties.opacity = sym.opacity;
-    }
-    return o;
-  }
-
-  function empty() {
-    return {tag: 'g', properties: {}, children: []};
-  }
-
-  function circle(d, x, y) {
-    var o = {
-      tag: 'circle',
-      properties: {
-        cx: x || 0,
-        cy: y || 0
-      }
-    };
-    applyStyleAttributes(o, 'point', d);
-    return o;
-  }
-
-  function label(d, x, y) {
-    var o = renderStyledLabel(d);
-    if (x || y) {
-      o.properties.x = x || 0;
-      o.properties.y = y || 0;
-    }
-    return o;
-  }
-
-  function image(d, x, y) {
-    var w = d.width || 20,
-        h = d.height || 20;
-    var o = {
-      tag: 'image',
-      properties: {
-        width: w,
-        height: h,
-        x: (x || 0) - w / 2,
-        y: (y || 0) - h / 2,
-        href: d.href || ''
-      }
-    };
-    return o;
-  }
-
-  function square(d, x, y) {
-    var r = d.r || 0;
-    var o = {
-      tag: 'rect',
-      properties: {
-        x: x - r,
-        y: y - r,
-        width: r * 2,
-        height: r * 2
-      }
-    };
-    applyStyleAttributes(o, 'point', d);
-    return o;
-  }
-
-  function line(d, x, y) {
-    var coords, o;
-    coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
-    o = importLineString(coords);
-    applyStyleAttributes(o, 'polyline', d);
-    return o;
-  }
-
-  // polyline coords are like GeoJSON MultiLineString coords: an array of 0 or more paths
-  function polyline(d, x, y) {
-    var coords = d.coordinates || [];
-    var o = importMultiLineString(coords);
-    applyStyleAttributes(o, 'polyline', d);
-    return o;
-  }
-
-  // polygon coords are an array of rings (and holes), like flattened MultiPolygon coords
-  function polygon(d, x, y) {
-    var coords = d.coordinates || [];
-    var o = importPolygon(coords);
-    applyStyleAttributes(o, 'polygon', d);
-    return o;
-  }
-
-  function group(d, x, y) {
-    var parts = (d.parts || []).map(function(o) {
-      var sym = renderComplexSymbol(o, x, y);
-      if (d.chained) {
-      //if (o.chained) {
-        x += (o.dx || 0);
-        y += (o.dy || 0);
-      }
-      return sym;
-    });
-    if (parts.length == 1) return parts[0];
-    return {
-      tag: 'g',
-      children: parts
-    };
-  }
-
-  var SvgSymbols = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getTransform: getTransform,
-    symbolRenderers: symbolRenderers,
-    renderPoint: renderPoint
   });
 
   var geojsonImporters = {
@@ -14643,287 +14628,433 @@
     importPolygon: importPolygon
   });
 
-  /* require mapshaper-rectangle, mapshaper-furniture */
+  function toLabelString(val) {
+    if (val || val === 0 || val === false) return String(val);
+    return '';
+  }
 
-  cmd.frame = function(catalog, source, opts) {
-    var size, bounds, tmp, dataset;
-    if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
-      stop("Missing a width or area");
+  // Kludge for applying fill and other styles to a <text> element
+  // (for rendering labels in the GUI with the dot in Canvas, not SVG)
+  function renderStyledLabel(rec) {
+    var o = renderLabel(rec);
+    applyStyleAttributes(o, 'label', rec);
+    return o;
+  }
+
+  function renderLabel(rec) {
+    var line = toLabelString(rec['label-text']);
+    var morelines, obj;
+    // Accepting \n (two chars) as an alternative to the newline character
+    // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
+    // Also accepting <br>
+    var newline = /\n|\\n|<br>/i;
+    var dx = rec.dx || 0;
+    var dy = rec.dy || 0;
+    var properties = {
+      // using x, y instead of dx, dy for shift, because Illustrator doesn't apply
+      // dx value when importing text with text-anchor=end
+      y: dy,
+      x: dx
+    };
+    if (newline.test(line)) {
+      morelines = line.split(newline);
+      line = morelines.shift();
     }
-    if (opts.width && opts.height) {
-      opts = utils.extend({}, opts);
-      // Height is a string containing either a number or a
-      //   comma-sep. pair of numbers (range); here we convert height to
-      //   an aspect-ratio parameter for the rectangle() function
-      opts.aspect_ratio = getAspectRatioArg(opts.width, opts.height);
-      // TODO: currently returns max,min aspect ratio, should return in min,max order
-      // (rectangle() function should handle max,min argument correctly now anyway)
+    obj = {
+      tag: 'text',
+      value: line,
+      properties: properties
+    };
+    if (morelines) {
+      // multiline label
+      obj.children = [];
+      morelines.forEach(function(line) {
+        var tspan = {
+          tag: 'tspan',
+          value: line,
+          properties: {
+            x: dx,
+            dy: rec['line-height'] || '1.1em'
+          }
+        };
+        obj.children.push(tspan);
+      });
     }
-    tmp = cmd.rectangle(source, opts);
-    bounds = getDatasetBounds(tmp);
-    if (probablyDecimalDegreeBounds(bounds)) {
-      stop('Frames require projected, not geographical coordinates');
-    } else if (!getDatasetCRS(tmp)) {
-      message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
-    }
-    size = getFrameSize(bounds, opts);
-    if (size[0] > 0 === false) {
-      stop('Missing a valid frame width');
-    }
-    if (size[1] > 0 === false) {
-      stop('Missing a valid frame height');
-    }
-    dataset = {info: {}, layers:[{
-      name: opts.name || 'frame',
-      data: new DataTable([{
-        width: size[0],
-        height: size[1],
-        bbox: bounds.toArray(),
-        type: 'frame'
-      }])
-    }]};
-    catalog.addDataset(dataset);
-  };
-
-  // Convert width and height args to aspect ratio arg for the rectangle() function
-  function getAspectRatioArg(widthArg, heightArg) {
-    // heightArg is a string containing either a number or a
-    // comma-sep. pair of numbers (range);
-    return heightArg.split(',').map(function(opt) {
-      var height = Number(opt),
-          width = Number(widthArg);
-      if (!opt) return '';
-      return width / height;
-    }).reverse().join(',');
+    return obj;
   }
 
-  function getFrameSize(bounds, opts) {
-    var aspectRatio = bounds.width() / bounds.height();
-    var height, width;
-    if (opts.pixels) {
-      width = Math.sqrt(+opts.pixels * aspectRatio);
-    } else {
-      width = +opts.width;
-    }
-    height = width / aspectRatio;
-    return [Math.round(width), Math.round(height)];
-  }
-
-  function getDatasetDisplayBounds(dataset) {
-    var frameLyr = findFrameLayerInDataset(dataset);
-    if (frameLyr) {
-      // TODO: check for coordinate issues (non-intersection with other layers, etc)
-      return getFrameLayerBounds(frameLyr);
-    }
-    return getDatasetBounds(dataset);
-  }
-
-  // @lyr dataset layer
-  function isFrameLayer(lyr) {
-    return getFurnitureLayerType(lyr) == 'frame';
-  }
-
-  function findFrameLayerInDataset(dataset) {
-    return utils.find(dataset.layers, function(lyr) {
-      return isFrameLayer(lyr);
-    });
-  }
-
-  function findFrameDataset(catalog) {
-    var target = utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer);
-    });
-    return target ? target.dataset : null;
-  }
-
-  function findFrameLayer(catalog) {
-    var target = utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer);
-    });
-    return target && target.layer || null;
-  }
-
-  function getFrameLayerBounds(lyr) {
-    return new Bounds(getFurnitureLayerData(lyr).bbox);
-  }
-
-
-  // @data frame data, including crs property if available
-  // Returns a single value: the ratio or
-  function getMapFrameMetersPerPixel(data) {
-    var bounds = new Bounds(data.bbox);
-    var k, toMeters, metersPerPixel;
-    if (data.crs) {
-      // TODO: handle CRS without inverse projections
-      // scale factor is the ratio of coordinate distance to true distance at a point
-      k = getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
-      toMeters = data.crs.to_meter;
-    } else {
-      // Assuming coordinates are meters and k is 1 (not safe)
-      // A warning should be displayed when relevant furniture element is created
-      k = 1;
-      toMeters = 1;
-    }
-    metersPerPixel = bounds.width() / k * toMeters / data.width;
-    return metersPerPixel;
-  }
-
-  furnitureRenderers.frame = function(d) {
-    var lineWidth = 1,
-        // inset stroke by half of line width
-        off = lineWidth / 2,
-        obj = importPolygon([[[off, off], [off, d.height - off],
-          [d.width - off, d.height - off],
-          [d.width - off, off], [off, off]]]);
-    utils.extend(obj.properties, {
-        fill: 'none',
-        stroke: d.stroke || 'black',
-        'stroke-width': d['stroke-width'] || lineWidth
-    });
-    return [obj];
-  };
-
-  var Frame = /*#__PURE__*/Object.freeze({
+  var SvgLabels = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getAspectRatioArg: getAspectRatioArg,
-    getFrameSize: getFrameSize,
-    findFrameLayerInDataset: findFrameLayerInDataset,
-    findFrameDataset: findFrameDataset,
-    findFrameLayer: findFrameLayer,
-    getFrameLayerBounds: getFrameLayerBounds,
-    getMapFrameMetersPerPixel: getMapFrameMetersPerPixel
+    renderStyledLabel: renderStyledLabel,
+    renderLabel: renderLabel
+  });
+
+  // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
+
+  function getTransform(xy, scale) {
+    var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
+    if (scale && scale != 1) {
+      str += ' scale(' + scale + ')';
+    }
+    return str;
+  }
+
+  var symbolRenderers = {
+    line: line,
+    polygon: polygon,
+    polyline: polyline,
+    circle: circle,
+    square: square,
+    image: image,
+    group: group,
+    label: label,
+    offset: offset
+  };
+
+  // render label and/or point symbol
+  function renderPoint(rec) {
+    var children = [];
+    // var halfSize = rec.r || 0; // radius or half of symbol size
+    if (featureHasSvgSymbol(rec)) {
+      children.push(renderSymbol(rec));
+    }
+    if (featureHasLabel(rec)) {
+      children.push(renderStyledLabel(rec));
+    }
+    var o = children.length > 1 ? {tag: 'g', children: children} : children[0];
+    if (!o) return null;
+    o.properties = o.properties || {};
+    return o;
+  }
+
+  function renderSymbol(d) {
+    if (d['svg-symbol']) {
+      return renderComplexSymbol(d['svg-symbol']);
+    }
+    if (d.r > 0) {
+      return circle(d);
+    }
+    return empty();
+  }
+
+  function renderComplexSymbol(sym, x, y) {
+    if (utils.isString(sym)) {
+      sym = JSON.parse(sym);
+    }
+    if (sym.tag) {
+      // symbol appears to already use mapshaper's svg notation... pass through
+      return sym;
+    }
+    var renderer = symbolRenderers[sym.type];
+    if (!renderer) {
+      message(sym.type ? 'Unknown symbol type: ' + sym.type : 'Symbol is missing a type property');
+      return empty();
+    }
+    var o = renderer(sym, x || 0, y || 0);
+    if (sym.opacity) {
+      o.properties.opacity = sym.opacity;
+    }
+    return o;
+  }
+
+  function empty() {
+    return {tag: 'g', properties: {}, children: []};
+  }
+
+  function circle(d, x, y) {
+    var o = {
+      tag: 'circle',
+      properties: {
+        cx: x || 0,
+        cy: y || 0
+      }
+    };
+    applyStyleAttributes(o, 'point', d);
+    return o;
+  }
+
+  function label(d, x, y) {
+    var o = renderStyledLabel(d);
+    if (x || y) {
+      // set x, y here, rather than adding to dx, dy -- so dy, dy can
+      // have CSS units (like ems)
+      o.properties.transform = getTransform([x, y]);
+    }
+    return o;
+  }
+
+  function image(d, x, y) {
+    var w = d.width || 20,
+        h = d.height || 20;
+    var o = {
+      tag: 'image',
+      properties: {
+        width: w,
+        height: h,
+        x: (x || 0) - w / 2,
+        y: (y || 0) - h / 2,
+        href: d.href || ''
+      }
+    };
+    return o;
+  }
+
+  function square(d, x, y) {
+    var r = d.r || 0;
+    var o = {
+      tag: 'rect',
+      properties: {
+        x: x - r,
+        y: y - r,
+        width: r * 2,
+        height: r * 2
+      }
+    };
+    applyStyleAttributes(o, 'point', d);
+    return o;
+  }
+
+  function line(d, x, y) {
+    var coords, o;
+    coords = [[x, y], [x + (d.dx || 0), y + (d.dy || 0)]];
+    o = importLineString(coords);
+    applyStyleAttributes(o, 'polyline', d);
+    return o;
+  }
+
+  // polyline coords are like GeoJSON MultiLineString coords: an array of 0 or more paths
+  function polyline(d, x, y) {
+    var coords = d.coordinates || [];
+    var o = importMultiLineString(coords);
+    applyStyleAttributes(o, 'polyline', d);
+    return o;
+  }
+
+  // polygon coords are an array of rings (and holes), like flattened MultiPolygon coords
+  function polygon(d, x, y) {
+    var coords = d.coordinates || [];
+    var o = importPolygon(coords);
+    applyStyleAttributes(o, 'polygon', d);
+    return o;
+  }
+
+  function offset(d, x, y) {
+    var dx = (x || 0) + (d.dx || 0);
+    var dy = (y || 0) + (d.dy || 0);
+    return {
+      tag: 'g',
+      properties: {
+        transform: getTransform([dx, dy])
+      },
+      children: []
+    };
+  }
+
+  function group(d, x, y) {
+    var o = {
+      tag: 'g',
+      children: []
+    };
+    var children = o.children;
+    (d.parts || []).forEach(function(o) {
+      var sym = renderComplexSymbol(o, x, y);
+      children.push(sym);
+      //if (d.chained) {
+      //if (o.chained) {
+      if (o.type == 'line') {
+        x += (o.dx || 0);
+        y += (o.dy || 0);
+      }
+      if (o.type == 'offset') {
+        children = sym.children;
+        x = y = 0;
+      }
+    });
+    if (o.children.length == 1 && !o.properties) return o.children[0];
+    return o;
+  }
+
+  var SvgSymbols = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getTransform: getTransform,
+    symbolRenderers: symbolRenderers,
+    renderPoint: renderPoint
+  });
+
+  cmd.scalebar = function(catalog, opts) {
+    var frame = findFrameDataset(catalog);
+    var obj, lyr;
+    if (!frame) {
+      stop('Missing a map frame');
+    }
+    lyr = getScalebarLayer(opts);
+    frame.layers.push(lyr);
+  };
+
+  function getScalebarLayer(opts) {
+    var obj = utils.defaults({type: 'scalebar'}, opts);
+    return {
+      name: opts.name || 'scalebar',
+      data: new DataTable([obj])
+    };
+  }
+
+  // TODO: generalize to other kinds of furniture as they are developed
+  function getScalebarPosition(d) {
+    var opts = { // defaults
+      valign: 'top',
+      halign: 'left',
+      voffs: 10,
+      hoffs: 10
+    };
+    if (+d.left > 0) {
+      opts.hoffs = +d.left;
+    }
+    if (+d.top > 0) {
+      opts.voffs = +d.top;
+    }
+    if (+d.right > 0) {
+      opts.hoffs = +d.right;
+      opts.halign = 'right';
+    }
+    if (+d.bottom > 0) {
+      opts.voffs = +d.bottom;
+      opts.valign = 'bottom';
+    }
+    return opts;
+  }
+
+  furnitureRenderers.scalebar = renderScalebar;
+
+  function renderScalebar(d, frame) {
+    var pos = getScalebarPosition(d);
+    var metersPerPx = getMapFrameMetersPerPixel(frame);
+    var label = d.label_text || getAutoScalebarLabel(frame.width, metersPerPx);
+    var scalebarKm = parseScalebarLabelToKm(label);
+    var barHeight = 3;
+    var labelOffs = 4;
+    var fontSize = +d.font_size || 12;
+    var width = Math.round(scalebarKm / metersPerPx * 1000);
+    var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
+    var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
+    var anchorX = pos.halign == 'left' ? 0 : width;
+    var anchorY = barHeight + labelOffs;
+    var dx = pos.halign == 'right' ? frame.width - width - pos.hoffs : pos.hoffs;
+    var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
+
+    if (labelPos == 'top') {
+      anchorY = -labelOffs;
+      dy += Math.round(labelOffs + fontSize * 0.8);
+    }
+
+    if (width > 0 === false) {
+      stop("Null scalebar length");
+    }
+    var barObj = {
+      tag: 'rect',
+      properties: {
+        fill: 'black',
+        x: 0,
+        y: 0,
+        width: width,
+        height: barHeight
+      }
+    };
+    var labelOpts = {
+        'label-text': label,
+        'font-size': fontSize,
+        'text-anchor': pos.halign == 'left' ? 'start': 'end',
+        'dominant-baseline': labelPos == 'top' ? 'auto' : 'hanging'
+        //// 'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge'
+        // 'text-after-edge' is buggy in Safari and unsupported by Illustrator,
+        // so I'm using 'hanging' and 'auto', which seem to be well supported.
+        // downside: requires a kludgy multiplier to calculate scalebar height (see above)
+      };
+    var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY);
+    var g = {
+      tag: 'g',
+      children: [barObj, labelObj],
+      properties: {
+        transform: 'translate(' + dx + ' ' + dy + ')'
+      }
+    };
+    return [g];
+  }
+
+  function getAutoScalebarLabel(mapWidth, metersPerPx) {
+    var minWidth = 75; // 100; // TODO: vary min size based on map width
+    var minKm = metersPerPx * minWidth / 1000;
+    var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
+      '100 150 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +
+      '2,500 3,000 4,000 5,000').split(' ');
+    return options.reduce(function(memo, str) {
+      if (memo) return memo;
+      var label = formatDistanceLabelAsMiles(str);
+      if (parseScalebarLabelToKm(label) > minKm) {
+         return label;
+      }
+    }, null) || '';
+  }
+
+  function formatDistanceLabelAsMiles(str) {
+    var num = parseScalebarNumber(str);
+    return str + (num > 1 ? ' MILES' : ' MILE');
+  }
+
+  // See test/mapshaper-scalebar.js for examples of supported formats
+  function parseScalebarLabelToKm(str) {
+    var units = parseScalebarUnits(str);
+    var value = parseScalebarNumber(str);
+    if (!units || !value) return NaN;
+    return units == 'mile' ? value * 1.60934 : value;
+  }
+
+  function parseScalebarUnits(str) {
+    var isMiles = /miles?$/.test(str.toLowerCase());
+    var isKm = /(km|kilometers?|kilometres?)$/.test(str.toLowerCase());
+    return isMiles && 'mile' || isKm && 'km' || '';
+  }
+
+  function parseScalebarNumber(str) {
+    var fractionRxp = /^([0-9]+) ?\/ ?([0-9]+)/;
+    var match, value;
+    str = str.replace(/[\s]/g, '').replace(/,/g, '');
+    if (fractionRxp.test(str)) {
+      match = fractionRxp.exec(str);
+      value = +match[1] / +match[2];
+    } else {
+      value = parseFloat(str);
+    }
+    return value > 0 && value < Infinity ? value : NaN;
+  }
+
+  var Scalebar = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getScalebarLayer: getScalebarLayer,
+    renderScalebar: renderScalebar,
+    formatDistanceLabelAsMiles: formatDistanceLabelAsMiles,
+    parseScalebarLabelToKm: parseScalebarLabelToKm
   });
 
   function transformDatasetToPixels(dataset, opts) {
-    var frameLyr = findFrameLayerInDataset(dataset);
-    var bounds, bounds2, fwd, frameData;
-    if (frameLyr) {
-      // TODO: handle options like width, height margin when a frame is present
-      // TODO: check that aspect ratios match
-      frameData = getFurnitureLayerData(frameLyr);
-      bounds = new Bounds(frameData.bbox);
-      bounds2 = new Bounds(0, 0, frameData.width, frameData.height);
-    } else {
-      bounds = getDatasetBounds(dataset);
-      bounds2 = calcOutputSizeInPixels(bounds, opts);
-    }
-    fwd = bounds.getTransform(bounds2, opts.invert_y);
+    var frame = getFrameData(dataset, opts);
+    fitDatasetToFrame(dataset, frame, opts);
+    return [frame.width, frame.height];
+  }
+
+  function fitDatasetToFrame(dataset, frame, opts) {
+    var bounds = new Bounds(frame.bbox);
+    var bounds2 = new Bounds(0, 0, frame.width, frame.height);
+    var fwd = bounds.getTransform(bounds2, opts.invert_y);
     transformPoints(dataset, function(x, y) {
       return fwd.transform(x, y);
     });
-    return [Math.round(bounds2.width()), Math.round(bounds2.height()) || 1];
-  }
-
-  function parseMarginOption(opt) {
-    var str = utils.isNumber(opt) ? String(opt) : opt || '';
-    var margins = str.trim().split(/[, ] */);
-    if (margins.length == 1) margins.push(margins[0]);
-    if (margins.length == 2) margins.push(margins[0], margins[1]);
-    if (margins.length == 3) margins.push(margins[2]);
-    return margins.map(function(str) {
-      var px = parseFloat(str);
-      return isNaN(px) ? 1 : px; // 1 is default
-    });
-  }
-
-  // bounds: Bounds object containing bounds of content in geographic coordinates
-  // returns Bounds object containing bounds of pixel output
-  // side effect: bounds param is modified to match the output frame
-  function calcOutputSizeInPixels(bounds, opts) {
-    var padX = 0,
-        padY = 0,
-        offX = 0,
-        offY = 0,
-        width = bounds.width(),
-        height = bounds.height(),
-        margins = parseMarginOption(opts.margin),
-        marginX = margins[0] + margins[2],
-        marginY = margins[1] + margins[3],
-        // TODO: add option to tweak alignment of content when both width and height are given
-        wx = 0.5, // how padding is distributed horizontally (0: left aligned, 0.5: centered, 1: right aligned)
-        wy = 0.5, // vertical padding distribution
-        widthPx, heightPx, size, kx, ky;
-
-    if (opts.fit_bbox) {
-      // scale + shift content to fit within a bbox
-      offX = opts.fit_bbox[0];
-      offY = opts.fit_bbox[1];
-      widthPx = opts.fit_bbox[2] - offX;
-      heightPx = opts.fit_bbox[3] - offY;
-      if (width / height > widthPx / heightPx) {
-        // data is wider than fit box...
-        // scale the data to fit widthwise
-        heightPx = 0;
-      } else {
-        widthPx = 0; // fit the data to the height
-      }
-      marginX = marginY = 0; // TODO: support margins
-
-    } else if (opts.svg_scale > 0) {
-      // alternative to using a fixed width (e.g. when generating multiple files
-      // at a consistent geographic scale)
-      widthPx = width / opts.svg_scale + marginX;
-      heightPx = 0;
-    } else if (+opts.pixels) {
-      size = getFrameSize(bounds, opts);
-      widthPx = size[0];
-      heightPx = size[1];
-    } else {
-      heightPx = opts.height || 0;
-      widthPx = opts.width || (heightPx > 0 ? 0 : 800); // 800 is default width
-    }
-
-    if (heightPx > 0) {
-      // vertical meters per pixel to fit height param
-      ky = (height || width || 1) / (heightPx - marginY);
-    }
-    if (widthPx > 0) {
-      // horizontal meters per pixel to fit width param
-      kx = (width || height || 1) / (widthPx - marginX);
-    }
-
-    if (!widthPx) { // heightPx and ky are defined, set width to match
-      kx = ky;
-      widthPx = width > 0 ? marginX + width / kx : heightPx; // export square graphic if content has 0 width (reconsider this?)
-    } else if (!heightPx) { // widthPx and kx are set, set height to match
-      ky = kx;
-      heightPx = height > 0 ? marginY + height / ky : widthPx;
-      // limit height if max_height is defined
-      if (opts.max_height > 0 && heightPx > opts.max_height) {
-        ky = kx * heightPx / opts.max_height;
-        heightPx = opts.max_height;
-      }
-    }
-
-    if (kx > ky) { // content is wide -- need to pad vertically
-      ky = kx;
-      padY = ky * (heightPx - marginY) - height;
-    } else if (ky > kx) { // content is tall -- need to pad horizontally
-      kx = ky;
-      padX = kx * (widthPx - marginX) - width;
-    }
-
-    bounds.padBounds(
-      margins[0] * kx + padX * wx,
-      margins[1] * ky + padY * wy,
-      margins[2] * kx + padX * (1 - wx),
-      margins[3] * ky + padY * (1 - wy));
-
-    if (!(widthPx > 0 && heightPx > 0)) {
-      error("Missing valid height and width parameters");
-    }
-    if (!(kx === ky && kx > 0)) {
-      error("Missing valid margin parameters");
-    }
-
-    return new Bounds(offX, offY, widthPx + offX, heightPx + offY);
   }
 
   var PixelTransform = /*#__PURE__*/Object.freeze({
     __proto__: null,
     transformDatasetToPixels: transformDatasetToPixels,
-    parseMarginOption: parseMarginOption,
-    calcOutputSizeInPixels: calcOutputSizeInPixels
+    fitDatasetToFrame: fitDatasetToFrame
   });
 
   function stringify(obj) {
@@ -14979,6 +15110,9 @@
       strval = utils.isString(val) ? val : JSON.stringify(val);
       if (key == 'href') {
         key = 'xlink:href';
+      }
+      if (key == 'css') {
+        key = 'style'; // inline style
       }
       return memo + ' ' + key + '="' + stringEscape(strval) + '"';
     }, '');
@@ -15148,11 +15282,10 @@
   */
 
   //
-  //
   function exportSVG(dataset, opts) {
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
     var defs = [];
-    var size, svg;
+    var frame, svg, layers;
     var style = '';
 
     // kludge for map keys
@@ -15169,15 +15302,27 @@
     } else {
       dataset = copyDataset(dataset); // Modify a copy of the dataset
     }
+
     // invert_y setting for screen coordinates and geojson polygon generation
     utils.extend(opts, {invert_y: true});
-    size = transformCoordsForSVG(dataset, opts);
+    frame = getFrameData(dataset, opts);
+    fitDatasetToFrame(dataset, frame, opts);
+    setCoordinatePrecision(dataset, opts.precision || 0.0001);
 
     // error if one or more svg_data fields are not present in any layers
     if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
 
-    svg = dataset.layers.map(function(lyr) {
-      var obj = exportLayerForSVG(lyr, dataset, opts);
+    layers = dataset.layers;
+    if (opts.scalebar) {
+      layers.push(getScalebarLayer({})); // default options
+    }
+    svg = layers.map(function(lyr) {
+      var obj;
+      if (layerHasFurniture(lyr)) {
+        obj = exportFurnitureForSVG(lyr, frame, opts);
+      } else {
+        obj = exportLayerForSVG(lyr, dataset, opts);
+      }
       convertPropertiesToDefinitions(obj, defs);
       return stringify(obj);
     }).join('\n');
@@ -15202,37 +15347,23 @@
 <svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}
 </svg>`;
-    svg = utils.format(template,size[0], size[1], 0, 0, size[0], size[1]);
+    svg = utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
     return [{
       content: svg,
       filename: opts.file || getOutputFileBase(dataset) + '.svg'
     }];
   }
 
-  function transformCoordsForSVG(dataset, opts) {
-    var size = transformDatasetToPixels(dataset, opts);
-    var precision = opts.precision || 0.0001;
-    setCoordinatePrecision(dataset, precision);
-    return size;
+  function exportFurnitureForSVG(lyr, frame, opts) {
+    var layerObj = getEmptyLayerForSVG(lyr, opts);
+    layerObj.children = importFurniture(getFurnitureLayerData(lyr), frame);
+    return layerObj;
   }
 
   function exportLayerForSVG(lyr, dataset, opts) {
     var layerObj = getEmptyLayerForSVG(lyr, opts);
-    if (layerHasFurniture(lyr)) {
-      layerObj.children = exportFurnitureForSVG(lyr, dataset, opts);
-    } else {
-      layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
-    }
+    layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
     return layerObj;
-  }
-
-  function exportFurnitureForSVG(lyr, dataset, opts) {
-    var frameLyr = findFrameLayerInDataset(dataset);
-    var frameData;
-    if (!frameLyr) return [];
-    frameData = getFurnitureLayerData(frameLyr);
-    frameData.crs = getDatasetCRS(dataset); // required by e.g. scalebar
-    return importFurniture(getFurnitureLayerData(lyr), frameData);
   }
 
   function exportSymbolsForSVG(lyr, dataset, opts) {
@@ -15389,6 +15520,7 @@ ${svg}
   var Svg = /*#__PURE__*/Object.freeze({
     __proto__: null,
     exportSVG: exportSVG,
+    exportFurnitureForSVG: exportFurnitureForSVG,
     exportLayerForSVG: exportLayerForSVG,
     validateSvgDataFields: validateSvgDataFields,
     exportDataAttributesForSVG: exportDataAttributesForSVG,
@@ -19283,6 +19415,10 @@ ${svg}
       })
       .option('id-prefix', {
         describe: '[SVG] prefix for namespacing layer and feature ids'
+      })
+      .option('scalebar', {
+        type: 'flag',
+        // describe: '[SVG] add a scalebar showing scale at the center of the map'
       })
       .option('delimiter', {
         describe: '[CSV] field delimiter'
@@ -32534,6 +32670,80 @@ ${svg}
     return parsed[0];
   }
 
+  /* require mapshaper-rectangle, mapshaper-furniture */
+
+  cmd.frame = function(catalog, source, opts) {
+    var size, bounds, tmp, dataset;
+    if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
+      stop("Missing a width or area");
+    }
+    if (opts.width && opts.height) {
+      opts = utils.extend({}, opts);
+      // Height is a string containing either a number or a
+      //   comma-sep. pair of numbers (range); here we convert height to
+      //   an aspect-ratio parameter for the rectangle() function
+      opts.aspect_ratio = getAspectRatioArg(opts.width, opts.height);
+      // TODO: currently returns max,min aspect ratio, should return in min,max order
+      // (rectangle() function should handle max,min argument correctly now anyway)
+    }
+    tmp = cmd.rectangle(source, opts);
+    bounds = getDatasetBounds(tmp);
+    if (probablyDecimalDegreeBounds(bounds)) {
+      stop('Frames require projected, not geographical coordinates');
+    } else if (!getDatasetCRS(tmp)) {
+      message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
+    }
+    size = getFrameSize(bounds, opts);
+    if (size[0] > 0 === false) {
+      stop('Missing a valid frame width');
+    }
+    if (size[1] > 0 === false) {
+      stop('Missing a valid frame height');
+    }
+    dataset = {info: {}, layers:[{
+      name: opts.name || 'frame',
+      data: new DataTable([{
+        width: size[0],
+        height: size[1],
+        bbox: bounds.toArray(),
+        type: 'frame'
+      }])
+    }]};
+    catalog.addDataset(dataset);
+  };
+
+  // Convert width and height args to aspect ratio arg for the rectangle() function
+  function getAspectRatioArg(widthArg, heightArg) {
+    // heightArg is a string containing either a number or a
+    // comma-sep. pair of numbers (range);
+    return heightArg.split(',').map(function(opt) {
+      var height = Number(opt),
+          width = Number(widthArg);
+      if (!opt) return '';
+      return width / height;
+    }).reverse().join(',');
+  }
+
+  furnitureRenderers.frame = function(d) {
+    var lineWidth = 1,
+        // inset stroke by half of line width
+        off = lineWidth / 2,
+        obj = importPolygon([[[off, off], [off, d.height - off],
+          [d.width - off, d.height - off],
+          [d.width - off, off], [off, off]]]);
+    utils.extend(obj.properties, {
+        fill: 'none',
+        stroke: d.stroke || 'black',
+        'stroke-width': d['stroke-width'] || lineWidth
+    });
+    return [obj];
+  };
+
+  var Frame = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getAspectRatioArg: getAspectRatioArg
+  });
+
   cmd.filterGeom = function(lyr, arcs, opts) {
     if (!layerHasGeometry(lyr)) {
       stop("Layer is missing geometry");
@@ -37421,153 +37631,6 @@ ${svg}
     }
   };
 
-  cmd.scalebar = function(catalog, opts) {
-    var frame = findFrameDataset(catalog);
-    var obj, lyr;
-    if (!frame) {
-      stop('Missing a map frame');
-    }
-    obj = utils.defaults({type: 'scalebar'}, opts);
-    lyr = {
-      name: opts.name || 'scalebar',
-      data: new DataTable([obj])
-    };
-    frame.layers.push(lyr);
-  };
-
-  // TODO: generalize to other kinds of furniture as they are developed
-  function getScalebarPosition(d) {
-    var opts = { // defaults
-      valign: 'top',
-      halign: 'left',
-      voffs: 10,
-      hoffs: 10
-    };
-    if (+d.left > 0) {
-      opts.hoffs = +d.left;
-    }
-    if (+d.top > 0) {
-      opts.voffs = +d.top;
-    }
-    if (+d.right > 0) {
-      opts.hoffs = +d.right;
-      opts.halign = 'right';
-    }
-    if (+d.bottom > 0) {
-      opts.voffs = +d.bottom;
-      opts.valign = 'bottom';
-    }
-    return opts;
-  }
-
-  furnitureRenderers.scalebar = function(d, frame) {
-    var pos = getScalebarPosition(d);
-    var metersPerPx = getMapFrameMetersPerPixel(frame);
-    var label = d.label_text || getAutoScalebarLabel(frame.width, metersPerPx);
-    var scalebarKm = parseScalebarLabelToKm(label);
-    var barHeight = 3;
-    var labelOffs = 4;
-    var fontSize = +d.font_size || 13;
-    var width = Math.round(scalebarKm / metersPerPx * 1000);
-    var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
-    var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
-    var anchorX = pos.halign == 'left' ? 0 : width;
-    var anchorY = barHeight + labelOffs;
-    var dx = pos.halign == 'right' ? frame.width - width - pos.hoffs : pos.hoffs;
-    var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
-
-    if (labelPos == 'top') {
-      anchorY = -labelOffs;
-      dy += Math.round(labelOffs + fontSize * 0.8);
-    }
-
-    if (width > 0 === false) {
-      stop("Null scalebar length");
-    }
-    var barObj = {
-      tag: 'rect',
-      properties: {
-        fill: 'black',
-        x: 0,
-        y: 0,
-        width: width,
-        height: barHeight
-      }
-    };
-    var labelOpts = {
-        'label-text': label,
-        'font-size': fontSize,
-        'text-anchor': pos.halign == 'left' ? 'start': 'end',
-        'dominant-baseline': labelPos == 'top' ? 'auto' : 'hanging'
-        //// 'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge'
-        // 'text-after-edge' is buggy in Safari and unsupported by Illustrator,
-        // so I'm using 'hanging' and 'auto', which seem to be well supported.
-        // downside: requires a kludgy multiplier to calculate scalebar height (see above)
-      };
-    var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY);
-    var g = {
-      tag: 'g',
-      children: [barObj, labelObj],
-      properties: {
-        transform: 'translate(' + dx + ' ' + dy + ')'
-      }
-    };
-    return [g];
-  };
-
-  function getAutoScalebarLabel(mapWidth, metersPerPx) {
-    var minWidth = 100; // TODO: vary min size based on map width
-    var minKm = metersPerPx * minWidth / 1000;
-    var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
-      '100 150 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +
-      '2,500 3,000 4,000 5,000').split(' ');
-    return options.reduce(function(memo, str) {
-      if (memo) return memo;
-      var label = formatDistanceLabelAsMiles(str);
-      if (parseScalebarLabelToKm(label) > minKm) {
-         return label;
-      }
-    }, null) || '';
-  }
-
-  function formatDistanceLabelAsMiles(str) {
-    var num = parseScalebarNumber(str);
-    return str + (num > 1 ? ' MILES' : ' MILE');
-  }
-
-  // See test/mapshaper-scalebar.js for examples of supported formats
-  function parseScalebarLabelToKm(str) {
-    var units = parseScalebarUnits(str);
-    var value = parseScalebarNumber(str);
-    if (!units || !value) return NaN;
-    return units == 'mile' ? value * 1.60934 : value;
-  }
-
-  function parseScalebarUnits(str) {
-    var isMiles = /miles?$/.test(str.toLowerCase());
-    var isKm = /(km|kilometers?|kilometres?)$/.test(str.toLowerCase());
-    return isMiles && 'mile' || isKm && 'km' || '';
-  }
-
-  function parseScalebarNumber(str) {
-    var fractionRxp = /^([0-9]+) ?\/ ?([0-9]+)/;
-    var match, value;
-    str = str.replace(/[\s]/g, '').replace(/,/g, '');
-    if (fractionRxp.test(str)) {
-      match = fractionRxp.exec(str);
-      value = +match[1] / +match[2];
-    } else {
-      value = parseFloat(str);
-    }
-    return value > 0 && value < Infinity ? value : NaN;
-  }
-
-  var Scalebar = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    formatDistanceLabelAsMiles: formatDistanceLabelAsMiles,
-    parseScalebarLabelToKm: parseScalebarLabelToKm
-  });
-
   cmd.shape = function(targetDataset, opts) {
     var geojson, dataset;
     if (opts.coordinates) {
@@ -40869,6 +40932,7 @@ ${svg}
     FileTypes,
     FilterGeom,
     Frame,
+    FrameData,
     Furniture,
     Geodesic,
     GeojsonExport,

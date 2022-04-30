@@ -9198,7 +9198,7 @@
     }
     obj.properties.transform = getSvgFurnitureTransform(ext);
     obj.properties.class = 'mapshaper-svg-furniture';
-    obj.children = internal.importFurniture(internal.getFurnitureLayerData(lyr), frame);
+    obj.children = internal.importFurniture(internal.getFrameLayerData(lyr), frame);
     return internal.svg.stringify(obj);
   }
 
@@ -10334,7 +10334,7 @@
 
     function getFrameData() {
       var frameLyr = internal.findFrameLayer(model);
-      return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+      return frameLyr && internal.getFrameLayerData(frameLyr) || null;
     }
 
     function clearAllDisplayArcs() {
