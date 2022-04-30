@@ -1,3 +1,6 @@
+v0.5.114
+* Bug fixes
+
 v0.5.113
 * Added -symbols arrow-style=stick option, for making stick arrows
 * Added -symbols stroke= and -symbols stroke-width= options for styling stick arrows
