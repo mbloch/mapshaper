@@ -1,4 +1,4 @@
-import { getMapFrameMetersPerPixel, findFrameDataset } from '../commands/mapshaper-frame';
+import { getMapFrameMetersPerPixel, findFrameDataset } from '../furniture/mapshaper-frame-data';
 import { furnitureRenderers } from '../furniture/mapshaper-furniture';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
@@ -12,13 +12,17 @@ cmd.scalebar = function(catalog, opts) {
   if (!frame) {
     stop('Missing a map frame');
   }
-  obj = utils.defaults({type: 'scalebar'}, opts);
-  lyr = {
+  lyr = getScalebarLayer(opts);
+  frame.layers.push(lyr);
+};
+
+export function getScalebarLayer(opts) {
+  var obj = utils.defaults({type: 'scalebar'}, opts);
+  return {
     name: opts.name || 'scalebar',
     data: new DataTable([obj])
   };
-  frame.layers.push(lyr);
-};
+}
 
 // TODO: generalize to other kinds of furniture as they are developed
 function getScalebarPosition(d) {
@@ -45,14 +49,16 @@ function getScalebarPosition(d) {
   return opts;
 }
 
-furnitureRenderers.scalebar = function(d, frame) {
+furnitureRenderers.scalebar = renderScalebar;
+
+export function renderScalebar(d, frame) {
   var pos = getScalebarPosition(d);
   var metersPerPx = getMapFrameMetersPerPixel(frame);
   var label = d.label_text || getAutoScalebarLabel(frame.width, metersPerPx);
   var scalebarKm = parseScalebarLabelToKm(label);
   var barHeight = 3;
   var labelOffs = 4;
-  var fontSize = +d.font_size || 13;
+  var fontSize = +d.font_size || 12;
   var width = Math.round(scalebarKm / metersPerPx * 1000);
   var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
   var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
@@ -98,10 +104,10 @@ furnitureRenderers.scalebar = function(d, frame) {
     }
   };
   return [g];
-};
+}
 
 function getAutoScalebarLabel(mapWidth, metersPerPx) {
-  var minWidth = 100; // TODO: vary min size based on map width
+  var minWidth = 75; // 100; // TODO: vary min size based on map width
   var minKm = metersPerPx * minWidth / 1000;
   var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
     '100 150 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +

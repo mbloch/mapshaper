@@ -371,7 +371,7 @@ export function MshpMap(gui) {
 
   function getFrameData() {
     var frameLyr = internal.findFrameLayer(model);
-    return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+    return frameLyr && internal.getFrameLayerData(frameLyr) || null;
   }
 
   function clearAllDisplayArcs() {

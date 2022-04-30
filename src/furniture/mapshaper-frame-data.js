@@ -1,42 +1,107 @@
-import { getFrameSize } from '../commands/mapshaper-frame';
-import { transformPoints, getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { getFurnitureLayerData } from '../furniture/mapshaper-furniture';
-import { findFrameLayerInDataset } from '../commands/mapshaper-frame';
 import { Bounds } from '../geom/mapshaper-bounds';
+import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
+import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getFurnitureLayerType } from '../furniture/mapshaper-furniture';
 import utils from '../utils/mapshaper-utils';
 import { error } from '../utils/mapshaper-logging';
-
-export function transformDatasetToPixels(dataset, opts) {
+/*
+{
+  width: size[0],
+  height: size[1],
+  bbox: bounds.toArray(),
+  type: 'frame'
+}
+*/
+export function getFrameData(dataset, exportOpts) {
   var frameLyr = findFrameLayerInDataset(dataset);
-  var bounds, bounds2, fwd, frameData;
+  var frameData;
   if (frameLyr) {
-    // TODO: handle options like width, height margin when a frame is present
-    // TODO: check that aspect ratios match
-    frameData = getFurnitureLayerData(frameLyr);
-    bounds = new Bounds(frameData.bbox);
-    bounds2 = new Bounds(0, 0, frameData.width, frameData.height);
+    frameData = Object.assign({}, getFrameLayerData(frameLyr));
   } else {
-    bounds = getDatasetBounds(dataset);
-    bounds2 = calcOutputSizeInPixels(bounds, opts);
+    frameData = calcFrameData(dataset, exportOpts);
   }
-  fwd = bounds.getTransform(bounds2, opts.invert_y);
-  transformPoints(dataset, function(x, y) {
-    return fwd.transform(x, y);
-  });
-  return [Math.round(bounds2.width()), Math.round(bounds2.height()) || 1];
+  frameData.crs = getDatasetCRS(dataset);
+  return frameData;
 }
 
-export function parseMarginOption(opt) {
-  var str = utils.isNumber(opt) ? String(opt) : opt || '';
-  var margins = str.trim().split(/[, ] */);
-  if (margins.length == 1) margins.push(margins[0]);
-  if (margins.length == 2) margins.push(margins[0], margins[1]);
-  if (margins.length == 3) margins.push(margins[2]);
-  return margins.map(function(str) {
-    var px = parseFloat(str);
-    return isNaN(px) ? 1 : px; // 1 is default
+function calcFrameData(dataset, opts) {
+  var bounds = getDatasetBounds(dataset);
+  var bounds2 = calcOutputSizeInPixels(bounds, opts);
+  return {
+    bbox: bounds.toArray(),
+    width: Math.round(bounds2.width()),
+    height: Math.round(bounds2.height()) || 1,
+    type: 'frame'
+  };
+}
+
+export function getFrameLayerData(lyr) {
+  return lyr.data && lyr.data.getReadOnlyRecordAt(0);
+}
+
+// Used by mapshaper-frame and mapshaper-pixel-transform. TODO: refactor
+export function getFrameSize(bounds, opts) {
+  var aspectRatio = bounds.width() / bounds.height();
+  var height, width;
+  if (opts.pixels) {
+    width = Math.sqrt(+opts.pixels * aspectRatio);
+  } else {
+    width = +opts.width;
+  }
+  height = width / aspectRatio;
+  return [Math.round(width), Math.round(height)];
+}
+
+
+// @lyr dataset layer
+function isFrameLayer(lyr) {
+  return getFurnitureLayerType(lyr) == 'frame';
+}
+
+export function findFrameLayerInDataset(dataset) {
+  return utils.find(dataset.layers, function(lyr) {
+    return isFrameLayer(lyr);
   });
 }
+
+export function findFrameDataset(catalog) {
+  var target = utils.find(catalog.getLayers(), function(o) {
+    return isFrameLayer(o.layer);
+  });
+  return target ? target.dataset : null;
+}
+
+export function findFrameLayer(catalog) {
+  var target = utils.find(catalog.getLayers(), function(o) {
+    return isFrameLayer(o.layer);
+  });
+  return target && target.layer || null;
+}
+
+export function getFrameLayerBounds(lyr) {
+  return new Bounds(getFrameLayerData(lyr).bbox);
+}
+
+// @data frame data, including crs property if available
+// Returns a single value: the ratio or
+export function getMapFrameMetersPerPixel(data) {
+  var bounds = new Bounds(data.bbox);
+  var k, toMeters, metersPerPixel;
+  if (data.crs) {
+    // TODO: handle CRS without inverse projections
+    // scale factor is the ratio of coordinate distance to true distance at a point
+    k = getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
+    toMeters = data.crs.to_meter;
+  } else {
+    // Assuming coordinates are meters and k is 1 (not safe)
+    // A warning should be displayed when relevant furniture element is created
+    k = 1;
+    toMeters = 1;
+  }
+  metersPerPixel = bounds.width() / k * toMeters / data.width;
+  return metersPerPixel;
+}
+
 
 // bounds: Bounds object containing bounds of content in geographic coordinates
 // returns Bounds object containing bounds of pixel output
@@ -129,4 +194,16 @@ export function calcOutputSizeInPixels(bounds, opts) {
   }
 
   return new Bounds(offX, offY, widthPx + offX, heightPx + offY);
+}
+
+export function parseMarginOption(opt) {
+  var str = utils.isNumber(opt) ? String(opt) : opt || '';
+  var margins = str.trim().split(/[, ] */);
+  if (margins.length == 1) margins.push(margins[0]);
+  if (margins.length == 2) margins.push(margins[0], margins[1]);
+  if (margins.length == 3) margins.push(margins[2]);
+  return margins.map(function(str) {
+    var px = parseFloat(str);
+    return isNaN(px) ? 1 : px; // 1 is default
+  });
 }

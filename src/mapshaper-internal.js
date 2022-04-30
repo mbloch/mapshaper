@@ -100,6 +100,7 @@ import * as FileReader from './io/mapshaper-file-reader';
 import * as FileTypes from './io/mapshaper-file-types';
 import * as FilterGeom from './commands/mapshaper-filter-geom';
 import * as Frame from './commands/mapshaper-frame';
+import * as FrameData from './furniture/mapshaper-frame-data';
 import * as Furniture from './furniture/mapshaper-furniture';
 import * as Geodesic from './geom/mapshaper-geodesic';
 import * as GeojsonExport from './geojson/geojson-export';
@@ -133,7 +134,7 @@ import * as PathfinderUtils from './paths/mapshaper-pathfinder-utils';
 import * as PathImport from './paths/mapshaper-path-import';
 import * as PathRepair from './paths/mapshaper-path-repair-utils';
 import * as PathUtils from './paths/mapshaper-path-utils';
-import * as PixelTransform from './geom/mapshaper-pixel-transform';
+import * as PixelTransform from './furniture/mapshaper-pixel-transform';
 import * as PointPolygonJoin from './join/mapshaper-point-polygon-join';
 import * as Points from './commands/mapshaper-points';
 import * as PointUtils from './points/mapshaper-point-utils';
@@ -212,6 +213,7 @@ Object.assign(internal,
   FileTypes,
   FilterGeom,
   Frame,
+  FrameData,
   Furniture,
   Geodesic,
   GeojsonExport,

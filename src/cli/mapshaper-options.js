@@ -340,6 +340,10 @@ export function getOptionParser() {
     .option('id-prefix', {
       describe: '[SVG] prefix for namespacing layer and feature ids'
     })
+    .option('scalebar', {
+      type: 'flag',
+      // describe: '[SVG] add a scalebar showing scale at the center of the map'
+    })
     .option('delimiter', {
       describe: '[CSV] field delimiter'
     })

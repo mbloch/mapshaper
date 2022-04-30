@@ -13,7 +13,7 @@ import { exportIds } from '../geojson/geojson-export';
 import { exportProperties } from '../geojson/geojson-export';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
-import { transformDatasetToPixels } from '../geom/mapshaper-pixel-transform';
+import { transformDatasetToPixels } from '../furniture/mapshaper-pixel-transform';
 import { getFormattedStringify } from '../geojson/mapshaper-stringify';
 import { copyDatasetForExport, datasetHasPaths, splitDataset, getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';

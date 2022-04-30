@@ -1,11 +1,11 @@
 /* require mapshaper-rectangle, mapshaper-furniture */
 
-import { furnitureRenderers, getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture';
+import { furnitureRenderers } from '../furniture/mapshaper-furniture';
+import { getFrameSize } from '../furniture/mapshaper-frame-data';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { message, stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
-import { Bounds } from '../geom/mapshaper-bounds';
-import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { importPolygon } from '../svg/geojson-to-svg';
 import cmd from '../mapshaper-cmd';
@@ -61,77 +61,6 @@ export function getAspectRatioArg(widthArg, heightArg) {
     if (!opt) return '';
     return width / height;
   }).reverse().join(',');
-}
-
-export function getFrameSize(bounds, opts) {
-  var aspectRatio = bounds.width() / bounds.height();
-  var height, width;
-  if (opts.pixels) {
-    width = Math.sqrt(+opts.pixels * aspectRatio);
-  } else {
-    width = +opts.width;
-  }
-  height = width / aspectRatio;
-  return [Math.round(width), Math.round(height)];
-}
-
-function getDatasetDisplayBounds(dataset) {
-  var frameLyr = findFrameLayerInDataset(dataset);
-  if (frameLyr) {
-    // TODO: check for coordinate issues (non-intersection with other layers, etc)
-    return getFrameLayerBounds(frameLyr);
-  }
-  return getDatasetBounds(dataset);
-}
-
-// @lyr dataset layer
-function isFrameLayer(lyr) {
-  return getFurnitureLayerType(lyr) == 'frame';
-}
-
-export function findFrameLayerInDataset(dataset) {
-  return utils.find(dataset.layers, function(lyr) {
-    return isFrameLayer(lyr);
-  });
-}
-
-export function findFrameDataset(catalog) {
-  var target = utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer);
-  });
-  return target ? target.dataset : null;
-}
-
-export function findFrameLayer(catalog) {
-  var target = utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer);
-  });
-  return target && target.layer || null;
-}
-
-export function getFrameLayerBounds(lyr) {
-  return new Bounds(getFurnitureLayerData(lyr).bbox);
-}
-
-
-// @data frame data, including crs property if available
-// Returns a single value: the ratio or
-export function getMapFrameMetersPerPixel(data) {
-  var bounds = new Bounds(data.bbox);
-  var k, toMeters, metersPerPixel;
-  if (data.crs) {
-    // TODO: handle CRS without inverse projections
-    // scale factor is the ratio of coordinate distance to true distance at a point
-    k = getScaleFactorAtXY(bounds.centerX(), bounds.centerY(), data.crs);
-    toMeters = data.crs.to_meter;
-  } else {
-    // Assuming coordinates are meters and k is 1 (not safe)
-    // A warning should be displayed when relevant furniture element is created
-    k = 1;
-    toMeters = 1;
-  }
-  metersPerPixel = bounds.width() / k * toMeters / data.width;
-  return metersPerPixel;
 }
 
 furnitureRenderers.frame = function(d) {

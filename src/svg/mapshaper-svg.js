@@ -1,9 +1,10 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { getFurnitureLayerData, layerHasFurniture, importFurniture } from '../furniture/mapshaper-furniture';
-import { findFrameLayerInDataset } from '../commands/mapshaper-frame';
+import { getFrameData } from '../furniture/mapshaper-frame-data';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
-import { transformDatasetToPixels } from '../geom/mapshaper-pixel-transform';
+import { getScalebarLayer } from '../commands/mapshaper-scalebar';
+import { fitDatasetToFrame } from '../furniture/mapshaper-pixel-transform';
 import { copyDataset } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, error, stop } from '../utils/mapshaper-logging';
@@ -13,11 +14,10 @@ import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 
 //
-//
 export function exportSVG(dataset, opts) {
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
   var defs = [];
-  var size, svg;
+  var frame, svg, layers;
   var style = '';
 
   // kludge for map keys
@@ -34,15 +34,27 @@ export function exportSVG(dataset, opts) {
   } else {
     dataset = copyDataset(dataset); // Modify a copy of the dataset
   }
+
   // invert_y setting for screen coordinates and geojson polygon generation
   utils.extend(opts, {invert_y: true});
-  size = transformCoordsForSVG(dataset, opts);
+  frame = getFrameData(dataset, opts);
+  fitDatasetToFrame(dataset, frame, opts);
+  setCoordinatePrecision(dataset, opts.precision || 0.0001);
 
   // error if one or more svg_data fields are not present in any layers
   if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
 
-  svg = dataset.layers.map(function(lyr) {
-    var obj = exportLayerForSVG(lyr, dataset, opts);
+  layers = dataset.layers;
+  if (opts.scalebar) {
+    layers.push(getScalebarLayer({})); // default options
+  }
+  svg = layers.map(function(lyr) {
+    var obj;
+    if (layerHasFurniture(lyr)) {
+      obj = exportFurnitureForSVG(lyr, frame, opts);
+    } else {
+      obj = exportLayerForSVG(lyr, dataset, opts);
+    }
     convertPropertiesToDefinitions(obj, defs);
     return stringify(obj);
   }).join('\n');
@@ -67,37 +79,23 @@ export function exportSVG(dataset, opts) {
 <svg ${namespace} version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" ${lineProps}>${style}
 ${svg}
 </svg>`;
-  svg = utils.format(template,size[0], size[1], 0, 0, size[0], size[1]);
+  svg = utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
   return [{
     content: svg,
     filename: opts.file || getOutputFileBase(dataset) + '.svg'
   }];
 }
 
-function transformCoordsForSVG(dataset, opts) {
-  var size = transformDatasetToPixels(dataset, opts);
-  var precision = opts.precision || 0.0001;
-  setCoordinatePrecision(dataset, precision);
-  return size;
+export function exportFurnitureForSVG(lyr, frame, opts) {
+  var layerObj = getEmptyLayerForSVG(lyr, opts);
+  layerObj.children = importFurniture(getFurnitureLayerData(lyr), frame);
+  return layerObj;
 }
 
 export function exportLayerForSVG(lyr, dataset, opts) {
   var layerObj = getEmptyLayerForSVG(lyr, opts);
-  if (layerHasFurniture(lyr)) {
-    layerObj.children = exportFurnitureForSVG(lyr, dataset, opts);
-  } else {
-    layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
-  }
+  layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
   return layerObj;
-}
-
-function exportFurnitureForSVG(lyr, dataset, opts) {
-  var frameLyr = findFrameLayerInDataset(dataset);
-  var frameData;
-  if (!frameLyr) return [];
-  frameData = getFurnitureLayerData(frameLyr);
-  frameData.crs = getDatasetCRS(dataset); // required by e.g. scalebar
-  return importFurniture(getFurnitureLayerData(lyr), frameData);
 }
 
 function exportSymbolsForSVG(lyr, dataset, opts) {
