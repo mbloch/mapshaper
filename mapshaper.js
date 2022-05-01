@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.114";
+  var VERSION = "0.5.115";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -14942,6 +14942,11 @@
     var dx = pos.halign == 'right' ? frame.width - width - pos.hoffs : pos.hoffs;
     var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
 
+    if (!frame.crs) {
+      message('Unable to render a scalebar: unknown CRS.');
+      return [];
+    }
+
     if (labelPos == 'top') {
       anchorY = -labelOffs;
       dy += Math.round(labelOffs + fontSize * 0.8);
@@ -14982,10 +14987,11 @@
   }
 
   function getAutoScalebarLabel(mapWidth, metersPerPx) {
-    var minWidth = 75; // 100; // TODO: vary min size based on map width
+    var minWidth = 70; // 100; // TODO: vary min size based on map width
     var minKm = metersPerPx * minWidth / 1000;
-    var options = ('1/8 1/5 1/4 1/2 1 1.5 2 3 4 5 8 10 12 15 20 25 30 40 50 75 ' +
-      '100 150 200 250 300 350 400 500 750 1,000 1,200 1,500 2,000 ' +
+    // note: removed 1.5 12 and 1,200
+    var options = ('1/8 1/5 1/4 1/2 1 2 3 4 5 8 10 15 20 25 30 40 50 75 ' +
+      '100 150 200 250 300 350 400 500 750 1,000 1,500 2,000 ' +
       '2,500 3,000 4,000 5,000').split(' ');
     return options.reduce(function(memo, str) {
       if (memo) return memo;
