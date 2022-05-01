@@ -1,3 +1,6 @@
+v0.5.115
+* Scalebar tweaks.
+
 v0.5.114
 * Bug fixes
 
