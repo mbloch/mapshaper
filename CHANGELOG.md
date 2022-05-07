@@ -1,3 +1,6 @@
+v0.5.116
+* Prevent 0-length DBF string fields, for interoperability with PostGIS.
+
 v0.5.115
 * Scalebar tweaks.
 

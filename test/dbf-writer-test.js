@@ -90,6 +90,14 @@ describe('dbf-writer.js', function () {
       assert(!!info.warning);
     })
 
+    it('minimum text field length is 1', function() {
+      var data = [{a: ''}],
+          info = Dbf.getFieldInfo(data, 'a', 'ascii');
+      assert.equal(info.type, 'C');
+      assert.equal(info.size, 1);
+      assert.equal(info.decimals, 0);
+    })
+
     it('objects are exported as empty values, with a warning', function() {
       var data = [{a: {}, b: [1], c: function() {}}],
           a = Dbf.getFieldInfo(data, 'a'),
@@ -169,6 +177,13 @@ describe('dbf-writer.js', function () {
       var data = [
         {foo: ''},
         {foo: 'bar'}
+      ]
+      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'C')
+    })
+    it('all empty strings are string type', function () {
+      var data = [
+        {foo: ''},
+        {foo: ''}
       ]
       assert.equal(Dbf.discoverFieldType(data, 'foo'), 'C')
     })

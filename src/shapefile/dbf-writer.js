@@ -184,7 +184,9 @@ function convertValueToString(s) {
 
 function initStringField(info, arr, name, encoding) {
   var formatter = encoding == 'ascii' ? encodeValueAsAscii : getStringWriterEncoded(encoding);
-  var size = 0;
+  // Set minimum field size to 1 byte, for interoperability with PostGIS
+  // (see https://github.com/mbloch/mapshaper/issues/541)
+  var size = 1;
   var truncated = 0;
   var buffers = arr.map(function(rec) {
     var strval = convertValueToString(rec[name]);
