@@ -3,9 +3,9 @@ import DbfReader from '../shapefile/dbf-reader';
 import Dbf from '../shapefile/dbf-writer';
 import { DataTable } from '../datatable/mapshaper-data-table';
 
-export function importDbfTable(buf, o) {
+export function importDbfTable(src, o) {
   var opts = o || {};
-  return new ShapefileTable(buf, opts.encoding);
+  return new ShapefileTable(src, opts.encoding);
 }
 
 // Implements the DataTable api for DBF file data.
@@ -14,8 +14,8 @@ export function importDbfTable(buf, o) {
 // just the shapes and exporting in Shapefile format.
 // TODO: consider accepting just the filename, so buffer doesn't consume memory needlessly.
 //
-export function ShapefileTable(buf, encoding) {
-  var reader = new DbfReader(buf, encoding),
+export function ShapefileTable(src, encoding) {
+  var reader = new DbfReader(src, encoding),
       altered = false,
       table;
 
@@ -24,15 +24,23 @@ export function ShapefileTable(buf, encoding) {
       // export DBF records on first table access
       table = new DataTable(reader.readRows());
       reader = null;
-      buf = null; // null out references to DBF data for g.c.
+      src = null; // null out references to DBF data for g.c.
     }
     return table;
   }
 
   this.exportAsDbf = function(opts) {
-    // export original dbf bytes if possible, for performance
+    // export original dbf bytes if possible
+    // (e.g. if the data attributes haven't changed)
     var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
-    if (useOriginal) return reader.getBuffer();
+    if (useOriginal) {
+      try {
+        // Maximum Buffer in current Node.js is 2GB
+        // We fall back to import-export if getBuffer() fails.
+        // This may produce a buffer that does not exceed the maximum size.
+        return reader.getBuffer();
+      } catch(e) {}
+    }
     return Dbf.exportRecords(getTable().getRecords(), opts.encoding, opts.field_order);
   };
 

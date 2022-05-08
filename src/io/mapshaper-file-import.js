@@ -53,17 +53,9 @@ var _importFile = function(path, opts) {
       content;
 
   cli.checkFileExists(path, cache);
-  if (fileType == 'shp' && !cached) {
-    // let ShpReader read the file (supports larger files)
+  if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
+    // these file types are read incrementally
     content = null;
-
-  } else if (fileType == 'json' && !cached) {
-    // postpone reading of JSON files, to support incremental parsing
-    content = null;
-
-  } else if (fileType == 'text' && !cached) {
-    // content = cli.readFile(path); // read from buffer
-    content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
 
   } else if (fileType && isSupportedBinaryInputType(path)) {
     content = cli.readFile(path, null, cache);
@@ -121,7 +113,11 @@ function readShapefileAuxFiles(path, obj, cache) {
     obj.shx = {filename: shxPath, content: cli.readFile(shxPath, null, cache)};
   }
   if (!obj.dbf && cli.isFile(dbfPath, cache)) {
-    obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
+    // obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
+    obj.dbf = {
+      filename: dbfPath,
+      content: (cache && (dbfPath in cache)) ? cli.readFile(dbfPath, null, cache) : null
+    };
   }
   if (obj.dbf && cli.isFile(cpgPath, cache)) {
     obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8', cache).trim()};

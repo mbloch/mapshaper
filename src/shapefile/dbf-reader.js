@@ -5,12 +5,16 @@ import { bufferToString, standardizeEncodingName, decodeString } from '../text/m
 import { formatStringsAsGrid, stop, message } from '../utils/mapshaper-logging';
 import { getUniqFieldNames } from '../datatable/mapshaper-data-utils';
 import { error } from '../utils/mapshaper-logging';
+import { FileReader, BufferReader } from '../io/mapshaper-file-reader';
 
 // DBF format references:
 // http://www.dbf2002.com/dbf-file-format.html
 // http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
 // http://www.clicketyclick.dk/databases/xbase/format/index.html
 // http://www.clicketyclick.dk/databases/xbase/format/data_types.html
+// esri docs:
+// https://support.esri.com/en/technical-article/000007920
+// https://desktop.arcgis.com/en/arcmap/latest/manage-data/shapefiles/geoprocessing-considerations-for-shapefile-output.htm
 
 // source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
 var languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
@@ -147,11 +151,12 @@ function readDate(bin, size) {
 // @src is a Buffer or ArrayBuffer or filename
 //
 export default function DbfReader(src, encodingArg) {
-  if (utils.isString(src)) {
-    error("[DbfReader] Expected a buffer, not a string");
-  }
-  var bin = new BinArray(src);
-  var header = readHeader(bin);
+  var opts = {
+    cacheSize: 0x2000000, // 32MB
+    bufferSize: 0x400000 // 4MB
+  };
+  var dbfFile = utils.isString(src) ? new FileReader(src, opts) : new BufferReader(src);
+  var header = readHeader(dbfFile);
 
   // encoding and fields are set on first access
   var fields;
@@ -167,7 +172,11 @@ export default function DbfReader(src, encodingArg) {
 
   this.getFields = getFieldNames;
 
-  this.getBuffer = function() {return bin.buffer();};
+  // TODO: switch to streaming output under Node.js
+  this.getBuffer = function() {
+    return dbfFile.readSync(0, dbfFile.size());
+    // return bin.buffer();
+  };
 
   this.deleteField = function(f) {
     prepareToRead();
@@ -208,7 +217,10 @@ export default function DbfReader(src, encodingArg) {
     });
   }
 
-  function readHeader(bin) {
+  function readHeader(reader) {
+    // fetch enough bytes to accomodate any header
+    var maxHeaderLen = 32 * 256 + 1; // 255 fields * fieldRecSize + headerRecSize + terminator
+    var bin = reader.readToBinArray(0, Math.min(maxHeaderLen, reader.size()));
     bin.position(0).littleEndian();
     var header = {
       version: bin.readInt8(),
@@ -294,30 +306,32 @@ export default function DbfReader(src, encodingArg) {
     return new Function('return {' + args.join(',') + '};');
   }
 
-  function findEofPos(bin) {
-    var pos = bin.size() - 1;
-    if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
-      pos++;
-    }
-    return pos;
-  }
+  // function findEofPos(bin) {
+  //   var pos = bin.size() - 1;
+  //   if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
+  //     pos++;
+  //   }
+  //   return pos;
+  // }
 
   function getRecordReader() {
     prepareToRead();
     var readers = fields.map(getFieldReader),
-        eofOffs = findEofPos(bin),
         create = getRecordConstructor(),
         values = [];
 
     return function readRow(r) {
-      var offs = getRowOffset(r),
+      var bin = dbfFile.readToBinArray(getRowOffset(r), header.recordSize),
+          rowOffs = bin.position(),
           fieldOffs, field;
+      if (bin.bytesLeft() < header.recordSize ||
+          bin.bytesLeft() == header.recordSize && bin.peek(bin.size() - 1) == 0x1A) {
+        // check for observed data error: last data byte contains EOF
+        stop('Invalid DBF file: encountered end-of-file while reading data');
+      }
       for (var c=0, cols=fields.length; c<cols; c++) {
         field = fields[c];
-        fieldOffs = offs + field.columnOffset;
-        if (fieldOffs + field.size > eofOffs) {
-          stop('Invalid DBF file: encountered end-of-file while reading data');
-        }
+        fieldOffs = rowOffs + field.columnOffset;
         bin.position(fieldOffs);
         values[c] = readers[c](bin, field.size);
       }
@@ -407,14 +421,17 @@ export default function DbfReader(src, encodingArg) {
     var maxSamples = 50;
     var buf = utils.createBuffer(256);
     var index = {};
-    var f, chars, sample, hash;
+    var f, chars, sample, hash, bin, rowOffs;
     // include non-ascii field names, if any
     samples = getNonAsciiHeaders();
     for (var r=0; r<rows; r++) {
+      bin = dbfFile.readToBinArray(getRowOffset(r), header.recordSize);
+      rowOffs = bin.position();
       for (var c=0; c<cols; c++) {
         if (samples.length >= maxSamples) break;
         f = stringFields[c];
-        bin.position(getRowOffset(r) + f.columnOffset);
+        // bin.position(getRowOffset(r) + f.columnOffset);
+        bin.position(rowOffs + f.columnOffset);
         chars = readStringBytes(bin, f.size, buf);
         if (chars > 0 && bufferContainsHighBit(buf, chars)) {
           sample = utils.createBuffer(buf.slice(0, chars)); //

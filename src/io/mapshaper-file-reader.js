@@ -39,7 +39,9 @@ export function BufferReader(src) {
       binArr, buf;
 
   this.readToBinArray = function(start, length) {
-    if (bufSize < start + length) error("Out-of-range error");
+    if (bufSize < start + length) {
+      error("Out-of-range error");
+    }
     if (!binArr) binArr = new BinArray(src);
     binArr.position(start);
     return binArr;

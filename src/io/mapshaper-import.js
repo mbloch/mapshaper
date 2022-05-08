@@ -115,7 +115,7 @@ function importDbf(input, opts) {
   if (input.cpg && !opts.encoding) {
     opts.encoding = input.cpg.content;
   }
-  table = importDbfTable(input.dbf.content, opts);
+  table = importDbfTable(input.dbf.content || input.dbf.filename, opts);
   return {
     info: {},
     layers: [{data: table}]
