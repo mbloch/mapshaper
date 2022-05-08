@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.116";
+  var VERSION = "0.5.117";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -17628,7 +17628,9 @@ ${svg}
         binArr, buf;
 
     this.readToBinArray = function(start, length) {
-      if (bufSize < start + length) error("Out-of-range error");
+      if (bufSize < start + length) {
+        error("Out-of-range error");
+      }
       if (!binArr) binArr = new BinArray(src);
       binArr.position(start);
       return binArr;
@@ -21137,6 +21139,9 @@ ${svg}
   // http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
   // http://www.clicketyclick.dk/databases/xbase/format/index.html
   // http://www.clicketyclick.dk/databases/xbase/format/data_types.html
+  // esri docs:
+  // https://support.esri.com/en/technical-article/000007920
+  // https://desktop.arcgis.com/en/arcmap/latest/manage-data/shapefiles/geoprocessing-considerations-for-shapefile-output.htm
 
   // source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
   var languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
@@ -21273,11 +21278,12 @@ ${svg}
   // @src is a Buffer or ArrayBuffer or filename
   //
   function DbfReader(src, encodingArg) {
-    if (utils.isString(src)) {
-      error("[DbfReader] Expected a buffer, not a string");
-    }
-    var bin = new BinArray(src);
-    var header = readHeader(bin);
+    var opts = {
+      cacheSize: 0x2000000, // 32MB
+      bufferSize: 0x400000 // 4MB
+    };
+    var dbfFile = utils.isString(src) ? new FileReader(src, opts) : new BufferReader(src);
+    var header = readHeader(dbfFile);
 
     // encoding and fields are set on first access
     var fields;
@@ -21293,7 +21299,11 @@ ${svg}
 
     this.getFields = getFieldNames;
 
-    this.getBuffer = function() {return bin.buffer();};
+    // TODO: switch to streaming output under Node.js
+    this.getBuffer = function() {
+      return dbfFile.readSync(0, dbfFile.size());
+      // return bin.buffer();
+    };
 
     this.deleteField = function(f) {
       prepareToRead();
@@ -21334,7 +21344,10 @@ ${svg}
       });
     }
 
-    function readHeader(bin) {
+    function readHeader(reader) {
+      // fetch enough bytes to accomodate any header
+      var maxHeaderLen = 32 * 256 + 1; // 255 fields * fieldRecSize + headerRecSize + terminator
+      var bin = reader.readToBinArray(0, Math.min(maxHeaderLen, reader.size()));
       bin.position(0).littleEndian();
       var header = {
         version: bin.readInt8(),
@@ -21420,30 +21433,32 @@ ${svg}
       return new Function('return {' + args.join(',') + '};');
     }
 
-    function findEofPos(bin) {
-      var pos = bin.size() - 1;
-      if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
-        pos++;
-      }
-      return pos;
-    }
+    // function findEofPos(bin) {
+    //   var pos = bin.size() - 1;
+    //   if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
+    //     pos++;
+    //   }
+    //   return pos;
+    // }
 
     function getRecordReader() {
       prepareToRead();
       var readers = fields.map(getFieldReader),
-          eofOffs = findEofPos(bin),
           create = getRecordConstructor(),
           values = [];
 
       return function readRow(r) {
-        var offs = getRowOffset(r),
+        var bin = dbfFile.readToBinArray(getRowOffset(r), header.recordSize),
+            rowOffs = bin.position(),
             fieldOffs, field;
+        if (bin.bytesLeft() < header.recordSize ||
+            bin.bytesLeft() == header.recordSize && bin.peek(bin.size() - 1) == 0x1A) {
+          // check for observed data error: last data byte contains EOF
+          stop('Invalid DBF file: encountered end-of-file while reading data');
+        }
         for (var c=0, cols=fields.length; c<cols; c++) {
           field = fields[c];
-          fieldOffs = offs + field.columnOffset;
-          if (fieldOffs + field.size > eofOffs) {
-            stop('Invalid DBF file: encountered end-of-file while reading data');
-          }
+          fieldOffs = rowOffs + field.columnOffset;
           bin.position(fieldOffs);
           values[c] = readers[c](bin, field.size);
         }
@@ -21533,14 +21548,17 @@ ${svg}
       var maxSamples = 50;
       var buf = utils.createBuffer(256);
       var index = {};
-      var f, chars, sample, hash;
+      var f, chars, sample, hash, bin, rowOffs;
       // include non-ascii field names, if any
       samples = getNonAsciiHeaders();
       for (var r=0; r<rows; r++) {
+        bin = dbfFile.readToBinArray(getRowOffset(r), header.recordSize);
+        rowOffs = bin.position();
         for (var c=0; c<cols; c++) {
           if (samples.length >= maxSamples) break;
           f = stringFields[c];
-          bin.position(getRowOffset(r) + f.columnOffset);
+          // bin.position(getRowOffset(r) + f.columnOffset);
+          bin.position(rowOffs + f.columnOffset);
           chars = readStringBytes(bin, f.size, buf);
           if (chars > 0 && bufferContainsHighBit(buf, chars)) {
             sample = utils.createBuffer(buf.slice(0, chars)); //
@@ -21556,9 +21574,9 @@ ${svg}
     }
   }
 
-  function importDbfTable(buf, o) {
+  function importDbfTable(src, o) {
     var opts = o || {};
-    return new ShapefileTable(buf, opts.encoding);
+    return new ShapefileTable(src, opts.encoding);
   }
 
   // Implements the DataTable api for DBF file data.
@@ -21567,8 +21585,8 @@ ${svg}
   // just the shapes and exporting in Shapefile format.
   // TODO: consider accepting just the filename, so buffer doesn't consume memory needlessly.
   //
-  function ShapefileTable(buf, encoding) {
-    var reader = new DbfReader(buf, encoding),
+  function ShapefileTable(src, encoding) {
+    var reader = new DbfReader(src, encoding),
         altered = false,
         table;
 
@@ -21577,15 +21595,23 @@ ${svg}
         // export DBF records on first table access
         table = new DataTable(reader.readRows());
         reader = null;
-        buf = null; // null out references to DBF data for g.c.
+        src = null; // null out references to DBF data for g.c.
       }
       return table;
     }
 
     this.exportAsDbf = function(opts) {
-      // export original dbf bytes if possible, for performance
+      // export original dbf bytes if possible
+      // (e.g. if the data attributes haven't changed)
       var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
-      if (useOriginal) return reader.getBuffer();
+      if (useOriginal) {
+        try {
+          // Maximum Buffer in current Node.js is 2GB
+          // We fall back to import-export if getBuffer() fails.
+          // This may produce a buffer that does not exceed the maximum size.
+          return reader.getBuffer();
+        } catch(e) {}
+      }
       return Dbf.exportRecords(getTable().getRecords(), opts.encoding, opts.field_order);
     };
 
@@ -23595,7 +23621,7 @@ ${svg}
     if (input.cpg && !opts.encoding) {
       opts.encoding = input.cpg.content;
     }
-    table = importDbfTable(input.dbf.content, opts);
+    table = importDbfTable(input.dbf.content || input.dbf.filename, opts);
     return {
       info: {},
       layers: [{data: table}]
@@ -23693,17 +23719,9 @@ ${svg}
         content;
 
     cli.checkFileExists(path, cache);
-    if (fileType == 'shp' && !cached) {
-      // let ShpReader read the file (supports larger files)
+    if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
+      // these file types are read incrementally
       content = null;
-
-    } else if (fileType == 'json' && !cached) {
-      // postpone reading of JSON files, to support incremental parsing
-      content = null;
-
-    } else if (fileType == 'text' && !cached) {
-      // content = cli.readFile(path); // read from buffer
-      content = null; // read from file, to support largest files (see mapshaper-delim-import.js)
 
     } else if (fileType && isSupportedBinaryInputType(path)) {
       content = cli.readFile(path, null, cache);
@@ -23761,7 +23779,11 @@ ${svg}
       obj.shx = {filename: shxPath, content: cli.readFile(shxPath, null, cache)};
     }
     if (!obj.dbf && cli.isFile(dbfPath, cache)) {
-      obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
+      // obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
+      obj.dbf = {
+        filename: dbfPath,
+        content: (cache && (dbfPath in cache)) ? cli.readFile(dbfPath, null, cache) : null
+      };
     }
     if (obj.dbf && cli.isFile(cpgPath, cache)) {
       obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8', cache).trim()};
