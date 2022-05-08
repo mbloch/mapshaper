@@ -1,3 +1,6 @@
+v0.5.117
+* Support reading DBF files larger than 2GB (command line program only).
+
 v0.5.116
 * Prevent 0-length DBF string fields, for interoperability with PostGIS.
 
