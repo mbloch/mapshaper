@@ -296,9 +296,8 @@ export function ImportControl(gui, opts) {
   }
 
 
-  // TODO: support .cpg
   function isShapefilePart(name) {
-    return /\.(shp|shx|dbf|prj)$/i.test(name);
+    return /\.(shp|shx|dbf|prj|cpg)$/i.test(name);
   }
 
   function readImportOpts() {

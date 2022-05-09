@@ -6,7 +6,7 @@ import { getFileExtension } from '../utils/mapshaper-filename-utils';
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
     type = ext;
   } else if (/json$/.test(ext)) {
     type = 'json';

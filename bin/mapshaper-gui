@@ -247,6 +247,7 @@ function expandShapefiles(files) {
     if (isUrl(f)) return; // TODO: try to load aux files from URLs
     addAuxFile(files, f, '.dbf');
     addAuxFile(files, f, '.prj');
+    addAuxFile(files, f, '.shx');
     addAuxFile(files, f, '.cpg');
   });
   return files;
