@@ -106,6 +106,10 @@ function importShapefile(obj, opts) {
   if (obj.prj) {
     dataset.info.prj = obj.prj.content;
   }
+  if (obj.cpg) {
+    // TODO: consider using the input encoding as the default output encoding
+    dataset.info.cpg = obj.cpg.content;
+  }
   return dataset;
 }
 

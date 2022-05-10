@@ -2,9 +2,8 @@ import { detectEncoding, decodeSamples } from '../text/mapshaper-encoding-detect
 import utils from '../utils/mapshaper-utils';
 import { BinArray } from '../utils/mapshaper-binarray';
 import { bufferToString, standardizeEncodingName, decodeString } from '../text/mapshaper-encodings';
-import { formatStringsAsGrid, stop, message } from '../utils/mapshaper-logging';
+import { formatStringsAsGrid, stop, message, error, verbose } from '../utils/mapshaper-logging';
 import { getUniqFieldNames } from '../datatable/mapshaper-data-utils';
-import { error } from '../utils/mapshaper-logging';
 import { FileReader, BufferReader } from '../io/mapshaper-file-reader';
 
 // DBF format references:
@@ -389,11 +388,12 @@ export default function DbfReader(src, encodingArg) {
 
     // Show a sample of decoded text if non-ascii-range text has been found
     if (encoding && samples.length > 0) {
+      msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "");
+      message(msg);
       msg = decodeSamples(encoding, samples);
       msg = formatStringsAsGrid(msg.split('\n'));
       msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
-      msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "") + msg;
-      message(msg);
+      verbose(msg);
     }
     return encoding;
   }

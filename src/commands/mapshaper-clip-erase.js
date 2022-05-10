@@ -68,6 +68,9 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     targetDataset.arcs = mergedDataset.arcs;
     // dissolve clip layer shapes (to remove overlaps and other topological issues
     // that might confuse the clipping function)
+    // use a data-free copy of the clip lyr, so data records are not dissolved
+    // (this avoids triggering an unnecessary and expensive DBF read operation in some cases).
+    clipLyr = utils.defaults({data: null}, clipLyr);
     clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
 
   } else {

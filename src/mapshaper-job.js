@@ -40,6 +40,7 @@ function stashVars(job, cmd) {
   clearStash();  // prevent errors from overwriting stash
   stashVar('current_command', cmd.name);
   stashVar('DEBUG', job.settings.DEBUG || cmd.debug);
+  stashVar('VERBOSE', job.settings.VERBOSE || cmd.verbose);
   stashVar('QUIET', job.settings.QUIET || cmd.quiet);
   stashVar('defs', job.defs);
   stashVar('input_files', job.input_files);
