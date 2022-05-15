@@ -2002,6 +2002,10 @@ export function getOptionParser() {
   parser.command('colors')
     .describe('print list of color scheme names');
 
+  parser.command('comment')
+    .describe('add a comment to the sequence of commands')
+    .flag('multi_arg');
+
   parser.command('encodings')
     .describe('print list of supported text encodings (for .dbf import)');
 

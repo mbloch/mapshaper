@@ -24,6 +24,7 @@ import '../commands/mapshaper-clean';
 import '../commands/mapshaper-clip-erase';
 import '../commands/mapshaper-cluster';
 import '../commands/mapshaper-colorizer';
+import '../commands/mapshaper-comment';
 import '../commands/mapshaper-dashlines';
 import '../commands/mapshaper-data-fill';
 import '../commands/mapshaper-define';
@@ -94,7 +95,7 @@ function commandAcceptsMultipleTargetDatasets(name) {
 function commandAcceptsEmptyTarget(name) {
   return name == 'graticule' || name == 'i' || name == 'help' ||
     name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-    name == 'include' || name == 'print' || name == 'if' || name == 'elif' ||
+    name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif';
 }
 
@@ -201,6 +202,9 @@ export function runCommand(command, job, cb) {
 
     } else if (name == 'colorizer') {
       outputLayers = cmd.colorizer(opts);
+
+    } else if (name == 'comment') {
+      // no-op
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
