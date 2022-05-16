@@ -726,10 +726,6 @@ body.simplify .layer-control-btn {
 
 img.close-btn {
 	opacity: 0.2;
-	position: absolute;
-	top: 8px;
-	right: 8px;
-	z-index: 2;
 }
 
 .close2-btn {
@@ -761,8 +757,8 @@ img.close-btn {
 }
 
 .layer-item img.close-btn {
-	top: 29px;
-	/* bottom: 8px; */
+	/* top: 29px; */
+	bottom: 8px;
 }
 
 /* hide close button when not hovering */
