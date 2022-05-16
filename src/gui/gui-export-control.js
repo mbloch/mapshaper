@@ -14,7 +14,7 @@ export var ExportControl = function(gui) {
   var layersArr = [];
   var toggleBtn = null; // checkbox <input> for toggling layer selection
   var exportBtn = gui.container.findChild('.export-btn');
-  new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
+  new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
   if (!GUI.exportIsSupported()) {
     exportBtn.on('click', function() {

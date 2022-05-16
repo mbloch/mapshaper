@@ -25,7 +25,7 @@ export function Basemap(gui, ext) {
   var menu = gui.container.findChild('.basemap-options');
   // var hideBtn = new SimpleButton(menu.findChild('.hide-btn'));
   var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
-  var closeBtn = new SimpleButton(menu.findChild('.close-btn'));
+  var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
   var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
   var list = menu.findChild('.basemap-styles');
   var container = gui.container.findChild('.basemap-container');

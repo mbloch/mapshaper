@@ -473,8 +473,9 @@ body.dragover #import-options-drop-area .drop-area {
 
 .info-box h3 {
 	font-size: 1.2em;
+	line-height: 1.2;
 	padding: 0;
-	margin: 0 0 0.2em 0;
+	margin: 0 0 0.3em 0;
 }
 
 .info-box h4 {
@@ -491,9 +492,11 @@ body.dragover #import-options-drop-area .drop-area {
 	padding: 0 0 9px 0;
 }
 
-.option-menu input {
+.option-menu input[type="radio"],
+.option-menu input[type="checkbox"] 
+{
 	position: relative;
-	top: 2px;
+	top: 1px;
 	width: 12px;
 	height: 12px;
 }
@@ -720,6 +723,28 @@ body.simplify .layer-control-btn {
 
 img.close-btn {
 	opacity: 0.2;
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 2;
+}
+
+.close2-btn {
+	display: inline-block;
+	background-color: #f1f1f1;
+	background-image: url("images/close2.png");
+	background-size: cover;
+	float: right;
+	height:  18px;
+	width:  18px;
+	margin-top: 1px;
+	margin-right: -5px;
+	cursor: pointer;
+	border-radius: 4px;
+}
+
+.close2-btn:hover {
+	background-color: #ddd;
 }
 
 .pin-all img {
@@ -1016,6 +1041,7 @@ img.close-btn:hover,
 }
 
 .basemap-styles {
+	margin: 0 -2px;
 	white-space: nowrap;
 }
 
@@ -1040,13 +1066,11 @@ img.close-btn:hover,
 
 .basemap-styles > div:nth-child(even) {
 	position: relative;
-	left:  6px;
-	margin-left: 2px;
+	margin-left: 10px;
 }
 
 .basemap-style-btn img {
 	display: block;
-	left: -2px;
 	position:  relative;
 	border: 2px solid transparent;
 	/*width:  120px;
@@ -1062,6 +1086,10 @@ div.basemap-style-btn.active img {
 .basemap-style-btn:hover img {
 	cursor: pointer;
 	border: 2px solid #ead683;
+}
+
+.basemap-style-label {
+	margin-left: 2px;
 }
 
 .mapbox-improve-map {

@@ -37,7 +37,7 @@ export var SimplifyControl = function(gui) {
 
   // init settings menu
   new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
-  new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
+  new SimpleButton(menu.findChild('.close2-btn')).on('click', function() {
     if (el.visible()) {
       // cancel just hides menu if slider is visible
       menu.hide();
