@@ -222,7 +222,7 @@ body {
 }
 
 .export-options .option-menu .advanced-options {
-	width: 175px;
+	width: 195px;
 }
 
 /* --- Main area ------------- */
@@ -456,11 +456,12 @@ body.dragover #import-options-drop-area .drop-area {
 .info-box,.popup {
 	border-radius: 9px;
 	/* border: 1px solid #ddd; */
-	box-shadow: 0 4px 6px rgba(0,0,0,0.35);
+	box-shadow: 0 3px 6px rgba(0,0,0,0.35);
 	background-color: #fff;
 }
 
 .info-box {
+	min-width: 230px;
 	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
@@ -472,13 +473,16 @@ body.dragover #import-options-drop-area .drop-area {
 }
 
 .info-box h3 {
-	font-size: 1.2em;
+	font-size: 19px;
+	line-height: 1.1;
 	padding: 0;
-	margin: 0 0 0.2em 0;
+	margin: 0 0 0.3em 0;
+	font-weight: normal;
 }
 
 .info-box h4 {
 	font-size: 1em;
+	font-weight: normal;
 	margin: 0 0 1px 0;
 }
 
@@ -491,9 +495,11 @@ body.dragover #import-options-drop-area .drop-area {
 	padding: 0 0 9px 0;
 }
 
-.option-menu input {
+.option-menu input[type="radio"],
+.option-menu input[type="checkbox"] 
+{
 	position: relative;
-	top: 2px;
+	top: 1px;
 	width: 12px;
 	height: 12px;
 }
@@ -720,6 +726,28 @@ body.simplify .layer-control-btn {
 
 img.close-btn {
 	opacity: 0.2;
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 2;
+}
+
+.close2-btn {
+	display: inline-block;
+	background-color: #f1f1f1;
+	background-image: url("images/close2.png");
+	background-size: cover;
+	float: right;
+	height:  18px;
+	width:  18px;
+	margin-top: 2px;
+	margin-right: -5px;
+	cursor: pointer;
+	border-radius: 4px;
+}
+
+.close2-btn:hover {
+	background-color: #ddd;
 }
 
 .pin-all img {
@@ -1016,6 +1044,7 @@ img.close-btn:hover,
 }
 
 .basemap-styles {
+	margin: 0 -2px;
 	white-space: nowrap;
 }
 
@@ -1040,19 +1069,14 @@ img.close-btn:hover,
 
 .basemap-styles > div:nth-child(even) {
 	position: relative;
-	left:  6px;
-	margin-left: 2px;
+	margin-left: 10px;
 }
 
 .basemap-style-btn img {
 	display: block;
-	left: -2px;
 	position:  relative;
 	border: 2px solid transparent;
-	/*width:  120px;
-	height:  90px;*/
-	width:  96px;
-	height:  72px;
+	width:  108px;
 }
 
 div.basemap-style-btn.active img {
@@ -1062,6 +1086,10 @@ div.basemap-style-btn.active img {
 .basemap-style-btn:hover img {
 	cursor: pointer;
 	border: 2px solid #ead683;
+}
+
+.basemap-style-label {
+	margin-left: 2px;
 }
 
 .mapbox-improve-map {

@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.5.117";
+  var VERSION = "0.5.118";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -17215,7 +17215,7 @@ ${svg}
   function guessInputFileType(file) {
     var ext = getFileExtension(file || '').toLowerCase(),
         type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml') {
+    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
       type = ext;
     } else if (/json$/.test(ext)) {
       type = 'json';
@@ -21088,6 +21088,10 @@ ${svg}
     parser.command('colors')
       .describe('print list of color scheme names');
 
+    parser.command('comment')
+      .describe('add a comment to the sequence of commands')
+      .flag('multi_arg');
+
     parser.command('encodings')
       .describe('print list of supported text encodings (for .dbf import)');
 
@@ -21516,11 +21520,12 @@ ${svg}
 
       // Show a sample of decoded text if non-ascii-range text has been found
       if (encoding && samples.length > 0) {
+        msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "");
+        message(msg);
         msg = decodeSamples(encoding, samples);
         msg = formatStringsAsGrid(msg.split('\n'));
         msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
-        msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "") + msg;
-        message(msg);
+        verbose(msg);
       }
       return encoding;
     }
@@ -23612,6 +23617,10 @@ ${svg}
     if (obj.prj) {
       dataset.info.prj = obj.prj.content;
     }
+    if (obj.cpg) {
+      // TODO: consider using the input encoding as the default output encoding
+      dataset.info.cpg = obj.cpg.content;
+    }
     return dataset;
   }
 
@@ -24061,6 +24070,7 @@ ${svg}
     clearStash();  // prevent errors from overwriting stash
     stashVar('current_command', cmd.name);
     stashVar('DEBUG', job.settings.DEBUG || cmd.debug);
+    stashVar('VERBOSE', job.settings.VERBOSE || cmd.verbose);
     stashVar('QUIET', job.settings.QUIET || cmd.quiet);
     stashVar('defs', job.defs);
     stashVar('input_files', job.input_files);
@@ -30487,6 +30497,9 @@ ${svg}
       targetDataset.arcs = mergedDataset.arcs;
       // dissolve clip layer shapes (to remove overlaps and other topological issues
       // that might confuse the clipping function)
+      // use a data-free copy of the clip lyr, so data records are not dissolved
+      // (this avoids triggering an unnecessary and expensive DBF read operation in some cases).
+      clipLyr = utils.defaults({data: null}, clipLyr);
       clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
 
     } else {
@@ -30887,6 +30900,8 @@ ${svg}
     __proto__: null,
     getColorizerFunction: getColorizerFunction
   });
+
+  cmd.comment = function() {}; // no-op, so -comment doesn't trigger a parsing error
 
   function expressionUsesGeoJSON(exp) {
     return exp.includes('this.geojson');
@@ -39802,7 +39817,7 @@ ${svg}
   function commandAcceptsEmptyTarget(name) {
     return name == 'graticule' || name == 'i' || name == 'help' ||
       name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
-      name == 'include' || name == 'print' || name == 'if' || name == 'elif' ||
+      name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
       name == 'else' || name == 'endif';
   }
 
@@ -39909,6 +39924,9 @@ ${svg}
 
       } else if (name == 'colorizer') {
         outputLayers = cmd.colorizer(opts);
+
+      } else if (name == 'comment') {
+        // no-op
 
       } else if (name == 'dashlines') {
         applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);

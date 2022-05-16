@@ -67,10 +67,10 @@ div.tip {
 	z-index: 500;
 	cursor: pointer;
 	text-align: center;
-	font-size: 13px;
+	font-size: 14px;
 	line-height: 1;
 	font-weight: normal;
-	color: #799FCB;
+	color: #1385B7;
 }
 
 .tip-button .tip-anchor {

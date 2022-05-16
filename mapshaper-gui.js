@@ -310,7 +310,6 @@
 
   // tests if filename is a type that can be used
   GUI.isReadableFileType = function(filename) {
-    var ext = internal.getFileExtension(filename).toLowerCase();
     return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
       internal.isZipFile(filename);
   };
@@ -1354,7 +1353,6 @@
         }
       }
       model.updated({select: true});
-
     }
 
     function clearQueuedFiles() {
@@ -1451,9 +1449,8 @@
     }
 
 
-    // TODO: support .cpg
     function isShapefilePart(name) {
-      return /\.(shp|shx|dbf|prj)$/i.test(name);
+      return /\.(shp|shx|dbf|prj|cpg)$/i.test(name);
     }
 
     function readImportOpts() {
@@ -2131,7 +2128,7 @@
 
     // init settings menu
     new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
-    new SimpleButton(menu.findChild('.cancel-btn')).on('click', function() {
+    new SimpleButton(menu.findChild('.close2-btn')).on('click', function() {
       if (el.visible()) {
         // cancel just hides menu if slider is visible
         menu.hide();
@@ -3159,7 +3156,7 @@
     var layersArr = [];
     var toggleBtn = null; // checkbox <input> for toggling layer selection
     var exportBtn = gui.container.findChild('.export-btn');
-    new SimpleButton(menu.findChild('.cancel-btn')).on('click', gui.clearMode);
+    new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
     if (!GUI.exportIsSupported()) {
       exportBtn.on('click', function() {
@@ -9764,7 +9761,7 @@
     var menu = gui.container.findChild('.basemap-options');
     // var hideBtn = new SimpleButton(menu.findChild('.hide-btn'));
     var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
-    var closeBtn = new SimpleButton(menu.findChild('.close-btn'));
+    var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
     var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
     var list = menu.findChild('.basemap-styles');
     var container = gui.container.findChild('.basemap-container');
