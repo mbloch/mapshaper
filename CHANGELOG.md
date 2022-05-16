@@ -1,4 +1,6 @@
 v0.5.118
+* Added -comment command, as a way to add inline comments in long sequences of commands.
+* Added support for importing .cpg files (Shapefile text encoding) in the web UI.
 
 v0.5.117
 * Support reading DBF files larger than 2GB (command line program only).
