@@ -222,7 +222,7 @@ body {
 }
 
 .export-options .option-menu .advanced-options {
-	width: 175px;
+	width: 195px;
 }
 
 /* --- Main area ------------- */
@@ -456,11 +456,12 @@ body.dragover #import-options-drop-area .drop-area {
 .info-box,.popup {
 	border-radius: 9px;
 	/* border: 1px solid #ddd; */
-	box-shadow: 0 4px 6px rgba(0,0,0,0.35);
+	box-shadow: 0 3px 6px rgba(0,0,0,0.35);
 	background-color: #fff;
 }
 
 .info-box {
+	min-width: 230px;
 	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
@@ -472,14 +473,16 @@ body.dragover #import-options-drop-area .drop-area {
 }
 
 .info-box h3 {
-	font-size: 1.2em;
-	line-height: 1.2;
+	font-size: 19px;
+	line-height: 1.1;
 	padding: 0;
 	margin: 0 0 0.3em 0;
+	font-weight: normal;
 }
 
 .info-box h4 {
 	font-size: 1em;
+	font-weight: normal;
 	margin: 0 0 1px 0;
 }
 
@@ -737,7 +740,7 @@ img.close-btn {
 	float: right;
 	height:  18px;
 	width:  18px;
-	margin-top: 1px;
+	margin-top: 2px;
 	margin-right: -5px;
 	cursor: pointer;
 	border-radius: 4px;
@@ -1073,10 +1076,7 @@ img.close-btn:hover,
 	display: block;
 	position:  relative;
 	border: 2px solid transparent;
-	/*width:  120px;
-	height:  90px;*/
-	width:  96px;
-	height:  72px;
+	width:  108px;
 }
 
 div.basemap-style-btn.active img {

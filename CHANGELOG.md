@@ -1,3 +1,5 @@
+v0.5.118
+
 v0.5.117
 * Support reading DBF files larger than 2GB (command line program only).
 
