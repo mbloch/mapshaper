@@ -170,7 +170,7 @@ export var SimplifyControl = function(gui) {
     menu.hide();
     setTimeout(function() {
       var opts = getSimplifyOptions();
-      mapshaper.simplify(dataset, opts);
+      mapshaper.cmd.simplify(dataset, opts);
       gui.session.simplificationApplied(getSimplifyOptionsAsString());
       updateZ(gui.map.getActiveLayer()); // question: does this update all display layers?
       model.updated({
