@@ -2261,7 +2261,7 @@
       menu.hide();
       setTimeout(function() {
         var opts = getSimplifyOptions();
-        mapshaper.simplify(dataset, opts);
+        mapshaper.cmd.simplify(dataset, opts);
         gui.session.simplificationApplied(getSimplifyOptionsAsString());
         updateZ(gui.map.getActiveLayer()); // question: does this update all display layers?
         model.updated({
@@ -4412,7 +4412,8 @@
     return self;
   }
 
-  var Buffer = require('buffer').Buffer; // works with browserify
+  // Fall back to browserify's Buffer polyfill
+  var B = typeof Buffer != 'undefined' ? Buffer : require('buffer').Buffer;
 
   // This module provides a way for multiple jobs to run together asynchronously
   // while keeping job-level context variables (like "defs") separate.
@@ -5487,10 +5488,10 @@
 
   function createBuffer(arg, arg2) {
     if (isInteger(arg)) {
-      return Buffer.allocUnsafe ? Buffer.allocUnsafe(arg) : new Buffer(arg);
+      return B.allocUnsafe ? B.allocUnsafe(arg) : new B(arg);
     } else {
       // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
-      return Buffer.from && Buffer.allocUnsafe ? Buffer.from(arg, arg2) : new Buffer(arg, arg2);
+      return B.from && B.allocUnsafe ? B.from(arg, arg2) : new B(arg, arg2);
     }
   }
 
