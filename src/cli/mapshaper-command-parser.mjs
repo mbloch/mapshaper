@@ -8,7 +8,7 @@ import {
 } from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop, print, error } from '../utils/mapshaper-logging';
-import { runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-env';
 
 export function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,

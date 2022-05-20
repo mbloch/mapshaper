@@ -14,7 +14,6 @@ import { getAffineTransform } from '../commands/mapshaper-affine';
 import { mergeOutputLayerIntoDataset } from '../dataset/mapshaper-dataset-utils';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { requireProjectedDataset } from '../crs/mapshaper-projections';
-import { runningInBrowser } from '../mapshaper-state';
 import { makePathSymbol } from '../symbols/mapshaper-path-symbols';
 
 // TODO: refactor to remove duplication in mapshaper-svg-style.js

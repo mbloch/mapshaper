@@ -3,7 +3,7 @@ import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 import { stop, error, message } from '../utils/mapshaper-logging';
 import { Buffer } from '../utils/mapshaper-node-buffer';
 import utils from '../utils/mapshaper-utils';
-import { runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-env';
 import { getStashedVar } from '../mapshaper-stash';
 import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 import require from '../mapshaper-require';

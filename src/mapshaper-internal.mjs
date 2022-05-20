@@ -90,6 +90,7 @@ import * as DelimExport from './text/mapshaper-delim-export';
 import * as DelimImport from './text/mapshaper-delim-import';
 import * as DelimReader from './text/mapshaper-delim-reader';
 import * as Encodings from './text/mapshaper-encodings';
+import * as Env from './mapshaper-env';
 import * as Explode from './commands/mapshaper-explode';
 import * as Export from './io/mapshaper-export';
 import * as Expressions from './expressions/mapshaper-expressions';
@@ -167,7 +168,6 @@ import * as Slivers from './polygons/mapshaper-slivers';
 import * as Snapping from './paths/mapshaper-snapping';
 import * as SourceUtils from './dataset/mapshaper-source-utils';
 import * as Split from './commands/mapshaper-split';
-import * as State from './mapshaper-state';
 import * as Stash from './mapshaper-stash';
 import * as Stringify from './geojson/mapshaper-stringify';
 import * as Svg from './svg/mapshaper-svg';
@@ -281,7 +281,7 @@ Object.assign(internal,
   Snapping,
   SourceUtils,
   Split,
-  State,
+  Env,
   Stash,
   Stringify,
   Svg,

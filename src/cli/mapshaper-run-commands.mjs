@@ -6,7 +6,7 @@ import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { guessInputContentType } from '../io/mapshaper-file-types';
 import { error, UserError, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
 import { Job } from '../mapshaper-job';
-import { runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
 import { resetControlFlow } from '../mapshaper-control-flow';
 import require from '../mapshaper-require';

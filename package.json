@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.5.118",
+	"version": "0.6.0",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -9,6 +9,7 @@
 		"cartography",
 		"simplification",
 		"topology",
+    "csv",
 		"gis"
 	],
 	"author": "Matthew Bloch <masiyou@gmail.com>",

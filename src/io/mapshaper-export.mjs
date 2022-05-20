@@ -13,7 +13,7 @@ import { getOutputFormat } from '../io/mapshaper-output-format';
 import utils from '../utils/mapshaper-utils';
 import { error } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
-import { runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
 
 // @targets - non-empty output from Catalog#findCommandTargets()

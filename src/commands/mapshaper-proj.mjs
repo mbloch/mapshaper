@@ -15,7 +15,7 @@ import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
 import { expandProjDefn } from '../crs/mapshaper-projection-params';
 import { layerHasPoints, copyLayerShapes } from '../dataset/mapshaper-layer-utils';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
-import { runningInBrowser } from '../mapshaper-state';
+import { runningInBrowser } from '../mapshaper-env';
 import { stop, message, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
 import { buildTopology } from '../topology/mapshaper-topology';

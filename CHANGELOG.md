@@ -1,3 +1,6 @@
+v0.6.0
+* Internal changes that shouldn't affect Mapshaper users.
+
 v0.5.118
 * Added -comment command, as a way to add inline comments in long sequences of commands.
 * Added support for importing .cpg files (Shapefile text encoding) in the web UI.
