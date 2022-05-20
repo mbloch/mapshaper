@@ -10,7 +10,7 @@ function evaluateEachFeature(lyr, arcs, expr, opts) {
     layers: [lyr],
     arcs: arcs
   };
-  return api.evaluateEachFeature(lyr, dataset, expr, opts);
+  return api.cmd.evaluateEachFeature(lyr, dataset, expr, opts);
 }
 
 describe('mapshaper-each.js', function () {

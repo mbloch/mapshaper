@@ -72,7 +72,7 @@ describe('mapshaper-merging.js', function () {
   describe('mergeDatasets() + mergeLayers()', function () {
     it('merge two datasets', function () {
       var merged = api.internal.mergeDatasets([data1, data2]);
-      merged.layers = api.mergeLayers(merged.layers, {});
+      merged.layers = api.cmd.mergeLayers(merged.layers, {});
       assert.deepEqual(merged.layers[0].shapes, [[[0, 1]], [[~3]], [[2]]]);
       assert.deepEqual(merged.layers[0].data.getRecords(), [{id: 1}, {id: 2}, {id: 3}]);
     })

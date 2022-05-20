@@ -553,7 +553,7 @@ function topoJSONRoundTrip(fname) {
     format:'topojson',
     quantization: 10000
   };
-  var data = api.importFile(fixPath(fname));
+  var data = api.internal.importFile(fixPath(fname));
   var files = api.internal.exportFileContent(data, opts);
   var data2 = api.internal.importFileContent(files[0].content, 'json');
   var files2 = api.internal.exportFileContent(data2, opts);

@@ -63,7 +63,7 @@ describe('mapshaper-point-grid.js', function () {
       bbox: [0, 0, 2, 4],
       rows: 2, cols: 1
     };
-    var lyr = api.pointGrid(null, opts);
+    var lyr = api.cmd.pointGrid(null, opts);
     assert.deepEqual(lyr, {
       name: 'grid',
       geometry_type: 'point',
@@ -76,7 +76,7 @@ describe('mapshaper-point-grid.js', function () {
       bbox: [0, 0, 2, 4],
       interval: 2
     };
-    var lyr = api.pointGrid(null, opts);
+    var lyr = api.cmd.pointGrid(null, opts);
     assert.deepEqual(lyr, {
       name: 'grid',
       geometry_type: 'point',
@@ -95,7 +95,7 @@ describe('mapshaper-point-grid.js', function () {
     var opts = {
       rows: 2, cols: 1
     };
-    var lyr = api.pointGrid(dataset, opts);
+    var lyr = api.cmd.pointGrid(dataset, opts);
     assert.deepEqual(lyr, {
       name: 'grid',
       geometry_type: 'point',
@@ -107,7 +107,7 @@ describe('mapshaper-point-grid.js', function () {
     var opts = {
       rows: 1, cols: 2
     };
-    var lyr = api.pointGrid(null, opts);
+    var lyr = api.cmd.pointGrid(null, opts);
     assert.deepEqual(lyr, {
       name: 'grid',
       geometry_type: 'point',
@@ -117,25 +117,25 @@ describe('mapshaper-point-grid.js', function () {
 
   it('throws on invalid row or col', function() {
     assert.throws(function() {
-      api.pointGrid(null, {rows: NaN, cols: NaN});
+      api.cmd.pointGrid(null, {rows: NaN, cols: NaN});
     })
     assert.throws(function() {
-      api.pointGrid(null, {rows: 0, cols: 0});
+      api.cmd.pointGrid(null, {rows: 0, cols: 0});
     })
     assert.throws(function() {
-      api.pointGrid(null, {rows: -1, cols: -1});
+      api.cmd.pointGrid(null, {rows: -1, cols: -1});
     })
   });
 
   it('throws on invalid interval', function() {
     assert.throws(function() {
-      api.pointGrid(null, {interval: NaN});
+      api.cmd.pointGrid(null, {interval: NaN});
     })
     assert.throws(function() {
-      api.pointGrid(null, {interval: 0});
+      api.cmd.pointGrid(null, {interval: 0});
     })
     assert.throws(function() {
-      api.pointGrid(null, {interval: -1});
+      api.cmd.pointGrid(null, {interval: -1});
     })
   });
 

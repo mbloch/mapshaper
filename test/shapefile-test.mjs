@@ -39,7 +39,7 @@ describe('mapshaper-shapefile.js', function () {
   describe('.prj tests', function() {
 
     it('prj is exported even if mapshaper can not parse it (Issue #193)', function() {
-      var data = api.importFile(fixPath('data/issues/193/three_points.shp'), {});
+      var data = api.internal.importFile(fixPath('data/issues/193/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
       var prj = api.utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
@@ -48,7 +48,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('prj is exported if input prj is present', function() {
-      var data = api.importFile(fixPath('data/three_points.shp'), {});
+      var data = api.internal.importFile(fixPath('data/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
       var prj = api.utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
@@ -228,7 +228,7 @@ describe('mapshaper-shapefile.js', function () {
 
 
 function shapefileRoundTrip(fname) {
-  var data = api.importFile(fixPath(fname), {encoding: 'ascii'});
+  var data = api.internal.importFile(fixPath(fname), {encoding: 'ascii'});
   var files = api.internal.exportFileContent(data, {encoding: 'ascii', format:"shapefile"});
   var input2 = {
     shp: {filename: fname, content: files[0].content},

@@ -112,7 +112,7 @@ describe('mapshaper-svg-style.js', function () {
         'fill-opacity': 0.125,
         fill: 'green'
       }];
-      api.svgStyle(lyr, {}, opts);
+      api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     })
 
@@ -131,7 +131,7 @@ describe('mapshaper-svg-style.js', function () {
         'stroke-width': 4,
         fill: 'rgba(255,255,255,0.2)'
       }];
-      api.svgStyle(lyr, {}, opts);
+      api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     })
 
@@ -150,7 +150,7 @@ describe('mapshaper-svg-style.js', function () {
         'label-text': 'green',
         fill: 'SteelBlue'
       }];
-      api.svgStyle(lyr, {}, opts);
+      api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     })
 
@@ -167,7 +167,7 @@ describe('mapshaper-svg-style.js', function () {
         'label-text': 'National Oceanic and Atmospheric Administration (NOAA)',
         'font-family': 'Helvetica,_sans'
       }];
-      api.svgStyle(lyr, {}, opts);
+      api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     });
 
@@ -182,7 +182,7 @@ describe('mapshaper-svg-style.js', function () {
       var target = [{
         'label-text': 'dane © OpenStreetMap (licencja ODBL)'
       }];
-      api.svgStyle(lyr, {}, opts);
+      api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
     });
 

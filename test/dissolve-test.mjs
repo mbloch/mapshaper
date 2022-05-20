@@ -2,7 +2,7 @@ import assert from 'assert';
 import api from '../';
 
 var utils = api.Utils,
-    dissolve = api.dissolve,
+    dissolve = api.cmd.dissolve,
     ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-dissolve.js', function () {
@@ -289,7 +289,7 @@ describe('mapshaper-dissolve.js', function () {
       var lyr = {
         data: new api.internal.DataTable([{foo: 1, bar: 2}, {foo: 2, bar: 3}, {foo: 2, bar: 4}])
       };
-      var lyr2 = api.dissolve(lyr, null, {field: 'foo', sum_fields: ['bar']})
+      var lyr2 = api.cmd.dissolve(lyr, null, {field: 'foo', sum_fields: ['bar']})
       assert.deepEqual(lyr2.data.getRecords(), [{foo: 1, bar: 2}, {foo: 2, bar: 7}]);
     })
 

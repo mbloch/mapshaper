@@ -30,22 +30,22 @@ describe('mapshaper-colorizer.js', function () {
     it('svg style properties are reserved words', function() {
       api.internal.stashVar('defs', {});
       assert.doesNotThrow(function() {
-        api.colorizer({name: 'rgb', colors: ['black'], categories: ['foo']});
+        api.cmd.colorizer({name: 'rgb', colors: ['black'], categories: ['foo']});
       });
       assert.throws(function() {
-        api.colorizer({name: 'stroke', colors: ['black'], categories: ['foo']});
+        api.cmd.colorizer({name: 'stroke', colors: ['black'], categories: ['foo']});
       });
       assert.throws(function() {
-        api.colorizer({name: 'r', colors: ['black'], categories: ['foo']});
+        api.cmd.colorizer({name: 'r', colors: ['black'], categories: ['foo']});
       });
       assert.throws(function() {
-        api.colorizer({name: 'stroke-width', colors: ['black'], categories: ['foo']});
+        api.cmd.colorizer({name: 'stroke-width', colors: ['black'], categories: ['foo']});
       });
       assert.throws(function() {
-        api.colorizer({name: 'fill', colors: ['black'], categories: ['foo']});
+        api.cmd.colorizer({name: 'fill', colors: ['black'], categories: ['foo']});
       });
       assert.throws(function() {
-        api.colorizer({name: 'opacity', colors: ['black'], categories: ['foo']});
+        api.cmd.colorizer({name: 'opacity', colors: ['black'], categories: ['foo']});
       });
       api.internal.clearStash();
     });

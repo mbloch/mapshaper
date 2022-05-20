@@ -147,7 +147,7 @@ describe('mapshaper-calc.js', function () {
             data: new api.internal.DataTable(data2)
           };
 
-      var result = api.calc(lyr2, null,
+      var result = api.cmd.calc(lyr2, null,
           {expression: 'average(foo)', where: '!!bar'});
       assert.equal(result, 1);
     })

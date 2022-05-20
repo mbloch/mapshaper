@@ -3,7 +3,7 @@ import api from '../';
 
 var ArcCollection = api.internal.ArcCollection,
     NodeCollection = api.internal.NodeCollection,
-    dissolve2 = api.dissolve2,
+    dissolve2 = api.cmd.dissolve2,
     dissolvePolygons = function(lyr, arcs, opts) {
       // wrapper for bw compatibility with tests
       return api.internal.dissolvePolygonLayer2(lyr, {arcs: arcs, layers: [lyr], info: {}}, opts);

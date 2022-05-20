@@ -11,9 +11,8 @@ import utils from './utils/mapshaper-utils';
 import cli from './cli/mapshaper-cli-utils';
 import { importFile } from './io/mapshaper-file-import';
 var moduleAPI = Object.assign({
-  cli, geom, utils, internal,
-  importFile // Adding importFile() for compatibility with old tests; todo: rewrite tests
-}, cmd, coreAPI);  // Adding command functions to the top-level module API, for test compatibility
+  cli, cmd, geom, utils, internal,
+}, coreAPI);  // Adding command functions to the top-level module API, for test compatibility
 
 if (typeof module === "object" && module.exports) {
   module.exports = moduleAPI;

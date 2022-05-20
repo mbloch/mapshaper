@@ -13,7 +13,7 @@ describe('dbf-reader.js', function () {
   function importRecords(path, encoding) {
     path = fixPath("data/" + path);
     var opts = encoding ? {encoding: encoding} : undefined;
-    var dataset = api.importFile(path, opts);
+    var dataset = api.internal.importFile(path, opts);
     return dataset.layers[0].data.getRecords();
   }
 

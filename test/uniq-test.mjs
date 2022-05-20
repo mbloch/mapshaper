@@ -8,7 +8,7 @@ describe('mapshaper-uniq.js', function () {
     var data = new api.internal.DataTable([{foo: 'a'}, {foo: 'b'}, {foo: 'a'}, {foo: 'a'}]),
         shapes = [[[1, 2]], [[3, 4]], [[5, 6]], [[7, 8]]],
         lyr = {data: data, shapes: shapes, geometry_type: 'point'};
-    api.uniq(lyr, null, {expression: 'foo'});
+    api.cmd.uniq(lyr, null, {expression: 'foo'});
     assert.deepEqual(lyr.data.getRecords(), [{foo: 'a'}, {foo: 'b'}]);
     assert.deepEqual(lyr.shapes, [[[1, 2]], [[3, 4]]]);
   })
@@ -17,7 +17,7 @@ describe('mapshaper-uniq.js', function () {
     var data = new api.internal.DataTable([{foo: 'a'}, {foo: 'b'}, {foo: 'a'}, {foo: 'a'}]),
         shapes = [[[1, 2]], [[3, 4]], [[5, 6]], [[7, 8]]],
         lyr = {data: data, shapes: shapes, geometry_type: 'point'};
-    api.uniq(lyr, null, {expression: 'foo', max_count: 2});
+    api.cmd.uniq(lyr, null, {expression: 'foo', max_count: 2});
     assert.deepEqual(lyr.data.getRecords(), [{foo: 'a'}, {foo: 'b'}, {foo: 'a'}]);
     assert.deepEqual(lyr.shapes, [[[1, 2]], [[3, 4]], [[5, 6]]]);
   })
@@ -25,7 +25,7 @@ describe('mapshaper-uniq.js', function () {
   it ('-uniq index', function() {
     var data = new api.internal.DataTable([{foo: 'a'}, {foo: 'b'}, {foo: 'a'}, {foo: 'a'}]),
         lyr = {data: data};
-    api.uniq(lyr, null, {expression: 'foo', index: true});
+    api.cmd.uniq(lyr, null, {expression: 'foo', index: true});
     assert.deepEqual(lyr.data.getRecords(), [{foo: 'a', index: 1}, {foo: 'b', index: 1}, {foo: 'a', index: 2}, {foo: 'a', index: 3}]);
   })
 
@@ -34,7 +34,7 @@ describe('mapshaper-uniq.js', function () {
       {foo: 'a', id: 2}, {foo: 'a', id: 3}]),
         shapes = [[[1, 2]], [[3, 4]], [[5, 6]], [[7, 8]]],
         lyr = {data: data, shapes: shapes, geometry_type: 'point'};
-    api.uniq(lyr, null, {expression: 'foo', invert: true});
+    api.cmd.uniq(lyr, null, {expression: 'foo', invert: true});
     assert.deepEqual(lyr.data.getRecords(), [{foo: 'a', id: 2}, {foo: 'a', id: 3}]);
     assert.deepEqual(lyr.shapes, [[[5, 6]], [[7, 8]]]);
   })

@@ -10,12 +10,12 @@ function clean(shapes, arcs) {
       shapes: shapes
     }]
   };
-  api.cleanLayers(dataset.layers, dataset, {no_arc_dissolve: true});
+  api.cmd.cleanLayers(dataset.layers, dataset, {no_arc_dissolve: true});
   return dataset.layers[0].shapes;
 }
 
 function cleanArcs(dataset) {
-  api.cleanLayers(dataset.layers, dataset, {arcs: true});
+  api.cmd.cleanLayers(dataset.layers, dataset, {arcs: true});
 }
 
 describe('mapshaper-clean.js', function () {
@@ -272,7 +272,7 @@ describe('mapshaper-clean.js', function () {
         data: new api.internal.DataTable(records)
       }]
     };
-    api.cleanLayers(dataset.layers, dataset);
+    api.cmd.cleanLayers(dataset.layers, dataset);
     assert.deepEqual(dataset.layers[0].data.getRecords(), [{id: 'a'}]);
   });
 
@@ -331,7 +331,7 @@ describe('mapshaper-clean.js', function () {
         shapes: [[[0, 0]], [[1, 1], [1, 1], [0, 0]]]
       }]
     };
-    api.cleanLayers(dataset.layers, dataset);
+    api.cmd.cleanLayers(dataset.layers, dataset);
     assert.deepEqual(dataset.layers[0].shapes, [[[0, 0]], [[1, 1], [0, 0]]]);
   })
 
@@ -344,7 +344,7 @@ describe('mapshaper-clean.js', function () {
         data: null
       }]
     };
-    api.cleanLayers(dataset.layers, dataset);
+    api.cmd.cleanLayers(dataset.layers, dataset);
     assert.deepEqual(dataset.layers[0], {
       geometry_type: 'point',
       shapes: [ [[0, 0]], [[1, 1], [2, 2]] ],

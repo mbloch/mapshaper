@@ -6,7 +6,7 @@ var internal = api.internal;
 describe('mapshaper-external.js registerCommand()', function () {
 
   it('-foo command, no options', function(done) {
-    api.registerCommand('foo', {
+    api.cmd.registerCommand('foo', {
       target: 'layer',
       command: function(lyr, dataset, opts) {
         // command changes name of layer to 'foo'
@@ -26,7 +26,7 @@ describe('mapshaper-external.js registerCommand()', function () {
   });
 
   it('register -bar command with a string option and a flag option', function(done) {
-    api.registerCommand('bar', {
+    api.cmd.registerCommand('bar', {
       target: 'layer',
       options: [{name: 'name', DEFAULT: true}, {name: 'rename', type: 'flag'}],
       command: function(lyr, dataset, opts) {
@@ -52,7 +52,7 @@ describe('mapshaper-external.js registerCommand()', function () {
         b = {type: 'Point', coordinates: [2,2]},
         cmd = "-i a.json b.json combine-files -baz -o"
 
-    api.registerCommand('baz', {
+    api.cmd.registerCommand('baz', {
       target: 'layers',
       command: function(layers, dataset, opts) {
         // command assigns names with sequential numbers

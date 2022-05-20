@@ -133,13 +133,13 @@ describe('mapshaper-geojson.js', function () {
 
   describe('importGeoJSON', function () {
     it('Import FeatureCollection with polygon geometries', function () {
-      var data = api.importFile(fixPath('data/two_states.json'))
+      var data = api.internal.importFile(fixPath('data/two_states.json'))
       assert.equal(data.layers[0].shapes.length, 2);
       assert.equal(data.layers[0].data.size(), 2);
     })
 
     it('Import FeatureCollection with three null geometries', function () {
-      var data = api.importFile(fixPath('data/six_counties_three_null.json'), 'geojson');
+      var data = api.internal.importFile(fixPath('data/six_counties_three_null.json'), 'geojson');
       assert.equal(data.layers[0].data.size(), 6);
       assert.equal(data.layers[0].shapes.length, 6);
       assert.equal(data.layers[0].shapes.filter(function(shape) {return shape != null}).length, 3)
@@ -963,7 +963,7 @@ describe('mapshaper-geojson.js', function () {
 })
 
 function geoJSONRoundTrip(fname) {
-  var data = api.importFile(fixPath(fname));
+  var data = api.internal.importFile(fixPath(fname));
   var files = api.internal.exportFileContent(data, {format:'geojson'});
   var json = files[0].content.toString();
   var data2 = api.internal.importFileContent(json, 'json');

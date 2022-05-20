@@ -68,28 +68,28 @@ describe('mapshaper-rename-layers.js', function () {
   it ('assign new names to layers', function() {
     var layers = [{}, {}],
         names = ['a', 'b'];
-    api.renameLayers(layers, names);
+    api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: 'a'}, {name: 'b'}]);
   })
 
   it ('use last name + count if more layers than names', function() {
     var layers = [{}, {}],
         names = ['layer'];
-    api.renameLayers(layers, names);
+    api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: 'layer1'}, {name: 'layer2'}]);
   })
 
   it ('use last name + count if more layers than names', function() {
     var layers = [{}, {}, {}, {}],
         names = ['counties', 'outline', 'innerlines'];
-    api.renameLayers(layers, names);
+    api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: 'counties'}, {name: 'outline'}, {name: 'innerlines1'}, {name: 'innerlines2'}]);
   })
 
   it ('ignore excess names', function() {
     var layers = [{}, {}],
         names = ['a', 'b', 'c'];
-    api.renameLayers(layers, names);
+    api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: 'a'}, {name: 'b'}]);
   })
 
@@ -97,7 +97,7 @@ describe('mapshaper-rename-layers.js', function () {
   it ('use empty strings if names argument is empty', function() {
     var layers = [{}, {}],
         names = null;
-    api.renameLayers(layers, names);
+    api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: ''}, {name: ''}]);
   })
 
@@ -105,7 +105,7 @@ describe('mapshaper-rename-layers.js', function () {
   it ('use empty string for a single layer if no names are given', function() {
     var layers = [{}],
         names = [];
-    api.renameLayers(layers, names);
+    api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: ''}]);
   })
 });

@@ -332,14 +332,14 @@ describe('mapshaper-lines.js', function () {
 
   describe('innerlines()', function () {
     it('test 1', function () {
-      var lyr2 = api.innerlines(lyr, arcs);
+      var lyr2 = api.cmd.innerlines(lyr, arcs);
       assert.deepEqual(lyr2.shapes, [[[1]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
     })
 
     it('test 2', function () {
-      var lyr2 = api.innerlines(lyrb, arcsb);
+      var lyr2 = api.cmd.innerlines(lyrb, arcsb);
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[2]], [[4]], [[5]]]);
       assert.equal(lyr2.geometry_type, 'polyline');

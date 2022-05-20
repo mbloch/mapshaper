@@ -111,10 +111,10 @@ describe("mapshaper-simplify.js", function() {
     it('test 1', function(done) {
       api.internal.testCommands('-i test/data/ne/ne_110m_admin_1_states_provinces_shp.shp', function(err, dataset) {
         var a = dataset.arcs.toArray();
-        api.simplify(dataset, {percentage: 0.1, method: 'dp'});
+        api.cmd.simplify(dataset, {percentage: 0.1, method: 'dp'});
         var b = dataset.arcs.toArray();
-        api.simplify(dataset, {percentage: 0.3, method: 'visvalingam'});
-        api.simplify(dataset, {percentage: 1});
+        api.cmd.simplify(dataset, {percentage: 0.3, method: 'visvalingam'});
+        api.cmd.simplify(dataset, {percentage: 1});
         var c = dataset.arcs.toArray();
         assert.notDeepEqual(b, a);
         assert.deepEqual(c, a);
@@ -141,21 +141,21 @@ describe("mapshaper-simplify.js", function() {
     it('default method, auto-detect spherical', function () {
       var arcs = new api.internal.ArcCollection([[[180, 90], [-180, -90]]]);
       var dataset = {arcs: arcs};
-      api.simplify(dataset, {percentage: 1});
+      api.cmd.simplify(dataset, {percentage: 1});
       assert.deepEqual(dataset.info.simplify, {method: 'weighted_visvalingam', spherical: true, percentage: 1});
     })
 
     it('Douglas-Peucker, auto-detect planar', function () {
       var arcs = new api.internal.ArcCollection([[[0, 100], [100, 100]]]);
       var dataset = {arcs: arcs};
-      api.simplify(dataset, {method: 'dp', percentage: 0.5});
+      api.cmd.simplify(dataset, {method: 'dp', percentage: 0.5});
       assert.deepEqual(dataset.info.simplify, {method: 'dp', spherical: false, percentage: 0.5});
     })
 
     it('unweighted Visvalingam, explicit planar', function () {
       var arcs = new api.internal.ArcCollection([[[0, 0], [1, -1]]]);
       var dataset = {arcs: arcs};
-      api.simplify(dataset, {method: 'visvalingam', planar: true, percentage: 0});
+      api.cmd.simplify(dataset, {method: 'visvalingam', planar: true, percentage: 0});
       assert.deepEqual(dataset.info.simplify, {method: 'visvalingam', spherical: false, planar: true, percentage: 0});
     })
   })
