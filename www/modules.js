@@ -266,6 +266,48 @@ function DBCSCodec(codecOptions, iconv) {
     for (var i = 0; i < mappingTable.length; i++)
         this._addDecodeChunk(mappingTable[i]);
 
+    // Load & create GB18030 tables when needed.
+    if (typeof codecOptions.gb18030 === 'function') {
+        this.gb18030 = codecOptions.gb18030(); // Load GB18030 ranges.
+
+        // Add GB18030 common decode nodes.
+        var commonThirdByteNodeIdx = this.decodeTables.length;
+        this.decodeTables.push(UNASSIGNED_NODE.slice(0));
+
+        var commonFourthByteNodeIdx = this.decodeTables.length;
+        this.decodeTables.push(UNASSIGNED_NODE.slice(0));
+
+        // Fill out the tree
+        var firstByteNode = this.decodeTables[0];
+        for (var i = 0x81; i <= 0xFE; i++) {
+            var secondByteNode = this.decodeTables[NODE_START - firstByteNode[i]];
+            for (var j = 0x30; j <= 0x39; j++) {
+                if (secondByteNode[j] === UNASSIGNED) {
+                    secondByteNode[j] = NODE_START - commonThirdByteNodeIdx;
+                } else if (secondByteNode[j] > NODE_START) {
+                    throw new Error("gb18030 decode tables conflict at byte 2");
+                }
+
+                var thirdByteNode = this.decodeTables[NODE_START - secondByteNode[j]];
+                for (var k = 0x81; k <= 0xFE; k++) {
+                    if (thirdByteNode[k] === UNASSIGNED) {
+                        thirdByteNode[k] = NODE_START - commonFourthByteNodeIdx;
+                    } else if (thirdByteNode[k] === NODE_START - commonFourthByteNodeIdx) {
+                        continue;
+                    } else if (thirdByteNode[k] > NODE_START) {
+                        throw new Error("gb18030 decode tables conflict at byte 3");
+                    }
+
+                    var fourthByteNode = this.decodeTables[NODE_START - thirdByteNode[k]];
+                    for (var l = 0x30; l <= 0x39; l++) {
+                        if (fourthByteNode[l] === UNASSIGNED)
+                            fourthByteNode[l] = GB18030_CODE;
+                    }
+                }
+            }
+        }
+    }
+
     this.defaultCharUnicode = iconv.defaultCharUnicode;
 
     
@@ -309,30 +351,6 @@ function DBCSCodec(codecOptions, iconv) {
     this.defCharSB  = this.encodeTable[0][iconv.defaultCharSingleByte.charCodeAt(0)];
     if (this.defCharSB === UNASSIGNED) this.defCharSB = this.encodeTable[0]['?'];
     if (this.defCharSB === UNASSIGNED) this.defCharSB = "?".charCodeAt(0);
-
-
-    // Load & create GB18030 tables when needed.
-    if (typeof codecOptions.gb18030 === 'function') {
-        this.gb18030 = codecOptions.gb18030(); // Load GB18030 ranges.
-
-        // Add GB18030 decode tables.
-        var thirdByteNodeIdx = this.decodeTables.length;
-        var thirdByteNode = this.decodeTables[thirdByteNodeIdx] = UNASSIGNED_NODE.slice(0);
-
-        var fourthByteNodeIdx = this.decodeTables.length;
-        var fourthByteNode = this.decodeTables[fourthByteNodeIdx] = UNASSIGNED_NODE.slice(0);
-
-        for (var i = 0x81; i <= 0xFE; i++) {
-            var secondByteNodeIdx = NODE_START - this.decodeTables[0][i];
-            var secondByteNode = this.decodeTables[secondByteNodeIdx];
-            for (var j = 0x30; j <= 0x39; j++)
-                secondByteNode[j] = NODE_START - thirdByteNodeIdx;
-        }
-        for (var i = 0x81; i <= 0xFE; i++)
-            thirdByteNode[i] = NODE_START - fourthByteNodeIdx;
-        for (var i = 0x30; i <= 0x39; i++)
-            fourthByteNode[i] = GB18030_CODE
-    }        
 }
 
 DBCSCodec.prototype.encoder = DBCSEncoder;
@@ -341,7 +359,7 @@ DBCSCodec.prototype.decoder = DBCSDecoder;
 // Decoder helpers
 DBCSCodec.prototype._getDecodeTrieNode = function(addr) {
     var bytes = [];
-    for (; addr > 0; addr >>= 8)
+    for (; addr > 0; addr >>>= 8)
         bytes.push(addr & 0xFF);
     if (bytes.length == 0)
         bytes.push(0);
@@ -466,19 +484,32 @@ DBCSCodec.prototype._setEncodeSequence = function(seq, dbcsCode) {
 
 DBCSCodec.prototype._fillEncodeTable = function(nodeIdx, prefix, skipEncodeChars) {
     var node = this.decodeTables[nodeIdx];
+    var hasValues = false;
+    var subNodeEmpty = {};
     for (var i = 0; i < 0x100; i++) {
         var uCode = node[i];
         var mbCode = prefix + i;
         if (skipEncodeChars[mbCode])
             continue;
 
-        if (uCode >= 0)
+        if (uCode >= 0) {
             this._setEncodeChar(uCode, mbCode);
-        else if (uCode <= NODE_START)
-            this._fillEncodeTable(NODE_START - uCode, mbCode << 8, skipEncodeChars);
-        else if (uCode <= SEQ_START)
+            hasValues = true;
+        } else if (uCode <= NODE_START) {
+            var subNodeIdx = NODE_START - uCode;
+            if (!subNodeEmpty[subNodeIdx]) {  // Skip empty subtrees (they are too large in gb18030).
+                var newPrefix = (mbCode << 8) >>> 0;  // NOTE: '>>> 0' keeps 32-bit num positive.
+                if (this._fillEncodeTable(subNodeIdx, newPrefix, skipEncodeChars))
+                    hasValues = true;
+                else
+                    subNodeEmpty[subNodeIdx] = true;
+            }
+        } else if (uCode <= SEQ_START) {
             this._setEncodeSequence(this.decodeTableSeq[SEQ_START - uCode], mbCode);
+            hasValues = true;
+        }
     }
+    return hasValues;
 }
 
 
@@ -605,9 +636,14 @@ DBCSEncoder.prototype.write = function(str) {
             newBuf[j++] = dbcsCode >> 8;   // high byte
             newBuf[j++] = dbcsCode & 0xFF; // low byte
         }
-        else {
+        else if (dbcsCode < 0x1000000) {
             newBuf[j++] = dbcsCode >> 16;
             newBuf[j++] = (dbcsCode >> 8) & 0xFF;
+            newBuf[j++] = dbcsCode & 0xFF;
+        } else {
+            newBuf[j++] = dbcsCode >>> 24;
+            newBuf[j++] = (dbcsCode >>> 16) & 0xFF;
+            newBuf[j++] = (dbcsCode >>> 8) & 0xFF;
             newBuf[j++] = dbcsCode & 0xFF;
         }
     }
@@ -657,7 +693,7 @@ DBCSEncoder.prototype.findIdx = findIdx;
 function DBCSDecoder(options, codec) {
     // Decoder state
     this.nodeIdx = 0;
-    this.prevBuf = Buffer.alloc(0);
+    this.prevBytes = [];
 
     // Static data
     this.decodeTables = codec.decodeTables;
@@ -669,15 +705,12 @@ function DBCSDecoder(options, codec) {
 DBCSDecoder.prototype.write = function(buf) {
     var newBuf = Buffer.alloc(buf.length*2),
         nodeIdx = this.nodeIdx, 
-        prevBuf = this.prevBuf, prevBufOffset = this.prevBuf.length,
-        seqStart = -this.prevBuf.length, // idx of the start of current parsed sequence.
+        prevBytes = this.prevBytes, prevOffset = this.prevBytes.length,
+        seqStart = -this.prevBytes.length, // idx of the start of current parsed sequence.
         uCode;
 
-    if (prevBufOffset > 0) // Make prev buf overlap a little to make it easier to slice later.
-        prevBuf = Buffer.concat([prevBuf, buf.slice(0, 10)]);
-    
     for (var i = 0, j = 0; i < buf.length; i++) {
-        var curByte = (i >= 0) ? buf[i] : prevBuf[i + prevBufOffset];
+        var curByte = (i >= 0) ? buf[i] : prevBytes[i + prevOffset];
 
         // Lookup in current trie node.
         var uCode = this.decodeTables[nodeIdx][curByte];
@@ -687,13 +720,18 @@ DBCSDecoder.prototype.write = function(buf) {
         }
         else if (uCode === UNASSIGNED) { // Unknown char.
             // TODO: Callback with seq.
-            //var curSeq = (seqStart >= 0) ? buf.slice(seqStart, i+1) : prevBuf.slice(seqStart + prevBufOffset, i+1 + prevBufOffset);
-            i = seqStart; // Try to parse again, after skipping first byte of the sequence ('i' will be incremented by 'for' cycle).
             uCode = this.defaultCharUnicode.charCodeAt(0);
+            i = seqStart; // Skip one byte ('i' will be incremented by the for loop) and try to parse again.
         }
         else if (uCode === GB18030_CODE) {
-            var curSeq = (seqStart >= 0) ? buf.slice(seqStart, i+1) : prevBuf.slice(seqStart + prevBufOffset, i+1 + prevBufOffset);
-            var ptr = (curSeq[0]-0x81)*12600 + (curSeq[1]-0x30)*1260 + (curSeq[2]-0x81)*10 + (curSeq[3]-0x30);
+            if (i >= 3) {
+                var ptr = (buf[i-3]-0x81)*12600 + (buf[i-2]-0x30)*1260 + (buf[i-1]-0x81)*10 + (curByte-0x30);
+            } else {
+                var ptr = (prevBytes[i-3+prevOffset]-0x81)*12600 + 
+                          (((i-2 >= 0) ? buf[i-2] : prevBytes[i-2+prevOffset])-0x30)*1260 + 
+                          (((i-1 >= 0) ? buf[i-1] : prevBytes[i-1+prevOffset])-0x81)*10 + 
+                          (curByte-0x30);
+            }
             var idx = findIdx(this.gb18030.gbChars, ptr);
             uCode = this.gb18030.uChars[idx] + ptr - this.gb18030.gbChars[idx];
         }
@@ -714,13 +752,13 @@ DBCSDecoder.prototype.write = function(buf) {
             throw new Error("iconv-lite internal error: invalid decoding table value " + uCode + " at " + nodeIdx + "/" + curByte);
 
         // Write the character to buffer, handling higher planes using surrogate pair.
-        if (uCode > 0xFFFF) { 
+        if (uCode >= 0x10000) { 
             uCode -= 0x10000;
-            var uCodeLead = 0xD800 + Math.floor(uCode / 0x400);
+            var uCodeLead = 0xD800 | (uCode >> 10);
             newBuf[j++] = uCodeLead & 0xFF;
             newBuf[j++] = uCodeLead >> 8;
 
-            uCode = 0xDC00 + uCode % 0x400;
+            uCode = 0xDC00 | (uCode & 0x3FF);
         }
         newBuf[j++] = uCode & 0xFF;
         newBuf[j++] = uCode >> 8;
@@ -730,7 +768,10 @@ DBCSDecoder.prototype.write = function(buf) {
     }
 
     this.nodeIdx = nodeIdx;
-    this.prevBuf = (seqStart >= 0) ? buf.slice(seqStart) : prevBuf.slice(seqStart + prevBufOffset);
+    this.prevBytes = (seqStart >= 0)
+        ? Array.prototype.slice.call(buf, seqStart)
+        : prevBytes.slice(seqStart + prevOffset).concat(Array.prototype.slice.call(buf));
+
     return newBuf.slice(0, j).toString('ucs2');
 }
 
@@ -738,18 +779,19 @@ DBCSDecoder.prototype.end = function() {
     var ret = '';
 
     // Try to parse all remaining chars.
-    while (this.prevBuf.length > 0) {
+    while (this.prevBytes.length > 0) {
         // Skip 1 character in the buffer.
         ret += this.defaultCharUnicode;
-        var buf = this.prevBuf.slice(1);
+        var bytesArr = this.prevBytes.slice(1);
 
         // Parse remaining as usual.
-        this.prevBuf = Buffer.alloc(0);
+        this.prevBytes = [];
         this.nodeIdx = 0;
-        if (buf.length > 0)
-            ret += this.write(buf);
+        if (bytesArr.length > 0)
+            ret += this.write(bytesArr);
     }
 
+    this.prevBytes = [];
     this.nodeIdx = 0;
     return ret;
 }
@@ -761,7 +803,7 @@ function findIdx(table, val) {
 
     var l = 0, r = table.length;
     while (l < r-1) { // always table[l] <= val < table[r]
-        var mid = l + Math.floor((r-l+1)/2);
+        var mid = l + ((r-l+1) >> 1);
         if (table[mid] <= val)
             l = mid;
         else
@@ -771,7 +813,7 @@ function findIdx(table, val) {
 }
 
 
-},{"safer-buffer":37}],5:[function(require,module,exports){
+},{"safer-buffer":39}],5:[function(require,module,exports){
 "use strict";
 
 // Description of supported double byte encodings and aliases.
@@ -941,7 +983,19 @@ module.exports = {
     'big5hkscs': {
         type: '_dbcs',
         table: function() { return require('./tables/cp950.json').concat(require('./tables/big5-added.json')) },
-        encodeSkipVals: [0xa2cc],
+        encodeSkipVals: [
+            // Although Encoding Standard says we should avoid encoding to HKSCS area (See Step 1 of
+            // https://encoding.spec.whatwg.org/#index-big5-pointer), we still do it to increase compatibility with ICU.
+            // But if a single unicode point can be encoded both as HKSCS and regular Big5, we prefer the latter.
+            0x8e69, 0x8e6f, 0x8e7e, 0x8eab, 0x8eb4, 0x8ecd, 0x8ed0, 0x8f57, 0x8f69, 0x8f6e, 0x8fcb, 0x8ffe,
+            0x906d, 0x907a, 0x90c4, 0x90dc, 0x90f1, 0x91bf, 0x92af, 0x92b0, 0x92b1, 0x92b2, 0x92d1, 0x9447, 0x94ca,
+            0x95d9, 0x96fc, 0x9975, 0x9b76, 0x9b78, 0x9b7b, 0x9bc6, 0x9bde, 0x9bec, 0x9bf6, 0x9c42, 0x9c53, 0x9c62,
+            0x9c68, 0x9c6b, 0x9c77, 0x9cbc, 0x9cbd, 0x9cd0, 0x9d57, 0x9d5a, 0x9dc4, 0x9def, 0x9dfb, 0x9ea9, 0x9eef,
+            0x9efd, 0x9f60, 0x9fcb, 0xa077, 0xa0dc, 0xa0df, 0x8fcc, 0x92c8, 0x9644, 0x96ed,
+
+            // Step 2 of https://encoding.spec.whatwg.org/#index-big5-pointer: Use last pointer for U+2550, U+255E, U+2561, U+256A, U+5341, or U+5345
+            0xa2a4, 0xa2a5, 0xa2a7, 0xa2a6, 0xa2cc, 0xa2ce,
+        ],
     },
 
     'cnbig5': 'big5hkscs',
@@ -956,6 +1010,7 @@ module.exports = {
 // We support Browserify by skipping automatic module discovery and requiring modules directly.
 var modules = [
     require("./internal"),
+    require("./utf32"),
     require("./utf16"),
     require("./utf7"),
     require("./sbcs-codec"),
@@ -965,7 +1020,7 @@ var modules = [
     require("./dbcs-data"),
 ];
 
-// Put all encoding/alias/codec definitions to single object and export it. 
+// Put all encoding/alias/codec definitions to single object and export it.
 for (var i = 0; i < modules.length; i++) {
     var module = modules[i];
     for (var enc in module)
@@ -973,7 +1028,7 @@ for (var i = 0; i < modules.length; i++) {
             exports[enc] = module[enc];
 }
 
-},{"./dbcs-codec":4,"./dbcs-data":5,"./internal":7,"./sbcs-codec":8,"./sbcs-data":10,"./sbcs-data-generated":9,"./utf16":19,"./utf7":20}],7:[function(require,module,exports){
+},{"./dbcs-codec":4,"./dbcs-data":5,"./internal":7,"./sbcs-codec":8,"./sbcs-data":10,"./sbcs-data-generated":9,"./utf16":19,"./utf32":20,"./utf7":21}],7:[function(require,module,exports){
 "use strict";
 var Buffer = require("safer-buffer").Buffer;
 
@@ -1029,10 +1084,20 @@ if (!StringDecoder.prototype.end) // Node v0.8 doesn't have this method.
 
 
 function InternalDecoder(options, codec) {
-    StringDecoder.call(this, codec.enc);
+    this.decoder = new StringDecoder(codec.enc);
 }
 
-InternalDecoder.prototype = StringDecoder.prototype;
+InternalDecoder.prototype.write = function(buf) {
+    if (!Buffer.isBuffer(buf)) {
+        buf = Buffer.from(buf);
+    }
+
+    return this.decoder.write(buf);
+}
+
+InternalDecoder.prototype.end = function() {
+    return this.decoder.end();
+}
 
 
 //------------------------------------------------------------------------------
@@ -1163,7 +1228,7 @@ InternalDecoderCesu8.prototype.end = function() {
     return res;
 }
 
-},{"safer-buffer":37,"string_decoder":38}],8:[function(require,module,exports){
+},{"safer-buffer":39,"string_decoder":40}],8:[function(require,module,exports){
 "use strict";
 var Buffer = require("safer-buffer").Buffer;
 
@@ -1237,7 +1302,7 @@ SBCSDecoder.prototype.write = function(buf) {
 SBCSDecoder.prototype.end = function() {
 }
 
-},{"safer-buffer":37}],9:[function(require,module,exports){
+},{"safer-buffer":39}],9:[function(require,module,exports){
 "use strict";
 
 // Generated data for sbcs codec. Don't edit manually. Regenerate using generation/gen-sbcs.js script.
@@ -1712,6 +1777,11 @@ module.exports = {
     "mik": {
         "type": "_sbcs",
         "chars": "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюя└┴┬├─┼╣║╚╔╩╦╠═╬┐░▒▓│┤№§╗╝┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ "
+    },
+
+    "cp720": {
+        "type": "_sbcs",
+        "chars": "\x80\x81éâ\x84à\x86çêëèïî\x8d\x8e\x8f\x90\u0651\u0652ô¤ـûùءآأؤ£إئابةتثجحخدذرزسشص«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀ضطظعغفµقكلمنهوىي≡\u064b\u064c\u064d\u064e\u064f\u0650≈°∙·√ⁿ²■\u00a0"
     },
 
     // Aliases of generated encodings.
@@ -2925,7 +2995,7 @@ module.exports=[
 ["a7c2","",14],
 ["a7f2","",12],
 ["a896","",10],
-["a8bc",""],
+["a8bc","ḿ"],
 ["a8bf","ǹ"],
 ["a8c1",""],
 ["a8ea","",20],
@@ -2949,7 +3019,8 @@ module.exports=[
 ["fca1","",93],
 ["fda1","",93],
 ["fe50","⺁⺄㑳㑇⺈⺋㖞㘚㘎⺌⺗㥮㤘㧏㧟㩳㧐㭎㱮㳠⺧⺪䁖䅟⺮䌷⺳⺶⺷䎱䎬⺻䏝䓖䙡䙌"],
-["fe80","䜣䜩䝼䞍⻊䥇䥺䥽䦂䦃䦅䦆䦟䦛䦷䦶䲣䲟䲠䲡䱷䲢䴓",6,"䶮",93]
+["fe80","䜣䜩䝼䞍⻊䥇䥺䥽䦂䦃䦅䦆䦟䦛䦷䦶䲣䲟䲠䲡䱷䲢䴓",6,"䶮",93],
+["8135f437",""]
 ]
 
 },{}],18:[function(require,module,exports){
@@ -3143,6 +3214,7 @@ Utf16BEDecoder.prototype.write = function(buf) {
 }
 
 Utf16BEDecoder.prototype.end = function() {
+    this.overflowByte = -1;
 }
 
 
@@ -3185,8 +3257,8 @@ Utf16Encoder.prototype.end = function() {
 
 function Utf16Decoder(options, codec) {
     this.decoder = null;
-    this.initialBytes = [];
-    this.initialBytesLen = 0;
+    this.initialBufs = [];
+    this.initialBufsLen = 0;
 
     this.options = options || {};
     this.iconv = codec.iconv;
@@ -3195,17 +3267,22 @@ function Utf16Decoder(options, codec) {
 Utf16Decoder.prototype.write = function(buf) {
     if (!this.decoder) {
         // Codec is not chosen yet. Accumulate initial bytes.
-        this.initialBytes.push(buf);
-        this.initialBytesLen += buf.length;
+        this.initialBufs.push(buf);
+        this.initialBufsLen += buf.length;
         
-        if (this.initialBytesLen < 16) // We need more bytes to use space heuristic (see below)
+        if (this.initialBufsLen < 16) // We need more bytes to use space heuristic (see below)
             return '';
 
         // We have enough bytes -> detect endianness.
-        var buf = Buffer.concat(this.initialBytes),
-            encoding = detectEncoding(buf, this.options.defaultEncoding);
+        var encoding = detectEncoding(this.initialBufs, this.options.defaultEncoding);
         this.decoder = this.iconv.getDecoder(encoding, this.options);
-        this.initialBytes.length = this.initialBytesLen = 0;
+
+        var resStr = '';
+        for (var i = 0; i < this.initialBufs.length; i++)
+            resStr += this.decoder.write(this.initialBufs[i]);
+
+        this.initialBufs.length = this.initialBufsLen = 0;
+        return resStr;
     }
 
     return this.decoder.write(buf);
@@ -3213,52 +3290,387 @@ Utf16Decoder.prototype.write = function(buf) {
 
 Utf16Decoder.prototype.end = function() {
     if (!this.decoder) {
-        var buf = Buffer.concat(this.initialBytes),
-            encoding = detectEncoding(buf, this.options.defaultEncoding);
+        var encoding = detectEncoding(this.initialBufs, this.options.defaultEncoding);
         this.decoder = this.iconv.getDecoder(encoding, this.options);
 
-        var res = this.decoder.write(buf),
-            trail = this.decoder.end();
+        var resStr = '';
+        for (var i = 0; i < this.initialBufs.length; i++)
+            resStr += this.decoder.write(this.initialBufs[i]);
 
-        return trail ? (res + trail) : res;
+        var trail = this.decoder.end();
+        if (trail)
+            resStr += trail;
+
+        this.initialBufs.length = this.initialBufsLen = 0;
+        return resStr;
     }
     return this.decoder.end();
 }
 
-function detectEncoding(buf, defaultEncoding) {
-    var enc = defaultEncoding || 'utf-16le';
+function detectEncoding(bufs, defaultEncoding) {
+    var b = [];
+    var charsProcessed = 0;
+    var asciiCharsLE = 0, asciiCharsBE = 0; // Number of ASCII chars when decoded as LE or BE.
 
-    if (buf.length >= 2) {
-        // Check BOM.
-        if (buf[0] == 0xFE && buf[1] == 0xFF) // UTF-16BE BOM
-            enc = 'utf-16be';
-        else if (buf[0] == 0xFF && buf[1] == 0xFE) // UTF-16LE BOM
-            enc = 'utf-16le';
-        else {
-            // No BOM found. Try to deduce encoding from initial content.
-            // Most of the time, the content has ASCII chars (U+00**), but the opposite (U+**00) is uncommon.
-            // So, we count ASCII as if it was LE or BE, and decide from that.
-            var asciiCharsLE = 0, asciiCharsBE = 0, // Counts of chars in both positions
-                _len = Math.min(buf.length - (buf.length % 2), 64); // Len is always even.
+    outer_loop:
+    for (var i = 0; i < bufs.length; i++) {
+        var buf = bufs[i];
+        for (var j = 0; j < buf.length; j++) {
+            b.push(buf[j]);
+            if (b.length === 2) {
+                if (charsProcessed === 0) {
+                    // Check BOM first.
+                    if (b[0] === 0xFF && b[1] === 0xFE) return 'utf-16le';
+                    if (b[0] === 0xFE && b[1] === 0xFF) return 'utf-16be';
+                }
 
-            for (var i = 0; i < _len; i += 2) {
-                if (buf[i] === 0 && buf[i+1] !== 0) asciiCharsBE++;
-                if (buf[i] !== 0 && buf[i+1] === 0) asciiCharsLE++;
+                if (b[0] === 0 && b[1] !== 0) asciiCharsBE++;
+                if (b[0] !== 0 && b[1] === 0) asciiCharsLE++;
+
+                b.length = 0;
+                charsProcessed++;
+
+                if (charsProcessed >= 100) {
+                    break outer_loop;
+                }
             }
-
-            if (asciiCharsBE > asciiCharsLE)
-                enc = 'utf-16be';
-            else if (asciiCharsBE < asciiCharsLE)
-                enc = 'utf-16le';
         }
     }
 
-    return enc;
+    // Make decisions.
+    // Most of the time, the content has ASCII chars (U+00**), but the opposite (U+**00) is uncommon.
+    // So, we count ASCII as if it was LE or BE, and decide from that.
+    if (asciiCharsBE > asciiCharsLE) return 'utf-16be';
+    if (asciiCharsBE < asciiCharsLE) return 'utf-16le';
+
+    // Couldn't decide (likely all zeros or not enough data).
+    return defaultEncoding || 'utf-16le';
 }
 
 
 
-},{"safer-buffer":37}],20:[function(require,module,exports){
+},{"safer-buffer":39}],20:[function(require,module,exports){
+'use strict';
+
+var Buffer = require('safer-buffer').Buffer;
+
+// == UTF32-LE/BE codec. ==========================================================
+
+exports._utf32 = Utf32Codec;
+
+function Utf32Codec(codecOptions, iconv) {
+    this.iconv = iconv;
+    this.bomAware = true;
+    this.isLE = codecOptions.isLE;
+}
+
+exports.utf32le = { type: '_utf32', isLE: true };
+exports.utf32be = { type: '_utf32', isLE: false };
+
+// Aliases
+exports.ucs4le = 'utf32le';
+exports.ucs4be = 'utf32be';
+
+Utf32Codec.prototype.encoder = Utf32Encoder;
+Utf32Codec.prototype.decoder = Utf32Decoder;
+
+// -- Encoding
+
+function Utf32Encoder(options, codec) {
+    this.isLE = codec.isLE;
+    this.highSurrogate = 0;
+}
+
+Utf32Encoder.prototype.write = function(str) {
+    var src = Buffer.from(str, 'ucs2');
+    var dst = Buffer.alloc(src.length * 2);
+    var write32 = this.isLE ? dst.writeUInt32LE : dst.writeUInt32BE;
+    var offset = 0;
+
+    for (var i = 0; i < src.length; i += 2) {
+        var code = src.readUInt16LE(i);
+        var isHighSurrogate = (0xD800 <= code && code < 0xDC00);
+        var isLowSurrogate = (0xDC00 <= code && code < 0xE000);
+
+        if (this.highSurrogate) {
+            if (isHighSurrogate || !isLowSurrogate) {
+                // There shouldn't be two high surrogates in a row, nor a high surrogate which isn't followed by a low
+                // surrogate. If this happens, keep the pending high surrogate as a stand-alone semi-invalid character
+                // (technically wrong, but expected by some applications, like Windows file names).
+                write32.call(dst, this.highSurrogate, offset);
+                offset += 4;
+            }
+            else {
+                // Create 32-bit value from high and low surrogates;
+                var codepoint = (((this.highSurrogate - 0xD800) << 10) | (code - 0xDC00)) + 0x10000;
+
+                write32.call(dst, codepoint, offset);
+                offset += 4;
+                this.highSurrogate = 0;
+
+                continue;
+            }
+        }
+
+        if (isHighSurrogate)
+            this.highSurrogate = code;
+        else {
+            // Even if the current character is a low surrogate, with no previous high surrogate, we'll
+            // encode it as a semi-invalid stand-alone character for the same reasons expressed above for
+            // unpaired high surrogates.
+            write32.call(dst, code, offset);
+            offset += 4;
+            this.highSurrogate = 0;
+        }
+    }
+
+    if (offset < dst.length)
+        dst = dst.slice(0, offset);
+
+    return dst;
+};
+
+Utf32Encoder.prototype.end = function() {
+    // Treat any leftover high surrogate as a semi-valid independent character.
+    if (!this.highSurrogate)
+        return;
+
+    var buf = Buffer.alloc(4);
+
+    if (this.isLE)
+        buf.writeUInt32LE(this.highSurrogate, 0);
+    else
+        buf.writeUInt32BE(this.highSurrogate, 0);
+
+    this.highSurrogate = 0;
+
+    return buf;
+};
+
+// -- Decoding
+
+function Utf32Decoder(options, codec) {
+    this.isLE = codec.isLE;
+    this.badChar = codec.iconv.defaultCharUnicode.charCodeAt(0);
+    this.overflow = [];
+}
+
+Utf32Decoder.prototype.write = function(src) {
+    if (src.length === 0)
+        return '';
+
+    var i = 0;
+    var codepoint = 0;
+    var dst = Buffer.alloc(src.length + 4);
+    var offset = 0;
+    var isLE = this.isLE;
+    var overflow = this.overflow;
+    var badChar = this.badChar;
+
+    if (overflow.length > 0) {
+        for (; i < src.length && overflow.length < 4; i++)
+            overflow.push(src[i]);
+        
+        if (overflow.length === 4) {
+            // NOTE: codepoint is a signed int32 and can be negative.
+            // NOTE: We copied this block from below to help V8 optimize it (it works with array, not buffer).
+            if (isLE) {
+                codepoint = overflow[i] | (overflow[i+1] << 8) | (overflow[i+2] << 16) | (overflow[i+3] << 24);
+            } else {
+                codepoint = overflow[i+3] | (overflow[i+2] << 8) | (overflow[i+1] << 16) | (overflow[i] << 24);
+            }
+            overflow.length = 0;
+
+            offset = _writeCodepoint(dst, offset, codepoint, badChar);
+        }
+    }
+
+    // Main loop. Should be as optimized as possible.
+    for (; i < src.length - 3; i += 4) {
+        // NOTE: codepoint is a signed int32 and can be negative.
+        if (isLE) {
+            codepoint = src[i] | (src[i+1] << 8) | (src[i+2] << 16) | (src[i+3] << 24);
+        } else {
+            codepoint = src[i+3] | (src[i+2] << 8) | (src[i+1] << 16) | (src[i] << 24);
+        }
+        offset = _writeCodepoint(dst, offset, codepoint, badChar);
+    }
+
+    // Keep overflowing bytes.
+    for (; i < src.length; i++) {
+        overflow.push(src[i]);
+    }
+
+    return dst.slice(0, offset).toString('ucs2');
+};
+
+function _writeCodepoint(dst, offset, codepoint, badChar) {
+    // NOTE: codepoint is signed int32 and can be negative. We keep it that way to help V8 with optimizations.
+    if (codepoint < 0 || codepoint > 0x10FFFF) {
+        // Not a valid Unicode codepoint
+        codepoint = badChar;
+    } 
+
+    // Ephemeral Planes: Write high surrogate.
+    if (codepoint >= 0x10000) {
+        codepoint -= 0x10000;
+
+        var high = 0xD800 | (codepoint >> 10);
+        dst[offset++] = high & 0xff;
+        dst[offset++] = high >> 8;
+
+        // Low surrogate is written below.
+        var codepoint = 0xDC00 | (codepoint & 0x3FF);
+    }
+
+    // Write BMP char or low surrogate.
+    dst[offset++] = codepoint & 0xff;
+    dst[offset++] = codepoint >> 8;
+
+    return offset;
+};
+
+Utf32Decoder.prototype.end = function() {
+    this.overflow.length = 0;
+};
+
+// == UTF-32 Auto codec =============================================================
+// Decoder chooses automatically from UTF-32LE and UTF-32BE using BOM and space-based heuristic.
+// Defaults to UTF-32LE. http://en.wikipedia.org/wiki/UTF-32
+// Encoder/decoder default can be changed: iconv.decode(buf, 'utf32', {defaultEncoding: 'utf-32be'});
+
+// Encoder prepends BOM (which can be overridden with (addBOM: false}).
+
+exports.utf32 = Utf32AutoCodec;
+exports.ucs4 = 'utf32';
+
+function Utf32AutoCodec(options, iconv) {
+    this.iconv = iconv;
+}
+
+Utf32AutoCodec.prototype.encoder = Utf32AutoEncoder;
+Utf32AutoCodec.prototype.decoder = Utf32AutoDecoder;
+
+// -- Encoding
+
+function Utf32AutoEncoder(options, codec) {
+    options = options || {};
+
+    if (options.addBOM === undefined)
+        options.addBOM = true;
+
+    this.encoder = codec.iconv.getEncoder(options.defaultEncoding || 'utf-32le', options);
+}
+
+Utf32AutoEncoder.prototype.write = function(str) {
+    return this.encoder.write(str);
+};
+
+Utf32AutoEncoder.prototype.end = function() {
+    return this.encoder.end();
+};
+
+// -- Decoding
+
+function Utf32AutoDecoder(options, codec) {
+    this.decoder = null;
+    this.initialBufs = [];
+    this.initialBufsLen = 0;
+    this.options = options || {};
+    this.iconv = codec.iconv;
+}
+
+Utf32AutoDecoder.prototype.write = function(buf) {
+    if (!this.decoder) { 
+        // Codec is not chosen yet. Accumulate initial bytes.
+        this.initialBufs.push(buf);
+        this.initialBufsLen += buf.length;
+
+        if (this.initialBufsLen < 32) // We need more bytes to use space heuristic (see below)
+            return '';
+
+        // We have enough bytes -> detect endianness.
+        var encoding = detectEncoding(this.initialBufs, this.options.defaultEncoding);
+        this.decoder = this.iconv.getDecoder(encoding, this.options);
+
+        var resStr = '';
+        for (var i = 0; i < this.initialBufs.length; i++)
+            resStr += this.decoder.write(this.initialBufs[i]);
+
+        this.initialBufs.length = this.initialBufsLen = 0;
+        return resStr;
+    }
+
+    return this.decoder.write(buf);
+};
+
+Utf32AutoDecoder.prototype.end = function() {
+    if (!this.decoder) {
+        var encoding = detectEncoding(this.initialBufs, this.options.defaultEncoding);
+        this.decoder = this.iconv.getDecoder(encoding, this.options);
+
+        var resStr = '';
+        for (var i = 0; i < this.initialBufs.length; i++)
+            resStr += this.decoder.write(this.initialBufs[i]);
+
+        var trail = this.decoder.end();
+        if (trail)
+            resStr += trail;
+
+        this.initialBufs.length = this.initialBufsLen = 0;
+        return resStr;
+    }
+
+    return this.decoder.end();
+};
+
+function detectEncoding(bufs, defaultEncoding) {
+    var b = [];
+    var charsProcessed = 0;
+    var invalidLE = 0, invalidBE = 0;   // Number of invalid chars when decoded as LE or BE.
+    var bmpCharsLE = 0, bmpCharsBE = 0; // Number of BMP chars when decoded as LE or BE.
+
+    outer_loop:
+    for (var i = 0; i < bufs.length; i++) {
+        var buf = bufs[i];
+        for (var j = 0; j < buf.length; j++) {
+            b.push(buf[j]);
+            if (b.length === 4) {
+                if (charsProcessed === 0) {
+                    // Check BOM first.
+                    if (b[0] === 0xFF && b[1] === 0xFE && b[2] === 0 && b[3] === 0) {
+                        return 'utf-32le';
+                    }
+                    if (b[0] === 0 && b[1] === 0 && b[2] === 0xFE && b[3] === 0xFF) {
+                        return 'utf-32be';
+                    }
+                }
+
+                if (b[0] !== 0 || b[1] > 0x10) invalidBE++;
+                if (b[3] !== 0 || b[2] > 0x10) invalidLE++;
+
+                if (b[0] === 0 && b[1] === 0 && (b[2] !== 0 || b[3] !== 0)) bmpCharsBE++;
+                if ((b[0] !== 0 || b[1] !== 0) && b[2] === 0 && b[3] === 0) bmpCharsLE++;
+
+                b.length = 0;
+                charsProcessed++;
+
+                if (charsProcessed >= 100) {
+                    break outer_loop;
+                }
+            }
+        }
+    }
+
+    // Make decisions.
+    if (bmpCharsBE - invalidBE > bmpCharsLE - invalidLE)  return 'utf-32be';
+    if (bmpCharsBE - invalidBE < bmpCharsLE - invalidLE)  return 'utf-32le';
+
+    // Couldn't decide (likely all zeros or not enough data).
+    return defaultEncoding || 'utf-32le';
+}
+
+},{"safer-buffer":39}],21:[function(require,module,exports){
 "use strict";
 var Buffer = require("safer-buffer").Buffer;
 
@@ -3335,7 +3747,7 @@ Utf7Decoder.prototype.write = function(buf) {
                 if (i == lastI && buf[i] == minusChar) {// "+-" -> "+"
                     res += "+";
                 } else {
-                    var b64str = base64Accum + buf.slice(lastI, i).toString();
+                    var b64str = base64Accum + this.iconv.decode(buf.slice(lastI, i), "ascii");
                     res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
                 }
 
@@ -3352,7 +3764,7 @@ Utf7Decoder.prototype.write = function(buf) {
     if (!inBase64) {
         res += this.iconv.decode(buf.slice(lastI), "ascii"); // Write direct chars.
     } else {
-        var b64str = base64Accum + buf.slice(lastI).toString();
+        var b64str = base64Accum + this.iconv.decode(buf.slice(lastI), "ascii");
 
         var canBeDecoded = b64str.length - (b64str.length % 8); // Minimal chunk: 2 quads -> 2x3 bytes -> 3 chars.
         base64Accum = b64str.slice(canBeDecoded); // The rest will be decoded in future.
@@ -3506,7 +3918,7 @@ Utf7IMAPDecoder.prototype.write = function(buf) {
                 if (i == lastI && buf[i] == minusChar) { // "&-" -> "&"
                     res += "&";
                 } else {
-                    var b64str = base64Accum + buf.slice(lastI, i).toString().replace(/,/g, '/');
+                    var b64str = base64Accum + this.iconv.decode(buf.slice(lastI, i), "ascii").replace(/,/g, '/');
                     res += this.iconv.decode(Buffer.from(b64str, 'base64'), "utf16-be");
                 }
 
@@ -3523,7 +3935,7 @@ Utf7IMAPDecoder.prototype.write = function(buf) {
     if (!inBase64) {
         res += this.iconv.decode(buf.slice(lastI), "ascii"); // Write direct chars.
     } else {
-        var b64str = base64Accum + buf.slice(lastI).toString().replace(/,/g, '/');
+        var b64str = base64Accum + this.iconv.decode(buf.slice(lastI), "ascii").replace(/,/g, '/');
 
         var canBeDecoded = b64str.length - (b64str.length % 8); // Minimal chunk: 2 quads -> 2x3 bytes -> 3 chars.
         base64Accum = b64str.slice(canBeDecoded); // The rest will be decoded in future.
@@ -3550,7 +3962,7 @@ Utf7IMAPDecoder.prototype.end = function() {
 
 
 
-},{"safer-buffer":37}],21:[function(require,module,exports){
+},{"safer-buffer":39}],22:[function(require,module,exports){
 "use strict";
 
 var BOMChar = '\uFEFF';
@@ -3604,7 +4016,118 @@ StripBOMWrapper.prototype.end = function() {
 }
 
 
-},{}],22:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
+"use strict";
+
+var Buffer = require("safer-buffer").Buffer;
+
+// NOTE: Due to 'stream' module being pretty large (~100Kb, significant in browser environments), 
+// we opt to dependency-inject it instead of creating a hard dependency.
+module.exports = function(stream_module) {
+    var Transform = stream_module.Transform;
+
+    // == Encoder stream =======================================================
+
+    function IconvLiteEncoderStream(conv, options) {
+        this.conv = conv;
+        options = options || {};
+        options.decodeStrings = false; // We accept only strings, so we don't need to decode them.
+        Transform.call(this, options);
+    }
+
+    IconvLiteEncoderStream.prototype = Object.create(Transform.prototype, {
+        constructor: { value: IconvLiteEncoderStream }
+    });
+
+    IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done) {
+        if (typeof chunk != 'string')
+            return done(new Error("Iconv encoding stream needs strings as its input."));
+        try {
+            var res = this.conv.write(chunk);
+            if (res && res.length) this.push(res);
+            done();
+        }
+        catch (e) {
+            done(e);
+        }
+    }
+
+    IconvLiteEncoderStream.prototype._flush = function(done) {
+        try {
+            var res = this.conv.end();
+            if (res && res.length) this.push(res);
+            done();
+        }
+        catch (e) {
+            done(e);
+        }
+    }
+
+    IconvLiteEncoderStream.prototype.collect = function(cb) {
+        var chunks = [];
+        this.on('error', cb);
+        this.on('data', function(chunk) { chunks.push(chunk); });
+        this.on('end', function() {
+            cb(null, Buffer.concat(chunks));
+        });
+        return this;
+    }
+
+
+    // == Decoder stream =======================================================
+
+    function IconvLiteDecoderStream(conv, options) {
+        this.conv = conv;
+        options = options || {};
+        options.encoding = this.encoding = 'utf8'; // We output strings.
+        Transform.call(this, options);
+    }
+
+    IconvLiteDecoderStream.prototype = Object.create(Transform.prototype, {
+        constructor: { value: IconvLiteDecoderStream }
+    });
+
+    IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done) {
+        if (!Buffer.isBuffer(chunk) && !(chunk instanceof Uint8Array))
+            return done(new Error("Iconv decoding stream needs buffers as its input."));
+        try {
+            var res = this.conv.write(chunk);
+            if (res && res.length) this.push(res, this.encoding);
+            done();
+        }
+        catch (e) {
+            done(e);
+        }
+    }
+
+    IconvLiteDecoderStream.prototype._flush = function(done) {
+        try {
+            var res = this.conv.end();
+            if (res && res.length) this.push(res, this.encoding);                
+            done();
+        }
+        catch (e) {
+            done(e);
+        }
+    }
+
+    IconvLiteDecoderStream.prototype.collect = function(cb) {
+        var res = '';
+        this.on('error', cb);
+        this.on('data', function(chunk) { res += chunk; });
+        this.on('end', function() {
+            cb(null, res);
+        });
+        return this;
+    }
+
+    return {
+        IconvLiteEncoderStream: IconvLiteEncoderStream,
+        IconvLiteDecoderStream: IconvLiteDecoderStream,
+    };
+};
+
+},{"safer-buffer":39}],24:[function(require,module,exports){
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -3691,7 +4214,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],23:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -3877,7 +4400,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],24:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 'use strict';
 
 var replace = String.prototype.replace;
@@ -3905,7 +4428,7 @@ module.exports = util.assign(
     Format
 );
 
-},{"./utils":28}],25:[function(require,module,exports){
+},{"./utils":30}],27:[function(require,module,exports){
 'use strict';
 
 var stringify = require('./stringify');
@@ -3918,7 +4441,7 @@ module.exports = {
     stringify: stringify
 };
 
-},{"./formats":24,"./parse":26,"./stringify":27}],26:[function(require,module,exports){
+},{"./formats":26,"./parse":28,"./stringify":29}],28:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -4188,7 +4711,7 @@ module.exports = function (str, opts) {
     return utils.compact(obj);
 };
 
-},{"./utils":28}],27:[function(require,module,exports){
+},{"./utils":30}],29:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -4469,7 +4992,7 @@ module.exports = function (object, opts) {
     return joined.length > 0 ? prefix + joined : '';
 };
 
-},{"./formats":24,"./utils":28}],28:[function(require,module,exports){
+},{"./formats":26,"./utils":30}],30:[function(require,module,exports){
 'use strict';
 
 var has = Object.prototype.hasOwnProperty;
@@ -4707,7 +5230,7 @@ module.exports = {
     merge: merge
 };
 
-},{}],29:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 var slice = Array.prototype.slice;
 
 function dashify(method, file) {
@@ -4723,7 +5246,7 @@ exports.readFileSync = dashify(require("./read-file-sync"), "/dev/stdin");
 exports.writeFile = dashify(require("./write-file"), "/dev/stdout");
 exports.writeFileSync = dashify(require("./write-file-sync"), "/dev/stdout");
 
-},{"./read-file":33,"./read-file-sync":32,"./write-file":35,"./write-file-sync":34}],30:[function(require,module,exports){
+},{"./read-file":35,"./read-file-sync":34,"./write-file":37,"./write-file-sync":36}],32:[function(require,module,exports){
 (function (Buffer){(function (){
 module.exports = function(options) {
   if (options) {
@@ -4750,7 +5273,7 @@ function encoding(encoding) {
 }
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"buffer":"buffer"}],31:[function(require,module,exports){
+},{"buffer":"buffer"}],33:[function(require,module,exports){
 (function (Buffer){(function (){
 module.exports = function(data, options) {
   return typeof data === "string"
@@ -4761,7 +5284,7 @@ module.exports = function(data, options) {
 };
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"buffer":"buffer"}],32:[function(require,module,exports){
+},{"buffer":"buffer"}],34:[function(require,module,exports){
 (function (Buffer){(function (){
 var fs = require("fs"),
     decode = require("./decode");
@@ -4794,7 +5317,7 @@ module.exports = function(filename, options) {
 var bufferSize = 1 << 16;
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"./decode":30,"buffer":"buffer","fs":"fs"}],33:[function(require,module,exports){
+},{"./decode":32,"buffer":"buffer","fs":"fs"}],35:[function(require,module,exports){
 (function (process){(function (){
 var fs = require("fs"),
     decode = require("./decode");
@@ -4821,7 +5344,7 @@ function readStream(stream, options, callback) {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./decode":30,"_process":23,"fs":"fs"}],34:[function(require,module,exports){
+},{"./decode":32,"_process":25,"fs":"fs"}],36:[function(require,module,exports){
 var fs = require("fs"),
     encode = require("./encode");
 
@@ -4855,7 +5378,7 @@ module.exports = function(filename, data, options) {
   }
 };
 
-},{"./encode":31,"fs":"fs"}],35:[function(require,module,exports){
+},{"./encode":33,"fs":"fs"}],37:[function(require,module,exports){
 (function (process){(function (){
 var fs = require("fs"),
     encode = require("./encode");
@@ -4881,7 +5404,7 @@ function writeStream(stream, send, data, options, callback) {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./encode":31,"_process":23,"fs":"fs"}],36:[function(require,module,exports){
+},{"./encode":33,"_process":25,"fs":"fs"}],38:[function(require,module,exports){
 /* eslint-disable node/no-deprecated-api */
 var buffer = require('buffer')
 var Buffer = buffer.Buffer
@@ -4945,7 +5468,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   return buffer.SlowBuffer(size)
 }
 
-},{"buffer":"buffer"}],37:[function(require,module,exports){
+},{"buffer":"buffer"}],39:[function(require,module,exports){
 (function (process){(function (){
 /* eslint-disable node/no-deprecated-api */
 
@@ -5026,7 +5549,7 @@ if (!safer.constants) {
 module.exports = safer
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":23,"buffer":"buffer"}],38:[function(require,module,exports){
+},{"_process":25,"buffer":"buffer"}],40:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5323,7 +5846,7 @@ function simpleWrite(buf) {
 function simpleEnd(buf) {
   return buf && buf.length ? this.write(buf) : '';
 }
-},{"safe-buffer":36}],39:[function(require,module,exports){
+},{"safe-buffer":38}],41:[function(require,module,exports){
 "use strict";
 exports.__esModule = true;
 var qs_1 = require("qs");
@@ -5343,7 +5866,7 @@ function handleQs(url, query) {
 }
 exports["default"] = handleQs;
 
-},{"qs":25}],"@tmcw/togeojson":[function(require,module,exports){
+},{"qs":27}],"@tmcw/togeojson":[function(require,module,exports){
 !function(e,t){"object"==typeof exports&&"undefined"!=typeof module?t(exports):"function"==typeof define&&define.amd?define(["exports"],t):t((e="undefined"!=typeof globalThis?globalThis:e||self).toGeoJSON={})}(this,(function(e){"use strict";function t(e){return e&&e.normalize&&e.normalize(),e&&e.textContent||""}function n(e,t){const n=e.getElementsByTagName(t);return n.length?n[0]:null}function o(e){const o={};if(e){const s=n(e,"line");if(s){const e=t(n(s,"color")),r=parseFloat(t(n(s,"opacity"))),i=parseFloat(t(n(s,"width")));e&&(o.stroke=e),isNaN(r)||(o["stroke-opacity"]=r),isNaN(i)||(o["stroke-width"]=96*i/25.4)}}return o}function s(e){let n=[];if(null!==e)for(let o=0;o<e.childNodes.length;o++){const r=e.childNodes[o];if(1!==r.nodeType)continue;const i=["heart","gpxtpx:hr","hr"].includes(r.nodeName)?"heart":r.nodeName;if("gpxtpx:TrackPointExtension"===i)n=n.concat(s(r));else{const e=t(r);n.push([i,isNaN(e)?e:parseFloat(e)])}}return n}function r(e,o){const s={};let r,i;for(i=0;i<o.length;i++)r=n(e,o[i]),r&&(s[o[i]]=t(r));return s}function i(e){const n=r(e,["name","cmt","desc","type","time","keywords"]),o=e.getElementsByTagNameNS("http://www.garmin.com/xmlschemas/GpxExtensions/v3","*");for(let s=0;s<o.length;s++){const r=o[s];r.parentNode.parentNode===e&&(n[r.tagName.replace(":","_")]=t(r))}const s=e.getElementsByTagName("link");s.length&&(n.links=[]);for(let e=0;e<s.length;e++)n.links.push(Object.assign({href:s[e].getAttribute("href")},r(s[e],["text","type"])));return n}function l(e){const o=[parseFloat(e.getAttribute("lon")),parseFloat(e.getAttribute("lat"))],r=n(e,"ele"),i=n(e,"time");if(r){const e=parseFloat(t(r));isNaN(e)||o.push(e)}return{coordinates:o,time:i?t(i):null,extendedValues:s(n(e,"extensions"))}}function a(e){const t=c(e,"rtept");if(t)return{type:"Feature",properties:Object.assign(i(e),o(n(e,"extensions")),{_gpxType:"rte"}),geometry:{type:"LineString",coordinates:t.line}}}function c(e,t){const n=e.getElementsByTagName(t);if(n.length<2)return;const o=[],s=[],r={};for(let e=0;e<n.length;e++){const t=l(n[e]);o.push(t.coordinates),t.time&&s.push(t.time);for(let o=0;o<t.extendedValues.length;o++){const[s,i]=t.extendedValues[o],l="heart"===s?s:s.replace("gpxtpx:","")+"s";r[l]||(r[l]=Array(n.length).fill(null)),r[l][e]=i}}return{line:o,times:s,extendedValues:r}}function g(e){const t=e.getElementsByTagName("trkseg"),s=[],r=[],l=[];for(let e=0;e<t.length;e++){const n=c(t[e],"trkpt");n&&(l.push(n),n.times&&n.times.length&&r.push(n.times))}if(0===l.length)return;const a=l.length>1,g=Object.assign(i(e),o(n(e,"extensions")),{_gpxType:"trk"},r.length?{coordinateProperties:{times:a?r:r[0]}}:{});for(let e=0;e<l.length;e++){const t=l[e];s.push(t.line);for(const[n,o]of Object.entries(t.extendedValues)){g.coordinateProperties||(g.coordinateProperties={});const t=g.coordinateProperties;a?(t[n]||(t[n]=l.map((e=>new Array(e.line.length).fill(null)))),t[n][e]=o):t[n]=o}}return{type:"Feature",properties:g,geometry:a?{type:"MultiLineString",coordinates:s}:{type:"LineString",coordinates:s[0]}}}function*u(e){const t=e.getElementsByTagName("trk"),n=e.getElementsByTagName("rte"),o=e.getElementsByTagName("wpt");for(let e=0;e<t.length;e++){const n=g(t[e]);n&&(yield n)}for(let e=0;e<n.length;e++){const t=a(n[e]);t&&(yield t)}for(let e=0;e<o.length;e++)yield(s=o[e],{type:"Feature",properties:Object.assign(i(s),r(s,["sym"])),geometry:{type:"Point",coordinates:l(s).coordinates}});var s}const p=[["heartRate","heartRates"],["Cadence","cadences"],["Speed","speeds"],["Watts","watts"]],m=[["TotalTimeSeconds","totalTimeSeconds"],["DistanceMeters","distanceMeters"],["MaximumSpeed","maxSpeed"],["AverageHeartRateBpm","avgHeartRate"],["MaximumHeartRateBpm","maxHeartRate"],["AvgSpeed","avgSpeed"],["AvgWatts","avgWatts"],["MaxWatts","maxWatts"]];function d(e,o){const s=[];for(const[r,i]of o){let o=n(e,r);if(!o){const t=e.getElementsByTagNameNS("http://www.garmin.com/xmlschemas/ActivityExtension/v2",r);t.length&&(o=t[0])}const l=parseFloat(t(o));isNaN(l)||s.push([i,l])}return s}function f(e){const o=t(n(e,"LongitudeDegrees")),s=t(n(e,"LatitudeDegrees"));if(!o.length||!s.length)return null;const r=[parseFloat(o),parseFloat(s)],i=n(e,"AltitudeMeters"),l=n(e,"HeartRateBpm"),a=n(e,"Time");let c;return i&&(c=parseFloat(t(i)),isNaN(c)||r.push(c)),{coordinates:r,time:a?t(a):null,heartRate:l?parseFloat(t(l)):null,extensions:d(e,p)}}function h(e,t){const n=e.getElementsByTagName(t),o=[],s=[],r=[];if(n.length<2)return null;const i={extendedProperties:{}};for(let e=0;e<n.length;e++){const t=f(n[e]);if(null!==t){o.push(t.coordinates),t.time&&s.push(t.time),t.heartRate&&r.push(t.heartRate);for(const[o,s]of t.extensions)i.extendedProperties[o]||(i.extendedProperties[o]=Array(n.length).fill(null)),i.extendedProperties[o][e]=s}}return Object.assign(i,{line:o,times:s,heartRates:r})}function y(e){const o=e.getElementsByTagName("Track"),s=[],r=[],i=[],l=[];let a;const c=function(e){const t={};for(const[n,o]of e)t[n]=o;return t}(d(e,m)),g=n(e,"Name");g&&(c.name=t(g));for(let e=0;e<o.length;e++)a=h(o[e],"Trackpoint"),a&&(s.push(a.line),a.times.length&&r.push(a.times),a.heartRates.length&&i.push(a.heartRates),l.push(a.extendedProperties));for(let e=0;e<l.length;e++){const t=l[e];for(const n in t)1===o.length?c[n]=a.extendedProperties[n]:(c[n]||(c[n]=s.map((e=>Array(e.length).fill(null)))),c[n][e]=t[n])}if(0!==s.length)return(r.length||i.length)&&(c.coordinateProperties=Object.assign(r.length?{times:1===s.length?r[0]:r}:{},i.length?{heart:1===s.length?i[0]:i}:{})),{type:"Feature",properties:c,geometry:{type:1===s.length?"LineString":"MultiLineString",coordinates:1===s.length?s[0]:s}}}function*N(e){const t=e.getElementsByTagName("Lap");for(let e=0;e<t.length;e++){const n=y(t[e]);n&&(yield n)}const n=e.getElementsByTagName("Courses");for(let e=0;e<n.length;e++){const t=y(n[e]);t&&(yield t)}}const x=/\s*/g,T=/^\s*|\s*$/g,b=/\s+/;function S(e){if(!e||!e.length)return 0;let t=0;for(let n=0;n<e.length;n++)t=(t<<5)-t+e.charCodeAt(n)|0;return t}function k(e){return e.replace(x,"").split(",").map(parseFloat)}function E(e){return e.replace(T,"").split(b).map(k)}function A(e){if(void 0!==e.xml)return e.xml;if(e.tagName){let t=e.tagName;for(let n=0;n<e.attributes.length;n++)t+=e.attributes[n].name+e.attributes[n].value;for(let n=0;n<e.childNodes.length;n++)t+=A(e.childNodes[n]);return t}return"#text"===e.nodeName?(e.nodeValue||e.value||"").trim():"#cdata-section"===e.nodeName?e.nodeValue:""}const B=["Polygon","LineString","Point","Track","gx:Track"];function P(e,o,s){let r=t(n(o,"color"))||"";const i="stroke"==s||"fill"===s?s:s+"-color";"#"===r.substr(0,1)&&(r=r.substr(1)),6===r.length||3===r.length?e[i]=r:8===r.length&&(e[s+"-opacity"]=parseInt(r.substr(0,2),16)/255,e[i]="#"+r.substr(6,2)+r.substr(4,2)+r.substr(2,2))}function F(e,o,s,r){const i=parseFloat(t(n(o,s)));isNaN(i)||(e[r]=i)}function v(e){let n=e.getElementsByTagName("coord");const o=[],s=[];0===n.length&&(n=e.getElementsByTagName("gx:coord"));for(let e=0;e<n.length;e++)o.push(t(n[e]).split(" ").map(parseFloat));const r=e.getElementsByTagName("when");for(let e=0;e<r.length;e++)s.push(t(r[e]));return{coords:o,times:s}}function L(e){let o,s,r,i,l;const a=[],c=[];if(n(e,"MultiGeometry"))return L(n(e,"MultiGeometry"));if(n(e,"MultiTrack"))return L(n(e,"MultiTrack"));if(n(e,"gx:MultiTrack"))return L(n(e,"gx:MultiTrack"));for(r=0;r<B.length;r++)if(s=e.getElementsByTagName(B[r]),s)for(i=0;i<s.length;i++)if(o=s[i],"Point"===B[r])a.push({type:"Point",coordinates:k(t(n(o,"coordinates")))});else if("LineString"===B[r])a.push({type:"LineString",coordinates:E(t(n(o,"coordinates")))});else if("Polygon"===B[r]){const e=o.getElementsByTagName("LinearRing"),s=[];for(l=0;l<e.length;l++)s.push(E(t(n(e[l],"coordinates"))));a.push({type:"Polygon",coordinates:s})}else if("Track"===B[r]||"gx:Track"===B[r]){const e=v(o);a.push({type:"LineString",coordinates:e.coords}),e.times.length&&c.push(e.times)}return{geoms:a,coordTimes:c}}function M(e,o,s,r){const i=L(e);let l;const a={},c=t(n(e,"name")),g=t(n(e,"address"));let u=t(n(e,"styleUrl"));const p=t(n(e,"description")),m=n(e,"TimeSpan"),d=n(e,"TimeStamp"),f=n(e,"ExtendedData");let h=n(e,"IconStyle"),y=n(e,"LabelStyle"),N=n(e,"LineStyle"),x=n(e,"PolyStyle");const T=n(e,"visibility");if(c&&(a.name=c),g&&(a.address=g),u){"#"!==u[0]&&(u="#"+u),a.styleUrl=u,o[u]&&(a.styleHash=o[u]),s[u]&&(a.styleMapHash=s[u],a.styleHash=o[s[u].normal]);const e=r[a.styleHash];e&&(h||(h=n(e,"IconStyle")),y||(y=n(e,"LabelStyle")),N||(N=n(e,"LineStyle")),x||(x=n(e,"PolyStyle")))}if(p&&(a.description=p),m){const e=t(n(m,"begin")),o=t(n(m,"end"));a.timespan={begin:e,end:o}}if(d&&(a.timestamp=t(n(d,"when"))),h){P(a,h,"icon"),F(a,h,"scale","icon-scale"),F(a,h,"heading","icon-heading");const e=n(h,"hotSpot");if(e){const t=parseFloat(e.getAttribute("x")),n=parseFloat(e.getAttribute("y"));isNaN(t)||isNaN(n)||(a["icon-offset"]=[t,n])}const o=n(h,"Icon");if(o){const e=t(n(o,"href"));e&&(a.icon=e)}}if(y&&(P(a,y,"label"),F(a,y,"scale","label-scale")),N&&(P(a,N,"stroke"),F(a,N,"width","stroke-width")),x){P(a,x,"fill");const e=t(n(x,"fill")),o=t(n(x,"outline"));e&&(a["fill-opacity"]="1"===e?a["fill-opacity"]||1:0),o&&(a["stroke-opacity"]="1"===o?a["stroke-opacity"]||1:0)}if(f){const e=f.getElementsByTagName("Data"),o=f.getElementsByTagName("SimpleData");for(l=0;l<e.length;l++)a[e[l].getAttribute("name")]=t(n(e[l],"value"));for(l=0;l<o.length;l++)a[o[l].getAttribute("name")]=t(o[l])}T&&(a.visibility=t(T)),i.coordTimes.length&&(a.coordinateProperties={times:1===i.coordTimes.length?i.coordTimes[0]:i.coordTimes});const b={type:"Feature",geometry:0===i.geoms.length?null:1===i.geoms.length?i.geoms[0]:{type:"GeometryCollection",geometries:i.geoms},properties:a};return e.getAttribute("id")&&(b.id=e.getAttribute("id")),b}function*w(e){const o={},s={},r={},i=e.getElementsByTagName("Placemark"),l=e.getElementsByTagName("Style"),a=e.getElementsByTagName("StyleMap");for(let e=0;e<l.length;e++){const t=l[e],n=S(A(t)).toString(16);let r=t.getAttribute("id");r||"CascadingStyle"!==t.parentNode.tagName.replace("gx:","")||(r=t.parentNode.getAttribute("kml:id")||t.parentNode.getAttribute("id")),o["#"+r]=n,s[n]=t}for(let e=0;e<a.length;e++){o["#"+a[e].getAttribute("id")]=S(A(a[e])).toString(16);const s=a[e].getElementsByTagName("Pair"),i={};for(let e=0;e<s.length;e++)i[t(n(s[e],"key"))]=t(n(s[e],"styleUrl"));r["#"+a[e].getAttribute("id")]=i}for(let e=0;e<i.length;e++){const t=M(i[e],o,r,s);t&&(yield t)}}e.gpx=function(e){return{type:"FeatureCollection",features:Array.from(u(e))}},e.gpxGen=u,e.kml=function(e){return{type:"FeatureCollection",features:Array.from(w(e))}},e.kmlGen=w,e.tcx=function(e){return{type:"FeatureCollection",features:Array.from(N(e))}},e.tcxGen=N,Object.defineProperty(e,"__esModule",{value:!0})}));
 
 
@@ -7128,1703 +7651,7 @@ function numberIsNaN (obj) {
 }
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"base64-js":1,"buffer":"buffer","ieee754":22}],"d3-color":[function(require,module,exports){
-// https://d3js.org/d3-color/ v2.0.0 Copyright 2020 Mike Bostock
-(function (global, factory) {
-typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-typeof define === 'function' && define.amd ? define(['exports'], factory) :
-(global = global || self, factory(global.d3 = global.d3 || {}));
-}(this, function (exports) { 'use strict';
-
-function define(constructor, factory, prototype) {
-  constructor.prototype = factory.prototype = prototype;
-  prototype.constructor = constructor;
-}
-
-function extend(parent, definition) {
-  var prototype = Object.create(parent.prototype);
-  for (var key in definition) prototype[key] = definition[key];
-  return prototype;
-}
-
-function Color() {}
-
-var darker = 0.7;
-var brighter = 1 / darker;
-
-var reI = "\\s*([+-]?\\d+)\\s*",
-    reN = "\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)\\s*",
-    reP = "\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)%\\s*",
-    reHex = /^#([0-9a-f]{3,8})$/,
-    reRgbInteger = new RegExp("^rgb\\(" + [reI, reI, reI] + "\\)$"),
-    reRgbPercent = new RegExp("^rgb\\(" + [reP, reP, reP] + "\\)$"),
-    reRgbaInteger = new RegExp("^rgba\\(" + [reI, reI, reI, reN] + "\\)$"),
-    reRgbaPercent = new RegExp("^rgba\\(" + [reP, reP, reP, reN] + "\\)$"),
-    reHslPercent = new RegExp("^hsl\\(" + [reN, reP, reP] + "\\)$"),
-    reHslaPercent = new RegExp("^hsla\\(" + [reN, reP, reP, reN] + "\\)$");
-
-var named = {
-  aliceblue: 0xf0f8ff,
-  antiquewhite: 0xfaebd7,
-  aqua: 0x00ffff,
-  aquamarine: 0x7fffd4,
-  azure: 0xf0ffff,
-  beige: 0xf5f5dc,
-  bisque: 0xffe4c4,
-  black: 0x000000,
-  blanchedalmond: 0xffebcd,
-  blue: 0x0000ff,
-  blueviolet: 0x8a2be2,
-  brown: 0xa52a2a,
-  burlywood: 0xdeb887,
-  cadetblue: 0x5f9ea0,
-  chartreuse: 0x7fff00,
-  chocolate: 0xd2691e,
-  coral: 0xff7f50,
-  cornflowerblue: 0x6495ed,
-  cornsilk: 0xfff8dc,
-  crimson: 0xdc143c,
-  cyan: 0x00ffff,
-  darkblue: 0x00008b,
-  darkcyan: 0x008b8b,
-  darkgoldenrod: 0xb8860b,
-  darkgray: 0xa9a9a9,
-  darkgreen: 0x006400,
-  darkgrey: 0xa9a9a9,
-  darkkhaki: 0xbdb76b,
-  darkmagenta: 0x8b008b,
-  darkolivegreen: 0x556b2f,
-  darkorange: 0xff8c00,
-  darkorchid: 0x9932cc,
-  darkred: 0x8b0000,
-  darksalmon: 0xe9967a,
-  darkseagreen: 0x8fbc8f,
-  darkslateblue: 0x483d8b,
-  darkslategray: 0x2f4f4f,
-  darkslategrey: 0x2f4f4f,
-  darkturquoise: 0x00ced1,
-  darkviolet: 0x9400d3,
-  deeppink: 0xff1493,
-  deepskyblue: 0x00bfff,
-  dimgray: 0x696969,
-  dimgrey: 0x696969,
-  dodgerblue: 0x1e90ff,
-  firebrick: 0xb22222,
-  floralwhite: 0xfffaf0,
-  forestgreen: 0x228b22,
-  fuchsia: 0xff00ff,
-  gainsboro: 0xdcdcdc,
-  ghostwhite: 0xf8f8ff,
-  gold: 0xffd700,
-  goldenrod: 0xdaa520,
-  gray: 0x808080,
-  green: 0x008000,
-  greenyellow: 0xadff2f,
-  grey: 0x808080,
-  honeydew: 0xf0fff0,
-  hotpink: 0xff69b4,
-  indianred: 0xcd5c5c,
-  indigo: 0x4b0082,
-  ivory: 0xfffff0,
-  khaki: 0xf0e68c,
-  lavender: 0xe6e6fa,
-  lavenderblush: 0xfff0f5,
-  lawngreen: 0x7cfc00,
-  lemonchiffon: 0xfffacd,
-  lightblue: 0xadd8e6,
-  lightcoral: 0xf08080,
-  lightcyan: 0xe0ffff,
-  lightgoldenrodyellow: 0xfafad2,
-  lightgray: 0xd3d3d3,
-  lightgreen: 0x90ee90,
-  lightgrey: 0xd3d3d3,
-  lightpink: 0xffb6c1,
-  lightsalmon: 0xffa07a,
-  lightseagreen: 0x20b2aa,
-  lightskyblue: 0x87cefa,
-  lightslategray: 0x778899,
-  lightslategrey: 0x778899,
-  lightsteelblue: 0xb0c4de,
-  lightyellow: 0xffffe0,
-  lime: 0x00ff00,
-  limegreen: 0x32cd32,
-  linen: 0xfaf0e6,
-  magenta: 0xff00ff,
-  maroon: 0x800000,
-  mediumaquamarine: 0x66cdaa,
-  mediumblue: 0x0000cd,
-  mediumorchid: 0xba55d3,
-  mediumpurple: 0x9370db,
-  mediumseagreen: 0x3cb371,
-  mediumslateblue: 0x7b68ee,
-  mediumspringgreen: 0x00fa9a,
-  mediumturquoise: 0x48d1cc,
-  mediumvioletred: 0xc71585,
-  midnightblue: 0x191970,
-  mintcream: 0xf5fffa,
-  mistyrose: 0xffe4e1,
-  moccasin: 0xffe4b5,
-  navajowhite: 0xffdead,
-  navy: 0x000080,
-  oldlace: 0xfdf5e6,
-  olive: 0x808000,
-  olivedrab: 0x6b8e23,
-  orange: 0xffa500,
-  orangered: 0xff4500,
-  orchid: 0xda70d6,
-  palegoldenrod: 0xeee8aa,
-  palegreen: 0x98fb98,
-  paleturquoise: 0xafeeee,
-  palevioletred: 0xdb7093,
-  papayawhip: 0xffefd5,
-  peachpuff: 0xffdab9,
-  peru: 0xcd853f,
-  pink: 0xffc0cb,
-  plum: 0xdda0dd,
-  powderblue: 0xb0e0e6,
-  purple: 0x800080,
-  rebeccapurple: 0x663399,
-  red: 0xff0000,
-  rosybrown: 0xbc8f8f,
-  royalblue: 0x4169e1,
-  saddlebrown: 0x8b4513,
-  salmon: 0xfa8072,
-  sandybrown: 0xf4a460,
-  seagreen: 0x2e8b57,
-  seashell: 0xfff5ee,
-  sienna: 0xa0522d,
-  silver: 0xc0c0c0,
-  skyblue: 0x87ceeb,
-  slateblue: 0x6a5acd,
-  slategray: 0x708090,
-  slategrey: 0x708090,
-  snow: 0xfffafa,
-  springgreen: 0x00ff7f,
-  steelblue: 0x4682b4,
-  tan: 0xd2b48c,
-  teal: 0x008080,
-  thistle: 0xd8bfd8,
-  tomato: 0xff6347,
-  turquoise: 0x40e0d0,
-  violet: 0xee82ee,
-  wheat: 0xf5deb3,
-  white: 0xffffff,
-  whitesmoke: 0xf5f5f5,
-  yellow: 0xffff00,
-  yellowgreen: 0x9acd32
-};
-
-define(Color, color, {
-  copy: function(channels) {
-    return Object.assign(new this.constructor, this, channels);
-  },
-  displayable: function() {
-    return this.rgb().displayable();
-  },
-  hex: color_formatHex, // Deprecated! Use color.formatHex.
-  formatHex: color_formatHex,
-  formatHsl: color_formatHsl,
-  formatRgb: color_formatRgb,
-  toString: color_formatRgb
-});
-
-function color_formatHex() {
-  return this.rgb().formatHex();
-}
-
-function color_formatHsl() {
-  return hslConvert(this).formatHsl();
-}
-
-function color_formatRgb() {
-  return this.rgb().formatRgb();
-}
-
-function color(format) {
-  var m, l;
-  format = (format + "").trim().toLowerCase();
-  return (m = reHex.exec(format)) ? (l = m[1].length, m = parseInt(m[1], 16), l === 6 ? rgbn(m) // #ff0000
-      : l === 3 ? new Rgb((m >> 8 & 0xf) | (m >> 4 & 0xf0), (m >> 4 & 0xf) | (m & 0xf0), ((m & 0xf) << 4) | (m & 0xf), 1) // #f00
-      : l === 8 ? rgba(m >> 24 & 0xff, m >> 16 & 0xff, m >> 8 & 0xff, (m & 0xff) / 0xff) // #ff000000
-      : l === 4 ? rgba((m >> 12 & 0xf) | (m >> 8 & 0xf0), (m >> 8 & 0xf) | (m >> 4 & 0xf0), (m >> 4 & 0xf) | (m & 0xf0), (((m & 0xf) << 4) | (m & 0xf)) / 0xff) // #f000
-      : null) // invalid hex
-      : (m = reRgbInteger.exec(format)) ? new Rgb(m[1], m[2], m[3], 1) // rgb(255, 0, 0)
-      : (m = reRgbPercent.exec(format)) ? new Rgb(m[1] * 255 / 100, m[2] * 255 / 100, m[3] * 255 / 100, 1) // rgb(100%, 0%, 0%)
-      : (m = reRgbaInteger.exec(format)) ? rgba(m[1], m[2], m[3], m[4]) // rgba(255, 0, 0, 1)
-      : (m = reRgbaPercent.exec(format)) ? rgba(m[1] * 255 / 100, m[2] * 255 / 100, m[3] * 255 / 100, m[4]) // rgb(100%, 0%, 0%, 1)
-      : (m = reHslPercent.exec(format)) ? hsla(m[1], m[2] / 100, m[3] / 100, 1) // hsl(120, 50%, 50%)
-      : (m = reHslaPercent.exec(format)) ? hsla(m[1], m[2] / 100, m[3] / 100, m[4]) // hsla(120, 50%, 50%, 1)
-      : named.hasOwnProperty(format) ? rgbn(named[format]) // eslint-disable-line no-prototype-builtins
-      : format === "transparent" ? new Rgb(NaN, NaN, NaN, 0)
-      : null;
-}
-
-function rgbn(n) {
-  return new Rgb(n >> 16 & 0xff, n >> 8 & 0xff, n & 0xff, 1);
-}
-
-function rgba(r, g, b, a) {
-  if (a <= 0) r = g = b = NaN;
-  return new Rgb(r, g, b, a);
-}
-
-function rgbConvert(o) {
-  if (!(o instanceof Color)) o = color(o);
-  if (!o) return new Rgb;
-  o = o.rgb();
-  return new Rgb(o.r, o.g, o.b, o.opacity);
-}
-
-function rgb(r, g, b, opacity) {
-  return arguments.length === 1 ? rgbConvert(r) : new Rgb(r, g, b, opacity == null ? 1 : opacity);
-}
-
-function Rgb(r, g, b, opacity) {
-  this.r = +r;
-  this.g = +g;
-  this.b = +b;
-  this.opacity = +opacity;
-}
-
-define(Rgb, rgb, extend(Color, {
-  brighter: function(k) {
-    k = k == null ? brighter : Math.pow(brighter, k);
-    return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
-  },
-  darker: function(k) {
-    k = k == null ? darker : Math.pow(darker, k);
-    return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
-  },
-  rgb: function() {
-    return this;
-  },
-  displayable: function() {
-    return (-0.5 <= this.r && this.r < 255.5)
-        && (-0.5 <= this.g && this.g < 255.5)
-        && (-0.5 <= this.b && this.b < 255.5)
-        && (0 <= this.opacity && this.opacity <= 1);
-  },
-  hex: rgb_formatHex, // Deprecated! Use color.formatHex.
-  formatHex: rgb_formatHex,
-  formatRgb: rgb_formatRgb,
-  toString: rgb_formatRgb
-}));
-
-function rgb_formatHex() {
-  return "#" + hex(this.r) + hex(this.g) + hex(this.b);
-}
-
-function rgb_formatRgb() {
-  var a = this.opacity; a = isNaN(a) ? 1 : Math.max(0, Math.min(1, a));
-  return (a === 1 ? "rgb(" : "rgba(")
-      + Math.max(0, Math.min(255, Math.round(this.r) || 0)) + ", "
-      + Math.max(0, Math.min(255, Math.round(this.g) || 0)) + ", "
-      + Math.max(0, Math.min(255, Math.round(this.b) || 0))
-      + (a === 1 ? ")" : ", " + a + ")");
-}
-
-function hex(value) {
-  value = Math.max(0, Math.min(255, Math.round(value) || 0));
-  return (value < 16 ? "0" : "") + value.toString(16);
-}
-
-function hsla(h, s, l, a) {
-  if (a <= 0) h = s = l = NaN;
-  else if (l <= 0 || l >= 1) h = s = NaN;
-  else if (s <= 0) h = NaN;
-  return new Hsl(h, s, l, a);
-}
-
-function hslConvert(o) {
-  if (o instanceof Hsl) return new Hsl(o.h, o.s, o.l, o.opacity);
-  if (!(o instanceof Color)) o = color(o);
-  if (!o) return new Hsl;
-  if (o instanceof Hsl) return o;
-  o = o.rgb();
-  var r = o.r / 255,
-      g = o.g / 255,
-      b = o.b / 255,
-      min = Math.min(r, g, b),
-      max = Math.max(r, g, b),
-      h = NaN,
-      s = max - min,
-      l = (max + min) / 2;
-  if (s) {
-    if (r === max) h = (g - b) / s + (g < b) * 6;
-    else if (g === max) h = (b - r) / s + 2;
-    else h = (r - g) / s + 4;
-    s /= l < 0.5 ? max + min : 2 - max - min;
-    h *= 60;
-  } else {
-    s = l > 0 && l < 1 ? 0 : h;
-  }
-  return new Hsl(h, s, l, o.opacity);
-}
-
-function hsl(h, s, l, opacity) {
-  return arguments.length === 1 ? hslConvert(h) : new Hsl(h, s, l, opacity == null ? 1 : opacity);
-}
-
-function Hsl(h, s, l, opacity) {
-  this.h = +h;
-  this.s = +s;
-  this.l = +l;
-  this.opacity = +opacity;
-}
-
-define(Hsl, hsl, extend(Color, {
-  brighter: function(k) {
-    k = k == null ? brighter : Math.pow(brighter, k);
-    return new Hsl(this.h, this.s, this.l * k, this.opacity);
-  },
-  darker: function(k) {
-    k = k == null ? darker : Math.pow(darker, k);
-    return new Hsl(this.h, this.s, this.l * k, this.opacity);
-  },
-  rgb: function() {
-    var h = this.h % 360 + (this.h < 0) * 360,
-        s = isNaN(h) || isNaN(this.s) ? 0 : this.s,
-        l = this.l,
-        m2 = l + (l < 0.5 ? l : 1 - l) * s,
-        m1 = 2 * l - m2;
-    return new Rgb(
-      hsl2rgb(h >= 240 ? h - 240 : h + 120, m1, m2),
-      hsl2rgb(h, m1, m2),
-      hsl2rgb(h < 120 ? h + 240 : h - 120, m1, m2),
-      this.opacity
-    );
-  },
-  displayable: function() {
-    return (0 <= this.s && this.s <= 1 || isNaN(this.s))
-        && (0 <= this.l && this.l <= 1)
-        && (0 <= this.opacity && this.opacity <= 1);
-  },
-  formatHsl: function() {
-    var a = this.opacity; a = isNaN(a) ? 1 : Math.max(0, Math.min(1, a));
-    return (a === 1 ? "hsl(" : "hsla(")
-        + (this.h || 0) + ", "
-        + (this.s || 0) * 100 + "%, "
-        + (this.l || 0) * 100 + "%"
-        + (a === 1 ? ")" : ", " + a + ")");
-  }
-}));
-
-/* From FvD 13.37, CSS Color Module Level 3 */
-function hsl2rgb(h, m1, m2) {
-  return (h < 60 ? m1 + (m2 - m1) * h / 60
-      : h < 180 ? m2
-      : h < 240 ? m1 + (m2 - m1) * (240 - h) / 60
-      : m1) * 255;
-}
-
-const radians = Math.PI / 180;
-const degrees = 180 / Math.PI;
-
-// https://observablehq.com/@mbostock/lab-and-rgb
-const K = 18,
-    Xn = 0.96422,
-    Yn = 1,
-    Zn = 0.82521,
-    t0 = 4 / 29,
-    t1 = 6 / 29,
-    t2 = 3 * t1 * t1,
-    t3 = t1 * t1 * t1;
-
-function labConvert(o) {
-  if (o instanceof Lab) return new Lab(o.l, o.a, o.b, o.opacity);
-  if (o instanceof Hcl) return hcl2lab(o);
-  if (!(o instanceof Rgb)) o = rgbConvert(o);
-  var r = rgb2lrgb(o.r),
-      g = rgb2lrgb(o.g),
-      b = rgb2lrgb(o.b),
-      y = xyz2lab((0.2225045 * r + 0.7168786 * g + 0.0606169 * b) / Yn), x, z;
-  if (r === g && g === b) x = z = y; else {
-    x = xyz2lab((0.4360747 * r + 0.3850649 * g + 0.1430804 * b) / Xn);
-    z = xyz2lab((0.0139322 * r + 0.0971045 * g + 0.7141733 * b) / Zn);
-  }
-  return new Lab(116 * y - 16, 500 * (x - y), 200 * (y - z), o.opacity);
-}
-
-function gray(l, opacity) {
-  return new Lab(l, 0, 0, opacity == null ? 1 : opacity);
-}
-
-function lab(l, a, b, opacity) {
-  return arguments.length === 1 ? labConvert(l) : new Lab(l, a, b, opacity == null ? 1 : opacity);
-}
-
-function Lab(l, a, b, opacity) {
-  this.l = +l;
-  this.a = +a;
-  this.b = +b;
-  this.opacity = +opacity;
-}
-
-define(Lab, lab, extend(Color, {
-  brighter: function(k) {
-    return new Lab(this.l + K * (k == null ? 1 : k), this.a, this.b, this.opacity);
-  },
-  darker: function(k) {
-    return new Lab(this.l - K * (k == null ? 1 : k), this.a, this.b, this.opacity);
-  },
-  rgb: function() {
-    var y = (this.l + 16) / 116,
-        x = isNaN(this.a) ? y : y + this.a / 500,
-        z = isNaN(this.b) ? y : y - this.b / 200;
-    x = Xn * lab2xyz(x);
-    y = Yn * lab2xyz(y);
-    z = Zn * lab2xyz(z);
-    return new Rgb(
-      lrgb2rgb( 3.1338561 * x - 1.6168667 * y - 0.4906146 * z),
-      lrgb2rgb(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z),
-      lrgb2rgb( 0.0719453 * x - 0.2289914 * y + 1.4052427 * z),
-      this.opacity
-    );
-  }
-}));
-
-function xyz2lab(t) {
-  return t > t3 ? Math.pow(t, 1 / 3) : t / t2 + t0;
-}
-
-function lab2xyz(t) {
-  return t > t1 ? t * t * t : t2 * (t - t0);
-}
-
-function lrgb2rgb(x) {
-  return 255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
-}
-
-function rgb2lrgb(x) {
-  return (x /= 255) <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-}
-
-function hclConvert(o) {
-  if (o instanceof Hcl) return new Hcl(o.h, o.c, o.l, o.opacity);
-  if (!(o instanceof Lab)) o = labConvert(o);
-  if (o.a === 0 && o.b === 0) return new Hcl(NaN, 0 < o.l && o.l < 100 ? 0 : NaN, o.l, o.opacity);
-  var h = Math.atan2(o.b, o.a) * degrees;
-  return new Hcl(h < 0 ? h + 360 : h, Math.sqrt(o.a * o.a + o.b * o.b), o.l, o.opacity);
-}
-
-function lch(l, c, h, opacity) {
-  return arguments.length === 1 ? hclConvert(l) : new Hcl(h, c, l, opacity == null ? 1 : opacity);
-}
-
-function hcl(h, c, l, opacity) {
-  return arguments.length === 1 ? hclConvert(h) : new Hcl(h, c, l, opacity == null ? 1 : opacity);
-}
-
-function Hcl(h, c, l, opacity) {
-  this.h = +h;
-  this.c = +c;
-  this.l = +l;
-  this.opacity = +opacity;
-}
-
-function hcl2lab(o) {
-  if (isNaN(o.h)) return new Lab(o.l, 0, 0, o.opacity);
-  var h = o.h * radians;
-  return new Lab(o.l, Math.cos(h) * o.c, Math.sin(h) * o.c, o.opacity);
-}
-
-define(Hcl, hcl, extend(Color, {
-  brighter: function(k) {
-    return new Hcl(this.h, this.c, this.l + K * (k == null ? 1 : k), this.opacity);
-  },
-  darker: function(k) {
-    return new Hcl(this.h, this.c, this.l - K * (k == null ? 1 : k), this.opacity);
-  },
-  rgb: function() {
-    return hcl2lab(this).rgb();
-  }
-}));
-
-var A = -0.14861,
-    B = +1.78277,
-    C = -0.29227,
-    D = -0.90649,
-    E = +1.97294,
-    ED = E * D,
-    EB = E * B,
-    BC_DA = B * C - D * A;
-
-function cubehelixConvert(o) {
-  if (o instanceof Cubehelix) return new Cubehelix(o.h, o.s, o.l, o.opacity);
-  if (!(o instanceof Rgb)) o = rgbConvert(o);
-  var r = o.r / 255,
-      g = o.g / 255,
-      b = o.b / 255,
-      l = (BC_DA * b + ED * r - EB * g) / (BC_DA + ED - EB),
-      bl = b - l,
-      k = (E * (g - l) - C * bl) / D,
-      s = Math.sqrt(k * k + bl * bl) / (E * l * (1 - l)), // NaN if l=0 or l=1
-      h = s ? Math.atan2(k, bl) * degrees - 120 : NaN;
-  return new Cubehelix(h < 0 ? h + 360 : h, s, l, o.opacity);
-}
-
-function cubehelix(h, s, l, opacity) {
-  return arguments.length === 1 ? cubehelixConvert(h) : new Cubehelix(h, s, l, opacity == null ? 1 : opacity);
-}
-
-function Cubehelix(h, s, l, opacity) {
-  this.h = +h;
-  this.s = +s;
-  this.l = +l;
-  this.opacity = +opacity;
-}
-
-define(Cubehelix, cubehelix, extend(Color, {
-  brighter: function(k) {
-    k = k == null ? brighter : Math.pow(brighter, k);
-    return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
-  },
-  darker: function(k) {
-    k = k == null ? darker : Math.pow(darker, k);
-    return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
-  },
-  rgb: function() {
-    var h = isNaN(this.h) ? 0 : (this.h + 120) * radians,
-        l = +this.l,
-        a = isNaN(this.s) ? 0 : this.s * l * (1 - l),
-        cosh = Math.cos(h),
-        sinh = Math.sin(h);
-    return new Rgb(
-      255 * (l + a * (A * cosh + B * sinh)),
-      255 * (l + a * (C * cosh + D * sinh)),
-      255 * (l + a * (E * cosh)),
-      this.opacity
-    );
-  }
-}));
-
-exports.color = color;
-exports.cubehelix = cubehelix;
-exports.gray = gray;
-exports.hcl = hcl;
-exports.hsl = hsl;
-exports.lab = lab;
-exports.lch = lch;
-exports.rgb = rgb;
-
-Object.defineProperty(exports, '__esModule', { value: true });
-
-}));
-
-},{}],"d3-interpolate":[function(require,module,exports){
-// https://d3js.org/d3-interpolate/ v2.0.1 Copyright 2020 Mike Bostock
-(function (global, factory) {
-typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('d3-color')) :
-typeof define === 'function' && define.amd ? define(['exports', 'd3-color'], factory) :
-(global = global || self, factory(global.d3 = global.d3 || {}, global.d3));
-}(this, function (exports, d3Color) { 'use strict';
-
-function basis(t1, v0, v1, v2, v3) {
-  var t2 = t1 * t1, t3 = t2 * t1;
-  return ((1 - 3 * t1 + 3 * t2 - t3) * v0
-      + (4 - 6 * t2 + 3 * t3) * v1
-      + (1 + 3 * t1 + 3 * t2 - 3 * t3) * v2
-      + t3 * v3) / 6;
-}
-
-function basis$1(values) {
-  var n = values.length - 1;
-  return function(t) {
-    var i = t <= 0 ? (t = 0) : t >= 1 ? (t = 1, n - 1) : Math.floor(t * n),
-        v1 = values[i],
-        v2 = values[i + 1],
-        v0 = i > 0 ? values[i - 1] : 2 * v1 - v2,
-        v3 = i < n - 1 ? values[i + 2] : 2 * v2 - v1;
-    return basis((t - i / n) * n, v0, v1, v2, v3);
-  };
-}
-
-function basisClosed(values) {
-  var n = values.length;
-  return function(t) {
-    var i = Math.floor(((t %= 1) < 0 ? ++t : t) * n),
-        v0 = values[(i + n - 1) % n],
-        v1 = values[i % n],
-        v2 = values[(i + 1) % n],
-        v3 = values[(i + 2) % n];
-    return basis((t - i / n) * n, v0, v1, v2, v3);
-  };
-}
-
-var constant = x => () => x;
-
-function linear(a, d) {
-  return function(t) {
-    return a + t * d;
-  };
-}
-
-function exponential(a, b, y) {
-  return a = Math.pow(a, y), b = Math.pow(b, y) - a, y = 1 / y, function(t) {
-    return Math.pow(a + t * b, y);
-  };
-}
-
-function hue(a, b) {
-  var d = b - a;
-  return d ? linear(a, d > 180 || d < -180 ? d - 360 * Math.round(d / 360) : d) : constant(isNaN(a) ? b : a);
-}
-
-function gamma(y) {
-  return (y = +y) === 1 ? nogamma : function(a, b) {
-    return b - a ? exponential(a, b, y) : constant(isNaN(a) ? b : a);
-  };
-}
-
-function nogamma(a, b) {
-  var d = b - a;
-  return d ? linear(a, d) : constant(isNaN(a) ? b : a);
-}
-
-var rgb = (function rgbGamma(y) {
-  var color = gamma(y);
-
-  function rgb(start, end) {
-    var r = color((start = d3Color.rgb(start)).r, (end = d3Color.rgb(end)).r),
-        g = color(start.g, end.g),
-        b = color(start.b, end.b),
-        opacity = nogamma(start.opacity, end.opacity);
-    return function(t) {
-      start.r = r(t);
-      start.g = g(t);
-      start.b = b(t);
-      start.opacity = opacity(t);
-      return start + "";
-    };
-  }
-
-  rgb.gamma = rgbGamma;
-
-  return rgb;
-})(1);
-
-function rgbSpline(spline) {
-  return function(colors) {
-    var n = colors.length,
-        r = new Array(n),
-        g = new Array(n),
-        b = new Array(n),
-        i, color;
-    for (i = 0; i < n; ++i) {
-      color = d3Color.rgb(colors[i]);
-      r[i] = color.r || 0;
-      g[i] = color.g || 0;
-      b[i] = color.b || 0;
-    }
-    r = spline(r);
-    g = spline(g);
-    b = spline(b);
-    color.opacity = 1;
-    return function(t) {
-      color.r = r(t);
-      color.g = g(t);
-      color.b = b(t);
-      return color + "";
-    };
-  };
-}
-
-var rgbBasis = rgbSpline(basis$1);
-var rgbBasisClosed = rgbSpline(basisClosed);
-
-function numberArray(a, b) {
-  if (!b) b = [];
-  var n = a ? Math.min(b.length, a.length) : 0,
-      c = b.slice(),
-      i;
-  return function(t) {
-    for (i = 0; i < n; ++i) c[i] = a[i] * (1 - t) + b[i] * t;
-    return c;
-  };
-}
-
-function isNumberArray(x) {
-  return ArrayBuffer.isView(x) && !(x instanceof DataView);
-}
-
-function array(a, b) {
-  return (isNumberArray(b) ? numberArray : genericArray)(a, b);
-}
-
-function genericArray(a, b) {
-  var nb = b ? b.length : 0,
-      na = a ? Math.min(nb, a.length) : 0,
-      x = new Array(na),
-      c = new Array(nb),
-      i;
-
-  for (i = 0; i < na; ++i) x[i] = value(a[i], b[i]);
-  for (; i < nb; ++i) c[i] = b[i];
-
-  return function(t) {
-    for (i = 0; i < na; ++i) c[i] = x[i](t);
-    return c;
-  };
-}
-
-function date(a, b) {
-  var d = new Date;
-  return a = +a, b = +b, function(t) {
-    return d.setTime(a * (1 - t) + b * t), d;
-  };
-}
-
-function number(a, b) {
-  return a = +a, b = +b, function(t) {
-    return a * (1 - t) + b * t;
-  };
-}
-
-function object(a, b) {
-  var i = {},
-      c = {},
-      k;
-
-  if (a === null || typeof a !== "object") a = {};
-  if (b === null || typeof b !== "object") b = {};
-
-  for (k in b) {
-    if (k in a) {
-      i[k] = value(a[k], b[k]);
-    } else {
-      c[k] = b[k];
-    }
-  }
-
-  return function(t) {
-    for (k in i) c[k] = i[k](t);
-    return c;
-  };
-}
-
-var reA = /[-+]?(?:\d+\.?\d*|\.?\d+)(?:[eE][-+]?\d+)?/g,
-    reB = new RegExp(reA.source, "g");
-
-function zero(b) {
-  return function() {
-    return b;
-  };
-}
-
-function one(b) {
-  return function(t) {
-    return b(t) + "";
-  };
-}
-
-function string(a, b) {
-  var bi = reA.lastIndex = reB.lastIndex = 0, // scan index for next number in b
-      am, // current match in a
-      bm, // current match in b
-      bs, // string preceding current number in b, if any
-      i = -1, // index in s
-      s = [], // string constants and placeholders
-      q = []; // number interpolators
-
-  // Coerce inputs to strings.
-  a = a + "", b = b + "";
-
-  // Interpolate pairs of numbers in a & b.
-  while ((am = reA.exec(a))
-      && (bm = reB.exec(b))) {
-    if ((bs = bm.index) > bi) { // a string precedes the next number in b
-      bs = b.slice(bi, bs);
-      if (s[i]) s[i] += bs; // coalesce with previous string
-      else s[++i] = bs;
-    }
-    if ((am = am[0]) === (bm = bm[0])) { // numbers in a & b match
-      if (s[i]) s[i] += bm; // coalesce with previous string
-      else s[++i] = bm;
-    } else { // interpolate non-matching numbers
-      s[++i] = null;
-      q.push({i: i, x: number(am, bm)});
-    }
-    bi = reB.lastIndex;
-  }
-
-  // Add remains of b.
-  if (bi < b.length) {
-    bs = b.slice(bi);
-    if (s[i]) s[i] += bs; // coalesce with previous string
-    else s[++i] = bs;
-  }
-
-  // Special optimization for only a single match.
-  // Otherwise, interpolate each of the numbers and rejoin the string.
-  return s.length < 2 ? (q[0]
-      ? one(q[0].x)
-      : zero(b))
-      : (b = q.length, function(t) {
-          for (var i = 0, o; i < b; ++i) s[(o = q[i]).i] = o.x(t);
-          return s.join("");
-        });
-}
-
-function value(a, b) {
-  var t = typeof b, c;
-  return b == null || t === "boolean" ? constant(b)
-      : (t === "number" ? number
-      : t === "string" ? ((c = d3Color.color(b)) ? (b = c, rgb) : string)
-      : b instanceof d3Color.color ? rgb
-      : b instanceof Date ? date
-      : isNumberArray(b) ? numberArray
-      : Array.isArray(b) ? genericArray
-      : typeof b.valueOf !== "function" && typeof b.toString !== "function" || isNaN(b) ? object
-      : number)(a, b);
-}
-
-function discrete(range) {
-  var n = range.length;
-  return function(t) {
-    return range[Math.max(0, Math.min(n - 1, Math.floor(t * n)))];
-  };
-}
-
-function hue$1(a, b) {
-  var i = hue(+a, +b);
-  return function(t) {
-    var x = i(t);
-    return x - 360 * Math.floor(x / 360);
-  };
-}
-
-function round(a, b) {
-  return a = +a, b = +b, function(t) {
-    return Math.round(a * (1 - t) + b * t);
-  };
-}
-
-var degrees = 180 / Math.PI;
-
-var identity = {
-  translateX: 0,
-  translateY: 0,
-  rotate: 0,
-  skewX: 0,
-  scaleX: 1,
-  scaleY: 1
-};
-
-function decompose(a, b, c, d, e, f) {
-  var scaleX, scaleY, skewX;
-  if (scaleX = Math.sqrt(a * a + b * b)) a /= scaleX, b /= scaleX;
-  if (skewX = a * c + b * d) c -= a * skewX, d -= b * skewX;
-  if (scaleY = Math.sqrt(c * c + d * d)) c /= scaleY, d /= scaleY, skewX /= scaleY;
-  if (a * d < b * c) a = -a, b = -b, skewX = -skewX, scaleX = -scaleX;
-  return {
-    translateX: e,
-    translateY: f,
-    rotate: Math.atan2(b, a) * degrees,
-    skewX: Math.atan(skewX) * degrees,
-    scaleX: scaleX,
-    scaleY: scaleY
-  };
-}
-
-var svgNode;
-
-/* eslint-disable no-undef */
-function parseCss(value) {
-  const m = new (typeof DOMMatrix === "function" ? DOMMatrix : WebKitCSSMatrix)(value + "");
-  return m.isIdentity ? identity : decompose(m.a, m.b, m.c, m.d, m.e, m.f);
-}
-
-function parseSvg(value) {
-  if (value == null) return identity;
-  if (!svgNode) svgNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  svgNode.setAttribute("transform", value);
-  if (!(value = svgNode.transform.baseVal.consolidate())) return identity;
-  value = value.matrix;
-  return decompose(value.a, value.b, value.c, value.d, value.e, value.f);
-}
-
-function interpolateTransform(parse, pxComma, pxParen, degParen) {
-
-  function pop(s) {
-    return s.length ? s.pop() + " " : "";
-  }
-
-  function translate(xa, ya, xb, yb, s, q) {
-    if (xa !== xb || ya !== yb) {
-      var i = s.push("translate(", null, pxComma, null, pxParen);
-      q.push({i: i - 4, x: number(xa, xb)}, {i: i - 2, x: number(ya, yb)});
-    } else if (xb || yb) {
-      s.push("translate(" + xb + pxComma + yb + pxParen);
-    }
-  }
-
-  function rotate(a, b, s, q) {
-    if (a !== b) {
-      if (a - b > 180) b += 360; else if (b - a > 180) a += 360; // shortest path
-      q.push({i: s.push(pop(s) + "rotate(", null, degParen) - 2, x: number(a, b)});
-    } else if (b) {
-      s.push(pop(s) + "rotate(" + b + degParen);
-    }
-  }
-
-  function skewX(a, b, s, q) {
-    if (a !== b) {
-      q.push({i: s.push(pop(s) + "skewX(", null, degParen) - 2, x: number(a, b)});
-    } else if (b) {
-      s.push(pop(s) + "skewX(" + b + degParen);
-    }
-  }
-
-  function scale(xa, ya, xb, yb, s, q) {
-    if (xa !== xb || ya !== yb) {
-      var i = s.push(pop(s) + "scale(", null, ",", null, ")");
-      q.push({i: i - 4, x: number(xa, xb)}, {i: i - 2, x: number(ya, yb)});
-    } else if (xb !== 1 || yb !== 1) {
-      s.push(pop(s) + "scale(" + xb + "," + yb + ")");
-    }
-  }
-
-  return function(a, b) {
-    var s = [], // string constants and placeholders
-        q = []; // number interpolators
-    a = parse(a), b = parse(b);
-    translate(a.translateX, a.translateY, b.translateX, b.translateY, s, q);
-    rotate(a.rotate, b.rotate, s, q);
-    skewX(a.skewX, b.skewX, s, q);
-    scale(a.scaleX, a.scaleY, b.scaleX, b.scaleY, s, q);
-    a = b = null; // gc
-    return function(t) {
-      var i = -1, n = q.length, o;
-      while (++i < n) s[(o = q[i]).i] = o.x(t);
-      return s.join("");
-    };
-  };
-}
-
-var interpolateTransformCss = interpolateTransform(parseCss, "px, ", "px)", "deg)");
-var interpolateTransformSvg = interpolateTransform(parseSvg, ", ", ")", ")");
-
-var epsilon2 = 1e-12;
-
-function cosh(x) {
-  return ((x = Math.exp(x)) + 1 / x) / 2;
-}
-
-function sinh(x) {
-  return ((x = Math.exp(x)) - 1 / x) / 2;
-}
-
-function tanh(x) {
-  return ((x = Math.exp(2 * x)) - 1) / (x + 1);
-}
-
-var zoom = (function zoomRho(rho, rho2, rho4) {
-
-  // p0 = [ux0, uy0, w0]
-  // p1 = [ux1, uy1, w1]
-  function zoom(p0, p1) {
-    var ux0 = p0[0], uy0 = p0[1], w0 = p0[2],
-        ux1 = p1[0], uy1 = p1[1], w1 = p1[2],
-        dx = ux1 - ux0,
-        dy = uy1 - uy0,
-        d2 = dx * dx + dy * dy,
-        i,
-        S;
-
-    // Special case for u0 ≅ u1.
-    if (d2 < epsilon2) {
-      S = Math.log(w1 / w0) / rho;
-      i = function(t) {
-        return [
-          ux0 + t * dx,
-          uy0 + t * dy,
-          w0 * Math.exp(rho * t * S)
-        ];
-      };
-    }
-
-    // General case.
-    else {
-      var d1 = Math.sqrt(d2),
-          b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1),
-          b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1),
-          r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0),
-          r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
-      S = (r1 - r0) / rho;
-      i = function(t) {
-        var s = t * S,
-            coshr0 = cosh(r0),
-            u = w0 / (rho2 * d1) * (coshr0 * tanh(rho * s + r0) - sinh(r0));
-        return [
-          ux0 + u * dx,
-          uy0 + u * dy,
-          w0 * coshr0 / cosh(rho * s + r0)
-        ];
-      };
-    }
-
-    i.duration = S * 1000 * rho / Math.SQRT2;
-
-    return i;
-  }
-
-  zoom.rho = function(_) {
-    var _1 = Math.max(1e-3, +_), _2 = _1 * _1, _4 = _2 * _2;
-    return zoomRho(_1, _2, _4);
-  };
-
-  return zoom;
-})(Math.SQRT2, 2, 4);
-
-function hsl(hue) {
-  return function(start, end) {
-    var h = hue((start = d3Color.hsl(start)).h, (end = d3Color.hsl(end)).h),
-        s = nogamma(start.s, end.s),
-        l = nogamma(start.l, end.l),
-        opacity = nogamma(start.opacity, end.opacity);
-    return function(t) {
-      start.h = h(t);
-      start.s = s(t);
-      start.l = l(t);
-      start.opacity = opacity(t);
-      return start + "";
-    };
-  }
-}
-
-var hsl$1 = hsl(hue);
-var hslLong = hsl(nogamma);
-
-function lab(start, end) {
-  var l = nogamma((start = d3Color.lab(start)).l, (end = d3Color.lab(end)).l),
-      a = nogamma(start.a, end.a),
-      b = nogamma(start.b, end.b),
-      opacity = nogamma(start.opacity, end.opacity);
-  return function(t) {
-    start.l = l(t);
-    start.a = a(t);
-    start.b = b(t);
-    start.opacity = opacity(t);
-    return start + "";
-  };
-}
-
-function hcl(hue) {
-  return function(start, end) {
-    var h = hue((start = d3Color.hcl(start)).h, (end = d3Color.hcl(end)).h),
-        c = nogamma(start.c, end.c),
-        l = nogamma(start.l, end.l),
-        opacity = nogamma(start.opacity, end.opacity);
-    return function(t) {
-      start.h = h(t);
-      start.c = c(t);
-      start.l = l(t);
-      start.opacity = opacity(t);
-      return start + "";
-    };
-  }
-}
-
-var hcl$1 = hcl(hue);
-var hclLong = hcl(nogamma);
-
-function cubehelix(hue) {
-  return (function cubehelixGamma(y) {
-    y = +y;
-
-    function cubehelix(start, end) {
-      var h = hue((start = d3Color.cubehelix(start)).h, (end = d3Color.cubehelix(end)).h),
-          s = nogamma(start.s, end.s),
-          l = nogamma(start.l, end.l),
-          opacity = nogamma(start.opacity, end.opacity);
-      return function(t) {
-        start.h = h(t);
-        start.s = s(t);
-        start.l = l(Math.pow(t, y));
-        start.opacity = opacity(t);
-        return start + "";
-      };
-    }
-
-    cubehelix.gamma = cubehelixGamma;
-
-    return cubehelix;
-  })(1);
-}
-
-var cubehelix$1 = cubehelix(hue);
-var cubehelixLong = cubehelix(nogamma);
-
-function piecewise(interpolate, values) {
-  if (values === undefined) values = interpolate, interpolate = value;
-  var i = 0, n = values.length - 1, v = values[0], I = new Array(n < 0 ? 0 : n);
-  while (i < n) I[i] = interpolate(v, v = values[++i]);
-  return function(t) {
-    var i = Math.max(0, Math.min(n - 1, Math.floor(t *= n)));
-    return I[i](t - i);
-  };
-}
-
-function quantize(interpolator, n) {
-  var samples = new Array(n);
-  for (var i = 0; i < n; ++i) samples[i] = interpolator(i / (n - 1));
-  return samples;
-}
-
-exports.interpolate = value;
-exports.interpolateArray = array;
-exports.interpolateBasis = basis$1;
-exports.interpolateBasisClosed = basisClosed;
-exports.interpolateCubehelix = cubehelix$1;
-exports.interpolateCubehelixLong = cubehelixLong;
-exports.interpolateDate = date;
-exports.interpolateDiscrete = discrete;
-exports.interpolateHcl = hcl$1;
-exports.interpolateHclLong = hclLong;
-exports.interpolateHsl = hsl$1;
-exports.interpolateHslLong = hslLong;
-exports.interpolateHue = hue$1;
-exports.interpolateLab = lab;
-exports.interpolateNumber = number;
-exports.interpolateNumberArray = numberArray;
-exports.interpolateObject = object;
-exports.interpolateRgb = rgb;
-exports.interpolateRgbBasis = rgbBasis;
-exports.interpolateRgbBasisClosed = rgbBasisClosed;
-exports.interpolateRound = round;
-exports.interpolateString = string;
-exports.interpolateTransformCss = interpolateTransformCss;
-exports.interpolateTransformSvg = interpolateTransformSvg;
-exports.interpolateZoom = zoom;
-exports.piecewise = piecewise;
-exports.quantize = quantize;
-
-Object.defineProperty(exports, '__esModule', { value: true });
-
-}));
-
-},{"d3-color":"d3-color"}],"d3-scale-chromatic":[function(require,module,exports){
-// https://d3js.org/d3-scale-chromatic/ v2.0.0 Copyright 2020 Mike Bostock
-(function (global, factory) {
-typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('d3-interpolate'), require('d3-color')) :
-typeof define === 'function' && define.amd ? define(['exports', 'd3-interpolate', 'd3-color'], factory) :
-(global = global || self, factory(global.d3 = global.d3 || {}, global.d3, global.d3));
-}(this, function (exports, d3Interpolate, d3Color) { 'use strict';
-
-function colors(specifier) {
-  var n = specifier.length / 6 | 0, colors = new Array(n), i = 0;
-  while (i < n) colors[i] = "#" + specifier.slice(i * 6, ++i * 6);
-  return colors;
-}
-
-var category10 = colors("1f77b4ff7f0e2ca02cd627289467bd8c564be377c27f7f7fbcbd2217becf");
-
-var Accent = colors("7fc97fbeaed4fdc086ffff99386cb0f0027fbf5b17666666");
-
-var Dark2 = colors("1b9e77d95f027570b3e7298a66a61ee6ab02a6761d666666");
-
-var Paired = colors("a6cee31f78b4b2df8a33a02cfb9a99e31a1cfdbf6fff7f00cab2d66a3d9affff99b15928");
-
-var Pastel1 = colors("fbb4aeb3cde3ccebc5decbe4fed9a6ffffcce5d8bdfddaecf2f2f2");
-
-var Pastel2 = colors("b3e2cdfdcdaccbd5e8f4cae4e6f5c9fff2aef1e2cccccccc");
-
-var Set1 = colors("e41a1c377eb84daf4a984ea3ff7f00ffff33a65628f781bf999999");
-
-var Set2 = colors("66c2a5fc8d628da0cbe78ac3a6d854ffd92fe5c494b3b3b3");
-
-var Set3 = colors("8dd3c7ffffb3bebadafb807280b1d3fdb462b3de69fccde5d9d9d9bc80bdccebc5ffed6f");
-
-var Tableau10 = colors("4e79a7f28e2ce1575976b7b259a14fedc949af7aa1ff9da79c755fbab0ab");
-
-var ramp = scheme => d3Interpolate.interpolateRgbBasis(scheme[scheme.length - 1]);
-
-var scheme = new Array(3).concat(
-  "d8b365f5f5f55ab4ac",
-  "a6611adfc27d80cdc1018571",
-  "a6611adfc27df5f5f580cdc1018571",
-  "8c510ad8b365f6e8c3c7eae55ab4ac01665e",
-  "8c510ad8b365f6e8c3f5f5f5c7eae55ab4ac01665e",
-  "8c510abf812ddfc27df6e8c3c7eae580cdc135978f01665e",
-  "8c510abf812ddfc27df6e8c3f5f5f5c7eae580cdc135978f01665e",
-  "5430058c510abf812ddfc27df6e8c3c7eae580cdc135978f01665e003c30",
-  "5430058c510abf812ddfc27df6e8c3f5f5f5c7eae580cdc135978f01665e003c30"
-).map(colors);
-
-var BrBG = ramp(scheme);
-
-var scheme$1 = new Array(3).concat(
-  "af8dc3f7f7f77fbf7b",
-  "7b3294c2a5cfa6dba0008837",
-  "7b3294c2a5cff7f7f7a6dba0008837",
-  "762a83af8dc3e7d4e8d9f0d37fbf7b1b7837",
-  "762a83af8dc3e7d4e8f7f7f7d9f0d37fbf7b1b7837",
-  "762a839970abc2a5cfe7d4e8d9f0d3a6dba05aae611b7837",
-  "762a839970abc2a5cfe7d4e8f7f7f7d9f0d3a6dba05aae611b7837",
-  "40004b762a839970abc2a5cfe7d4e8d9f0d3a6dba05aae611b783700441b",
-  "40004b762a839970abc2a5cfe7d4e8f7f7f7d9f0d3a6dba05aae611b783700441b"
-).map(colors);
-
-var PRGn = ramp(scheme$1);
-
-var scheme$2 = new Array(3).concat(
-  "e9a3c9f7f7f7a1d76a",
-  "d01c8bf1b6dab8e1864dac26",
-  "d01c8bf1b6daf7f7f7b8e1864dac26",
-  "c51b7de9a3c9fde0efe6f5d0a1d76a4d9221",
-  "c51b7de9a3c9fde0eff7f7f7e6f5d0a1d76a4d9221",
-  "c51b7dde77aef1b6dafde0efe6f5d0b8e1867fbc414d9221",
-  "c51b7dde77aef1b6dafde0eff7f7f7e6f5d0b8e1867fbc414d9221",
-  "8e0152c51b7dde77aef1b6dafde0efe6f5d0b8e1867fbc414d9221276419",
-  "8e0152c51b7dde77aef1b6dafde0eff7f7f7e6f5d0b8e1867fbc414d9221276419"
-).map(colors);
-
-var PiYG = ramp(scheme$2);
-
-var scheme$3 = new Array(3).concat(
-  "998ec3f7f7f7f1a340",
-  "5e3c99b2abd2fdb863e66101",
-  "5e3c99b2abd2f7f7f7fdb863e66101",
-  "542788998ec3d8daebfee0b6f1a340b35806",
-  "542788998ec3d8daebf7f7f7fee0b6f1a340b35806",
-  "5427888073acb2abd2d8daebfee0b6fdb863e08214b35806",
-  "5427888073acb2abd2d8daebf7f7f7fee0b6fdb863e08214b35806",
-  "2d004b5427888073acb2abd2d8daebfee0b6fdb863e08214b358067f3b08",
-  "2d004b5427888073acb2abd2d8daebf7f7f7fee0b6fdb863e08214b358067f3b08"
-).map(colors);
-
-var PuOr = ramp(scheme$3);
-
-var scheme$4 = new Array(3).concat(
-  "ef8a62f7f7f767a9cf",
-  "ca0020f4a58292c5de0571b0",
-  "ca0020f4a582f7f7f792c5de0571b0",
-  "b2182bef8a62fddbc7d1e5f067a9cf2166ac",
-  "b2182bef8a62fddbc7f7f7f7d1e5f067a9cf2166ac",
-  "b2182bd6604df4a582fddbc7d1e5f092c5de4393c32166ac",
-  "b2182bd6604df4a582fddbc7f7f7f7d1e5f092c5de4393c32166ac",
-  "67001fb2182bd6604df4a582fddbc7d1e5f092c5de4393c32166ac053061",
-  "67001fb2182bd6604df4a582fddbc7f7f7f7d1e5f092c5de4393c32166ac053061"
-).map(colors);
-
-var RdBu = ramp(scheme$4);
-
-var scheme$5 = new Array(3).concat(
-  "ef8a62ffffff999999",
-  "ca0020f4a582bababa404040",
-  "ca0020f4a582ffffffbababa404040",
-  "b2182bef8a62fddbc7e0e0e09999994d4d4d",
-  "b2182bef8a62fddbc7ffffffe0e0e09999994d4d4d",
-  "b2182bd6604df4a582fddbc7e0e0e0bababa8787874d4d4d",
-  "b2182bd6604df4a582fddbc7ffffffe0e0e0bababa8787874d4d4d",
-  "67001fb2182bd6604df4a582fddbc7e0e0e0bababa8787874d4d4d1a1a1a",
-  "67001fb2182bd6604df4a582fddbc7ffffffe0e0e0bababa8787874d4d4d1a1a1a"
-).map(colors);
-
-var RdGy = ramp(scheme$5);
-
-var scheme$6 = new Array(3).concat(
-  "fc8d59ffffbf91bfdb",
-  "d7191cfdae61abd9e92c7bb6",
-  "d7191cfdae61ffffbfabd9e92c7bb6",
-  "d73027fc8d59fee090e0f3f891bfdb4575b4",
-  "d73027fc8d59fee090ffffbfe0f3f891bfdb4575b4",
-  "d73027f46d43fdae61fee090e0f3f8abd9e974add14575b4",
-  "d73027f46d43fdae61fee090ffffbfe0f3f8abd9e974add14575b4",
-  "a50026d73027f46d43fdae61fee090e0f3f8abd9e974add14575b4313695",
-  "a50026d73027f46d43fdae61fee090ffffbfe0f3f8abd9e974add14575b4313695"
-).map(colors);
-
-var RdYlBu = ramp(scheme$6);
-
-var scheme$7 = new Array(3).concat(
-  "fc8d59ffffbf91cf60",
-  "d7191cfdae61a6d96a1a9641",
-  "d7191cfdae61ffffbfa6d96a1a9641",
-  "d73027fc8d59fee08bd9ef8b91cf601a9850",
-  "d73027fc8d59fee08bffffbfd9ef8b91cf601a9850",
-  "d73027f46d43fdae61fee08bd9ef8ba6d96a66bd631a9850",
-  "d73027f46d43fdae61fee08bffffbfd9ef8ba6d96a66bd631a9850",
-  "a50026d73027f46d43fdae61fee08bd9ef8ba6d96a66bd631a9850006837",
-  "a50026d73027f46d43fdae61fee08bffffbfd9ef8ba6d96a66bd631a9850006837"
-).map(colors);
-
-var RdYlGn = ramp(scheme$7);
-
-var scheme$8 = new Array(3).concat(
-  "fc8d59ffffbf99d594",
-  "d7191cfdae61abdda42b83ba",
-  "d7191cfdae61ffffbfabdda42b83ba",
-  "d53e4ffc8d59fee08be6f59899d5943288bd",
-  "d53e4ffc8d59fee08bffffbfe6f59899d5943288bd",
-  "d53e4ff46d43fdae61fee08be6f598abdda466c2a53288bd",
-  "d53e4ff46d43fdae61fee08bffffbfe6f598abdda466c2a53288bd",
-  "9e0142d53e4ff46d43fdae61fee08be6f598abdda466c2a53288bd5e4fa2",
-  "9e0142d53e4ff46d43fdae61fee08bffffbfe6f598abdda466c2a53288bd5e4fa2"
-).map(colors);
-
-var Spectral = ramp(scheme$8);
-
-var scheme$9 = new Array(3).concat(
-  "e5f5f999d8c92ca25f",
-  "edf8fbb2e2e266c2a4238b45",
-  "edf8fbb2e2e266c2a42ca25f006d2c",
-  "edf8fbccece699d8c966c2a42ca25f006d2c",
-  "edf8fbccece699d8c966c2a441ae76238b45005824",
-  "f7fcfde5f5f9ccece699d8c966c2a441ae76238b45005824",
-  "f7fcfde5f5f9ccece699d8c966c2a441ae76238b45006d2c00441b"
-).map(colors);
-
-var BuGn = ramp(scheme$9);
-
-var scheme$a = new Array(3).concat(
-  "e0ecf49ebcda8856a7",
-  "edf8fbb3cde38c96c688419d",
-  "edf8fbb3cde38c96c68856a7810f7c",
-  "edf8fbbfd3e69ebcda8c96c68856a7810f7c",
-  "edf8fbbfd3e69ebcda8c96c68c6bb188419d6e016b",
-  "f7fcfde0ecf4bfd3e69ebcda8c96c68c6bb188419d6e016b",
-  "f7fcfde0ecf4bfd3e69ebcda8c96c68c6bb188419d810f7c4d004b"
-).map(colors);
-
-var BuPu = ramp(scheme$a);
-
-var scheme$b = new Array(3).concat(
-  "e0f3dba8ddb543a2ca",
-  "f0f9e8bae4bc7bccc42b8cbe",
-  "f0f9e8bae4bc7bccc443a2ca0868ac",
-  "f0f9e8ccebc5a8ddb57bccc443a2ca0868ac",
-  "f0f9e8ccebc5a8ddb57bccc44eb3d32b8cbe08589e",
-  "f7fcf0e0f3dbccebc5a8ddb57bccc44eb3d32b8cbe08589e",
-  "f7fcf0e0f3dbccebc5a8ddb57bccc44eb3d32b8cbe0868ac084081"
-).map(colors);
-
-var GnBu = ramp(scheme$b);
-
-var scheme$c = new Array(3).concat(
-  "fee8c8fdbb84e34a33",
-  "fef0d9fdcc8afc8d59d7301f",
-  "fef0d9fdcc8afc8d59e34a33b30000",
-  "fef0d9fdd49efdbb84fc8d59e34a33b30000",
-  "fef0d9fdd49efdbb84fc8d59ef6548d7301f990000",
-  "fff7ecfee8c8fdd49efdbb84fc8d59ef6548d7301f990000",
-  "fff7ecfee8c8fdd49efdbb84fc8d59ef6548d7301fb300007f0000"
-).map(colors);
-
-var OrRd = ramp(scheme$c);
-
-var scheme$d = new Array(3).concat(
-  "ece2f0a6bddb1c9099",
-  "f6eff7bdc9e167a9cf02818a",
-  "f6eff7bdc9e167a9cf1c9099016c59",
-  "f6eff7d0d1e6a6bddb67a9cf1c9099016c59",
-  "f6eff7d0d1e6a6bddb67a9cf3690c002818a016450",
-  "fff7fbece2f0d0d1e6a6bddb67a9cf3690c002818a016450",
-  "fff7fbece2f0d0d1e6a6bddb67a9cf3690c002818a016c59014636"
-).map(colors);
-
-var PuBuGn = ramp(scheme$d);
-
-var scheme$e = new Array(3).concat(
-  "ece7f2a6bddb2b8cbe",
-  "f1eef6bdc9e174a9cf0570b0",
-  "f1eef6bdc9e174a9cf2b8cbe045a8d",
-  "f1eef6d0d1e6a6bddb74a9cf2b8cbe045a8d",
-  "f1eef6d0d1e6a6bddb74a9cf3690c00570b0034e7b",
-  "fff7fbece7f2d0d1e6a6bddb74a9cf3690c00570b0034e7b",
-  "fff7fbece7f2d0d1e6a6bddb74a9cf3690c00570b0045a8d023858"
-).map(colors);
-
-var PuBu = ramp(scheme$e);
-
-var scheme$f = new Array(3).concat(
-  "e7e1efc994c7dd1c77",
-  "f1eef6d7b5d8df65b0ce1256",
-  "f1eef6d7b5d8df65b0dd1c77980043",
-  "f1eef6d4b9dac994c7df65b0dd1c77980043",
-  "f1eef6d4b9dac994c7df65b0e7298ace125691003f",
-  "f7f4f9e7e1efd4b9dac994c7df65b0e7298ace125691003f",
-  "f7f4f9e7e1efd4b9dac994c7df65b0e7298ace125698004367001f"
-).map(colors);
-
-var PuRd = ramp(scheme$f);
-
-var scheme$g = new Array(3).concat(
-  "fde0ddfa9fb5c51b8a",
-  "feebe2fbb4b9f768a1ae017e",
-  "feebe2fbb4b9f768a1c51b8a7a0177",
-  "feebe2fcc5c0fa9fb5f768a1c51b8a7a0177",
-  "feebe2fcc5c0fa9fb5f768a1dd3497ae017e7a0177",
-  "fff7f3fde0ddfcc5c0fa9fb5f768a1dd3497ae017e7a0177",
-  "fff7f3fde0ddfcc5c0fa9fb5f768a1dd3497ae017e7a017749006a"
-).map(colors);
-
-var RdPu = ramp(scheme$g);
-
-var scheme$h = new Array(3).concat(
-  "edf8b17fcdbb2c7fb8",
-  "ffffcca1dab441b6c4225ea8",
-  "ffffcca1dab441b6c42c7fb8253494",
-  "ffffccc7e9b47fcdbb41b6c42c7fb8253494",
-  "ffffccc7e9b47fcdbb41b6c41d91c0225ea80c2c84",
-  "ffffd9edf8b1c7e9b47fcdbb41b6c41d91c0225ea80c2c84",
-  "ffffd9edf8b1c7e9b47fcdbb41b6c41d91c0225ea8253494081d58"
-).map(colors);
-
-var YlGnBu = ramp(scheme$h);
-
-var scheme$i = new Array(3).concat(
-  "f7fcb9addd8e31a354",
-  "ffffccc2e69978c679238443",
-  "ffffccc2e69978c67931a354006837",
-  "ffffccd9f0a3addd8e78c67931a354006837",
-  "ffffccd9f0a3addd8e78c67941ab5d238443005a32",
-  "ffffe5f7fcb9d9f0a3addd8e78c67941ab5d238443005a32",
-  "ffffe5f7fcb9d9f0a3addd8e78c67941ab5d238443006837004529"
-).map(colors);
-
-var YlGn = ramp(scheme$i);
-
-var scheme$j = new Array(3).concat(
-  "fff7bcfec44fd95f0e",
-  "ffffd4fed98efe9929cc4c02",
-  "ffffd4fed98efe9929d95f0e993404",
-  "ffffd4fee391fec44ffe9929d95f0e993404",
-  "ffffd4fee391fec44ffe9929ec7014cc4c028c2d04",
-  "ffffe5fff7bcfee391fec44ffe9929ec7014cc4c028c2d04",
-  "ffffe5fff7bcfee391fec44ffe9929ec7014cc4c02993404662506"
-).map(colors);
-
-var YlOrBr = ramp(scheme$j);
-
-var scheme$k = new Array(3).concat(
-  "ffeda0feb24cf03b20",
-  "ffffb2fecc5cfd8d3ce31a1c",
-  "ffffb2fecc5cfd8d3cf03b20bd0026",
-  "ffffb2fed976feb24cfd8d3cf03b20bd0026",
-  "ffffb2fed976feb24cfd8d3cfc4e2ae31a1cb10026",
-  "ffffccffeda0fed976feb24cfd8d3cfc4e2ae31a1cb10026",
-  "ffffccffeda0fed976feb24cfd8d3cfc4e2ae31a1cbd0026800026"
-).map(colors);
-
-var YlOrRd = ramp(scheme$k);
-
-var scheme$l = new Array(3).concat(
-  "deebf79ecae13182bd",
-  "eff3ffbdd7e76baed62171b5",
-  "eff3ffbdd7e76baed63182bd08519c",
-  "eff3ffc6dbef9ecae16baed63182bd08519c",
-  "eff3ffc6dbef9ecae16baed64292c62171b5084594",
-  "f7fbffdeebf7c6dbef9ecae16baed64292c62171b5084594",
-  "f7fbffdeebf7c6dbef9ecae16baed64292c62171b508519c08306b"
-).map(colors);
-
-var Blues = ramp(scheme$l);
-
-var scheme$m = new Array(3).concat(
-  "e5f5e0a1d99b31a354",
-  "edf8e9bae4b374c476238b45",
-  "edf8e9bae4b374c47631a354006d2c",
-  "edf8e9c7e9c0a1d99b74c47631a354006d2c",
-  "edf8e9c7e9c0a1d99b74c47641ab5d238b45005a32",
-  "f7fcf5e5f5e0c7e9c0a1d99b74c47641ab5d238b45005a32",
-  "f7fcf5e5f5e0c7e9c0a1d99b74c47641ab5d238b45006d2c00441b"
-).map(colors);
-
-var Greens = ramp(scheme$m);
-
-var scheme$n = new Array(3).concat(
-  "f0f0f0bdbdbd636363",
-  "f7f7f7cccccc969696525252",
-  "f7f7f7cccccc969696636363252525",
-  "f7f7f7d9d9d9bdbdbd969696636363252525",
-  "f7f7f7d9d9d9bdbdbd969696737373525252252525",
-  "fffffff0f0f0d9d9d9bdbdbd969696737373525252252525",
-  "fffffff0f0f0d9d9d9bdbdbd969696737373525252252525000000"
-).map(colors);
-
-var Greys = ramp(scheme$n);
-
-var scheme$o = new Array(3).concat(
-  "efedf5bcbddc756bb1",
-  "f2f0f7cbc9e29e9ac86a51a3",
-  "f2f0f7cbc9e29e9ac8756bb154278f",
-  "f2f0f7dadaebbcbddc9e9ac8756bb154278f",
-  "f2f0f7dadaebbcbddc9e9ac8807dba6a51a34a1486",
-  "fcfbfdefedf5dadaebbcbddc9e9ac8807dba6a51a34a1486",
-  "fcfbfdefedf5dadaebbcbddc9e9ac8807dba6a51a354278f3f007d"
-).map(colors);
-
-var Purples = ramp(scheme$o);
-
-var scheme$p = new Array(3).concat(
-  "fee0d2fc9272de2d26",
-  "fee5d9fcae91fb6a4acb181d",
-  "fee5d9fcae91fb6a4ade2d26a50f15",
-  "fee5d9fcbba1fc9272fb6a4ade2d26a50f15",
-  "fee5d9fcbba1fc9272fb6a4aef3b2ccb181d99000d",
-  "fff5f0fee0d2fcbba1fc9272fb6a4aef3b2ccb181d99000d",
-  "fff5f0fee0d2fcbba1fc9272fb6a4aef3b2ccb181da50f1567000d"
-).map(colors);
-
-var Reds = ramp(scheme$p);
-
-var scheme$q = new Array(3).concat(
-  "fee6cefdae6be6550d",
-  "feeddefdbe85fd8d3cd94701",
-  "feeddefdbe85fd8d3ce6550da63603",
-  "feeddefdd0a2fdae6bfd8d3ce6550da63603",
-  "feeddefdd0a2fdae6bfd8d3cf16913d948018c2d04",
-  "fff5ebfee6cefdd0a2fdae6bfd8d3cf16913d948018c2d04",
-  "fff5ebfee6cefdd0a2fdae6bfd8d3cf16913d94801a636037f2704"
-).map(colors);
-
-var Oranges = ramp(scheme$q);
-
-function cividis(t) {
-  t = Math.max(0, Math.min(1, t));
-  return "rgb("
-      + Math.max(0, Math.min(255, Math.round(-4.54 - t * (35.34 - t * (2381.73 - t * (6402.7 - t * (7024.72 - t * 2710.57))))))) + ", "
-      + Math.max(0, Math.min(255, Math.round(32.49 + t * (170.73 + t * (52.82 - t * (131.46 - t * (176.58 - t * 67.37))))))) + ", "
-      + Math.max(0, Math.min(255, Math.round(81.24 + t * (442.36 - t * (2482.43 - t * (6167.24 - t * (6614.94 - t * 2475.67)))))))
-      + ")";
-}
-
-var cubehelix = d3Interpolate.interpolateCubehelixLong(d3Color.cubehelix(300, 0.5, 0.0), d3Color.cubehelix(-240, 0.5, 1.0));
-
-var warm = d3Interpolate.interpolateCubehelixLong(d3Color.cubehelix(-100, 0.75, 0.35), d3Color.cubehelix(80, 1.50, 0.8));
-
-var cool = d3Interpolate.interpolateCubehelixLong(d3Color.cubehelix(260, 0.75, 0.35), d3Color.cubehelix(80, 1.50, 0.8));
-
-var c = d3Color.cubehelix();
-
-function rainbow(t) {
-  if (t < 0 || t > 1) t -= Math.floor(t);
-  var ts = Math.abs(t - 0.5);
-  c.h = 360 * t - 100;
-  c.s = 1.5 - 1.5 * ts;
-  c.l = 0.8 - 0.9 * ts;
-  return c + "";
-}
-
-var c$1 = d3Color.rgb(),
-    pi_1_3 = Math.PI / 3,
-    pi_2_3 = Math.PI * 2 / 3;
-
-function sinebow(t) {
-  var x;
-  t = (0.5 - t) * Math.PI;
-  c$1.r = 255 * (x = Math.sin(t)) * x;
-  c$1.g = 255 * (x = Math.sin(t + pi_1_3)) * x;
-  c$1.b = 255 * (x = Math.sin(t + pi_2_3)) * x;
-  return c$1 + "";
-}
-
-function turbo(t) {
-  t = Math.max(0, Math.min(1, t));
-  return "rgb("
-      + Math.max(0, Math.min(255, Math.round(34.61 + t * (1172.33 - t * (10793.56 - t * (33300.12 - t * (38394.49 - t * 14825.05))))))) + ", "
-      + Math.max(0, Math.min(255, Math.round(23.31 + t * (557.33 + t * (1225.33 - t * (3574.96 - t * (1073.77 + t * 707.56))))))) + ", "
-      + Math.max(0, Math.min(255, Math.round(27.2 + t * (3211.1 - t * (15327.97 - t * (27814 - t * (22569.18 - t * 6838.66)))))))
-      + ")";
-}
-
-function ramp$1(range) {
-  var n = range.length;
-  return function(t) {
-    return range[Math.max(0, Math.min(n - 1, Math.floor(t * n)))];
-  };
-}
-
-var viridis = ramp$1(colors("44015444025645045745055946075a46085c460a5d460b5e470d60470e6147106347116447136548146748166848176948186a481a6c481b6d481c6e481d6f481f70482071482173482374482475482576482677482878482979472a7a472c7a472d7b472e7c472f7d46307e46327e46337f463480453581453781453882443983443a83443b84433d84433e85423f854240864241864142874144874045884046883f47883f48893e49893e4a893e4c8a3d4d8a3d4e8a3c4f8a3c508b3b518b3b528b3a538b3a548c39558c39568c38588c38598c375a8c375b8d365c8d365d8d355e8d355f8d34608d34618d33628d33638d32648e32658e31668e31678e31688e30698e306a8e2f6b8e2f6c8e2e6d8e2e6e8e2e6f8e2d708e2d718e2c718e2c728e2c738e2b748e2b758e2a768e2a778e2a788e29798e297a8e297b8e287c8e287d8e277e8e277f8e27808e26818e26828e26828e25838e25848e25858e24868e24878e23888e23898e238a8d228b8d228c8d228d8d218e8d218f8d21908d21918c20928c20928c20938c1f948c1f958b1f968b1f978b1f988b1f998a1f9a8a1e9b8a1e9c891e9d891f9e891f9f881fa0881fa1881fa1871fa28720a38620a48621a58521a68522a78522a88423a98324aa8325ab8225ac8226ad8127ad8128ae8029af7f2ab07f2cb17e2db27d2eb37c2fb47c31b57b32b67a34b67935b77937b87838b9773aba763bbb753dbc743fbc7340bd7242be7144bf7046c06f48c16e4ac16d4cc26c4ec36b50c46a52c56954c56856c66758c7655ac8645cc8635ec96260ca6063cb5f65cb5e67cc5c69cd5b6ccd5a6ece5870cf5773d05675d05477d1537ad1517cd2507fd34e81d34d84d44b86d54989d5488bd6468ed64590d74393d74195d84098d83e9bd93c9dd93ba0da39a2da37a5db36a8db34aadc32addc30b0dd2fb2dd2db5de2bb8de29bade28bddf26c0df25c2df23c5e021c8e020cae11fcde11dd0e11cd2e21bd5e21ad8e219dae319dde318dfe318e2e418e5e419e7e419eae51aece51befe51cf1e51df4e61ef6e620f8e621fbe723fde725"));
-
-var magma = ramp$1(colors("00000401000501010601010802010902020b02020d03030f03031204041405041606051806051a07061c08071e0907200a08220b09240c09260d0a290e0b2b100b2d110c2f120d31130d34140e36150e38160f3b180f3d19103f1a10421c10441d11471e114920114b21114e22115024125325125527125829115a2a115c2c115f2d11612f116331116533106734106936106b38106c390f6e3b0f703d0f713f0f72400f74420f75440f764510774710784910784a10794c117a4e117b4f127b51127c52137c54137d56147d57157e59157e5a167e5c167f5d177f5f187f601880621980641a80651a80671b80681c816a1c816b1d816d1d816e1e81701f81721f817320817521817621817822817922827b23827c23827e24828025828125818326818426818627818827818928818b29818c29818e2a81902a81912b81932b80942c80962c80982d80992d809b2e7f9c2e7f9e2f7fa02f7fa1307ea3307ea5317ea6317da8327daa337dab337cad347cae347bb0357bb2357bb3367ab5367ab73779b83779ba3878bc3978bd3977bf3a77c03a76c23b75c43c75c53c74c73d73c83e73ca3e72cc3f71cd4071cf4070d0416fd2426fd3436ed5446dd6456cd8456cd9466bdb476adc4869de4968df4a68e04c67e24d66e34e65e44f64e55064e75263e85362e95462ea5661eb5760ec5860ed5a5fee5b5eef5d5ef05f5ef1605df2625df2645cf3655cf4675cf4695cf56b5cf66c5cf66e5cf7705cf7725cf8745cf8765cf9785df9795df97b5dfa7d5efa7f5efa815ffb835ffb8560fb8761fc8961fc8a62fc8c63fc8e64fc9065fd9266fd9467fd9668fd9869fd9a6afd9b6bfe9d6cfe9f6dfea16efea36ffea571fea772fea973feaa74feac76feae77feb078feb27afeb47bfeb67cfeb77efeb97ffebb81febd82febf84fec185fec287fec488fec68afec88cfeca8dfecc8ffecd90fecf92fed194fed395fed597fed799fed89afdda9cfddc9efddea0fde0a1fde2a3fde3a5fde5a7fde7a9fde9aafdebacfcecaefceeb0fcf0b2fcf2b4fcf4b6fcf6b8fcf7b9fcf9bbfcfbbdfcfdbf"));
-
-var inferno = ramp$1(colors("00000401000501010601010802010a02020c02020e03021004031204031405041706041907051b08051d09061f0a07220b07240c08260d08290e092b10092d110a30120a32140b34150b37160b39180c3c190c3e1b0c411c0c431e0c451f0c48210c4a230c4c240c4f260c51280b53290b552b0b572d0b592f0a5b310a5c320a5e340a5f3609613809623909633b09643d09653e0966400a67420a68440a68450a69470b6a490b6a4a0c6b4c0c6b4d0d6c4f0d6c510e6c520e6d540f6d550f6d57106e59106e5a116e5c126e5d126e5f136e61136e62146e64156e65156e67166e69166e6a176e6c186e6d186e6f196e71196e721a6e741a6e751b6e771c6d781c6d7a1d6d7c1d6d7d1e6d7f1e6c801f6c82206c84206b85216b87216b88226a8a226a8c23698d23698f24699025689225689326679526679727669827669a28659b29649d29649f2a63a02a63a22b62a32c61a52c60a62d60a82e5fa92e5eab2f5ead305dae305cb0315bb1325ab3325ab43359b63458b73557b93556ba3655bc3754bd3853bf3952c03a51c13a50c33b4fc43c4ec63d4dc73e4cc83f4bca404acb4149cc4248ce4347cf4446d04545d24644d34743d44842d54a41d74b3fd84c3ed94d3dda4e3cdb503bdd513ade5238df5337e05536e15635e25734e35933e45a31e55c30e65d2fe75e2ee8602de9612bea632aeb6429eb6628ec6726ed6925ee6a24ef6c23ef6e21f06f20f1711ff1731df2741cf3761bf37819f47918f57b17f57d15f67e14f68013f78212f78410f8850ff8870ef8890cf98b0bf98c0af98e09fa9008fa9207fa9407fb9606fb9706fb9906fb9b06fb9d07fc9f07fca108fca309fca50afca60cfca80dfcaa0ffcac11fcae12fcb014fcb216fcb418fbb61afbb81dfbba1ffbbc21fbbe23fac026fac228fac42afac62df9c72ff9c932f9cb35f8cd37f8cf3af7d13df7d340f6d543f6d746f5d949f5db4cf4dd4ff4df53f4e156f3e35af3e55df2e661f2e865f2ea69f1ec6df1ed71f1ef75f1f179f2f27df2f482f3f586f3f68af4f88ef5f992f6fa96f8fb9af9fc9dfafda1fcffa4"));
-
-var plasma = ramp$1(colors("0d088710078813078916078a19068c1b068d1d068e20068f2206902406912605912805922a05932c05942e05952f059631059733059735049837049938049a3a049a3c049b3e049c3f049c41049d43039e44039e46039f48039f4903a04b03a14c02a14e02a25002a25102a35302a35502a45601a45801a45901a55b01a55c01a65e01a66001a66100a76300a76400a76600a76700a86900a86a00a86c00a86e00a86f00a87100a87201a87401a87501a87701a87801a87a02a87b02a87d03a87e03a88004a88104a78305a78405a78606a68707a68808a68a09a58b0aa58d0ba58e0ca48f0da4910ea3920fa39410a29511a19613a19814a099159f9a169f9c179e9d189d9e199da01a9ca11b9ba21d9aa31e9aa51f99a62098a72197a82296aa2395ab2494ac2694ad2793ae2892b02991b12a90b22b8fb32c8eb42e8db52f8cb6308bb7318ab83289ba3388bb3488bc3587bd3786be3885bf3984c03a83c13b82c23c81c33d80c43e7fc5407ec6417dc7427cc8437bc9447aca457acb4679cc4778cc4977cd4a76ce4b75cf4c74d04d73d14e72d24f71d35171d45270d5536fd5546ed6556dd7566cd8576bd9586ada5a6ada5b69db5c68dc5d67dd5e66de5f65de6164df6263e06363e16462e26561e26660e3685fe4695ee56a5de56b5de66c5ce76e5be76f5ae87059e97158e97257ea7457eb7556eb7655ec7754ed7953ed7a52ee7b51ef7c51ef7e50f07f4ff0804ef1814df1834cf2844bf3854bf3874af48849f48948f58b47f58c46f68d45f68f44f79044f79143f79342f89441f89540f9973ff9983ef99a3efa9b3dfa9c3cfa9e3bfb9f3afba139fba238fca338fca537fca636fca835fca934fdab33fdac33fdae32fdaf31fdb130fdb22ffdb42ffdb52efeb72dfeb82cfeba2cfebb2bfebd2afebe2afec029fdc229fdc328fdc527fdc627fdc827fdca26fdcb26fccd25fcce25fcd025fcd225fbd324fbd524fbd724fad824fada24f9dc24f9dd25f8df25f8e125f7e225f7e425f6e626f6e826f5e926f5eb27f4ed27f3ee27f3f027f2f227f1f426f1f525f0f724f0f921"));
-
-exports.interpolateBlues = Blues;
-exports.interpolateBrBG = BrBG;
-exports.interpolateBuGn = BuGn;
-exports.interpolateBuPu = BuPu;
-exports.interpolateCividis = cividis;
-exports.interpolateCool = cool;
-exports.interpolateCubehelixDefault = cubehelix;
-exports.interpolateGnBu = GnBu;
-exports.interpolateGreens = Greens;
-exports.interpolateGreys = Greys;
-exports.interpolateInferno = inferno;
-exports.interpolateMagma = magma;
-exports.interpolateOrRd = OrRd;
-exports.interpolateOranges = Oranges;
-exports.interpolatePRGn = PRGn;
-exports.interpolatePiYG = PiYG;
-exports.interpolatePlasma = plasma;
-exports.interpolatePuBu = PuBu;
-exports.interpolatePuBuGn = PuBuGn;
-exports.interpolatePuOr = PuOr;
-exports.interpolatePuRd = PuRd;
-exports.interpolatePurples = Purples;
-exports.interpolateRainbow = rainbow;
-exports.interpolateRdBu = RdBu;
-exports.interpolateRdGy = RdGy;
-exports.interpolateRdPu = RdPu;
-exports.interpolateRdYlBu = RdYlBu;
-exports.interpolateRdYlGn = RdYlGn;
-exports.interpolateReds = Reds;
-exports.interpolateSinebow = sinebow;
-exports.interpolateSpectral = Spectral;
-exports.interpolateTurbo = turbo;
-exports.interpolateViridis = viridis;
-exports.interpolateWarm = warm;
-exports.interpolateYlGn = YlGn;
-exports.interpolateYlGnBu = YlGnBu;
-exports.interpolateYlOrBr = YlOrBr;
-exports.interpolateYlOrRd = YlOrRd;
-exports.schemeAccent = Accent;
-exports.schemeBlues = scheme$l;
-exports.schemeBrBG = scheme;
-exports.schemeBuGn = scheme$9;
-exports.schemeBuPu = scheme$a;
-exports.schemeCategory10 = category10;
-exports.schemeDark2 = Dark2;
-exports.schemeGnBu = scheme$b;
-exports.schemeGreens = scheme$m;
-exports.schemeGreys = scheme$n;
-exports.schemeOrRd = scheme$c;
-exports.schemeOranges = scheme$q;
-exports.schemePRGn = scheme$1;
-exports.schemePaired = Paired;
-exports.schemePastel1 = Pastel1;
-exports.schemePastel2 = Pastel2;
-exports.schemePiYG = scheme$2;
-exports.schemePuBu = scheme$e;
-exports.schemePuBuGn = scheme$d;
-exports.schemePuOr = scheme$3;
-exports.schemePuRd = scheme$f;
-exports.schemePurples = scheme$o;
-exports.schemeRdBu = scheme$4;
-exports.schemeRdGy = scheme$5;
-exports.schemeRdPu = scheme$g;
-exports.schemeRdYlBu = scheme$6;
-exports.schemeRdYlGn = scheme$7;
-exports.schemeReds = scheme$p;
-exports.schemeSet1 = Set1;
-exports.schemeSet2 = Set2;
-exports.schemeSet3 = Set3;
-exports.schemeSpectral = scheme$8;
-exports.schemeTableau10 = Tableau10;
-exports.schemeYlGn = scheme$i;
-exports.schemeYlGnBu = scheme$h;
-exports.schemeYlOrBr = scheme$j;
-exports.schemeYlOrRd = scheme$k;
-
-Object.defineProperty(exports, '__esModule', { value: true });
-
-}));
-
-},{"d3-color":"d3-color","d3-interpolate":"d3-interpolate"}],"flatbush":[function(require,module,exports){
+},{"base64-js":1,"buffer":"buffer","ieee754":24}],"flatbush":[function(require,module,exports){
 (function (global, factory) {
 typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
 typeof define === 'function' && define.amd ? define(factory) :
@@ -9288,11 +8115,8 @@ return Flatbush;
 },{}],"fs":[function(require,module,exports){
 arguments[4][2][0].apply(exports,arguments)
 },{"dup":2}],"iconv-lite":[function(require,module,exports){
-(function (process){(function (){
 "use strict";
 
-// Some environments don't have global Buffer (e.g. React Native).
-// Solution would be installing npm modules "buffer" and "stream" explicitly.
 var Buffer = require("safer-buffer").Buffer;
 
 var bomHandling = require("./bom-handling"),
@@ -9424,27 +8248,55 @@ iconv.getDecoder = function getDecoder(encoding, options) {
     return decoder;
 }
 
+// Streaming API
+// NOTE: Streaming API naturally depends on 'stream' module from Node.js. Unfortunately in browser environments this module can add
+// up to 100Kb to the output bundle. To avoid unnecessary code bloat, we don't enable Streaming API in browser by default.
+// If you would like to enable it explicitly, please add the following code to your app:
+// > iconv.enableStreamingAPI(require('stream'));
+iconv.enableStreamingAPI = function enableStreamingAPI(stream_module) {
+    if (iconv.supportsStreams)
+        return;
 
-// Load extensions in Node. All of them are omitted in Browserify build via 'browser' field in package.json.
-var nodeVer = typeof process !== 'undefined' && process.versions && process.versions.node;
-if (nodeVer) {
+    // Dependency-inject stream module to create IconvLite stream classes.
+    var streams = require("./streams")(stream_module);
 
-    // Load streaming support in Node v0.10+
-    var nodeVerArr = nodeVer.split(".").map(Number);
-    if (nodeVerArr[0] > 0 || nodeVerArr[1] >= 10) {
-        require("./streams")(iconv);
+    // Not public API yet, but expose the stream classes.
+    iconv.IconvLiteEncoderStream = streams.IconvLiteEncoderStream;
+    iconv.IconvLiteDecoderStream = streams.IconvLiteDecoderStream;
+
+    // Streaming API.
+    iconv.encodeStream = function encodeStream(encoding, options) {
+        return new iconv.IconvLiteEncoderStream(iconv.getEncoder(encoding, options), options);
     }
 
-    // Load Node primitive extensions.
-    require("./extend-node")(iconv);
+    iconv.decodeStream = function decodeStream(encoding, options) {
+        return new iconv.IconvLiteDecoderStream(iconv.getDecoder(encoding, options), options);
+    }
+
+    iconv.supportsStreams = true;
+}
+
+// Enable Streaming API automatically if 'stream' module is available and non-empty (the majority of environments).
+var stream_module;
+try {
+    stream_module = require("stream");
+} catch (e) {}
+
+if (stream_module && stream_module.Transform) {
+    iconv.enableStreamingAPI(stream_module);
+
+} else {
+    // In rare cases where 'stream' module is not available by default, throw a helpful exception.
+    iconv.encodeStream = iconv.decodeStream = function() {
+        throw new Error("iconv-lite Streaming API is not enabled. Use iconv.enableStreamingAPI(require('stream')); to enable it.");
+    };
 }
 
 if ("Ā" != "\u0100") {
-    console.error("iconv-lite warning: javascript files use encoding different from utf-8. See https://github.com/ashtuchkin/iconv-lite/wiki/Javascript-source-file-encodings for more info.");
+    console.error("iconv-lite warning: js files use non-utf8 encoding. See https://github.com/ashtuchkin/iconv-lite/wiki/Javascript-source-file-encodings for more info.");
 }
 
-}).call(this)}).call(this,require('_process'))
-},{"../encodings":6,"./bom-handling":21,"./extend-node":2,"./streams":2,"_process":23,"safer-buffer":37}],"kdbush":[function(require,module,exports){
+},{"../encodings":6,"./bom-handling":22,"./streams":23,"safer-buffer":39,"stream":2}],"kdbush":[function(require,module,exports){
 (function (global, factory) {
 typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
 typeof define === 'function' && define.amd ? define(factory) :
@@ -22289,14 +21141,14 @@ posix.posix = posix;
 module.exports = posix;
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":23}],"rw":[function(require,module,exports){
+},{"_process":25}],"rw":[function(require,module,exports){
 exports.dash = require("./lib/rw/dash");
 exports.readFile = require("./lib/rw/read-file");
 exports.readFileSync = require("./lib/rw/read-file-sync");
 exports.writeFile = require("./lib/rw/write-file");
 exports.writeFileSync = require("./lib/rw/write-file-sync");
 
-},{"./lib/rw/dash":29,"./lib/rw/read-file":33,"./lib/rw/read-file-sync":32,"./lib/rw/write-file":35,"./lib/rw/write-file-sync":34}],"sync-request":[function(require,module,exports){
+},{"./lib/rw/dash":31,"./lib/rw/read-file":35,"./lib/rw/read-file-sync":34,"./lib/rw/write-file":37,"./lib/rw/write-file-sync":36}],"sync-request":[function(require,module,exports){
 "use strict";
 exports.__esModule = true;
 var handle_qs_js_1 = require("then-request/lib/handle-qs.js");
@@ -22367,4 +21219,4 @@ module.exports = doRequest;
 module.exports["default"] = doRequest;
 module.exports.FormData = fd;
 
-},{"http-response-object":3,"then-request/lib/handle-qs.js":39}]},{},[]);
+},{"http-response-object":3,"then-request/lib/handle-qs.js":41}]},{},[]);

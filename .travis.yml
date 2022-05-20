@@ -1,8 +1,0 @@
-language: node_js
-sudo: false
-node_js:
-  - '10.13.0'
-  - 'node'
-script:
-  - npm run build
-  - npm test

@@ -14,7 +14,7 @@ const onBundle = {
 
 export default [{
   treeshake: false,
-  input: 'src/gui/gui.js',
+  input: 'src/gui/gui.mjs',
   output: [{
     strict: false,
     format: 'iife',
@@ -22,7 +22,7 @@ export default [{
   }]
 }, {
   treeshake: false,
-  input: 'src/mapshaper.js',
+  input: 'src/mapshaper.mjs',
   output: [{
     strict: false,
     format: 'iife',
