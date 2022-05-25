@@ -9,7 +9,7 @@
 		"cartography",
 		"simplification",
 		"topology",
-    "csv",
+		"csv",
 		"gis"
 	],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
@@ -25,7 +25,8 @@
 	"scripts": {
 		"test": "mocha test",
 		"build": "rollup --config",
-		"prepublishOnly": "npm test; ./pre-publish",
+    "lint": "eslint --ext mjs src/",
+		"prepublishOnly": "npm lint; npm test; ./pre-publish",
 		"postpublish": "./release_web_ui; ./release_github_version",
 		"browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r kdbush -r @tmcw/togeojson -o www/modules.js",
 		"dev": "rollup --config --watch"
@@ -61,6 +62,7 @@
 		"@rollup/plugin-node-resolve": "^13.3.0",
 		"browserify": "^17.0.0",
 		"csv-spectrum": "^1.0.0",
+		"eslint": "^8.16.0",
 		"mocha": "^10.0.0",
 		"rollup": "^2.73.0",
 		"shell-quote": "^1.6.1",
@@ -71,6 +73,7 @@
 		"node-option": [
 			"experimental-specifier-resolution=node"
 		],
+		"check-leaks": true,
 		"parallel": true,
 		"jobs": 4
 	},
