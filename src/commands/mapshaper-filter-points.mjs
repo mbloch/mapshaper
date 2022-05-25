@@ -9,6 +9,8 @@ import { getPointsInLayer } from '../points/mapshaper-point-utils';
 import { getAlphaDistanceFilter } from '../commands/mapshaper-alpha-shapes';
 import Delaunator from 'delaunator';
 
+
+// Removes points that are far from other points
 cmd.filterPoints = function(lyr, dataset, opts) {
   requireSinglePointLayer(lyr);
   if (opts.group_interval > 0 === false) {
@@ -23,7 +25,7 @@ cmd.filterPoints = function(lyr, dataset, opts) {
   var index = new Uint8Array(points.length);
   var a, b, c, ai, bi, ci;
   for (var i=0, n=triangles.length; i<n; i+=3) {
-    // a, b, c: triangle verticies in CCW order
+    // a, b, c: triangle vertices in CCW order
     ai = triangles[i];
     bi = triangles[i+1];
     ci = triangles[i+2];

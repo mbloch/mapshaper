@@ -10,10 +10,6 @@ export function getPolylineBufferMaker(arcs, geod, getBearing, opts) {
   // polyline output could be used for debugging
   var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
 
-  function polygonCoords(ring) {
-    return [ring];
-  }
-
   function pathBufferCoords(pathArcs, dist) {
     var pathCoords = maker(pathArcs, dist);
     var revPathArcs;
@@ -43,12 +39,8 @@ function getPathBufferMaker(arcs, geod, getBearing, opts) {
   var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-  var tolerance;
+  // var tolerance;
   // TODO: implement other join styles than round
-
-  function updateTolerance(dist) {
-
-  }
 
   function addRoundJoin(arr, x, y, startDir, angle, dist) {
     var increment = 10;
@@ -60,15 +52,15 @@ function getPathBufferMaker(arcs, geod, getBearing, opts) {
     }
   }
 
-  function addRoundJoin2(arr, x, y, startDir, angle, dist) {
-    var increment = 10;
-    var endDir = startDir + angle;
-    var dir = startDir + increment;
-    while (dir < endDir) {
-      addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
-      dir += increment;
-    }
-  }
+  // function addRoundJoin2(arr, x, y, startDir, angle, dist) {
+  //   var increment = 10;
+  //   var endDir = startDir + angle;
+  //   var dir = startDir + increment;
+  //   while (dir < endDir) {
+  //     addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+  //     dir += increment;
+  //   }
+  // }
 
   // Test if two points are within a snapping tolerance
   // TODO: calculate the tolerance more sensibly

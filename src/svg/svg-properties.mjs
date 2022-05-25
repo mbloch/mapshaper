@@ -28,6 +28,7 @@ var stylePropertyTypes = {
   'stroke-opacity': 'number',
   'stroke-miterlimit': 'number',
   'fill-opacity': 'number',
+  'vector-effect': null,
   'text-anchor': null
 };
 
@@ -57,7 +58,7 @@ var symbolPropertyTypes = utils.extend({
   effect: null // e.g. "fade"
 }, stylePropertyTypes);
 
-var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
+var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity,vector-effect'.split(',');
 
 var propertiesBySymbolType = {
   polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
@@ -137,7 +138,7 @@ export function getSymbolDataAccessor(lyr, opts) {
 export function mightBeExpression(str, fields) {
   fields = fields || [];
   if (fields.indexOf(str.trim()) > -1) return true;
-  return /[(){}./*?:&|=\[+-]/.test(str);
+  return /[(){}./*?:&|=[+-]/.test(str);
 }
 
 export function getSymbolPropertyAccessor(val, svgName, lyr) {

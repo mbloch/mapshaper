@@ -66,7 +66,7 @@ export function getPointBufferPolygon(points, distance, vertices, geod, spherica
       rings.push([
         [[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]],
         coords
-        ]);
+      ]);
     } else {
       rings.push([coords]);
     }

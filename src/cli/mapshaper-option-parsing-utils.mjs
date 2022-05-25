@@ -1,5 +1,5 @@
 import utils from '../utils/mapshaper-utils';
-var assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i; // exclude ==
+var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
 
 export function splitShellTokens(str) {
   var BAREWORD = '([^\'"\\s])+';

@@ -62,15 +62,14 @@ export function getPolylineBufferMaker2(arcs, geod, getBearing, opts) {
 function getPathBufferMaker2(arcs, geod, getBearing, opts) {
   var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
   var pathIter = new ShapeIter(arcs);
-  var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-  var tolerance;
+  // var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var partials, left, center;
   var bounds;
   // TODO: implement other join styles than round
 
-  function updateTolerance(dist) {
+  // function updateTolerance(dist) {
 
-  }
+  // }
 
   function addRoundJoin(x, y, startDir, angle, dist) {
     var increment = 10;
@@ -114,24 +113,24 @@ function getPathBufferMaker2(arcs, geod, getBearing, opts) {
     }
   }
 
-  function makeCap(x, y, direction, dist) {
-    if (capStyle == 'flat') {
-      return [[x, y]];
-    }
-    return makeRoundCap(x, y, direction, dist);
-  }
+  // function makeCap(x, y, direction, dist) {
+  //   if (capStyle == 'flat') {
+  //     return [[x, y]];
+  //   }
+  //   return makeRoundCap(x, y, direction, dist);
+  // }
 
-  function makeRoundCap(x, y, segmentDir, dist) {
-    var points = [];
-    var increment = 10;
-    var startDir = segmentDir - 90;
-    var angle = increment;
-    while (angle < 180) {
-      points.push(geod(x, y, startDir + angle, dist));
-      angle += increment;
-    }
-    return points;
-  }
+  // function makeRoundCap(x, y, segmentDir, dist) {
+  //   var points = [];
+  //   var increment = 10;
+  //   var startDir = segmentDir - 90;
+  //   var angle = increment;
+  //   while (angle < 180) {
+  //     points.push(geod(x, y, startDir + angle, dist));
+  //     angle += increment;
+  //   }
+  //   return points;
+  // }
 
   // get angle between two extruded segments in degrees
   // positive angle means join in convex (range: 0-180 degrees)
@@ -228,18 +227,20 @@ function getPathBufferMaker2(arcs, geod, getBearing, opts) {
   }
 
   return function(path, dist) {
-    var x0, y0, x1, y1, x2, y2;
+    // var x0, y0;
+    var x1, y1, x2, y2;
     var p1, p2;
-    var bearing, prevBearing, firstBearing, joinAngle;
+    // var firstBearing;
+    var bearing, prevBearing, joinAngle;
     partials = [];
     left = [];
     center = [];
     pathIter.init(path);
 
-    if (pathIter.hasNext()) {
-      x0 = x2 = pathIter.x;
-      y0 = y2 = pathIter.y;
-    }
+    // if (pathIter.hasNext()) {
+    //   x0 = x2 = pathIter.x;
+    //   y0 = y2 = pathIter.y;
+    // }
     while (pathIter.hasNext()) {
       // TODO: use a tolerance
       if (pathIter.x === x2 && pathIter.y === y2) continue; // skip duplicate points
@@ -256,9 +257,9 @@ function getPathBufferMaker2(arcs, geod, getBearing, opts) {
 
       if (center.length === 0) {
         // first loop, second point in this partial
-        if (partials.length === 0) {
-          firstBearing = bearing;
-        }
+        // if (partials.length === 0) {
+        //   firstBearing = bearing;
+        // }
         left.push(p1, p2);
         center.push([x1, y1], [x2, y2]);
       } else {

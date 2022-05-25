@@ -124,7 +124,13 @@ export function Basemap(gui, ext) {
     var warning;
 
     if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
-      warning = 'The current layer is not compatible with the projection used by the basemaps.';
+      warning = 'This data is incompatible with the basemaps.';
+      if (!internal.layerHasGeometry(activeLyr.layer)) {
+        warning += ' Reason: layer is missing geographic data';
+      } else if (!dataCRS) {
+        warning += ' Reason: unknown projection.';
+      }
+
       basemapWarning.html(warning).show();
       basemapNote.hide();
     } else {

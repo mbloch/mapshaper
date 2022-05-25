@@ -6,7 +6,7 @@ var f;
 if (typeof require == 'function') {
   f = require;
 } else {
-  f = function(name) {
+  f = function() {
     // console.error('Unable to load module', name);
   };
 }

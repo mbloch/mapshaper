@@ -17,7 +17,7 @@ export function formatLayerNameForDisplay(name) {
 
 export function cleanLayerName(raw) {
   return raw.replace(/[\n\t/\\]/g, '')
-    .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+    .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
 }
 
 export function updateLayerStackOrder(layers) {

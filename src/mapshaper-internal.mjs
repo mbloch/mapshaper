@@ -2,7 +2,6 @@
 // so they can be run by tests and by the GUI.
 // TODO: rewrite tests to import functions directly from modules,
 //       export only functions called by the GUI.
-
 var internal = {};
 export default internal;
 
@@ -67,7 +66,6 @@ Object.assign(internal, {
   Transform
 });
 
-import * as Affine from './commands/mapshaper-affine';
 import * as AnchorPoints from './points/mapshaper-anchor-points';
 import * as ArcClassifier from './topology/mapshaper-arc-classifier';
 import * as ArcDissolve from './paths/mapshaper-arc-dissolve';

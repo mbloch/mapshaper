@@ -129,7 +129,7 @@ var entityMap = {
   '/': '&#x2F;'
 };
 export function htmlEscape(s) {
-  return String(s).replace(/[&<>"'\/]/g, function(s) {
+  return String(s).replace(/[&<>"'/]/g, function(s) {
     return entityMap[s];
   });
 }
@@ -832,7 +832,7 @@ function formatValue(val, matches) {
 
 // Get a function for interpolating formatted values into a string.
 export function formatter(fmt) {
-  var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+  var codeRxp = /%([',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
   var literals = [],
       formatCodes = [],
       startIdx = 0,

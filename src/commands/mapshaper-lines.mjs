@@ -248,7 +248,7 @@ function extractLines(shapes, classify) {
     var arcId = o.arcId,
         key = classify(arcId),
         isContinuation, line;
-    if (!!key) {
+    if (key) {
       line = key in index ? index[key] : null;
       isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
       if (!line) {

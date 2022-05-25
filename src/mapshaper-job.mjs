@@ -1,16 +1,15 @@
 import { Catalog } from './dataset/mapshaper-catalog';
 import { stashVar, clearStash } from './mapshaper-stash';
-import { error } from './utils/mapshaper-logging';
 
 export function Job(catalog) {
   var currentCmd;
 
-	var job = {
+  var job = {
     catalog: catalog || new Catalog(),
     defs: {},
     settings: {},
     input_files: []
-	};
+  };
 
   job.initSettings = function(o) {
     job.settings = o;

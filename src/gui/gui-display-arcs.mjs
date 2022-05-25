@@ -8,7 +8,7 @@ export function enhanceArcCollectionForDisplay(unfilteredArcs) {
 
   // Only generate low-detail arcs for larger datasets
   if (size > 5e5) {
-    if (!!unfilteredArcs.getVertexData().zz) {
+    if (unfilteredArcs.getVertexData().zz) {
       // Use precalculated simplification data for vertex filtering, if available
       filteredArcs = initFilteredArcs(unfilteredArcs);
       filteredSegLen = internal.getAvgSegment(filteredArcs);
