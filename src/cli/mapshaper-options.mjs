@@ -1837,6 +1837,10 @@ export function getOptionParser() {
       // describe: (0-1) inset grid shapes by a percentage
       type: 'number'
     })
+    .option('aligned', {
+      // describe: all grids of a given cell size will be aligned
+      type: 'flag'
+    })
     .option('calc', calcOpt)
     .option('name', nameOpt)
     .option('target', targetOpt)

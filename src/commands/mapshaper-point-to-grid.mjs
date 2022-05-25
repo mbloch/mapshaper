@@ -23,7 +23,7 @@ cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
     stop('Expected a non-negative interval parameter');
   }
   if (opts.radius > 0 === false) {
-    stop('Expected a non-negative radius parameter');
+    // stop('Expected a non-negative radius parameter');
   }
   // var bbox = getLayerBounds(pointLyr).toArray();
   // Use target dataset, so grids are aligned between layers
@@ -51,27 +51,24 @@ cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
 };
 
 function getPolygonDataset(pointLyr, gridBBox, opts) {
-  var interval = opts.interval;
   var points = getPointsInLayer(pointLyr);
-  var grid = getGridData(gridBBox, interval);
-  var lookup = getPointIndex(points, grid, opts.radius);
-  var n = grid.cells();
+  var cellSize = opts.interval;
+  var grid = getGridData(gridBBox, cellSize, opts);
+  var pointCircleRadius = getPointCircleRadius(opts);
+  var findPointIdsByCellId = getPointIndex(points, grid, pointCircleRadius);
   var geojson = {
     type: 'FeatureCollection',
     features: []
   };
-  var calc = null;
-  var cands, center, weight, d;
-  if (opts.calc) {
-    calc = getJoinCalc(pointLyr.data, opts.calc);
-  }
+  var calc = opts.calc ? getJoinCalc(pointLyr.data, opts.calc) : null;
+  var candidateIds, weights, center, weight, d;
 
-  for (var i=0; i<n; i++) {
-    cands = lookup(i);
-    if (!cands.length) continue;
+  for (var i=0, n=grid.cells(); i<n; i++) {
+    candidateIds = findPointIdsByCellId(i);
+    if (!candidateIds.length) continue;
     center = grid.idxToPoint(i);
-    d = calcCellProperties(center, cands, points, calc, opts);
-    // weight = calcCellWeight(center, cands, points, opts);
+    weights = calcWeights(center, cellSize, points, candidateIds, pointCircleRadius);
+    d = calcCellProperties(candidateIds, weights, calc);
     if (d.weight > 0.05 === false) continue;
     d.id = i;
     geojson.features.push({
@@ -80,44 +77,43 @@ function getPolygonDataset(pointLyr, gridBBox, opts) {
       geometry: makeCellPolygon(i, grid, opts)
     });
   }
-  var dataset = importGeoJSON(geojson, {});
-  return dataset;
+  return importGeoJSON(geojson, {});
 }
 
-function calcCellProperties(center, cands, points, calc, opts) {
-  // radius of circle with same area as the cell
-  var interval = opts.interval;
-  var radius = interval * Math.sqrt(1 / Math.PI);
-  var circleArea = Math.PI * opts.radius * opts.radius;
-  var cellArea = interval * interval;
-  var ids = [];
-  var totArea = 0;
-  var intersection;
-  for (var i=0; i<cands.length; i++) {
-    intersection = twoCircleIntersection(center, radius, points[cands[i]], opts.radius);
-    if (intersection > 0 === false) continue;
-    totArea += intersection;
-    ids.push(cands[i]);
+function getPointCircleRadius(opts) {
+  var cellRadius = opts.interval * Math.sqrt(1 / Math.PI);
+  return opts.radius > 0 ? opts.radius : cellRadius;
+}
+
+function calcCellProperties(pointIds, weights, calc) {
+  var hitIds = [];
+  var weight = 0;
+  var partial;
+  var d;
+  for (var i=0; i<pointIds.length; i++) {
+    partial = weights[i];
+    if (partial > 0 === false) continue;
+    weight += partial;
+    hitIds.push(pointIds[i]);
   }
-  var d = {weight: totArea / cellArea};
+  d = {weight: weight};
   if (calc) {
-    calc(ids, d);
+    calc(hitIds, d);
   }
   return d;
 }
 
-// function calcCellWeight(center, ids, points, opts) {
-//   // radius of circle with same area as the cell
-//   var interval = opts.interval;
-//   var radius = interval * Math.sqrt(1 / Math.PI);
-//   var circleArea = Math.PI * opts.radius * opts.radius;
-//   var cellArea = interval * interval;
-//   var totArea = 0;
-//   for (var i=0; i<ids.length; i++) {
-//     totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
-//   }
-//   return totArea / cellArea;
-// }
+function calcWeights(cellCenter, cellSize, points, pointIds, pointRadius) {
+  var weights = [];
+  var cellRadius = cellSize * Math.sqrt(1 / Math.PI); // radius of circle with same area as cell
+  var cellArea = cellSize * cellSize;
+  var w;
+  for (var i=0; i<pointIds.length; i++) {
+    w = twoCircleIntersection(cellCenter, cellRadius, points[pointIds[i]], pointRadius) / cellArea;
+    weights.push(w);
+  }
+  return weights;
+}
 
 // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
 export function twoCircleIntersection(c1, r1, c2, r2) {
@@ -172,8 +168,17 @@ function getPointIndex(points, grid, radius) {
   return function(i) {
     if (!gridIndex.hasId(i)) return empty;
     var bbox = grid.idxToBBox(i);
-    return bboxIndex.search.apply(bboxIndex, bbox);
+    var indices = bboxIndex.search.apply(bboxIndex, bbox);
+    return indices;
   };
+}
+
+function getPointsByIndex(points, indices) {
+  var arr = [];
+  for (var i=0; i<indices.length; i++) {
+    arr.push(points[indices[i]]);
+  }
+  return arr;
 }
 
 function addPointToGridIndex(p, index, grid) {
@@ -201,23 +206,52 @@ function getPointBounds(p, radius) {
   return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
 }
 
-function getGridInterpolator(bbox, interval) {
-  var sparseArr = [];
-  var grid = getGridData(bbox, interval);
-
+// grid boundaries includes the origin
+// (this way, grids calculated from different sets of points will all align)
+function getAlignedRange(minCoord, maxCoord, interval) {
+  var idx = Math.floor(minCoord / interval) - 1;
+  var idx2 = Math.ceil(maxCoord / interval) + 1;
+  return [idx * interval, idx2 * interval];
 }
 
-// TODO: put this in a separate file, use it for other grid-based commands
-// like -dots
-function getGridData(bbox, interval) {
-  var xmin = bbox[0] - interval;
-  var ymin = bbox[1] - interval;
-  var xmax = bbox[2] + interval;
-  var ymax = bbox[3] + interval;
-  var w = xmax - xmin;
-  var h = ymax - ymin;
-  var cols = Math.ceil(w / interval);
-  var rows = Math.ceil(h / interval);
+function getCenteredRange(minCoord, maxCoord, interval) {
+  var w = maxCoord - minCoord;
+  var w2 = Math.ceil(w / interval) * interval;
+  var pad = (w2 - w) / 2 + interval;
+  return [minCoord - pad, maxCoord + pad];
+}
+
+export function getAlignedGridBounds(bbox, interval) {
+  var xx = getAlignedRange(bbox[0], bbox[2], interval);
+  var yy = getAlignedRange(bbox[1], bbox[3], interval);
+  return [xx[0], yy[0], xx[1], yy[1]];
+}
+
+export function getCenteredGridBounds(bbox, interval) {
+  var xx = getCenteredRange(bbox[0], bbox[2], interval);
+  var yy = getCenteredRange(bbox[1], bbox[3], interval);
+  return [xx[0], yy[0], xx[1], yy[1]];
+}
+
+// TODO: Use this function for other grid-based commands
+function getGridData(bbox, interval, opts) {
+  var extent = opts && opts.aligned ?
+    getAlignedGridBounds(bbox, interval) :
+    getCenteredGridBounds(bbox, interval);
+  var xmin = extent[0];
+  var ymin = extent[1];
+  var w = extent[2] - xmin;
+  var h = extent[3] - ymin;
+  var cols = Math.round(w / interval);
+  var rows = Math.round(h / interval);
+  // var xmin = bbox[0] - interval;
+  // var ymin = bbox[1] - interval;
+  // var xmax = bbox[2] + interval;
+  // var ymax = bbox[3] + interval;
+  // var w = xmax - xmin;
+  // var h = ymax - ymin;
+  // var cols = Math.ceil(w / interval);
+  // var rows = Math.ceil(h / interval);
   function size() {
     return [cols, rows];
   }
