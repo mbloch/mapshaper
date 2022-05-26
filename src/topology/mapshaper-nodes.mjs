@@ -21,12 +21,12 @@ export function NodeCollection(arcs, filter) {
   // Accessor function for arcs
   Object.defineProperty(this, 'arcs', {value: arcs});
 
-  var toArray = this.toArray = function() {
+  this.toArray = function() {
     var chains = getNodeChains(),
         flags = new Uint8Array(chains.length),
         arr = [];
     utils.forEach(chains, function(nextIdx, thisIdx) {
-      var node, x, y, p;
+      var node, p;
       if (flags[thisIdx] == 1) return;
       p = getEndpoint(thisIdx);
       if (!p) return; // endpoints of an excluded arc

@@ -3,7 +3,6 @@ import { convertFillPattern } from '../svg/svg-hatch';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { fetchFileSync } from '../svg/svg-fetch';
-import { stringify } from '../svg/svg-stringify';
 import require from '../mapshaper-require';
 
 // convert object properties to definitions for images and hatch fills

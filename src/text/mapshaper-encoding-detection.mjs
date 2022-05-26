@@ -79,8 +79,7 @@ function looksLikeUtf8(samples) {
 // @chars String of chars to look for in @str
 function getCharScore(str, chars) {
   var index = {},
-      count = 0,
-      score;
+      count = 0;
   str = str.toLowerCase();
   for (var i=0, n=chars.length; i<n; i++) {
     index[chars[i]] = 1;

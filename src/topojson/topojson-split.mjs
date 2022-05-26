@@ -7,7 +7,7 @@ import utils from '../utils/mapshaper-utils';
 // named geometry object.
 // Arcs are filtered and arc ids are reindexed as needed.
 
-function splitTopology(topology) {
+export function splitTopology(topology) {
   var topologies = {};
   Object.keys(topology.objects).forEach(function(name) {
     var split = {

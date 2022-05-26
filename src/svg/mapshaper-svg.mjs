@@ -1,5 +1,4 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
-import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { getFurnitureLayerData, layerHasFurniture, importFurniture } from '../furniture/mapshaper-furniture';
 import { getFrameData } from '../furniture/mapshaper-frame-data';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
@@ -104,7 +103,6 @@ function exportSymbolsForSVG(lyr, dataset, opts) {
   var geojson = exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var children = importGeoJSONFeatures(features, opts);
-  var data;
   if (opts.svg_data && lyr.data) {
     addDataAttributesToSVG(children, lyr.data, opts.svg_data);
   }

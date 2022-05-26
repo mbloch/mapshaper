@@ -772,8 +772,8 @@ function formatValue(val, matches) {
   var type = matches[4];
   var isString = type == 's',
       isHex = type == 'x' || type == 'X',
-      isInt = type == 'd' || type == 'i',
-      isFloat = type == 'f',
+      // isInt = type == 'd' || type == 'i',
+      // isFloat = type == 'f',
       isNumber = !isString;
 
   var sign = "",

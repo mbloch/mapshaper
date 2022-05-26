@@ -4,7 +4,7 @@ import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import utils from '../utils/mapshaper-utils';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { importMetadata } from '../dataset/mapshaper-metadata';
-import { layerHasPaths, layerHasPoints, divideFeaturesByType } from '../dataset/mapshaper-layer-utils';
+import { layerHasPaths, divideFeaturesByType } from '../dataset/mapshaper-layer-utils';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { importCRS } from '../geojson/geojson-import';
@@ -131,7 +131,6 @@ TopoJSON.GeometryImporter = function(arcs, opts) {
       shapes = [], // topological ids
       types = [],
       dataNulls = 0,
-      shapeNulls = 0,
       collectionType = null,
       shapeId;
 
@@ -148,15 +147,12 @@ TopoJSON.GeometryImporter = function(arcs, opts) {
     if (geom.type) {
       this.addShape(geom);
     }
-    if (shapes[shapeId] === null) {
-      shapeNulls++;
-    }
   };
 
   this.addShape = function(geom) {
     var curr = shapes[shapeId];
     var type = GeoJSON.translateGeoJSONType(geom.type);
-    var shape, importer;
+    var shape;
     if (geom.type == "GeometryCollection") {
       geom.geometries.forEach(this.addShape, this);
     } else if (type) {

@@ -1,5 +1,5 @@
 import utils from '../utils/mapshaper-utils';
-import { stop, message } from '../utils/mapshaper-logging';
+import { message } from '../utils/mapshaper-logging';
 
 /* example patterns
 hatches 1px black 1px red 1px white
@@ -16,18 +16,18 @@ export function parsePattern(str) {
   // accept variations on type names (dot, dots, square, squares, hatch, hatches, hatched)
   if (first.startsWith('dot')) {
     parts[0] = 'dots';
-    obj = parseDots(parts, str);
+    obj = parseDots(parts);
   } else if (first.startsWith('square')) {
     parts[0] = 'squares';
-    obj = parseDots(parts, str);
+    obj = parseDots(parts);
   } else if (first.startsWith('hatch')) {
     parts[0] = 'hatches';
-    obj = parseHatches(parts, str);
+    obj = parseHatches(parts);
   } else if (first.startsWith('dash')) {
-    obj = parseDashes(parts, str);
+    obj = parseDashes(parts);
   } else if (!isNaN(parseFloat(first))) {
     parts.unshift('hatches');
-    obj = parseHatches(parts, str); // hatches is the default, name can be omitted
+    obj = parseHatches(parts); // hatches is the default, name can be omitted
   }
   if (!obj) {
     // consider
@@ -36,7 +36,7 @@ export function parsePattern(str) {
   return obj;
 }
 
-export function parseDashes(parts, str) {
+export function parseDashes(parts) {
   // format:
   // "dashes" dash-len dash-space width color1 [color2...] space bg-color
   // examples:
@@ -77,7 +77,7 @@ export function parseDashes(parts, str) {
   };
 }
 
-export function parseHatches(parts, str) {
+export function parseHatches(parts) {
   // format:
   // [hatches] [rotation] width1 color1 [width2 color2 ...]
   // examples:
@@ -104,7 +104,7 @@ function isSize(str) {
   return parseInt(str) > 0;
 }
 
-export function parseDots(parts, str) {
+export function parseDots(parts) {
   // format:
   // "dots"|"squares" [rotation] size color1 [color2 ...] spacing bg-color
   // examples:

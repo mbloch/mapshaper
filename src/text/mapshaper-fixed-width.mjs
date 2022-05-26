@@ -1,5 +1,4 @@
 import utils from '../utils/mapshaper-utils';
-import { stop } from '../utils/mapshaper-logging';
 
 export function exportRecordsAsFixedWidthString(fields, records, opts) {
   var rows = [], col;
@@ -54,7 +53,7 @@ export function readFixedWidthRecords(reader, opts) {
   return readFixedWidthRecordsFromString(str, opts);
 }
 
-export function readFixedWidthRecordsFromString(str, ops) {
+export function readFixedWidthRecordsFromString(str) {
   var fields = parseFixedWidthInfo(str.substring(0, 2000));
   if (!fields) return [];
   var lines = utils.splitLines(str);

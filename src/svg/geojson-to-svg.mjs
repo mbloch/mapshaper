@@ -1,8 +1,6 @@
 
 import { stringifyLineStringCoords, stringifyPolygonCoords } from '../svg/svg-path-utils';
 import GeoJSON from '../geojson/geojson-common';
-import { stop } from '../utils/mapshaper-logging';
-import utils from '../utils/mapshaper-utils';
 import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes } from '../svg/svg-properties';
 
@@ -17,7 +15,7 @@ var geojsonImporters = {
 
 export function importGeoJSONFeatures(features, opts) {
   opts = opts || {};
-  return features.map(function(obj, i) {
+  return features.map(function(obj) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
     var msType = GeoJSON.translateGeoJSONType(geomType);

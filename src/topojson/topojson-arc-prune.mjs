@@ -9,7 +9,7 @@ export function pruneArcs(topology) {
   var arcs = topology.arcs;
   var retained = new Uint32Array(arcs.length);
 
-  utils.forEachProperty(topology.objects, function(obj, name) {
+  utils.forEachProperty(topology.objects, function(obj) {
     TopoJSON.forEachArc(obj, function(arcId) {
       // TODO: skip collapsed arcs
       if (arcId < 0) arcId = ~arcId;
