@@ -36,7 +36,6 @@ function draggable(ref) {
 }
 
 export function Slider(ref, opts) {
-  var _el = El(ref);
   var _self = this;
   var defaults = {
     space: 7
@@ -67,7 +66,7 @@ export function Slider(ref, opts) {
       _handle = El(ref);
       draggable(_handle)
         .on('drag', function(e) {
-          setHandlePos(startX + e.dx, true);
+          setHandlePos(startX + e.dx);
         })
         .on('dragstart', function(e) {
           startX = position();
@@ -93,7 +92,7 @@ export function Slider(ref, opts) {
     return _pct;
   };
 
-  function setHandlePos(x, fire) {
+  function setHandlePos(x) {
     x = utils.clamp(x, 0, size());
     var pct = x / size();
     if (pct != _pct) {

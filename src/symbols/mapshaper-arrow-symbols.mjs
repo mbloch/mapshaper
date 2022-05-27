@@ -1,5 +1,5 @@
 
-import { addBezierArcControlPoints, rotateCoords, flipY, scaleAndShiftCoords } from './mapshaper-symbol-utils';
+import { rotateCoords, flipY, scaleAndShiftCoords } from './mapshaper-symbol-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 export function getStickArrowCoords(d) {
@@ -36,10 +36,10 @@ export function getArrowCoords(d, style) {
     dy = stemLen * Math.cos(theta / 2);
 
     if (stickArrow) {
-      stem = getCurvedStemCoords(-ax, -ay, dx, dy, theta);
+      stem = getCurvedStemCoords(-ax, -ay, dx, dy);
     } else {
-      var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
-      var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
+      var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy);
+      var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy);
       stem = leftStem.concat(rightStem.reverse());
     }
 
@@ -83,10 +83,10 @@ export function getArrowCoords(d, style) {
   return coords;
 }
 
-function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
-  return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
-        [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
-}
+// function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
+//   return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
+//         [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
+// }
 
 function calcArrowSize(d, stickArrow) {
   // don't display arrows with negative length
@@ -153,7 +153,7 @@ function getHeadSizeRatio(headAngle) {
 
 // ax, ay: point on the base
 // bx, by: point on the stem
-function getCurvedStemCoords(ax, ay, bx, by, theta0) {
+function getCurvedStemCoords(ax, ay, bx, by) {
   // case: curved side intrudes into head (because stem is too short)
   if (ay > by) {
     return [[ax * by / ay, by]];

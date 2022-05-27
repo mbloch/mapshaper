@@ -1,6 +1,5 @@
 import { detectEncoding, decodeSamples } from '../text/mapshaper-encoding-detection';
 import utils from '../utils/mapshaper-utils';
-import { BinArray } from '../utils/mapshaper-binarray';
 import { bufferToString, standardizeEncodingName, decodeString } from '../text/mapshaper-encodings';
 import { formatStringsAsGrid, stop, message, error, verbose } from '../utils/mapshaper-logging';
 import { getUniqFieldNames } from '../datatable/mapshaper-data-utils';

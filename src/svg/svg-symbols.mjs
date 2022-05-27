@@ -140,7 +140,7 @@ function line(d, x, y) {
 }
 
 // polyline coords are like GeoJSON MultiLineString coords: an array of 0 or more paths
-function polyline(d, x, y) {
+function polyline(d) {
   var coords = d.coordinates || [];
   var o = importMultiLineString(coords);
   applyStyleAttributes(o, 'polyline', d);
@@ -148,7 +148,7 @@ function polyline(d, x, y) {
 }
 
 // polygon coords are an array of rings (and holes), like flattened MultiPolygon coords
-function polygon(d, x, y) {
+function polygon(d) {
   var coords = d.coordinates || [];
   var o = importPolygon(coords);
   applyStyleAttributes(o, 'polygon', d);

@@ -1,8 +1,6 @@
 import { internal } from './gui-core';
-import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex, translateDisplayPoint } from './gui-display-utils';
+import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex } from './gui-display-utils';
 
-var snapVerticesToPoint = internal.snapVerticesToPoint;
-var cloneShape = internal.cloneShape;
 var copyRecord = internal.copyRecord;
 
 export function Undo(gui) {

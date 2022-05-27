@@ -297,10 +297,6 @@ function convertIntersectionsToCutPoints(intersections, xx, yy) {
 //   if point x,y falls on an endpoint
 // Assumes: i <= j
 export function getCutPoint(x, y, i, j, xx, yy) {
-  var ix = xx[i],
-      iy = yy[i],
-      jx = xx[j],
-      jy = yy[j];
   if (j < i || j > i + 1) {
     error("Out-of-sequence arc ids:", i, j);
   }

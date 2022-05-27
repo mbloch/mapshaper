@@ -1,9 +1,7 @@
 import { getPolygonCoords } from './mapshaper-basic-symbols';
 import { parseNumberList } from '../cli/mapshaper-option-parsing-utils';
-import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { getSymbolRadius, getSymbolFillColor } from './mapshaper-symbol-utils';
-import { makeCircleSymbol } from './mapshaper-basic-symbols';
+import { getSymbolFillColor } from './mapshaper-symbol-utils';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 
 // Returns a svg-symbol object

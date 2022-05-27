@@ -7,7 +7,6 @@ import { IdLookupIndex } from '../indexing/mapshaper-id-lookup-index';
 import { PolygonTiler } from '../polygons/mapshaper-polygon-tiler';
 import { error, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
-import { T } from '../utils/mapshaper-timing';
 
 export function MosaicIndex(lyr, nodes, optsArg) {
   var opts = optsArg || {};

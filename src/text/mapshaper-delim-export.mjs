@@ -72,11 +72,6 @@ function formatHeader(fields, formatRow) {
   return formatRow(rec);
 }
 
-function formatDelimHeader(fields, delim) {
-  var formatValue = getDelimValueFormatter(delim);
-  return fields.map(formatValue).join(delim);
-}
-
 function getDelimRowFormatter(fields, delim, opts) {
   var formatValue = getDelimValueFormatter(delim, opts);
   return function(rec) {

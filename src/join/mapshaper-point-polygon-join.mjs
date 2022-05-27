@@ -1,4 +1,4 @@
-import { joinTables, joinTableToLayer } from '../join/mapshaper-join-tables';
+import { joinTableToLayer } from '../join/mapshaper-join-tables';
 import { stop } from '../utils/mapshaper-logging';
 import { PathIndex } from '../paths/mapshaper-path-index';
 import { DataTable } from '../datatable/mapshaper-data-table';

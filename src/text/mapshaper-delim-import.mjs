@@ -18,7 +18,7 @@ export function importDelim2(data, opts) {
   // TODO: remove duplication with importJSON()
   var readFromFile = !data.content && data.content !== '',
       content = data.content,
-      filter, reader, records, delimiter, table, encoding;
+      reader, records, delimiter, table, encoding;
   opts = opts || {};
 
   // // read content of all but very large files into a buffer

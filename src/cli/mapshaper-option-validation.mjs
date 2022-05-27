@@ -43,42 +43,18 @@ export function validateSimplifyOpts(cmd) {
     }
   }
 
-  // var intervalStr = o.interval;
-  // if (intervalStr) {
-  //   o.interval = Number(intervalStr);
-  //   if (o.interval >= 0 === false) {
-  //     error(utils.format("Out-of-range interval value: %s", intervalStr));
-  //   }
-  // }
-
   if (!o.interval && !o.percentage && !o.resolution) {
     error("Command requires an interval, percentage or resolution parameter");
   }
 }
 
 export function validateProjOpts(cmd) {
-  var _ = cmd._,
-      proj4 = [];
+  var _ = cmd._;
 
   if (_.length > 0 && !cmd.options.crs) {
     cmd.options.crs = _.join(' ');
     _ = [];
   }
-
-  // separate proj4 options
-  // _ = _.filter(function(arg) {
-  //   if (/^\+[a-z]/i.test(arg)) {
-  //     proj4.push(arg);
-  //     return false;
-  //   }
-  //   return true;
-  // });
-
-  // if (proj4.length > 0) {
-  //   cmd.options.crs = proj4.join(' ');
-  // } else if (_.length > 0) {
-  //   cmd.options.crs = _.shift();
-  // }
 
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));

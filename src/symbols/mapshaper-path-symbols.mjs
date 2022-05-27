@@ -1,4 +1,4 @@
-import { rotateCoords, scaleAndShiftCoords, flipY, roundCoordsForSVG, getSymbolFillColor, getSymbolStrokeColor } from '../symbols/mapshaper-symbol-utils';
+import { roundCoordsForSVG, getSymbolFillColor, getSymbolStrokeColor } from '../symbols/mapshaper-symbol-utils';
 import { error } from '../utils/mapshaper-logging';
 import { flattenMultiPolygonCoords } from '../svg/geojson-to-svg';
 

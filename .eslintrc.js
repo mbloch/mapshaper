@@ -19,13 +19,7 @@ module.exports = {
         'no-control-regex': ['off'],
         'no-empty': ['off'], // allow try { ... } catch(e) {}
         'no-constant-condition': ['off'], // allow while(true)
-        'no-unused-vars': [
-          'warn'
-        ],
-        // 'semi': [
-        //   'error',
-        //   'always'
-        // ],
+        'no-unused-vars': ['off'],
         'indent': [
             'off', // indent rule is troublesome
             2
