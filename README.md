@@ -49,13 +49,13 @@ Firefox is able to load Shapefiles and GeoJSON files larger than 1GB. Chrome has
 
 **Command line interface**
 
-There are hard limits for reading and writing most file types. The maximum output size of a single file of any type is 2GB. Some file types (GeoJSON, CSV, .shp) are read incrementally, so much larger files can be imported.
+There are hard limits for reading and writing most file types. The maximum output size of a single file of any type is 2GB. Some file types (GeoJSON, CSV, .shp, .dbf) are read incrementally, so much larger files can be imported.
 
 When working with very large files, mapshaper may become unresponsive or crash with the message "JavaScript heap out of memory."
 
-One option is to run `mapshaper-xl`, which allocates more memory than the standard `mapshaper` program (8GB by default). Starting with version 0.4.131, you can specify the amount of memory to allocate like this: `mapshaper-xl 20gb [commands]`.
+You can use `mapshaper-xl` as a replacement for the standard `mapshaper` program to allocate more heap memory (8GB by default). You can allocate even more memory like this: `mapshaper-xl 20gb [commands]`.
 
-Another solution is to run Node directly with the `--max-old-space-size` option. The following example (Mac or Linux) allocates 16GB of memory:
+Another option is to run Node directly with the `--max-old-space-size` option. The following example (Mac or Linux) allocates 16GB of heap memory:
 ```bash
 $ node  --max-old-space-size=16000 `which mapshaper` <mapshaper commands>
 ```

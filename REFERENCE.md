@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.5.97 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.1 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -85,6 +85,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-run](#-run)
 [-shape](#-shape)
 [-simplify](#-simplify)
+[-snap](#-snap)
 [-sort](#-sort)
 [-split](#-split)
 [-split-on-grid](#-split-on-grid)
@@ -100,12 +101,14 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-elif](#-elif)
 [-else](#-else)
 [-endif](#-endif)
+[-stop](#-stop)
 [-target](#-target)
 
 **Information**
 
 [-calc](#-calc)
 [-colors](#-colors)
+[-comment](#-comment)
 [-encodings](#-encodings)
 [-help](#-help)
 [-info](#-info)
@@ -391,7 +394,7 @@ Remove features or portions of features that fall outside a clipping area.
 
 `remove-slivers` Remove tiny sliver polygons created by clipping.
 
-Common options: [`name` `+` `target`](#common-options)
+Common options: [`name=` `+` `target=`](#common-options)
 
 ```bash
 # Example: Clip a polygon layer using another polygon layer.
@@ -619,7 +622,7 @@ Remove features or portions of features that fall inside an area.
 
 `remove-slivers` Remove tiny sliver polygons created by erasing.
 
-Common options: [`name` `+` `target` ](#common-options)
+Common options: [`name=` `+` `target=`](#common-options)
 
 ```bash
 # Example: Erase a polygon layer using another polygon layer.
@@ -646,7 +649,7 @@ Apply a boolean JavaScript expression to each feature, removing features that ev
 
 `remove-empty` Delete features with null geometry. May be used by itself or in combination with an `<expression>`.
 
-Common options: [`name` `+` `target` ](#common-options)
+Common options: [`name=` `+` `target=` ](#common-options)
 
 ```bash
 # Example: Select counties from New England states
@@ -677,7 +680,7 @@ Remove small detached polygon rings (islands).
 
 `remove-empty` Delete features with null geometry.
 
-[`target`](#common-options)
+[`target=`](#common-options)
 
 
 ### -filter-slivers
@@ -690,7 +693,7 @@ Remove small polygon rings.
 
 `remove-empty` Delete features with null geometry.
 
-[`target`](#common-options)
+[`target=`](#common-options)
 
 
 ### -graticule
@@ -1091,6 +1094,18 @@ mapshaper counties.shp -simplify 10% -o simplified.shp
 mapshaper states.shp -simplify dp interval=100 -o simplified/
 ```
 
+### -snap
+
+Snap together nearby vertices
+
+`interval` Snap tolerance (default is small).
+
+`endpoints` Only snap endpoints of polyline features.
+
+`precision=`  Tound all coordinates to a given decimal precision (e.g. 0.000001).
+
+[`target=`](#common-options)
+
 ### -sort
 
 Sort features in a data layer using a JavaScript expression.
@@ -1101,7 +1116,7 @@ Sort features in a data layer using a JavaScript expression.
 
 `descending` Sort in descending order.
 
-[`target`](#common-options)
+[`target=`](#common-options)
 
 
 ### -split
@@ -1351,6 +1366,18 @@ Run the following commands if all preceding -if/-elif conditions are false.
 
 Mark the end of an -if/-elif/-else sequence.
 
+### -stop
+
+Stop processing (skip remaining commands). Useful when writing scripts, in combination with -if/-elif/-else.
+
+**Example**
+
+```bash
+# Don't try to process a missing file
+mapshaper -if '!file_exists("boundaries.geojson")' -stop -endif \
+  -i boundaries.geojson -proj robin -o output/boundaries.shp
+```
+
 ### -target
 
 Set the target layer or layers for the following command.
@@ -1404,6 +1431,9 @@ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'
 
 ### -colors
 Print list of built-in color schemes. Color schemes can be used with the `color-scheme=` option of the [-classify](#-classify) command. (These color schemes come from the [d3-scale-chromatic](https://github.com/d3/d3-scale-chromatic) library.)
+
+### -comment
+The following text up to the next command is treated as a comment. Useful for adding explanatory comments to a long sequence of commands.
 
 ### -encodings
 Print list of supported text encodings (for .dbf import).
