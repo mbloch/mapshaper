@@ -3,6 +3,14 @@ export function resetControlFlow(job) {
   job.control = null;
 }
 
+export function stopJob(job) {
+  getState(job).stopped = true;
+}
+
+export function jobIsStopped(job) {
+  return getState(job).stopped === true;
+}
+
 export function inControlBlock(job) {
   return !!getState(job).inControlBlock;
 }

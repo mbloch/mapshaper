@@ -1987,6 +1987,9 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
+  parser.command('stop')
+    .describe('stop processing (skip remaining commands)');
+
   parser.section('Informational commands');
 
   parser.command('calc')

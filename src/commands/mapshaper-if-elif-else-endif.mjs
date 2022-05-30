@@ -8,12 +8,14 @@ import {
   enterActiveBranch,
   enterInactiveBranch,
   inActiveBranch,
-  blockWasActive
+  blockWasActive,
+  jobIsStopped
 } from '../mapshaper-control-flow';
 import { compileIfCommandExpression } from '../expressions/mapshaper-layer-expressions';
 
 export function skipCommand(cmdName, job) {
   // allow all control commands to run
+  if (jobIsStopped(job)) return true;
   if (isControlFlowCommand(cmdName)) return false;
   return inControlBlock(job) && !inActiveBranch(job);
 }

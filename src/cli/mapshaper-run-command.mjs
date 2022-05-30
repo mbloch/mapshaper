@@ -75,6 +75,7 @@ import '../commands/mapshaper-simplify';
 import '../commands/mapshaper-sort';
 import '../commands/mapshaper-snap';
 import '../commands/mapshaper-split';
+import '../commands/mapshaper-stop';
 import '../commands/mapshaper-svg-style';
 import '../commands/mapshaper-symbols';
 import '../commands/mapshaper-target';
@@ -96,7 +97,7 @@ function commandAcceptsEmptyTarget(name) {
   return name == 'graticule' || name == 'i' || name == 'help' ||
     name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
-    name == 'else' || name == 'endif';
+    name == 'else' || name == 'endif' || name == 'stop';
 }
 
 export function runCommand(command, job, cb) {
@@ -425,6 +426,9 @@ export function runCommand(command, job, cb) {
 
     } else if (name == 'split') {
       outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
+
+    } else if (name == 'stop') {
+      cmd.stop(job);
 
     } else if (name == 'split-on-grid') {
       outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);
