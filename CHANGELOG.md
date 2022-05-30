@@ -1,3 +1,6 @@
+v0.6.1
+* Added -stop command (can be used in combination with -if/-elif/-else to halt processing under various conditions).
+
 v0.6.0
 * Internal changes that shouldn't affect Mapshaper users.
 
