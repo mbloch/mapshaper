@@ -1682,7 +1682,6 @@
   }
 
   function Slider(ref, opts) {
-    var _el = El(ref);
     var _self = this;
     var defaults = {
       space: 7
@@ -1713,7 +1712,7 @@
         _handle = El(ref);
         draggable(_handle)
           .on('drag', function(e) {
-            setHandlePos(startX + e.dx, true);
+            setHandlePos(startX + e.dx);
           })
           .on('dragstart', function(e) {
             startX = position();
@@ -1739,7 +1738,7 @@
       return _pct;
     };
 
-    function setHandlePos(x, fire) {
+    function setHandlePos(x) {
       x = utils$1.clamp(x, 0, size());
       var pct = x / size();
       if (pct != _pct) {
@@ -3122,7 +3121,7 @@
 
   function cleanLayerName(raw) {
     return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
+      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
   }
 
   function updateLayerStackOrder(layers) {
@@ -3856,8 +3855,6 @@
     }
   }
 
-  var snapVerticesToPoint = internal.snapVerticesToPoint;
-  var cloneShape = internal.cloneShape;
   var copyRecord = internal.copyRecord;
 
   function Undo(gui) {
@@ -4741,7 +4738,7 @@
     '/': '&#x2F;'
   };
   function htmlEscape(s) {
-    return String(s).replace(/[&<>"'\/]/g, function(s) {
+    return String(s).replace(/[&<>"'/]/g, function(s) {
       return entityMap[s];
     });
   }
@@ -5384,8 +5381,8 @@
     var type = matches[4];
     var isString = type == 's',
         isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
+        // isInt = type == 'd' || type == 'i',
+        // isFloat = type == 'f',
         isNumber = !isString;
 
     var sign = "",
@@ -5444,7 +5441,7 @@
 
   // Get a function for interpolating formatted values into a string.
   function formatter(fmt) {
-    var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+    var codeRxp = /%([',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
     var literals = [],
         formatCodes = [],
         startIdx = 0,
@@ -5844,27 +5841,21 @@
 
     function pointTest(x, y) {
       var bullseyeDist = 2, // hit all points w/in 2 px
-          tinyDist = 0.5,
-          toPx = ext.getTransform().mx,
-          hits = [],
           hitThreshold = 25,
-          newThreshold = Infinity;
+          toPx = ext.getTransform().mx,
+          hits = [];
 
+      // inlining forEachPoint() does not not appreciably speed this up
       internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
         var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
         if (dist > hitThreshold) return;
-        // got a hit
-        if (dist < newThreshold) {
-          // start a collection of hits
-          hits = [id];
-          hitThreshold = Math.max(bullseyeDist, dist + tinyDist);
-          newThreshold = dist < bullseyeDist ? -1 : dist - tinyDist;
-        } else {
-          // add to hits if inside bullseye or is same dist as previous hit
-          hits.push(id);
+        if (dist < hitThreshold && hitThreshold > bullseyeDist) {
+          hits = [];
+          hitThreshold = Math.max(bullseyeDist, dist);
         }
+        hits.push(id);
       });
-      // TODO: add info on what part of a shape gets hit
+      // TODO: add info on what part of a shape gets hit?
       return {
         ids: utils$1.uniq(hits) // multipoint features can register multiple hits
       };
@@ -8754,7 +8745,7 @@
           bx = t.bx,
           by = t.by;
       if (size === 0) return;
-      if (size <= 4 && !styler) {
+      if (size <= 6 && !styler) {
         // optimized drawing of many small same-colored dots
         _self.drawSquareDotsFaster(shapes, color, size, t);
         return;
@@ -8811,14 +8802,12 @@
     // pixels: Uint32Array of pixel colors
     // w, h: Size of canvas
     function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
-      var xmin = (x - size * 0.5) | 0;
-      var ymin = (y - size * 0.5) | 0;
-      var xmax = xmin + size - 1;
-      var ymax = ymin + size - 1;
-      var c, r;
-      for (c = xmin; c <= xmax; c++) {
-        if (c < 0 || c >= w) continue;
-        for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
+      var xmin = x < 0 ? 0 : (x - size * 0.5) | 0;
+      var ymin = y < 0 ? 0 : (y - size * 0.5) | 0;
+      var xmax = x >= w-1 ? w-1 : xmin + size - 1;
+      var ymax = y >= h-1 ? h-1 : ymin + size - 1;
+      for (var r = ymin; r <= ymax; r++) {
+        for (var c = xmin; c <= xmax; c++) {
           pixels[r * w + c] = rgba;
         }
       }
@@ -8905,24 +8894,25 @@
     return s;
   }
 
-
   function getDotScale(ext) {
     var smallSide = Math.min(ext.width(), ext.height());
+    var mapScale = ext.scale();
     // reduce size on smaller screens
     var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
+    // grow dots as map zooms in
     var k = 1;
-    var mapScale = ext.scale();
     if (mapScale < 0.5) {
       k = Math.pow(mapScale + 0.5, 0.35);
-    }
-    if (mapScale > 1) {
+    } else if (mapScale > 1) {
       // scale faster at first, so small dots in large datasets
       // become easily visible and clickable after zooming in a bit
       k *= Math.pow(Math.min(mapScale, 10), 0.3);
       k *= Math.pow(mapScale, 0.1);
     }
-
-    return k * j * GUI.getPixelRatio();
+    // grow pixels more slowly on retina displays (to reduce number of pixels to
+    // draw for large point datasets when slightly zoomed in)
+    var l = Math.pow(GUI.getPixelRatio(), 0.8);
+    return j * k * l;
   }
 
   function getScaledTransform(ext) {
@@ -9495,7 +9485,7 @@
 
     // Only generate low-detail arcs for larger datasets
     if (size > 5e5) {
-      if (!!unfilteredArcs.getVertexData().zz) {
+      if (unfilteredArcs.getVertexData().zz) {
         // Use precalculated simplification data for vertex filtering, if available
         filteredArcs = initFilteredArcs(unfilteredArcs);
         filteredSegLen = internal.getAvgSegment(filteredArcs);
@@ -9861,7 +9851,13 @@
       var warning;
 
       if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
-        warning = 'The current layer is not compatible with the projection used by the basemaps.';
+        warning = 'This data is incompatible with the basemaps.';
+        if (!internal.layerHasGeometry(activeLyr.layer)) {
+          warning += ' Reason: layer is missing geographic data';
+        } else if (!dataCRS) {
+          warning += ' Reason: unknown projection.';
+        }
+
         basemapWarning.html(warning).show();
         basemapNote.hide();
       } else {

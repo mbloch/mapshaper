@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.0";
+  var VERSION = "0.6.2";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -258,7 +258,7 @@
     '/': '&#x2F;'
   };
   function htmlEscape(s) {
-    return String(s).replace(/[&<>"'\/]/g, function(s) {
+    return String(s).replace(/[&<>"'/]/g, function(s) {
       return entityMap[s];
     });
   }
@@ -901,8 +901,8 @@
     var type = matches[4];
     var isString = type == 's',
         isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
+        // isInt = type == 'd' || type == 'i',
+        // isFloat = type == 'f',
         isNumber = !isString;
 
     var sign = "",
@@ -961,7 +961,7 @@
 
   // Get a function for interpolating formatted values into a string.
   function formatter(fmt) {
-    var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+    var codeRxp = /%([',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
     var literals = [],
         formatCodes = [],
         startIdx = 0,
@@ -3522,7 +3522,7 @@
   if (typeof require == 'function') {
     f = require;
   } else {
-    f = function(name) {
+    f = function() {
       // console.error('Unable to load module', name);
     };
   }
@@ -6479,12 +6479,12 @@
     // Accessor function for arcs
     Object.defineProperty(this, 'arcs', {value: arcs});
 
-    var toArray = this.toArray = function() {
+    this.toArray = function() {
       var chains = getNodeChains(),
           flags = new Uint8Array(chains.length),
           arr = [];
       utils.forEach(chains, function(nextIdx, thisIdx) {
-        var node, x, y, p;
+        var node, p;
         if (flags[thisIdx] == 1) return;
         p = getEndpoint(thisIdx);
         if (!p) return; // endpoints of an excluded arc
@@ -12059,10 +12059,6 @@
   //   if point x,y falls on an endpoint
   // Assumes: i <= j
   function getCutPoint(x, y, i, j, xx, yy) {
-    var ix = xx[i],
-        iy = yy[i],
-        jx = xx[j],
-        jy = yy[j];
     if (j < i || j > i + 1) {
       error("Out-of-sequence arc ids:", i, j);
     }
@@ -14048,18 +14044,18 @@
     // accept variations on type names (dot, dots, square, squares, hatch, hatches, hatched)
     if (first.startsWith('dot')) {
       parts[0] = 'dots';
-      obj = parseDots(parts, str);
+      obj = parseDots(parts);
     } else if (first.startsWith('square')) {
       parts[0] = 'squares';
-      obj = parseDots(parts, str);
+      obj = parseDots(parts);
     } else if (first.startsWith('hatch')) {
       parts[0] = 'hatches';
-      obj = parseHatches(parts, str);
+      obj = parseHatches(parts);
     } else if (first.startsWith('dash')) {
-      obj = parseDashes(parts, str);
+      obj = parseDashes(parts);
     } else if (!isNaN(parseFloat(first))) {
       parts.unshift('hatches');
-      obj = parseHatches(parts, str); // hatches is the default, name can be omitted
+      obj = parseHatches(parts); // hatches is the default, name can be omitted
     }
     if (!obj) {
       // consider
@@ -14068,7 +14064,7 @@
     return obj;
   }
 
-  function parseDashes(parts, str) {
+  function parseDashes(parts) {
     // format:
     // "dashes" dash-len dash-space width color1 [color2...] space bg-color
     // examples:
@@ -14109,7 +14105,7 @@
     };
   }
 
-  function parseHatches(parts, str) {
+  function parseHatches(parts) {
     // format:
     // [hatches] [rotation] width1 color1 [width2 color2 ...]
     // examples:
@@ -14136,7 +14132,7 @@
     return parseInt(str) > 0;
   }
 
-  function parseDots(parts, str) {
+  function parseDots(parts) {
     // format:
     // "dots"|"squares" [rotation] size color1 [color2 ...] spacing bg-color
     // examples:
@@ -14300,6 +14296,7 @@
     'stroke-opacity': 'number',
     'stroke-miterlimit': 'number',
     'fill-opacity': 'number',
+    'vector-effect': null,
     'text-anchor': null
   };
 
@@ -14329,7 +14326,7 @@
     effect: null // e.g. "fade"
   }, stylePropertyTypes);
 
-  var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity'.split(',');
+  var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity,vector-effect'.split(',');
 
   var propertiesBySymbolType = {
     polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
@@ -14409,7 +14406,7 @@
   function mightBeExpression(str, fields) {
     fields = fields || [];
     if (fields.indexOf(str.trim()) > -1) return true;
-    return /[(){}./*?:&|=\[+-]/.test(str);
+    return /[(){}./*?:&|=[+-]/.test(str);
   }
 
   function getSymbolPropertyAccessor(val, svgName, lyr) {
@@ -14536,7 +14533,7 @@
 
   function importGeoJSONFeatures(features, opts) {
     opts = opts || {};
-    return features.map(function(obj, i) {
+    return features.map(function(obj) {
       var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
       var geomType = geom && geom.type;
       var msType = GeoJSON.translateGeoJSONType(geomType);
@@ -14852,7 +14849,7 @@
   }
 
   // polyline coords are like GeoJSON MultiLineString coords: an array of 0 or more paths
-  function polyline(d, x, y) {
+  function polyline(d) {
     var coords = d.coordinates || [];
     var o = importMultiLineString(coords);
     applyStyleAttributes(o, 'polyline', d);
@@ -14860,7 +14857,7 @@
   }
 
   // polygon coords are an array of rings (and holes), like flattened MultiPolygon coords
-  function polygon(d, x, y) {
+  function polygon(d) {
     var coords = d.coordinates || [];
     var o = importPolygon(coords);
     applyStyleAttributes(o, 'polygon', d);
@@ -15407,7 +15404,6 @@ ${svg}
     var geojson = exportDatasetAsGeoJSON(d, opts);
     var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
     var children = importGeoJSONFeatures(features, opts);
-    var data;
     if (opts.svg_data && lyr.data) {
       addDataAttributesToSVG(children, lyr.data, opts.svg_data);
     }
@@ -16336,7 +16332,7 @@ ${svg}
     return readFixedWidthRecordsFromString(str, opts);
   }
 
-  function readFixedWidthRecordsFromString(str, ops) {
+  function readFixedWidthRecordsFromString(str) {
     var fields = parseFixedWidthInfo(str.substring(0, 2000));
     if (!fields) return [];
     var lines = utils.splitLines(str);
@@ -16481,11 +16477,6 @@ ${svg}
       return memo;
     }, {});
     return formatRow(rec);
-  }
-
-  function formatDelimHeader(fields, delim) {
-    var formatValue = getDelimValueFormatter(delim);
-    return fields.map(formatValue).join(delim);
   }
 
   function getDelimRowFormatter(fields, delim, opts) {
@@ -18170,8 +18161,7 @@ ${svg}
   // @chars String of chars to look for in @str
   function getCharScore(str, chars) {
     var index = {},
-        count = 0,
-        score;
+        count = 0;
     str = str.toLowerCase();
     for (var i=0, n=chars.length; i<n; i++) {
       index[chars[i]] = 1;
@@ -18192,7 +18182,7 @@ ${svg}
     // TODO: remove duplication with importJSON()
     var readFromFile = !data.content && data.content !== '',
         content = data.content,
-        filter, reader, records, delimiter, table, encoding;
+        reader, records, delimiter, table, encoding;
     opts = opts || {};
 
     // // read content of all but very large files into a buffer
@@ -18434,42 +18424,18 @@ ${svg}
       }
     }
 
-    // var intervalStr = o.interval;
-    // if (intervalStr) {
-    //   o.interval = Number(intervalStr);
-    //   if (o.interval >= 0 === false) {
-    //     error(utils.format("Out-of-range interval value: %s", intervalStr));
-    //   }
-    // }
-
     if (!o.interval && !o.percentage && !o.resolution) {
       error("Command requires an interval, percentage or resolution parameter");
     }
   }
 
   function validateProjOpts(cmd) {
-    var _ = cmd._,
-        proj4 = [];
+    var _ = cmd._;
 
     if (_.length > 0 && !cmd.options.crs) {
       cmd.options.crs = _.join(' ');
       _ = [];
     }
-
-    // separate proj4 options
-    // _ = _.filter(function(arg) {
-    //   if (/^\+[a-z]/i.test(arg)) {
-    //     proj4.push(arg);
-    //     return false;
-    //   }
-    //   return true;
-    // });
-
-    // if (proj4.length > 0) {
-    //   cmd.options.crs = proj4.join(' ');
-    // } else if (_.length > 0) {
-    //   cmd.options.crs = _.shift();
-    // }
 
     if (_.length > 0) {
       error("Received one or more unexpected parameters: " + _.join(', '));
@@ -18565,7 +18531,7 @@ ${svg}
     }
   }
 
-  var assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i; // exclude ==
+  var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
 
   function splitShellTokens(str) {
     var BAREWORD = '([^\'"\\s])+';
@@ -20953,6 +20919,10 @@ ${svg}
         // describe: (0-1) inset grid shapes by a percentage
         type: 'number'
       })
+      .option('aligned', {
+        // describe: all grids of a given cell size will be aligned
+        type: 'flag'
+      })
       .option('calc', calcOpt)
       .option('name', nameOpt)
       .option('target', targetOpt)
@@ -21098,6 +21068,9 @@ ${svg}
         type: 'flag'
       })
       .option('target', targetOpt);
+
+    parser.command('stop')
+      .describe('stop processing (skip remaining commands)');
 
     parser.section('Informational commands');
 
@@ -22760,7 +22733,6 @@ ${svg}
         shapes = [], // topological ids
         types = [],
         dataNulls = 0,
-        shapeNulls = 0,
         collectionType = null,
         shapeId;
 
@@ -22777,15 +22749,12 @@ ${svg}
       if (geom.type) {
         this.addShape(geom);
       }
-      if (shapes[shapeId] === null) {
-        shapeNulls++;
-      }
     };
 
     this.addShape = function(geom) {
       var curr = shapes[shapeId];
       var type = GeoJSON.translateGeoJSONType(geom.type);
-      var shape, importer;
+      var shape;
       if (geom.type == "GeometryCollection") {
         geom.geometries.forEach(this.addShape, this);
       } else if (type) {
@@ -24065,12 +24034,12 @@ ${svg}
   function Job(catalog) {
     var currentCmd;
 
-  	var job = {
+    var job = {
       catalog: catalog || new Catalog(),
       defs: {},
       settings: {},
       input_files: []
-  	};
+    };
 
     job.initSettings = function(o) {
       job.settings = o;
@@ -27125,10 +27094,6 @@ ${svg}
     // polyline output could be used for debugging
     var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
 
-    function polygonCoords(ring) {
-      return [ring];
-    }
-
     function pathBufferCoords(pathArcs, dist) {
       var pathCoords = maker(pathArcs, dist);
       var revPathArcs;
@@ -27158,12 +27123,8 @@ ${svg}
     var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
     var pathIter = new ShapeIter(arcs);
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-    var tolerance;
+    // var tolerance;
     // TODO: implement other join styles than round
-
-    function updateTolerance(dist) {
-
-    }
 
     function addRoundJoin(arr, x, y, startDir, angle, dist) {
       var increment = 10;
@@ -27175,15 +27136,15 @@ ${svg}
       }
     }
 
-    function addRoundJoin2(arr, x, y, startDir, angle, dist) {
-      var increment = 10;
-      var endDir = startDir + angle;
-      var dir = startDir + increment;
-      while (dir < endDir) {
-        addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
-        dir += increment;
-      }
-    }
+    // function addRoundJoin2(arr, x, y, startDir, angle, dist) {
+    //   var increment = 10;
+    //   var endDir = startDir + angle;
+    //   var dir = startDir + increment;
+    //   while (dir < endDir) {
+    //     addBufferVertex(arr, geod(x, y, dir, dist), backtrackSteps);
+    //     dir += increment;
+    //   }
+    // }
 
     // Test if two points are within a snapping tolerance
     // TODO: calculate the tolerance more sensibly
@@ -27430,15 +27391,14 @@ ${svg}
   function getPathBufferMaker2(arcs, geod, getBearing, opts) {
     var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
     var pathIter = new ShapeIter(arcs);
-    var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-    var tolerance;
+    // var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
     var partials, left, center;
     var bounds;
     // TODO: implement other join styles than round
 
-    function updateTolerance(dist) {
+    // function updateTolerance(dist) {
 
-    }
+    // }
 
     function addRoundJoin(x, y, startDir, angle, dist) {
       var increment = 10;
@@ -27482,24 +27442,24 @@ ${svg}
       }
     }
 
-    function makeCap(x, y, direction, dist) {
-      if (capStyle == 'flat') {
-        return [[x, y]];
-      }
-      return makeRoundCap(x, y, direction, dist);
-    }
+    // function makeCap(x, y, direction, dist) {
+    //   if (capStyle == 'flat') {
+    //     return [[x, y]];
+    //   }
+    //   return makeRoundCap(x, y, direction, dist);
+    // }
 
-    function makeRoundCap(x, y, segmentDir, dist) {
-      var points = [];
-      var increment = 10;
-      var startDir = segmentDir - 90;
-      var angle = increment;
-      while (angle < 180) {
-        points.push(geod(x, y, startDir + angle, dist));
-        angle += increment;
-      }
-      return points;
-    }
+    // function makeRoundCap(x, y, segmentDir, dist) {
+    //   var points = [];
+    //   var increment = 10;
+    //   var startDir = segmentDir - 90;
+    //   var angle = increment;
+    //   while (angle < 180) {
+    //     points.push(geod(x, y, startDir + angle, dist));
+    //     angle += increment;
+    //   }
+    //   return points;
+    // }
 
     // get angle between two extruded segments in degrees
     // positive angle means join in convex (range: 0-180 degrees)
@@ -27596,18 +27556,20 @@ ${svg}
     }
 
     return function(path, dist) {
-      var x0, y0, x1, y1, x2, y2;
+      // var x0, y0;
+      var x1, y1, x2, y2;
       var p1, p2;
-      var bearing, prevBearing, firstBearing, joinAngle;
+      // var firstBearing;
+      var bearing, prevBearing, joinAngle;
       partials = [];
       left = [];
       center = [];
       pathIter.init(path);
 
-      if (pathIter.hasNext()) {
-        x0 = x2 = pathIter.x;
-        y0 = y2 = pathIter.y;
-      }
+      // if (pathIter.hasNext()) {
+      //   x0 = x2 = pathIter.x;
+      //   y0 = y2 = pathIter.y;
+      // }
       while (pathIter.hasNext()) {
         // TODO: use a tolerance
         if (pathIter.x === x2 && pathIter.y === y2) continue; // skip duplicate points
@@ -27624,9 +27586,9 @@ ${svg}
 
         if (center.length === 0) {
           // first loop, second point in this partial
-          if (partials.length === 0) {
-            firstBearing = bearing;
-          }
+          // if (partials.length === 0) {
+          //   firstBearing = bearing;
+          // }
           left.push(p1, p2);
           center.push([x1, y1], [x2, y2]);
         } else {
@@ -28207,7 +28169,7 @@ ${svg}
         rings.push([
           [[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]],
           coords
-          ]);
+        ]);
       } else {
         rings.push([coords]);
       }
@@ -34899,6 +34861,7 @@ ${svg}
   //   }).join(",") + "}");
   // };
 
+  // Removes points that are far from other points
   cmd.filterPoints = function(lyr, dataset, opts) {
     requireSinglePointLayer(lyr);
     if (opts.group_interval > 0 === false) {
@@ -34913,7 +34876,7 @@ ${svg}
     var index = new Uint8Array(points.length);
     var a, b, c, ai, bi, ci;
     for (var i=0, n=triangles.length; i<n; i+=3) {
-      // a, b, c: triangle verticies in CCW order
+      // a, b, c: triangle vertices in CCW order
       ai = triangles[i];
       bi = triangles[i+1];
       ci = triangles[i+2];
@@ -36085,7 +36048,7 @@ ${svg}
       var arcId = o.arcId,
           key = classify(arcId),
           isContinuation, line;
-      if (!!key) {
+      if (key) {
         line = key in index ? index[key] : null;
         isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
         if (!line) {
@@ -36765,6 +36728,14 @@ ${svg}
     job.control = null;
   }
 
+  function stopJob(job) {
+    getState(job).stopped = true;
+  }
+
+  function jobIsStopped(job) {
+    return getState(job).stopped === true;
+  }
+
   function inControlBlock(job) {
     return !!getState(job).inControlBlock;
   }
@@ -36833,6 +36804,7 @@ ${svg}
 
   function skipCommand(cmdName, job) {
     // allow all control commands to run
+    if (jobIsStopped(job)) return true;
     if (isControlFlowCommand(cmdName)) return false;
     return inControlBlock(job) && !inActiveBranch(job);
   }
@@ -38761,7 +38733,7 @@ ${svg}
       stop('Expected a non-negative interval parameter');
     }
     if (opts.radius > 0 === false) {
-      stop('Expected a non-negative radius parameter');
+      // stop('Expected a non-negative radius parameter');
     }
     // var bbox = getLayerBounds(pointLyr).toArray();
     // Use target dataset, so grids are aligned between layers
@@ -38789,27 +38761,24 @@ ${svg}
   };
 
   function getPolygonDataset(pointLyr, gridBBox, opts) {
-    var interval = opts.interval;
     var points = getPointsInLayer(pointLyr);
-    var grid = getGridData(gridBBox, interval);
-    var lookup = getPointIndex(points, grid, opts.radius);
-    var n = grid.cells();
+    var cellSize = opts.interval;
+    var grid = getGridData(gridBBox, cellSize, opts);
+    var pointCircleRadius = getPointCircleRadius(opts);
+    var findPointIdsByCellId = getPointIndex(points, grid, pointCircleRadius);
     var geojson = {
       type: 'FeatureCollection',
       features: []
     };
-    var calc = null;
-    var cands, center, weight, d;
-    if (opts.calc) {
-      calc = getJoinCalc(pointLyr.data, opts.calc);
-    }
+    var calc = opts.calc ? getJoinCalc(pointLyr.data, opts.calc) : null;
+    var candidateIds, weights, center, weight, d;
 
-    for (var i=0; i<n; i++) {
-      cands = lookup(i);
-      if (!cands.length) continue;
+    for (var i=0, n=grid.cells(); i<n; i++) {
+      candidateIds = findPointIdsByCellId(i);
+      if (!candidateIds.length) continue;
       center = grid.idxToPoint(i);
-      d = calcCellProperties(center, cands, points, calc, opts);
-      // weight = calcCellWeight(center, cands, points, opts);
+      weights = calcWeights(center, cellSize, points, candidateIds, pointCircleRadius);
+      d = calcCellProperties(candidateIds, weights, calc);
       if (d.weight > 0.05 === false) continue;
       d.id = i;
       geojson.features.push({
@@ -38818,44 +38787,43 @@ ${svg}
         geometry: makeCellPolygon(i, grid, opts)
       });
     }
-    var dataset = importGeoJSON(geojson, {});
-    return dataset;
+    return importGeoJSON(geojson, {});
   }
 
-  function calcCellProperties(center, cands, points, calc, opts) {
-    // radius of circle with same area as the cell
-    var interval = opts.interval;
-    var radius = interval * Math.sqrt(1 / Math.PI);
-    var circleArea = Math.PI * opts.radius * opts.radius;
-    var cellArea = interval * interval;
-    var ids = [];
-    var totArea = 0;
-    var intersection;
-    for (var i=0; i<cands.length; i++) {
-      intersection = twoCircleIntersection(center, radius, points[cands[i]], opts.radius);
-      if (intersection > 0 === false) continue;
-      totArea += intersection;
-      ids.push(cands[i]);
+  function getPointCircleRadius(opts) {
+    var cellRadius = opts.interval * Math.sqrt(1 / Math.PI);
+    return opts.radius > 0 ? opts.radius : cellRadius;
+  }
+
+  function calcCellProperties(pointIds, weights, calc) {
+    var hitIds = [];
+    var weight = 0;
+    var partial;
+    var d;
+    for (var i=0; i<pointIds.length; i++) {
+      partial = weights[i];
+      if (partial > 0 === false) continue;
+      weight += partial;
+      hitIds.push(pointIds[i]);
     }
-    var d = {weight: totArea / cellArea};
+    d = {weight: weight};
     if (calc) {
-      calc(ids, d);
+      calc(hitIds, d);
     }
     return d;
   }
 
-  // function calcCellWeight(center, ids, points, opts) {
-  //   // radius of circle with same area as the cell
-  //   var interval = opts.interval;
-  //   var radius = interval * Math.sqrt(1 / Math.PI);
-  //   var circleArea = Math.PI * opts.radius * opts.radius;
-  //   var cellArea = interval * interval;
-  //   var totArea = 0;
-  //   for (var i=0; i<ids.length; i++) {
-  //     totArea += twoCircleIntersection(center, radius, points[ids[i]], opts.radius);
-  //   }
-  //   return totArea / cellArea;
-  // }
+  function calcWeights(cellCenter, cellSize, points, pointIds, pointRadius) {
+    var weights = [];
+    var cellRadius = cellSize * Math.sqrt(1 / Math.PI); // radius of circle with same area as cell
+    var cellArea = cellSize * cellSize;
+    var w;
+    for (var i=0; i<pointIds.length; i++) {
+      w = twoCircleIntersection(cellCenter, cellRadius, points[pointIds[i]], pointRadius) / cellArea;
+      weights.push(w);
+    }
+    return weights;
+  }
 
   // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
   function twoCircleIntersection(c1, r1, c2, r2) {
@@ -38910,8 +38878,17 @@ ${svg}
     return function(i) {
       if (!gridIndex.hasId(i)) return empty;
       var bbox = grid.idxToBBox(i);
-      return bboxIndex.search.apply(bboxIndex, bbox);
+      var indices = bboxIndex.search.apply(bboxIndex, bbox);
+      return indices;
     };
+  }
+
+  function getPointsByIndex(points, indices) {
+    var arr = [];
+    for (var i=0; i<indices.length; i++) {
+      arr.push(points[indices[i]]);
+    }
+    return arr;
   }
 
   function addPointToGridIndex(p, index, grid) {
@@ -38939,23 +38916,52 @@ ${svg}
     return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
   }
 
-  function getGridInterpolator(bbox, interval) {
-    var sparseArr = [];
-    var grid = getGridData(bbox, interval);
-
+  // grid boundaries includes the origin
+  // (this way, grids calculated from different sets of points will all align)
+  function getAlignedRange(minCoord, maxCoord, interval) {
+    var idx = Math.floor(minCoord / interval) - 1;
+    var idx2 = Math.ceil(maxCoord / interval) + 1;
+    return [idx * interval, idx2 * interval];
   }
 
-  // TODO: put this in a separate file, use it for other grid-based commands
-  // like -dots
-  function getGridData(bbox, interval) {
-    var xmin = bbox[0] - interval;
-    var ymin = bbox[1] - interval;
-    var xmax = bbox[2] + interval;
-    var ymax = bbox[3] + interval;
-    var w = xmax - xmin;
-    var h = ymax - ymin;
-    var cols = Math.ceil(w / interval);
-    var rows = Math.ceil(h / interval);
+  function getCenteredRange(minCoord, maxCoord, interval) {
+    var w = maxCoord - minCoord;
+    var w2 = Math.ceil(w / interval) * interval;
+    var pad = (w2 - w) / 2 + interval;
+    return [minCoord - pad, maxCoord + pad];
+  }
+
+  function getAlignedGridBounds(bbox, interval) {
+    var xx = getAlignedRange(bbox[0], bbox[2], interval);
+    var yy = getAlignedRange(bbox[1], bbox[3], interval);
+    return [xx[0], yy[0], xx[1], yy[1]];
+  }
+
+  function getCenteredGridBounds(bbox, interval) {
+    var xx = getCenteredRange(bbox[0], bbox[2], interval);
+    var yy = getCenteredRange(bbox[1], bbox[3], interval);
+    return [xx[0], yy[0], xx[1], yy[1]];
+  }
+
+  // TODO: Use this function for other grid-based commands
+  function getGridData(bbox, interval, opts) {
+    var extent = opts && opts.aligned ?
+      getAlignedGridBounds(bbox, interval) :
+      getCenteredGridBounds(bbox, interval);
+    var xmin = extent[0];
+    var ymin = extent[1];
+    var w = extent[2] - xmin;
+    var h = extent[3] - ymin;
+    var cols = Math.round(w / interval);
+    var rows = Math.round(h / interval);
+    // var xmin = bbox[0] - interval;
+    // var ymin = bbox[1] - interval;
+    // var xmax = bbox[2] + interval;
+    // var ymax = bbox[3] + interval;
+    // var w = xmax - xmin;
+    // var h = ymax - ymin;
+    // var cols = Math.ceil(w / interval);
+    // var rows = Math.ceil(h / interval);
     function size() {
       return [cols, rows];
     }
@@ -40493,6 +40499,10 @@ ${svg}
     getSplitNameFunction: getSplitNameFunction
   });
 
+  cmd.stop = function(job) {
+    stopJob(job);
+  };
+
   cmd.svgStyle = function(lyr, dataset, opts) {
     var filter;
     if (!lyr.data) {
@@ -40638,10 +40648,10 @@ ${svg}
       dy = stemLen * Math.cos(theta / 2);
 
       if (stickArrow) {
-        stem = getCurvedStemCoords(-ax, -ay, dx, dy, theta);
+        stem = getCurvedStemCoords(-ax, -ay, dx, dy);
       } else {
-        var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy, theta);
-        var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy, theta);
+        var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy);
+        var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy);
         stem = leftStem.concat(rightStem.reverse());
       }
 
@@ -40685,10 +40695,10 @@ ${svg}
     return coords;
   }
 
-  function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
-    return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
-          [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
-  }
+  // function calcStraightArrowCoords(stemLen, headLen, stemDx, headDx, baseDx) {
+  //   return [[baseDx, 0], [stemDx, stemLen], [headDx, stemLen], [0, stemLen + headLen],
+  //         [-headDx, stemLen], [-stemDx, stemLen], [-baseDx, 0], [baseDx, 0]];
+  // }
 
   function calcArrowSize(d, stickArrow) {
     // don't display arrows with negative length
@@ -40755,7 +40765,7 @@ ${svg}
 
   // ax, ay: point on the base
   // bx, by: point on the stem
-  function getCurvedStemCoords(ax, ay, bx, by, theta0) {
+  function getCurvedStemCoords(ax, ay, bx, by) {
     // case: curved side intrudes into head (because stem is too short)
     if (ay > by) {
       return [[ax * by / ay, by]];
@@ -41478,7 +41488,7 @@ ${svg}
     return name == 'graticule' || name == 'i' || name == 'help' ||
       name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
       name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
-      name == 'else' || name == 'endif';
+      name == 'else' || name == 'endif' || name == 'stop';
   }
 
   function runCommand(command, job, cb) {
@@ -41807,6 +41817,9 @@ ${svg}
 
       } else if (name == 'split') {
         outputLayers = applyCommandToEachLayer(cmd.splitLayer, targetLayers, opts.expression, opts);
+
+      } else if (name == 'stop') {
+        cmd.stop(job);
 
       } else if (name == 'split-on-grid') {
         outputLayers = applyCommandToEachLayer(cmd.splitLayerOnGrid, targetLayers, arcs, opts);
@@ -42573,7 +42586,6 @@ ${svg}
   // so they can be run by tests and by the GUI.
   // TODO: rewrite tests to import functions directly from modules,
   //       export only functions called by the GUI.
-
   var internal = {};
 
   internal.svg = Object.assign({}, SvgStringify, SvgPathUtils, GeojsonToSvg, SvgLabels, SvgSymbols);
