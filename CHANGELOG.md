@@ -1,4 +1,4 @@
-v0.6.1
+v0.6.2
 * Added -stop command (can be used in combination with -if/-elif/-else to halt processing under various conditions).
 
 v0.6.0
