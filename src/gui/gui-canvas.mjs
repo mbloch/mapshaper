@@ -238,7 +238,7 @@ export function DisplayCanvas() {
         bx = t.bx,
         by = t.by;
     if (size === 0) return;
-    if (size <= 4 && !styler) {
+    if (size <= 6 && !styler) {
       // optimized drawing of many small same-colored dots
       _self.drawSquareDotsFaster(shapes, color, size, t);
       return;
@@ -295,14 +295,12 @@ export function DisplayCanvas() {
   // pixels: Uint32Array of pixel colors
   // w, h: Size of canvas
   function drawSquareFaster(x, y, rgba, size, pixels, w, h) {
-    var xmin = (x - size * 0.5) | 0;
-    var ymin = (y - size * 0.5) | 0;
-    var xmax = xmin + size - 1;
-    var ymax = ymin + size - 1;
-    var c, r;
-    for (c = xmin; c <= xmax; c++) {
-      if (c < 0 || c >= w) continue;
-      for (r = ymin; r <= ymax && r >= 0 && r < h; r++) {
+    var xmin = x < 0 ? 0 : (x - size * 0.5) | 0;
+    var ymin = y < 0 ? 0 : (y - size * 0.5) | 0;
+    var xmax = x >= w-1 ? w-1 : xmin + size - 1;
+    var ymax = y >= h-1 ? h-1 : ymin + size - 1;
+    for (var r = ymin; r <= ymax; r++) {
+      for (var c = xmin; c <= xmax; c++) {
         pixels[r * w + c] = rgba;
       }
     }
@@ -405,8 +403,9 @@ function getDotScale(ext) {
     k *= Math.pow(Math.min(mapScale, 10), 0.3);
     k *= Math.pow(mapScale, 0.1);
   }
+  var l = Math.pow(GUI.getPixelRatio(), 0.6); // scale down visible size a bit on retina (for faster rendering)
 
-  return k * j * GUI.getPixelRatio();
+  return j * k * l;
 }
 
 function getScaledTransform(ext) {

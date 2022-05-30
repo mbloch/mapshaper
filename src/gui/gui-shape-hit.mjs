@@ -111,6 +111,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
         hitThreshold = 25,
         newThreshold = Infinity;
 
+    // inlining forEachPoint() does not not appreciably speed this up
     internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
       var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
       if (dist > hitThreshold) return;
