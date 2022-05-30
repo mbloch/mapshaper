@@ -387,24 +387,24 @@ function getLineScale(ext) {
   return s;
 }
 
-
 function getDotScale(ext) {
   var smallSide = Math.min(ext.width(), ext.height());
+  var mapScale = ext.scale();
   // reduce size on smaller screens
   var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
+  // grow dots as map zooms in
   var k = 1;
-  var mapScale = ext.scale();
   if (mapScale < 0.5) {
     k = Math.pow(mapScale + 0.5, 0.35);
-  }
-  if (mapScale > 1) {
+  } else if (mapScale > 1) {
     // scale faster at first, so small dots in large datasets
     // become easily visible and clickable after zooming in a bit
     k *= Math.pow(Math.min(mapScale, 10), 0.3);
     k *= Math.pow(mapScale, 0.1);
   }
-  var l = Math.pow(GUI.getPixelRatio(), 0.6); // scale down visible size a bit on retina (for faster rendering)
-
+  // grow pixels more slowly on retina displays (to reduce number of pixels to
+  // draw for large point datasets when slightly zoomed in)
+  var l = Math.pow(GUI.getPixelRatio(), 0.8);
   return j * k * l;
 }
 

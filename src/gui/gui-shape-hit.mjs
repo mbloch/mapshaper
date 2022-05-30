@@ -105,28 +105,21 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
 
   function pointTest(x, y) {
     var bullseyeDist = 2, // hit all points w/in 2 px
-        tinyDist = 0.5,
-        toPx = ext.getTransform().mx,
-        hits = [],
         hitThreshold = 25,
-        newThreshold = Infinity;
+        toPx = ext.getTransform().mx,
+        hits = [];
 
     // inlining forEachPoint() does not not appreciably speed this up
     internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
       var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
       if (dist > hitThreshold) return;
-      // got a hit
-      if (dist < newThreshold) {
-        // start a collection of hits
-        hits = [id];
-        hitThreshold = Math.max(bullseyeDist, dist + tinyDist);
-        newThreshold = dist < bullseyeDist ? -1 : dist - tinyDist;
-      } else {
-        // add to hits if inside bullseye or is same dist as previous hit
-        hits.push(id);
+      if (dist < hitThreshold && hitThreshold > bullseyeDist) {
+        hits = [];
+        hitThreshold = Math.max(bullseyeDist, dist);
       }
+      hits.push(id);
     });
-    // TODO: add info on what part of a shape gets hit
+    // TODO: add info on what part of a shape gets hit?
     return {
       ids: utils.uniq(hits) // multipoint features can register multiple hits
     };
