@@ -10,20 +10,25 @@ export function MapExtent(_position) {
       _frame;
 
   _position.on('resize', function(e) {
-    if (_contentBounds) {
+    if (ready()) {
       onChange({resize: true});
     }
   });
 
+  function ready() { return !!_contentBounds; }
+
   this.reset = function() {
+    if (!ready()) return;
     recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
   };
 
   this.home = function() {
+    if (!ready()) return;
     recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
   };
 
   this.pan = function(xpix, ypix) {
+    if (!ready()) return;
     var t = this.getTransform();
     recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
   };
@@ -31,6 +36,7 @@ export function MapExtent(_position) {
   // Zoom to @w (width of the map viewport in coordinates)
   // @xpct, @ypct: optional focus, [0-1]...
   this.zoomToExtent = function(w, xpct, ypct) {
+    if (!ready()) return;
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
@@ -50,6 +56,7 @@ export function MapExtent(_position) {
   };
 
   this.zoomByPct = function(pct, xpct, ypct) {
+    if (!ready()) return;
     this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);
   };
 
