@@ -96,6 +96,11 @@ describe('mapshaper-calc.js', function () {
       assert.equal(result, 3);
     })
 
+    it ('quantile()', function() {
+      var result = evalCalcExpression(lyr1, null, 'quantile(foo, 0.5)');
+      assert.equal(result, 3);
+    })
+
     it ('min()', function() {
       var result = evalCalcExpression(lyr1, null, 'min(foo)');
       assert.equal(result, -1);

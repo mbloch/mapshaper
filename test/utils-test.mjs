@@ -13,6 +13,29 @@ describe('mapshaper-utils.js', function () {
     })
   })
 
+  describe('findQuantile()', function() {
+    it('test 1', function() {
+      assert.equal(utils.findQuantile([2, 3], 0), 2);
+      assert.equal(utils.findQuantile([2, 3], 1), 3);
+      assert.equal(utils.findQuantile([2, 3], 0.5), 2.5);
+    })
+
+    it('median', function() {
+      assert.equal(utils.findQuantile([2, 3, 5], 0.5), 3);
+      assert.equal(utils.findQuantile([2, 3, 5, 11], 0.5), 4);
+    })
+
+    it('quartiles', function() {
+      assert.equal(utils.findQuantile([2, 6], 0.25), 3);
+      assert.equal(utils.findQuantile([2, 6], 0.75), 5);
+      assert.equal(utils.findQuantile([2, 3, 5], 0.25), 2.5);
+      assert.equal(utils.findQuantile([2, 3, 5], 0.75), 4);
+      assert.equal(utils.findQuantile([2, 3, 5], 0.25), 2.5);
+      assert.equal(utils.findQuantile([2, 3, 5, 1, 4], 0.75), 4);
+      assert.equal(utils.findQuantile([2, 3, 5, 1, 4], 0.25), 2);
+    })
+  })
+
   describe('splitLines()', function() {
     it('test 1', function() {
       assert.deepEqual(utils.splitLines('a\nb'), ['a', 'b']);

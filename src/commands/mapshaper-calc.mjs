@@ -43,6 +43,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
         sums: capture,
         average: captureNum,
         median: captureNum,
+        quantile: captureNum,
         min: captureNum,
         max: captureNum,
         mode: capture,
@@ -57,6 +58,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
         sum: wrap(utils.sum, 0),
         sums: wrap(sums),
         median: wrap(utils.findMedian),
+        quantile: wrap2(utils.findQuantile),
         min: wrap(min),
         max: wrap(max),
         average: wrap(utils.mean),
@@ -126,6 +128,13 @@ export function compileCalcExpression(lyr, arcs, exp) {
     return function() {
       var c = colNo++;
       return rowNo > 0 ? proc(cols[c]) : nodata;
+    };
+  }
+
+  function wrap2(proc) {
+    return function(arg1, arg2) {
+      var c = colNo++;
+      return rowNo > 0 ? proc(cols[c], arg2) : null;
     };
   }
 

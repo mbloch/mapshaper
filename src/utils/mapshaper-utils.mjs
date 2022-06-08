@@ -703,18 +703,24 @@ export function findValueByRank(arr, rank) {
   return arr[k];
 }
 
-//
-//
 export function findMedian(arr) {
-  var n = arr.length,
-      rank = Math.floor(n / 2) + 1,
-      median = findValueByRank(arr, rank);
-  if ((n & 1) == 0) {
-    median = (median + findValueByRank(arr, rank - 1)) / 2;
-  }
-  return median;
+  return findQuantile(arr, 0.5);
 }
 
+export function findQuantile(arr, k) {
+  var n = arr.length,
+      i1 = Math.floor((n - 1) * k),
+      i2 = Math.ceil((n - 1) * k);
+  if (i1 < 0 || i2 >= n) return NaN;
+  var v1 = findValueByRank(arr, i1 + 1);
+  if (i1 == i2) return v1;
+  var v2 = findValueByRank(arr, i2 + 1);
+  // use linear interpolation
+  var w1 = i2 / (n - 1) - k;
+  var w2 = k - i1 / (n - 1);
+  var v = (v1 * w1 + v2 * w2) * (n - 1);
+  return v;
+}
 
 export function mean(arr) {
   var count = 0,
