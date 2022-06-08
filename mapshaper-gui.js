@@ -78,6 +78,7 @@
     get findValueByPct () { return findValueByPct; },
     get findValueByRank () { return findValueByRank; },
     get findMedian () { return findMedian; },
+    get findQuantile () { return findQuantile; },
     get mean () { return mean; },
     get format () { return format; },
     get formatter () { return formatter; },
@@ -5312,18 +5313,24 @@
     return arr[k];
   }
 
-  //
-  //
   function findMedian(arr) {
-    var n = arr.length,
-        rank = Math.floor(n / 2) + 1,
-        median = findValueByRank(arr, rank);
-    if ((n & 1) == 0) {
-      median = (median + findValueByRank(arr, rank - 1)) / 2;
-    }
-    return median;
+    return findQuantile(arr, 0.5);
   }
 
+  function findQuantile(arr, k) {
+    var n = arr.length,
+        i1 = Math.floor((n - 1) * k),
+        i2 = Math.ceil((n - 1) * k);
+    if (i1 < 0 || i2 >= n) return NaN;
+    var v1 = findValueByRank(arr, i1 + 1);
+    if (i1 == i2) return v1;
+    var v2 = findValueByRank(arr, i2 + 1);
+    // use linear interpolation
+    var w1 = i2 / (n - 1) - k;
+    var w2 = k - i1 / (n - 1);
+    var v = (v1 * w1 + v2 * w2) * (n - 1);
+    return v;
+  }
 
   function mean(arr) {
     var count = 0,
@@ -8264,20 +8271,25 @@
         _frame;
 
     _position.on('resize', function(e) {
-      if (_contentBounds) {
+      if (ready()) {
         onChange({resize: true});
       }
     });
 
+    function ready() { return !!_contentBounds; }
+
     this.reset = function() {
+      if (!ready()) return;
       recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
     };
 
     this.home = function() {
+      if (!ready()) return;
       recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
     };
 
     this.pan = function(xpix, ypix) {
+      if (!ready()) return;
       var t = this.getTransform();
       recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
     };
@@ -8285,6 +8297,7 @@
     // Zoom to @w (width of the map viewport in coordinates)
     // @xpct, @ypct: optional focus, [0-1]...
     this.zoomToExtent = function(w, xpct, ypct) {
+      if (!ready()) return;
       if (arguments.length < 3) {
         xpct = 0.5;
         ypct = 0.5;
@@ -8304,6 +8317,7 @@
     };
 
     this.zoomByPct = function(pct, xpct, ypct) {
+      if (!ready()) return;
       this.zoomToExtent(this.getBounds().width() / pct, xpct, ypct);
     };
 
