@@ -86,6 +86,11 @@ describe('mapshaper-calc.js', function () {
       assert.equal(result, 2);
     })
 
+    it ('mean()', function() {
+      var result = evalCalcExpression(lyr1, null, 'mean(foo)');
+      assert.equal(result, 2);
+    })
+
     it ('average()', function() {
       var result = evalCalcExpression(lyr1, null, 'average(foo + 2)');
       assert.equal(result, 4);
@@ -94,6 +99,27 @@ describe('mapshaper-calc.js', function () {
     it ('median()', function() {
       var result = evalCalcExpression(lyr1, null, 'median(foo)');
       assert.equal(result, 3);
+    })
+
+    it ('quartile1()', function() {
+      var result = evalCalcExpression(lyr1, null, 'quartile1(foo)');
+      assert.equal(result, 1);
+    })
+
+    it ('quartile2()', function() {
+      var result = evalCalcExpression(lyr1, null, 'quartile2(foo)');
+      assert.equal(result, 3);
+    })
+
+    it ('quartile3()', function() {
+      var result = evalCalcExpression(lyr1, null, 'quartile3(foo)');
+      assert.equal(result, 3.5);
+    })
+
+
+    it ('iqr()', function() {
+      var result = evalCalcExpression(lyr1, null, 'iqr(foo)');
+      assert.equal(result, 2.5);
     })
 
     it ('quantile()', function() {

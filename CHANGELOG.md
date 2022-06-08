@@ -1,3 +1,6 @@
+v0.6.4
+* Added quartile1(), quartile2(), quartile3(), iqr() (interquartile range), and mean() to -calc and calc= expressions.
+
 v0.6.3
 * Added quantile() function to -calc command and calc= expressions.
 
