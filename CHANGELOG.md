@@ -1,3 +1,6 @@
+v0.6.3
+* Added quantile() function to -calc command and calc= expressions.
+
 v0.6.2
 * Added -stop command (can be used in combination with -if/-elif/-else to halt processing under various conditions).
 
