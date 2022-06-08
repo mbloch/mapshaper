@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.3";
+  var VERSION = "0.6.4";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -10349,8 +10349,13 @@
           sum: captureNum,
           sums: capture,
           average: captureNum,
+          mean: captureNum,
           median: captureNum,
           quantile: captureNum,
+          iqr: captureNum,
+          quartile1: captureNum,
+          quartile2: captureNum,
+          quartile3: captureNum,
           min: captureNum,
           max: captureNum,
           mode: capture,
@@ -10366,9 +10371,16 @@
           sums: wrap(sums),
           median: wrap(utils.findMedian),
           quantile: wrap2(utils.findQuantile),
+          iqr: wrap(function(arr) {
+            return utils.findQuantile(arr, 0.75) - utils.findQuantile(arr, 0.25);
+          }),
+          quartile1: wrap(function(arr) { return utils.findQuantile(arr, 0.25); }),
+          quartile2: wrap(utils.findMedian),
+          quartile3: wrap(function(arr) { return utils.findQuantile(arr, 0.75); }),
           min: wrap(min),
           max: wrap(max),
           average: wrap(utils.mean),
+          mean: wrap(utils.mean),
           mode: wrap(getMode),
           collect: wrap(pass),
           first: wrap(pass),
