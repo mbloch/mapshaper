@@ -1394,28 +1394,51 @@ Set the target layer or layers for the following command.
 
 ### -calc
 
-Calculate basic descriptive statistics on a data table and display the results, using a JavaScript expression. The following functions are implemented: 
+Perform calculations on a collection of records and display the results, using a JavaScript expression. The expression can use one or more of the following built-in functions. Most functions take the name of a data field or a JS expression as the first argument.
 
-* `count()`
-* `sum()`
-* `average()`
-* `median()`
-* `mode()`
-* `min()`
-* `max()`
-* `collect()` returns array containing all values
-* `first()`
-* `last()`
-* `every()`
-* `some()`
+The `calc` functions are also available in the context of `calc=` expressions, which can be used as options to `-join`, `-dissolve` and several other commands. See example below.
 
-`count()` takes no arguments. The other functions take as an argument a JS expression or field name. Argument expressions take the same form as `-each` expressions. If no records are processed, `count()` and `sum()` return `0`, and the other functions return `null`.
+| function | description |
+| --- | --- |
+| `count ()` | returns number of records in the collection |
+| `sum (<expr>)` | |
+| `mean (<expr>)` | |
+| `average (<expr>)` | same as mean() |
+| `median (<expr>)` | |
+| `mode (<expr>)` | returns most frequently occuring value in the collection (or the first such value in case of a tie). |
+| `min (<expr>)` | |
+| `max (<expr>)` | |
+| `quartile1 (<expr>)` | first quartile |
+| `quartile2 (<expr>)` | same as median() |
+| `quartile3 (<expr>)` | third quartile |
+| `iqr (<expr>)` | interquartile range |
+| `quantile (<expr>, <pct>)` | arbitrary percentile (`<pct>` is 0-1) |
+| `collect (<expr>)` | returns array containing all values |
+| `first (<expr>)` | returns first value in the collection |
+| `last (<expr>)` | returns last value in the collection |
+| `every (<expr>)` | returns true if expression is true for all elements in the collection |
+| `some (<expr>)` | returns true if expression is true for one or more elements in the collection |
+
+Argument expressions take the same form as `-each` expressions. If no records are processed, `count()` and `sum()` return `0`, and the other functions return `null`.
+
+**Assignments**
+
+The `-calc` expression can take the form of one or more assignments. This creates global variables that can be accessed by subsequent expressions using the `global` namespace. For example:
+
+```
+mapshaper data.csv \
+  -calc 'N = count()' \
+  -if 'global.N < 5' \
+  -print 'LOW SAMPLE SIZE, STOPPING' \
+  -stop \
+  -endif
+```
 
 **Options**
 
 `<expression>` or `expression=` JS expression containing calls to one or more `-calc` functions.
 
-`where=`  Perform calculations on a subset of features, using a boolean JS expression as a filter (similar to [`-filter`](#-filter) command).
+`where=`  Perform calculations on a subset of records, using a boolean JS expression as a filter (similar to [`-filter`](#-filter) command).
 
 Common options: `target=`
 
@@ -1427,6 +1450,9 @@ mapshaper ny-census-blocks.shp -calc 'sum(POPULATION)'
 
 # Count census blocks in NY with zero population
 mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'
+
+# Using calc functions in conjunction with the `-dissolve` command
+mapshaper counties.csv -dissolve STATE_NAME calc='NUM_COUNTIES = count()' -o states.csv
 ```
 
 ### -colors
