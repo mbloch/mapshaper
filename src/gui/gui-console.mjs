@@ -24,6 +24,7 @@ export function Console(gui) {
   var historyId = 0;
   var _isOpen = false;
   var btn = gui.container.findChild('.console-btn').on('click', toggle);
+  var globals = {}; // share user-defined globals between runs
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -420,6 +421,8 @@ export function Console(gui) {
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0,
         job = new internal.Job(model);
+
+    job.defs = globals; // share globals between runs
     internal.runParsedCommands(commands, job, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),
@@ -429,6 +432,8 @@ export function Console(gui) {
           postTableSize = postTable ? postTable.size() : 0,
           sameTable = prevTable == postTable && prevTableSize == postTableSize,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
+
+      // TODO: close any open if/elif/else blocks by appending -endif to the command history
 
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console

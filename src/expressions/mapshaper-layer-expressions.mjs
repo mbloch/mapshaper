@@ -2,6 +2,7 @@ import { getLayerProxy, getNullLayerProxy } from './mapshaper-layer-proxy';
 import { compileExpressionToFunction } from './mapshaper-expressions';
 import { stop } from '../utils/mapshaper-logging';
 import cli from '../cli/mapshaper-cli-utils';
+import { getStashedVar } from '../mapshaper-stash';
 
 export function compileIfCommandExpression(expr, catalog, opts) {
   var targetId = opts.layer || opts.target || null;
@@ -16,6 +17,7 @@ export function compileIfCommandExpression(expr, catalog, opts) {
   } else {
     ctx = getNullLayerProxy(targets);
   }
+  ctx.global = getStashedVar('defs') || {}; // TODO: remove duplication with mapshaper.expressions.mjs
   var exprOpts = Object.assign({returns: true}, opts);
   var func = compileExpressionToFunction(expr, exprOpts);
 
