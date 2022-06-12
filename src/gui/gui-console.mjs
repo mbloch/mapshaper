@@ -400,7 +400,12 @@ export function Console(gui) {
     if (commands.length === 0) return done();
     applyParsedCommands(commands, function(err, flags) {
       if (!err) {
-        gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+        str = internal.standardizeConsoleCommands(str);
+        gui.session.consoleCommands(str);
+        // kludge to terminate unclosed -if blocks
+        if (str.includes('-if') && !str.includes('-endif')) {
+          gui.session.consoleCommands('-endif');
+        }
       }
       if (flags) {
         // if the command may have changed data, and a tool with an edit mode is being used,
@@ -432,8 +437,6 @@ export function Console(gui) {
           postTableSize = postTable ? postTable.size() : 0,
           sameTable = prevTable == postTable && prevTableSize == postTableSize,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
-
-      // TODO: close any open if/elif/else blocks by appending -endif to the command history
 
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
