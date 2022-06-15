@@ -1,3 +1,6 @@
+v0.6.5
+* Fixed an error using -classify command in the web UI console.
+
 v0.6.4
 * Added quartile1(), quartile2(), quartile3(), iqr() (interquartile range), and mean() to -calc and calc= expressions.
 
