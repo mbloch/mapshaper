@@ -2,7 +2,7 @@ import { formatStringsAsGrid } from '../utils/mapshaper-logging';
 import { print, stop, error, message } from '../utils/mapshaper-logging';
 import { getStoppedValues } from '../classification/mapshaper-interpolation';
 import utils from '../utils/mapshaper-utils';
-import * as lib from 'd3-scale-chromatic';
+import * as d3Scales from 'd3-scale-chromatic';
 
 var index = {
   categorical: [],
@@ -62,7 +62,6 @@ function unpackRamp(str) {
 }
 
 function testLib() {
-  var lib = require('d3-scale-chromatic');
   schemes(index.categorical);
   schemes(index.sequential);
   schemes(index.diverging);
@@ -72,7 +71,7 @@ function testLib() {
 
   function schemes(arr) {
     arr.forEach(function(name) {
-      if (!lib['scheme' + name]) {
+      if (!d3Scales['scheme' + name]) {
         message('Warning: missing data for', name);
       }
     });
@@ -80,7 +79,7 @@ function testLib() {
 
   function interpolators(arr) {
     arr.forEach(function(name) {
-      if (!lib['interpolate' + name]) {
+      if (!d3Scales['interpolate' + name]) {
         message('Missing interpolator for', name);
       }
     });
@@ -119,7 +118,7 @@ export function getCategoricalColorScheme(name, n) {
   if (!isColorSchemeName(name)) {
     stop('Unknown color scheme name:', name);
   } else if (isCategoricalColorScheme(name)) {
-    colors = ramps[name] || require('d3-scale-chromatic')['scheme' + name];
+    colors = ramps[name] || d3Scales['scheme' + name];
   } else {
     colors = getColorRamp(name, n);
   }
@@ -153,9 +152,8 @@ export function isCategoricalColorScheme(name) {
 export function getColorRamp(name, n, stops) {
   initSchemes();
   name = standardName(name);
-  // var lib = require('d3-scale-chromatic');
-  var ramps = lib['scheme' + name];
-  var interpolate = lib['interpolate' + name];
+  var ramps = d3Scales['scheme' + name];
+  var interpolate = d3Scales['interpolate' + name];
   var ramp;
   if (!ramps && !interpolate) {
     stop('Unknown color scheme name:', name);
