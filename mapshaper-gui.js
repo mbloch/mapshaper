@@ -2488,6 +2488,7 @@
     var historyId = 0;
     var _isOpen = false;
     var btn = gui.container.findChild('.console-btn').on('click', toggle);
+    var globals = {}; // share user-defined globals between runs
 
     // expose this function, so other components can run commands (e.g. box tool)
     this.runMapshaperCommands = runMapshaperCommands;
@@ -2863,7 +2864,12 @@
       if (commands.length === 0) return done();
       applyParsedCommands(commands, function(err, flags) {
         if (!err) {
-          gui.session.consoleCommands(internal.standardizeConsoleCommands(str));
+          str = internal.standardizeConsoleCommands(str);
+          gui.session.consoleCommands(str);
+          // kludge to terminate unclosed -if blocks
+          if (str.includes('-if') && !str.includes('-endif')) {
+            gui.session.consoleCommands('-endif');
+          }
         }
         if (flags) {
           // if the command may have changed data, and a tool with an edit mode is being used,
@@ -2884,6 +2890,8 @@
           prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0,
           job = new internal.Job(model);
+
+      job.defs = globals; // share globals between runs
       internal.runParsedCommands(commands, job, function(err) {
         var flags = getCommandFlags(commands),
             active2 = model.getActiveLayer(),
