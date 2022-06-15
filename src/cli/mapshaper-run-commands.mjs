@@ -130,6 +130,13 @@ function _runCommands(argv, opts, callback) {
     inputObj = null;
   }
 
+  if (commands.length === 0) {
+    return callback(new UserError("No commands to run"));
+  }
+
+  commands = runAndRemoveInfoCommands(commands);
+  if (commands.length === 0) return done(null);
+
   // add options to -i -o -join -clip -erase commands to bypass file i/o
   // TODO: find a less kludgy solution
   commands.forEach(function(cmd) {
@@ -141,7 +148,20 @@ function _runCommands(argv, opts, callback) {
     }
   });
 
-  runParsedCommands(commands, null, callback);
+  var batches = divideImportCommand(commands);
+  utils.reduceAsync(batches, null, nextGroup, done);
+
+  function nextGroup(prevJob, commands, next) {
+    runParsedCommands(commands, new Job(), function(err, job) {
+      err = filterError(err);
+      next(err, job);
+    });
+  }
+
+  function done(err, job) {
+    err = filterError(err);
+    callback(err, job);
+  }
 }
 
 function commandTakesFileInput(name) {
@@ -188,23 +208,19 @@ export function testCommands(argv, done) {
   });
 }
 
+
 // Execute a sequence of parsed commands
 // @commands Array of parsed commands
-// @job: Optional Job object containing previously imported data
-// @cb: function(<error>, <catalog>)
+// @job: Job object containing previously imported data
+// @done: function([error], [job])
 //
-export function runParsedCommands(commands, job, cb) {
-  if (!job) {
-    job = new Job();
+export function runParsedCommands(commands, job, done) {
+  if (!runningInBrowser() && commands[commands.length-1].name == 'o') {
+    // in CLI, set 'final' flag on final -o command, so the export function knows
+    // that it can modify the output dataset in-place instead of making a copy.
+    commands[commands.length-1].options.final = true;
   }
-
-  if (!utils.isArray(commands)) {
-    error("Expected an array of parsed commands");
-  }
-
-  if (commands.length === 0) {
-    return done(new UserError("No commands to run"));
-  }
+  if (!job) job = new Job();
   commands = readAndRemoveSettings(job, commands);
   if (!runningInBrowser()) {
     printStartupMessages();
@@ -213,31 +229,13 @@ export function runParsedCommands(commands, job, cb) {
   if (commands.length === 0) {
     return done(null);
   }
-  if (!runningInBrowser() && commands[commands.length-1].name == 'o') {
-    // in CLI, set 'final' flag on final -o command, so the export function knows
-    // that it can modify the output dataset in-place instead of making a copy.
-    commands[commands.length-1].options.final = true;
-  }
+  // we're no longer using the same Job for all batches -- no reset needed
+  // // resetting closes any unterminated -if blocks from a previous command sequence
+  // resetControlFlow(job);
+  utils.reduceAsync(commands, job, nextCommand, done);
 
-  var groups = divideImportCommand(commands);
-  if (groups.length == 1) {
-    // run a simple sequence of commands (input files are not batched)
-    return runParsedCommands2(commands, job, done);
-  }
-
-  // run duplicated commands (i.e. batch mode)
-  utils.reduceAsync(groups, job, nextGroup, done);
-
-  function nextGroup(job, commands, next) {
-    runParsedCommands2(commands, job, function(err, job) {
-      err = filterError(err);
-      next(err, job);
-    });
-  }
-
-  function done(err, job) {
-    err = filterError(err);
-    cb(err, job);
+  function nextCommand(job, cmd, next) {
+    runCommand(cmd, job, next);
   }
 }
 
@@ -248,17 +246,6 @@ function filterError(err) {
   }
   return err;
 }
-
-function runParsedCommands2(commands, job, cb) {
-  // resetting closes any unterminated -if blocks from a previous command sequence
-  resetControlFlow(job);
-  utils.reduceAsync(commands, job, nextCommand, cb);
-
-  function nextCommand(job, cmd, next) {
-    runCommand(cmd, job, next);
-  }
-}
-
 
 // If an initial import command indicates that several input files should be
 //   processed separately, then duplicate the sequence of commands to run
