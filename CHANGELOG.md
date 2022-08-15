@@ -1,4 +1,4 @@
-v0.6.6
+v0.6.7
 * Give users running mapshaper-gui on localhost access to basemaps.
 
 v0.6.5
