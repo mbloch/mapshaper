@@ -38,7 +38,7 @@ The web UI works in recent desktop versions of Chrome, Firefox, Safari and Inter
 
 [Here](https://hub.docker.com/r/freifunkhamm/mapshaper) are resources for using mapshaper with Docker, provided by Christian Weiss.
 
-You can find a number of mapshaper tutorials online, including a [two](https://moriartynaps.org/command-carto-part-one/) [part](https://moriartynaps.org/command-carto-part-two/) guide to command line cartography by Dylan Moriarty and [this introduction](https://datavizforall.org/convert-edit-join-and-dissolve-with-mapshaper-org.html) by Jack Dougherty.
+You can find a number of mapshaper tutorials online, including a [two](https://moriartynaps.org/command-carto-part-one/) [part](https://moriartynaps.org/command-carto-part-two/) guide to command line cartography by Dylan Moriarty and [this introduction](https://handsondataviz.org/mapshaper.html) by Jack Dougherty.
 
 
 ## Large file support
