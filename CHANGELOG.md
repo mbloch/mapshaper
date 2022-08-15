@@ -1,3 +1,6 @@
+v0.6.6
+* Give users running mapshaper-gui on localhost access to basemaps.
+
 v0.6.5
 * Fixed an error using -classify command in the web UI console.
 

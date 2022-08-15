@@ -8,7 +8,7 @@ npm-debug.log
 /www/mapshaper-gui.js
 /www/mapshaper.js
 /www/node_modules.js
-/www/basemap.js
+# /www/basemap.js
 pre-publish
 pre-release.js
 release*
