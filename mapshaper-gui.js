@@ -9790,6 +9790,7 @@
     var faded = false;
 
     if (params) {
+      //  TODO: check page URL for compatibility with mapbox key
       init();
     } else {
       basemapBtn.hide();
