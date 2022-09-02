@@ -32,7 +32,13 @@ function DropControl(gui, el, cb) {
     // FF: supports pasting JSON and CSV from the clipboard but not files.
     //     Single files of all types are pasted as a string and an image/png
     //     Multiple files are pasted as a string containing a list of file names
-    if (types == 'text/plain') {
+
+    // import text from the clipboard (could be csv, json, etc)
+    // formatted text can be available as both text/plain and text/html (e.g.
+    //   a JSON data object copied from a GitHub issue).
+    //
+    if (types.includes('text/plain')) {
+    // if (types == 'text/plain') {
       // text from clipboard (supported by Chrome, FF, Safari)
       // TODO: handle FF case of string containing multiple file names.
       files = [pastedTextToFile(e.clipboardData.getData('text/plain'))];
