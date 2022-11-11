@@ -126,6 +126,7 @@ export function initLabelDragging(gui, ext, hit) {
     var node2;
     o.properties.transform = getSvgSymbolTransform(xy, ext);
     o.properties['data-id'] = id;
+    o.properties.class = 'mapshaper-svg-symbol';
     // o.properties['class'] = 'selected';
     g.innerHTML = internal.svg.stringify(o);
     node2 = g.firstChild;
