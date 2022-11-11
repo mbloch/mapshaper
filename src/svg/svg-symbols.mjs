@@ -113,6 +113,7 @@ function image(d, x, y) {
       href: d.href || ''
     }
   };
+  if (d.fill) o.properties.fill = d.fill;
   return o;
 }
 
