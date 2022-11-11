@@ -4,6 +4,7 @@ import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
 import { getOutputFunction } from '../classification/mapshaper-classification';
 import { makeSimpleKey, makeDatavizKey, makeGradientKey } from '../furniture/mapshaper-key';
+
 export function getSequentialClassifier(classValues, nullValue, dataValues, method, opts) {
   var numValues = classValues.length;
   var numBuckets = opts.continuous ? numValues - 1 : numValues;
@@ -19,9 +20,24 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
   }
 
   var ascending = getAscendingNumbers(dataValues);
+  if (opts.range) {
+    ascending = applyDataRange(ascending, opts.range);
+  }
   var nullCount = dataValues.length - ascending.length;
   var minVal = ascending[0];
   var maxVal = ascending[ascending.length - 1];
+
+  // kludge
+  var clamp = opts.range ? function(val) {
+    if (val < opts.range[0]) val = opts.range[0];
+    if (val > opts.range[1]) val = opts.range[1];
+    return val;
+  } : null;
+
+  if (opts.range) {
+    minVal = opts.range[0];
+    maxVal = opts.range[1];
+  }
 
   if (numBreaks === 0) {
     breaks = [];
@@ -50,6 +66,7 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
   }
   classToValue = getOutputFunction(classValues, nullValue, opts);
   classifier = function(val) {
+    if (clamp) val = clamp(val);
     return classToValue(dataToClass(val));
   };
 
@@ -232,6 +249,26 @@ export function getDistributionData(breaks, ascending) {
     }
   });
   return arr;
+}
+
+export function applyDataRange(values, range) {
+  var minval = range[0];
+  var maxval = range[1];
+  if (maxval > minval === false) {
+    stop('Invalid data range:', range);
+  }
+  var values2 = values.map(function(val) {
+    if (val < minval) val = minval;
+    if (val > maxval) val = maxval;
+    return val;
+  });
+  if (values2[0] < minval) {
+    values2.unshift(minval);
+  }
+  if (values2[values2.length - 1] < maxval) {
+    values2.push(maxval);
+  }
+  return values2;
 }
 
 export function getAscendingNumbers(values) {

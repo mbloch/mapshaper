@@ -454,6 +454,10 @@ export function getOptionParser() {
       describe: 'a pair of values (0-100) for limiting a color ramp',
       type: 'numbers'
     })
+    .option('range', {
+      // describe: 'a pair of numbers defining the effective data range',
+      type: 'numbers'
+    })
     .option('null-value', {
       describe: 'value (or color) to use for invalid or missing data'
     })
