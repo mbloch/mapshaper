@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.7";
+  var VERSION = "0.6.9";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -9809,6 +9809,30 @@
     }
 
     if (hasPaths) {
+
+      ctx.bboxContainsPoint = function(x, y) {
+        var bounds = arcs.getMultiShapeBounds(_ids);
+        return bounds.containsPoint(x, y);
+      };
+
+      ctx.bboxIntersectsRectangle = function(a, b, c, d) {
+        var bbox = arcs.getMultiShapeBounds(_ids);
+        var rect = Bounds.from(a, b, c, d);
+        return rect.intersects(bbox);
+      };
+
+      ctx.bboxContainsRectangle = function(a, b, c, d) {
+        var bbox = arcs.getMultiShapeBounds(_ids);
+        var rect = Bounds.from(a, b, c, d);
+        return bbox.contains(rect);
+      };
+
+      ctx.bboxContainedByRectangle = function(a, b, c, d) {
+        var bbox = arcs.getMultiShapeBounds(_ids);
+        var rect = Bounds.from(a, b, c, d);
+        return rect.contains(bbox);
+      };
+
       addGetters(ctx, {
         // TODO: count hole/s + containing ring as one part
         partCount: function() {
@@ -14850,6 +14874,7 @@
         href: d.href || ''
       }
     };
+    if (d.fill) o.properties.fill = d.fill;
     return o;
   }
 
@@ -19562,6 +19587,10 @@ ${svg}
       })
       .option('stops', {
         describe: 'a pair of values (0-100) for limiting a color ramp',
+        type: 'numbers'
+      })
+      .option('range', {
+        // describe: 'a pair of numbers defining the effective data range',
         type: 'numbers'
       })
       .option('null-value', {
@@ -29917,9 +29946,24 @@ ${svg}
     }
 
     var ascending = getAscendingNumbers(dataValues);
+    if (opts.range) {
+      ascending = applyDataRange(ascending, opts.range);
+    }
     var nullCount = dataValues.length - ascending.length;
     var minVal = ascending[0];
     var maxVal = ascending[ascending.length - 1];
+
+    // kludge
+    var clamp = opts.range ? function(val) {
+      if (val < opts.range[0]) val = opts.range[0];
+      if (val > opts.range[1]) val = opts.range[1];
+      return val;
+    } : null;
+
+    if (opts.range) {
+      minVal = opts.range[0];
+      maxVal = opts.range[1];
+    }
 
     if (numBreaks === 0) {
       breaks = [];
@@ -29948,6 +29992,7 @@ ${svg}
     }
     classToValue = getOutputFunction(classValues, nullValue, opts);
     classifier = function(val) {
+      if (clamp) val = clamp(val);
       return classToValue(dataToClass(val));
     };
 
@@ -30130,6 +30175,26 @@ ${svg}
       }
     });
     return arr;
+  }
+
+  function applyDataRange(values, range) {
+    var minval = range[0];
+    var maxval = range[1];
+    if (maxval > minval === false) {
+      stop('Invalid data range:', range);
+    }
+    var values2 = values.map(function(val) {
+      if (val < minval) val = minval;
+      if (val > maxval) val = maxval;
+      return val;
+    });
+    if (values2[0] < minval) {
+      values2.unshift(minval);
+    }
+    if (values2[values2.length - 1] < maxval) {
+      values2.push(maxval);
+    }
+    return values2;
   }
 
   function getAscendingNumbers(values) {
