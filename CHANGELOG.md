@@ -1,3 +1,10 @@
+v0.6.9
+* Added bboxContainsRectangle(), bboxIntersectsRectangle(), bboxContainedByRectangle() and bboxContainsPoint() functions to the "this" object in expressions used by -each, -filter, -each where= and other contexts.
+
+v0.6.8
+* Fix: support fill color for svg image symbols.
+* Added range=<min,max> option to -classify command.
+
 v0.6.7
 * Give users running mapshaper-gui on localhost access to basemaps.
 

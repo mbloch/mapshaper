@@ -17,6 +17,64 @@ describe('mapshaper-each.js', function () {
 
   describe('-each command', function () {
 
+    describe('bbox functions', function() {
+
+      var line = {
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1], [2, 2]]
+      };
+
+      it('this.bboxIntersectsRectangle() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxIntersectsRectangle(-1, -1, 1, 1)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: true});
+      })
+
+      it('this.bboxIntersectsRectangle() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxIntersectsRectangle(-3, -3, -2, -2)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: false});
+      })
+
+      it('this.bboxContainsPoint() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxContainsPoint(1, 1)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: true});
+      })
+
+      it('this.bboxContainsPoint() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxContainsPoint(-1, -1)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: false});
+      })
+
+      it('this.bboxContainsRectangle() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxContainsRectangle(-1, -1, 1, 1)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: false});
+      })
+
+      it('this.bboxContainsRectangle() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxContainsRectangle(0.5, 0.5, 1, 1)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: true});
+      })
+
+      it('this.bboxContainedByRectangle() function', async function() {
+        var cmd = `-i data.json -each 'foo = this.bboxContainedByRectangle(-1, -1, 5, 5)' -o`;
+        var out = await api.applyCommands(cmd, {'data.json': line});
+        var geojson = JSON.parse(out['data.json'])
+        assert.deepEqual(geojson.features[0].properties, {foo: true});
+      })
+
+    })
+
     it('this.geojson getter', function(done) {
       var data = {
         type: 'Feature',

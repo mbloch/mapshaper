@@ -6,6 +6,7 @@ import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { addGetters } from '../expressions/mapshaper-expression-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { WGS84 } from '../geom/mapshaper-geom-constants';
+import { Bounds } from '../geom/mapshaper-bounds';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 
@@ -58,6 +59,30 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
   }
 
   if (hasPaths) {
+
+    ctx.bboxContainsPoint = function(x, y) {
+      var bounds = arcs.getMultiShapeBounds(_ids);
+      return bounds.containsPoint(x, y);
+    };
+
+    ctx.bboxIntersectsRectangle = function(a, b, c, d) {
+      var bbox = arcs.getMultiShapeBounds(_ids);
+      var rect = Bounds.from(a, b, c, d);
+      return rect.intersects(bbox);
+    };
+
+    ctx.bboxContainsRectangle = function(a, b, c, d) {
+      var bbox = arcs.getMultiShapeBounds(_ids);
+      var rect = Bounds.from(a, b, c, d);
+      return bbox.contains(rect);
+    };
+
+    ctx.bboxContainedByRectangle = function(a, b, c, d) {
+      var bbox = arcs.getMultiShapeBounds(_ids);
+      var rect = Bounds.from(a, b, c, d);
+      return rect.contains(bbox);
+    };
+
     addGetters(ctx, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
