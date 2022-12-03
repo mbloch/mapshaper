@@ -45,7 +45,9 @@ export function getRoundingFunction(inc) {
 export function getBoundsPrecisionForDisplay(bbox) {
   var w = Math.abs(bbox[2] - bbox[0]),
       h = Math.abs(bbox[3] - bbox[1]),
-      range = Math.min(w, h) + 1e-8,
+      // switched to max bound, based on experience with shift-drag box info
+      // range = Math.min(w, h) + 1e-8,
+      range = Math.max(w, h) + 1e-8,
       digits = 0;
   while (range < 2000) {
     range *= 10;

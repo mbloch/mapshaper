@@ -2,10 +2,9 @@ import { HighlightBox } from './gui-highlight-box';
 import { internal, utils } from './gui-core';
 import { SimpleButton } from './gui-elements';
 
-
 export function SelectionTool(gui, ext, hit) {
   var popup = gui.container.findChild('.selection-tool-options');
-  var box = new HighlightBox();
+  var box = new HighlightBox(gui);
   var _on = false;
 
   gui.addMode('selection_tool', turnOn, turnOff);
@@ -18,16 +17,17 @@ export function SelectionTool(gui, ext, hit) {
     }
   });
 
-  gui.on('box_drag', function(e) {
+  box.on('drag', function(e) {
     if (!_on) return;
-    var b = e.page_bbox;
-    box.show(b[0], b[1], b[2], b[3]);
-    updateSelection(e.map_data_bbox, true);
+    updateSelection(box.getDataCoords(), true);
   });
 
-  gui.on('box_drag_end', function(e) {
+  box.on('dragend', function(e) {
     if (!_on) return;
-    box.hide();
+    updateSelection(box.getDataCoords());
+  });
+
+  gui.on('selection_bridge', function(e) {
     updateSelection(e.map_data_bbox);
   });
 
@@ -42,10 +42,12 @@ export function SelectionTool(gui, ext, hit) {
   }
 
   function turnOn() {
+    box.turnOn();
     _on = true;
   }
 
   function turnOff() {
+    box.turnOff();
     reset();
     _on = false;
     if (gui.interaction.getMode() == 'selection') {

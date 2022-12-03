@@ -2,11 +2,12 @@ import { MouseWheel } from './gui-mouse';
 import { Tween } from './gui-tween';
 import { Bounds, internal, utils } from './gui-core';
 import { initVariableClick } from './gui-mouse-utils';
-import { getBBoxCoords } from './gui-display-utils';
+import { HighlightBox } from './gui-highlight-box';
 
 export function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomTween = new Tween(Tween.sineInOut),
+      zoomBox = new HighlightBox(gui), // .addClass('zooming'),
       boxDrag = false,
       zoomScaleMultiplier = 1,
       inBtn, outBtn,
@@ -40,6 +41,11 @@ export function MapNav(gui, ext, mouse) {
     ext.home();
   });
 
+  ext.on('change', function() {
+    // kludge so controls (e.g. HighlightBox) can initialize before map is ready
+    gui.dispatchEvent('map_navigation');
+  });
+
   zoomTween.on('change', function(e) {
     ext.zoomToExtent(e.value, _fx, _fy);
   });
@@ -59,6 +65,7 @@ export function MapNav(gui, ext, mouse) {
     // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
     boxDrag = !!e.shiftKey;
     if (boxDrag) {
+      if (useBoxZoom()) zoomBox.turnOn();
       dragStartEvt = e;
       gui.dispatchEvent('box_drag_start');
     }
@@ -79,7 +86,12 @@ export function MapNav(gui, ext, mouse) {
     if (boxDrag) {
       boxDrag = false;
       gui.dispatchEvent('box_drag_end', getBoxData(e));
+      zoomBox.turnOff();
     }
+  });
+
+  zoomBox.on('dragend', function(e) {
+    zoomToBbox(e.map_bbox);
   });
 
   wheel.on('mousewheel', function(e) {
@@ -90,44 +102,15 @@ export function MapNav(gui, ext, mouse) {
     ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
   });
 
-  function fixBounds(bbox) {
-    if (bbox[0] > bbox[2]) {
-      swapElements(bbox, 0, 2);
-    }
-    if (bbox[1] > bbox[3]) {
-      swapElements(bbox, 1, 3);
-    }
-  }
-
-  function swapElements(arr, i, j) {
-    var tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
+  function useBoxZoom() {
+    return gui.getMode() != 'selection_tool' && gui.getMode() != 'box_tool';
   }
 
   function getBoxData(e) {
-    var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
-    var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
-    var displayBox = pixToCoords(mapBox);
-    var dataBox = getBBoxCoords(gui.map.getActiveLayer(), displayBox);
-    fixBounds(pageBox);
-    fixBounds(mapBox);
-    fixBounds(displayBox);
-    fixBounds(dataBox);
     return {
-      map_bbox: mapBox,
-      page_bbox: pageBox,
-      // round coords, for nicer 'info' display
-      // (rounded precision should be sub-pixel)
-      map_display_bbox: internal.getRoundedCoords(displayBox, internal.getBoundsPrecisionForDisplay(displayBox)),
-      map_data_bbox: internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox))
+      a: [e.x, e.y],
+      b: [dragStartEvt.x, dragStartEvt.y]
     };
-  }
-
-  function pixToCoords(bbox) {
-    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
   }
 
   function disabled() {
