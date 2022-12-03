@@ -1,3 +1,6 @@
+v0.6.10
+* Added draggable handles to the box tool in the web UI.
+
 v0.6.9
 * Added bboxContainsRectangle(), bboxIntersectsRectangle(), bboxContainedByRectangle() and bboxContainsPoint() functions to the "this" object in expressions used by -each, -filter, -each where= and other contexts.
 
