@@ -2046,7 +2046,7 @@
   // bbox: display coords
   // intended to work with rectangular projections like Mercator
   function getBBoxCoords(lyr, bbox) {
-    if (!isProjectedLayer(lyr)) return bbox;
+    if (!isProjectedLayer(lyr)) return bbox.concat();
     var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
     var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
     var bounds = new internal.Bounds();
@@ -6923,9 +6923,208 @@
     });
   }
 
+  function HighlightBox(gui, optsArg) {
+    var el = El('div').addClass('zoom-box').appendTo('body'),
+        opts = Object.assign({handles: false, persistent: false}, optsArg),
+        box = new EventDispatcher(),
+        stroke = 2,
+        activeHandle = null,
+        prevXY = null,
+        boxCoords = null,
+        _on = false,
+        handles;
+
+    el.hide();
+
+    gui.on('map_navigation', function() {
+      if (!_on) return;
+      redraw();
+    });
+
+    gui.on('box_drag', function(e) {
+      if (!_on) return;
+      boxCoords = getBoxCoords(e.data);
+      redraw();
+      box.dispatchEvent('drag');
+    });
+
+    gui.on('box_drag_end', function(e) {
+      if (!_on) return;
+      boxCoords = getBoxCoords(e.data);
+      var pix = coordsToPix(boxCoords, gui.map.getExtent());
+      box.dispatchEvent('dragend', {map_bbox: pix});
+      if (!opts.persistent) {
+        box.hide();
+      } else {
+        redraw();
+      }
+    });
+
+    if (opts.handles) {
+      handles = initHandles(el);
+      handles.forEach(function(handle) {
+        handle.el.on('mousedown', function(e) {
+          activeHandle = handle;
+          prevXY = {x: e.pageX, y: e.pageY};
+        });
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (!_on || !activeHandle || !prevXY || !boxCoords) return;
+        var xy = {x: e.pageX, y: e.pageY};
+        var scale = gui.map.getExtent().getPixelSize();
+        var dx = (xy.x - prevXY.x) * scale;
+        var dy = -(xy.y - prevXY.y) * scale;
+        if (activeHandle.col == 'left') {
+          boxCoords[0] += dx;
+        } else if (activeHandle.col == 'right') {
+          boxCoords[2] += dx;
+        }
+        if (activeHandle.row == 'top') {
+          boxCoords[3] += dy;
+        } else if (activeHandle.row == 'bottom') {
+          boxCoords[1] += dy;
+        }
+        prevXY = xy;
+        redraw();
+        box.dispatchEvent('handle_drag');
+      });
+
+      document.addEventListener('mouseup', function() {
+        if (activeHandle && _on) {
+          activeHandle = null;
+          prevXY = null;
+          box.dispatchEvent('handle_up');
+          // reset box if it has been inverted (by dragging)
+          fixBounds(boxCoords);
+          redraw();
+        }
+      });
+    }
+
+    box.getDataCoords = function() {
+      if (!boxCoords) return null;
+      var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
+      fixBounds(dataBox);
+      return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
+    };
+
+    box.turnOn = function() {
+      _on = true;
+    };
+
+    box.turnOff = function() {
+      _on = false;
+    };
+
+    box.hide = function() {
+      el.hide();
+      boxCoords = null;
+    };
+
+    box.show = function(x1, y1, x2, y2) {
+      var w = Math.abs(x1 - x2),
+          h = Math.abs(y1 - y2),
+          props = {
+            top: Math.min(y1, y2),
+            left: Math.min(x1, x2),
+            width: Math.max(w - stroke * 2, 1),
+            height: Math.max(h - stroke * 2, 1)
+          };
+      el.css(props);
+      el.show();
+      if (handles) {
+        showHandles(handles, props);
+      }
+    };
+
+    function getBoxCoords(e) {
+      var bbox = pixToCoords(e.a.concat(e.b), gui.map.getExtent());
+      fixBounds(bbox);
+      return bbox;
+    }
+
+    function redraw() {
+      if (!boxCoords) return;
+      var ext = gui.map.getExtent();
+      var b = coordsToPix(boxCoords, ext);
+      var pos = ext.position();
+      var dx = pos.pageX,
+          dy = pos.pageY;
+      box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
+    }
+
+    return box;
+  }
+
+  function coordsToPix(bbox, ext) {
+    var a = ext.translateCoords(bbox[0], bbox[1]);
+    var b = ext.translateCoords(bbox[2], bbox[3]);
+    return [a[0], b[1], b[0], a[1]];
+  }
+
+  function pixToCoords(bbox, ext) {
+    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
+    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+    return [a[0], b[1], b[0], a[1]];
+  }
+
+
+  function fixBounds(bbox) {
+    var tmp;
+    if (bbox[0] > bbox[2]) {
+      tmp = bbox[0];
+      bbox[0] = bbox[2];
+      bbox[2] = tmp;
+    }
+    if (bbox[1] > bbox[3]) {
+      tmp = bbox[1];
+      bbox[1] = bbox[3];
+      bbox[3] = tmp;
+    }
+  }
+
+  function initHandles(el) {
+    var handles = [];
+    for (var i=0; i<9; i++) {
+      if (i == 4) continue;
+      var c = Math.floor(i / 3);
+      var r = i % 3;
+      handles.push({
+        el: El('div').addClass('handle').appendTo(el),
+        col: c == 0 && 'left' || c == 1 && 'center' || 'right',
+        row: r == 0 && 'top' || r == 1 && 'center' || 'bottom'
+      });
+    }
+    return handles;
+  }
+
+  function showHandles(handles, props) {
+    var SIZE = 6; // should match .handle size in page.css
+    handles.forEach(function(handle) {
+      var top = 0,
+          left = 0;
+      if (handle.col == 'center') {
+        left += props.width / 2 - SIZE / 2;
+      } else if (handle.col == 'right') {
+        left += props.width - SIZE;
+      }
+      if (handle.row == 'center') {
+        top += props.height / 2 - SIZE / 2;
+      } else if (handle.row == 'bottom') {
+        top += props.height - SIZE;
+      }
+      handle.el.css({
+        top: top,
+        left: left
+      });
+    });
+  }
+
   function MapNav(gui, ext, mouse) {
     var wheel = new MouseWheel(mouse),
         zoomTween = new Tween(Tween.sineInOut),
+        zoomBox = new HighlightBox(gui), // .addClass('zooming'),
         boxDrag = false,
         zoomScaleMultiplier = 1,
         inBtn, outBtn,
@@ -6959,6 +7158,11 @@
       ext.home();
     });
 
+    ext.on('change', function() {
+      // kludge so controls (e.g. HighlightBox) can initialize before map is ready
+      gui.dispatchEvent('map_navigation');
+    });
+
     zoomTween.on('change', function(e) {
       ext.zoomToExtent(e.value, _fx, _fy);
     });
@@ -6978,6 +7182,7 @@
       // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
       boxDrag = !!e.shiftKey;
       if (boxDrag) {
+        if (useBoxZoom()) zoomBox.turnOn();
         dragStartEvt = e;
         gui.dispatchEvent('box_drag_start');
       }
@@ -6998,7 +7203,12 @@
       if (boxDrag) {
         boxDrag = false;
         gui.dispatchEvent('box_drag_end', getBoxData(e));
+        zoomBox.turnOff();
       }
+    });
+
+    zoomBox.on('dragend', function(e) {
+      zoomToBbox(e.map_bbox);
     });
 
     wheel.on('mousewheel', function(e) {
@@ -7009,44 +7219,15 @@
       ext.zoomByPct(delta, e.x / ext.width(), e.y / ext.height());
     });
 
-    function fixBounds(bbox) {
-      if (bbox[0] > bbox[2]) {
-        swapElements(bbox, 0, 2);
-      }
-      if (bbox[1] > bbox[3]) {
-        swapElements(bbox, 1, 3);
-      }
-    }
-
-    function swapElements(arr, i, j) {
-      var tmp = arr[i];
-      arr[i] = arr[j];
-      arr[j] = tmp;
+    function useBoxZoom() {
+      return gui.getMode() != 'selection_tool' && gui.getMode() != 'box_tool';
     }
 
     function getBoxData(e) {
-      var pageBox = [e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY];
-      var mapBox = [e.x, e.y, dragStartEvt.x, dragStartEvt.y];
-      var displayBox = pixToCoords(mapBox);
-      var dataBox = getBBoxCoords(gui.map.getActiveLayer(), displayBox);
-      fixBounds(pageBox);
-      fixBounds(mapBox);
-      fixBounds(displayBox);
-      fixBounds(dataBox);
       return {
-        map_bbox: mapBox,
-        page_bbox: pageBox,
-        // round coords, for nicer 'info' display
-        // (rounded precision should be sub-pixel)
-        map_display_bbox: internal.getRoundedCoords(displayBox, internal.getBoundsPrecisionForDisplay(displayBox)),
-        map_data_bbox: internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox))
+        a: [e.x, e.y],
+        b: [dragStartEvt.x, dragStartEvt.y]
       };
-    }
-
-    function pixToCoords(bbox) {
-      var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-      var b = ext.translatePixelCoords(bbox[2], bbox[3]);
-      return [a[0], b[1], b[0], a[1]];
     }
 
     function disabled() {
@@ -7093,28 +7274,9 @@
     }
   }
 
-  function HighlightBox() {
-    var box = El('div').addClass('zoom-box').appendTo('body'),
-        show = box.show.bind(box), // original show() function
-        stroke = 2;
-    box.hide();
-    box.show = function(x1, y1, x2, y2) {
-      var w = Math.abs(x1 - x2),
-          h = Math.abs(y1 - y2);
-      box.css({
-        top: Math.min(y1, y2),
-        left: Math.min(x1, x2),
-        width: Math.max(w - stroke * 2, 1),
-        height: Math.max(h - stroke * 2, 1)
-      });
-      show();
-    };
-    return box;
-  }
-
   function SelectionTool(gui, ext, hit) {
     var popup = gui.container.findChild('.selection-tool-options');
-    var box = new HighlightBox();
+    var box = new HighlightBox(gui);
     var _on = false;
 
     gui.addMode('selection_tool', turnOn, turnOff);
@@ -7127,16 +7289,17 @@
       }
     });
 
-    gui.on('box_drag', function(e) {
+    box.on('drag', function(e) {
       if (!_on) return;
-      var b = e.page_bbox;
-      box.show(b[0], b[1], b[2], b[3]);
-      updateSelection(e.map_data_bbox, true);
+      updateSelection(box.getDataCoords(), true);
     });
 
-    gui.on('box_drag_end', function(e) {
+    box.on('dragend', function(e) {
       if (!_on) return;
-      box.hide();
+      updateSelection(box.getDataCoords());
+    });
+
+    gui.on('selection_bridge', function(e) {
       updateSelection(e.map_data_bbox);
     });
 
@@ -7151,10 +7314,12 @@
     }
 
     function turnOn() {
+      box.turnOn();
       _on = true;
     }
 
     function turnOff() {
+      box.turnOff();
       reset();
       _on = false;
       if (gui.interaction.getMode() == 'selection') {
@@ -9367,15 +9532,14 @@
     }
   }
 
-  // Controls both the shift-drag zoom-to-extent tool and the shift-drag editing tool
-
-  function BoxTool(gui, ext, mouse, nav) {
+  // Controls the shift-drag box editing tool
+  //
+  function BoxTool(gui, ext, nav) {
     var self = new EventDispatcher();
-    var box = new HighlightBox();
+    var box = new HighlightBox(gui, {persistent: true, handles: true});
     var popup = gui.container.findChild('.box-tool-options');
     var coords = popup.findChild('.box-coords');
     var _on = false;
-    var bboxData;
 
     var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
       if (coords.visible()) hideCoords(); else showCoords();
@@ -9385,28 +9549,19 @@
       reset();
     });
 
-    // Removing zoom-in button -- cumbersome way to zoom
-    // new SimpleButton(popup.findChild('.zoom-btn')).on('click', function() {
-    //   nav.zoomToBbox(bboxPixels);
-    //   reset();
-    // });
-
-    // Removing button for creating a layer containing a single rectangle.
-    // You can get the bbox with the Info button and create a rectangle in the console
-    // using -rectangle bbox=<coordinates>
-    // new SimpleButton(popup.findChild('.rectangle-btn')).on('click', function() {
-    //   runCommand('-rectangle bbox=' + bbox.join(','));
-    // });
-
     new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+      var coords = box.getDataCoords();
+      if (!coords) return;
       gui.enterMode('selection_tool');
       gui.interaction.setMode('selection');
       // kludge to pass bbox to the selection tool
-      gui.dispatchEvent('box_drag_end', bboxData);
+      gui.dispatchEvent('selection_bridge', {
+        map_data_bbox: coords
+      });
     });
 
     new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
-      runCommand('-clip bbox=' + bboxData.map_data_bbox.join(','));
+      runCommand('-clip bbox=' + box.getDataCoords().join(','));
     });
 
     gui.addMode('box_tool', turnOn, turnOff);
@@ -9419,37 +9574,18 @@
       }
     });
 
-    // Update the visible rectangle when the map view changes
-    // (e.g. during zooming or panning)
-    ext.on('change', function() {
-      if (!_on || !box.visible() || !bboxData) return;
-      var b = coordsToPix(bboxData.map_display_bbox);
-      var pos = ext.position();
-      var dx = pos.pageX,
-          dy = pos.pageY;
-      box.show(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy);
-    });
-
     gui.on('box_drag_start', function() {
-      box.classed('zooming', inZoomMode());
+      // box.classed('zooming', inZoomMode());
       hideCoords();
     });
 
-    gui.on('box_drag', function(e) {
-      var b = e.page_bbox;
-      bboxData = e.data;
-      if (_on || inZoomMode()) {
-        box.show(b[0], b[1], b[2], b[3]);
-      }
+    box.on('dragend', function(e) {
+      if (_on) popup.show();
     });
 
-    gui.on('box_drag_end', function(e) {
-      bboxData = e.data;
-      if (inZoomMode()) {
-        box.hide();
-        nav.zoomToBbox(e.map_bbox);
-      } else if (_on) {
-        popup.show();
+    box.on('handle_drag', function() {
+      if (coords.visible()) {
+        showCoords();
       }
     });
 
@@ -9468,7 +9604,7 @@
 
     function showCoords() {
       El(infoBtn.node()).addClass('selected-btn');
-      coords.text(bboxData.map_data_bbox.join(','));
+      coords.text(box.getDataCoords().join(','));
       coords.show();
       GUI.selectElement(coords.node());
     }
@@ -9479,10 +9615,12 @@
     }
 
     function turnOn() {
+      box.turnOn();
       _on = true;
     }
 
     function turnOff() {
+      box.turnOff();
       if (gui.interaction.getMode() == 'box') {
         // mode change was not initiated by interactive menu -- turn off interactivity
         gui.interaction.turnOff();
@@ -9495,12 +9633,6 @@
       box.hide();
       popup.hide();
       hideCoords();
-    }
-
-    function coordsToPix(bbox) {
-      var a = ext.translateCoords(bbox[0], bbox[1]);
-      var b = ext.translateCoords(bbox[2], bbox[3]);
-      return [a[0], b[1], b[0], a[1]];
     }
 
     return self;
@@ -10019,7 +10151,7 @@
         _ext = new MapExtent(position),
         _hit = new InteractiveSelection(gui, _ext, _mouse),
         _nav = new MapNav(gui, _ext, _mouse),
-        _boxTool = new BoxTool(gui, _ext, _mouse, _nav),
+        _boxTool = new BoxTool(gui, _ext, _nav),
         _selectionTool = new SelectionTool(gui, _ext, _hit),
         _visibleLayers = [], // cached visible map layers
         _fullBounds = null,

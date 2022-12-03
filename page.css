@@ -184,6 +184,7 @@ body {
 
 .selection-tool-options .info-box {
 	pointer-events: initial;
+	text-align: center;
 }
 
 /* --- Box tool dialog --------- */
@@ -200,6 +201,7 @@ body {
 }
 
 .box-tool-options .box-coords {
+	margin-top: 7px;
 	pointer-events: initial;
 }
 
@@ -1241,8 +1243,14 @@ div.basemap-style-btn.active img {
 	pointer-events: none;
 }
 
-.zoom-box.zooming {
-	border-color: #1385B7;
+.zoom-box .handle {
+	position: absolute;
+	z-index: 16;
+	/* cursor: pointer; */
+	background: #cc6acc;
+	pointer-events: all;
+	width: 6px;
+	height: 6px;
 }
 
 /* Simplification control ------------ */
