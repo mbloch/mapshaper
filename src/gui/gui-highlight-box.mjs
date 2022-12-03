@@ -140,7 +140,7 @@ export function HighlightBox(gui, optsArg) {
 function coordsToPix(bbox, ext) {
   var a = ext.translateCoords(bbox[0], bbox[1]);
   var b = ext.translateCoords(bbox[2], bbox[3]);
-  return [a[0], b[1], b[0], a[1]];
+  return [Math.round(a[0]), Math.round(b[1]), Math.round(b[0]), Math.round(a[1])];
 }
 
 function pixToCoords(bbox, ext) {
@@ -180,21 +180,23 @@ function initHandles(el) {
 }
 
 function showHandles(handles, props) {
-  var SIZE = 6; // should match .handle size in page.css
+  var HANDLE_SIZE = Math.min(props.width, props.height, 6);
   handles.forEach(function(handle) {
     var top = 0,
         left = 0;
     if (handle.col == 'center') {
-      left += props.width / 2 - SIZE / 2;
+      left += props.width / 2 - HANDLE_SIZE / 2;
     } else if (handle.col == 'right') {
-      left += props.width - SIZE;
+      left += props.width - HANDLE_SIZE;
     }
     if (handle.row == 'center') {
-      top += props.height / 2 - SIZE / 2;
+      top += props.height / 2 - HANDLE_SIZE / 2;
     } else if (handle.row == 'bottom') {
-      top += props.height - SIZE;
+      top += props.height - HANDLE_SIZE;
     }
     handle.el.css({
+      width: HANDLE_SIZE,
+      height: HANDLE_SIZE,
       top: top,
       left: left
     });
