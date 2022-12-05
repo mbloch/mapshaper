@@ -16,7 +16,7 @@ export function HighlightBox(gui, optsArg) {
 
   el.hide();
 
-  gui.on('map_navigation', function() {
+  gui.on('map_rendered', function() {
     if (!_on) return;
     redraw();
   });

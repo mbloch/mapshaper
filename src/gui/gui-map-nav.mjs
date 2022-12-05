@@ -41,11 +41,6 @@ export function MapNav(gui, ext, mouse) {
     ext.home();
   });
 
-  ext.on('change', function() {
-    // kludge so controls (e.g. HighlightBox) can initialize before map is ready
-    gui.dispatchEvent('map_navigation');
-  });
-
   zoomTween.on('change', function(e) {
     ext.zoomToExtent(e.value, _fx, _fy);
   });

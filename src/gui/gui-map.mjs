@@ -483,6 +483,7 @@ export function MshpMap(gui) {
     _stack.drawOverlayLayer(_overlayLyr, action);
     // draw furniture
     _stack.drawFurnitureLayers(furnitureLayers, action);
+    gui.dispatchEvent('map_rendered');
   }
 }
 
