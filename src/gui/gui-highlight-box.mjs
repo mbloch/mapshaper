@@ -180,20 +180,25 @@ function initHandles(el) {
 }
 
 function showHandles(handles, props) {
-  var HANDLE_SIZE = Math.min(props.width, props.height, 6);
+  var HANDLE_SIZE = Math.min(props.width, props.height, 7);
   handles.forEach(function(handle) {
     var top = 0,
         left = 0;
     if (handle.col == 'center') {
       left += props.width / 2 - HANDLE_SIZE / 2;
     } else if (handle.col == 'right') {
-      left += props.width - HANDLE_SIZE;
+      left += props.width - HANDLE_SIZE + 1;
+    } else {
+      left -= 1;
     }
     if (handle.row == 'center') {
       top += props.height / 2 - HANDLE_SIZE / 2;
     } else if (handle.row == 'bottom') {
-      top += props.height - HANDLE_SIZE;
+      top += props.height - HANDLE_SIZE + 1;
+    } else {
+      top -= 1;
     }
+
     handle.el.css({
       width: HANDLE_SIZE,
       height: HANDLE_SIZE,
