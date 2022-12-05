@@ -180,7 +180,8 @@ function initHandles(el) {
 }
 
 function showHandles(handles, props) {
-  var HANDLE_SIZE = Math.min(props.width, props.height, 7);
+  var scaledSize = Math.ceil(Math.min(props.width, props.height) / 5);
+  var HANDLE_SIZE = Math.min(scaledSize, 7);
   handles.forEach(function(handle) {
     var top = 0,
         left = 0;
