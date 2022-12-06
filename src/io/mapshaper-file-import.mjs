@@ -6,6 +6,7 @@ import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, verbose, stop } from '../utils/mapshaper-logging';
 import { getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
+import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 
 cmd.importFiles = function(opts) {
   var files = opts.files || [],
@@ -66,6 +67,19 @@ var _importFile = function(path, opts) {
 
   } else if (fileType) { // string type, e.g. kml, geojson
     content = cli.readFile(path, encoding || 'utf-8', cache);
+
+  } else if (getFileExtension(path) == 'gz') {
+    var pathgz = path;
+    path = pathgz.replace(/\.gz$/, '');
+    fileType = guessInputFileType(path);
+    if (!fileType) {
+      stop('Unrecognized file type:', path);
+    }
+    // TODO: consider using a temp file, to support incremental reading
+    content = require('zlib').gunzipSync(cli.readFile(pathgz));
+    if (fileType == 'json' || fileType == 'text') {
+      content = trimBOM(decodeString(content, encoding || 'utf-8'));
+    }
 
   } else { // type can't be inferred from filename -- try reading as text
     content = cli.readFile(path, encoding || 'utf-8', cache);

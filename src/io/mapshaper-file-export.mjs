@@ -33,15 +33,18 @@ var _writeFiles = function(exports, opts, cb) {
         // replacing content so ArrayBuffers can be gc'd
         obj.content = cli.convertArrayBuffer(obj.content); // convert to Buffer
       }
+      if (opts.gzip) {
+        path = path + '.gz';
+        obj.content = require('zlib').gzipSync(obj.content);
+      }
       if (opts.output) {
         opts.output.push({filename: path, content: obj.content});
-      } else {
-        if (!opts.force && inputFiles.indexOf(path) > -1) {
-          stop('Need to use the "-o force" option to overwrite input files.');
-        }
-        cli.writeFile(path, obj.content);
-        message("Wrote " + path);
+        return;
+      }      if (!opts.force && inputFiles.indexOf(path) > -1) {
+        stop('Need to use the "-o force" option to overwrite input files.');
       }
+      cli.writeFile(path, obj.content);
+      message("Wrote " + path);
     });
   }
   if (cb) cb(null);

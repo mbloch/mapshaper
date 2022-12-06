@@ -209,6 +209,10 @@ export function getOptionParser() {
       describe: 'allow overwriting input files',
       type: 'flag'
     })
+    .option('gzip', {
+      describe: 'apply gzip compression to output files',
+      type: 'flag'
+    })
     .option('dry-run', {
       // describe: 'do not output any files'
       type: 'flag'
