@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.10";
+  var VERSION = "0.6.11";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -7311,15 +7311,18 @@
           // replacing content so ArrayBuffers can be gc'd
           obj.content = cli.convertArrayBuffer(obj.content); // convert to Buffer
         }
+        if (opts.gzip) {
+          path = path + '.gz';
+          obj.content = require$1('zlib').gzipSync(obj.content);
+        }
         if (opts.output) {
           opts.output.push({filename: path, content: obj.content});
-        } else {
-          if (!opts.force && inputFiles.indexOf(path) > -1) {
-            stop('Need to use the "-o force" option to overwrite input files.');
-          }
-          cli.writeFile(path, obj.content);
-          message("Wrote " + path);
+          return;
+        }      if (!opts.force && inputFiles.indexOf(path) > -1) {
+          stop('Need to use the "-o force" option to overwrite input files.');
         }
+        cli.writeFile(path, obj.content);
+        message("Wrote " + path);
       });
     }
     if (cb) cb(null);
@@ -19346,6 +19349,10 @@ ${svg}
         describe: 'allow overwriting input files',
         type: 'flag'
       })
+      .option('gzip', {
+        describe: 'apply gzip compression to output files',
+        type: 'flag'
+      })
       .option('dry-run', {
         // describe: 'do not output any files'
         type: 'flag'
@@ -23799,6 +23806,19 @@ ${svg}
 
     } else if (fileType) { // string type, e.g. kml, geojson
       content = cli.readFile(path, encoding || 'utf-8', cache);
+
+    } else if (getFileExtension(path) == 'gz') {
+      var pathgz = path;
+      path = pathgz.replace(/\.gz$/, '');
+      fileType = guessInputFileType(path);
+      if (!fileType) {
+        stop('Unrecognized file type:', path);
+      }
+      // TODO: consider using a temp file, to support incremental reading
+      content = require('zlib').gunzipSync(cli.readFile(pathgz));
+      if (fileType == 'json' || fileType == 'text') {
+        content = trimBOM(decodeString(content, encoding || 'utf-8'));
+      }
 
     } else { // type can't be inferred from filename -- try reading as text
       content = cli.readFile(path, encoding || 'utf-8', cache);

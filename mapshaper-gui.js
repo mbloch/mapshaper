@@ -6936,7 +6936,7 @@
 
     el.hide();
 
-    gui.on('map_navigation', function() {
+    gui.on('map_rendered', function() {
       if (!_on) return;
       redraw();
     });
@@ -7060,7 +7060,7 @@
   function coordsToPix(bbox, ext) {
     var a = ext.translateCoords(bbox[0], bbox[1]);
     var b = ext.translateCoords(bbox[2], bbox[3]);
-    return [a[0], b[1], b[0], a[1]];
+    return [Math.round(a[0]), Math.round(b[1]), Math.round(b[0]), Math.round(a[1])];
   }
 
   function pixToCoords(bbox, ext) {
@@ -7100,21 +7100,29 @@
   }
 
   function showHandles(handles, props) {
-    var SIZE = 6; // should match .handle size in page.css
+    var scaledSize = Math.ceil(Math.min(props.width, props.height) / 5);
+    var HANDLE_SIZE = Math.min(scaledSize, 7);
     handles.forEach(function(handle) {
       var top = 0,
           left = 0;
       if (handle.col == 'center') {
-        left += props.width / 2 - SIZE / 2;
+        left += props.width / 2 - HANDLE_SIZE / 2;
       } else if (handle.col == 'right') {
-        left += props.width - SIZE;
+        left += props.width - HANDLE_SIZE + 1;
+      } else {
+        left -= 1;
       }
       if (handle.row == 'center') {
-        top += props.height / 2 - SIZE / 2;
+        top += props.height / 2 - HANDLE_SIZE / 2;
       } else if (handle.row == 'bottom') {
-        top += props.height - SIZE;
+        top += props.height - HANDLE_SIZE + 1;
+      } else {
+        top -= 1;
       }
+
       handle.el.css({
+        width: HANDLE_SIZE,
+        height: HANDLE_SIZE,
         top: top,
         left: left
       });
@@ -7156,11 +7164,6 @@
 
     gui.on('map_reset', function() {
       ext.home();
-    });
-
-    ext.on('change', function() {
-      // kludge so controls (e.g. HighlightBox) can initialize before map is ready
-      gui.dispatchEvent('map_navigation');
     });
 
     zoomTween.on('change', function(e) {
@@ -10602,6 +10605,7 @@
       _stack.drawOverlayLayer(_overlayLyr, action);
       // draw furniture
       _stack.drawFurnitureLayers(furnitureLayers, action);
+      gui.dispatchEvent('map_rendered');
     }
   }
 

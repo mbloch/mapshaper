@@ -1249,8 +1249,6 @@ div.basemap-style-btn.active img {
 	/* cursor: pointer; */
 	background: #cc6acc;
 	pointer-events: all;
-	width: 6px;
-	height: 6px;
 }
 
 /* Simplification control ------------ */
