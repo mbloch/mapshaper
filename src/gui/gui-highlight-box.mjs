@@ -45,6 +45,7 @@ export function HighlightBox(gui, optsArg) {
     handles.forEach(function(handle) {
       handle.el.on('mousedown', function(e) {
         activeHandle = handle;
+        activeHandle.el.css('background', 'black');
         prevXY = {x: e.pageX, y: e.pageY};
       });
     });
@@ -72,6 +73,7 @@ export function HighlightBox(gui, optsArg) {
 
     document.addEventListener('mouseup', function() {
       if (activeHandle && _on) {
+        activeHandle.el.css('background', null);
         activeHandle = null;
         prevXY = null;
         box.dispatchEvent('handle_up');
@@ -114,7 +116,7 @@ export function HighlightBox(gui, optsArg) {
     el.css(props);
     el.show();
     if (handles) {
-      showHandles(handles, props);
+      showHandles(handles, props, x2 < x1, y2 < y1);
     }
   };
 
@@ -179,8 +181,8 @@ function initHandles(el) {
   return handles;
 }
 
-function showHandles(handles, props) {
-  var scaledSize = Math.ceil(Math.min(props.width, props.height) / 5);
+function showHandles(handles, props, xinv, yinv) {
+  var scaledSize = Math.ceil(Math.min(props.width, props.height) / 3) - 1;
   var HANDLE_SIZE = Math.min(scaledSize, 7);
   var OFFS = Math.floor(HANDLE_SIZE / 2) + 1;
   handles.forEach(function(handle) {
@@ -188,14 +190,14 @@ function showHandles(handles, props) {
         left = 0;
     if (handle.col == 'center') {
       left += props.width / 2 - HANDLE_SIZE / 2;
-    } else if (handle.col == 'right') {
+    } else if (handle.col == 'left' && xinv || handle.col == 'right' && !xinv) {
       left += props.width - HANDLE_SIZE + OFFS;
     } else {
       left -= OFFS;
     }
     if (handle.row == 'center') {
       top += props.height / 2 - HANDLE_SIZE / 2;
-    } else if (handle.row == 'bottom') {
+    } else if (handle.row == 'top' && yinv || handle.row == 'bottom' && !yinv) {
       top += props.height - HANDLE_SIZE + OFFS;
     } else {
       top -= OFFS;

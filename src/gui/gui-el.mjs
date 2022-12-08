@@ -34,11 +34,10 @@ El.fromCamelCase = function(str) {
 El.setStyle = function(el, name, val) {
   var jsName = El.toCamelCase(name);
   if (el.style[jsName] == void 0) {
-    console.error("[Element.setStyle()] css property:", jsName);
     return;
   }
   var cssVal = val;
-  if (isFinite(val)) {
+  if (isFinite(val) && val !== null) {
     cssVal = String(val); // problem if converted to scientific notation
     if (jsName != 'opacity' && jsName != 'zIndex') {
       cssVal += "px";
@@ -115,16 +114,14 @@ utils.extend(El.prototype, {
 
   // Apply inline css styles to this Element, either as string or object.
   css: function(css, val) {
-    if (val != null) {
-      El.setStyle(this.el, css, val);
-    }
-    else if (utils.isString(css)) {
-      addCSS(this.el, css);
-    }
-    else if (utils.isObject(css)) {
+    if (utils.isObject(css)) {
       utils.forEachProperty(css, function(val, key) {
         El.setStyle(this.el, key, val);
       }, this);
+    } else if (val === void 0) {
+      addCSS(this.el, css);
+    } else {
+      El.setStyle(this.el, css, val);
     }
     return this;
   },
