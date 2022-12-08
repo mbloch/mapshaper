@@ -251,6 +251,11 @@ body {
 	left: 0;
 }
 
+.error-title {
+	font-weight: bold;
+	margin-bottom: 4px;
+}
+
 div.error-box {
 	margin-top: 55px;
 	overflow: auto;
