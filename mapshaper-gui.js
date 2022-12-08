@@ -1277,6 +1277,7 @@
     new FileChooser('#file-selection-btn', receiveFiles);
     new FileChooser('#import-buttons .add-btn', receiveFiles);
     new FileChooser('#add-file-btn', receiveFiles);
+    // new SimpleButton('#add-empty-btn').on('click', addEmptyLayer);
     initDropArea('#import-quick-drop', true);
     initDropArea('#import-drop');
     gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);
@@ -1322,9 +1323,12 @@
           await importFiles(files);
         }
       } catch(e) {
-        console.error(e);
+        gui.alert(e.message, 'Import error');
       }
-      gui.clearMode();
+      if (gui.getMode() == 'import') {
+        // Mode could also be 'alert' if an error is thrown and handled
+        gui.clearMode();
+      }
     }
 
     function turnOn() {
@@ -1388,10 +1392,20 @@
     }
 
     async function receiveFiles(files) {
-      // TODO: show importing message here?
-      var expanded = await expandFiles(files);
+      var expanded = [];
+      try {
+        expanded = await expandFiles(files);
+      } catch(e) {
+        gui.alert(e.message, 'Import error');
+        return;
+      }
       addFilesToQueue(expanded);
-      if (queuedFiles.length === 0) return;
+      if (queuedFiles.length === 0) {
+        var names = getFileNames(files);
+        var msg = `Unable to import data from: ${names.join(', ')}`;
+        gui.alert(msg, 'Import error');
+        return;
+      }
       gui.enterMode('import');
       if (useQuickView()) {
         importQueuedFiles();
@@ -1400,6 +1414,10 @@
         El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
         showQueuedFiles();
       }
+    }
+
+    function getFileNames(files) {
+      return Array.from(files).map(function(f) {return f.name;});
     }
 
     async function expandFiles(files) {
@@ -1440,6 +1458,19 @@
       model.addDataset(dataset);
       importCount++;
       gui.session.fileImported(group.filename, optStr);
+    }
+
+    function addEmptyLayer() {
+      var dataset = {
+        layers: [{
+          name: 'New layer',
+          geometry_type: 'point',
+          shapes: []
+        }],
+        info: {}
+      };
+      model.addDataset(dataset);
+      gui.clearMode();
     }
 
     function filesMayContainPaths(files) {
@@ -1495,16 +1526,6 @@
         // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
         reader.readAsText(file, 'UTF-8');
       }
-    }
-
-    function handleImportError(e, fileName) {
-      var msg = utils$1.isString(e) ? e : e.message;
-      if (fileName) {
-        msg = "Error importing <i>" + fileName + "</i><br>" + msg;
-      }
-      clearQueuedFiles();
-      gui.alert(msg);
-      console.error(e);
     }
 
     function prepFilesForDownload(names) {
@@ -1565,7 +1586,7 @@
     }
 
     async function readZipFile(file) {
-      var files;
+      var files = [];
       await wait(35); // pause a beat so status message can display
       try {
         files = await runAsync(GUI.readZipFile, file);
@@ -1575,8 +1596,8 @@
           return !/\.txt$/i.test(f.name);
         });
       } catch(e) {
-        handleImportError(e, file.name);
-        files = [];
+        console.error(e);
+        throw Error(`Unable to unzip ${file.name}`);
       }
       return files;
     }
@@ -1592,9 +1613,9 @@
           type: internal.guessInputType(file.name, content)
         };
       } catch (e) {
-        handleImportError("Web browser was unable to load the file.", file.name);
+        console.error(e);
+        throw Error(`Browser was unable to load the file ${file.name}`);
       }
-      return null;
     }
 
     async function readFiles(files) {
@@ -2985,15 +3006,19 @@
     var el;
     gui.addMode('alert', function() {}, turnOff);
 
-    gui.alert = function(str) {
-      var infoBox;
+    gui.alert = function(str, title) {
+      var infoBox, html = '';
       if (!el) {
         el = El('div').appendTo('body').addClass('error-wrapper');
         infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
-        El('p').addClass('error-message').appendTo(infoBox);
+        El('div').appendTo(infoBox).addClass('error-content');
         El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
       }
-      el.findChild('.error-message').html(str);
+      if (title) {
+        html += `<div class="error-title">${title}</div>`;
+      }
+      html += `<p class="error-message">${str}</p>`;
+      el.findChild('.error-content').html(html);
       gui.enterMode('alert');
     };
 

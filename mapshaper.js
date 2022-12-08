@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.11";
+  var VERSION = "0.6.12";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -15644,9 +15644,11 @@ ${svg}
     } else if (buf instanceof ArrayBuffer) {
       // we're good
     } else if (typeof B$3 == 'function' && buf instanceof B$3) {
-      // Since node 0.10, DataView constructor doesn't accept Buffers,
-      //   so need to copy Buffer to ArrayBuffer
-      buf = BinArray.toArrayBuffer(buf);
+      if (buf.buffer && buf.buffer.byteLength == buf.length) {
+        buf = buf.buffer;
+      } else {
+        buf = BinArray.copyToArrayBuffer(buf);
+      }
     } else {
       error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
     }
@@ -15692,7 +15694,7 @@ ${svg}
     return bytes;
   };
 
-  BinArray.toArrayBuffer = function(src) {
+  BinArray.copyToArrayBuffer = function(src) {
     var n = src.length,
         dest = new ArrayBuffer(n),
         view = new Uint8Array(dest);
@@ -23497,9 +23499,9 @@ ${svg}
 
     if (!content) {
       reader = new FileReader(filename);
-    } else if (content instanceof ArrayBuffer) {
+    } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
       // Web API imports JSON as ArrayBuffer, to support larger files
-      if (content.byteLength < 1e7) {
+      if ((content.byteLength || content.length) < 1e7) {
         // content = utils.createBuffer(content).toString();
         content = bufferToString(utils.createBuffer(content));
       } else {
@@ -23524,7 +23526,7 @@ ${svg}
           content = JSON.parse(content); // ~3sec for 100MB string
         } catch(e) {
           // stop("Unable to parse JSON");
-          stop('JSON parsing error --', e.message);
+          stop('JSON parsing error:', e.message);
         }
       }
       if (opts.json_path) {
@@ -23816,9 +23818,6 @@ ${svg}
       }
       // TODO: consider using a temp file, to support incremental reading
       content = require('zlib').gunzipSync(cli.readFile(pathgz));
-      if (fileType == 'json' || fileType == 'text') {
-        content = trimBOM(decodeString(content, encoding || 'utf-8'));
-      }
 
     } else { // type can't be inferred from filename -- try reading as text
       content = cli.readFile(path, encoding || 'utf-8', cache);
