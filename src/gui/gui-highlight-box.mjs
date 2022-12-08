@@ -182,22 +182,23 @@ function initHandles(el) {
 function showHandles(handles, props) {
   var scaledSize = Math.ceil(Math.min(props.width, props.height) / 5);
   var HANDLE_SIZE = Math.min(scaledSize, 7);
+  var OFFS = Math.floor(HANDLE_SIZE / 2) + 1;
   handles.forEach(function(handle) {
     var top = 0,
         left = 0;
     if (handle.col == 'center') {
       left += props.width / 2 - HANDLE_SIZE / 2;
     } else if (handle.col == 'right') {
-      left += props.width - HANDLE_SIZE + 1;
+      left += props.width - HANDLE_SIZE + OFFS;
     } else {
-      left -= 1;
+      left -= OFFS;
     }
     if (handle.row == 'center') {
       top += props.height / 2 - HANDLE_SIZE / 2;
     } else if (handle.row == 'bottom') {
-      top += props.height - HANDLE_SIZE + 1;
+      top += props.height - HANDLE_SIZE + OFFS;
     } else {
-      top -= 1;
+      top -= OFFS;
     }
 
     handle.el.css({
