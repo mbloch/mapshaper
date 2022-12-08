@@ -1,3 +1,6 @@
+v0.6.12
+* Support for reading larger .gz files (up to 2GB unzipped GeoJSON and CSV files).
+
 v0.6.11
 * Added support to the CLI and Node interface for reading and writing gzipped files with the .gz extension.
 
