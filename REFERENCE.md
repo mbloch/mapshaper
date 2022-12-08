@@ -199,6 +199,8 @@ Save edited content to a file or files. By default, Mapshaper appends a suffix t
 
 `force`  Allow output files to overwrite input files (without this option, overwriting input files is not allowed).
 
+`gzip`  Apply gzip compression to output files.
+
 `cut-table`  Detach attribute data from shapes and save as a JSON file.
 
 `drop-table`  Remove attribute data from output.
