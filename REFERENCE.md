@@ -301,7 +301,9 @@ Assign colors or data values to each feature using one of several classification
 
 `non-adjacent`  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper's algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.
 
-`stops=` A pair of values (0-100) for limiting the range of a color ramp.
+`stops=` A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.
+
+`range=`  A pair of comma-separated numbers giving min and max data values to use when computing class breaks. (By default, the min and max values of the data field being classified are used.)
 
 `null-value=`   Value (or color) to use for invalid or missing data.
 
@@ -906,7 +908,7 @@ Common options: `target=`
 
 ### -proj
 
-Project a dataset using a Proj.4 string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers.
+Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the (PROJ website)[https://proj.org/usage/index.html#].
 
 `<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases.  In projections which require additional parameters, such as a zone in UTM, you can pass a Proj4 string enclosed in quotes.  For example, `crs='+proj=utm +zone=27'`.
 
@@ -928,14 +930,20 @@ mapshaper nyc.json -proj +proj=lcc +lat_1=41.03333333333333 +lat_2=40.6666666666
 # Apply the same projection using an EPSG code
 mapshaper nyc.json -proj EPSG:2831 -o out.json
 
+# Convert a projected Shapefile to WGS84 coordinates
+mapshaper area.shp -proj wgs84 -o out.shp
+
+# Use the Winkel Tripel projection with a custom central meridian
+mapshaper countries.shp -proj +proj=wintri +lon_0=10 -o out.shp
+
+# Shortcut notation for the above projection
+mapshaper countries.shp -proj wintri +lon_0=10 -o out.shp
+
 # Convert an unprojected U.S. Shapefile into a composite projection with Alaska
 # and Hawaii repositioned and rescaled to fit in the lower left corner.
 # Show Puerto Rico and the U.S. Virgin Islands
 # Override the default central meridian and scale of the Alaska inset
 mapshaper us_states.shp -proj albersusa +PR +VI +AK.lon_0=-141 +AK.scale=0.4 -o out.shp
-
-# Convert a projected Shapefile to WGS84 coordinates
-mapshaper area.shp -proj wgs84 -o out.shp
 ```
 
 ### -rectangle
