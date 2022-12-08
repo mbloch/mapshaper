@@ -77,9 +77,6 @@ var _importFile = function(path, opts) {
     }
     // TODO: consider using a temp file, to support incremental reading
     content = require('zlib').gunzipSync(cli.readFile(pathgz));
-    if (fileType == 'json' || fileType == 'text') {
-      content = trimBOM(decodeString(content, encoding || 'utf-8'));
-    }
 
   } else { // type can't be inferred from filename -- try reading as text
     content = cli.readFile(path, encoding || 'utf-8', cache);

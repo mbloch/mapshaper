@@ -80,9 +80,9 @@ export function importJSON(data, opts) {
 
   if (!content) {
     reader = new FileReader(filename);
-  } else if (content instanceof ArrayBuffer) {
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
     // Web API imports JSON as ArrayBuffer, to support larger files
-    if (content.byteLength < 1e7) {
+    if ((content.byteLength || content.length) < 1e7) {
       // content = utils.createBuffer(content).toString();
       content = bufferToString(utils.createBuffer(content));
     } else {
@@ -107,7 +107,7 @@ export function importJSON(data, opts) {
         content = JSON.parse(content); // ~3sec for 100MB string
       } catch(e) {
         // stop("Unable to parse JSON");
-        stop('JSON parsing error --', e.message);
+        stop('JSON parsing error:', e.message);
       }
     }
     if (opts.json_path) {

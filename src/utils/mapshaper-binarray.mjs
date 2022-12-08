@@ -26,9 +26,11 @@ export function BinArray(buf, le) {
   } else if (buf instanceof ArrayBuffer) {
     // we're good
   } else if (typeof Buffer == 'function' && buf instanceof Buffer) {
-    // Since node 0.10, DataView constructor doesn't accept Buffers,
-    //   so need to copy Buffer to ArrayBuffer
-    buf = BinArray.toArrayBuffer(buf);
+    if (buf.buffer && buf.buffer.byteLength == buf.length) {
+      buf = buf.buffer;
+    } else {
+      buf = BinArray.copyToArrayBuffer(buf);
+    }
   } else {
     error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
   }
@@ -74,7 +76,7 @@ BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
   return bytes;
 };
 
-BinArray.toArrayBuffer = function(src) {
+BinArray.copyToArrayBuffer = function(src) {
   var n = src.length,
       dest = new ArrayBuffer(n),
       view = new Uint8Array(dest);
