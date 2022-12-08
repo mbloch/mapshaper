@@ -104,7 +104,13 @@ export function validateOutputOpts(cmd) {
       // (cli.writeFile() now creates directories that don't exist)
       // cli.validateOutputDir(o.directory);
     }
-    o.file = pathInfo.filename;
+    if (pathInfo.extension == 'gz') {
+      o.file = pathInfo.basename;
+      o.gzip = true;
+    } else {
+      o.file = pathInfo.filename;
+    }
+
     if (filenameIsUnsupportedOutputType(o.file)) {
       error("Output file looks like an unsupported file type:", o.file);
     }

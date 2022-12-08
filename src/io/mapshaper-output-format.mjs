@@ -1,6 +1,7 @@
 import { couldBeDsvFile } from '../io/mapshaper-file-types';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
+
 export function getOutputFormat(dataset, opts) {
   var outFile = opts.file || null,
       inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
