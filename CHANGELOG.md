@@ -1,3 +1,6 @@
+v0.6.13
+* Gzipped output is inferred if output filename ends in ".gz".
+
 v0.6.12
 * Support for reading larger .gz files (up to 2GB unzipped GeoJSON and CSV files).
 
