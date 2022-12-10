@@ -682,11 +682,10 @@
   El.setStyle = function(el, name, val) {
     var jsName = El.toCamelCase(name);
     if (el.style[jsName] == void 0) {
-      console.error("[Element.setStyle()] css property:", jsName);
       return;
     }
     var cssVal = val;
-    if (isFinite(val)) {
+    if (isFinite(val) && val !== null) {
       cssVal = String(val); // problem if converted to scientific notation
       if (jsName != 'opacity' && jsName != 'zIndex') {
         cssVal += "px";
@@ -763,16 +762,14 @@
 
     // Apply inline css styles to this Element, either as string or object.
     css: function(css, val) {
-      if (val != null) {
-        El.setStyle(this.el, css, val);
-      }
-      else if (utils$1.isString(css)) {
-        addCSS(this.el, css);
-      }
-      else if (utils$1.isObject(css)) {
+      if (utils$1.isObject(css)) {
         utils$1.forEachProperty(css, function(val, key) {
           El.setStyle(this.el, key, val);
         }, this);
+      } else if (val === void 0) {
+        addCSS(this.el, css);
+      } else {
+        El.setStyle(this.el, css, val);
       }
       return this;
     },
@@ -6990,6 +6987,7 @@
       handles.forEach(function(handle) {
         handle.el.on('mousedown', function(e) {
           activeHandle = handle;
+          activeHandle.el.css('background', 'black');
           prevXY = {x: e.pageX, y: e.pageY};
         });
       });
@@ -7017,6 +7015,7 @@
 
       document.addEventListener('mouseup', function() {
         if (activeHandle && _on) {
+          activeHandle.el.css('background', null);
           activeHandle = null;
           prevXY = null;
           box.dispatchEvent('handle_up');
@@ -7059,7 +7058,7 @@
       el.css(props);
       el.show();
       if (handles) {
-        showHandles(handles, props);
+        showHandles(handles, props, x2 < x1, y2 < y1);
       }
     };
 
@@ -7124,25 +7123,26 @@
     return handles;
   }
 
-  function showHandles(handles, props) {
-    var scaledSize = Math.ceil(Math.min(props.width, props.height) / 5);
+  function showHandles(handles, props, xinv, yinv) {
+    var scaledSize = Math.ceil(Math.min(props.width, props.height) / 3) - 1;
     var HANDLE_SIZE = Math.min(scaledSize, 7);
+    var OFFS = Math.floor(HANDLE_SIZE / 2) + 1;
     handles.forEach(function(handle) {
       var top = 0,
           left = 0;
       if (handle.col == 'center') {
         left += props.width / 2 - HANDLE_SIZE / 2;
-      } else if (handle.col == 'right') {
-        left += props.width - HANDLE_SIZE + 1;
+      } else if (handle.col == 'left' && xinv || handle.col == 'right' && !xinv) {
+        left += props.width - HANDLE_SIZE + OFFS;
       } else {
-        left -= 1;
+        left -= OFFS;
       }
       if (handle.row == 'center') {
         top += props.height / 2 - HANDLE_SIZE / 2;
-      } else if (handle.row == 'bottom') {
-        top += props.height - HANDLE_SIZE + 1;
+      } else if (handle.row == 'top' && yinv || handle.row == 'bottom' && !yinv) {
+        top += props.height - HANDLE_SIZE + OFFS;
       } else {
-        top -= 1;
+        top -= OFFS;
       }
 
       handle.el.css({

@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.12";
+  var VERSION = "0.6.13";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -18545,7 +18545,13 @@ ${svg}
         // (cli.writeFile() now creates directories that don't exist)
         // cli.validateOutputDir(o.directory);
       }
-      o.file = pathInfo.filename;
+      if (pathInfo.extension == 'gz') {
+        o.file = pathInfo.basename;
+        o.gzip = true;
+      } else {
+        o.file = pathInfo.filename;
+      }
+
       if (filenameIsUnsupportedOutputType(o.file)) {
         error("Output file looks like an unsupported file type:", o.file);
       }
@@ -42153,6 +42159,7 @@ ${svg}
 
   // Unified function for processing calls to runCommands() and applyCommands()
   function _runCommands(argv, opts, callback) {
+
     var outputArr = opts.output || null,
         inputObj = opts.input,
         commands;
@@ -42199,6 +42206,7 @@ ${svg}
 
     function done(err, job) {
       err = filterError(err);
+      if (err) printError(err);
       callback(err, job);
     }
   }
@@ -42279,8 +42287,8 @@ ${svg}
   }
 
   function filterError(err) {
-    if (err) printError(err);
     if (err && err.name == 'NonFatalError') {
+      printError(err);
       return null;
     }
     return err;
