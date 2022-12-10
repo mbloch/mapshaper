@@ -114,6 +114,7 @@ function toOutputFormat(arr) {
 
 // Unified function for processing calls to runCommands() and applyCommands()
 function _runCommands(argv, opts, callback) {
+
   var outputArr = opts.output || null,
       inputObj = opts.input,
       commands;
@@ -160,6 +161,7 @@ function _runCommands(argv, opts, callback) {
 
   function done(err, job) {
     err = filterError(err);
+    if (err) printError(err);
     callback(err, job);
   }
 }
@@ -240,8 +242,8 @@ export function runParsedCommands(commands, job, done) {
 }
 
 function filterError(err) {
-  if (err) printError(err);
   if (err && err.name == 'NonFatalError') {
+    printError(err);
     return null;
   }
   return err;
