@@ -101,8 +101,8 @@ function getShapeFilter(arcs, ext) {
 function getPixelColorFunction() {
   var canv = El('canvas').node();
   canv.width = canv.height = 1;
+  var ctx = canv.getContext('2d', {willReadFrequently: true});
   return function(col) {
-    var ctx = canv.getContext('2d');
     var pixels;
     ctx.fillStyle = col;
     ctx.fillRect(0, 0, 1, 1);
@@ -114,6 +114,8 @@ function getPixelColorFunction() {
 export function DisplayCanvas() {
   var _self = El('canvas'),
       _canvas = _self.node(),
+      // TODO: compare performance of willReadFrequently setting
+      // _ctx = _canvas.getContext('2d', {willReadFrequently: true}),
       _ctx = _canvas.getContext('2d'),
       _pixelColor = getPixelColorFunction(),
       _ext;
@@ -268,7 +270,6 @@ export function DisplayCanvas() {
     var w = _canvas.width,
         h = _canvas.height,
         rgba = _pixelColor(color),
-        // imageData = _ctx.createImageData(w, h),
         imageData = _ctx.getImageData(0, 0, w, h),
         pixels = new Uint32Array(imageData.data.buffer),
         shp, x, y, i, j, n, m,

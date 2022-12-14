@@ -7,6 +7,11 @@ export function Undo(gui) {
   var history, offset, stashedUndo;
   reset();
 
+  // Undo history is cleared when the editing mode changes.
+  gui.on('interaction_mode_change', function(e) {
+    gui.undo.clear();
+  });
+
   function reset() {
     history = [];
     stashedUndo = null;

@@ -112,13 +112,13 @@ export function projectMapExtent(ext, src, dest, newBounds) {
   // if map is at full extent, show full extent
   // TODO: handle case that scale is 1 and map is panned away from center
   if (ext.scale() == 1 || !dest) {
-    ext.setBounds(newBounds, strictBounds);
+    ext.setFullBounds(newBounds, strictBounds);
     ext.home(); // sets full extent and triggers redraw
   } else {
     // if map is zoomed, stay centered on the same geographic location, at the same relative scale
     proj = internal.getProjTransform2(src, dest);
     newCP = proj(oldBounds.centerX(), oldBounds.centerY());
-    ext.setBounds(newBounds, strictBounds);
+    ext.setFullBounds(newBounds, strictBounds);
     if (!newCP) {
       // projection of center point failed; use center of bounds
       // (also consider just resetting the view using ext.home())

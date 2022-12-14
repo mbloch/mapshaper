@@ -6,6 +6,7 @@ import { InspectionControl2 } from './gui-inspection-control2';
 import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
 import { mapNeedsReset } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
+import { initDrawing } from './gui-drawing';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerStack } from './gui-layer-stack';
@@ -30,17 +31,15 @@ export function MshpMap(gui) {
       map = this,
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
-      _hit = new InteractiveSelection(gui, _ext, _mouse),
       _nav = new MapNav(gui, _ext, _mouse),
-      _boxTool = new BoxTool(gui, _ext, _nav),
-      _selectionTool = new SelectionTool(gui, _ext, _hit),
       _visibleLayers = [], // cached visible map layers
       _fullBounds = null,
+      _hit,
+      _basemap,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _inspector, _stack,
-      _dynamicCRS;
+      _stack, _dynamicCRS;
 
-  var _basemap = new Basemap(gui, _ext);
+  _basemap = new Basemap(gui, _ext);
 
   if (gui.options.showMouseCoordinates) {
     new CoordinatesDisplay(gui, _ext, _mouse);
@@ -179,16 +178,16 @@ export function MshpMap(gui) {
 
     _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
-
     _activeLyr.active = true;
-    // if (_inspector) _inspector.updateLayer(_activeLyr);
-    _hit.setLayer(_activeLyr);
+
     if (e.flags.same_table) {
       // data may have changed; if popup is open, it needs to be refreshed
       gui.dispatchEvent('popup-needs-refresh');
-    } else {
+    } else if (_hit) {
+      _hit.setLayer(_activeLyr);
       _hit.clearSelection();
     }
+
     updateVisibleMapLayers();
     fullBounds = getFullBounds();
 
@@ -205,7 +204,8 @@ export function MshpMap(gui) {
     } else {
       _nav.setZoomFactor(1);
     }
-    _ext.setBounds(fullBounds, getStrictBounds()); // update 'home' button extent
+    _ext.setFullBounds(fullBounds, getStrictBounds()); // update 'home' button extent
+
     _fullBounds = fullBounds;
     if (needReset) {
       _ext.reset();
@@ -221,19 +221,13 @@ export function MshpMap(gui) {
     gui.buttons.show();
 
     if (opts.inspectorControl) {
-      _inspector = new InspectionControl2(gui, _hit);
-      _inspector.on('data_change', function(e) {
-        // Add an entry to the session history
-        gui.session.dataValueUpdated(e.id, e.field, e.value);
-        // Refresh the display if a style variable has been changed interactively
-        if (internal.isSupportedSvgStyleProperty(e.field)) {
-          drawLayers();
-        }
-      });
-    }
-
-    if (gui.interaction) {
+      _hit = new InteractiveSelection(gui, _ext, _mouse),
+      new InspectionControl2(gui, _hit);
+      new SelectionTool(gui, _ext, _hit),
+      new BoxTool(gui, _ext, _nav),
       initInteractiveEditing(gui, _ext, _hit);
+      // initDrawing(gui, _ext, _mouse, _hit);
+      _hit.on('change', updateOverlayLayer);
     }
 
     _ext.on('change', function(e) {
@@ -244,8 +238,6 @@ export function MshpMap(gui) {
       }
       drawLayers('nav');
     });
-
-    _hit.on('change', updateOverlayLayer);
 
     gui.on('resize', function() {
       position.update(); // kludge to detect new map size after console toggle
@@ -291,7 +283,7 @@ export function MshpMap(gui) {
     var cy = viewBounds.centerY();
     rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
     _ext.setFrame(getFrameData());
-    _ext.setBounds(new Bounds(rec.bbox));
+    _ext.setFullBounds(new Bounds(rec.bbox));
     _ext.reset();
   }
 
@@ -303,39 +295,33 @@ export function MshpMap(gui) {
   }
 
   function getFullBounds() {
-    var b = new Bounds();
-    var marginPct = 0.025;
-    var pad = 1e-4;
     if (isPreviewView()) {
       return internal.getFrameLayerBounds(internal.findFrameLayer(model));
     }
+    var b = new Bounds();
     getDrawableContentLayers().forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
-      if (isTableView()) {
-        marginPct = getTableMargin(lyr.layer);
-      }
     });
+
     if (!b.hasBounds()) {
       // assign bounds to empty layers, to prevent rendering errors downstream
       b.setBounds(0,0,0,0);
     }
-    // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
-    b.padBounds(pad,pad,pad,pad);
-    // add margin
-    b.scale(1 + marginPct * 2);
-    return b;
-  }
 
-  // Calculate margin when displaying content at full zoom, as pct of screen size
-  function getTableMargin(lyr) {
-    var n = internal.getFeatureCount(lyr);
-    var pct = 0.04;
-    if (n < 5) {
-      pct = 0.2;
-    } else if (n < 100) {
-      pct = 0.1;
+    // add margin
+    // use larger margin for small sizes
+    var widthPx = _ext.width();
+    var marginPct = widthPx < 700 && 3.5 || widthPx < 800 && 3 || 2.5;
+    if (isTableView()) {
+      var n = internal.getFeatureCount(_activeLyr.layer);
+      marginPct = n < 5 && 20 || n < 100 && 10 || 4;
     }
-    return pct;
+    b.scale(1 + marginPct / 100 * 2);
+
+    // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+    b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
+
+    return b;
   }
 
   function isActiveLayer(lyr) {
@@ -468,7 +454,7 @@ export function MshpMap(gui) {
     if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
-      _ext.setBounds(getFullBounds(), getStrictBounds());
+      _ext.setFullBounds(getFullBounds(), getStrictBounds());
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
     }

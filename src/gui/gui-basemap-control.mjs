@@ -167,7 +167,6 @@ export function Basemap(gui, ext) {
     return bl.concat(tr);
   }
 
-
   function initMap() {
     if (!enabled() || map || loading) return;
     loading = true;

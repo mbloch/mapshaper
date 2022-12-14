@@ -1,5 +1,6 @@
 import { Popup } from './gui-popup';
 import { EventDispatcher } from './gui-events';
+import { internal } from './gui-core';
 
 export function InspectionControl2(gui, hit) {
   var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
@@ -12,7 +13,14 @@ export function InspectionControl2(gui, hit) {
   });
 
   _popup.on('update', function(e) {
-    _self.dispatchEvent('data_change', e.data); // let map know which field has changed
+    // data_change event no longer needed (update is handled below)
+    // _self.dispatchEvent('data_change', e.data); // let map know which field has changed
+    gui.session.dataValueUpdated(e.id, e.field, e.value);
+    // Refresh the display if a style variable has been changed interactively
+    if (internal.isSupportedSvgStyleProperty(e.field)) {
+      // drawLayers();
+      gui.dispatchEvent('map-needs-refresh');
+    }
   });
 
   hit.on('change', function(e) {

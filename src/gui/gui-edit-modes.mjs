@@ -7,10 +7,6 @@ export function initInteractiveEditing(gui, ext, hit) {
   initPointDragging(gui, ext, hit);
   initVertexDragging(gui, ext, hit);
 
-  gui.on('interaction_mode_change', function(e) {
-    gui.undo.clear(); // TODO: put this elsewhere?
-  });
-
   // function isClickEvent(up, down) {
   //   var elapsed = Math.abs(down.timeStamp - up.timeStamp);
   //   var dx = up.screenX - down.screenX;

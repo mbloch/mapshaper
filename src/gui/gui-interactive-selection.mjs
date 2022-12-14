@@ -176,10 +176,11 @@ export function InteractiveSelection(gui, ext, mouse) {
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
     updateSelectionState(null);
-    if (e.mode == 'off' || e.mode == 'box') {
-      turnOff();
-    } else {
+    // if (e.mode == 'off' || e.mode == 'box') {
+    if (gui.interaction.modeUsesSelection(e.mode)) {
       turnOn(e.mode);
+    } else {
+      turnOff();
     }
   });
 

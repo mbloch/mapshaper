@@ -9,6 +9,7 @@ export function InteractionMode(gui) {
     lines: ['info', 'selection', 'data', 'box', 'vertices'],
     table: ['info', 'selection', 'data'],
     labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
+    // points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
     points: ['info', 'selection', 'data', 'box', 'location']
   };
 
@@ -27,6 +28,7 @@ export function InteractionMode(gui) {
     location: 'drag points',
     vertices: 'edit vertices',
     selection: 'select features',
+    'add-points': 'add points',
     off: 'turn off'
   };
   var btn, menu;
@@ -77,6 +79,10 @@ export function InteractionMode(gui) {
 
   this.turnOff = function() {
     setMode('off');
+  };
+
+  this.modeUsesSelection = function(mode) {
+    return ['info', 'selection', 'data', 'labels', 'location'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
