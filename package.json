@@ -45,7 +45,7 @@
 		"adm-zip": "^0.5.9",
 		"commander": "7.0.0",
 		"cookies": "^0.8.0",
-		"d3-color": "2.0.0",
+		"d3-color": "3.1.0",
 		"d3-scale-chromatic": "2.0.0",
 		"delaunator": "^5.0.0",
 		"flatbush": "^3.2.1",
