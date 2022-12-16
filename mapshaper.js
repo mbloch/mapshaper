@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.13";
+  var VERSION = "0.6.14";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -7066,15 +7066,6 @@
     transformPoints: transformPoints
   });
 
-  function runningInBrowser() {
-    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
-  }
-
-  var Env = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    runningInBrowser: runningInBrowser
-  });
-
   function getPathSep(path) {
     // TODO: improve
     return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
@@ -7127,6 +7118,11 @@
     return getPathBase(path) + '.' + ext;
   }
 
+  function toLowerCaseExtension(name) {
+    var ext = getFileExtension(name);
+    return ext ? getPathBase(name) + '.' + ext.toLowerCase() : name;
+  }
+
   function getCommonFileBase(names) {
     return names.reduce(function(memo, name, i) {
       if (i === 0) {
@@ -7150,8 +7146,155 @@
     getFileExtension: getFileExtension,
     getPathBase: getPathBase,
     replaceFileExtension: replaceFileExtension,
+    toLowerCaseExtension: toLowerCaseExtension,
     getCommonFileBase: getCommonFileBase,
     getOutputFileBase: getOutputFileBase
+  });
+
+  // Guess the type of a data file from file extension, or return null if not sure
+  function guessInputFileType(file) {
+    var ext = getFileExtension(file || '').toLowerCase(),
+        type = null;
+    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
+      type = ext;
+    } else if (/json$/.test(ext)) {
+      type = 'json';
+    } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
+      type = 'text';
+    }
+    return type;
+  }
+
+  function guessInputContentType(content) {
+    var type = null;
+    if (utils.isString(content)) {
+      type = stringLooksLikeJSON(content) && 'json' ||
+        stringLooksLikeKML(content) && 'kml' || 'text';
+    } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+      type = 'json';
+    }
+    return type;
+  }
+
+  function guessInputType(file, content) {
+    return guessInputFileType(file) || guessInputContentType(content);
+  }
+
+  function stringLooksLikeJSON(str) {
+    return /^\s*[{[]/.test(String(str));
+  }
+
+  function stringLooksLikeKML(str) {
+    str = String(str);
+    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
+  }
+
+  function couldBeDsvFile(name) {
+    var ext = getFileExtension(name).toLowerCase();
+    return /csv|tsv|txt$/.test(ext);
+  }
+
+  function isZipFile(file) {
+    return /\.zip$/i.test(file);
+  }
+
+  function isSupportedOutputFormat(fmt) {
+    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+    return types.indexOf(fmt) > -1;
+  }
+
+  function getFormatName(fmt) {
+    return {
+      geojson: 'GeoJSON',
+      topojson: 'TopoJSON',
+      json: 'JSON records',
+      dsv: 'CSV',
+      dbf: 'DBF',
+      shapefile: 'Shapefile',
+      svg: 'SVG'
+    }[fmt] || '';
+  }
+
+  // Assumes file at @path is one of Mapshaper's supported file types
+  function isSupportedBinaryInputType(path) {
+    var ext = getFileExtension(path).toLowerCase();
+    return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
+  }
+
+  // Detect extensions of some unsupported file types, for cmd line validation
+  function filenameIsUnsupportedOutputType(file) {
+    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+    return rxp.test(file);
+  }
+
+  var FileTypes = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    guessInputFileType: guessInputFileType,
+    guessInputContentType: guessInputContentType,
+    guessInputType: guessInputType,
+    stringLooksLikeJSON: stringLooksLikeJSON,
+    stringLooksLikeKML: stringLooksLikeKML,
+    couldBeDsvFile: couldBeDsvFile,
+    isZipFile: isZipFile,
+    isSupportedOutputFormat: isSupportedOutputFormat,
+    getFormatName: getFormatName,
+    isSupportedBinaryInputType: isSupportedBinaryInputType,
+    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
+  });
+
+  // input: input file path or a Buffer containing .zip file bytes
+  // cache: destination for extracted file contents
+  function extractFiles(input, cache) {
+    var zip = new require('adm-zip')(input);
+    var files = zip.getEntries().map(function(entry) {
+      // entry.entryName // path, including filename
+      // entry.name      // filename
+      var file = toLowerCaseExtension(entry.name);
+      if (file[0] == '.') return ''; // skip hidden system file
+      var type = guessInputFileType(file);
+      if (!type) return ''; // skip unrecognized extensions
+      cache[file] = entry.getData();
+      return file;
+    });
+    // remove auxiliary files from the import list
+    // (these are files that can't be converted into datasets);
+    return files.filter(function(file) {
+      if (!file) return false;
+      var type = guessInputFileType(file);
+      if (type == 'dbf') {
+        // don't import .dbf separately if .shp is present
+        if (replaceFileExtension(file, 'shp') in cache) return false;
+      }
+      return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf';
+    });
+  }
+
+  function convertOutputFiles(files, opts) {
+    var filename = opts.zipfile || 'output.zip';
+    var dirname = parseLocalPath(filename).basename;
+    var zip = new require('adm-zip')();
+    files.forEach(function(o) {
+      var ofile = require('path').join(dirname, o.filename);
+      var buf = Buffer.from(o.content);
+      if (buf instanceof ArrayBuffer) {
+        buf = new Uint8Array(buf);
+      }
+      zip.addFile(ofile, buf);
+      delete o.content; // for gc?
+    });
+    return [{
+      filename: filename,
+      content: zip.toBuffer()
+    }];
+  }
+
+  function runningInBrowser() {
+    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  }
+
+  var Env = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    runningInBrowser: runningInBrowser
   });
 
   var cli = {};
@@ -7303,6 +7446,9 @@
       // trigger EAGAIN error, e.g. when piped to less)
       return cli.writeFile('/dev/stdout', exports[0].content, cb);
     } else {
+      if (opts.zip) {
+        exports = convertOutputFiles(exports, opts);
+      }
       var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
       var inputFiles = getStashedVar('input_files');
       exports.forEach(function(obj, i) {
@@ -7312,7 +7458,7 @@
           obj.content = cli.convertArrayBuffer(obj.content); // convert to Buffer
         }
         if (opts.gzip) {
-          path = path + '.gz';
+          path = /gz$/i.test(path) ? path : path + '.gz';
           obj.content = require$1('zlib').gzipSync(obj.content);
         }
         if (opts.output) {
@@ -17292,97 +17438,6 @@ ${svg}
     exportJSONTable: exportJSONTable
   });
 
-  // Guess the type of a data file from file extension, or return null if not sure
-  function guessInputFileType(file) {
-    var ext = getFileExtension(file || '').toLowerCase(),
-        type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
-      type = ext;
-    } else if (/json$/.test(ext)) {
-      type = 'json';
-    } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
-      type = 'text';
-    }
-    return type;
-  }
-
-  function guessInputContentType(content) {
-    var type = null;
-    if (utils.isString(content)) {
-      type = stringLooksLikeJSON(content) && 'json' ||
-        stringLooksLikeKML(content) && 'kml' || 'text';
-    } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-      type = 'json';
-    }
-    return type;
-  }
-
-  function guessInputType(file, content) {
-    return guessInputFileType(file) || guessInputContentType(content);
-  }
-
-  function stringLooksLikeJSON(str) {
-    return /^\s*[{[]/.test(String(str));
-  }
-
-  function stringLooksLikeKML(str) {
-    str = String(str);
-    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
-  }
-
-  function couldBeDsvFile(name) {
-    var ext = getFileExtension(name).toLowerCase();
-    return /csv|tsv|txt$/.test(ext);
-  }
-
-  function isZipFile(file) {
-    return /\.zip$/i.test(file);
-  }
-
-  function isSupportedOutputFormat(fmt) {
-    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
-    return types.indexOf(fmt) > -1;
-  }
-
-  function getFormatName(fmt) {
-    return {
-      geojson: 'GeoJSON',
-      topojson: 'TopoJSON',
-      json: 'JSON records',
-      dsv: 'CSV',
-      dbf: 'DBF',
-      shapefile: 'Shapefile',
-      svg: 'SVG'
-    }[fmt] || '';
-  }
-
-  // Assumes file at @path is one of Mapshaper's supported file types
-  function isSupportedBinaryInputType(path) {
-    var ext = getFileExtension(path).toLowerCase();
-    return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
-  }
-
-  // Detect extensions of some unsupported file types, for cmd line validation
-  function filenameIsUnsupportedOutputType(file) {
-    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
-    return rxp.test(file);
-  }
-
-  var FileTypes = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    guessInputFileType: guessInputFileType,
-    guessInputContentType: guessInputContentType,
-    guessInputType: guessInputType,
-    stringLooksLikeJSON: stringLooksLikeJSON,
-    stringLooksLikeKML: stringLooksLikeKML,
-    couldBeDsvFile: couldBeDsvFile,
-    isZipFile: isZipFile,
-    isSupportedOutputFormat: isSupportedOutputFormat,
-    getFormatName: getFormatName,
-    isSupportedBinaryInputType: isSupportedBinaryInputType,
-    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
-  });
-
   function getOutputFormat(dataset, opts) {
     var outFile = opts.file || null,
         inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
@@ -18545,9 +18600,19 @@ ${svg}
         // (cli.writeFile() now creates directories that don't exist)
         // cli.validateOutputDir(o.directory);
       }
-      if (pathInfo.extension == 'gz') {
-        o.file = pathInfo.basename;
+      if (/gz/i.test(pathInfo.extension)) {
+        // handle arguments like -o out.json.gz (the preferred format)
+        if (parseLocalPath(pathInfo.basename).extension) {
+          o.file = pathInfo.basename;
+        } else {
+          // handle arguments like -o out.gz
+          o.file = pathInfo.filename;
+        }
         o.gzip = true;
+      } else if (/zip/i.test(pathInfo.extension)) {
+        o.file = null;
+        o.zipfile = pathInfo.filename;
+        o.zip = true;
       } else {
         o.file = pathInfo.filename;
       }
@@ -19359,6 +19424,10 @@ ${svg}
       })
       .option('gzip', {
         describe: 'apply gzip compression to output files',
+        type: 'flag'
+      })
+     .option('zip', {
+        describe: 'save all output files in a single .zip file',
         type: 'flag'
       })
       .option('dry-run', {
@@ -23725,36 +23794,6 @@ ${svg}
     importFileContent: importFileContent
   });
 
-  // Import multiple files to a single dataset
-  function importFiles(files, opts) {
-    var unbuiltTopology = false;
-    var datasets = files.map(function(fname) {
-      // import without topology or snapping
-      var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-      var dataset = importFile(fname, importOpts);
-      // check if dataset contains non-topological paths
-      // TODO: may also need to rebuild topology if multiple topojson files are merged
-      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-        unbuiltTopology = true;
-      }
-      return dataset;
-    });
-    var combined = mergeDatasets(datasets);
-    // Build topology, if needed
-    // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
-    // (but problem of mismatched coordinates due to quantization in input files.)
-    if (unbuiltTopology && !opts.no_topology) {
-      cleanPathsAfterImport(combined, opts);
-      buildTopology(combined);
-    }
-    return combined;
-  }
-
-  var MergeFiles = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    importFiles: importFiles
-  });
-
   cmd.importFiles = function(opts) {
     var files = opts.files || [],
         dataset;
@@ -23768,17 +23807,16 @@ ${svg}
     }
 
     verbose("Importing: " + files.join(' '));
-
-    if (files.length == 1) {
+    if (files.length == 1 && /\.zip/i.test(files[0])) {
+      dataset = importZipFile(files[0], opts);
+    } else if (files.length == 1) {
       dataset = importFile(files[0], opts);
     } else if (opts.merge_files) {
       // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-      dataset = importFiles(files, opts);
+      dataset = importFilesTogether(files, opts);
       dataset.layers = cmd.mergeLayers(dataset.layers);
-    } else if (opts.combine_files) {
-      dataset = importFiles(files, opts);
     } else {
-      stop('Invalid inputs');
+      dataset = importFilesTogether(files, opts);
     }
     return dataset;
   };
@@ -23848,6 +23886,49 @@ ${svg}
     return importContent(input, opts);
   };
 
+
+  function importZipFile(path, opts) {
+    var cache = {};
+    var input;
+    if (opts.input && (path in opts.input)) {
+      // reading from a buffer
+      input = opts.input[path];
+    } else {
+      // reading from a file
+      cli.checkFileExists(path);
+      input = path;
+    }
+    var files = extractFiles(input, cache);
+    var zipOpts = Object.assign({}, opts, {input: cache});
+    return importFilesTogether(files, zipOpts);
+  }
+
+  // Import multiple files to a single dataset
+  function importFilesTogether(files, opts) {
+    var unbuiltTopology = false;
+    var datasets = files.map(function(fname) {
+      // import without topology or snapping
+      var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
+      var dataset = importFile(fname, importOpts);
+      // check if dataset contains non-topological paths
+      // TODO: may also need to rebuild topology if multiple topojson files are merged
+      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+        unbuiltTopology = true;
+      }
+      return dataset;
+    });
+    var combined = mergeDatasets(datasets);
+    // Build topology, if needed
+    // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
+    // (but problem of mismatched coordinates due to quantization in input files.)
+    if (unbuiltTopology && !opts.no_topology) {
+      cleanPathsAfterImport(combined, opts);
+      buildTopology(combined);
+    }
+    return combined;
+  }
+
+
   function getUnsupportedFileMessage(path) {
     var ext = getFileExtension(path);
     var msg = 'Unable to import ' + path;
@@ -23885,7 +23966,8 @@ ${svg}
   var FileImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
     replaceImportFile: replaceImportFile,
-    importFile: importFile
+    importFile: importFile,
+    importFilesTogether: importFilesTogether
   });
 
   function convertSourceName(name, targets) {
@@ -42779,7 +42861,6 @@ ${svg}
     LayerUtils,
     Lines,
     Logging,
-    MergeFiles,
     Merging,
     MosaicIndex$1,
     OptionParsingUtils,

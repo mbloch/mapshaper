@@ -2466,13 +2466,13 @@
     // if map is at full extent, show full extent
     // TODO: handle case that scale is 1 and map is panned away from center
     if (ext.scale() == 1 || !dest) {
-      ext.setBounds(newBounds, strictBounds);
+      ext.setFullBounds(newBounds, strictBounds);
       ext.home(); // sets full extent and triggers redraw
     } else {
       // if map is zoomed, stay centered on the same geographic location, at the same relative scale
       proj = internal.getProjTransform2(src, dest);
       newCP = proj(oldBounds.centerX(), oldBounds.centerY());
-      ext.setBounds(newBounds, strictBounds);
+      ext.setFullBounds(newBounds, strictBounds);
       if (!newCP) {
         // projection of center point failed; use center of bounds
         // (also consider just resetting the view using ext.home())
@@ -3898,6 +3898,11 @@
     var history, offset, stashedUndo;
     reset();
 
+    // Undo history is cleared when the editing mode changes.
+    gui.on('interaction_mode_change', function(e) {
+      gui.undo.clear();
+    });
+
     function reset() {
       history = [];
       stashedUndo = null;
@@ -4167,12 +4172,28 @@
 
   function InteractionMode(gui) {
 
+    // TODO: finish this list
+    // var modes = [{
+    //   name: 'info',
+    //   label: 'inspect features',
+    //   selection: true,
+    //   popup: true,
+    //   types: ['standard', 'polygons', 'lines', 'labels', 'points']
+    // }, {
+    //   name: 'selection',
+    //   label: 'select features',
+    //   selection: true,
+    //   popup: true,
+    //   types: ['standard', 'polygons', 'lines', 'table', 'labels']
+    // }]
+
     var menus = {
       standard: ['info', 'selection', 'data', 'box'],
       polygons: ['info', 'selection', 'data', 'box', 'vertices'],
       lines: ['info', 'selection', 'data', 'box', 'vertices'],
       table: ['info', 'selection', 'data'],
       labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
+      // points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
       points: ['info', 'selection', 'data', 'box', 'location']
     };
 
@@ -4191,6 +4212,7 @@
       location: 'drag points',
       vertices: 'edit vertices',
       selection: 'select features',
+      'add-points': 'add points',
       off: 'turn off'
     };
     var btn, menu;
@@ -4241,6 +4263,10 @@
 
     this.turnOff = function() {
       setMode('off');
+    };
+
+    this.modeUsesSelection = function(mode) {
+      return ['info', 'selection', 'data', 'labels', 'location', 'vertices'].includes(mode);
     };
 
     this.modeUsesPopup = function(mode) {
@@ -6289,10 +6315,11 @@
     // (some modes do not support pinning)
     gui.on('interaction_mode_change', function(e) {
       updateSelectionState(null);
-      if (e.mode == 'off' || e.mode == 'box') {
-        turnOff();
-      } else {
+      // if (e.mode == 'off' || e.mode == 'box') {
+      if (gui.interaction.modeUsesSelection(e.mode)) {
         turnOn(e.mode);
+      } else {
+        turnOff();
       }
     });
 
@@ -7637,7 +7664,14 @@
     });
 
     _popup.on('update', function(e) {
-      _self.dispatchEvent('data_change', e.data); // let map know which field has changed
+      // data_change event no longer needed (update is handled below)
+      // _self.dispatchEvent('data_change', e.data); // let map know which field has changed
+      gui.session.dataValueUpdated(e.id, e.field, e.value);
+      // Refresh the display if a style variable has been changed interactively
+      if (internal.isSupportedSvgStyleProperty(e.field)) {
+        // drawLayers();
+        gui.dispatchEvent('map-needs-refresh');
+      }
     });
 
     hit.on('change', function(e) {
@@ -8135,10 +8169,6 @@
     initPointDragging(gui, ext, hit);
     initVertexDragging(gui, ext, hit);
 
-    gui.on('interaction_mode_change', function(e) {
-      gui.undo.clear(); // TODO: put this elsewhere?
-    });
-
     // function isClickEvent(up, down) {
     //   var elapsed = Math.abs(down.timeStamp - up.timeStamp);
     //   var dx = up.screenX - down.screenX;
@@ -8146,6 +8176,39 @@
     //   var dist = Math.sqrt(dx * dx + dy * dy);
     //   return dist <= 4 && elapsed < 300;
     // }
+  }
+
+  function initPointDrawing(gui, ext, hit) {
+    function active(e) {
+      return e.id > -1 && gui.interaction.getMode() == 'add-points';
+    }
+
+  }
+
+  function Pencil(gui, mouse, hit) {
+    var self = this;
+    var _on = false;
+
+    self.turnOn = function() {
+      _on = true;
+    };
+
+    self.turnOff = function() {
+      _on = false;
+    };
+
+
+
+
+
+
+  }
+
+  function initDrawing(gui, ext, mouse, hit) {
+
+    initPointDrawing(gui, new Pencil(gui, mouse, hit));
+
+
   }
 
   var darkStroke = "#334",
@@ -8473,27 +8536,27 @@
   function MapExtent(_position) {
     var _scale = 1,
         _cx, _cy, // center in geographic units
-        _contentBounds,
+        _fullBounds, // full (zoomed-out) content bounds, including any padding
         _strictBounds, // full extent must fit inside, if set
         _self = this,
         _frame;
 
     _position.on('resize', function(e) {
       if (ready()) {
-        onChange({resize: true});
+        triggerChangeEvent({resize: true});
       }
     });
 
-    function ready() { return !!_contentBounds; }
+    function ready() { return !!_fullBounds; }
 
     this.reset = function() {
       if (!ready()) return;
-      recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, {reset: true});
+      recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1, {reset: true});
     };
 
     this.home = function() {
       if (!ready()) return;
-      recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
+      recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
     };
 
     this.pan = function(xpix, ypix) {
@@ -8560,30 +8623,29 @@
 
     // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
     this.getBounds = function(k) {
-      if (!_contentBounds) return new Bounds();
+      if (!_fullBounds) return new Bounds();
       return calcBounds(_cx, _cy, _scale / (k || 1));
     };
 
     // Update the extent of 'full' zoom without navigating the current view
     //
-    this.setBounds = function(contentBounds, strictBounds) {
-      var b = contentBounds;
-      var prev = _contentBounds;
+    this.setFullBounds = function(fullBounds, strictBounds) {
+      var prev = _fullBounds;
+      var b = _fullBounds = fullBounds;
       if (!b.hasBounds()) return; // kludge
       if (strictBounds) {
         _strictBounds = Array.isArray(strictBounds) ? new Bounds(strictBounds) : strictBounds;
       } else {
         _strictBounds = null;
       }
-      _contentBounds = _frame ? b : padBounds(b, 4); // padding if not in frame mode
       if (_strictBounds) {
-        _contentBounds = fitIn(_contentBounds, _strictBounds);
+        _fullBounds = fitIn(_fullBounds, _strictBounds);
       }
       if (prev) {
-        _scale = _scale * fillOut(_contentBounds).width() / fillOut(prev).width();
+        _scale = _scale * fillOut(_fullBounds).width() / fillOut(prev).width();
       } else {
-        _cx = _contentBounds.centerX();
-        _cy = _contentBounds.centerY();
+        _cx = _fullBounds.centerX();
+        _cy = _fullBounds.centerY();
       }
     };
 
@@ -8614,12 +8676,12 @@
       scale = scale ? limitScale(scale) : _scale;
       if (cx == _cx && cy == _cy && scale == _scale) return;
       navigate(cx, cy, scale);
-      onChange(data);
+      triggerChangeEvent(data);
     }
 
     function navigate(cx, cy, scale) {
       if (_strictBounds) {
-        var full = fillOut(_contentBounds);
+        var full = fillOut(_fullBounds);
         var minScale = full.height() / _strictBounds.height();
         if (scale < minScale) {
           var dx = cx - _cx;
@@ -8641,7 +8703,7 @@
       _scale = scale;
     }
 
-    function onChange(data) {
+    function triggerChangeEvent(data) {
       data = data || {};
       _self.dispatchEvent('change', data);
     }
@@ -8649,10 +8711,10 @@
     // stop zooming before rounding errors become too obvious
     function maxScale() {
       var minPixelScale = 1e-16;
-      var xmax = maxAbs(_contentBounds.xmin, _contentBounds.xmax, _contentBounds.centerX());
-      var ymax = maxAbs(_contentBounds.ymin, _contentBounds.ymax, _contentBounds.centerY());
-      var xscale = _contentBounds.width() / _position.width() / xmax / minPixelScale;
-      var yscale = _contentBounds.height() / _position.height() / ymax / minPixelScale;
+      var xmax = maxAbs(_fullBounds.xmin, _fullBounds.xmax, _fullBounds.centerX());
+      var ymax = maxAbs(_fullBounds.ymin, _fullBounds.ymax, _fullBounds.centerY());
+      var xscale = _fullBounds.width() / _position.width() / xmax / minPixelScale;
+      var yscale = _fullBounds.height() / _position.height() / ymax / minPixelScale;
       return Math.min(xscale, yscale);
     }
 
@@ -8669,7 +8731,7 @@
       if (_frame) {
         full = fillOutFrameBounds(_frame);
       } else {
-        full = fillOut(_contentBounds);
+        full = fillOut(_fullBounds);
       }
       if (_strictBounds) {
         full = fitIn(full, _strictBounds);
@@ -8689,9 +8751,9 @@
       return bounds;
     }
 
-    function padBounds(b, margin) {
-      var wpix = _position.width() - 2 * margin,
-          hpix = _position.height() - 2 * margin,
+    function padBounds(b, marginpix) {
+      var wpix = _position.width() - 2 * marginpix,
+          hpix = _position.height() - 2 * marginpix,
           xpad, ypad, b2;
       if (wpix <= 0 || hpix <= 0) {
         return new Bounds(0, 0, 0, 0);
@@ -8699,8 +8761,8 @@
       b = b.clone();
       b2 = b.clone();
       b2.fillOut(wpix / hpix);
-      xpad = b2.width() / wpix * margin;
-      ypad = b2.height() / hpix * margin;
+      xpad = b2.width() / wpix * marginpix;
+      ypad = b2.height() / hpix * marginpix;
       b.padBounds(xpad, ypad, xpad, ypad);
       return b;
     }
@@ -8830,8 +8892,8 @@
   function getPixelColorFunction() {
     var canv = El('canvas').node();
     canv.width = canv.height = 1;
+    var ctx = canv.getContext('2d', {willReadFrequently: true});
     return function(col) {
-      var ctx = canv.getContext('2d');
       var pixels;
       ctx.fillStyle = col;
       ctx.fillRect(0, 0, 1, 1);
@@ -8843,6 +8905,8 @@
   function DisplayCanvas() {
     var _self = El('canvas'),
         _canvas = _self.node(),
+        // TODO: compare performance of willReadFrequently setting
+        // _ctx = _canvas.getContext('2d', {willReadFrequently: true}),
         _ctx = _canvas.getContext('2d'),
         _pixelColor = getPixelColorFunction(),
         _ext;
@@ -8997,7 +9061,6 @@
       var w = _canvas.width,
           h = _canvas.height,
           rgba = _pixelColor(color),
-          // imageData = _ctx.createImageData(w, h),
           imageData = _ctx.getImageData(0, 0, w, h),
           pixels = new Uint32Array(imageData.data.buffer),
           shp, x, y, i, j, n, m,
@@ -10083,7 +10146,6 @@
       return bl.concat(tr);
     }
 
-
     function initMap() {
       if (!enabled() || map || loading) return;
       loading = true;
@@ -10177,17 +10239,15 @@
         map = this,
         _mouse = new MouseArea(el, position),
         _ext = new MapExtent(position),
-        _hit = new InteractiveSelection(gui, _ext, _mouse),
         _nav = new MapNav(gui, _ext, _mouse),
-        _boxTool = new BoxTool(gui, _ext, _nav),
-        _selectionTool = new SelectionTool(gui, _ext, _hit),
         _visibleLayers = [], // cached visible map layers
         _fullBounds = null,
+        _hit,
+        _basemap,
         _intersectionLyr, _activeLyr, _overlayLyr,
-        _inspector, _stack,
-        _dynamicCRS;
+        _stack, _dynamicCRS;
 
-    var _basemap = new Basemap(gui, _ext);
+    _basemap = new Basemap(gui, _ext);
 
     if (gui.options.showMouseCoordinates) {
       new CoordinatesDisplay(gui, _ext, _mouse);
@@ -10326,16 +10386,16 @@
 
       _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
       _activeLyr.style = getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
-
       _activeLyr.active = true;
-      // if (_inspector) _inspector.updateLayer(_activeLyr);
-      _hit.setLayer(_activeLyr);
+
       if (e.flags.same_table) {
         // data may have changed; if popup is open, it needs to be refreshed
         gui.dispatchEvent('popup-needs-refresh');
-      } else {
+      } else if (_hit) {
+        _hit.setLayer(_activeLyr);
         _hit.clearSelection();
       }
+
       updateVisibleMapLayers();
       fullBounds = getFullBounds();
 
@@ -10352,7 +10412,8 @@
       } else {
         _nav.setZoomFactor(1);
       }
-      _ext.setBounds(fullBounds, getStrictBounds()); // update 'home' button extent
+      _ext.setFullBounds(fullBounds, getStrictBounds()); // update 'home' button extent
+
       _fullBounds = fullBounds;
       if (needReset) {
         _ext.reset();
@@ -10368,19 +10429,13 @@
       gui.buttons.show();
 
       if (opts.inspectorControl) {
-        _inspector = new InspectionControl2(gui, _hit);
-        _inspector.on('data_change', function(e) {
-          // Add an entry to the session history
-          gui.session.dataValueUpdated(e.id, e.field, e.value);
-          // Refresh the display if a style variable has been changed interactively
-          if (internal.isSupportedSvgStyleProperty(e.field)) {
-            drawLayers();
-          }
-        });
-      }
-
-      if (gui.interaction) {
+        _hit = new InteractiveSelection(gui, _ext, _mouse),
+        new InspectionControl2(gui, _hit);
+        new SelectionTool(gui, _ext, _hit),
+        new BoxTool(gui, _ext, _nav),
         initInteractiveEditing(gui, _ext, _hit);
+        // initDrawing(gui, _ext, _mouse, _hit);
+        _hit.on('change', updateOverlayLayer);
       }
 
       _ext.on('change', function(e) {
@@ -10391,8 +10446,6 @@
         }
         drawLayers('nav');
       });
-
-      _hit.on('change', updateOverlayLayer);
 
       gui.on('resize', function() {
         position.update(); // kludge to detect new map size after console toggle
@@ -10438,7 +10491,7 @@
       var cy = viewBounds.centerY();
       rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
       _ext.setFrame(getFrameData());
-      _ext.setBounds(new Bounds(rec.bbox));
+      _ext.setFullBounds(new Bounds(rec.bbox));
       _ext.reset();
     }
 
@@ -10450,39 +10503,33 @@
     }
 
     function getFullBounds() {
-      var b = new Bounds();
-      var marginPct = 0.025;
-      var pad = 1e-4;
       if (isPreviewView()) {
         return internal.getFrameLayerBounds(internal.findFrameLayer(model));
       }
+      var b = new Bounds();
       getDrawableContentLayers().forEach(function(lyr) {
         b.mergeBounds(lyr.bounds);
-        if (isTableView()) {
-          marginPct = getTableMargin(lyr.layer);
-        }
       });
+
       if (!b.hasBounds()) {
         // assign bounds to empty layers, to prevent rendering errors downstream
         b.setBounds(0,0,0,0);
       }
-      // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
-      b.padBounds(pad,pad,pad,pad);
-      // add margin
-      b.scale(1 + marginPct * 2);
-      return b;
-    }
 
-    // Calculate margin when displaying content at full zoom, as pct of screen size
-    function getTableMargin(lyr) {
-      var n = internal.getFeatureCount(lyr);
-      var pct = 0.04;
-      if (n < 5) {
-        pct = 0.2;
-      } else if (n < 100) {
-        pct = 0.1;
+      // add margin
+      // use larger margin for small sizes
+      var widthPx = _ext.width();
+      var marginPct = widthPx < 700 && 3.5 || widthPx < 800 && 3 || 2.5;
+      if (isTableView()) {
+        var n = internal.getFeatureCount(_activeLyr.layer);
+        marginPct = n < 5 && 20 || n < 100 && 10 || 4;
       }
-      return pct;
+      b.scale(1 + marginPct / 100 * 2);
+
+      // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
+      b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
+
+      return b;
     }
 
     function isActiveLayer(lyr) {
@@ -10615,7 +10662,7 @@
       if (layersMayHaveChanged) {
         // kludge to handle layer visibility toggling
         _ext.setFrame(isPreviewView() ? getFrameData() : null);
-        _ext.setBounds(getFullBounds(), getStrictBounds());
+        _ext.setFullBounds(getFullBounds(), getStrictBounds());
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
       }
