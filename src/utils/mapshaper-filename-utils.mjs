@@ -53,6 +53,11 @@ export function replaceFileExtension(path, ext) {
   return getPathBase(path) + '.' + ext;
 }
 
+export function toLowerCaseExtension(name) {
+  var ext = getFileExtension(name);
+  return ext ? getPathBase(name) + '.' + ext.toLowerCase() : name;
+}
+
 export function getCommonFileBase(names) {
   return names.reduce(function(memo, name, i) {
     if (i === 0) {

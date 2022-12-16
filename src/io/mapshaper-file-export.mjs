@@ -1,5 +1,7 @@
 import { stop, message } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
+import { convertOutputFiles } from '../io/mapshaper-zip';
+import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
@@ -25,6 +27,9 @@ var _writeFiles = function(exports, opts, cb) {
     // trigger EAGAIN error, e.g. when piped to less)
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
+    if (opts.zip) {
+      exports = convertOutputFiles(exports, opts);
+    }
     var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
     var inputFiles = getStashedVar('input_files');
     exports.forEach(function(obj, i) {
@@ -34,7 +39,7 @@ var _writeFiles = function(exports, opts, cb) {
         obj.content = cli.convertArrayBuffer(obj.content); // convert to Buffer
       }
       if (opts.gzip) {
-        path = path + '.gz';
+        path = /gz$/i.test(path) ? path : path + '.gz';
         obj.content = require('zlib').gzipSync(obj.content);
       }
       if (opts.output) {

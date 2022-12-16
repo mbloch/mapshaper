@@ -118,7 +118,6 @@ import * as LatLon from './geom/mapshaper-latlon';
 import * as LayerUtils from './dataset/mapshaper-layer-utils';
 import * as Lines from './commands/mapshaper-lines';
 import * as Logging from './utils/mapshaper-logging';
-import * as MergeFiles from './cli/mapshaper-merge-files';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
@@ -231,7 +230,6 @@ Object.assign(internal,
   LayerUtils,
   Lines,
   Logging,
-  MergeFiles,
   Merging,
   MosaicIndex,
   OptionParsingUtils,

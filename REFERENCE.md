@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.12 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.14 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -200,6 +200,8 @@ Save edited content to a file or files. By default, Mapshaper appends a suffix t
 `force`  Allow output files to overwrite input files (without this option, overwriting input files is not allowed).
 
 `gzip`  Apply gzip compression to output files.
+
+`zip`  Save output files in a single .zip archive.
 
 `cut-table`  Detach attribute data from shapes and save as a JSON file.
 

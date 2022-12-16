@@ -1,3 +1,6 @@
+v0.6.14
+* Added support to the CLI for reading and writing .zip files.
+
 v0.6.13
 * Gzipped output is inferred if output filename ends in ".gz".
 

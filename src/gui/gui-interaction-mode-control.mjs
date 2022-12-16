@@ -3,6 +3,21 @@ import { internal } from './gui-core';
 
 export function InteractionMode(gui) {
 
+  // TODO: finish this list
+  // var modes = [{
+  //   name: 'info',
+  //   label: 'inspect features',
+  //   selection: true,
+  //   popup: true,
+  //   types: ['standard', 'polygons', 'lines', 'labels', 'points']
+  // }, {
+  //   name: 'selection',
+  //   label: 'select features',
+  //   selection: true,
+  //   popup: true,
+  //   types: ['standard', 'polygons', 'lines', 'table', 'labels']
+  // }]
+
   var menus = {
     standard: ['info', 'selection', 'data', 'box'],
     polygons: ['info', 'selection', 'data', 'box', 'vertices'],
@@ -82,7 +97,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesSelection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'location'].includes(mode);
+    return ['info', 'selection', 'data', 'labels', 'location', 'vertices'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {

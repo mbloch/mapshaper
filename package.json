@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.6.13",
+	"version": "0.6.14",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": [
 		"shapefile",
@@ -42,6 +42,7 @@
 	"dependencies": {
 		"@tmcw/togeojson": "^4.7.0",
 		"@xmldom/xmldom": "^0.8.2",
+		"adm-zip": "^0.5.9",
 		"commander": "7.0.0",
 		"cookies": "^0.8.0",
 		"d3-color": "2.0.0",

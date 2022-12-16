@@ -104,9 +104,19 @@ export function validateOutputOpts(cmd) {
       // (cli.writeFile() now creates directories that don't exist)
       // cli.validateOutputDir(o.directory);
     }
-    if (pathInfo.extension == 'gz') {
-      o.file = pathInfo.basename;
+    if (/gz/i.test(pathInfo.extension)) {
+      // handle arguments like -o out.json.gz (the preferred format)
+      if (parseLocalPath(pathInfo.basename).extension) {
+        o.file = pathInfo.basename;
+      } else {
+        // handle arguments like -o out.gz
+        o.file = pathInfo.filename;
+      }
       o.gzip = true;
+    } else if (/zip/i.test(pathInfo.extension)) {
+      o.file = null;
+      o.zipfile = pathInfo.filename;
+      o.zip = true;
     } else {
       o.file = pathInfo.filename;
     }

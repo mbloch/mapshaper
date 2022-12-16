@@ -213,6 +213,10 @@ export function getOptionParser() {
       describe: 'apply gzip compression to output files',
       type: 'flag'
     })
+   .option('zip', {
+      describe: 'save all output files in a single .zip file',
+      type: 'flag'
+    })
     .option('dry-run', {
       // describe: 'do not output any files'
       type: 'flag'

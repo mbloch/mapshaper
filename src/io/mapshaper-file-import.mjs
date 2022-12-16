@@ -1,12 +1,15 @@
 import { importContent } from '../io/mapshaper-import';
 import { isSupportedBinaryInputType, guessInputContentType, guessInputFileType } from '../io/mapshaper-file-types';
-import { importFiles } from '../cli/mapshaper-merge-files';
 import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, verbose, stop } from '../utils/mapshaper-logging';
 import { getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
+import { extractFiles } from './mapshaper-zip';
+import { buildTopology } from '../topology/mapshaper-topology';
+import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
+import { mergeDatasets } from '../dataset/mapshaper-merging';
 
 cmd.importFiles = function(opts) {
   var files = opts.files || [],
@@ -21,17 +24,16 @@ cmd.importFiles = function(opts) {
   }
 
   verbose("Importing: " + files.join(' '));
-
-  if (files.length == 1) {
+  if (files.length == 1 && /\.zip/i.test(files[0])) {
+    dataset = importZipFile(files[0], opts);
+  } else if (files.length == 1) {
     dataset = importFile(files[0], opts);
   } else if (opts.merge_files) {
     // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-    dataset = importFiles(files, opts);
+    dataset = importFilesTogether(files, opts);
     dataset.layers = cmd.mergeLayers(dataset.layers);
-  } else if (opts.combine_files) {
-    dataset = importFiles(files, opts);
   } else {
-    stop('Invalid inputs');
+    dataset = importFilesTogether(files, opts);
   }
   return dataset;
 };
@@ -100,6 +102,49 @@ var _importFile = function(path, opts) {
   }
   return importContent(input, opts);
 };
+
+
+function importZipFile(path, opts) {
+  var cache = {};
+  var input;
+  if (opts.input && (path in opts.input)) {
+    // reading from a buffer
+    input = opts.input[path];
+  } else {
+    // reading from a file
+    cli.checkFileExists(path);
+    input = path;
+  }
+  var files = extractFiles(input, cache);
+  var zipOpts = Object.assign({}, opts, {input: cache});
+  return importFilesTogether(files, zipOpts);
+}
+
+// Import multiple files to a single dataset
+export function importFilesTogether(files, opts) {
+  var unbuiltTopology = false;
+  var datasets = files.map(function(fname) {
+    // import without topology or snapping
+    var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
+    var dataset = importFile(fname, importOpts);
+    // check if dataset contains non-topological paths
+    // TODO: may also need to rebuild topology if multiple topojson files are merged
+    if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+      unbuiltTopology = true;
+    }
+    return dataset;
+  });
+  var combined = mergeDatasets(datasets);
+  // Build topology, if needed
+  // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
+  // (but problem of mismatched coordinates due to quantization in input files.)
+  if (unbuiltTopology && !opts.no_topology) {
+    cleanPathsAfterImport(combined, opts);
+    buildTopology(combined);
+  }
+  return combined;
+}
+
 
 function getUnsupportedFileMessage(path) {
   var ext = getFileExtension(path);
