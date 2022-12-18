@@ -40,13 +40,15 @@
 		"!.DS_Store"
 	],
 	"dependencies": {
-		"@tmcw/togeojson": "^4.7.0",
-		"@xmldom/xmldom": "^0.8.2",
+		"@placemarkio/tokml": "^0.3.3",
+		"@tmcw/togeojson": "^5.5.0",
+		"@xmldom/xmldom": "^0.8.6",
 		"adm-zip": "^0.5.9",
 		"commander": "7.0.0",
 		"cookies": "^0.8.0",
-		"d3-color": "2.0.0",
-		"d3-scale-chromatic": "2.0.0",
+		"d3-color": "3.1.0",
+		"d3-interpolate": "^3.0.1",
+		"d3-scale-chromatic": "3.0.0",
 		"delaunator": "^5.0.0",
 		"flatbush": "^3.2.1",
 		"geokdbush": "^1.1.0",
@@ -65,7 +67,7 @@
 		"eslint": "^8.16.0",
 		"mocha": "^10.0.0",
 		"rollup": "^2.73.0",
-		"shell-quote": "^1.6.1",
+		"shell-quote": "^1.7.4",
 		"underscore": "^1.13.1"
 	},
 	"mocha": {
