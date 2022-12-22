@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.14";
+  var VERSION = "0.6.15";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -5560,7 +5560,9 @@
           len = _nn[absId];
       if (nth < 0) nth = len + nth;
       if (absId != arcId) nth = len - nth - 1;
-      if (nth < 0 || nth >= len) error("[ArcCollection] out-of-range vertex id");
+      if (nth < 0 || nth >= len) {
+        error("[ArcCollection] out-of-range vertex id");
+      }
       return _ii[absId] + nth;
     };
 
@@ -7198,8 +7200,12 @@
     return /\.zip$/i.test(file);
   }
 
+  function isKmzFile(file) {
+    return /\.kmz$/i.test(file);
+  }
+
   function isSupportedOutputFormat(fmt) {
-    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml'];
     return types.indexOf(fmt) > -1;
   }
 
@@ -7210,6 +7216,8 @@
       json: 'JSON records',
       dsv: 'CSV',
       dbf: 'DBF',
+      kml: 'KML',
+      kmz: 'KMZ',
       shapefile: 'Shapefile',
       svg: 'SVG'
     }[fmt] || '';
@@ -7223,7 +7231,7 @@
 
   // Detect extensions of some unsupported file types, for cmd line validation
   function filenameIsUnsupportedOutputType(file) {
-    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml)$/i;
     return rxp.test(file);
   }
 
@@ -7236,6 +7244,7 @@
     stringLooksLikeKML: stringLooksLikeKML,
     couldBeDsvFile: couldBeDsvFile,
     isZipFile: isZipFile,
+    isKmzFile: isKmzFile,
     isSupportedOutputFormat: isSupportedOutputFormat,
     getFormatName: getFormatName,
     isSupportedBinaryInputType: isSupportedBinaryInputType,
@@ -7265,7 +7274,7 @@
         // don't import .dbf separately if .shp is present
         if (replaceFileExtension(file, 'shp') in cache) return false;
       }
-      return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf';
+      return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf' || type == 'kml';
     });
   }
 
@@ -7304,6 +7313,13 @@
     if (runningInBrowser()) return false;
     var ss = cli.statSync(path);
     return ss && ss.isFile() || false;
+  };
+
+  cli.checkCommandEnv = function(cname) {
+    var blocked = ['i', 'include', 'require', 'external'];
+    if (runningInBrowser() && blocked.includes(cname)) {
+      stop('The -' + cname + ' command cannot be run in the browser');
+    }
   };
 
   // cli.fileSize = function(path) {
@@ -8226,55 +8242,71 @@
     getFormattedStringify: getFormattedStringify
   });
 
-  // Return id of rightmost connected arc in relation to @arcId
-  // Return @arcId if no arcs can be found
-  function getRightmostArc(arcId, nodes, filter) {
-    var ids = nodes.getConnectedArcs(arcId);
+  function isValidArc(arcId, arcs) {
+    // check for arcs with no vertices
+    // TODO: also check for other kinds of degenerate arcs
+    // (e.g. collapsed arcs consisting of identical points)
+    return arcs.getArcLength(arcId) > 1;
+  }
+
+  // Return id of rightmost connected arc in relation to @fromArcId
+  // Return @fromArcId if no arcs can be found
+  function getRightmostArc(fromArcId, nodes, filter) {
+    var arcs = nodes.arcs,
+        coords = arcs.getVertexData(),
+        xx = coords.xx,
+        yy = coords.yy,
+        ids = nodes.getConnectedArcs(fromArcId),
+        toArcId = fromArcId; // initialize to fromArcId -- an error condition
+
     if (filter) {
       ids = ids.filter(filter);
     }
-    if (ids.length === 0) {
-      return arcId; // error condition, handled by caller
-    }
-    return getRighmostArc2(arcId, ids, nodes.arcs);
-  }
 
-  function getRighmostArc2 (fromId, ids, arcs) {
-    var coords = arcs.getVertexData(),
-        xx = coords.xx,
-        yy = coords.yy,
-        inode = arcs.indexOfVertex(fromId, -1),
+    if (!isValidArc(fromArcId, arcs) || ids.length === 0) {
+      return fromArcId;
+    }
+
+    var inode = arcs.indexOfVertex(fromArcId, -1),
         nodeX = xx[inode],
         nodeY = yy[inode],
-        ifrom = arcs.indexOfVertex(fromId, -2),
+        ifrom = arcs.indexOfVertex(fromArcId, -2),
         fromX = xx[ifrom],
         fromY = yy[ifrom],
-        toId = fromId, // initialize to from-arc -- an error
         ito, candId, icand, code, j;
 
     /*if (x == ax && y == ay) {
       error("Duplicate point error");
     }*/
-    if (ids.length > 0) {
-      toId = ids[0];
-      ito = arcs.indexOfVertex(toId, -2);
-    }
 
-    for (j=1; j<ids.length; j++) {
+
+    for (j=0; j<ids.length; j++) {
       candId = ids[j];
+      if (!isValidArc(candId, arcs)) {
+        // skip empty arcs
+        continue;
+      }
       icand = arcs.indexOfVertex(candId, -2);
-      code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
-      // code = internal.chooseRighthandPath(0, 0, nodeX - fromX, nodeY - fromY, xx[ito] - fromX, yy[ito] - fromY, xx[icand] - fromX, yy[icand] - fromY);
-      if (code == 2) {
-        toId = candId;
+
+      if (toArcId == fromArcId) {
+        // first valid candidate
         ito = icand;
+        toArcId = candId;
+        continue;
+      }
+
+      code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+      if (code == 2) {
+        ito = icand;
+        toArcId = candId;
       }
     }
-    if (toId == fromId) {
+
+    if (toArcId == fromArcId) {
       // This shouldn't occur, assuming that other arcs are present
       error("Pathfinder error");
     }
-    return toId;
+    return toArcId;
   }
 
   function chooseRighthandPath2(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
@@ -8473,10 +8505,18 @@
       return ~getRightmostArc(prevId, nodes, testArc);
     }
 
+    function isEmptyArc(id) {
+      return nodes.arcs.getArcLength(id) > 1 === false;
+    }
+
     return function(startId) {
       var path = [],
           nextId, msg,
           candId = startId;
+
+      if (isEmptyArc(startId)) {
+        return null;
+      }
 
       do {
         if (useRoute(candId)) {
@@ -15766,6 +15806,22 @@ ${svg}
     layerHasLabels: layerHasLabels
   });
 
+  // import { isKmzFile } from '../io/mapshaper-file-types';
+
+  function exportKML(dataset, opts) {
+    var toKML = require("@placemarkio/tokml").toKML;
+    var geojsonOpts = Object.assign({combine_layers: true, geojson_type: 'FeatureCollection'}, opts);
+    var geojson = exportDatasetAsGeoJSON(dataset, geojsonOpts);
+    var kml = toKML(geojson);
+    // TODO: add KMZ output
+    // var useKmz = opts.file && isKmzFile(opts.file);
+    var ofile = opts.file || getOutputFileBase(dataset) + '.kml';
+    return [{
+      content: kml,
+      filename: ofile
+    }];
+  }
+
   function buffersAreIdentical(a, b) {
     var alen = BinArray.bufferSize(a);
     var blen = BinArray.bufferSize(b);
@@ -17513,7 +17569,7 @@ ${svg}
   function exportDatasets(datasets, opts) {
     var format = getOutputFormat(datasets[0], opts);
     var files;
-    if (format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
+    if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
       // multi-layer formats: combine multiple datasets into one
       if (datasets.length > 1) {
         datasets = [mergeDatasetsForExport(datasets)];
@@ -17567,8 +17623,8 @@ ${svg}
     }, dataset);
 
     // Adjust layer names, so they can be used as output file names
-    // (except for multi-layer formats TopoJSON and SVG)
-    if (opts.file && outFmt != 'topojson' && outFmt != 'svg') {
+    // (except for multi-layer formats TopoJSON, SVG, KML)
+    if (opts.file && outFmt != 'topojson' && outFmt != 'svg'&& outFmt != 'kml') {
       dataset.layers.forEach(function(lyr) {
         lyr.name = getFileBase(opts.file);
       });
@@ -17613,7 +17669,8 @@ ${svg}
     dsv: exportDelim,
     dbf: exportDbf,
     json: exportJSON,
-    svg: exportSVG
+    svg: exportSVG,
+    kml: exportKML
   };
 
 
@@ -23795,31 +23852,80 @@ ${svg}
   });
 
   cmd.importFiles = function(opts) {
-    var files = opts.files || [],
-        dataset;
+    var files = opts.files || [];
+    var dataset;
 
+    cli.checkCommandEnv('i');
     if (opts.stdin) {
       return importFile('/dev/stdin', opts);
     }
+
 
     if (files.length > 0 === false) {
       stop('Missing input file(s)');
     }
 
     verbose("Importing: " + files.join(' '));
-    if (files.length == 1 && /\.zip/i.test(files[0])) {
-      dataset = importZipFile(files[0], opts);
-    } else if (files.length == 1) {
+
+    // copy opts, so parameters can be modified within this command
+    opts = Object.assign({}, opts);
+    opts.input = Object.assign({}, opts.input); // make sure we have a cache
+
+    files = expandFiles(files, opts.input);
+
+    if (files.length === 0) {
+      stop('Missing importable files');
+    }
+
+    if (files.length == 1) {
       dataset = importFile(files[0], opts);
-    } else if (opts.merge_files) {
-      // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-      dataset = importFilesTogether(files, opts);
-      dataset.layers = cmd.mergeLayers(dataset.layers);
     } else {
       dataset = importFilesTogether(files, opts);
     }
+
+    if (opts.merge_files && files.length > 1) {
+      // TODO: deprecate and remove this option (use -merge-layers cmd instead)
+      dataset.layers = cmd.mergeLayers(dataset.layers);
+    }
     return dataset;
   };
+
+  function expandFiles(files, cache) {
+    var files2 = [];
+    files.forEach(function(file) {
+      var expanded;
+      if (isZipFile(file)) {
+        expanded = expandZipFile(file, cache);
+      } else if (isKmzFile(file)) {
+        expanded = expandKmzFile(file, cache);
+      } else {
+        expanded = [file]; // ordinary file, no change
+      }
+      files2 = files2.concat(expanded);
+    });
+    return files2;
+  }
+
+  function expandKmzFile(file, cache) {
+    var files = expandZipFile(file, cache);
+    var name = replaceFileExtension(parseLocalPath(file).filename, 'kml');
+    if (files[0] == 'doc.kml') {
+      files[0] = name;
+      cache[name] = cache['doc.kml'];
+    }
+    return files;
+  }
+
+  function expandZipFile(file, cache) {
+    var input;
+    if (file in cache) {
+      input = cache[file];
+    } else {
+      input = file;
+      cli.checkFileExists(file);
+    }
+    return extractFiles(input, cache);
+  }
 
   // Let the web UI replace importFile() with a browser-friendly version
   function replaceImportFile(func) {
@@ -23839,6 +23945,7 @@ ${svg}
         content;
 
     cli.checkFileExists(path, cache);
+
     if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
       // these file types are read incrementally
       content = null;
@@ -23861,6 +23968,7 @@ ${svg}
         stop('Unrecognized file type:', path);
       }
       // TODO: consider using a temp file, to support incremental reading
+      // read to buffer, even for string-based types (to support larger input files)
       content = require('zlib').gunzipSync(cli.readFile(pathgz));
 
     } else { // type can't be inferred from filename -- try reading as text
@@ -23899,8 +24007,8 @@ ${svg}
       input = path;
     }
     var files = extractFiles(input, cache);
-    var zipOpts = Object.assign({}, opts, {input: cache});
-    return importFilesTogether(files, zipOpts);
+    var zipOpts = Object.assign({}, opts, {input: cache, files: files});
+    return cmd.importFiles(zipOpts);
   }
 
   // Import multiple files to a single dataset
@@ -28547,15 +28655,15 @@ ${svg}
   var brighter = 1 / darker;
 
   var reI = "\\s*([+-]?\\d+)\\s*",
-      reN = "\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)\\s*",
-      reP = "\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)%\\s*",
+      reN = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)\\s*",
+      reP = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)%\\s*",
       reHex = /^#([0-9a-f]{3,8})$/,
-      reRgbInteger = new RegExp("^rgb\\(" + [reI, reI, reI] + "\\)$"),
-      reRgbPercent = new RegExp("^rgb\\(" + [reP, reP, reP] + "\\)$"),
-      reRgbaInteger = new RegExp("^rgba\\(" + [reI, reI, reI, reN] + "\\)$"),
-      reRgbaPercent = new RegExp("^rgba\\(" + [reP, reP, reP, reN] + "\\)$"),
-      reHslPercent = new RegExp("^hsl\\(" + [reN, reP, reP] + "\\)$"),
-      reHslaPercent = new RegExp("^hsla\\(" + [reN, reP, reP, reN] + "\\)$");
+      reRgbInteger = new RegExp(`^rgb\\(${reI},${reI},${reI}\\)$`),
+      reRgbPercent = new RegExp(`^rgb\\(${reP},${reP},${reP}\\)$`),
+      reRgbaInteger = new RegExp(`^rgba\\(${reI},${reI},${reI},${reN}\\)$`),
+      reRgbaPercent = new RegExp(`^rgba\\(${reP},${reP},${reP},${reN}\\)$`),
+      reHslPercent = new RegExp(`^hsl\\(${reN},${reP},${reP}\\)$`),
+      reHslaPercent = new RegExp(`^hsla\\(${reN},${reP},${reP},${reN}\\)$`);
 
   var named = {
     aliceblue: 0xf0f8ff,
@@ -28709,14 +28817,15 @@ ${svg}
   };
 
   define(Color, color, {
-    copy: function(channels) {
+    copy(channels) {
       return Object.assign(new this.constructor, this, channels);
     },
-    displayable: function() {
+    displayable() {
       return this.rgb().displayable();
     },
     hex: color_formatHex, // Deprecated! Use color.formatHex.
     formatHex: color_formatHex,
+    formatHex8: color_formatHex8,
     formatHsl: color_formatHsl,
     formatRgb: color_formatRgb,
     toString: color_formatRgb
@@ -28724,6 +28833,10 @@ ${svg}
 
   function color_formatHex() {
     return this.rgb().formatHex();
+  }
+
+  function color_formatHex8() {
+    return this.rgb().formatHex8();
   }
 
   function color_formatHsl() {
@@ -28781,18 +28894,21 @@ ${svg}
   }
 
   define(Rgb, rgb$1, extend(Color, {
-    brighter: function(k) {
+    brighter(k) {
       k = k == null ? brighter : Math.pow(brighter, k);
       return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
     },
-    darker: function(k) {
+    darker(k) {
       k = k == null ? darker : Math.pow(darker, k);
       return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
     },
-    rgb: function() {
+    rgb() {
       return this;
     },
-    displayable: function() {
+    clamp() {
+      return new Rgb(clampi(this.r), clampi(this.g), clampi(this.b), clampa(this.opacity));
+    },
+    displayable() {
       return (-0.5 <= this.r && this.r < 255.5)
           && (-0.5 <= this.g && this.g < 255.5)
           && (-0.5 <= this.b && this.b < 255.5)
@@ -28800,25 +28916,34 @@ ${svg}
     },
     hex: rgb_formatHex, // Deprecated! Use color.formatHex.
     formatHex: rgb_formatHex,
+    formatHex8: rgb_formatHex8,
     formatRgb: rgb_formatRgb,
     toString: rgb_formatRgb
   }));
 
   function rgb_formatHex() {
-    return "#" + hex(this.r) + hex(this.g) + hex(this.b);
+    return `#${hex(this.r)}${hex(this.g)}${hex(this.b)}`;
+  }
+
+  function rgb_formatHex8() {
+    return `#${hex(this.r)}${hex(this.g)}${hex(this.b)}${hex((isNaN(this.opacity) ? 1 : this.opacity) * 255)}`;
   }
 
   function rgb_formatRgb() {
-    var a = this.opacity; a = isNaN(a) ? 1 : Math.max(0, Math.min(1, a));
-    return (a === 1 ? "rgb(" : "rgba(")
-        + Math.max(0, Math.min(255, Math.round(this.r) || 0)) + ", "
-        + Math.max(0, Math.min(255, Math.round(this.g) || 0)) + ", "
-        + Math.max(0, Math.min(255, Math.round(this.b) || 0))
-        + (a === 1 ? ")" : ", " + a + ")");
+    const a = clampa(this.opacity);
+    return `${a === 1 ? "rgb(" : "rgba("}${clampi(this.r)}, ${clampi(this.g)}, ${clampi(this.b)}${a === 1 ? ")" : `, ${a})`}`;
+  }
+
+  function clampa(opacity) {
+    return isNaN(opacity) ? 1 : Math.max(0, Math.min(1, opacity));
+  }
+
+  function clampi(value) {
+    return Math.max(0, Math.min(255, Math.round(value) || 0));
   }
 
   function hex(value) {
-    value = Math.max(0, Math.min(255, Math.round(value) || 0));
+    value = clampi(value);
     return (value < 16 ? "0" : "") + value.toString(16);
   }
 
@@ -28867,15 +28992,15 @@ ${svg}
   }
 
   define(Hsl, hsl$2, extend(Color, {
-    brighter: function(k) {
+    brighter(k) {
       k = k == null ? brighter : Math.pow(brighter, k);
       return new Hsl(this.h, this.s, this.l * k, this.opacity);
     },
-    darker: function(k) {
+    darker(k) {
       k = k == null ? darker : Math.pow(darker, k);
       return new Hsl(this.h, this.s, this.l * k, this.opacity);
     },
-    rgb: function() {
+    rgb() {
       var h = this.h % 360 + (this.h < 0) * 360,
           s = isNaN(h) || isNaN(this.s) ? 0 : this.s,
           l = this.l,
@@ -28888,20 +29013,28 @@ ${svg}
         this.opacity
       );
     },
-    displayable: function() {
+    clamp() {
+      return new Hsl(clamph(this.h), clampt(this.s), clampt(this.l), clampa(this.opacity));
+    },
+    displayable() {
       return (0 <= this.s && this.s <= 1 || isNaN(this.s))
           && (0 <= this.l && this.l <= 1)
           && (0 <= this.opacity && this.opacity <= 1);
     },
-    formatHsl: function() {
-      var a = this.opacity; a = isNaN(a) ? 1 : Math.max(0, Math.min(1, a));
-      return (a === 1 ? "hsl(" : "hsla(")
-          + (this.h || 0) + ", "
-          + (this.s || 0) * 100 + "%, "
-          + (this.l || 0) * 100 + "%"
-          + (a === 1 ? ")" : ", " + a + ")");
+    formatHsl() {
+      const a = clampa(this.opacity);
+      return `${a === 1 ? "hsl(" : "hsla("}${clamph(this.h)}, ${clampt(this.s) * 100}%, ${clampt(this.l) * 100}%${a === 1 ? ")" : `, ${a})`}`;
     }
   }));
+
+  function clamph(value) {
+    value = (value || 0) % 360;
+    return value < 0 ? value + 360 : value;
+  }
+
+  function clampt(value) {
+    return Math.max(0, Math.min(1, value || 0));
+  }
 
   /* From FvD 13.37, CSS Color Module Level 3 */
   function hsl2rgb(h, m1, m2) {
@@ -28955,13 +29088,13 @@ ${svg}
   }
 
   define(Lab, lab$1, extend(Color, {
-    brighter: function(k) {
+    brighter(k) {
       return new Lab(this.l + K * (k == null ? 1 : k), this.a, this.b, this.opacity);
     },
-    darker: function(k) {
+    darker(k) {
       return new Lab(this.l - K * (k == null ? 1 : k), this.a, this.b, this.opacity);
     },
-    rgb: function() {
+    rgb() {
       var y = (this.l + 16) / 116,
           x = isNaN(this.a) ? y : y + this.a / 500,
           z = isNaN(this.b) ? y : y - this.b / 200;
@@ -29023,13 +29156,13 @@ ${svg}
   }
 
   define(Hcl, hcl$2, extend(Color, {
-    brighter: function(k) {
+    brighter(k) {
       return new Hcl(this.h, this.c, this.l + K * (k == null ? 1 : k), this.opacity);
     },
-    darker: function(k) {
+    darker(k) {
       return new Hcl(this.h, this.c, this.l - K * (k == null ? 1 : k), this.opacity);
     },
-    rgb: function() {
+    rgb() {
       return hcl2lab(this).rgb();
     }
   }));
@@ -29069,15 +29202,15 @@ ${svg}
   }
 
   define(Cubehelix, cubehelix$3, extend(Color, {
-    brighter: function(k) {
+    brighter(k) {
       k = k == null ? brighter : Math.pow(brighter, k);
       return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
     },
-    darker: function(k) {
+    darker(k) {
       k = k == null ? darker : Math.pow(darker, k);
       return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
     },
-    rgb: function() {
+    rgb() {
       var h = isNaN(this.h) ? 0 : (this.h + 120) * radians,
           l = +this.l,
           a = isNaN(this.s) ? 0 : this.s * l * (1 - l),
@@ -39434,12 +39567,12 @@ ${svg}
     var parser = getOptionParser();
     // support multiline string of commands pasted into console
     str = str.split(/\n+/g).map(function(str) {
-      var match = /^[a-z][\w-]*/.exec(str = str.trim());
+      var match = /^[a-z][\w-]*/i.exec(str = str.trim());
       //if (match && parser.isCommandName(match[0])) {
       if (match) {
         // add hyphen prefix to bare command
-         // also add hyphen to non-command strings, for a better error message
-         // ("unsupported command" instead of "The -i command cannot be run in the browser")
+        // also add hyphen to non-command strings, for a better error message
+        // ("unsupported command" instead of "The -i command cannot be run in the browser")
         str = '-' + str;
       }
       return str;
@@ -39449,15 +39582,10 @@ ${svg}
 
   // Parse a command line string for the browser console
   function parseConsoleCommands(raw) {
-    var blocked = ['i', 'include', 'require', 'external'];
     var str = standardizeConsoleCommands(raw);
-    var parsed;
-    parsed = parseCommands(str);
+    var parsed = parseCommands(str);
     parsed.forEach(function(cmd) {
-      var i = blocked.indexOf(cmd.name);
-      if (i > -1) {
-        stop("The -" + blocked[i] + " command cannot be run in the browser");
-      }
+      cli.checkCommandEnv(cmd.name);
     });
     return parsed;
   }

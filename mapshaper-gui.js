@@ -392,7 +392,7 @@
       function readEntry(entry) {
         var filename = entry.filename,
             isValid = !entry.directory && GUI.isReadableFileType(filename) &&
-                !/^__MACOSX/.test(filename); // ignore "resource-force" files
+                !/^__MACOSX/.test(filename); // ignore "resource-fork" files
         if (isValid) {
           entry.getData(new zip.BlobWriter(), function(file) {
             file.name = filename; // Give the Blob a name, like a File object
@@ -1420,12 +1420,14 @@
     async function expandFiles(files) {
       var files2 = [], expanded;
       for (var f of files) {
-        if (internal.isZipFile(f.name) || /\.kmz$/.test(f.name)) {
+        if (internal.isZipFile(f.name)) {
           expanded = await readZipFile(f);
-          files2 = files2.concat(expanded);
+        } else if (internal.isKmzFile(f.name)) {
+          expanded = await readKmzFile(f);
         } else {
-          files2.push(f);
+          expanded = [f];
         }
+        files2 = files2.concat(expanded);
       }
       return files2;
     }
@@ -1580,6 +1582,15 @@
           return err ? reject(err) : resolve(data);
         });
       });
+    }
+
+    async function readKmzFile(file) {
+      var files = await readZipFile(file);
+      var name = files[0] && files[0].name;
+      if (name == 'doc.kml') {
+        files[0].name = internal.replaceFileExtension(file.name, 'kml');
+      }
+      return files;
     }
 
     async function readZipFile(file) {
@@ -3392,7 +3403,7 @@
     }
 
     function initFormatMenu() {
-      var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
+      var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg'];
       var formats = utils$1.uniq(defaults.concat(getInputFormats()));
       var items = formats.map(function(fmt) {
         return utils$1.format('<div><label><input type="radio" name="format" value="%s"' +
