@@ -1,3 +1,8 @@
+v0.6.15
+* Added support to the CLI for reading .kml and .kmz files.
+* Added support to the CLI for writing .kml files.
+* Added support to the web UI for writing .kml files.
+
 v0.6.14
 * Added support to the CLI for reading and writing .zip files.
 
