@@ -1,5 +1,6 @@
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { exportSVG } from '../svg/mapshaper-svg';
+import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
 import { exportDelim } from '../text/mapshaper-delim-export';
 import { exportShapefile } from '../shapefile/shp-export';
@@ -31,7 +32,7 @@ export function exportTargetLayers(targets, opts) {
 function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
-  if (format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
+  if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
     if (datasets.length > 1) {
       datasets = [mergeDatasetsForExport(datasets)];
@@ -85,8 +86,8 @@ export function exportFileContent(dataset, opts) {
   }, dataset);
 
   // Adjust layer names, so they can be used as output file names
-  // (except for multi-layer formats TopoJSON and SVG)
-  if (opts.file && outFmt != 'topojson' && outFmt != 'svg') {
+  // (except for multi-layer formats TopoJSON, SVG, KML)
+  if (opts.file && outFmt != 'topojson' && outFmt != 'svg'&& outFmt != 'kml') {
     dataset.layers.forEach(function(lyr) {
       lyr.name = getFileBase(opts.file);
     });
@@ -131,7 +132,8 @@ var exporters = {
   dsv: exportDelim,
   dbf: exportDbf,
   json: exportJSON,
-  svg: exportSVG
+  svg: exportSVG,
+  kml: exportKML
 };
 
 

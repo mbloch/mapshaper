@@ -268,12 +268,14 @@ export function ImportControl(gui, opts) {
   async function expandFiles(files) {
     var files2 = [], expanded;
     for (var f of files) {
-      if (internal.isZipFile(f.name) || /\.kmz$/.test(f.name)) {
+      if (internal.isZipFile(f.name)) {
         expanded = await readZipFile(f);
-        files2 = files2.concat(expanded);
+      } else if (internal.isKmzFile(f.name)) {
+        expanded = await readKmzFile(f);
       } else {
-        files2.push(f);
+        expanded = [f];
       }
+      files2 = files2.concat(expanded);
     }
     return files2;
   }
@@ -428,6 +430,15 @@ export function ImportControl(gui, opts) {
         return err ? reject(err) : resolve(data);
       });
     });
+  }
+
+  async function readKmzFile(file) {
+    var files = await readZipFile(file);
+    var name = files[0] && files[0].name;
+    if (name == 'doc.kml') {
+      files[0].name = internal.replaceFileExtension(file.name, 'kml');
+    }
+    return files;
   }
 
   async function readZipFile(file) {

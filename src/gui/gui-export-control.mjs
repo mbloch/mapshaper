@@ -214,7 +214,7 @@ export var ExportControl = function(gui) {
   }
 
   function initFormatMenu() {
-    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'svg'];
+    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg'];
     var formats = utils.uniq(defaults.concat(getInputFormats()));
     var items = formats.map(function(fmt) {
       return utils.format('<div><label><input type="radio" name="format" value="%s"' +

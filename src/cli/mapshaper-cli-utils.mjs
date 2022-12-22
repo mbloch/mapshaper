@@ -19,6 +19,13 @@ cli.isFile = function(path, cache) {
   return ss && ss.isFile() || false;
 };
 
+cli.checkCommandEnv = function(cname) {
+  var blocked = ['i', 'include', 'require', 'external'];
+  if (runningInBrowser() && blocked.includes(cname)) {
+    stop('The -' + cname + ' command cannot be run in the browser');
+  }
+};
+
 // cli.fileSize = function(path) {
 //   var ss = cli.statSync(path);
 //   return ss && ss.size || 0;

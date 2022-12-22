@@ -1,10 +1,15 @@
 import { importContent } from '../io/mapshaper-import';
-import { isSupportedBinaryInputType, guessInputContentType, guessInputFileType } from '../io/mapshaper-file-types';
+import {
+  isSupportedBinaryInputType,
+  guessInputContentType,
+  guessInputFileType,
+  isZipFile,
+  isKmzFile } from '../io/mapshaper-file-types';
 import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, verbose, stop } from '../utils/mapshaper-logging';
-import { getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
+import { parseLocalPath, getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 import { extractFiles } from './mapshaper-zip';
 import { buildTopology } from '../topology/mapshaper-topology';
@@ -12,31 +17,80 @@ import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 
 cmd.importFiles = function(opts) {
-  var files = opts.files || [],
-      dataset;
+  var files = opts.files || [];
+  var dataset;
 
+  cli.checkCommandEnv('i');
   if (opts.stdin) {
     return importFile('/dev/stdin', opts);
   }
+
 
   if (files.length > 0 === false) {
     stop('Missing input file(s)');
   }
 
   verbose("Importing: " + files.join(' '));
-  if (files.length == 1 && /\.zip/i.test(files[0])) {
-    dataset = importZipFile(files[0], opts);
-  } else if (files.length == 1) {
+
+  // copy opts, so parameters can be modified within this command
+  opts = Object.assign({}, opts);
+  opts.input = Object.assign({}, opts.input); // make sure we have a cache
+
+  files = expandFiles(files, opts.input);
+
+  if (files.length === 0) {
+    stop('Missing importable files');
+  }
+
+  if (files.length == 1) {
     dataset = importFile(files[0], opts);
-  } else if (opts.merge_files) {
-    // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-    dataset = importFilesTogether(files, opts);
-    dataset.layers = cmd.mergeLayers(dataset.layers);
   } else {
     dataset = importFilesTogether(files, opts);
   }
+
+  if (opts.merge_files && files.length > 1) {
+    // TODO: deprecate and remove this option (use -merge-layers cmd instead)
+    dataset.layers = cmd.mergeLayers(dataset.layers);
+  }
   return dataset;
 };
+
+function expandFiles(files, cache) {
+  var files2 = [];
+  files.forEach(function(file) {
+    var expanded;
+    if (isZipFile(file)) {
+      expanded = expandZipFile(file, cache);
+    } else if (isKmzFile(file)) {
+      expanded = expandKmzFile(file, cache);
+    } else {
+      expanded = [file]; // ordinary file, no change
+    }
+    files2 = files2.concat(expanded);
+  });
+  return files2;
+}
+
+function expandKmzFile(file, cache) {
+  var files = expandZipFile(file, cache);
+  var name = replaceFileExtension(parseLocalPath(file).filename, 'kml');
+  if (files[0] == 'doc.kml') {
+    files[0] = name;
+    cache[name] = cache['doc.kml'];
+  }
+  return files;
+}
+
+function expandZipFile(file, cache) {
+  var input;
+  if (file in cache) {
+    input = cache[file];
+  } else {
+    input = file;
+    cli.checkFileExists(file);
+  }
+  return extractFiles(input, cache);
+}
 
 // Let the web UI replace importFile() with a browser-friendly version
 export function replaceImportFile(func) {
@@ -56,6 +110,7 @@ var _importFile = function(path, opts) {
       content;
 
   cli.checkFileExists(path, cache);
+
   if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
     // these file types are read incrementally
     content = null;
@@ -78,6 +133,7 @@ var _importFile = function(path, opts) {
       stop('Unrecognized file type:', path);
     }
     // TODO: consider using a temp file, to support incremental reading
+    // read to buffer, even for string-based types (to support larger input files)
     content = require('zlib').gunzipSync(cli.readFile(pathgz));
 
   } else { // type can't be inferred from filename -- try reading as text
@@ -116,8 +172,8 @@ function importZipFile(path, opts) {
     input = path;
   }
   var files = extractFiles(input, cache);
-  var zipOpts = Object.assign({}, opts, {input: cache});
-  return importFilesTogether(files, zipOpts);
+  var zipOpts = Object.assign({}, opts, {input: cache, files: files});
+  return cmd.importFiles(zipOpts);
 }
 
 // Import multiple files to a single dataset

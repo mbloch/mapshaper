@@ -2,6 +2,7 @@ import { getOptionParser } from '../cli/mapshaper-options';
 import { splitShellTokens } from '../cli/mapshaper-option-parsing-utils';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import cli from './mapshaper-cli-utils';
 
 // Parse an array or a string of command line tokens into an array of
 // command objects.
@@ -23,12 +24,12 @@ export function standardizeConsoleCommands(raw) {
   var parser = getOptionParser();
   // support multiline string of commands pasted into console
   str = str.split(/\n+/g).map(function(str) {
-    var match = /^[a-z][\w-]*/.exec(str = str.trim());
+    var match = /^[a-z][\w-]*/i.exec(str = str.trim());
     //if (match && parser.isCommandName(match[0])) {
     if (match) {
       // add hyphen prefix to bare command
-       // also add hyphen to non-command strings, for a better error message
-       // ("unsupported command" instead of "The -i command cannot be run in the browser")
+      // also add hyphen to non-command strings, for a better error message
+      // ("unsupported command" instead of "The -i command cannot be run in the browser")
       str = '-' + str;
     }
     return str;
@@ -38,15 +39,10 @@ export function standardizeConsoleCommands(raw) {
 
 // Parse a command line string for the browser console
 export function parseConsoleCommands(raw) {
-  var blocked = ['i', 'include', 'require', 'external'];
   var str = standardizeConsoleCommands(raw);
-  var parsed;
-  parsed = parseCommands(str);
+  var parsed = parseCommands(str);
   parsed.forEach(function(cmd) {
-    var i = blocked.indexOf(cmd.name);
-    if (i > -1) {
-      stop("The -" + blocked[i] + " command cannot be run in the browser");
-    }
+    cli.checkCommandEnv(cmd.name);
   });
   return parsed;
 }

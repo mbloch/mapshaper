@@ -6,17 +6,17 @@ var internal = api.internal;
 describe('mapshaper-parse-commands.js', function () {
 
   describe('parseConsoleCommands()', function () {
-    it('should block input commands', function () {
-
-      function bad(cmd) {
-        assert.throws(function() {
-          internal.parseConsoleCommands(cmd);
-        });
-      }
-
-      bad("mapshaper foo.shp")
-      bad("-i foo");
-    })
+    // // Removed this test (now, -i command is blocked in browser by
+    // // checking the execution environment).
+    // it('should block input commands', function () {
+    //   function bad(cmd) {
+    //     assert.throws(function() {
+    //       internal.parseConsoleCommands(cmd);
+    //     });
+    //   }
+    //   bad("mapshaper foo.shp")
+    //   bad("-i foo");
+    // })
 
     it('mapshaper -filter true', function () {
       var commands = internal.parseConsoleCommands('mapshaper -filter true');

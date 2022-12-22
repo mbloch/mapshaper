@@ -49,8 +49,12 @@ export function isZipFile(file) {
   return /\.zip$/i.test(file);
 }
 
+export function isKmzFile(file) {
+  return /\.kmz$/i.test(file);
+}
+
 export function isSupportedOutputFormat(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml'];
   return types.indexOf(fmt) > -1;
 }
 
@@ -61,6 +65,8 @@ export function getFormatName(fmt) {
     json: 'JSON records',
     dsv: 'CSV',
     dbf: 'DBF',
+    kml: 'KML',
+    kmz: 'KMZ',
     shapefile: 'Shapefile',
     svg: 'SVG'
   }[fmt] || '';
@@ -74,6 +80,6 @@ export function isSupportedBinaryInputType(path) {
 
 // Detect extensions of some unsupported file types, for cmd line validation
 export function filenameIsUnsupportedOutputType(file) {
-  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml)$/i;
   return rxp.test(file);
 }

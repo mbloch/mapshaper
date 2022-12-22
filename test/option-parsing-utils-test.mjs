@@ -90,7 +90,6 @@ describe('mapshaper-option-parsing-utils.js', function () {
   describe('splitShellTokens()', function () {
     var split = api.internal.splitShellTokens;
     function test(src, dest) {
-      // assert.deepEqual(await import('shell-quote').parse(src), split(src));
      assert.deepEqual(split(src), dest);
     }
 
