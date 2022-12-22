@@ -140,10 +140,18 @@ export function getPathFinder(nodes, useRoute, routeIsUsable) {
     return ~getRightmostArc(prevId, nodes, testArc);
   }
 
+  function isEmptyArc(id) {
+    return nodes.arcs.getArcLength(id) > 1 === false;
+  }
+
   return function(startId) {
     var path = [],
         nextId, msg,
         candId = startId;
+
+    if (isEmptyArc(startId)) {
+      return null;
+    }
 
     do {
       if (useRoute(candId)) {

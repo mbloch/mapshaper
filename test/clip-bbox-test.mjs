@@ -3,6 +3,12 @@ import assert from 'assert';
 
 describe('-clip bbox2=<bbox>', function () {
 
+  it('Bug fix: -clip bbox2= throws error', async function() {
+    var file = 'test/data/issues/bbox2_error/usa.json';
+    var cmd = `-i ${file} -proj albersusa -clip bbox2=-2383849,-1314367,2266550,1565850`;
+    var out = await api.applyCommands(cmd); // used to throw
+  })
+
   it('Point layer', function(done) {
     var input = {
       type: 'MultiPoint',

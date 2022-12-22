@@ -391,7 +391,9 @@ export function ArcCollection() {
         len = _nn[absId];
     if (nth < 0) nth = len + nth;
     if (absId != arcId) nth = len - nth - 1;
-    if (nth < 0 || nth >= len) error("[ArcCollection] out-of-range vertex id");
+    if (nth < 0 || nth >= len) {
+      error("[ArcCollection] out-of-range vertex id");
+    }
     return _ii[absId] + nth;
   };
 

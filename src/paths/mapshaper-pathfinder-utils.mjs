@@ -1,55 +1,72 @@
 import { error, debug } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 
-// Return id of rightmost connected arc in relation to @arcId
-// Return @arcId if no arcs can be found
-export function getRightmostArc(arcId, nodes, filter) {
-  var ids = nodes.getConnectedArcs(arcId);
+
+function isValidArc(arcId, arcs) {
+  // check for arcs with no vertices
+  // TODO: also check for other kinds of degenerate arcs
+  // (e.g. collapsed arcs consisting of identical points)
+  return arcs.getArcLength(arcId) > 1;
+}
+
+// Return id of rightmost connected arc in relation to @fromArcId
+// Return @fromArcId if no arcs can be found
+export function getRightmostArc(fromArcId, nodes, filter) {
+  var arcs = nodes.arcs,
+      coords = arcs.getVertexData(),
+      xx = coords.xx,
+      yy = coords.yy,
+      ids = nodes.getConnectedArcs(fromArcId),
+      toArcId = fromArcId; // initialize to fromArcId -- an error condition
+
   if (filter) {
     ids = ids.filter(filter);
   }
-  if (ids.length === 0) {
-    return arcId; // error condition, handled by caller
-  }
-  return getRighmostArc2(arcId, ids, nodes.arcs);
-}
 
-function getRighmostArc2 (fromId, ids, arcs) {
-  var coords = arcs.getVertexData(),
-      xx = coords.xx,
-      yy = coords.yy,
-      inode = arcs.indexOfVertex(fromId, -1),
+  if (!isValidArc(fromArcId, arcs) || ids.length === 0) {
+    return fromArcId;
+  }
+
+  var inode = arcs.indexOfVertex(fromArcId, -1),
       nodeX = xx[inode],
       nodeY = yy[inode],
-      ifrom = arcs.indexOfVertex(fromId, -2),
+      ifrom = arcs.indexOfVertex(fromArcId, -2),
       fromX = xx[ifrom],
       fromY = yy[ifrom],
-      toId = fromId, // initialize to from-arc -- an error
       ito, candId, icand, code, j;
 
   /*if (x == ax && y == ay) {
     error("Duplicate point error");
   }*/
-  if (ids.length > 0) {
-    toId = ids[0];
-    ito = arcs.indexOfVertex(toId, -2);
-  }
 
-  for (j=1; j<ids.length; j++) {
+
+  for (j=0; j<ids.length; j++) {
     candId = ids[j];
+    if (!isValidArc(candId, arcs)) {
+      // skip empty arcs
+      continue;
+    }
     icand = arcs.indexOfVertex(candId, -2);
-    code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
-    // code = internal.chooseRighthandPath(0, 0, nodeX - fromX, nodeY - fromY, xx[ito] - fromX, yy[ito] - fromY, xx[icand] - fromX, yy[icand] - fromY);
-    if (code == 2) {
-      toId = candId;
+
+    if (toArcId == fromArcId) {
+      // first valid candidate
       ito = icand;
+      toArcId = candId;
+      continue;
+    }
+
+    code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+    if (code == 2) {
+      ito = icand;
+      toArcId = candId;
     }
   }
-  if (toId == fromId) {
+
+  if (toArcId == fromArcId) {
     // This shouldn't occur, assuming that other arcs are present
     error("Pathfinder error");
   }
-  return toId;
+  return toArcId;
 }
 
 function chooseRighthandPath2(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
