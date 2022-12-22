@@ -42,4 +42,14 @@ describe('zip i/o', function () {
     assert.deepEqual(data, target);
   });
 
+  it('Unable to import zip in zip', async function() {
+    var file = 'test/data/features/zip/zip-in-zip.zip';
+    var cmd = `-i ${file} -o data.zip`;
+    try {
+      await api.applyCommands(cmd);
+    } catch(e) {
+      assert.equal(e.name, 'UserError');
+    }
+  })
+
 });

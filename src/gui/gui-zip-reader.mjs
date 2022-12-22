@@ -37,7 +37,7 @@ GUI.readZipFile = function(file, cb) {
     function readEntry(entry) {
       var filename = entry.filename,
           isValid = !entry.directory && GUI.isReadableFileType(filename) &&
-              !/^__MACOSX/.test(filename); // ignore "resource-force" files
+              !/^__MACOSX/.test(filename); // ignore "resource-fork" files
       if (isValid) {
         entry.getData(new zip.BlobWriter(), function(file) {
           file.name = filename; // Give the Blob a name, like a File object

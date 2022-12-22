@@ -25,7 +25,7 @@ export function extractFiles(input, cache) {
       // don't import .dbf separately if .shp is present
       if (replaceFileExtension(file, 'shp') in cache) return false;
     }
-    return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf';
+    return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf' || type == 'kml';
   });
 }
 
