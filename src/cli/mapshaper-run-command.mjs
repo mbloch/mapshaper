@@ -277,9 +277,8 @@ export function runCommand(command, job, cb) {
 
     } else if (name == 'i') {
       if (opts.replace) job.catalog = new Catalog(); // is this what we want?
-      targetDataset = cmd.importFiles(command.options);
+      targetDataset = cmd.importFiles(job.catalog, command.options);
       if (targetDataset) {
-        job.catalog.addDataset(targetDataset);
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
 

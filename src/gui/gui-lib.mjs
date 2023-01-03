@@ -95,10 +95,10 @@ GUI.onClick = function(el, cb) {
 };
 
 // tests if filename is a type that can be used
-GUI.isReadableFileType = function(filename) {
-  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
-    internal.isZipFile(filename);
-};
+// GUI.isReadableFileType = function(filename) {
+//   return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
+//     internal.isZipFile(filename);
+// };
 
 GUI.parseFreeformOptions = function(raw, cmd) {
   var str = raw.trim(),

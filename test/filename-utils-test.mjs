@@ -36,6 +36,10 @@ describe('mapshaper-filename-utils.js', function () {
       var base = internal.getPathBase('file.json')
       assert.equal(base, 'file');
     })
+
+    it('test3', function() {
+      assert.equal(internal.getPathBase('file.json.gz'), 'file.json');
+    })
   })
 
   describe('replaceFileExtension()', function () {
@@ -47,6 +51,10 @@ describe('mapshaper-filename-utils.js', function () {
     it('test2', function () {
       var base = internal.replaceFileExtension('file.json', 'txt')
       assert.equal(base, 'file.txt');
+    })
+
+    it('test3', function() {
+      assert.equal(internal.replaceFileExtension('out/file.json.gz', ''), 'out/file.json')
     })
   })
 

@@ -1,41 +1,22 @@
 import { El } from './gui-el';
+import { internal } from './gui-core';
+import { showPopupAlert } from './gui-alert';
 
 export function saveZipFile(zipfileName, files, done) {
-  var zip = window.zip; // assumes zip library is loaded globally
-  var toAdd = files;
-  var zipWriter;
-  try {
-    zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
-      zipWriter = writer;
-      nextFile();
-    }, zipError);
-  } catch(e) {
-    done("This browser doesn't support Zip file creation.");
-  }
-
-  function zipError(err) {
-    var str = "Error creating Zip file";
-    var msg = '';
-    // error events thrown by Zip library seem to be missing a message
-    if (err && err.message) {
-      msg = err.message;
-    }
-    if (msg) {
-      str += ": " + msg;
-    }
-    done(str);
-  }
-
-  function nextFile() {
-    if (toAdd.length === 0) {
-      zipWriter.close(function(blob) {
-        saveBlobToDownloadFolder(zipfileName, blob, done);
-      });
+  internal.zipAsync(files, function(err, buf) {
+    if (err) {
+      done(errorMessage(err));
     } else {
-      var obj = toAdd.pop(),
-          blob = new Blob([obj.content]);
-      zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
+      saveBlobToLocalFile(zipfileName, new Blob([buf]), done);
     }
+  });
+
+  function errorMessage(err) {
+    var str = "Error creating Zip file";
+    if (err.message) {
+      str += ": " + err.message;
+    }
+    return str;
   }
 }
 
@@ -68,12 +49,91 @@ function saveBlobToServer(path, blob, done) {
   });
 }
 
-export function saveBlobToDownloadFolder(filename, blob, done) {
-  var anchor, blobUrl;
-  if (window.navigator.msSaveBlob) {
-    window.navigator.msSaveBlob(blob, filename);
-    return done();
+export async function saveBlobToLocalFile(filename, blob, done) {
+  if (window.showSaveFilePicker) {
+    saveBlobToSelectedFile(filename, blob, done);
+  } else {
+    saveBlobToDownloadsFolder(filename, blob, done);
   }
+}
+
+function showSaveDialog(filename, blob, done) {
+  showPopupAlert(`Save ${filename} to:`)
+    .button('selected folder', function() {
+      saveBlobToSelectedFile(filename, blob, done);
+    })
+    .button('downloads', function() {
+      saveBlobToDownloadsFolder(filename, blob, done);
+    })
+    .onCancel(done);
+}
+
+async function saveBlobToSelectedFile(filename, blob, done) {
+  // see: https://developer.chrome.com/articles/file-system-access/
+  // note: saving multiple files to a directory using showDirectoryPicker()
+  //   does not work well (in Chrome). User is prompted for permission each time,
+  //   and some directories (like Downloads and Documents) are blocked.
+  //
+  var options = getSaveFileOptions(filename);
+  var handle;
+  try {
+    handle = await window.showSaveFilePicker(options);
+    var writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  } catch(e) {
+    if (e.name == 'SecurityError') {
+      // assuming this is a timeout error, with message like:
+      // "Must be handling a user gesture to show a file picker."
+      showSaveDialog(filename, blob, done);
+    } else if (e.name == 'AbortError') {
+      // fired if user clicks a cancel button (normal, no error message)
+      // BUT: this kind of erro rmay also get fired when saving to a protected folder
+      //   (should show error message)
+      done();
+    } else {
+      console.error(e.name, e.message, e);
+      done('Save failed for an unknown reason');
+    }
+    return;
+  }
+
+  done();
+}
+
+function getSaveFileOptions(filename) {
+  // see: https://wicg.github.io/file-system-access/#api-filepickeroptions
+  var type = internal.guessInputFileType(filename);
+  var ext = internal.getFileExtension(filename).toLowerCase();
+  var accept = {};
+  if (ext == 'kml') {
+    accept['application/vnd.google-earth.kml+xml'] = ['.kml'];
+  } else if (ext == 'svg') {
+    accept['image/svg+xml'] = ['.svg'];
+  } else if (ext == 'zip') {
+    accept['application/zip'] == ['.zip'];
+  } else if (type == 'text') {
+    accept['text/csv'] = ['.csv', '.tsv', '.tab', '.txt'];
+  } else if (type == 'json') {
+    accept['application/json'] = ['.json', '.geojson', '.topojson'];
+  } else {
+    accept['application/octet-stream'] = ['.' + ext];
+  }
+  return {
+    suggestedName: filename,
+    // If startIn is given, Chrome will always start there
+    // Default is to start in the previously selected dir (better)
+    // // startIn: 'downloads', // or: desktop, documents, [file handle], [directory handle]
+    types: [{
+      description: 'Files',
+      accept: accept
+    }]
+  };
+}
+
+
+function saveBlobToDownloadsFolder(filename, blob, done) {
+  var anchor, blobUrl;
   try {
     blobUrl = URL.createObjectURL(blob);
   } catch(e) {

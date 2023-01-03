@@ -29,7 +29,7 @@ export function importDelim2(data, opts) {
 
   if (readFromFile) {
     reader = new FileReader(data.filename);
-  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer || content instanceof Uint8Array) {
     // Web API may import as ArrayBuffer, to support larger files
     reader = new BufferReader(content);
     content = null;

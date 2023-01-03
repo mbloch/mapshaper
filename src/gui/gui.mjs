@@ -3,7 +3,7 @@
 import { ImportControl } from './gui-import-control';
 import { SimplifyControl } from './gui-simplify-control';
 import { Console } from './gui-console';
-import { AlertControl } from './gui-error';
+import { AlertControl } from './gui-alert';
 import { RepairControl } from './gui-repair-control';
 import { ExportControl } from './gui-export-control';
 import { LayerControl } from './gui-layer-control';

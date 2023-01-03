@@ -1,13 +1,13 @@
 import api from '../';
 import assert from 'assert';
-
+import { Catalog } from '../src/dataset/mapshaper-catalog';
 
 describe('mapshaper-import.js', function () {
 
   it('import a point GeoJSON and a csv file', async function() {
     var a = 'test/data/three_points.geojson',
         b = 'test/data/text/two_states.csv';
-    var combined = api.cmd.importFiles({files: [a, b]});
+    var combined = api.cmd.importFiles(new Catalog(), {files: [a, b]});
     assert(api.internal.getDatasetCRS(combined).is_latlong);
     assert.deepEqual(combined.info.input_files, ['test/data/three_points.geojson', 'test/data/text/two_states.csv']);
     assert.deepEqual(combined.info.input_formats, ['geojson', 'dsv']);
@@ -16,7 +16,7 @@ describe('mapshaper-import.js', function () {
   it('import a polygon Shapefile and a polygon GeoJSON file', function() {
     var a = 'test/data/six_counties.shp',
         b = 'test/data/two_states.json',
-        combined = api.cmd.importFiles({files: [a, b]});
+        combined = api.cmd.importFiles(new Catalog(), {files: [a, b]});
     assert(api.internal.getDatasetCRS(combined).is_latlong);
     // TODO: check geometry
   })
@@ -25,14 +25,14 @@ describe('mapshaper-import.js', function () {
     assert.throws(function() {
       var a = 'test/data/two_states_mercator.shp',
           b = 'test/data/two_states.shp',
-          combined = api.cmd.importFiles({files: [a, b]});
+          combined = api.cmd.importFiles(new Catalog(), {files: [a, b]});
     })
   })
 
   it('issue #153 topology was ignored when using -i combine-files option', function() {
     var a = 'test/data/issues/153/a.json',
         b = 'test/data/issues/153/b.json';
-    var combined = api.cmd.importFiles({files: [a, b]});
+    var combined = api.cmd.importFiles(new Catalog(), {files: [a, b]});
 
     var targetArcs = [ [ [ 1, 1 ], [ 1, 0 ] ],
         [ [ 1, 0 ], [ 0, 0 ], [ 0, 1 ], [ 1, 1 ] ],

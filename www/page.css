@@ -76,6 +76,19 @@ body {
 	fill: #1385B7;
 }
 
+.alert-btn + .alert-btn {
+	margin-left: 4px;
+}
+
+.dialog-btn {
+	display: inline-block;
+	margin-bottom: 1px;
+	margin-top: 1px;
+	font-size: 13px;
+	color: white;
+	min-width: 28px;
+}
+
 .dialog-btn:hover:not(.disabled),
 .btn.header-btn:hover,
 .dialog-btn.default-btn,
@@ -251,13 +264,22 @@ body {
 	left: 0;
 }
 
+.error-wrapper p.error-message {
+	margin: 1px 0 0 0;
+}
+
+.error-wrapper .dialog-btn {
+	margin-top: 8px;
+}
+
 .error-title {
+	line-height: 1.1;
 	font-weight: bold;
-	margin-bottom: 4px;
+	margin-bottom: 5px;
 }
 
 div.error-box {
-	margin-top: 55px;
+	margin-top: 42px; /* 55px; */
 	overflow: auto;
 	max-height: 70%;
 	max-width: 400px;
@@ -516,8 +538,8 @@ body.dragover #import-options-drop-area .drop-area {
 	margin-top: 3px;
 }
 
-.option-menu input.checkbox {
-	margin: 3px 5px 0 0;
+.option-menu input[type="checkbox"] {
+	margin: 3px 5px 0 1px;
 }
 
 .option-menu input.radio {
@@ -743,7 +765,7 @@ img.close-btn {
 	float: right;
 	height:  18px;
 	width:  18px;
-	margin-top: 2px;
+	margin-top: 1px;
 	margin-right: -5px;
 	cursor: pointer;
 	border-radius: 4px;

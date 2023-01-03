@@ -1,5 +1,4 @@
 import { CatalogControl } from './gui-catalog-control';
-import './gui-zip-reader';
 import { utils, internal, stop } from './gui-core';
 import { El } from './gui-el';
 import { SimpleButton } from './gui-elements';
@@ -168,6 +167,7 @@ export function ImportControl(gui, opts) {
         await importFiles(files);
       }
     } catch(e) {
+      console.log(e);
       gui.alert(e.message, 'Import error');
     }
     if (gui.getMode() == 'import') {
@@ -221,7 +221,7 @@ export function ImportControl(gui, opts) {
     var index = {};
     queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
       // filter out unreadable types and dupes
-      if (GUI.isReadableFileType(f.name) && f.name in index === false) {
+      if (internal.looksLikeContentFile(f.name) && f.name in index === false) {
         index[f.name] = true;
         memo.push(f);
       }
@@ -237,16 +237,17 @@ export function ImportControl(gui, opts) {
   }
 
   async function receiveFiles(files) {
+    var names = getFileNames(files);
     var expanded = [];
     try {
       expanded = await expandFiles(files);
     } catch(e) {
+      console.log(e);
       gui.alert(e.message, 'Import error');
       return;
     }
     addFilesToQueue(expanded);
     if (queuedFiles.length === 0) {
-      var names = getFileNames(files);
       var msg = `Unable to import data from: ${names.join(', ')}`;
       gui.alert(msg, 'Import error');
       return;
@@ -266,24 +267,29 @@ export function ImportControl(gui, opts) {
   }
 
   async function expandFiles(files) {
-    var files2 = [], expanded;
+    var expanded = [], tmp;
+    await wait(35); // pause a beat so status message can display
     for (var f of files) {
-      if (internal.isZipFile(f.name)) {
-        expanded = await readZipFile(f);
+      var data = await readFileData(f);
+      if (internal.isGzipFile(f.name)) {
+        tmp = await readGzipFile(data);
+      } else if (internal.isZipFile(f.name)) {
+        tmp = await readZipFile(data);
       } else if (internal.isKmzFile(f.name)) {
-        expanded = await readKmzFile(f);
+        tmp = await readKmzFile(data);
       } else {
-        expanded = [f];
+        tmp = [data];
       }
-      files2 = files2.concat(expanded);
+      expanded = expanded.concat(tmp);
     }
-    return files2;
+    files.length = 0; // clear source array for gc (works?)
+    return expanded;
   }
 
-  async function importFiles(files) {
-    var fileData = await readFiles(files);
+  async function importFiles(fileData) {
     var importOpts = readImportOpts();
     var groups = groupFilesForImport(fileData, importOpts);
+    fileData = null;
     for (var group of groups) {
       if (group.size > 4e7) {
         gui.showProgressMessage('Importing');
@@ -333,7 +339,6 @@ export function ImportControl(gui, opts) {
     });
   }
 
-
   function isShapefilePart(name) {
     return /\.(shp|shx|dbf|prj|cpg)$/i.test(name);
   }
@@ -353,13 +358,7 @@ export function ImportControl(gui, opts) {
 
   // @file a File object
   async function readContentFileAsync(file, cb) {
-    var name = file.name,
-        reader = new FileReader(),
-        useBinary = internal.isSupportedBinaryInputType(name) ||
-          internal.isZipFile(name) ||
-          internal.guessInputFileType(name) == 'json' ||
-          internal.guessInputFileType(name) == 'text';
-
+    var reader = new FileReader();
     reader.addEventListener('loadend', function(e) {
       if (!reader.result) {
         cb(new Error());
@@ -367,10 +366,9 @@ export function ImportControl(gui, opts) {
         cb(null, reader.result);
       }
     });
-    if (useBinary) {
+    if (internal.isImportableAsBinary(file.name)) {
       reader.readAsArrayBuffer(file);
     } else {
-      // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
       reader.readAsText(file, 'UTF-8');
     }
   }
@@ -389,7 +387,8 @@ export function ImportControl(gui, opts) {
         item.url = '/data/' + name;
         item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
       }
-      return GUI.isReadableFileType(item.basename) ? item : null;
+      // return GUI.isReadableFileType(item.basename) ? item : null;
+      return internal.looksLikeImportableFile(item.basename) ? item : null;
     });
     return items.filter(Boolean);
   }
@@ -441,21 +440,46 @@ export function ImportControl(gui, opts) {
     return files;
   }
 
-  async function readZipFile(file) {
-    var files = [];
+  async function readGzipFile(file) {
+    var name = file.name.replace(/\.gz$/, '');
     await wait(35); // pause a beat so status message can display
-    try {
-      files = await runAsync(GUI.readZipFile, file);
-      // don't try to import .txt files from zip files
-      // (these would be parsed as dsv and throw errows)
-      files = files.filter(function(f) {
-        return !/\.txt$/i.test(f.name);
-      });
-    } catch(e) {
-      console.error(e);
-      throw Error(`Unable to unzip ${file.name}`);
-    }
-    return files;
+    return [{
+      name: name,
+      content: internal.gunzipSync(file.content, name)
+    }];
+  }
+
+  async function readZipFile(file) {
+    var index = internal.unzipSync(file.content);
+    return Object.keys(index).reduce(function(memo, filename) {
+      if (!/\.txt$/i.test(filename)) {
+        memo.push({
+          name: filename,
+          content: index[filename]
+        });
+        return memo;
+      }
+    }, []);
+  }
+
+  function fileSize(data) {
+    return data.content.byteLength || data.content.length; // ArrayBuffer or string
+  }
+
+  function fileType(data) {
+    return internal.guessInputType(data.name, data.content);
+  }
+
+  function key(basename, type) {
+    return basename + '.' + type;
+  }
+
+  function fileBase(data) {
+    return internal.getFileBase(data.name).toLowerCase();
+  }
+
+  function fileKey(data) {
+    return key(fileBase(data), fileType(data));
   }
 
   async function readFileData(file) {
@@ -463,24 +487,12 @@ export function ImportControl(gui, opts) {
       var content = await runAsync(readContentFileAsync, file);
       return {
         content: content,
-        size: content.byteLength || content.length, // ArrayBuffer or string
-        name: file.name,
-        basename: internal.getFileBase(file.name).toLowerCase(),
-        type: internal.guessInputType(file.name, content)
+        name: file.name
       };
     } catch (e) {
       console.error(e);
       throw Error(`Browser was unable to load the file ${file.name}`);
     }
-  }
-
-  async function readFiles(files) {
-    var data = [], d;
-    for (var file of files) {
-      d = await readFileData(file);
-      if (d) data.push(d);
-    }
-    return data;
   }
 
   function groupFilesForImport(data, importOpts) {
@@ -489,22 +501,22 @@ export function ImportControl(gui, opts) {
       names = opts.name.split(',');
     }
 
-    function key(basename, type) {
-      return basename + '.' + type;
-    }
     function hasShp(basename) {
       var shpKey = key(basename, 'shp');
-      return data.some(d => key(d.basename, d.type) == shpKey);
+      return data.some(d => fileKey(d) == shpKey);
     }
+
     data.forEach(d => {
-      if (d.type == 'shp' || !isShapefilePart(d.name)) {
-        d.group = key(d.basename, d.type);
+      var basename = fileBase(d);
+      var type = fileType(d);
+      if (type == 'shp' || !isShapefilePart(d.name)) {
+        d.group = key(basename, type);
         d.filename = d.name;
-      } else if (hasShp(d.basename)) {
-        d.group = key(d.basename, 'shp');
-      } else if (d.type == 'dbf') {
+      } else if (hasShp(basename)) {
+        d.group = key(basename, 'shp');
+      } else if (type == 'dbf') {
         d.filename = d.name;
-        d.group = key(d.basename, 'dbf');
+        d.group = key(basename, 'dbf');
       } else {
         // shapefile part without a .shp file
         d.group = null;
@@ -521,8 +533,8 @@ export function ImportControl(gui, opts) {
         groups.push(g);
         index[d.group] = g;
       }
-      g.size = (g.size || 0) + d.size; // accumulate size
-      g[d.type] = {
+      g.size = (g.size || 0) + fileSize(d); // accumulate size
+      g[fileType(d)] = {
         filename: d.name,
         content: d.content
       };

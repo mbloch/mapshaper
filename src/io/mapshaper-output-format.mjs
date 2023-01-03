@@ -1,6 +1,6 @@
 import { couldBeDsvFile } from '../io/mapshaper-file-types';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
-import { getFileExtension } from '../utils/mapshaper-filename-utils';
+import { getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 
 export function getOutputFormat(dataset, opts) {
   var outFile = opts.file || null,
@@ -33,12 +33,18 @@ export function getOutputFormat(dataset, opts) {
 export function inferOutputFormat(file, inputFormat) {
   var ext = getFileExtension(file).toLowerCase(),
       format = null;
-  if (ext == 'shp') {
+  if (ext == 'gz') {
+    return inferOutputFormat(replaceFileExtension(file, ''), inputFormat);
+  } else if (ext == 'mshp') {
+    format = 'mshp';
+  } else if (ext == 'shp') {
     format = 'shapefile';
   } else if (ext == 'dbf') {
     format = 'dbf';
   } else if (ext == 'svg') {
     format = 'svg';
+  } else if (ext == 'kml' || ext == 'kmz') {
+    format = 'kml';
   } else if (/json$/.test(ext)) {
     format = 'geojson';
     if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {

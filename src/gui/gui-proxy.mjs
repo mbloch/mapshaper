@@ -1,4 +1,4 @@
-import { saveZipFile, saveFilesToServer, saveBlobToDownloadFolder } from './gui-save';
+import { saveZipFile, saveFilesToServer, saveBlobToLocalFile } from './gui-save';
 import { internal, utils, cli, stop } from './gui-core';
 import { GUI } from './gui-lib';
 
@@ -16,6 +16,8 @@ export function setLoggingForGUI(gui) {
   }
 
   function message() {
+    var msg = GUI.formatMessageArgs(arguments);
+    gui.message(msg);
     internal.logArgs(arguments);
   }
 
@@ -47,7 +49,7 @@ export function WriteFilesProxy(gui) {
         }
       });
     } else if (files.length == 1) {
-      saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
+      saveBlobToLocalFile(files[0].filename, new Blob([files[0].content]), done);
     } else {
       filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
       saveZipFile(filename + ".zip", files, done);

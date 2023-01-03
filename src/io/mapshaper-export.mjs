@@ -2,6 +2,7 @@ import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { exportSVG } from '../svg/mapshaper-svg';
 import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
+import { exportBSON } from '../bson/bson-export';
 import { exportDelim } from '../text/mapshaper-delim-export';
 import { exportShapefile } from '../shapefile/shp-export';
 import { exportTopoJSON } from '../topojson/topojson-export';
@@ -16,6 +17,7 @@ import { error } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
+import { gzipSync } from '../io/mapshaper-gzip';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
@@ -32,6 +34,9 @@ export function exportTargetLayers(targets, opts) {
 function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
+  if (format == 'mshp') {
+    return exportBSON(datasets, opts);
+  }
   if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
     if (datasets.length > 1) {
@@ -64,6 +69,13 @@ function exportDatasets(datasets, opts) {
   }, []);
   // need unique names for multiple output files
   assignUniqueFileNames(files);
+
+  if (opts.gzip) {
+    files.forEach(function(obj) {
+      obj.filename += '.gz';
+      obj.content = gzipSync(obj.content);
+    });
+  }
   return files;
 }
 
@@ -126,6 +138,7 @@ export function exportFileContent(dataset, opts) {
 }
 
 var exporters = {
+  bson: exportBSON,
   geojson: exportGeoJSON2,
   topojson: exportTopoJSON,
   shapefile: exportShapefile,

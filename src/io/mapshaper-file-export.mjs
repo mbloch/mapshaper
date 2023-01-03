@@ -1,11 +1,10 @@
 import { stop, message } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
-import { convertOutputFiles } from '../io/mapshaper-zip';
+import { zipSync } from '../io/mapshaper-zip';
 import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
-
 export function writeFiles(exports, opts, cb) {
   cb = cb || function() {};
   return _writeFiles(exports, opts, cb);
@@ -28,7 +27,11 @@ var _writeFiles = function(exports, opts, cb) {
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
     if (opts.zip) {
-      exports = convertOutputFiles(exports, opts);
+      exports = [{
+        // TODO: add output subdirectory, if relevant
+        filename: opts.zipfile || 'output.zip',
+        content: zipSync(exports)
+      }];
     }
     var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
     var inputFiles = getStashedVar('input_files');
@@ -38,14 +41,11 @@ var _writeFiles = function(exports, opts, cb) {
         // replacing content so ArrayBuffers can be gc'd
         obj.content = cli.convertArrayBuffer(obj.content); // convert to Buffer
       }
-      if (opts.gzip) {
-        path = /gz$/i.test(path) ? path : path + '.gz';
-        obj.content = require('zlib').gzipSync(obj.content);
-      }
       if (opts.output) {
         opts.output.push({filename: path, content: obj.content});
         return;
-      }      if (!opts.force && inputFiles.indexOf(path) > -1) {
+      }
+      if (!opts.force && inputFiles.indexOf(path) > -1) {
         stop('Need to use the "-o force" option to overwrite input files.');
       }
       cli.writeFile(path, obj.content);

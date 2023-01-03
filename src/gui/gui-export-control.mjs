@@ -32,6 +32,7 @@ export var ExportControl = function(gui) {
 
   function turnOn() {
     layersArr = initLayerMenu();
+    // initZipOption();
     initFormatMenu();
     menu.show();
   }
@@ -79,6 +80,9 @@ export var ExportControl = function(gui) {
     var freeform = menu.findChild('.advanced-options').node().value;
     if (/format=/.test(freeform) === false) {
       freeform += ' format=' + getSelectedFormat();
+    }
+    if (getZipOption()) {
+      freeform += ' zip';
     }
     return freeform.trim();
   }
@@ -224,8 +228,17 @@ export var ExportControl = function(gui) {
     menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
   }
 
+  function initZipOption() {
+    var html = `<label><input type="checkbox">Save to .zip file</label>`;
+    menu.findChild('.export-zip-option').html(html);
+  }
+
   function getSelectedFormat() {
     return menu.findChild('.export-formats input:checked').node().value;
+  }
+
+  function getZipOption() {
+    return !!menu.findChild('.export-zip-option input:checked');
   }
 
   function getTargetLayerIds() {

@@ -142,6 +142,8 @@ describe('dbf-reader.js', function () {
       assert.equal(importRecords("dbf/utf8.dbf")[0].NAME, "国语國語");
     })
 
+    /*
+    // Now, there is a warning message, not an error message
     it("gbk not detected", function() {
       assert.throws(function() {
         importRecords("dbf/gbk.dbf");
@@ -166,6 +168,7 @@ describe('dbf-reader.js', function () {
         importRecords("dbf/periphereies.dbf");
       })
     })
+    */
   })
 
   describe('DbfReader()', function () {

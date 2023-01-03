@@ -4,19 +4,22 @@ import {
   guessInputContentType,
   guessInputFileType,
   isZipFile,
-  isKmzFile } from '../io/mapshaper-file-types';
+  isKmzFile,
+  isMshpFile } from '../io/mapshaper-file-types';
 import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, verbose, stop } from '../utils/mapshaper-logging';
 import { parseLocalPath, getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
-import { extractFiles } from './mapshaper-zip';
+import { unzipSync } from './mapshaper-zip';
+import { gunzipSync } from './mapshaper-gzip';
+import { importBSON } from '../bson/bson-import';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 
-cmd.importFiles = function(opts) {
+cmd.importFiles = function(catalog, opts) {
   var files = opts.files || [];
   var dataset;
 
@@ -24,7 +27,6 @@ cmd.importFiles = function(opts) {
   if (opts.stdin) {
     return importFile('/dev/stdin', opts);
   }
-
 
   if (files.length > 0 === false) {
     stop('Missing input file(s)');
@@ -42,6 +44,15 @@ cmd.importFiles = function(opts) {
     stop('Missing importable files');
   }
 
+  // special case: .mshp file
+  if (files.some(isMshpFile)) {
+    if (files.length > 1) {
+      stop('Expected a single mshp file');
+    }
+    dataset = importMshpFile(files[0], catalog, opts);
+    return dataset;
+  }
+
   if (files.length == 1) {
     dataset = importFile(files[0], opts);
   } else {
@@ -52,8 +63,19 @@ cmd.importFiles = function(opts) {
     // TODO: deprecate and remove this option (use -merge-layers cmd instead)
     dataset.layers = cmd.mergeLayers(dataset.layers);
   }
+
+  catalog.addDataset(dataset);
   return dataset;
 };
+
+function importMshpFile(file, catalog, opts) {
+  var buf = cli.readFile(file, null, opts.input);
+  var obj = importBSON(buf);
+  obj.datasets.forEach(function(dataset) {
+    catalog.addDataset(dataset);
+  });
+  return obj.target;
+}
 
 function expandFiles(files, cache) {
   var files2 = [];
@@ -89,7 +111,22 @@ function expandZipFile(file, cache) {
     input = file;
     cli.checkFileExists(file);
   }
-  return extractFiles(input, cache);
+  var index = unzipSync(input);
+  Object.assign(cache, index);
+  return findPrimaryFiles(index);
+}
+
+// Return the names of primary files in a file cache
+// (exclude auxiliary files, which can't be converted into datasets)
+function findPrimaryFiles(cache) {
+  return Object.keys(cache).filter(function(filename) {
+    var type = guessInputFileType(filename);
+    if (type == 'dbf') {
+      // don't import .dbf separately if .shp is present
+      if (replaceFileExtension(filename, 'shp') in cache) return false;
+    }
+    return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf' || type == 'kml';
+  });
 }
 
 // Let the web UI replace importFile() with a browser-friendly version
@@ -132,9 +169,7 @@ var _importFile = function(path, opts) {
     if (!fileType) {
       stop('Unrecognized file type:', path);
     }
-    // TODO: consider using a temp file, to support incremental reading
-    // read to buffer, even for string-based types (to support larger input files)
-    content = require('zlib').gunzipSync(cli.readFile(pathgz));
+    content = gunzipSync(cli.readFile(pathgz, null, cache), path);
 
   } else { // type can't be inferred from filename -- try reading as text
     content = cli.readFile(path, encoding || 'utf-8', cache);
@@ -158,23 +193,6 @@ var _importFile = function(path, opts) {
   }
   return importContent(input, opts);
 };
-
-
-function importZipFile(path, opts) {
-  var cache = {};
-  var input;
-  if (opts.input && (path in opts.input)) {
-    // reading from a buffer
-    input = opts.input[path];
-  } else {
-    // reading from a file
-    cli.checkFileExists(path);
-    input = path;
-  }
-  var files = extractFiles(input, cache);
-  var zipOpts = Object.assign({}, opts, {input: cache, files: files});
-  return cmd.importFiles(zipOpts);
-}
 
 // Import multiple files to a single dataset
 export function importFilesTogether(files, opts) {
@@ -200,7 +218,6 @@ export function importFilesTogether(files, opts) {
   }
   return combined;
 }
-
 
 function getUnsupportedFileMessage(path) {
   var ext = getFileExtension(path);

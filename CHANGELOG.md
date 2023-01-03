@@ -1,3 +1,9 @@
+v0.6.16
+* Added support for saving output files to a user-selected directory in the web UI, if supported by the browser.
+* Added support to the web UI for reading and writing gzipped (.gz) files.
+* Improved support for .zip and .gz files in both web and cli programs.
+* Minor update to dbf text encoding detection.
+
 v0.6.15
 * Added support to the CLI for reading .kml and .kmz files.
 * Added support to the CLI for writing .kml files.

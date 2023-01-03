@@ -25,7 +25,7 @@ export function BinArray(buf, le) {
     buf = new ArrayBuffer(buf);
   } else if (buf instanceof ArrayBuffer) {
     // we're good
-  } else if (typeof Buffer == 'function' && buf instanceof Buffer) {
+  } else if (typeof Buffer == 'function' && buf instanceof Buffer || buf instanceof Uint8Array) {
     if (buf.buffer && buf.buffer.byteLength == buf.length) {
       buf = buf.buffer;
     } else {

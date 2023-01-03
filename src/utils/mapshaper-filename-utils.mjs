@@ -50,7 +50,8 @@ export function getPathBase(path) {
 }
 
 export function replaceFileExtension(path, ext) {
-  return getPathBase(path) + '.' + ext;
+  var base = getPathBase(path);
+  return ext ? base + '.' + ext : base;
 }
 
 export function toLowerCaseExtension(name) {

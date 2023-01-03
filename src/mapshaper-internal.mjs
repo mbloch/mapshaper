@@ -104,6 +104,7 @@ import * as Furniture from './furniture/mapshaper-furniture';
 import * as Geodesic from './geom/mapshaper-geodesic';
 import * as GeojsonExport from './geojson/geojson-export';
 import * as GeojsonImport from './geojson/geojson-import';
+import * as Gzip from './io/mapshaper-gzip';
 import * as Import from './io/mapshaper-import';
 import * as Info from './commands/mapshaper-info';
 import * as IntersectionCuts from './paths/mapshaper-intersection-cuts';
@@ -177,6 +178,7 @@ import * as Topology from './topology/mapshaper-topology';
 import * as Units from './geom/mapshaper-units';
 import * as SvgHatch from './svg/svg-hatch';
 import * as VertexUtils from './paths/mapshaper-vertex-utils';
+import * as Zip from './io/mapshaper-zip';
 
 Object.assign(internal,
   AnchorPoints,
@@ -216,6 +218,7 @@ Object.assign(internal,
   Geodesic,
   GeojsonExport,
   GeojsonImport,
+  Gzip,
   Import,
   Info,
   IntersectionCuts,
@@ -289,5 +292,6 @@ Object.assign(internal,
   Topology,
   Units,
   SvgHatch,
-  VertexUtils
+  VertexUtils,
+  Zip
 );

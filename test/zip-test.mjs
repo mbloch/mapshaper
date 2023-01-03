@@ -1,6 +1,5 @@
 import api from '../';
 import assert from 'assert';
-import AdmZip from 'adm-zip';
 import fs from 'fs';
 
 describe('zip i/o', function () {

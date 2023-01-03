@@ -33,8 +33,8 @@ var encodingNames = {
 };
 
 var ENCODING_PROMPT =
-  "To avoid corrupted text, re-import using the \"encoding=\" option.\n" +
-  "To see a list of supported encodings, run the \"encodings\" command.";
+  "To set the text encoding, re-import using the \"encoding=\" option.\n" +
+  "To list the supported encodings, run the \"encodings\" command.";
 
 function lookupCodePage(lid) {
   var i = languageIds.indexOf(lid);
@@ -173,7 +173,6 @@ export default function DbfReader(src, encodingArg) {
   // TODO: switch to streaming output under Node.js
   this.getBuffer = function() {
     return dbfFile.readSync(0, dbfFile.size());
-    // return bin.buffer();
   };
 
   this.deleteField = function(f) {
@@ -281,16 +280,12 @@ export default function DbfReader(src, encodingArg) {
   }
 
   function initEncoding() {
+    if (encoding) return;
     encoding = encodingArg || findStringEncoding();
-    if (!encoding) {
-      // fall back to utf8 if detection fails (so GUI can continue without further errors)
-      encoding = 'utf8';
-      stop("Unable to auto-detect the text encoding of the DBF file.\n" + ENCODING_PROMPT);
-    }
   }
 
   function getEncoding() {
-    if (!encoding) initEncoding();
+    initEncoding();
     return encoding;
   }
 
@@ -382,18 +377,28 @@ export default function DbfReader(src, encodingArg) {
 
     // As a last resort, try to guess the encoding:
     if (!encoding) {
-      encoding = detectEncoding(samples);
+      var info = detectEncoding(samples);
+      encoding = info.encoding;
+      if (info.confidence < 2) {
+        msg = 'Warning: Unable to auto-detect the text encoding of a DBF file with high confidence.';
+        msg += '\n\nDefaulting to: ' + encoding + (encoding in encodingNames ? ' (' + encodingNames[encoding] + ')' : '');
+        msg += '\n\nSample of how non-ascii text was imported:';
+        msg += '\n' + formatStringsAsGrid(decodeSamples(encoding, samples).split('\n'));
+        msg += decodeSamples(encoding, samples);
+        msg += '\n\n' + ENCODING_PROMPT + '\n';
+        message(msg);
+      }
     }
 
     // Show a sample of decoded text if non-ascii-range text has been found
-    if (encoding && samples.length > 0) {
-      msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "");
-      message(msg);
-      msg = decodeSamples(encoding, samples);
-      msg = formatStringsAsGrid(msg.split('\n'));
-      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
-      verbose(msg);
-    }
+    // if (encoding && samples.length > 0) {
+    //   msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "");
+    //   message(msg);
+    //   msg = decodeSamples(encoding, samples);
+    //   msg = formatStringsAsGrid(msg.split('\n'));
+    //   msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
+    //   verbose(msg);
+    // }
     return encoding;
   }
 

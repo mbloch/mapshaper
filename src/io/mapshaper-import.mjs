@@ -13,7 +13,7 @@ import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
 // File data objects have two properties:
-//    content: Buffer, ArrayBuffer, String or Object
+//    content: Uint8Array, Buffer, ArrayBuffer, String or Object
 //    filename: String or null
 //
 export function importContent(obj, opts) {

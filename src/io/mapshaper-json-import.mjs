@@ -7,6 +7,7 @@ import { stop } from '../utils/mapshaper-logging';
 import { GeoJSONReader } from '../geojson/geojson-reader';
 import { bufferToString } from '../text/mapshaper-encodings';
 import { importJSONTable } from '../datatable/mapshaper-json-table';
+import { Buffer } from '../utils/mapshaper-node-buffer';
 
 // Identify JSON type from the initial subset of a JSON string
 export function identifyJSONString(str, opts) {
@@ -80,7 +81,7 @@ export function importJSON(data, opts) {
 
   if (!content) {
     reader = new FileReader(filename);
-  } else if (content instanceof ArrayBuffer || content instanceof Buffer) {
+  } else if (content instanceof ArrayBuffer || content instanceof Buffer || content instanceof Uint8Array) {
     // Web API imports JSON as ArrayBuffer, to support larger files
     if ((content.byteLength || content.length) < 1e7) {
       // content = utils.createBuffer(content).toString();

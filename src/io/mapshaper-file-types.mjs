@@ -12,6 +12,8 @@ export function guessInputFileType(file) {
     type = 'json';
   } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
     type = 'text';
+  } else if (ext == 'mshp') {
+    type = 'mshp';
   }
   return type;
 }
@@ -45,6 +47,23 @@ export function couldBeDsvFile(name) {
   return /csv|tsv|txt$/.test(ext);
 }
 
+// File looks like an importable file type
+// name: filename or path
+export function looksLikeImportableFile(name) {
+  return !!guessInputFileType(name);
+}
+
+// File looks like a directly readable data file type
+// name: filename or path
+export function looksLikeContentFile(name) {
+  var type = guessInputFileType(name);
+  return !!type && type != 'gz' && type != 'zip';
+}
+
+export function isMshpFile(file) {
+  return /\.mshp$/.test(file);
+}
+
 export function isZipFile(file) {
   return /\.zip$/i.test(file);
 }
@@ -53,8 +72,12 @@ export function isKmzFile(file) {
   return /\.kmz$/i.test(file);
 }
 
+export function isGzipFile(file) {
+  return /\.gz/i.test(file);
+}
+
 export function isSupportedOutputFormat(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml'];
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', 'mshp'];
   return types.indexOf(fmt) > -1;
 }
 
@@ -67,6 +90,7 @@ export function getFormatName(fmt) {
     dbf: 'DBF',
     kml: 'KML',
     kmz: 'KMZ',
+    mshp: 'Mapshaper project',
     shapefile: 'Shapefile',
     svg: 'SVG'
   }[fmt] || '';
@@ -75,7 +99,14 @@ export function getFormatName(fmt) {
 // Assumes file at @path is one of Mapshaper's supported file types
 export function isSupportedBinaryInputType(path) {
   var ext = getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf'; // GUI also supports zip files
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == 'mshp'; // GUI also supports zip files
+}
+
+export function isImportableAsBinary(path) {
+  var type = guessInputFileType(path);
+  return isSupportedBinaryInputType(path) || isZipFile(path) ||
+    isGzipFile(path) || isKmzFile(path) || isMshpFile(path) ||
+    type == 'json' || type == 'text';
 }
 
 // Detect extensions of some unsupported file types, for cmd line validation

@@ -1,8 +1,20 @@
 import api from '../';
 import assert from 'assert';
 import { gunzipSync } from 'zlib';
+import * as fs from 'fs';
 
 describe('gzip i/o', function () {
+
+  it('KML roundtrip', async function() {
+    var file = 'test/data/three_points.geojson';
+    var cmd = `-i ${file} -o points.kml.gz`;
+    var out = await api.applyCommands(cmd);
+    var cmd2 = `-i input.kml.gz -o points.geojson`;
+    var out2 = await api.applyCommands(cmd2, {'input.kml.gz': out['points.kml.gz']});
+    var output = JSON.parse(out2['points.geojson']);
+    var input = JSON.parse(fs.readFileSync(file));
+    assert.deepEqual(input, output);
+  })
 
   it('import gzipped GeoJSON', async function() {
     var file = 'test/data/features/gzip/world_land.json.gz';
@@ -37,5 +49,6 @@ describe('gzip i/o', function () {
     var str = buf.toString();
     assert.equal(str, 'foo\nbar');
   })
+
 
 })
