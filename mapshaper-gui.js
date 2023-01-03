@@ -215,197 +215,6 @@
 
   }
 
-  var GUI = {};
-
-  GUI.isActiveInstance = function(gui) {
-    return gui == GUI.__active;
-  };
-
-  GUI.getPixelRatio = function() {
-    var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
-    return deviceRatio > 1 ? 2 : 1;
-  };
-
-  GUI.browserIsSupported = function() {
-    return typeof ArrayBuffer != 'undefined' &&
-        typeof Blob != 'undefined' && typeof File != 'undefined';
-  };
-
-  GUI.exportIsSupported = function() {
-    return typeof URL != 'undefined' && URL.createObjectURL &&
-      typeof document.createElement("a").download != "undefined" ||
-      !!window.navigator.msSaveBlob;
-  };
-
-  // TODO: make this relative to a single GUI instance
-  GUI.canSaveToServer = function() {
-    return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
-  };
-
-  GUI.getUrlVars = function() {
-    var q = window.location.search.substring(1);
-    return q.split('&').reduce(function(memo, chunk) {
-      var pair = chunk.split('=');
-      var key = decodeURIComponent(pair[0]);
-      memo[key] = parseVal(pair[1]);
-      return memo;
-    }, {});
-
-    function parseVal(val) {
-      var str = val ? decodeURIComponent(val) : 'true';
-      if (str == 'true' || str == 'false') return JSON.parse(str);
-      return str;
-    }
-  };
-
-  // Assumes that URL path ends with a filename
-  GUI.getUrlFilename = function(url) {
-    var path = /\/\/([^#?]+)/.exec(url);
-    var file = path ? path[1].split('/').pop() : '';
-    return file;
-  };
-
-  GUI.formatMessageArgs = function(args) {
-    // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
-    return internal.formatLogArgs(args);
-  };
-
-  GUI.handleDirectEvent = function(cb) {
-    return function(e) {
-      if (e.target == this) cb();
-    };
-  };
-
-  GUI.getInputElement = function() {
-    var el = document.activeElement;
-    return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
-  };
-
-  GUI.textIsSelected = function() {
-    return !!GUI.getInputElement();
-  };
-
-  GUI.selectElement = function(el) {
-    var range = document.createRange(),
-        sel = window.getSelection();
-    range.selectNodeContents(el);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  };
-
-  GUI.blurActiveElement = function() {
-    var el = GUI.getInputElement();
-    if (el) el.blur();
-  };
-
-  // Filter out delayed click events, e.g. so users can highlight and copy text
-  GUI.onClick = function(el, cb) {
-    var time;
-    el.on('mousedown', function() {
-      time = +new Date();
-    });
-    el.on('mouseup', function(e) {
-      if (+new Date() - time < 300) cb(e);
-    });
-  };
-
-  // tests if filename is a type that can be used
-  GUI.isReadableFileType = function(filename) {
-    return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
-      internal.isZipFile(filename);
-  };
-
-  GUI.parseFreeformOptions = function(raw, cmd) {
-    var str = raw.trim(),
-        parsed;
-    if (!str) {
-      return {};
-    }
-    if (!/^-/.test(str)) {
-      str = '-' + cmd + ' ' + str;
-    }
-    parsed =  internal.parseCommands(str);
-    if (!parsed.length || parsed[0].name != cmd) {
-      stop$1("Unable to parse command line options");
-    }
-    return parsed[0].options;
-  };
-
-  // Convert an options object to a command line options string
-  // (used by gui-import-control.js)
-  // TODO: handle options with irregular string <-> object conversion
-  GUI.formatCommandOptions = function(o) {
-    var arr = [];
-    Object.keys(o).forEach(function(key) {
-      var name = key.replace(/_/g, '-');
-      var val = o[key];
-      var str;
-      // TODO: quote values that contain spaces
-      if (Array.isArray(val)) {
-        str = name + '=' + val.join(',');
-      } else if (val === true) {
-        str = name;
-      } else if (val === false) {
-        return;
-      } else {
-        str = name + '=' + val;
-      }
-      arr.push(str);
-    });
-    return arr.join(' ');
-  };
-
-  // @file: Zip file
-  // @cb: function(err, <files>)
-  //
-  GUI.readZipFile = function(file, cb) {
-    var zip = window.zip; // Assume zip.js is loaded and zip is defined globally
-    var _files = [];
-    zip.createReader(new zip.BlobReader(file), importZipContent, onError);
-
-    function onError(err) {
-      cb(err);
-    }
-
-    function onDone() {
-      cb(null, _files);
-    }
-
-    function importZipContent(reader) {
-      var _entries;
-      reader.getEntries(readEntries);
-
-      function readEntries(entries) {
-        _entries = entries || [];
-        readNext();
-      }
-
-      function readNext() {
-        if (_entries.length > 0) {
-          readEntry(_entries.pop());
-        } else {
-          reader.close();
-          onDone();
-        }
-      }
-
-      function readEntry(entry) {
-        var filename = entry.filename,
-            isValid = !entry.directory && GUI.isReadableFileType(filename) &&
-                !/^__MACOSX/.test(filename); // ignore "resource-fork" files
-        if (isValid) {
-          entry.getData(new zip.BlobWriter(), function(file) {
-            file.name = filename; // Give the Blob a name, like a File object
-            _files.push(file);
-            readNext();
-          });
-        } else {
-          readNext();
-        }
-      }
-    }
-  };
-
   function Handler(type, target, callback, listener, priority) {
     this.type = type;
     this.callback = callback;
@@ -969,6 +778,146 @@
     return this;
   };
 
+  var GUI = {};
+
+  GUI.isActiveInstance = function(gui) {
+    return gui == GUI.__active;
+  };
+
+  GUI.getPixelRatio = function() {
+    var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
+    return deviceRatio > 1 ? 2 : 1;
+  };
+
+  GUI.browserIsSupported = function() {
+    return typeof ArrayBuffer != 'undefined' &&
+        typeof Blob != 'undefined' && typeof File != 'undefined';
+  };
+
+  GUI.exportIsSupported = function() {
+    return typeof URL != 'undefined' && URL.createObjectURL &&
+      typeof document.createElement("a").download != "undefined" ||
+      !!window.navigator.msSaveBlob;
+  };
+
+  // TODO: make this relative to a single GUI instance
+  GUI.canSaveToServer = function() {
+    return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
+  };
+
+  GUI.getUrlVars = function() {
+    var q = window.location.search.substring(1);
+    return q.split('&').reduce(function(memo, chunk) {
+      var pair = chunk.split('=');
+      var key = decodeURIComponent(pair[0]);
+      memo[key] = parseVal(pair[1]);
+      return memo;
+    }, {});
+
+    function parseVal(val) {
+      var str = val ? decodeURIComponent(val) : 'true';
+      if (str == 'true' || str == 'false') return JSON.parse(str);
+      return str;
+    }
+  };
+
+  // Assumes that URL path ends with a filename
+  GUI.getUrlFilename = function(url) {
+    var path = /\/\/([^#?]+)/.exec(url);
+    var file = path ? path[1].split('/').pop() : '';
+    return file;
+  };
+
+  GUI.formatMessageArgs = function(args) {
+    // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
+    return internal.formatLogArgs(args);
+  };
+
+  GUI.handleDirectEvent = function(cb) {
+    return function(e) {
+      if (e.target == this) cb();
+    };
+  };
+
+  GUI.getInputElement = function() {
+    var el = document.activeElement;
+    return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
+  };
+
+  GUI.textIsSelected = function() {
+    return !!GUI.getInputElement();
+  };
+
+  GUI.selectElement = function(el) {
+    var range = document.createRange(),
+        sel = window.getSelection();
+    range.selectNodeContents(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+
+  GUI.blurActiveElement = function() {
+    var el = GUI.getInputElement();
+    if (el) el.blur();
+  };
+
+  // Filter out delayed click events, e.g. so users can highlight and copy text
+  GUI.onClick = function(el, cb) {
+    var time;
+    el.on('mousedown', function() {
+      time = +new Date();
+    });
+    el.on('mouseup', function(e) {
+      if (+new Date() - time < 300) cb(e);
+    });
+  };
+
+  // tests if filename is a type that can be used
+  // GUI.isReadableFileType = function(filename) {
+  //   return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
+  //     internal.isZipFile(filename);
+  // };
+
+  GUI.parseFreeformOptions = function(raw, cmd) {
+    var str = raw.trim(),
+        parsed;
+    if (!str) {
+      return {};
+    }
+    if (!/^-/.test(str)) {
+      str = '-' + cmd + ' ' + str;
+    }
+    parsed =  internal.parseCommands(str);
+    if (!parsed.length || parsed[0].name != cmd) {
+      stop$1("Unable to parse command line options");
+    }
+    return parsed[0].options;
+  };
+
+  // Convert an options object to a command line options string
+  // (used by gui-import-control.js)
+  // TODO: handle options with irregular string <-> object conversion
+  GUI.formatCommandOptions = function(o) {
+    var arr = [];
+    Object.keys(o).forEach(function(key) {
+      var name = key.replace(/_/g, '-');
+      var val = o[key];
+      var str;
+      // TODO: quote values that contain spaces
+      if (Array.isArray(val)) {
+        str = name + '=' + val.join(',');
+      } else if (val === true) {
+        str = name;
+      } else if (val === false) {
+        return;
+      } else {
+        str = name + '=' + val;
+      }
+      arr.push(str);
+    });
+    return arr.join(' ');
+  };
+
   // TODO: switch all ClickText to ClickText2
 
   // @ref Reference to an element containing a text node
@@ -1320,6 +1269,7 @@
           await importFiles(files);
         }
       } catch(e) {
+        console.log(e);
         gui.alert(e.message, 'Import error');
       }
       if (gui.getMode() == 'import') {
@@ -1373,7 +1323,7 @@
       var index = {};
       queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
         // filter out unreadable types and dupes
-        if (GUI.isReadableFileType(f.name) && f.name in index === false) {
+        if (internal.looksLikeContentFile(f.name) && f.name in index === false) {
           index[f.name] = true;
           memo.push(f);
         }
@@ -1389,16 +1339,17 @@
     }
 
     async function receiveFiles(files) {
+      var names = getFileNames(files);
       var expanded = [];
       try {
         expanded = await expandFiles(files);
       } catch(e) {
+        console.log(e);
         gui.alert(e.message, 'Import error');
         return;
       }
       addFilesToQueue(expanded);
       if (queuedFiles.length === 0) {
-        var names = getFileNames(files);
         var msg = `Unable to import data from: ${names.join(', ')}`;
         gui.alert(msg, 'Import error');
         return;
@@ -1418,24 +1369,29 @@
     }
 
     async function expandFiles(files) {
-      var files2 = [], expanded;
+      var expanded = [], tmp;
+      await wait(35); // pause a beat so status message can display
       for (var f of files) {
-        if (internal.isZipFile(f.name)) {
-          expanded = await readZipFile(f);
+        var data = await readFileData(f);
+        if (internal.isGzipFile(f.name)) {
+          tmp = await readGzipFile(data);
+        } else if (internal.isZipFile(f.name)) {
+          tmp = await readZipFile(data);
         } else if (internal.isKmzFile(f.name)) {
-          expanded = await readKmzFile(f);
+          tmp = await readKmzFile(data);
         } else {
-          expanded = [f];
+          tmp = [data];
         }
-        files2 = files2.concat(expanded);
+        expanded = expanded.concat(tmp);
       }
-      return files2;
+      files.length = 0; // clear source array for gc (works?)
+      return expanded;
     }
 
-    async function importFiles(files) {
-      var fileData = await readFiles(files);
+    async function importFiles(fileData) {
       var importOpts = readImportOpts();
       var groups = groupFilesForImport(fileData, importOpts);
+      fileData = null;
       for (var group of groups) {
         if (group.size > 4e7) {
           gui.showProgressMessage('Importing');
@@ -1485,7 +1441,6 @@
       });
     }
 
-
     function isShapefilePart(name) {
       return /\.(shp|shx|dbf|prj|cpg)$/i.test(name);
     }
@@ -1505,13 +1460,7 @@
 
     // @file a File object
     async function readContentFileAsync(file, cb) {
-      var name = file.name,
-          reader = new FileReader(),
-          useBinary = internal.isSupportedBinaryInputType(name) ||
-            internal.isZipFile(name) ||
-            internal.guessInputFileType(name) == 'json' ||
-            internal.guessInputFileType(name) == 'text';
-
+      var reader = new FileReader();
       reader.addEventListener('loadend', function(e) {
         if (!reader.result) {
           cb(new Error());
@@ -1519,10 +1468,9 @@
           cb(null, reader.result);
         }
       });
-      if (useBinary) {
+      if (internal.isImportableAsBinary(file.name)) {
         reader.readAsArrayBuffer(file);
       } else {
-        // TODO: consider using "encoding" option, to support CSV files in other encodings than utf8
         reader.readAsText(file, 'UTF-8');
       }
     }
@@ -1541,7 +1489,8 @@
           item.url = '/data/' + name;
           item.url = item.url.replace('/../', '/~/'); // kludge to allow accessing one parent
         }
-        return GUI.isReadableFileType(item.basename) ? item : null;
+        // return GUI.isReadableFileType(item.basename) ? item : null;
+        return internal.looksLikeImportableFile(item.basename) ? item : null;
       });
       return items.filter(Boolean);
     }
@@ -1593,21 +1542,46 @@
       return files;
     }
 
-    async function readZipFile(file) {
-      var files = [];
+    async function readGzipFile(file) {
+      var name = file.name.replace(/\.gz$/, '');
       await wait(35); // pause a beat so status message can display
-      try {
-        files = await runAsync(GUI.readZipFile, file);
-        // don't try to import .txt files from zip files
-        // (these would be parsed as dsv and throw errows)
-        files = files.filter(function(f) {
-          return !/\.txt$/i.test(f.name);
-        });
-      } catch(e) {
-        console.error(e);
-        throw Error(`Unable to unzip ${file.name}`);
-      }
-      return files;
+      return [{
+        name: name,
+        content: internal.gunzipSync(file.content, name)
+      }];
+    }
+
+    async function readZipFile(file) {
+      var index = internal.unzipSync(file.content);
+      return Object.keys(index).reduce(function(memo, filename) {
+        if (!/\.txt$/i.test(filename)) {
+          memo.push({
+            name: filename,
+            content: index[filename]
+          });
+          return memo;
+        }
+      }, []);
+    }
+
+    function fileSize(data) {
+      return data.content.byteLength || data.content.length; // ArrayBuffer or string
+    }
+
+    function fileType(data) {
+      return internal.guessInputType(data.name, data.content);
+    }
+
+    function key(basename, type) {
+      return basename + '.' + type;
+    }
+
+    function fileBase(data) {
+      return internal.getFileBase(data.name).toLowerCase();
+    }
+
+    function fileKey(data) {
+      return key(fileBase(data), fileType(data));
     }
 
     async function readFileData(file) {
@@ -1615,24 +1589,12 @@
         var content = await runAsync(readContentFileAsync, file);
         return {
           content: content,
-          size: content.byteLength || content.length, // ArrayBuffer or string
-          name: file.name,
-          basename: internal.getFileBase(file.name).toLowerCase(),
-          type: internal.guessInputType(file.name, content)
+          name: file.name
         };
       } catch (e) {
         console.error(e);
         throw Error(`Browser was unable to load the file ${file.name}`);
       }
-    }
-
-    async function readFiles(files) {
-      var data = [], d;
-      for (var file of files) {
-        d = await readFileData(file);
-        if (d) data.push(d);
-      }
-      return data;
     }
 
     function groupFilesForImport(data, importOpts) {
@@ -1641,22 +1603,22 @@
         names = opts.name.split(',');
       }
 
-      function key(basename, type) {
-        return basename + '.' + type;
-      }
       function hasShp(basename) {
         var shpKey = key(basename, 'shp');
-        return data.some(d => key(d.basename, d.type) == shpKey);
+        return data.some(d => fileKey(d) == shpKey);
       }
+
       data.forEach(d => {
-        if (d.type == 'shp' || !isShapefilePart(d.name)) {
-          d.group = key(d.basename, d.type);
+        var basename = fileBase(d);
+        var type = fileType(d);
+        if (type == 'shp' || !isShapefilePart(d.name)) {
+          d.group = key(basename, type);
           d.filename = d.name;
-        } else if (hasShp(d.basename)) {
-          d.group = key(d.basename, 'shp');
-        } else if (d.type == 'dbf') {
+        } else if (hasShp(basename)) {
+          d.group = key(basename, 'shp');
+        } else if (type == 'dbf') {
           d.filename = d.name;
-          d.group = key(d.basename, 'dbf');
+          d.group = key(basename, 'dbf');
         } else {
           // shapefile part without a .shp file
           d.group = null;
@@ -1673,8 +1635,8 @@
           groups.push(g);
           index[d.group] = g;
         }
-        g.size = (g.size || 0) + d.size; // accumulate size
-        g[d.type] = {
+        g.size = (g.size || 0) + fileSize(d); // accumulate size
+        g[fileType(d)] = {
           filename: d.name,
           content: d.content
         };
@@ -1792,42 +1754,97 @@
 
   utils$1.inherit(Slider, EventDispatcher);
 
-  function saveZipFile(zipfileName, files, done) {
-    var zip = window.zip; // assumes zip library is loaded globally
-    var toAdd = files;
-    var zipWriter;
-    try {
-      zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
-        zipWriter = writer;
-        nextFile();
-      }, zipError);
-    } catch(e) {
-      done("This browser doesn't support Zip file creation.");
+  function showPopupAlert(msg, title) {
+    var self = {}, html = '';
+    var _cancel, _close;
+    var warningRxp = /^Warning: /;
+    var el = El('div').appendTo('body').addClass('error-wrapper');
+    var infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+    if (!title && warningRxp.test(msg)) {
+      title = 'Warning';
+      msg = msg.replace(warningRxp, '');
     }
-
-    function zipError(err) {
-      var str = "Error creating Zip file";
-      var msg = '';
-      // error events thrown by Zip library seem to be missing a message
-      if (err && err.message) {
-        msg = err.message;
-      }
-      if (msg) {
-        str += ": " + msg;
-      }
-      done(str);
+    if (title) {
+      html += `<div class="error-title">${title}</div>`;
     }
+    html += `<p class="error-message">${msg}</p>`;
+    El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
+      if (_cancel) _cancel();
+      self.close();
+    });
+    El('div').appendTo(infoBox).addClass('error-content').html(html);
 
-    function nextFile() {
-      if (toAdd.length === 0) {
-        zipWriter.close(function(blob) {
-          saveBlobToDownloadFolder(zipfileName, blob, done);
+    self.onCancel = function(cb) {
+      _cancel = cb;
+      return self;
+    };
+
+    self.onClose = function(cb) {
+      _close = cb;
+      return self;
+    };
+
+    self.button = function(label, cb) {
+      El('div')
+        .addClass("btn dialog-btn alert-btn")
+        .appendTo(infoBox)
+        .html(label)
+        .on('click', function() {
+          self.close();
+          cb();
         });
+      return self;
+    };
+
+    self.close = function() {
+      if (el) el.remove();
+      if (_close) _close();
+      el = _cancel = _close = null;
+    };
+    return self;
+  }
+
+  function AlertControl(gui) {
+    var openAlert; // error popup
+    var openPopup; // any popup
+
+    gui.addMode('alert', function() {}, closePopup);
+
+    gui.alert = function(str, title) {
+      closePopup();
+      openAlert = openPopup = showPopupAlert(str, title);
+      // alert.button('close', gui.clearMode);
+      openAlert.onClose(gui.clearMode);
+      gui.enterMode('alert');
+    };
+
+    gui.message = function(str, title) {
+      if (openPopup) return; // don't stomp on another popup
+      openPopup = showPopupAlert(str, title);
+      openPopup.onClose(function() {openPopup = null;});
+    };
+
+    function closePopup() {
+      if (openPopup) openPopup.close();
+      openPopup = openAlert = null;
+    }
+  }
+
+  function saveZipFile(zipfileName, files, done) {
+    internal.zipAsync(files, function(err, buf) {
+      if (err) {
+        done(errorMessage(err));
       } else {
-        var obj = toAdd.pop(),
-            blob = new Blob([obj.content]);
-        zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
+        saveBlobToLocalFile(zipfileName, new Blob([buf]), done);
       }
+    });
+
+    function errorMessage(err) {
+      var str = "Error creating Zip file";
+      if (err.message) {
+        str += ": " + err.message;
+      }
+      return str;
     }
   }
 
@@ -1860,12 +1877,91 @@
     });
   }
 
-  function saveBlobToDownloadFolder(filename, blob, done) {
-    var anchor, blobUrl;
-    if (window.navigator.msSaveBlob) {
-      window.navigator.msSaveBlob(blob, filename);
-      return done();
+  async function saveBlobToLocalFile(filename, blob, done) {
+    if (window.showSaveFilePicker) {
+      saveBlobToSelectedFile(filename, blob, done);
+    } else {
+      saveBlobToDownloadsFolder(filename, blob, done);
     }
+  }
+
+  function showSaveDialog(filename, blob, done) {
+    showPopupAlert(`Save ${filename} to:`)
+      .button('selected folder', function() {
+        saveBlobToSelectedFile(filename, blob, done);
+      })
+      .button('downloads', function() {
+        saveBlobToDownloadsFolder(filename, blob, done);
+      })
+      .onCancel(done);
+  }
+
+  async function saveBlobToSelectedFile(filename, blob, done) {
+    // see: https://developer.chrome.com/articles/file-system-access/
+    // note: saving multiple files to a directory using showDirectoryPicker()
+    //   does not work well (in Chrome). User is prompted for permission each time,
+    //   and some directories (like Downloads and Documents) are blocked.
+    //
+    var options = getSaveFileOptions(filename);
+    var handle;
+    try {
+      handle = await window.showSaveFilePicker(options);
+      var writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    } catch(e) {
+      if (e.name == 'SecurityError') {
+        // assuming this is a timeout error, with message like:
+        // "Must be handling a user gesture to show a file picker."
+        showSaveDialog(filename, blob, done);
+      } else if (e.name == 'AbortError') {
+        // fired if user clicks a cancel button (normal, no error message)
+        // BUT: this kind of erro rmay also get fired when saving to a protected folder
+        //   (should show error message)
+        done();
+      } else {
+        console.error(e.name, e.message, e);
+        done('Save failed for an unknown reason');
+      }
+      return;
+    }
+
+    done();
+  }
+
+  function getSaveFileOptions(filename) {
+    // see: https://wicg.github.io/file-system-access/#api-filepickeroptions
+    var type = internal.guessInputFileType(filename);
+    var ext = internal.getFileExtension(filename).toLowerCase();
+    var accept = {};
+    if (ext == 'kml') {
+      accept['application/vnd.google-earth.kml+xml'] = ['.kml'];
+    } else if (ext == 'svg') {
+      accept['image/svg+xml'] = ['.svg'];
+    } else if (ext == 'zip') {
+      accept['application/zip'] == ['.zip'];
+    } else if (type == 'text') {
+      accept['text/csv'] = ['.csv', '.tsv', '.tab', '.txt'];
+    } else if (type == 'json') {
+      accept['application/json'] = ['.json', '.geojson', '.topojson'];
+    } else {
+      accept['application/octet-stream'] = ['.' + ext];
+    }
+    return {
+      suggestedName: filename,
+      // If startIn is given, Chrome will always start there
+      // Default is to start in the previously selected dir (better)
+      // // startIn: 'downloads', // or: desktop, documents, [file handle], [directory handle]
+      types: [{
+        description: 'Files',
+        accept: accept
+      }]
+    };
+  }
+
+
+  function saveBlobToDownloadsFolder(filename, blob, done) {
+    var anchor, blobUrl;
     try {
       blobUrl = URL.createObjectURL(blob);
     } catch(e) {
@@ -1901,6 +1997,8 @@
     }
 
     function message() {
+      var msg = GUI.formatMessageArgs(arguments);
+      gui.message(msg);
       internal.logArgs(arguments);
     }
 
@@ -1932,7 +2030,7 @@
           }
         });
       } else if (files.length == 1) {
-        saveBlobToDownloadFolder(files[0].filename, new Blob([files[0].content]), done);
+        saveBlobToLocalFile(files[0].filename, new Blob([files[0].content]), done);
       } else {
         filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
         saveZipFile(filename + ".zip", files, done);
@@ -3010,34 +3108,6 @@
 
   }
 
-  function AlertControl(gui) {
-    var el;
-    gui.addMode('alert', function() {}, turnOff);
-
-    gui.alert = function(str, title) {
-      var infoBox, html = '';
-      if (!el) {
-        el = El('div').appendTo('body').addClass('error-wrapper');
-        infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
-        El('div').appendTo(infoBox).addClass('error-content');
-        El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', gui.clearMode);
-      }
-      if (title) {
-        html += `<div class="error-title">${title}</div>`;
-      }
-      html += `<p class="error-message">${str}</p>`;
-      el.findChild('.error-content').html(html);
-      gui.enterMode('alert');
-    };
-
-    function turnOff() {
-      if (el) {
-        el.remove();
-        el = null;
-      }
-    }
-  }
-
   function RepairControl(gui) {
     var map = gui.map,
         model = gui.model,
@@ -3221,6 +3291,7 @@
 
     function turnOn() {
       layersArr = initLayerMenu();
+      // initZipOption();
       initFormatMenu();
       menu.show();
     }
@@ -3268,6 +3339,9 @@
       var freeform = menu.findChild('.advanced-options').node().value;
       if (/format=/.test(freeform) === false) {
         freeform += ' format=' + getSelectedFormat();
+      }
+      if (getZipOption()) {
+        freeform += ' zip';
       }
       return freeform.trim();
     }
@@ -3413,8 +3487,17 @@
       menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
     }
 
+    function initZipOption() {
+      var html = `<label><input type="checkbox">Save to .zip file</label>`;
+      menu.findChild('.export-zip-option').html(html);
+    }
+
     function getSelectedFormat() {
       return menu.findChild('.export-formats input:checked').node().value;
+    }
+
+    function getZipOption() {
+      return !!menu.findChild('.export-zip-option input:checked');
     }
 
     function getTargetLayerIds() {
