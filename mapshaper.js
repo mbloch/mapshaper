@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.16";
+  var VERSION = "0.6.17";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -21715,10 +21715,12 @@ ${svg}
         }
 
         if (!optDef) {
+          // REMOVING quote trimming -- it prevents the use of quoted commands in -run (for example)
           // token is not a defined option; add it to _ array for later processing
           // Stripping surrounding quotes here, although this may not be necessary since
           // (some, most, all?) shells seem to remove quotes.
-          cmd._.push(utils.trimQuotes(token));
+          // cmd._.push(utils.trimQuotes(token));
+          cmd._.push(token);
           return;
         }
 
@@ -42437,7 +42439,7 @@ ${svg}
     var ctx = getBaseContext();
     var output, targetData;
     // TODO: throw an informative error if target is used when there are multiple targets
-    if (targets.length == 1) {
+    if (targets && targets.length == 1) {
       targetData = getRunCommandData(targets[0]);
       Object.defineProperty(ctx, 'target', {value: targetData});
     }
@@ -44635,6 +44637,7 @@ ${svg}
   function commandAcceptsEmptyTarget(name) {
     return name == 'graticule' || name == 'i' || name == 'help' ||
       name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+      name == 'require' || name == 'run' || name == 'define' ||
       name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
       name == 'else' || name == 'endif' || name == 'stop';
   }
