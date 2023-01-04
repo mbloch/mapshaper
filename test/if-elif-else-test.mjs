@@ -36,6 +36,15 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+  // before, expressions like "A" == "A" were getting stripped of outer quotes
+  // causing a syntax error
+  it ('test string comparison', async function() {
+    var json = [{foo: 'bar'}];
+    var cmd = `-i data.json -if '"A" == "A"' -each 'foo = "baz"' -endif -o`;
+    var out = await api.applyCommands(cmd, {'data.json': json});
+    assert.deepEqual(JSON.parse(out['data.json']), [{foo: 'baz'}]);
+  })
+
 
   it ('test this.size getter', function(done) {
     var data = {

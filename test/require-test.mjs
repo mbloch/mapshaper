@@ -13,6 +13,15 @@ describe('mapshaper-require.js', function () {
       });
     })
 
+    it('require does not require a target', function (done) {
+      var json = [{foo: 'bar'}];
+      var cmd = '-require underscore alias=_ -i in.json -each "str = _.isString(foo)" -o out.json';
+      api.applyCommands(cmd, {'in.json': json}, function(err, result) {
+        assert.deepEqual(JSON.parse(result['out.json']), [{foo: 'bar', str: true}]);
+        done();
+      });
+    })
+
     it('require a module file and initialize it', function(done) {
       var json = [{foo: 'bar'}];
       var cmd = '-i in.json name=info -require test/data/features/require/test_module.js \

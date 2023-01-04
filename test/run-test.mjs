@@ -4,6 +4,14 @@ import assert from 'assert';
 
 describe('mapshaper-run.js', function () {
   describe('-run command', function () {
+
+    it('does not require a target', async function() {
+      var data = [{foo: 'bar'}];
+      var cmd = `-run "'-define n=42'" -i data.json -each 'value = n' -o format=csv`;
+      var output = await api.applyCommands(cmd, {'data.json': data});
+      assert.equal(output['data.csv'], 'foo,value\nbar,42');
+    })
+
     it('supports creating a command on-the-fly and running it', function (done) {
       var data = [{foo: 'bar'}];
       var include = '{ \

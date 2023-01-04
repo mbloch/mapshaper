@@ -145,10 +145,12 @@ export function CommandParser() {
       }
 
       if (!optDef) {
+        // REMOVING quote trimming -- it prevents the use of quoted commands in -run (for example)
         // token is not a defined option; add it to _ array for later processing
         // Stripping surrounding quotes here, although this may not be necessary since
         // (some, most, all?) shells seem to remove quotes.
-        cmd._.push(utils.trimQuotes(token));
+        // cmd._.push(utils.trimQuotes(token));
+        cmd._.push(token);
         return;
       }
 

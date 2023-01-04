@@ -29,7 +29,7 @@ export function runGlobalExpression(expression, targets) {
   var ctx = getBaseContext();
   var output, targetData;
   // TODO: throw an informative error if target is used when there are multiple targets
-  if (targets.length == 1) {
+  if (targets && targets.length == 1) {
     targetData = getRunCommandData(targets[0]);
     Object.defineProperty(ctx, 'target', {value: targetData});
   }

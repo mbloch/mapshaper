@@ -96,6 +96,7 @@ function commandAcceptsMultipleTargetDatasets(name) {
 function commandAcceptsEmptyTarget(name) {
   return name == 'graticule' || name == 'i' || name == 'help' ||
     name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+    name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop';
 }
