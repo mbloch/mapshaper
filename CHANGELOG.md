@@ -1,3 +1,6 @@
+v0.6.17
+* Commands -require, -run, -define can now be used before data is loaded.
+
 v0.6.16
 * Added support for saving output files to a user-selected directory in the web UI, if supported by the browser.
 * Added support to the web UI for reading and writing gzipped (.gz) files.
