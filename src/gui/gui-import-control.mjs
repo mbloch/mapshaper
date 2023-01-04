@@ -450,7 +450,9 @@ export function ImportControl(gui, opts) {
   }
 
   async function readZipFile(file) {
-    var index = internal.unzipSync(file.content);
+    // Async is up to twice as fast unzipping large files
+    // var index = internal.unzipSync(file.content);
+    var index = await runAsync(internal.unzipAsync, file.content);
     return Object.keys(index).reduce(function(memo, filename) {
       if (!/\.txt$/i.test(filename)) {
         memo.push({
