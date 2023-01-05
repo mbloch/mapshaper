@@ -3247,15 +3247,15 @@
   function updateLayerStackOrder(layers) {
     // 1. assign ascending ids to unassigned layers above the range of other layers
     layers.forEach(function(o, i) {
-      if (!o.layer.stack_id) o.layer.stack_id = 1e6 + i;
+      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
     });
     // 2. sort in ascending order
     layers.sort(function(a, b) {
-      return a.layer.stack_id - b.layer.stack_id;
+      return a.layer.menu_order - b.layer.menu_order;
     });
     // 3. assign consecutve ids
     layers.forEach(function(o, i) {
-      o.layer.stack_id = i + 1;
+      o.layer.menu_order = i + 1;
     });
     return layers;
   }
@@ -3535,8 +3535,8 @@
   }
 
   function LayerControl(gui) {
-    var map = gui.map;
     var model = gui.model;
+    var map = gui.map;
     var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
     var btn = gui.container.findChild('.layer-control-btn');
     var isOpen = false;
@@ -3617,7 +3617,7 @@
       var dropLyr = findLayerById(dropId);
       var slug;
       if (dragId == dropId) return;
-      dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
+      dragLyr.layer.menu_order = dropLyr.layer.menu_order + (above ? 0.5 : -0.5);
       slug = getLayerOrderSlug();
       if (slug != layerOrderSlug) {
         layerOrderSlug = slug;
@@ -10732,8 +10732,8 @@
 
     function sortMapLayers(layers) {
       layers.sort(function(a, b) {
-        // assume that each layer has a stack_id (assigned by updateLayerStackOrder())
-        return a.source.layer.stack_id - b.source.layer.stack_id;
+        // assume that each layer has a menu_order (assigned by updateLayerStackOrder())
+        return a.source.layer.menu_order - b.source.layer.menu_order;
       });
     }
 
@@ -10760,7 +10760,7 @@
         _ext.setFrame(isPreviewView() ? getFrameData() : null);
         _ext.setFullBounds(getFullBounds(), getStrictBounds());
         updateLayerStyles(contentLayers);
-        updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
+        updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
       }
       sortMapLayers(contentLayers);
       if (_intersectionLyr) {
