@@ -1,3 +1,6 @@
+v0.6.18
+* Fix for bug preventing some zipped Shapefiles from being imported in the web UI.
+
 v0.6.17
 * Commands -require, -run, -define can now be used before data is loaded.
 
