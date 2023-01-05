@@ -1,13 +1,18 @@
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { encode } from "@msgpack/msgpack";
 
-export function exportBSON(datasets, opts) {
-  var { serialize } = require('bson');
+export var PACKAGE_EXT = 'msx';
+
+export function packDatasets(datasets, opts) {
   var obj = exportDatasets(datasets);
-  var content = serialize(obj);
+  // encode options: see https://github.com/msgpack/msgpack-javascript
+  // initialBufferSize  number  2048
+  // ignoreUndefined boolean false
+  var content = encode(obj, {});
   return [{
     content: content,
-    filename: opts.file || 'output.mshp'
+    filename: opts.file || 'output.' + PACKAGE_EXT
   }];
 }
 
@@ -55,7 +60,9 @@ function exportLayer(lyr) {
     name: lyr.name || null,
     geometry_type: lyr.geometry_type || null,
     shapes: lyr.shapes || null,
-    data: lyr.data ? lyr.data.getRecords() : null
+    data: lyr.data ? lyr.data.getRecords() : null,
+    menu_order: lyr.menu_order || null,
+    pinned: lyr.pinned || false
   };
 }
 

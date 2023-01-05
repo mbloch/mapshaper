@@ -9,8 +9,8 @@ import { ClickText2 } from './gui-elements';
 import { GUI } from './gui-lib';
 
 export function LayerControl(gui) {
-  var map = gui.map;
   var model = gui.model;
+  var map = gui.map;
   var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
   var btn = gui.container.findChild('.layer-control-btn');
   var isOpen = false;
@@ -91,7 +91,7 @@ export function LayerControl(gui) {
     var dropLyr = findLayerById(dropId);
     var slug;
     if (dragId == dropId) return;
-    dragLyr.layer.stack_id = dropLyr.layer.stack_id + (above ? 0.5 : -0.5);
+    dragLyr.layer.menu_order = dropLyr.layer.menu_order + (above ? 0.5 : -0.5);
     slug = getLayerOrderSlug();
     if (slug != layerOrderSlug) {
       layerOrderSlug = slug;

@@ -28,7 +28,7 @@
     "lint": "eslint --ext mjs src/",
     "prepublishOnly": "npm lint; npm test; ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
-    "browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r kdbush -r @tmcw/togeojson -r @placemarkio/tokml -r bson -o www/modules.js",
+    "browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r kdbush -r @tmcw/togeojson -r @placemarkio/tokml -o www/modules.js",
     "dev": "rollup --config --watch"
   },
   "main": "./mapshaper.js",
@@ -40,6 +40,7 @@
     "!.DS_Store"
   ],
   "dependencies": {
+    "@msgpack/msgpack": "^2.8.0",
     "@placemarkio/tokml": "^0.3.3",
     "@tmcw/togeojson": "^5.6.0",
     "@xmldom/xmldom": "^0.8.6",

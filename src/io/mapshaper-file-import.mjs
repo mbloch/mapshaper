@@ -5,7 +5,7 @@ import {
   guessInputFileType,
   isZipFile,
   isKmzFile,
-  isMshpFile } from '../io/mapshaper-file-types';
+  isPackageFile } from '../io/mapshaper-file-types';
 import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
@@ -14,7 +14,7 @@ import { parseLocalPath, getFileExtension, replaceFileExtension } from '../utils
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 import { unzipSync } from './mapshaper-zip';
 import { gunzipSync } from './mapshaper-gzip';
-import { importBSON } from '../bson/bson-import';
+import { unpackSession } from '../pack/mapshaper-unpack';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
@@ -44,10 +44,10 @@ cmd.importFiles = function(catalog, opts) {
     stop('Missing importable files');
   }
 
-  // special case: .mshp file
-  if (files.some(isMshpFile)) {
+  // special case: package file
+  if (files.some(isPackageFile)) {
     if (files.length > 1) {
-      stop('Expected a single mshp file');
+      stop('Expected a single package file');
     }
     dataset = importMshpFile(files[0], catalog, opts);
     return dataset;
@@ -70,7 +70,7 @@ cmd.importFiles = function(catalog, opts) {
 
 function importMshpFile(file, catalog, opts) {
   var buf = cli.readFile(file, null, opts.input);
-  var obj = importBSON(buf);
+  var obj = unpackSession(buf);
   obj.datasets.forEach(function(dataset) {
     catalog.addDataset(dataset);
   });

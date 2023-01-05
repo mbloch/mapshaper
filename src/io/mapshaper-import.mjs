@@ -7,7 +7,7 @@ import utils from '../utils/mapshaper-utils';
 import { importJSON } from '../io/mapshaper-json-import';
 import { importKML } from '../kml/kml-import';
 import { buildTopology } from '../topology/mapshaper-topology';
-import { message, stop } from '../utils/mapshaper-logging';
+import { message, stop, error } from '../utils/mapshaper-logging';
 import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 
 // Parse content of one or more input files and return a dataset
@@ -109,6 +109,9 @@ function importShapefile(obj, opts) {
   if (obj.cpg) {
     // TODO: consider using the input encoding as the default output encoding
     dataset.info.cpg = obj.cpg.content;
+    if (typeof dataset.info.cpg != 'string') {
+      error('Invalid encoding argument, expected a string');
+    }
   }
   return dataset;
 }

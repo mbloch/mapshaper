@@ -22,6 +22,7 @@ export default [{
   }]
 }, {
   treeshake: false,
+  context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',
   output: [{
     strict: false,

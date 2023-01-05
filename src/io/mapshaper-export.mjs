@@ -2,7 +2,7 @@ import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { exportSVG } from '../svg/mapshaper-svg';
 import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
-import { exportBSON } from '../bson/bson-export';
+import { packDatasets, PACKAGE_EXT } from '../pack/mapshaper-pack';
 import { exportDelim } from '../text/mapshaper-delim-export';
 import { exportShapefile } from '../shapefile/shp-export';
 import { exportTopoJSON } from '../topojson/topojson-export';
@@ -34,8 +34,8 @@ export function exportTargetLayers(targets, opts) {
 function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
-  if (format == 'mshp') {
-    return exportBSON(datasets, opts);
+  if (format == PACKAGE_EXT) {
+    return packDatasets(datasets, opts);
   }
   if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
@@ -58,7 +58,7 @@ function exportDatasets(datasets, opts) {
   }
   files = datasets.reduce(function(memo, dataset) {
     if (runningInBrowser()) {
-      utils.sortOn(dataset.layers, 'stack_id', true);
+      utils.sortOn(dataset.layers, 'menu_order', true);
     } else {
       // kludge to export layers in order that target= option or previous
       // -target command matched them (useful mainly for SVG output)
@@ -138,7 +138,7 @@ export function exportFileContent(dataset, opts) {
 }
 
 var exporters = {
-  bson: exportBSON,
+  bson: packDatasets,
   geojson: exportGeoJSON2,
   topojson: exportTopoJSON,
   shapefile: exportShapefile,

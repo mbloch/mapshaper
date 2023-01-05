@@ -1,6 +1,6 @@
 import { isSupportedShapefileType } from '../shapefile/shp-common';
 import { translateShapefileType } from '../shapefile/shp-common';
-import { stop, message } from '../utils/mapshaper-logging';
+import { stop, message, verbose } from '../utils/mapshaper-logging';
 import ShpType from '../shapefile/shp-type';
 import { ShpReader } from '../shapefile/shp-reader';
 import { PathImporter } from '../paths/mapshaper-path-import';
@@ -22,9 +22,9 @@ export function importShp(shp, shx, opts) {
     stop("Unsupported Shapefile type:", shpType);
   }
   if (ShpType.isZType(shpType)) {
-    message("Warning: Shapefile Z data will be lost.");
+    verbose("Warning: Shapefile Z data will be lost.");
   } else if (ShpType.isMType(shpType)) {
-    message("Warning: Shapefile M data will be lost.");
+    verbose("Warning: Shapefile M data will be lost.");
   }
 
   // TODO: test cases: null shape; non-null shape with no valid parts

@@ -2,16 +2,13 @@ import { ArcCollection } from '../paths/mapshaper-arcs';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { stop } from '../utils/mapshaper-logging';
 import { BinArray } from '../utils/mapshaper-binarray';
+import { decode } from "@msgpack/msgpack";
 
 // Import datasets contained in a BSON blob
 // Return command target as a dataset
 //
-export function importBSON(buf) {
-  var { deserialize } = require('bson');
-  var obj = deserialize(buf, {
-    promoteBuffers: true,
-    promoteValues: true
-  });
+export function unpackSession(buf) {
+  var obj = decode(buf, {});
   if (!isValidSession(obj)) {
     stop('Invalid mapshaper session data object');
   }

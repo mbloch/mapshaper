@@ -428,8 +428,8 @@ export function MshpMap(gui) {
 
   function sortMapLayers(layers) {
     layers.sort(function(a, b) {
-      // assume that each layer has a stack_id (assigned by updateLayerStackOrder())
-      return a.source.layer.stack_id - b.source.layer.stack_id;
+      // assume that each layer has a menu_order (assigned by updateLayerStackOrder())
+      return a.source.layer.menu_order - b.source.layer.menu_order;
     });
   }
 
@@ -456,7 +456,7 @@ export function MshpMap(gui) {
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
       _ext.setFullBounds(getFullBounds(), getStrictBounds());
       updateLayerStyles(contentLayers);
-      updateLayerStackOrder(model.getLayers());// update stack_id property of all layers
+      updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
     }
     sortMapLayers(contentLayers);
     if (_intersectionLyr) {

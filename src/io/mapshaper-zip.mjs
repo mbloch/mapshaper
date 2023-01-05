@@ -23,8 +23,10 @@ export function unzipAsync(buf, cb) {
   if (buf instanceof ArrayBuffer) {
     buf = new Uint8Array(buf);
   }
-  var obj = _unzip(buf, {filter: fflateFilter}, cb);
-  return fflatePostprocess(obj);
+  _unzip(buf, {filter: fflateFilter}, function(err, data) {
+    if (err) cb(err);
+    cb(null, fflatePostprocess(data));
+  });
 }
 
 export function zipSync(files) {
