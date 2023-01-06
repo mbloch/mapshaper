@@ -1251,7 +1251,7 @@ div.basemap-style-btn.active img {
 
 .nav-btn:hover:not(.disabled) svg *,
 .nav-btn.hover.menu-btn:not(.disabled) svg * {
-	fill: #1A6A96;
+	fill: #166689;
 }
 
 .nav-btn.menu-btn.selected:not(.disabled) svg * {

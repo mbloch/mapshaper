@@ -5,6 +5,7 @@ import { SidebarButtons } from './gui-sidebar-buttons';
 import { ModeSwitcher } from './gui-modes';
 import { KeyboardEvents } from './gui-keyboard';
 import { InteractionMode } from './gui-interaction-mode-control';
+import { SessionSnapshots } from './gui-session-snapshot-control';
 import { Model } from './gui-model';
 import { MshpMap } from './gui-map';
 import { utils } from './gui-core';
@@ -20,6 +21,7 @@ export function GuiInstance(container, opts) {
     homeControl: true,
     zoomControl: true,
     inspectorControl: true,
+    saveControl: true,
     disableNavigation: false,
     showMouseCoordinates: true,
     focus: true
@@ -32,6 +34,7 @@ export function GuiInstance(container, opts) {
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui);
   gui.interaction = new InteractionMode(gui);
+  // gui.sessionSave = new SessionSnapshots(gui);
   gui.session = new SessionHistory(gui);
   gui.undo = new Undo(gui);
   gui.state = {};

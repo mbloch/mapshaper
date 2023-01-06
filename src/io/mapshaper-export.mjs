@@ -2,7 +2,7 @@ import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { exportSVG } from '../svg/mapshaper-svg';
 import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
-import { packDatasets, PACKAGE_EXT } from '../pack/mapshaper-pack';
+import { exportPackedDatasets, PACKAGE_EXT } from '../pack/mapshaper-pack';
 import { exportDelim } from '../text/mapshaper-delim-export';
 import { exportShapefile } from '../shapefile/shp-export';
 import { exportTopoJSON } from '../topojson/topojson-export';
@@ -35,7 +35,7 @@ function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
   if (format == PACKAGE_EXT) {
-    return packDatasets(datasets, opts);
+    return exportPackedDatasets(datasets, opts);
   }
   if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
@@ -138,7 +138,7 @@ export function exportFileContent(dataset, opts) {
 }
 
 var exporters = {
-  bson: packDatasets,
+  [PACKAGE_EXT]: exportPackedDatasets,
   geojson: exportGeoJSON2,
   topojson: exportTopoJSON,
   shapefile: exportShapefile,

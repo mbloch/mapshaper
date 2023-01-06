@@ -1,6 +1,7 @@
 import { couldBeDsvFile } from '../io/mapshaper-file-types';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
+import { PACKAGE_EXT } from '../pack/mapshaper-pack';
 
 export function getOutputFormat(dataset, opts) {
   var outFile = opts.file || null,
@@ -35,8 +36,8 @@ export function inferOutputFormat(file, inputFormat) {
       format = null;
   if (ext == 'gz') {
     return inferOutputFormat(replaceFileExtension(file, ''), inputFormat);
-  } else if (ext == 'mshp') {
-    format = 'mshp';
+  } else if (ext == PACKAGE_EXT) {
+    format = PACKAGE_EXT;
   } else if (ext == 'shp') {
     format = 'shapefile';
   } else if (ext == 'dbf') {

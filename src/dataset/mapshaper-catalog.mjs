@@ -65,6 +65,11 @@ export function Catalog() {
     return matches[0] || null;
   };
 
+  this.clear = function() {
+    datasets = [];
+    defaultTargets = [];
+  };
+
   this.removeDataset = function(dataset) {
     defaultTargets = defaultTargets.filter(function(targ) {
       return targ.dataset != dataset;
@@ -89,6 +94,12 @@ export function Catalog() {
   this.addDataset = function(dataset) {
     this.setDefaultTarget(dataset.layers, dataset);
     return this;
+  };
+
+  this.addDatasets = function(datasets) {
+    datasets.forEach(function(dataset) {
+      this.addDataset(dataset);
+    }, this);
   };
 
   this.findNextLayer = function(lyr) {
@@ -126,6 +137,11 @@ export function Catalog() {
       layers: layers.concat(),
       dataset: dataset
     }];
+  };
+
+  this.replaceDatasets = function(arr) {
+    datasets = arr;
+    defaultTargets = [];
   };
 
   this.setDefaultTargets = function(arr) {

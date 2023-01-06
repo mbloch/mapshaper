@@ -4,25 +4,36 @@ import { encode } from "@msgpack/msgpack";
 
 export var PACKAGE_EXT = 'msx';
 
-export function packDatasets(datasets, opts) {
-  var obj = exportDatasets(datasets);
-  // encode options: see https://github.com/msgpack/msgpack-javascript
-  // initialBufferSize  number  2048
-  // ignoreUndefined boolean false
-  var content = encode(obj, {});
+// session format (including gui state)
+/*
+{
+  version: 1,
+  created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
+  datasets: [],
+  gui: {} // see gui-session-snapshot-control.mjs
+}
+*/
+
+export function exportPackedDatasets(datasets, opts) {
   return [{
-    content: content,
+    content: pack(exportDatasetsToPack(datasets)),
     filename: opts.file || 'output.' + PACKAGE_EXT
   }];
 }
 
+export function pack(obj) {
+  // encode options: see https://github.com/msgpack/msgpack-javascript
+  // initialBufferSize  number  2048
+  // ignoreUndefined boolean false
+  return encode(obj, {});
+}
+
 // gui: (optional) gui instance
 //
-export function exportDatasets(datasets) {
-  // TODO: add targets
-  // TODO: add gui state
+export function exportDatasetsToPack(datasets, opts) {
   return {
     version: 1,
+    created: (new Date).toISOString(),
     datasets: datasets.map(exportDataset)
   };
 }
@@ -34,11 +45,11 @@ export function exportDatasets(datasets) {
 // }
 
 export function exportDataset(dataset) {
-  return Object.assign(dataset, {
+  return {
     arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
     info: dataset.info ? exportInfo(dataset.info) : null,
     layers: (dataset.layers || []).map(exportLayer)
-  });
+  };
 }
 
 function typedArrayToBuffer(arr) {
@@ -62,7 +73,8 @@ function exportLayer(lyr) {
     shapes: lyr.shapes || null,
     data: lyr.data ? lyr.data.getRecords() : null,
     menu_order: lyr.menu_order || null,
-    pinned: lyr.pinned || false
+    pinned: lyr.pinned || false,
+    active: lyr.active || false
   };
 }
 

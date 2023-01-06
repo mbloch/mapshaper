@@ -124,6 +124,8 @@ import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
 import * as OutputFormat from './io/mapshaper-output-format';
 import * as OverlayUtils from './clipping/mapshaper-overlay-utils';
+import * as Pack from './pack/mapshaper-pack';
+import * as Unpack from './pack/mapshaper-unpack';
 import * as ParseCommands from './cli/mapshaper-parse-commands';
 import * as PathBuffer from './buffer/mapshaper-path-buffer';
 import * as PathEndpoints from './paths/mapshaper-path-endpoints';
@@ -238,6 +240,7 @@ Object.assign(internal,
   OptionParsingUtils,
   OutputFormat,
   OverlayUtils,
+  Pack, Unpack,
   ParseCommands,
   PathBuffer,
   PathEndpoints,

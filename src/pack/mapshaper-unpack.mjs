@@ -14,11 +14,7 @@ export function unpackSession(buf) {
   }
 
   var datasets = obj.datasets.map(importDataset);
-  var target = datasets[0]; // TODO: improve
-  return {
-    datasets: datasets,
-    target: target
-  };
+  return Object.assign(obj, {datasets: datasets});
 }
 
 function isValidSession(obj) {

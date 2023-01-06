@@ -78,7 +78,7 @@ export function isGzipFile(file) {
 }
 
 export function isSupportedOutputFormat(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', 'mshp'];
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT];
   return types.indexOf(fmt) > -1;
 }
 

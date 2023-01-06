@@ -3,6 +3,7 @@ import { utils, internal, stop } from './gui-core';
 import { El } from './gui-el';
 import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
+import { importSessionData } from './gui-session-snapshot-control.mjs';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -289,18 +290,24 @@ export function ImportControl(gui, opts) {
   async function importFiles(fileData) {
     var importOpts = readImportOpts();
     var groups = groupFilesForImport(fileData, importOpts);
+    var optStr = GUI.formatCommandOptions(importOpts);
     fileData = null;
     for (var group of groups) {
       if (group.size > 4e7) {
         gui.showProgressMessage('Importing');
         await wait(35);
       }
-      importDataset(group, importOpts);
+      if (group[internal.PACKAGE_EXT]) {
+        importSessionData(group[internal.PACKAGE_EXT].content, gui);
+      } else {
+        importDataset(group, importOpts);
+      }
+      importCount++;
+      gui.session.fileImported(group.filename, optStr);
     }
   }
 
   function importDataset(group, importOpts) {
-    var optStr = GUI.formatCommandOptions(importOpts);
     var dataset = internal.importContent(group, importOpts);
     if (datasetIsEmpty(dataset)) return;
     if (group.layername) {
@@ -309,8 +316,6 @@ export function ImportControl(gui, opts) {
     // save import options for use by repair control, etc.
     dataset.info.import_options = importOpts;
     model.addDataset(dataset);
-    importCount++;
-    gui.session.fileImported(group.filename, optStr);
   }
 
   function addEmptyLayer() {
