@@ -1,3 +1,7 @@
+v0.6.19
+* Added support for a new file format (.msx) for saving and restoring mapshaper sessions.
+* Added a web UI widget for working with session snapshots.
+
 v0.6.18
 * Fix for bug preventing some zipped Shapefiles from being imported in the web UI.
 
