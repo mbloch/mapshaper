@@ -23,7 +23,7 @@ export function projectArcsForDisplay(arcs, src, dest) {
     return copy;
   }
 
-  var wgs84 = internal.getCRS('wgs84');
+  var wgs84 = internal.parseCrsString('wgs84');
   var toWGS84 = internal.getProjTransform2(src, wgs84);
   var fromWGS84 = internal.getProjTransform2(wgs84, dest);
 
@@ -132,7 +132,7 @@ export function projectMapExtent(ext, src, dest, newBounds) {
 export function setDisplayProjection(gui, cmd) {
   var arg = cmd.replace(/^projd[ ]*/, '');
   if (arg) {
-    gui.map.setDisplayCRS(internal.getCRS(arg));
+    gui.map.setDisplayCRS(internal.parseCrsString(arg));
   } else {
     gui.map.setDisplayCRS(null);
   }

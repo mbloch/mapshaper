@@ -123,7 +123,7 @@ export function MshpMap(gui) {
   this.setDisplayCRS = function(crs) {
     // TODO: update bounds of frame layer, if there is a frame layer
     var oldCRS = this.getDisplayCRS();
-    var newCRS = utils.isString(crs) ? internal.getCRS(crs) : crs;
+    var newCRS = utils.isString(crs) ? internal.parseCrsString(crs) : crs;
     // TODO: handle case that old and new CRS are the same
     _dynamicCRS = newCRS;
     if (!_activeLyr) return; // stop here if no layers have been selected
@@ -180,12 +180,12 @@ export function MshpMap(gui) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
     _activeLyr.active = true;
 
-    if (e.flags.same_table) {
+    if (e.flags.same_table && !e.flags.proj) {
       // data may have changed; if popup is open, it needs to be refreshed
       gui.dispatchEvent('popup-needs-refresh');
     } else if (_hit) {
-      _hit.setLayer(_activeLyr);
       _hit.clearSelection();
+      _hit.setLayer(_activeLyr);
     }
 
     updateVisibleMapLayers();

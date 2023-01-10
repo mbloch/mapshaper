@@ -34,7 +34,7 @@ export function GuiInstance(container, opts) {
   gui.buttons = new SidebarButtons(gui);
   gui.map = new MshpMap(gui);
   gui.interaction = new InteractionMode(gui);
-  // gui.sessionSave = new SessionSnapshots(gui);
+  gui.sessionSave = new SessionSnapshots(gui);
   gui.session = new SessionHistory(gui);
   gui.undo = new Undo(gui);
   gui.state = {};

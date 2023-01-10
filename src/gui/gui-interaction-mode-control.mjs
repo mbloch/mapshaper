@@ -56,7 +56,7 @@ export function InteractionMode(gui) {
   // Only render edit mode button/menu if this option is present
   if (gui.options.inspectorControl) {
     // use z-index so the menu is over other buttons
-    btn = gui.buttons.addButton('#pointer-icon').addClass('menu-btn').css('z-index', 1),
+    btn = gui.buttons.addButton('#pointer-icon').addClass('menu-btn pointer-btn'),
     menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
     btn.on('mouseleave', function() {

@@ -50,6 +50,7 @@ function saveBlobToServer(path, blob, done) {
 }
 
 export async function saveBlobToLocalFile(filename, blob, done) {
+  done = done || function() {};
   if (window.showSaveFilePicker) {
     saveBlobToSelectedFile(filename, blob, done);
   } else {

@@ -234,7 +234,7 @@ export function Basemap(gui, ext) {
     }
 
     if (!internal.isWebMercator(crs)) {
-      gui.map.setDisplayCRS(internal.getCRS('webmercator'));
+      gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
     }
     var bbox = getLonLatBounds();
     if (!checkBounds(bbox)) {
