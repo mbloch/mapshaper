@@ -1106,6 +1106,590 @@
 
   // utils.inherit(SimpleButton, EventDispatcher);
 
+  function showPopupAlert(msg, title) {
+    var self = {}, html = '';
+    var _cancel, _close;
+    var warningRxp = /^Warning: /;
+    var el = El('div').appendTo('body').addClass('error-wrapper');
+    var infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+    if (!title && warningRxp.test(msg)) {
+      title = 'Warning';
+      msg = msg.replace(warningRxp, '');
+    }
+    if (title) {
+      html += `<div class="error-title">${title}</div>`;
+    }
+    html += `<p class="error-message">${msg}</p>`;
+    El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
+      if (_cancel) _cancel();
+      self.close();
+    });
+    El('div').appendTo(infoBox).addClass('error-content').html(html);
+
+    self.onCancel = function(cb) {
+      _cancel = cb;
+      return self;
+    };
+
+    self.onClose = function(cb) {
+      _close = cb;
+      return self;
+    };
+
+    self.button = function(label, cb) {
+      El('div')
+        .addClass("btn dialog-btn alert-btn")
+        .appendTo(infoBox)
+        .html(label)
+        .on('click', function() {
+          self.close();
+          cb();
+        });
+      return self;
+    };
+
+    self.close = function() {
+      if (el) el.remove();
+      if (_close) _close();
+      el = _cancel = _close = null;
+    };
+    return self;
+  }
+
+  function AlertControl(gui) {
+    var openAlert; // error popup
+    var openPopup; // any popup
+
+    gui.addMode('alert', function() {}, closePopup);
+
+    gui.alert = function(str, title) {
+      closePopup();
+      openAlert = openPopup = showPopupAlert(str, title);
+      // alert.button('close', gui.clearMode);
+      openAlert.onClose(gui.clearMode);
+      gui.enterMode('alert');
+    };
+
+    gui.message = function(str, title) {
+      if (openPopup) return; // don't stomp on another popup
+      openPopup = showPopupAlert(str, title);
+      openPopup.onClose(function() {openPopup = null;});
+    };
+
+    function closePopup() {
+      if (openPopup) openPopup.close();
+      openPopup = openAlert = null;
+    }
+  }
+
+  function saveZipFile(zipfileName, files, done) {
+    internal.zipAsync(files, function(err, buf) {
+      if (err) {
+        done(errorMessage(err));
+      } else {
+        saveBlobToLocalFile(zipfileName, new Blob([buf]), done);
+      }
+    });
+
+    function errorMessage(err) {
+      var str = "Error creating Zip file";
+      if (err.message) {
+        str += ": " + err.message;
+      }
+      return str;
+    }
+  }
+
+  function saveFilesToServer(paths, data, done) {
+    var i = -1;
+    next();
+    function next(err) {
+      i++;
+      if (err) return done(err);
+      if (i >= data.length) return done();
+      saveBlobToServer(paths[i], new Blob([data[i]]), next);
+    }
+  }
+
+  function saveBlobToServer(path, blob, done) {
+    var q = '?file=' + encodeURIComponent(path);
+    var url = window.location.origin + '/save' + q;
+    window.fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: blob
+    }).then(function(resp) {
+      if (resp.status == 400) {
+        return resp.text();
+      }
+    }).then(function(err) {
+      done(err);
+    }).catch(function(resp) {
+      done('connection to server was lost');
+    });
+  }
+
+  async function saveBlobToLocalFile(filename, blob, done) {
+    done = done || function() {};
+    if (window.showSaveFilePicker) {
+      saveBlobToSelectedFile(filename, blob, done);
+    } else {
+      saveBlobToDownloadsFolder(filename, blob, done);
+    }
+  }
+
+  function showSaveDialog(filename, blob, done) {
+    showPopupAlert(`Save ${filename} to:`)
+      .button('selected folder', function() {
+        saveBlobToSelectedFile(filename, blob, done);
+      })
+      .button('downloads', function() {
+        saveBlobToDownloadsFolder(filename, blob, done);
+      })
+      .onCancel(done);
+  }
+
+  async function saveBlobToSelectedFile(filename, blob, done) {
+    // see: https://developer.chrome.com/articles/file-system-access/
+    // note: saving multiple files to a directory using showDirectoryPicker()
+    //   does not work well (in Chrome). User is prompted for permission each time,
+    //   and some directories (like Downloads and Documents) are blocked.
+    //
+    var options = getSaveFileOptions(filename);
+    var handle;
+    try {
+      handle = await window.showSaveFilePicker(options);
+      var writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    } catch(e) {
+      if (e.name == 'SecurityError') {
+        // assuming this is a timeout error, with message like:
+        // "Must be handling a user gesture to show a file picker."
+        showSaveDialog(filename, blob, done);
+      } else if (e.name == 'AbortError') {
+        // fired if user clicks a cancel button (normal, no error message)
+        // BUT: this kind of erro rmay also get fired when saving to a protected folder
+        //   (should show error message)
+        done();
+      } else {
+        console.error(e.name, e.message, e);
+        done('Save failed for an unknown reason');
+      }
+      return;
+    }
+
+    done();
+  }
+
+  function getSaveFileOptions(filename) {
+    // see: https://wicg.github.io/file-system-access/#api-filepickeroptions
+    var type = internal.guessInputFileType(filename);
+    var ext = internal.getFileExtension(filename).toLowerCase();
+    var accept = {};
+    if (ext == 'kml') {
+      accept['application/vnd.google-earth.kml+xml'] = ['.kml'];
+    } else if (ext == 'svg') {
+      accept['image/svg+xml'] = ['.svg'];
+    } else if (ext == 'zip') {
+      accept['application/zip'] == ['.zip'];
+    } else if (type == 'text') {
+      accept['text/csv'] = ['.csv', '.tsv', '.tab', '.txt'];
+    } else if (type == 'json') {
+      accept['application/json'] = ['.json', '.geojson', '.topojson'];
+    } else {
+      accept['application/octet-stream'] = ['.' + ext];
+    }
+    return {
+      suggestedName: filename,
+      // If startIn is given, Chrome will always start there
+      // Default is to start in the previously selected dir (better)
+      // // startIn: 'downloads', // or: desktop, documents, [file handle], [directory handle]
+      types: [{
+        description: 'Files',
+        accept: accept
+      }]
+    };
+  }
+
+
+  function saveBlobToDownloadsFolder(filename, blob, done) {
+    var anchor, blobUrl;
+    try {
+      blobUrl = URL.createObjectURL(blob);
+    } catch(e) {
+      done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
+      return;
+    }
+    anchor = El('a').attr('href', '#').appendTo('body').node();
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
+        false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+    setTimeout(function() {
+      // Revoke blob url to release memory; timeout needed in firefox
+      URL.revokeObjectURL(blobUrl);
+      anchor.parentNode.removeChild(anchor);
+      done();
+    }, 400);
+  }
+
+  var idb = require('idb-keyval');
+  // https://github.com/jakearchibald/idb
+  // https://github.com/jakearchibald/idb-keyval
+  var sessionId = getUniqId('session');
+  var snapshotCount = 0;
+
+  window.addEventListener('beforeunload', async function() {
+    // delete snapshot data
+    // This is not ideal, because the data gets deleted even if the user
+    // cancels the page close... but there's no apparent good alternative
+    await finalCleanup();
+  });
+
+  function getUniqId(prefix) {
+    return prefix + '_' + (Math.random() + 1).toString(36).substring(2,8);
+  }
+
+  function isSnapshotId(str) {
+    return /^session_/.test(str);
+  }
+
+  function SessionSnapshots(gui) {
+    if (!gui.options.saveControl) return;
+    var _menuOpen = false;
+    var _menuTimeout;
+    var btn = gui.buttons.addButton('#ribbon-icon').addClass('menu-btn save-btn');
+    var menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+
+    initialCleanup();
+
+    btn.on('mouseenter', function() {
+      btn.addClass('hover');
+      clearTimeout(_menuTimeout); // prevent timed closing
+      if (!_menuOpen) {
+        openMenu();
+      }
+    });
+
+    btn.on('mouseleave', function() {
+      if (!_menuOpen) {
+        btn.removeClass('hover');
+      } else {
+        closeMenu(200);
+      }
+    });
+
+    async function renderMenu() {
+      var snapshots = await fetchSnapshotList();
+
+      menu.empty();
+      addMenuLink({
+        slug: 'stash',
+        // label: 'save data snapshot',
+        label: 'take a snapshot',
+        action: saveSnapshot
+      });
+
+      // var available = await getAvailableStorage();
+      // if (available) {
+      //   El('div').addClass('save-menu-entry').text(available + ' available').appendTo(menu);
+      // }
+
+      // if (snapshots.length > 0) {
+      //   El('div').addClass('save-menu-entry').text('snapshots').appendTo(menu);
+      // }
+
+      snapshots.forEach(function(item, i) {
+        var id = i + 1;
+        var line = El('div').appendTo(menu).addClass('save-menu-item');
+        El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
+        // show snapshot size
+        // El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
+        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+          await restoreSnapshotById(item.id, gui);
+          closeMenu(100);
+        }).text('restore');
+        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+          var buf = await idb.get(item.id);
+          saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
+        }).text('export');
+        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+          await removeSnapshotById(item.id);
+          closeMenu(300);
+          renderMenu();
+        }).text('remove');
+      });
+
+      // if (snapshots.length >= 1) {
+      //   addMenuLink({
+      //     slug: 'clear',
+      //     label: 'remove all',
+      //     action: clearData
+      //   });
+      // }
+    }
+
+    function addMenuLink(item) {
+      var line = El('div').appendTo(menu);
+      var link = El('div').addClass('save-menu-link save-menu-entry').attr('data-name', item.slug).text(item.label).appendTo(line);
+      link.on('click', async function(e) {
+        await item.action(gui);
+        e.stopPropagation();
+      });
+    }
+
+    function openMenu() {
+      clearTimeout(_menuTimeout);
+      if (!_menuOpen) {
+        btn.addClass('open');
+        _menuOpen = true;
+        renderMenu();
+      }
+    }
+
+    function closeMenu(delay) {
+      if (!_menuOpen) return;
+      clearTimeout(_menuTimeout);
+      _menuTimeout = setTimeout(function() {
+        _menuOpen = false;
+        btn.removeClass('open');
+        btn.removeClass('hover');
+      }, delay || 0);
+    }
+
+    async function saveSnapshot(gui) {
+      var buf = captureSnapshot(gui);
+      var entryId = String(++snapshotCount).padStart(3, '0');
+      var snapshotId = sessionId + '_' + entryId; // e.g. session_d89fw_001
+      var entry = {
+        created: Date.now(),
+        session: sessionId,
+        id: snapshotId,
+        name: snapshotCount + '.',
+        number: snapshotCount,
+        size: buf.length,
+        display_size: formatSize(buf.length)
+      };
+
+      await idb.set(entry.id, buf);
+      await addToIndex(entry);
+      renderMenu();
+    }
+  }
+
+  function formatSize(bytes) {
+    var kb = Math.round(bytes / 1000);
+    var mb = (bytes / 1e6).toFixed(1);
+    if (kb < 990) {
+      return kb + 'kB';
+    }
+    return mb + 'MB';
+  }
+
+  async function fetchSnapshotList() {
+    await removeMissingSnapshots();
+    var index = await fetchIndex();
+    var snapshots = index.snapshots;
+    snapshots = snapshots.filter(function(o) {return o.session == sessionId;});
+    return snapshots.sort(function(a, b) {b.created > a.created;});
+  }
+
+  async function removeSnapshotById(id, gui) {
+    await idb.del(id);
+    return updateIndex(function(index) {
+      index.snapshots = index.snapshots.filter(function(snap) {
+        return snap.id != id;
+      });
+    });
+  }
+
+  async function restoreSnapshotById(id, gui) {
+    var buf = await idb.get(id);
+    if (!buf) {
+      console.log('Snapshot not available:', id);
+      return;
+    }
+    var data = internal.unpackSession(buf);
+    buf = null;
+    gui.model.clear();
+    importDatasets(data.datasets, gui);
+    gui.clearMode();
+  }
+
+  // Add datasets to the current project
+  // TODO: figure out if interface data should be imported (e.g. should
+  //   visibility flag of imported layers be imported)
+  function importSessionData(buf, gui) {
+    if (buf instanceof ArrayBuffer) {
+      buf = new Uint8Array(buf);
+    }
+    var data = internal.unpackSession(buf);
+    importDatasets(data.datasets, gui);
+  }
+
+  function importDatasets(datasets, gui) {
+    gui.model.addDatasets(datasets);
+    var target = findTargetLayer(datasets);
+    gui.model.setDefaultTarget(target.layers, target.dataset);
+    gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
+  }
+
+  function captureSnapshot(gui) {
+    var datasets = gui.model.getDatasets();
+    var lyr = gui.model.getActiveLayer().layer;
+    lyr.active = true;
+    var obj = internal.exportDatasetsToPack(datasets);
+    delete lyr.active;
+    obj.gui = getGuiState(gui);
+    return internal.pack(obj);
+  }
+
+  // TODO: capture gui state information to allow restoring more of the UI
+  function getGuiState(gui) {
+    return null;
+  }
+
+  async function fetchIndex() {
+    var index = await idb.get('msx_index');
+    return index || {snapshots: []};
+  }
+
+  async function updateIndex(action) {
+    return idb.update('msx_index', function(index) {
+      if (!index || !Array.isArray(index.snapshots)) {
+        index = {snapshots: []};
+      }
+      action(index);
+      return index;
+    });
+  }
+
+  async function addToIndex(obj) {
+    updateSessionData();
+    return updateIndex(function(index) {
+      index.snapshots.push(obj);
+    });
+  }
+
+  async function removeMissingSnapshots() {
+    var keys = await idb.keys();
+    return updateIndex(function(index) {
+      index.snapshots = index.snapshots.filter(function(snap) {
+        return keys.includes(snap.id);
+      });
+    });
+  }
+
+  async function initialCleanup() {
+    // (Safari workaround) remove any lingering data from past sessions
+    if (getSessionData().length === 0) {
+      await idb.clear();
+    }
+    // remove any snapshots that are not indexed
+    var keys = await idb.keys();
+    var indexedIds = (await fetchIndex()).snapshots.map(function(snap) {return snap.id;});
+    keys.forEach(function(key) {
+      if (isSnapshotId(key) && !indexedIds.includes(key)) {
+        idb.del(key);
+      }
+    });
+    // remove old indexed snapshots
+    return updateIndex(function(index) {
+      index.snapshots = index.snapshots.filter(function(snap) {
+        var msPerDay = 1000 * 60 * 60 * 24;
+        var daysOld = (Date.now() - snap.created) / msPerDay;
+        if (daysOld > 1) {
+          if (keys.includes(snap.id)) idb.del(snap.id);
+          return false;
+        }
+        return true;
+      });
+      return index;
+    });
+  }
+
+  async function getAvailableStorage() {
+    var bytes;
+    try {
+      var estimate = await navigator.storage.estimate();
+      bytes = (estimate.quota - estimate.usage);
+    } catch(e) {
+      return null;
+    }
+    var str = (bytes / 1e6).toFixed(1) + 'MB';
+    if (str.length > 7) {
+      str = (bytes / 1e9).toFixed(1) + 'GB';
+    }
+    if (str.length > 7) {
+      str = (bytes / 1e12).toFixed(1) + 'TB';
+    }
+    if (parseFloat(str) >= 10) {
+      str = str.replace(/\../, '');
+    }
+    return str;
+  }
+
+  function findTargetLayer(datasets) {
+    var target;
+    datasets.forEach(function(dataset) {
+      var lyr = dataset.layers.find(function(lyr) { return !!lyr.active; });
+      if (lyr) target = {dataset: dataset, layers: [lyr]};
+    });
+    if (!target) {
+      target = {dataset: datasets[0], layers: [datasets[0].layers[0]]};
+    }
+    return target;
+  }
+
+  // Clean up snapshot data (called just before browser tab is closed)
+  async function finalCleanup() {
+    // When called on 'beforeunload', idb.clear() seems to complete
+    // before tab is unloaded in Chrome and Firefox, but not in Safari.
+    // Calling idb.del(key) to selectively delete data for the current session
+    // does not seem to complete in any browser.
+    // So we wait until the last open session is ending at this URL, and delete
+    // data for all recently open sessions.
+    //
+    var sessions = getSessionData().filter(function(item) {
+      // remove current session
+      var daysOld = (Date.now() - item.timestamp) / (1000 * 60 * 60 * 24);
+      if (item.session == sessionId) return false;
+      // also remove any lingering old sessions (ordinarily this shouldn't be needed)
+      if (daysOld > 1) return false;
+      return true;
+    });
+    setSessionData(sessions);
+    if (sessions.length === 0) {
+      await idb.clear();
+    }
+  }
+
+  function updateSessionData() {
+    // make sure the current session is added to the list of open sessions
+    var sessions = getSessionData();
+    if (sessions.find(o => o.session == sessionId)) return;
+    var entry = {
+      session: sessionId,
+      timestamp: Date.now()
+    };
+    setSessionData(sessions.concat([entry]));
+  }
+
+  function getSessionData() {
+    try {
+      var data = JSON.parse(window.localStorage.getItem('session_data'));
+      return data || [];
+    } catch(e) {}
+    return [];
+  }
+
+  function setSessionData(arr) {
+    window.localStorage.setItem('session_data', JSON.stringify(arr));
+  }
+
   // @cb function(<FileList>)
   function DropControl(gui, el, cb) {
     var area = El(el);
@@ -1391,18 +1975,24 @@
     async function importFiles(fileData) {
       var importOpts = readImportOpts();
       var groups = groupFilesForImport(fileData, importOpts);
+      var optStr = GUI.formatCommandOptions(importOpts);
       fileData = null;
       for (var group of groups) {
         if (group.size > 4e7) {
           gui.showProgressMessage('Importing');
           await wait(35);
         }
-        importDataset(group, importOpts);
+        if (group[internal.PACKAGE_EXT]) {
+          importSessionData(group[internal.PACKAGE_EXT].content, gui);
+        } else {
+          importDataset(group, importOpts);
+        }
+        importCount++;
+        gui.session.fileImported(group.filename, optStr);
       }
     }
 
     function importDataset(group, importOpts) {
-      var optStr = GUI.formatCommandOptions(importOpts);
       var dataset = internal.importContent(group, importOpts);
       if (datasetIsEmpty(dataset)) return;
       if (group.layername) {
@@ -1411,8 +2001,6 @@
       // save import options for use by repair control, etc.
       dataset.info.import_options = importOpts;
       model.addDataset(dataset);
-      importCount++;
-      gui.session.fileImported(group.filename, optStr);
     }
 
     function addEmptyLayer() {
@@ -1755,235 +2343,6 @@
   }
 
   utils$1.inherit(Slider, EventDispatcher);
-
-  function showPopupAlert(msg, title) {
-    var self = {}, html = '';
-    var _cancel, _close;
-    var warningRxp = /^Warning: /;
-    var el = El('div').appendTo('body').addClass('error-wrapper');
-    var infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
-    if (!title && warningRxp.test(msg)) {
-      title = 'Warning';
-      msg = msg.replace(warningRxp, '');
-    }
-    if (title) {
-      html += `<div class="error-title">${title}</div>`;
-    }
-    html += `<p class="error-message">${msg}</p>`;
-    El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
-      if (_cancel) _cancel();
-      self.close();
-    });
-    El('div').appendTo(infoBox).addClass('error-content').html(html);
-
-    self.onCancel = function(cb) {
-      _cancel = cb;
-      return self;
-    };
-
-    self.onClose = function(cb) {
-      _close = cb;
-      return self;
-    };
-
-    self.button = function(label, cb) {
-      El('div')
-        .addClass("btn dialog-btn alert-btn")
-        .appendTo(infoBox)
-        .html(label)
-        .on('click', function() {
-          self.close();
-          cb();
-        });
-      return self;
-    };
-
-    self.close = function() {
-      if (el) el.remove();
-      if (_close) _close();
-      el = _cancel = _close = null;
-    };
-    return self;
-  }
-
-  function AlertControl(gui) {
-    var openAlert; // error popup
-    var openPopup; // any popup
-
-    gui.addMode('alert', function() {}, closePopup);
-
-    gui.alert = function(str, title) {
-      closePopup();
-      openAlert = openPopup = showPopupAlert(str, title);
-      // alert.button('close', gui.clearMode);
-      openAlert.onClose(gui.clearMode);
-      gui.enterMode('alert');
-    };
-
-    gui.message = function(str, title) {
-      if (openPopup) return; // don't stomp on another popup
-      openPopup = showPopupAlert(str, title);
-      openPopup.onClose(function() {openPopup = null;});
-    };
-
-    function closePopup() {
-      if (openPopup) openPopup.close();
-      openPopup = openAlert = null;
-    }
-  }
-
-  function saveZipFile(zipfileName, files, done) {
-    internal.zipAsync(files, function(err, buf) {
-      if (err) {
-        done(errorMessage(err));
-      } else {
-        saveBlobToLocalFile(zipfileName, new Blob([buf]), done);
-      }
-    });
-
-    function errorMessage(err) {
-      var str = "Error creating Zip file";
-      if (err.message) {
-        str += ": " + err.message;
-      }
-      return str;
-    }
-  }
-
-  function saveFilesToServer(paths, data, done) {
-    var i = -1;
-    next();
-    function next(err) {
-      i++;
-      if (err) return done(err);
-      if (i >= data.length) return done();
-      saveBlobToServer(paths[i], new Blob([data[i]]), next);
-    }
-  }
-
-  function saveBlobToServer(path, blob, done) {
-    var q = '?file=' + encodeURIComponent(path);
-    var url = window.location.origin + '/save' + q;
-    window.fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      body: blob
-    }).then(function(resp) {
-      if (resp.status == 400) {
-        return resp.text();
-      }
-    }).then(function(err) {
-      done(err);
-    }).catch(function(resp) {
-      done('connection to server was lost');
-    });
-  }
-
-  async function saveBlobToLocalFile(filename, blob, done) {
-    if (window.showSaveFilePicker) {
-      saveBlobToSelectedFile(filename, blob, done);
-    } else {
-      saveBlobToDownloadsFolder(filename, blob, done);
-    }
-  }
-
-  function showSaveDialog(filename, blob, done) {
-    showPopupAlert(`Save ${filename} to:`)
-      .button('selected folder', function() {
-        saveBlobToSelectedFile(filename, blob, done);
-      })
-      .button('downloads', function() {
-        saveBlobToDownloadsFolder(filename, blob, done);
-      })
-      .onCancel(done);
-  }
-
-  async function saveBlobToSelectedFile(filename, blob, done) {
-    // see: https://developer.chrome.com/articles/file-system-access/
-    // note: saving multiple files to a directory using showDirectoryPicker()
-    //   does not work well (in Chrome). User is prompted for permission each time,
-    //   and some directories (like Downloads and Documents) are blocked.
-    //
-    var options = getSaveFileOptions(filename);
-    var handle;
-    try {
-      handle = await window.showSaveFilePicker(options);
-      var writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-    } catch(e) {
-      if (e.name == 'SecurityError') {
-        // assuming this is a timeout error, with message like:
-        // "Must be handling a user gesture to show a file picker."
-        showSaveDialog(filename, blob, done);
-      } else if (e.name == 'AbortError') {
-        // fired if user clicks a cancel button (normal, no error message)
-        // BUT: this kind of erro rmay also get fired when saving to a protected folder
-        //   (should show error message)
-        done();
-      } else {
-        console.error(e.name, e.message, e);
-        done('Save failed for an unknown reason');
-      }
-      return;
-    }
-
-    done();
-  }
-
-  function getSaveFileOptions(filename) {
-    // see: https://wicg.github.io/file-system-access/#api-filepickeroptions
-    var type = internal.guessInputFileType(filename);
-    var ext = internal.getFileExtension(filename).toLowerCase();
-    var accept = {};
-    if (ext == 'kml') {
-      accept['application/vnd.google-earth.kml+xml'] = ['.kml'];
-    } else if (ext == 'svg') {
-      accept['image/svg+xml'] = ['.svg'];
-    } else if (ext == 'zip') {
-      accept['application/zip'] == ['.zip'];
-    } else if (type == 'text') {
-      accept['text/csv'] = ['.csv', '.tsv', '.tab', '.txt'];
-    } else if (type == 'json') {
-      accept['application/json'] = ['.json', '.geojson', '.topojson'];
-    } else {
-      accept['application/octet-stream'] = ['.' + ext];
-    }
-    return {
-      suggestedName: filename,
-      // If startIn is given, Chrome will always start there
-      // Default is to start in the previously selected dir (better)
-      // // startIn: 'downloads', // or: desktop, documents, [file handle], [directory handle]
-      types: [{
-        description: 'Files',
-        accept: accept
-      }]
-    };
-  }
-
-
-  function saveBlobToDownloadsFolder(filename, blob, done) {
-    var anchor, blobUrl;
-    try {
-      blobUrl = URL.createObjectURL(blob);
-    } catch(e) {
-      done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
-      return;
-    }
-    anchor = El('a').attr('href', '#').appendTo('body').node();
-    anchor.href = blobUrl;
-    anchor.download = filename;
-    var clickEvent = document.createEvent("MouseEvent");
-    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
-        false, false, false, 0, null);
-    anchor.dispatchEvent(clickEvent);
-    setTimeout(function() {
-      // Revoke blob url to release memory; timeout needed in firefox
-      URL.revokeObjectURL(blobUrl);
-      anchor.parentNode.removeChild(anchor);
-      done();
-    }, 400);
-  }
 
   // replace default error, stop and message functions
   function setLoggingForGUI(gui) {
@@ -2488,7 +2847,7 @@
       return copy;
     }
 
-    var wgs84 = internal.getCRS('wgs84');
+    var wgs84 = internal.parseCrsString('wgs84');
     var toWGS84 = internal.getProjTransform2(src, wgs84);
     var fromWGS84 = internal.getProjTransform2(wgs84, dest);
 
@@ -2597,7 +2956,7 @@
   function setDisplayProjection(gui, cmd) {
     var arg = cmd.replace(/^projd[ ]*/, '');
     if (arg) {
-      gui.map.setDisplayCRS(internal.getCRS(arg));
+      gui.map.setDisplayCRS(internal.parseCrsString(arg));
     } else {
       gui.map.setDisplayCRS(null);
     }
@@ -4320,7 +4679,8 @@
 
     // Only render edit mode button/menu if this option is present
     if (gui.options.inspectorControl) {
-      btn = gui.buttons.addButton('#pointer-icon').addClass('menu-btn');
+      // use z-index so the menu is over other buttons
+      btn = gui.buttons.addButton('#pointer-icon').addClass('menu-btn pointer-btn'),
       menu = El('div').addClass('nav-sub-menu').appendTo(btn.node());
 
       btn.on('mouseleave', function() {
@@ -5973,7 +6333,7 @@
       return hits;
     }
 
-     function vertexTest(x, y) {
+    function vertexTest(x, y) {
       var maxDist = getZoomAdjustedHitBuffer(25, 2),
           cands = findHitCandidates(x, y, maxDist);
       sortByDistance(x, y, cands, displayLayer.arcs);
@@ -10309,7 +10669,7 @@
       }
 
       if (!internal.isWebMercator(crs)) {
-        gui.map.setDisplayCRS(internal.getCRS('webmercator'));
+        gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
       }
       var bbox = getLonLatBounds();
       if (!checkBounds(bbox)) {
@@ -10427,7 +10787,7 @@
     this.setDisplayCRS = function(crs) {
       // TODO: update bounds of frame layer, if there is a frame layer
       var oldCRS = this.getDisplayCRS();
-      var newCRS = utils$1.isString(crs) ? internal.getCRS(crs) : crs;
+      var newCRS = utils$1.isString(crs) ? internal.parseCrsString(crs) : crs;
       // TODO: handle case that old and new CRS are the same
       _dynamicCRS = newCRS;
       if (!_activeLyr) return; // stop here if no layers have been selected
@@ -10484,12 +10844,12 @@
       _activeLyr.style = getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
       _activeLyr.active = true;
 
-      if (e.flags.same_table) {
+      if (e.flags.same_table && !e.flags.proj) {
         // data may have changed; if popup is open, it needs to be refreshed
         gui.dispatchEvent('popup-needs-refresh');
       } else if (_hit) {
-        _hit.setLayer(_activeLyr);
         _hit.clearSelection();
+        _hit.setLayer(_activeLyr);
       }
 
       updateVisibleMapLayers();
@@ -10818,6 +11178,7 @@
       homeControl: true,
       zoomControl: true,
       inspectorControl: true,
+      saveControl: true,
       disableNavigation: false,
       showMouseCoordinates: true,
       focus: true
@@ -10830,6 +11191,7 @@
     gui.buttons = new SidebarButtons(gui);
     gui.map = new MshpMap(gui);
     gui.interaction = new InteractionMode(gui);
+    gui.sessionSave = new SessionSnapshots(gui);
     gui.session = new SessionHistory(gui);
     gui.undo = new Undo(gui);
     gui.state = {};

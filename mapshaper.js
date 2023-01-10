@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.18";
+  var VERSION = "0.6.19";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1590,9 +1590,7 @@
         h = this.height(),
         currAspect = w / h,
         pad;
-    if (isNaN(aspect) || aspect <= 0) {
-      // error condition; don't pad
-    } else if (currAspect < aspect) { // fill out x dimension
+    if (isNaN(aspect) || aspect <= 0) ; else if (currAspect < aspect) { // fill out x dimension
       pad = h * aspect - w;
       this.xmin -= (1 - focusX) * pad;
       this.xmax += focusX * pad;
@@ -2494,10 +2492,6 @@
     return ay + (x - ax) * (by - ay) / (bx - ax);
   }
 
-  function getXIntercept(y, ax, ay, bx, by) {
-    return ax + (y - ay) * (bx - ax) / (by - ay);
-  }
-
   // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
   // Return 0: outside; 1: inside; -1: on boundary
   //
@@ -2538,9 +2532,7 @@
         yInt;
 
     // case: p is entirely above, left or right of segment
-    if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) {
-        // no intersection
-    }
+    if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) ;
     // case: px aligned with a segment vertex
     else if (x === ax || x === bx) {
       // case: vertical segment or collapsed segment
@@ -2933,28 +2925,7 @@
     }
     // Detect cross intersection
     cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
-    if (cross && touches) {
-      // Removed this call -- using multiple snap/cut passes seems more
-      // effective for repairing real-world datasets.
-      // return reconcileCrossAndTouches(cross, touches, eps);
-    }
     return touches || cross || null;
-  }
-
-  function reconcileCrossAndTouches(cross, touches, eps) {
-    var hits;
-    eps = eps || 0;
-    if (touches.length > 2) {
-      // two touches and a cross: cross should be between the touches, intersection at touches
-      hits = touches;
-    } else if (distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
-      // cross is very close to touch point (e.g. small overshoot): intersection at touch point
-      hits = touches;
-    } else {
-      // one touch and one cross: use both points
-      hits = touches.concat(cross);
-    }
-    return hits;
   }
 
 
@@ -4255,10 +4226,7 @@
       bounds = getPointBounds$1(lyr.shapes);
     } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
       bounds = getPathBounds(lyr.shapes, arcs);
-    } else {
-      // just return null if layer has no bounds
-      // error("Layer is missing a valid geometry type");
-    }
+    } else ;
     return bounds;
   }
 
@@ -4721,7 +4689,7 @@
     if (isLatLngCRS(P)) {
       return xy.concat();
     }
-    proj = getProjTransform(P, getCRS('wgs84'));
+    proj = getProjTransform(P, parseCrsString('wgs84'));
     return proj(xy[0], xy[1]);
   }
 
@@ -4797,7 +4765,14 @@
     return /^(\+[^ ]+ *)+$/.test(str);
   }
 
-  function getCRS(str) {
+  function getCrsInfo(str) {
+    return {
+      crs_string: str,
+      crs: parseCrsString(str)
+    };
+  }
+
+  function parseCrsString(str) {
     var defn = getProjDefn(str);  // defn is a string or a Proj object
     var P;
     if (!utils.isString(defn)) {
@@ -4820,25 +4795,37 @@
 
   // @info: info property of source dataset (instead of crs object, so wkt string
   //        can be preserved if present)
-  function setDatasetCRS(dataset, info) {
+  function setDatasetCrsInfo(dataset, info) {
     dataset.info = dataset.info || {};
     // Assumes that proj4 object is never mutated.
     // TODO: assign a copy of crs (if present)
     dataset.info.crs = info.crs;
     dataset.info.prj = info.prj;
+    dataset.info.crs_string = info.crs_string;
+    return dataset;
   }
 
-  function getDatasetCRS(dataset) {
+  function getDatasetCrsInfo(dataset) {
     var info = dataset.info || {},
-        P = info.crs;
+        P = info.crs,
+        str = info.crs_string;
     if (!P && info.prj) {
-      P = getCRS(translatePrj(info.prj));
+      P = parseCrsString(translatePrj(info.prj));
     }
     if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
       // use wgs84 for probable latlong datasets with unknown datums
-      P = getCRS('wgs84');
+      str = 'wgs84';
+      P = parseCrsString(str);
     }
-    return P;
+    return {
+      crs: P || null,
+      crs_string: str,
+      prj: info.prj
+    };
+  }
+
+  function getDatasetCRS(dataset) {
+    return getDatasetCrsInfo(dataset).crs;
   }
 
   function requireDatasetsHaveCompatibleCRS(arr) {
@@ -4922,7 +4909,7 @@
 
   // Convert contents of a .prj file to a projection object
   function parsePrj(str) {
-    return getCRS(translatePrj(str));
+    return parseCrsString(translatePrj(str));
   }
 
   var Projections = /*#__PURE__*/Object.freeze({
@@ -4940,9 +4927,11 @@
     isProjAlias: isProjAlias,
     getProjDefn: getProjDefn,
     looksLikeProj4String: looksLikeProj4String,
-    getCRS: getCRS,
+    getCrsInfo: getCrsInfo,
+    parseCrsString: parseCrsString,
     requireProjectedDataset: requireProjectedDataset,
-    setDatasetCRS: setDatasetCRS,
+    setDatasetCrsInfo: setDatasetCrsInfo,
+    getDatasetCrsInfo: getDatasetCrsInfo,
     getDatasetCRS: getDatasetCRS,
     requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
     getScaleFactorAtXY: getScaleFactorAtXY,
@@ -5068,7 +5057,7 @@
   }
 
   function MultiShapeIter(arcs) {
-    var iter = new ShapeIter(arcs);
+    new ShapeIter(arcs);
 
   }
 
@@ -5354,8 +5343,6 @@
           // xx2.pop();
           // yy2.pop();
           // zz2.pop();
-        } else if (n2 === 0) {
-          // collapsed arc... ignoring
         }
         nn2[arcId] = n2;
       }
@@ -5624,9 +5611,7 @@
     this.setThresholds = function(thresholds) {
       var n = this.getPointCount(),
           zz = null;
-      if (!thresholds) {
-        // nop
-      } else if (thresholds.length == n) {
+      if (!thresholds) ; else if (thresholds.length == n) {
         zz = thresholds;
       } else if (thresholds.length == this.size()) {
         zz = flattenThresholds(thresholds, n);
@@ -5848,25 +5833,6 @@
       floats[1] = y;
       h = u[0] ^ u[1];
       h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-      return (h & 0x7fffffff) % lim;
-    };
-  }
-
-  // Get function to Hash a single coordinate to a non-negative integer
-  function getXHash(size) {
-    var buf = new ArrayBuffer(8),
-        floats = new Float64Array(buf),
-        uints = new Uint32Array(buf),
-        lim = size | 0;
-    if (lim > 0 === false) {
-      throw new Error("Invalid size param: " + size);
-    }
-
-    return function(x) {
-      var h;
-      floats[0] = x;
-      h = uints[0] ^ uints[1];
-      h = h << 5 ^ h >> 7;
       return (h & 0x7fffffff) % lim;
     };
   }
@@ -6572,9 +6538,7 @@
       var ids = [];
       var filtered = !!filter;
       var nextId = nextConnectedArc(arcId);
-      if (filtered && !filter(arcId)) {
-        // return ids;
-      }
+      if (filtered && !filter(arcId)) ;
       while (nextId != arcId) {
         if (!filtered || filter(nextId)) {
           ids.push(nextId);
@@ -6765,9 +6729,7 @@
         absId = absArcId(arcId);
         fw = arcId === absId;
 
-        if (arcs.arcIsDegenerate(arcId)) {
-          // arc has collapsed -- skip
-        } else if (arcStatus[absId] !== 0) {
+        if (arcs.arcIsDegenerate(arcId)) ; else if (arcStatus[absId] !== 0) {
           // arc has already been translated -- skip
           newArc = null;
         } else {
@@ -7022,10 +6984,7 @@
     if (copyData) {
       lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
     }
-    if (opts.no_replace) {
-      // dataset.layers.push(lyr2);
-
-    } else {
+    if (opts.no_replace) ; else {
       lyr2 = Object.assign(lyr, {data: null, shapes: null}, lyr2);
       if (layerHasPaths(lyr)) {
         // Remove unused arcs from replaced layer
@@ -7154,2040 +7113,2030 @@
     getOutputFileBase: getOutputFileBase
   });
 
-  // Integer Utility
-  var UINT32_MAX = 4294967295;
-  // DataView extension to handle int64 / uint64,
-  // where the actual range is 53-bits integer (a.k.a. safe integer)
-  function setUint64(view, offset, value) {
-      var high = value / 4294967296;
-      var low = value; // high bits are truncated by DataView
-      view.setUint32(offset, high);
-      view.setUint32(offset + 4, low);
-  }
-  function setInt64(view, offset, value) {
-      var high = Math.floor(value / 4294967296);
-      var low = value; // high bits are truncated by DataView
-      view.setUint32(offset, high);
-      view.setUint32(offset + 4, low);
-  }
-  function getInt64(view, offset) {
-      var high = view.getInt32(offset);
-      var low = view.getUint32(offset + 4);
-      return high * 4294967296 + low;
-  }
-  function getUint64(view, offset) {
-      var high = view.getUint32(offset);
-      var low = view.getUint32(offset + 4);
-      return high * 4294967296 + low;
-  }
-
-  var _a$1, _b$1, _c;
-  var TEXT_ENCODING_AVAILABLE = (typeof process === "undefined" || ((_a$1 = process === null || process === void 0 ? void 0 : process.env) === null || _a$1 === void 0 ? void 0 : _a$1["TEXT_ENCODING"]) !== "never") &&
-      typeof TextEncoder !== "undefined" &&
-      typeof TextDecoder !== "undefined";
-  function utf8Count(str) {
-      var strLength = str.length;
-      var byteLength = 0;
-      var pos = 0;
-      while (pos < strLength) {
-          var value = str.charCodeAt(pos++);
-          if ((value & 0xffffff80) === 0) {
-              // 1-byte
-              byteLength++;
-              continue;
-          }
-          else if ((value & 0xfffff800) === 0) {
-              // 2-bytes
-              byteLength += 2;
-          }
-          else {
-              // handle surrogate pair
-              if (value >= 0xd800 && value <= 0xdbff) {
-                  // high surrogate
-                  if (pos < strLength) {
-                      var extra = str.charCodeAt(pos);
-                      if ((extra & 0xfc00) === 0xdc00) {
-                          ++pos;
-                          value = ((value & 0x3ff) << 10) + (extra & 0x3ff) + 0x10000;
-                      }
-                  }
-              }
-              if ((value & 0xffff0000) === 0) {
-                  // 3-byte
-                  byteLength += 3;
-              }
-              else {
-                  // 4-byte
-                  byteLength += 4;
-              }
-          }
-      }
-      return byteLength;
-  }
-  function utf8EncodeJs(str, output, outputOffset) {
-      var strLength = str.length;
-      var offset = outputOffset;
-      var pos = 0;
-      while (pos < strLength) {
-          var value = str.charCodeAt(pos++);
-          if ((value & 0xffffff80) === 0) {
-              // 1-byte
-              output[offset++] = value;
-              continue;
-          }
-          else if ((value & 0xfffff800) === 0) {
-              // 2-bytes
-              output[offset++] = ((value >> 6) & 0x1f) | 0xc0;
-          }
-          else {
-              // handle surrogate pair
-              if (value >= 0xd800 && value <= 0xdbff) {
-                  // high surrogate
-                  if (pos < strLength) {
-                      var extra = str.charCodeAt(pos);
-                      if ((extra & 0xfc00) === 0xdc00) {
-                          ++pos;
-                          value = ((value & 0x3ff) << 10) + (extra & 0x3ff) + 0x10000;
-                      }
-                  }
-              }
-              if ((value & 0xffff0000) === 0) {
-                  // 3-byte
-                  output[offset++] = ((value >> 12) & 0x0f) | 0xe0;
-                  output[offset++] = ((value >> 6) & 0x3f) | 0x80;
-              }
-              else {
-                  // 4-byte
-                  output[offset++] = ((value >> 18) & 0x07) | 0xf0;
-                  output[offset++] = ((value >> 12) & 0x3f) | 0x80;
-                  output[offset++] = ((value >> 6) & 0x3f) | 0x80;
-              }
-          }
-          output[offset++] = (value & 0x3f) | 0x80;
-      }
-  }
-  var sharedTextEncoder = TEXT_ENCODING_AVAILABLE ? new TextEncoder() : undefined;
-  var TEXT_ENCODER_THRESHOLD = !TEXT_ENCODING_AVAILABLE
-      ? UINT32_MAX
-      : typeof process !== "undefined" && ((_b$1 = process === null || process === void 0 ? void 0 : process.env) === null || _b$1 === void 0 ? void 0 : _b$1["TEXT_ENCODING"]) !== "force"
-          ? 200
-          : 0;
-  function utf8EncodeTEencode(str, output, outputOffset) {
-      output.set(sharedTextEncoder.encode(str), outputOffset);
-  }
-  function utf8EncodeTEencodeInto(str, output, outputOffset) {
-      sharedTextEncoder.encodeInto(str, output.subarray(outputOffset));
-  }
-  var utf8EncodeTE = (sharedTextEncoder === null || sharedTextEncoder === void 0 ? void 0 : sharedTextEncoder.encodeInto) ? utf8EncodeTEencodeInto : utf8EncodeTEencode;
-  var CHUNK_SIZE = 4096;
-  function utf8DecodeJs(bytes, inputOffset, byteLength) {
-      var offset = inputOffset;
-      var end = offset + byteLength;
-      var units = [];
-      var result = "";
-      while (offset < end) {
-          var byte1 = bytes[offset++];
-          if ((byte1 & 0x80) === 0) {
-              // 1 byte
-              units.push(byte1);
-          }
-          else if ((byte1 & 0xe0) === 0xc0) {
-              // 2 bytes
-              var byte2 = bytes[offset++] & 0x3f;
-              units.push(((byte1 & 0x1f) << 6) | byte2);
-          }
-          else if ((byte1 & 0xf0) === 0xe0) {
-              // 3 bytes
-              var byte2 = bytes[offset++] & 0x3f;
-              var byte3 = bytes[offset++] & 0x3f;
-              units.push(((byte1 & 0x1f) << 12) | (byte2 << 6) | byte3);
-          }
-          else if ((byte1 & 0xf8) === 0xf0) {
-              // 4 bytes
-              var byte2 = bytes[offset++] & 0x3f;
-              var byte3 = bytes[offset++] & 0x3f;
-              var byte4 = bytes[offset++] & 0x3f;
-              var unit = ((byte1 & 0x07) << 0x12) | (byte2 << 0x0c) | (byte3 << 0x06) | byte4;
-              if (unit > 0xffff) {
-                  unit -= 0x10000;
-                  units.push(((unit >>> 10) & 0x3ff) | 0xd800);
-                  unit = 0xdc00 | (unit & 0x3ff);
-              }
-              units.push(unit);
-          }
-          else {
-              units.push(byte1);
-          }
-          if (units.length >= CHUNK_SIZE) {
-              result += String.fromCharCode.apply(String, units);
-              units.length = 0;
-          }
-      }
-      if (units.length > 0) {
-          result += String.fromCharCode.apply(String, units);
-      }
-      return result;
-  }
-  var sharedTextDecoder = TEXT_ENCODING_AVAILABLE ? new TextDecoder() : null;
-  var TEXT_DECODER_THRESHOLD = !TEXT_ENCODING_AVAILABLE
-      ? UINT32_MAX
-      : typeof process !== "undefined" && ((_c = process === null || process === void 0 ? void 0 : process.env) === null || _c === void 0 ? void 0 : _c["TEXT_DECODER"]) !== "force"
-          ? 200
-          : 0;
-  function utf8DecodeTD(bytes, inputOffset, byteLength) {
-      var stringBytes = bytes.subarray(inputOffset, inputOffset + byteLength);
-      return sharedTextDecoder.decode(stringBytes);
+  var decoder;
+  try {
+  	decoder = new TextDecoder();
+  } catch(error) {}
+  var src;
+  var srcEnd;
+  var position$1 = 0;
+  var currentUnpackr = {};
+  var currentStructures;
+  var srcString;
+  var srcStringStart = 0;
+  var srcStringEnd = 0;
+  var bundledStrings$1;
+  var referenceMap;
+  var currentExtensions = [];
+  var dataView;
+  var defaultOptions = {
+  	useRecords: false,
+  	mapsAsObjects: true
+  };
+  class C1Type {}
+  const C1$1 = new C1Type();
+  C1$1.name = 'MessagePack 0xC1';
+  var sequentialMode = false;
+  var inlineObjectReadThreshold = 2;
+  var readStruct;
+  // no-eval build
+  try {
+  	new Function('');
+  } catch(error) {
+  	// if eval variants are not supported, do not create inline object readers ever
+  	inlineObjectReadThreshold = Infinity;
   }
 
-  /**
-   * ExtData is used to handle Extension Types that are not registered to ExtensionCodec.
-   */
-  var ExtData = /** @class */ (function () {
-      function ExtData(type, data) {
-          this.type = type;
-          this.data = data;
-      }
-      return ExtData;
-  }());
+  class Unpackr {
+  	constructor(options) {
+  		if (options) {
+  			if (options.useRecords === false && options.mapsAsObjects === undefined)
+  				options.mapsAsObjects = true;
+  			if (options.sequential && options.trusted !== false) {
+  				options.trusted = true;
+  				if (!options.structures && options.useRecords != false) {
+  					options.structures = [];
+  					if (!options.maxSharedStructures)
+  						options.maxSharedStructures = 0;
+  				}
+  			}
+  			if (options.structures)
+  				options.structures.sharedLength = options.structures.length;
+  			else if (options.getStructures) {
+  				(options.structures = []).uninitialized = true; // this is what we use to denote an uninitialized structures
+  				options.structures.sharedLength = 0;
+  			}
+  			if (options.int64AsNumber) {
+  				options.int64AsType = 'number';
+  			}
+  		}
+  		Object.assign(this, options);
+  	}
+  	unpack(source, options) {
+  		if (src) {
+  			// re-entrant execution, save the state and restore it after we do this unpack
+  			return saveState(() => {
+  				clearSource();
+  				return this ? this.unpack(source, options) : Unpackr.prototype.unpack.call(defaultOptions, source, options)
+  			})
+  		}
+  		if (typeof options === 'object') {
+  			srcEnd = options.end || source.length;
+  			position$1 = options.start || 0;
+  		} else {
+  			position$1 = 0;
+  			srcEnd = options > -1 ? options : source.length;
+  		}
+  		srcStringEnd = 0;
+  		srcString = null;
+  		bundledStrings$1 = null;
+  		src = source;
+  		// this provides cached access to the data view for a buffer if it is getting reused, which is a recommend
+  		// technique for getting data from a database where it can be copied into an existing buffer instead of creating
+  		// new ones
+  		try {
+  			dataView = source.dataView || (source.dataView = new DataView(source.buffer, source.byteOffset, source.byteLength));
+  		} catch(error) {
+  			// if it doesn't have a buffer, maybe it is the wrong type of object
+  			src = null;
+  			if (source instanceof Uint8Array)
+  				throw error
+  			throw new Error('Source must be a Uint8Array or Buffer but was a ' + ((source && typeof source == 'object') ? source.constructor.name : typeof source))
+  		}
+  		if (this instanceof Unpackr) {
+  			currentUnpackr = this;
+  			if (this.structures) {
+  				currentStructures = this.structures;
+  				return checkedRead(options)
+  			} else if (!currentStructures || currentStructures.length > 0) {
+  				currentStructures = [];
+  			}
+  		} else {
+  			currentUnpackr = defaultOptions;
+  			if (!currentStructures || currentStructures.length > 0)
+  				currentStructures = [];
+  		}
+  		return checkedRead(options)
+  	}
+  	unpackMultiple(source, forEach) {
+  		let values, lastPosition = 0;
+  		try {
+  			sequentialMode = true;
+  			let size = source.length;
+  			let value = this ? this.unpack(source, size) : defaultUnpackr.unpack(source, size);
+  			if (forEach) {
+  				forEach(value);
+  				while(position$1 < size) {
+  					lastPosition = position$1;
+  					if (forEach(checkedRead()) === false) {
+  						return
+  					}
+  				}
+  			}
+  			else {
+  				values = [ value ];
+  				while(position$1 < size) {
+  					lastPosition = position$1;
+  					values.push(checkedRead());
+  				}
+  				return values
+  			}
+  		} catch(error) {
+  			error.lastPosition = lastPosition;
+  			error.values = values;
+  			throw error
+  		} finally {
+  			sequentialMode = false;
+  			clearSource();
+  		}
+  	}
+  	_mergeStructures(loadedStructures, existingStructures) {
+  		loadedStructures = loadedStructures || [];
+  		if (Object.isFrozen(loadedStructures))
+  			loadedStructures = loadedStructures.map(structure => structure.slice(0));
+  		for (let i = 0, l = loadedStructures.length; i < l; i++) {
+  			let structure = loadedStructures[i];
+  			if (structure) {
+  				structure.isShared = true;
+  				if (i >= 32)
+  					structure.highByte = (i - 32) >> 5;
+  			}
+  		}
+  		loadedStructures.sharedLength = loadedStructures.length;
+  		for (let id in existingStructures || []) {
+  			if (id >= 0) {
+  				let structure = loadedStructures[id];
+  				let existing = existingStructures[id];
+  				if (existing) {
+  					if (structure)
+  						(loadedStructures.restoreStructures || (loadedStructures.restoreStructures = []))[id] = structure;
+  					loadedStructures[id] = existing;
+  				}
+  			}
+  		}
+  		return this.structures = loadedStructures
+  	}
+  	decode(source, end) {
+  		return this.unpack(source, end)
+  	}
+  }
+  function checkedRead(options) {
+  	try {
+  		if (!currentUnpackr.trusted && !sequentialMode) {
+  			let sharedLength = currentStructures.sharedLength || 0;
+  			if (sharedLength < currentStructures.length)
+  				currentStructures.length = sharedLength;
+  		}
+  		let result;
+  		if (currentUnpackr.randomAccessStructure && src[position$1] < 0x40 && src[position$1] >= 0x20 && readStruct) {
+  			result = readStruct(src, position$1, srcEnd, currentUnpackr);
+  			src = null; // dispose of this so that recursive unpack calls don't save state
+  			if (!(options && options.lazy) && result)
+  				result = result.toJSON();
+  			position$1 = srcEnd;
+  		} else
+  			result = read();
+  		if (bundledStrings$1) { // bundled strings to skip past
+  			position$1 = bundledStrings$1.postBundlePosition;
+  			bundledStrings$1 = null;
+  		}
 
-  var __extends = (null && null.__extends) || (function () {
-      var extendStatics = function (d, b) {
-          extendStatics = Object.setPrototypeOf ||
-              ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-              function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
-          return extendStatics(d, b);
-      };
-      return function (d, b) {
-          if (typeof b !== "function" && b !== null)
-              throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
-          extendStatics(d, b);
-          function __() { this.constructor = d; }
-          d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-      };
-  })();
-  var DecodeError = /** @class */ (function (_super) {
-      __extends(DecodeError, _super);
-      function DecodeError(message) {
-          var _this = _super.call(this, message) || this;
-          // fix the prototype chain in a cross-platform way
-          var proto = Object.create(DecodeError.prototype);
-          Object.setPrototypeOf(_this, proto);
-          Object.defineProperty(_this, "name", {
-              configurable: true,
-              enumerable: false,
-              value: DecodeError.name,
-          });
-          return _this;
-      }
-      return DecodeError;
-  }(Error));
+  		if (position$1 == srcEnd) {
+  			// finished reading this source, cleanup references
+  			if (currentStructures && currentStructures.restoreStructures)
+  				restoreStructures();
+  			currentStructures = null;
+  			src = null;
+  			if (referenceMap)
+  				referenceMap = null;
+  		} else if (position$1 > srcEnd) {
+  			// over read
+  			throw new Error('Unexpected end of MessagePack data')
+  		} else if (!sequentialMode) {
+  			throw new Error('Data read, but end of buffer not reached ' + JSON.stringify(result).slice(0, 100))
+  		}
+  		// else more to read, but we are reading sequentially, so don't clear source yet
+  		return result
+  	} catch(error) {
+  		if (currentStructures && currentStructures.restoreStructures)
+  			restoreStructures();
+  		clearSource();
+  		if (error instanceof RangeError || error.message.startsWith('Unexpected end of buffer') || position$1 > srcEnd) {
+  			error.incomplete = true;
+  		}
+  		throw error
+  	}
+  }
 
-  // https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
-  var EXT_TIMESTAMP = -1;
-  var TIMESTAMP32_MAX_SEC = 0x100000000 - 1; // 32-bit unsigned int
-  var TIMESTAMP64_MAX_SEC = 0x400000000 - 1; // 34-bit unsigned int
-  function encodeTimeSpecToTimestamp(_a) {
-      var sec = _a.sec, nsec = _a.nsec;
-      if (sec >= 0 && nsec >= 0 && sec <= TIMESTAMP64_MAX_SEC) {
-          // Here sec >= 0 && nsec >= 0
-          if (nsec === 0 && sec <= TIMESTAMP32_MAX_SEC) {
-              // timestamp 32 = { sec32 (unsigned) }
-              var rv = new Uint8Array(4);
-              var view = new DataView(rv.buffer);
-              view.setUint32(0, sec);
-              return rv;
-          }
-          else {
-              // timestamp 64 = { nsec30 (unsigned), sec34 (unsigned) }
-              var secHigh = sec / 0x100000000;
-              var secLow = sec & 0xffffffff;
-              var rv = new Uint8Array(8);
-              var view = new DataView(rv.buffer);
-              // nsec30 | secHigh2
-              view.setUint32(0, (nsec << 2) | (secHigh & 0x3));
-              // secLow32
-              view.setUint32(4, secLow);
-              return rv;
-          }
-      }
-      else {
-          // timestamp 96 = { nsec32 (unsigned), sec64 (signed) }
-          var rv = new Uint8Array(12);
-          var view = new DataView(rv.buffer);
-          view.setUint32(0, nsec);
-          setInt64(view, 4, sec);
-          return rv;
-      }
+  function restoreStructures() {
+  	for (let id in currentStructures.restoreStructures) {
+  		currentStructures[id] = currentStructures.restoreStructures[id];
+  	}
+  	currentStructures.restoreStructures = null;
   }
-  function encodeDateToTimeSpec(date) {
-      var msec = date.getTime();
-      var sec = Math.floor(msec / 1e3);
-      var nsec = (msec - sec * 1e3) * 1e6;
-      // Normalizes { sec, nsec } to ensure nsec is unsigned.
-      var nsecInSec = Math.floor(nsec / 1e9);
-      return {
-          sec: sec + nsecInSec,
-          nsec: nsec - nsecInSec * 1e9,
-      };
+
+  function read() {
+  	let token = src[position$1++];
+  	if (token < 0xa0) {
+  		if (token < 0x80) {
+  			if (token < 0x40)
+  				return token
+  			else {
+  				let structure = currentStructures[token & 0x3f] ||
+  					currentUnpackr.getStructures && loadStructures()[token & 0x3f];
+  				if (structure) {
+  					if (!structure.read) {
+  						structure.read = createStructureReader(structure, token & 0x3f);
+  					}
+  					return structure.read()
+  				} else
+  					return token
+  			}
+  		} else if (token < 0x90) {
+  			// map
+  			token -= 0x80;
+  			if (currentUnpackr.mapsAsObjects) {
+  				let object = {};
+  				for (let i = 0; i < token; i++) {
+  					let key = readKey$1();
+  					if (key === '__proto__')
+  						key = '__proto_';
+  					object[key] = read();
+  				}
+  				return object
+  			} else {
+  				let map = new Map();
+  				for (let i = 0; i < token; i++) {
+  					map.set(read(), read());
+  				}
+  				return map
+  			}
+  		} else {
+  			token -= 0x90;
+  			let array = new Array(token);
+  			for (let i = 0; i < token; i++) {
+  				array[i] = read();
+  			}
+  			if (currentUnpackr.freezeData)
+  				return Object.freeze(array)
+  			return array
+  		}
+  	} else if (token < 0xc0) {
+  		// fixstr
+  		let length = token - 0xa0;
+  		if (srcStringEnd >= position$1) {
+  			return srcString.slice(position$1 - srcStringStart, (position$1 += length) - srcStringStart)
+  		}
+  		if (srcStringEnd == 0 && srcEnd < 140) {
+  			// for small blocks, avoiding the overhead of the extract call is helpful
+  			let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
+  			if (string != null)
+  				return string
+  		}
+  		return readFixedString(length)
+  	} else {
+  		let value;
+  		switch (token) {
+  			case 0xc0: return null
+  			case 0xc1:
+  				if (bundledStrings$1) {
+  					value = read(); // followed by the length of the string in characters (not bytes!)
+  					if (value > 0)
+  						return bundledStrings$1[1].slice(bundledStrings$1.position1, bundledStrings$1.position1 += value)
+  					else
+  						return bundledStrings$1[0].slice(bundledStrings$1.position0, bundledStrings$1.position0 -= value)
+  				}
+  				return C1$1; // "never-used", return special object to denote that
+  			case 0xc2: return false
+  			case 0xc3: return true
+  			case 0xc4:
+  				// bin 8
+  				value = src[position$1++];
+  				if (value === undefined)
+  					throw new Error('Unexpected end of buffer')
+  				return readBin(value)
+  			case 0xc5:
+  				// bin 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readBin(value)
+  			case 0xc6:
+  				// bin 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readBin(value)
+  			case 0xc7:
+  				// ext 8
+  				return readExt(src[position$1++])
+  			case 0xc8:
+  				// ext 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readExt(value)
+  			case 0xc9:
+  				// ext 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readExt(value)
+  			case 0xca:
+  				value = dataView.getFloat32(position$1);
+  				if (currentUnpackr.useFloat32 > 2) {
+  					// this does rounding of numbers that were encoded in 32-bit float to nearest significant decimal digit that could be preserved
+  					let multiplier = mult10[((src[position$1] & 0x7f) << 1) | (src[position$1 + 1] >> 7)];
+  					position$1 += 4;
+  					return ((multiplier * value + (value > 0 ? 0.5 : -0.5)) >> 0) / multiplier
+  				}
+  				position$1 += 4;
+  				return value
+  			case 0xcb:
+  				value = dataView.getFloat64(position$1);
+  				position$1 += 8;
+  				return value
+  			// uint handlers
+  			case 0xcc:
+  				return src[position$1++]
+  			case 0xcd:
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return value
+  			case 0xce:
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return value
+  			case 0xcf:
+  				if (currentUnpackr.int64AsType === 'number') {
+  					value = dataView.getUint32(position$1) * 0x100000000;
+  					value += dataView.getUint32(position$1 + 4);
+  				} else if (currentUnpackr.int64AsType === 'string') {
+  					value = dataView.getBigUint64(position$1).toString();
+  				} else
+  					value = dataView.getBigUint64(position$1);
+  				position$1 += 8;
+  				return value
+
+  			// int handlers
+  			case 0xd0:
+  				return dataView.getInt8(position$1++)
+  			case 0xd1:
+  				value = dataView.getInt16(position$1);
+  				position$1 += 2;
+  				return value
+  			case 0xd2:
+  				value = dataView.getInt32(position$1);
+  				position$1 += 4;
+  				return value
+  			case 0xd3:
+  				if (currentUnpackr.int64AsType === 'number') {
+  					value = dataView.getInt32(position$1) * 0x100000000;
+  					value += dataView.getUint32(position$1 + 4);
+  				} else if (currentUnpackr.int64AsType === 'string') {
+  					value = dataView.getBigInt64(position$1).toString();
+  				} else
+  					value = dataView.getBigInt64(position$1);
+  				position$1 += 8;
+  				return value
+
+  			case 0xd4:
+  				// fixext 1
+  				value = src[position$1++];
+  				if (value == 0x72) {
+  					return recordDefinition(src[position$1++] & 0x3f)
+  				} else {
+  					let extension = currentExtensions[value];
+  					if (extension) {
+  						if (extension.read) {
+  							position$1++; // skip filler byte
+  							return extension.read(read())
+  						} else if (extension.noBuffer) {
+  							position$1++; // skip filler byte
+  							return extension()
+  						} else
+  							return extension(src.subarray(position$1, ++position$1))
+  					} else
+  						throw new Error('Unknown extension ' + value)
+  				}
+  			case 0xd5:
+  				// fixext 2
+  				value = src[position$1];
+  				if (value == 0x72) {
+  					position$1++;
+  					return recordDefinition(src[position$1++] & 0x3f, src[position$1++])
+  				} else
+  					return readExt(2)
+  			case 0xd6:
+  				// fixext 4
+  				return readExt(4)
+  			case 0xd7:
+  				// fixext 8
+  				return readExt(8)
+  			case 0xd8:
+  				// fixext 16
+  				return readExt(16)
+  			case 0xd9:
+  			// str 8
+  				value = src[position$1++];
+  				if (srcStringEnd >= position$1) {
+  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
+  				}
+  				return readString8(value)
+  			case 0xda:
+  			// str 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				if (srcStringEnd >= position$1) {
+  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
+  				}
+  				return readString16(value)
+  			case 0xdb:
+  			// str 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				if (srcStringEnd >= position$1) {
+  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
+  				}
+  				return readString32(value)
+  			case 0xdc:
+  			// array 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readArray$1(value)
+  			case 0xdd:
+  			// array 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readArray$1(value)
+  			case 0xde:
+  			// map 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readMap(value)
+  			case 0xdf:
+  			// map 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readMap(value)
+  			default: // negative int
+  				if (token >= 0xe0)
+  					return token - 0x100
+  				if (token === undefined) {
+  					let error = new Error('Unexpected end of MessagePack data');
+  					error.incomplete = true;
+  					throw error
+  				}
+  				throw new Error('Unknown MessagePack token ' + token)
+
+  		}
+  	}
   }
-  function encodeTimestampExtension(object) {
-      if (object instanceof Date) {
-          var timeSpec = encodeDateToTimeSpec(object);
-          return encodeTimeSpecToTimestamp(timeSpec);
-      }
-      else {
-          return null;
-      }
+  const validName = /^[a-zA-Z_$][a-zA-Z\d_$]*$/;
+  function createStructureReader(structure, firstId) {
+  	function readObject() {
+  		// This initial function is quick to instantiate, but runs slower. After several iterations pay the cost to build the faster function
+  		if (readObject.count++ > inlineObjectReadThreshold) {
+  			let readObject = structure.read = (new Function('r', 'return function(){return ' + (currentUnpackr.freezeData ? 'Object.freeze' : '') +
+  				'({' + structure.map(key => key === '__proto__' ? '__proto_:r()' : validName.test(key) ? key + ':r()' : ('[' + JSON.stringify(key) + ']:r()')).join(',') + '})}'))(read);
+  			if (structure.highByte === 0)
+  				structure.read = createSecondByteReader(firstId, structure.read);
+  			return readObject() // second byte is already read, if there is one so immediately read object
+  		}
+  		let object = {};
+  		for (let i = 0, l = structure.length; i < l; i++) {
+  			let key = structure[i];
+  			if (key === '__proto__')
+  				key = '__proto_';
+  			object[key] = read();
+  		}
+  		if (currentUnpackr.freezeData)
+  			return Object.freeze(object);
+  		return object
+  	}
+  	readObject.count = 0;
+  	if (structure.highByte === 0) {
+  		return createSecondByteReader(firstId, readObject)
+  	}
+  	return readObject
   }
-  function decodeTimestampToTimeSpec(data) {
-      var view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-      // data may be 32, 64, or 96 bits
-      switch (data.byteLength) {
-          case 4: {
-              // timestamp 32 = { sec32 }
-              var sec = view.getUint32(0);
-              var nsec = 0;
-              return { sec: sec, nsec: nsec };
-          }
-          case 8: {
-              // timestamp 64 = { nsec30, sec34 }
-              var nsec30AndSecHigh2 = view.getUint32(0);
-              var secLow32 = view.getUint32(4);
-              var sec = (nsec30AndSecHigh2 & 0x3) * 0x100000000 + secLow32;
-              var nsec = nsec30AndSecHigh2 >>> 2;
-              return { sec: sec, nsec: nsec };
-          }
-          case 12: {
-              // timestamp 96 = { nsec32 (unsigned), sec64 (signed) }
-              var sec = getInt64(view, 4);
-              var nsec = view.getUint32(0);
-              return { sec: sec, nsec: nsec };
-          }
-          default:
-              throw new DecodeError("Unrecognized data size for timestamp (expected 4, 8, or 12): ".concat(data.length));
-      }
-  }
-  function decodeTimestampExtension(data) {
-      var timeSpec = decodeTimestampToTimeSpec(data);
-      return new Date(timeSpec.sec * 1e3 + timeSpec.nsec / 1e6);
-  }
-  var timestampExtension = {
-      type: EXT_TIMESTAMP,
-      encode: encodeTimestampExtension,
-      decode: decodeTimestampExtension,
+
+  const createSecondByteReader = (firstId, read0) => {
+  	return function() {
+  		let highByte = src[position$1++];
+  		if (highByte === 0)
+  			return read0()
+  		let id = firstId < 32 ? -(firstId + (highByte << 5)) : firstId + (highByte << 5);
+  		let structure = currentStructures[id] || loadStructures()[id];
+  		if (!structure) {
+  			throw new Error('Record id is not defined for ' + id)
+  		}
+  		if (!structure.read)
+  			structure.read = createStructureReader(structure, firstId);
+  		return structure.read()
+  	}
   };
 
-  // ExtensionCodec to handle MessagePack extensions
-  var ExtensionCodec = /** @class */ (function () {
-      function ExtensionCodec() {
-          // built-in extensions
-          this.builtInEncoders = [];
-          this.builtInDecoders = [];
-          // custom extensions
-          this.encoders = [];
-          this.decoders = [];
-          this.register(timestampExtension);
-      }
-      ExtensionCodec.prototype.register = function (_a) {
-          var type = _a.type, encode = _a.encode, decode = _a.decode;
-          if (type >= 0) {
-              // custom extensions
-              this.encoders[type] = encode;
-              this.decoders[type] = decode;
-          }
-          else {
-              // built-in extensions
-              var index = 1 + type;
-              this.builtInEncoders[index] = encode;
-              this.builtInDecoders[index] = decode;
-          }
-      };
-      ExtensionCodec.prototype.tryToEncode = function (object, context) {
-          // built-in extensions
-          for (var i = 0; i < this.builtInEncoders.length; i++) {
-              var encodeExt = this.builtInEncoders[i];
-              if (encodeExt != null) {
-                  var data = encodeExt(object, context);
-                  if (data != null) {
-                      var type = -1 - i;
-                      return new ExtData(type, data);
-                  }
-              }
-          }
-          // custom extensions
-          for (var i = 0; i < this.encoders.length; i++) {
-              var encodeExt = this.encoders[i];
-              if (encodeExt != null) {
-                  var data = encodeExt(object, context);
-                  if (data != null) {
-                      var type = i;
-                      return new ExtData(type, data);
-                  }
-              }
-          }
-          if (object instanceof ExtData) {
-              // to keep ExtData as is
-              return object;
-          }
-          return null;
-      };
-      ExtensionCodec.prototype.decode = function (data, type, context) {
-          var decodeExt = type < 0 ? this.builtInDecoders[-1 - type] : this.decoders[type];
-          if (decodeExt) {
-              return decodeExt(data, type, context);
-          }
-          else {
-              // decode() does not fail, returns ExtData instead.
-              return new ExtData(type, data);
-          }
-      };
-      ExtensionCodec.defaultCodec = new ExtensionCodec();
-      return ExtensionCodec;
-  }());
-
-  function ensureUint8Array(buffer) {
-      if (buffer instanceof Uint8Array) {
-          return buffer;
-      }
-      else if (ArrayBuffer.isView(buffer)) {
-          return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-      }
-      else if (buffer instanceof ArrayBuffer) {
-          return new Uint8Array(buffer);
-      }
-      else {
-          // ArrayLike<number>
-          return Uint8Array.from(buffer);
-      }
-  }
-  function createDataView(buffer) {
-      if (buffer instanceof ArrayBuffer) {
-          return new DataView(buffer);
-      }
-      var bufferView = ensureUint8Array(buffer);
-      return new DataView(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength);
+  function loadStructures() {
+  	let loadedStructures = saveState(() => {
+  		// save the state in case getStructures modifies our buffer
+  		src = null;
+  		return currentUnpackr.getStructures()
+  	});
+  	return currentStructures = currentUnpackr._mergeStructures(loadedStructures, currentStructures)
   }
 
-  var DEFAULT_MAX_DEPTH = 100;
-  var DEFAULT_INITIAL_BUFFER_SIZE = 2048;
-  var Encoder = /** @class */ (function () {
-      function Encoder(extensionCodec, context, maxDepth, initialBufferSize, sortKeys, forceFloat32, ignoreUndefined, forceIntegerToFloat) {
-          if (extensionCodec === void 0) { extensionCodec = ExtensionCodec.defaultCodec; }
-          if (context === void 0) { context = undefined; }
-          if (maxDepth === void 0) { maxDepth = DEFAULT_MAX_DEPTH; }
-          if (initialBufferSize === void 0) { initialBufferSize = DEFAULT_INITIAL_BUFFER_SIZE; }
-          if (sortKeys === void 0) { sortKeys = false; }
-          if (forceFloat32 === void 0) { forceFloat32 = false; }
-          if (ignoreUndefined === void 0) { ignoreUndefined = false; }
-          if (forceIntegerToFloat === void 0) { forceIntegerToFloat = false; }
-          this.extensionCodec = extensionCodec;
-          this.context = context;
-          this.maxDepth = maxDepth;
-          this.initialBufferSize = initialBufferSize;
-          this.sortKeys = sortKeys;
-          this.forceFloat32 = forceFloat32;
-          this.ignoreUndefined = ignoreUndefined;
-          this.forceIntegerToFloat = forceIntegerToFloat;
-          this.pos = 0;
-          this.view = new DataView(new ArrayBuffer(this.initialBufferSize));
-          this.bytes = new Uint8Array(this.view.buffer);
-      }
-      Encoder.prototype.reinitializeState = function () {
-          this.pos = 0;
-      };
-      /**
-       * This is almost equivalent to {@link Encoder#encode}, but it returns an reference of the encoder's internal buffer and thus much faster than {@link Encoder#encode}.
-       *
-       * @returns Encodes the object and returns a shared reference the encoder's internal buffer.
-       */
-      Encoder.prototype.encodeSharedRef = function (object) {
-          this.reinitializeState();
-          this.doEncode(object, 1);
-          return this.bytes.subarray(0, this.pos);
-      };
-      /**
-       * @returns Encodes the object and returns a copy of the encoder's internal buffer.
-       */
-      Encoder.prototype.encode = function (object) {
-          this.reinitializeState();
-          this.doEncode(object, 1);
-          return this.bytes.slice(0, this.pos);
-      };
-      Encoder.prototype.doEncode = function (object, depth) {
-          if (depth > this.maxDepth) {
-              throw new Error("Too deep objects in depth ".concat(depth));
-          }
-          if (object == null) {
-              this.encodeNil();
-          }
-          else if (typeof object === "boolean") {
-              this.encodeBoolean(object);
-          }
-          else if (typeof object === "number") {
-              this.encodeNumber(object);
-          }
-          else if (typeof object === "string") {
-              this.encodeString(object);
-          }
-          else {
-              this.encodeObject(object, depth);
-          }
-      };
-      Encoder.prototype.ensureBufferSizeToWrite = function (sizeToWrite) {
-          var requiredSize = this.pos + sizeToWrite;
-          if (this.view.byteLength < requiredSize) {
-              this.resizeBuffer(requiredSize * 2);
-          }
-      };
-      Encoder.prototype.resizeBuffer = function (newSize) {
-          var newBuffer = new ArrayBuffer(newSize);
-          var newBytes = new Uint8Array(newBuffer);
-          var newView = new DataView(newBuffer);
-          newBytes.set(this.bytes);
-          this.view = newView;
-          this.bytes = newBytes;
-      };
-      Encoder.prototype.encodeNil = function () {
-          this.writeU8(0xc0);
-      };
-      Encoder.prototype.encodeBoolean = function (object) {
-          if (object === false) {
-              this.writeU8(0xc2);
-          }
-          else {
-              this.writeU8(0xc3);
-          }
-      };
-      Encoder.prototype.encodeNumber = function (object) {
-          if (Number.isSafeInteger(object) && !this.forceIntegerToFloat) {
-              if (object >= 0) {
-                  if (object < 0x80) {
-                      // positive fixint
-                      this.writeU8(object);
-                  }
-                  else if (object < 0x100) {
-                      // uint 8
-                      this.writeU8(0xcc);
-                      this.writeU8(object);
-                  }
-                  else if (object < 0x10000) {
-                      // uint 16
-                      this.writeU8(0xcd);
-                      this.writeU16(object);
-                  }
-                  else if (object < 0x100000000) {
-                      // uint 32
-                      this.writeU8(0xce);
-                      this.writeU32(object);
-                  }
-                  else {
-                      // uint 64
-                      this.writeU8(0xcf);
-                      this.writeU64(object);
-                  }
-              }
-              else {
-                  if (object >= -0x20) {
-                      // negative fixint
-                      this.writeU8(0xe0 | (object + 0x20));
-                  }
-                  else if (object >= -0x80) {
-                      // int 8
-                      this.writeU8(0xd0);
-                      this.writeI8(object);
-                  }
-                  else if (object >= -0x8000) {
-                      // int 16
-                      this.writeU8(0xd1);
-                      this.writeI16(object);
-                  }
-                  else if (object >= -0x80000000) {
-                      // int 32
-                      this.writeU8(0xd2);
-                      this.writeI32(object);
-                  }
-                  else {
-                      // int 64
-                      this.writeU8(0xd3);
-                      this.writeI64(object);
-                  }
-              }
-          }
-          else {
-              // non-integer numbers
-              if (this.forceFloat32) {
-                  // float 32
-                  this.writeU8(0xca);
-                  this.writeF32(object);
-              }
-              else {
-                  // float 64
-                  this.writeU8(0xcb);
-                  this.writeF64(object);
-              }
-          }
-      };
-      Encoder.prototype.writeStringHeader = function (byteLength) {
-          if (byteLength < 32) {
-              // fixstr
-              this.writeU8(0xa0 + byteLength);
-          }
-          else if (byteLength < 0x100) {
-              // str 8
-              this.writeU8(0xd9);
-              this.writeU8(byteLength);
-          }
-          else if (byteLength < 0x10000) {
-              // str 16
-              this.writeU8(0xda);
-              this.writeU16(byteLength);
-          }
-          else if (byteLength < 0x100000000) {
-              // str 32
-              this.writeU8(0xdb);
-              this.writeU32(byteLength);
-          }
-          else {
-              throw new Error("Too long string: ".concat(byteLength, " bytes in UTF-8"));
-          }
-      };
-      Encoder.prototype.encodeString = function (object) {
-          var maxHeaderSize = 1 + 4;
-          var strLength = object.length;
-          if (strLength > TEXT_ENCODER_THRESHOLD) {
-              var byteLength = utf8Count(object);
-              this.ensureBufferSizeToWrite(maxHeaderSize + byteLength);
-              this.writeStringHeader(byteLength);
-              utf8EncodeTE(object, this.bytes, this.pos);
-              this.pos += byteLength;
-          }
-          else {
-              var byteLength = utf8Count(object);
-              this.ensureBufferSizeToWrite(maxHeaderSize + byteLength);
-              this.writeStringHeader(byteLength);
-              utf8EncodeJs(object, this.bytes, this.pos);
-              this.pos += byteLength;
-          }
-      };
-      Encoder.prototype.encodeObject = function (object, depth) {
-          // try to encode objects with custom codec first of non-primitives
-          var ext = this.extensionCodec.tryToEncode(object, this.context);
-          if (ext != null) {
-              this.encodeExtension(ext);
-          }
-          else if (Array.isArray(object)) {
-              this.encodeArray(object, depth);
-          }
-          else if (ArrayBuffer.isView(object)) {
-              this.encodeBinary(object);
-          }
-          else if (typeof object === "object") {
-              this.encodeMap(object, depth);
-          }
-          else {
-              // symbol, function and other special object come here unless extensionCodec handles them.
-              throw new Error("Unrecognized object: ".concat(Object.prototype.toString.apply(object)));
-          }
-      };
-      Encoder.prototype.encodeBinary = function (object) {
-          var size = object.byteLength;
-          if (size < 0x100) {
-              // bin 8
-              this.writeU8(0xc4);
-              this.writeU8(size);
-          }
-          else if (size < 0x10000) {
-              // bin 16
-              this.writeU8(0xc5);
-              this.writeU16(size);
-          }
-          else if (size < 0x100000000) {
-              // bin 32
-              this.writeU8(0xc6);
-              this.writeU32(size);
-          }
-          else {
-              throw new Error("Too large binary: ".concat(size));
-          }
-          var bytes = ensureUint8Array(object);
-          this.writeU8a(bytes);
-      };
-      Encoder.prototype.encodeArray = function (object, depth) {
-          var size = object.length;
-          if (size < 16) {
-              // fixarray
-              this.writeU8(0x90 + size);
-          }
-          else if (size < 0x10000) {
-              // array 16
-              this.writeU8(0xdc);
-              this.writeU16(size);
-          }
-          else if (size < 0x100000000) {
-              // array 32
-              this.writeU8(0xdd);
-              this.writeU32(size);
-          }
-          else {
-              throw new Error("Too large array: ".concat(size));
-          }
-          for (var _i = 0, object_1 = object; _i < object_1.length; _i++) {
-              var item = object_1[_i];
-              this.doEncode(item, depth + 1);
-          }
-      };
-      Encoder.prototype.countWithoutUndefined = function (object, keys) {
-          var count = 0;
-          for (var _i = 0, keys_1 = keys; _i < keys_1.length; _i++) {
-              var key = keys_1[_i];
-              if (object[key] !== undefined) {
-                  count++;
-              }
-          }
-          return count;
-      };
-      Encoder.prototype.encodeMap = function (object, depth) {
-          var keys = Object.keys(object);
-          if (this.sortKeys) {
-              keys.sort();
-          }
-          var size = this.ignoreUndefined ? this.countWithoutUndefined(object, keys) : keys.length;
-          if (size < 16) {
-              // fixmap
-              this.writeU8(0x80 + size);
-          }
-          else if (size < 0x10000) {
-              // map 16
-              this.writeU8(0xde);
-              this.writeU16(size);
-          }
-          else if (size < 0x100000000) {
-              // map 32
-              this.writeU8(0xdf);
-              this.writeU32(size);
-          }
-          else {
-              throw new Error("Too large map object: ".concat(size));
-          }
-          for (var _i = 0, keys_2 = keys; _i < keys_2.length; _i++) {
-              var key = keys_2[_i];
-              var value = object[key];
-              if (!(this.ignoreUndefined && value === undefined)) {
-                  this.encodeString(key);
-                  this.doEncode(value, depth + 1);
-              }
-          }
-      };
-      Encoder.prototype.encodeExtension = function (ext) {
-          var size = ext.data.length;
-          if (size === 1) {
-              // fixext 1
-              this.writeU8(0xd4);
-          }
-          else if (size === 2) {
-              // fixext 2
-              this.writeU8(0xd5);
-          }
-          else if (size === 4) {
-              // fixext 4
-              this.writeU8(0xd6);
-          }
-          else if (size === 8) {
-              // fixext 8
-              this.writeU8(0xd7);
-          }
-          else if (size === 16) {
-              // fixext 16
-              this.writeU8(0xd8);
-          }
-          else if (size < 0x100) {
-              // ext 8
-              this.writeU8(0xc7);
-              this.writeU8(size);
-          }
-          else if (size < 0x10000) {
-              // ext 16
-              this.writeU8(0xc8);
-              this.writeU16(size);
-          }
-          else if (size < 0x100000000) {
-              // ext 32
-              this.writeU8(0xc9);
-              this.writeU32(size);
-          }
-          else {
-              throw new Error("Too large extension object: ".concat(size));
-          }
-          this.writeI8(ext.type);
-          this.writeU8a(ext.data);
-      };
-      Encoder.prototype.writeU8 = function (value) {
-          this.ensureBufferSizeToWrite(1);
-          this.view.setUint8(this.pos, value);
-          this.pos++;
-      };
-      Encoder.prototype.writeU8a = function (values) {
-          var size = values.length;
-          this.ensureBufferSizeToWrite(size);
-          this.bytes.set(values, this.pos);
-          this.pos += size;
-      };
-      Encoder.prototype.writeI8 = function (value) {
-          this.ensureBufferSizeToWrite(1);
-          this.view.setInt8(this.pos, value);
-          this.pos++;
-      };
-      Encoder.prototype.writeU16 = function (value) {
-          this.ensureBufferSizeToWrite(2);
-          this.view.setUint16(this.pos, value);
-          this.pos += 2;
-      };
-      Encoder.prototype.writeI16 = function (value) {
-          this.ensureBufferSizeToWrite(2);
-          this.view.setInt16(this.pos, value);
-          this.pos += 2;
-      };
-      Encoder.prototype.writeU32 = function (value) {
-          this.ensureBufferSizeToWrite(4);
-          this.view.setUint32(this.pos, value);
-          this.pos += 4;
-      };
-      Encoder.prototype.writeI32 = function (value) {
-          this.ensureBufferSizeToWrite(4);
-          this.view.setInt32(this.pos, value);
-          this.pos += 4;
-      };
-      Encoder.prototype.writeF32 = function (value) {
-          this.ensureBufferSizeToWrite(4);
-          this.view.setFloat32(this.pos, value);
-          this.pos += 4;
-      };
-      Encoder.prototype.writeF64 = function (value) {
-          this.ensureBufferSizeToWrite(8);
-          this.view.setFloat64(this.pos, value);
-          this.pos += 8;
-      };
-      Encoder.prototype.writeU64 = function (value) {
-          this.ensureBufferSizeToWrite(8);
-          setUint64(this.view, this.pos, value);
-          this.pos += 8;
-      };
-      Encoder.prototype.writeI64 = function (value) {
-          this.ensureBufferSizeToWrite(8);
-          setInt64(this.view, this.pos, value);
-          this.pos += 8;
-      };
-      return Encoder;
-  }());
+  var readFixedString = readStringJS;
+  var readString8 = readStringJS;
+  var readString16 = readStringJS;
+  var readString32 = readStringJS;
+  function readStringJS(length) {
+  	let result;
+  	if (length < 16) {
+  		if (result = shortStringInJS(length))
+  			return result
+  	}
+  	if (length > 64 && decoder)
+  		return decoder.decode(src.subarray(position$1, position$1 += length))
+  	const end = position$1 + length;
+  	const units = [];
+  	result = '';
+  	while (position$1 < end) {
+  		const byte1 = src[position$1++];
+  		if ((byte1 & 0x80) === 0) {
+  			// 1 byte
+  			units.push(byte1);
+  		} else if ((byte1 & 0xe0) === 0xc0) {
+  			// 2 bytes
+  			const byte2 = src[position$1++] & 0x3f;
+  			units.push(((byte1 & 0x1f) << 6) | byte2);
+  		} else if ((byte1 & 0xf0) === 0xe0) {
+  			// 3 bytes
+  			const byte2 = src[position$1++] & 0x3f;
+  			const byte3 = src[position$1++] & 0x3f;
+  			units.push(((byte1 & 0x1f) << 12) | (byte2 << 6) | byte3);
+  		} else if ((byte1 & 0xf8) === 0xf0) {
+  			// 4 bytes
+  			const byte2 = src[position$1++] & 0x3f;
+  			const byte3 = src[position$1++] & 0x3f;
+  			const byte4 = src[position$1++] & 0x3f;
+  			let unit = ((byte1 & 0x07) << 0x12) | (byte2 << 0x0c) | (byte3 << 0x06) | byte4;
+  			if (unit > 0xffff) {
+  				unit -= 0x10000;
+  				units.push(((unit >>> 10) & 0x3ff) | 0xd800);
+  				unit = 0xdc00 | (unit & 0x3ff);
+  			}
+  			units.push(unit);
+  		} else {
+  			units.push(byte1);
+  		}
 
-  var defaultEncodeOptions = {};
-  /**
-   * It encodes `value` in the MessagePack format and
-   * returns a byte buffer.
-   *
-   * The returned buffer is a slice of a larger `ArrayBuffer`, so you have to use its `#byteOffset` and `#byteLength` in order to convert it to another typed arrays including NodeJS `Buffer`.
-   */
-  function encode(value, options) {
-      if (options === void 0) { options = defaultEncodeOptions; }
-      var encoder = new Encoder(options.extensionCodec, options.context, options.maxDepth, options.initialBufferSize, options.sortKeys, options.forceFloat32, options.ignoreUndefined, options.forceIntegerToFloat);
-      return encoder.encodeSharedRef(value);
+  		if (units.length >= 0x1000) {
+  			result += fromCharCode.apply(String, units);
+  			units.length = 0;
+  		}
+  	}
+
+  	if (units.length > 0) {
+  		result += fromCharCode.apply(String, units);
+  	}
+
+  	return result
   }
 
-  function prettyByte(byte) {
-      return "".concat(byte < 0 ? "-" : "", "0x").concat(Math.abs(byte).toString(16).padStart(2, "0"));
+  function readArray$1(length) {
+  	let array = new Array(length);
+  	for (let i = 0; i < length; i++) {
+  		array[i] = read();
+  	}
+  	if (currentUnpackr.freezeData)
+  		return Object.freeze(array)
+  	return array
   }
 
-  var DEFAULT_MAX_KEY_LENGTH = 16;
-  var DEFAULT_MAX_LENGTH_PER_KEY = 16;
-  var CachedKeyDecoder = /** @class */ (function () {
-      function CachedKeyDecoder(maxKeyLength, maxLengthPerKey) {
-          if (maxKeyLength === void 0) { maxKeyLength = DEFAULT_MAX_KEY_LENGTH; }
-          if (maxLengthPerKey === void 0) { maxLengthPerKey = DEFAULT_MAX_LENGTH_PER_KEY; }
-          this.maxKeyLength = maxKeyLength;
-          this.maxLengthPerKey = maxLengthPerKey;
-          this.hit = 0;
-          this.miss = 0;
-          // avoid `new Array(N)`, which makes a sparse array,
-          // because a sparse array is typically slower than a non-sparse array.
-          this.caches = [];
-          for (var i = 0; i < this.maxKeyLength; i++) {
-              this.caches.push([]);
-          }
-      }
-      CachedKeyDecoder.prototype.canBeCached = function (byteLength) {
-          return byteLength > 0 && byteLength <= this.maxKeyLength;
-      };
-      CachedKeyDecoder.prototype.find = function (bytes, inputOffset, byteLength) {
-          var records = this.caches[byteLength - 1];
-          FIND_CHUNK: for (var _i = 0, records_1 = records; _i < records_1.length; _i++) {
-              var record = records_1[_i];
-              var recordBytes = record.bytes;
-              for (var j = 0; j < byteLength; j++) {
-                  if (recordBytes[j] !== bytes[inputOffset + j]) {
-                      continue FIND_CHUNK;
-                  }
-              }
-              return record.str;
-          }
-          return null;
-      };
-      CachedKeyDecoder.prototype.store = function (bytes, value) {
-          var records = this.caches[bytes.length - 1];
-          var record = { bytes: bytes, str: value };
-          if (records.length >= this.maxLengthPerKey) {
-              // `records` are full!
-              // Set `record` to an arbitrary position.
-              records[(Math.random() * records.length) | 0] = record;
-          }
-          else {
-              records.push(record);
-          }
-      };
-      CachedKeyDecoder.prototype.decode = function (bytes, inputOffset, byteLength) {
-          var cachedValue = this.find(bytes, inputOffset, byteLength);
-          if (cachedValue != null) {
-              this.hit++;
-              return cachedValue;
-          }
-          this.miss++;
-          var str = utf8DecodeJs(bytes, inputOffset, byteLength);
-          // Ensure to copy a slice of bytes because the byte may be NodeJS Buffer and Buffer#slice() returns a reference to its internal ArrayBuffer.
-          var slicedCopyOfBytes = Uint8Array.prototype.slice.call(bytes, inputOffset, inputOffset + byteLength);
-          this.store(slicedCopyOfBytes, str);
-          return str;
-      };
-      return CachedKeyDecoder;
-  }());
+  function readMap(length) {
+  	if (currentUnpackr.mapsAsObjects) {
+  		let object = {};
+  		for (let i = 0; i < length; i++) {
+  			let key = readKey$1();
+  			if (key === '__proto__')
+  				key = '__proto_';
+  			object[key] = read();
+  		}
+  		return object
+  	} else {
+  		let map = new Map();
+  		for (let i = 0; i < length; i++) {
+  			map.set(read(), read());
+  		}
+  		return map
+  	}
+  }
 
-  var __awaiter$1 = (null && null.__awaiter) || function (thisArg, _arguments, P, generator) {
-      function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-      return new (P || (P = Promise))(function (resolve, reject) {
-          function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-          function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-          function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-          step((generator = generator.apply(thisArg, _arguments || [])).next());
-      });
+  var fromCharCode = String.fromCharCode;
+  function longStringInJS(length) {
+  	let start = position$1;
+  	let bytes = new Array(length);
+  	for (let i = 0; i < length; i++) {
+  		const byte = src[position$1++];
+  		if ((byte & 0x80) > 0) {
+  				position$1 = start;
+  				return
+  			}
+  			bytes[i] = byte;
+  		}
+  		return fromCharCode.apply(String, bytes)
+  }
+  function shortStringInJS(length) {
+  	if (length < 4) {
+  		if (length < 2) {
+  			if (length === 0)
+  				return ''
+  			else {
+  				let a = src[position$1++];
+  				if ((a & 0x80) > 1) {
+  					position$1 -= 1;
+  					return
+  				}
+  				return fromCharCode(a)
+  			}
+  		} else {
+  			let a = src[position$1++];
+  			let b = src[position$1++];
+  			if ((a & 0x80) > 0 || (b & 0x80) > 0) {
+  				position$1 -= 2;
+  				return
+  			}
+  			if (length < 3)
+  				return fromCharCode(a, b)
+  			let c = src[position$1++];
+  			if ((c & 0x80) > 0) {
+  				position$1 -= 3;
+  				return
+  			}
+  			return fromCharCode(a, b, c)
+  		}
+  	} else {
+  		let a = src[position$1++];
+  		let b = src[position$1++];
+  		let c = src[position$1++];
+  		let d = src[position$1++];
+  		if ((a & 0x80) > 0 || (b & 0x80) > 0 || (c & 0x80) > 0 || (d & 0x80) > 0) {
+  			position$1 -= 4;
+  			return
+  		}
+  		if (length < 6) {
+  			if (length === 4)
+  				return fromCharCode(a, b, c, d)
+  			else {
+  				let e = src[position$1++];
+  				if ((e & 0x80) > 0) {
+  					position$1 -= 5;
+  					return
+  				}
+  				return fromCharCode(a, b, c, d, e)
+  			}
+  		} else if (length < 8) {
+  			let e = src[position$1++];
+  			let f = src[position$1++];
+  			if ((e & 0x80) > 0 || (f & 0x80) > 0) {
+  				position$1 -= 6;
+  				return
+  			}
+  			if (length < 7)
+  				return fromCharCode(a, b, c, d, e, f)
+  			let g = src[position$1++];
+  			if ((g & 0x80) > 0) {
+  				position$1 -= 7;
+  				return
+  			}
+  			return fromCharCode(a, b, c, d, e, f, g)
+  		} else {
+  			let e = src[position$1++];
+  			let f = src[position$1++];
+  			let g = src[position$1++];
+  			let h = src[position$1++];
+  			if ((e & 0x80) > 0 || (f & 0x80) > 0 || (g & 0x80) > 0 || (h & 0x80) > 0) {
+  				position$1 -= 8;
+  				return
+  			}
+  			if (length < 10) {
+  				if (length === 8)
+  					return fromCharCode(a, b, c, d, e, f, g, h)
+  				else {
+  					let i = src[position$1++];
+  					if ((i & 0x80) > 0) {
+  						position$1 -= 9;
+  						return
+  					}
+  					return fromCharCode(a, b, c, d, e, f, g, h, i)
+  				}
+  			} else if (length < 12) {
+  				let i = src[position$1++];
+  				let j = src[position$1++];
+  				if ((i & 0x80) > 0 || (j & 0x80) > 0) {
+  					position$1 -= 10;
+  					return
+  				}
+  				if (length < 11)
+  					return fromCharCode(a, b, c, d, e, f, g, h, i, j)
+  				let k = src[position$1++];
+  				if ((k & 0x80) > 0) {
+  					position$1 -= 11;
+  					return
+  				}
+  				return fromCharCode(a, b, c, d, e, f, g, h, i, j, k)
+  			} else {
+  				let i = src[position$1++];
+  				let j = src[position$1++];
+  				let k = src[position$1++];
+  				let l = src[position$1++];
+  				if ((i & 0x80) > 0 || (j & 0x80) > 0 || (k & 0x80) > 0 || (l & 0x80) > 0) {
+  					position$1 -= 12;
+  					return
+  				}
+  				if (length < 14) {
+  					if (length === 12)
+  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l)
+  					else {
+  						let m = src[position$1++];
+  						if ((m & 0x80) > 0) {
+  							position$1 -= 13;
+  							return
+  						}
+  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m)
+  					}
+  				} else {
+  					let m = src[position$1++];
+  					let n = src[position$1++];
+  					if ((m & 0x80) > 0 || (n & 0x80) > 0) {
+  						position$1 -= 14;
+  						return
+  					}
+  					if (length < 15)
+  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n)
+  					let o = src[position$1++];
+  					if ((o & 0x80) > 0) {
+  						position$1 -= 15;
+  						return
+  					}
+  					return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)
+  				}
+  			}
+  		}
+  	}
+  }
+
+  function readOnlyJSString() {
+  	let token = src[position$1++];
+  	let length;
+  	if (token < 0xc0) {
+  		// fixstr
+  		length = token - 0xa0;
+  	} else {
+  		switch(token) {
+  			case 0xd9:
+  			// str 8
+  				length = src[position$1++];
+  				break
+  			case 0xda:
+  			// str 16
+  				length = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				break
+  			case 0xdb:
+  			// str 32
+  				length = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				break
+  			default:
+  				throw new Error('Expected string')
+  		}
+  	}
+  	return readStringJS(length)
+  }
+
+
+  function readBin(length) {
+  	return currentUnpackr.copyBuffers ?
+  		// specifically use the copying slice (not the node one)
+  		Uint8Array.prototype.slice.call(src, position$1, position$1 += length) :
+  		src.subarray(position$1, position$1 += length)
+  }
+  function readExt(length) {
+  	let type = src[position$1++];
+  	if (currentExtensions[type]) {
+  		let end;
+  		return currentExtensions[type](src.subarray(position$1, end = (position$1 += length)), (readPosition) => {
+  			position$1 = readPosition;
+  			try {
+  				return read();
+  			} finally {
+  				position$1 = end;
+  			}
+  		})
+  	}
+  	else
+  		throw new Error('Unknown extension type ' + type)
+  }
+
+  var keyCache = new Array(4096);
+  function readKey$1() {
+  	let length = src[position$1++];
+  	if (length >= 0xa0 && length < 0xc0) {
+  		// fixstr, potentially use key cache
+  		length = length - 0xa0;
+  		if (srcStringEnd >= position$1) // if it has been extracted, must use it (and faster anyway)
+  			return srcString.slice(position$1 - srcStringStart, (position$1 += length) - srcStringStart)
+  		else if (!(srcStringEnd == 0 && srcEnd < 180))
+  			return readFixedString(length)
+  	} else { // not cacheable, go back and do a standard read
+  		position$1--;
+  		return read().toString()
+  	}
+  	let key = ((length << 5) ^ (length > 1 ? dataView.getUint16(position$1) : length > 0 ? src[position$1] : 0)) & 0xfff;
+  	let entry = keyCache[key];
+  	let checkPosition = position$1;
+  	let end = position$1 + length - 3;
+  	let chunk;
+  	let i = 0;
+  	if (entry && entry.bytes == length) {
+  		while (checkPosition < end) {
+  			chunk = dataView.getUint32(checkPosition);
+  			if (chunk != entry[i++]) {
+  				checkPosition = 0x70000000;
+  				break
+  			}
+  			checkPosition += 4;
+  		}
+  		end += 3;
+  		while (checkPosition < end) {
+  			chunk = src[checkPosition++];
+  			if (chunk != entry[i++]) {
+  				checkPosition = 0x70000000;
+  				break
+  			}
+  		}
+  		if (checkPosition === end) {
+  			position$1 = checkPosition;
+  			return entry.string
+  		}
+  		end -= 3;
+  		checkPosition = position$1;
+  	}
+  	entry = [];
+  	keyCache[key] = entry;
+  	entry.bytes = length;
+  	while (checkPosition < end) {
+  		chunk = dataView.getUint32(checkPosition);
+  		entry.push(chunk);
+  		checkPosition += 4;
+  	}
+  	end += 3;
+  	while (checkPosition < end) {
+  		chunk = src[checkPosition++];
+  		entry.push(chunk);
+  	}
+  	// for small blocks, avoiding the overhead of the extract call is helpful
+  	let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
+  	if (string != null)
+  		return entry.string = string
+  	return entry.string = readFixedString(length)
+  }
+
+  // the registration of the record definition extension (as "r")
+  const recordDefinition = (id, highByte) => {
+  	let structure = read().map(property => property.toString()); // ensure that all keys are strings and that the array is mutable
+  	let firstByte = id;
+  	if (highByte !== undefined) {
+  		id = id < 32 ? -((highByte << 5) + id) : ((highByte << 5) + id);
+  		structure.highByte = highByte;
+  	}
+  	let existingStructure = currentStructures[id];
+  	if (existingStructure && existingStructure.isShared) {
+  		(currentStructures.restoreStructures || (currentStructures.restoreStructures = []))[id] = existingStructure;
+  	}
+  	currentStructures[id] = structure;
+  	structure.read = createStructureReader(structure, firstByte);
+  	return structure.read()
   };
-  var __generator$2 = (null && null.__generator) || function (thisArg, body) {
-      var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
-      return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-      function verb(n) { return function (v) { return step([n, v]); }; }
-      function step(op) {
-          if (f) throw new TypeError("Generator is already executing.");
-          while (_) try {
-              if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-              if (y = 0, t) op = [op[0] & 2, t.value];
-              switch (op[0]) {
-                  case 0: case 1: t = op; break;
-                  case 4: _.label++; return { value: op[1], done: false };
-                  case 5: _.label++; y = op[1]; op = [0]; continue;
-                  case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                  default:
-                      if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                      if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                      if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                      if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                      if (t[2]) _.ops.pop();
-                      _.trys.pop(); continue;
-              }
-              op = body.call(thisArg, _);
-          } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-          if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-      }
+  currentExtensions[0] = () => {}; // notepack defines extension 0 to mean undefined, so use that as the default here
+  currentExtensions[0].noBuffer = true;
+
+  currentExtensions[0x65] = () => {
+  	let data = read();
+  	return (globalThis[data[0]] || Error)(data[1])
   };
-  var __asyncValues = (null && null.__asyncValues) || function (o) {
-      if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-      var m = o[Symbol.asyncIterator], i;
-      return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
-      function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
-      function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+
+  currentExtensions[0x69] = (data) => {
+  	// id extension (for structured clones)
+  	let id = dataView.getUint32(position$1 - 4);
+  	if (!referenceMap)
+  		referenceMap = new Map();
+  	let token = src[position$1];
+  	let target;
+  	// TODO: handle Maps, Sets, and other types that can cycle; this is complicated, because you potentially need to read
+  	// ahead past references to record structure definitions
+  	if (token >= 0x90 && token < 0xa0 || token == 0xdc || token == 0xdd)
+  		target = [];
+  	else
+  		target = {};
+
+  	let refEntry = { target }; // a placeholder object
+  	referenceMap.set(id, refEntry);
+  	let targetProperties = read(); // read the next value as the target object to id
+  	if (refEntry.used) // there is a cycle, so we have to assign properties to original target
+  		return Object.assign(target, targetProperties)
+  	refEntry.target = targetProperties; // the placeholder wasn't used, replace with the deserialized one
+  	return targetProperties // no cycle, can just use the returned read object
   };
-  var __await$1 = (null && null.__await) || function (v) { return this instanceof __await$1 ? (this.v = v, this) : new __await$1(v); };
-  var __asyncGenerator$1 = (null && null.__asyncGenerator) || function (thisArg, _arguments, generator) {
-      if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-      var g = generator.apply(thisArg, _arguments || []), i, q = [];
-      return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
-      function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
-      function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
-      function step(r) { r.value instanceof __await$1 ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r); }
-      function fulfill(value) { resume("next", value); }
-      function reject(value) { resume("throw", value); }
-      function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+
+  currentExtensions[0x70] = (data) => {
+  	// pointer extension (for structured clones)
+  	let id = dataView.getUint32(position$1 - 4);
+  	let refEntry = referenceMap.get(id);
+  	refEntry.used = true;
+  	return refEntry.target
   };
-  var isValidMapKeyType = function (key) {
-      var keyType = typeof key;
-      return keyType === "string" || keyType === "number";
+
+  currentExtensions[0x73] = () => new Set(read());
+
+  const typedArrays = ['Int8','Uint8','Uint8Clamped','Int16','Uint16','Int32','Uint32','Float32','Float64','BigInt64','BigUint64'].map(type => type + 'Array');
+
+  currentExtensions[0x74] = (data) => {
+  	let typeCode = data[0];
+  	let typedArrayName = typedArrays[typeCode];
+  	if (!typedArrayName)
+  		throw new Error('Could not find typed array for code ' + typeCode)
+  	// we have to always slice/copy here to get a new ArrayBuffer that is word/byte aligned
+  	return new globalThis[typedArrayName](Uint8Array.prototype.slice.call(data, 1).buffer)
   };
-  var HEAD_BYTE_REQUIRED = -1;
-  var EMPTY_VIEW = new DataView(new ArrayBuffer(0));
-  var EMPTY_BYTES = new Uint8Array(EMPTY_VIEW.buffer);
-  // IE11: Hack to support IE11.
-  // IE11: Drop this hack and just use RangeError when IE11 is obsolete.
-  var DataViewIndexOutOfBoundsError = (function () {
-      try {
-          // IE11: The spec says it should throw RangeError,
-          // IE11: but in IE11 it throws TypeError.
-          EMPTY_VIEW.getInt8(0);
-      }
-      catch (e) {
-          return e.constructor;
-      }
-      throw new Error("never reached");
-  })();
-  var MORE_DATA = new DataViewIndexOutOfBoundsError("Insufficient data");
-  var sharedCachedKeyDecoder = new CachedKeyDecoder();
-  var Decoder = /** @class */ (function () {
-      function Decoder(extensionCodec, context, maxStrLength, maxBinLength, maxArrayLength, maxMapLength, maxExtLength, keyDecoder) {
-          if (extensionCodec === void 0) { extensionCodec = ExtensionCodec.defaultCodec; }
-          if (context === void 0) { context = undefined; }
-          if (maxStrLength === void 0) { maxStrLength = UINT32_MAX; }
-          if (maxBinLength === void 0) { maxBinLength = UINT32_MAX; }
-          if (maxArrayLength === void 0) { maxArrayLength = UINT32_MAX; }
-          if (maxMapLength === void 0) { maxMapLength = UINT32_MAX; }
-          if (maxExtLength === void 0) { maxExtLength = UINT32_MAX; }
-          if (keyDecoder === void 0) { keyDecoder = sharedCachedKeyDecoder; }
-          this.extensionCodec = extensionCodec;
-          this.context = context;
-          this.maxStrLength = maxStrLength;
-          this.maxBinLength = maxBinLength;
-          this.maxArrayLength = maxArrayLength;
-          this.maxMapLength = maxMapLength;
-          this.maxExtLength = maxExtLength;
-          this.keyDecoder = keyDecoder;
-          this.totalPos = 0;
-          this.pos = 0;
-          this.view = EMPTY_VIEW;
-          this.bytes = EMPTY_BYTES;
-          this.headByte = HEAD_BYTE_REQUIRED;
-          this.stack = [];
-      }
-      Decoder.prototype.reinitializeState = function () {
-          this.totalPos = 0;
-          this.headByte = HEAD_BYTE_REQUIRED;
-          this.stack.length = 0;
-          // view, bytes, and pos will be re-initialized in setBuffer()
-      };
-      Decoder.prototype.setBuffer = function (buffer) {
-          this.bytes = ensureUint8Array(buffer);
-          this.view = createDataView(this.bytes);
-          this.pos = 0;
-      };
-      Decoder.prototype.appendBuffer = function (buffer) {
-          if (this.headByte === HEAD_BYTE_REQUIRED && !this.hasRemaining(1)) {
-              this.setBuffer(buffer);
-          }
-          else {
-              var remainingData = this.bytes.subarray(this.pos);
-              var newData = ensureUint8Array(buffer);
-              // concat remainingData + newData
-              var newBuffer = new Uint8Array(remainingData.length + newData.length);
-              newBuffer.set(remainingData);
-              newBuffer.set(newData, remainingData.length);
-              this.setBuffer(newBuffer);
-          }
-      };
-      Decoder.prototype.hasRemaining = function (size) {
-          return this.view.byteLength - this.pos >= size;
-      };
-      Decoder.prototype.createExtraByteError = function (posToShow) {
-          var _a = this, view = _a.view, pos = _a.pos;
-          return new RangeError("Extra ".concat(view.byteLength - pos, " of ").concat(view.byteLength, " byte(s) found at buffer[").concat(posToShow, "]"));
-      };
-      /**
-       * @throws {@link DecodeError}
-       * @throws {@link RangeError}
-       */
-      Decoder.prototype.decode = function (buffer) {
-          this.reinitializeState();
-          this.setBuffer(buffer);
-          var object = this.doDecodeSync();
-          if (this.hasRemaining(1)) {
-              throw this.createExtraByteError(this.pos);
-          }
-          return object;
-      };
-      Decoder.prototype.decodeMulti = function (buffer) {
-          return __generator$2(this, function (_a) {
-              switch (_a.label) {
-                  case 0:
-                      this.reinitializeState();
-                      this.setBuffer(buffer);
-                      _a.label = 1;
-                  case 1:
-                      if (!this.hasRemaining(1)) return [3 /*break*/, 3];
-                      return [4 /*yield*/, this.doDecodeSync()];
-                  case 2:
-                      _a.sent();
-                      return [3 /*break*/, 1];
-                  case 3: return [2 /*return*/];
-              }
-          });
-      };
-      Decoder.prototype.decodeAsync = function (stream) {
-          var stream_1, stream_1_1;
-          var e_1, _a;
-          return __awaiter$1(this, void 0, void 0, function () {
-              var decoded, object, buffer, e_1_1, _b, headByte, pos, totalPos;
-              return __generator$2(this, function (_c) {
-                  switch (_c.label) {
-                      case 0:
-                          decoded = false;
-                          _c.label = 1;
-                      case 1:
-                          _c.trys.push([1, 6, 7, 12]);
-                          stream_1 = __asyncValues(stream);
-                          _c.label = 2;
-                      case 2: return [4 /*yield*/, stream_1.next()];
-                      case 3:
-                          if (!(stream_1_1 = _c.sent(), !stream_1_1.done)) return [3 /*break*/, 5];
-                          buffer = stream_1_1.value;
-                          if (decoded) {
-                              throw this.createExtraByteError(this.totalPos);
-                          }
-                          this.appendBuffer(buffer);
-                          try {
-                              object = this.doDecodeSync();
-                              decoded = true;
-                          }
-                          catch (e) {
-                              if (!(e instanceof DataViewIndexOutOfBoundsError)) {
-                                  throw e; // rethrow
-                              }
-                              // fallthrough
-                          }
-                          this.totalPos += this.pos;
-                          _c.label = 4;
-                      case 4: return [3 /*break*/, 2];
-                      case 5: return [3 /*break*/, 12];
-                      case 6:
-                          e_1_1 = _c.sent();
-                          e_1 = { error: e_1_1 };
-                          return [3 /*break*/, 12];
-                      case 7:
-                          _c.trys.push([7, , 10, 11]);
-                          if (!(stream_1_1 && !stream_1_1.done && (_a = stream_1.return))) return [3 /*break*/, 9];
-                          return [4 /*yield*/, _a.call(stream_1)];
-                      case 8:
-                          _c.sent();
-                          _c.label = 9;
-                      case 9: return [3 /*break*/, 11];
-                      case 10:
-                          if (e_1) throw e_1.error;
-                          return [7 /*endfinally*/];
-                      case 11: return [7 /*endfinally*/];
-                      case 12:
-                          if (decoded) {
-                              if (this.hasRemaining(1)) {
-                                  throw this.createExtraByteError(this.totalPos);
-                              }
-                              return [2 /*return*/, object];
-                          }
-                          _b = this, headByte = _b.headByte, pos = _b.pos, totalPos = _b.totalPos;
-                          throw new RangeError("Insufficient data in parsing ".concat(prettyByte(headByte), " at ").concat(totalPos, " (").concat(pos, " in the current buffer)"));
-                  }
-              });
-          });
-      };
-      Decoder.prototype.decodeArrayStream = function (stream) {
-          return this.decodeMultiAsync(stream, true);
-      };
-      Decoder.prototype.decodeStream = function (stream) {
-          return this.decodeMultiAsync(stream, false);
-      };
-      Decoder.prototype.decodeMultiAsync = function (stream, isArray) {
-          return __asyncGenerator$1(this, arguments, function decodeMultiAsync_1() {
-              var isArrayHeaderRequired, arrayItemsLeft, stream_2, stream_2_1, buffer, e_2, e_3_1;
-              var e_3, _a;
-              return __generator$2(this, function (_b) {
-                  switch (_b.label) {
-                      case 0:
-                          isArrayHeaderRequired = isArray;
-                          arrayItemsLeft = -1;
-                          _b.label = 1;
-                      case 1:
-                          _b.trys.push([1, 13, 14, 19]);
-                          stream_2 = __asyncValues(stream);
-                          _b.label = 2;
-                      case 2: return [4 /*yield*/, __await$1(stream_2.next())];
-                      case 3:
-                          if (!(stream_2_1 = _b.sent(), !stream_2_1.done)) return [3 /*break*/, 12];
-                          buffer = stream_2_1.value;
-                          if (isArray && arrayItemsLeft === 0) {
-                              throw this.createExtraByteError(this.totalPos);
-                          }
-                          this.appendBuffer(buffer);
-                          if (isArrayHeaderRequired) {
-                              arrayItemsLeft = this.readArraySize();
-                              isArrayHeaderRequired = false;
-                              this.complete();
-                          }
-                          _b.label = 4;
-                      case 4:
-                          _b.trys.push([4, 9, , 10]);
-                          _b.label = 5;
-                      case 5:
-                          if (!true) return [3 /*break*/, 8];
-                          return [4 /*yield*/, __await$1(this.doDecodeSync())];
-                      case 6: return [4 /*yield*/, _b.sent()];
-                      case 7:
-                          _b.sent();
-                          if (--arrayItemsLeft === 0) {
-                              return [3 /*break*/, 8];
-                          }
-                          return [3 /*break*/, 5];
-                      case 8: return [3 /*break*/, 10];
-                      case 9:
-                          e_2 = _b.sent();
-                          if (!(e_2 instanceof DataViewIndexOutOfBoundsError)) {
-                              throw e_2; // rethrow
-                          }
-                          return [3 /*break*/, 10];
-                      case 10:
-                          this.totalPos += this.pos;
-                          _b.label = 11;
-                      case 11: return [3 /*break*/, 2];
-                      case 12: return [3 /*break*/, 19];
-                      case 13:
-                          e_3_1 = _b.sent();
-                          e_3 = { error: e_3_1 };
-                          return [3 /*break*/, 19];
-                      case 14:
-                          _b.trys.push([14, , 17, 18]);
-                          if (!(stream_2_1 && !stream_2_1.done && (_a = stream_2.return))) return [3 /*break*/, 16];
-                          return [4 /*yield*/, __await$1(_a.call(stream_2))];
-                      case 15:
-                          _b.sent();
-                          _b.label = 16;
-                      case 16: return [3 /*break*/, 18];
-                      case 17:
-                          if (e_3) throw e_3.error;
-                          return [7 /*endfinally*/];
-                      case 18: return [7 /*endfinally*/];
-                      case 19: return [2 /*return*/];
-                  }
-              });
-          });
-      };
-      Decoder.prototype.doDecodeSync = function () {
-          DECODE: while (true) {
-              var headByte = this.readHeadByte();
-              var object = void 0;
-              if (headByte >= 0xe0) {
-                  // negative fixint (111x xxxx) 0xe0 - 0xff
-                  object = headByte - 0x100;
-              }
-              else if (headByte < 0xc0) {
-                  if (headByte < 0x80) {
-                      // positive fixint (0xxx xxxx) 0x00 - 0x7f
-                      object = headByte;
-                  }
-                  else if (headByte < 0x90) {
-                      // fixmap (1000 xxxx) 0x80 - 0x8f
-                      var size = headByte - 0x80;
-                      if (size !== 0) {
-                          this.pushMapState(size);
-                          this.complete();
-                          continue DECODE;
-                      }
-                      else {
-                          object = {};
-                      }
-                  }
-                  else if (headByte < 0xa0) {
-                      // fixarray (1001 xxxx) 0x90 - 0x9f
-                      var size = headByte - 0x90;
-                      if (size !== 0) {
-                          this.pushArrayState(size);
-                          this.complete();
-                          continue DECODE;
-                      }
-                      else {
-                          object = [];
-                      }
-                  }
-                  else {
-                      // fixstr (101x xxxx) 0xa0 - 0xbf
-                      var byteLength = headByte - 0xa0;
-                      object = this.decodeUtf8String(byteLength, 0);
-                  }
-              }
-              else if (headByte === 0xc0) {
-                  // nil
-                  object = null;
-              }
-              else if (headByte === 0xc2) {
-                  // false
-                  object = false;
-              }
-              else if (headByte === 0xc3) {
-                  // true
-                  object = true;
-              }
-              else if (headByte === 0xca) {
-                  // float 32
-                  object = this.readF32();
-              }
-              else if (headByte === 0xcb) {
-                  // float 64
-                  object = this.readF64();
-              }
-              else if (headByte === 0xcc) {
-                  // uint 8
-                  object = this.readU8();
-              }
-              else if (headByte === 0xcd) {
-                  // uint 16
-                  object = this.readU16();
-              }
-              else if (headByte === 0xce) {
-                  // uint 32
-                  object = this.readU32();
-              }
-              else if (headByte === 0xcf) {
-                  // uint 64
-                  object = this.readU64();
-              }
-              else if (headByte === 0xd0) {
-                  // int 8
-                  object = this.readI8();
-              }
-              else if (headByte === 0xd1) {
-                  // int 16
-                  object = this.readI16();
-              }
-              else if (headByte === 0xd2) {
-                  // int 32
-                  object = this.readI32();
-              }
-              else if (headByte === 0xd3) {
-                  // int 64
-                  object = this.readI64();
-              }
-              else if (headByte === 0xd9) {
-                  // str 8
-                  var byteLength = this.lookU8();
-                  object = this.decodeUtf8String(byteLength, 1);
-              }
-              else if (headByte === 0xda) {
-                  // str 16
-                  var byteLength = this.lookU16();
-                  object = this.decodeUtf8String(byteLength, 2);
-              }
-              else if (headByte === 0xdb) {
-                  // str 32
-                  var byteLength = this.lookU32();
-                  object = this.decodeUtf8String(byteLength, 4);
-              }
-              else if (headByte === 0xdc) {
-                  // array 16
-                  var size = this.readU16();
-                  if (size !== 0) {
-                      this.pushArrayState(size);
-                      this.complete();
-                      continue DECODE;
-                  }
-                  else {
-                      object = [];
-                  }
-              }
-              else if (headByte === 0xdd) {
-                  // array 32
-                  var size = this.readU32();
-                  if (size !== 0) {
-                      this.pushArrayState(size);
-                      this.complete();
-                      continue DECODE;
-                  }
-                  else {
-                      object = [];
-                  }
-              }
-              else if (headByte === 0xde) {
-                  // map 16
-                  var size = this.readU16();
-                  if (size !== 0) {
-                      this.pushMapState(size);
-                      this.complete();
-                      continue DECODE;
-                  }
-                  else {
-                      object = {};
-                  }
-              }
-              else if (headByte === 0xdf) {
-                  // map 32
-                  var size = this.readU32();
-                  if (size !== 0) {
-                      this.pushMapState(size);
-                      this.complete();
-                      continue DECODE;
-                  }
-                  else {
-                      object = {};
-                  }
-              }
-              else if (headByte === 0xc4) {
-                  // bin 8
-                  var size = this.lookU8();
-                  object = this.decodeBinary(size, 1);
-              }
-              else if (headByte === 0xc5) {
-                  // bin 16
-                  var size = this.lookU16();
-                  object = this.decodeBinary(size, 2);
-              }
-              else if (headByte === 0xc6) {
-                  // bin 32
-                  var size = this.lookU32();
-                  object = this.decodeBinary(size, 4);
-              }
-              else if (headByte === 0xd4) {
-                  // fixext 1
-                  object = this.decodeExtension(1, 0);
-              }
-              else if (headByte === 0xd5) {
-                  // fixext 2
-                  object = this.decodeExtension(2, 0);
-              }
-              else if (headByte === 0xd6) {
-                  // fixext 4
-                  object = this.decodeExtension(4, 0);
-              }
-              else if (headByte === 0xd7) {
-                  // fixext 8
-                  object = this.decodeExtension(8, 0);
-              }
-              else if (headByte === 0xd8) {
-                  // fixext 16
-                  object = this.decodeExtension(16, 0);
-              }
-              else if (headByte === 0xc7) {
-                  // ext 8
-                  var size = this.lookU8();
-                  object = this.decodeExtension(size, 1);
-              }
-              else if (headByte === 0xc8) {
-                  // ext 16
-                  var size = this.lookU16();
-                  object = this.decodeExtension(size, 2);
-              }
-              else if (headByte === 0xc9) {
-                  // ext 32
-                  var size = this.lookU32();
-                  object = this.decodeExtension(size, 4);
-              }
-              else {
-                  throw new DecodeError("Unrecognized type byte: ".concat(prettyByte(headByte)));
-              }
-              this.complete();
-              var stack = this.stack;
-              while (stack.length > 0) {
-                  // arrays and maps
-                  var state = stack[stack.length - 1];
-                  if (state.type === 0 /* State.ARRAY */) {
-                      state.array[state.position] = object;
-                      state.position++;
-                      if (state.position === state.size) {
-                          stack.pop();
-                          object = state.array;
-                      }
-                      else {
-                          continue DECODE;
-                      }
-                  }
-                  else if (state.type === 1 /* State.MAP_KEY */) {
-                      if (!isValidMapKeyType(object)) {
-                          throw new DecodeError("The type of key must be string or number but " + typeof object);
-                      }
-                      if (object === "__proto__") {
-                          throw new DecodeError("The key __proto__ is not allowed");
-                      }
-                      state.key = object;
-                      state.type = 2 /* State.MAP_VALUE */;
-                      continue DECODE;
-                  }
-                  else {
-                      // it must be `state.type === State.MAP_VALUE` here
-                      state.map[state.key] = object;
-                      state.readCount++;
-                      if (state.readCount === state.size) {
-                          stack.pop();
-                          object = state.map;
-                      }
-                      else {
-                          state.key = null;
-                          state.type = 1 /* State.MAP_KEY */;
-                          continue DECODE;
-                      }
-                  }
-              }
-              return object;
-          }
-      };
-      Decoder.prototype.readHeadByte = function () {
-          if (this.headByte === HEAD_BYTE_REQUIRED) {
-              this.headByte = this.readU8();
-              // console.log("headByte", prettyByte(this.headByte));
-          }
-          return this.headByte;
-      };
-      Decoder.prototype.complete = function () {
-          this.headByte = HEAD_BYTE_REQUIRED;
-      };
-      Decoder.prototype.readArraySize = function () {
-          var headByte = this.readHeadByte();
-          switch (headByte) {
-              case 0xdc:
-                  return this.readU16();
-              case 0xdd:
-                  return this.readU32();
-              default: {
-                  if (headByte < 0xa0) {
-                      return headByte - 0x90;
-                  }
-                  else {
-                      throw new DecodeError("Unrecognized array type byte: ".concat(prettyByte(headByte)));
-                  }
-              }
-          }
-      };
-      Decoder.prototype.pushMapState = function (size) {
-          if (size > this.maxMapLength) {
-              throw new DecodeError("Max length exceeded: map length (".concat(size, ") > maxMapLengthLength (").concat(this.maxMapLength, ")"));
-          }
-          this.stack.push({
-              type: 1 /* State.MAP_KEY */,
-              size: size,
-              key: null,
-              readCount: 0,
-              map: {},
-          });
-      };
-      Decoder.prototype.pushArrayState = function (size) {
-          if (size > this.maxArrayLength) {
-              throw new DecodeError("Max length exceeded: array length (".concat(size, ") > maxArrayLength (").concat(this.maxArrayLength, ")"));
-          }
-          this.stack.push({
-              type: 0 /* State.ARRAY */,
-              size: size,
-              array: new Array(size),
-              position: 0,
-          });
-      };
-      Decoder.prototype.decodeUtf8String = function (byteLength, headerOffset) {
-          var _a;
-          if (byteLength > this.maxStrLength) {
-              throw new DecodeError("Max length exceeded: UTF-8 byte length (".concat(byteLength, ") > maxStrLength (").concat(this.maxStrLength, ")"));
-          }
-          if (this.bytes.byteLength < this.pos + headerOffset + byteLength) {
-              throw MORE_DATA;
-          }
-          var offset = this.pos + headerOffset;
-          var object;
-          if (this.stateIsMapKey() && ((_a = this.keyDecoder) === null || _a === void 0 ? void 0 : _a.canBeCached(byteLength))) {
-              object = this.keyDecoder.decode(this.bytes, offset, byteLength);
-          }
-          else if (byteLength > TEXT_DECODER_THRESHOLD) {
-              object = utf8DecodeTD(this.bytes, offset, byteLength);
-          }
-          else {
-              object = utf8DecodeJs(this.bytes, offset, byteLength);
-          }
-          this.pos += headerOffset + byteLength;
-          return object;
-      };
-      Decoder.prototype.stateIsMapKey = function () {
-          if (this.stack.length > 0) {
-              var state = this.stack[this.stack.length - 1];
-              return state.type === 1 /* State.MAP_KEY */;
-          }
-          return false;
-      };
-      Decoder.prototype.decodeBinary = function (byteLength, headOffset) {
-          if (byteLength > this.maxBinLength) {
-              throw new DecodeError("Max length exceeded: bin length (".concat(byteLength, ") > maxBinLength (").concat(this.maxBinLength, ")"));
-          }
-          if (!this.hasRemaining(byteLength + headOffset)) {
-              throw MORE_DATA;
-          }
-          var offset = this.pos + headOffset;
-          var object = this.bytes.subarray(offset, offset + byteLength);
-          this.pos += headOffset + byteLength;
-          return object;
-      };
-      Decoder.prototype.decodeExtension = function (size, headOffset) {
-          if (size > this.maxExtLength) {
-              throw new DecodeError("Max length exceeded: ext length (".concat(size, ") > maxExtLength (").concat(this.maxExtLength, ")"));
-          }
-          var extType = this.view.getInt8(this.pos + headOffset);
-          var data = this.decodeBinary(size, headOffset + 1 /* extType */);
-          return this.extensionCodec.decode(data, extType, this.context);
-      };
-      Decoder.prototype.lookU8 = function () {
-          return this.view.getUint8(this.pos);
-      };
-      Decoder.prototype.lookU16 = function () {
-          return this.view.getUint16(this.pos);
-      };
-      Decoder.prototype.lookU32 = function () {
-          return this.view.getUint32(this.pos);
-      };
-      Decoder.prototype.readU8 = function () {
-          var value = this.view.getUint8(this.pos);
-          this.pos++;
-          return value;
-      };
-      Decoder.prototype.readI8 = function () {
-          var value = this.view.getInt8(this.pos);
-          this.pos++;
-          return value;
-      };
-      Decoder.prototype.readU16 = function () {
-          var value = this.view.getUint16(this.pos);
-          this.pos += 2;
-          return value;
-      };
-      Decoder.prototype.readI16 = function () {
-          var value = this.view.getInt16(this.pos);
-          this.pos += 2;
-          return value;
-      };
-      Decoder.prototype.readU32 = function () {
-          var value = this.view.getUint32(this.pos);
-          this.pos += 4;
-          return value;
-      };
-      Decoder.prototype.readI32 = function () {
-          var value = this.view.getInt32(this.pos);
-          this.pos += 4;
-          return value;
-      };
-      Decoder.prototype.readU64 = function () {
-          var value = getUint64(this.view, this.pos);
-          this.pos += 8;
-          return value;
-      };
-      Decoder.prototype.readI64 = function () {
-          var value = getInt64(this.view, this.pos);
-          this.pos += 8;
-          return value;
-      };
-      Decoder.prototype.readF32 = function () {
-          var value = this.view.getFloat32(this.pos);
-          this.pos += 4;
-          return value;
-      };
-      Decoder.prototype.readF64 = function () {
-          var value = this.view.getFloat64(this.pos);
-          this.pos += 8;
-          return value;
-      };
-      return Decoder;
-  }());
-
-  var defaultDecodeOptions = {};
-  /**
-   * It decodes a single MessagePack object in a buffer.
-   *
-   * This is a synchronous decoding function.
-   * See other variants for asynchronous decoding: {@link decodeAsync()}, {@link decodeStream()}, or {@link decodeArrayStream()}.
-   *
-   * @throws {@link RangeError} if the buffer is incomplete, including the case where the buffer is empty.
-   * @throws {@link DecodeError} if the buffer contains invalid data.
-   */
-  function decode(buffer, options) {
-      if (options === void 0) { options = defaultDecodeOptions; }
-      var decoder = new Decoder(options.extensionCodec, options.context, options.maxStrLength, options.maxBinLength, options.maxArrayLength, options.maxMapLength, options.maxExtLength);
-      return decoder.decode(buffer);
-  }
-  /**
-   * It decodes multiple MessagePack objects in a buffer.
-   * This is corresponding to {@link decodeMultiStream()}.
-   *
-   * @throws {@link RangeError} if the buffer is incomplete, including the case where the buffer is empty.
-   * @throws {@link DecodeError} if the buffer contains invalid data.
-   */
-  function decodeMulti(buffer, options) {
-      if (options === void 0) { options = defaultDecodeOptions; }
-      var decoder = new Decoder(options.extensionCodec, options.context, options.maxStrLength, options.maxBinLength, options.maxArrayLength, options.maxMapLength, options.maxExtLength);
-      return decoder.decodeMulti(buffer);
-  }
-
-  // utility for whatwg streams
-  var __generator$1 = (null && null.__generator) || function (thisArg, body) {
-      var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
-      return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-      function verb(n) { return function (v) { return step([n, v]); }; }
-      function step(op) {
-          if (f) throw new TypeError("Generator is already executing.");
-          while (_) try {
-              if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-              if (y = 0, t) op = [op[0] & 2, t.value];
-              switch (op[0]) {
-                  case 0: case 1: t = op; break;
-                  case 4: _.label++; return { value: op[1], done: false };
-                  case 5: _.label++; y = op[1]; op = [0]; continue;
-                  case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                  default:
-                      if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                      if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                      if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                      if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                      if (t[2]) _.ops.pop();
-                      _.trys.pop(); continue;
-              }
-              op = body.call(thisArg, _);
-          } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-          if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-      }
+  currentExtensions[0x78] = () => {
+  	let data = read();
+  	return new RegExp(data[0], data[1])
   };
-  var __await = (null && null.__await) || function (v) { return this instanceof __await ? (this.v = v, this) : new __await(v); };
-  var __asyncGenerator = (null && null.__asyncGenerator) || function (thisArg, _arguments, generator) {
-      if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-      var g = generator.apply(thisArg, _arguments || []), i, q = [];
-      return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
-      function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
-      function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
-      function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r); }
-      function fulfill(value) { resume("next", value); }
-      function reject(value) { resume("throw", value); }
-      function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+  const TEMP_BUNDLE = [];
+  currentExtensions[0x62] = (data) => {
+  	let dataSize = (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3];
+  	let dataPosition = position$1;
+  	position$1 += dataSize - data.length;
+  	bundledStrings$1 = TEMP_BUNDLE;
+  	bundledStrings$1 = [readOnlyJSString(), readOnlyJSString()];
+  	bundledStrings$1.position0 = 0;
+  	bundledStrings$1.position1 = 0;
+  	bundledStrings$1.postBundlePosition = position$1;
+  	position$1 = dataPosition;
+  	return read()
   };
-  function isAsyncIterable(object) {
-      return object[Symbol.asyncIterator] != null;
+
+  currentExtensions[0xff] = (data) => {
+  	// 32-bit date extension
+  	if (data.length == 4)
+  		return new Date((data[0] * 0x1000000 + (data[1] << 16) + (data[2] << 8) + data[3]) * 1000)
+  	else if (data.length == 8)
+  		return new Date(
+  			((data[0] << 22) + (data[1] << 14) + (data[2] << 6) + (data[3] >> 2)) / 1000000 +
+  			((data[3] & 0x3) * 0x100000000 + data[4] * 0x1000000 + (data[5] << 16) + (data[6] << 8) + data[7]) * 1000)
+  	else if (data.length == 12)// TODO: Implement support for negative
+  		return new Date(
+  			((data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3]) / 1000000 +
+  			(((data[4] & 0x80) ? -0x1000000000000 : 0) + data[6] * 0x10000000000 + data[7] * 0x100000000 + data[8] * 0x1000000 + (data[9] << 16) + (data[10] << 8) + data[11]) * 1000)
+  	else
+  		return new Date('invalid')
+  }; // notepack defines extension 0 to mean undefined, so use that as the default here
+  // registration of bulk record definition?
+  // currentExtensions[0x52] = () =>
+
+  function saveState(callback) {
+  	let savedSrcEnd = srcEnd;
+  	let savedPosition = position$1;
+  	let savedSrcStringStart = srcStringStart;
+  	let savedSrcStringEnd = srcStringEnd;
+  	let savedSrcString = srcString;
+  	let savedReferenceMap = referenceMap;
+  	let savedBundledStrings = bundledStrings$1;
+
+  	// TODO: We may need to revisit this if we do more external calls to user code (since it could be slow)
+  	let savedSrc = new Uint8Array(src.slice(0, srcEnd)); // we copy the data in case it changes while external data is processed
+  	let savedStructures = currentStructures;
+  	let savedStructuresContents = currentStructures.slice(0, currentStructures.length);
+  	let savedPackr = currentUnpackr;
+  	let savedSequentialMode = sequentialMode;
+  	let value = callback();
+  	srcEnd = savedSrcEnd;
+  	position$1 = savedPosition;
+  	srcStringStart = savedSrcStringStart;
+  	srcStringEnd = savedSrcStringEnd;
+  	srcString = savedSrcString;
+  	referenceMap = savedReferenceMap;
+  	bundledStrings$1 = savedBundledStrings;
+  	src = savedSrc;
+  	sequentialMode = savedSequentialMode;
+  	currentStructures = savedStructures;
+  	currentStructures.splice(0, currentStructures.length, ...savedStructuresContents);
+  	currentUnpackr = savedPackr;
+  	dataView = new DataView(src.buffer, src.byteOffset, src.byteLength);
+  	return value
   }
-  function assertNonNull(value) {
-      if (value == null) {
-          throw new Error("Assertion Failure: value must not be null nor undefined");
-      }
-  }
-  function asyncIterableFromStream(stream) {
-      return __asyncGenerator(this, arguments, function asyncIterableFromStream_1() {
-          var reader, _a, done, value;
-          return __generator$1(this, function (_b) {
-              switch (_b.label) {
-                  case 0:
-                      reader = stream.getReader();
-                      _b.label = 1;
-                  case 1:
-                      _b.trys.push([1, , 9, 10]);
-                      _b.label = 2;
-                  case 2:
-                      if (!true) return [3 /*break*/, 8];
-                      return [4 /*yield*/, __await(reader.read())];
-                  case 3:
-                      _a = _b.sent(), done = _a.done, value = _a.value;
-                      if (!done) return [3 /*break*/, 5];
-                      return [4 /*yield*/, __await(void 0)];
-                  case 4: return [2 /*return*/, _b.sent()];
-                  case 5:
-                      assertNonNull(value);
-                      return [4 /*yield*/, __await(value)];
-                  case 6: return [4 /*yield*/, _b.sent()];
-                  case 7:
-                      _b.sent();
-                      return [3 /*break*/, 2];
-                  case 8: return [3 /*break*/, 10];
-                  case 9:
-                      reader.releaseLock();
-                      return [7 /*endfinally*/];
-                  case 10: return [2 /*return*/];
-              }
-          });
-      });
-  }
-  function ensureAsyncIterable(streamLike) {
-      if (isAsyncIterable(streamLike)) {
-          return streamLike;
-      }
-      else {
-          return asyncIterableFromStream(streamLike);
-      }
+  function clearSource() {
+  	src = null;
+  	referenceMap = null;
+  	currentStructures = null;
   }
 
-  var __awaiter = (null && null.__awaiter) || function (thisArg, _arguments, P, generator) {
-      function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-      return new (P || (P = Promise))(function (resolve, reject) {
-          function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-          function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-          function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-          step((generator = generator.apply(thisArg, _arguments || [])).next());
-      });
-  };
-  var __generator = (null && null.__generator) || function (thisArg, body) {
-      var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
-      return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-      function verb(n) { return function (v) { return step([n, v]); }; }
-      function step(op) {
-          if (f) throw new TypeError("Generator is already executing.");
-          while (_) try {
-              if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-              if (y = 0, t) op = [op[0] & 2, t.value];
-              switch (op[0]) {
-                  case 0: case 1: t = op; break;
-                  case 4: _.label++; return { value: op[1], done: false };
-                  case 5: _.label++; y = op[1]; op = [0]; continue;
-                  case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                  default:
-                      if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                      if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                      if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                      if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                      if (t[2]) _.ops.pop();
-                      _.trys.pop(); continue;
-              }
-              op = body.call(thisArg, _);
-          } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-          if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-      }
-  };
-  /**
-   * @throws {@link RangeError} if the buffer is incomplete, including the case where the buffer is empty.
-   * @throws {@link DecodeError} if the buffer contains invalid data.
-   */
-  function decodeAsync(streamLike, options) {
-      if (options === void 0) { options = defaultDecodeOptions; }
-      return __awaiter(this, void 0, void 0, function () {
-          var stream, decoder;
-          return __generator(this, function (_a) {
-              stream = ensureAsyncIterable(streamLike);
-              decoder = new Decoder(options.extensionCodec, options.context, options.maxStrLength, options.maxBinLength, options.maxArrayLength, options.maxMapLength, options.maxExtLength);
-              return [2 /*return*/, decoder.decodeAsync(stream)];
-          });
-      });
+  const mult10 = new Array(147); // this is a table matching binary exponents to the multiplier to determine significant digit rounding
+  for (let i = 0; i < 256; i++) {
+  	mult10[i] = +('1e' + Math.floor(45.15 - i * 0.30103));
   }
-  /**
-   * @throws {@link RangeError} if the buffer is incomplete, including the case where the buffer is empty.
-   * @throws {@link DecodeError} if the buffer contains invalid data.
-   */
-  function decodeArrayStream(streamLike, options) {
-      if (options === void 0) { options = defaultDecodeOptions; }
-      var stream = ensureAsyncIterable(streamLike);
-      var decoder = new Decoder(options.extensionCodec, options.context, options.maxStrLength, options.maxBinLength, options.maxArrayLength, options.maxMapLength, options.maxExtLength);
-      return decoder.decodeArrayStream(stream);
-  }
-  /**
-   * @throws {@link RangeError} if the buffer is incomplete, including the case where the buffer is empty.
-   * @throws {@link DecodeError} if the buffer contains invalid data.
-   */
-  function decodeMultiStream(streamLike, options) {
-      if (options === void 0) { options = defaultDecodeOptions; }
-      var stream = ensureAsyncIterable(streamLike);
-      var decoder = new Decoder(options.extensionCodec, options.context, options.maxStrLength, options.maxBinLength, options.maxArrayLength, options.maxMapLength, options.maxExtLength);
-      return decoder.decodeStream(stream);
-  }
-  /**
-   * @deprecated Use {@link decodeMultiStream()} instead.
-   */
-  function decodeStream(streamLike, options) {
-      if (options === void 0) { options = defaultDecodeOptions; }
-      return decodeMultiStream(streamLike, options);
+  var defaultUnpackr = new Unpackr({ useRecords: false });
+  const unpack = defaultUnpackr.unpack;
+  defaultUnpackr.unpackMultiple;
+  defaultUnpackr.unpack;
+  let f32Array = new Float32Array(1);
+  new Uint8Array(f32Array.buffer, 0, 4);
+
+  let textEncoder;
+  try {
+  	textEncoder = new TextEncoder();
+  } catch (error) {}
+  let extensions, extensionClasses;
+  const hasNodeBuffer = typeof Buffer !== 'undefined';
+  const ByteArrayAllocate = hasNodeBuffer ?
+  	function(length) { return Buffer.allocUnsafeSlow(length) } : Uint8Array;
+  const ByteArray = hasNodeBuffer ? Buffer : Uint8Array;
+  const MAX_BUFFER_SIZE = hasNodeBuffer ? 0x100000000 : 0x7fd00000;
+  let target, keysTarget;
+  let targetView;
+  let position = 0;
+  let safeEnd;
+  let bundledStrings = null;
+  let writeStructSlots;
+  const MAX_BUNDLE_SIZE = 0xf000;
+  const hasNonLatin = /[\u0080-\uFFFF]/;
+  const RECORD_SYMBOL = Symbol('record-id');
+  class Packr extends Unpackr {
+  	constructor(options) {
+  		super(options);
+  		this.offset = 0;
+  		let start;
+  		let hasSharedUpdate;
+  		let structures;
+  		let referenceMap;
+  		let encodeUtf8 = ByteArray.prototype.utf8Write ? function(string, position) {
+  			return target.utf8Write(string, position, 0xffffffff)
+  		} : (textEncoder && textEncoder.encodeInto) ?
+  			function(string, position) {
+  				return textEncoder.encodeInto(string, target.subarray(position)).written
+  			} : false;
+
+  		let packr = this;
+  		if (!options)
+  			options = {};
+  		let isSequential = options && options.sequential;
+  		let hasSharedStructures = options.structures || options.saveStructures;
+  		let maxSharedStructures = options.maxSharedStructures;
+  		if (maxSharedStructures == null)
+  			maxSharedStructures = hasSharedStructures ? 32 : 0;
+  		if (maxSharedStructures > 8160)
+  			throw new Error('Maximum maxSharedStructure is 8160')
+  		if (options.structuredClone && options.moreTypes == undefined) {
+  			options.moreTypes = true;
+  		}
+  		let maxOwnStructures = options.maxOwnStructures;
+  		if (maxOwnStructures == null)
+  			maxOwnStructures = hasSharedStructures ? 32 : 64;
+  		if (!this.structures && options.useRecords != false)
+  			this.structures = [];
+  		// two byte record ids for shared structures
+  		let useTwoByteRecords = maxSharedStructures > 32 || (maxOwnStructures + maxSharedStructures > 64);		
+  		let sharedLimitId = maxSharedStructures + 0x40;
+  		let maxStructureId = maxSharedStructures + maxOwnStructures + 0x40;
+  		if (maxStructureId > 8256) {
+  			throw new Error('Maximum maxSharedStructure + maxOwnStructure is 8192')
+  		}
+  		let recordIdsToRemove = [];
+  		let transitionsCount = 0;
+  		let serializationsSinceTransitionRebuild = 0;
+
+  		this.pack = this.encode = function(value, encodeOptions) {
+  			if (!target) {
+  				target = new ByteArrayAllocate(8192);
+  				targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, 8192));
+  				position = 0;
+  			}
+  			safeEnd = target.length - 10;
+  			if (safeEnd - position < 0x800) {
+  				// don't start too close to the end, 
+  				target = new ByteArrayAllocate(target.length);
+  				targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, target.length));
+  				safeEnd = target.length - 10;
+  				position = 0;
+  			} else
+  				position = (position + 7) & 0x7ffffff8; // Word align to make any future copying of this buffer faster
+  			start = position;
+  			referenceMap = packr.structuredClone ? new Map() : null;
+  			if (packr.bundleStrings && typeof value !== 'string') {
+  				bundledStrings = [];
+  				bundledStrings.size = Infinity; // force a new bundle start on first string
+  			} else
+  				bundledStrings = null;
+  			structures = packr.structures;
+  			if (structures) {
+  				if (structures.uninitialized)
+  					structures = packr._mergeStructures(packr.getStructures());
+  				let sharedLength = structures.sharedLength || 0;
+  				if (sharedLength > maxSharedStructures) {
+  					//if (maxSharedStructures <= 32 && structures.sharedLength > 32) // TODO: could support this, but would need to update the limit ids
+  					throw new Error('Shared structures is larger than maximum shared structures, try increasing maxSharedStructures to ' + structures.sharedLength)
+  				}
+  				if (!structures.transitions) {
+  					// rebuild our structure transitions
+  					structures.transitions = Object.create(null);
+  					for (let i = 0; i < sharedLength; i++) {
+  						let keys = structures[i];
+  						if (!keys)
+  							continue
+  						let nextTransition, transition = structures.transitions;
+  						for (let j = 0, l = keys.length; j < l; j++) {
+  							let key = keys[j];
+  							nextTransition = transition[key];
+  							if (!nextTransition) {
+  								nextTransition = transition[key] = Object.create(null);
+  							}
+  							transition = nextTransition;
+  						}
+  						transition[RECORD_SYMBOL] = i + 0x40;
+  					}
+  					this.lastNamedStructuresLength = sharedLength;
+  				}
+  				if (!isSequential) {
+  					structures.nextId = sharedLength + 0x40;
+  				}
+  			}
+  			if (hasSharedUpdate)
+  				hasSharedUpdate = false;
+  			try {
+  				if (packr.randomAccessStructure && value.constructor && value.constructor === Object)
+  					writeStruct(value);
+  				else
+  					pack(value);
+  				let lastBundle = bundledStrings;
+  				if (bundledStrings)
+  					writeBundles(start, pack, 0);
+  				if (referenceMap && referenceMap.idsToInsert) {
+  					let idsToInsert = referenceMap.idsToInsert.sort((a, b) => a.offset > b.offset ? 1 : -1);
+  					let i = idsToInsert.length;
+  					let incrementPosition = -1;
+  					while (lastBundle && i > 0) {
+  						let insertionPoint = idsToInsert[--i].offset + start;
+  						if (insertionPoint < (lastBundle.stringsPosition + start) && incrementPosition === -1)
+  							incrementPosition = 0;
+  						if (insertionPoint > (lastBundle.position + start)) {
+  							if (incrementPosition >= 0)
+  								incrementPosition += 6;
+  						} else {
+  							if (incrementPosition >= 0) {
+  								// update the bundle reference now
+  								targetView.setUint32(lastBundle.position + start,
+  									targetView.getUint32(lastBundle.position + start) + incrementPosition);
+  								incrementPosition = -1; // reset
+  							}
+  							lastBundle = lastBundle.previous;
+  							i++;
+  						}
+  					}
+  					if (incrementPosition >= 0 && lastBundle) {
+  						// update the bundle reference now
+  						targetView.setUint32(lastBundle.position + start,
+  							targetView.getUint32(lastBundle.position + start) + incrementPosition);
+  					}
+  					position += idsToInsert.length * 6;
+  					if (position > safeEnd)
+  						makeRoom(position);
+  					packr.offset = position;
+  					let serialized = insertIds(target.subarray(start, position), idsToInsert);
+  					referenceMap = null;
+  					return serialized
+  				}
+  				packr.offset = position; // update the offset so next serialization doesn't write over our buffer, but can continue writing to same buffer sequentially
+  				if (encodeOptions & REUSE_BUFFER_MODE) {
+  					target.start = start;
+  					target.end = position;
+  					return target
+  				}
+  				return target.subarray(start, position) // position can change if we call pack again in saveStructures, so we get the buffer now
+  			} finally {
+  				if (structures) {
+  					if (serializationsSinceTransitionRebuild < 10)
+  						serializationsSinceTransitionRebuild++;
+  					let sharedLength = structures.sharedLength || 0;
+  					if (structures.length > sharedLength)
+  						structures.length = sharedLength;
+  					if (transitionsCount > 10000) {
+  						// force a rebuild occasionally after a lot of transitions so it can get cleaned up
+  						structures.transitions = null;
+  						serializationsSinceTransitionRebuild = 0;
+  						transitionsCount = 0;
+  						if (recordIdsToRemove.length > 0)
+  							recordIdsToRemove = [];
+  					} else if (recordIdsToRemove.length > 0 && !isSequential) {
+  						for (let i = 0, l = recordIdsToRemove.length; i < l; i++) {
+  							recordIdsToRemove[i][RECORD_SYMBOL] = 0;
+  						}
+  						recordIdsToRemove = [];
+  					}
+  					if (hasSharedUpdate && packr.saveStructures) {
+  						// we can't rely on start/end with REUSE_BUFFER_MODE since they will (probably) change when we save
+  						let returnBuffer = target.subarray(start, position);
+  						let newSharedData = prepareStructures(structures, packr);
+  						if (packr.saveStructures(newSharedData, newSharedData.isCompatible) === false) {
+  							// get updated structures and try again if the update failed
+  							return packr.pack(value)
+  						}
+  						packr.lastNamedStructuresLength = sharedLength;
+  						return returnBuffer
+  					}
+  				}
+  				if (encodeOptions & RESET_BUFFER_MODE)
+  					position = start;
+  			}
+  		};
+  		const packArray = (value) => {
+  			var length = value.length;
+  			if (length < 0x10) {
+  				target[position++] = 0x90 | length;
+  			} else if (length < 0x10000) {
+  				target[position++] = 0xdc;
+  				target[position++] = length >> 8;
+  				target[position++] = length & 0xff;
+  			} else {
+  				target[position++] = 0xdd;
+  				targetView.setUint32(position, length);
+  				position += 4;
+  			}
+  			for (let i = 0; i < length; i++) {
+  				pack(value[i]);
+  			}
+  		};
+  		const pack = (value) => {
+  			if (position > safeEnd)
+  				target = makeRoom(position);
+
+  			var type = typeof value;
+  			var length;
+  			if (type === 'string') {
+  				let strLength = value.length;
+  				if (bundledStrings && strLength >= 4 && strLength < 0x1000) {
+  					if ((bundledStrings.size += strLength) > MAX_BUNDLE_SIZE) {
+  						let extStart;
+  						let maxBytes = (bundledStrings[0] ? bundledStrings[0].length * 3 + bundledStrings[1].length : 0) + 10;
+  						if (position + maxBytes > safeEnd)
+  							target = makeRoom(position + maxBytes);
+  						let lastBundle;
+  						if (bundledStrings.position) { // here we use the 0x62 extension to write the last bundle and reserve space for the reference pointer to the next/current bundle
+  							lastBundle = bundledStrings;
+  							target[position] = 0xc8; // ext 16
+  							position += 3; // reserve for the writing bundle size
+  							target[position++] = 0x62; // 'b'
+  							extStart = position - start;
+  							position += 4; // reserve for writing bundle reference
+  							writeBundles(start, pack, 0); // write the last bundles
+  							targetView.setUint16(extStart + start - 3, position - start - extStart);
+  						} else { // here we use the 0x62 extension just to reserve the space for the reference pointer to the bundle (will be updated once the bundle is written)
+  							target[position++] = 0xd6; // fixext 4
+  							target[position++] = 0x62; // 'b'
+  							extStart = position - start;
+  							position += 4; // reserve for writing bundle reference
+  						}
+  						bundledStrings = ['', '']; // create new ones
+  						bundledStrings.previous = lastBundle;
+  						bundledStrings.size = 0;
+  						bundledStrings.position = extStart;
+  					}
+  					let twoByte = hasNonLatin.test(value);
+  					bundledStrings[twoByte ? 0 : 1] += value;
+  					target[position++] = 0xc1;
+  					pack(twoByte ? -strLength : strLength);
+  					return
+  				}
+  				let headerSize;
+  				// first we estimate the header size, so we can write to the correct location
+  				if (strLength < 0x20) {
+  					headerSize = 1;
+  				} else if (strLength < 0x100) {
+  					headerSize = 2;
+  				} else if (strLength < 0x10000) {
+  					headerSize = 3;
+  				} else {
+  					headerSize = 5;
+  				}
+  				let maxBytes = strLength * 3;
+  				if (position + maxBytes > safeEnd)
+  					target = makeRoom(position + maxBytes);
+
+  				if (strLength < 0x40 || !encodeUtf8) {
+  					let i, c1, c2, strPosition = position + headerSize;
+  					for (i = 0; i < strLength; i++) {
+  						c1 = value.charCodeAt(i);
+  						if (c1 < 0x80) {
+  							target[strPosition++] = c1;
+  						} else if (c1 < 0x800) {
+  							target[strPosition++] = c1 >> 6 | 0xc0;
+  							target[strPosition++] = c1 & 0x3f | 0x80;
+  						} else if (
+  							(c1 & 0xfc00) === 0xd800 &&
+  							((c2 = value.charCodeAt(i + 1)) & 0xfc00) === 0xdc00
+  						) {
+  							c1 = 0x10000 + ((c1 & 0x03ff) << 10) + (c2 & 0x03ff);
+  							i++;
+  							target[strPosition++] = c1 >> 18 | 0xf0;
+  							target[strPosition++] = c1 >> 12 & 0x3f | 0x80;
+  							target[strPosition++] = c1 >> 6 & 0x3f | 0x80;
+  							target[strPosition++] = c1 & 0x3f | 0x80;
+  						} else {
+  							target[strPosition++] = c1 >> 12 | 0xe0;
+  							target[strPosition++] = c1 >> 6 & 0x3f | 0x80;
+  							target[strPosition++] = c1 & 0x3f | 0x80;
+  						}
+  					}
+  					length = strPosition - position - headerSize;
+  				} else {
+  					length = encodeUtf8(value, position + headerSize);
+  				}
+
+  				if (length < 0x20) {
+  					target[position++] = 0xa0 | length;
+  				} else if (length < 0x100) {
+  					if (headerSize < 2) {
+  						target.copyWithin(position + 2, position + 1, position + 1 + length);
+  					}
+  					target[position++] = 0xd9;
+  					target[position++] = length;
+  				} else if (length < 0x10000) {
+  					if (headerSize < 3) {
+  						target.copyWithin(position + 3, position + 2, position + 2 + length);
+  					}
+  					target[position++] = 0xda;
+  					target[position++] = length >> 8;
+  					target[position++] = length & 0xff;
+  				} else {
+  					if (headerSize < 5) {
+  						target.copyWithin(position + 5, position + 3, position + 3 + length);
+  					}
+  					target[position++] = 0xdb;
+  					targetView.setUint32(position, length);
+  					position += 4;
+  				}
+  				position += length;
+  			} else if (type === 'number') {
+  				if (value >>> 0 === value) {// positive integer, 32-bit or less
+  					// positive uint
+  					if (value < 0x20 || (value < 0x80 && this.useRecords === false) || (value < 0x40 && !this.randomAccessStructure)) {
+  						target[position++] = value;
+  					} else if (value < 0x100) {
+  						target[position++] = 0xcc;
+  						target[position++] = value;
+  					} else if (value < 0x10000) {
+  						target[position++] = 0xcd;
+  						target[position++] = value >> 8;
+  						target[position++] = value & 0xff;
+  					} else {
+  						target[position++] = 0xce;
+  						targetView.setUint32(position, value);
+  						position += 4;
+  					}
+  				} else if (value >> 0 === value) { // negative integer
+  					if (value >= -0x20) {
+  						target[position++] = 0x100 + value;
+  					} else if (value >= -0x80) {
+  						target[position++] = 0xd0;
+  						target[position++] = value + 0x100;
+  					} else if (value >= -0x8000) {
+  						target[position++] = 0xd1;
+  						targetView.setInt16(position, value);
+  						position += 2;
+  					} else {
+  						target[position++] = 0xd2;
+  						targetView.setInt32(position, value);
+  						position += 4;
+  					}
+  				} else {
+  					let useFloat32;
+  					if ((useFloat32 = this.useFloat32) > 0 && value < 0x100000000 && value >= -0x80000000) {
+  						target[position++] = 0xca;
+  						targetView.setFloat32(position, value);
+  						let xShifted;
+  						if (useFloat32 < 4 ||
+  								// this checks for rounding of numbers that were encoded in 32-bit float to nearest significant decimal digit that could be preserved
+  								((xShifted = value * mult10[((target[position] & 0x7f) << 1) | (target[position + 1] >> 7)]) >> 0) === xShifted) {
+  							position += 4;
+  							return
+  						} else
+  							position--; // move back into position for writing a double
+  					}
+  					target[position++] = 0xcb;
+  					targetView.setFloat64(position, value);
+  					position += 8;
+  				}
+  			} else if (type === 'object') {
+  				if (!value)
+  					target[position++] = 0xc0;
+  				else {
+  					if (referenceMap) {
+  						let referee = referenceMap.get(value);
+  						if (referee) {
+  							if (!referee.id) {
+  								let idsToInsert = referenceMap.idsToInsert || (referenceMap.idsToInsert = []);
+  								referee.id = idsToInsert.push(referee);
+  							}
+  							target[position++] = 0xd6; // fixext 4
+  							target[position++] = 0x70; // "p" for pointer
+  							targetView.setUint32(position, referee.id);
+  							position += 4;
+  							return
+  						} else 
+  							referenceMap.set(value, { offset: position - start });
+  					}
+  					let constructor = value.constructor;
+  					if (constructor === Object) {
+  						writeObject(value, true);
+  					} else if (constructor === Array) {
+  						packArray(value);
+  					} else if (constructor === Map) {
+  						length = value.size;
+  						if (length < 0x10) {
+  							target[position++] = 0x80 | length;
+  						} else if (length < 0x10000) {
+  							target[position++] = 0xde;
+  							target[position++] = length >> 8;
+  							target[position++] = length & 0xff;
+  						} else {
+  							target[position++] = 0xdf;
+  							targetView.setUint32(position, length);
+  							position += 4;
+  						}
+  						for (let [ key, entryValue ] of value) {
+  							pack(key);
+  							pack(entryValue);
+  						}
+  					} else {	
+  						for (let i = 0, l = extensions.length; i < l; i++) {
+  							let extensionClass = extensionClasses[i];
+  							if (value instanceof extensionClass) {
+  								let extension = extensions[i];
+  								if (extension.write) {
+  									if (extension.type) {
+  										target[position++] = 0xd4; // one byte "tag" extension
+  										target[position++] = extension.type;
+  										target[position++] = 0;
+  									}
+  									let writeResult = extension.write.call(this, value);
+  									if (writeResult === value) { // avoid infinite recursion
+  										if (Array.isArray(value)) {
+  											packArray(value);
+  										} else {
+  											writeObject(value);
+  										}
+  									} else {
+  										pack(writeResult);
+  									}
+  									return
+  								}
+  								let currentTarget = target;
+  								let currentTargetView = targetView;
+  								let currentPosition = position;
+  								target = null;
+  								let result;
+  								try {
+  									result = extension.pack.call(this, value, (size) => {
+  										// restore target and use it
+  										target = currentTarget;
+  										currentTarget = null;
+  										position += size;
+  										if (position > safeEnd)
+  											makeRoom(position);
+  										return {
+  											target, targetView, position: position - size
+  										}
+  									}, pack);
+  								} finally {
+  									// restore current target information (unless already restored)
+  									if (currentTarget) {
+  										target = currentTarget;
+  										targetView = currentTargetView;
+  										position = currentPosition;
+  										safeEnd = target.length - 10;
+  									}
+  								}
+  								if (result) {
+  									if (result.length + position > safeEnd)
+  										makeRoom(result.length + position);
+  									position = writeExtensionData(result, target, position, extension.type);
+  								}
+  								return
+  							}
+  						}
+  						// check isArray after extensions, because extensions can extend Array
+  						if (Array.isArray(value)) {
+  							packArray(value);
+  						} else {
+  							// no extension found, write as object
+  							writeObject(value, !value.hasOwnProperty); // if it doesn't have hasOwnProperty, don't do hasOwnProperty checks
+  						}
+  					}
+  				}
+  			} else if (type === 'boolean') {
+  				target[position++] = value ? 0xc3 : 0xc2;
+  			} else if (type === 'bigint') {
+  				if (value < (BigInt(1)<<BigInt(63)) && value >= -(BigInt(1)<<BigInt(63))) {
+  					// use a signed int as long as it fits
+  					target[position++] = 0xd3;
+  					targetView.setBigInt64(position, value);
+  				} else if (value < (BigInt(1)<<BigInt(64)) && value > 0) {
+  					// if we can fit an unsigned int, use that
+  					target[position++] = 0xcf;
+  					targetView.setBigUint64(position, value);
+  				} else {
+  					// overflow
+  					if (this.largeBigIntToFloat) {
+  						target[position++] = 0xcb;
+  						targetView.setFloat64(position, Number(value));
+  					} else {
+  						throw new RangeError(value + ' was too large to fit in MessagePack 64-bit integer format, set largeBigIntToFloat to convert to float-64')
+  					}
+  				}
+  				position += 8;
+  			} else if (type === 'undefined') {
+  				if (this.encodeUndefinedAsNil)
+  					target[position++] = 0xc0;
+  				else {
+  					target[position++] = 0xd4; // a number of implementations use fixext1 with type 0, data 0 to denote undefined, so we follow suite
+  					target[position++] = 0;
+  					target[position++] = 0;
+  				}
+  			} else if (type === 'function') {
+  				pack(this.writeFunction && this.writeFunction()); // if there is a writeFunction, use it, otherwise just encode as undefined
+  			} else {
+  				throw new Error('Unknown type: ' + type)
+  			}
+  		};
+
+  		const writeObject = this.useRecords === false ? this.variableMapSize ? (object) => {
+  			// this method is slightly slower, but generates "preferred serialization" (optimally small for smaller objects)
+  			let keys = Object.keys(object);
+  			let length = keys.length;
+  			if (length < 0x10) {
+  				target[position++] = 0x80 | length;
+  			} else if (length < 0x10000) {
+  				target[position++] = 0xde;
+  				target[position++] = length >> 8;
+  				target[position++] = length & 0xff;
+  			} else {
+  				target[position++] = 0xdf;
+  				targetView.setUint32(position, length);
+  				position += 4;
+  			}
+  			let key;
+  			for (let i = 0; i < length; i++) {
+  				pack(key = keys[i]);
+  				pack(object[key]);
+  			}
+  		} :
+  		(object, safePrototype) => {
+  			target[position++] = 0xde; // always using map 16, so we can preallocate and set the length afterwards
+  			let objectOffset = position - start;
+  			position += 2;
+  			let size = 0;
+  			for (let key in object) {
+  				if (safePrototype || object.hasOwnProperty(key)) {
+  					pack(key);
+  					pack(object[key]);
+  					size++;
+  				}
+  			}
+  			target[objectOffset++ + start] = size >> 8;
+  			target[objectOffset + start] = size & 0xff;
+  		} :
+  		(options.progressiveRecords && !useTwoByteRecords) ?  // this is about 2% faster for highly stable structures, since it only requires one for-in loop (but much more expensive when new structure needs to be written)
+  		(object, safePrototype) => {
+  			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
+  			let objectOffset = position++ - start;
+  			let wroteKeys;
+  			for (let key in object) {
+  				if (safePrototype || object.hasOwnProperty(key)) {
+  					nextTransition = transition[key];
+  					if (nextTransition)
+  						transition = nextTransition;
+  					else {
+  						// record doesn't exist, create full new record and insert it
+  						let keys = Object.keys(object);
+  						let lastTransition = transition;
+  						transition = structures.transitions;
+  						let newTransitions = 0;
+  						for (let i = 0, l = keys.length; i < l; i++) {
+  							let key = keys[i];
+  							nextTransition = transition[key];
+  							if (!nextTransition) {
+  								nextTransition = transition[key] = Object.create(null);
+  								newTransitions++;
+  							}
+  							transition = nextTransition;
+  						}
+  						if (objectOffset + start + 1 == position) {
+  							// first key, so we don't need to insert, we can just write record directly
+  							position--;
+  							newRecord(transition, keys, newTransitions);
+  						} else // otherwise we need to insert the record, moving existing data after the record
+  							insertNewRecord(transition, keys, objectOffset, newTransitions);
+  						wroteKeys = true;
+  						transition = lastTransition[key];
+  					}
+  					pack(object[key]);
+  				}
+  			}
+  			if (!wroteKeys) {
+  				let recordId = transition[RECORD_SYMBOL];
+  				if (recordId)
+  					target[objectOffset + start] = recordId;
+  				else
+  					insertNewRecord(transition, Object.keys(object), objectOffset, 0);
+  			}
+  		} :
+  		(object, safePrototype) => {
+  			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
+  			let newTransitions = 0;
+  			for (let key in object) if (safePrototype || object.hasOwnProperty(key)) {
+  				nextTransition = transition[key];
+  				if (!nextTransition) {
+  					nextTransition = transition[key] = Object.create(null);
+  					newTransitions++;
+  				}
+  				transition = nextTransition;
+  			}
+  			let recordId = transition[RECORD_SYMBOL];
+  			if (recordId) {
+  				if (recordId >= 0x60 && useTwoByteRecords) {
+  					target[position++] = ((recordId -= 0x60) & 0x1f) + 0x60;
+  					target[position++] = recordId >> 5;
+  				} else
+  					target[position++] = recordId;
+  			} else {
+  				newRecord(transition, transition.__keys__ || Object.keys(object), newTransitions);
+  			}
+  			// now write the values
+  			for (let key in object)
+  				if (safePrototype || object.hasOwnProperty(key))
+  					pack(object[key]);
+  		};
+  		const makeRoom = (end) => {
+  			let newSize;
+  			if (end > 0x1000000) {
+  				// special handling for really large buffers
+  				if ((end - start) > MAX_BUFFER_SIZE)
+  					throw new Error('Packed buffer would be larger than maximum buffer size')
+  				newSize = Math.min(MAX_BUFFER_SIZE,
+  					Math.round(Math.max((end - start) * (end > 0x4000000 ? 1.25 : 2), 0x400000) / 0x1000) * 0x1000);
+  			} else // faster handling for smaller buffers
+  				newSize = ((Math.max((end - start) << 2, target.length - 1) >> 12) + 1) << 12;
+  			let newBuffer = new ByteArrayAllocate(newSize);
+  			targetView = newBuffer.dataView || (newBuffer.dataView = new DataView(newBuffer.buffer, 0, newSize));
+  			end = Math.min(end, target.length);
+  			if (target.copy)
+  				target.copy(newBuffer, 0, start, end);
+  			else
+  				newBuffer.set(target.slice(start, end));
+  			position -= start;
+  			start = 0;
+  			safeEnd = newBuffer.length - 10;
+  			return target = newBuffer
+  		};
+  		const newRecord = (transition, keys, newTransitions) => {
+  			let recordId = structures.nextId;
+  			if (!recordId)
+  				recordId = 0x40;
+  			if (recordId < sharedLimitId && this.shouldShareStructure && !this.shouldShareStructure(keys)) {
+  				recordId = structures.nextOwnId;
+  				if (!(recordId < maxStructureId))
+  					recordId = sharedLimitId;
+  				structures.nextOwnId = recordId + 1;
+  			} else {
+  				if (recordId >= maxStructureId)// cycle back around
+  					recordId = sharedLimitId;
+  				structures.nextId = recordId + 1;
+  			}
+  			let highByte = keys.highByte = recordId >= 0x60 && useTwoByteRecords ? (recordId - 0x60) >> 5 : -1;
+  			transition[RECORD_SYMBOL] = recordId;
+  			transition.__keys__ = keys;
+  			structures[recordId - 0x40] = keys;
+
+  			if (recordId < sharedLimitId) {
+  				keys.isShared = true;
+  				structures.sharedLength = recordId - 0x3f;
+  				hasSharedUpdate = true;
+  				if (highByte >= 0) {
+  					target[position++] = (recordId & 0x1f) + 0x60;
+  					target[position++] = highByte;
+  				} else {
+  					target[position++] = recordId;
+  				}
+  			} else {
+  				if (highByte >= 0) {
+  					target[position++] = 0xd5; // fixext 2
+  					target[position++] = 0x72; // "r" record defintion extension type
+  					target[position++] = (recordId & 0x1f) + 0x60;
+  					target[position++] = highByte;
+  				} else {
+  					target[position++] = 0xd4; // fixext 1
+  					target[position++] = 0x72; // "r" record defintion extension type
+  					target[position++] = recordId;
+  				}
+
+  				if (newTransitions)
+  					transitionsCount += serializationsSinceTransitionRebuild * newTransitions;
+  				// record the removal of the id, we can maintain our shared structure
+  				if (recordIdsToRemove.length >= maxOwnStructures)
+  					recordIdsToRemove.shift()[RECORD_SYMBOL] = 0; // we are cycling back through, and have to remove old ones
+  				recordIdsToRemove.push(transition);
+  				pack(keys);
+  			}
+  		};
+  		const insertNewRecord = (transition, keys, insertionOffset, newTransitions) => {
+  			let mainTarget = target;
+  			let mainPosition = position;
+  			let mainSafeEnd = safeEnd;
+  			let mainStart = start;
+  			target = keysTarget;
+  			position = 0;
+  			start = 0;
+  			if (!target)
+  				keysTarget = target = new ByteArrayAllocate(8192);
+  			safeEnd = target.length - 10;
+  			newRecord(transition, keys, newTransitions);
+  			keysTarget = target;
+  			let keysPosition = position;
+  			target = mainTarget;
+  			position = mainPosition;
+  			safeEnd = mainSafeEnd;
+  			start = mainStart;
+  			if (keysPosition > 1) {
+  				let newEnd = position + keysPosition - 1;
+  				if (newEnd > safeEnd)
+  					makeRoom(newEnd);
+  				let insertionPosition = insertionOffset + start;
+  				target.copyWithin(insertionPosition + keysPosition, insertionPosition + 1, position);
+  				target.set(keysTarget.slice(0, keysPosition), insertionPosition);
+  				position = newEnd;
+  			} else {
+  				target[insertionOffset + start] = keysTarget[0];
+  			}
+  		};
+  		const writeStruct = (object, safePrototype) => {
+  			let newPosition = writeStructSlots(object, target, position, structures, makeRoom, (value, newPosition, notifySharedUpdate) => {
+  				if (notifySharedUpdate)
+  					return hasSharedUpdate = true;
+  				position = newPosition;
+  				if (start > 0) {
+  					pack(value);
+  					if (start == 0)
+  						return { position, targetView, target }; // indicate the buffer was re-allocated
+  				} else
+  					pack(value);
+  				return position;
+  			}, this);
+  			if (newPosition === 0) // bail and go to a msgpack object
+  				return writeObject(object, true);
+  			position = newPosition;
+  		};
+  	}
+  	useBuffer(buffer) {
+  		// this means we are finished using our own buffer and we can write over it safely
+  		target = buffer;
+  		targetView = new DataView(target.buffer, target.byteOffset, target.byteLength);
+  		position = 0;
+  	}
+  	clearSharedData() {
+  		if (this.structures)
+  			this.structures = [];
+  		if (this.typedStructs)
+  			this.typedStructs = [];
+  	}
   }
 
-  // Main Functions:
+  extensionClasses = [ Date, Set, Error, RegExp, ArrayBuffer, Object.getPrototypeOf(Uint8Array.prototype).constructor /*TypedArray*/, C1Type ];
+  extensions = [{
+  	pack(date, allocateForWrite, pack) {
+  		let seconds = date.getTime() / 1000;
+  		if ((this.useTimestamp32 || date.getMilliseconds() === 0) && seconds >= 0 && seconds < 0x100000000) {
+  			// Timestamp 32
+  			let { target, targetView, position} = allocateForWrite(6);
+  			target[position++] = 0xd6;
+  			target[position++] = 0xff;
+  			targetView.setUint32(position, seconds);
+  		} else if (seconds > 0 && seconds < 0x100000000) {
+  			// Timestamp 64
+  			let { target, targetView, position} = allocateForWrite(10);
+  			target[position++] = 0xd7;
+  			target[position++] = 0xff;
+  			targetView.setUint32(position, date.getMilliseconds() * 4000000 + ((seconds / 1000 / 0x100000000) >> 0));
+  			targetView.setUint32(position + 4, seconds);
+  		} else if (isNaN(seconds)) {
+  			if (this.onInvalidDate) {
+  				allocateForWrite(0);
+  				return pack(this.onInvalidDate())
+  			}
+  			// Intentionally invalid timestamp
+  			let { target, targetView, position} = allocateForWrite(3);
+  			target[position++] = 0xd4;
+  			target[position++] = 0xff;
+  			target[position++] = 0xff;
+  		} else {
+  			// Timestamp 96
+  			let { target, targetView, position} = allocateForWrite(15);
+  			target[position++] = 0xc7;
+  			target[position++] = 12;
+  			target[position++] = 0xff;
+  			targetView.setUint32(position, date.getMilliseconds() * 1000000);
+  			targetView.setBigInt64(position + 4, BigInt(Math.floor(seconds)));
+  		}
+  	}
+  }, {
+  	pack(set, allocateForWrite, pack) {
+  		let array = Array.from(set);
+  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
+  		if (this.moreTypes) {
+  			target[position++] = 0xd4;
+  			target[position++] = 0x73; // 's' for Set
+  			target[position++] = 0;
+  		}
+  		pack(array);
+  	}
+  }, {
+  	pack(error, allocateForWrite, pack) {
+  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
+  		if (this.moreTypes) {
+  			target[position++] = 0xd4;
+  			target[position++] = 0x65; // 'e' for error
+  			target[position++] = 0;
+  		}
+  		pack([ error.name, error.message ]);
+  	}
+  }, {
+  	pack(regex, allocateForWrite, pack) {
+  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
+  		if (this.moreTypes) {
+  			target[position++] = 0xd4;
+  			target[position++] = 0x78; // 'x' for regeXp
+  			target[position++] = 0;
+  		}
+  		pack([ regex.source, regex.flags ]);
+  	}
+  }, {
+  	pack(arrayBuffer, allocateForWrite) {
+  		if (this.moreTypes)
+  			writeExtBuffer(arrayBuffer, 0x10, allocateForWrite);
+  		else
+  			writeBuffer(hasNodeBuffer ? Buffer.from(arrayBuffer) : new Uint8Array(arrayBuffer), allocateForWrite);
+  	}
+  }, {
+  	pack(typedArray, allocateForWrite) {
+  		let constructor = typedArray.constructor;
+  		if (constructor !== ByteArray && this.moreTypes)
+  			writeExtBuffer(typedArray, typedArrays.indexOf(constructor.name), allocateForWrite);
+  		else
+  			writeBuffer(typedArray, allocateForWrite);
+  	}
+  }, {
+  	pack(c1, allocateForWrite) { // specific 0xC1 object
+  		let { target, position} = allocateForWrite(1);
+  		target[position] = 0xc1;
+  	}
+  }];
 
-  var PACKAGE_EXT = 'msx';
-
-  function packDatasets(datasets, opts) {
-    var obj = exportDatasets$1(datasets);
-    // encode options: see https://github.com/msgpack/msgpack-javascript
-    // initialBufferSize  number  2048
-    // ignoreUndefined boolean false
-    var content = encode(obj, {});
-    return [{
-      content: content,
-      filename: opts.file || 'output.' + PACKAGE_EXT
-    }];
+  function writeExtBuffer(typedArray, type, allocateForWrite, encode) {
+  	let length = typedArray.byteLength;
+  	if (length + 1 < 0x100) {
+  		var { target, position } = allocateForWrite(4 + length);
+  		target[position++] = 0xc7;
+  		target[position++] = length + 1;
+  	} else if (length + 1 < 0x10000) {
+  		var { target, position } = allocateForWrite(5 + length);
+  		target[position++] = 0xc8;
+  		target[position++] = (length + 1) >> 8;
+  		target[position++] = (length + 1) & 0xff;
+  	} else {
+  		var { target, position, targetView } = allocateForWrite(7 + length);
+  		target[position++] = 0xc9;
+  		targetView.setUint32(position, length + 1); // plus one for the type byte
+  		position += 4;
+  	}
+  	target[position++] = 0x74; // "t" for typed array
+  	target[position++] = type;
+  	target.set(new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength), position);
+  }
+  function writeBuffer(buffer, allocateForWrite) {
+  	let length = buffer.byteLength;
+  	var target, position;
+  	if (length < 0x100) {
+  		var { target, position } = allocateForWrite(length + 2);
+  		target[position++] = 0xc4;
+  		target[position++] = length;
+  	} else if (length < 0x10000) {
+  		var { target, position } = allocateForWrite(length + 3);
+  		target[position++] = 0xc5;
+  		target[position++] = length >> 8;
+  		target[position++] = length & 0xff;
+  	} else {
+  		var { target, position, targetView } = allocateForWrite(length + 5);
+  		target[position++] = 0xc6;
+  		targetView.setUint32(position, length);
+  		position += 4;
+  	}
+  	target.set(buffer, position);
   }
 
-  // gui: (optional) gui instance
-  //
-  function exportDatasets$1(datasets) {
-    // TODO: add targets
-    // TODO: add gui state
-    return {
-      version: 1,
-      datasets: datasets.map(exportDataset)
-    };
+  function writeExtensionData(result, target, position, type) {
+  	let length = result.length;
+  	switch (length) {
+  		case 1:
+  			target[position++] = 0xd4;
+  			break
+  		case 2:
+  			target[position++] = 0xd5;
+  			break
+  		case 4:
+  			target[position++] = 0xd6;
+  			break
+  		case 8:
+  			target[position++] = 0xd7;
+  			break
+  		case 16:
+  			target[position++] = 0xd8;
+  			break
+  		default:
+  			if (length < 0x100) {
+  				target[position++] = 0xc7;
+  				target[position++] = length;
+  			} else if (length < 0x10000) {
+  				target[position++] = 0xc8;
+  				target[position++] = length >> 8;
+  				target[position++] = length & 0xff;
+  			} else {
+  				target[position++] = 0xc9;
+  				target[position++] = length >> 24;
+  				target[position++] = (length >> 16) & 0xff;
+  				target[position++] = (length >> 8) & 0xff;
+  				target[position++] = length & 0xff;
+  			}
+  	}
+  	target[position++] = type;
+  	target.set(result, position);
+  	position += length;
+  	return position
   }
 
-  // TODO..
-  // export function serializeSession(catalog) {
-  //   var obj = exportDatasets(catalog.getDatasets());
-  //   return BSON.serialize(obj);
-  // }
-
-  function exportDataset(dataset) {
-    return Object.assign(dataset, {
-      arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
-      info: dataset.info ? exportInfo(dataset.info) : null,
-      layers: (dataset.layers || []).map(exportLayer)
-    });
+  function insertIds(serialized, idsToInsert) {
+  	// insert the ids that need to be referenced for structured clones
+  	let nextId;
+  	let distanceToMove = idsToInsert.length * 6;
+  	let lastEnd = serialized.length - distanceToMove;
+  	while (nextId = idsToInsert.pop()) {
+  		let offset = nextId.offset;
+  		let id = nextId.id;
+  		serialized.copyWithin(offset + distanceToMove, offset, lastEnd);
+  		distanceToMove -= 6;
+  		let position = offset + distanceToMove;
+  		serialized[position++] = 0xd6;
+  		serialized[position++] = 0x69; // 'i'
+  		serialized[position++] = id >> 24;
+  		serialized[position++] = (id >> 16) & 0xff;
+  		serialized[position++] = (id >> 8) & 0xff;
+  		serialized[position++] = id & 0xff;
+  		lastEnd = offset;
+  	}
+  	return serialized
   }
 
-  function typedArrayToBuffer(arr) {
-    return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+  function writeBundles(start, pack, incrementPosition) {
+  	if (bundledStrings.length > 0) {
+  		targetView.setUint32(bundledStrings.position + start, position + incrementPosition - bundledStrings.position - start);
+  		bundledStrings.stringsPosition = position - start;
+  		let writeStrings = bundledStrings;
+  		bundledStrings = null;
+  		pack(writeStrings[0]);
+  		pack(writeStrings[1]);
+  	}
+  }
+  function prepareStructures(structures, packr) {
+  	structures.isCompatible = (existingStructures) => {
+  		let compatible = !existingStructures || ((packr.lastNamedStructuresLength || 0) === existingStructures.length);
+  		if (!compatible) // we want to merge these existing structures immediately since we already have it and we are in the right transaction
+  			packr._mergeStructures(existingStructures);
+  		return compatible;
+  	};
+  	return structures
   }
 
-  function exportArcs(arcs) {
-    var data = arcs.getVertexData();
-    var obj = {
-      nn: typedArrayToBuffer(data.nn),
-      xx: typedArrayToBuffer(data.xx),
-      yy: typedArrayToBuffer(data.yy)
-    };
-    return obj;
-  }
-
-  function exportLayer(lyr) {
-    return {
-      name: lyr.name || null,
-      geometry_type: lyr.geometry_type || null,
-      shapes: lyr.shapes || null,
-      data: lyr.data ? lyr.data.getRecords() : null,
-      menu_order: lyr.menu_order || null,
-      pinned: lyr.pinned || false
-    };
-  }
-
-  function exportInfo(info) {
-    // TODO: export CRS
-    return info;
-  }
-
-  // Guess the type of a data file from file extension, or return null if not sure
-  function guessInputFileType(file) {
-    var ext = getFileExtension(file || '').toLowerCase(),
-        type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
-      type = ext;
-    } else if (/json$/.test(ext)) {
-      type = 'json';
-    } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
-      type = 'text';
-    } else if (ext == PACKAGE_EXT) {
-      type = PACKAGE_EXT;
-    }
-    return type;
-  }
-
-  function guessInputContentType(content) {
-    var type = null;
-    if (utils.isString(content)) {
-      type = stringLooksLikeJSON(content) && 'json' ||
-        stringLooksLikeKML(content) && 'kml' || 'text';
-    } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-      type = 'json';
-    }
-    return type;
-  }
-
-  function guessInputType(file, content) {
-    return guessInputFileType(file) || guessInputContentType(content);
-  }
-
-  function stringLooksLikeJSON(str) {
-    return /^\s*[{[]/.test(String(str));
-  }
-
-  function stringLooksLikeKML(str) {
-    str = String(str);
-    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
-  }
-
-  function couldBeDsvFile(name) {
-    var ext = getFileExtension(name).toLowerCase();
-    return /csv|tsv|txt$/.test(ext);
-  }
-
-  // File looks like an importable file type
-  // name: filename or path
-  function looksLikeImportableFile(name) {
-    return !!guessInputFileType(name);
-  }
-
-  // File looks like a directly readable data file type
-  // name: filename or path
-  function looksLikeContentFile(name) {
-    var type = guessInputFileType(name);
-    return !!type && type != 'gz' && type != 'zip';
-  }
-
-  function isPackageFile(file) {
-    return file.endsWith('.' + PACKAGE_EXT);
-  }
-
-  function isZipFile(file) {
-    return /\.zip$/i.test(file);
-  }
-
-  function isKmzFile(file) {
-    return /\.kmz$/i.test(file);
-  }
-
-  function isGzipFile(file) {
-    return /\.gz/i.test(file);
-  }
-
-  function isSupportedOutputFormat(fmt) {
-    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', 'mshp'];
-    return types.indexOf(fmt) > -1;
-  }
-
-  function getFormatName(fmt) {
-    return {
-      geojson: 'GeoJSON',
-      topojson: 'TopoJSON',
-      json: 'JSON records',
-      dsv: 'CSV',
-      dbf: 'DBF',
-      kml: 'KML',
-      kmz: 'KMZ',
-      [PACKAGE_EXT]: 'Mapshaper project',
-      shapefile: 'Shapefile',
-      svg: 'SVG'
-    }[fmt] || '';
-  }
-
-  // Assumes file at @path is one of Mapshaper's supported file types
-  function isSupportedBinaryInputType(path) {
-    var ext = getFileExtension(path).toLowerCase();
-    return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == PACKAGE_EXT; // GUI also supports zip files
-  }
-
-  function isImportableAsBinary(path) {
-    var type = guessInputFileType(path);
-    return isSupportedBinaryInputType(path) || isZipFile(path) ||
-      isGzipFile(path) || isKmzFile(path) || isPackageFile(path) ||
-      type == 'json' || type == 'text';
-  }
-
-  // Detect extensions of some unsupported file types, for cmd line validation
-  function filenameIsUnsupportedOutputType(file) {
-    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml)$/i;
-    return rxp.test(file);
-  }
-
-  var FileTypes = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    guessInputFileType: guessInputFileType,
-    guessInputContentType: guessInputContentType,
-    guessInputType: guessInputType,
-    stringLooksLikeJSON: stringLooksLikeJSON,
-    stringLooksLikeKML: stringLooksLikeKML,
-    couldBeDsvFile: couldBeDsvFile,
-    looksLikeImportableFile: looksLikeImportableFile,
-    looksLikeContentFile: looksLikeContentFile,
-    isPackageFile: isPackageFile,
-    isZipFile: isZipFile,
-    isKmzFile: isKmzFile,
-    isGzipFile: isGzipFile,
-    isSupportedOutputFormat: isSupportedOutputFormat,
-    getFormatName: getFormatName,
-    isSupportedBinaryInputType: isSupportedBinaryInputType,
-    isImportableAsBinary: isImportableAsBinary,
-    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
-  });
+  let defaultPackr = new Packr({ useRecords: false });
+  const pack$1 = defaultPackr.pack;
+  defaultPackr.pack;
+  const REUSE_BUFFER_MODE = 512;
+  const RESET_BUFFER_MODE = 1024;
 
   // DEFLATE is a complex format; to read this code, you should probably check the RFC first:
   // https://tools.ietf.org/html/rfc1951
@@ -9358,26 +9307,6 @@
       n.set(v.subarray(s, e));
       return n;
   };
-  /**
-   * Codes for errors generated within this library
-   */
-  var FlateErrorCode = {
-      UnexpectedEOF: 0,
-      InvalidBlockType: 1,
-      InvalidLengthLiteral: 2,
-      InvalidDistance: 3,
-      StreamFinished: 4,
-      NoStreamHandler: 5,
-      InvalidHeader: 6,
-      NoCallback: 7,
-      InvalidUTF8: 8,
-      ExtraFieldTooLong: 9,
-      InvalidDate: 10,
-      FilenameTooLong: 11,
-      StreamFinishing: 12,
-      InvalidZipData: 13,
-      UnknownCompressionMethod: 14
-  };
   // error codes
   var ec = [
       'unexpected EOF',
@@ -9396,7 +9325,6 @@
       'invalid zip data'
       // determined by unknown compression method
   ];
-  ;
   var err = function (ind, msg, nt) {
       var e = new Error(msg || ec[ind]);
       e.code = ind;
@@ -9953,29 +9881,6 @@
           d: function () { return ~c; }
       };
   };
-  // Alder32
-  var adler = function () {
-      var a = 1, b = 0;
-      return {
-          p: function (d) {
-              // closures have awful performance
-              var n = a, m = b;
-              var l = d.length | 0;
-              for (var i = 0; i != l;) {
-                  var e = Math.min(i + 2655, l);
-                  for (; i < e; ++i)
-                      m += n += d[i];
-                  n = (n & 65535) + 15 * (n >> 16), m = (m & 65535) + 15 * (m >> 16);
-              }
-              a = n, b = m;
-          },
-          d: function () {
-              a %= 65521, b %= 65521;
-              return (a & 255) << 24 | (a >>> 8) << 16 | (b & 255) << 8 | (b >>> 8);
-          }
-      };
-  };
-  ;
   // deflate with opts
   var dopt = function (dat, opt, pre, post, st) {
       return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : (12 + opt.mem), pre, post, !st);
@@ -10051,14 +9956,6 @@
   // base async inflate fn
   var bInflt = function () { return [u8, u16, u32, fleb, fdeb, clim, fl, fd, flrm, fdrm, rev, ec, hMap, max, bits, bits16, shft, slc, err, inflt, inflateSync, pbf, gu8]; };
   var bDflt = function () { return [u8, u16, u32, fleb, fdeb, clim, revfl, revfd, flm, flt, fdm, fdt, rev, deo, et, hMap, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, shft, slc, dflt, dopt, deflateSync, pbf]; };
-  // gzip extra
-  var gze = function () { return [gzh, gzhl, wbytes, crc, crct]; };
-  // gunzip extra
-  var guze = function () { return [gzs, gzl]; };
-  // zlib extra
-  var zle = function () { return [zlh, wbytes, adler]; };
-  // unzlib extra
-  var zule = function () { return [zlv]; };
   // post buf
   var pbf = function (msg) { return postMessage(msg, [msg.buffer]); };
   // get u8
@@ -10071,33 +9968,6 @@
       });
       w.postMessage([dat, opts], opts.consume ? [dat.buffer] : []);
       return function () { w.terminate(); };
-  };
-  // auto stream
-  var astrm = function (strm) {
-      strm.ondata = function (dat, final) { return postMessage([dat, final], [dat.buffer]); };
-      return function (ev) { return strm.push(ev.data[0], ev.data[1]); };
-  };
-  // async stream attach
-  var astrmify = function (fns, strm, opts, init, id) {
-      var t;
-      var w = wrkr(fns, init, id, function (err, dat) {
-          if (err)
-              w.terminate(), strm.ondata.call(strm, err);
-          else {
-              if (dat[1])
-                  w.terminate();
-              strm.ondata.call(strm, err, dat[0], dat[1]);
-          }
-      });
-      w.postMessage(opts);
-      strm.push = function (d, f) {
-          if (!strm.ondata)
-              err(5);
-          if (t)
-              strm.ondata(err(4, 0, 1), null, !!f);
-          w.postMessage([d, t = f], [d.buffer]);
-      };
-      strm.terminate = function () { w.terminate(); };
   };
   // read 2 bytes
   var b2 = function (d, b) { return d[b] | (d[b + 1] << 8); };
@@ -10141,68 +10011,6 @@
   };
   // gzip header length
   var gzhl = function (o) { return 10 + ((o.filename && (o.filename.length + 1)) || 0); };
-  // zlib header
-  var zlh = function (c, o) {
-      var lv = o.level, fl = lv == 0 ? 0 : lv < 6 ? 1 : lv == 9 ? 3 : 2;
-      c[0] = 120, c[1] = (fl << 6) | (fl ? (32 - 2 * fl) : 1);
-  };
-  // zlib valid
-  var zlv = function (d) {
-      if ((d[0] & 15) != 8 || (d[0] >>> 4) > 7 || ((d[0] << 8 | d[1]) % 31))
-          err(6, 'invalid zlib data');
-      if (d[1] & 32)
-          err(6, 'invalid zlib data: preset dictionaries not supported');
-  };
-  function AsyncCmpStrm(opts, cb) {
-      if (!cb && typeof opts == 'function')
-          cb = opts, opts = {};
-      this.ondata = cb;
-      return opts;
-  }
-  // zlib footer: -4 to -0 is Adler32
-  /**
-   * Streaming DEFLATE compression
-   */
-  var Deflate = /*#__PURE__*/ (function () {
-      function Deflate(opts, cb) {
-          if (!cb && typeof opts == 'function')
-              cb = opts, opts = {};
-          this.ondata = cb;
-          this.o = opts || {};
-      }
-      Deflate.prototype.p = function (c, f) {
-          this.ondata(dopt(c, this.o, 0, 0, !f), f);
-      };
-      /**
-       * Pushes a chunk to be deflated
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Deflate.prototype.push = function (chunk, final) {
-          if (!this.ondata)
-              err(5);
-          if (this.d)
-              err(4);
-          this.d = final;
-          this.p(chunk, final || false);
-      };
-      return Deflate;
-  }());
-  /**
-   * Asynchronous streaming DEFLATE compression
-   */
-  var AsyncDeflate = /*#__PURE__*/ (function () {
-      function AsyncDeflate(opts, cb) {
-          astrmify([
-              bDflt,
-              function () { return [astrm, Deflate]; }
-          ], this, AsyncCmpStrm.call(this, opts, cb), function (ev) {
-              var strm = new Deflate(ev.data);
-              onmessage = astrm(strm);
-          }, 6);
-      }
-      return AsyncDeflate;
-  }());
   function deflate(data, opts, cb) {
       if (!cb)
           cb = opts, opts = {};
@@ -10221,66 +10029,6 @@
   function deflateSync(data, opts) {
       return dopt(data, opts || {}, 0, 0);
   }
-  /**
-   * Streaming DEFLATE decompression
-   */
-  var Inflate = /*#__PURE__*/ (function () {
-      /**
-       * Creates an inflation stream
-       * @param cb The callback to call whenever data is inflated
-       */
-      function Inflate(cb) {
-          this.s = {};
-          this.p = new u8(0);
-          this.ondata = cb;
-      }
-      Inflate.prototype.e = function (c) {
-          if (!this.ondata)
-              err(5);
-          if (this.d)
-              err(4);
-          var l = this.p.length;
-          var n = new u8(l + c.length);
-          n.set(this.p), n.set(c, l), this.p = n;
-      };
-      Inflate.prototype.c = function (final) {
-          this.d = this.s.i = final || false;
-          var bts = this.s.b;
-          var dt = inflt(this.p, this.o, this.s);
-          this.ondata(slc(dt, bts, this.s.b), this.d);
-          this.o = slc(dt, this.s.b - 32768), this.s.b = this.o.length;
-          this.p = slc(this.p, (this.s.p / 8) | 0), this.s.p &= 7;
-      };
-      /**
-       * Pushes a chunk to be inflated
-       * @param chunk The chunk to push
-       * @param final Whether this is the final chunk
-       */
-      Inflate.prototype.push = function (chunk, final) {
-          this.e(chunk), this.c(final);
-      };
-      return Inflate;
-  }());
-  /**
-   * Asynchronous streaming DEFLATE decompression
-   */
-  var AsyncInflate = /*#__PURE__*/ (function () {
-      /**
-       * Creates an asynchronous inflation stream
-       * @param cb The callback to call whenever data is deflated
-       */
-      function AsyncInflate(cb) {
-          this.ondata = cb;
-          astrmify([
-              bInflt,
-              function () { return [astrm, Inflate]; }
-          ], this, 0, function () {
-              var strm = new Inflate();
-              onmessage = astrm(strm);
-          }, 7);
-      }
-      return AsyncInflate;
-  }());
   function inflate(data, opts, cb) {
       if (!cb)
           cb = opts, opts = {};
@@ -10299,64 +10047,6 @@
   function inflateSync(data, out) {
       return inflt(data, out);
   }
-  // before you yell at me for not just using extends, my reason is that TS inheritance is hard to workerize.
-  /**
-   * Streaming GZIP compression
-   */
-  var Gzip$1 = /*#__PURE__*/ (function () {
-      function Gzip(opts, cb) {
-          this.c = crc();
-          this.l = 0;
-          this.v = 1;
-          Deflate.call(this, opts, cb);
-      }
-      /**
-       * Pushes a chunk to be GZIPped
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Gzip.prototype.push = function (chunk, final) {
-          Deflate.prototype.push.call(this, chunk, final);
-      };
-      Gzip.prototype.p = function (c, f) {
-          this.c.p(c);
-          this.l += c.length;
-          var raw = dopt(c, this.o, this.v && gzhl(this.o), f && 8, !f);
-          if (this.v)
-              gzh(raw, this.o), this.v = 0;
-          if (f)
-              wbytes(raw, raw.length - 8, this.c.d()), wbytes(raw, raw.length - 4, this.l);
-          this.ondata(raw, f);
-      };
-      return Gzip;
-  }());
-  /**
-   * Asynchronous streaming GZIP compression
-   */
-  var AsyncGzip = /*#__PURE__*/ (function () {
-      function AsyncGzip(opts, cb) {
-          astrmify([
-              bDflt,
-              gze,
-              function () { return [astrm, Deflate, Gzip$1]; }
-          ], this, AsyncCmpStrm.call(this, opts, cb), function (ev) {
-              var strm = new Gzip$1(ev.data);
-              onmessage = astrm(strm);
-          }, 8);
-      }
-      return AsyncGzip;
-  }());
-  function gzip(data, opts, cb) {
-      if (!cb)
-          cb = opts, opts = {};
-      if (typeof cb != 'function')
-          err(7);
-      return cbify(data, opts, [
-          bDflt,
-          gze,
-          function () { return [gzipSync$1]; }
-      ], function (ev) { return pbf(gzipSync$1(ev.data[0], ev.data[1])); }, 2, cb);
-  }
   /**
    * Compresses data with GZIP
    * @param data The data to compress
@@ -10372,74 +10062,6 @@
       return gzh(d, opts), wbytes(d, s - 8, c.d()), wbytes(d, s - 4, l), d;
   }
   /**
-   * Streaming GZIP decompression
-   */
-  var Gunzip = /*#__PURE__*/ (function () {
-      /**
-       * Creates a GUNZIP stream
-       * @param cb The callback to call whenever data is inflated
-       */
-      function Gunzip(cb) {
-          this.v = 1;
-          Inflate.call(this, cb);
-      }
-      /**
-       * Pushes a chunk to be GUNZIPped
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Gunzip.prototype.push = function (chunk, final) {
-          Inflate.prototype.e.call(this, chunk);
-          if (this.v) {
-              var s = this.p.length > 3 ? gzs(this.p) : 4;
-              if (s >= this.p.length && !final)
-                  return;
-              this.p = this.p.subarray(s), this.v = 0;
-          }
-          if (final) {
-              if (this.p.length < 8)
-                  err(6, 'invalid gzip data');
-              this.p = this.p.subarray(0, -8);
-          }
-          // necessary to prevent TS from using the closure value
-          // This allows for workerization to function correctly
-          Inflate.prototype.c.call(this, final);
-      };
-      return Gunzip;
-  }());
-  /**
-   * Asynchronous streaming GZIP decompression
-   */
-  var AsyncGunzip = /*#__PURE__*/ (function () {
-      /**
-       * Creates an asynchronous GUNZIP stream
-       * @param cb The callback to call whenever data is deflated
-       */
-      function AsyncGunzip(cb) {
-          this.ondata = cb;
-          astrmify([
-              bInflt,
-              guze,
-              function () { return [astrm, Inflate, Gunzip]; }
-          ], this, 0, function () {
-              var strm = new Gunzip();
-              onmessage = astrm(strm);
-          }, 9);
-      }
-      return AsyncGunzip;
-  }());
-  function gunzip(data, opts, cb) {
-      if (!cb)
-          cb = opts, opts = {};
-      if (typeof cb != 'function')
-          err(7);
-      return cbify(data, opts, [
-          bInflt,
-          guze,
-          function () { return [gunzipSync$1]; }
-      ], function (ev) { return pbf(gunzipSync$1(ev.data[0])); }, 3, cb);
-  }
-  /**
    * Expands GZIP data
    * @param data The data to decompress
    * @param out Where to write the data. GZIP already encodes the output size, so providing this doesn't save memory.
@@ -10447,245 +10069,6 @@
    */
   function gunzipSync$1(data, out) {
       return inflt(data.subarray(gzs(data), -8), out || new u8(gzl(data)));
-  }
-  /**
-   * Streaming Zlib compression
-   */
-  var Zlib = /*#__PURE__*/ (function () {
-      function Zlib(opts, cb) {
-          this.c = adler();
-          this.v = 1;
-          Deflate.call(this, opts, cb);
-      }
-      /**
-       * Pushes a chunk to be zlibbed
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Zlib.prototype.push = function (chunk, final) {
-          Deflate.prototype.push.call(this, chunk, final);
-      };
-      Zlib.prototype.p = function (c, f) {
-          this.c.p(c);
-          var raw = dopt(c, this.o, this.v && 2, f && 4, !f);
-          if (this.v)
-              zlh(raw, this.o), this.v = 0;
-          if (f)
-              wbytes(raw, raw.length - 4, this.c.d());
-          this.ondata(raw, f);
-      };
-      return Zlib;
-  }());
-  /**
-   * Asynchronous streaming Zlib compression
-   */
-  var AsyncZlib = /*#__PURE__*/ (function () {
-      function AsyncZlib(opts, cb) {
-          astrmify([
-              bDflt,
-              zle,
-              function () { return [astrm, Deflate, Zlib]; }
-          ], this, AsyncCmpStrm.call(this, opts, cb), function (ev) {
-              var strm = new Zlib(ev.data);
-              onmessage = astrm(strm);
-          }, 10);
-      }
-      return AsyncZlib;
-  }());
-  function zlib(data, opts, cb) {
-      if (!cb)
-          cb = opts, opts = {};
-      if (typeof cb != 'function')
-          err(7);
-      return cbify(data, opts, [
-          bDflt,
-          zle,
-          function () { return [zlibSync]; }
-      ], function (ev) { return pbf(zlibSync(ev.data[0], ev.data[1])); }, 4, cb);
-  }
-  /**
-   * Compress data with Zlib
-   * @param data The data to compress
-   * @param opts The compression options
-   * @returns The zlib-compressed version of the data
-   */
-  function zlibSync(data, opts) {
-      if (!opts)
-          opts = {};
-      var a = adler();
-      a.p(data);
-      var d = dopt(data, opts, 2, 4);
-      return zlh(d, opts), wbytes(d, d.length - 4, a.d()), d;
-  }
-  /**
-   * Streaming Zlib decompression
-   */
-  var Unzlib = /*#__PURE__*/ (function () {
-      /**
-       * Creates a Zlib decompression stream
-       * @param cb The callback to call whenever data is inflated
-       */
-      function Unzlib(cb) {
-          this.v = 1;
-          Inflate.call(this, cb);
-      }
-      /**
-       * Pushes a chunk to be unzlibbed
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Unzlib.prototype.push = function (chunk, final) {
-          Inflate.prototype.e.call(this, chunk);
-          if (this.v) {
-              if (this.p.length < 2 && !final)
-                  return;
-              this.p = this.p.subarray(2), this.v = 0;
-          }
-          if (final) {
-              if (this.p.length < 4)
-                  err(6, 'invalid zlib data');
-              this.p = this.p.subarray(0, -4);
-          }
-          // necessary to prevent TS from using the closure value
-          // This allows for workerization to function correctly
-          Inflate.prototype.c.call(this, final);
-      };
-      return Unzlib;
-  }());
-  /**
-   * Asynchronous streaming Zlib decompression
-   */
-  var AsyncUnzlib = /*#__PURE__*/ (function () {
-      /**
-       * Creates an asynchronous Zlib decompression stream
-       * @param cb The callback to call whenever data is deflated
-       */
-      function AsyncUnzlib(cb) {
-          this.ondata = cb;
-          astrmify([
-              bInflt,
-              zule,
-              function () { return [astrm, Inflate, Unzlib]; }
-          ], this, 0, function () {
-              var strm = new Unzlib();
-              onmessage = astrm(strm);
-          }, 11);
-      }
-      return AsyncUnzlib;
-  }());
-  function unzlib(data, opts, cb) {
-      if (!cb)
-          cb = opts, opts = {};
-      if (typeof cb != 'function')
-          err(7);
-      return cbify(data, opts, [
-          bInflt,
-          zule,
-          function () { return [unzlibSync]; }
-      ], function (ev) { return pbf(unzlibSync(ev.data[0], gu8(ev.data[1]))); }, 5, cb);
-  }
-  /**
-   * Expands Zlib data
-   * @param data The data to decompress
-   * @param out Where to write the data. Saves memory if you know the decompressed size and provide an output buffer of that length.
-   * @returns The decompressed version of the data
-   */
-  function unzlibSync(data, out) {
-      return inflt((zlv(data), data.subarray(2, -4)), out);
-  }
-  /**
-   * Streaming GZIP, Zlib, or raw DEFLATE decompression
-   */
-  var Decompress = /*#__PURE__*/ (function () {
-      /**
-       * Creates a decompression stream
-       * @param cb The callback to call whenever data is decompressed
-       */
-      function Decompress(cb) {
-          this.G = Gunzip;
-          this.I = Inflate;
-          this.Z = Unzlib;
-          this.ondata = cb;
-      }
-      /**
-       * Pushes a chunk to be decompressed
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Decompress.prototype.push = function (chunk, final) {
-          if (!this.ondata)
-              err(5);
-          if (!this.s) {
-              if (this.p && this.p.length) {
-                  var n = new u8(this.p.length + chunk.length);
-                  n.set(this.p), n.set(chunk, this.p.length);
-              }
-              else
-                  this.p = chunk;
-              if (this.p.length > 2) {
-                  var _this_1 = this;
-                  var cb = function () { _this_1.ondata.apply(_this_1, arguments); };
-                  this.s = (this.p[0] == 31 && this.p[1] == 139 && this.p[2] == 8)
-                      ? new this.G(cb)
-                      : ((this.p[0] & 15) != 8 || (this.p[0] >> 4) > 7 || ((this.p[0] << 8 | this.p[1]) % 31))
-                          ? new this.I(cb)
-                          : new this.Z(cb);
-                  this.s.push(this.p, final);
-                  this.p = null;
-              }
-          }
-          else
-              this.s.push(chunk, final);
-      };
-      return Decompress;
-  }());
-  /**
-   * Asynchronous streaming GZIP, Zlib, or raw DEFLATE decompression
-   */
-  var AsyncDecompress = /*#__PURE__*/ (function () {
-      /**
-     * Creates an asynchronous decompression stream
-     * @param cb The callback to call whenever data is decompressed
-     */
-      function AsyncDecompress(cb) {
-          this.G = AsyncGunzip;
-          this.I = AsyncInflate;
-          this.Z = AsyncUnzlib;
-          this.ondata = cb;
-      }
-      /**
-       * Pushes a chunk to be decompressed
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      AsyncDecompress.prototype.push = function (chunk, final) {
-          Decompress.prototype.push.call(this, chunk, final);
-      };
-      return AsyncDecompress;
-  }());
-  function decompress(data, opts, cb) {
-      if (!cb)
-          cb = opts, opts = {};
-      if (typeof cb != 'function')
-          err(7);
-      return (data[0] == 31 && data[1] == 139 && data[2] == 8)
-          ? gunzip(data, opts, cb)
-          : ((data[0] & 15) != 8 || (data[0] >> 4) > 7 || ((data[0] << 8 | data[1]) % 31))
-              ? inflate(data, opts, cb)
-              : unzlib(data, opts, cb);
-  }
-  /**
-   * Expands compressed GZIP, Zlib, or raw DEFLATE data, automatically detecting the format
-   * @param data The data to decompress
-   * @param out Where to write the data. Saves memory if you know the decompressed size and provide an output buffer of that length.
-   * @returns The decompressed version of the data
-   */
-  function decompressSync(data, out) {
-      return (data[0] == 31 && data[1] == 139 && data[2] == 8)
-          ? gunzipSync$1(data, out)
-          : ((data[0] & 15) != 8 || (data[0] >> 4) > 7 || ((data[0] << 8 | data[1]) % 31))
-              ? inflateSync(data, out)
-              : unzlibSync(data, out);
   }
   // flatten a directory structure
   var fltn = function (d, p, t, o) {
@@ -10731,81 +10114,6 @@
               r += String.fromCharCode((c & 15) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63));
       }
   };
-  /**
-   * Streaming UTF-8 decoding
-   */
-  var DecodeUTF8 = /*#__PURE__*/ (function () {
-      /**
-       * Creates a UTF-8 decoding stream
-       * @param cb The callback to call whenever data is decoded
-       */
-      function DecodeUTF8(cb) {
-          this.ondata = cb;
-          if (tds)
-              this.t = new TextDecoder();
-          else
-              this.p = et;
-      }
-      /**
-       * Pushes a chunk to be decoded from UTF-8 binary
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      DecodeUTF8.prototype.push = function (chunk, final) {
-          if (!this.ondata)
-              err(5);
-          final = !!final;
-          if (this.t) {
-              this.ondata(this.t.decode(chunk, { stream: true }), final);
-              if (final) {
-                  if (this.t.decode().length)
-                      err(8);
-                  this.t = null;
-              }
-              return;
-          }
-          if (!this.p)
-              err(4);
-          var dat = new u8(this.p.length + chunk.length);
-          dat.set(this.p);
-          dat.set(chunk, this.p.length);
-          var _a = dutf8(dat), ch = _a[0], np = _a[1];
-          if (final) {
-              if (np.length)
-                  err(8);
-              this.p = null;
-          }
-          else
-              this.p = np;
-          this.ondata(ch, final);
-      };
-      return DecodeUTF8;
-  }());
-  /**
-   * Streaming UTF-8 encoding
-   */
-  var EncodeUTF8 = /*#__PURE__*/ (function () {
-      /**
-       * Creates a UTF-8 decoding stream
-       * @param cb The callback to call whenever data is encoded
-       */
-      function EncodeUTF8(cb) {
-          this.ondata = cb;
-      }
-      /**
-       * Pushes a chunk to be encoded to UTF-8
-       * @param chunk The string data to push
-       * @param final Whether this is the last chunk
-       */
-      EncodeUTF8.prototype.push = function (chunk, final) {
-          if (!this.ondata)
-              err(5);
-          if (this.d)
-              err(4);
-          this.ondata(strToU8(chunk), this.d = final || false);
-      };
-      return EncodeUTF8;
-  }());
   /**
    * Converts a string into a Uint8Array for use with compression/decompression methods
    * @param str The string to encode
@@ -10868,9 +10176,6 @@
           return out;
       }
   }
-  ;
-  // deflate bit flag
-  var dbf = function (l) { return l == 1 ? 3 : l < 6 ? 2 : l == 9 ? 1 : 0; };
   // skip local zip header
   var slzh = function (d, b) { return b + 30 + b2(d, b + 26) + b2(d, b + 28); };
   // read zip header
@@ -10946,271 +10251,6 @@
       wbytes(o, b + 12, d);
       wbytes(o, b + 16, e);
   };
-  /**
-   * A pass-through stream to keep data uncompressed in a ZIP archive.
-   */
-  var ZipPassThrough = /*#__PURE__*/ (function () {
-      /**
-       * Creates a pass-through stream that can be added to ZIP archives
-       * @param filename The filename to associate with this data stream
-       */
-      function ZipPassThrough(filename) {
-          this.filename = filename;
-          this.c = crc();
-          this.size = 0;
-          this.compression = 0;
-      }
-      /**
-       * Processes a chunk and pushes to the output stream. You can override this
-       * method in a subclass for custom behavior, but by default this passes
-       * the data through. You must call this.ondata(err, chunk, final) at some
-       * point in this method.
-       * @param chunk The chunk to process
-       * @param final Whether this is the last chunk
-       */
-      ZipPassThrough.prototype.process = function (chunk, final) {
-          this.ondata(null, chunk, final);
-      };
-      /**
-       * Pushes a chunk to be added. If you are subclassing this with a custom
-       * compression algorithm, note that you must push data from the source
-       * file only, pre-compression.
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      ZipPassThrough.prototype.push = function (chunk, final) {
-          if (!this.ondata)
-              err(5);
-          this.c.p(chunk);
-          this.size += chunk.length;
-          if (final)
-              this.crc = this.c.d();
-          this.process(chunk, final || false);
-      };
-      return ZipPassThrough;
-  }());
-  // I don't extend because TypeScript extension adds 1kB of runtime bloat
-  /**
-   * Streaming DEFLATE compression for ZIP archives. Prefer using AsyncZipDeflate
-   * for better performance
-   */
-  var ZipDeflate = /*#__PURE__*/ (function () {
-      /**
-       * Creates a DEFLATE stream that can be added to ZIP archives
-       * @param filename The filename to associate with this data stream
-       * @param opts The compression options
-       */
-      function ZipDeflate(filename, opts) {
-          var _this_1 = this;
-          if (!opts)
-              opts = {};
-          ZipPassThrough.call(this, filename);
-          this.d = new Deflate(opts, function (dat, final) {
-              _this_1.ondata(null, dat, final);
-          });
-          this.compression = 8;
-          this.flag = dbf(opts.level);
-      }
-      ZipDeflate.prototype.process = function (chunk, final) {
-          try {
-              this.d.push(chunk, final);
-          }
-          catch (e) {
-              this.ondata(e, null, final);
-          }
-      };
-      /**
-       * Pushes a chunk to be deflated
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      ZipDeflate.prototype.push = function (chunk, final) {
-          ZipPassThrough.prototype.push.call(this, chunk, final);
-      };
-      return ZipDeflate;
-  }());
-  /**
-   * Asynchronous streaming DEFLATE compression for ZIP archives
-   */
-  var AsyncZipDeflate = /*#__PURE__*/ (function () {
-      /**
-       * Creates a DEFLATE stream that can be added to ZIP archives
-       * @param filename The filename to associate with this data stream
-       * @param opts The compression options
-       */
-      function AsyncZipDeflate(filename, opts) {
-          var _this_1 = this;
-          if (!opts)
-              opts = {};
-          ZipPassThrough.call(this, filename);
-          this.d = new AsyncDeflate(opts, function (err, dat, final) {
-              _this_1.ondata(err, dat, final);
-          });
-          this.compression = 8;
-          this.flag = dbf(opts.level);
-          this.terminate = this.d.terminate;
-      }
-      AsyncZipDeflate.prototype.process = function (chunk, final) {
-          this.d.push(chunk, final);
-      };
-      /**
-       * Pushes a chunk to be deflated
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      AsyncZipDeflate.prototype.push = function (chunk, final) {
-          ZipPassThrough.prototype.push.call(this, chunk, final);
-      };
-      return AsyncZipDeflate;
-  }());
-  // TODO: Better tree shaking
-  /**
-   * A zippable archive to which files can incrementally be added
-   */
-  var Zip$1 = /*#__PURE__*/ (function () {
-      /**
-       * Creates an empty ZIP archive to which files can be added
-       * @param cb The callback to call whenever data for the generated ZIP archive
-       *           is available
-       */
-      function Zip(cb) {
-          this.ondata = cb;
-          this.u = [];
-          this.d = 1;
-      }
-      /**
-       * Adds a file to the ZIP archive
-       * @param file The file stream to add
-       */
-      Zip.prototype.add = function (file) {
-          var _this_1 = this;
-          if (!this.ondata)
-              err(5);
-          // finishing or finished
-          if (this.d & 2)
-              this.ondata(err(4 + (this.d & 1) * 8, 0, 1), null, false);
-          else {
-              var f = strToU8(file.filename), fl_1 = f.length;
-              var com = file.comment, o = com && strToU8(com);
-              var u = fl_1 != file.filename.length || (o && (com.length != o.length));
-              var hl_1 = fl_1 + exfl(file.extra) + 30;
-              if (fl_1 > 65535)
-                  this.ondata(err(11, 0, 1), null, false);
-              var header = new u8(hl_1);
-              wzh(header, 0, file, f, u, -1);
-              var chks_1 = [header];
-              var pAll_1 = function () {
-                  for (var _i = 0, chks_2 = chks_1; _i < chks_2.length; _i++) {
-                      var chk = chks_2[_i];
-                      _this_1.ondata(null, chk, false);
-                  }
-                  chks_1 = [];
-              };
-              var tr_1 = this.d;
-              this.d = 0;
-              var ind_1 = this.u.length;
-              var uf_1 = mrg(file, {
-                  f: f,
-                  u: u,
-                  o: o,
-                  t: function () {
-                      if (file.terminate)
-                          file.terminate();
-                  },
-                  r: function () {
-                      pAll_1();
-                      if (tr_1) {
-                          var nxt = _this_1.u[ind_1 + 1];
-                          if (nxt)
-                              nxt.r();
-                          else
-                              _this_1.d = 1;
-                      }
-                      tr_1 = 1;
-                  }
-              });
-              var cl_1 = 0;
-              file.ondata = function (err, dat, final) {
-                  if (err) {
-                      _this_1.ondata(err, dat, final);
-                      _this_1.terminate();
-                  }
-                  else {
-                      cl_1 += dat.length;
-                      chks_1.push(dat);
-                      if (final) {
-                          var dd = new u8(16);
-                          wbytes(dd, 0, 0x8074B50);
-                          wbytes(dd, 4, file.crc);
-                          wbytes(dd, 8, cl_1);
-                          wbytes(dd, 12, file.size);
-                          chks_1.push(dd);
-                          uf_1.c = cl_1, uf_1.b = hl_1 + cl_1 + 16, uf_1.crc = file.crc, uf_1.size = file.size;
-                          if (tr_1)
-                              uf_1.r();
-                          tr_1 = 1;
-                      }
-                      else if (tr_1)
-                          pAll_1();
-                  }
-              };
-              this.u.push(uf_1);
-          }
-      };
-      /**
-       * Ends the process of adding files and prepares to emit the final chunks.
-       * This *must* be called after adding all desired files for the resulting
-       * ZIP file to work properly.
-       */
-      Zip.prototype.end = function () {
-          var _this_1 = this;
-          if (this.d & 2) {
-              this.ondata(err(4 + (this.d & 1) * 8, 0, 1), null, true);
-              return;
-          }
-          if (this.d)
-              this.e();
-          else
-              this.u.push({
-                  r: function () {
-                      if (!(_this_1.d & 1))
-                          return;
-                      _this_1.u.splice(-1, 1);
-                      _this_1.e();
-                  },
-                  t: function () { }
-              });
-          this.d = 3;
-      };
-      Zip.prototype.e = function () {
-          var bt = 0, l = 0, tl = 0;
-          for (var _i = 0, _a = this.u; _i < _a.length; _i++) {
-              var f = _a[_i];
-              tl += 46 + f.f.length + exfl(f.extra) + (f.o ? f.o.length : 0);
-          }
-          var out = new u8(tl + 22);
-          for (var _b = 0, _c = this.u; _b < _c.length; _b++) {
-              var f = _c[_b];
-              wzh(out, bt, f, f.f, f.u, -f.c - 2, l, f.o);
-              bt += 46 + f.f.length + exfl(f.extra) + (f.o ? f.o.length : 0), l += f.b;
-          }
-          wzf(out, bt, this.u.length, tl, l);
-          this.ondata(null, out, true);
-          this.d = 2;
-      };
-      /**
-       * A method to terminate any internal workers used by the stream. Subsequent
-       * calls to add() will fail.
-       */
-      Zip.prototype.terminate = function () {
-          for (var _i = 0, _a = this.u; _i < _a.length; _i++) {
-              var f = _a[_i];
-              f.t();
-          }
-          this.d = 2;
-      };
-      return Zip;
-  }());
   function zip(data, opts, cb) {
       if (!cb)
           cb = opts, opts = {};
@@ -11354,224 +10394,6 @@
       wzf(out, o, files.length, cdl, oe);
       return out;
   }
-  /**
-   * Streaming pass-through decompression for ZIP archives
-   */
-  var UnzipPassThrough = /*#__PURE__*/ (function () {
-      function UnzipPassThrough() {
-      }
-      UnzipPassThrough.prototype.push = function (data, final) {
-          this.ondata(null, data, final);
-      };
-      UnzipPassThrough.compression = 0;
-      return UnzipPassThrough;
-  }());
-  /**
-   * Streaming DEFLATE decompression for ZIP archives. Prefer AsyncZipInflate for
-   * better performance.
-   */
-  var UnzipInflate = /*#__PURE__*/ (function () {
-      /**
-       * Creates a DEFLATE decompression that can be used in ZIP archives
-       */
-      function UnzipInflate() {
-          var _this_1 = this;
-          this.i = new Inflate(function (dat, final) {
-              _this_1.ondata(null, dat, final);
-          });
-      }
-      UnzipInflate.prototype.push = function (data, final) {
-          try {
-              this.i.push(data, final);
-          }
-          catch (e) {
-              this.ondata(e, null, final);
-          }
-      };
-      UnzipInflate.compression = 8;
-      return UnzipInflate;
-  }());
-  /**
-   * Asynchronous streaming DEFLATE decompression for ZIP archives
-   */
-  var AsyncUnzipInflate = /*#__PURE__*/ (function () {
-      /**
-       * Creates a DEFLATE decompression that can be used in ZIP archives
-       */
-      function AsyncUnzipInflate(_, sz) {
-          var _this_1 = this;
-          if (sz < 320000) {
-              this.i = new Inflate(function (dat, final) {
-                  _this_1.ondata(null, dat, final);
-              });
-          }
-          else {
-              this.i = new AsyncInflate(function (err, dat, final) {
-                  _this_1.ondata(err, dat, final);
-              });
-              this.terminate = this.i.terminate;
-          }
-      }
-      AsyncUnzipInflate.prototype.push = function (data, final) {
-          if (this.i.terminate)
-              data = slc(data, 0);
-          this.i.push(data, final);
-      };
-      AsyncUnzipInflate.compression = 8;
-      return AsyncUnzipInflate;
-  }());
-  /**
-   * A ZIP archive decompression stream that emits files as they are discovered
-   */
-  var Unzip = /*#__PURE__*/ (function () {
-      /**
-       * Creates a ZIP decompression stream
-       * @param cb The callback to call whenever a file in the ZIP archive is found
-       */
-      function Unzip(cb) {
-          this.onfile = cb;
-          this.k = [];
-          this.o = {
-              0: UnzipPassThrough
-          };
-          this.p = et;
-      }
-      /**
-       * Pushes a chunk to be unzipped
-       * @param chunk The chunk to push
-       * @param final Whether this is the last chunk
-       */
-      Unzip.prototype.push = function (chunk, final) {
-          var _this_1 = this;
-          if (!this.onfile)
-              err(5);
-          if (!this.p)
-              err(4);
-          if (this.c > 0) {
-              var len = Math.min(this.c, chunk.length);
-              var toAdd = chunk.subarray(0, len);
-              this.c -= len;
-              if (this.d)
-                  this.d.push(toAdd, !this.c);
-              else
-                  this.k[0].push(toAdd);
-              chunk = chunk.subarray(len);
-              if (chunk.length)
-                  return this.push(chunk, final);
-          }
-          else {
-              var f = 0, i = 0, is = void 0, buf = void 0;
-              if (!this.p.length)
-                  buf = chunk;
-              else if (!chunk.length)
-                  buf = this.p;
-              else {
-                  buf = new u8(this.p.length + chunk.length);
-                  buf.set(this.p), buf.set(chunk, this.p.length);
-              }
-              var l = buf.length, oc = this.c, add = oc && this.d;
-              var _loop_2 = function () {
-                  var _a;
-                  var sig = b4(buf, i);
-                  if (sig == 0x4034B50) {
-                      f = 1, is = i;
-                      this_1.d = null;
-                      this_1.c = 0;
-                      var bf = b2(buf, i + 6), cmp_1 = b2(buf, i + 8), u = bf & 2048, dd = bf & 8, fnl = b2(buf, i + 26), es = b2(buf, i + 28);
-                      if (l > i + 30 + fnl + es) {
-                          var chks_3 = [];
-                          this_1.k.unshift(chks_3);
-                          f = 2;
-                          var sc_1 = b4(buf, i + 18), su_1 = b4(buf, i + 22);
-                          var fn_1 = strFromU8(buf.subarray(i + 30, i += 30 + fnl), !u);
-                          if (sc_1 == 4294967295) {
-                              _a = dd ? [-2] : z64e(buf, i), sc_1 = _a[0], su_1 = _a[1];
-                          }
-                          else if (dd)
-                              sc_1 = -1;
-                          i += es;
-                          this_1.c = sc_1;
-                          var d_1;
-                          var file_1 = {
-                              name: fn_1,
-                              compression: cmp_1,
-                              start: function () {
-                                  if (!file_1.ondata)
-                                      err(5);
-                                  if (!sc_1)
-                                      file_1.ondata(null, et, true);
-                                  else {
-                                      var ctr = _this_1.o[cmp_1];
-                                      if (!ctr)
-                                          file_1.ondata(err(14, 'unknown compression type ' + cmp_1, 1), null, false);
-                                      d_1 = sc_1 < 0 ? new ctr(fn_1) : new ctr(fn_1, sc_1, su_1);
-                                      d_1.ondata = function (err, dat, final) { file_1.ondata(err, dat, final); };
-                                      for (var _i = 0, chks_4 = chks_3; _i < chks_4.length; _i++) {
-                                          var dat = chks_4[_i];
-                                          d_1.push(dat, false);
-                                      }
-                                      if (_this_1.k[0] == chks_3 && _this_1.c)
-                                          _this_1.d = d_1;
-                                      else
-                                          d_1.push(et, true);
-                                  }
-                              },
-                              terminate: function () {
-                                  if (d_1 && d_1.terminate)
-                                      d_1.terminate();
-                              }
-                          };
-                          if (sc_1 >= 0)
-                              file_1.size = sc_1, file_1.originalSize = su_1;
-                          this_1.onfile(file_1);
-                      }
-                      return "break";
-                  }
-                  else if (oc) {
-                      if (sig == 0x8074B50) {
-                          is = i += 12 + (oc == -2 && 8), f = 3, this_1.c = 0;
-                          return "break";
-                      }
-                      else if (sig == 0x2014B50) {
-                          is = i -= 4, f = 3, this_1.c = 0;
-                          return "break";
-                      }
-                  }
-              };
-              var this_1 = this;
-              for (; i < l - 4; ++i) {
-                  var state_1 = _loop_2();
-                  if (state_1 === "break")
-                      break;
-              }
-              this.p = et;
-              if (oc < 0) {
-                  var dat = f ? buf.subarray(0, is - 12 - (oc == -2 && 8) - (b4(buf, is - 16) == 0x8074B50 && 4)) : buf.subarray(0, i);
-                  if (add)
-                      add.push(dat, !!f);
-                  else
-                      this.k[+(f == 2)].push(dat);
-              }
-              if (f & 2)
-                  return this.push(buf.subarray(i), final);
-              this.p = buf.subarray(i);
-          }
-          if (final) {
-              if (this.c)
-                  err(13);
-              this.p = null;
-          }
-      };
-      /**
-       * Registers a decoder with the stream, allowing for files compressed with
-       * the compression type provided to be expanded correctly
-       * @param decoder The decoder constructor
-       */
-      Unzip.prototype.register = function (decoder) {
-          this.o[decoder.compression] = decoder;
-      };
-      return Unzip;
-  }());
   var mt = typeof queueMicrotask == 'function' ? queueMicrotask : typeof setTimeout == 'function' ? setTimeout : function (fn) { fn(); };
   function unzip(data, opts, cb) {
       if (!cb)
@@ -11595,7 +10417,6 @@
               return tAll;
           }
       }
-      ;
       var lft = b2(data, e + 8);
       if (lft) {
           var c = lft;
@@ -11674,7 +10495,6 @@
           if (!e || data.length - e > 65558)
               err(13);
       }
-      ;
       var c = b2(data, e + 8);
       if (!c)
           return {};
@@ -11708,6 +10528,371 @@
       }
       return files;
   }
+
+  // Checks if @arg is a Uint8Array containing gzipped data
+  function isGzipped(arg) {
+    return arg.length > 2 && arg.buffer instanceof ArrayBuffer && arg[0] == 0x1f && arg[1] == 0x8b;
+  }
+
+  function gzipSync(content, opts) {
+    // TODO: use native module in Node if available
+    // require('zlib').
+    if (typeof content == 'string') {
+      content = strToU8(content);
+    }
+    return gzipSync$1(content, opts);
+  }
+
+  function gunzipSync(buf, filename) {
+    // TODO: use native module in Node
+    // require('zlib').
+    if (buf instanceof ArrayBuffer) {
+      buf = new Uint8Array(buf);
+    }
+    var out = gunzipSync$1(buf); // returns Uint8Array
+    if (filename && !isImportableAsBinary(filename)) {
+      out = strFromU8(out);
+    }
+    return out;
+  }
+
+  var Gzip = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    isGzipped: isGzipped,
+    gzipSync: gzipSync,
+    gunzipSync: gunzipSync
+  });
+
+  // Export in a column-first format
+  // Faster than exportTable(), and can handle some data that can't be
+  // converted to JSON, like Date objects.
+  function exportTable2(table) {
+    var fields = table.getFields();
+    var records = table.getRecords();
+    var types = [];
+    var columns = fields.map(function(name) {
+      var type = getColumnType(name, records);
+      types.push(type);
+      return exportColumn(name, type, records);
+    });
+    return ({
+      fields: fields,
+      types: types,
+      data: columns,
+      size: records.length
+    });
+  }
+
+  // Returns array of records
+  function importTable(data) {
+    if (looksLikeType2Table(data)) {
+      return importTable2(data);
+    }
+    if (isGzipped(data)) {
+      return JSON.parse(strFromU8(gunzipSync(data)));
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+    error('Unknown packed table format');
+  }
+
+  function looksLikeType2Table(o) {
+    return Array.isArray(o.fields) &&
+      Array.isArray(o.types) && Array.isArray(o.data) &&
+      o.fields.length == o.types.length && o.fields.length == o.data.length &&
+      o.size >= 0;
+  }
+
+  function importTable2(obj) {
+    var n = obj.size;
+    var records = [];
+    for (var i=0; i<n; i++) {
+      records[i] = {};
+    }
+    for (var j=0, m=obj.fields.length; j<m; j++) {
+      importColumn(obj.fields[j], obj.types[j], obj.data[j], records);
+      obj.data[j] = null;
+    }
+    return records;
+  }
+
+  function importColumn(field, type, data, records) {
+    var arr, rec;
+    if (isGzipped(data)) {
+      arr = JSON.parse(strFromU8(gunzipSync(data)));
+    } else if (Array.isArray(data)) {
+      arr = data;
+    } else {
+      error('Unexpected packed table format');
+    }
+    for (var i=0, n=records.length; i<n; i++) {
+      rec = records[i];
+      rec[field] = arr[i];
+    }
+  }
+
+  function exportColumn(name, type, records) {
+    if (type == 'number' || type == 'string') {
+      return gzipSync(JSON.stringify(getFieldValues(records, name)), {level: 2});
+    }
+    return getFieldValues(records, name);
+  }
+
+  // faster for decimal numbers?
+  // function exportNumberField(field, records) {
+  //   var arr = new Float64Array(records.length);
+  //   for (var i=0, n=records.length; i<n; i++) {
+  //     arr[i] = records[i][field];
+  //   }
+  //   return gzipSync(arr, {level: 2});
+  // }
+
+  // import { gzipSync, isGzipped } from '../io/mapshaper-gzip';
+  var PACKAGE_EXT = 'msx';
+
+  // libraries
+  // https://msgpack.org/index.html
+  //
+
+  // session format (including gui state)
+  /*
+  {
+    version: 1,
+    created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
+    datasets: [],
+    gui: {} // see gui-session-snapshot-control.mjs
+  }
+  */
+
+  function exportPackedDatasets(datasets, opts) {
+    return [{
+      content: pack(exportDatasetsToPack(datasets)),
+      filename: opts.file || 'output.' + PACKAGE_EXT
+    }];
+  }
+
+  function pack(obj) {
+    // encode options: see https://github.com/msgpack/msgpack-javascript
+    // initialBufferSize  number  2048
+    // ignoreUndefined boolean false
+    return pack$1(obj, {});
+  }
+
+  // gui: (optional) gui instance
+  //
+  function exportDatasetsToPack(datasets, opts) {
+    return {
+      version: 1,
+      created: (new Date).toISOString(),
+      datasets: datasets.map(exportDataset)
+    };
+  }
+
+  // TODO..
+  // export function serializeSession(catalog) {
+  //   var obj = exportDatasets(catalog.getDatasets());
+  //   return BSON.serialize(obj);
+  // }
+
+  function exportDataset(dataset) {
+    return {
+      arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
+      info: dataset.info ? exportInfo(dataset.info) : null,
+      layers: (dataset.layers || []).map(exportLayer)
+    };
+  }
+
+  function typedArrayToBuffer(arr) {
+    return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+  }
+
+  function exportArcs(arcs) {
+    var data = arcs.getVertexData();
+    var obj = {
+      nn: typedArrayToBuffer(data.nn),
+      xx: typedArrayToBuffer(data.xx),
+      yy: typedArrayToBuffer(data.yy),
+      zz: data.zz ? typedArrayToBuffer(data.zz) : null,
+      zlimit: arcs.getRetainedInterval()
+    };
+
+    // gzipping typically only sees about 70% compression on unrounded coordinates
+    // -- not worth the time
+    // var obj2 = {
+    //   nn: gzipSync(obj.nn),
+    //   xx: gzipSync(obj.xx),
+    //   yy: gzipSync(obj.yy)
+    // }
+    return obj;
+  }
+
+  function exportLayer(lyr) {
+    // console.time('table')
+    var data = lyr.data ? exportTable2(lyr.data) : null;
+    // console.timeEnd('table')
+    return {
+      name: lyr.name || null,
+      geometry_type: lyr.geometry_type || null,
+      shapes: lyr.shapes || null,
+      data: data,
+      menu_order: lyr.menu_order || null,
+      pinned: lyr.pinned || false,
+      active: lyr.active || false
+    };
+  }
+
+  function exportInfo(info) {
+    info = Object.assign({}, info);
+    if (info.crs && !info.crs_string && !info.prj) {
+      info.crs_string = crsToProj4(info.crs);
+    }
+    delete info.crs; // proj object cannot be serialized (need to reconstitute in unpack)
+    return info;
+  }
+
+  var Pack = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    PACKAGE_EXT: PACKAGE_EXT,
+    exportPackedDatasets: exportPackedDatasets,
+    pack: pack,
+    exportDatasetsToPack: exportDatasetsToPack,
+    exportDataset: exportDataset
+  });
+
+  // Guess the type of a data file from file extension, or return null if not sure
+  function guessInputFileType(file) {
+    var ext = getFileExtension(file || '').toLowerCase(),
+        type = null;
+    if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
+      type = ext;
+    } else if (/json$/.test(ext)) {
+      type = 'json';
+    } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
+      type = 'text';
+    } else if (ext == PACKAGE_EXT) {
+      type = PACKAGE_EXT;
+    }
+    return type;
+  }
+
+  function guessInputContentType(content) {
+    var type = null;
+    if (utils.isString(content)) {
+      type = stringLooksLikeJSON(content) && 'json' ||
+        stringLooksLikeKML(content) && 'kml' || 'text';
+    } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+      type = 'json';
+    }
+    return type;
+  }
+
+  function guessInputType(file, content) {
+    return guessInputFileType(file) || guessInputContentType(content);
+  }
+
+  function stringLooksLikeJSON(str) {
+    return /^\s*[{[]/.test(String(str));
+  }
+
+  function stringLooksLikeKML(str) {
+    str = String(str);
+    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
+  }
+
+  function couldBeDsvFile(name) {
+    var ext = getFileExtension(name).toLowerCase();
+    return /csv|tsv|txt$/.test(ext);
+  }
+
+  // File looks like an importable file type
+  // name: filename or path
+  function looksLikeImportableFile(name) {
+    return !!guessInputFileType(name);
+  }
+
+  // File looks like a directly readable data file type
+  // name: filename or path
+  function looksLikeContentFile(name) {
+    var type = guessInputFileType(name);
+    return !!type && type != 'gz' && type != 'zip';
+  }
+
+  function isPackageFile(file) {
+    return file.endsWith('.' + PACKAGE_EXT);
+  }
+
+  function isZipFile(file) {
+    return /\.zip$/i.test(file);
+  }
+
+  function isKmzFile(file) {
+    return /\.kmz$/i.test(file);
+  }
+
+  function isGzipFile(file) {
+    return /\.gz/i.test(file);
+  }
+
+  function isSupportedOutputFormat(fmt) {
+    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT];
+    return types.indexOf(fmt) > -1;
+  }
+
+  function getFormatName(fmt) {
+    return {
+      geojson: 'GeoJSON',
+      topojson: 'TopoJSON',
+      json: 'JSON records',
+      dsv: 'CSV',
+      dbf: 'DBF',
+      kml: 'KML',
+      kmz: 'KMZ',
+      [PACKAGE_EXT]: 'Snapshot file',
+      shapefile: 'Shapefile',
+      svg: 'SVG'
+    }[fmt] || '';
+  }
+
+  // Assumes file at @path is one of Mapshaper's supported file types
+  function isSupportedBinaryInputType(path) {
+    var ext = getFileExtension(path).toLowerCase();
+    return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == PACKAGE_EXT; // GUI also supports zip files
+  }
+
+  function isImportableAsBinary(path) {
+    var type = guessInputFileType(path);
+    return isSupportedBinaryInputType(path) || isZipFile(path) ||
+      isGzipFile(path) || isKmzFile(path) || isPackageFile(path) ||
+      type == 'json' || type == 'text';
+  }
+
+  // Detect extensions of some unsupported file types, for cmd line validation
+  function filenameIsUnsupportedOutputType(file) {
+    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml)$/i;
+    return rxp.test(file);
+  }
+
+  var FileTypes = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    guessInputFileType: guessInputFileType,
+    guessInputContentType: guessInputContentType,
+    guessInputType: guessInputType,
+    stringLooksLikeJSON: stringLooksLikeJSON,
+    stringLooksLikeKML: stringLooksLikeKML,
+    couldBeDsvFile: couldBeDsvFile,
+    looksLikeImportableFile: looksLikeImportableFile,
+    looksLikeContentFile: looksLikeContentFile,
+    isPackageFile: isPackageFile,
+    isZipFile: isZipFile,
+    isKmzFile: isKmzFile,
+    isGzipFile: isGzipFile,
+    isSupportedOutputFormat: isSupportedOutputFormat,
+    getFormatName: getFormatName,
+    isSupportedBinaryInputType: isSupportedBinaryInputType,
+    isImportableAsBinary: isImportableAsBinary,
+    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
+  });
 
   function runningInBrowser() {
     return typeof window !== 'undefined' && typeof window.document !== 'undefined';
@@ -11979,9 +11164,7 @@
   var _writeFiles = function(exports, opts, cb) {
     if (exports.length > 0 === false) {
       message("No files to save");
-    } else if (opts.dry_run) {
-      // no output
-    } else if (opts.stdout) {
+    } else if (opts.dry_run) ; else if (opts.stdout) {
       // Pass callback for asynchronous output (synchronous output to stdout can
       // trigger EAGAIN error, e.g. when piped to less)
       return cli.writeFile('/dev/stdout', exports[0].content, cb);
@@ -12438,7 +11621,7 @@
 
     function findPointHitCandidates(p, buffer) {
       var b = buffer > 0 ? buffer : 0;
-      var x = p[0], y = p[1];
+      p[0]; p[1];
       return boundsQuery(p[0] - b, p[1] - b, p[0] + b, p[1] + b);
     }
 
@@ -12582,9 +11765,7 @@
         groups.push([path]);
       } else if (path.area * sign < 0) {
         holes.push(path);
-      } else {
-        // Zero-area ring, skipping
-      }
+      } else ;
     });
 
     if (holes.length === 0) {
@@ -12834,10 +12015,6 @@
     return toArcId;
   }
 
-  function chooseRighthandPath2(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
-    return chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-  }
-
   // TODO: consider using simpler internal.chooseRighthandPath2()
   // Returns 1 if node->a, return 2 if node->b, else return 0
   // TODO: better handling of identical angles (better -- avoid creating them)
@@ -12894,29 +12071,6 @@
     getRightmostArc: getRightmostArc,
     chooseRighthandVector: chooseRighthandVector
   });
-
-  // Functions for redrawing polygons for clipping / erasing / flattening / division
-  // These functions use 8 bit codes to control forward and reverse traversal of each arc.
-  //
-  // Function of path bits 0-7:
-  // 0: is fwd path hidden or visible? (0=hidden, 1=visible)
-  // 1: is fwd path open or closed for traversal? (0=closed, 1=open)
-  // 2: unused
-  // 3: unused
-  // 4: is rev path hidden or visible?
-  // 5: is rev path open or closed for traversal?
-  // 6: unused
-  // 7: unused
-  //
-  // Example codes:
-  // 0x3 (3): forward path is visible and open, reverse path is hidden and closed
-  // 0x10 (16): forward path is hidden and closed, reverse path is visible and closed
-  //
-
-  var FWD_VISIBLE = 0x1;
-  var FWD_OPEN = 0x2;
-  var REV_VISIBLE = 0x10;
-  var REV_OPEN = 0x20;
 
   function setBits(bits, arcBits, mask) {
     return (bits & ~mask) | (arcBits & mask);
@@ -13036,8 +12190,7 @@
 
     return function(startId) {
       var path = [],
-          nextId, msg,
-          candId = startId;
+          nextId, candId = startId;
 
       if (isEmptyArc(startId)) {
         return null;
@@ -13792,64 +12945,6 @@
     };
   }
 
-  function toHSV(rgb) {
-    var r = rgb.r,
-        g = rgb.g,
-        b = rgb.b,
-        max = Math.max(r, g, b),
-        min = Math.min(r, g, b),
-        diff = max - min,
-        h;
-    if (diff === 0) {
-      h = 0;
-    } else if (r == max) {
-      h = (g - b) / diff;
-    } else if (g == max) {
-      h = (b - r) / diff + 2;
-    } else {
-      h = (r - g) / diff + 4;
-    }
-    h *= 60;
-    if (h < 0) h += 360;
-    return {
-      h: h,
-      s: max == 0 ? 0 : 255 * (1 - min / max),
-      v: max,
-      a: rgb.a
-    };
-  }
-
-  function fromHSV(hsv) {
-    var h = hsv.h,
-        s = hsv.s / 255,
-        v = hsv.v,
-        hi = Math.floor(h / 60) % 6,
-        f = h / 60 - Math.floor(h / 60),
-        p = (v * (1 - s)),
-        q = (v * (1 - f * s)),
-        t = (v * (1 - (1 - f) * s)),
-        r, g, b;
-    if (hi === 0) {
-      r = v; g = t; b = p;
-    } else if (hi == 1) {
-      r = q; g = v; b = p;
-    } else if (hi == 2) {
-      r = p; g = v; b = t;
-    } else if (hi == 3) {
-      r = p; g = q; b = v;
-    } else if (hi == 4) {
-      r = t; g = p; b = v;
-    } else {
-      r = v; g = p; b = q;
-    }
-    return {
-      r: r,
-      g: g,
-      b: b,
-      a: hsv.a
-    };
-  }
-
   function blend(a, b) {
     var colors, weights, args;
     if (Array.isArray(a)) {
@@ -14288,7 +13383,6 @@
 
 
   function findCommandTargets(layers, pattern, type) {
-    var targets = [];
     var matches = findMatchingLayers(layers, pattern, true);
     if (type) {
       matches = matches.filter(function(o) {return o.layer.geometry_type == type;});
@@ -14364,9 +13458,9 @@
   // get an identifier for a layer that can be used in a target= option
   // (returns name if layer has a unique name, or a numerical id)
   function getLayerTargetId(catalog, lyr) {
-    var nameCount = 0,
-        name = lyr.name,
-        id;
+    var nameCount = 0;
+        lyr.name;
+        var id;
     catalog.getLayers().forEach(function(o, i) {
       if (lyr.name && o.layer.name == lyr.name) nameCount++;
       if (lyr == o.layer) id = String(i + 1);
@@ -15129,7 +14223,7 @@
           last: wrap(pass)
         },
         len = getFeatureCount(lyr),
-        calc1, calc2, result;
+        calc1, calc2;
 
     if (lyr.geometry_type) {
       // add functions related to layer geometry (e.g. for subdivide())
@@ -15790,7 +14884,7 @@
     } else if (lyr.geometry_type == 'polygon') {
       dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
     } else if (lyr.geometry_type == 'polyline') {
-      dissolveShapes = dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
+      dissolveShapes = dissolvePolylineGeometry(lyr, getGroupId, arcs);
     } else if (lyr.geometry_type == 'point') {
       dissolveShapes = dissolvePointGeometry(lyr, getGroupId, opts);
     }
@@ -15801,7 +14895,7 @@
     if (!lyr.shapes || !lyr.geometry_type) {
       stop('Layer is missing geometry');
     }
-    var shapes = cloneShapes(lyr.shapes);
+    cloneShapes(lyr.shapes);
     var shapes2 = [];
     lyr.shapes.forEach(function(shp, i) {
       var groupId = getGroupId(i);
@@ -15972,17 +15066,6 @@
         }
       }
     }
-
-    // This function was a bottleneck in datasets with many overlaps
-    function removeTileFromShape_old(tileId, shapeId) {
-      shapeIndex[shapeId] = shapeIndex[shapeId].filter(function(tileId2) {
-        return tileId2 != tileId;
-      });
-      if (shapeIndex[shapeId].length > 0 === false) {
-        // TODO: make sure to test the case where a shape becomes empty
-        // error("empty shape")
-      }
-    }
   }
 
   // Keep track of whether positive or negative integer ids are 'used' or not.
@@ -16147,8 +15230,6 @@
           // TODO: test edge case: exitArcId occurs twice in the path
           pathIndex.clearId(exitArcId);
           exitArcIndexes.push(idx);
-        } else {
-          // TODO: investigate why this happens
         }
       }
       if (exitArcIndexes.length < 2) {
@@ -16280,11 +15361,11 @@
 
   function findSegmentIntersections(arcs, optArg) {
     var opts = utils.extend({}, optArg),
-        bounds = arcs.getBounds(),
+        bounds = arcs.getBounds();
         // TODO: handle spherical bounds
-        spherical = !arcs.isPlanar() &&
-            geom.containsBounds(getWorldBounds(), bounds.toArray()),
-        ymin = bounds.ymin,
+        !arcs.isPlanar() &&
+            geom.containsBounds(getWorldBounds(), bounds.toArray());
+        var ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
         stripeCount = opts.stripes || calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
@@ -16400,17 +15481,6 @@
     return stripes > 0 ? stripes : 1;
   }
 
-  // Old method calculates average segment length -- slow
-  function calcSegmentIntersectionStripeCount_old(arcs) {
-    var yrange = arcs.getBounds().height(),
-        segLen = getAvgSegment2(arcs)[1], // slow
-        count = 1;
-    if (segLen > 0 && yrange > 0) {
-      count = Math.ceil(yrange / segLen / 20);
-    }
-    return count || 1;
-  }
-
   // Find intersections among a group of line segments
   //
   // TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
@@ -16486,20 +15556,6 @@
       i += 2;
     }
     return intersections;
-
-    // @p is an [x, y] location along a segment defined by ids @id1 and @id2
-    // return array [i, j] where i and j are the same endpoint ids with i <= j
-    // if @p coincides with an endpoint, return the id of that endpoint twice
-    function getEndpointIds(id1, id2, p) {
-      var i = id1 < id2 ? id1 : id2,
-          j = i === id1 ? id2 : id1;
-      if (xx[i] == p[0] && yy[i] == p[1]) {
-        j = i;
-      } else if (xx[j] == p[0] && yy[j] == p[1]) {
-        i = j;
-      }
-      return [i, j];
-    }
   }
 
   function formatIntersection(xy, s1, s2, xx, yy) {
@@ -16815,8 +15871,8 @@
     var points = [], ix, a, b;
     for (var i=0, n=intersections.length; i<n; i++) {
       ix = intersections[i];
-      a = getCutPoint(ix.x, ix.y, ix.a[0], ix.a[1], xx, yy);
-      b = getCutPoint(ix.x, ix.y, ix.b[0], ix.b[1], xx, yy);
+      a = getCutPoint(ix.x, ix.y, ix.a[0], ix.a[1]);
+      b = getCutPoint(ix.x, ix.y, ix.b[0], ix.b[1]);
       if (a) points.push(a);
       if (b) points.push(b);
     }
@@ -16876,11 +15932,7 @@
       while (pointId < points.length && points[pointId].i <= j) {
         p = points[pointId];
         pp = filtered[filtered.length - 1]; // previous point
-        if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) {
-          // clip point is an arc endpoint -- discard
-        } else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) {
-          // clip point is a duplicate -- discard
-        } else {
+        if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) ; else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) ; else {
           filtered.push(p);
         }
         pointId++;
@@ -16918,15 +15970,6 @@
       return (Date.now() - T$1.stack.pop()) + 'ms';
     }
   };
-
-  function tick(msg) {
-    var now = Date.now();
-    var elapsed = tickTime ? ' - ' + (now - tickTime) + 'ms' : '';
-    tickTime = now;
-    console.log((msg || '') + elapsed);
-  }
-
-  var tickTime = 0;
 
   // Create a mosaic layer from a dataset (useful for debugging commands like -clean
   //    that create a mosaic as an intermediate data structure)
@@ -17139,7 +16182,6 @@
     var divide = getHoleDivider(nodes);
     // temp vars
     var currHoles; // arc ids of all holes in shape
-    var currShapeId;
     var currRingBbox;
     var tilesInShape; // accumulator for tile ids of tiles in current shape
     var ringIndex = new IdTestIndex(arcs.size(), true);
@@ -17150,7 +16192,6 @@
       var cw = [], ccw = [], retn;
       tilesInShape = [];
       currHoles = [];
-      currShapeId = shapeId;
       if (opts.no_holes) {
         divide(shp, cw, ccw);
         // ccw.forEach(internal.reversePath);
@@ -17240,7 +16281,7 @@
   function MosaicIndex(lyr, nodes, optsArg) {
     var opts = optsArg || {};
     var shapes = lyr.shapes;
-    var divide = getHoleDivider(nodes);
+    getHoleDivider(nodes);
     var mosaic = buildPolygonMosaic(nodes).mosaic;
     // map arc ids to tile ids
     var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
@@ -17423,21 +16464,6 @@
     return composeDissolveLayer(lyr, shapes2, getGroupId, opts);
   }
 
-  function getArcLayer(arcs, name) {
-    var records = [];
-    var lyr = {
-      geometry_type: 'polyline',
-      shapes: [],
-      name: name
-    };
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      lyr.shapes.push([[i]]);
-      records.push({arc_id: i});
-    }
-    lyr.data = new DataTable(records);
-    return lyr;
-  }
-
   function composeMosaicLayer(lyr, shapes2) {
     var records = shapes2.map(function(shp, i) {
       return {tile_id: i};
@@ -17460,7 +16486,6 @@
   }
 
   function getGapRemovalMessage(removed, retained, areaLabel) {
-    var msg;
     if (removed > 0 === false) return '';
     return utils.format('Removed %,d / %,d sliver%s using %s',
         removed, removed + retained, utils.pluralSuffix(removed), areaLabel);
@@ -17515,10 +16540,7 @@
       }
     }
     dissolved = pathfind(rings.concat(holes), 'dissolve');
-    if (dissolved.length > 1) {
-      // Commenting-out nesting order repair -- new method should prevent nesting errors
-      // dissolved = internal.fixNestingErrors(dissolved, arcs);
-    }
+    if (dissolved.length > 1) ;
     return dissolved.length > 0 ? dissolved : null;
   }
 
@@ -17605,7 +16627,7 @@
 
     function onPart(ids) {
       var n = ids.length;
-      var id, connected;
+      var id;
       var ids2 = [];
       for (var i=0; i<n; i++) {
         // check each segment of the current part (equivalent to a LineString)
@@ -17742,9 +16764,9 @@
         if (lyr.geometry_type == 'polygon') {
           cleanPolygonLayerGeometry(lyr, dataset, opts);
         } else if (lyr.geometry_type == 'polyline') {
-          cleanPolylineLayerGeometry(lyr, dataset, opts);
+          cleanPolylineLayerGeometry(lyr, dataset);
         } else if (lyr.geometry_type == 'point') {
-          cleanPointLayerGeometry(lyr, dataset, opts);
+          cleanPointLayerGeometry(lyr);
         }
       }
       if (!opts.allow_empty) {
@@ -18026,7 +17048,7 @@
     var properties = exportProperties(lyr.data, opts),
         shapes = lyr.shapes,
         ids = exportIds(lyr.data, opts),
-        items, stringify;
+        stringify;
 
     if (opts.ndjson) {
       stringify = stringifyAsNDJSON;
@@ -18635,7 +17657,7 @@
     var targetShapes = [];
     var otherShapes = [];
     var targetPoints = [];
-    var targetFlags, otherFlags, transform, transformOpts;
+    var targetFlags, otherFlags, transform;
     dataset.layers.filter(layerHasGeometry).forEach(function(lyr) {
       var hits = [],
           misses = [],
@@ -18747,10 +17769,6 @@
     return ' ' + roundCoord$2(p[0]) + ' ' + roundCoord$2(p[1]);
   }
 
-  function stringifyCP(p) {
-    return ' ' + roundCoord$2(p[2]) + ' ' + roundCoord$2(p[3]);
-  }
-
   function isCubicCtrl(p) {
     return p.length > 2 && p[2] == 'C';
   }
@@ -18782,13 +17800,6 @@
       }
     }
     return d;
-  }
-
-  function stringifyBezierArc(coords) {
-    var p1 = coords[0],
-        p2 = coords[1];
-    return 'M' + stringifyVertex(p1) + ' C' + stringifyCP(p1) +
-            stringifyCP(p2) + stringifyVertex(p2);
   }
 
   var SvgPathUtils = /*#__PURE__*/Object.freeze({
@@ -18837,7 +17848,7 @@
     // "dashes" dash-len dash-space width color1 [color2...] space bg-color
     // examples:
     // dashes 4px 3px 1px black 4px white
-    var type = parts.shift();
+    parts.shift();
     var colors = [];
     var background = parts.pop();
     var spacing = parseInt(parts.pop());
@@ -18879,9 +17890,9 @@
     // examples:
     // 1px red 1px white 1px black
     // -45deg 3 #eee 3 rgb(0,0,0)
-    var type = parts.shift();
+    parts.shift();
     var rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
-        colors = [], widths = [], a, b;
+        colors = [], widths = [];
     for (var i=0; i<parts.length; i+=2) {
       widths.push(parseInt(parts[i]));
       colors.push(parts[i+1]);
@@ -19143,7 +18154,7 @@
   function getSymbolDataAccessor(lyr, opts) {
     var functions = {};
     var properties = [];
-    var fields = lyr.data ? lyr.data.getFields() : [];
+    lyr.data ? lyr.data.getFields() : [];
 
     Object.keys(opts).forEach(function(optName) {
       var svgName = optName.replace(/_/g, '-');
@@ -19318,9 +18329,7 @@
         // kludge -- maintains bw compatibility/passes tests -- style attributes
         // are applied to the <g> container, 'r' property is applied to circle
         applyStyleAttributes(svgObj, msType, d, simpleCircleFilter);
-      } else {
-        // other point symbols: attributes are complicated, added downstream
-      }
+      } else ;
       if ('id' in obj) {
         if (!svgObj.properties) {
           svgObj.properties = {};
@@ -19343,7 +18352,7 @@
         }
       };
     }
-    var o = renderPoint(rec, coords);
+    var o = renderPoint(rec);
     if (o) o.properties.transform = getTransform(coords);
     return o;
   }
@@ -19678,7 +18687,7 @@
 
   cmd.scalebar = function(catalog, opts) {
     var frame = findFrameDataset(catalog);
-    var obj, lyr;
+    var lyr;
     if (!frame) {
       stop('Missing a map frame');
     }
@@ -20011,9 +19020,6 @@
     if (item.svg) {
       obj.tag = 'use';
       obj.properties.href = '#' + item.id;
-    } else {
-      // no svg property means the image was not able to be converted to a defn
-      // -- it will be serialized as a regular inline image
     }
   }
 
@@ -20368,9 +19374,7 @@ ${svg}
   function BinArray(buf, le) {
     if (utils.isNumber(buf)) {
       buf = new ArrayBuffer(buf);
-    } else if (buf instanceof ArrayBuffer) {
-      // we're good
-    } else if (typeof B$3 == 'function' && buf instanceof B$3 || buf instanceof Uint8Array) {
+    } else if (buf instanceof ArrayBuffer) ; else if (typeof B$3 == 'function' && buf instanceof B$3 || buf instanceof Uint8Array) {
       if (buf.buffer && buf.buffer.byteLength == buf.length) {
         buf = buf.buffer;
       } else {
@@ -20879,13 +19883,6 @@ ${svg}
     return names2;
   }
 
-  // Replace non-alphanumeric characters with _ and merge adjacent _
-  // See: https://desktop.arcgis.com/en/arcmap/latest/manage-data/tables/fundamentals-of-adding-and-deleting-fields.htm#GUID-8E190093-8F8F-4132-AF4F-B0C9220F76B3
-  // TODO: decide whether or not to avoid initial numerals
-  function cleanFieldName_v1(name) {
-    return name.replace(/[^A-Za-z0-9]+/g, '_');
-  }
-
   // Support non-ascii field names
   function cleanFieldName(name) {
     return name.replace(/[-\s]+/g, '_');
@@ -21116,7 +20113,7 @@ ${svg}
 
   function readFixedWidthRecords(reader, opts) {
     var str = reader.toString(opts.encoding || 'ascii');
-    return readFixedWidthRecordsFromString(str, opts);
+    return readFixedWidthRecordsFromString(str);
   }
 
   function readFixedWidthRecordsFromString(str) {
@@ -21386,7 +20383,7 @@ ${svg}
   function exportShapefile(dataset, opts) {
     return dataset.layers.reduce(function(files, lyr) {
       var prj = exportPrjFile(lyr, dataset);
-      files = files.concat(exportShpAndShxFiles(lyr, dataset, opts));
+      files = files.concat(exportShpAndShxFiles(lyr, dataset));
       files = files.concat(exportDbfFile(lyr, dataset, opts));
       if (prj) files.push(prj);
       return files;
@@ -21623,7 +20620,7 @@ ${svg}
 
   function importMetadata(dataset, obj) {
     if (obj.proj4) {
-      dataset.info.crs = getCRS(obj.proj4);
+      setDatasetCrsInfo(dataset, getCrsInfo(obj.proj4));
     }
   }
 
@@ -22052,8 +21049,8 @@ ${svg}
         format = null;
     if (ext == 'gz') {
       return inferOutputFormat(replaceFileExtension(file, ''), inputFormat);
-    } else if (ext == 'mshp') {
-      format = 'mshp';
+    } else if (ext == PACKAGE_EXT) {
+      format = PACKAGE_EXT;
     } else if (ext == 'shp') {
       format = 'shapefile';
     } else if (ext == 'dbf') {
@@ -22085,34 +21082,6 @@ ${svg}
     inferOutputFormat: inferOutputFormat
   });
 
-  function gzipSync(content) {
-    // TODO: use native module in Node if available
-    // require('zlib').
-    if (typeof content == 'string') {
-      content = strToU8(content);
-    }
-    return gzipSync$1(content);
-  }
-
-  function gunzipSync(buf, filename) {
-    // TODO: use native module in Node
-    // require('zlib').
-    if (buf instanceof ArrayBuffer) {
-      buf = new Uint8Array(buf);
-    }
-    var out = gunzipSync$1(buf); // returns Uint8Array
-    if (!isImportableAsBinary(filename)) {
-      out = strFromU8(out);
-    }
-    return out;
-  }
-
-  var Gzip = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    gzipSync: gzipSync,
-    gunzipSync: gunzipSync
-  });
-
   // @targets - non-empty output from Catalog#findCommandTargets()
   //
   function exportTargetLayers(targets, opts) {
@@ -22129,7 +21098,7 @@ ${svg}
     var format = getOutputFormat(datasets[0], opts);
     var files;
     if (format == PACKAGE_EXT) {
-      return packDatasets(datasets, opts);
+      return exportPackedDatasets(datasets, opts);
     }
     if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
       // multi-layer formats: combine multiple datasets into one
@@ -22210,11 +21179,11 @@ ${svg}
     }
 
     if (opts.cut_table) {
-      files = exportDataTables(dataset.layers, opts).concat(files);
+      files = exportDataTables(dataset.layers).concat(files);
     }
 
     if (opts.extension) {
-      opts.extension = fixFileExtension(opts.extension, outFmt);
+      opts.extension = fixFileExtension(opts.extension);
     }
 
     validateLayerData(dataset.layers);
@@ -22232,7 +21201,7 @@ ${svg}
   }
 
   var exporters = {
-    bson: packDatasets,
+    [PACKAGE_EXT]: exportPackedDatasets,
     geojson: exportGeoJSON2,
     topojson: exportTopoJSON,
     shapefile: exportShapefile,
@@ -22575,7 +21544,7 @@ ${svg}
   // for delimiter characters and newlines. Input size is limited by the maximum
   // string size.
   function readDelimRecordsFromString(str, delim, opts) {
-    if (delim == ' ') return readFixedWidthRecordsFromString(str, opts);
+    if (delim == ' ') return readFixedWidthRecordsFromString(str);
     var header = parseDelimHeaderSection(str, delim, opts);
     if (header.import_fields.length === 0 || !header.remainder) return [];
     var convert = getRowConverter(header.import_fields);
@@ -22685,18 +21654,6 @@ ${svg}
     };
   }
 
-  // May be useful in the future to implement reading a range of CSV records
-  function skipDelimLines(reader, lines) {
-    // TODO: divide lines into batches, to prevent exceeding maximum buffer size
-    var buf = reader.readSync();
-    var retn = readLinesFromBuffer(buf, lines);
-    if (retn.bytesRead == buf.length && retn.bytesRead < reader.remaining()) {
-      reader.expandBuffer(); // buffer oflo, grow the buffer and try again
-      return skipDelimLines(reader, lines);
-    }
-    reader.advance(retn.bytesRead);
-  }
-
   function readLinesAsString(reader, lines, encoding) {
     var buf = reader.readSync();
     var retn = readLinesFromBuffer(buf, lines);
@@ -22790,9 +21747,7 @@ ${svg}
       c = text.charCodeAt(i);
       if (c == DQUOTE) {
         inQuotedText = !inQuotedText;
-      } else if (inQuotedText) {
-        //
-      } else if (c == DELIM) {
+      } else if (inQuotedText) ; else if (c == DELIM) {
         captureField(fieldStart, i);
         startFieldAt(i + 1);
       } else if (c == CR || c == LF) {
@@ -22953,9 +21908,7 @@ ${svg}
       // Web API may import as ArrayBuffer, to support larger files
       reader = new BufferReader(content);
       content = null;
-    } else if (utils.isString(content)) {
-      // import as string
-    } else {
+    } else if (utils.isString(content)) ; else {
       error("Unexpected object type");
     }
 
@@ -23470,7 +22423,7 @@ ${svg}
       var commandDefs = getCommands(),
           commands = [], cmd,
           argv = cleanArgv(raw),
-          cmdName, cmdDef, opt;
+          cmdName, cmdDef;
 
       if (argv.length == 1 && tokenIsCommandName(argv[0])) {
         // show help if only a command name is given
@@ -23539,11 +22492,7 @@ ${svg}
           // token looks like name=value style option
           parts = splitAssignment(token);
           optDef = findOptionDefn(parts[0], cmdDef);
-          if (!optDef) {
-            // left-hand identifier is not a recognized option...
-            // assignment to an unrecognized identifier could be an expression
-            // (e.g. -each 'id=$.id') -- handle this case below
-          } else if (optDef.type == 'flag' || optDef.assign_to) {
+          if (!optDef) ; else if (optDef.type == 'flag' || optDef.assign_to) {
             stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
           } else {
             argv.unshift(parts[1]);
@@ -23697,9 +22646,7 @@ ${svg}
         var lines = [];
         var description = opt.describe;
         var label;
-        if (!description) {
-          // empty
-        } else if (opt.label) {
+        if (!description) ; else if (opt.label) {
           lines.push([opt.label, description]);
         } else if (opt.name == cmd.default) {
           label = opt.name + '=';
@@ -26579,9 +25526,7 @@ ${svg}
       readPartSizes: function() {
         var sizes = [];
         var partLen, startId, bin;
-        if (this.pointCount === 0) {
-          // no parts
-        } else if (this.partCount == 1) {
+        if (this.pointCount === 0) ; else if (this.partCount == 1) {
           // single-part type or multi-part type with one part
           sizes.push(this.pointCount);
         } else {
@@ -26843,7 +25788,7 @@ ${svg}
       var fileSize = shpFile.size();
       if (offset + 12 > fileSize) return null; // reached end-of-file
       var bin = shpFile.readToBinArray(offset, 12);
-      var recordId = bin.bigEndian().readUint32();
+      bin.bigEndian().readUint32();
       // record size is bytes in content section + 8 header bytes
       var recordSize = bin.readUint32() * 2 + 8;
       var recordType = bin.littleEndian().readUint32();
@@ -26861,7 +25806,7 @@ ${svg}
       shxBin.position(100 + i * 8);
       var expectedId = i + 1;
       var offset = shxBin.readUint32() * 2;
-      var recLen = shxBin.readUint32() * 2; // TODO: match this to recLen in .shp
+      shxBin.readUint32() * 2; // TODO: match this to recLen in .shp
       var shape = readShapeAtOffset(shpFile, offset);
       if (!shape) {
         stop('Index of Shapefile record', expectedId, 'in the .shx file is invalid.');
@@ -27063,7 +26008,6 @@ ${svg}
       var arcs;
       var layers;
       var lyr = {name: ''};
-      var snapDist;
 
       if (dupeCount > 0) {
         verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
@@ -27216,9 +26160,7 @@ ${svg}
     // TODO: test cases: null shape; non-null shape with no valid parts
     reader.forEachShape(function(shp) {
       importer.startShape();
-      if (shp.isNull) {
-        // skip
-      } else if (type == 'point') {
+      if (shp.isNull) ; else if (type == 'point') {
         importer.importPoints(shp.readPoints());
       } else {
         shp.stream(importer);
@@ -27263,8 +26205,7 @@ ${svg}
 
   function GeoJSONParser(opts) {
     var idField = opts.id_field || GeoJSON.ID_FIELD,
-        importer = new PathImporter(opts),
-        dataset;
+        importer = new PathImporter(opts);
 
     this.parseObject = function(o) {
       var geom, rec;
@@ -27350,9 +26291,7 @@ ${svg}
 
   GeoJSON.importSimpleGeometry = function(importer, geom, opts) {
     var type = geom ? geom.type : null;
-    if (type === null) {
-      // no geometry to import
-    } else if (type in GeoJSON.pathImporters) {
+    if (type === null) ; else if (type in GeoJSON.pathImporters) {
       if (opts.geometry_type && opts.geometry_type != GeoJSON.translateGeoJSONType(type)) {
         // kludge to filter out all but one type of geometry
         return;
@@ -27552,9 +26491,7 @@ ${svg}
         this.setGeometryType(type);
         shape = TopoJSON.shapeImporters[geom.type](geom, arcs);
         // TODO: better shape validation
-        if (!shape || !shape.length) {
-          // do nothing
-        } else if (!Array.isArray(shape[0])) {
+        if (!shape || !shape.length) ; else if (!Array.isArray(shape[0])) {
           stop("Invalid TopoJSON", geom.type, "geometry");
         } else {
           shapes[shapeId] = curr ? curr.concat(shape) : shape;
@@ -28143,13 +27080,6 @@ ${svg}
     };
   }
 
-  // Parse the entire file with JSON.parse() (for a performance comparison)
-  function parseObjects_native(reader, offset, cb) {
-    var obj = JSON.parse(reader.toString());
-    var arr = obj.features || obj.geometries || [obj];
-    arr.forEach(o => cb(o));
-  }
-
   // Identify JSON type from the initial subset of a JSON string
   function identifyJSONString(str, opts) {
     var maxChars = 1000;
@@ -28171,9 +27101,7 @@ ${svg}
 
   function identifyJSONObject(o) {
     var fmt = null;
-    if (!o) {
-      //
-    } else if (o.type == 'Topology') {
+    if (!o) ; else if (o.type == 'Topology') {
       fmt = 'topojson';
     } else if (o.type) {
       fmt = 'geojson';
@@ -28254,19 +27182,19 @@ ${svg}
       }
       if (opts.json_path) {
         content = selectFromObject(content, opts.json_path);
-        fmt = identifyJSONObject(content, opts);
+        fmt = identifyJSONObject(content);
         if (!fmt) {
           stop('Unexpected object type at JSON path:', opts.json_path);
         }
       } else {
-        fmt = identifyJSONObject(content, opts);
+        fmt = identifyJSONObject(content);
       }
       if (fmt == 'topojson') {
         retn.dataset = importTopoJSON(content, opts);
       } else if (fmt == 'geojson') {
         retn.dataset = importGeoJSON(content, opts);
       } else if (fmt == 'json') {
-        retn.dataset = importJSONTable(content, opts);
+        retn.dataset = importJSONTable(content);
       } else {
         stop("Unknown JSON format");
       }
@@ -28318,7 +27246,7 @@ ${svg}
   //    filename: String or null
   //
   function importContent(obj, opts) {
-    var dataset, content, fileFmt, data;
+    var dataset, fileFmt, data;
     opts = opts || {};
     if (obj.json) {
       data = importJSON(obj.json, opts);
@@ -28445,21 +27373,19 @@ ${svg}
     importFileContent: importFileContent
   });
 
+  // import { gunzipSync, isGzipped } from '../io/mapshaper-gzip';
+
   // Import datasets contained in a BSON blob
   // Return command target as a dataset
   //
   function unpackSession(buf) {
-    var obj = decode(buf, {});
+    var obj = unpack(buf, {});
     if (!isValidSession(obj)) {
       stop('Invalid mapshaper session data object');
     }
 
     var datasets = obj.datasets.map(importDataset);
-    var target = datasets[0]; // TODO: improve
-    return {
-      datasets: datasets,
-      target: target
-    };
+    return Object.assign(obj, {datasets: datasets});
   }
 
   function isValidSession(obj) {
@@ -28471,7 +27397,7 @@ ${svg}
 
   function importDataset(obj) {
     return {
-      info: obj.info,
+      info: importInfo(obj.info || {}),
       layers: (obj.layers || []).map(importLayer),
       arcs: obj.arcs ? importArcs(obj.arcs) : null
     };
@@ -28488,14 +27414,36 @@ ${svg}
     var xx = bufferToDataView(obj.xx, Float64Array);
     var yy = bufferToDataView(obj.yy, Float64Array);
     var arcs = new ArcCollection(nn, xx, yy);
+    if (obj.zz) {
+      arcs.setThresholds(bufferToDataView(obj.zz, Float64Array));
+      arcs.setRetainedInterval(obj.zlimit);
+    }
     return arcs;
   }
 
+  function importInfo(o) {
+    if (o.crs_string) {
+      o.crs = parseCrsString(o.crs_string);
+    } else if (o.prj) {
+      o.crs = parsePrj(o.prj);
+    }
+    return o;
+  }
+
   function importLayer(lyr) {
+    var data = lyr.data;
+    if (data) {
+      data = importTable(data);
+    }
     return Object.assign(lyr, {
-      data: lyr.data ? new DataTable(lyr.data) : null
+      data: lyr.data ? new DataTable(data) : null
     });
   }
+
+  var Unpack = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    unpackSession: unpackSession
+  });
 
   cmd.importFiles = function(catalog, opts) {
     var files = opts.files || [];
@@ -28853,6 +27801,11 @@ ${svg}
       return matches[0] || null;
     };
 
+    this.clear = function() {
+      datasets = [];
+      defaultTargets = [];
+    };
+
     this.removeDataset = function(dataset) {
       defaultTargets = defaultTargets.filter(function(targ) {
         return targ.dataset != dataset;
@@ -28877,6 +27830,12 @@ ${svg}
     this.addDataset = function(dataset) {
       this.setDefaultTarget(dataset.layers, dataset);
       return this;
+    };
+
+    this.addDatasets = function(datasets) {
+      datasets.forEach(function(dataset) {
+        this.addDataset(dataset);
+      }, this);
     };
 
     this.findNextLayer = function(lyr) {
@@ -29086,58 +28045,6 @@ ${svg}
       return hindex;
   }
 
-  function sum_three(alen, a, blen, b, clen, c, tmp, out) {
-      return sum(sum(alen, a, blen, b, tmp), tmp, clen, c, out);
-  }
-
-  // scale_expansion_zeroelim routine from oritinal code
-  function scale(elen, e, b, h) {
-      let Q, sum, hh, product1, product0;
-      let bvirt, c, ahi, alo, bhi, blo;
-
-      c = splitter * b;
-      bhi = c - (c - b);
-      blo = b - bhi;
-      let enow = e[0];
-      Q = enow * b;
-      c = splitter * enow;
-      ahi = c - (c - enow);
-      alo = enow - ahi;
-      hh = alo * blo - (Q - ahi * bhi - alo * bhi - ahi * blo);
-      let hindex = 0;
-      if (hh !== 0) {
-          h[hindex++] = hh;
-      }
-      for (let i = 1; i < elen; i++) {
-          enow = e[i];
-          product1 = enow * b;
-          c = splitter * enow;
-          ahi = c - (c - enow);
-          alo = enow - ahi;
-          product0 = alo * blo - (product1 - ahi * bhi - alo * bhi - ahi * blo);
-          sum = Q + product0;
-          bvirt = sum - Q;
-          hh = Q - (sum - bvirt) + (product0 - bvirt);
-          if (hh !== 0) {
-              h[hindex++] = hh;
-          }
-          Q = product1 + sum;
-          hh = sum - (Q - product1);
-          if (hh !== 0) {
-              h[hindex++] = hh;
-          }
-      }
-      if (Q !== 0 || hindex === 0) {
-          h[hindex++] = Q;
-      }
-      return hindex;
-  }
-
-  function negate(elen, e) {
-      for (let i = 0; i < elen; i++) e[i] = -e[i];
-      return elen;
-  }
-
   function estimate(elen, e) {
       let Q = e[0];
       for (let i = 1; i < elen; i++) Q += e[i];
@@ -29156,7 +28063,7 @@ ${svg}
   const C1 = vec(8);
   const C2 = vec(12);
   const D$1 = vec(16);
-  const u$2 = vec(4);
+  const u = vec(4);
 
   function orient2dadapt(ax, ay, bx, by, cx, cy, detsum) {
       let acxtail, acytail, bcxtail, bcytail;
@@ -29238,18 +28145,18 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      u$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      u[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      u$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      u[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      u$2[3] = u3;
-      const C1len = sum(4, B$2, 4, u$2, C1);
+      u[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      u[3] = u3;
+      const C1len = sum(4, B$2, 4, u, C1);
 
       s1 = acx * bcytail;
       c = splitter * acx;
@@ -29269,18 +28176,18 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      u$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      u[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      u$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      u[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      u$2[3] = u3;
-      const C2len = sum(C1len, C1, 4, u$2, C2);
+      u[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      u[3] = u3;
+      const C2len = sum(C1len, C1, 4, u, C2);
 
       s1 = acxtail * bcytail;
       c = splitter * acxtail;
@@ -29300,18 +28207,18 @@ ${svg}
       t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
       _i = s0 - t0;
       bvirt = s0 - _i;
-      u$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
+      u[0] = s0 - (_i + bvirt) + (bvirt - t0);
       _j = s1 + _i;
       bvirt = _j - s1;
       _0 = s1 - (_j - bvirt) + (_i - bvirt);
       _i = _0 - t1;
       bvirt = _0 - _i;
-      u$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
+      u[1] = _0 - (_i + bvirt) + (bvirt - t1);
       u3 = _j + _i;
       bvirt = u3 - _j;
-      u$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      u$2[3] = u3;
-      const Dlen = sum(C2len, C2, 4, u$2, D$1);
+      u[2] = _j - (u3 - bvirt) + (_i - bvirt);
+      u[3] = u3;
+      const Dlen = sum(C2len, C2, 4, u, D$1);
 
       return D$1[Dlen - 1];
   }
@@ -29327,2009 +28234,6 @@ ${svg}
       if (Math.abs(det) >= ccwerrboundA * detsum) return det;
 
       return -orient2dadapt(ax, ay, bx, by, cx, cy, detsum);
-  }
-
-  function orient2dfast(ax, ay, bx, by, cx, cy) {
-      return (ay - cy) * (bx - cx) - (ax - cx) * (by - cy);
-  }
-
-  const o3derrboundA = (7 + 56 * epsilon) * epsilon;
-  const o3derrboundB = (3 + 28 * epsilon) * epsilon;
-  const o3derrboundC = (26 + 288 * epsilon) * epsilon * epsilon;
-
-  const bc$2 = vec(4);
-  const ca$1 = vec(4);
-  const ab$2 = vec(4);
-  const at_b = vec(4);
-  const at_c = vec(4);
-  const bt_c = vec(4);
-  const bt_a = vec(4);
-  const ct_a = vec(4);
-  const ct_b = vec(4);
-  const bct$1 = vec(8);
-  const cat$1 = vec(8);
-  const abt$1 = vec(8);
-  const u$1 = vec(4);
-
-  const _8$2 = vec(8);
-  const _8b$1 = vec(8);
-  const _16$2 = vec(8);
-  const _12 = vec(12);
-
-  let fin$2 = vec(192);
-  let fin2$1 = vec(192);
-
-  function finadd$1(finlen, alen, a) {
-      finlen = sum(finlen, fin$2, alen, a, fin2$1);
-      const tmp = fin$2; fin$2 = fin2$1; fin2$1 = tmp;
-      return finlen;
-  }
-
-  function tailinit(xtail, ytail, ax, ay, bx, by, a, b) {
-      let bvirt, c, ahi, alo, bhi, blo, _i, _j, _k, _0, s1, s0, t1, t0, u3, negate;
-      if (xtail === 0) {
-          if (ytail === 0) {
-              a[0] = 0;
-              b[0] = 0;
-              return 1;
-          } else {
-              negate = -ytail;
-              s1 = negate * ax;
-              c = splitter * negate;
-              ahi = c - (c - negate);
-              alo = negate - ahi;
-              c = splitter * ax;
-              bhi = c - (c - ax);
-              blo = ax - bhi;
-              a[0] = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              a[1] = s1;
-              s1 = ytail * bx;
-              c = splitter * ytail;
-              ahi = c - (c - ytail);
-              alo = ytail - ahi;
-              c = splitter * bx;
-              bhi = c - (c - bx);
-              blo = bx - bhi;
-              b[0] = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              b[1] = s1;
-              return 2;
-          }
-      } else {
-          if (ytail === 0) {
-              s1 = xtail * ay;
-              c = splitter * xtail;
-              ahi = c - (c - xtail);
-              alo = xtail - ahi;
-              c = splitter * ay;
-              bhi = c - (c - ay);
-              blo = ay - bhi;
-              a[0] = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              a[1] = s1;
-              negate = -xtail;
-              s1 = negate * by;
-              c = splitter * negate;
-              ahi = c - (c - negate);
-              alo = negate - ahi;
-              c = splitter * by;
-              bhi = c - (c - by);
-              blo = by - bhi;
-              b[0] = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              b[1] = s1;
-              return 2;
-          } else {
-              s1 = xtail * ay;
-              c = splitter * xtail;
-              ahi = c - (c - xtail);
-              alo = xtail - ahi;
-              c = splitter * ay;
-              bhi = c - (c - ay);
-              blo = ay - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = ytail * ax;
-              c = splitter * ytail;
-              ahi = c - (c - ytail);
-              alo = ytail - ahi;
-              c = splitter * ax;
-              bhi = c - (c - ax);
-              blo = ax - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 - t0;
-              bvirt = s0 - _i;
-              a[0] = s0 - (_i + bvirt) + (bvirt - t0);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 - t1;
-              bvirt = _0 - _i;
-              a[1] = _0 - (_i + bvirt) + (bvirt - t1);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              a[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              a[3] = u3;
-              s1 = ytail * bx;
-              c = splitter * ytail;
-              ahi = c - (c - ytail);
-              alo = ytail - ahi;
-              c = splitter * bx;
-              bhi = c - (c - bx);
-              blo = bx - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = xtail * by;
-              c = splitter * xtail;
-              ahi = c - (c - xtail);
-              alo = xtail - ahi;
-              c = splitter * by;
-              bhi = c - (c - by);
-              blo = by - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 - t0;
-              bvirt = s0 - _i;
-              b[0] = s0 - (_i + bvirt) + (bvirt - t0);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 - t1;
-              bvirt = _0 - _i;
-              b[1] = _0 - (_i + bvirt) + (bvirt - t1);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              b[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              b[3] = u3;
-              return 4;
-          }
-      }
-  }
-
-  function tailadd(finlen, a, b, k, z) {
-      let bvirt, c, ahi, alo, bhi, blo, _i, _j, _k, _0, s1, s0, u3;
-      s1 = a * b;
-      c = splitter * a;
-      ahi = c - (c - a);
-      alo = a - ahi;
-      c = splitter * b;
-      bhi = c - (c - b);
-      blo = b - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      c = splitter * k;
-      bhi = c - (c - k);
-      blo = k - bhi;
-      _i = s0 * k;
-      c = splitter * s0;
-      ahi = c - (c - s0);
-      alo = s0 - ahi;
-      u$1[0] = alo * blo - (_i - ahi * bhi - alo * bhi - ahi * blo);
-      _j = s1 * k;
-      c = splitter * s1;
-      ahi = c - (c - s1);
-      alo = s1 - ahi;
-      _0 = alo * blo - (_j - ahi * bhi - alo * bhi - ahi * blo);
-      _k = _i + _0;
-      bvirt = _k - _i;
-      u$1[1] = _i - (_k - bvirt) + (_0 - bvirt);
-      u3 = _j + _k;
-      u$1[2] = _k - (u3 - _j);
-      u$1[3] = u3;
-      finlen = finadd$1(finlen, 4, u$1);
-      if (z !== 0) {
-          c = splitter * z;
-          bhi = c - (c - z);
-          blo = z - bhi;
-          _i = s0 * z;
-          c = splitter * s0;
-          ahi = c - (c - s0);
-          alo = s0 - ahi;
-          u$1[0] = alo * blo - (_i - ahi * bhi - alo * bhi - ahi * blo);
-          _j = s1 * z;
-          c = splitter * s1;
-          ahi = c - (c - s1);
-          alo = s1 - ahi;
-          _0 = alo * blo - (_j - ahi * bhi - alo * bhi - ahi * blo);
-          _k = _i + _0;
-          bvirt = _k - _i;
-          u$1[1] = _i - (_k - bvirt) + (_0 - bvirt);
-          u3 = _j + _k;
-          u$1[2] = _k - (u3 - _j);
-          u$1[3] = u3;
-          finlen = finadd$1(finlen, 4, u$1);
-      }
-      return finlen;
-  }
-
-  function orient3dadapt(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, permanent) {
-      let finlen;
-      let adxtail, bdxtail, cdxtail;
-      let adytail, bdytail, cdytail;
-      let adztail, bdztail, cdztail;
-      let bvirt, c, ahi, alo, bhi, blo, _i, _j, _k, _0, s1, s0, t1, t0, u3;
-
-      const adx = ax - dx;
-      const bdx = bx - dx;
-      const cdx = cx - dx;
-      const ady = ay - dy;
-      const bdy = by - dy;
-      const cdy = cy - dy;
-      const adz = az - dz;
-      const bdz = bz - dz;
-      const cdz = cz - dz;
-
-      s1 = bdx * cdy;
-      c = splitter * bdx;
-      ahi = c - (c - bdx);
-      alo = bdx - ahi;
-      c = splitter * cdy;
-      bhi = c - (c - cdy);
-      blo = cdy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = cdx * bdy;
-      c = splitter * cdx;
-      ahi = c - (c - cdx);
-      alo = cdx - ahi;
-      c = splitter * bdy;
-      bhi = c - (c - bdy);
-      blo = bdy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      bc$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      bc$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      bc$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      bc$2[3] = u3;
-      s1 = cdx * ady;
-      c = splitter * cdx;
-      ahi = c - (c - cdx);
-      alo = cdx - ahi;
-      c = splitter * ady;
-      bhi = c - (c - ady);
-      blo = ady - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = adx * cdy;
-      c = splitter * adx;
-      ahi = c - (c - adx);
-      alo = adx - ahi;
-      c = splitter * cdy;
-      bhi = c - (c - cdy);
-      blo = cdy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ca$1[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ca$1[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ca$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ca$1[3] = u3;
-      s1 = adx * bdy;
-      c = splitter * adx;
-      ahi = c - (c - adx);
-      alo = adx - ahi;
-      c = splitter * bdy;
-      bhi = c - (c - bdy);
-      blo = bdy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = bdx * ady;
-      c = splitter * bdx;
-      ahi = c - (c - bdx);
-      alo = bdx - ahi;
-      c = splitter * ady;
-      bhi = c - (c - ady);
-      blo = ady - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ab$2[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ab$2[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ab$2[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ab$2[3] = u3;
-
-      finlen = sum(
-          sum(
-              scale(4, bc$2, adz, _8$2), _8$2,
-              scale(4, ca$1, bdz, _8b$1), _8b$1, _16$2), _16$2,
-          scale(4, ab$2, cdz, _8$2), _8$2, fin$2);
-
-      let det = estimate(finlen, fin$2);
-      let errbound = o3derrboundB * permanent;
-      if (det >= errbound || -det >= errbound) {
-          return det;
-      }
-
-      bvirt = ax - adx;
-      adxtail = ax - (adx + bvirt) + (bvirt - dx);
-      bvirt = bx - bdx;
-      bdxtail = bx - (bdx + bvirt) + (bvirt - dx);
-      bvirt = cx - cdx;
-      cdxtail = cx - (cdx + bvirt) + (bvirt - dx);
-      bvirt = ay - ady;
-      adytail = ay - (ady + bvirt) + (bvirt - dy);
-      bvirt = by - bdy;
-      bdytail = by - (bdy + bvirt) + (bvirt - dy);
-      bvirt = cy - cdy;
-      cdytail = cy - (cdy + bvirt) + (bvirt - dy);
-      bvirt = az - adz;
-      adztail = az - (adz + bvirt) + (bvirt - dz);
-      bvirt = bz - bdz;
-      bdztail = bz - (bdz + bvirt) + (bvirt - dz);
-      bvirt = cz - cdz;
-      cdztail = cz - (cdz + bvirt) + (bvirt - dz);
-
-      if (adxtail === 0 && bdxtail === 0 && cdxtail === 0 &&
-          adytail === 0 && bdytail === 0 && cdytail === 0 &&
-          adztail === 0 && bdztail === 0 && cdztail === 0) {
-          return det;
-      }
-
-      errbound = o3derrboundC * permanent + resulterrbound * Math.abs(det);
-      det +=
-          adz * (bdx * cdytail + cdy * bdxtail - (bdy * cdxtail + cdx * bdytail)) + adztail * (bdx * cdy - bdy * cdx) +
-          bdz * (cdx * adytail + ady * cdxtail - (cdy * adxtail + adx * cdytail)) + bdztail * (cdx * ady - cdy * adx) +
-          cdz * (adx * bdytail + bdy * adxtail - (ady * bdxtail + bdx * adytail)) + cdztail * (adx * bdy - ady * bdx);
-      if (det >= errbound || -det >= errbound) {
-          return det;
-      }
-
-      const at_len = tailinit(adxtail, adytail, bdx, bdy, cdx, cdy, at_b, at_c);
-      const bt_len = tailinit(bdxtail, bdytail, cdx, cdy, adx, ady, bt_c, bt_a);
-      const ct_len = tailinit(cdxtail, cdytail, adx, ady, bdx, bdy, ct_a, ct_b);
-
-      const bctlen = sum(bt_len, bt_c, ct_len, ct_b, bct$1);
-      finlen = finadd$1(finlen, scale(bctlen, bct$1, adz, _16$2), _16$2);
-
-      const catlen = sum(ct_len, ct_a, at_len, at_c, cat$1);
-      finlen = finadd$1(finlen, scale(catlen, cat$1, bdz, _16$2), _16$2);
-
-      const abtlen = sum(at_len, at_b, bt_len, bt_a, abt$1);
-      finlen = finadd$1(finlen, scale(abtlen, abt$1, cdz, _16$2), _16$2);
-
-      if (adztail !== 0) {
-          finlen = finadd$1(finlen, scale(4, bc$2, adztail, _12), _12);
-          finlen = finadd$1(finlen, scale(bctlen, bct$1, adztail, _16$2), _16$2);
-      }
-      if (bdztail !== 0) {
-          finlen = finadd$1(finlen, scale(4, ca$1, bdztail, _12), _12);
-          finlen = finadd$1(finlen, scale(catlen, cat$1, bdztail, _16$2), _16$2);
-      }
-      if (cdztail !== 0) {
-          finlen = finadd$1(finlen, scale(4, ab$2, cdztail, _12), _12);
-          finlen = finadd$1(finlen, scale(abtlen, abt$1, cdztail, _16$2), _16$2);
-      }
-
-      if (adxtail !== 0) {
-          if (bdytail !== 0) {
-              finlen = tailadd(finlen, adxtail, bdytail, cdz, cdztail);
-          }
-          if (cdytail !== 0) {
-              finlen = tailadd(finlen, -adxtail, cdytail, bdz, bdztail);
-          }
-      }
-      if (bdxtail !== 0) {
-          if (cdytail !== 0) {
-              finlen = tailadd(finlen, bdxtail, cdytail, adz, adztail);
-          }
-          if (adytail !== 0) {
-              finlen = tailadd(finlen, -bdxtail, adytail, cdz, cdztail);
-          }
-      }
-      if (cdxtail !== 0) {
-          if (adytail !== 0) {
-              finlen = tailadd(finlen, cdxtail, adytail, bdz, bdztail);
-          }
-          if (bdytail !== 0) {
-              finlen = tailadd(finlen, -cdxtail, bdytail, adz, adztail);
-          }
-      }
-
-      return fin$2[finlen - 1];
-  }
-
-  function orient3d(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) {
-      const adx = ax - dx;
-      const bdx = bx - dx;
-      const cdx = cx - dx;
-      const ady = ay - dy;
-      const bdy = by - dy;
-      const cdy = cy - dy;
-      const adz = az - dz;
-      const bdz = bz - dz;
-      const cdz = cz - dz;
-
-      const bdxcdy = bdx * cdy;
-      const cdxbdy = cdx * bdy;
-
-      const cdxady = cdx * ady;
-      const adxcdy = adx * cdy;
-
-      const adxbdy = adx * bdy;
-      const bdxady = bdx * ady;
-
-      const det =
-          adz * (bdxcdy - cdxbdy) +
-          bdz * (cdxady - adxcdy) +
-          cdz * (adxbdy - bdxady);
-
-      const permanent =
-          (Math.abs(bdxcdy) + Math.abs(cdxbdy)) * Math.abs(adz) +
-          (Math.abs(cdxady) + Math.abs(adxcdy)) * Math.abs(bdz) +
-          (Math.abs(adxbdy) + Math.abs(bdxady)) * Math.abs(cdz);
-
-      const errbound = o3derrboundA * permanent;
-      if (det > errbound || -det > errbound) {
-          return det;
-      }
-
-      return orient3dadapt(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, permanent);
-  }
-
-  function orient3dfast(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) {
-      const adx = ax - dx;
-      const bdx = bx - dx;
-      const cdx = cx - dx;
-      const ady = ay - dy;
-      const bdy = by - dy;
-      const cdy = cy - dy;
-      const adz = az - dz;
-      const bdz = bz - dz;
-      const cdz = cz - dz;
-
-      return adx * (bdy * cdz - bdz * cdy) +
-          bdx * (cdy * adz - cdz * ady) +
-          cdx * (ady * bdz - adz * bdy);
-  }
-
-  const iccerrboundA = (10 + 96 * epsilon) * epsilon;
-  const iccerrboundB = (4 + 48 * epsilon) * epsilon;
-  const iccerrboundC = (44 + 576 * epsilon) * epsilon * epsilon;
-
-  const bc$1 = vec(4);
-  const ca = vec(4);
-  const ab$1 = vec(4);
-  const aa = vec(4);
-  const bb = vec(4);
-  const cc = vec(4);
-  const u = vec(4);
-  const v = vec(4);
-  const axtbc = vec(8);
-  const aytbc = vec(8);
-  const bxtca = vec(8);
-  const bytca = vec(8);
-  const cxtab = vec(8);
-  const cytab = vec(8);
-  const abt = vec(8);
-  const bct = vec(8);
-  const cat = vec(8);
-  const abtt = vec(4);
-  const bctt = vec(4);
-  const catt = vec(4);
-
-  const _8$1 = vec(8);
-  const _16$1 = vec(16);
-  const _16b = vec(16);
-  const _16c = vec(16);
-  const _32 = vec(32);
-  const _32b = vec(32);
-  const _48$1 = vec(48);
-  const _64 = vec(64);
-
-  let fin$1 = vec(1152);
-  let fin2 = vec(1152);
-
-  function finadd(finlen, a, alen) {
-      finlen = sum(finlen, fin$1, a, alen, fin2);
-      const tmp = fin$1; fin$1 = fin2; fin2 = tmp;
-      return finlen;
-  }
-
-  function incircleadapt(ax, ay, bx, by, cx, cy, dx, dy, permanent) {
-      let finlen;
-      let adxtail, bdxtail, cdxtail, adytail, bdytail, cdytail;
-      let axtbclen, aytbclen, bxtcalen, bytcalen, cxtablen, cytablen;
-      let abtlen, bctlen, catlen;
-      let abttlen, bcttlen, cattlen;
-      let n1, n0;
-
-      let bvirt, c, ahi, alo, bhi, blo, _i, _j, _0, s1, s0, t1, t0, u3;
-
-      const adx = ax - dx;
-      const bdx = bx - dx;
-      const cdx = cx - dx;
-      const ady = ay - dy;
-      const bdy = by - dy;
-      const cdy = cy - dy;
-
-      s1 = bdx * cdy;
-      c = splitter * bdx;
-      ahi = c - (c - bdx);
-      alo = bdx - ahi;
-      c = splitter * cdy;
-      bhi = c - (c - cdy);
-      blo = cdy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = cdx * bdy;
-      c = splitter * cdx;
-      ahi = c - (c - cdx);
-      alo = cdx - ahi;
-      c = splitter * bdy;
-      bhi = c - (c - bdy);
-      blo = bdy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      bc$1[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      bc$1[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      bc$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      bc$1[3] = u3;
-      s1 = cdx * ady;
-      c = splitter * cdx;
-      ahi = c - (c - cdx);
-      alo = cdx - ahi;
-      c = splitter * ady;
-      bhi = c - (c - ady);
-      blo = ady - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = adx * cdy;
-      c = splitter * adx;
-      ahi = c - (c - adx);
-      alo = adx - ahi;
-      c = splitter * cdy;
-      bhi = c - (c - cdy);
-      blo = cdy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ca[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ca[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ca[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ca[3] = u3;
-      s1 = adx * bdy;
-      c = splitter * adx;
-      ahi = c - (c - adx);
-      alo = adx - ahi;
-      c = splitter * bdy;
-      bhi = c - (c - bdy);
-      blo = bdy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = bdx * ady;
-      c = splitter * bdx;
-      ahi = c - (c - bdx);
-      alo = bdx - ahi;
-      c = splitter * ady;
-      bhi = c - (c - ady);
-      blo = ady - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ab$1[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ab$1[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ab$1[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ab$1[3] = u3;
-
-      finlen = sum(
-          sum(
-              sum(
-                  scale(scale(4, bc$1, adx, _8$1), _8$1, adx, _16$1), _16$1,
-                  scale(scale(4, bc$1, ady, _8$1), _8$1, ady, _16b), _16b, _32), _32,
-              sum(
-                  scale(scale(4, ca, bdx, _8$1), _8$1, bdx, _16$1), _16$1,
-                  scale(scale(4, ca, bdy, _8$1), _8$1, bdy, _16b), _16b, _32b), _32b, _64), _64,
-          sum(
-              scale(scale(4, ab$1, cdx, _8$1), _8$1, cdx, _16$1), _16$1,
-              scale(scale(4, ab$1, cdy, _8$1), _8$1, cdy, _16b), _16b, _32), _32, fin$1);
-
-      let det = estimate(finlen, fin$1);
-      let errbound = iccerrboundB * permanent;
-      if (det >= errbound || -det >= errbound) {
-          return det;
-      }
-
-      bvirt = ax - adx;
-      adxtail = ax - (adx + bvirt) + (bvirt - dx);
-      bvirt = ay - ady;
-      adytail = ay - (ady + bvirt) + (bvirt - dy);
-      bvirt = bx - bdx;
-      bdxtail = bx - (bdx + bvirt) + (bvirt - dx);
-      bvirt = by - bdy;
-      bdytail = by - (bdy + bvirt) + (bvirt - dy);
-      bvirt = cx - cdx;
-      cdxtail = cx - (cdx + bvirt) + (bvirt - dx);
-      bvirt = cy - cdy;
-      cdytail = cy - (cdy + bvirt) + (bvirt - dy);
-      if (adxtail === 0 && bdxtail === 0 && cdxtail === 0 && adytail === 0 && bdytail === 0 && cdytail === 0) {
-          return det;
-      }
-
-      errbound = iccerrboundC * permanent + resulterrbound * Math.abs(det);
-      det += ((adx * adx + ady * ady) * ((bdx * cdytail + cdy * bdxtail) - (bdy * cdxtail + cdx * bdytail)) +
-          2 * (adx * adxtail + ady * adytail) * (bdx * cdy - bdy * cdx)) +
-          ((bdx * bdx + bdy * bdy) * ((cdx * adytail + ady * cdxtail) - (cdy * adxtail + adx * cdytail)) +
-          2 * (bdx * bdxtail + bdy * bdytail) * (cdx * ady - cdy * adx)) +
-          ((cdx * cdx + cdy * cdy) * ((adx * bdytail + bdy * adxtail) - (ady * bdxtail + bdx * adytail)) +
-          2 * (cdx * cdxtail + cdy * cdytail) * (adx * bdy - ady * bdx));
-
-      if (det >= errbound || -det >= errbound) {
-          return det;
-      }
-
-      if (bdxtail !== 0 || bdytail !== 0 || cdxtail !== 0 || cdytail !== 0) {
-          s1 = adx * adx;
-          c = splitter * adx;
-          ahi = c - (c - adx);
-          alo = adx - ahi;
-          s0 = alo * alo - (s1 - ahi * ahi - (ahi + ahi) * alo);
-          t1 = ady * ady;
-          c = splitter * ady;
-          ahi = c - (c - ady);
-          alo = ady - ahi;
-          t0 = alo * alo - (t1 - ahi * ahi - (ahi + ahi) * alo);
-          _i = s0 + t0;
-          bvirt = _i - s0;
-          aa[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-          _j = s1 + _i;
-          bvirt = _j - s1;
-          _0 = s1 - (_j - bvirt) + (_i - bvirt);
-          _i = _0 + t1;
-          bvirt = _i - _0;
-          aa[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-          u3 = _j + _i;
-          bvirt = u3 - _j;
-          aa[2] = _j - (u3 - bvirt) + (_i - bvirt);
-          aa[3] = u3;
-      }
-      if (cdxtail !== 0 || cdytail !== 0 || adxtail !== 0 || adytail !== 0) {
-          s1 = bdx * bdx;
-          c = splitter * bdx;
-          ahi = c - (c - bdx);
-          alo = bdx - ahi;
-          s0 = alo * alo - (s1 - ahi * ahi - (ahi + ahi) * alo);
-          t1 = bdy * bdy;
-          c = splitter * bdy;
-          ahi = c - (c - bdy);
-          alo = bdy - ahi;
-          t0 = alo * alo - (t1 - ahi * ahi - (ahi + ahi) * alo);
-          _i = s0 + t0;
-          bvirt = _i - s0;
-          bb[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-          _j = s1 + _i;
-          bvirt = _j - s1;
-          _0 = s1 - (_j - bvirt) + (_i - bvirt);
-          _i = _0 + t1;
-          bvirt = _i - _0;
-          bb[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-          u3 = _j + _i;
-          bvirt = u3 - _j;
-          bb[2] = _j - (u3 - bvirt) + (_i - bvirt);
-          bb[3] = u3;
-      }
-      if (adxtail !== 0 || adytail !== 0 || bdxtail !== 0 || bdytail !== 0) {
-          s1 = cdx * cdx;
-          c = splitter * cdx;
-          ahi = c - (c - cdx);
-          alo = cdx - ahi;
-          s0 = alo * alo - (s1 - ahi * ahi - (ahi + ahi) * alo);
-          t1 = cdy * cdy;
-          c = splitter * cdy;
-          ahi = c - (c - cdy);
-          alo = cdy - ahi;
-          t0 = alo * alo - (t1 - ahi * ahi - (ahi + ahi) * alo);
-          _i = s0 + t0;
-          bvirt = _i - s0;
-          cc[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-          _j = s1 + _i;
-          bvirt = _j - s1;
-          _0 = s1 - (_j - bvirt) + (_i - bvirt);
-          _i = _0 + t1;
-          bvirt = _i - _0;
-          cc[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-          u3 = _j + _i;
-          bvirt = u3 - _j;
-          cc[2] = _j - (u3 - bvirt) + (_i - bvirt);
-          cc[3] = u3;
-      }
-
-      if (adxtail !== 0) {
-          axtbclen = scale(4, bc$1, adxtail, axtbc);
-          finlen = finadd(finlen, sum_three(
-              scale(axtbclen, axtbc, 2 * adx, _16$1), _16$1,
-              scale(scale(4, cc, adxtail, _8$1), _8$1, bdy, _16b), _16b,
-              scale(scale(4, bb, adxtail, _8$1), _8$1, -cdy, _16c), _16c, _32, _48$1), _48$1);
-      }
-      if (adytail !== 0) {
-          aytbclen = scale(4, bc$1, adytail, aytbc);
-          finlen = finadd(finlen, sum_three(
-              scale(aytbclen, aytbc, 2 * ady, _16$1), _16$1,
-              scale(scale(4, bb, adytail, _8$1), _8$1, cdx, _16b), _16b,
-              scale(scale(4, cc, adytail, _8$1), _8$1, -bdx, _16c), _16c, _32, _48$1), _48$1);
-      }
-      if (bdxtail !== 0) {
-          bxtcalen = scale(4, ca, bdxtail, bxtca);
-          finlen = finadd(finlen, sum_three(
-              scale(bxtcalen, bxtca, 2 * bdx, _16$1), _16$1,
-              scale(scale(4, aa, bdxtail, _8$1), _8$1, cdy, _16b), _16b,
-              scale(scale(4, cc, bdxtail, _8$1), _8$1, -ady, _16c), _16c, _32, _48$1), _48$1);
-      }
-      if (bdytail !== 0) {
-          bytcalen = scale(4, ca, bdytail, bytca);
-          finlen = finadd(finlen, sum_three(
-              scale(bytcalen, bytca, 2 * bdy, _16$1), _16$1,
-              scale(scale(4, cc, bdytail, _8$1), _8$1, adx, _16b), _16b,
-              scale(scale(4, aa, bdytail, _8$1), _8$1, -cdx, _16c), _16c, _32, _48$1), _48$1);
-      }
-      if (cdxtail !== 0) {
-          cxtablen = scale(4, ab$1, cdxtail, cxtab);
-          finlen = finadd(finlen, sum_three(
-              scale(cxtablen, cxtab, 2 * cdx, _16$1), _16$1,
-              scale(scale(4, bb, cdxtail, _8$1), _8$1, ady, _16b), _16b,
-              scale(scale(4, aa, cdxtail, _8$1), _8$1, -bdy, _16c), _16c, _32, _48$1), _48$1);
-      }
-      if (cdytail !== 0) {
-          cytablen = scale(4, ab$1, cdytail, cytab);
-          finlen = finadd(finlen, sum_three(
-              scale(cytablen, cytab, 2 * cdy, _16$1), _16$1,
-              scale(scale(4, aa, cdytail, _8$1), _8$1, bdx, _16b), _16b,
-              scale(scale(4, bb, cdytail, _8$1), _8$1, -adx, _16c), _16c, _32, _48$1), _48$1);
-      }
-
-      if (adxtail !== 0 || adytail !== 0) {
-          if (bdxtail !== 0 || bdytail !== 0 || cdxtail !== 0 || cdytail !== 0) {
-              s1 = bdxtail * cdy;
-              c = splitter * bdxtail;
-              ahi = c - (c - bdxtail);
-              alo = bdxtail - ahi;
-              c = splitter * cdy;
-              bhi = c - (c - cdy);
-              blo = cdy - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = bdx * cdytail;
-              c = splitter * bdx;
-              ahi = c - (c - bdx);
-              alo = bdx - ahi;
-              c = splitter * cdytail;
-              bhi = c - (c - cdytail);
-              blo = cdytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 + t0;
-              bvirt = _i - s0;
-              u[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 + t1;
-              bvirt = _i - _0;
-              u[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              u[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              u[3] = u3;
-              s1 = cdxtail * -bdy;
-              c = splitter * cdxtail;
-              ahi = c - (c - cdxtail);
-              alo = cdxtail - ahi;
-              c = splitter * -bdy;
-              bhi = c - (c - -bdy);
-              blo = -bdy - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = cdx * -bdytail;
-              c = splitter * cdx;
-              ahi = c - (c - cdx);
-              alo = cdx - ahi;
-              c = splitter * -bdytail;
-              bhi = c - (c - -bdytail);
-              blo = -bdytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 + t0;
-              bvirt = _i - s0;
-              v[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 + t1;
-              bvirt = _i - _0;
-              v[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              v[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              v[3] = u3;
-              bctlen = sum(4, u, 4, v, bct);
-              s1 = bdxtail * cdytail;
-              c = splitter * bdxtail;
-              ahi = c - (c - bdxtail);
-              alo = bdxtail - ahi;
-              c = splitter * cdytail;
-              bhi = c - (c - cdytail);
-              blo = cdytail - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = cdxtail * bdytail;
-              c = splitter * cdxtail;
-              ahi = c - (c - cdxtail);
-              alo = cdxtail - ahi;
-              c = splitter * bdytail;
-              bhi = c - (c - bdytail);
-              blo = bdytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 - t0;
-              bvirt = s0 - _i;
-              bctt[0] = s0 - (_i + bvirt) + (bvirt - t0);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 - t1;
-              bvirt = _0 - _i;
-              bctt[1] = _0 - (_i + bvirt) + (bvirt - t1);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              bctt[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              bctt[3] = u3;
-              bcttlen = 4;
-          } else {
-              bct[0] = 0;
-              bctlen = 1;
-              bctt[0] = 0;
-              bcttlen = 1;
-          }
-          if (adxtail !== 0) {
-              const len = scale(bctlen, bct, adxtail, _16c);
-              finlen = finadd(finlen, sum(
-                  scale(axtbclen, axtbc, adxtail, _16$1), _16$1,
-                  scale(len, _16c, 2 * adx, _32), _32, _48$1), _48$1);
-
-              const len2 = scale(bcttlen, bctt, adxtail, _8$1);
-              finlen = finadd(finlen, sum_three(
-                  scale(len2, _8$1, 2 * adx, _16$1), _16$1,
-                  scale(len2, _8$1, adxtail, _16b), _16b,
-                  scale(len, _16c, adxtail, _32), _32, _32b, _64), _64);
-
-              if (bdytail !== 0) {
-                  finlen = finadd(finlen, scale(scale(4, cc, adxtail, _8$1), _8$1, bdytail, _16$1), _16$1);
-              }
-              if (cdytail !== 0) {
-                  finlen = finadd(finlen, scale(scale(4, bb, -adxtail, _8$1), _8$1, cdytail, _16$1), _16$1);
-              }
-          }
-          if (adytail !== 0) {
-              const len = scale(bctlen, bct, adytail, _16c);
-              finlen = finadd(finlen, sum(
-                  scale(aytbclen, aytbc, adytail, _16$1), _16$1,
-                  scale(len, _16c, 2 * ady, _32), _32, _48$1), _48$1);
-
-              const len2 = scale(bcttlen, bctt, adytail, _8$1);
-              finlen = finadd(finlen, sum_three(
-                  scale(len2, _8$1, 2 * ady, _16$1), _16$1,
-                  scale(len2, _8$1, adytail, _16b), _16b,
-                  scale(len, _16c, adytail, _32), _32, _32b, _64), _64);
-          }
-      }
-      if (bdxtail !== 0 || bdytail !== 0) {
-          if (cdxtail !== 0 || cdytail !== 0 || adxtail !== 0 || adytail !== 0) {
-              s1 = cdxtail * ady;
-              c = splitter * cdxtail;
-              ahi = c - (c - cdxtail);
-              alo = cdxtail - ahi;
-              c = splitter * ady;
-              bhi = c - (c - ady);
-              blo = ady - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = cdx * adytail;
-              c = splitter * cdx;
-              ahi = c - (c - cdx);
-              alo = cdx - ahi;
-              c = splitter * adytail;
-              bhi = c - (c - adytail);
-              blo = adytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 + t0;
-              bvirt = _i - s0;
-              u[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 + t1;
-              bvirt = _i - _0;
-              u[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              u[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              u[3] = u3;
-              n1 = -cdy;
-              n0 = -cdytail;
-              s1 = adxtail * n1;
-              c = splitter * adxtail;
-              ahi = c - (c - adxtail);
-              alo = adxtail - ahi;
-              c = splitter * n1;
-              bhi = c - (c - n1);
-              blo = n1 - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = adx * n0;
-              c = splitter * adx;
-              ahi = c - (c - adx);
-              alo = adx - ahi;
-              c = splitter * n0;
-              bhi = c - (c - n0);
-              blo = n0 - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 + t0;
-              bvirt = _i - s0;
-              v[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 + t1;
-              bvirt = _i - _0;
-              v[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              v[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              v[3] = u3;
-              catlen = sum(4, u, 4, v, cat);
-              s1 = cdxtail * adytail;
-              c = splitter * cdxtail;
-              ahi = c - (c - cdxtail);
-              alo = cdxtail - ahi;
-              c = splitter * adytail;
-              bhi = c - (c - adytail);
-              blo = adytail - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = adxtail * cdytail;
-              c = splitter * adxtail;
-              ahi = c - (c - adxtail);
-              alo = adxtail - ahi;
-              c = splitter * cdytail;
-              bhi = c - (c - cdytail);
-              blo = cdytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 - t0;
-              bvirt = s0 - _i;
-              catt[0] = s0 - (_i + bvirt) + (bvirt - t0);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 - t1;
-              bvirt = _0 - _i;
-              catt[1] = _0 - (_i + bvirt) + (bvirt - t1);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              catt[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              catt[3] = u3;
-              cattlen = 4;
-          } else {
-              cat[0] = 0;
-              catlen = 1;
-              catt[0] = 0;
-              cattlen = 1;
-          }
-          if (bdxtail !== 0) {
-              const len = scale(catlen, cat, bdxtail, _16c);
-              finlen = finadd(finlen, sum(
-                  scale(bxtcalen, bxtca, bdxtail, _16$1), _16$1,
-                  scale(len, _16c, 2 * bdx, _32), _32, _48$1), _48$1);
-
-              const len2 = scale(cattlen, catt, bdxtail, _8$1);
-              finlen = finadd(finlen, sum_three(
-                  scale(len2, _8$1, 2 * bdx, _16$1), _16$1,
-                  scale(len2, _8$1, bdxtail, _16b), _16b,
-                  scale(len, _16c, bdxtail, _32), _32, _32b, _64), _64);
-
-              if (cdytail !== 0) {
-                  finlen = finadd(finlen, scale(scale(4, aa, bdxtail, _8$1), _8$1, cdytail, _16$1), _16$1);
-              }
-              if (adytail !== 0) {
-                  finlen = finadd(finlen, scale(scale(4, cc, -bdxtail, _8$1), _8$1, adytail, _16$1), _16$1);
-              }
-          }
-          if (bdytail !== 0) {
-              const len = scale(catlen, cat, bdytail, _16c);
-              finlen = finadd(finlen, sum(
-                  scale(bytcalen, bytca, bdytail, _16$1), _16$1,
-                  scale(len, _16c, 2 * bdy, _32), _32, _48$1), _48$1);
-
-              const len2 = scale(cattlen, catt, bdytail, _8$1);
-              finlen = finadd(finlen, sum_three(
-                  scale(len2, _8$1, 2 * bdy, _16$1), _16$1,
-                  scale(len2, _8$1, bdytail, _16b), _16b,
-                  scale(len, _16c, bdytail, _32), _32,  _32b, _64), _64);
-          }
-      }
-      if (cdxtail !== 0 || cdytail !== 0) {
-          if (adxtail !== 0 || adytail !== 0 || bdxtail !== 0 || bdytail !== 0) {
-              s1 = adxtail * bdy;
-              c = splitter * adxtail;
-              ahi = c - (c - adxtail);
-              alo = adxtail - ahi;
-              c = splitter * bdy;
-              bhi = c - (c - bdy);
-              blo = bdy - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = adx * bdytail;
-              c = splitter * adx;
-              ahi = c - (c - adx);
-              alo = adx - ahi;
-              c = splitter * bdytail;
-              bhi = c - (c - bdytail);
-              blo = bdytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 + t0;
-              bvirt = _i - s0;
-              u[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 + t1;
-              bvirt = _i - _0;
-              u[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              u[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              u[3] = u3;
-              n1 = -ady;
-              n0 = -adytail;
-              s1 = bdxtail * n1;
-              c = splitter * bdxtail;
-              ahi = c - (c - bdxtail);
-              alo = bdxtail - ahi;
-              c = splitter * n1;
-              bhi = c - (c - n1);
-              blo = n1 - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = bdx * n0;
-              c = splitter * bdx;
-              ahi = c - (c - bdx);
-              alo = bdx - ahi;
-              c = splitter * n0;
-              bhi = c - (c - n0);
-              blo = n0 - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 + t0;
-              bvirt = _i - s0;
-              v[0] = s0 - (_i - bvirt) + (t0 - bvirt);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 + t1;
-              bvirt = _i - _0;
-              v[1] = _0 - (_i - bvirt) + (t1 - bvirt);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              v[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              v[3] = u3;
-              abtlen = sum(4, u, 4, v, abt);
-              s1 = adxtail * bdytail;
-              c = splitter * adxtail;
-              ahi = c - (c - adxtail);
-              alo = adxtail - ahi;
-              c = splitter * bdytail;
-              bhi = c - (c - bdytail);
-              blo = bdytail - bhi;
-              s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-              t1 = bdxtail * adytail;
-              c = splitter * bdxtail;
-              ahi = c - (c - bdxtail);
-              alo = bdxtail - ahi;
-              c = splitter * adytail;
-              bhi = c - (c - adytail);
-              blo = adytail - bhi;
-              t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-              _i = s0 - t0;
-              bvirt = s0 - _i;
-              abtt[0] = s0 - (_i + bvirt) + (bvirt - t0);
-              _j = s1 + _i;
-              bvirt = _j - s1;
-              _0 = s1 - (_j - bvirt) + (_i - bvirt);
-              _i = _0 - t1;
-              bvirt = _0 - _i;
-              abtt[1] = _0 - (_i + bvirt) + (bvirt - t1);
-              u3 = _j + _i;
-              bvirt = u3 - _j;
-              abtt[2] = _j - (u3 - bvirt) + (_i - bvirt);
-              abtt[3] = u3;
-              abttlen = 4;
-          } else {
-              abt[0] = 0;
-              abtlen = 1;
-              abtt[0] = 0;
-              abttlen = 1;
-          }
-          if (cdxtail !== 0) {
-              const len = scale(abtlen, abt, cdxtail, _16c);
-              finlen = finadd(finlen, sum(
-                  scale(cxtablen, cxtab, cdxtail, _16$1), _16$1,
-                  scale(len, _16c, 2 * cdx, _32), _32, _48$1), _48$1);
-
-              const len2 = scale(abttlen, abtt, cdxtail, _8$1);
-              finlen = finadd(finlen, sum_three(
-                  scale(len2, _8$1, 2 * cdx, _16$1), _16$1,
-                  scale(len2, _8$1, cdxtail, _16b), _16b,
-                  scale(len, _16c, cdxtail, _32), _32, _32b, _64), _64);
-
-              if (adytail !== 0) {
-                  finlen = finadd(finlen, scale(scale(4, bb, cdxtail, _8$1), _8$1, adytail, _16$1), _16$1);
-              }
-              if (bdytail !== 0) {
-                  finlen = finadd(finlen, scale(scale(4, aa, -cdxtail, _8$1), _8$1, bdytail, _16$1), _16$1);
-              }
-          }
-          if (cdytail !== 0) {
-              const len = scale(abtlen, abt, cdytail, _16c);
-              finlen = finadd(finlen, sum(
-                  scale(cytablen, cytab, cdytail, _16$1), _16$1,
-                  scale(len, _16c, 2 * cdy, _32), _32, _48$1), _48$1);
-
-              const len2 = scale(abttlen, abtt, cdytail, _8$1);
-              finlen = finadd(finlen, sum_three(
-                  scale(len2, _8$1, 2 * cdy, _16$1), _16$1,
-                  scale(len2, _8$1, cdytail, _16b), _16b,
-                  scale(len, _16c, cdytail, _32), _32, _32b, _64), _64);
-          }
-      }
-
-      return fin$1[finlen - 1];
-  }
-
-  function incircle(ax, ay, bx, by, cx, cy, dx, dy) {
-      const adx = ax - dx;
-      const bdx = bx - dx;
-      const cdx = cx - dx;
-      const ady = ay - dy;
-      const bdy = by - dy;
-      const cdy = cy - dy;
-
-      const bdxcdy = bdx * cdy;
-      const cdxbdy = cdx * bdy;
-      const alift = adx * adx + ady * ady;
-
-      const cdxady = cdx * ady;
-      const adxcdy = adx * cdy;
-      const blift = bdx * bdx + bdy * bdy;
-
-      const adxbdy = adx * bdy;
-      const bdxady = bdx * ady;
-      const clift = cdx * cdx + cdy * cdy;
-
-      const det =
-          alift * (bdxcdy - cdxbdy) +
-          blift * (cdxady - adxcdy) +
-          clift * (adxbdy - bdxady);
-
-      const permanent =
-          (Math.abs(bdxcdy) + Math.abs(cdxbdy)) * alift +
-          (Math.abs(cdxady) + Math.abs(adxcdy)) * blift +
-          (Math.abs(adxbdy) + Math.abs(bdxady)) * clift;
-
-      const errbound = iccerrboundA * permanent;
-
-      if (det > errbound || -det > errbound) {
-          return det;
-      }
-      return incircleadapt(ax, ay, bx, by, cx, cy, dx, dy, permanent);
-  }
-
-  function incirclefast(ax, ay, bx, by, cx, cy, dx, dy) {
-      const adx = ax - dx;
-      const ady = ay - dy;
-      const bdx = bx - dx;
-      const bdy = by - dy;
-      const cdx = cx - dx;
-      const cdy = cy - dy;
-
-      const abdet = adx * bdy - bdx * ady;
-      const bcdet = bdx * cdy - cdx * bdy;
-      const cadet = cdx * ady - adx * cdy;
-      const alift = adx * adx + ady * ady;
-      const blift = bdx * bdx + bdy * bdy;
-      const clift = cdx * cdx + cdy * cdy;
-
-      return alift * bcdet + blift * cadet + clift * abdet;
-  }
-
-  const isperrboundA = (16 + 224 * epsilon) * epsilon;
-  const isperrboundB = (5 + 72 * epsilon) * epsilon;
-  const isperrboundC = (71 + 1408 * epsilon) * epsilon * epsilon;
-
-  const ab = vec(4);
-  const bc = vec(4);
-  const cd = vec(4);
-  const de = vec(4);
-  const ea = vec(4);
-  const ac = vec(4);
-  const bd = vec(4);
-  const ce = vec(4);
-  const da = vec(4);
-  const eb = vec(4);
-
-  const abc = vec(24);
-  const bcd = vec(24);
-  const cde = vec(24);
-  const dea = vec(24);
-  const eab = vec(24);
-  const abd = vec(24);
-  const bce = vec(24);
-  const cda = vec(24);
-  const deb = vec(24);
-  const eac = vec(24);
-
-  const adet = vec(1152);
-  const bdet = vec(1152);
-  const cdet = vec(1152);
-  const ddet = vec(1152);
-  const edet = vec(1152);
-  const abdet = vec(2304);
-  const cddet = vec(2304);
-  const cdedet = vec(3456);
-  const deter = vec(5760);
-
-  const _8 = vec(8);
-  const _8b = vec(8);
-  const _8c = vec(8);
-  const _16 = vec(16);
-  const _24 = vec(24);
-  const _48 = vec(48);
-  const _48b = vec(48);
-  const _96 = vec(96);
-  const _192 = vec(192);
-  const _384x = vec(384);
-  const _384y = vec(384);
-  const _384z = vec(384);
-  const _768 = vec(768);
-
-  function sum_three_scale(a, b, c, az, bz, cz, out) {
-      return sum_three(
-          scale(4, a, az, _8), _8,
-          scale(4, b, bz, _8b), _8b,
-          scale(4, c, cz, _8c), _8c, _16, out);
-  }
-
-  function liftexact(alen, a, blen, b, clen, c, dlen, d, x, y, z, out) {
-      const len = sum(
-          sum(alen, a, blen, b, _48), _48,
-          negate(sum(clen, c, dlen, d, _48b), _48b), _48b, _96);
-
-      return sum_three(
-          scale(scale(len, _96, x, _192), _192, x, _384x), _384x,
-          scale(scale(len, _96, y, _192), _192, y, _384y), _384y,
-          scale(scale(len, _96, z, _192), _192, z, _384z), _384z, _768, out);
-  }
-
-  function insphereexact(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez) {
-      let bvirt, c, ahi, alo, bhi, blo, _i, _j, _0, s1, s0, t1, t0, u3;
-
-      s1 = ax * by;
-      c = splitter * ax;
-      ahi = c - (c - ax);
-      alo = ax - ahi;
-      c = splitter * by;
-      bhi = c - (c - by);
-      blo = by - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = bx * ay;
-      c = splitter * bx;
-      ahi = c - (c - bx);
-      alo = bx - ahi;
-      c = splitter * ay;
-      bhi = c - (c - ay);
-      blo = ay - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ab[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ab[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ab[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ab[3] = u3;
-      s1 = bx * cy;
-      c = splitter * bx;
-      ahi = c - (c - bx);
-      alo = bx - ahi;
-      c = splitter * cy;
-      bhi = c - (c - cy);
-      blo = cy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = cx * by;
-      c = splitter * cx;
-      ahi = c - (c - cx);
-      alo = cx - ahi;
-      c = splitter * by;
-      bhi = c - (c - by);
-      blo = by - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      bc[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      bc[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      bc[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      bc[3] = u3;
-      s1 = cx * dy;
-      c = splitter * cx;
-      ahi = c - (c - cx);
-      alo = cx - ahi;
-      c = splitter * dy;
-      bhi = c - (c - dy);
-      blo = dy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = dx * cy;
-      c = splitter * dx;
-      ahi = c - (c - dx);
-      alo = dx - ahi;
-      c = splitter * cy;
-      bhi = c - (c - cy);
-      blo = cy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      cd[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      cd[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      cd[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      cd[3] = u3;
-      s1 = dx * ey;
-      c = splitter * dx;
-      ahi = c - (c - dx);
-      alo = dx - ahi;
-      c = splitter * ey;
-      bhi = c - (c - ey);
-      blo = ey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = ex * dy;
-      c = splitter * ex;
-      ahi = c - (c - ex);
-      alo = ex - ahi;
-      c = splitter * dy;
-      bhi = c - (c - dy);
-      blo = dy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      de[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      de[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      de[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      de[3] = u3;
-      s1 = ex * ay;
-      c = splitter * ex;
-      ahi = c - (c - ex);
-      alo = ex - ahi;
-      c = splitter * ay;
-      bhi = c - (c - ay);
-      blo = ay - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = ax * ey;
-      c = splitter * ax;
-      ahi = c - (c - ax);
-      alo = ax - ahi;
-      c = splitter * ey;
-      bhi = c - (c - ey);
-      blo = ey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ea[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ea[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ea[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ea[3] = u3;
-      s1 = ax * cy;
-      c = splitter * ax;
-      ahi = c - (c - ax);
-      alo = ax - ahi;
-      c = splitter * cy;
-      bhi = c - (c - cy);
-      blo = cy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = cx * ay;
-      c = splitter * cx;
-      ahi = c - (c - cx);
-      alo = cx - ahi;
-      c = splitter * ay;
-      bhi = c - (c - ay);
-      blo = ay - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ac[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ac[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ac[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ac[3] = u3;
-      s1 = bx * dy;
-      c = splitter * bx;
-      ahi = c - (c - bx);
-      alo = bx - ahi;
-      c = splitter * dy;
-      bhi = c - (c - dy);
-      blo = dy - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = dx * by;
-      c = splitter * dx;
-      ahi = c - (c - dx);
-      alo = dx - ahi;
-      c = splitter * by;
-      bhi = c - (c - by);
-      blo = by - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      bd[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      bd[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      bd[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      bd[3] = u3;
-      s1 = cx * ey;
-      c = splitter * cx;
-      ahi = c - (c - cx);
-      alo = cx - ahi;
-      c = splitter * ey;
-      bhi = c - (c - ey);
-      blo = ey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = ex * cy;
-      c = splitter * ex;
-      ahi = c - (c - ex);
-      alo = ex - ahi;
-      c = splitter * cy;
-      bhi = c - (c - cy);
-      blo = cy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ce[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ce[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      ce[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      ce[3] = u3;
-      s1 = dx * ay;
-      c = splitter * dx;
-      ahi = c - (c - dx);
-      alo = dx - ahi;
-      c = splitter * ay;
-      bhi = c - (c - ay);
-      blo = ay - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = ax * dy;
-      c = splitter * ax;
-      ahi = c - (c - ax);
-      alo = ax - ahi;
-      c = splitter * dy;
-      bhi = c - (c - dy);
-      blo = dy - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      da[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      da[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      da[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      da[3] = u3;
-      s1 = ex * by;
-      c = splitter * ex;
-      ahi = c - (c - ex);
-      alo = ex - ahi;
-      c = splitter * by;
-      bhi = c - (c - by);
-      blo = by - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = bx * ey;
-      c = splitter * bx;
-      ahi = c - (c - bx);
-      alo = bx - ahi;
-      c = splitter * ey;
-      bhi = c - (c - ey);
-      blo = ey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      eb[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      eb[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      u3 = _j + _i;
-      bvirt = u3 - _j;
-      eb[2] = _j - (u3 - bvirt) + (_i - bvirt);
-      eb[3] = u3;
-
-      const abclen = sum_three_scale(ab, bc, ac, cz, az, -bz, abc);
-      const bcdlen = sum_three_scale(bc, cd, bd, dz, bz, -cz, bcd);
-      const cdelen = sum_three_scale(cd, de, ce, ez, cz, -dz, cde);
-      const dealen = sum_three_scale(de, ea, da, az, dz, -ez, dea);
-      const eablen = sum_three_scale(ea, ab, eb, bz, ez, -az, eab);
-      const abdlen = sum_three_scale(ab, bd, da, dz, az, bz, abd);
-      const bcelen = sum_three_scale(bc, ce, eb, ez, bz, cz, bce);
-      const cdalen = sum_three_scale(cd, da, ac, az, cz, dz, cda);
-      const deblen = sum_three_scale(de, eb, bd, bz, dz, ez, deb);
-      const eaclen = sum_three_scale(ea, ac, ce, cz, ez, az, eac);
-
-      const deterlen = sum_three(
-          liftexact(cdelen, cde, bcelen, bce, deblen, deb, bcdlen, bcd, ax, ay, az, adet), adet,
-          liftexact(dealen, dea, cdalen, cda, eaclen, eac, cdelen, cde, bx, by, bz, bdet), bdet,
-          sum_three(
-              liftexact(eablen, eab, deblen, deb, abdlen, abd, dealen, dea, cx, cy, cz, cdet), cdet,
-              liftexact(abclen, abc, eaclen, eac, bcelen, bce, eablen, eab, dx, dy, dz, ddet), ddet,
-              liftexact(bcdlen, bcd, abdlen, abd, cdalen, cda, abclen, abc, ex, ey, ez, edet), edet, cddet, cdedet), cdedet, abdet, deter);
-
-      return deter[deterlen - 1];
-  }
-
-  const xdet = vec(96);
-  const ydet = vec(96);
-  const zdet = vec(96);
-  const fin = vec(1152);
-
-  function liftadapt(a, b, c, az, bz, cz, x, y, z, out) {
-      const len = sum_three_scale(a, b, c, az, bz, cz, _24);
-      return sum_three(
-          scale(scale(len, _24, x, _48), _48, x, xdet), xdet,
-          scale(scale(len, _24, y, _48), _48, y, ydet), ydet,
-          scale(scale(len, _24, z, _48), _48, z, zdet), zdet, _192, out);
-  }
-
-  function insphereadapt(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez, permanent) {
-      let ab3, bc3, cd3, da3, ac3, bd3;
-
-      let aextail, bextail, cextail, dextail;
-      let aeytail, beytail, ceytail, deytail;
-      let aeztail, beztail, ceztail, deztail;
-
-      let bvirt, c, ahi, alo, bhi, blo, _i, _j, _0, s1, s0, t1, t0;
-
-      const aex = ax - ex;
-      const bex = bx - ex;
-      const cex = cx - ex;
-      const dex = dx - ex;
-      const aey = ay - ey;
-      const bey = by - ey;
-      const cey = cy - ey;
-      const dey = dy - ey;
-      const aez = az - ez;
-      const bez = bz - ez;
-      const cez = cz - ez;
-      const dez = dz - ez;
-
-      s1 = aex * bey;
-      c = splitter * aex;
-      ahi = c - (c - aex);
-      alo = aex - ahi;
-      c = splitter * bey;
-      bhi = c - (c - bey);
-      blo = bey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = bex * aey;
-      c = splitter * bex;
-      ahi = c - (c - bex);
-      alo = bex - ahi;
-      c = splitter * aey;
-      bhi = c - (c - aey);
-      blo = aey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ab[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ab[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      ab3 = _j + _i;
-      bvirt = ab3 - _j;
-      ab[2] = _j - (ab3 - bvirt) + (_i - bvirt);
-      ab[3] = ab3;
-      s1 = bex * cey;
-      c = splitter * bex;
-      ahi = c - (c - bex);
-      alo = bex - ahi;
-      c = splitter * cey;
-      bhi = c - (c - cey);
-      blo = cey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = cex * bey;
-      c = splitter * cex;
-      ahi = c - (c - cex);
-      alo = cex - ahi;
-      c = splitter * bey;
-      bhi = c - (c - bey);
-      blo = bey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      bc[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      bc[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      bc3 = _j + _i;
-      bvirt = bc3 - _j;
-      bc[2] = _j - (bc3 - bvirt) + (_i - bvirt);
-      bc[3] = bc3;
-      s1 = cex * dey;
-      c = splitter * cex;
-      ahi = c - (c - cex);
-      alo = cex - ahi;
-      c = splitter * dey;
-      bhi = c - (c - dey);
-      blo = dey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = dex * cey;
-      c = splitter * dex;
-      ahi = c - (c - dex);
-      alo = dex - ahi;
-      c = splitter * cey;
-      bhi = c - (c - cey);
-      blo = cey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      cd[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      cd[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      cd3 = _j + _i;
-      bvirt = cd3 - _j;
-      cd[2] = _j - (cd3 - bvirt) + (_i - bvirt);
-      cd[3] = cd3;
-      s1 = dex * aey;
-      c = splitter * dex;
-      ahi = c - (c - dex);
-      alo = dex - ahi;
-      c = splitter * aey;
-      bhi = c - (c - aey);
-      blo = aey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = aex * dey;
-      c = splitter * aex;
-      ahi = c - (c - aex);
-      alo = aex - ahi;
-      c = splitter * dey;
-      bhi = c - (c - dey);
-      blo = dey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      da[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      da[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      da3 = _j + _i;
-      bvirt = da3 - _j;
-      da[2] = _j - (da3 - bvirt) + (_i - bvirt);
-      da[3] = da3;
-      s1 = aex * cey;
-      c = splitter * aex;
-      ahi = c - (c - aex);
-      alo = aex - ahi;
-      c = splitter * cey;
-      bhi = c - (c - cey);
-      blo = cey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = cex * aey;
-      c = splitter * cex;
-      ahi = c - (c - cex);
-      alo = cex - ahi;
-      c = splitter * aey;
-      bhi = c - (c - aey);
-      blo = aey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      ac[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      ac[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      ac3 = _j + _i;
-      bvirt = ac3 - _j;
-      ac[2] = _j - (ac3 - bvirt) + (_i - bvirt);
-      ac[3] = ac3;
-      s1 = bex * dey;
-      c = splitter * bex;
-      ahi = c - (c - bex);
-      alo = bex - ahi;
-      c = splitter * dey;
-      bhi = c - (c - dey);
-      blo = dey - bhi;
-      s0 = alo * blo - (s1 - ahi * bhi - alo * bhi - ahi * blo);
-      t1 = dex * bey;
-      c = splitter * dex;
-      ahi = c - (c - dex);
-      alo = dex - ahi;
-      c = splitter * bey;
-      bhi = c - (c - bey);
-      blo = bey - bhi;
-      t0 = alo * blo - (t1 - ahi * bhi - alo * bhi - ahi * blo);
-      _i = s0 - t0;
-      bvirt = s0 - _i;
-      bd[0] = s0 - (_i + bvirt) + (bvirt - t0);
-      _j = s1 + _i;
-      bvirt = _j - s1;
-      _0 = s1 - (_j - bvirt) + (_i - bvirt);
-      _i = _0 - t1;
-      bvirt = _0 - _i;
-      bd[1] = _0 - (_i + bvirt) + (bvirt - t1);
-      bd3 = _j + _i;
-      bvirt = bd3 - _j;
-      bd[2] = _j - (bd3 - bvirt) + (_i - bvirt);
-      bd[3] = bd3;
-
-      const finlen = sum(
-          sum(
-              negate(liftadapt(bc, cd, bd, dez, bez, -cez, aex, aey, aez, adet), adet), adet,
-              liftadapt(cd, da, ac, aez, cez, dez, bex, bey, bez, bdet), bdet, abdet), abdet,
-          sum(
-              negate(liftadapt(da, ab, bd, bez, dez, aez, cex, cey, cez, cdet), cdet), cdet,
-              liftadapt(ab, bc, ac, cez, aez, -bez, dex, dey, dez, ddet), ddet, cddet), cddet, fin);
-
-      let det = estimate(finlen, fin);
-      let errbound = isperrboundB * permanent;
-      if (det >= errbound || -det >= errbound) {
-          return det;
-      }
-
-      bvirt = ax - aex;
-      aextail = ax - (aex + bvirt) + (bvirt - ex);
-      bvirt = ay - aey;
-      aeytail = ay - (aey + bvirt) + (bvirt - ey);
-      bvirt = az - aez;
-      aeztail = az - (aez + bvirt) + (bvirt - ez);
-      bvirt = bx - bex;
-      bextail = bx - (bex + bvirt) + (bvirt - ex);
-      bvirt = by - bey;
-      beytail = by - (bey + bvirt) + (bvirt - ey);
-      bvirt = bz - bez;
-      beztail = bz - (bez + bvirt) + (bvirt - ez);
-      bvirt = cx - cex;
-      cextail = cx - (cex + bvirt) + (bvirt - ex);
-      bvirt = cy - cey;
-      ceytail = cy - (cey + bvirt) + (bvirt - ey);
-      bvirt = cz - cez;
-      ceztail = cz - (cez + bvirt) + (bvirt - ez);
-      bvirt = dx - dex;
-      dextail = dx - (dex + bvirt) + (bvirt - ex);
-      bvirt = dy - dey;
-      deytail = dy - (dey + bvirt) + (bvirt - ey);
-      bvirt = dz - dez;
-      deztail = dz - (dez + bvirt) + (bvirt - ez);
-      if (aextail === 0 && aeytail === 0 && aeztail === 0 &&
-          bextail === 0 && beytail === 0 && beztail === 0 &&
-          cextail === 0 && ceytail === 0 && ceztail === 0 &&
-          dextail === 0 && deytail === 0 && deztail === 0) {
-          return det;
-      }
-
-      errbound = isperrboundC * permanent + resulterrbound * Math.abs(det);
-
-      const abeps = (aex * beytail + bey * aextail) - (aey * bextail + bex * aeytail);
-      const bceps = (bex * ceytail + cey * bextail) - (bey * cextail + cex * beytail);
-      const cdeps = (cex * deytail + dey * cextail) - (cey * dextail + dex * ceytail);
-      const daeps = (dex * aeytail + aey * dextail) - (dey * aextail + aex * deytail);
-      const aceps = (aex * ceytail + cey * aextail) - (aey * cextail + cex * aeytail);
-      const bdeps = (bex * deytail + dey * bextail) - (bey * dextail + dex * beytail);
-      det +=
-          (((bex * bex + bey * bey + bez * bez) * ((cez * daeps + dez * aceps + aez * cdeps) +
-          (ceztail * da3 + deztail * ac3 + aeztail * cd3)) + (dex * dex + dey * dey + dez * dez) *
-          ((aez * bceps - bez * aceps + cez * abeps) + (aeztail * bc3 - beztail * ac3 + ceztail * ab3))) -
-          ((aex * aex + aey * aey + aez * aez) * ((bez * cdeps - cez * bdeps + dez * bceps) +
-          (beztail * cd3 - ceztail * bd3 + deztail * bc3)) + (cex * cex + cey * cey + cez * cez) *
-          ((dez * abeps + aez * bdeps + bez * daeps) + (deztail * ab3 + aeztail * bd3 + beztail * da3)))) +
-          2 * (((bex * bextail + bey * beytail + bez * beztail) * (cez * da3 + dez * ac3 + aez * cd3) +
-          (dex * dextail + dey * deytail + dez * deztail) * (aez * bc3 - bez * ac3 + cez * ab3)) -
-          ((aex * aextail + aey * aeytail + aez * aeztail) * (bez * cd3 - cez * bd3 + dez * bc3) +
-          (cex * cextail + cey * ceytail + cez * ceztail) * (dez * ab3 + aez * bd3 + bez * da3)));
-
-      if (det >= errbound || -det >= errbound) {
-          return det;
-      }
-
-      return insphereexact(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez);
-  }
-
-  function insphere(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez) {
-      const aex = ax - ex;
-      const bex = bx - ex;
-      const cex = cx - ex;
-      const dex = dx - ex;
-      const aey = ay - ey;
-      const bey = by - ey;
-      const cey = cy - ey;
-      const dey = dy - ey;
-      const aez = az - ez;
-      const bez = bz - ez;
-      const cez = cz - ez;
-      const dez = dz - ez;
-
-      const aexbey = aex * bey;
-      const bexaey = bex * aey;
-      const ab = aexbey - bexaey;
-      const bexcey = bex * cey;
-      const cexbey = cex * bey;
-      const bc = bexcey - cexbey;
-      const cexdey = cex * dey;
-      const dexcey = dex * cey;
-      const cd = cexdey - dexcey;
-      const dexaey = dex * aey;
-      const aexdey = aex * dey;
-      const da = dexaey - aexdey;
-      const aexcey = aex * cey;
-      const cexaey = cex * aey;
-      const ac = aexcey - cexaey;
-      const bexdey = bex * dey;
-      const dexbey = dex * bey;
-      const bd = bexdey - dexbey;
-
-      const abc = aez * bc - bez * ac + cez * ab;
-      const bcd = bez * cd - cez * bd + dez * bc;
-      const cda = cez * da + dez * ac + aez * cd;
-      const dab = dez * ab + aez * bd + bez * da;
-
-      const alift = aex * aex + aey * aey + aez * aez;
-      const blift = bex * bex + bey * bey + bez * bez;
-      const clift = cex * cex + cey * cey + cez * cez;
-      const dlift = dex * dex + dey * dey + dez * dez;
-
-      const det = (clift * dab - dlift * abc) + (alift * bcd - blift * cda);
-
-      const aezplus = Math.abs(aez);
-      const bezplus = Math.abs(bez);
-      const cezplus = Math.abs(cez);
-      const dezplus = Math.abs(dez);
-      const aexbeyplus = Math.abs(aexbey);
-      const bexaeyplus = Math.abs(bexaey);
-      const bexceyplus = Math.abs(bexcey);
-      const cexbeyplus = Math.abs(cexbey);
-      const cexdeyplus = Math.abs(cexdey);
-      const dexceyplus = Math.abs(dexcey);
-      const dexaeyplus = Math.abs(dexaey);
-      const aexdeyplus = Math.abs(aexdey);
-      const aexceyplus = Math.abs(aexcey);
-      const cexaeyplus = Math.abs(cexaey);
-      const bexdeyplus = Math.abs(bexdey);
-      const dexbeyplus = Math.abs(dexbey);
-      const permanent =
-          ((cexdeyplus + dexceyplus) * bezplus + (dexbeyplus + bexdeyplus) * cezplus + (bexceyplus + cexbeyplus) * dezplus) * alift +
-          ((dexaeyplus + aexdeyplus) * cezplus + (aexceyplus + cexaeyplus) * dezplus + (cexdeyplus + dexceyplus) * aezplus) * blift +
-          ((aexbeyplus + bexaeyplus) * dezplus + (bexdeyplus + dexbeyplus) * aezplus + (dexaeyplus + aexdeyplus) * bezplus) * clift +
-          ((bexceyplus + cexbeyplus) * aezplus + (cexaeyplus + aexceyplus) * bezplus + (aexbeyplus + bexaeyplus) * cezplus) * dlift;
-
-      const errbound = isperrboundA * permanent;
-      if (det > errbound || -det > errbound) {
-          return det;
-      }
-      return -insphereadapt(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, ex, ey, ez, permanent);
-  }
-
-  function inspherefast(pax, pay, paz, pbx, pby, pbz, pcx, pcy, pcz, pdx, pdy, pdz, pex, pey, pez) {
-      const aex = pax - pex;
-      const bex = pbx - pex;
-      const cex = pcx - pex;
-      const dex = pdx - pex;
-      const aey = pay - pey;
-      const bey = pby - pey;
-      const cey = pcy - pey;
-      const dey = pdy - pey;
-      const aez = paz - pez;
-      const bez = pbz - pez;
-      const cez = pcz - pez;
-      const dez = pdz - pez;
-
-      const ab = aex * bey - bex * aey;
-      const bc = bex * cey - cex * bey;
-      const cd = cex * dey - dex * cey;
-      const da = dex * aey - aex * dey;
-      const ac = aex * cey - cex * aey;
-      const bd = bex * dey - dex * bey;
-
-      const abc = aez * bc - bez * ac + cez * ab;
-      const bcd = bez * cd - cez * bd + dez * bc;
-      const cda = cez * da + dez * ac + aez * cd;
-      const dab = dez * ab + aez * bd + bez * da;
-
-      const alift = aex * aex + aey * aey + aez * aez;
-      const blift = bex * bex + bey * bey + bez * bez;
-      const clift = cex * cex + cey * cey + cez * cez;
-      const dlift = dex * dex + dey * dey + dez * dez;
-
-      return (clift * dab - dlift * abc) + (alift * bcd - blift * cda);
   }
 
   const EPSILON = Math.pow(2, -52);
@@ -31877,7 +28781,6 @@ ${svg}
   }
 
   function addPointSymbols(geom, points, index) {
-    var p;
     for (var i=0, n=index.length; i<n; i++) {
       if (index[i] === 0) {
         geom.coordinates.push(getPointSymbolCoords(points[i]));
@@ -32096,9 +28999,6 @@ ${svg}
       var prev = arr[arr.length - 1];
       if (!veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
         arr.push(p);
-      } else {
-        //var dist = geom.distance2D(prev[0], prev[1], p[0], p[1]);
-        //console.log(dist)
       }
     }
 
@@ -32226,9 +29126,7 @@ ${svg}
       hit = bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
       if (hit) {
         // TODO: handle collinear segments
-        if (hit.length != 2) {
-          // console.log("COLLINEAR", hit)
-        }
+        if (hit.length != 2) ;
         // segments intersect -- replace two internal segment endpoints with xx point
         while (arr.length > idx + 1) arr.pop();
         // TODO: check proximity of hit to several points
@@ -32370,9 +29268,6 @@ ${svg}
       var prev = arr[arr.length - 1];
       if (!veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
         arr.push(p);
-      } else {
-        //var dist = geom.distance2D(prev[0], prev[1], p[0], p[1]);
-        //console.log(dist)
       }
     }
 
@@ -32430,8 +29325,6 @@ ${svg}
             //
             finishPartial();
             break;
-          } else {
-            // console.log('HIT', internal.segmentTurn(a, b, c, d))
           }
           // TODO: handle collinear segments (consider creating new partial)
           // if (hit.length != 2) console.log('COLLINEAR', hit)
@@ -32667,13 +29560,13 @@ ${svg}
 
   function makeShapeBufferGeoJSON(lyr, dataset, opts) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    var toleranceFn = getBufferToleranceFunction(dataset, opts);
+    getBufferToleranceFunction(dataset, opts);
     var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
     var getBearing = getBearingFunction(dataset);
     var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
     var factory = opts.v2 ? getPolylineBufferMaker2 : getPolylineBufferMaker;
     var makeShapeBuffer = factory(dataset.arcs, geod, getBearing, makerOpts);
-    var records = lyr.data ? lyr.data.getRecords() : null;
+    lyr.data ? lyr.data.getRecords() : null;
     var geometries = lyr.shapes.map(function(shape, i) {
       var dist = distanceFn(i);
       if (!dist || !shape) return null;
@@ -32711,15 +29604,6 @@ ${svg}
 
   function isClosedPath(arr) {
     return samePoint(arr[0], lastEl(arr));
-  }
-
-  // duplicate points occur if a vertex is on the antimeridan
-  function dedup(ring) {
-    return ring.reduce(function(memo, p, i) {
-      var pp = memo.length > 0 ? memo[memo.length-1] : null;
-      if (!pp || pp[0] != p[0] || pp[1] != p[1]) memo.push(p);
-      return memo;
-    }, []);
   }
 
   // remove likely rounding errors
@@ -32767,7 +29651,7 @@ ${svg}
   function removeCutSegments(coords) {
     if (!touchesEdge(coords)) return coords;
     var coords2 = [];
-    var a, b, c, x, y;
+    var a, b, c;
     var skipped = false;
     coords.pop(); // remove duplicate point
     a = coords[coords.length-1];
@@ -32839,7 +29723,6 @@ ${svg}
     var yy = getSortedIntersections(parts);
     var rings = [];
     var usedParts = [];
-    var errors = 0;
     parts.forEach(function(part, i) {
       if (usedParts[i]) return;
       if (!isValidSplitPart(part)) {
@@ -32851,8 +29734,6 @@ ${svg}
           error('Generated an open ring');
         }
         rings.push(ring);
-      } else {
-        errors++;
       }
     });
 
@@ -32957,7 +29838,7 @@ ${svg}
     var firstPoint = path[0];
     var lastPoint = lastEl(path);
     var closed = samePoint(firstPoint, lastPoint);
-    var p, pp, y, y2;
+    var p, pp, y;
     for (var i=0, n=path.length; i<n; i++) {
       p = path[i];
       if (i>0 && segmentCrossesAntimeridian(pp, p)) {
@@ -33025,25 +29906,6 @@ ${svg}
     return (dx2 * p1[1] + dx1 * p2[1]) / (dx1 + dx2);
   }
 
-  // From: https://github.com/d3/d3-geo/blob/master/src/clip/antimeridian.js
-  function sphericalIntercept(p1, p2) {
-    var lam1 = p1[0] * D2R,
-        phi1 = p1[1] * D2R,
-        lam2 = p2[0] * D2R,
-        phi2 = p2[1] * D2R,
-        sinLam1Lam2 = Math.sin(lam1 - lam2),
-        cosPhi2 = Math.cos(phi2),
-        cosPhi1 = Math.cos(phi1),
-        phi;
-    if (Math.abs(sinLam1Lam2) > 1e-6) {
-      phi = Math.atan((Math.sin(phi1) * cosPhi2 * Math.sin(lam2) -
-        Math.sin(phi2) * cosPhi1) * Math.sin(lam1)) / (cosPhi1 * cosPhi2 * sinLam1Lam2);
-    } else {
-      phi = (phi1 + phi2) / 2;
-    }
-    return phi * R2D;
-  }
-
   function ringArea(ring) {
     var iter = new PointIter(ring);
     return getSphericalPathArea2(iter);
@@ -33057,7 +29919,7 @@ ${svg}
   // Make a single geodetic circle
   function getCircleGeoJSON(center, radius, vertices, opts) {
     var n = vertices || 360;
-    var geod = getGeodeticSegmentFunction(getCRS('wgs84')); // ?
+    var geod = getGeodeticSegmentFunction(parseCrsString('wgs84')); // ?
     if (opts.inset) {
       radius -= opts.inset;
     }
@@ -33193,7 +30055,7 @@ ${svg}
     var data = getCandidateBreaks(lowerBreak, upperBreak, numBreaks);
     // add distribution data and quality metric to each candidate
     data.forEach(function(o) {
-      var distribution = getDistributionData(o.breaks, values);
+      getDistributionData(o.breaks, values);
       o.distribution = getDistributionData(o.breaks, values);
       o.quality = o.roundness * evaluateDistribution(o.distribution);
     });
@@ -33640,7 +30502,7 @@ ${svg}
     return new Hsl(h, s, l, o.opacity);
   }
 
-  function hsl$2(h, s, l, opacity) {
+  function hsl(h, s, l, opacity) {
     return arguments.length === 1 ? hslConvert(h) : new Hsl(h, s, l, opacity == null ? 1 : opacity);
   }
 
@@ -33651,7 +30513,7 @@ ${svg}
     this.opacity = +opacity;
   }
 
-  define(Hsl, hsl$2, extend(Color, {
+  define(Hsl, hsl, extend(Color, {
     brighter(k) {
       k = k == null ? brighter : Math.pow(brighter, k);
       return new Hsl(this.h, this.s, this.l * k, this.opacity);
@@ -33705,127 +30567,7 @@ ${svg}
   }
 
   const radians = Math.PI / 180;
-  const degrees$1 = 180 / Math.PI;
-
-  // https://observablehq.com/@mbostock/lab-and-rgb
-  const K = 18,
-      Xn = 0.96422,
-      Yn = 1,
-      Zn = 0.82521,
-      t0 = 4 / 29,
-      t1 = 6 / 29,
-      t2 = 3 * t1 * t1,
-      t3 = t1 * t1 * t1;
-
-  function labConvert(o) {
-    if (o instanceof Lab) return new Lab(o.l, o.a, o.b, o.opacity);
-    if (o instanceof Hcl) return hcl2lab(o);
-    if (!(o instanceof Rgb)) o = rgbConvert(o);
-    var r = rgb2lrgb(o.r),
-        g = rgb2lrgb(o.g),
-        b = rgb2lrgb(o.b),
-        y = xyz2lab((0.2225045 * r + 0.7168786 * g + 0.0606169 * b) / Yn), x, z;
-    if (r === g && g === b) x = z = y; else {
-      x = xyz2lab((0.4360747 * r + 0.3850649 * g + 0.1430804 * b) / Xn);
-      z = xyz2lab((0.0139322 * r + 0.0971045 * g + 0.7141733 * b) / Zn);
-    }
-    return new Lab(116 * y - 16, 500 * (x - y), 200 * (y - z), o.opacity);
-  }
-
-  function gray(l, opacity) {
-    return new Lab(l, 0, 0, opacity == null ? 1 : opacity);
-  }
-
-  function lab$1(l, a, b, opacity) {
-    return arguments.length === 1 ? labConvert(l) : new Lab(l, a, b, opacity == null ? 1 : opacity);
-  }
-
-  function Lab(l, a, b, opacity) {
-    this.l = +l;
-    this.a = +a;
-    this.b = +b;
-    this.opacity = +opacity;
-  }
-
-  define(Lab, lab$1, extend(Color, {
-    brighter(k) {
-      return new Lab(this.l + K * (k == null ? 1 : k), this.a, this.b, this.opacity);
-    },
-    darker(k) {
-      return new Lab(this.l - K * (k == null ? 1 : k), this.a, this.b, this.opacity);
-    },
-    rgb() {
-      var y = (this.l + 16) / 116,
-          x = isNaN(this.a) ? y : y + this.a / 500,
-          z = isNaN(this.b) ? y : y - this.b / 200;
-      x = Xn * lab2xyz(x);
-      y = Yn * lab2xyz(y);
-      z = Zn * lab2xyz(z);
-      return new Rgb(
-        lrgb2rgb( 3.1338561 * x - 1.6168667 * y - 0.4906146 * z),
-        lrgb2rgb(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z),
-        lrgb2rgb( 0.0719453 * x - 0.2289914 * y + 1.4052427 * z),
-        this.opacity
-      );
-    }
-  }));
-
-  function xyz2lab(t) {
-    return t > t3 ? Math.pow(t, 1 / 3) : t / t2 + t0;
-  }
-
-  function lab2xyz(t) {
-    return t > t1 ? t * t * t : t2 * (t - t0);
-  }
-
-  function lrgb2rgb(x) {
-    return 255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
-  }
-
-  function rgb2lrgb(x) {
-    return (x /= 255) <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-  }
-
-  function hclConvert(o) {
-    if (o instanceof Hcl) return new Hcl(o.h, o.c, o.l, o.opacity);
-    if (!(o instanceof Lab)) o = labConvert(o);
-    if (o.a === 0 && o.b === 0) return new Hcl(NaN, 0 < o.l && o.l < 100 ? 0 : NaN, o.l, o.opacity);
-    var h = Math.atan2(o.b, o.a) * degrees$1;
-    return new Hcl(h < 0 ? h + 360 : h, Math.sqrt(o.a * o.a + o.b * o.b), o.l, o.opacity);
-  }
-
-  function lch(l, c, h, opacity) {
-    return arguments.length === 1 ? hclConvert(l) : new Hcl(h, c, l, opacity == null ? 1 : opacity);
-  }
-
-  function hcl$2(h, c, l, opacity) {
-    return arguments.length === 1 ? hclConvert(h) : new Hcl(h, c, l, opacity == null ? 1 : opacity);
-  }
-
-  function Hcl(h, c, l, opacity) {
-    this.h = +h;
-    this.c = +c;
-    this.l = +l;
-    this.opacity = +opacity;
-  }
-
-  function hcl2lab(o) {
-    if (isNaN(o.h)) return new Lab(o.l, 0, 0, o.opacity);
-    var h = o.h * radians;
-    return new Lab(o.l, Math.cos(h) * o.c, Math.sin(h) * o.c, o.opacity);
-  }
-
-  define(Hcl, hcl$2, extend(Color, {
-    brighter(k) {
-      return new Hcl(this.h, this.c, this.l + K * (k == null ? 1 : k), this.opacity);
-    },
-    darker(k) {
-      return new Hcl(this.h, this.c, this.l - K * (k == null ? 1 : k), this.opacity);
-    },
-    rgb() {
-      return hcl2lab(this).rgb();
-    }
-  }));
+  const degrees = 180 / Math.PI;
 
   var A = -0.14861,
       B = +1.78277,
@@ -33846,11 +30588,11 @@ ${svg}
         bl = b - l,
         k = (E * (g - l) - C * bl) / D,
         s = Math.sqrt(k * k + bl * bl) / (E * l * (1 - l)), // NaN if l=0 or l=1
-        h = s ? Math.atan2(k, bl) * degrees$1 - 120 : NaN;
+        h = s ? Math.atan2(k, bl) * degrees - 120 : NaN;
     return new Cubehelix(h < 0 ? h + 360 : h, s, l, o.opacity);
   }
 
-  function cubehelix$3(h, s, l, opacity) {
+  function cubehelix$2(h, s, l, opacity) {
     return arguments.length === 1 ? cubehelixConvert(h) : new Cubehelix(h, s, l, opacity == null ? 1 : opacity);
   }
 
@@ -33861,7 +30603,7 @@ ${svg}
     this.opacity = +opacity;
   }
 
-  define(Cubehelix, cubehelix$3, extend(Color, {
+  define(Cubehelix, cubehelix$2, extend(Color, {
     brighter(k) {
       k = k == null ? brighter : Math.pow(brighter, k);
       return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
@@ -33905,18 +30647,6 @@ ${svg}
     };
   }
 
-  function basisClosed(values) {
-    var n = values.length;
-    return function(t) {
-      var i = Math.floor(((t %= 1) < 0 ? ++t : t) * n),
-          v0 = values[(i + n - 1) % n],
-          v1 = values[i % n],
-          v2 = values[(i + 1) % n],
-          v3 = values[(i + 2) % n];
-      return basis((t - i / n) * n, v0, v1, v2, v3);
-    };
-  }
-
   var constant = x => () => x;
 
   function linear(a, d) {
@@ -33931,7 +30661,7 @@ ${svg}
     };
   }
 
-  function hue$1(a, b) {
+  function hue(a, b) {
     var d = b - a;
     return d ? linear(a, d > 180 || d < -180 ? d - 360 * Math.round(d / 360) : d) : constant(isNaN(a) ? b : a);
   }
@@ -33996,7 +30726,6 @@ ${svg}
   }
 
   var rgbBasis = rgbSpline(basis$1);
-  var rgbBasisClosed = rgbSpline(basisClosed);
 
   function numberArray(a, b) {
     if (!b) b = [];
@@ -34011,10 +30740,6 @@ ${svg}
 
   function isNumberArray(x) {
     return ArrayBuffer.isView(x) && !(x instanceof DataView);
-  }
-
-  function array(a, b) {
-    return (isNumberArray(b) ? numberArray : genericArray)(a, b);
   }
 
   function genericArray(a, b) {
@@ -34144,262 +30869,12 @@ ${svg}
         : number)(a, b);
   }
 
-  function discrete(range) {
-    var n = range.length;
-    return function(t) {
-      return range[Math.max(0, Math.min(n - 1, Math.floor(t * n)))];
-    };
-  }
-
-  function hue(a, b) {
-    var i = hue$1(+a, +b);
-    return function(t) {
-      var x = i(t);
-      return x - 360 * Math.floor(x / 360);
-    };
-  }
-
-  function round(a, b) {
-    return a = +a, b = +b, function(t) {
-      return Math.round(a * (1 - t) + b * t);
-    };
-  }
-
-  var degrees = 180 / Math.PI;
-
-  var identity = {
-    translateX: 0,
-    translateY: 0,
-    rotate: 0,
-    skewX: 0,
-    scaleX: 1,
-    scaleY: 1
-  };
-
-  function decompose(a, b, c, d, e, f) {
-    var scaleX, scaleY, skewX;
-    if (scaleX = Math.sqrt(a * a + b * b)) a /= scaleX, b /= scaleX;
-    if (skewX = a * c + b * d) c -= a * skewX, d -= b * skewX;
-    if (scaleY = Math.sqrt(c * c + d * d)) c /= scaleY, d /= scaleY, skewX /= scaleY;
-    if (a * d < b * c) a = -a, b = -b, skewX = -skewX, scaleX = -scaleX;
-    return {
-      translateX: e,
-      translateY: f,
-      rotate: Math.atan2(b, a) * degrees,
-      skewX: Math.atan(skewX) * degrees,
-      scaleX: scaleX,
-      scaleY: scaleY
-    };
-  }
-
-  var svgNode;
-
-  /* eslint-disable no-undef */
-  function parseCss(value) {
-    const m = new (typeof DOMMatrix === "function" ? DOMMatrix : WebKitCSSMatrix)(value + "");
-    return m.isIdentity ? identity : decompose(m.a, m.b, m.c, m.d, m.e, m.f);
-  }
-
-  function parseSvg(value) {
-    if (value == null) return identity;
-    if (!svgNode) svgNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    svgNode.setAttribute("transform", value);
-    if (!(value = svgNode.transform.baseVal.consolidate())) return identity;
-    value = value.matrix;
-    return decompose(value.a, value.b, value.c, value.d, value.e, value.f);
-  }
-
-  function interpolateTransform(parse, pxComma, pxParen, degParen) {
-
-    function pop(s) {
-      return s.length ? s.pop() + " " : "";
-    }
-
-    function translate(xa, ya, xb, yb, s, q) {
-      if (xa !== xb || ya !== yb) {
-        var i = s.push("translate(", null, pxComma, null, pxParen);
-        q.push({i: i - 4, x: number(xa, xb)}, {i: i - 2, x: number(ya, yb)});
-      } else if (xb || yb) {
-        s.push("translate(" + xb + pxComma + yb + pxParen);
-      }
-    }
-
-    function rotate(a, b, s, q) {
-      if (a !== b) {
-        if (a - b > 180) b += 360; else if (b - a > 180) a += 360; // shortest path
-        q.push({i: s.push(pop(s) + "rotate(", null, degParen) - 2, x: number(a, b)});
-      } else if (b) {
-        s.push(pop(s) + "rotate(" + b + degParen);
-      }
-    }
-
-    function skewX(a, b, s, q) {
-      if (a !== b) {
-        q.push({i: s.push(pop(s) + "skewX(", null, degParen) - 2, x: number(a, b)});
-      } else if (b) {
-        s.push(pop(s) + "skewX(" + b + degParen);
-      }
-    }
-
-    function scale(xa, ya, xb, yb, s, q) {
-      if (xa !== xb || ya !== yb) {
-        var i = s.push(pop(s) + "scale(", null, ",", null, ")");
-        q.push({i: i - 4, x: number(xa, xb)}, {i: i - 2, x: number(ya, yb)});
-      } else if (xb !== 1 || yb !== 1) {
-        s.push(pop(s) + "scale(" + xb + "," + yb + ")");
-      }
-    }
-
-    return function(a, b) {
-      var s = [], // string constants and placeholders
-          q = []; // number interpolators
-      a = parse(a), b = parse(b);
-      translate(a.translateX, a.translateY, b.translateX, b.translateY, s, q);
-      rotate(a.rotate, b.rotate, s, q);
-      skewX(a.skewX, b.skewX, s, q);
-      scale(a.scaleX, a.scaleY, b.scaleX, b.scaleY, s, q);
-      a = b = null; // gc
-      return function(t) {
-        var i = -1, n = q.length, o;
-        while (++i < n) s[(o = q[i]).i] = o.x(t);
-        return s.join("");
-      };
-    };
-  }
-
-  var interpolateTransformCss = interpolateTransform(parseCss, "px, ", "px)", "deg)");
-  var interpolateTransformSvg = interpolateTransform(parseSvg, ", ", ")", ")");
-
-  var epsilon2 = 1e-12;
-
-  function cosh(x) {
-    return ((x = Math.exp(x)) + 1 / x) / 2;
-  }
-
-  function sinh(x) {
-    return ((x = Math.exp(x)) - 1 / x) / 2;
-  }
-
-  function tanh(x) {
-    return ((x = Math.exp(2 * x)) - 1) / (x + 1);
-  }
-
-  var zoom = (function zoomRho(rho, rho2, rho4) {
-
-    // p0 = [ux0, uy0, w0]
-    // p1 = [ux1, uy1, w1]
-    function zoom(p0, p1) {
-      var ux0 = p0[0], uy0 = p0[1], w0 = p0[2],
-          ux1 = p1[0], uy1 = p1[1], w1 = p1[2],
-          dx = ux1 - ux0,
-          dy = uy1 - uy0,
-          d2 = dx * dx + dy * dy,
-          i,
-          S;
-
-      // Special case for u0 ≅ u1.
-      if (d2 < epsilon2) {
-        S = Math.log(w1 / w0) / rho;
-        i = function(t) {
-          return [
-            ux0 + t * dx,
-            uy0 + t * dy,
-            w0 * Math.exp(rho * t * S)
-          ];
-        };
-      }
-
-      // General case.
-      else {
-        var d1 = Math.sqrt(d2),
-            b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1),
-            b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1),
-            r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0),
-            r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
-        S = (r1 - r0) / rho;
-        i = function(t) {
-          var s = t * S,
-              coshr0 = cosh(r0),
-              u = w0 / (rho2 * d1) * (coshr0 * tanh(rho * s + r0) - sinh(r0));
-          return [
-            ux0 + u * dx,
-            uy0 + u * dy,
-            w0 * coshr0 / cosh(rho * s + r0)
-          ];
-        };
-      }
-
-      i.duration = S * 1000 * rho / Math.SQRT2;
-
-      return i;
-    }
-
-    zoom.rho = function(_) {
-      var _1 = Math.max(1e-3, +_), _2 = _1 * _1, _4 = _2 * _2;
-      return zoomRho(_1, _2, _4);
-    };
-
-    return zoom;
-  })(Math.SQRT2, 2, 4);
-
-  function hsl(hue) {
-    return function(start, end) {
-      var h = hue((start = hsl$2(start)).h, (end = hsl$2(end)).h),
-          s = nogamma(start.s, end.s),
-          l = nogamma(start.l, end.l),
-          opacity = nogamma(start.opacity, end.opacity);
-      return function(t) {
-        start.h = h(t);
-        start.s = s(t);
-        start.l = l(t);
-        start.opacity = opacity(t);
-        return start + "";
-      };
-    }
-  }
-
-  var hsl$1 = hsl(hue$1);
-  var hslLong = hsl(nogamma);
-
-  function lab(start, end) {
-    var l = nogamma((start = lab$1(start)).l, (end = lab$1(end)).l),
-        a = nogamma(start.a, end.a),
-        b = nogamma(start.b, end.b),
-        opacity = nogamma(start.opacity, end.opacity);
-    return function(t) {
-      start.l = l(t);
-      start.a = a(t);
-      start.b = b(t);
-      start.opacity = opacity(t);
-      return start + "";
-    };
-  }
-
-  function hcl(hue) {
-    return function(start, end) {
-      var h = hue((start = hcl$2(start)).h, (end = hcl$2(end)).h),
-          c = nogamma(start.c, end.c),
-          l = nogamma(start.l, end.l),
-          opacity = nogamma(start.opacity, end.opacity);
-      return function(t) {
-        start.h = h(t);
-        start.c = c(t);
-        start.l = l(t);
-        start.opacity = opacity(t);
-        return start + "";
-      };
-    }
-  }
-
-  var hcl$1 = hcl(hue$1);
-  var hclLong = hcl(nogamma);
-
   function cubehelix$1(hue) {
     return (function cubehelixGamma(y) {
       y = +y;
 
       function cubehelix(start, end) {
-        var h = hue((start = cubehelix$3(start)).h, (end = cubehelix$3(end)).h),
+        var h = hue((start = cubehelix$2(start)).h, (end = cubehelix$2(end)).h),
             s = nogamma(start.s, end.s),
             l = nogamma(start.l, end.l),
             opacity = nogamma(start.opacity, end.opacity);
@@ -34418,24 +30893,8 @@ ${svg}
     })(1);
   }
 
-  var cubehelix$2 = cubehelix$1(hue$1);
+  cubehelix$1(hue);
   var cubehelixLong = cubehelix$1(nogamma);
-
-  function piecewise(interpolate, values) {
-    if (values === undefined) values = interpolate, interpolate = d3_interpolate;
-    var i = 0, n = values.length - 1, v = values[0], I = new Array(n < 0 ? 0 : n);
-    while (i < n) I[i] = interpolate(v, v = values[++i]);
-    return function(t) {
-      var i = Math.max(0, Math.min(n - 1, Math.floor(t *= n)));
-      return I[i](t - i);
-    };
-  }
-
-  function quantize(interpolator, n) {
-    var samples = new Array(n);
-    for (var i = 0; i < n; ++i) samples[i] = interpolator(i / (n - 1));
-    return samples;
-  }
 
   // TODO: support three or more stops
   function getGradientFunction(stops) {
@@ -34647,7 +31106,7 @@ ${svg}
   function getInlineLabels(values, style) {
     var labels = [];
     var texts = getLabelTexts(values, style);
-    var dx = getLabelShift(style);
+    getLabelShift(style);
     var x;
     for (var i=0; i<texts.length; i++) {
       x = (i + 0.5) * style.width / texts.length;
@@ -34739,27 +31198,6 @@ ${svg}
 
   function pixToValue(partitions, keyWidth) {
     var classes = partitions.length - 1;
-    var sectionWidth = keyWidth / classes;
-    return function(x) {
-      var i = Math.min(Math.floor(x / sectionWidth), classes - 1); // clamp
-      var k = (x - i * sectionWidth) / sectionWidth;
-      return partitions[i] * (1 - k) + partitions[i+1] * k;
-    };
-  }
-
-  function pixToValue2(partitions, keyWidth) {
-    var classes = partitions.length - 1;
-    var dataRange = partitions[classes] - partitions[0];
-    var pixBreaks = partitions.reduce(function(memo, val, i) {
-      var x;
-      if (i === 0) {
-        x = 0;
-      } else {
-        x = (partitions[i] - partitions[0]) / dataRange * keyWidth;
-      }
-      memo.push(x);
-      return memo;
-    }, []);
     var sectionWidth = keyWidth / classes;
     return function(x) {
       var i = Math.min(Math.floor(x / sectionWidth), classes - 1); // clamp
@@ -34916,7 +31354,7 @@ ${svg}
 
   function getClassRanges(breaks, ascending) {
     var ranges = [];
-    var ids, geBound, ltBound, limit, range;
+    var ids, geBound, ltBound, range;
     for (var breakId=0, i=0; breakId <= breaks.length; breakId++) {
       geBound = breakId === 0 ? -Infinity : breaks[breakId-1];
       ltBound = breakId < breaks.length ? breaks[breakId] : Infinity;
@@ -34969,9 +31407,6 @@ ${svg}
     // message('Computed breaks:', breaks);
     // message('Distribution:', dist.join(','));
     message('Data ranges and (feature counts):\n' + formatColumns(tableRows, ['left', 'right']));
-    if (nulls) {
-      // message('Null values:', nulls);
-    }
   }
 
   function getDiscreteClassifier(breaks, round) {
@@ -34981,9 +31416,7 @@ ${svg}
     // }
     // validate breaks
     // Accepts repeated values -- should this be allowed?
-    if (testAscendingNumbers(breaks)) {
-      // normal state
-    } else if (testDescendingNumbers(breaks)) {
+    if (testAscendingNumbers(breaks)) ; else if (testDescendingNumbers(breaks)) {
       breaks = breaks.concat().reverse();
       inverted = true;
     } else {
@@ -35067,7 +31500,6 @@ ${svg}
 
   function getDistributionData(breaks, ascending) {
     var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
-    var nulls = 0;
     ascending.forEach(function(val) {
       var i = getClassId(val, breaks);
       if (i == -1) {
@@ -35290,8 +31722,6 @@ ${svg}
     findPairsOfNeighbors: findPairsOfNeighbors
   });
 
-  var BALANCE_COLORS = true;
-
   function getNonAdjacentClassifier(lyr, dataset, colors) {
     requirePolygonLayer(lyr);
     var getNeighbors = getNeighborLookupFunction(lyr, dataset.arcs);
@@ -35320,7 +31750,7 @@ ${svg}
         colorId = colorIds[0];
       }
       d.colorId = colorId;
-      if (BALANCE_COLORS) {
+      {
         colorIds = getSortedColorIds(colorId);
       }
     });
@@ -35853,13 +32283,13 @@ ${svg}
         + ")";
   }
 
-  var cubehelix = cubehelixLong(cubehelix$3(300, 0.5, 0.0), cubehelix$3(-240, 0.5, 1.0));
+  var cubehelix = cubehelixLong(cubehelix$2(300, 0.5, 0.0), cubehelix$2(-240, 0.5, 1.0));
 
-  var warm = cubehelixLong(cubehelix$3(-100, 0.75, 0.35), cubehelix$3(80, 1.50, 0.8));
+  var warm = cubehelixLong(cubehelix$2(-100, 0.75, 0.35), cubehelix$2(80, 1.50, 0.8));
 
-  var cool = cubehelixLong(cubehelix$3(260, 0.75, 0.35), cubehelix$3(80, 1.50, 0.8));
+  var cool = cubehelixLong(cubehelix$2(260, 0.75, 0.35), cubehelix$2(80, 1.50, 0.8));
 
-  var c$1 = cubehelix$3();
+  var c$1 = cubehelix$2();
 
   function rainbow(t) {
     if (t < 0 || t > 1) t -= Math.floor(t);
@@ -36546,23 +32976,6 @@ ${svg}
     clipPolylines: clipPolylines
   });
 
-  // TODO: remove this obsolete dissolve code (still used by clip)
-
-  function concatShapes(shapes) {
-    return shapes.reduce(function(memo, shape) {
-      extendShape(memo, shape);
-      return memo;
-    }, []);
-  }
-
-  function extendShape(dest, src) {
-    if (src) {
-      for (var i=0, n=src.length; i<n; i++) {
-        dest.push(src[i]);
-      }
-    }
-  }
-
   // TODO: to prevent invalid holes,
   // could erase the holes from the space-enclosing rings.
   function appendHolesToRings(cw, ccw) {
@@ -36739,11 +33152,7 @@ ${svg}
       // var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
       if (targetRoute == 3) {
         // special cases where clip route and target route both follow this arc
-        if (clipRoute == 1) {
-          // 1. clip/erase polygon blocks this route, not usable
-        } else if (clipRoute == 2 && type == 'erase') {
-          // 2. route is on the boundary between two erase polygons, not usable
-        } else {
+        if (clipRoute == 1) ; else if (clipRoute == 2 && type == 'erase') ; else {
           usable = true;
         }
 
@@ -36867,7 +33276,7 @@ ${svg}
   // so it is last in the layers array.
   // DOES NOT insert clipping points
   function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
-    var usingPathClip = utils.some(targetLayers, layerHasPaths);
+    utils.some(targetLayers, layerHasPaths);
     var bbox = opts.bbox || opts.bbox2;
     var mergedDataset, clipDataset, clipLyr;
     if (clipSrc && clipSrc.geometry_type) {
@@ -37013,7 +33422,7 @@ ${svg}
 
     function formatHit(x, y, i, j, xx, yy) {
       var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
-      return getCutPoint(x, y, ids[0], ids[1], xx, yy);
+      return getCutPoint(x, y, ids[0], ids[1]);
     }
   }
 
@@ -37473,14 +33882,6 @@ ${svg}
     };
   }
 
-  function getCategoricalColorFunction(categories, colors, otherVal, nullVal) {
-    var classify = getCategoricalClassifier(categories);
-    var toColor = getDiscreteValueGetter(colors, nullVal, otherVal);
-    return function(val) {
-      return toColor(classify(val));
-    };
-  }
-
   function fastStringHash(val) {
     // based on https://github.com/darkskyapp/string-hash (public domain)
     var str = String(val),
@@ -37670,7 +34071,6 @@ ${svg}
   }
 
   function scaleDashes(dash, gap, len) {
-    var dash2, gap2;
     var n = len / (dash + gap); // number of dashes
     var n1 = Math.floor(n);
     var n2 = Math.ceil(n);
@@ -37826,7 +34226,7 @@ ${svg}
       var groups = groupsByValue[val];
       var maxIdx;
       if (groups.length < 2) return;
-      maxIdx = indexOfMaxValue(groups, 'weight');
+      maxIdx = indexOfMaxValue(groups);
       if (maxIdx == -1) return; // error condition...
       groups
         .filter(function(group, i) {return i != maxIdx;})
@@ -37957,13 +34357,13 @@ ${svg}
     }
     var defs = getStashedVar('defs');
     var compiled = compileFeatureExpression(opts.expression, {}, null, {no_warn: true});
-    var result = compiled(null, defs);
+    compiled(null, defs);
   };
 
   // Removes small gaps and all overlaps
   cmd.dissolve2 = function(layers, dataset, opts) {
     layers.forEach(requirePolygonLayer);
-    var nodes = addIntersectionCuts(dataset, opts);
+    addIntersectionCuts(dataset, opts);
     return layers.map(function(lyr) {
       if (!layerHasPaths(lyr)) return lyr;
       return dissolvePolygonLayer2(lyr, dataset, opts);
@@ -38003,7 +34403,7 @@ ${svg}
 
 
   function getJoinFilterCalcFunction(exp, data) {
-    var values, counts, max, min, context, calc, n;
+    var values, max, min, context, calc;
 
     context = {
       isMax: function(val) {
@@ -38432,10 +34832,6 @@ ${svg}
     }
   }
 
-  function MinHeap() {
-    return new Heap('min');
-  }
-
   function MaxHeap() {
     return new Heap('max');
   }
@@ -38668,9 +35064,7 @@ ${svg}
     var cols = Math.round(Math.sqrt(approxCells * w / h)) || 1;
     var rows = Math.ceil(cols * h / w); // overshoots bbox height
     var gridWidth = w;
-    var gridHeight = w * rows / cols;
     var cells = cols * rows;
-    var cellSize = gridWidth / cols;
     var cellId = -1;
     var shuffledIds;
     var grid = initGrid(cells);
@@ -38685,22 +35079,13 @@ ${svg}
     var initialDotSpacing = gridWidth / cols * 0.7 * evenness;
     var dotSpacing = initialDotSpacing;
 
-    // metrics
-    var queries = 0;
-    var bestCount = 0;
-
     this.done = done;
     this.getPoint = getPoint;
 
     function done() {
-      // console.log( 'queries:', queries,'bestPct:', pct(bestCount, queries), "dotSpacing:", Math.round(dotSpacing));
-      function pct(a, b) {
-        return Math.round(a / b * 100) + '%';
-      }
     }
 
     function getPoint() {
-      queries++;
       if (evenness === 1) return getOptimalPoint();
       if (evenness === 0) return getRandomPoint();
       return getSpacedPoint();
@@ -38773,7 +35158,6 @@ ${svg}
       usePoint(p); // add to grid of used points
       updateNeighbors(p, bestId); // update best point of this cell and neighbors
       dotSpacing = bestHeap.peekValue();
-      bestCount++;
       return p;
     }
 
@@ -38817,27 +35201,6 @@ ${svg}
     function updateBestPointInCell(i) {
       var dist = findBestPointInCell(i);
       bestHeap.updateValue(i, dist);
-    }
-
-    // simpler, less performant -- for debugging
-    function findBestPointInCell2(idx) {
-      var r = idxToRow(idx);
-      var c = idxToCol(idx);
-      var perSide = 4;
-      var maxDist = 0;
-      var dist, p, bestPoint;
-      for (var i=0; i<perSide; i++) {
-        for (var j=0; j<perSide; j++) {
-          p = getGridPointInCell(c, r, i, j, perSide);
-          dist = findDistanceFromNearbyFeatures(maxDist, p, c, r);
-          if (dist > maxDist) {
-            maxDist = dist;
-            bestPoint = p;
-          }
-        }
-      }
-      bestPoints[idx] = bestPoint;
-      return maxDist;
     }
 
     function findBestPointInCell(idx) {
@@ -39278,7 +35641,6 @@ ${svg}
   };
 
   function validateExternalCommand(defn) {
-    var targetTypes = ['layer', 'layers'];
     if (typeof defn.command != 'function') {
       stop('Expected "command" parameter function');
     }
@@ -39721,44 +36083,6 @@ ${svg}
     message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
   };
 
-  function buildIslandIndex(lyr, arcs, ringTest) {
-    // index of all islands
-    // (all rings are considered to belong to an island)
-    var islandIndex = [];
-    // this index maps id of first arc in each ring to
-    // an island in islandIndex
-    var firstArcIndex = new ArcToIdIndex(arcs);
-    var shpId;
-    var parts;
-
-    lyr.shapes.forEach(function(shp, i) {
-      if (!shp) return;
-      shpId = i;
-      forEachShapePart(parts, eachRing);
-
-    });
-
-    function eachRing(ring, ringId, shp) {
-      var area = geom.getPathArea(ring, arcs);
-      var firstArcId = ring[0];
-      if (area <= 0) return; // skip holes (really?)
-      var islandId = firstArcIndex.getId(firstArcId);
-      var islandData;
-      if (islandId == -1) {
-        islandData = {
-          area: 0
-        };
-        islandId = islandIndex.length;
-        islandIndex.push(islandData);
-      } else {
-        islandData = islandIndex[islandId];
-      }
-      islandData.area += area;
-
-    }
-
-  }
-
 
   function filterIslands2(lyr, arcs, ringTest) {
     var removed = 0;
@@ -39781,27 +36105,6 @@ ${svg}
     };
     editShapes(lyr.shapes, pathFilter);
     return removed;
-  }
-
-  function ArcToIdIndex(arcs) {
-    var n = arcs.size();
-    var fwdArcIndex = new Int32Array(n);
-    var revArcIndex = new Int32Array(n);
-    utils.initializeArray(fwdArcIndex, -1);
-    utils.initializeArray(revArcIndex, -1);
-    this.setId = function(arcId, id) {
-      if (arcId >= 0) {
-        fwdArcIndex[arcId] = id;
-      } else {
-        revArcIndex[~arcId] = id;
-      }
-    };
-
-    this.getId = function(arcId) {
-      var i = absArcId(arcId);
-      if (i < n === false) return -1;
-      return (arcId < 0 ? revArcIndex : fwdArcIndex)[i];
-    };
   }
 
   cmd.filterFields = function(lyr, names) {
@@ -39895,7 +36198,7 @@ ${svg}
   }
 
   function joinPolygonsToPoints(targetLyr, polygonLyr, arcs, opts) {
-    var joinFunction = getPointToPolygonsFunction(targetLyr, polygonLyr, arcs, opts);
+    var joinFunction = getPointToPolygonsFunction(targetLyr, polygonLyr, arcs);
     prepJoinLayers(targetLyr, polygonLyr);
     return joinTableToLayer(targetLyr, polygonLyr.data, joinFunction, opts);
   }
@@ -39912,10 +36215,9 @@ ${svg}
 
   function getPolygonToPointsFunction(polygonLyr, arcs, pointLyr, opts) {
     // Build a reverse lookup table for mapping polygon ids to point ids.
-    var joinFunction = getPointToPolygonsFunction(pointLyr, polygonLyr, arcs, opts);
+    var joinFunction = getPointToPolygonsFunction(pointLyr, polygonLyr, arcs);
     var index = [];
     var firstMatch = !!opts.first_match; // a point is assigned to the first matching polygon
-    var hits, polygonId;
     pointLyr.shapes.forEach(function(shp, pointId) {
       var polygonIds = joinFunction(pointId);
       var n = polygonIds ? polygonIds.length : 0;
@@ -39947,24 +36249,6 @@ ${svg}
       var shp = points[pointId],
           polygonIds = shp ? index.findEnclosingShapes(shp[0]) : [];
       return polygonIds.length > 0 ? polygonIds : null;
-    };
-  }
-
-
-  // TODO: remove (replaced by getPointToPolygonsFunction())
-  function getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts) {
-    var index = new PathIndex(polygonLyr.shapes, arcs),
-        points = pointLyr.shapes;
-
-    // @i id of a point feature
-    return function(i) {
-      var shp = points[i],
-          shpId = -1;
-      if (shp) {
-        // TODO: handle multiple hits
-        shpId = index.findEnclosingShape(shp[0]);
-      }
-      return shpId == -1 ? null : [shpId];
     };
   }
 
@@ -40069,7 +36353,7 @@ ${svg}
     var failures = [];
     var restoredIds = [];
 
-    var targetIds = missingValues.map(function(missingValue) {
+    missingValues.map(function(missingValue) {
       var shpId = findDropoutInsertionShape(missingValue, countData);
       if (shpId > -1 && restoredIds.indexOf(shpId) === -1) {
         records[shpId][field] = missingValue;
@@ -40245,23 +36529,6 @@ ${svg}
     }
   }
 
-  function densifyDataset(dataset, opts) {
-    var interval = opts.interval;
-    if (interval > 0 === false) {
-      error('Expected a valid interval parameter');
-    }
-    var editor = new DatasetEditor(dataset);
-    dataset.layers.forEach(function(lyr) {
-      var type = lyr.geometry_type;
-      editor.editLayer(lyr, function(coords, i, shape) {
-        if (type == 'point') return coords;
-        return [densifyPathByInterval(coords, interval)];
-      });
-    });
-    editor.done();
-  }
-
-
   // Planar densification by an interval
   function densifyPathByInterval(coords, interval, interpolate) {
     if (findMaxPathInterval(coords) < interval) return coords;
@@ -40332,10 +36599,6 @@ ${svg}
       if (intSq > maxSq) maxSq = intSq;
     }
     return Math.sqrt(maxSq);
-  }
-
-  function densifyUnprojectedPathByDistance(coords, meters) {
-    // stub
   }
 
   function projectAndDensifyArcs(arcs, proj) {
@@ -40435,12 +36698,12 @@ ${svg}
     if (!layerHasGeometry(targetLyr)) {
       stop("Layer is missing geometric shapes");
     }
-    var crs = getDatasetCRS(targetDataset);
+    var crsInfo = getDatasetCrsInfo(targetDataset);
     var records = targetLyr.data ? targetLyr.data.getRecords() : null;
     var geometries = targetLyr.shapes.map(function(shp) {
       var bounds = targetLyr.geometry_type == 'point' ?
         getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-      bounds = applyRectangleOptions(bounds, crs, opts);
+      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
       if (!bounds) return null;
       return convertBboxToGeoJSON(bounds.toArray(), opts);
     });
@@ -40459,6 +36722,7 @@ ${svg}
       })
     };
     var dataset = importGeoJSON(geojson, {});
+    setDatasetCrsInfo(dataset, crsInfo);
     var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
     setOutputLayerName(outputLayers[0], targetLyr, null, opts);
     return outputLayers;
@@ -40479,25 +36743,22 @@ ${svg}
   };
 
   cmd.rectangle = function(source, opts) {
-    var offsets, bounds, crs, coords, sourceInfo;
+    var bounds, crsInfo;
     if (source) {
       bounds = getLayerBounds(source.layer, source.dataset.arcs);
-      sourceInfo = source.dataset.info;
-      crs = getDatasetCRS(source.dataset);
+      crsInfo = getDatasetCrsInfo(source.dataset);
     } else if (opts.bbox) {
       bounds = new Bounds(opts.bbox);
-      crs = getCRS('wgs84');
+      crsInfo = getCrsInfo('wgs84');
     }
-    bounds = bounds && applyRectangleOptions(bounds, crs, opts);
+    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
     if (!bounds || !bounds.hasBounds()) {
       stop('Missing rectangle extent');
     }
     var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
     var dataset = importGeoJSON(geojson, {});
     dataset.layers[0].name = opts.name || 'rectangle';
-    if (sourceInfo) {
-      setDatasetCRS(dataset, sourceInfo);
-    }
+    setDatasetCrsInfo(dataset, crsInfo);
     return dataset;
   };
 
@@ -40613,18 +36874,6 @@ ${svg}
     // TODO: add azimuthal projection with lat0 == 0
     // if (inList(P, 'ortho') && P.lam0 === 0) return true;
     return isAxisAligned(P); // TODO: look for exceptions to this
-  }
-
-  // Is the projection bounded by parallels or polar lines?
-  function isParallelBounded(P) {
-    // TODO: add polar azimuthal projections
-    // TODO: reject world projections that do not have polar lines
-    return isAxisAligned(P);
-  }
-
-
-  function isConic(P) {
-    return inList(P, 'aea,bonne,eqdc,lcc,poly,euler,murd1,murd2,murd3,pconic,tissot,vitk1');
   }
 
   function isAzimuthal(P) {
@@ -40842,7 +37091,6 @@ ${svg}
 
   function convertShapesToSegments(lyr, dataset) {
     var arcs = dataset.arcs;
-    var features = [];
     var geojson = {type: 'FeatureCollection', features: []};
     var test = getArcPresenceTest(lyr.shapes, arcs);
     var arcId;
@@ -40963,7 +37211,6 @@ ${svg}
       var key = function(a, b) {
         var arec = data[a];
         var brec = data[b];
-        var aval, bval;
         if (!arec || !brec || arec[field] === brec[field]) {
           return null;
         }
@@ -41360,12 +37607,12 @@ ${svg}
   cmd.proj = function(dataset, catalog, opts) {
     var srcInfo, destInfo, destStr;
     if (opts.init) {
-      srcInfo = getCrsInfo(opts.init, catalog);
+      srcInfo = fetchCrsInfo(opts.init, catalog);
       if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
-      setDatasetCRS(dataset, srcInfo);
+      setDatasetCrsInfo(dataset, srcInfo);
     }
     if (opts.match) {
-      destInfo = getCrsInfo(opts.match, catalog);
+      destInfo = fetchCrsInfo(opts.match, catalog);
     } else if (opts.crs) {
       destStr = expandProjDefn(opts.crs, dataset);
       destInfo = getCrsInfo(destStr);
@@ -41380,27 +37627,24 @@ ${svg}
     // are preserved if an error occurs
     var modifyCopy = runningInBrowser(),
         originals = [],
-        target = {info: dataset.info || {}},
-        src, dest;
+        target = {info: dataset.info || {}};
 
-    dest = destInfo.crs;
-    if (!dest) {
+    if (!destInfo.crs) {
       stop("Missing projection data");
     }
 
     if (!datasetHasGeometry(dataset)) {
       // still set the crs of datasets that are missing geometry
-      dataset.info.crs = dest;
-      dataset.info.prj = destInfo.prj; // may be undefined
+      setDatasetCrsInfo(dataset, destInfo);
       return;
     }
 
-    src = getDatasetCRS(dataset);
-    if (!src) {
+    var srcInfo = getDatasetCrsInfo(dataset);
+    if (!srcInfo.crs) {
       stop("Unable to project -- source coordinate system is unknown");
     }
 
-    if (crsAreEqual(src, dest)) {
+    if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
       message("Source and destination CRS are the same");
       return;
     }
@@ -41418,9 +37662,11 @@ ${svg}
       return lyr;
     });
 
-    projectDataset(target, src, dest, opts || {});
+    projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
 
-    dataset.info.prj = destInfo.prj; // may be undefined
+    // dataset.info.prj = destInfo.prj; // may be undefined
+    setDatasetCrsInfo(target, destInfo);
+
     dataset.arcs = target.arcs;
     originals.forEach(function(lyr, i) {
       // replace original layers with modified layers
@@ -41432,7 +37678,7 @@ ${svg}
   // name: a layer identifier, .prj file or projection defn
   // Converts layer ids and .prj files to CRS defn
   // Returns projection defn
-  function getCrsInfo(name, catalog) {
+  function fetchCrsInfo(name, catalog) {
     var dataset, source, info = {};
     if (/\.prj$/i.test(name)) {
       dataset = importFile(name, {});
@@ -41444,14 +37690,10 @@ ${svg}
     }
     if (catalog && (source = catalog.findSingleLayer(name))) {
       dataset = source.dataset;
-      info.crs = getDatasetCRS(dataset);
-      info.prj = dataset.info.prj; // may be undefined
-      // defn = internal.crsToProj4(P);
-      return info;
+      return getDatasetCrsInfo(dataset);
     }
     // assume name is a projection defn
-    info.crs = getCRS(name);
-    return info;
+    return getCrsInfo(name);
   }
 
   function projectDataset(dataset, src, dest, opts) {
@@ -41558,7 +37800,7 @@ ${svg}
 
   var Proj = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getCrsInfo: getCrsInfo,
+    fetchCrsInfo: fetchCrsInfo,
     projectDataset: projectDataset,
     cleanProjectedLayers: cleanProjectedLayers,
     projectPointLayer: projectPointLayer,
@@ -41568,41 +37810,43 @@ ${svg}
 
   cmd.graticule = function(dataset, opts) {
     var name = opts.polygon ? 'polygon' : 'graticule';
-    var graticule, dest;
+    var graticule, destInfo;
     if (dataset && !isLatLngDataset(dataset)) {
       // project graticule to match dataset
-      dest = getDatasetCRS(dataset);
-      if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
+      destInfo = getDatasetCrsInfo(dataset);
+      if (!destInfo.crs) stop("Coordinate system is unknown, unable to create a graticule");
       graticule = opts.polygon ?
-        createProjectedPolygon(dest, opts) :
-        createProjectedGraticule(dest, opts);
+        createProjectedPolygon(destInfo.crs, opts) :
+        createProjectedGraticule(destInfo.crs, opts);
+      setDatasetCrsInfo(graticule, destInfo);
     } else {
       graticule = opts.polygon ?
         createUnprojectedPolygon(opts) :
         createUnprojectedGraticule(opts);
+      setDatasetCrsInfo(graticule, getCrsInfo('wgs84'));
     }
     graticule.layers[0].name = name;
     return graticule;
   };
 
   function createUnprojectedPolygon(opts) {
-    var crs = getCRS('wgs84');
+    var crs = parseCrsString('wgs84');
     return getPolygonDataset$1(crs, crs, opts);
   }
 
   function createProjectedPolygon(dest, opts) {
-    var src = getCRS('wgs84');
+    var src = parseCrsString('wgs84');
     return getPolygonDataset$1(src, dest, opts);
   }
 
   function createUnprojectedGraticule(opts) {
-    var src = getCRS('wgs84');
+    var src = parseCrsString('wgs84');
     var graticule = importGeoJSON(createGraticule(src, false, opts));
     return graticule;
   }
 
   function createProjectedGraticule(dest, opts) {
-    var src = getCRS('wgs84');
+    var src = parseCrsString('wgs84');
     // var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
     var outline = getOutlineDataset(src, dest, {});
     var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
@@ -41632,7 +37876,7 @@ ${svg}
   function createGraticule(P, outlined, opts) {
     var interval = opts.interval || 10;
     if (![5,10,15,30,45].includes(interval)) stop('Invalid interval:', interval);
-    var lon0 = P.lam0 * 180 / Math.PI;
+    P.lam0 * 180 / Math.PI;
     var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
     var xstep = interval;
     var ystep = interval;
@@ -41767,7 +38011,7 @@ ${svg}
     }
     var ctx;
     if (isSingle) {
-      ctx = getLayerProxy(targets[0].layers[0], targets[0].dataset.arcs, opts);
+      ctx = getLayerProxy(targets[0].layers[0], targets[0].dataset.arcs);
     } else {
       ctx = getNullLayerProxy(targets);
     }
@@ -41980,16 +38224,6 @@ ${svg}
     return count;
   }
 
-  function countRings(shapes, arcs) {
-    var holes = 0, rings = 0;
-    editShapes(shapes, function(ids) {
-      var area = geom.getPlanarPathArea(ids, arcs);
-      if (area > 0) rings++;
-      if (area < 0) holes++;
-    });
-    return {rings: rings, holes: holes};
-  }
-
   function getLayerInfo(lyr, dataset) {
     var data = getLayerData(lyr, dataset);
     var str = '';
@@ -42091,22 +38325,6 @@ ${svg}
     }
 
     return str;
-  }
-
-  function getSimplificationInfo(arcs) {
-    var nodeCount = new NodeCollection(arcs).size();
-    // get count of non-node vertices
-    var internalVertexCount = countInteriorVertices(arcs);
-  }
-
-  function countInteriorVertices(arcs) {
-    var count = 0;
-    arcs.forEach2(function(i, n) {
-      if (n > 2) {
-        count += n - 2;
-      }
-    });
-    return count;
   }
 
   var Info = /*#__PURE__*/Object.freeze({
@@ -42373,7 +38591,7 @@ ${svg}
 
     return function(targId) {
       var tileIds = mosaicIndex.getTileIdsByShapeId(targId);
-      var sourceIds = [], overlappingTiles = [], tmp;
+      var sourceIds = [], tmp;
       for (var i=0; i<tileIds.length; i++) {
         tmp = mosaicIndex.getSourceIdsByTileId(tileIds[i]);
         tmp = mergedToSourceIds(tmp);
@@ -42393,7 +38611,7 @@ ${svg}
     var rxp = /^([nsew+-]?)([0-9.]+)[d°]? ?([0-9.]*)['′]? ?([0-9.]*)["″]? ?([nsew]?)$/i;
     var match = rxp.exec(str.trim());
     var d = NaN;
-    var deg, min, sec, inv;
+    var deg, min, sec;
     if (match) {
       deg = match[2] || '0';
       min = match[3] || '0';
@@ -42426,7 +38644,7 @@ ${svg}
   // p: point to snap
   // ids: ids of nearby vertices, possibly including an arc endpoint
   function snapPointToArcEndpoint(p, ids, arcs) {
-    var p2, p3, dx, dy;
+    var p2, dx, dy;
     ids.forEach(function(idx) {
       if (vertexIsArcStart(idx, arcs)) {
         p2 = getVertexCoords(idx + 1, arcs);
@@ -42533,7 +38751,6 @@ ${svg}
   function findPathMidpoint(path, arcs) {
     var halfLen = calcPathLen(path, arcs, false) / 2;
     var partialLen = 0;
-    var done = false;
     var p;
     forEachSegmentInPath(path, arcs, function(i, j, xx, yy) {
       var a = xx[i],
@@ -42593,20 +38810,20 @@ ${svg}
       // TODO: consider making attributed points, including distance from origin
       destLyr.shapes = interpolatedPointsFromVertices(srcLyr, dataset, opts);
     } else if (opts.vertices) {
-      destLyr.shapes = pointsFromVertices(srcLyr, arcs, opts);
+      destLyr.shapes = pointsFromVertices(srcLyr, arcs);
     } else if (opts.vertices2) {
-      destLyr.shapes = pointsFromVertices2(srcLyr, arcs, opts);
+      destLyr.shapes = pointsFromVertices2(srcLyr, arcs);
     } else if (opts.endpoints) {
-      destLyr.shapes = pointsFromEndpoints(srcLyr, arcs, opts);
+      destLyr.shapes = pointsFromEndpoints(srcLyr, arcs);
     } else if (opts.x || opts.y) {
       destLyr.shapes = pointsFromDataTable(srcLyr.data, opts);
     } else if (srcLyr.geometry_type == 'polygon') {
       destLyr.shapes = pointsFromPolygons(srcLyr, arcs, opts);
     } else if (opts.midpoints) {
       requirePolylineLayer(srcLyr);
-      destLyr.shapes = midpointsFromPolylines(srcLyr, arcs, opts);
+      destLyr.shapes = midpointsFromPolylines(srcLyr, arcs);
     } else if (srcLyr.geometry_type == 'polyline') {
-      destLyr.shapes = pointsFromPolylines(srcLyr, arcs, opts);
+      destLyr.shapes = pointsFromPolylines(srcLyr, arcs);
     } else if (!srcLyr.geometry_type) {
       destLyr.shapes = pointsFromDataTableAuto(srcLyr.data);
     } else {
@@ -42776,13 +38993,13 @@ ${svg}
 
   function midpointsFromPolylines(lyr, arcs, opts) {
     return lyr.shapes.map(function(shp) {
-      return polylineToMidpoints(shp, arcs, opts);
+      return polylineToMidpoints(shp, arcs);
     });
   }
 
   function pointsFromPolylines(lyr, arcs, opts) {
     return lyr.shapes.map(function(shp) {
-      var p = polylineToPoint(shp, arcs, opts);
+      var p = polylineToPoint(shp, arcs);
       return p ? [[p.x, p.y]] : null;
     });
   }
@@ -43186,11 +39403,6 @@ ${svg}
       return haverSinDistPartial(haverSinDLng, cosLat1, lat1, lat2);
   }
 
-  function distance(lng1, lat1, lng2, lat2) {
-      var h = haverSinDist(lng1, lat1, lng2, lat2, Math.cos(lat1 * rad));
-      return 2 * earthRadius * Math.asin(Math.sqrt(h));
-  }
-
   function vertexLat(lat, haverSinDLng) {
       var cosDLng = 1 - 2 * haverSinDLng;
       if (cosDLng <= 0) return lat > 0 ? 90 : -90;
@@ -43404,7 +39616,7 @@ ${svg}
   cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
     requireProjectedDataset(targetDataset);
     var params = getGridParams(targetLayers, targetDataset, opts);
-    var gridDataset = makeGridDataset(params, opts);
+    var gridDataset = makeGridDataset(params);
 
     gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
     setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
@@ -43640,7 +39852,7 @@ ${svg}
 
   cmd.pointGrid = function(dataset, opts) {
     var gridOpts = getPointGridParams(dataset, opts);
-    var lyr = createPointGridLayer(createPointGrid(gridOpts), opts);
+    var lyr = createPointGridLayer(createPointGrid(gridOpts));
     setOutputLayerName(lyr, null, 'grid', opts);
     return lyr;
   };
@@ -43653,9 +39865,7 @@ ${svg}
     } else if (opts.rows > 0 && opts.cols > 0) {
       params.rows = opts.rows;
       params.cols = opts.cols;
-    } else {
-      // error, handled later
-    }
+    } else ;
     if (opts.bbox) {
       params.bbox = opts.bbox;
     } else if (dataset) {
@@ -43667,7 +39877,7 @@ ${svg}
   }
 
   function createPointGridLayer(rows, opts) {
-    var points = [], lyr;
+    var points = [];
     rows.forEach(function(row, rowId) {
       for (var i=0; i<row.length; i++) {
         points.push([row[i]]);
@@ -43726,9 +39936,7 @@ ${svg}
     if (opts.interval > 0 === false) {
       stop('Expected a non-negative interval parameter');
     }
-    if (opts.radius > 0 === false) {
-      // stop('Expected a non-negative radius parameter');
-    }
+    if (opts.radius > 0 === false) ;
     // var bbox = getLayerBounds(pointLyr).toArray();
     // Use target dataset, so grids are aligned between layers
     // TODO: align grids between datasets
@@ -43765,7 +39973,7 @@ ${svg}
       features: []
     };
     var calc = opts.calc ? getJoinCalc(pointLyr.data, opts.calc) : null;
-    var candidateIds, weights, center, weight, d;
+    var candidateIds, weights, center, d;
 
     for (var i=0, n=grid.cells(); i<n; i++) {
       candidateIds = findPointIdsByCellId(i);
@@ -43875,14 +40083,6 @@ ${svg}
       var indices = bboxIndex.search.apply(bboxIndex, bbox);
       return indices;
     };
-  }
-
-  function getPointsByIndex(points, indices) {
-    var arr = [];
-    for (var i=0; i<indices.length; i++) {
-      arr.push(points[indices[i]]);
-    }
-    return arr;
   }
 
   function addPointToGridIndex(p, index, grid) {
@@ -44224,7 +40424,7 @@ ${svg}
 
   function standardizeConsoleCommands(raw) {
     var str = raw.replace(/^mapshaper\b/, '').trim();
-    var parser = getOptionParser();
+    getOptionParser();
     // support multiline string of commands pasted into console
     str = str.split(/\n+/g).map(function(str) {
       var match = /^[a-z][\w-]*/i.exec(str = str.trim());
@@ -44387,7 +40587,7 @@ ${svg}
       stop('Missing required radius parameter.');
     }
     var cp = opts.center || [0, 0];
-    var radius = opts.radius || getCircleRadiusFromAngle(getCRS('wgs84'), opts.radius_angle);
+    var radius = opts.radius || getCircleRadiusFromAngle(parseCrsString('wgs84'), opts.radius_angle);
     return getCircleGeoJSON(cp, radius, null, {geometry_type : opts.geometry || 'polygon'});
   }
 
@@ -44432,13 +40632,12 @@ ${svg}
         collapsedRings = 0,
         max = 0,
         sum = 0,
-        sumSq = 0,
         iprev = -1,
         jprev = -1,
         measures = [],
         angles = [],
         zz = arcs.getVertexData().zz,
-        count, stats;
+        stats;
 
     arcs.forEachSegment(function(i, j, xx, yy) {
       var ax, ay, bx, by, d2, d, skipped, angle, tmp;
@@ -44472,7 +40671,6 @@ ${svg}
           tmp = distSq(xx[i], yy[i], ax, ay, bx, by);
           d2 = Math.max(d2, tmp);
         }
-        sumSq += d2;
         d = Math.sqrt(d2);
         sum += d;
         measures.push(d);
@@ -44775,8 +40973,6 @@ ${svg}
       if (replacements.length == 1) {
         replacements = unwindIntersection(replacements[0], zlim, data.zz);
         changes++;
-      } else  {
-        // either 0 or multiple intersections detected
       }
 
       for (i=0; i<replacements.length; i++) {
@@ -45574,35 +41770,6 @@ ${svg}
     });
   }
 
-  function findArcCenter(p1, p2, degrees) {
-    var p3 = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2], // midpoint betw. p1, p2
-        tan = 1 / Math.tan(degrees / 180 * Math.PI / 2),
-        cp = getAffineTransform(90, tan, [0, 0], p3)(p2[0], p2[1]);
-    return cp;
-  }
-
-  // export function addBezierArcControlPoints(p1, p2, degrees) {
-  function addBezierArcControlPoints(points, degrees) {
-    // source: https://stackoverflow.com/questions/734076/how-to-best-approximate-a-geometrical-arc-with-a-bezier-curve
-    var p2 = points.pop(),
-        p1 = points.pop(),
-        cp = findArcCenter(p1, p2, degrees),
-        xc = cp[0],
-        yc = cp[1],
-        ax = p1[0] - xc,
-        ay = p1[1] - yc,
-        bx = p2[0] - xc,
-        by = p2[1] - yc,
-        q1 = ax * ax + ay * ay,
-        q2 = q1 + ax * bx + ay * by,
-        k2 = 4/3 * (Math.sqrt(2 * q1 * q2) - q2) / (ax * by - ay * bx);
-
-    points.push(p1);
-    points.push([xc + ax - k2 * ay, yc + ay + k2 * ax, 'C']);
-    points.push([xc + bx + k2 * by, yc + by - k2 * bx, 'C']);
-    points.push(p2);
-  }
-
   function getStickArrowCoords(d) {
     return getArrowCoords(d, 'stick');
   }
@@ -45971,7 +42138,7 @@ ${svg}
     var metersPerPx;
     if (shapeMode) {
       requireProjectedDataset(dataset);
-      metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr, dataset);
+      metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr);
     }
     var records = getLayerDataTable(lyr).getRecords();
     var getSymbolData = getSymbolDataAccessor(lyr, opts);
@@ -46037,7 +42204,7 @@ ${svg}
 
   function importGeometries(geometries, records) {
     var features = geometries.map(function(geom, i) {
-      var d = records[i];
+      records[i];
       return {
         type: 'Feature',
         properties: records[i] || null,
@@ -46230,7 +42397,7 @@ ${svg}
     if (opts.interval) {
       getShapeThreshold = getVariableIntervalFunction(opts.interval, lyr, dataset, opts);
     } else if (opts.percentage) {
-      getShapeThreshold = getVariablePercentageFunction(opts.percentage, lyr, dataset, opts);
+      getShapeThreshold = getVariablePercentageFunction(opts.percentage, lyr, dataset);
     } else if (opts.resolution) {
       getShapeThreshold = getVariableResolutionFunction(opts.resolution, lyr, dataset, opts);
     } else {
@@ -46277,7 +42444,7 @@ ${svg}
 
   // Filter arcs based on an array of thresholds
   function applyArcThresholds(arcs, thresholds) {
-    var zz = arcs.getVertexData().zz;
+    arcs.getVertexData().zz;
     arcs.forEach2(function(start, n, xx, yy, zz, arcId) {
       var arcZ = thresholds[arcId];
       var z;
@@ -46328,7 +42495,7 @@ ${svg}
         setId = !!opts.id_field, // assign id but, don't split to layers
         fieldName = opts.id_field || "__split__",
         classify = getShapeClassifier(getLayerBounds(lyr, arcs), opts.cols, opts.rows),
-        properties, layers;
+        properties;
 
     if (!type) {
       stop("Layer has no geometry");
@@ -46491,7 +42658,6 @@ ${svg}
         targets,
         targetDataset,
         targetLayers,
-        target,
         arcs;
 
     if (skipCommand(name, job)) {
@@ -47312,10 +43478,6 @@ ${svg}
     return q == 0 || q == 2 || q == 4 || q == 6;
   }
 
-  function isEdgeSector(q) {
-    return q == 1 || q == 3 || q == 5 || q == 7;
-  }
-
   // Number of CCW turns to normalize
   function getSectorRotation(q) {
     return q > 1 && q < 8 ? Math.floor(q / 2) : 0;
@@ -47364,10 +43526,6 @@ ${svg}
     points.push(getCornerBySector(q, bbox));
   }
 
-  function projectPointToEdge(p, s1, s2) {
-    return s1[0] == s2[0] ? [s1[0], p[1]] : [p[0], s1[1]];
-  }
-
   function addClippedPoint(points, p1, p2, bbox) {
     var q1 = p1 ? getPointSector(p1[0], p1[1], bbox) : -1;
     var q2 = getPointSector(p2[0], p2[1], bbox);
@@ -47381,21 +43539,18 @@ ${svg}
       // segment is fully within box
       points.push(p2);
 
-    } else if (q1 == q2) {
-      // segment is fully within one outer sector (ignore it)
-
-    } else if (q1 == -1) {
+    } else if (q1 == q2) ; else if (q1 == -1) {
       // p2 is first point in the path
       if (q2 == 8) {
         points.push(p2);
-      } else if (closed && isCornerSector(q2)) {
+      } else if (isCornerSector(q2)) {
         addCornerPoint(points, q2, bbox);
       }
 
     } else if (q1 == 8) {
       // segment leaves box
       addSegmentBoundsIntersection(points, p1, p2, bbox);
-      if (closed && isCornerSector(q2)) {
+      if (isCornerSector(q2)) {
         addCornerPoint(points, q2, bbox);
       }
 
@@ -47415,12 +43570,9 @@ ${svg}
       q2 = rotateSector(rot, q2);
       if (q1 == 0) {
         // first point is in a corner sector
-        if (q2 === 0 || q2 === 1 || q2 === 7) {
-          // move to adjacent side -- no point
-
-        } else if (q2 == 2 || q2 == 6) {
+        if (q2 === 0 || q2 === 1 || q2 === 7) ; else if (q2 == 2 || q2 == 6) {
           // move to adjacent corner
-          if (closed) addCornerPoint(points, q2, bbox);
+          addCornerPoint(points, q2, bbox);
 
         } else if (q2 == 3) {
           // far left edge (intersection or left corner)
@@ -47438,7 +43590,7 @@ ${svg}
               addCornerPoint(points, 2, bbox);
             }
           }
-          if (closed) addCornerPoint(points, q2, bbox);
+          addCornerPoint(points, q2, bbox);
 
         } else if (q2 == 5) {
           // far right edge (intersection or right corner)
@@ -47458,7 +43610,7 @@ ${svg}
         } else if (q2 == 4) {
           // to far left corner
           if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 2, bbox);
-          if (closed) addCornerPoint(points, 4, bbox);
+          addCornerPoint(points, 4, bbox);
 
         } else if (q2 == 5) {
           // to opposite side
@@ -47467,7 +43619,7 @@ ${svg}
         } else if (q2 == 6) {
           // to far right corner
           if (!addSegmentBoundsIntersection(points, p1, p2, bbox) && closed) addCornerPoint(points, 0, bbox);
-          if (closed) addCornerPoint(points, 6, bbox);
+          addCornerPoint(points, 6, bbox);
 
         } else if (q2 == 7) {
           // to right side
@@ -47536,7 +43688,7 @@ ${svg}
               sign = shapeArea > 0 ? 1 : -1,
               mainRing;
 
-          var maxArea = splitIds.reduce(function(max, ringIds, i) {
+          splitIds.reduce(function(max, ringIds, i) {
             var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
             if (pathArea > max) {
               mainRing = ringIds;
@@ -47655,6 +43807,7 @@ ${svg}
     OptionParsingUtils,
     OutputFormat,
     OverlayUtils,
+    Pack, Unpack,
     ParseCommands,
     PathBuffer,
     PathEndpoints,
