@@ -82,10 +82,6 @@ describe('mapshaper-rectangle.js', function () {
       done();
     });
 
-
   })
-
-
-
 
 })

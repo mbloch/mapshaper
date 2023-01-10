@@ -21,7 +21,7 @@ export default [{
     file: 'www/mapshaper-gui.js'
   }]
 }, {
-  treeshake: false,
+  treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',
   output: [{

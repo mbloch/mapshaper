@@ -91,7 +91,7 @@ export function getFormatName(fmt) {
     dbf: 'DBF',
     kml: 'KML',
     kmz: 'KMZ',
-    [PACKAGE_EXT]: 'Mapshaper project',
+    [PACKAGE_EXT]: 'Snapshot file',
     shapefile: 'Shapefile',
     svg: 'SVG'
   }[fmt] || '';

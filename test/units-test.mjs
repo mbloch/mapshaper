@@ -38,7 +38,7 @@ describe('mapshaper-units.js', function () {
   describe('getIntervalConversionFactor()', function () {
     function good(param, crs, expect) {
       it(param + ', ' + crs, function() {
-        var P = crs ? api.internal.getCRS(crs) : null;
+        var P = crs ? api.internal.parseCrsString(crs) : null;
         var k = api.internal.getIntervalConversionFactor(param, P);
         assert.strictEqual(k, expect);
       });
@@ -47,7 +47,7 @@ describe('mapshaper-units.js', function () {
     function bad(param, crs) {
       it('invalid: ' + param + ', ' + crs, function() {
         assert.throws(function() {
-          var P = crs ? api.internal.getCRS(crs) : null;
+          var P = crs ? api.internal.parseCrsString(crs) : null;
           var k = api.internal.getIntervalConversionFactor(param, P);
         });
       })
@@ -81,7 +81,7 @@ describe('mapshaper-units.js', function () {
   })
 
   describe('convertDistanceParam()', function () {
-    var wgs84 = api.internal.getCRS('wgs84')
+    var wgs84 = api.internal.parseCrsString('wgs84')
     it('areal units trigger error', function () {
       assert.throws(function() {
         var val = api.internal.convertDistanceParam('20km2', wgs84);
@@ -101,7 +101,7 @@ describe('mapshaper-units.js', function () {
   })
 
   describe('convertIntervalParam()', function () {
-    var wgs84 = api.internal.getCRS('wgs84')
+    var wgs84 = api.internal.parseCrsString('wgs84')
     it('km units trigger error for latlong dataset', function () {
       assert.throws(function() {
         var val = api.internal.convertIntervalParam('20km', wgs84);
@@ -121,7 +121,7 @@ describe('mapshaper-units.js', function () {
   })
 
   describe('convertIntervalPair()', function () {
-    var crs = api.internal.getCRS('wgs84');
+    var crs = api.internal.parseCrsString('wgs84');
     it('less than two args = error', function () {
       assert.throws(function() {
         var val = api.internal.convertIntervalPair(['20'], crs);

@@ -1,6 +1,6 @@
 import { importGeoJSON } from '../geojson/geojson-import';
 import { projectDataset } from '../commands/mapshaper-proj';
-import { getDatasetCRS, getCRS, isLatLngDataset } from '../crs/mapshaper-projections';
+import { getDatasetCrsInfo, setDatasetCrsInfo, getCrsInfo, parseCrsString, isLatLngDataset } from '../crs/mapshaper-projections';
 import { isMeridianBounded, getBoundingMeridian } from '../crs/mapshaper-proj-info';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { getOutlineDataset, getPolygonDataset } from '../crs/mapshaper-proj-extents';
@@ -17,41 +17,43 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 cmd.graticule = function(dataset, opts) {
   var name = opts.polygon ? 'polygon' : 'graticule';
-  var graticule, dest;
+  var graticule, destInfo;
   if (dataset && !isLatLngDataset(dataset)) {
     // project graticule to match dataset
-    dest = getDatasetCRS(dataset);
-    if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
+    destInfo = getDatasetCrsInfo(dataset);
+    if (!destInfo.crs) stop("Coordinate system is unknown, unable to create a graticule");
     graticule = opts.polygon ?
-      createProjectedPolygon(dest, opts) :
-      createProjectedGraticule(dest, opts);
+      createProjectedPolygon(destInfo.crs, opts) :
+      createProjectedGraticule(destInfo.crs, opts);
+    setDatasetCrsInfo(graticule, destInfo);
   } else {
     graticule = opts.polygon ?
       createUnprojectedPolygon(opts) :
       createUnprojectedGraticule(opts);
+    setDatasetCrsInfo(graticule, getCrsInfo('wgs84'));
   }
   graticule.layers[0].name = name;
   return graticule;
 };
 
 function createUnprojectedPolygon(opts) {
-  var crs = getCRS('wgs84');
+  var crs = parseCrsString('wgs84');
   return getPolygonDataset(crs, crs, opts);
 }
 
 function createProjectedPolygon(dest, opts) {
-  var src = getCRS('wgs84');
+  var src = parseCrsString('wgs84');
   return getPolygonDataset(src, dest, opts);
 }
 
 function createUnprojectedGraticule(opts) {
-  var src = getCRS('wgs84');
+  var src = parseCrsString('wgs84');
   var graticule = importGeoJSON(createGraticule(src, false, opts));
   return graticule;
 }
 
 function createProjectedGraticule(dest, opts) {
-  var src = getCRS('wgs84');
+  var src = parseCrsString('wgs84');
   // var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
   var outline = getOutlineDataset(src, dest, {});
   var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));

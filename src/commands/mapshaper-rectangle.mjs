@@ -1,6 +1,6 @@
 import cmd from '../mapshaper-cmd';
 import { convertFourSides } from '../geom/mapshaper-units';
-import { setDatasetCRS, getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
+import { setDatasetCrsInfo, getDatasetCrsInfo, getCrsInfo } from '../crs/mapshaper-projections';
 import { getLayerBounds, layerHasGeometry, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { importGeoJSON } from '../geojson/geojson-import';
@@ -16,12 +16,12 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
   if (!layerHasGeometry(targetLyr)) {
     stop("Layer is missing geometric shapes");
   }
-  var crs = getDatasetCRS(targetDataset);
+  var crsInfo = getDatasetCrsInfo(targetDataset);
   var records = targetLyr.data ? targetLyr.data.getRecords() : null;
   var geometries = targetLyr.shapes.map(function(shp) {
     var bounds = targetLyr.geometry_type == 'point' ?
       getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-    bounds = applyRectangleOptions(bounds, crs, opts);
+    bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
     if (!bounds) return null;
     return convertBboxToGeoJSON(bounds.toArray(), opts);
   });
@@ -40,6 +40,7 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
     })
   };
   var dataset = importGeoJSON(geojson, {});
+  setDatasetCrsInfo(dataset, crsInfo);
   var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
   setOutputLayerName(outputLayers[0], targetLyr, null, opts);
   return outputLayers;
@@ -60,25 +61,22 @@ cmd.rectangle2 = function(target, opts) {
 };
 
 cmd.rectangle = function(source, opts) {
-  var offsets, bounds, crs, coords, sourceInfo;
+  var offsets, bounds, coords, crsInfo;
   if (source) {
     bounds = getLayerBounds(source.layer, source.dataset.arcs);
-    sourceInfo = source.dataset.info;
-    crs = getDatasetCRS(source.dataset);
+    crsInfo = getDatasetCrsInfo(source.dataset);
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
-    crs = getCRS('wgs84');
+    crsInfo = getCrsInfo('wgs84');
   }
-  bounds = bounds && applyRectangleOptions(bounds, crs, opts);
+  bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
   }
   var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
   var dataset = importGeoJSON(geojson, {});
   dataset.layers[0].name = opts.name || 'rectangle';
-  if (sourceInfo) {
-    setDatasetCRS(dataset, sourceInfo);
-  }
+  setDatasetCrsInfo(dataset, crsInfo);
   return dataset;
 };
 

@@ -139,11 +139,6 @@ export function Catalog() {
     }];
   };
 
-  this.replaceDatasets = function(arr) {
-    datasets = arr;
-    defaultTargets = [];
-  };
-
   this.setDefaultTargets = function(arr) {
     defaultTargets = arr;
   };

@@ -2,11 +2,11 @@ import { editArcs } from '../paths/mapshaper-arc-editor';
 import { editShapes, cloneShapes } from '../paths/mapshaper-shape-utils';
 import {
   getProjTransform2,
-  getCRS,
+  getCrsInfo,
   parsePrj,
   crsAreEqual,
-  getDatasetCRS,
-  setDatasetCRS
+  getDatasetCrsInfo,
+  setDatasetCrsInfo
 } from '../crs/mapshaper-projections';
 import { preProjectionClip } from '../crs/mapshaper-spherical-clipping';
 import { cleanLayers } from '../commands/mapshaper-clean';
@@ -26,12 +26,12 @@ import geom from '../geom/mapshaper-geom';
 cmd.proj = function(dataset, catalog, opts) {
   var srcInfo, destInfo, destStr;
   if (opts.init) {
-    srcInfo = getCrsInfo(opts.init, catalog);
+    srcInfo = fetchCrsInfo(opts.init, catalog);
     if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
-    setDatasetCRS(dataset, srcInfo);
+    setDatasetCrsInfo(dataset, srcInfo);
   }
   if (opts.match) {
-    destInfo = getCrsInfo(opts.match, catalog);
+    destInfo = fetchCrsInfo(opts.match, catalog);
   } else if (opts.crs) {
     destStr = expandProjDefn(opts.crs, dataset);
     destInfo = getCrsInfo(destStr);
@@ -46,27 +46,24 @@ function projCmd(dataset, destInfo, opts) {
   // are preserved if an error occurs
   var modifyCopy = runningInBrowser(),
       originals = [],
-      target = {info: dataset.info || {}},
-      src, dest;
+      target = {info: dataset.info || {}};
 
-  dest = destInfo.crs;
-  if (!dest) {
+  if (!destInfo.crs) {
     stop("Missing projection data");
   }
 
   if (!datasetHasGeometry(dataset)) {
     // still set the crs of datasets that are missing geometry
-    dataset.info.crs = dest;
-    dataset.info.prj = destInfo.prj; // may be undefined
+    setDatasetCrsInfo(dataset, destInfo);
     return;
   }
 
-  src = getDatasetCRS(dataset);
-  if (!src) {
+  var srcInfo = getDatasetCrsInfo(dataset);
+  if (!srcInfo.crs) {
     stop("Unable to project -- source coordinate system is unknown");
   }
 
-  if (crsAreEqual(src, dest)) {
+  if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
     message("Source and destination CRS are the same");
     return;
   }
@@ -84,9 +81,11 @@ function projCmd(dataset, destInfo, opts) {
     return lyr;
   });
 
-  projectDataset(target, src, dest, opts || {});
+  projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
 
-  dataset.info.prj = destInfo.prj; // may be undefined
+  // dataset.info.prj = destInfo.prj; // may be undefined
+  setDatasetCrsInfo(target, destInfo);
+
   dataset.arcs = target.arcs;
   originals.forEach(function(lyr, i) {
     // replace original layers with modified layers
@@ -98,7 +97,7 @@ function projCmd(dataset, destInfo, opts) {
 // name: a layer identifier, .prj file or projection defn
 // Converts layer ids and .prj files to CRS defn
 // Returns projection defn
-export function getCrsInfo(name, catalog) {
+export function fetchCrsInfo(name, catalog) {
   var dataset, source, info = {};
   if (/\.prj$/i.test(name)) {
     dataset = importFile(name, {});
@@ -110,14 +109,10 @@ export function getCrsInfo(name, catalog) {
   }
   if (catalog && (source = catalog.findSingleLayer(name))) {
     dataset = source.dataset;
-    info.crs = getDatasetCRS(dataset);
-    info.prj = dataset.info.prj; // may be undefined
-    // defn = internal.crsToProj4(P);
-    return info;
+    return getDatasetCrsInfo(dataset);
   }
   // assume name is a projection defn
-  info.crs = getCRS(name);
-  return info;
+  return getCrsInfo(name);
 }
 
 export function projectDataset(dataset, src, dest, opts) {

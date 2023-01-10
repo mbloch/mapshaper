@@ -7,8 +7,8 @@ describe('mapshaper-buffer-common.js', function () {
 
   describe('parseConstantBufferDistance()', function () {
     var parse = api.internal.parseConstantBufferDistance;
-    var WGS84 = api.internal.getCRS('wgs84');
-    var webmercator = api.internal.getCRS('webmercator');
+    var WGS84 = api.internal.parseCrsString('wgs84');
+    var webmercator = api.internal.parseCrsString('webmercator');
 
     it('throws an error if there are units but no CRS', function () {
       assert.throws(function() {parse('12km', null)})

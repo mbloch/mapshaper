@@ -88,7 +88,7 @@ export function toLngLat(xy, P) {
   if (isLatLngCRS(P)) {
     return xy.concat();
   }
-  proj = getProjTransform(P, getCRS('wgs84'));
+  proj = getProjTransform(P, parseCrsString('wgs84'));
   return proj(xy[0], xy[1]);
 }
 
@@ -164,7 +164,14 @@ export function looksLikeProj4String(str) {
   return /^(\+[^ ]+ *)+$/.test(str);
 }
 
-export function getCRS(str) {
+export function getCrsInfo(str) {
+  return {
+    crs_string: str,
+    crs: parseCrsString(str)
+  };
+}
+
+export function parseCrsString(str) {
   var defn = getProjDefn(str);  // defn is a string or a Proj object
   var P;
   if (!utils.isString(defn)) {
@@ -187,25 +194,37 @@ export function requireProjectedDataset(dataset) {
 
 // @info: info property of source dataset (instead of crs object, so wkt string
 //        can be preserved if present)
-export function setDatasetCRS(dataset, info) {
+export function setDatasetCrsInfo(dataset, info) {
   dataset.info = dataset.info || {};
   // Assumes that proj4 object is never mutated.
   // TODO: assign a copy of crs (if present)
   dataset.info.crs = info.crs;
   dataset.info.prj = info.prj;
+  dataset.info.crs_string = info.crs_string;
+  return dataset;
 }
 
-export function getDatasetCRS(dataset) {
+export function getDatasetCrsInfo(dataset) {
   var info = dataset.info || {},
-      P = info.crs;
+      P = info.crs,
+      str = info.crs_string;
   if (!P && info.prj) {
-    P = getCRS(translatePrj(info.prj));
+    P = parseCrsString(translatePrj(info.prj));
   }
   if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
     // use wgs84 for probable latlong datasets with unknown datums
-    P = getCRS('wgs84');
+    str = 'wgs84';
+    P = parseCrsString(str);
   }
-  return P;
+  return {
+    crs: P || null,
+    crs_string: str,
+    prj: info.prj
+  };
+}
+
+export function getDatasetCRS(dataset) {
+  return getDatasetCrsInfo(dataset).crs;
 }
 
 export function requireDatasetsHaveCompatibleCRS(arr) {
@@ -289,5 +308,5 @@ export function translatePrj(str) {
 
 // Convert contents of a .prj file to a projection object
 export function parsePrj(str) {
-  return getCRS(translatePrj(str));
+  return parseCrsString(translatePrj(str));
 }

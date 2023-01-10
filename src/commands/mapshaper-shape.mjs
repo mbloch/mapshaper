@@ -2,8 +2,7 @@ import { importGeoJSON } from '../geojson/geojson-import';
 import GeoJSON from '../geojson/geojson-common';
 import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
-import { getDatasetCRS, getCRS } from '../crs/mapshaper-projections';
-import { projectDataset } from '../commands/mapshaper-proj';
+import { parseCrsString } from '../crs/mapshaper-projections';
 import { getCircleGeoJSON } from '../buffer/mapshaper-point-buffer';
 import { getCircleRadiusFromAngle } from '../crs/mapshaper-proj-utils';
 import { rotateDatasetCoords } from '../crs/mapshaper-spherical-rotation';
@@ -64,7 +63,7 @@ function makeCircle(opts) {
     stop('Missing required radius parameter.');
   }
   var cp = opts.center || [0, 0];
-  var radius = opts.radius || getCircleRadiusFromAngle(getCRS('wgs84'), opts.radius_angle);
+  var radius = opts.radius || getCircleRadiusFromAngle(parseCrsString('wgs84'), opts.radius_angle);
   return getCircleGeoJSON(cp, radius, null, {geometry_type : opts.geometry || 'polygon'});
 }
 

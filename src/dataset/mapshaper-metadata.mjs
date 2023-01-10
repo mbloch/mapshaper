@@ -1,9 +1,9 @@
 
-import { getCRS, crsToProj4, getDatasetCRS } from '../crs/mapshaper-projections';
+import { setDatasetCrsInfo, getCrsInfo, crsToProj4, getDatasetCRS } from '../crs/mapshaper-projections';
 
 export function importMetadata(dataset, obj) {
   if (obj.proj4) {
-    dataset.info.crs = getCRS(obj.proj4);
+    setDatasetCrsInfo(dataset, getCrsInfo(obj.proj4));
   }
 }
 

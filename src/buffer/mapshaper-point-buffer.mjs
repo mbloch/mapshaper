@@ -1,7 +1,7 @@
 import { getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { getBufferDistanceFunction } from '../buffer/mapshaper-buffer-common';
 import { importGeoJSON } from '../geojson/geojson-import';
-import { getDatasetCRS, getCRS, isLatLngCRS } from '../crs/mapshaper-projections';
+import { getDatasetCRS, parseCrsString, isLatLngCRS } from '../crs/mapshaper-projections';
 import { removePolylineCrosses, removePolygonCrosses, countCrosses }
   from '../geom/mapshaper-antimeridian-cuts';
 import { getSphericalPathArea2 } from '../geom/mapshaper-polygon-geom';
@@ -20,7 +20,7 @@ export function makePointBuffer(lyr, dataset, opts) {
 // Make a single geodetic circle
 export function getCircleGeoJSON(center, radius, vertices, opts) {
   var n = vertices || 360;
-  var geod = getGeodeticSegmentFunction(getCRS('wgs84')); // ?
+  var geod = getGeodeticSegmentFunction(parseCrsString('wgs84')); // ?
   if (opts.inset) {
     radius -= opts.inset;
   }
