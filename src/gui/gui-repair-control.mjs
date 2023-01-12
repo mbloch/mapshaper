@@ -21,7 +21,7 @@ export function RepairControl(gui) {
         flags.arc_count || flags.snap || flags.affine || flags.points || flags['merge-layers'];
     if (intersectionsMayHaveChanged) {
       // delete any cached intersection data, to trigger re-calculation
-      e.dataset.info.intersections = null;
+      e.dataset._intersections = null;
       updateAsync();
     } else if (flags.select) {
       // new active layer, but no editing commands were run -- use cached intersections (if available)
@@ -70,11 +70,11 @@ export function RepairControl(gui) {
       XX = internal.findSegmentIntersections(arcs, opts);
       showBtn = XX.length > 0;
     } else { // no simplification
-      XX = dataset.info.intersections;
+      XX = dataset._intersections;
       if (!XX) {
         // cache intersections at 0 simplification, to avoid recalculating
         // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = dataset.info.intersections = internal.findSegmentIntersections(arcs, opts);
+        XX = dataset._intersections = internal.findSegmentIntersections(arcs, opts);
       }
       showBtn = false;
     }
@@ -91,7 +91,7 @@ export function RepairControl(gui) {
 
   function dismiss() {
     var dataset = model.getActiveLayer().dataset;
-    dataset.info.intersections = null;
+    dataset._intersections = null;
     dataset.info.no_intersections = true;
     reset();
   }

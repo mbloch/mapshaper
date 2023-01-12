@@ -4,7 +4,6 @@ import { sortLayersForMenuDisplay, cleanLayerName, formatLayerNameForDisplay } f
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
-// import { groupLayersByDataset } from '../dataset/mapshaper-target-utils';
 
 // Export buttons and their behavior
 export var ExportControl = function(gui) {
@@ -57,16 +56,15 @@ export var ExportControl = function(gui) {
     gui.clearMode();
     gui.showProgressMessage('Exporting');
     setTimeout(function() {
-      exportMenuSelection(layers, function(err) {
-        if (err) {
-          if (utils.isString(err)) {
-            gui.alert(err);
-          } else {
-            // stack seems to change if Error is logged directly
-            console.error(err.stack);
-            gui.alert('Export failed for an unknown reason');
-          }
+      exportMenuSelection(layers).catch(function(err) {
+        if (utils.isString(err)) {
+          gui.alert(err);
+        } else {
+          // stack seems to change if Error is logged directly
+          console.error(err.stack);
+          gui.alert('Export failed for an unknown reason');
         }
+      }).finally(function() {
         gui.clearProgressMessage();
       });
     }, 20);
@@ -88,17 +86,12 @@ export var ExportControl = function(gui) {
   }
 
   // done: function(string|Error|null)
-  function exportMenuSelection(layers, done) {
-    var opts, files;
-    try {
-      opts = getExportOpts();
+  async function exportMenuSelection(layers) {
+    var opts = getExportOpts();
       // note: command line "target" option gets ignored
-      files = internal.exportTargetLayers(layers, opts);
-      gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
-    } catch(e) {
-      return done(e);
-    }
-    internal.writeFiles(files, opts, done);
+    var files = await internal.exportTargetLayers(layers, opts);
+    gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
+    await utils.promisify(internal.writeFiles)(files, opts);
   }
 
   function initLayerItem(o, i) {
@@ -218,7 +211,7 @@ export var ExportControl = function(gui) {
   }
 
   function initFormatMenu() {
-    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg'];
+    var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
     var formats = utils.uniq(defaults.concat(getInputFormats()));
     var items = formats.map(function(fmt) {
       return utils.format('<div><label><input type="radio" name="format" value="%s"' +

@@ -237,7 +237,11 @@ export function runParsedCommands(commands, job, done) {
   utils.reduceAsync(commands, job, nextCommand, done);
 
   function nextCommand(job, cmd, next) {
-    runCommand(cmd, job, next);
+    runCommand(cmd, job).then(function(result) {
+      next(null, result);
+    }).catch(function(e) {
+      next(e);
+    });
   }
 }
 

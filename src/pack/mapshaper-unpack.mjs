@@ -6,18 +6,18 @@ import { BinArray } from '../utils/mapshaper-binarray';
 import { unpack as decode } from 'msgpackr';
 import { importTable } from '../pack/mapshaper-packed-table';
 import { parsePrj, parseCrsString } from '../crs/mapshaper-projections';
-// import { gunzipSync, isGzipped } from '../io/mapshaper-gzip';
+import { gunzipSync, gunzipAsync, isGzipped } from '../io/mapshaper-gzip';
 
 // Import datasets contained in a BSON blob
 // Return command target as a dataset
 //
-export function unpackSession(buf) {
+export async function unpackSession(buf) {
   var obj = decode(buf, {});
   if (!isValidSession(obj)) {
     stop('Invalid mapshaper session data object');
   }
 
-  var datasets = obj.datasets.map(importDataset);
+  var datasets = await Promise.all(obj.datasets.map(importDataset));
   return Object.assign(obj, {datasets: datasets});
 }
 
@@ -28,11 +28,13 @@ function isValidSession(obj) {
   return true;
 }
 
-function importDataset(obj) {
+async function importDataset(obj) {
+  var arcs = null;
+  if (obj.arcs) arcs = await importArcs(obj.arcs);
   return {
     info: importInfo(obj.info || {}),
     layers: (obj.layers || []).map(importLayer),
-    arcs: obj.arcs ? importArcs(obj.arcs) : null
+    arcs: arcs
   };
 }
 
@@ -42,7 +44,23 @@ function bufferToDataView(buf, constructor) {
   // return new constructor(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
-function importArcs(obj) {
+async function importArcs(obj) {
+  if (isGzipped(obj.xx)) {
+    var promises = [];
+    promises.push(gunzipAsync(obj.nn));
+    promises.push(gunzipAsync(obj.xx));
+    promises.push(gunzipAsync(obj.yy));
+    if (obj.zz) {
+      promises.push(gunzipAsync(obj.zz));
+    }
+    var data = await Promise.all(promises);
+    obj.nn = data.shift();
+    obj.xx = data.shift();
+    obj.yy = data.shift();
+    if (obj.zz) {
+      obj.zz = data.shift();
+    }
+  }
   var nn = bufferToDataView(obj.nn, Uint32Array);
   var xx = bufferToDataView(obj.xx, Float64Array);
   var yy = bufferToDataView(obj.yy, Float64Array);

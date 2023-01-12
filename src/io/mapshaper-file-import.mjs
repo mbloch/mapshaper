@@ -19,7 +19,7 @@ import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 
-cmd.importFiles = function(catalog, opts) {
+cmd.importFiles = async function(catalog, opts) {
   var files = opts.files || [];
   var dataset;
 
@@ -49,7 +49,7 @@ cmd.importFiles = function(catalog, opts) {
     if (files.length > 1) {
       stop('Expected a single package file');
     }
-    dataset = importMshpFile(files[0], catalog, opts);
+    dataset = await importMshpFile(files[0], catalog, opts);
     return dataset;
   }
 
@@ -68,12 +68,10 @@ cmd.importFiles = function(catalog, opts) {
   return dataset;
 };
 
-function importMshpFile(file, catalog, opts) {
+async function importMshpFile(file, catalog, opts) {
   var buf = cli.readFile(file, null, opts.input);
-  var obj = unpackSession(buf);
-  obj.datasets.forEach(function(dataset) {
-    catalog.addDataset(dataset);
-  });
+  var obj = await unpackSession(buf);
+  obj.datasets.forEach(catalog.addDataset, catalog);
   return obj.target;
 }
 

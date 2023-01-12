@@ -6,7 +6,7 @@ describe('mapshaper-pack.mjs', function () {
   it('simple round trip', async function () {
     var data = [{foo: 'bar'}];
     var out = await api.applyCommands('-i data.json -o out.msx', {'data.json': data});
-    var obj = unpackSession(out['out.msx']);
+    var obj = await unpackSession(out['out.msx']);
     var timestamp = Date.parse(obj.created); // NaN if not a parsable ISO date
     assert(timestamp > 0);
     assert.equal(obj.version, 1);
@@ -22,5 +22,16 @@ describe('mapshaper-pack.mjs', function () {
     assert.equal(rectangle.geometries.length, 1);
     assert.equal(points.features.length, 6);
     assert.equal(polygons.features.length, 6);
+  })
+
+    it('read from a .msx snapshot file with compressed arcs', async function() {
+    var cmd = '-i test/data/msx/mapshaper_snapshot.msx -o format=geojson';
+    var out = await api.applyCommands(cmd);
+    var cmd2 = '-i test/data/msx/mapshaper_snapshot_2.msx -o format=geojson';
+    var out2 = await api.applyCommands(cmd);
+    assert.deepEqual(JSON.parse(out['rectangle.json']), JSON.parse(out2['rectangle.json']))
+    assert.deepEqual(JSON.parse(out['points.json']), JSON.parse(out2['points.json']))
+    assert.deepEqual(JSON.parse(out['polygons.json']), JSON.parse(out2['polygons.json']))
+
   })
 })

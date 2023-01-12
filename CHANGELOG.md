@@ -1,3 +1,8 @@
+v0.6.20
+* Added "Snapshot file" export option to web UI.
+* Updated the layers menu in the web UI.
+* Use more compression when exporting snapshots via export menu or -o command.
+
 v0.6.19
 * Added support for a new file format (.msx) for saving and restoring mapshaper sessions.
 * Added a web UI widget for working with session snapshots.

@@ -738,16 +738,27 @@ body.simplify .layer-control-btn {
 }
 
 .layer-menu .layer-list {
-	margin: 6px 0 6px 0;
+	margin: 6px 0 7px 0;
 }
 
 .layer-menu .layer-item {
 	position: relative;
 	margin-left: -14px;
 	margin-right: 6px;
-	padding: 8px 14px;
-	cursor: pointer;
+	padding: 6px 14px;
 	width: 100%;
+}
+
+.layer-menu .layer-list .layer-item {
+	cursor: pointer;
+}
+
+.layer-menu .file-list {
+	padding-bottom: 4px;
+}
+
+.layer-menu .file-list .layer-item {
+	padding: 0px 14px 2px 14px;
 }
 
 .pin-all img,
@@ -786,14 +797,13 @@ img.close-btn {
 	cursor: pointer;
 }
 
-
 .layer-item img.pin-btn {
-	top: 7px;
+	top: 4px;
 }
 
 .layer-item img.close-btn {
 	/* top: 29px; */
-	bottom: 8px;
+	bottom: 5px;
 }
 
 /* hide close button when not hovering */
@@ -861,7 +871,7 @@ img.close-btn:hover,
 	text-decoration: none;
 }
 
-.layer-menu .layer-item:hover:not(.active):not(.dragging) {
+.layer-list .layer-item:hover:not(.active):not(.dragging) {
 	background-color: #f7f7f7;
 }
 

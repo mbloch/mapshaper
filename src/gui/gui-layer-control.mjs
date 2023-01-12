@@ -81,7 +81,7 @@ export function LayerControl(gui) {
     clearClass('insert-below');
     dragTargetId = layerOrderSlug = null;
     if (dragging) {
-      render(); // in case menu changed...
+      renderLayerList(); // in case menu changed...
       dragging = false;
     }
   }
@@ -118,6 +118,32 @@ export function LayerControl(gui) {
   }
 
   function render() {
+    renderLayerList();
+    renderFileList();
+  }
+
+  function renderFileList() {
+    var list = el.findChild('.file-list');
+    var files = [];
+    list.empty();
+    model.forEachLayer(function(lyr, dataset) {
+      var file = internal.getLayerSourceFile(lyr, dataset);
+      if (!file || files.includes(file)) return;
+      files.push(file);
+      var warnings = getWarnings(lyr, dataset);
+      var html = '<div class="layer-item">';
+      html += rowHTML('name', file);
+      if (warnings) {
+        // html += rowHTML('problems', warnings, 'layer-problems');
+        html += rowHTML('', warnings, 'layer-problems');
+      }
+      html += '</div>';
+      list.appendChild(El('div').html(html).firstChild());
+    });
+
+  }
+
+  function renderLayerList() {
     var list = el.findChild('.layer-list');
     var uniqIds = {};
     var pinnableCount = 0;
@@ -164,7 +190,6 @@ export function LayerControl(gui) {
   cache.cleanup();
 
   function renderLayer(lyr, dataset, opts) {
-    var warnings = getWarnings(lyr, dataset);
     var classes = 'layer-item';
     var entry, html;
 
@@ -174,13 +199,7 @@ export function LayerControl(gui) {
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-    if (opts.show_source) {
-      html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
-    }
     html += rowHTML('contents', describeLyr(lyr));
-    if (warnings) {
-      html += rowHTML('problems', warnings, 'layer-problems');
-    }
     html += '<img class="close-btn" draggable="false" src="images/close.png">';
     if (opts.pinnable) {
       html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
@@ -312,6 +331,8 @@ export function LayerControl(gui) {
     var file = internal.getLayerSourceFile(lyr, dataset);
     var missing = [];
     var msg;
+    // show missing file warning for first layer in dataset
+    // (assuming it represents the content of the original file)
     if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
       if (!lyr.data) {
         missing.push('.dbf');

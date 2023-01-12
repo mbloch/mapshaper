@@ -101,7 +101,7 @@ function commandAcceptsEmptyTarget(name) {
     name == 'else' || name == 'endif' || name == 'stop';
 }
 
-export function runCommand(command, job, cb) {
+export async function runCommand(command, job) {
   var name = command.name,
       opts = command.options,
       source,
@@ -278,7 +278,7 @@ export function runCommand(command, job, cb) {
 
     } else if (name == 'i') {
       if (opts.replace) job.catalog = new Catalog(); // is this what we want?
-      targetDataset = cmd.importFiles(job.catalog, command.options);
+      targetDataset = await cmd.importFiles(job.catalog, command.options);
       if (targetDataset) {
         outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
@@ -326,14 +326,13 @@ export function runCommand(command, job, cb) {
       outputLayers = cmd.mosaic(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
-      outputFiles = exportTargetLayers(targets, opts);
+      outputFiles = await exportTargetLayers(targets, opts);
       if (opts.final) {
         // don't propagate data if output is final
         //// catalog = null;
         job.catalog = new Catalog();
       }
-      writeFiles(outputFiles, opts, done);
-      return; // async command
+      await utils.promisify(writeFiles)(outputFiles, opts);
 
     } else if (name == 'point-grid') {
       outputLayers = [cmd.pointGrid(targetDataset, opts)];
@@ -357,19 +356,11 @@ export function runCommand(command, job, cb) {
       cmd.print(command._.join(' '));
 
     } else if (name == 'proj') {
-      initProjLibrary(opts, function() {
-        job.resumeCommand();
-        var err = null;
-        try {
-          targets.forEach(function(targ) {
-            cmd.proj(targ.dataset, job.catalog, opts);
-          });
-        } catch(e) {
-          err = e;
-        }
-        done(err);
+      await utils.promisify(initProjLibrary)(opts);
+      job.resumeCommand();
+      targets.forEach(function(targ) {
+        cmd.proj(targ.dataset, job.catalog, opts);
       });
-      return; // async command
 
     } else if (name == 'rectangle') {
       if (source || opts.bbox || targets.length === 0) {
@@ -396,8 +387,7 @@ export function runCommand(command, job, cb) {
       });
 
     } else if (name == 'run') {
-      cmd.run(job, targets, opts, done);
-      return; // async command
+      await utils.promisify(cmd.run)(job, targets, opts);
 
     } else if (name == 'scalebar') {
       cmd.scalebar(job.catalog, opts);
@@ -518,12 +508,13 @@ export function runCommand(command, job, cb) {
   }
 
   // non-erroring synchronous commands are done
-  done(null);
+  return done(null);
 
   function done(err) {
     job.endCommand();
     verbose('-', T.stop());
-    cb(err, err ? null : job);
+    if (err) throw err;
+    return job;
   }
 }
 

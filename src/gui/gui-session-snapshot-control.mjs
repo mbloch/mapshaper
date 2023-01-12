@@ -8,13 +8,6 @@ var idb = require('idb-keyval');
 var sessionId = getUniqId('session');
 var snapshotCount = 0;
 
-window.addEventListener('beforeunload', async function() {
-  // delete snapshot data
-  // This is not ideal, because the data gets deleted even if the user
-  // cancels the page close... but there's no apparent good alternative
-  await finalCleanup();
-});
-
 function getUniqId(prefix) {
   return prefix + '_' + (Math.random() + 1).toString(36).substring(2,8);
 }
@@ -24,29 +17,43 @@ function isSnapshotId(str) {
 }
 
 export function SessionSnapshots(gui) {
-  if (!gui.options.saveControl) return;
   var _menuOpen = false;
   var _menuTimeout;
-  var btn = gui.buttons.addButton('#ribbon-icon').addClass('menu-btn save-btn');
-  var menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+  var btn, menu;
 
-  initialCleanup();
+  init();
 
-  btn.on('mouseenter', function() {
-    btn.addClass('hover');
-    clearTimeout(_menuTimeout); // prevent timed closing
-    if (!_menuOpen) {
-      openMenu();
-    }
-  });
+  async function init() {
+    var enabled = await isStorageEnabled();
+    if (!enabled) return;
 
-  btn.on('mouseleave', function() {
-    if (!_menuOpen) {
-      btn.removeClass('hover');
-    } else {
-      closeMenu(200);
-    }
-  });
+    btn = gui.buttons.addButton('#ribbon-icon').addClass('menu-btn save-btn');
+    menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+    await initialCleanup();
+
+    window.addEventListener('beforeunload', async function() {
+      // delete snapshot data
+      // This is not ideal, because the data gets deleted even if the user
+      // cancels the page close... but there's no apparent good alternative
+      await finalCleanup();
+    });
+
+    btn.on('mouseenter', function() {
+      btn.addClass('hover');
+      clearTimeout(_menuTimeout); // prevent timed closing
+      if (!_menuOpen) {
+        openMenu();
+      }
+    });
+
+    btn.on('mouseleave', function() {
+      if (!_menuOpen) {
+        btn.removeClass('hover');
+      } else {
+        closeMenu(200);
+      }
+    });
+  }
 
   async function renderMenu() {
     var snapshots = await fetchSnapshotList();
@@ -73,7 +80,7 @@ export function SessionSnapshots(gui) {
       var line = El('div').appendTo(menu).addClass('save-menu-item');
       El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
       // show snapshot size
-      // El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
+      El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
         await restoreSnapshotById(item.id, gui);
         closeMenu(100);
@@ -127,7 +134,7 @@ export function SessionSnapshots(gui) {
   }
 
   async function saveSnapshot(gui) {
-    var buf = captureSnapshot(gui);
+    var buf = await captureSnapshot(gui);
     var entryId = String(++snapshotCount).padStart(3, '0');
     var snapshotId = sessionId + '_' + entryId; // e.g. session_d89fw_001
     var entry = {
@@ -178,7 +185,7 @@ async function restoreSnapshotById(id, gui) {
     console.log('Snapshot not available:', id);
     return;
   }
-  var data = internal.unpackSession(buf);
+  var data = await internal.unpackSession(buf);
   buf = null;
   gui.model.clear();
   importDatasets(data.datasets, gui);
@@ -188,11 +195,11 @@ async function restoreSnapshotById(id, gui) {
 // Add datasets to the current project
 // TODO: figure out if interface data should be imported (e.g. should
 //   visibility flag of imported layers be imported)
-export function importSessionData(buf, gui) {
+export async function importSessionData(buf, gui) {
   if (buf instanceof ArrayBuffer) {
     buf = new Uint8Array(buf);
   }
-  var data = internal.unpackSession(buf);
+  var data = await internal.unpackSession(buf);
   importDatasets(data.datasets, gui);
 }
 
@@ -203,11 +210,16 @@ function importDatasets(datasets, gui) {
   gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
 }
 
-function captureSnapshot(gui) {
+async function captureSnapshot(gui) {
   var datasets = gui.model.getDatasets();
   var lyr = gui.model.getActiveLayer().layer;
+  // compact: true applies compression to vector coordinates, for ~30% reduction
+  //   in file size in a typical polygon or polyline file, but longer processing time
+  var opts = {compact: false};
   lyr.active = true;
-  var obj = internal.exportDatasetsToPack(datasets);
+  // console.time('msx');
+  var obj = await internal.exportDatasetsToPack(datasets, opts);
+  // console.timeEnd('msx')
   delete lyr.active;
   obj.gui = getGuiState(gui);
   return internal.pack(obj);
@@ -263,7 +275,7 @@ async function initialCleanup() {
     }
   });
   // remove old indexed snapshots
-  return updateIndex(function(index) {
+  await updateIndex(function(index) {
     index.snapshots = index.snapshots.filter(function(snap) {
       var msPerDay = 1000 * 60 * 60 * 24;
       var daysOld = (Date.now() - snap.created) / msPerDay;
@@ -345,14 +357,20 @@ function updateSessionData() {
 }
 
 function getSessionData() {
-  try {
-    var data = JSON.parse(window.localStorage.getItem('session_data'));
-    return data || [];
-  } catch(e) {}
-  return [];
+  var data = JSON.parse(window.localStorage.getItem('session_data'));
+  return data || [];
 }
 
 function setSessionData(arr) {
   window.localStorage.setItem('session_data', JSON.stringify(arr));
 }
 
+async function isStorageEnabled() {
+  try {
+    setSessionData(getSessionData());
+    await updateIndex(function() {});
+    return true;
+  } catch(e) {
+    return false;
+  }
+}

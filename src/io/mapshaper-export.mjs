@@ -21,7 +21,7 @@ import { gzipSync } from '../io/mapshaper-gzip';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
-export function exportTargetLayers(targets, opts) {
+export async function exportTargetLayers(targets, opts) {
   // convert target fmt to dataset fmt
   var datasets = targets.map(function(target) {
     return utils.defaults({layers: target.layers}, target.dataset);
@@ -31,10 +31,11 @@ export function exportTargetLayers(targets, opts) {
 
 //
 //
-function exportDatasets(datasets, opts) {
+async function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
   if (format == PACKAGE_EXT) {
+    opts = utils.defaults({compact: true}, opts);
     return exportPackedDatasets(datasets, opts);
   }
   if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
@@ -138,7 +139,7 @@ export function exportFileContent(dataset, opts) {
 }
 
 var exporters = {
-  [PACKAGE_EXT]: exportPackedDatasets,
+  // [PACKAGE_EXT]: exportPackedDatasets, // handled as a special case
   geojson: exportGeoJSON2,
   topojson: exportTopoJSON,
   shapefile: exportShapefile,

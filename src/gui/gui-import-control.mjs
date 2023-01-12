@@ -298,7 +298,7 @@ export function ImportControl(gui, opts) {
         await wait(35);
       }
       if (group[internal.PACKAGE_EXT]) {
-        importSessionData(group[internal.PACKAGE_EXT].content, gui);
+        await importSessionData(group[internal.PACKAGE_EXT].content, gui);
       } else {
         importDataset(group, importOpts);
       }

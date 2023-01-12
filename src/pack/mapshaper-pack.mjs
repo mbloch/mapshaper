@@ -3,10 +3,11 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 // import { encode } from "@msgpack/msgpack";
 import { pack as encode } from 'msgpackr';
 import { crsToProj4 } from '../crs/mapshaper-projections';
-// import { gzipSync, isGzipped } from '../io/mapshaper-gzip';
+import { gzipAsync, gzipSync } from '../io/mapshaper-gzip';
 export var PACKAGE_EXT = 'msx';
 import { strToU8 } from 'fflate';
 import { exportTable2 } from './mapshaper-packed-table';
+import utils from '../utils/mapshaper-utils';
 
 // libraries
 // https://msgpack.org/index.html
@@ -22,10 +23,11 @@ import { exportTable2 } from './mapshaper-packed-table';
 }
 */
 
-export function exportPackedDatasets(datasets, opts) {
+export async function exportPackedDatasets(datasets, opts) {
+  var content = pack(await exportDatasetsToPack(datasets, opts));
   return [{
-    content: pack(exportDatasetsToPack(datasets)),
-    filename: opts.file || 'output.' + PACKAGE_EXT
+    content: content,
+    filename: opts.file || 'mapshaper_snapshot.' + PACKAGE_EXT
   }];
 }
 
@@ -38,11 +40,11 @@ export function pack(obj) {
 
 // gui: (optional) gui instance
 //
-export function exportDatasetsToPack(datasets, opts) {
+export async function exportDatasetsToPack(datasets, opts) {
   return {
     version: 1,
     created: (new Date).toISOString(),
-    datasets: datasets.map(exportDataset)
+    datasets: await Promise.all(datasets.map(d => exportDataset(d, opts || {})))
   };
 }
 
@@ -52,11 +54,11 @@ export function exportDatasetsToPack(datasets, opts) {
 //   return BSON.serialize(obj);
 // }
 
-export function exportDataset(dataset) {
+export async function exportDataset(dataset, opts) {
   return {
-    arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
+    arcs: dataset.arcs ? await exportArcs(dataset.arcs, opts) : null,
     info: dataset.info ? exportInfo(dataset.info) : null,
-    layers: (dataset.layers || []).map(exportLayer)
+    layers: await Promise.all((dataset.layers || []).map(exportLayer))
   };
 }
 
@@ -64,7 +66,7 @@ function typedArrayToBuffer(arr) {
   return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }
 
-function exportArcs(arcs) {
+async function exportArcs(arcs, opts) {
   var data = arcs.getVertexData();
   var obj = {
     nn: typedArrayToBuffer(data.nn),
@@ -74,19 +76,27 @@ function exportArcs(arcs) {
     zlimit: arcs.getRetainedInterval()
   };
 
-  // gzipping typically only sees about 70% compression on unrounded coordinates
-  // -- not worth the time
-  // var obj2 = {
-  //   nn: gzipSync(obj.nn),
-  //   xx: gzipSync(obj.xx),
-  //   yy: gzipSync(obj.yy)
-  // }
+  // gzipping typically sees about 70% compression on unrounded coordinates
+  // -- possibly not worth the time
+  if (opts.compact) {
+    var gzipOpts = {level: 1, consume: false};
+    var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
+    if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
+    var results = await Promise.all(promises);
+    obj.nn = results.shift();
+    obj.xx = results.shift();
+    obj.yy = results.shift();
+    if (obj.zz) obj.zz = results.shift();
+  }
   return obj;
 }
 
-function exportLayer(lyr) {
+async function exportLayer(lyr) {
   // console.time('table')
-  var data = lyr.data ? exportTable2(lyr.data) : null;
+  var data = null;
+  if (lyr.data) {
+    data = await exportTable2(lyr.data);
+  }
   // console.timeEnd('table')
   return {
     name: lyr.name || null,

@@ -188,6 +188,27 @@ export function inherit(targ, src) {
   targ.prototype.__super__ = f;
 }
 
+export function promisify(asyncFn) {
+  return function() {
+    var args = toArray(arguments);
+    return new Promise((resolve, reject) => {
+      var cb = function(err, data) {
+        if (err) reject(err);
+        else resolve(data);
+      };
+      args.push(cb);
+      asyncFn.apply(this, args);
+    });
+  };
+}
+
+ function runAsync(fn, arg) {
+    return new Promise((resolve, reject) => {
+      fn(arg, function(err, data) {
+        return err ? reject(err) : resolve(data);
+      });
+    });
+  }
 
 // Call @iter on each member of an array (similar to Array#reduce(iter))
 //    iter: function(memo, item, callback)

@@ -3,7 +3,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 // import { encode } from "@msgpack/msgpack";
 import { pack } from 'msgpackr';
 import { crsToProj4 } from '../crs/mapshaper-projections';
-import { gzipSync, gunzipSync, isGzipped } from '../io/mapshaper-gzip';
+import { gzipSync, gzipAsync, gunzipSync, isGzipped } from '../io/mapshaper-gzip';
 export var PACKAGE_EXT = 'msx';
 import { strToU8, strFromU8 } from 'fflate';
 import { getColumnType, getFieldValues } from '../datatable/mapshaper-data-utils';
@@ -31,15 +31,15 @@ export function exportTable(table) {
 // Export in a column-first format
 // Faster than exportTable(), and can handle some data that can't be
 // converted to JSON, like Date objects.
-export function exportTable2(table) {
+export async function exportTable2(table) {
   var fields = table.getFields();
   var records = table.getRecords();
   var types = [];
-  var columns = fields.map(function(name) {
+  var columns = await Promise.all(fields.map(function(name) {
     var type = getColumnType(name, records);
     types.push(type);
     return exportColumn(name, type, records);
-  });
+  }));
   return ({
     fields: fields,
     types: types,
@@ -97,9 +97,9 @@ function importColumn(field, type, data, records) {
   }
 }
 
-function exportColumn(name, type, records) {
+async function exportColumn(name, type, records) {
   if (type == 'number' || type == 'string') {
-    return gzipSync(JSON.stringify(getFieldValues(records, name)), {level: 2});
+    return gzipAsync(JSON.stringify(getFieldValues(records, name)), {level: 2, consume: true});
   }
   return getFieldValues(records, name);
 }
