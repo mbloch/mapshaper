@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.19";
+  var VERSION = "0.6.20";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -30,6 +30,7 @@
     get defaults () { return defaults; },
     get extend () { return extend$1; },
     get inherit () { return inherit; },
+    get promisify () { return promisify; },
     get reduceAsync () { return reduceAsync; },
     get merge () { return merge; },
     get difference () { return difference; },
@@ -318,6 +319,19 @@
     targ.prototype.__super__ = f;
   }
 
+  function promisify(asyncFn) {
+    return function() {
+      var args = toArray(arguments);
+      return new Promise((resolve, reject) => {
+        var cb = function(err, data) {
+          if (err) reject(err);
+          else resolve(data);
+        };
+        args.push(cb);
+        asyncFn.apply(this, args);
+      });
+    };
+  }
 
   // Call @iter on each member of an array (similar to Array#reduce(iter))
   //    iter: function(memo, item, callback)
@@ -9956,6 +9970,10 @@
   // base async inflate fn
   var bInflt = function () { return [u8, u16, u32, fleb, fdeb, clim, fl, fd, flrm, fdrm, rev, ec, hMap, max, bits, bits16, shft, slc, err, inflt, inflateSync, pbf, gu8]; };
   var bDflt = function () { return [u8, u16, u32, fleb, fdeb, clim, revfl, revfd, flm, flt, fdm, fdt, rev, deo, et, hMap, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, shft, slc, dflt, dopt, deflateSync, pbf]; };
+  // gzip extra
+  var gze = function () { return [gzh, gzhl, wbytes, crc, crct]; };
+  // gunzip extra
+  var guze = function () { return [gzs, gzl]; };
   // post buf
   var pbf = function (msg) { return postMessage(msg, [msg.buffer]); };
   // get u8
@@ -10047,6 +10065,17 @@
   function inflateSync(data, out) {
       return inflt(data, out);
   }
+  function gzip(data, opts, cb) {
+      if (!cb)
+          cb = opts, opts = {};
+      if (typeof cb != 'function')
+          err(7);
+      return cbify(data, opts, [
+          bDflt,
+          gze,
+          function () { return [gzipSync$1]; }
+      ], function (ev) { return pbf(gzipSync$1(ev.data[0], ev.data[1])); }, 2, cb);
+  }
   /**
    * Compresses data with GZIP
    * @param data The data to compress
@@ -10060,6 +10089,17 @@
       c.p(data);
       var d = dopt(data, opts, gzhl(opts), 8), s = d.length;
       return gzh(d, opts), wbytes(d, s - 8, c.d()), wbytes(d, s - 4, l), d;
+  }
+  function gunzip(data, opts, cb) {
+      if (!cb)
+          cb = opts, opts = {};
+      if (typeof cb != 'function')
+          err(7);
+      return cbify(data, opts, [
+          bInflt,
+          guze,
+          function () { return [gunzipSync$1]; }
+      ], function (ev) { return pbf(gunzipSync$1(ev.data[0])); }, 3, cb);
   }
   /**
    * Expands GZIP data
@@ -10529,6 +10569,15 @@
       return files;
   }
 
+  function runningInBrowser() {
+    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  }
+
+  var Env = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    runningInBrowser: runningInBrowser
+  });
+
   // Checks if @arg is a Uint8Array containing gzipped data
   function isGzipped(arg) {
     return arg.length > 2 && arg.buffer instanceof ArrayBuffer && arg[0] == 0x1f && arg[1] == 0x8b;
@@ -10540,7 +10589,30 @@
     if (typeof content == 'string') {
       content = strToU8(content);
     }
-    return gzipSync$1(content, opts);
+    if (runningInBrowser()) {
+      return gzipSync$1(content, opts);
+    }
+    return require('zlib').gzipSync(content, opts);
+  }
+
+  async function gzipAsync(content, opts) {
+    if (typeof content == 'string') {
+      content = strToU8(content);
+    }
+    var gzip$1 = runningInBrowser() ? utils.promisify(gzip) : utils.promisify(require('zlib').gzip);
+    return gzip$1(content, opts);
+  }
+
+  async function gunzipAsync(buf, opts) {
+    if (buf instanceof ArrayBuffer) {
+      buf = new Uint8Array(buf);
+    }
+    opts = opts || {};
+    var out = await utils.promisify(gunzip)(buf, opts);
+    if (opts.filename && !isImportableAsBinary(opts.filename)) {
+      out = strFromU8(out);
+    }
+    return out;
   }
 
   function gunzipSync(buf, filename) {
@@ -10560,21 +10632,23 @@
     __proto__: null,
     isGzipped: isGzipped,
     gzipSync: gzipSync,
+    gzipAsync: gzipAsync,
+    gunzipAsync: gunzipAsync,
     gunzipSync: gunzipSync
   });
 
   // Export in a column-first format
   // Faster than exportTable(), and can handle some data that can't be
   // converted to JSON, like Date objects.
-  function exportTable2(table) {
+  async function exportTable2(table) {
     var fields = table.getFields();
     var records = table.getRecords();
     var types = [];
-    var columns = fields.map(function(name) {
+    var columns = await Promise.all(fields.map(function(name) {
       var type = getColumnType(name, records);
       types.push(type);
       return exportColumn(name, type, records);
-    });
+    }));
     return ({
       fields: fields,
       types: types,
@@ -10632,9 +10706,9 @@
     }
   }
 
-  function exportColumn(name, type, records) {
+  async function exportColumn(name, type, records) {
     if (type == 'number' || type == 'string') {
-      return gzipSync(JSON.stringify(getFieldValues(records, name)), {level: 2});
+      return gzipAsync(JSON.stringify(getFieldValues(records, name)), {level: 2, consume: true});
     }
     return getFieldValues(records, name);
   }
@@ -10648,7 +10722,6 @@
   //   return gzipSync(arr, {level: 2});
   // }
 
-  // import { gzipSync, isGzipped } from '../io/mapshaper-gzip';
   var PACKAGE_EXT = 'msx';
 
   // libraries
@@ -10665,10 +10738,11 @@
   }
   */
 
-  function exportPackedDatasets(datasets, opts) {
+  async function exportPackedDatasets(datasets, opts) {
+    var content = pack(await exportDatasetsToPack(datasets, opts));
     return [{
-      content: pack(exportDatasetsToPack(datasets)),
-      filename: opts.file || 'output.' + PACKAGE_EXT
+      content: content,
+      filename: opts.file || 'mapshaper_snapshot.' + PACKAGE_EXT
     }];
   }
 
@@ -10681,11 +10755,11 @@
 
   // gui: (optional) gui instance
   //
-  function exportDatasetsToPack(datasets, opts) {
+  async function exportDatasetsToPack(datasets, opts) {
     return {
       version: 1,
       created: (new Date).toISOString(),
-      datasets: datasets.map(exportDataset)
+      datasets: await Promise.all(datasets.map(d => exportDataset(d, opts || {})))
     };
   }
 
@@ -10695,11 +10769,11 @@
   //   return BSON.serialize(obj);
   // }
 
-  function exportDataset(dataset) {
+  async function exportDataset(dataset, opts) {
     return {
-      arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
+      arcs: dataset.arcs ? await exportArcs(dataset.arcs, opts) : null,
       info: dataset.info ? exportInfo(dataset.info) : null,
-      layers: (dataset.layers || []).map(exportLayer)
+      layers: await Promise.all((dataset.layers || []).map(exportLayer))
     };
   }
 
@@ -10707,7 +10781,7 @@
     return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   }
 
-  function exportArcs(arcs) {
+  async function exportArcs(arcs, opts) {
     var data = arcs.getVertexData();
     var obj = {
       nn: typedArrayToBuffer(data.nn),
@@ -10717,19 +10791,27 @@
       zlimit: arcs.getRetainedInterval()
     };
 
-    // gzipping typically only sees about 70% compression on unrounded coordinates
-    // -- not worth the time
-    // var obj2 = {
-    //   nn: gzipSync(obj.nn),
-    //   xx: gzipSync(obj.xx),
-    //   yy: gzipSync(obj.yy)
-    // }
+    // gzipping typically sees about 70% compression on unrounded coordinates
+    // -- possibly not worth the time
+    if (opts.compact) {
+      var gzipOpts = {level: 1, consume: false};
+      var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
+      if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
+      var results = await Promise.all(promises);
+      obj.nn = results.shift();
+      obj.xx = results.shift();
+      obj.yy = results.shift();
+      if (obj.zz) obj.zz = results.shift();
+    }
     return obj;
   }
 
-  function exportLayer(lyr) {
+  async function exportLayer(lyr) {
     // console.time('table')
-    var data = lyr.data ? exportTable2(lyr.data) : null;
+    var data = null;
+    if (lyr.data) {
+      data = await exportTable2(lyr.data);
+    }
     // console.timeEnd('table')
     return {
       name: lyr.name || null,
@@ -10892,15 +10974,6 @@
     isSupportedBinaryInputType: isSupportedBinaryInputType,
     isImportableAsBinary: isImportableAsBinary,
     filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
-  });
-
-  function runningInBrowser() {
-    return typeof window !== 'undefined' && typeof window.document !== 'undefined';
-  }
-
-  var Env = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    runningInBrowser: runningInBrowser
   });
 
   // input: A file path or a buffer
@@ -21084,7 +21157,7 @@ ${svg}
 
   // @targets - non-empty output from Catalog#findCommandTargets()
   //
-  function exportTargetLayers(targets, opts) {
+  async function exportTargetLayers(targets, opts) {
     // convert target fmt to dataset fmt
     var datasets = targets.map(function(target) {
       return utils.defaults({layers: target.layers}, target.dataset);
@@ -21094,10 +21167,11 @@ ${svg}
 
   //
   //
-  function exportDatasets(datasets, opts) {
+  async function exportDatasets(datasets, opts) {
     var format = getOutputFormat(datasets[0], opts);
     var files;
     if (format == PACKAGE_EXT) {
+      opts = utils.defaults({compact: true}, opts);
       return exportPackedDatasets(datasets, opts);
     }
     if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
@@ -21201,7 +21275,7 @@ ${svg}
   }
 
   var exporters = {
-    [PACKAGE_EXT]: exportPackedDatasets,
+    // [PACKAGE_EXT]: exportPackedDatasets, // handled as a special case
     geojson: exportGeoJSON2,
     topojson: exportTopoJSON,
     shapefile: exportShapefile,
@@ -27373,18 +27447,16 @@ ${svg}
     importFileContent: importFileContent
   });
 
-  // import { gunzipSync, isGzipped } from '../io/mapshaper-gzip';
-
   // Import datasets contained in a BSON blob
   // Return command target as a dataset
   //
-  function unpackSession(buf) {
+  async function unpackSession(buf) {
     var obj = unpack(buf, {});
     if (!isValidSession(obj)) {
       stop('Invalid mapshaper session data object');
     }
 
-    var datasets = obj.datasets.map(importDataset);
+    var datasets = await Promise.all(obj.datasets.map(importDataset));
     return Object.assign(obj, {datasets: datasets});
   }
 
@@ -27395,11 +27467,13 @@ ${svg}
     return true;
   }
 
-  function importDataset(obj) {
+  async function importDataset(obj) {
+    var arcs = null;
+    if (obj.arcs) arcs = await importArcs(obj.arcs);
     return {
       info: importInfo(obj.info || {}),
       layers: (obj.layers || []).map(importLayer),
-      arcs: obj.arcs ? importArcs(obj.arcs) : null
+      arcs: arcs
     };
   }
 
@@ -27409,7 +27483,23 @@ ${svg}
     // return new constructor(buf.buffer, buf.byteOffset, buf.byteLength);
   }
 
-  function importArcs(obj) {
+  async function importArcs(obj) {
+    if (isGzipped(obj.xx)) {
+      var promises = [];
+      promises.push(gunzipAsync(obj.nn));
+      promises.push(gunzipAsync(obj.xx));
+      promises.push(gunzipAsync(obj.yy));
+      if (obj.zz) {
+        promises.push(gunzipAsync(obj.zz));
+      }
+      var data = await Promise.all(promises);
+      obj.nn = data.shift();
+      obj.xx = data.shift();
+      obj.yy = data.shift();
+      if (obj.zz) {
+        obj.zz = data.shift();
+      }
+    }
     var nn = bufferToDataView(obj.nn, Uint32Array);
     var xx = bufferToDataView(obj.xx, Float64Array);
     var yy = bufferToDataView(obj.yy, Float64Array);
@@ -27445,7 +27535,7 @@ ${svg}
     unpackSession: unpackSession
   });
 
-  cmd.importFiles = function(catalog, opts) {
+  cmd.importFiles = async function(catalog, opts) {
     var files = opts.files || [];
     var dataset;
 
@@ -27475,7 +27565,7 @@ ${svg}
       if (files.length > 1) {
         stop('Expected a single package file');
       }
-      dataset = importMshpFile(files[0], catalog, opts);
+      dataset = await importMshpFile(files[0], catalog, opts);
       return dataset;
     }
 
@@ -27494,12 +27584,10 @@ ${svg}
     return dataset;
   };
 
-  function importMshpFile(file, catalog, opts) {
+  async function importMshpFile(file, catalog, opts) {
     var buf = cli.readFile(file, null, opts.input);
-    var obj = unpackSession(buf);
-    obj.datasets.forEach(function(dataset) {
-      catalog.addDataset(dataset);
-    });
+    var obj = await unpackSession(buf);
+    obj.datasets.forEach(catalog.addDataset, catalog);
     return obj.target;
   }
 
@@ -42648,7 +42736,7 @@ ${svg}
       name == 'else' || name == 'endif' || name == 'stop';
   }
 
-  function runCommand(command, job, cb) {
+  async function runCommand(command, job) {
     var name = command.name,
         opts = command.options,
         source,
@@ -42824,7 +42912,7 @@ ${svg}
 
       } else if (name == 'i') {
         if (opts.replace) job.catalog = new Catalog(); // is this what we want?
-        targetDataset = cmd.importFiles(job.catalog, command.options);
+        targetDataset = await cmd.importFiles(job.catalog, command.options);
         if (targetDataset) {
           outputLayers = targetDataset.layers; // kludge to allow layer naming below
         }
@@ -42872,14 +42960,13 @@ ${svg}
         outputLayers = cmd.mosaic(targetLayers, targetDataset, opts);
 
       } else if (name == 'o') {
-        outputFiles = exportTargetLayers(targets, opts);
+        outputFiles = await exportTargetLayers(targets, opts);
         if (opts.final) {
           // don't propagate data if output is final
           //// catalog = null;
           job.catalog = new Catalog();
         }
-        writeFiles(outputFiles, opts, done);
-        return; // async command
+        await utils.promisify(writeFiles)(outputFiles, opts);
 
       } else if (name == 'point-grid') {
         outputLayers = [cmd.pointGrid(targetDataset, opts)];
@@ -42903,19 +42990,11 @@ ${svg}
         cmd.print(command._.join(' '));
 
       } else if (name == 'proj') {
-        initProjLibrary(opts, function() {
-          job.resumeCommand();
-          var err = null;
-          try {
-            targets.forEach(function(targ) {
-              cmd.proj(targ.dataset, job.catalog, opts);
-            });
-          } catch(e) {
-            err = e;
-          }
-          done(err);
+        await utils.promisify(initProjLibrary)(opts);
+        job.resumeCommand();
+        targets.forEach(function(targ) {
+          cmd.proj(targ.dataset, job.catalog, opts);
         });
-        return; // async command
 
       } else if (name == 'rectangle') {
         if (source || opts.bbox || targets.length === 0) {
@@ -42942,8 +43021,7 @@ ${svg}
         });
 
       } else if (name == 'run') {
-        cmd.run(job, targets, opts, done);
-        return; // async command
+        await utils.promisify(cmd.run)(job, targets, opts);
 
       } else if (name == 'scalebar') {
         cmd.scalebar(job.catalog, opts);
@@ -43064,12 +43142,13 @@ ${svg}
     }
 
     // non-erroring synchronous commands are done
-    done(null);
+    return done(null);
 
     function done(err) {
       job.endCommand();
       verbose('-', T$1.stop());
-      cb(err, err ? null : job);
+      if (err) throw err;
+      return job;
     }
   }
 
@@ -43318,7 +43397,11 @@ ${svg}
     utils.reduceAsync(commands, job, nextCommand, done);
 
     function nextCommand(job, cmd, next) {
-      runCommand(cmd, job, next);
+      runCommand(cmd, job).then(function(result) {
+        next(null, result);
+      }).catch(function(e) {
+        next(e);
+      });
     }
   }
 
