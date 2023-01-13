@@ -88,16 +88,16 @@ function FileChooser(el, cb) {
     .attr('multiple', 'multiple')
     .on('change', onchange);
 
-  function onchange(e) {
+  async function onchange(e) {
     var files = e.target.files;
     // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
     if (files) {
       // disable the button while files are being processed
       btn.addClass('selected');
       input.attr('disabled', true);
-      cb(files);
+      await cb(files);
       btn.removeClass('selected');
-      input.attr('disabled', false);
+      input.attr('disabled', null);
     }
   }
 }
@@ -255,7 +255,7 @@ export function ImportControl(gui, opts) {
     }
     gui.enterMode('import');
     if (useQuickView()) {
-      importQueuedFiles();
+      await importQueuedFiles();
     } else {
       gui.container.addClass('queued-files');
       El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
@@ -428,14 +428,6 @@ export function ImportControl(gui, opts) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  function runAsync(fn, arg) {
-    return new Promise((resolve, reject) => {
-      fn(arg, function(err, data) {
-        return err ? reject(err) : resolve(data);
-      });
-    });
-  }
-
   async function readKmzFile(file) {
     var files = await readZipFile(file);
     var name = files[0] && files[0].name;
@@ -457,7 +449,7 @@ export function ImportControl(gui, opts) {
   async function readZipFile(file) {
     // Async is up to twice as fast unzipping large files
     // var index = internal.unzipSync(file.content);
-    var index = await runAsync(internal.unzipAsync, file.content);
+    var index = await utils.promisify(internal.unzipAsync)(file.content);
     return Object.keys(index).reduce(function(memo, filename) {
       if (!/\.txt$/i.test(filename)) {
         memo.push({
@@ -491,7 +483,7 @@ export function ImportControl(gui, opts) {
 
   async function readFileData(file) {
     try {
-      var content = await runAsync(readContentFileAsync, file);
+      var content = await utils.promisify(readContentFileAsync)(file);
       return {
         content: content,
         name: file.name

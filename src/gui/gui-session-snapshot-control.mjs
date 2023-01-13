@@ -62,7 +62,7 @@ export function SessionSnapshots(gui) {
     addMenuLink({
       slug: 'stash',
       // label: 'save data snapshot',
-      label: 'take a snapshot',
+      label: 'create a snapshot',
       action: saveSnapshot
     });
 

@@ -48,12 +48,6 @@ export async function exportDatasetsToPack(datasets, opts) {
   };
 }
 
-// TODO..
-// export function serializeSession(catalog) {
-//   var obj = exportDatasets(catalog.getDatasets());
-//   return BSON.serialize(obj);
-// }
-
 export async function exportDataset(dataset, opts) {
   return {
     arcs: dataset.arcs ? await exportArcs(dataset.arcs, opts) : null,

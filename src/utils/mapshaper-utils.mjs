@@ -910,6 +910,15 @@ export function createBuffer(arg, arg2) {
   }
 }
 
+export function toBuffer(src) {
+  if (src instanceof Buffer) return src;
+  if (src instanceof ArrayBuffer) return Buffer.from(src);
+  if (src instanceof Uint8Array) {
+    return Buffer.from(src.buffer, src.byteOffset, src.byteLength);
+  }
+  error('Unexpected argument type');
+}
+
 export function expandoBuffer(constructor, rate) {
   var capacity = 0,
       k = rate >= 1 ? rate : 1.2,

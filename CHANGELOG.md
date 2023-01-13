@@ -1,3 +1,6 @@
+v0.6.21
+* 
+
 v0.6.20
 * Added "Snapshot file" export option to web UI.
 * Updated the layers menu in the web UI.

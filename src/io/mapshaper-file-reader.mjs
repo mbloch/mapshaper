@@ -59,7 +59,8 @@ export function BufferReader(src) {
 
   function buffer() {
     if (!buf) {
-      buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
+      // buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
+      buf = utils.toBuffer(src);
     }
     return buf;
   }

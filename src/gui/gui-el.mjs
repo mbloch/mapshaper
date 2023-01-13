@@ -131,12 +131,12 @@ utils.extend(El.prototype, {
       if (arguments.length == 1) {
         return this.el.getAttribute(obj);
       }
-      this.el.setAttribute(obj, value);
-      // this.el[obj] = value;
+      if (value === null) {
+        this.el.removeAttribute(obj);
+      } else {
+        this.el.setAttribute(obj, value);
+      }
     }
-    // else if (!value) {
-    //   Opts.copyAllParams(this.el, obj);
-    // }
     return this;
   },
 
