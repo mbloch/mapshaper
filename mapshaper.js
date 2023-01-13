@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.20";
+  var VERSION = "0.6.21";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -88,6 +88,7 @@
     get formatter () { return formatter; },
     get wildcardToRegExp () { return wildcardToRegExp; },
     get createBuffer () { return createBuffer; },
+    get toBuffer () { return toBuffer; },
     get expandoBuffer () { return expandoBuffer; },
     get copyElements () { return copyElements; },
     get extendBuffer () { return extendBuffer; },
@@ -1031,6 +1032,15 @@
       // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
       return B$3.from && B$3.allocUnsafe ? B$3.from(arg, arg2) : new B$3(arg, arg2);
     }
+  }
+
+  function toBuffer(src) {
+    if (src instanceof B$3) return src;
+    if (src instanceof ArrayBuffer) return B$3.from(src);
+    if (src instanceof Uint8Array) {
+      return B$3.from(src.buffer, src.byteOffset, src.byteLength);
+    }
+    error('Unexpected argument type');
   }
 
   function expandoBuffer(constructor, rate) {
@@ -10762,12 +10772,6 @@
       datasets: await Promise.all(datasets.map(d => exportDataset(d, opts || {})))
     };
   }
-
-  // TODO..
-  // export function serializeSession(catalog) {
-  //   var obj = exportDatasets(catalog.getDatasets());
-  //   return BSON.serialize(obj);
-  // }
 
   async function exportDataset(dataset, opts) {
     return {
@@ -21453,7 +21457,8 @@ ${svg}
 
     function buffer() {
       if (!buf) {
-        buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
+        // buf = (src instanceof ArrayBuffer) ? utils.createBuffer(src) : src;
+        buf = utils.toBuffer(src);
       }
       return buf;
     }

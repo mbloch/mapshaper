@@ -85,6 +85,7 @@
     get formatter () { return formatter; },
     get wildcardToRegExp () { return wildcardToRegExp; },
     get createBuffer () { return createBuffer; },
+    get toBuffer () { return toBuffer; },
     get expandoBuffer () { return expandoBuffer; },
     get copyElements () { return copyElements; },
     get extendBuffer () { return extendBuffer; },
@@ -589,12 +590,12 @@
         if (arguments.length == 1) {
           return this.el.getAttribute(obj);
         }
-        this.el.setAttribute(obj, value);
-        // this.el[obj] = value;
+        if (value === null) {
+          this.el.removeAttribute(obj);
+        } else {
+          this.el.setAttribute(obj, value);
+        }
       }
-      // else if (!value) {
-      //   Opts.copyAllParams(this.el, obj);
-      // }
       return this;
     },
 
@@ -1397,7 +1398,7 @@
       addMenuLink({
         slug: 'stash',
         // label: 'save data snapshot',
-        label: 'take a snapshot',
+        label: 'create a snapshot',
         action: saveSnapshot
       });
 
@@ -1793,16 +1794,16 @@
       .attr('multiple', 'multiple')
       .on('change', onchange);
 
-    function onchange(e) {
+    async function onchange(e) {
       var files = e.target.files;
       // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
       if (files) {
         // disable the button while files are being processed
         btn.addClass('selected');
         input.attr('disabled', true);
-        cb(files);
+        await cb(files);
         btn.removeClass('selected');
-        input.attr('disabled', false);
+        input.attr('disabled', null);
       }
     }
   }
@@ -1960,7 +1961,7 @@
       }
       gui.enterMode('import');
       if (useQuickView()) {
-        importQueuedFiles();
+        await importQueuedFiles();
       } else {
         gui.container.addClass('queued-files');
         El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
@@ -2133,14 +2134,6 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    function runAsync(fn, arg) {
-      return new Promise((resolve, reject) => {
-        fn(arg, function(err, data) {
-          return err ? reject(err) : resolve(data);
-        });
-      });
-    }
-
     async function readKmzFile(file) {
       var files = await readZipFile(file);
       var name = files[0] && files[0].name;
@@ -2162,7 +2155,7 @@
     async function readZipFile(file) {
       // Async is up to twice as fast unzipping large files
       // var index = internal.unzipSync(file.content);
-      var index = await runAsync(internal.unzipAsync, file.content);
+      var index = await utils$1.promisify(internal.unzipAsync)(file.content);
       return Object.keys(index).reduce(function(memo, filename) {
         if (!/\.txt$/i.test(filename)) {
           memo.push({
@@ -2196,7 +2189,7 @@
 
     async function readFileData(file) {
       try {
-        var content = await runAsync(readContentFileAsync, file);
+        var content = await utils$1.promisify(readContentFileAsync)(file);
         return {
           content: content,
           name: file.name
@@ -6069,6 +6062,15 @@
       // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
       return B.from && B.allocUnsafe ? B.from(arg, arg2) : new B(arg, arg2);
     }
+  }
+
+  function toBuffer(src) {
+    if (src instanceof B) return src;
+    if (src instanceof ArrayBuffer) return B.from(src);
+    if (src instanceof Uint8Array) {
+      return B.from(src.buffer, src.byteOffset, src.byteLength);
+    }
+    error('Unexpected argument type');
   }
 
   function expandoBuffer(constructor, rate) {
