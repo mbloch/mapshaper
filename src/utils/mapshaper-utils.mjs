@@ -1059,15 +1059,17 @@ function convertIntlNumString(str) {
   return str.replace(',', '.');
 }
 
-export function trimQuotes(raw) {
-  var len = raw.length, first, last;
+export function trimQuotes(str) {
+  var len = str.length, first, last;
   if (len >= 2) {
-    first = raw.charAt(0);
-    last = raw.charAt(len-1);
-    if (first == '"' && last == '"' && !raw.includes('","') ||
-        first == "'" && last == "'" && !raw.includes("','")) {
-      return raw.substr(1, len-2);
+    first = str.charAt(0);
+    last = str.charAt(len-1);
+    if (first == '"' && last == '"' && !str.includes('","') ||
+        first == "'" && last == "'" && !str.includes("','")) {
+      str = str.substr(1, len-2);
+      // remove string escapes
+      str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
     }
   }
-  return raw;
+  return str;
 }

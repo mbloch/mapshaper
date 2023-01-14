@@ -7,9 +7,16 @@ var internal = api.internal,
 
 describe('mapshaper-utils.js', function () {
   describe('trimQuotes()', function () {
-    it('lists of quoted strings', function () {
+    it('preserves lists of quoted strings', function () {
       assert.equal(utils.trimQuotes("'blue','red'"), "'blue','red'");
       assert.equal(utils.trimQuotes("'reddish blue','bluish red'"), "'reddish blue','bluish red'");
+    })
+
+    it('removes string escapes', function() {
+      assert.equal(utils.trimQuotes(`'the \\'bestest\\''`), `the 'bestest'`);
+      assert.equal(utils.trimQuotes(`"\\"yes\\" or \\"no\\""`), `"yes" or "no"`);
+      // but only if entire string is quoted
+      assert.equal(utils.trimQuotes(`\\"yes\\" or \\"no\\"`), `\\"yes\\" or \\"no\\"`);
     })
   })
 

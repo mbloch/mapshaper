@@ -23,6 +23,12 @@ describe('mapshaper-parse-commands.js', function () {
       assert.equal(commands[0].name, 'filter');
     })
 
+    it('-each command with escaped quotes', function() {
+      var commands = internal.parseConsoleCommands('-each "id = [this.id].join(\\",\\")"');
+      var target = [{name: 'each', _:[], options: {expression: 'id = [this.id].join(",")'}}];
+      assert.deepEqual(commands, target);
+    })
+
     it('filter true', function () {
       var commands = internal.parseConsoleCommands('filter true');
       assert.equal(commands[0].name, 'filter');

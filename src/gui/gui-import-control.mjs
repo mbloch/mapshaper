@@ -240,6 +240,7 @@ export function ImportControl(gui, opts) {
   async function receiveFiles(files) {
     var names = getFileNames(files);
     var expanded = [];
+    if (files.length === 0) return;
     try {
       expanded = await expandFiles(files);
     } catch(e) {

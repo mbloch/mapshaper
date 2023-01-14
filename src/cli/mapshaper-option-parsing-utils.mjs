@@ -2,9 +2,9 @@ import utils from '../utils/mapshaper-utils';
 var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
 
 export function splitShellTokens(str) {
-  var BAREWORD = '([^\'"\\s])+';
-  var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
-  var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var BAREWORD = `([^'"\\s])+`;
+  var DOUBLE_QUOTE = `"((\\\\"|[^"])*?)"`;
+  var SINGLE_QUOTE = `'((\\\\'|[^'])*?)'`;
   var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
   var matches = str.match(rxp) || [];
   var chunks = matches.filter(function(chunk) {

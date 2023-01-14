@@ -1,5 +1,8 @@
+v0.6.22
+* Bug fixes
+
 v0.6.21
-* 
+* Bug fixes
 
 v0.6.20
 * Added "Snapshot file" export option to web UI.
