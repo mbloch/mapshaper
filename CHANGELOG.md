@@ -1,3 +1,6 @@
+v0.6.23
+* Update to web UI export options.
+
 v0.6.22
 * Bug fixes
 

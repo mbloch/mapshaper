@@ -23,10 +23,14 @@ export var ExportControl = function(gui) {
     internal.writeFiles = function() {
       error(unsupportedMsg);
     };
-  } else {
-    new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
-    gui.addMode('export', turnOn, turnOff, exportBtn);
-    gui.keyboard.onMenuSubmit(menu, onExportClick);
+    return;
+  }
+
+  new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
+  gui.addMode('export', turnOn, turnOff, exportBtn);
+  gui.keyboard.onMenuSubmit(menu, onExportClick);
+  if (window.showSaveFilePicker) {
+    menu.findChild('#save-preference').css('display', 'inline-block');
   }
 
   function turnOn() {
@@ -50,6 +54,8 @@ export var ExportControl = function(gui) {
 
   function onExportClick() {
     var layers = getSelectedLayers();
+    var chooseDir = menu.findChild('#save-preference input').node().checked;
+    GUI.setSavedValue('choose-save-dir', chooseDir);
     if (layers.length === 0) {
       return gui.alert('No layers were selected');
     }

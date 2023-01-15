@@ -1,4 +1,5 @@
 import { El } from './gui-el';
+import { GUI } from './gui-lib';
 import { internal } from './gui-core';
 import { showPopupAlert } from './gui-alert';
 
@@ -50,8 +51,9 @@ function saveBlobToServer(path, blob, done) {
 }
 
 export async function saveBlobToLocalFile(filename, blob, done) {
+  var chooseDir = GUI.getSavedValue('choose-save-dir');
   done = done || function() {};
-  if (window.showSaveFilePicker) {
+  if (chooseDir) {
     saveBlobToSelectedFile(filename, blob, done);
   } else {
     saveBlobToDownloadsFolder(filename, blob, done);
@@ -59,7 +61,7 @@ export async function saveBlobToLocalFile(filename, blob, done) {
 }
 
 function showSaveDialog(filename, blob, done) {
-  showPopupAlert(`Save ${filename} to:`)
+  var alert = showPopupAlert(`Save ${filename} to:`)
     .button('selected folder', function() {
       saveBlobToSelectedFile(filename, blob, done);
     })
@@ -68,6 +70,7 @@ function showSaveDialog(filename, blob, done) {
     })
     .onCancel(done);
 }
+
 
 async function saveBlobToSelectedFile(filename, blob, done) {
   // see: https://developer.chrome.com/articles/file-system-access/

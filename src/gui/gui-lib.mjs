@@ -27,6 +27,19 @@ GUI.canSaveToServer = function() {
   return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
 };
 
+GUI.setSavedValue = function(name, val) {
+  try {
+    window.localStorage.setItem(name, JSON.stringify(val));
+  } catch(e) {}
+};
+
+GUI.getSavedValue = function(name) {
+  try {
+    return JSON.parse(window.localStorage.getItem(name));
+  } catch(e) {}
+  return null;
+};
+
 GUI.getUrlVars = function() {
   var q = window.location.search.substring(1);
   return q.split('&').reduce(function(memo, chunk) {
