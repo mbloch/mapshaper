@@ -807,6 +807,19 @@
     return !!(mapshaper.manifest && mapshaper.manifest.allow_saving) && typeof fetch == 'function';
   };
 
+  GUI.setSavedValue = function(name, val) {
+    try {
+      window.localStorage.setItem(name, JSON.stringify(val));
+    } catch(e) {}
+  };
+
+  GUI.getSavedValue = function(name) {
+    try {
+      return JSON.parse(window.localStorage.getItem(name));
+    } catch(e) {}
+    return null;
+  };
+
   GUI.getUrlVars = function() {
     var q = window.location.search.substring(1);
     return q.split('&').reduce(function(memo, chunk) {
@@ -1232,8 +1245,9 @@
   }
 
   async function saveBlobToLocalFile(filename, blob, done) {
+    var chooseDir = GUI.getSavedValue('choose-save-dir');
     done = done || function() {};
-    if (window.showSaveFilePicker) {
+    if (chooseDir) {
       saveBlobToSelectedFile(filename, blob, done);
     } else {
       saveBlobToDownloadsFolder(filename, blob, done);
@@ -1241,7 +1255,7 @@
   }
 
   function showSaveDialog(filename, blob, done) {
-    showPopupAlert(`Save ${filename} to:`)
+    var alert = showPopupAlert(`Save ${filename} to:`)
       .button('selected folder', function() {
         saveBlobToSelectedFile(filename, blob, done);
       })
@@ -1250,6 +1264,7 @@
       })
       .onCancel(done);
   }
+
 
   async function saveBlobToSelectedFile(filename, blob, done) {
     // see: https://developer.chrome.com/articles/file-system-access/
@@ -3656,10 +3671,14 @@
       internal.writeFiles = function() {
         error$1(unsupportedMsg);
       };
-    } else {
-      new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
-      gui.addMode('export', turnOn, turnOff, exportBtn);
-      gui.keyboard.onMenuSubmit(menu, onExportClick);
+      return;
+    }
+
+    new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
+    gui.addMode('export', turnOn, turnOff, exportBtn);
+    gui.keyboard.onMenuSubmit(menu, onExportClick);
+    if (window.showSaveFilePicker) {
+      menu.findChild('#save-preference').css('display', 'inline-block');
     }
 
     function turnOn() {
@@ -3683,6 +3702,8 @@
 
     function onExportClick() {
       var layers = getSelectedLayers();
+      var chooseDir = menu.findChild('#save-preference input').node().checked;
+      GUI.setSavedValue('choose-save-dir', chooseDir);
       if (layers.length === 0) {
         return gui.alert('No layers were selected');
       }
@@ -8697,7 +8718,6 @@
     function active(e) {
       return e.id > -1 && gui.interaction.getMode() == 'add-points';
     }
-
   }
 
   function Pencil(gui, mouse, hit) {
@@ -8720,10 +8740,7 @@
   }
 
   function initDrawing(gui, ext, mouse, hit) {
-
     initPointDrawing(gui, new Pencil(gui, mouse, hit));
-
-
   }
 
   var darkStroke = "#334",
