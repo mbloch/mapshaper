@@ -474,18 +474,25 @@ function drawPath2(vec, t, ctx, round) {
       bx = t.bx,
       by = t.by;
   var x, y, xp, yp;
+  var count = 0;
   if (!vec.hasNext()) return;
-  x = xp = round(vec.x * mx + bx);
-  y = yp = round(vec.y * my + by);
+  x = round(vec.x * mx + bx);
+  y = round(vec.y * my + by);
   ctx.moveTo(x, y);
   while (vec.hasNext()) {
+    xp = x;
+    yp = y;
     x = round(vec.x * mx + bx);
     y = round(vec.y * my + by);
     if (x != xp || y != yp) {
       ctx.lineTo(x, y);
-      xp = x;
-      yp = y;
+      count++;
     }
+  }
+  if (count === 0) {
+    // draw a tiny line if all coords round to the same location,
+    // so tiny shapes with strokes will consistently be drawn as dots,
+    ctx.lineTo(x + 0.1, y);
   }
 }
 
