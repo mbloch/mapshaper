@@ -1,6 +1,6 @@
 import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
-import { getAttributeTableInfo } from '../commands/mapshaper-info';
+import { getAttributeTableInfo, formatAttributeTableInfo } from '../commands/mapshaper-info';
 import geom from '../geom/mapshaper-geom';
 import { stop, message } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
@@ -20,7 +20,7 @@ cmd.inspect = function(lyr, arcs, opts) {
 function getFeatureInfo(id, lyr, arcs) {
     var msg = "Feature " + id + '\n';
     msg += getShapeInfo(id, lyr, arcs);
-    msg += getAttributeTableInfo(lyr, id);
+    msg += formatAttributeTableInfo(getAttributeTableInfo(lyr, id));
     return msg;
 }
 

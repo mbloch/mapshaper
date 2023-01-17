@@ -2038,6 +2038,9 @@ export function getOptionParser() {
 
   parser.command('info')
     .describe('print information about data layers')
+    .option('save-to', {
+      describe: 'name of file to save info in JSON format'
+    })
     .option('target', targetOpt);
 
   parser.command('inspect')

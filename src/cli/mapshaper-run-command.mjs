@@ -3,7 +3,6 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
-import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSource } from '../dataset/mapshaper-source-utils';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
@@ -298,7 +297,7 @@ export async function runCommand(command, job) {
       cmd.include(opts);
 
     } else if (name == 'info') {
-      cmd.printInfo(expandCommandTargets(targets));
+      cmd.info(targets, opts);
 
     } else if (name == 'inlay') {
       outputLayers = cmd.inlay(targetLayers, source, targetDataset, opts);

@@ -1,5 +1,5 @@
 
-import { getLayerData } from '../commands/mapshaper-info';
+import { getLayerInfo } from '../commands/mapshaper-info';
 import { getBaseContext } from '../expressions/mapshaper-expressions';
 import { runParsedCommands } from '../cli/mapshaper-run-commands';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
@@ -45,7 +45,7 @@ export function runGlobalExpression(expression, targets) {
 
 function getRunCommandData(target) {
   var lyr = target.layers[0];
-  var data = getLayerData(lyr, target.dataset);
+  var data = getLayerInfo(lyr, target.dataset);
   data.layer = lyr;
   data.dataset = target.dataset;
   return data;

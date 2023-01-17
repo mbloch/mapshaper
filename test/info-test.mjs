@@ -3,6 +3,36 @@ import api from '../';
 
 
 describe('mapshaper-info.js', function () {
+
+  describe('save-to option', function() {
+
+    it('no geometry', async function() {
+      var data = [{foo: 'bar'}, {foo: 'baz'}];
+      var cmd = '-i data.json -info save-to=info.json';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      var info = JSON.parse(out['info.json']);
+      assert.deepEqual(info[0].attribute_data, [{field: 'foo', first_value: 'bar'}])
+      assert.equal(info[0].layer_name, 'data');
+    })
+
+    it('geometry, no attributes', async function() {
+      var data = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [1, 1]
+        }, {
+          type: 'Point',
+          coordinates: [0, 0]
+        }]
+      };
+      var out = await api.applyCommands('-i points.json -info save-to info', {'points.json': data});
+      var info = JSON.parse(out['info.json']);
+      assert.strictEqual(info[0].attribute_data, null);
+      assert.deepEqual(info[0].bbox, [0, 0, 1, 1]);
+    })
+  });
+
   describe('formatTableValue()', function () {
 
     it('string field', function() {

@@ -138,13 +138,13 @@ function _runCommands(argv, opts, callback) {
   commands = runAndRemoveInfoCommands(commands);
   if (commands.length === 0) return done(null);
 
-  // add options to -i -o -join -clip -erase commands to bypass file i/o
+  // add options to -i -o -join -clip -erase etc. commands to bypass file i/o
   // TODO: find a less kludgy solution
   commands.forEach(function(cmd) {
     if (commandTakesFileInput(cmd.name) && inputObj) {
       cmd.options.input = inputObj;
     }
-    if (cmd.name == 'o' && outputArr) {
+    if (outputArr && (cmd.name == 'o' || cmd.name == 'info' && cmd.options.save_to)) {
       cmd.options.output = outputArr;
     }
   });
