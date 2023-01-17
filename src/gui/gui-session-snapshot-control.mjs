@@ -1,5 +1,5 @@
 import { El } from './gui-el';
-import { internal } from './gui-core';
+import { internal, stop } from './gui-core';
 import { saveBlobToLocalFile } from './gui-save';
 
 var idb = require('idb-keyval');
@@ -86,7 +86,9 @@ export function SessionSnapshots(gui) {
         closeMenu(100);
       }).text('restore');
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-        var buf = await idb.get(item.id);
+        var obj = await idb.get(item.id);
+        await internal.applyCompression(obj, {consume: true});
+        var buf = internal.pack(obj);
         saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
       }).text('export');
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
@@ -134,20 +136,24 @@ export function SessionSnapshots(gui) {
   }
 
   async function saveSnapshot(gui) {
-    var buf = await captureSnapshot(gui);
+    var obj = await captureSnapshot(gui);
+    // storing an unpacked object is usually a bit faster (~20%)
+    // note: we don't know the size of unpacked snapshot objects
+    // obj = internal.pack(obj);
     var entryId = String(++snapshotCount).padStart(3, '0');
     var snapshotId = sessionId + '_' + entryId; // e.g. session_d89fw_001
+    var size = obj.length;
     var entry = {
       created: Date.now(),
       session: sessionId,
       id: snapshotId,
       name: snapshotCount + '.',
       number: snapshotCount,
-      size: buf.length,
-      display_size: formatSize(buf.length)
+      size: size,
+      display_size: formatSize(size)
     };
 
-    await idb.set(entry.id, buf);
+    await idb.set(entry.id, obj);
     await addToIndex(entry);
     renderMenu();
   }
@@ -156,9 +162,8 @@ export function SessionSnapshots(gui) {
 function formatSize(bytes) {
   var kb = Math.round(bytes / 1000);
   var mb = (bytes / 1e6).toFixed(1);
-  if (kb < 990) {
-    return kb + 'kB';
-  }
+  if (!kb) return '';
+  if (kb < 990) return kb + 'kB';
   return mb + 'MB';
 }
 
@@ -180,13 +185,13 @@ async function removeSnapshotById(id, gui) {
 }
 
 async function restoreSnapshotById(id, gui) {
-  var buf = await idb.get(id);
-  if (!buf) {
-    console.log('Snapshot not available:', id);
-    return;
+  var data;
+  try {
+    data = await internal.restoreSessionData(await idb.get(id));
+  } catch(e) {
+    console.error(e);
+    stop('Snapshot is not available');
   }
-  var data = await internal.unpackSession(buf);
-  buf = null;
   gui.model.clear();
   importDatasets(data.datasets, gui);
   gui.clearMode();
@@ -199,7 +204,7 @@ export async function importSessionData(buf, gui) {
   if (buf instanceof ArrayBuffer) {
     buf = new Uint8Array(buf);
   }
-  var data = await internal.unpackSession(buf);
+  var data = await internal.unpackSessionData(buf);
   importDatasets(data.datasets, gui);
 }
 
@@ -222,7 +227,7 @@ async function captureSnapshot(gui) {
   // console.timeEnd('msx')
   delete lyr.active;
   obj.gui = getGuiState(gui);
-  return internal.pack(obj);
+  return obj;
 }
 
 // TODO: capture gui state information to allow restoring more of the UI

@@ -41,16 +41,39 @@ export function pack(obj) {
 // gui: (optional) gui instance
 //
 export async function exportDatasetsToPack(datasets, opts) {
-  return {
+  var obj = {
     version: 1,
     created: (new Date).toISOString(),
-    datasets: await Promise.all(datasets.map(d => exportDataset(d, opts || {})))
+    datasets: await Promise.all(datasets.map(exportDataset))
   };
+  if (opts.compact) {
+    await applyCompression(obj);
+  }
+  return obj;
+}
+
+export async function applyCompression(obj, opts) {
+  var promises = [];
+  obj.datasets.forEach(d => {
+    if (d.arcs) promises.push(compressArcs(d.arcs, opts));
+  });
+  await Promise.all(promises);
+}
+
+async function compressArcs(obj, opts) {
+  var gzipOpts = Object.assign({level: 1, consume: false}, opts);
+  var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
+  if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
+  var results = await Promise.all(promises);
+  obj.nn = results.shift();
+  obj.xx = results.shift();
+  obj.yy = results.shift();
+  if (obj.zz) obj.zz = results.shift();
 }
 
 export async function exportDataset(dataset, opts) {
   return {
-    arcs: dataset.arcs ? await exportArcs(dataset.arcs, opts) : null,
+    arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
     info: dataset.info ? exportInfo(dataset.info) : null,
     layers: await Promise.all((dataset.layers || []).map(exportLayer))
   };
@@ -60,38 +83,22 @@ function typedArrayToBuffer(arr) {
   return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }
 
-async function exportArcs(arcs, opts) {
+function exportArcs(arcs) {
   var data = arcs.getVertexData();
-  var obj = {
+  return {
     nn: typedArrayToBuffer(data.nn),
     xx: typedArrayToBuffer(data.xx),
     yy: typedArrayToBuffer(data.yy),
     zz: data.zz ? typedArrayToBuffer(data.zz) : null,
     zlimit: arcs.getRetainedInterval()
   };
-
-  // gzipping typically sees about 70% compression on unrounded coordinates
-  // -- possibly not worth the time
-  if (opts.compact) {
-    var gzipOpts = {level: 1, consume: false};
-    var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
-    if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
-    var results = await Promise.all(promises);
-    obj.nn = results.shift();
-    obj.xx = results.shift();
-    obj.yy = results.shift();
-    if (obj.zz) obj.zz = results.shift();
-  }
-  return obj;
 }
 
 async function exportLayer(lyr) {
-  // console.time('table')
   var data = null;
   if (lyr.data) {
     data = await exportTable2(lyr.data);
   }
-  // console.timeEnd('table')
   return {
     name: lyr.name || null,
     geometry_type: lyr.geometry_type || null,

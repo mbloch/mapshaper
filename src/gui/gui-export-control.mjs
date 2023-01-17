@@ -30,7 +30,13 @@ export var ExportControl = function(gui) {
   gui.addMode('export', turnOn, turnOff, exportBtn);
   gui.keyboard.onMenuSubmit(menu, onExportClick);
   if (window.showSaveFilePicker) {
-    menu.findChild('#save-preference').css('display', 'inline-block');
+    menu.findChild('#save-preference')
+      .css('display', 'inline-block')
+      .findChild('input')
+      .on('change', function() {
+        GUI.setSavedValue('choose-save-dir', this.checked);
+      })
+      .attr('checked', GUI.getSavedValue('choose-save-dir') || false);
   }
 
   function turnOn() {
@@ -54,8 +60,6 @@ export var ExportControl = function(gui) {
 
   function onExportClick() {
     var layers = getSelectedLayers();
-    var chooseDir = menu.findChild('#save-preference input').node().checked;
-    GUI.setSavedValue('choose-save-dir', chooseDir);
     if (layers.length === 0) {
       return gui.alert('No layers were selected');
     }

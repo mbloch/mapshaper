@@ -14,7 +14,7 @@ import { parseLocalPath, getFileExtension, replaceFileExtension } from '../utils
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 import { unzipSync } from './mapshaper-zip';
 import { gunzipSync } from './mapshaper-gzip';
-import { unpackSession } from '../pack/mapshaper-unpack';
+import { unpackSessionData } from '../pack/mapshaper-unpack';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
@@ -70,7 +70,7 @@ cmd.importFiles = async function(catalog, opts) {
 
 async function importMshpFile(file, catalog, opts) {
   var buf = cli.readFile(file, null, opts.input);
-  var obj = await unpackSession(buf);
+  var obj = await unpackSessionData(buf);
   obj.datasets.forEach(catalog.addDataset, catalog);
   return obj.target;
 }

@@ -33,7 +33,8 @@ export async function gunzipAsync(buf, opts) {
     buf = new Uint8Array(buf);
   }
   opts = opts || {};
-  var out = await utils.promisify(_gunzipAsync)(buf, opts);
+  var gunzip = runningInBrowser() ? utils.promisify(_gunzipAsync) : utils.promisify(require('zlib').gunzip);
+  var out = await gunzip(buf, opts);
   if (opts.filename && !isImportableAsBinary(opts.filename)) {
     out = strFromU8(out);
   }
@@ -41,8 +42,6 @@ export async function gunzipAsync(buf, opts) {
 }
 
 export function gunzipSync(buf, filename) {
-  // TODO: use native module in Node
-  // require('zlib').
   if (buf instanceof ArrayBuffer) {
     buf = new Uint8Array(buf);
   }

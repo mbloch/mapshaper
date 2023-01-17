@@ -11,12 +11,14 @@ import { gunzipSync, gunzipAsync, isGzipped } from '../io/mapshaper-gzip';
 // Import datasets contained in a BSON blob
 // Return command target as a dataset
 //
-export async function unpackSession(buf) {
-  var obj = decode(buf, {});
+export async function unpackSessionData(buf) {
+  return restoreSessionData(decode(buf, {}));
+}
+
+export async function restoreSessionData(obj) {
   if (!isValidSession(obj)) {
     stop('Invalid mapshaper session data object');
   }
-
   var datasets = await Promise.all(obj.datasets.map(importDataset));
   return Object.assign(obj, {datasets: datasets});
 }

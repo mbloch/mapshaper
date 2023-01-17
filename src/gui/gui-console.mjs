@@ -53,22 +53,12 @@ export function Console(gui) {
   }
 
   function getHistory() {
-    var hist;
-    try {
-      hist = JSON.parse(window.localStorage.getItem('console_history'));
-    } catch(e) {
-    }
-    return hist && hist.length > 0 ? hist : [];
+    return GUI.getSavedValue('console_history') || [];
   }
 
   function saveHistory() {
-    try {
-      history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-      if (history.length) {
-        window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
-      }
-    } catch(e) {
-    }
+    history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
+    GUI.setSavedValue('console_history', history.slice(-100));
   }
 
   function toLog(str, cname) {

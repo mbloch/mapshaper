@@ -1,12 +1,12 @@
 import api from '../';
 import assert from 'assert';
-import { unpackSession } from '../src/pack/mapshaper-unpack';
+import { unpackSessionData } from '../src/pack/mapshaper-unpack';
 
 describe('mapshaper-pack.mjs', function () {
   it('simple round trip', async function () {
     var data = [{foo: 'bar'}];
     var out = await api.applyCommands('-i data.json -o out.msx', {'data.json': data});
-    var obj = await unpackSession(out['out.msx']);
+    var obj = await unpackSessionData(out['out.msx']);
     var timestamp = Date.parse(obj.created); // NaN if not a parsable ISO date
     assert(timestamp > 0);
     assert.equal(obj.version, 1);
