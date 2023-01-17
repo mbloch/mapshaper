@@ -1,3 +1,8 @@
+v0.6.24
+* Added -info save-to=<filename> option, for saving layer information to a JSON file.
+* Apply the same amount of compression to all exported snapshots.
+* Bug fixes
+
 v0.6.23
 * Update to web UI export options.
 
