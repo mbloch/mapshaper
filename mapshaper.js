@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.23";
+  var VERSION = "0.6.24";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -10620,7 +10620,8 @@
       buf = new Uint8Array(buf);
     }
     opts = opts || {};
-    var out = await utils.promisify(gunzip)(buf, opts);
+    var gunzip$1 = runningInBrowser() ? utils.promisify(gunzip) : utils.promisify(require('zlib').gunzip);
+    var out = await gunzip$1(buf, opts);
     if (opts.filename && !isImportableAsBinary(opts.filename)) {
       out = strFromU8(out);
     }
@@ -10628,8 +10629,6 @@
   }
 
   function gunzipSync(buf, filename) {
-    // TODO: use native module in Node
-    // require('zlib').
     if (buf instanceof ArrayBuffer) {
       buf = new Uint8Array(buf);
     }
@@ -10768,16 +10767,39 @@
   // gui: (optional) gui instance
   //
   async function exportDatasetsToPack(datasets, opts) {
-    return {
+    var obj = {
       version: 1,
       created: (new Date).toISOString(),
-      datasets: await Promise.all(datasets.map(d => exportDataset(d, opts || {})))
+      datasets: await Promise.all(datasets.map(exportDataset))
     };
+    if (opts.compact) {
+      await applyCompression(obj);
+    }
+    return obj;
+  }
+
+  async function applyCompression(obj, opts) {
+    var promises = [];
+    obj.datasets.forEach(d => {
+      if (d.arcs) promises.push(compressArcs(d.arcs, opts));
+    });
+    await Promise.all(promises);
+  }
+
+  async function compressArcs(obj, opts) {
+    var gzipOpts = Object.assign({level: 1, consume: false}, opts);
+    var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
+    if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
+    var results = await Promise.all(promises);
+    obj.nn = results.shift();
+    obj.xx = results.shift();
+    obj.yy = results.shift();
+    if (obj.zz) obj.zz = results.shift();
   }
 
   async function exportDataset(dataset, opts) {
     return {
-      arcs: dataset.arcs ? await exportArcs(dataset.arcs, opts) : null,
+      arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
       info: dataset.info ? exportInfo(dataset.info) : null,
       layers: await Promise.all((dataset.layers || []).map(exportLayer))
     };
@@ -10787,38 +10809,22 @@
     return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   }
 
-  async function exportArcs(arcs, opts) {
+  function exportArcs(arcs) {
     var data = arcs.getVertexData();
-    var obj = {
+    return {
       nn: typedArrayToBuffer(data.nn),
       xx: typedArrayToBuffer(data.xx),
       yy: typedArrayToBuffer(data.yy),
       zz: data.zz ? typedArrayToBuffer(data.zz) : null,
       zlimit: arcs.getRetainedInterval()
     };
-
-    // gzipping typically sees about 70% compression on unrounded coordinates
-    // -- possibly not worth the time
-    if (opts.compact) {
-      var gzipOpts = {level: 1, consume: false};
-      var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
-      if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
-      var results = await Promise.all(promises);
-      obj.nn = results.shift();
-      obj.xx = results.shift();
-      obj.yy = results.shift();
-      if (obj.zz) obj.zz = results.shift();
-    }
-    return obj;
   }
 
   async function exportLayer(lyr) {
-    // console.time('table')
     var data = null;
     if (lyr.data) {
       data = await exportTable2(lyr.data);
     }
-    // console.timeEnd('table')
     return {
       name: lyr.name || null,
       geometry_type: lyr.geometry_type || null,
@@ -10845,6 +10851,7 @@
     exportPackedDatasets: exportPackedDatasets,
     pack: pack,
     exportDatasetsToPack: exportDatasetsToPack,
+    applyCompression: applyCompression,
     exportDataset: exportDataset
   });
 
@@ -24922,6 +24929,9 @@ ${svg}
 
     parser.command('info')
       .describe('print information about data layers')
+      .option('save-to', {
+        describe: 'name of file to save info in JSON format'
+      })
       .option('target', targetOpt);
 
     parser.command('inspect')
@@ -27457,12 +27467,14 @@ ${svg}
   // Import datasets contained in a BSON blob
   // Return command target as a dataset
   //
-  async function unpackSession(buf) {
-    var obj = unpack(buf, {});
+  async function unpackSessionData(buf) {
+    return restoreSessionData(unpack(buf, {}));
+  }
+
+  async function restoreSessionData(obj) {
     if (!isValidSession(obj)) {
       stop('Invalid mapshaper session data object');
     }
-
     var datasets = await Promise.all(obj.datasets.map(importDataset));
     return Object.assign(obj, {datasets: datasets});
   }
@@ -27539,7 +27551,8 @@ ${svg}
 
   var Unpack = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    unpackSession: unpackSession
+    unpackSessionData: unpackSessionData,
+    restoreSessionData: restoreSessionData
   });
 
   cmd.importFiles = async function(catalog, opts) {
@@ -27593,7 +27606,7 @@ ${svg}
 
   async function importMshpFile(file, catalog, opts) {
     var buf = cli.readFile(file, null, opts.input);
-    var obj = await unpackSession(buf);
+    var obj = await unpackSessionData(buf);
     obj.datasets.forEach(catalog.addDataset, catalog);
     return obj.target;
   }
@@ -38240,22 +38253,124 @@ ${svg}
 
   var MAX_RULE_LEN = 50;
 
-  cmd.printInfo = function(layers) {
+  cmd.info = function(targets, opts) {
+    var layers = expandCommandTargets(targets);
+    var arr = layers.map(function(o) {
+      return getLayerInfo(o.layer, o.dataset);
+    });
+    message(formatInfo(arr));
+    if (opts.save_to) {
+      var output = [{
+        filename: opts.save_to + (opts.save_to.endsWith('.json') ? '' : '.json'),
+        content: JSON.stringify(arr, null, 2)
+      }];
+      writeFiles(output, opts);
+    }
+  };
+
+  cmd.printInfo = cmd.info; // old name
+
+  function getLayerInfo(lyr, dataset) {
+    var n = getFeatureCount(lyr);
+    var o = {
+      layer_name: lyr.name,
+      geometry_type: lyr.geometry_type,
+      feature_count: n,
+      null_shape_count: 0,
+      null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
+    };
+    if (lyr.shapes && lyr.shapes.length > 0) {
+      o.null_shape_count = countNullShapes(lyr.shapes);
+      o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
+      o.proj4 = getProjInfo(dataset);
+    }
+    o.source_file = getLayerSourceFile(lyr, dataset) || null;
+    o.attribute_data = getAttributeTableInfo(lyr);
+    return o;
+  }
+
+  // i: (optional) record index
+  function getAttributeTableInfo(lyr, i) {
+    if (!lyr.data || lyr.data.size() === 0 || lyr.data.getFields().length === 0) {
+      return null;
+    }
+    var fields = applyFieldOrder(lyr.data.getFields(), 'ascending');
+    var valueName = i === undefined ? 'first_value' : 'value';
+    return fields.map(function(fname) {
+      return {
+        field: fname,
+        [valueName]: lyr.data.getReadOnlyRecordAt(i || 0)[fname]
+      };
+    });
+  }
+
+  function formatInfo(arr) {
     var str = '';
-    layers.forEach(function(o, i) {
-      var title =  'Layer:    ' + (o.layer.name || '[unnamed layer]');
-      var tableStr = getAttributeTableInfo(o.layer);
+    arr.forEach(function(info, i) {
+      var title =  'Layer:    ' + (info.layer_name || '[unnamed layer]');
+      var tableStr = formatAttributeTableInfo(info.attribute_data);
       var tableWidth = measureLongestLine(tableStr);
       var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
       str += '\n';
       str += utils.lpad('', ruleLen, '=') + '\n';
       str += title + '\n';
       str += utils.lpad('', ruleLen, '-') + '\n';
-      str += getLayerInfo(o.layer, o.dataset);
+      str += formatLayerInfo(info);
       str += tableStr;
     });
-    message(str);
-  };
+    return str;
+  }
+
+  function formatLayerInfo(data) {
+    var str = '';
+    str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
+    str += utils.format("Records:  %,d\n",data.feature_count);
+    if (data.null_shape_count > 0) {
+      str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
+    }
+    if (data.geometry_type && data.feature_count > data.null_shape_count) {
+      str += "Bounds:   " + data.bbox.join(',') + "\n";
+      str += "CRS:      " + data.proj4 + "\n";
+    }
+    str += "Source:   " + (data.source_file || 'n/a') + "\n";
+    return str;
+  }
+
+  function formatAttributeTableInfo(arr) {
+    if (!arr) return "Attribute data: [none]\n";
+    var header = "\nAttribute data\n";
+    var valKey = 'first_value' in arr[0] ? 'first_value' : 'value';
+    var vals = [];
+    var fields = [];
+    arr.forEach(function(o) {
+      fields.push(o.field);
+      vals.push(o[valKey]);
+    });
+    var maxIntegralChars = vals.reduce(function(max, val) {
+      if (utils.isNumber(val)) {
+        max = Math.max(max, countIntegralChars(val));
+      }
+      return max;
+    }, 0);
+    var col1Arr = ['Field'].concat(fields);
+    var col2Arr = vals.reduce(function(memo, val) {
+      memo.push(formatTableValue(val, maxIntegralChars));
+      return memo;
+    }, [valKey == 'first_value' ? 'First value' : 'Value']);
+    var col1Chars = maxChars(col1Arr);
+    var col2Chars = maxChars(col2Arr);
+    var sepStr = (utils.rpad('', col1Chars + 2, '-') + '+' +
+        utils.rpad('', col2Chars + 2, '-')).substr(0, MAX_RULE_LEN);
+    var sepLine = sepStr + '\n';
+    var table = '';
+    col1Arr.forEach(function(col1, i) {
+      var w = stringDisplayWidth(col1);
+      table += ' ' + col1 + utils.rpad('', col1Chars - w, ' ') + ' | ' +
+        col2Arr[i] + '\n';
+      if (i === 0) table += sepLine; // separator after first line
+    });
+    return header + sepLine + table + sepLine;
+  }
 
   function measureLongestLine(str) {
     return Math.max.apply(null, str.split('\n').map(function(line) {return stringDisplayWidth(line);}));
@@ -38286,22 +38401,6 @@ ${svg}
     return 1;
   }
 
-  function getLayerData(lyr, dataset) {
-    var n = getFeatureCount(lyr);
-    var o = {
-      geometry_type: lyr.geometry_type,
-      feature_count: n,
-      null_shape_count: 0,
-      null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
-    };
-    if (lyr.shapes && lyr.shapes.length > 0) {
-      o.null_shape_count = countNullShapes(lyr.shapes);
-      o.bbox =getLayerBounds(lyr, dataset.arcs).toArray();
-      o.proj4 = getProjInfo(dataset);
-    }
-    return o;
-  }
-
   // TODO: consider polygons with zero area or other invalid geometries
   function countNullShapes(shapes) {
     var count = 0;
@@ -38317,60 +38416,6 @@ ${svg}
       if (!records[i]) count++;
     }
     return count;
-  }
-
-  function getLayerInfo(lyr, dataset) {
-    var data = getLayerData(lyr, dataset);
-    var str = '';
-    str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
-    str += utils.format("Records:  %,d\n",data.feature_count);
-    if (data.null_shape_count > 0) {
-      str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
-    }
-    if (data.geometry_type && data.feature_count > data.null_shape_count) {
-      str += "Bounds:   " + data.bbox.join(',') + "\n";
-      str += "CRS:      " + data.proj4 + "\n";
-    }
-    str += "Source:   " + (getLayerSourceFile(lyr, dataset) || 'n/a') + "\n";
-    return str;
-  }
-
-  function getAttributeTableInfo(lyr, i) {
-    if (!lyr.data || lyr.data.size() === 0 || lyr.data.getFields().length === 0) {
-      return "Attribute data: [none]\n";
-    }
-    return "\nAttribute data\n" + formatAttributeTable(lyr.data, i);
-  }
-
-  function formatAttributeTable(data, i) {
-    var fields = applyFieldOrder(data.getFields(), 'ascending');
-    var vals = fields.map(function(fname) {
-      return data.getReadOnlyRecordAt(i || 0)[fname];
-    });
-    var maxIntegralChars = vals.reduce(function(max, val) {
-      if (utils.isNumber(val)) {
-        max = Math.max(max, countIntegralChars(val));
-      }
-      return max;
-    }, 0);
-    var col1Arr = ['Field'].concat(fields);
-    var col2Arr = vals.reduce(function(memo, val) {
-      memo.push(formatTableValue(val, maxIntegralChars));
-      return memo;
-    }, [i >= 0 ? 'Value' : 'First value']);
-    var col1Chars = maxChars(col1Arr);
-    var col2Chars = maxChars(col2Arr);
-    var sepStr = (utils.rpad('', col1Chars + 2, '-') + '+' +
-        utils.rpad('', col2Chars + 2, '-')).substr(0, MAX_RULE_LEN);
-    var sepLine = sepStr + '\n';
-    var table = sepLine;
-    col1Arr.forEach(function(col1, i) {
-      var w = stringDisplayWidth(col1);
-      table += ' ' + col1 + utils.rpad('', col1Chars - w, ' ') + ' | ' +
-        col2Arr[i] + '\n';
-      if (i === 0) table += sepLine; // separator after first line
-    });
-    return table + sepLine;
   }
 
   function maxChars(arr) {
@@ -38424,8 +38469,9 @@ ${svg}
 
   var Info = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getLayerData: getLayerData,
+    getLayerInfo: getLayerInfo,
     getAttributeTableInfo: getAttributeTableInfo,
+    formatAttributeTableInfo: formatAttributeTableInfo,
     formatTableValue: formatTableValue
   });
 
@@ -38477,7 +38523,7 @@ ${svg}
   function getFeatureInfo(id, lyr, arcs) {
       var msg = "Feature " + id + '\n';
       msg += getShapeInfo(id, lyr, arcs);
-      msg += getAttributeTableInfo(lyr, id);
+      msg += formatAttributeTableInfo(getAttributeTableInfo(lyr, id));
       return msg;
   }
 
@@ -40589,7 +40635,7 @@ ${svg}
 
   function getRunCommandData(target) {
     var lyr = target.layers[0];
-    var data = getLayerData(lyr, target.dataset);
+    var data = getLayerInfo(lyr, target.dataset);
     data.layer = lyr;
     data.dataset = target.dataset;
     return data;
@@ -42939,7 +42985,7 @@ ${svg}
         cmd.include(opts);
 
       } else if (name == 'info') {
-        cmd.printInfo(expandCommandTargets(targets));
+        cmd.info(targets, opts);
 
       } else if (name == 'inlay') {
         outputLayers = cmd.inlay(targetLayers, source, targetDataset, opts);
@@ -43305,13 +43351,13 @@ ${svg}
     commands = runAndRemoveInfoCommands(commands);
     if (commands.length === 0) return done(null);
 
-    // add options to -i -o -join -clip -erase commands to bypass file i/o
+    // add options to -i -o -join -clip -erase etc. commands to bypass file i/o
     // TODO: find a less kludgy solution
     commands.forEach(function(cmd) {
       if (commandTakesFileInput(cmd.name) && inputObj) {
         cmd.options.input = inputObj;
       }
-      if (cmd.name == 'o' && outputArr) {
+      if (outputArr && (cmd.name == 'o' || cmd.name == 'info' && cmd.options.save_to)) {
         cmd.options.output = outputArr;
       }
     });

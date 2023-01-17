@@ -1437,7 +1437,9 @@
           closeMenu(100);
         }).text('restore');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-          var buf = await idb.get(item.id);
+          var obj = await idb.get(item.id);
+          await internal.applyCompression(obj, {consume: true});
+          var buf = internal.pack(obj);
           saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
         }).text('export');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
@@ -1485,20 +1487,24 @@
     }
 
     async function saveSnapshot(gui) {
-      var buf = await captureSnapshot(gui);
+      var obj = await captureSnapshot(gui);
+      // storing an unpacked object is usually a bit faster (~20%)
+      // note: we don't know the size of unpacked snapshot objects
+      // obj = internal.pack(obj);
       var entryId = String(++snapshotCount).padStart(3, '0');
       var snapshotId = sessionId + '_' + entryId; // e.g. session_d89fw_001
+      var size = obj.length;
       var entry = {
         created: Date.now(),
         session: sessionId,
         id: snapshotId,
         name: snapshotCount + '.',
         number: snapshotCount,
-        size: buf.length,
-        display_size: formatSize(buf.length)
+        size: size,
+        display_size: formatSize(size)
       };
 
-      await idb.set(entry.id, buf);
+      await idb.set(entry.id, obj);
       await addToIndex(entry);
       renderMenu();
     }
@@ -1507,9 +1513,8 @@
   function formatSize(bytes) {
     var kb = Math.round(bytes / 1000);
     var mb = (bytes / 1e6).toFixed(1);
-    if (kb < 990) {
-      return kb + 'kB';
-    }
+    if (!kb) return '';
+    if (kb < 990) return kb + 'kB';
     return mb + 'MB';
   }
 
@@ -1531,13 +1536,13 @@
   }
 
   async function restoreSnapshotById(id, gui) {
-    var buf = await idb.get(id);
-    if (!buf) {
-      console.log('Snapshot not available:', id);
-      return;
+    var data;
+    try {
+      data = await internal.restoreSessionData(await idb.get(id));
+    } catch(e) {
+      console.error(e);
+      stop$1('Snapshot is not available');
     }
-    var data = await internal.unpackSession(buf);
-    buf = null;
     gui.model.clear();
     importDatasets(data.datasets, gui);
     gui.clearMode();
@@ -1550,7 +1555,7 @@
     if (buf instanceof ArrayBuffer) {
       buf = new Uint8Array(buf);
     }
-    var data = await internal.unpackSession(buf);
+    var data = await internal.unpackSessionData(buf);
     importDatasets(data.datasets, gui);
   }
 
@@ -1573,7 +1578,7 @@
     // console.timeEnd('msx')
     delete lyr.active;
     obj.gui = getGuiState(gui);
-    return internal.pack(obj);
+    return obj;
   }
 
   // TODO: capture gui state information to allow restoring more of the UI
@@ -3040,22 +3045,12 @@
     }
 
     function getHistory() {
-      var hist;
-      try {
-        hist = JSON.parse(window.localStorage.getItem('console_history'));
-      } catch(e) {
-      }
-      return hist && hist.length > 0 ? hist : [];
+      return GUI.getSavedValue('console_history') || [];
     }
 
     function saveHistory() {
-      try {
-        history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-        if (history.length) {
-          window.localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
-        }
-      } catch(e) {
-      }
+      history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
+      GUI.setSavedValue('console_history', history.slice(-100));
     }
 
     function toLog(str, cname) {
@@ -3678,7 +3673,13 @@
     gui.addMode('export', turnOn, turnOff, exportBtn);
     gui.keyboard.onMenuSubmit(menu, onExportClick);
     if (window.showSaveFilePicker) {
-      menu.findChild('#save-preference').css('display', 'inline-block');
+      menu.findChild('#save-preference')
+        .css('display', 'inline-block')
+        .findChild('input')
+        .on('change', function() {
+          GUI.setSavedValue('choose-save-dir', this.checked);
+        })
+        .attr('checked', GUI.getSavedValue('choose-save-dir') || false);
     }
 
     function turnOn() {
@@ -3702,8 +3703,6 @@
 
     function onExportClick() {
       var layers = getSelectedLayers();
-      var chooseDir = menu.findChild('#save-preference input').node().checked;
-      GUI.setSavedValue('choose-save-dir', chooseDir);
       if (layers.length === 0) {
         return gui.alert('No layers were selected');
       }
@@ -9797,18 +9796,25 @@
         bx = t.bx,
         by = t.by;
     var x, y, xp, yp;
+    var count = 0;
     if (!vec.hasNext()) return;
-    x = xp = round(vec.x * mx + bx);
-    y = yp = round(vec.y * my + by);
+    x = round(vec.x * mx + bx);
+    y = round(vec.y * my + by);
     ctx.moveTo(x, y);
     while (vec.hasNext()) {
+      xp = x;
+      yp = y;
       x = round(vec.x * mx + bx);
       y = round(vec.y * my + by);
       if (x != xp || y != yp) {
         ctx.lineTo(x, y);
-        xp = x;
-        yp = y;
+        count++;
       }
+    }
+    if (count === 0) {
+      // draw a tiny line if all coords round to the same location,
+      // so tiny shapes with strokes will consistently be drawn as dots,
+      ctx.lineTo(x + 0.1, y);
     }
   }
 
