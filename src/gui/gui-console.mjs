@@ -58,7 +58,9 @@ export function Console(gui) {
 
   function saveHistory() {
     history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-    GUI.setSavedValue('console_history', history.slice(-100));
+    if (history.length > 0) {
+      GUI.setSavedValue('console_history', history.slice(-100));
+    }
   }
 
   function toLog(str, cname) {
