@@ -3050,7 +3050,9 @@
 
     function saveHistory() {
       history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
-      GUI.setSavedValue('console_history', history.slice(-100));
+      if (history.length > 0) {
+        GUI.setSavedValue('console_history', history.slice(-100));
+      }
     }
 
     function toLog(str, cname) {
@@ -3679,7 +3681,7 @@
         .on('change', function() {
           GUI.setSavedValue('choose-save-dir', this.checked);
         })
-        .attr('checked', GUI.getSavedValue('choose-save-dir') || false);
+        .attr('checked', GUI.getSavedValue('choose-save-dir') || null);
     }
 
     function turnOn() {
@@ -8053,8 +8055,14 @@
         }
       });
 
+      // add new field form
+      if (editable) {
+        renderNewRow(tableEl, rec, table);
+      }
+
+      tableEl.appendTo(el);
       if (rows > 0) {
-        tableEl.appendTo(el);
+        // tableEl.appendTo(el);
 
         tableEl.on('copy', function(e) {
           // remove leading or trailing tabs that sometimes get copied when
@@ -8074,15 +8082,26 @@
         el.html(utils$1.format('<div class="note">This %s is missing attribute data.</div>',
             table && table.getFields().length > 0 ? 'feature': 'layer'));
       }
+
+      if (editable) {
+        var line = El('div').appendTo(el);
+        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+
+        }).text('add field');
+      }
+    }
+
+    function renderNewRow(el, rec, table) {
+
     }
 
     function renderRow(table, rec, key, type, editable) {
-      var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
       var val = rec[key];
       var str = formatInspectorValue(val, type);
+      var rowHtml = `<td class="field-name">${key}</td><td><span class="value">${utils$1.htmlEscape(str)}</span> </td>`;
       var cell = El('tr')
           .appendTo(table)
-          .html(utils$1.format(rowHtml, key, utils$1.htmlEscape(str)))
+          .html(rowHtml)
           .findChild('.value');
       setFieldClass(cell, val, type);
       if (editable) {
@@ -10191,6 +10210,10 @@
 
     new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
       runCommand('-clip bbox=' + box.getDataCoords().join(','));
+    });
+
+    new SimpleButton(popup.findChild('.erase-btn')).on('click', function() {
+      runCommand('-erase bbox=' + box.getDataCoords().join(','));
     });
 
     gui.addMode('box_tool', turnOn, turnOff);

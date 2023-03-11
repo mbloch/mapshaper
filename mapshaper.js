@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.24";
+  var VERSION = "0.6.25";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -2449,6 +2449,17 @@
     getPathCentroid: getPathCentroid
   });
 
+  function testSegmentBoundsIntersection(a, b, bb) {
+    if (bb.containsPoint(a[0], a[1])) {
+      return true;
+    }
+    return !!(
+      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymin, bb.xmin, bb.ymax) ||
+      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymax, bb.xmax, bb.ymax) ||
+      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymax, bb.xmax, bb.ymin) ||
+      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymin, bb.xmin, bb.ymin));
+  }
+
   // A compactness measure designed for testing electoral districts for gerrymandering.
   // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
   function calcPolsbyPopperCompactness(area, perimeter) {
@@ -2496,27 +2507,40 @@
   //   }, 0);
   // }
 
+  // test if a rectangle is completely enclosed in a planar polygon
+  function testBoundsInPolygon(bounds, shp, arcs) {
+    if (!shp || !testPointInPolygon(bounds.xmin, bounds.ymin, shp, arcs)) return false;
+    var isIn = true;
+    shp.forEach(function(ids) {
+      forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
+        isIn = isIn && !testSegmentBoundsIntersection([xx[a], yy[a]], [xx[b], yy[b]], bounds);
+      });
+    });
+    return isIn;
+  }
+
   // Return true if point is inside or on boundary of a shape
   //
   function testPointInPolygon(x, y, shp, arcs) {
     var isIn = false,
         isOn = false;
-    if (shp) {
-      shp.forEach(function(ids) {
-        var inRing = testPointInRing(x, y, ids, arcs);
-        if (inRing == 1) {
-          isIn = !isIn;
-        } else if (inRing == -1) {
-          isOn = true;
-        }
-      });
-    }
+    if (!shp) return false;
+    shp.forEach(function(ids) {
+      var inRing = testPointInRing(x, y, ids, arcs);
+      if (inRing == 1) {
+        isIn = !isIn;
+      } else if (inRing == -1) {
+        isOn = true;
+      }
+    });
     return isOn || isIn;
   }
 
   function getYIntercept(x, ax, ay, bx, by) {
     return ay + (x - ax) * (by - ay) / (bx - ax);
   }
+
+
 
   // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
   // Return 0: outside; 1: inside; -1: on boundary
@@ -2708,6 +2732,7 @@
     getShapeArea: getShapeArea,
     getPlanarShapeArea: getPlanarShapeArea,
     getSphericalShapeArea: getSphericalShapeArea,
+    testBoundsInPolygon: testBoundsInPolygon,
     testPointInPolygon: testPointInPolygon,
     testPointInRing: testPointInRing,
     testRayIntersection: testRayIntersection,
@@ -7251,7 +7276,7 @@
   			let size = source.length;
   			let value = this ? this.unpack(source, size) : defaultUnpackr.unpack(source, size);
   			if (forEach) {
-  				forEach(value);
+  				if (forEach(value) === false) return;
   				while(position$1 < size) {
   					lastPosition = position$1;
   					if (forEach(checkedRead()) === false) {
@@ -8193,7 +8218,7 @@
   let safeEnd;
   let bundledStrings = null;
   let writeStructSlots;
-  const MAX_BUNDLE_SIZE = 0xf000;
+  const MAX_BUNDLE_SIZE = 0x5500; // maximum characters such that the encoded bytes fits in 16 bits.
   const hasNonLatin = /[\u0080-\uFFFF]/;
   const RECORD_SYMBOL = Symbol('record-id');
   class Packr extends Unpackr {
@@ -8222,7 +8247,7 @@
   		if (maxSharedStructures > 8160)
   			throw new Error('Maximum maxSharedStructure is 8160')
   		if (options.structuredClone && options.moreTypes == undefined) {
-  			options.moreTypes = true;
+  			this.moreTypes = true;
   		}
   		let maxOwnStructures = options.maxOwnStructures;
   		if (maxOwnStructures == null)
@@ -8917,12 +8942,11 @@
   				if (notifySharedUpdate)
   					return hasSharedUpdate = true;
   				position = newPosition;
-  				if (start > 0) {
-  					pack(value);
-  					if (start == 0)
-  						return { position, targetView, target }; // indicate the buffer was re-allocated
-  				} else
-  					pack(value);
+  				let startTarget = target;
+  				pack(value);
+  				if (startTarget !== target) {
+  					return { position, targetView, target }; // indicate the buffer was re-allocated
+  				}
   				return position;
   			}, this);
   			if (newPosition === 0) // bail and go to a msgpack object
@@ -13728,6 +13752,11 @@
         var rect = Bounds.from(a, b, c, d);
         return rect.contains(bbox);
       };
+
+      // TODO
+      // ctx.intersectsRectangle = function(a, b, c, d) {}; // paths... points too?
+      // ctx.containsPoint = function(x, y) {}; // polygon only
+      // ctx.containedByRectangle(a, b, c, d); // paths and points... how do multipart points work?
 
       addGetters(ctx, {
         // TODO: count hole/s + containing ring as one part
@@ -24602,6 +24631,21 @@ ${svg}
     // Experimental commands
     parser.section('Experimental commands (may give unexpected results)');
 
+    parser.command('add-shape')
+      .describe('')
+      .option('geojson', {
+
+      })
+      .option('coordinates', {
+
+      })
+      .option('properties', {
+
+      })
+      .option('name', nameOpt)
+      .option('target', targetOpt)
+      .option('no-replace', noReplaceOpt);
+
     parser.command('alpha-shapes')
       // .describe('convert points to alpha shapes (aka concave hulls)')
       .option('interval', {
@@ -28076,6 +28120,136 @@ ${svg}
     stashVar('input_files', job.input_files);
   }
 
+  cmd.addShape = addShape;
+
+  function addShape(targetLayers, targetDataset, opts) {
+    if (targetLayers.length > 1) {
+      stop('Command expects a single target layer');
+    }
+    var targetLyr = targetLayers[0]; // may be undefined
+    var targetType = !opts.no_replace && targetLyr && targetLyr.geometry_type || null;
+    var dataset = importGeoJSON(toFeature(opts, targetType));
+    var outputLyr = mergeDatasetsIntoDataset(targetDataset, [dataset])[0];
+    if (opts.no_replace || !targetLyr) {
+      // create new layer
+      setOutputLayerName(outputLyr, targetLyr && targetLyr.name, null, opts);
+      return [outputLyr];
+    }
+    // merge into target layer
+    return cmd.mergeLayers([targetLyr, outputLyr], {force: true});
+  }
+
+  function toFeature(opts, geomType) {
+    if (opts.geojson) {
+      return parseArg(opts.geojson);
+    }
+
+    var geom = opts.coordinates && parseCoordsAsGeometry(opts.coordinates) || null;
+
+    if (!geom) {
+      stop('Missing required shape coordinates');
+    }
+
+    if (geomType == 'point' && geom.type != 'Point') {
+      stop('Expected point coordinates, received', geom.type);
+    }
+
+    if (geomType == 'polygon' && geom.type != 'Polygon') {
+      stop('Expected polygon coordinates, received', geom.type);
+    }
+
+    if (geomType == 'polyline') {
+      if (geom.type == 'Polygon') {
+        geom.coordinates = geom.coordinates[0];
+        geom.type = 'LineString';
+      } else {
+        stop('Expected polyline coordinates, received', geom.type);
+      }
+    }
+
+    return {
+      type: 'Feature',
+      properties: parseProperties(opts.properties),
+      geometry: geom
+    };
+  }
+
+  function parseArg(obj) {
+    return typeof obj == 'string' ? JSON.parse(obj) : obj;
+  }
+
+  function parseProperties(arg) {
+    if (!arg) return null;
+    return parseArg(arg);
+  }
+
+  function isArrayOfNumbers(arr) {
+    return arr.length >= 2 && arr.every(utils.isNumber);
+  }
+
+  function isClosedPath$1(arr) {
+    return isArrayOfPoints(arr) && arr.length > 3 && samePoint$1(arr[0], arr[arr.length - 1]);
+  }
+
+  function samePoint$1(a, b) {
+    return a[0] == b[0] && a[1] == b[1];
+  }
+
+  function isArrayOfPoints(arr) {
+    return arr.every(isPoint);
+  }
+
+  function isPoint(arr) {
+    return arr && arr.length == 2 && isArrayOfNumbers(arr);
+  }
+
+  function transposeCoords(arr) {
+    var coords = [];
+    for (var i=0; i<arr.length; i+=2) {
+      coords.push([arr[i], arr[i+1]]);
+    }
+    if (!isArrayOfPoints(coords)) {
+      stop('Unable to parse x,y,x,y... coordinates');
+    }
+    return coords;
+  }
+
+  function parseCoordsAsGeometry(arg) {
+    if (typeof arg == 'string') {
+      arg = arg.trim();
+      if (!arg.startsWith('[') && !arg.endsWith(']')) {
+        arg = '[' + arg + ']';
+      }
+    }
+    var arr = parseArg(arg);
+    if (isPoint(arr)) {
+      return {
+        type: 'Point',
+        coordinates: arr
+      };
+    }
+
+    if (isArrayOfNumbers(arr)) {
+      arr = transposeCoords(arr);
+    }
+
+    if (isClosedPath$1(arr)) {
+      return {
+        type: 'Polygon',
+        coordinates: [arr]
+      };
+    }
+
+    if (isArrayOfPoints(arr)) {
+      return {
+        type: 'LineString',
+        coordinates: arr
+      };
+    }
+
+    stop('Unable to import coordinates');
+  }
+
   const epsilon = 1.1102230246251565e-16;
   const splitter = 134217729;
   const resulterrbound = (3 + 8 * epsilon) * epsilon;
@@ -29263,17 +29437,6 @@ ${svg}
     addBufferVertex: addBufferVertex,
     bufferIntersection: bufferIntersection
   });
-
-  function testSegmentBoundsIntersection(a, b, bb) {
-    if (bb.containsPoint(a[0], a[1])) {
-      return true;
-    }
-    return !!(
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymin, bb.xmin, bb.ymax) ||
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymax, bb.xmax, bb.ymax) ||
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymax, bb.xmax, bb.ymin) ||
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymin, bb.xmin, bb.ymin));
-  }
 
   function getPolylineBufferMaker2(arcs, geod, getBearing, opts) {
     var makeLeftBuffer = getPathBufferMaker2(arcs, geod, getBearing, opts);
@@ -37095,7 +37258,7 @@ ${svg}
     editor.done();
     if (!opts.debug) {
       buildTopology(dataset);
-      cleanProjectedLayers(dataset);
+      cleanProjectedPathLayers(dataset);
     }
   }
 
@@ -37606,13 +37769,39 @@ ${svg}
     } else {
       clipData = getClippingDataset(src, dest, opts);
     }
+    // clip data to projection limits (some projections), if content exceeds the limit
+    //
     if (clipData) {
-      // TODO: don't bother to clip content that is fully within
-      // the clipping shape. But how to tell?
-      clipLayersInPlace(dataset.layers, clipData, dataset, 'clip');
-      clipped = true;
+      clipped = clipLayersIfNeeded(dataset, clipData);
     }
     return cut || clipped;
+  }
+
+  function clipLayersIfNeeded(dataset, clipData) {
+    // Avoid clipping layers that are fully enclosed within the projectable
+    // coordinate space (represented by a dataset containing a single
+    // polygon layer, @clipData). This avoids performing unnecessary intersection
+    // tests on each line segment.
+    var layers = dataset.layers.filter(function(lyr) {
+      return !layerIsFullyEnclosed(lyr, dataset, clipData);
+    });
+    if (layers.length > 0) {
+      clipLayersInPlace(layers, clipData, dataset, 'clip');
+      return true;
+    }
+    return false;
+  }
+
+  // @clipData: a dataset containing a polygon layer
+  function layerIsFullyEnclosed(lyr, dataset, clipData) {
+    // This test uses the layer's bounding box to represent the extent of the
+    // layer, and can produce false negatives.
+    var dataBounds = getLayerBounds(lyr, dataset.arcs);
+    var enclosed = false;
+    clipData.layers[0].shapes.forEach(function(shp, i) {
+      enclosed = enclosed || testBoundsInPolygon(dataBounds, shp, clipData.arcs);
+    });
+    return enclosed;
   }
 
 
@@ -37809,7 +37998,6 @@ ${svg}
     var badArcs = 0;
     var badPoints = 0;
     var clipped = preProjectionClip(dataset, src, dest, opts);
-
     dataset.layers.forEach(function(lyr) {
       if (layerHasPoints(lyr)) {
         badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
@@ -37826,7 +38014,7 @@ ${svg}
     if (clipped) {
       // TODO: could more selective in cleaning clipped layers
       // (probably only needed when clipped area crosses the antimeridian or includes a pole)
-      cleanProjectedLayers(dataset);
+      cleanProjectedPathLayers(dataset);
     }
 
     if (badArcs > 0 && !opts.quiet) {
@@ -37842,7 +38030,7 @@ ${svg}
   // * Removes line intersections
   // * TODO: what if a layer contains polygons with desired overlaps? should
   //   we ignore overlaps between different features?
-  function cleanProjectedLayers(dataset) {
+  function cleanProjectedPathLayers(dataset) {
     // TODO: only clean affected polygons (cleaning all polygons can be slow)
     var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
     // clean options: force a topology update (by default, this only happens when
@@ -37910,7 +38098,7 @@ ${svg}
     __proto__: null,
     fetchCrsInfo: fetchCrsInfo,
     projectDataset: projectDataset,
-    cleanProjectedLayers: cleanProjectedLayers,
+    cleanProjectedPathLayers: cleanProjectedPathLayers,
     projectPointLayer: projectPointLayer,
     projectArcs: projectArcs,
     projectArcs2: projectArcs2
@@ -38884,12 +39072,12 @@ ${svg}
   function polylineToMidpoints(shp, arcs, opts) {
     if (!shp) return null;
     var points = shp.map(function(path) {
-      return findPathMidpoint(path, arcs);
+      return findPathMidpoint(path, arcs, false);
     });
     return points;
   }
 
-  function findPathMidpoint(path, arcs) {
+  function findPathMidpoint(path, arcs, useNearestVertex) {
     var halfLen = calcPathLen(path, arcs, false) / 2;
     var partialLen = 0;
     var p;
@@ -38906,7 +39094,11 @@ ${svg}
       var k;
       if (partialLen + segLen >= halfLen) {
         k = (halfLen - partialLen) / segLen;
-        p = [a + k * (c - a), b + k * (d - b)];
+        if (useNearestVertex) {
+          k = k < 0.5 ? 0 : 1;
+        }
+        // p = [a + k * (c - a), b + k * (d - b)];
+        p = [(1 - k) * a + k * c, (1 - k) * b + k * d];
       }
       partialLen += segLen;
     });
@@ -42786,7 +42978,7 @@ ${svg}
       name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
       name == 'require' || name == 'run' || name == 'define' ||
       name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
-      name == 'else' || name == 'endif' || name == 'stop';
+      name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape';
   }
 
   async function runCommand(command, job) {
@@ -42860,7 +43052,14 @@ ${svg}
         source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
       }
 
-      if (name == 'affine') {
+      if (name == 'add-shape') {
+        if (!targetDataset) {
+          targetDataset = {info: {}, layers: []};
+          targetLayers = targetDataset.layers;
+          job.catalog.addDataset(targetDataset);
+        }
+        outputLayers = cmd.addShape(targetLayers, targetDataset, opts);
+      } else if (name == 'affine') {
         cmd.affine(targetLayers, targetDataset, opts);
 
       } else if (name == 'alpha-shapes') {
