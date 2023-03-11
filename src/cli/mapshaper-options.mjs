@@ -1711,6 +1711,21 @@ export function getOptionParser() {
   // Experimental commands
   parser.section('Experimental commands (may give unexpected results)');
 
+  parser.command('add-shape')
+    .describe('')
+    .option('geojson', {
+
+    })
+    .option('coordinates', {
+
+    })
+    .option('properties', {
+
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
   parser.command('alpha-shapes')
     // .describe('convert points to alpha shapes (aka concave hulls)')
     .option('interval', {

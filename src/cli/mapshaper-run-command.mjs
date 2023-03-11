@@ -14,6 +14,7 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
 
+import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
 import '../commands/mapshaper-buffer';
@@ -97,7 +98,7 @@ function commandAcceptsEmptyTarget(name) {
     name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
     name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
-    name == 'else' || name == 'endif' || name == 'stop';
+    name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape';
 }
 
 export async function runCommand(command, job) {
@@ -172,7 +173,14 @@ export async function runCommand(command, job) {
       source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
     }
 
-    if (name == 'affine') {
+    if (name == 'add-shape') {
+      if (!targetDataset) {
+        targetDataset = {info: {}, layers: []};
+        targetLayers = targetDataset.layers;
+        job.catalog.addDataset(targetDataset);
+      }
+      outputLayers = cmd.addShape(targetLayers, targetDataset, opts);
+    } else if (name == 'affine') {
       cmd.affine(targetLayers, targetDataset, opts);
 
     } else if (name == 'alpha-shapes') {
