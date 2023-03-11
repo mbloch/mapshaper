@@ -120,7 +120,6 @@ export function projectDataset(dataset, src, dest, opts) {
   var badArcs = 0;
   var badPoints = 0;
   var clipped = preProjectionClip(dataset, src, dest, opts);
-
   dataset.layers.forEach(function(lyr) {
     if (layerHasPoints(lyr)) {
       badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
@@ -137,7 +136,7 @@ export function projectDataset(dataset, src, dest, opts) {
   if (clipped) {
     // TODO: could more selective in cleaning clipped layers
     // (probably only needed when clipped area crosses the antimeridian or includes a pole)
-    cleanProjectedLayers(dataset);
+    cleanProjectedPathLayers(dataset);
   }
 
   if (badArcs > 0 && !opts.quiet) {
@@ -153,7 +152,7 @@ export function projectDataset(dataset, src, dest, opts) {
 // * Removes line intersections
 // * TODO: what if a layer contains polygons with desired overlaps? should
 //   we ignore overlaps between different features?
-export function cleanProjectedLayers(dataset) {
+export function cleanProjectedPathLayers(dataset) {
   // TODO: only clean affected polygons (cleaning all polygons can be slow)
   var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
   // clean options: force a topology update (by default, this only happens when

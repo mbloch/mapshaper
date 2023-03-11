@@ -3,6 +3,7 @@ import { error } from '../utils/mapshaper-logging';
 import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
 import { calcPathLen } from '../geom/mapshaper-path-geom';
 import { WGS84 } from '../geom/mapshaper-geom-constants';
+import { testSegmentBoundsIntersection } from '../geom/mapshaper-bounds-geom';
 
 // A compactness measure designed for testing electoral districts for gerrymandering.
 // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
@@ -51,21 +52,32 @@ export function getSphericalShapeArea(shp, arcs, R) {
 //   }, 0);
 // }
 
+// test if a rectangle is completely enclosed in a planar polygon
+export function testBoundsInPolygon(bounds, shp, arcs) {
+  if (!shp || !testPointInPolygon(bounds.xmin, bounds.ymin, shp, arcs)) return false;
+  var isIn = true;
+  shp.forEach(function(ids) {
+    forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
+      isIn = isIn && !testSegmentBoundsIntersection([xx[a], yy[a]], [xx[b], yy[b]], bounds);
+    });
+  });
+  return isIn;
+}
+
 // Return true if point is inside or on boundary of a shape
 //
 export function testPointInPolygon(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
-  if (shp) {
-    shp.forEach(function(ids) {
-      var inRing = testPointInRing(x, y, ids, arcs);
-      if (inRing == 1) {
-        isIn = !isIn;
-      } else if (inRing == -1) {
-        isOn = true;
-      }
-    });
-  }
+  if (!shp) return false;
+  shp.forEach(function(ids) {
+    var inRing = testPointInRing(x, y, ids, arcs);
+    if (inRing == 1) {
+      isIn = !isIn;
+    } else if (inRing == -1) {
+      isOn = true;
+    }
+  });
   return isOn || isIn;
 }
 
@@ -76,6 +88,8 @@ function getYIntercept(x, ax, ay, bx, by) {
 function getXIntercept(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 }
+
+
 
 // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
 // Return 0: outside; 1: inside; -1: on boundary

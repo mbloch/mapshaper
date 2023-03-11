@@ -14,7 +14,7 @@ import {
   densifyPathByInterval,
   densifyAntimeridianSegment,
   getIntervalInterpolator } from '../crs/mapshaper-densify';
-import { cleanProjectedLayers } from '../commands/mapshaper-proj';
+import { cleanProjectedPathLayers } from '../commands/mapshaper-proj';
 import { stop, error, debug } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import {
@@ -49,7 +49,7 @@ export function rotateDataset(dataset, opts) {
   editor.done();
   if (!opts.debug) {
     buildTopology(dataset);
-    cleanProjectedLayers(dataset);
+    cleanProjectedPathLayers(dataset);
   }
 }
 

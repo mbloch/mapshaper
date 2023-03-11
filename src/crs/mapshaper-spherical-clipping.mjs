@@ -9,6 +9,8 @@ import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
+import { testBoundsInPolygon } from '../geom/mapshaper-polygon-geom';
+import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 
 export function preProjectionClip(dataset, src, dest, opts) {
   if (!isLatLngCRS(src) || opts.no_clip) return false;
@@ -26,13 +28,39 @@ export function preProjectionClip(dataset, src, dest, opts) {
   } else {
     clipData = getClippingDataset(src, dest, opts);
   }
+  // clip data to projection limits (some projections), if content exceeds the limit
+  //
   if (clipData) {
-    // TODO: don't bother to clip content that is fully within
-    // the clipping shape. But how to tell?
-    clipLayersInPlace(dataset.layers, clipData, dataset, 'clip');
-    clipped = true;
+    clipped = clipLayersIfNeeded(dataset, clipData);
   }
   return cut || clipped;
+}
+
+function clipLayersIfNeeded(dataset, clipData) {
+  // Avoid clipping layers that are fully enclosed within the projectable
+  // coordinate space (represented by a dataset containing a single
+  // polygon layer, @clipData). This avoids performing unnecessary intersection
+  // tests on each line segment.
+  var layers = dataset.layers.filter(function(lyr) {
+    return !layerIsFullyEnclosed(lyr, dataset, clipData);
+  });
+  if (layers.length > 0) {
+    clipLayersInPlace(layers, clipData, dataset, 'clip');
+    return true;
+  }
+  return false;
+}
+
+// @clipData: a dataset containing a polygon layer
+function layerIsFullyEnclosed(lyr, dataset, clipData) {
+  // This test uses the layer's bounding box to represent the extent of the
+  // layer, and can produce false negatives.
+  var dataBounds = getLayerBounds(lyr, dataset.arcs);
+  var enclosed = false;
+  clipData.layers[0].shapes.forEach(function(shp, i) {
+    enclosed = enclosed || testBoundsInPolygon(dataBounds, shp, clipData.arcs);
+  });
+  return enclosed;
 }
 
 
