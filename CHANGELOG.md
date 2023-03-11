@@ -1,3 +1,7 @@
+v0.6.25
+* Added "Erase" button to box tool in web UI.
+* Bug fixes and optimizations.
+
 v0.6.24
 * Added -info save-to=<filename> option, for saving layer information to a JSON file.
 * Apply the same amount of compression to all exported snapshots.
