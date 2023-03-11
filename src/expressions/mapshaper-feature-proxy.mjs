@@ -83,6 +83,11 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
       return rect.contains(bbox);
     };
 
+    // TODO
+    // ctx.intersectsRectangle = function(a, b, c, d) {}; // paths... points too?
+    // ctx.containsPoint = function(x, y) {}; // polygon only
+    // ctx.containedByRectangle(a, b, c, d); // paths and points... how do multipart points work?
+
     addGetters(ctx, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {

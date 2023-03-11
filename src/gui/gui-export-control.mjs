@@ -36,7 +36,7 @@ export var ExportControl = function(gui) {
       .on('change', function() {
         GUI.setSavedValue('choose-save-dir', this.checked);
       })
-      .attr('checked', GUI.getSavedValue('choose-save-dir') || false);
+      .attr('checked', GUI.getSavedValue('choose-save-dir') || null);
   }
 
   function turnOn() {

@@ -90,8 +90,14 @@ export function Popup(gui, toNext, toPrev) {
       }
     });
 
+    // add new field form
+    if (editable) {
+      renderNewRow(tableEl, rec, table);
+    }
+
+    tableEl.appendTo(el);
     if (rows > 0) {
-      tableEl.appendTo(el);
+      // tableEl.appendTo(el);
 
       tableEl.on('copy', function(e) {
         // remove leading or trailing tabs that sometimes get copied when
@@ -111,15 +117,26 @@ export function Popup(gui, toNext, toPrev) {
       el.html(utils.format('<div class="note">This %s is missing attribute data.</div>',
           table && table.getFields().length > 0 ? 'feature': 'layer'));
     }
+
+    if (editable) {
+      var line = El('div').appendTo(el);
+      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+
+      }).text('add field');
+    }
+  }
+
+  function renderNewRow(el, rec, table) {
+
   }
 
   function renderRow(table, rec, key, type, editable) {
-    var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
     var val = rec[key];
     var str = formatInspectorValue(val, type);
+    var rowHtml = `<td class="field-name">${key}</td><td><span class="value">${utils.htmlEscape(str)}</span> </td>`;
     var cell = El('tr')
         .appendTo(table)
-        .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
+        .html(rowHtml)
         .findChild('.value');
     setFieldClass(cell, val, type);
     if (editable) {

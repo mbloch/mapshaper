@@ -11,12 +11,12 @@ import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
 export function polylineToMidpoints(shp, arcs, opts) {
   if (!shp) return null;
   var points = shp.map(function(path) {
-    return findPathMidpoint(path, arcs);
+    return findPathMidpoint(path, arcs, false);
   });
   return points;
 }
 
-function findPathMidpoint(path, arcs) {
+function findPathMidpoint(path, arcs, useNearestVertex) {
   var halfLen = calcPathLen(path, arcs, false) / 2;
   var partialLen = 0;
   var done = false;
@@ -34,7 +34,11 @@ function findPathMidpoint(path, arcs) {
     var k;
     if (partialLen + segLen >= halfLen) {
       k = (halfLen - partialLen) / segLen;
-      p = [a + k * (c - a), b + k * (d - b)];
+      if (useNearestVertex) {
+        k = k < 0.5 ? 0 : 1;
+      }
+      // p = [a + k * (c - a), b + k * (d - b)];
+      p = [(1 - k) * a + k * c, (1 - k) * b + k * d];
     }
     partialLen += segLen;
   });
