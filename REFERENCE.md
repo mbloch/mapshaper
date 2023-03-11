@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.14 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.24 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1490,6 +1490,8 @@ Print information about a dataset. Useful for seeing the fields in a layer's att
 # Example: Get information about an unknown GeoJSON or TopoJSON dataset
 mapshaper mystery_file.json -info
 ```
+
+`save-to=` Save information to a .json file.
 
 ### -inspect
 
