@@ -9,7 +9,7 @@ import { mergeLayerNames } from '../commands/mapshaper-merge-layers';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport } from '../dataset/mapshaper-dataset-utils';
 import { encodeString } from '../text/mapshaper-encodings';
-import GeoJSON from '../geojson/geojson-common';
+import GeoJSON from './geojson-common';
 import { message, error, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { Bounds } from '../geom/mapshaper-bounds';

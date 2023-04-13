@@ -1,5 +1,5 @@
 import { verbose } from '../utils/mapshaper-logging';
-import GeoJSON from '../geojson/geojson-common';
+import GeoJSON from './geojson-common';
 import utils from '../utils/mapshaper-utils';
 import { PathImporter } from '../paths/mapshaper-path-import';
 import { copyRecord } from '../datatable/mapshaper-data-utils';
