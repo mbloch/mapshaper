@@ -21,6 +21,12 @@ export function getBlackiClassifier(lyr, dataField) {
       if (thatClass == -1) {
         if (thisClass == -1) {
           thisClass = classCount++;
+        }
+        if (Array.isArray(classToDataIndex[thisClass])) {
+          if (!classToDataIndex[thisClass].includes(dataId)) {
+            classToDataIndex[thisClass].push(dataId);
+          }
+        } else {
           classToDataIndex[thisClass] = [dataId];
         }
         dataToClassIndex[dataId] = thisClass;

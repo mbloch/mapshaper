@@ -1,3 +1,6 @@
+v0.6.27
+* Bug fix
+
 v0.6.26
 * Updated projections library to fix a bug.
 * Added getters partCount, isNull, bounds, width, and height to "this" object for point features in expressions.
